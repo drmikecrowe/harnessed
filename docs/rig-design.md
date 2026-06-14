@@ -1,12 +1,12 @@
-# harnessed — Isolated, Composable Harness Rigs
+# harnessed — Isolated, Composable Harness Stacks
 
 > **Status:** Design spec (resolved via discuss/grill session). Architecture decisions
 > (§2–§9) are **confirmed**. Schemas, repo layout, and CLI (§10–§13) are **proposed**
 > and open for review. Items in §14 are **to verify during execution**.
 >
-> **Names:** the executable is **`harnessed`**; an instance it launches is a **rig** (an isolated
-> harness pod). The existing `container` SKU folds in as the built-in `transparent` stack (§2);
-> `container` remains a thin alias → `harnessed transparent`.
+> **Names:** the executable is **`harnessed`**; what it launches is a **stack** — a podman pod with
+> the harness container + hatago + shared services. The existing `container` SKU folds in as the
+> built-in `transparent` stack (§2); `container` remains a thin alias → `harnessed transparent`.
 
 ## 1. Problem
 
@@ -40,39 +40,35 @@ and mounts host skills/hooks/commands wholesale. `isolated` stacks embed recipe-
 skills/hooks/commands. The old `container` command becomes an alias for `harnessed transparent`
 (see §14 — keep alias vs remove).
 
-## 3. Core model: stack = rig + hatago + shared services
+## 3. Core model: stack = harness container + hatago + shared services
 
 A running **stack** is composed **at runtime**, in a podman **pod** on a shared network — **not**
 at build time. (`FROM` is linear inheritance + multi-stage `COPY --from`; it cannot union two
 sibling systems. See §6.)
 
-```
-            podman pod: rig-<stack>-<proj>
-        ┌───────────────────────────────────┐
-        │  [ rig-<harness> ]   [ hatago ]    │
-        │        │                 │         │
-        └────────┼─────────────────┼─────────┘
-                 │ mounts cwd      │ HTTP (localhost:<port>)
-                 │ mounts profile  │
-                 ▼                 ▼
-          project + auth     aggregates MCP
-                                   │
-                 ┌─────────────────┴───── rig-net ───────┐
-                 ▼                                        ▼
-        [ hindsight ] (shared, service-scoped)   [ openbrain ] (shared)
-          own image · own volume · own lifecycle
+            podman pod: harnessed-<stack>-<proj>
+        ┌──────────────────────────────────────────────┐
+        │  [ harnessed-<harness> ]  ──→  [ hatago ]      │
+        │    mounts cwd + profile      MCP hub · HTTP    │
+        └───────────────────────────────────────┬───────┘
+                                                 │ MCP over harnessed-net
+                          ┌──────────────────────┴──────────────────────┐
+                          ▼                                              ▼
+                   [ hindsight ]                               [ openbrain ]
+                   shared · service-scoped                     shared · service-scoped
+                   own image · volume · lifecycle              own image · volume · lifecycle
 ```
 
-- **rig container** — the harness (`claude`/`omp`), auth seeded, current folder mounted, stack
-  profile mounted into the harness config dir.
+- **harness container** — runs the harness (`claude`/`omp`), auth seeded, current folder mounted,
+  stack profile mounted into the harness config dir.
 - **hatago** — MCP hub. Aggregates all of the stack's MCP servers behind **one** HTTP endpoint;
-  the rig's `.mcp.json` points at `localhost:<port>`. Light `npx`/`uvx` stdio servers run as
+  the harness container's `.mcp.json` points at `localhost:<port>`. Light `npx`/`uvx` stdio servers run as
   hatago's children (baked into the hatago image); heavy services are proxied over the network.
 - **shared services** — heavy/stateful systems (hindsight = postgres+MCP, openbrain). Each is
   its **own** image/container/volume, **service-scoped and harness-independent**, with a
-  lifecycle independent of any rig. Multiple rigs attach to the **same** instance concurrently.
+  lifecycle independent of any instance. Multiple harnessed instances attach to the **same** running service concurrently.
 
-**Transparent mode is the degenerate case:** rig container only — no hatago, no services. Host
+**Transparent mode is the degenerate case:** harness container only — no hatago, no services. Host
 config is mounted live, so MCP comes from the host's own `.mcp.json`/`.claude.json`. The pod,
 hatago, and shared-service machinery above apply only to `isolated` stacks.
 
@@ -84,7 +80,7 @@ thing `transparent` and `isolated` disagree on.
 ### 4a. Host-integration layer (shared by ALL stacks)
 
 Ported verbatim from `container.sh`'s `start_new_container` — these are credentials, signing,
-and agents, *not* the config-experiment surface, so they belong in every rig:
+and agents, *not* the config-experiment surface, so they belong in every instance:
 
 - 1Password SSH agent socket (`SSH_AUTH_SOCK`)
 - GPG agent SSH socket + `~/.gnupg` (ro) — YubiKey SSH / commit signing
@@ -104,7 +100,7 @@ the `.claude.json` caveat below):
   constantly (see host `~/.claude/backups/*.backup.*`). A shared rw mount races with host claude
   (lost writes / corruption) and merges container state back into the host file — the differing
   project path only spares the path-keyed `projects` subtree, not the whole-file rewrite or the
-  top-level fields. Seed a **writable per-rig copy** at start (copy-on-start), or relocate via
+  top-level fields. Seed a **writable per-instance copy** at start (copy-on-start), or relocate via
   `CLAUDE_CONFIG_DIR` (§14): container reads host state, writes only its own copy.
 - `~/.codex`, `~/.config/opencode`, `~/.gemini` (rw)
 - MCP comes from host config as-is; no hatago, no profile, no auth stub.
@@ -119,10 +115,10 @@ the `.claude.json` caveat below):
 - `skills/`, `commands/`, `agents/`, `hooks/`, `rules/`, `.mcp.json`, `settings.json` come
   **only** from the stack profile (§7); `.mcp.json` points at hatago.
 - Session state — `~/.claude/projects/` + `history.jsonl` — persists to the **host** by default,
-  so sessions survive rig recreation and stay inspectable. The project is mounted at a stable
+  so sessions survive instance recreation and stay inspectable. The project is mounted at a stable
   in-container path (e.g. `/home/harnessed/<relpath>`) so Claude's slug is legible
   (`-home-harnessed-<relpath>`), under a harnessed-owned dir so it never pollutes the host's own
-  `~/.claude`. `session_state: volume` (§12) opts into a throwaway per-rig volume instead.
+  `~/.claude`. `session_state: volume` (§12) opts into a throwaway per-instance volume instead.
 
 Net: `isolated` is authenticated but carries **no host defaults**; `transparent` is the full
 host mirror. Same engine, same operational mounts, one switch.
@@ -145,7 +141,7 @@ images" operator. So systems are **not** combined via `FROM`; they are combined 
 
 Legitimate build-time images:
 
-- `rig-base` — mise/node/python + common tooling → `FROM rig-base` → **`rig-claude`**, **`rig-omp`**.
+- `harnessed-base` — mise/node/python + common tooling → `FROM harnessed-base` → **`harnessed-claude`**, **`harnessed-omp`**.
 - `hatago` — the hub + the *light* `npx`/`uvx` stdio MCP servers baked in.
 - **Per heavy service** — `services/hindsight/Dockerfile`, `services/openbrain/Dockerfile`, each
   standalone, independently versioned, reusable across stacks.
@@ -162,7 +158,7 @@ The build-time assembler **reuses prior art** (to be ported into this repo):
 
 **Where output lands:**
 - **Committed → mounted:** the assembled file-extension tree is written into the git-controlled
-  **profile** dir and **mounted** into the rig (editable, versioned — satisfies VISION's
+  **profile** dir and **mounted** into the harness container (editable, versioned — satisfies VISION's
   "commands, skills, agents and hooks proxied to a git-controlled folder").
 - **Baked → images:** MCP servers + their `npx`/`uvx`/python deps are baked into images
   (host stays clean, reproducible, pinned).
@@ -202,7 +198,7 @@ as Claude auth: **reference host creds, never bake or commit them.**
 
 All JavaScript installs — **global, per-recipe, and hatago's bundled servers** — use **pnpm**, not
 npm/npx. Rationale: <https://pnpm.io/supply-chain-security>. A managed pnpm config (shipped in
-`rig-base` / `lib/`) enables:
+`harnessed-base` / `lib/`) enables:
 
 - **`minimumReleaseAge`** — quarantine newly published versions (cooldown) so a compromised
   release isn't installed the moment it lands.
@@ -231,14 +227,14 @@ harnesses adapt *out* of it:
 - **Default persistent, `--fresh` to wipe.** Accumulation is the *value* of a memory system;
   `--fresh` gives a clean-room comparison run (throwaway volume).
 - **Service volumes are service-scoped & harness-independent** — `hindsight-data`, not
-  `rig-data-<stack>`. This is what lets `claude+hindsight` and `omp+hindsight` share **one**
+  `harnessed-data-<stack>`. This is what lets `claude+hindsight` and `omp+hindsight` share **one**
   memory.
-- **Shared instance, concurrent.** One long-lived `hindsight` container on `rig-net`, owned by
-  the *service* not any rig; postgres serves both rigs at once. A rig starts it if absent; it
-  outlives rigs (`harnessed svc up/down`).
-- **Rig harness-state** — `projects/` + `history.jsonl` persist to the **host** by default
+- **Shared instance, concurrent.** One long-lived `hindsight` container on `harnessed-net`, owned by
+  the *service* not any instance; postgres serves both instances at once. An instance starts it if
+  absent; it outlives instances (`harnessed svc up/down`).
+- **Harness-state** — `projects/` + `history.jsonl` persist to the **host** by default
   (harnessed-scoped, path-mirrored for a stable slug; `session_state: volume` for throwaway).
-  Other ephemeral state (`sessions/`, caches) stays in a per-rig volume.
+  Other ephemeral state (`sessions/`, caches) stays in a per-instance volume.
 
 ---
 
@@ -254,9 +250,9 @@ code-container/
     pyproject.toml
     harnessed/                 # cli, assemble, vendor, sync-links, validate, orchestrate
   base/
-    Dockerfile.rig-base        # mise/node/python + common tooling
-    Dockerfile.rig-claude      # FROM rig-base + claude install
-    Dockerfile.rig-omp         # FROM rig-base + omp install
+    Dockerfile.harnessed-base    # mise/node/python + common tooling
+    Dockerfile.harnessed-claude  # FROM harnessed-base + claude install
+    Dockerfile.harnessed-omp     # FROM harnessed-base + omp install
     Dockerfile.hatago          # hatago + light pnpm-dlx/uvx MCP servers
   services/                    # heavy/stateful sidecars, each its own image
     hindsight/Dockerfile
@@ -269,11 +265,11 @@ code-container/
   stacks/                      # authored stack manifests (harness + recipes)
     claude-openbrain-headroom-caveman/stack.yaml
     transparent/stack.yaml     # built-in: host-mirror mode (the old `container`)
-  profiles/                    # GENERATED + committed; mounted into the rig
+  profiles/                    # GENERATED + committed; mounted into the harness container
     claude-openbrain-headroom-caveman/
       .claude/{skills,commands,agents,hooks,rules}/
       hatago.config.json
-  lib/                         # runtime bash mounted into rigs (NOT the assembler — see tools/)
+  lib/                         # runtime bash mounted into instances (NOT the assembler — see tools/)
     mounts.sh                  # shared host-integration mount layer (§4a)
     hooks/{run-hook.sh,lib-*.sh}
 ```
@@ -292,7 +288,7 @@ mcp:
   servers:
     - name: hindsight
       service: hindsight        # references services/hindsight → shared sidecar
-      url_env: HINDSIGHT_URL    # optional env injected into the rig
+      url_env: HINDSIGHT_URL    # optional env injected into the instance
 
     # light server alternative (hatago runs it as a child, wraps stdio→HTTP):
     # - name: fetch
@@ -326,7 +322,7 @@ deps:
 name: omp
 description: omp/pi base — consume Claude-format hooks/skills
 
-extensions:                     # omp-native extensions installed into the rig
+extensions:                     # omp-native extensions installed into the instance
   - package: npm:@ryan_nookpi/pi-extension-claude-hooks-bridge
 ```
 
@@ -338,7 +334,7 @@ name: claude-openbrain-headroom-caveman
 config: isolated              # isolated (default) | transparent
 harness: claude               # claude | omp  (exactly one)
 permissions: yolo             # prompt (default) | yolo — writes per-harness skip-permission
-                              #   config (Permissions.md) into the profile; safe in an isolated rig
+                              #   config (Permissions.md) into the profile; safe in an isolated instance
 
 recipes: [openbrain, headroom, caveman]
 services: [openbrain]         # shared services attached by reference
@@ -366,23 +362,23 @@ harnessed install <stack>     # write ~/.local/bin/<stack> launcher shim (see be
 harnessed uninstall <stack>   # remove the launcher shim
 harnessed --fresh <stack>     # start with empty state volumes
 harnessed new <stack> --harness claude --recipes a,b,c   # scaffold a stack manifest
-harnessed list                # stacks + running rigs
+harnessed list                # stacks + running instances
 harnessed stop <stack>
 harnessed rm <stack>
-harnessed svc up <service>    # start a shared service on rig-net
+harnessed svc up <service>    # start a shared service on harnessed-net
 harnessed svc down <service>
 harnessed svc list
 harnessed auth snyk|socket    # one-time: set a scanner token (persisted to host config)
 ```
 
 **Naming/identity (proposed):**
-- pod: `rig-<stack>-<projhash>` — same stack runnable across projects without recreate
+- pod: `harnessed-<stack>-<projhash>` — same stack runnable across projects without recreate
   (bind mounts are fixed at creation, so the project is part of identity).
-- shared services: global by name (`hindsight`), on `rig-net`.
+- shared services: global by name (`hindsight`), on `harnessed-net`.
 
 ### Generated launcher shim (`harnessed install`)
 
-`harnessed install <stack>` writes an executable `~/.local/bin/<stack>` so you can launch a rig
+`harnessed install <stack>` writes an executable `~/.local/bin/<stack>` so you can launch an instance
 by name from anywhere (mirrors the repo's existing `install.sh`, which puts `container` on PATH):
 
 ```bash
@@ -393,12 +389,12 @@ HARNESSED_NAME=claude-openbrain-headroom-caveman       # the stack to launch
 exec "$HARNESSED_PATH" "$HARNESSED_NAME" "$@"           # "$@" forwards an optional project path
 ```
 
-Then `claude-openbrain-headroom-caveman [path]` from any directory starts that rig.
+Then `claude-openbrain-headroom-caveman [path]` from any directory starts that instance.
 `harnessed uninstall <stack>` removes the shim.
 
 ## 14. Open / to verify during execution
 
-- **Minimal `.claude.json` stub fields.** Boot a rig and confirm no re-login/onboarding prompt.
+- **Minimal `.claude.json` stub fields.** Boot an instance and confirm no re-login/onboarding prompt.
   Candidate set: `oauthAccount`, `userID`, `hasCompletedOnboarding` (+ possibly `firstStartTime`,
   `numStartups`). [INFERENCE — verify empirically.]
 - **Per-server MCP transport.** Which servers already speak Streamable HTTP vs need hatago's
@@ -409,21 +405,21 @@ Then `claude-openbrain-headroom-caveman [path]` from any directory starts that r
   omp config dir) for the profile mount.
 - **`container` alias.** Keep `container` as a thin alias → `harnessed transparent` for muscle
   memory, or remove once `harnessed` lands. (Recommendation: keep — zero cost.)
-- **hatago placement.** Confirmed: in the pod over HTTP (not stdio-in-rig) to keep npx/uvx out of
-  the rig — re-verify once a real stack is built.
+- **hatago placement.** Confirmed: in the pod over HTTP (not stdio inside the harness container) to keep npx/uvx out of
+  the harness container — re-verify once a real stack is built.
 - **Editor/tool configs in isolated mode.** §4a mounts `~/.config/<tool>` (nvim, etc.) for all
-  stacks as operational. Confirm that's wanted in `isolated` rigs, or gate behind a flag if a
+  stacks as operational. Confirm that's wanted in `isolated` instances, or gate behind a flag if a
   truly empty environment is ever needed.
 - **Host-projects scope.** Does `session_state: host` write the host's own `~/.claude/projects/`
   (full continuity with host claude) or a harnessed-owned dir (`~/.harnessed/projects/`) to keep
-  rig sessions separate? (Recommendation: harnessed-owned.)
+  instance sessions separate? (Recommendation: harnessed-owned.)
 - **Container home path.** `/home/harnessed/<relpath>` (vs `container.sh`'s `/container/$USER`)
   for a legible, stable project slug — confirm it doesn't break the harness installs.
 - **pnpm rollout.** mise currently installs node tools via its `npm:` backend; confirm it can
   route through pnpm (or `pnpm add -g`). Decide the `onlyBuiltDependencies` allowlist +
   `minimumReleaseAge` window — too tight blocks legit native builds, too loose weakens the guard.
 - **`CLAUDE_CONFIG_DIR` relocation.** Verify whether it relocates `~/.claude.json` (not just the
-  `.claude/` dir). If yes, both modes can point Claude at a per-rig config dir instead of
+  `.claude/` dir). If yes, both modes can point Claude at a per-instance config dir instead of
   copy-on-start, fully decoupling container state from the host file. [INFERENCE — verify.]
 
 ## 15. Proposed: implementation — single dependency, containerized tooling
@@ -436,13 +432,13 @@ Two pieces:
   `harnessed-tools` image exists (builds on first run / `--build`); then `podman run`s the tool with
   the repo mounted, host auth (`~/.claude/.credentials.json`), the **rootless podman socket**, and
   the **host** `HOME`/`PWD` passed as env. For `harnessed <stack>` (run) it performs the final
-  interactive attach (`podman exec -it rig-… <harness>`) **host-natively** for a clean TTY.
+  interactive attach (`podman exec -it harnessed-… <harness>`) **host-natively** for a clean TTY.
 - **`harnessed-tools` — the brain (one image, built first run).** Python + `rich` (and `textual`
   if a TUI lands) + `yq`/`jq` + `git` + `pnpm` + the supply-chain scanners. Holds *all* logic:
   parse/validate YAML, vendor (`vendor-plugin`), `sync-plugin-links` (already Python), merge
   `hatago.config.json`, generate the `.claude.json` stub, write yolo configs, scan. It drives the
   **host** podman through the mounted socket (`CONTAINER_HOST`/`DOCKER_HOST`), including building
-  the rig/hatago/service images.
+  the harnessed/hatago/service images.
 
 This supersedes the earlier "bash orchestrator + Python assembler" split: logic consolidates into
 one Python image; host bash shrinks to a true bootstrap. (Testing is integration-only — see §18 —
@@ -483,7 +479,7 @@ injects the resolved values into a process via `varlock run -- <cmd>`. Copying t
 **How harnessed uses it:**
 
 - On launch, `harnessed` checks for a relevant `.env.schema`. **Present (opt-in) →** wrap the launch
-  in `varlock run --` so resolved env reaches the tool container / rig / sidecar. **Absent (the
+  in `varlock run --` so resolved env reaches the tool container / instance / sidecar. **Absent (the
   default) →** plain host env passthrough (the §7 scanner present/skip logic still applies); with no
   schema, varlock is never invoked.
 - varlock + the `op` CLI may be baked into `harnessed-tools` so opt-in users need nothing extra on
@@ -517,17 +513,17 @@ Cadence: each section lands **with** the feature it documents (a feature isn't "
 exist), per this repo's existing AGENTS.md / README conventions. This design spec stays current as
 decisions change (as it has through this session).
 
-## 18. Proposed: testing — integration only, behavior through the rig
+## 18. Proposed: testing — integration only, behavior through the instance
 
 Per the project's TDD philosophy (`tdd` skill): **test behavior through the public interface, and
-write tests that survive refactors.** For harnessed the public interface is the **running rig**, and
-the behavior is "the rig exposes exactly the MCP servers / skills / commands its stack declares."
+write tests that survive refactors.** For harnessed the public interface is the **running instance**, and
+the behavior is "the instance exposes exactly the MCP servers / skills / commands its stack declares."
 
 - **No assembler unit tests.** Testing `vendor`/`sync-links`/merge internals couples to
   implementation and breaks on refactor — the anti-pattern the TDD skill warns against. The
   assembler is covered *transitively*: wire the wrong thing and the capability test fails.
 - **The stack manifest is the test oracle.** Expected capabilities (`recipes` → MCP servers +
-  skills + commands; `services`) are derived from `stack.yaml`; the test asserts the live rig
+  skills + commands; `services`) are derived from `stack.yaml`; the test asserts the live instance
   matches. It reads like a spec: "`claude-openbrain-headroom-caveman` exposes MCP `openbrain` and
   skills `headroom`, `caveman`."
 
@@ -542,11 +538,11 @@ the behavior is "the rig exposes exactly the MCP servers / skills / commands its
    - **Skills / commands** — ask the harness, headless, to emit the skills/commands it sees as JSON
      and diff against the manifest; the natural-language "confirm you can use skill X, MCP Y" prompt
      is the human-readable check on top.
-3. Tear the rig down (`--fresh` guarantees no state bleed between runs).
+3. Tear the instance down (`--fresh` guarantees no state bleed between runs).
 
 **Capability report — the test output is a user artifact.** The same check renders a **markdown
 report** ("how well the recipe built"), not just a CI pass/fail. The expected-from-manifest vs
-present-in-rig comparison becomes a per-capability table:
+present-in-instance comparison becomes a per-capability table:
 
 ```
 ## claude-openbrain-headroom-caveman — capability report
