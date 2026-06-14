@@ -499,7 +499,7 @@ future-you) must operate. Required surface, by audience:
 
 - **README.md** — what `harnessed` is, the two modes, install (`git clone` + bootstrap), first-run
   build, a 60-second quickstart. Updated alongside the existing `container` README.
-- **docs/rig-design.md** (this file) — architecture + decisions; the source of truth for *why*.
+- **docs/harnessed-design.md** (this file) — architecture + decisions; the source of truth for *why*.
 - **Recipe authoring guide** — writing `recipes/<name>/recipe.yaml`: MCP servers, file extensions,
   deps, the Claude-canonical rule, the pnpm rule — with one worked example end to end.
 - **Stack guide** — composing recipes into `stacks/<name>/stack.yaml`; `transparent` vs `isolated`;
