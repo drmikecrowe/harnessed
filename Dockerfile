@@ -58,8 +58,6 @@ RUN mise settings set experimental true && \
         python@latest \
         fd \
         ripgrep \
-        "github:steveyegge/beads@latest" \
-        "github:steveyegge/gastown@latest" \
         npm:opencode-ai \
         npm:@openai/codex \
         npm:@google/gemini-cli && \
