@@ -60,11 +60,17 @@ Plans:
   4. The per-stack capability test passes and renders a markdown report showing the declared capabilities present
 
 **Plans**: 3 plans
-
 Plans:
+**Wave 1**
 
 - [ ] 02-01: Recipe + stack schema and the build-time assembler (vendor + sync-links fan with fail-fast collisions + hook wiring + hatago config merge)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 02-02: Isolated auth seeding (`.credentials.json` ro + generated `.claude.json` stub, headless no-prompt test) + runtime pod composition (harness + hatago on harnessed-net)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 02-03: Per-stack capability test + `rich` markdown capability report
 
 ### Phase 3: Supply-Chain Gate + pnpm-Everywhere
