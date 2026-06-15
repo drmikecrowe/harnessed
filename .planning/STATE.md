@@ -24,18 +24,18 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 03 (supply-chain-gate-pnpm-everywhere) — EXECUTING
-Plan: 03-01 ✓ complete (BLD-01) → executing 03-02 (Wave 2)
-Status: Executing Phase 03 — 1 of 2 plans done
-Last activity: 2026-06-15 -- Plan 03-01 complete: pnpm v11 policy live in harnessed-base+hatago (pnpm config list verified, no warnings); mise npm: routing confirmed via pnpm; allowBuilds deferred (v11 rejects it globally — project-scoped); tools config deferred (context mismatch, no JS); legacy pre-existing mise.run failure flagged separately.
+Phase: 03 (supply-chain-gate-pnpm-everywhere) — COMPLETE ✓ (pending phase verification)
+Plan: 03-01 ✓ (BLD-01) + 03-02 ✓ (BLD-02 + BLD-03) — both executed + checkpoint-verified
+Status: Phase 03 executed — 2 of 2 plans done; ready for phase verification
+Last activity: 2026-06-15 -- Plan 03-02 complete: CVSS>=HIGH scan gate (osv-scanner offline PyPI+npm + pip-audit) + raw-npm/npx lint wired into build_stack; proven by HIGH-abort (requests==2.19.0→GHSA-x84v-xcm2-53pg) AND LOW-green (mistune==0.7.4 builds green) — the severity-gate proof; npm-lint aborts with pnpm equivalent; tracer-time full build green incl. hatago image scan.
 
-Progress: [█████░░░░░] 50% — Phase 02 ✓ verified · Phase 03: 03-01 ✓ (1/2) · executing 03-02
+Progress: [██████░░░░] 60% — Phase 02 ✓ verified · Phase 03 ✓ executed (2/2 plans, checkpoint-verified) · ready for /gsd-verify-work 3
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: — min
 - Total execution time: 0.0 hours
 
