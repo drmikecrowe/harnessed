@@ -27,6 +27,14 @@ RUN pip install --no-cache-dir .
 # SHA256SUMS BEFORE chmod +x (threat T-03-05 — never trust an unverified download), and the offline
 # OSV DB is pre-seeded so scans run deterministically with no osv.dev/deps.dev hit at scan time
 # (Open Q3 LOCK; RESEARCH Pitfall 6).
+# Fixed offline-DB cache location (XDG_CACHE_HOME). osv-scanner honors it, so the pre-seeded
+# DB at /opt/osv-cache/osv-scanner/{PyPI,npm}/ is found at scan time regardless of the runtime
+# user (owned by uid 1000 = the tools user). Seeded below from representative manifests.
+# Phase-3 checkpoint 03-02 fix: the bare `osv-scanner --download-offline-databases` is rejected
+# by v2.3.8 ("databases can only be downloaded when running in offline mode"); the DB is seeded
+# per-ecosystem by a scan with --download-offline-databases against real manifests, and scans
+# use `--offline --offline-vulnerabilities` (network OFF, local DB).
+ENV XDG_CACHE_HOME=/opt/osv-cache
 ARG OSV_SCANNER_VERSION=2.3.8
 RUN mkdir -p /tmp/osv-dl \
     && curl -fsSL -o /tmp/osv-dl/osv-scanner_linux_amd64 \
@@ -38,8 +46,13 @@ RUN mkdir -p /tmp/osv-dl \
     && mv osv-scanner_linux_amd64 /usr/local/bin/osv-scanner \
     && chmod +x /usr/local/bin/osv-scanner \
     && osv-scanner --version \
-    && osv-scanner --download-offline-databases \
-    && rm -rf /tmp/osv-dl
+    && mkdir -p /tmp/osv-seed \
+    && printf 'requests==2.19.0\n' > /tmp/osv-seed/requirements.txt \
+    && printf '{"name":"osv-seed","version":"1.0.0","lockfileVersion":3,"packages":{"node_modules/left-pad":{"version":"1.3.0"}}}\n' > /tmp/osv-seed/package-lock.json \
+    && (osv-scanner scan source --offline-vulnerabilities --download-offline-databases -r /tmp/osv-seed || true) \
+    && rm -rf /tmp/osv-seed /tmp/osv-dl \
+    && test -d "${XDG_CACHE_HOME}/osv-scanner" \
+    && chown -R 1000:1000 "${XDG_CACHE_HOME}"
 
 # Match the host UID (paired with `--userns=keep-id` at run) so emitted files in the
 # bind-mounted build dir are owned by the host user, not root.

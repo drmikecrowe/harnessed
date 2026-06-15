@@ -166,7 +166,7 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
 
 def _scan_source_osv(target: Path, highs: list[str], warnings: list[str]) -> None:
     """osv-scanner offline source scan of one dir; HIGH ids -> highs, everything else -> warnings."""
-    proc = _run(["osv-scanner", "--offline", "scan", "source", "-r", "--format", "json", str(target)])
+    proc = _run(["osv-scanner", "scan", "source", "--offline", "--offline-vulnerabilities", "-r", "--format", "json", str(target)])
     data = _parse_json(proc.stdout)
     if data is None:
         if proc.returncode == 128:
@@ -238,7 +238,7 @@ def run_image_scan(archive_tar: Path | str) -> ScanResult:
     daemon-in-container, no API socket mounted.
     """
     archive_tar = Path(archive_tar)
-    proc = _run(["osv-scanner", "--offline", "scan", "image", "--archive", str(archive_tar), "--format", "json"])
+    proc = _run(["osv-scanner", "scan", "image", "--offline", "--offline-vulnerabilities", "--archive", str(archive_tar), "--format", "json"])
     if proc.returncode == 128:
         warnings = [f"osv-scanner found no packages in image archive (exit 128 — investigate)"]
         return ScanResult(scope="image", highs=[], warnings=warnings)
