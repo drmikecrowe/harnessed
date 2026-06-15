@@ -22,6 +22,16 @@ RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
 ENV PNPM_HOME="/home/harnessed/.local/share/pnpm"
 ENV PATH="${PNPM_HOME}/bin:${PATH}"
 ARG HATAGO_VERSION=0.0.16
+# Managed pnpm supply-chain config (Phase 3 / BLD-01). Inherited from harnessed-base
+# but re-COPY'd here so this image uses the current policy from the build context and
+# the pinned `pnpm add -g` below honors minimumReleaseAge/strictDepBuilds/allowBuilds.
+# The image is USER harnessed at this point; root COPY + chown (extra-tools.txt dance).
+USER root
+COPY lib/pnpm/config.yaml /tmp/pnpm-config.yaml
+RUN mkdir -p /home/harnessed/.config/pnpm && \
+    mv /tmp/pnpm-config.yaml /home/harnessed/.config/pnpm/config.yaml && \
+    chown -R harnessed:harnessed /home/harnessed/.config/pnpm
+USER harnessed
 RUN mkdir -p "$PNPM_HOME/bin" && pnpm add -g "@himorishige/hatago-mcp-hub@${HATAGO_VERSION}"
 
 # --- Bake the light stdio server (pinned) so `uvx mcp-server-time` runs offline ---------

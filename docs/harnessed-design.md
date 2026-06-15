@@ -203,8 +203,10 @@ npm/npx. Rationale: <https://pnpm.io/supply-chain-security>. A managed pnpm conf
 - **`minimumReleaseAge`** — quarantine newly published versions (cooldown) so a compromised
   release isn't installed the moment it lands.
 - **lifecycle scripts default-denied** — postinstall/build scripts run only for an explicit
-  `onlyBuiltDependencies` allowlist.
+  `allowBuilds` allowlist.
 - **store integrity verification** + content-addressed store.
+
+These three ship **on by default** in pnpm@11; the policy lives in the managed global `~/.config/pnpm/config.yaml` (shipped from `lib/pnpm/config.yaml`) — **not** `.npmrc`, which is auth/registry-only in v11.
 
 `npx <pkg>` → `pnpm dlx <pkg>`; `npm install` → `pnpm install`. **Recipe validation** (part of
 `harnessed build`) flags any raw `npm`/`npx` in a recipe's scripts/deps and points at the pnpm
@@ -416,7 +418,7 @@ Then `claude-openbrain-headroom-caveman [path]` from any directory starts that i
 - **Container home path.** `/home/harnessed/<relpath>` (vs `container.sh`'s `/container/$USER`)
   for a legible, stable project slug — confirm it doesn't break the harness installs.
 - **pnpm rollout.** mise currently installs node tools via its `npm:` backend; confirm it can
-  route through pnpm (or `pnpm add -g`). Decide the `onlyBuiltDependencies` allowlist +
+  route through pnpm (or `pnpm add -g`). Decide the `allowBuilds` allowlist +
   `minimumReleaseAge` window — too tight blocks legit native builds, too loose weakens the guard.
 - **`CLAUDE_CONFIG_DIR` relocation.** Verify whether it relocates `~/.claude.json` (not just the
   `.claude/` dir). If yes, both modes can point Claude at a per-instance config dir instead of

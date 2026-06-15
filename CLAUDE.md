@@ -73,7 +73,7 @@ host config — reproducibly, with podman as the only host dependency.
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| **osv-scanner** (Google, Go) | Credential-free vuln scan of lockfiles / `node_modules` / images at build time | **v2.3.5+** (V2 line, 2026); static Go binary, no auth, uses osv.dev. V2 adds container scanning + transitive Python (`requirements.txt` via deps.dev). Baseline gate alongside pip-audit. `--min-severity` to filter; `harnessed build` fails on high. |
+| **osv-scanner** (Google, Go) | Credential-free vuln scan of lockfiles / `node_modules` / images at build time | **v2.3.5+** (V2 line, 2026); static Go binary, no auth, uses osv.dev. V2 adds container scanning + transitive Python (`requirements.txt` via deps.dev). Baseline gate alongside pip-audit. HIGH threshold is a Python gate over `--format json` output (Phase 3); `scan` exposes no native severity flag. |
 | **pip-audit** (PyPA) | Credential-free Python dependency audit | Scans any recipe shipping `requirements.txt`/`pyproject.toml`; uses PyPI advisory DB + OSV. No token. Second half of the always-on baseline gate. |
 | **snyk** (CLI) | `snyk test --severity-threshold=high` on npm/pnpm trees | **Token-gated** (`SNYK_TOKEN`). Synthesize a `package.json` from `pnpm ls`/`npm ls -g` for manifest-less globals (the `nightly-updates` trick). **Warn-and-skip** if no token — never prompt (build stays non-interactive). |
 | **Socket.dev CLI** (`socket`) | Deeper supply-chain behavioral signals (optional) | **Token-gated** (`SOCKET_SECURITY_API_KEY`). Optional extra layer; same warn-and-skip rule. |

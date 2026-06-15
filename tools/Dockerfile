@@ -25,6 +25,12 @@ RUN pip install --no-cache-dir .
 # Match the host UID (paired with `--userns=keep-id` at run) so emitted files in the
 # bind-mounted build dir are owned by the host user, not root.
 RUN useradd --create-home --uid 1000 tools
+# Managed pnpm supply-chain config (Phase 3 / BLD-01). COPY as root into the tools
+# user's pnpm global config path (before USER tools) so any future vendored node deps
+# honor minimumReleaseAge/strictDepBuilds/allowBuilds. (osv-scanner/pip-audit = plan 03-02.)
+RUN mkdir -p /home/tools/.config/pnpm
+COPY lib/pnpm/config.yaml /home/tools/.config/pnpm/config.yaml
+RUN chown -R tools:tools /home/tools/.config/pnpm
 USER tools
 WORKDIR /work
 
