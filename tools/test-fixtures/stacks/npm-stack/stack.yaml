@@ -1,0 +1,6 @@
+# BLD-03 fixture stack — resolves npm-recipe under the --root test-fixtures layout
+# (load_stack_with_recipes reads <root>/stacks/<stack> + <root>/recipes/<name>).
+name: npm-stack
+config: isolated
+harness: claude
+recipes: [npm-recipe]

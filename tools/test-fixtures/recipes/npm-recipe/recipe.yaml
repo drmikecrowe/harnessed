@@ -1,0 +1,12 @@
+# BLD-03 fixture: a recipe that reaches for raw `npx`. The assembler's recipe lint
+# (validate_no_raw_npm) MUST abort with the pnpm equivalent ('pnpm dlx') before any profile
+# file is emitted. No podman needed — the assembler is emit-only.
+name: npm-recipe
+description: BLD-03 lint fixture — a recipe using raw npx; the assembler must reject it.
+
+mcp:
+  servers:
+    - name: npx-server
+      command: npx
+      args: [some-pkg]
+      transport: stdio

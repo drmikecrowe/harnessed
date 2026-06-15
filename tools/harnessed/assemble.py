@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import emit
-from .schema import McpServer, Recipe, Stack, load_stack_with_recipes
+from .schema import McpServer, Recipe, Stack, load_stack_with_recipes, validate_no_raw_npm
 from .synclinks import CollisionError, LinkSyncer
 
 
@@ -53,6 +53,11 @@ def assemble(root: Path, stack_name: str, build_dir: Path) -> AssembleResult:
     build_dir = Path(build_dir)
 
     stack, recipes = load_stack_with_recipes(root, stack_name)
+
+    # Fail-fast recipe validation (BLD-03): reject raw npm/npx BEFORE any file is emitted
+    # (the same gate position as the server-name collision check below).
+    for recipe in recipes:
+        validate_no_raw_npm(recipe)
 
     # Fan skills/commands (registers + collision-checks before any file is written).
     syncer = LinkSyncer()

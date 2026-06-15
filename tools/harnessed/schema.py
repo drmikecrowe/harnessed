@@ -15,6 +15,8 @@ running instance must expose. Keep the parse API clean and reusable.
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,6 +32,10 @@ HARNESS_CONFIG_DIR = {
 
 class SchemaError(Exception):
     """A recipe/stack manifest is missing a required field or is malformed."""
+
+
+class RecipeLintError(SchemaError):
+    """A recipe uses raw npm/npx instead of the pnpm equivalent (BLD-03 supply-chain lint)."""
 
 
 def _load_yaml(path: Path) -> dict:
@@ -195,6 +201,84 @@ def load_stack_with_recipes(root: Path, stack_name: str) -> tuple[Stack, list[Re
     stack = load_stack(root / "stacks" / stack_name)
     recipes = [load_recipe(root / "recipes" / name) for name in stack.recipes]
     return stack, recipes
+
+
+# --- BLD-03: raw npm/npx recipe lint (RESEARCH Pattern 3 / Code §7) -----------------------------
+# Word-boundaried COMMAND tokens only — a package named like `npmlog` must NOT match (Pitfall 4).
+_RAW_NPM_RE = re.compile(r"\bnpx\b|\bnpm\s+(install|ci|run|exec|i)\b")
+# Offending token → the pnpm equivalent the author must use (BLD-03 "points at the pnpm equivalent").
+_NPM_TO_PNPM = {
+    "npx": "pnpm dlx",
+    "npm install": "pnpm install",
+    "npm i": "pnpm install",
+    "npm ci": "pnpm ci",
+    "npm run": "pnpm run",
+    "npm exec": "pnpm exec",
+}
+
+
+def _recipe_raw_strings(raw: dict) -> list[str]:
+    """String values carried on recipe.raw's forward fields (D-14): scripts/deps/plugins/hooks."""
+    out: list[str] = []
+    for key in ("scripts", "deps", "plugins", "hooks"):
+        node = raw.get(key)
+        if isinstance(node, dict):
+            out.extend(v for v in node.values() if isinstance(v, str))
+        elif isinstance(node, list):
+            for entry in node:
+                if isinstance(entry, str):
+                    out.append(entry)
+                elif isinstance(entry, dict):
+                    out.extend(v for v in entry.values() if isinstance(v, str))
+    return out
+
+
+def _vendored_package_json_scripts(recipe_root: Path) -> list[str]:
+    """Script command strings from any vendored plugin package.json under the recipe dir."""
+    scripts: list[str] = []
+    for pkg_path in recipe_root.rglob("package.json"):
+        try:
+            data = json.loads(pkg_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for value in (data.get("scripts") or {}).values():
+            if isinstance(value, str):
+                scripts.append(value)
+    return scripts
+
+
+def validate_no_raw_npm(recipe: Recipe) -> None:
+    """Reject recipes that reach for raw npm/npx; name the pnpm equivalent (BLD-03, fail-fast).
+
+    Detection is word-boundaried COMMAND tokens, never loose substrings, so a package named like
+    `npmlog` is NOT flagged. Called from assemble() before any file is emitted (the same fail-fast
+    gate position as the server-name collision check).
+    """
+    # 1. Explicit MCP server command of npm/npx → fail with the pnpm dlx form (the most direct hit).
+    for server in recipe.servers:
+        if server.command in ("npm", "npx"):
+            raise RecipeLintError(
+                f"recipe '{recipe.name}': MCP server '{server.name}' uses raw '{server.command}'. "
+                "Use the pnpm equivalent 'pnpm dlx' "
+                "(e.g. command: pnpm, args: [dlx, <pkg>])."
+            )
+
+    # 2. Word-boundaried npm/npx anywhere in command+args, recipe scripts/deps, or vendored
+    #    package.json scripts.
+    haystack: list[str] = []
+    for server in recipe.servers:
+        haystack.append(server.command or "")
+        haystack.extend(server.args)
+    haystack.extend(_recipe_raw_strings(recipe.raw))
+    haystack.extend(_vendored_package_json_scripts(recipe.root))
+    match = _RAW_NPM_RE.search(" ".join(haystack))
+    if match:
+        token = match.group(0)
+        equiv = _NPM_TO_PNPM.get(token, "pnpm")
+        raise RecipeLintError(
+            f"recipe '{recipe.name}': raw npm/npx token '{token}' detected in a command/script. "
+            f"Replace it with the pnpm equivalent '{equiv}'."
+        )
 
 
 @dataclass

@@ -20,7 +20,7 @@ from . import report
 from .assemble import assemble
 from .capability import CapabilityError, run_capability_test
 from .emit import HATAGO_ENDPOINT
-from .schema import SchemaError
+from .schema import RecipeLintError, SchemaError
 from .synclinks import CollisionError
 
 
@@ -86,10 +86,9 @@ def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
     root = Path(args.root) if args.root else Path.cwd()
     try:
         result = assemble(root, args.stack, Path(args.build_dir))
-    except (CollisionError, SchemaError) as exc:
+    except (CollisionError, SchemaError, RecipeLintError) as exc:
         err.print(f"[bold red]assemble failed:[/bold red] {exc}", highlight=False)
         return 1
-
     out.print(f"[bold green]Assembled[/bold green] stack [bold]{result.stack.name}[/bold]")
     out.print(f"  profile:  {result.profile_dir}")
     out.print(f"  harness:  {result.stack.harness}")
