@@ -7,7 +7,7 @@
 # a read-only ~/.claude/.credentials.json mount + a generated token-free .claude.json stub
 # (lib/harnessed-isolated-config.sh, D-07/AUTH-02).
 #
-# The stack is a podman POD (harness container + hatago) on harnessed-net (D-05). Pod members
+# The stack is a podman POD (harness container + hatago). Pod members
 # share a netns, so the harness reaches hatago's single Streamable-HTTP endpoint at
 # http://localhost:3535/mcp (the profile's .mcp.json; MCP-01/MCP-02, D-04).
 #
@@ -20,7 +20,11 @@
 # capability test (plan 02-03) launches via this path (`--fresh` headless) and asserts against
 # the live instance.
 
-HARNESSED_NET="${HARNESSED_NET:-harnessed-net}"
+# Pod network: default = podman's default pod network (rootless pasta; no host bridge needed).
+# Set HARNESSED_NET=<name> to opt into a custom bridge network where rootless bridge creation
+# is supported (D-05). Members share a netns either way, so the harness always reaches hatago
+# at localhost:$HATAGO_PORT.
+HARNESSED_NET="${HARNESSED_NET:-}"
 HATAGO_PORT="${HATAGO_PORT:-3535}"
 
 # harnessed_isolated <stack> <project_path> [fresh]
@@ -60,7 +64,7 @@ harnessed_isolated() {
         return 0
     fi
 
-    print_info "Creating isolated pod: $pod (harness + hatago) on $HARNESSED_NET"
+    print_info "Creating isolated pod: $pod (harness + hatago)"
     print_info "Project: $project_path -> $CONTAINER_HOME/$relpath"
 
     # §4a host-integration mounts (reused verbatim — D-16): userns/firewall/agents/signing/project.
@@ -68,16 +72,32 @@ harnessed_isolated() {
     harnessed_host_integration_mounts "$project_path" "$relpath"
     # §4b isolated auth: ro credential + generated token-free stub (D-07).
     harnessed_isolated_auth_mounts "$instance"
-    # Config source = the committed profile ONLY (mounted rw at the harness's config dir). Unlike
-    # transparent, host config is never mounted here — the profile is the sole config layer.
-    MOUNT_ARGS+=( -v "$profile_dir/.claude:$CONTAINER_HOME/.claude:rw" )
+    # Config source = the committed profile ONLY (no host config layer — unlike transparent).
+    # Copy-on-start into a per-instance state dir and mount THAT rw: the committed profile is the
+    # immutable template, so the running harness never writes runtime state (projects/, backups/,
+    # caches) or the ro-credential mountpoint stub back into the version-controlled tree
+    # (reproducibility + credential hygiene, T-02-07/T-02-04). Refreshed every (re)create.
+    local run_claude="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$instance/.claude"
+    rm -rf "$run_claude"
+    mkdir -p "$(dirname "$run_claude")"
+    cp -a "$profile_dir/.claude" "$run_claude"
+    MOUNT_ARGS+=( -v "$run_claude:$CONTAINER_HOME/.claude:rw" )
 
-    # Ensure the pod network exists (shared netns → harness reaches hatago at localhost).
-    "$CONTAINER_RUNTIME" network exists "$HARNESSED_NET" 2>/dev/null \
-        || "$CONTAINER_RUNTIME" network create "$HARNESSED_NET" >/dev/null
+    # Pod network: opt into a named bridge only when HARNESSED_NET is set AND the host supports
+    # rootless bridge creation; otherwise use the default pod network (pasta). The harness reaches
+    # hatago over the shared pod netns (localhost) regardless of the external network.
+    local pod_net_args=()
+    if [ -n "$HARNESSED_NET" ]; then
+        "$CONTAINER_RUNTIME" network exists "$HARNESSED_NET" 2>/dev/null \
+            || "$CONTAINER_RUNTIME" network create "$HARNESSED_NET" >/dev/null
+        pod_net_args=( --network "$HARNESSED_NET" )
+    fi
 
-    # Compose the pod (harness + hatago share the netns).
-    "$CONTAINER_RUNTIME" pod create --name "$pod" --network "$HARNESSED_NET" >/dev/null
+    # Compose the pod (harness + hatago share the netns). keep-id maps the container user to the
+    # host UID so mounted project/profile/credential paths are owned correctly. userns is a
+    # POD-level property (set on the infra container); pod MEMBERS must NOT pass --userns, so it
+    # is stripped from the member args below.
+    "$CONTAINER_RUNTIME" pod create --name "$pod" --userns=keep-id "${pod_net_args[@]}" >/dev/null
 
     # hatago member: serve ONE Streamable-HTTP endpoint on :3535 from the mounted per-stack
     # config (which baked stdio servers to expose; the image CMD is overridden to add --config).
@@ -87,7 +107,13 @@ harnessed_isolated() {
         hatago serve --http --port "$HATAGO_PORT" --config "$CONTAINER_HOME/hatago.config.json" >/dev/null
 
     # harness member: the claude container — profile-only config, §4a + isolated §4b mounts.
-    "$CONTAINER_RUNTIME" run -d --pod "$pod" --name "$instance" "${MOUNT_ARGS[@]}" \
+    # Strip --userns=keep-id from the member args (inherited from the pod; illegal on a member).
+    local member_args=() _arg
+    for _arg in "${MOUNT_ARGS[@]}"; do
+        [ "$_arg" = "--userns=keep-id" ] && continue
+        member_args+=( "$_arg" )
+    done
+    "$CONTAINER_RUNTIME" run -d --pod "$pod" --name "$instance" "${member_args[@]}" \
         "$HARNESSED_CLAUDE_IMAGE" sleep infinity >/dev/null
 
     # Egress firewall on the harness container (NET_ADMIN); shared pod netns → covers hatago too.
