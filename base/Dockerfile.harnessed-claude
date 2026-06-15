@@ -1,0 +1,9 @@
+# harnessed-claude — the claude harness image.
+# FROM harnessed-base (lineage only, §6) + the Claude Code CLI. Build the base first.
+
+FROM harnessed-base:latest
+
+# Install Claude Code globally via the official installer (into ~/.local/bin, already on PATH).
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+CMD ["/bin/bash"]
