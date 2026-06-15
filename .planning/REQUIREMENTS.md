@@ -17,12 +17,12 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 - [ ] **MODE-01**: `harnessed transparent [path]` launches a host-mirror instance (host `~/.claude` + `.codex`/`.config/opencode`/`.gemini` mounted live)
 - [ ] **MODE-02**: `container` invokes `harnessed transparent` as a thin alias with the same behavior as today
-- [ ] **MODE-03**: `harnessed <stack> [path]` (isolated) mounts only the assembled profile — no host config layer
+- [x] **MODE-03**: `harnessed <stack> [path]` (isolated) mounts only the assembled profile — no host config layer
 
 ### Auth
 
 - [ ] **AUTH-01**: Transparent instances are authenticated via the live-mounted host config (no re-login)
-- [ ] **AUTH-02**: Isolated instances authenticate by mounting `~/.claude/.credentials.json` read-only plus a generated `.claude.json` stub that boots headlessly with no onboarding/login prompt
+- [x] **AUTH-02**: Isolated instances authenticate by mounting `~/.claude/.credentials.json` read-only plus a generated `.claude.json` stub that boots headlessly with no onboarding/login prompt
 
 ### Mounts
 
@@ -32,21 +32,21 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Recipes
 
-- [ ] **RCP-01**: A recipe (`recipes/<name>/recipe.yaml`) declares an MCP layer and/or a Claude-canonical file-extension layer
-- [ ] **RCP-02**: A stack manifest (`stacks/<name>/stack.yaml`) composes a harness plus a chosen set of recipes (and optional services/permissions/state)
-- [ ] **RCP-03**: `harnessed build <stack>` runs the assembler in the `harnessed-tools` container, which emits a `Dockerfile` (+ build context) + a committed `profiles/<stack>/` tree + a generated launcher; the host then runs `podman build` to produce baked images — nothing is assembled at container start
-- [ ] **RCP-04**: The assembler fans plugin skills/commands into harness-native paths and fails fast on name collisions
+- [x] **RCP-01**: A recipe (`recipes/<name>/recipe.yaml`) declares an MCP layer and/or a Claude-canonical file-extension layer
+- [x] **RCP-02**: A stack manifest (`stacks/<name>/stack.yaml`) composes a harness plus a chosen set of recipes (and optional services/permissions/state)
+- [x] **RCP-03**: `harnessed build <stack>` runs the assembler in the `harnessed-tools` container, which emits a `Dockerfile` (+ build context) + a committed `profiles/<stack>/` tree + a generated launcher; the host then runs `podman build` to produce baked images — nothing is assembled at container start
+- [x] **RCP-04**: The assembler fans plugin skills/commands into harness-native paths and fails fast on name collisions
 
 ### MCP
 
-- [ ] **MCP-01**: A running isolated stack is a podman pod (harness container + hatago) on `harnessed-net`
-- [ ] **MCP-02**: hatago aggregates the stack's MCP servers behind one Streamable-HTTP endpoint that the harness `.mcp.json` points at
-- [ ] **MCP-03**: Light stdio MCP servers run as hatago children (stdio→HTTP), baked into the hatago image
+- [x] **MCP-01**: A running isolated stack is a podman pod (harness container + hatago) on `harnessed-net`
+- [x] **MCP-02**: hatago aggregates the stack's MCP servers behind one Streamable-HTTP endpoint that the harness `.mcp.json` points at
+- [x] **MCP-03**: Light stdio MCP servers run as hatago children (stdio→HTTP), baked into the hatago image
 
 ### Testing
 
-- [ ] **TST-01**: A per-stack capability test asserts a live `--fresh` headless instance exposes exactly the MCP servers/skills/commands its manifest declares
-- [ ] **TST-02**: The capability check renders a markdown capability report (per-capability status table)
+- [x] **TST-01**: A per-stack capability test asserts a live `--fresh` headless instance exposes exactly the MCP servers/skills/commands its manifest declares
+- [x] **TST-02**: The capability check renders a markdown capability report (per-capability status table)
 
 ### Build
 
@@ -130,17 +130,17 @@ Which phase covers which requirement.
 | MNT-01 | Phase 1 | Pending |
 | MNT-02 | Phase 1 | Pending |
 | MNT-03 | Phase 1 | Pending |
-| MODE-03 | Phase 2 | Pending |
-| AUTH-02 | Phase 2 | Pending |
-| RCP-01 | Phase 2 | Pending |
-| RCP-02 | Phase 2 | Pending |
-| RCP-03 | Phase 2 | Pending |
-| RCP-04 | Phase 2 | Pending |
-| MCP-01 | Phase 2 | Pending |
-| MCP-02 | Phase 2 | Pending |
-| MCP-03 | Phase 2 | Pending |
-| TST-01 | Phase 2 | Pending |
-| TST-02 | Phase 2 | Pending |
+| MODE-03 | Phase 2 | Complete |
+| AUTH-02 | Phase 2 | Complete |
+| RCP-01 | Phase 2 | Complete |
+| RCP-02 | Phase 2 | Complete |
+| RCP-03 | Phase 2 | Complete |
+| RCP-04 | Phase 2 | Complete |
+| MCP-01 | Phase 2 | Complete |
+| MCP-02 | Phase 2 | Complete |
+| MCP-03 | Phase 2 | Complete |
+| TST-01 | Phase 2 | Complete |
+| TST-02 | Phase 2 | Complete |
 | BLD-01 | Phase 3 | Pending |
 | BLD-02 | Phase 3 | Pending |
 | BLD-03 | Phase 3 | Pending |
@@ -162,6 +162,7 @@ Which phase covers which requirement.
 | DOC-03 | Phase 5 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 39 total
 - Mapped to phases: 39
 - Unmapped: 0 ✓

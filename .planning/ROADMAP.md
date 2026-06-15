@@ -18,7 +18,7 @@ observable end-to-end capability (vertical-MVP mode).
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Containerized Engine + Transparent Stack** - Host bash bootstrap/launcher + host `podman build`; `harnessed transparent`/`container` re-delivers the host-mirror sandbox (completed 2026-06-15)
-- [ ] **Phase 2: Isolated Tracer-Bullet Stack** - One harness + one MCP server + one skill, isolated and reproducible, asserted green by the capability test
+- [x] **Phase 2: Isolated Tracer-Bullet Stack** - One harness + one MCP server + one skill, isolated and reproducible, asserted green by the capability test (completed 2026-06-15)
 - [ ] **Phase 3: Supply-Chain Gate + pnpm-Everywhere** - `harnessed build` vets every dependency before it is committed or baked
 - [ ] **Phase 4: Shared Services + Recipe Breadth + Full CLI** - Concurrent service sidecars, more recipes, and the full operable command/lifecycle surface
 - [ ] **Phase 5: Secrets, Hardening + Docs Completeness** - Opt-in varlock/1Password secrets, token-gated scanners, nightly re-scan, and the gated doc set
@@ -63,15 +63,15 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 02-01: Recipe + stack schema and the build-time assembler (vendor + sync-links fan with fail-fast collisions + hook wiring + hatago config merge)
+- [x] 02-01: Recipe + stack schema and the build-time assembler (vendor + sync-links fan with fail-fast collisions + hook wiring + hatago config merge)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02: Isolated auth seeding (`.credentials.json` ro + generated `.claude.json` stub, headless no-prompt test) + runtime pod composition (harness + hatago on harnessed-net)
+- [x] 02-02: Isolated auth seeding (`.credentials.json` ro + generated `.claude.json` stub, headless no-prompt test) + runtime pod composition (harness + hatago on harnessed-net)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03: Per-stack capability test + `rich` markdown capability report
+- [x] 02-03: Per-stack capability test + `rich` markdown capability report
 
 ### Phase 3: Supply-Chain Gate + pnpm-Everywhere
 
@@ -142,7 +142,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Containerized Engine + Transparent Stack | 3/3 | Complete   | 2026-06-15 |
-| 2. Isolated Tracer-Bullet Stack | 0/3 | Not started | - |
+| 2. Isolated Tracer-Bullet Stack | 3/3 | Complete    | 2026-06-15 |
 | 3. Supply-Chain Gate + pnpm-Everywhere | 0/2 | Not started | - |
 | 4. Shared Services + Recipe Breadth + Full CLI | 0/3 | Not started | - |
 | 5. Secrets, Hardening + Docs Completeness | 0/2 | Not started | - |

@@ -1,18 +1,19 @@
 ---
-status: partial
+status: complete
 phase: 02-isolated-tracer-bullet-stack
 source: [02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md]
 started: 2026-06-15T10:40:00Z
-updated: 2026-06-15T11:10:00Z
+updated: 2026-06-15T11:20:00Z
 ---
 
 ## Current Test
 
-[testing paused — 2 items outstanding]
+[testing complete]
 
-Test 1 (build leg) PASSED after a fix (pnpm global bin dir `$PNPM_HOME/bin` was missing from
-PATH in `base/Dockerfile.hatago`). Tests 2 & 3 require **host rootless podman + real Claude OAuth
-credentials**, which only the operator can run. Run them on a machine with `claude login` done.
+All three gates passed green on a host with rootless podman + real Claude credentials, after
+fixing three real bugs found during verification (pnpm global-bin PATH; rootless pod
+networking/userns + profile pollution; capability-test readiness/mount/deps). Commits
+`4c9b665`, `1c2efea`, `94793f5`.
 
 ## Tests
 
@@ -45,7 +46,15 @@ expected: |
     - If the working `.claude.json` stub differs from the candidate set
       (hasCompletedOnboarding, firstStartTime, numStartups, oauthAccount, userID), note the
       exact fields so the snapshot fixture can be pinned.
-result: [pending]
+result: pass
+note: |
+  Initial failures: `netavark: create bridge: Operation not supported` (rootless can't create the
+  custom bridge) then `cannot set user namespace mode when joining pod with infra container`.
+  Fixed in lib/harnessed-isolated.sh (1c2efea): default pod network (HARNESSED_NET opt-in),
+  pod-level --userns=keep-id stripped from member args, copy-on-start profile. Re-run: headless
+  `claude -p` → {"subtype":"success","is_error":false,"result":"READY"} — NO onboarding/login
+  prompt; `time` MCP connected via hatago. Candidate stub field set CONFIRMED sufficient
+  (hasCompletedOnboarding, firstStartTime, numStartups, oauthAccount, userID).
 
 ### 3. Assert-green leg — `harnessed test tracer-time` (02-03 gate, Phase 2 success criteria)
 expected: |
@@ -56,14 +65,21 @@ expected: |
     - (Negative check) Renaming the recipe's skill forces a mismatch: the report marks it `✗`
       and the command exits non-zero.
   Run: `./harnessed test tracer-time`
-result: [pending]
+result: pass
+note: |
+  Initial false-RED (both capabilities missing). Root causes fixed in capability.py + harnessed
+  (94793f5): (a) introspected before hatago bound its ~4s child connect → added wait_ready;
+  (b) the scratch project mount was deleted right after launch, breaking `podman exec` (crun
+  getcwd EPERM) → project dir now persists for the pod lifetime; (c) host deps resolved via uv.
+  Re-run: time ✓ connected, time-helper ✓ present, exit 0; negative (skill hidden) → ✗ + exit 1;
+  --json clean.
 
 ## Summary
 
 total: 3
-passed: 1
+passed: 3
 issues: 0
-pending: 2
+pending: 0
 skipped: 0
 blocked: 0
 
