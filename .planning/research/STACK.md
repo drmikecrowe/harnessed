@@ -16,9 +16,8 @@
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| **podman** (rootless) | ≥ 5.6, current **5.8.2** (Apr 2026) | Container/pod engine; the **only** host dependency | Native **pods** (shared netns + lifecycle) are exactly the §3 stack unit; rootless = no host root, scoped to your UID; Docker-CLI-compatible so existing `container.sh` `podman`/`docker` detection ports as-is. v5.x ships the stable user `podman.socket` needed for Docker-out-of-Docker (DooD). |
-| **`podman.socket`** (user unit) | bundled with podman 5.x | Rootless API socket the tool container drives the host engine through | `systemctl --user enable --now podman.socket` exposes `unix:///run/user/$UID/podman/podman.sock`. The tool sets `CONTAINER_HOST` (podman-native) / `DOCKER_HOST` (compat) to it — the canonical DooD pattern, no privileged daemon. Pair with `loginctl enable-linger $USER` so the socket survives logout. |
-| **Python** | 3.12 / 3.13 | Implementation language for all `harnessed-tools` logic (parse/validate YAML, vendor, sync-links, merge hatago config, generate `.claude.json` stub, scan, orchestrate podman) | `sync-plugin-links` prior art is already Python; rich/textual TUI is Python; pinned **inside** the image so the host needs no Python (§15). Managed by mise/uv, not the host. |
+| **podman** (rootless) | ≥ 5.6, current **5.8.2** (Apr 2026) | Container/pod engine; the **only** host dependency. Runs on the **host** for both `podman build` and pod run | Native **pods** (shared netns + lifecycle) are exactly the §3 stack unit; rootless = no host root, scoped to your UID; Docker-CLI-compatible so existing `container.sh` `podman`/`docker` detection ports as-is. The `harnessed-tools` image is a build-time **assembler** that only emits a `Dockerfile` + build context + a host launcher — no API socket is mounted; the host runs podman natively. |
+| **Python** | 3.12 / 3.13 | Implementation language for all `harnessed-tools` logic (parse/validate YAML, vendor, sync-links, merge hatago config, generate `.claude.json` stub, scan, emit the `Dockerfile` + build context + `~/.local/bin/<stack>` launcher) | `sync-plugin-links` prior art is already Python; rich/textual TUI is Python; pinned **inside** the image so the host needs no Python (§15). Managed by mise/uv, not the host. |
 | **mise-en-place** | 2026.x (calendar-versioned, rolling) | In-image tool/runtime manager (node, python, pnpm, fd, ripgrep, …) | Already the install mechanism in this repo's `Dockerfile`; one declarative `mise use -g` layer, deterministic shims on PATH. Keeps the base image reproducible without per-tool curl installers. |
 | **uv** (astral) | 0.11.x (current **0.11.8**, Apr 2026) | Python package/venv manager for recipe Python deps and `uvx` MCP servers | Rust-fast, lockfile-driven; `uv pip install -r requirements.txt` / `uv venv && uv pip install -e .` per §11 deps; `uvx <pkg>` runs light Python MCP servers as hatago children. Replaces pip/pipx entirely. |
 | **pnpm** | **11.x** (current 11.0, Apr 2026; floor 10.19) | The **only** JS package manager — global, per-recipe, and hatago's bundled servers | Supply-chain policy is the whole point (§7): `minimumReleaseAge`, lifecycle default-deny, content-addressed store with integrity verification. `pnpm dlx` replaces `npx`. See <https://pnpm.io/supply-chain-security>. |
@@ -57,11 +56,8 @@
 ```bash
 # --- HOST: the only prerequisite ---
 sudo apt-get install -y podman                       # or distro equivalent; ≥ 5.6
-systemctl --user enable --now podman.socket          # rootless API socket for DooD
-loginctl enable-linger "$USER"                        # socket survives logout
-# bootstrap then drives the host engine over the socket:
-export CONTAINER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
-export DOCKER_HOST="$CONTAINER_HOST"                  # Docker-compat for tools that read DOCKER_HOST
+# the host runs `podman build` (on the assembler-emitted Dockerfile) and the
+# pod natively — the tools image only emits files; nothing is mounted to drive the engine.
 
 # --- IN harnessed-tools IMAGE (Dockerfile): brain + scanners + secrets ---
 # system layer
@@ -99,7 +95,7 @@ onlyBuiltDependencies: []        # lifecycle scripts DENIED by default; allowlis
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| **podman (rootless) + pods** | Docker Engine + Compose | If a team is already all-in on Docker and rootless isn't a requirement. harnessed stays Docker-compatible (CLI + `DOCKER_HOST`), so `docker` works as the engine — but you lose rootless-by-default and the first-class `pod` primitive (Compose projects approximate it). |
+| **podman (rootless) + pods** | Docker Engine + Compose | If a team is already all-in on Docker and rootless isn't a requirement. harnessed stays Docker-CLI-compatible, so `docker` works as the engine — but you lose rootless-by-default and the first-class `pod` primitive (Compose projects approximate it). |
 | **hatago MCP hub** | mcphub (`@samanhappy/mcphub`), DXHeroes local-mcp-gateway, unrelated-ai/mcp-gateway | If you need a web UI / OAuth 2.1 / multi-tenant isolation. harnessed is single-user personal tooling, so hatago's lightweight, config-file, multi-transport model fits better; revisit if a shared/team gateway with auth is needed. |
 | **pnpm 11** | npm + overrides, Yarn Berry | Only if a recipe's upstream truly cannot run under pnpm's hoisting. Even then, pnpm's `node-linker: hoisted` usually suffices; npm forfeits `minimumReleaseAge` + lifecycle default-deny, the core supply-chain guard. |
 | **uv** | pip + venv, Poetry, pipx | If a recipe ships a Poetry-only build backend. uv reads `pyproject.toml`/`requirements.txt` natively and is far faster; `uvx` replaces pipx run. |
@@ -115,9 +111,8 @@ onlyBuiltDependencies: []        # lifecycle scripts DENIED by default; allowlis
 | **npm / npx** | No release-age quarantine, no lifecycle default-deny, no content-addressed integrity store — the exact supply-chain holes §7 closes. `npx` pulls-and-runs arbitrary latest code. | **pnpm** / **`pnpm dlx`**. Recipe validation flags raw `npm`/`npx` and points at the equivalent (and the ported `vendor-plugin` must drop its `npm install`). |
 | **Build-time `FROM`-union of two harness systems** | `FROM` is linear inheritance + multi-stage `COPY --from`; there is **no** "union two sibling images" operator (§6). Trying to bake hindsight+openbrain into one image fails by construction. | Compose at **runtime** in a podman **pod** (§3): separate images, shared network, shared services attached by reference. |
 | **Host Python / node / uv as a runtime dependency** | Version roulette on every user's machine; defeats "podman is the only host dep" (§15). | All logic in the **`harnessed-tools`** image; host runs a dependency-free bash bootstrap. |
-| **Rootful podman / privileged Docker daemon** | Grants host-root blast radius for a personal dev tool; unnecessary. | **Rootless** `podman.socket` scoped to your UID (full control of *your* user's containers — acceptable, state it). |
+| **Rootful podman / privileged Docker daemon** | Grants host-root blast radius for a personal dev tool; unnecessary. | **Rootless** podman scoped to your UID (full control of *your* user's containers — acceptable, state it); build + run on the host. |
 | **Bind-mounting `~/.claude.json` rw** | Single whole-file blob Claude rewrites constantly; a shared rw mount races the host (lost writes/corruption) and merges container state back into the host file (§4b). | **transparent:** copy-on-start writable per-instance copy (or `CLAUDE_CONFIG_DIR` relocation). **isolated:** generate a minimal stub; never mount it. Mount only `~/.claude/.credentials.json` (ro). |
-| **Container-internal paths in `-v` flags** | DooD bind sources resolve on the **host** daemon; the tool container's internal view points at nothing. The classic DooD footgun. | Pass host `HOME`/`PWD` as env; every `-v` the tool issues uses **host-absolute** paths. |
 | **Baking/committing credentials** (Claude OAuth, `SNYK_TOKEN`, `SOCKET_SECURITY_API_KEY`, `op://` secrets) | Tokens in an image layer or repo file leak permanently and can't be rotated cleanly. | Reference from host, inject as **env only** at launch; `harnessed auth …` persists to mounted host config, never a layer. |
 | **`OP_SERVICE_ACCOUNT_TOKEN` left in a long-lived shell env** | A visible service-account token can leak into unintended processes sharing the env (documented 1Password caution). | Prefer the **mounted desktop-app agent socket** (app-auth, `allowAppAuth`) for interactive use; reserve the service-account token for headless/CI where no agent exists, and scope it narrowly. |
 | **Interactive scanner prompts in `harnessed build`** | Breaks non-interactive/reproducible builds (CI, nightly timer). | **Warn-and-skip** the credentialed scanner; credential-free osv-scanner + pip-audit remain the gate. |
@@ -160,7 +155,7 @@ onlyBuiltDependencies: []        # lifecycle scripts DENIED by default; allowlis
 
 | Package A | Compatible With | Notes |
 |-----------|-----------------|-------|
-| `podman@5.6–5.8` | rootless `podman.socket` + `CONTAINER_HOST`/`DOCKER_HOST` | Socket is stable in 5.x; `loginctl enable-linger` required for persistence. Docker CLI + `DOCKER_HOST` compatibility holds — existing `container.sh` engine-detection ports unchanged. |
+| `podman@5.6–5.8` | host build + run (rootless) | Runs natively on the host for both `podman build` and pod run. Docker-CLI-compatible — existing `container.sh` engine-detection ports unchanged. |
 | `pnpm@11` | Node ≥ 20 (use node@24 LTS) | pnpm 11 is ESM-distributed, new store format, **policy in `pnpm-workspace.yaml`**. `minimumReleaseAge=1440` + `blockExoticSubdeps=true` default-on; `onlyBuiltDependencies` honored but `allowBuilds` is the new form. If pinned to 10.19, `minimumReleaseAge`/`onlyBuiltDependencies` exist but are **off by default** — set them explicitly. |
 | `mise (2026.x)` | node@24, python@3.13, pnpm@11, uv | mise installs node tools via its `npm:` backend — [INFERENCE: confirm it routes through pnpm or use `pnpm add -g` directly so installs honor pnpm policy (§14)]. |
 | `uv@0.11` | Python 3.12 / 3.13, `uvx` MCP servers | Standalone static binary; bundles a build backend. Reads `pyproject.toml`/`requirements.txt`. |
@@ -173,9 +168,7 @@ onlyBuiltDependencies: []        # lifecycle scripts DENIED by default; allowlis
 
 ## Sources
 
-- <https://docs.podman.io/en/latest/markdown/podman-system-service.1.html> — `podman.socket`, `DOCKER_HOST`, `systemctl --user enable podman.socket`, lingering — HIGH
 - <https://github.com/containers/podman/releases> / releasealert.dev — current podman **v5.8.2** (Apr 2026), 5.6.0 (Aug 2025) — HIGH
-- <https://oneuptime.com/blog/post/2026-03-18-enable-podman-socket-rootless-users/view> — rootless socket env (`DOCKER_HOST=unix:///run/user/<UID>/podman/podman.sock`) — HIGH
 - <https://pnpm.io/supply-chain-security> — `minimumReleaseAge`, `minimumReleaseAgeStrict`, lifecycle scripts, store integrity — HIGH
 - <https://pnpm.io/blog/releases/11.0> — pnpm 11 defaults: `minimumReleaseAge=1440`, `blockExoticSubdeps=true`, `allowBuilds` replaces legacy `onlyBuiltDependencies` — HIGH
 - <https://pnpm.io/blog/releases/10.19> — `onlyBuiltDependencies` exact-version support, `minimumReleaseAgeExclude` — HIGH

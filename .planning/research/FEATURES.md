@@ -15,7 +15,7 @@ Features users assume exist. Missing these = product feels incomplete. These are
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
 | Host auth passthrough | The harness is useless unauthenticated; re-login per run is unacceptable | LOW | `isolated`: mount `~/.claude/.credentials.json` (OAuth) read-only + generate a minimal `.claude.json` stub (skip onboarding). `transparent`: live mount. NEVER bake/commit creds (§7, §16) |
-| Project mount | You launch the tool *at* a project; it must see your code | LOW | Mount cwd (or `[path]` arg) at a stable in-container path (`/home/harnessed/<relpath>`) for a legible Claude session slug. DooD: must use **host-absolute** paths (§15) |
+| Project mount | You launch the tool *at* a project; it must see your code | LOW | Mount cwd (or `[path]` arg) at a stable in-container path (`/home/harnessed/<relpath>`) for a legible Claude session slug. The launcher runs on the host, so paths are host-native (§15) |
 | Image build / lifecycle (`build`/`list`/`stop`/`rm`/`clean`) | Containers accrete; users expect to enumerate and reclaim | MEDIUM | Ported from `container.sh`. `harnessed build` also runs the assembler + scan gate, not just `podman build`. Pod-aware: identity is `harnessed-<stack>-<projhash>` |
 | MCP wiring into the harness | An MCP-capable harness with no servers is half a product | MEDIUM | `isolated`: profile `.mcp.json` points at hatago's single HTTP endpoint on `harnessed-net`. `transparent`: MCP comes from host config as-is (no hatago) |
 | State persistence | Memory/session accumulation is the point of an iterated harness | MEDIUM | Persistent by default; `projects/` + `history.jsonl` persist host-side (harnessed-owned dir, path-mirrored slug). Service volumes service-scoped (`hindsight-data`) |
@@ -104,7 +104,7 @@ Runtime pod composition ──conflicts──> FROM-union image combination (ant
 
 Minimum viable product — the design's explicit **vertical-slice MVP**: *one harness + one MCP server + one skill, with a green capability test end-to-end* (assemble → run → assert). Ruthlessly thin: prove the core value (isolated, composed, reproducible, authenticated, introspectable) on a single tracer-bullet stack before breadth.
 
-- [ ] Containerized tooling bootstrap — thin dependency-free `harnessed` bash + `harnessed-tools` Python image driving host rootless podman over the socket (DooD); podman is the only host dep. *Essential: nothing runs without it.*
+- [ ] Containerized tooling bootstrap — thin dependency-free `harnessed` bash + base/claude images built and run by **host** podman (the `harnessed-tools` assembler image emits files only); podman is the only host dep. *Essential: nothing runs without it.*
 - [ ] One isolated stack: one harness (`claude`) + one MCP server (via hatago) + one skill. *Essential: the tracer bullet that proves composition.*
 - [ ] Host auth passthrough (isolated seeding: ro credential mount + `.claude.json` stub). *Essential: an unauthenticated harness can't validate anything.*
 - [ ] Shared host-integration mount layer (§4a) + project mount + egress firewall. *Essential: ported, already proven in `container.sh`.*
@@ -180,7 +180,7 @@ Features to defer until the tool has clear product-market fit (even as a persona
 | Supply-chain gate | Trusts base image + Features | None | None | Nix purity ≈ integrity, no CVE gate | None (passes servers through) | osv-scanner + pip-audit always; snyk/Socket.dev token-gated; pnpm release-age + lifecycle deny |
 | Host credential/identity passthrough | SSH agent forwarding, dotfiles repo | Inherits host wholesale | Full host auth + SSH/GPG/YubiKey mounts | Manual env | N/A | Ported §4a layer in *every* stack; isolated seeds creds ro + stub, never bakes |
 | Shared stateful services | compose sidecars (per-project) | N/A | N/A | N/A | Some proxy heavy servers | Service-scoped sidecars shared **concurrently** across stacks/harnesses (one memory volume) |
-| Runtime / engine | Docker/Podman, VS Code-coupled | podman (toolbx) / docker/podman (distrobox), host-coupled | docker/podman, bash | Nix daemon, no container | Node hub process | Rootless podman pods; podman the **only** host dep; DooD via Python tools image |
+| Runtime / engine | Docker/Podman, VS Code-coupled | podman (toolbx) / docker/podman (distrobox), host-coupled | docker/podman, bash | Nix daemon, no container | Node hub process | Rootless podman pods; podman the **only** host dep; host builds/runs natively, the `harnessed-tools` image only emits files |
 
 ## Sources
 
@@ -192,7 +192,7 @@ Features to defer until the tool has clear product-market fit (even as a persona
 - Dev Containers — Features reference + lifecycle hooks + Dockerfile/compose usage: <https://containers.dev/implementors/features/> ; <https://containers.dev/guide/dockerfile> ; <https://code.visualstudio.com/docs/devcontainers/containers>
 - toolbx/distrobox vs devcontainers (un-isolated, host-integrated mutable dev boxes): <https://anglesideangle.dev/blog/container-hell/> ; <https://www.x-cmd.com/blog/251129/>
 - Nix flakes devShells (hermetic, reproducible, no container isolation): <https://wiki.nixos.org/wiki/Flakes> ; devenv: <https://devenv.sh/guides/using-with-flakes/>
-- Rootless podman socket + DooD bind-mount host-path gotcha: <https://oneuptime.com/blog/post/2026-03-18-enable-podman-socket-rootless-users/view> ; <https://wiki.archlinux.org/title/Podman>
+- Rootless podman setup (host build + run): <https://oneuptime.com/blog/post/2026-03-18-enable-podman-socket-rootless-users/view> ; <https://wiki.archlinux.org/title/Podman>
 - MCP aggregator landscape (metamcp, agentgateway, vMCP — competitive context): <https://github.com/metatool-ai/metamcp> ; <https://agentgateway.dev/docs/standalone/main/tutorials/multiplex/>
 - Internal: `docs/harnessed-design.md` (§1–§18, authoritative design); `.planning/PROJECT.md` (core value, requirements, key decisions); `container.sh` / `install.sh` / `egress-firewall.sh` (validated existing behavior)
 

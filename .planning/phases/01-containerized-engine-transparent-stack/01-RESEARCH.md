@@ -1,10 +1,10 @@
 # Phase 1: Containerized Engine + Transparent Stack - Research
 
-**Researched:** 2026-06-14
-**Domain:** Rootless podman control plane (Docker-out-of-Docker) + host-mirror container launcher
+**Researched:** 2026-06-14 (revised: DooD removed — host runs podman natively)
+**Domain:** Host-native rootless-podman launcher (host-mirror dev container)
 **Confidence:** HIGH (external facts web-verified at project level; repo/CLI shape proposed)
 
-> Phase-level research. The project-level research is the primary source — read it first:
+> Phase-level research. Read the project-level research first:
 > `.planning/research/STACK.md`, `.planning/research/ARCHITECTURE.md`, `.planning/research/PITFALLS.md`,
 > `.planning/research/SUMMARY.md`. This file narrows to Phase 1 and carries the locked decisions.
 
@@ -15,17 +15,17 @@
 - **D-01:** `~/.claude.json` safety = **copy-on-start** writable per-instance copy (NOT rw bind-mount).
 - **D-02:** Keep `CLAUDE_CONFIG_DIR` relocation as a fast-follow contingent on an empirical scope check.
 - **D-03:** `~/.claude` may be mounted for live skills/commands/settings, but never the whole-file `.claude.json`.
-- **D-04:** Bootstrap auto-builds `harnessed-tools` on first run; `harnessed --build` forces rebuild.
-- **D-05:** Prefer rootless podman via the user socket; fall back to docker. Mirror existing detection.
+- **D-04:** Bootstrap auto-builds the base/claude images on first run; `harnessed --build` forces rebuild.
+- **D-05:** Prefer podman on the host; fall back to docker. **Host runs `podman build`/`podman run` directly — no API socket, no `CONTAINER_HOST`/`DOCKER_HOST`, no DooD.**
 - **D-06:** In-container project path = `/home/harnessed/<relpath>` (legible Claude slug). Verify install paths.
 - **D-07:** `container` becomes a thin alias → `harnessed transparent`; port logic, no behavior change.
-- **D-08:** All bind-mount sources built from injected host `HOME`/`PWD`; centralize in one helper; assert host-absolute.
+- **D-08:** The `transparent` launcher is plain host bash (a `container.sh` refactor); `$HOME`/`$PWD`/project paths are host-native — no host-absolute mount helper needed.
 
 ### Claude's Discretion
-- Python package layout under `tools/harnessed/`; bootstrap runtime-detection code shape; mount-builder factoring (constrained by D-08); `harnessed-base` lineage beyond reusing the mise toolchain.
+- Launcher bash module factoring; bootstrap runtime-detection shape; base-image lineage details beyond reusing the mise toolchain.
 
 ### Deferred Ideas (OUT OF SCOPE — do not plan)
-- Isolated mode / `.claude.json` stub / hatago / recipes / profile assembly (Phase 2)
+- The `harnessed-tools` assembler image / recipes / isolated mode / `.claude.json` stub / hatago (Phase 2)
 - pnpm supply-chain config + scan gate (Phase 3); shared services + full CLI breadth (Phase 4); secrets + docs completeness (Phase 5)
 </user_constraints>
 
@@ -34,32 +34,35 @@
 
 | Capability | Primary Tier | Secondary Tier | Rationale |
 |------------|-------------|----------------|-----------|
-| Detect runtime, ensure tools image, attach | Host bootstrap (bash) | — | Dependency-free entry; host-native TTY for attach (§15) |
-| Parse args, build mounts, drive podman | `harnessed-tools` (Python, in-container) | Host podman engine | The "brain"; DooD over rootless socket (§15) |
-| Run the harness with host config live | Harness container (pod member) | — | `transparent` = host-mirror; degenerate stack (no pod siblings) |
-| Egress control, signing, auth passthrough | Shared mount layer (§4a) | Host agents/sockets | Operational credentials, not the config-experiment surface |
+| Detect runtime, ensure/build images, dispatch | Host bootstrap (bash) | Host podman (`podman build`) | Dependency-free entry; images built natively on the host (§15) |
+| Compute §4a mounts, run the harness, attach | Host launcher (bash) | Host podman (`run`/`exec -it`) | `transparent` = host-mirror; host paths native; clean TTY (§15) |
+| `.claude.json` copy-on-start | Host launcher (bash) | — | Avoid racing the host whole-file blob (Pitfall) |
 
-Single-pod-or-less application for Phase 1: `transparent` runs the harness container only (no hatago/sidecars).
+Single-container application for Phase 1: `transparent` runs one harness container (no pod siblings,
+no assembler, no `harnessed-tools` image — those are Phase 2).
 </architectural_responsibility_map>
 
 <research_summary>
 ## Summary
 
-Phase 1 inverts today's control flow: `container.sh` runs podman directly on the host; harnessed moves
-orchestration into a containerized Python tool (`harnessed-tools`) that drives the **host** rootless podman
-over a mounted socket (Docker-out-of-Docker). The single hardest correctness constraint is that bind-mount
-sources resolve on the **host daemon**, so every `-v` must be built from injected host `HOME`/`PWD`, never the
-tool container's own path view (Pitfall 1). The `transparent` stack re-delivers `container.sh`'s host-mirror
-behavior with one safety change: the unsafe rw bind-mount of `~/.claude.json` (`container.sh:124-126`) becomes a
-copy-on-start per-instance copy (Pitfall 2).
+Phase 1 is a faithful refactor of `container.sh` into `harnessed transparent` plus the image
+rename/split — **not** a new control plane. The host runs podman directly: `harnessed build` does
+host `podman build` of the base/claude images; `harnessed transparent` (and `container`) is a host
+bash launcher that runs the prebuilt `harnessed-claude` image with the §4a mounts and the project,
+attaching host-natively. Because the launcher runs on the host, `$HOME`/`$PWD`/project paths are
+host-native — there is no Docker-out-of-Docker, no API socket, and no host-absolute-path footgun.
 
-The toolchain is settled by project research: rootless podman 5.8.x (pods, user `podman.socket`,
-`CONTAINER_HOST`/`DOCKER_HOST`), a Python tools image built on the repo's existing mise base (node/pnpm/python).
-The §4a host-integration mount layer (1Password agent, GPG/YubiKey, `.gnupg`/`.ssh`/git/machine-id ro, egress
-firewall) ports nearly verbatim from `container.sh:start_new_container`.
+The one behavioral change vs `container.sh` is the `~/.claude.json` safety fix: the existing unsafe
+rw bind-mount (`container.sh:124-126`) becomes a copy-on-start per-instance copy so the host file is
+never raced/corrupted. The §4a host-integration layer and the egress firewall port nearly verbatim.
 
-**Primary recommendation:** Build the DooD mount-construction helper FIRST and prove one host-correct mount
-before layering anything on it; reuse `container.sh`/`install.sh`/`egress-firewall.sh` rather than re-authoring.
+The toolchain is settled by project research: rootless podman 5.8.x on the host (build + run), and a
+base image built on the repo's existing mise toolchain (node/pnpm/python), with the in-container home
+moved to `/home/harnessed` for a legible session slug.
+
+**Primary recommendation:** Treat Phase 1 as "rename + split + safety fix" of `container.sh`; reuse
+its mount/firewall/build logic; defer all assembler/DooD-free orchestration machinery — there is none
+to build here.
 </research_summary>
 
 <standard_stack>
@@ -68,64 +71,56 @@ before layering anything on it; reuse `container.sh`/`install.sh`/`egress-firewa
 ### Core
 | Library/Tool | Version | Purpose | Why Standard |
 |--------------|---------|---------|--------------|
-| podman (rootless) | 5.8.x | pod/container engine; only host dep | Native pods; Docker-CLI compatible; user socket for DooD |
-| `podman.socket` (user) | bundled 5.x | host API socket the tool drives | `systemctl --user enable --now podman.socket` → `unix:///run/user/$UID/podman/podman.sock` |
-| Python | 3.12/3.13 | `harnessed-tools` logic | parse/validate, build mounts, orchestrate podman; pinned in-image (no host Python) |
+| podman (rootless) | 5.8.x | host build + run engine; only host dep | Native pods later; Docker-CLI compatible; runs on the host (no socket needed) |
 | mise | 2026.x | in-image toolchain manager | already this repo's mechanism (`Dockerfile`) |
+| bash (host) | — | bootstrap + launcher | dependency-free; `container.sh` is already bash |
 
 ### Supporting
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| PyYAML / ruamel.yaml | 6.x / 0.18.x | parse `stacks/transparent/stack.yaml` | minimal in Phase 1 (transparent has almost no config) |
-| rich | 14.x | status/build progress output | always in tools image |
+| Tool | Version | Purpose | When |
+|------|---------|---------|------|
+| node/pnpm/python (in-image, via mise) | per `Dockerfile` | the harness runtime inside `harnessed-claude` | baked into the image, not on the host |
 
 ### Alternatives Considered
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
-| Python tools image | bash orchestrator on host | rejected by §15 — would require host runtimes; supersedes the old split |
 | copy-on-start `.claude.json` | `CLAUDE_CONFIG_DIR` relocation | cleaner if it relocates the top-level file; scope unverified (D-02) |
+| host-bash launcher | Python `harnessed-tools` driving podman (DooD) | REJECTED — adds a socket, host-path footgun, TTY tunneling for no benefit (§15) |
 
-**Host prerequisite (documented, not installed by the tool):**
-```bash
-systemctl --user enable --now podman.socket
-loginctl enable-linger "$USER"        # socket survives logout
-```
+**Host prerequisite:** just `podman` (or docker). No `systemctl --user enable podman.socket` — the
+host runs podman directly. (A user-lingering note applies later for long-lived **service** pods, not
+for transparent.)
 </standard_stack>
 
 <architecture_patterns>
 ## Architecture Patterns
 
-### System Architecture (Phase 1, transparent)
+### System (Phase 1, transparent)
 ```
 $ harnessed transparent [path]   (or: container [path])
-   │  (bash bootstrap, dep-free)
-   ├─ detect podman/docker; ensure harnessed-tools image (auto-build first run)
-   ├─ podman run harnessed-tools  ── DooD: -v rootless sock, --env HOST_HOME/HOST_PWD
-   │     │  (Python brain)
-   │     ├─ build host-absolute mounts (§4a layer + project + .claude copy-on-start)
-   │     └─ podman run harness container (host config live; sleep infinity)
-   └─ podman exec -it <instance> <harness>   ← HOST-NATIVE TTY
+   │  (host bash)
+   ├─ detect podman/docker; ensure base/claude images (host `podman build` on first run)
+   ├─ compute §4a mounts on the HOST ($HOME/$PWD native) + project + .claude copy-on-start
+   ├─ podman run harnessed-claude (sleep infinity)
+   └─ podman exec -it <instance> <harness>   ← host-native TTY
 ```
 
-### Pattern 1: DooD host-absolute mount helper (the invariant)
-**What:** One helper builds every `-v` from `HOST_HOME`/`HOST_PWD` (injected env), asserts the source is absolute and host-rooted.
-**When:** Every mount, every callsite — no hand-rolled `-v`.
-**Why:** Bind sources resolve on the host daemon; the tool's internal view is wrong (Pitfall 1).
+### Pattern 1: host-bash launcher (refactor of container.sh)
+**What:** A bash launcher computes conditional §4a mounts and runs the harness via host podman.
+**When:** transparent now; the same launcher shape is what the Phase-2 assembler will *generate* for isolated stacks.
+**Why:** Host-native paths + TTY; nothing to tunnel; matches today's working `container.sh`.
 
 ### Pattern 2: copy-on-start `.claude.json`
-**What:** At start, copy host `~/.claude.json` → a per-instance writable file the container uses; never rw-bind-mount the host file.
-**When:** transparent mode (isolated generates a stub in Phase 2).
-**Why:** It's a constantly-rewritten whole-file blob; a shared rw mount races/corrupts (Pitfall 2).
+**What:** At start, copy host `~/.claude.json` → a per-instance writable file; never rw-bind-mount the host file.
+**Why:** It's a constantly-rewritten whole-file blob; a shared rw mount races/corrupts.
 
-### Pattern 3: transparent = degenerate stack
-**What:** Implement transparent as `stacks/transparent/stack.yaml` consumed by the same engine, not a special code path.
-**Why:** Phase 2's isolated mode reuses the engine; "one engine, two modes" (§2).
+### Pattern 3: image lineage by FROM (not union)
+**What:** `harnessed-base` (mise toolchain) → `harnessed-claude` (FROM base + claude). Home = `/home/harnessed`.
+**Why:** `FROM` is linear inheritance (§6); fine for a single harness image.
 
 ### Anti-Patterns to Avoid
-- Tool-internal paths in `-v` (Pitfall 1) — silent wrong mounts.
-- rw-bind-mounting `~/.claude.json` (Pitfall 2) — host corruption.
-- Tunneling the interactive attach through the tools container — broken TTY; keep attach host-native (§15).
-- Running `podman` from the host directly (today's `container.sh`) — Phase 1's whole point is the DooD inversion.
+- Reaching for a containerized tool that drives the host daemon (DooD) — rejected; host runs podman.
+- rw-bind-mounting `~/.claude.json` — host corruption.
+- Hardcoding `/container/$USER` — use `/home/harnessed/<relpath>` (D-06).
 </architecture_patterns>
 
 <dont_hand_roll>
@@ -133,61 +128,52 @@ $ harnessed transparent [path]   (or: container [path])
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
-| §4a mount set | new mount logic | port `container.sh:start_new_container` (37-146) | proven; covers agent sockets, YubiKey, signing |
-| egress allowlist | new firewall | `egress-firewall.sh` (verbatim) + `apply_firewall` | already audited; default-DROP allowlist |
-| PATH install | new installer | `install.sh` clone+symlink pattern | proven; `~/.local/bin` then sudo fallback |
-| runtime detection | new detection | `container.sh:28-33` (prefer podman) | already handles podman/docker |
+| §4a mount set | new mount logic | port `container.sh:start_new_container` (37-146) | proven; agent sockets, YubiKey, signing |
+| egress allowlist | new firewall | `egress-firewall.sh` (verbatim) + `apply_firewall` | already audited; default-DROP |
+| PATH install | new installer | `install.sh` clone+symlink | proven |
+| runtime detection | new detection | `container.sh:26-34` (prefer podman) | already handles podman/docker |
 </dont_hand_roll>
 
 <common_pitfalls>
 ## Common Pitfalls
 
-### Pitfall 1: DooD bind paths resolved against the wrong root
-**What goes wrong:** `-v` source from the tool's internal view → instance boots but mounts the wrong/empty dir.
-**Why:** bind sources resolve on the host daemon, not the API client.
-**How to avoid:** inject `HOST_HOME`/`HOST_PWD`; centralize mount construction; assert host-absolute (D-08).
-**Warning signs:** harness starts but project/`.claude`/credentials missing; `podman inspect` shows tool-internal source paths.
-
-### Pitfall 2: `~/.claude.json` rw bind-mount races/corrupts host state
-**What goes wrong:** host + container Claude rewrite the same whole-file blob → lost writes/corruption; container state leaks to host.
+### Pitfall 1: `~/.claude.json` rw bind-mount races/corrupts host state
+**What goes wrong:** host + container Claude rewrite the same whole-file blob → lost writes/corruption.
 **How to avoid:** copy-on-start (D-01); never rw-mount the host file (D-03).
 **Warning signs:** host Claude shows unknown projects; `.claude.json` parse errors; new `*.backup.*` during runs.
 
-### Pitfall 3: rootless socket not enabled
-**What goes wrong:** tool can't reach `unix:///run/user/$UID/podman/podman.sock`.
-**How to avoid:** detect + fail with a clear message pointing at `systemctl --user enable --now podman.socket` (+ `loginctl enable-linger`). Do not auto-modify the user's systemd.
-**Warning signs:** `Cannot connect to Podman socket` on first run.
+### Pitfall 2: in-container home change breaks the harness install
+**What goes wrong:** moving `$HOME` to `/home/harnessed` could strand the claude binary or mise shims.
+**How to avoid:** set image `$HOME=/home/harnessed`, build mise/claude under it, and `which claude` at build verify.
+**Warning signs:** `claude: not found` or mise shims missing at runtime.
+
+### Pitfall 3: host rootless podman not ready for builds
+**What goes wrong:** first `podman build` fails (storage/subuid not configured).
+**How to avoid:** detect podman, surface a clear error; docker fallback. (No socket needed for transparent.)
+**Warning signs:** `podman build` errors on a fresh machine.
 </common_pitfalls>
 
 <open_questions>
 ## Open Questions
 
-1. **`CLAUDE_CONFIG_DIR` scope** — does it relocate the top-level `.claude.json` or only `.claude/`?
-   - Known: documented relocation knob; issues #14313 (fixed) / #3833 (muddy scope).
-   - Recommendation: ship copy-on-start (D-01); add an empirical check task; switch to relocation only if it cleanly moves `.claude.json`.
-2. **`/home/harnessed/<relpath>` vs harness installs** — confirm Claude/codex installs inside the image don't assume `/container/$USER` or a fixed `$HOME`.
-   - Recommendation: set image `$HOME=/home/harnessed`; verify the harness binary resolves at runtime.
-3. **podman socket in CI / sandbox** — execution/verification needs the socket enabled; not assumable in every environment.
-   - Recommendation: capability/smoke test must detect-and-skip with a clear message when the socket is absent.
+1. **`CLAUDE_CONFIG_DIR` scope** — relocates top-level `.claude.json` or only `.claude/`? Ship copy-on-start (D-01); add an empirical check; switch only if clean (#14313/#3833).
+2. **`/home/harnessed/<relpath>` vs harness installs** — confirm claude/mise resolve from the new home (Pitfall 2).
 </open_questions>
 
 <sources>
 ## Sources
 
 ### Primary (HIGH confidence)
-- `.planning/research/STACK.md`, `.planning/research/ARCHITECTURE.md`, `.planning/research/PITFALLS.md` (web-verified)
-- `docs/harnessed-design.md` §2, §4, §6, §14, §15
+- `.planning/research/STACK.md`, `ARCHITECTURE.md`, `PITFALLS.md` (web-verified, v2-reframed)
+- `docs/harnessed-design.md` §2, §4, §6, §14, §15 (corrected)
 - Existing code: `container.sh`, `Dockerfile`, `install.sh`, `egress-firewall.sh`
 
-### Secondary (MEDIUM confidence)
-- Rootless podman socket / DooD bind-path gotcha (project research sources)
-
 ### Tertiary (LOW confidence — validate in execution)
-- `CLAUDE_CONFIG_DIR` relocation scope; exact in-image `$HOME` interaction with harness installs
+- `CLAUDE_CONFIG_DIR` relocation scope; in-image `$HOME` interaction with harness installs
 </sources>
 
 ---
 
 *Phase: 01-containerized-engine-transparent-stack*
-*Research completed: 2026-06-14*
+*Research completed: 2026-06-14 (revised — host-native, no DooD)*
 *Ready for planning: yes*

@@ -242,13 +242,13 @@ harnesses adapt *out* of it:
 
 ```
 code-container/
-  harnessed                    # thin bash bootstrap → builds/runs the tools image (§15)
+  harnessed                    # thin host bash bootstrap → host podman build/run; drives the assembler (§15)
   container                    # back-compat alias → `harnessed transparent` (see §14)
   .env.schema.example          # varlock secrets template → ~/.config/harnessed/.env.schema (§16)
-  tools/                       # harnessed-tools image: assemble + orchestrate (Python)
+  tools/                       # harnessed-tools: the assembler image — emits Dockerfile+profile+launcher (Python)
     Dockerfile                 # python + rich/textual + yq/jq + git + pnpm + scanners + varlock + op
     pyproject.toml
-    harnessed/                 # cli, assemble, vendor, sync-links, validate, orchestrate
+    harnessed/                 # cli, assemble, vendor, sync-links, validate, emit Dockerfile/launcher
   base/
     Dockerfile.harnessed-base    # mise/node/python + common tooling
     Dockerfile.harnessed-claude  # FROM harnessed-base + claude install
@@ -422,42 +422,53 @@ Then `claude-openbrain-headroom-caveman [path]` from any directory starts that i
   `.claude/` dir). If yes, both modes can point Claude at a per-instance config dir instead of
   copy-on-start, fully decoupling container state from the host file. [INFERENCE — verify.]
 
-## 15. Proposed: implementation — single dependency, containerized tooling
+## 15. Proposed: implementation — single dependency, containerized assembler
 
 **Goal: the only host dependency is podman/docker.** No host Python/node/uv version roulette.
 
-Two pieces:
+Two phases, and the host runs podman **natively** throughout — the container only emits files, it
+never drives the daemon (so there is no Docker-out-of-Docker):
 
-- **`harnessed` — thin host bootstrap (bash, dependency-free).** Detects the runtime; ensures the
-  `harnessed-tools` image exists (builds on first run / `--build`); then `podman run`s the tool with
-  the repo mounted, host auth (`~/.claude/.credentials.json`), the **rootless podman socket**, and
-  the **host** `HOME`/`PWD` passed as env. For `harnessed <stack>` (run) it performs the final
-  interactive attach (`podman exec -it harnessed-… <harness>`) **host-natively** for a clean TTY.
-- **`harnessed-tools` — the brain (one image, built first run).** Python + `rich` (and `textual`
-  if a TUI lands) + `yq`/`jq` + `git` + `pnpm` + the supply-chain scanners. Holds *all* logic:
-  parse/validate YAML, vendor (`vendor-plugin`), `sync-plugin-links` (already Python), merge
-  `hatago.config.json`, generate the `.claude.json` stub, write yolo configs, scan. It drives the
-  **host** podman through the mounted socket (`CONTAINER_HOST`/`DOCKER_HOST`), including building
-  the harnessed/hatago/service images.
+- **Assemble (build time) — `harnessed-tools`, the assembler image (built first run / `--build`).**
+  Python + `rich` (and `textual` if a TUI lands) + `yq`/`jq` + `git` + `pnpm` + the supply-chain
+  scanners (+ varlock/`op`). Holds *all* assembly logic: parse/validate YAML, vendor
+  (`vendor-plugin`), `sync-plugin-links` (already Python), merge `hatago.config.json`, generate the
+  `.claude.json` stub, write yolo configs, scan. The host bootstrap runs it as
+  `podman run -v <build-dir> harnessed-tools …`; it **only reads/writes the mounted dir and emits
+  files** — a `Dockerfile` (+ build context) per image, the committed `profiles/<stack>/`,
+  `hatago.config.json`, and a generated launcher. It does **not** run podman. (This is
+  "tool-in-a-container", like running a linter in a container — not DooD.)
+- **Build → install → launch (host).** The **host** runs `podman build` on the emitted Dockerfiles
+  → pinned images. `harnessed install <stack>` writes the generated launcher to `~/.local/bin/<stack>`.
+  That launcher is plain **host bash**: it computes the §4a conditional mounts on the host (like
+  today's `container.sh`) and runs the pod via host `podman pod`/`podman run`, attaching with
+  `podman exec -it`. `harnessed <stack>` and `container` delegate to it.
+- **`harnessed` — thin host bootstrap (bash, dependency-free).** Detects the runtime; for
+  `harnessed build` it ensures the assembler image exists then drives assemble → `podman build`; for
+  `harnessed <stack>` (run) it invokes the generated host launcher.
 
-This supersedes the earlier "bash orchestrator + Python assembler" split: logic consolidates into
-one Python image; host bash shrinks to a true bootstrap. (Testing is integration-only — see §18 —
-not assembler unit tests.)
+This supersedes the earlier "bash orchestrator + Python assembler" split *and* the interim "one image
+that drives the host daemon" idea: assembly logic consolidates into one container image that emits
+files; building and launching are ordinary host podman commands. (Testing is integration-only — see
+§18 — not assembler unit tests.)
 
-**Constraints (Docker-out-of-Docker):**
+**Why no DooD.** Separating "generate the build/run inputs" (the assembler, needs Python) from
+"execute `podman build`/`podman run`" (the host, needs the daemon) removes every cost of driving the
+daemon from inside a container:
 
-- **Bind-mount sources resolve on the host daemon.** Every `-v` the tool issues must use **host
-  absolute paths** (hence passing host `HOME`/`PWD` as env), never the tool container's internal
-  view — the classic DooD gotcha.
-- **Rootless socket** scopes this to your user (no host root) but grants full control of your user's
-  containers — acceptable for a personal dev tool, worth stating. May need
-  `systemctl --user enable --now podman.socket`.
-- **Final interactive attach stays host-native** (bootstrap, not tunneled through the tool
-  container) so TTY allocation is clean.
-- **First-run build latency** — mitigate by pinning the tools image and optionally publishing a
+- **No API socket to mount, no `CONTAINER_HOST`/`DOCKER_HOST`.** podman is invoked directly on the host.
+- **No host-absolute-path footgun.** The launcher runs on the host, so `$HOME`/`$PWD`/project paths
+  are host-native by construction — the classic DooD bind-path gotcha cannot occur.
+- **Clean TTY for free.** The launcher is host bash, so the interactive `podman exec -it` attach is
+  host-native with no tunneling.
+- **First-run build latency** — mitigate by pinning the assembler image and optionally publishing a
   prebuilt one; later runs are cache hits.
 
-Net install: `git clone` + symlink the `harnessed` bootstrap; first invocation builds the tools
+`transparent` is the degenerate case: no recipes → no assembler and no `harnessed-tools` image. It is
+just a host launcher running the prebuilt `harnessed-claude` image with the §4a mounts +
+`.claude.json` copy-on-start. The assembler image is only needed once you assemble an `isolated` stack.
+
+Net install: `git clone` + symlink the `harnessed` bootstrap; first `build` builds the assembler
 image. Podman/docker is the only thing the user must have.
 
 ## 16. Proposed: secrets — varlock + 1Password (optional)

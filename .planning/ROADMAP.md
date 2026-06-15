@@ -3,8 +3,8 @@
 ## Overview
 
 harnessed grows from this repo's `container` tool into a launcher for isolated, composable harness
-stacks. The journey starts at the riskiest mechanics (a containerized control plane driving host
-podman, and the `transparent` stack that re-delivers `container` with zero regression), proves the
+stacks. The journey starts at the foundation (a host bash bootstrap/launcher + host `podman build`,
+and the `transparent` stack that re-delivers `container` with zero regression), proves the
 core value on one thin isolated tracer-bullet stack (assemble → run → assert green), hardens the
 build with a supply-chain gate, then adds shared services, recipe breadth, and the full operable CLI,
 and finishes with opt-in secrets and the gated documentation surface. Each phase delivers an
@@ -16,7 +16,7 @@ observable end-to-end capability (vertical-MVP mode).
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Containerized Engine + Transparent Stack** - Bootstrap + tools image drive host podman (DooD); `harnessed transparent`/`container` re-delivers the host-mirror sandbox
+- [ ] **Phase 1: Containerized Engine + Transparent Stack** - Host bash bootstrap/launcher + host `podman build`; `harnessed transparent`/`container` re-delivers the host-mirror sandbox
 - [ ] **Phase 2: Isolated Tracer-Bullet Stack** - One harness + one MCP server + one skill, isolated and reproducible, asserted green by the capability test
 - [ ] **Phase 3: Supply-Chain Gate + pnpm-Everywhere** - `harnessed build` vets every dependency before it is committed or baked
 - [ ] **Phase 4: Shared Services + Recipe Breadth + Full CLI** - Concurrent service sidecars, more recipes, and the full operable command/lifecycle surface
@@ -25,21 +25,21 @@ observable end-to-end capability (vertical-MVP mode).
 ## Phase Details
 
 ### Phase 1: Containerized Engine + Transparent Stack
-**Goal**: Stand up the dependency-free bootstrap + `harnessed-tools` control plane that drives host rootless podman (DooD), and deliver the `transparent` stack (= today's `container`, host-mirror) with the `.claude.json` safety fix and zero behavioral regression.
+**Goal**: Stand up the dependency-free `harnessed` bash bootstrap, build the base/claude images via host `podman build`, and deliver the `transparent` stack (= today's `container`, host-mirror) as a host launcher with the `.claude.json` safety fix and zero behavioral regression. (No daemon-in-container — the `harnessed-tools` assembler arrives in Phase 2.)
 **Mode:** mvp
 **Depends on**: Nothing (first phase)
 **Requirements**: ENG-01, ENG-02, ENG-03, MODE-01, MODE-02, AUTH-01, MNT-01, MNT-02, MNT-03
 **Success Criteria** (what must be TRUE):
   1. Running `harnessed transparent` (and `container`) in a project opens an interactive harness with the host config mounted live and the project mounted
   2. The instance has a working SSH agent, GPG/YubiKey commit signing, and the egress firewall (the shared host-integration layer)
-  3. On a machine with only podman installed, the first run builds the tools image and launches — no host Python/node/uv required
+  3. On a machine with only podman installed, the first run builds the images and launches — no host Python/node/uv required
   4. A run never corrupts the host `~/.claude.json` (per-instance copy or `CLAUDE_CONFIG_DIR` relocation, verified)
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: `harnessed` bash bootstrap + `harnessed-tools` Python image + host-absolute DooD mount helper
-- [ ] 01-02: Port the §4a host-integration mount layer (auth/SSH/GPG/YubiKey/git/egress) + project mount
-- [ ] 01-03: `transparent` stack + `container` alias + `~/.claude.json` safety (copy-on-start / CLAUDE_CONFIG_DIR)
+- [ ] 01-01: `harnessed` bash bootstrap (detect runtime, ensure images) + base/claude image lineage (`/home/harnessed` home) built via host `podman build`
+- [ ] 01-02: §4a host-integration mount layer (auth/SSH/GPG/YubiKey/git/machine-id) + project mount + egress firewall (host launcher building blocks)
+- [ ] 01-03: `transparent` host launcher (live host config) + `container` alias + `~/.claude.json` copy-on-start safety
 
 ### Phase 2: Isolated Tracer-Bullet Stack
 **Goal**: Prove the core value on the smallest end-to-end isolated slice — one harness + one MCP server + one skill — via recipe/stack schema, the build-time assembler, isolated auth seeding, runtime pod composition with hatago, and the capability test/report.

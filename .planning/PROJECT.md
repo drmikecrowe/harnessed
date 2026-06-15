@@ -41,13 +41,13 @@ host config — reproducibly, with podman as the only host dependency.
 - [ ] `isolated` auth seeding: mount `~/.claude/.credentials.json` read-only + generate a minimal `.claude.json` stub (no host config), with profile-supplied skills/commands/agents/hooks/rules/`.mcp.json`/`settings.json`
 - [ ] Hand-authored recipes (`recipes/<name>/recipe.yaml`) contributing an MCP layer and/or a Claude-canonical file-extension layer
 - [ ] Authored stack manifests (`stacks/<name>/stack.yaml`) composing harness + recipes + services + permissions + state
-- [ ] Build-time assembler: vendor plugins, fan skills/commands into harness-native paths (fail-fast on collision), wire hooks, emit committed `profiles/<name>/` + baked images
+- [ ] Build-time assembler (runs in the `harnessed-tools` container, emits files only): vendor plugins, fan skills/commands into harness-native paths (fail-fast on collision), wire hooks, emit a `Dockerfile` (+ build context) + committed `profiles/<name>/` + `hatago.config.json` + a generated launcher; the host runs `podman build` to produce baked images
 - [ ] Supply-chain gate at build time: osv-scanner + pip-audit (credential-free) always; snyk + Socket.dev when a token is present (warn-and-skip otherwise); fail on high-severity
 - [ ] pnpm-everywhere policy (managed config: `minimumReleaseAge`, lifecycle-script default-deny, store integrity); recipe validation flags raw `npm`/`npx`
 - [ ] omp harness support via `claude-hooks-bridge` + pi-adapter (Claude format is canonical; one harness per stack)
 - [ ] State & lifecycle: persistent by default, `--fresh` for throwaway; service volumes service-scoped; harness session state (`projects/` + `history.jsonl`) persisted host-side by default
 - [ ] CLI surface: `harnessed <stack> [path]`, `build`, `install`/`uninstall` (launcher shim), `new`, `list`, `stop`, `rm`, `svc up/down/list`, `auth snyk|socket`, `--fresh`
-- [ ] Containerized tooling: thin dependency-free `harnessed` bash bootstrap + `harnessed-tools` Python image holding all logic, driving host podman over the rootless socket (Docker-out-of-Docker)
+- [ ] Containerized tooling, host runs podman natively (no Docker-out-of-Docker): thin dependency-free `harnessed` bash bootstrap + `harnessed-tools` assembler image that emits files; host `podman build` builds the images; a generated `~/.local/bin/<stack>` host-bash launcher runs the pod
 - [ ] `container` retained as a thin alias → `harnessed transparent`
 - [ ] Documentation as gated deliverable: README, design doc, recipe-authoring guide, stack guide, secrets setup, service authoring, troubleshooting/ops
 - [ ] Integration-only capability test per stack: build → run `--fresh` headless → assert declared MCP/skills/commands present → render a markdown capability report
@@ -89,7 +89,7 @@ host config — reproducibly, with podman as the only host dependency.
 - **Tech stack**: Host bootstrap in dependency-free bash; all logic in a containerized
   `harnessed-tools` Python image (rich/textual + yq/jq + git + pnpm + scanners + varlock + op) — keep host deps to podman/docker only (§15)
 - **Architecture**: Stacks composed at runtime in a podman pod, never via build-time `FROM` union (§3, §6)
-- **Docker-out-of-Docker**: every `-v` the tool issues must use **host absolute paths** (pass host `HOME`/`PWD` as env); use the **rootless** podman socket; keep the final interactive attach host-native for a clean TTY (§15)
+- **Execution model**: the `harnessed-tools` container emits files only (Dockerfile + profile + launcher); the **host** runs `podman build` and the generated host-bash launcher runs the pod via host `podman` — no daemon-in-container, no API socket, no host-absolute-path footgun, host-native TTY (§15)
 - **Canonical format**: Claude Code format is the single source of truth; other harnesses adapt out of it (§8)
 - **Supply chain**: pnpm everywhere (no npm/npx); build-time scan gate fails on high-severity; credentials referenced from host, never baked/committed (§7)
 - **Security/secrets**: auth and scanner/1Password secrets are env-only, never an image layer or repo file; varlock + 1Password are optional opt-in (§16)
@@ -110,7 +110,7 @@ host config — reproducibly, with podman as the only host dependency.
 | Hand-authored recipes assembled ahead of time (not dynamic) | Reproducible, committed artifacts; "not dynamic" | — Pending |
 | Split output: committed→mounted profile (files) + baked→images (MCP deps) | Editable/versioned extensions; clean/pinned host | — Pending |
 | pnpm everywhere with managed supply-chain config | Quarantine new releases, deny lifecycle scripts, store integrity | — Pending |
-| Single containerized Python tool image; bash is a thin bootstrap | Only host dep is podman/docker; no version roulette | — Pending |
+| `harnessed-tools` is a file-emitting assembler; host runs podman build/run | Only host dep is podman/docker; avoids DooD (no socket, no host-path footgun, clean TTY) | — Pending |
 | Default persistent, `--fresh` to wipe | Accumulation is the value of memory systems; `--fresh` for clean-room runs | — Pending |
 | Integration-only testing, manifest as oracle | Tests survive refactors; capability report doubles as user artifact | — Pending |
 | varlock + 1Password optional (opt-in) | Works fully without it; copy `.env.schema.example` to turn on | — Pending |

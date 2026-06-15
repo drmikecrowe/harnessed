@@ -9,8 +9,8 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Engine
 
-- [ ] **ENG-01**: A dependency-free `harnessed` bash bootstrap detects podman/docker and builds the `harnessed-tools` image on first run
-- [ ] **ENG-02**: The `harnessed-tools` Python image drives the host rootless podman over the mounted socket (DooD), building every bind mount from host-absolute paths
+- [ ] **ENG-01**: A dependency-free `harnessed` bash bootstrap detects podman/docker and builds required images on first run (`--build` to force)
+- [ ] **ENG-02**: harnessed builds images via host `podman build` and launches stacks via a generated host-bash launcher using host `podman` — no daemon-in-container (no Docker-out-of-Docker); the only host dependency is podman/docker
 - [ ] **ENG-03**: The final interactive harness attach runs host-natively for a clean TTY
 
 ### Modes
@@ -34,7 +34,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 - [ ] **RCP-01**: A recipe (`recipes/<name>/recipe.yaml`) declares an MCP layer and/or a Claude-canonical file-extension layer
 - [ ] **RCP-02**: A stack manifest (`stacks/<name>/stack.yaml`) composes a harness plus a chosen set of recipes (and optional services/permissions/state)
-- [ ] **RCP-03**: `harnessed build <stack>` assembles recipes into a committed `profiles/<stack>/` tree plus baked images, with nothing assembled at container start
+- [ ] **RCP-03**: `harnessed build <stack>` runs the assembler in the `harnessed-tools` container, which emits a `Dockerfile` (+ build context) + a committed `profiles/<stack>/` tree + a generated launcher; the host then runs `podman build` to produce baked images — nothing is assembled at container start
 - [ ] **RCP-04**: The assembler fans plugin skills/commands into harness-native paths and fails fast on name collisions
 
 ### MCP

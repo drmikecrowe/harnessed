@@ -8,26 +8,25 @@
 
 ### System Overview
 
-`harnessed` is a two-image control plane (a dependency-free **bash bootstrap** on the host + a fat **`harnessed-tools` Python image** that holds all logic) that composes harness *stacks* as **podman pods** at runtime. The tools image is the "brain": it drives the **host** podman over the rootless socket (Docker-out-of-Docker), assembles profiles, and `podman run`s the pod — but the final interactive attach is performed **host-natively** by the bootstrap for a clean TTY.
+`harnessed` composes harness *stacks* as **podman pods** at runtime. The fat **`harnessed-tools` Python image** is a build-time **assembler**: it reads recipes/stacks and emits files only — a `Dockerfile` (+ build context), the committed `profiles/<stack>/`, `hatago.config.json`, and a generated host launcher — into a mounted build dir. The **host** then runs `podman build`. At runtime a generated, dependency-free **host bash launcher** (`~/.local/bin/<stack>`) runs the pod with the host podman CLI (`podman pod`/`run`/`exec -it`). The tools image never touches the container daemon; podman/docker stays the only host dependency.
 
 ```
 ┌──────────────────────────── HOST (user namespace, rootless) ─────────────────────────────┐
 │                                                                                          │
-│  $ harnessed <stack> [path]                                                              │
-│        │                                                                                 │
-│        ▼                                                                                 │
-│  ┌──────────────────────┐   builds/ensures, then runs (DooD)   ┌──────────────────────┐ │
-│  │  harnessed (bash)    │ ───────────────────────────────────▶ │  harnessed-tools     │ │
-│  │  bootstrap, dep-free │   -v repo  -v ~/.claude/.credentials  │  (Python = "brain")  │ │
-│  │  • detect runtime    │   --env HOST_HOME/HOST_PWD            │  rich/textual yq jq  │ │
-│  │  • ensure tools img  │   -v podman.sock (CONTAINER_HOST)     │  git pnpm uv scanners│ │
-│  │  • final attach ─────┼──┐                                    │  varlock op          │ │
-│  └──────────────────────┘  │                                    └──────────┬───────────┘ │
-│                            │  podman exec -it (host-native TTY)             │ drives host  │
-│                            │                                                │ podman via   │
-│   rootless podman.socket ◀─┼────────────────────────────────────────────────┘ mounted sock│
-│   /run/user/$UID/podman/podman.sock                                                       │
-│        │ podman run --pod                                                                 │
+│  BUILD TIME  (assemble → build)                                                           │
+│  ┌──────────────────────────┐  emits files    ┌────────────────────────────────────────┐│
+│  │  harnessed-tools         │ ──────────────▶ │ build dir: Dockerfile(s) + build context││
+│  │  ASSEMBLER (build-time)  │  (mounts the     │ + profiles/<stack>/ + hatago.config.json││
+│  │  rich/textual yq jq git  │   build dir)     │ + generated launcher script             ││
+│  │  pnpm uv scanners varlock│                  └──────────────────┬─────────────────────┘│
+│  └──────────────────────────┘                                     │                      │
+│     (no daemon access — pure file emitter)      HOST: podman build │ + install            │
+│                                                                    ▼                      │
+│                                          baked images  +  ~/.local/bin/<stack> launcher   │
+│                                                                                          │
+│  RUN TIME                                                                                 │
+│  $ harnessed <stack> [path]  ─▶  ~/.local/bin/<stack>  (generated HOST bash launcher)     │
+│        │ host podman: pod create / run / exec -it   (native CLI, host paths + TTY)        │
 │        ▼                                                                                  │
 │  ┌──────── podman pod: harnessed-<stack>-<projhash>  (shared netns; localhost:port) ────┐ │
 │  │  ┌─────────────────────────┐   .mcp.json → localhost:3535   ┌──────────────────────┐│ │
@@ -55,8 +54,8 @@
 
 | Component | Responsibility | Typical Implementation |
 |-----------|----------------|------------------------|
-| **`harnessed` bootstrap** | Dependency-free host entry: detect runtime, ensure/build `harnessed-tools`, hand off to it, then perform the **host-native interactive attach** (`podman exec -it`). Owns nothing else. | Single POSIX/bash script symlinked onto `PATH` (mirrors existing `install.sh`/`container.sh` install path). |
-| **`harnessed-tools` image** | The brain: parse/validate YAML, vendor plugins, fan skills/commands (`sync-plugin-links`), merge `hatago.config.json`, generate `.claude.json` stub, write permissions config, run supply-chain scanners, and **drive host podman** (build images, create pod, run containers) over the mounted rootless socket. | One Python image: `rich`/`textual` TUI + `yq`/`jq` + `git` + `pnpm` + `uv` + osv-scanner/pip-audit (+snyk/socket) + `varlock` + `op`. |
+| **`harnessed` bootstrap** | Dependency-free host entry on `PATH`: resolve the stack and exec the generated `~/.local/bin/<stack>` launcher; on first use of an isolated stack, drive assemble (run the tools image) → host `podman build` → install the launcher. Owns nothing else. | Single POSIX/bash script symlinked onto `PATH` (mirrors existing `install.sh`/`container.sh` install path). |
+| **`harnessed-tools` image** | The build-time **assembler** (no daemon access): parse/validate YAML, vendor plugins, fan skills/commands (`sync-plugin-links`), merge `hatago.config.json`, generate `.claude.json` stub, write permissions config, run supply-chain scanners, and **emit** the build inputs — `Dockerfile`(s) + build context + `profiles/<stack>/` + a generated host launcher — into a mounted build dir. The **host** then runs `podman build`. | One Python image: `rich`/`textual` TUI + `yq`/`jq` + `git` + `pnpm` + `uv` + osv-scanner/pip-audit (+snyk/socket) + `varlock` + `op`. |
 | **harness container** | Run the harness (`claude`/`omp`) against the mounted project, auth seeded, with the stack profile mounted into the harness config dir. The only container the user "is in". | `FROM harnessed-base` → `harnessed-claude` / `harnessed-omp` (mise/node/python base). |
 | **hatago hub** | Aggregate the stack's MCP servers behind **one** Streamable-HTTP endpoint (default `:3535`); run light `pnpm dlx`/`uvx` **stdio** servers as its own children (stdio→HTTP) and **proxy** heavy network-native servers. Keeps `npx`/`uvx` out of the harness container. | `@himorishige/hatago-mcp-hub` baked into `Dockerfile.hatago` with light servers; HTTP serve mode. |
 | **service sidecars** | Heavy/stateful systems (hindsight = postgres+MCP, openbrain). Each owns its image/container/**service-scoped volume**/lifecycle, independent of any instance; multiple instances attach concurrently over `harnessed-net`. | `services/<svc>/Dockerfile`, standalone & independently versioned; volume named for the *service* (`hindsight-data`). |
@@ -67,13 +66,13 @@
 
 ```
 code-container/
-├── harnessed                       # thin bash bootstrap → builds/runs the tools image (§15)
+├── harnessed                       # thin bash bootstrap → assemble (tools img) + host podman build + run generated launcher (§15)
 ├── container                       # back-compat alias → `harnessed transparent` (§14: keep)
 ├── .env.schema.example             # varlock template → ~/.config/harnessed/.env.schema (§16)
-├── tools/                          # the brain — harnessed-tools image (assemble + orchestrate)
+├── tools/                          # the assembler — harnessed-tools image (emits Dockerfile + context + profile + launcher)
 │   ├── Dockerfile                  # python + rich/textual + yq/jq + git + pnpm/uv + scanners + varlock + op
 │   ├── pyproject.toml
-│   └── harnessed/                  # cli, assemble, vendor, sync-links, validate, orchestrate
+│   └── harnessed/                  # cli, assemble, vendor, sync-links, validate, emit Dockerfile + launcher
 ├── base/                           # base-lineage images (FROM = lineage only, §6)
 │   ├── Dockerfile.harnessed-base   # mise/node/python + common tooling + managed pnpm config
 │   ├── Dockerfile.harnessed-claude # FROM harnessed-base + claude install
@@ -102,7 +101,7 @@ code-container/
 
 ### Structure Rationale
 
-- **`tools/` (Python brain) vs `lib/` (runtime bash):** hard split between *build/orchestration logic* (runs inside `harnessed-tools`, never on the host) and *per-instance runtime glue* (mounted into the launched harness container). Keeping them apart stops the assembler from leaking host-runtime assumptions and keeps the only host dependency podman/docker (§15).
+- **`tools/` (Python assembler) vs `lib/` (runtime bash):** hard split between *build-time assembly logic* (runs inside `harnessed-tools`, emits files only — never touches the daemon) and *per-instance runtime glue* (mounted into the launched harness container). Keeping them apart stops the assembler from leaking host-runtime assumptions and keeps the only host dependency podman/docker (§15).
 - **`recipes/` (inputs) → `stacks/` (composition) → `profiles/` (output):** a clean pipeline boundary. Recipes are reusable single-integration definitions; stacks pick a harness + a set of recipes; profiles are the **generated** artifact. Recipes/stacks are hand-authored and reviewed; profiles are regenerable, so a diff in `profiles/` is auditable evidence of what the assembler produced.
 - **`base/` separate from `services/`:** `base/` holds *lineage* images consumed by every stack (harness + hatago); `services/` holds *independently versioned, standalone* sidecars reusable across stacks. Encodes the §6 rule — `FROM` is for base lineage, not for unioning systems.
 - **`profiles/` committed and mounted (not baked):** the file-extension layer must be editable and versioned (satisfies "commands/skills/agents/hooks proxied to a git-controlled folder"); MCP deps are baked into images instead so the host stays pinned/clean. This split is the central structural decision.
@@ -114,7 +113,7 @@ code-container/
 
 **What:** Two sibling systems (a harness + an MCP hub, plus shared sidecars) are combined by placing them in a **podman pod** sharing one network namespace, assembled at `podman run` time — never by an image build step.
 **When to use:** Whenever you must combine independently-built, independently-versioned systems that each own runtime state. Here: harness ⊕ hatago ⊕ sidecars.
-**Trade-offs:** (+) Each component stays independently built, versioned, and scaled; sidecars outlive instances and are shared concurrently. (+) Containers in a pod reach each other on `localhost:<port>` (shared netns), so the harness's `.mcp.json` points at `localhost:3535` with no DNS. (−) Composition logic moves to runtime orchestration (the tools image) instead of a declarative Dockerfile; the pod must be (re)created when bind mounts change.
+**Trade-offs:** (+) Each component stays independently built, versioned, and scaled; sidecars outlive instances and are shared concurrently. (+) Containers in a pod reach each other on `localhost:<port>` (shared netns), so the harness's `.mcp.json` points at `localhost:3535` with no DNS. (−) Composition logic lives in the generated host launcher (run at `podman run` time) instead of a declarative Dockerfile; the pod must be (re)created when bind mounts change.
 
 **Why `FROM` cannot do this:** `FROM` is *linear inheritance*; multiple `FROM`s make a *multi-stage* build whose **last** stage is the image, with `COPY --from=…` pulling artifacts forward. There is **no "union two images" operator.** You cannot merge two running systems (each with its own processes/state) into one image — only copy files between build stages. Hence runtime, not build time.
 
@@ -123,8 +122,8 @@ code-container/
 podman pod create --name "harnessed-${stack}-${projhash}" --network harnessed-net
 podman run -d --pod "harnessed-${stack}-${projhash}" --name hatago      harnessed-hatago
 podman run -d --pod "harnessed-${stack}-${projhash}" --name "${harness}" \
-  -v "${HOST_PWD}:/home/harnessed/${relpath}" \
-  -v "${HOST_HOME}/code-container/profiles/${stack}/.claude:/home/harnessed/.claude:rw" \
+  -v "${PWD}:/home/harnessed/${relpath}" \
+  -v "${HOME}/code-container/profiles/${stack}/.claude:/home/harnessed/.claude:rw" \
   "harnessed-${harness}"
 # harness reaches hatago at http://localhost:3535 (same netns); sidecars by name on harnessed-net
 ```
@@ -135,19 +134,25 @@ podman run -d --pod "harnessed-${stack}-${projhash}" --name "${harness}" \
 **When to use:** When some artifacts must stay human-editable and versioned (skills/commands/hooks) while others must stay pinned, reproducible, and off the host (dependency trees).
 **Trade-offs:** (+) Editable, diffable extensions without rebuilding an image; pinned, clean dependency closure without polluting `~`. (+) "Nothing assembled at container start" → satisfies "not dynamic." (−) Two artifact lifecycles to keep in sync; a profile edit that needs a new MCP dep still requires an image rebuild.
 
-### Pattern 3: Docker-out-of-Docker with host-absolute bind paths
+### Pattern 3: Assembler emits a Dockerfile; the host builds it
 
-**What:** The tools container drives the **host** podman through the mounted **rootless** socket (`CONTAINER_HOST=unix:///run/user/$UID/podman/podman.sock`). Because bind-mount sources resolve on the **host** daemon, every `-v` the tool issues MUST use **host-absolute** paths — so the bootstrap passes host `HOME`/`PWD` in as env.
-**When to use:** When a containerized controller must create sibling containers on the host engine without requiring host language runtimes.
-**Trade-offs:** (+) Only host dependency is podman/docker; no Python/node/uv version roulette. (+) Rootless scopes blast radius to the user. (−) The classic DooD gotcha: a path that looks right *inside* the tools container is wrong on the host daemon — using the tool's internal view silently mounts the wrong thing. (−) Rootless socket may need `systemctl --user enable --now podman.socket`; first-run image build adds latency (mitigate by pinning/publishing the tools image). (−) Keep the **final interactive attach host-native** (bootstrap, not tunneled through the tool container) so TTY allocation is clean.
+**What:** The `harnessed-tools` container is a pure **file emitter** — it reads recipes/stacks and writes a `Dockerfile` (+ build context), `profiles/<stack>/`, `hatago.config.json`, and a generated launcher into a mounted build dir. It never talks to the container daemon. The **host** then runs `podman build` on the emitted Dockerfile(s).
+**When to use:** When generating build inputs needs a rich toolchain (Python/git/pnpm/scanners) but the actual `build` must run on the host engine without a host language runtime.
+**Trade-offs:** (+) Only host dependency is podman/docker; no Python/node/uv version roulette on the host, and no daemon socket mounted into any container (the assembler is "a tool in a container", a pure file emitter). (+) The emitted Dockerfile + context is an auditable, reproducible artifact the host builds verbatim. (−) Two steps (emit, then build) instead of one; the emitted Dockerfile and launcher are regenerated when recipes change.
 
-### Pattern 4: Claude-canonical format + omp bridge adapter
+### Pattern 4: Generated host-bash launcher runs the pod natively
+
+**What:** `harnessed install <stack>` writes a self-contained **host bash** launcher to `~/.local/bin/<stack>`. At runtime it computes the §4a conditional mounts on the host and runs the pod with the host podman CLI (`podman pod create`/`podman run`/`exec -it`). `harnessed <stack>` and `container` delegate to it.
+**When to use:** When the orchestration must run with the user's own host paths, TTY, and podman — without a controller container in the middle.
+**Trade-offs:** (+) `$HOME`/`$PWD`/project paths are **host-native by construction**, so bind mounts are correct with no path translation. (+) The interactive `podman exec -it` attach allocates a clean TTY because it is host bash by definition (no tunneling). (+) The launcher is dependency-free, so the only host requirement stays podman/docker. (−) Launch logic lives in generated bash rather than the Python assembler, so it is regenerated (not hand-edited) when the mount/runtime contract changes.
+
+### Pattern 5: Claude-canonical format + omp bridge adapter
 
 **What:** Claude Code format is the **single source of truth** for skills/commands/hooks/plugins. `claude` mounts it natively; `omp` adapts *out* of it at runtime via `claude-hooks-bridge` + `lib-pi-adapter.sh` (no re-authoring). Exactly **one harness per stack**.
 **When to use:** Multi-harness support where re-authoring per harness would be the real cost.
 **Trade-offs:** (+) One authoring format, no drift, no duplicate maintenance; new harnesses are an adapter, not a fork of all content. (−) Non-Claude harnesses inherit a translation layer (the pi-adapter normalizes omp/GSD hook payloads → Claude shape); a Claude-only construct with no omp analogue can't be expressed.
 
-### Pattern 5: One engine, two config modes on a single mount axis
+### Pattern 6: One engine, two config modes on a single mount axis
 
 **What:** `transparent` and `isolated` share the *same* base image, host-integration mounts (§4a), project mount, and auth. They differ on **one axis only** — where the config layer comes from: host `~/.claude` bind-mounted live (transparent) vs auth-seeded + assembled profile mounted (isolated).
 **When to use:** When two seemingly different products are actually the same engine with one swapped input — collapse them rather than maintaining parallel code paths.
@@ -161,36 +166,37 @@ podman run -d --pod "harnessed-${stack}-${projhash}" --name "${harness}" \
 
 ```
 recipes/<r>/recipe.yaml  ─┐
-stacks/<stack>/stack.yaml ┴─▶ harnessed-tools (Python brain)
+stacks/<stack>/stack.yaml ┴─▶ podman run harnessed-tools   (assembler; mounts build dir, EMITS files only)
                                  │ vendor-plugin   → resolve marketplace/url/git plugins, install uv/pnpm deps
                                  │ sync-plugin-links → fan skills/commands → harness-native paths (FAIL-FAST on collision)
                                  │ wire hooks      → <Event>.d handlers + pi-adapter
                                  │ merge MCP       → hatago.config.json
+                                 │ emit build      → Dockerfile(s) + build context + generated launcher
                                  │ SUPPLY-CHAIN GATE → osv-scanner + pip-audit (always);
                                  │                     snyk + Socket.dev (token present, else warn-skip);
-                                 │                     FAIL on high-severity  ◀── gate before any commit/publish
+                                 │                     FAIL on high-severity  ◀── gate before any commit/build
                                  ▼
             ┌──────────────── split output ────────────────┐
             ▼                                               ▼
-   profiles/<stack>/  (committed, mounted)        baked images (pinned, host-clean)
-   .claude/{skills,…} + hatago.config.json        harnessed-base/-claude/-omp, hatago, services/*
+   profiles/<stack>/  (committed, mounted)        Dockerfile(s) + context  ─▶  HOST: podman build
+   .claude/{skills,…} + hatago.config.json        → baked images (pinned, host-clean):
+   + generated launcher → ~/.local/bin/<stack>       harnessed-base/-claude/-omp, hatago, services/*
 ```
 
 ### Launch flow (`harnessed <stack> [path]`)
 
 ```
-bootstrap (bash)
-  └▶ ensure harnessed-tools image (build on first run)
-       └▶ podman run harnessed-tools  (DooD: rootless sock + HOST_HOME/HOST_PWD env)
-            ├▶ resolve stack, validate, ensure pod images present (build if missing)
-            ├▶ ensure shared services up on harnessed-net (start if absent; svc-scoped volume)
-            ├▶ podman pod create harnessed-<stack>-<projhash>  (--network harnessed-net)
-            ├▶ podman run hatago (HTTP :3535) into the pod
-            └▶ podman run harness into the pod
-                 -v HOST_PWD:/home/harnessed/<relpath>      (host-absolute!)
-                 -v profiles/<stack>/.claude  -v ~/.claude/.credentials.json:ro
-       ◀── control returns to bootstrap
-  └▶ podman exec -it harnessed-<stack>-<projhash> <harness>   (HOST-NATIVE TTY)
+harnessed <stack> [path]
+  └▶ ~/.local/bin/<stack>   (generated HOST bash launcher — plain host podman, no socket)
+       ├▶ compute §4a conditional host-integration mounts (on the host)
+       ├▶ ensure pod images present  (HOST podman build if missing)
+       ├▶ ensure shared services up on harnessed-net (start if absent; svc-scoped volume)
+       ├▶ podman pod create harnessed-<stack>-<projhash>  (--network harnessed-net)
+       ├▶ podman run hatago (HTTP :3535) into the pod
+       └▶ podman run harness into the pod
+            -v $PWD:/home/harnessed/<relpath>            (host-native path by construction)
+            -v profiles/<stack>/.claude  -v ~/.claude/.credentials.json:ro
+  └▶ podman exec -it harnessed-<stack>-<projhash> <harness>   (host TTY)
 ```
 
 `--fresh` swaps persistent state volumes for throwaway ones; `session_state: host` (default) persists `projects/` + `history.jsonl` to a harnessed-owned host dir (path-mirrored for a legible Claude slug), `: volume` opts into a per-instance throwaway volume (§9, §14).
@@ -224,7 +230,7 @@ The relevant "scale" axis is **number of stacks/instances/shared services and re
 
 ### Suggested build order — vertical slices (tracer bullets, §18)
 
-1. **Slice 1 — minimal isolated stack green end-to-end:** one harness + one MCP server + one skill → assemble → run `--fresh` headless → capability test asserts MCP connected + skill present. This exercises bootstrap, tools image, DooD pod create, hatago, profile mount, and the test oracle in one thin path.
+1. **Slice 1 — minimal isolated stack green end-to-end:** one harness + one MCP server + one skill → assemble → run `--fresh` headless → capability test asserts MCP connected + skill present. This exercises the bootstrap, the assembler + host `podman build`, the generated host launcher's pod create, hatago, profile mount, and the test oracle in one thin path.
 2. **Then add one recipe at a time**, each with its own red→green capability test (never "write all recipes, then all tests").
 3. **Fold in `transparent`** as the degenerate stack (no pod siblings) once the engine exists.
 4. **Add shared services** (hindsight/openbrain) once the single-pod path is proven; they introduce the cross-instance concurrency + service-scoped volume concerns.
@@ -242,27 +248,22 @@ The relevant "scale" axis is **number of stacks/instances/shared services and re
 **Why it's wrong:** `FROM` is linear inheritance; multi-stage only copies *files* between stages — there is no union of two **running** systems with their own processes/state.
 **Do this instead:** Combine at runtime in a podman pod (Pattern 1); use `FROM` only for base lineage (§6).
 
-### Anti-Pattern 2: Tool-internal paths in DooD `-v` flags
-**What people do:** Use the path as seen *inside* `harnessed-tools` for bind mounts.
-**Why it's wrong:** Bind sources resolve on the **host** daemon, so the mount silently points at the wrong place (or nothing).
-**Do this instead:** Pass host `HOME`/`PWD` as env and build **host-absolute** paths for every `-v` (Pattern 3).
-
-### Anti-Pattern 3: Bind-mounting `~/.claude.json` read/write
+### Anti-Pattern 2: Bind-mounting `~/.claude.json` read/write
 **What people do:** Mount the whole `~/.claude.json` into the container like the rest of `~/.claude`.
 **Why it's wrong:** It's a constantly-rewritten whole-file blob; a shared rw mount races with host Claude (lost writes/corruption) and merges container state back into the host. Differing project paths only spare the path-keyed `projects` subtree, not the whole-file rewrite or top-level fields.
 **Do this instead:** Mount only `~/.claude/.credentials.json:ro`; copy-on-start a per-instance copy or relocate via `CLAUDE_CONFIG_DIR` (transparent), or generate a minimal stub (isolated).
 
-### Anti-Pattern 4: Running `npx`/`uvx` stdio servers inside the harness container
+### Anti-Pattern 3: Running `npx`/`uvx` stdio servers inside the harness container
 **What people do:** Put MCP stdio servers directly in the harness container.
 **Why it's wrong:** Drags npm/npx/uvx and their dependency trees into the harness image, defeating the clean/pinned host goal and the pnpm-everywhere supply-chain policy.
 **Do this instead:** Bake light stdio servers as hatago **children** (stdio→HTTP) and proxy heavy ones; the harness sees one HTTP endpoint (Pattern 1, MCP flow).
 
-### Anti-Pattern 5: Baking or committing credentials
+### Anti-Pattern 4: Baking or committing credentials
 **What people do:** Add Claude auth / scanner tokens / 1Password secrets to an image layer or repo file for convenience.
 **Why it's wrong:** Secrets in image layers or git are exfiltration-prone and non-rotatable.
 **Do this instead:** Reference host creds, inject as **env only** at launch (varlock/`op` resolve at runtime). Missing credentialed scanner → warn-and-skip, never an interactive prompt (keeps build non-interactive/reproducible).
 
-### Anti-Pattern 6: Dynamic/runtime recipe assembly & assembler unit tests
+### Anti-Pattern 5: Dynamic/runtime recipe assembly & assembler unit tests
 **What people do:** Resolve recipes at container start, and unit-test the vendor/sync/merge internals.
 **Why it's wrong:** Runtime assembly breaks reproducibility ("not dynamic"); internal unit tests couple to implementation and break on refactor.
 **Do this instead:** Assemble ahead of time into committed artifacts; verify behavior transitively through the running instance against the manifest oracle (§18).
@@ -273,7 +274,7 @@ The relevant "scale" axis is **number of stacks/instances/shared services and re
 
 | Service | Integration Pattern | Notes |
 |---------|---------------------|-------|
-| **Host podman engine** | Mount the **rootless** socket into `harnessed-tools`; set `CONTAINER_HOST`/`DOCKER_HOST`. All `-v` use host-absolute paths (DooD). | `unix:///run/user/$UID/podman/podman.sock`; may need `systemctl --user enable --now podman.socket`. Containers in a pod share netns → `localhost:port`; cross-pod via `harnessed-net` by name. |
+| **Host podman CLI** | The generated host launcher invokes the **host** `podman` CLI directly (`pod create`/`run`/`exec -it`); the assembler emits a `Dockerfile` + build context that the host builds with `podman build`. No daemon socket is mounted into any container. | Containers in a pod share netns → `localhost:port`; cross-pod via `harnessed-net` by name. |
 | **1Password (secrets)** | Optional via varlock: `.env.schema` with `op(op://Vault/Item/field)` refs, resolved through the mounted **agent socket** (`allowAppAuth`, §4a) or a **service-account token**. | For headless/in-container resolution, `OP_SERVICE_ACCOUNT_TOKEN` is the cleaner story; the desktop app-auth socket is finicky inside containers. Confirm which your setup supports (§16, §14). Inert unless a schema exists. |
 | **Host auth / signing** | Shared host-integration layer (every stack): 1Password SSH agent (`SSH_AUTH_SOCK`), GPG agent + `~/.gnupg:ro`, YubiKey `--device`, `~/.ssh:ro`, git config:ro, `/etc/machine-id:ro`, egress firewall (`--cap-add NET_ADMIN`). | Ported verbatim from `container.sh start_new_container`; credentials are not the experiment surface, so they belong in isolated too. |
 | **Claude auth** | Mount `~/.claude/.credentials.json:ro` (OAuth); generate `.claude.json` stub (isolated). | Never the whole `~/.claude.json`; never baked. |
@@ -284,18 +285,17 @@ The relevant "scale" axis is **number of stacks/instances/shared services and re
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| **bootstrap ↔ tools** | `podman run` (DooD) for logic; bootstrap keeps the **final interactive attach** host-native. | Contract: bootstrap supplies host `HOME`/`PWD`/socket; tools never assumes its own path view for mounts. The split is what keeps host deps = podman only. |
-| **tools ↔ host podman** | Rootless socket (`CONTAINER_HOST`); tools build images, create pod, run containers, ensure services. | Full control of the user's containers (acceptable for a personal dev tool, worth stating). |
+| **bootstrap ↔ assembler** | `podman run harnessed-tools` to emit build inputs (Dockerfile/context/profile/launcher); the host then runs `podman build`. | Assembler is a pure file emitter (no daemon access); the split keeps host deps = podman only. |
+| **launcher ↔ host podman** | The generated `~/.local/bin/<stack>` calls the host `podman` CLI natively to build (if missing), create the pod, run containers, ensure services, and attach (`exec -it`). | Runs as the user with host paths/TTY by construction; full control of the user's containers (acceptable for a personal dev tool). |
 | **harness ↔ hatago** | MCP over **Streamable HTTP** at `localhost:3535` (shared pod netns). | Harness `.mcp.json` is the only client config; hatago is the single aggregation point. |
 | **hatago ↔ child/proxied servers** | Child stdio servers (stdio→HTTP, baked) + proxied network-native servers over `harnessed-net`. | Per-server transport varies; some speak Streamable HTTP natively, others need hatago wrapping (§14). |
 | **instance ↔ shared service** | Over `harnessed-net` by service name; service is service-scoped, harness-independent, concurrent. | `hindsight-data` volume shared by `claude+hindsight` and `omp+hindsight`; service outlives instances (`harnessed svc up/down`). |
-| **assembler ↔ profile/images** | Split output: committed→mounted profile (files) + baked→images (deps). | The only place recipes merge; nothing assembled at container start. |
+| **assembler ↔ profile/images** | Split output: committed→mounted profile (files) + emitted Dockerfile(s) the **host** bakes into images. | The only place recipes merge; nothing assembled at container start. |
 
 ## Sources
 
 - harnessed design spec — `docs/harnessed-design.md` (§2–§18); project context — `.planning/PROJECT.md`.
 - Podman pods & rootless networking — containers in a pod share the network namespace and communicate via `localhost:port`; cross-pod by name on a shared network: <https://github.com/containers/podman/blob/main/docs/tutorials/basic_networking.md>, <https://www.redhat.com/en/blog/container-networking-podman>, <https://docs.podman.io/en/stable/markdown/podman.1.html>.
-- Rootless podman socket / DooD bind-mount path gotcha & enabling the socket: <https://oneuptime.com/blog/post/2026-03-18-enable-podman-socket-rootless-users/view>, <https://superuser.com/questions/1938342/mount-podman-socket-into-container-rootless-to-rootless>.
 - MCP transports (two standard: stdio + Streamable HTTP; SSE back-compat only) — spec 2025-03-26, reaffirmed 2025-11-25: <https://modelcontextprotocol.io/specification/2025-03-26/basic/transports>, <https://blog.modelcontextprotocol.io/posts/2025-12-19-mcp-transport-future/>.
 - Hatago MCP Hub (lightweight multi-MCP aggregator; STDIO/HTTP/SSE/WS; proxy + child stdio; default HTTP `:3535`): <https://github.com/himorishige/hatago-mcp-hub>, <https://www.npmjs.com/package/@himorishige/hatago-mcp-hub>, <https://hatago.dev/en/>, <https://dev.to/himorishige/getting-started-with-multi-mcp-using-hatago-mcp-hub-one-config-to-connect-them-all-2bjp>.
 - pnpm supply-chain config — `minimumReleaseAge` defaults to 1440 min (1 day) in pnpm v11; lifecycle-script default-deny via `onlyBuiltDependencies`/new `allowBuilds`; content-addressed store integrity: <https://pnpm.io/supply-chain-security>, <https://pnpm.io/settings>, <https://socket.dev/blog/pnpm-11-adds-new-supply-chain-protection-defaults>.

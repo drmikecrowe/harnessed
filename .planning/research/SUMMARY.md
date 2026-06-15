@@ -13,9 +13,10 @@ sidecars), composed at **runtime** because Docker `FROM` is linear inheritance w
 operator. The old `container` host-mirror behavior folds in unchanged as the built-in `transparent`
 stack; the new value is `isolated` stacks that expose **exactly** the skills/commands/MCP/services a
 hand-authored recipe set declares — nothing from the host config — reproducibly. Experts build this
-shape with rootless podman (the only host dependency), a containerized Python "brain" driving the
-host engine over the rootless socket (Docker-out-of-Docker), an MCP hub (hatago) aggregating servers
-behind one HTTP endpoint, and a pnpm-first build-time supply-chain gate.
+shape with rootless podman (the only host dependency, used to build and run images natively on the
+host), a build-time **assembler** (a `harnessed-tools` container that EMITS a Dockerfile + build
+context + profile + hatago config + a generated launcher — never touching the daemon), an MCP hub
+(hatago) aggregating servers behind one HTTP endpoint, and a pnpm-first build-time supply-chain gate.
 
 The recommended approach is **vertical slices**: prove the core value on one thin tracer-bullet stack
 (one harness + one MCP server + one skill, green end-to-end via an integration capability test)
@@ -23,12 +24,11 @@ before adding breadth. Reproducibility comes from a split output — the file-ex
 committed to a git-versioned `profiles/` dir and mounted, while MCP-server dependencies are baked
 into pinned images, so nothing is assembled at container start.
 
-The dominant risks are mechanical and front-loaded: (1) the Docker-out-of-Docker bind-path trap
-(every `-v` resolves on the host daemon, so the tool must build host-absolute paths from injected
-host `HOME`/`PWD` — a silent-failure correctness risk); (2) `~/.claude.json` is a constantly-rewritten
+The dominant risks are mechanical and front-loaded: (1) `~/.claude.json` is a constantly-rewritten
 whole-file blob that must never be rw-bind-mounted (copy-on-start or `CLAUDE_CONFIG_DIR` for
-transparent, generated stub for isolated); and (3) the isolated onboarding stub must skip the login
-prompt headlessly (`hasCompletedOnboarding` corroborated; the rest needs an empirical no-prompt test).
+transparent, generated stub for isolated — a silent-corruption correctness risk); and (2) the
+isolated onboarding stub must skip the login prompt headlessly (`hasCompletedOnboarding` corroborated;
+the rest needs an empirical no-prompt test).
 
 ## Key Findings
 
@@ -39,8 +39,7 @@ service images + scan gate). Podman is the only host dependency; everything else
 
 **Core technologies:**
 - **podman (rootless), ≥5.6 / current 5.8.2**: container + native **pod** engine — pods are the §3 stack unit (shared netns → `localhost:port`); Docker-CLI-compatible so existing detection ports as-is
-- **`podman.socket` (user unit)**: rootless API socket for Docker-out-of-Docker; `systemctl --user enable --now podman.socket` + `loginctl enable-linger`; tool sets `CONTAINER_HOST`/`DOCKER_HOST`
-- **Python 3.12/3.13 + mise + uv**: all `harnessed-tools` logic (parse/validate, vendor, sync-links, stub-gen, scan, orchestrate); pinned inside the image so the host needs no Python
+- **Python 3.12/3.13 + mise + uv**: all `harnessed-tools` assembler logic (parse/validate, vendor, sync-links, stub-gen, scan, emit Dockerfile + build context + launcher); pinned inside the image so the host needs no Python
 - **pnpm 11.x**: the **only** JS package manager — v11 turns supply-chain guards ON by default (`minimumReleaseAge` 1440 min, lifecycle default-deny via `allowBuilds`, content-addressed store); `pnpm dlx` replaces `npx`
 - **hatago MCP hub (`@himorishige/hatago-mcp-hub`)**: aggregates a stack's MCP servers behind one Streamable-HTTP endpoint (default `:3535`); runs light stdio servers as children, proxies network-native ones
 - **rich (14.x)**: renders the capability report (markdown→terminal); textual only if a TUI lands
@@ -65,42 +64,46 @@ approach), `FROM`-union image combination, npm/npx, multi-harness stacks, a GUI,
 
 ### Architecture Approach
 
-A two-image control plane — a dependency-free **bash bootstrap** on the host + a fat **`harnessed-tools`
-Python image** (the brain) that drives host podman over the rootless socket and composes stacks as pods
-at runtime. The final interactive attach stays host-native for a clean TTY.
+A clean host/container split — a dependency-free **bash launcher** on the host + a build-time
+**`harnessed-tools` assembler image** that EMITS files only (a Dockerfile + build context + profile +
+hatago config + a generated launcher) and never touches the daemon. The HOST runs `podman build` on
+the emitted Dockerfile(s); the generated `~/.local/bin/<stack>` host-bash launcher then runs the pod
+natively via host podman, so the interactive attach is host-native by construction for a clean TTY.
 
 **Major components:**
-1. **`harnessed` bootstrap** — detect runtime, ensure/build tools image, hand off, do the host-native attach
-2. **`harnessed-tools` image** — parse/validate, vendor, sync-links, stub-gen, scan, drive host podman (DooD)
+1. **`harnessed` host launcher** — detect runtime, build base/claude images via host `podman build`, (for isolated stacks) run the assembler, install/exec the generated `~/.local/bin/<stack>` launcher
+2. **`harnessed-tools` assembler image** — parse/validate, vendor, sync-links, stub-gen, scan, emit Dockerfile + build context + profile + hatago config + launcher (file emitter, no daemon access)
 3. **harness container** — runs `claude`/`omp` with project + profile mounted, auth seeded
 4. **hatago hub** — one Streamable-HTTP MCP endpoint; child stdio servers + proxied network-native ones
 5. **service sidecars** — hindsight/openbrain; own image/volume/lifecycle, shared concurrently across stacks
 6. **profile (committed→mounted)** + **baked images** — the split output that delivers "not dynamic" reproducibility
 
-Repo layout (§10): `harnessed` + `container` alias, `tools/` (brain), `base/` (lineage Dockerfiles),
+Repo layout (§10): `harnessed` + `container` alias, `tools/` (assembler), `base/` (lineage Dockerfiles),
 `services/`, `recipes/` (inputs), `stacks/` (composition), `profiles/` (generated+committed), `lib/` (runtime bash).
 
 ### Critical Pitfalls
 
-1. **DooD bind paths** — `-v` sources resolve on the host daemon; build host-absolute paths from injected host `HOME`/`PWD`, centralize mount construction, never use the tool's internal path view → **Phase 1**
-2. **`~/.claude.json` race/corruption** — never rw-bind-mount the whole-file blob; copy-on-start or `CLAUDE_CONFIG_DIR` (transparent), generated stub (isolated) → **Phase 1**
-3. **Onboarding stub fields** — `hasCompletedOnboarding` corroborated; verify the full set with a headless no-prompt acceptance test, snapshot the working stub → **Phase 2**
-4. **MCP transport mismatch** — use Streamable HTTP (SSE deprecated); confirm which servers need hatago's stdio→HTTP wrap → **Phase 2**
-5. **Secrets in image layers / committed profiles** — env-only injection always; warn-and-skip on missing scanner token, never prompt (keep build non-interactive) → **Phase 3**
-6. **1Password in-container auth** — desktop app-auth socket is finicky in containers; `OP_SERVICE_ACCOUNT_TOKEN` is the cleaner headless path → **Phase 5**
+1. **`~/.claude.json` race/corruption** — never rw-bind-mount the whole-file blob; copy-on-start or `CLAUDE_CONFIG_DIR` (transparent), generated stub (isolated) → **Phase 1**
+2. **Onboarding stub fields** — `hasCompletedOnboarding` corroborated; verify the full set with a headless no-prompt acceptance test, snapshot the working stub → **Phase 2**
+3. **MCP transport mismatch** — use Streamable HTTP (SSE deprecated); confirm which servers need hatago's stdio→HTTP wrap → **Phase 2**
+4. **Secrets in image layers / committed profiles** — env-only injection always; warn-and-skip on missing scanner token, never prompt (keep build non-interactive) → **Phase 3**
+5. **1Password in-container auth** — desktop app-auth socket is finicky in containers; `OP_SERVICE_ACCOUNT_TOKEN` is the cleaner headless path → **Phase 5**
 
 ## Implications for Roadmap
 
 Granularity is **coarse** (3-5 phases) and project mode is **MVP/vertical** — each phase delivers an
 observable end-to-end capability, building the design's tracer-bullet slices (§18). Suggested structure:
 
-### Phase 1: Containerized engine + transparent stack
-**Rationale:** The bootstrap + tools-image control plane and DooD pod-launch are the spine everything
-rides on; `transparent` is the degenerate stack (harness only, no pod siblings) and re-delivers the
-existing `container` with zero regression, exercising the highest-risk mechanics first.
-**Delivers:** `harnessed transparent [path]` (+ `container` alias) launches a host-mirror instance with
-the §4a host-integration mounts, project mount, egress firewall, and the `.claude.json` safety fix.
-**Addresses:** table-stakes mounts/auth/lifecycle; Pitfalls 1 & 2.
+### Phase 1: Host bootstrap/launcher + transparent stack
+**Rationale:** A light refactor of `container.sh` into a host bash launcher (`harnessed transparent` +
+`container` alias) plus host `podman build` of the renamed base/claude images is the spine everything
+rides on; `transparent` has no recipes, so it needs no assembler and no `harnessed-tools` image — it
+just runs the prebuilt `harnessed-claude` image with the §4a mounts, re-delivering the existing
+`container` with zero regression while exercising the highest-risk file mechanic (`.claude.json`).
+**Delivers:** `harnessed transparent [path]` (+ `container` alias) launches a host-mirror instance via
+host podman with the §4a host-integration mounts, project mount, egress firewall, and the `.claude.json`
+copy-on-start safety fix, on base/claude images built by host `podman build`.
+**Addresses:** table-stakes mounts/auth/lifecycle; Pitfall 1 (`.claude.json`).
 
 ### Phase 2: Isolated tracer-bullet stack (assemble → run → assert)
 **Rationale:** The MVP vertical slice that proves the core value — one harness + one MCP server + one
@@ -109,14 +112,14 @@ skill, isolated and reproducible, asserted green by the capability test.
 fail-fast collisions + hook wiring + hatago config merge), isolated auth seeding (ro credential mount
 + generated `.claude.json` stub with headless no-prompt test), runtime pod composition (harness +
 hatago on `harnessed-net`), committed profile + baked images, per-stack capability test + markdown report.
-**Uses:** podman pods, hatago, Streamable HTTP. **Avoids:** Pitfalls 3 & 4.
+**Uses:** podman pods, hatago, Streamable HTTP. **Avoids:** Pitfalls 2 & 3.
 
 ### Phase 3: Supply-chain gate + pnpm-everywhere
 **Rationale:** The build is not trustworthy until vetted; this hardens `harnessed build` into the gate
 the design requires before any profile is committed or image published.
 **Delivers:** pnpm-everywhere managed config (minimumReleaseAge, lifecycle default-deny), credential-free
 scan baseline (osv-scanner + pip-audit) failing on high-severity, recipe validation flagging raw npm/npx.
-**Avoids:** Pitfall 5.
+**Avoids:** Pitfall 4.
 
 ### Phase 4: Shared services + recipe breadth + full CLI/lifecycle
 **Rationale:** With the single-pod loop proven and gated, add the cross-instance concurrency model and
@@ -129,11 +132,11 @@ recipes one at a time (each red→green via its own capability test), `--fresh`,
 **Rationale:** Perimeter/policy and the gated documentation surface land last, on top of a working loop.
 **Delivers:** varlock + 1Password opt-in (`.env.schema`), token-gated scanners + `harnessed auth`,
 nightly re-scan timer, and the full doc set (recipe-authoring, stack guide, secrets, service authoring,
-troubleshooting/ops). **Avoids:** Pitfall 6.
+troubleshooting/ops). **Avoids:** Pitfall 5.
 
 ### Phase Ordering Rationale
 
-- Highest-risk mechanics (DooD, `.claude.json`) are forced into Phase 1 so nothing is built on a wrong mount.
+- The highest-risk file mechanic (`.claude.json`) is forced into Phase 1 so nothing is built on a racing mount.
 - The isolated tracer bullet (Phase 2) is the smallest end-to-end proof of core value; breadth waits.
 - The supply-chain gate (Phase 3) precedes recipe breadth (Phase 4) so every added recipe is vetted on arrival.
 - Shared-service concurrency (Phase 4) is deferred until the single-pod path is solid.
@@ -157,7 +160,7 @@ Phases with standard, well-documented patterns:
 | Stack | HIGH | Versions web-verified (podman 5.8.2, pnpm 11, uv 0.11.8, osv-scanner V2, MCP spec) |
 | Features | HIGH | Categories grounded in design spec + competitor analysis; MVP is the design's explicit slice |
 | Architecture | MEDIUM | §2–§9 confirmed; external facts HIGH; repo/schema/CLI (§10–§13) proposed |
-| Pitfalls | HIGH | DooD + `.claude.json` corroborated by docs; onboarding stub partially [INFERENCE] pending empirical test |
+| Pitfalls | HIGH | `.claude.json` corroborated by docs; onboarding stub partially [INFERENCE] pending empirical test |
 
 **Overall confidence:** HIGH
 
@@ -179,7 +182,6 @@ Phases with standard, well-documented patterns:
 - Podman pods / rootless networking: <https://docs.podman.io/en/stable/markdown/podman.1.html>
 
 ### Secondary (MEDIUM confidence)
-- Rootless podman socket / DooD bind-path gotcha: <https://oneuptime.com/blog/post/2026-03-18-enable-podman-socket-rootless-users/view>
 - pnpm 11 default release-age: <https://socket.dev/blog/pnpm-11-adds-new-supply-chain-protection-defaults>
 - Detailed per-dimension sources in STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md
 

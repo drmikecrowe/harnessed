@@ -44,7 +44,7 @@
 | podman only | | |
 
 **User's choice:** podman preferred, docker fallback (auto / recommended).
-**Notes:** Mirrors existing `container.sh` detection. Document `systemctl --user enable --now podman.socket` + `loginctl enable-linger`.
+**Notes:** Mirrors existing `container.sh` detection. Host runs podman directly — no API socket. (Revised 2026-06-14: DooD removed per owner; the earlier `systemctl --user enable podman.socket` note no longer applies.)
 
 ---
 
@@ -73,7 +73,7 @@
 
 ## Claude's Discretion
 
-- Python package layout under `tools/harnessed/`, bootstrap runtime-detection code shape, mount-builder helper factoring (constrained by the host-absolute invariant D-08).
+- Bootstrap runtime-detection code shape and launcher bash module factoring. (Revised 2026-06-14: no mount-builder helper — the launcher runs on the host so paths are native; D-08 reframed.)
 - `harnessed-base` lineage details beyond reusing the existing mise toolchain.
 
 ## Deferred Ideas

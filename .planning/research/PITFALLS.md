@@ -1,35 +1,12 @@
 # Pitfalls Research
 
-**Domain:** Rootless-container AI-harness orchestrator (Docker-out-of-Docker, MCP hub, pnpm supply-chain gate, Claude-canonical config assembly)
+**Domain:** Rootless-container AI-harness orchestrator (host-native podman pods, MCP hub, pnpm supply-chain gate, Claude-canonical config assembly)
 **Researched:** 2026-06-14
 **Confidence:** HIGH
 
 ## Critical Pitfalls
 
-### Pitfall 1: Docker-out-of-Docker bind paths resolved against the wrong root
-
-**What goes wrong:**
-`harnessed-tools` (a container) issues `podman run -v <src>:<dst>` for sibling pods. If `<src>` is a path that exists *inside* the tools container (e.g. `/work`, `/repo`, the tools container's own `$HOME`), the mount silently points at the wrong directory or an empty one: the project, profile, and `.credentials.json` never reach the harness container. The instance boots "successfully" but exposes nothing real.
-
-**Why it happens:**
-Bind-mount sources resolve on the **daemon host, not the API client** ("Bind mounts are created to the Docker daemon host, not the client" — Docker docs). When the tool drives the host's rootless podman over the mounted socket, every `-v` source is interpreted in the *host* filesystem namespace, but the tool author naturally writes paths from the container's own point of view. This is the canonical DooD trap, and it fails quietly because the mount succeeds — it just binds the wrong bytes.
-
-**How to avoid:**
-- The bootstrap passes the **host** `HOME` and `PWD` into `harnessed-tools` as explicit env (`HOST_HOME`, `HOST_PWD` or equivalent); the tool builds *every* `-v` source from those host-absolute values, never from its own `os.getcwd()`/`$HOME`.
-- Centralize mount construction in one helper (`lib/mounts.sh` / the Python orchestrator) so no callsite hand-rolls a `-v`; assert each source is absolute and host-rooted before issuing.
-- Mount the repo into the tools container at a path that is *identical* to its host path when feasible, so internal and external views coincide and accidental relative paths still resolve.
-
-**Warning signs:**
-- Harness starts but `claude mcp list` is empty / skills missing despite a green build.
-- `podman inspect` on the instance shows mount sources under the tools container's internal tree (`/work/...`) rather than `/home/<you>/...`.
-- "File not found" for `.credentials.json` only when launched via the tool, but fine when run by hand.
-
-**Phase to address:**
-Phase 1 — host bootstrap + tools image + first DooD `podman run`. The very first mount must be proven host-correct before anything else is built on top.
-
----
-
-### Pitfall 2: `~/.claude.json` rw-bind-mount races and corrupts host state
+### Pitfall 1: `~/.claude.json` rw-bind-mount races and corrupts host state
 
 **What goes wrong:**
 Binding the host `~/.claude.json` read-write into the instance lets two processes (host Claude + container Claude) rewrite the same whole-file blob concurrently → lost writes, truncated/corrupt JSON, and container-only state (project entries, MCP servers, caches) leaking back into the host's personal config. The existence of `~/.claude/backups/*.backup.*` is direct evidence Claude rewrites this file aggressively.
@@ -40,7 +17,7 @@ Binding the host `~/.claude.json` read-write into the instance lets two processe
 **How to avoid:**
 - **Never** rw-bind-mount `~/.claude.json`. In `transparent` mode, seed a **writable per-instance copy at start** (copy-on-start) so the container reads host state once and writes only its own copy.
 - Prefer **`CLAUDE_CONFIG_DIR` relocation**: point the instance at a per-instance config dir; Claude then reads/writes `.claude.json` *inside that dir*, fully decoupling container state from the host file. Verified plausible — `CLAUDE_CONFIG_DIR` is the documented relocation knob (`~/.claude` → custom dir; the in-container-wrong-location bug #14313 is fixed by setting it), but historically its scope was muddy (#3833 reported it still creating local `.claude/`). **[INFERENCE — confidence MEDIUM]** Verify empirically that the chosen Claude version writes `.claude.json` (the top-level file, not just the `.claude/` dir) into `CLAUDE_CONFIG_DIR` before relying on it.
-- In `isolated` mode the question is moot — you **generate** a stub, never mount the host file (Pitfall 3).
+- In `isolated` mode the question is moot — you **generate** a stub, never mount the host file (Pitfall 2).
 
 **Warning signs:**
 - Host Claude suddenly shows projects/MCP servers it never opened, or its theme/onboarding resets.
@@ -52,7 +29,7 @@ Phase 2 — `transparent` mode port (the safety fix called out in §4b). Settle 
 
 ---
 
-### Pitfall 3: Onboarding/login stub fields wrong → every isolated launch re-prompts
+### Pitfall 2: Onboarding/login stub fields wrong → every isolated launch re-prompts
 
 **What goes wrong:**
 The generated minimal `.claude.json` stub omits (or misnames) the fields Claude checks at startup, so the isolated instance drops into the theme picker / onboarding / re-login flow on every launch — fatal for the headless capability test (`claude -p … --output-format json`), which hangs or errors waiting on an interactive prompt.
@@ -76,30 +53,30 @@ Phase 3 — `isolated` auth seeding. The stub generator and its empirical no-pro
 
 ---
 
-### Pitfall 4: Rootless podman socket not enabled / DooD privilege scope misunderstood
+### Pitfall 3: Host rootless podman not configured for builds and long-lived pods
 
 **What goes wrong:**
-The tools container can't reach the host daemon (`Cannot connect to the Docker daemon` / socket missing) because the rootless `podman.socket` user unit was never enabled, or it dies after logout/reboot because lingering isn't set. Separately, teams reach for the *rootful* socket "to make it work," silently granting host-root container control.
+`harnessed` builds and runs everything through the host's rootless podman, but the host was never set up for it: missing/insufficient `subuid`/`subgid` ranges make `podman build`/`podman run` fail with "newuidmap" / "cannot set up namespace" errors; or long-lived shared-service pods (hindsight/openbrain on `harnessed-net`) die after logout/reboot because user lingering was never enabled. Separately, teams reach for *rootful* podman "to make it work," silently granting host-root container control.
 
 **Why it happens:**
-Rootless podman exposes its API at `unix://$XDG_RUNTIME_DIR/podman/podman.sock` only when `systemctl --user enable --now podman.socket` has run; the `$XDG_RUNTIME_DIR` socket is also torn down when the user session ends unless `loginctl enable-linger <user>` is set. The path also can't be assumed identical across machines.
+Rootless podman needs per-user `subuid`/`subgid` allocations to create user namespaces; without them the very first build fails. User-session services are also torn down when the login session ends unless `loginctl enable-linger <user>` is set — so a service that "worked today" is gone after a reboot. The path of least resistance when either bites is to switch to rootful podman, which runs containers as host root.
 
 **How to avoid:**
-- Bootstrap **detects and self-heals**: check for the socket, and if absent, run (or instruct) `systemctl --user enable --now podman.socket` and recommend `loginctl enable-linger`. Pass `DOCKER_HOST`/`CONTAINER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock` into the tools container.
-- Stay **rootless on purpose** and *document the scope honestly*: the rootless socket grants full control of *your user's* containers (not host root) — acceptable for a personal dev tool, but state it. Never fall back to the rootful socket to dodge a permissions error.
-- Fail with an actionable message (the exact `systemctl` line), never a raw socket stack trace.
+- Bootstrap **detects and self-heals**: verify podman is installed and rootless is usable (subuid/subgid present, a trivial `podman info`/build smoke test passes), and recommend `loginctl enable-linger <user>` so long-lived service pods survive logout/reboot.
+- Stay **rootless on purpose** and *document the scope honestly*: rootless podman runs everything as *your user* (not host root) — acceptable for a personal dev tool, but state it. Never fall back to rootful podman to dodge a permissions error.
+- Fail with an actionable message (the exact `usermod`/`loginctl` line, or "install podman"), never a raw namespace stack trace.
 
 **Warning signs:**
-- First run works, next-day run fails (no lingering).
-- `ls $XDG_RUNTIME_DIR/podman/podman.sock` missing.
-- Instructions tell users to `sudo` or chmod the socket — a smell that you've slipped to rootful.
+- First build fails with "newuidmap" / "cannot set up namespace" on a fresh machine.
+- A shared service works the day it's started, then is gone after a reboot (no lingering).
+- Instructions tell users to `sudo` podman — a smell that you've slipped to rootful.
 
 **Phase to address:**
-Phase 1 — bootstrap/runtime detection. Socket enablement and scope doc land with the first containerized tool invocation.
+Phase 1 — host bootstrap. The host podman prerequisite check (and the lingering recommendation for services) lands with the first build orchestration.
 
 ---
 
-### Pitfall 5: MCP transport mismatch — assuming everything speaks Streamable HTTP
+### Pitfall 4: MCP transport mismatch — assuming everything speaks Streamable HTTP
 
 **What goes wrong:**
 The pod design points the harness's `.mcp.json` at a single hatago HTTP endpoint, but individual MCP servers vary: some are network-native (Streamable HTTP/SSE), many `npx`/`uvx` servers are **stdio-only**. Wiring a stdio server directly as an HTTP URL (or forgetting to let hatago wrap it) yields a server that never connects; conversely, baking an already-HTTP service as a hatago stdio child double-wraps it.
@@ -123,7 +100,7 @@ Phase 4 — pod + hatago hub. Per-server transport resolution is the core correc
 
 ---
 
-### Pitfall 6: Plugin/skill/command name collisions across recipes resolved silently
+### Pitfall 5: Plugin/skill/command name collisions across recipes resolved silently
 
 **What goes wrong:**
 Two recipes in one stack each ship a `gsd` command or a `docs` skill; assembly fans both into the same harness-native path. Last-wins overwrites one silently, or files interleave, and the instance exposes a capability the author didn't intend — the *exact* failure mode (shared namespace can't hold every experiment) that killed the prior host-merge approach.
@@ -146,7 +123,7 @@ Phase 5 — build-time assembler (vendor + sync-links + collision policy). Fail-
 
 ---
 
-### Pitfall 7: pnpm rollout via mise mis-tuned — native builds blocked or guard weakened
+### Pitfall 6: pnpm rollout via mise mis-tuned — native builds blocked or guard weakened
 
 **What goes wrong:**
 Two coupled failures: (a) global tool installs still go through **npm** because mise's npm backend wasn't pointed at pnpm, defeating the pnpm-everywhere supply-chain policy; (b) `minimumReleaseAge` / `onlyBuiltDependencies` mis-tuned — too tight blocks legitimate native builds (postinstall denied, fresh-but-needed release quarantined → red build), too loose reinstates the attack window the policy exists to close.
@@ -171,7 +148,7 @@ Phase 5 — assembler + supply-chain policy (pnpm config in `harnessed-base`, re
 
 ---
 
-### Pitfall 8: Secrets leaking into image layers or committed profiles
+### Pitfall 7: Secrets leaking into image layers or committed profiles
 
 **What goes wrong:**
 Claude OAuth creds, scanner tokens (`SNYK_TOKEN`, `SOCKET_SECURITY_API_KEY`), or 1Password-resolved values get `COPY`'d/`ARG`'d into an image, written into the generated `profiles/<name>/` (which is git-committed), or baked into `.claude.json`/`.mcp.json`. Once in a layer or commit they persist in history and ship to anyone pulling the image or cloning the repo.
@@ -195,7 +172,7 @@ Phase 3 (auth seeding) for credential handling; Phase 5 (assembler/scan gate) fo
 
 ---
 
-### Pitfall 9: 1Password in-container resolution assumes the app-auth socket works
+### Pitfall 8: 1Password in-container resolution assumes the app-auth socket works
 
 **What goes wrong:**
 varlock resolves `op(op://Vault/Item/field)` refs by shelling `op`, and the design assumes the **mounted 1Password agent socket** (app-auth, `allowAppAuth`) makes that work inside the tools container. It generally **does not**: `op` inside a container can't use the desktop-app integration, so resolution fails with "No accounts configured for use with 1Password CLI" and every opt-in secret comes back empty — silently degrading scanners/services that needed them.
@@ -204,7 +181,7 @@ varlock resolves `op(op://Vault/Item/field)` refs by shelling `op`, and the desi
 The 1Password CLI's desktop-app integration is a host-GUI handshake; "the `op` CLI doesn't have support for the native 1Password Desktop app integration via the socket inside containers" (nodejs-security devcontainer guide). The socket can be mounted, but the integration won't authenticate from a sibling container.
 
 **How to avoid:**
-- Use a **service-account token** (`OP_SERVICE_ACCOUNT_TOKEN`) for in-container `op` — the headless/container-native story the design itself flags as cleaner (§16 "to verify"). Inject it as env (env-only rule, Pitfall 8), never bake it.
+- Use a **service-account token** (`OP_SERVICE_ACCOUNT_TOKEN`) for in-container `op` — the headless/container-native story the design itself flags as cleaner (§16 "to verify"). Inject it as env (env-only rule, Pitfall 7), never bake it.
 - Keep varlock + `op` **inert unless a schema exists** (opt-in); when present, resolve via the service-account token path. If you *must* support app-auth, resolve on the **host** (in the bootstrap, before entering the tools container) and pass only the resolved env in — but the service-account token is the recommended container path.
 - **[INFERENCE — confidence HIGH]** that app-auth-socket-in-container is unreliable; **verify which path your own 1Password plan supports** (service accounts are a paid/Business feature) and document the requirement.
 
@@ -218,7 +195,7 @@ Phase 6 — secrets (varlock + 1Password). Pin the service-account-token path an
 
 ---
 
-### Pitfall 10: First-run build latency mistaken for a hang
+### Pitfall 9: First-run build latency mistaken for a hang
 
 **What goes wrong:**
 The first `harnessed` invocation builds the `harnessed-tools` image (python + rich/textual + yq/jq + git + pnpm + scanners + varlock + op) and base/hatago/service images — minutes of work with no harness output. Users `Ctrl-C` thinking it's stuck, leaving a half-built image cache that then errors on retry.
@@ -241,7 +218,7 @@ Phase 1 — bootstrap (build orchestration + progress UX). The latency-mitigatio
 
 ---
 
-### Pitfall 11: Session slug path illegible or polluting the host `~/.claude`
+### Pitfall 10: Session slug path illegible or polluting the host `~/.claude`
 
 **What goes wrong:**
 If the project is mounted at an unstable or opaque in-container path, Claude's per-project slug (derived from the path, e.g. `-home-harnessed-<relpath>`) becomes illegible and *changes between runs*, so host-persisted sessions don't reconnect — continuity breaks. Worse, if `session_state: host` writes into the host's own `~/.claude/projects/`, instance sessions pollute the user's personal Claude history.
@@ -264,7 +241,7 @@ Phase 3 (isolated state/session layout) with the host-scope decision; verify pat
 
 ---
 
-### Pitfall 12: Non-interactive build prompts instead of warn-and-skip
+### Pitfall 11: Non-interactive build prompts instead of warn-and-skip
 
 **What goes wrong:**
 `harnessed build` blocks on an interactive prompt — typically asking for a missing scanner token (snyk/Socket.dev), or worse, accepting a typed token that then risks landing in a repo/layer. Any prompt breaks CI and the nightly re-scan timer, which run headless.
@@ -293,14 +270,13 @@ Shortcuts that seem reasonable but create long-term problems.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| rw-bind-mount `~/.claude.json` instead of copy-on-start/`CLAUDE_CONFIG_DIR` | One less file to manage; "it just works" | Host config corruption + container/host state bleed (Pitfall 2) | **Never** |
-| Hardcode in-container paths in `-v` sources | Quick to write, runs on the author's box | Breaks for every other user / DooD path mismatch (Pitfall 1) | **Never** |
+| rw-bind-mount `~/.claude.json` instead of copy-on-start/`CLAUDE_CONFIG_DIR` | One less file to manage; "it just works" | Host config corruption + container/host state bleed (Pitfall 1) | **Never** |
 | Last-wins on recipe name collisions | Build always "succeeds" | Silent wrong-capability instances; the host-merge failure returns | **Never** (only as documented per-stack opt-in) |
-| Skip the empirical onboarding-stub test, copy fields from a blog | Faster isolated-mode bring-up | Breaks on the next Claude release; CI hangs (Pitfall 3) | MVP only, with a snapshot test backstop |
-| Use the rootful podman socket to dodge permission errors | Immediate connectivity | Grants host-root container control; violates rootless design | **Never** |
-| Bake scanner token into the tools image to "make scans pass" | Scans run everywhere with no env wiring | Secret in image history forever (Pitfall 8) | **Never** |
-| Loose/unset `minimumReleaseAge` to stop quarantine-blocked builds | Green builds today | Reopens the supply-chain window the policy exists to close (Pitfall 7) | Only with a documented, deliberate window value |
-| Persist sessions into host `~/.claude/projects/` | Zero extra plumbing; full host continuity | Instance sessions pollute personal history; can't tell apart (Pitfall 11) | Only if the user explicitly wants host continuity |
+| Skip the empirical onboarding-stub test, copy fields from a blog | Faster isolated-mode bring-up | Breaks on the next Claude release; CI hangs (Pitfall 2) | MVP only, with a snapshot test backstop |
+| Use rootful podman to dodge permission errors | Immediate "it works" | Grants host-root container control; violates rootless design | **Never** |
+| Bake scanner token into the tools image to "make scans pass" | Scans run everywhere with no env wiring | Secret in image history forever (Pitfall 7) | **Never** |
+| Loose/unset `minimumReleaseAge` to stop quarantine-blocked builds | Green builds today | Reopens the supply-chain window the policy exists to close (Pitfall 6) | Only with a documented, deliberate window value |
+| Persist sessions into host `~/.claude/projects/` | Zero extra plumbing; full host continuity | Instance sessions pollute personal history; can't tell apart (Pitfall 10) | Only if the user explicitly wants host continuity |
 | Assembler unit tests instead of integration capability test | Pinpoint failures | Couples to implementation, breaks on refactor (design §18 anti-pattern) | **Never** (design decision) |
 
 ## Integration Gotchas
@@ -309,7 +285,7 @@ Common mistakes when connecting to external services.
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Rootless podman socket (DooD) | `-v` source taken from tools-container view; socket assumed always present | Build sources from host `HOME`/`PWD` env; detect+enable `podman.socket`, set `DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`, recommend `loginctl enable-linger` |
+| Host podman (build + run) | Assuming a mounted daemon socket / Docker-out-of-Docker is needed | The `harnessed-tools` container only *emits* files (Dockerfile + context + launcher); the **host** runs `podman build` and the generated `~/.local/bin/<stack>` launcher natively — no socket, no `DOCKER_HOST`; ensure rootless podman is configured and `loginctl enable-linger` for long-lived service pods |
 | hatago MCP hub | Wiring stdio servers as HTTP URLs / double-wrapping network-native services | Declare `transport` per server; bake light stdio servers as hatago children (stdio→HTTP), proxy heavy services by URL; one endpoint `http://localhost:<p>/mcp` |
 | Claude Code auth | Mounting `~/.claude.json` for "auth" | Auth is `~/.claude/.credentials.json` (mount ro); `.claude.json` is state — stub it (isolated) or copy/relocate it (transparent) |
 | 1Password `op` in container | Relying on the desktop app-auth socket inside the container | Use `OP_SERVICE_ACCOUNT_TOKEN` (env), or resolve on the host and pass resolved env in; keep varlock inert without a schema |
@@ -338,7 +314,7 @@ Domain-specific security issues beyond general web security.
 |---------|------|------------|
 | Secret in image layer / committed profile | Permanent leak via image history or git clone | Env-only injection; ro credential mounts; layer/profile secret-scan guard (Pitfall 8) |
 | Disabling/loosening pnpm supply-chain controls | Compromised newly-published dep installed immediately; malicious postinstall runs | Keep `minimumReleaseAge` window + `onlyBuiltDependencies` deny-by-default; flag raw npm/npx |
-| Falling back to rootful podman socket | Container gains host-root control | Stay rootless; detect+enable user socket; document scope honestly |
+| Falling back to rootful podman | Container gains host-root control | Stay rootless on the host; document scope honestly |
 | Skipping the build-time scan gate | High-severity CVE ships in an image | `osv-scanner`+`pip-audit` always run and fail on high severity; nightly re-scan of installed images |
 | `yolo`/skip-permissions config leaking to transparent/host | Unsandboxed harness on the real host | `permissions: yolo` only writes into the **isolated** profile; never applied in transparent/host context |
 | Mounting host `~/.ssh`/gnupg rw or broad host dirs into isolated | Container can alter host keys/identity | Keep host-integration mounts ro (`~/.ssh`, git config, gnupg per §4a); least-privilege device passthrough |
@@ -350,8 +326,8 @@ Common user experience mistakes in this domain.
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Silent first-run build | Looks hung; user kills it, corrupts cache | Progress banner + ETA; prebuilt image; resumable build (Pitfall 10) |
-| Raw socket/stack-trace errors | User can't tell what to fix | Actionable messages (exact `systemctl --user enable --now podman.socket` line) |
+| Silent first-run build | Looks hung; user kills it, corrupts cache | Progress banner + ETA; prebuilt image; resumable build (Pitfall 9) |
+| Raw podman/build stack-trace errors | User can't tell what to fix | Actionable messages (e.g. "install podman" / the exact rootless-setup line), never a raw stack trace |
 | Illegible/unstable session slug | "New session every time"; lost continuity | Stable `/home/harnessed/<relpath>` mount → legible deterministic slug |
 | Build aborts with bare "conflict" | User doesn't know which recipes clashed | Name both recipes + the colliding path; show `✗ (sync conflict)` in capability report |
 | Interactive token prompt in build | Breaks CI/nightly; encourages pasting secrets | Warn-and-skip; separate `harnessed auth snyk|socket` once |
@@ -363,7 +339,6 @@ Common user experience mistakes in this domain.
 Things that appear complete but are missing critical pieces.
 
 - [ ] **Isolated launch:** Often missing the empirical no-prompt proof — verify a `--fresh` headless run reaches the harness with **zero** onboarding/login prompts (not just "it launched").
-- [ ] **DooD mounts:** Often missing host-path correctness — `podman inspect` the instance and confirm every mount source is host-absolute (`/home/<you>/...`), not the tools-container view.
 - [ ] **MCP wiring:** Often missing real connectivity — assert `hatago://servers` / `claude mcp list` shows every manifest-declared server **connected**, not just present in `.mcp.json`.
 - [ ] **pnpm policy:** Often missing actual enforcement — confirm `pnpm ls`/lockfile (no npm globals), `minimumReleaseAge` set in minutes, and `onlyBuiltDependencies` allowlist applied.
 - [ ] **Supply-chain gate:** Often missing the failure path — confirm a seeded high-severity dep actually **fails** the build, and a missing scanner token **warns-and-skips** (no prompt) under no-TTY.
@@ -381,12 +356,11 @@ When pitfalls occur despite prevention, how to recover.
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
 | `~/.claude.json` corrupted by rw mount | MEDIUM | Restore from `~/.claude/backups/*.backup.*`; switch to copy-on-start/`CLAUDE_CONFIG_DIR`; audit for state bleed |
-| DooD mounts pointing at wrong root | LOW | Fix the mount helper to use host `HOME`/`PWD`; recreate the pod (mounts are fixed at creation) |
 | Onboarding re-prompts in isolated | LOW | Add `hasCompletedOnboarding`+identity fields; re-test headless; snapshot the working stub |
 | Recipe name collision shipped silently | MEDIUM | Switch to fail-fast; rebuild; rename one recipe's capability or namespace it; re-run capability test |
 | Secret leaked into image/profile | HIGH | Rotate the secret immediately; purge image layers + rewrite git history (BFG/filter-repo); add the scan guard |
 | Supply-chain: malicious dep installed | HIGH | Pin/rollback the dep; raise `minimumReleaseAge`; re-scan all installed images (nightly job); rebuild affected stacks |
-| Podman socket not enabled / lost after reboot | LOW | `systemctl --user enable --now podman.socket`; `loginctl enable-linger`; re-export `DOCKER_HOST` |
+| Rootless podman not configured / service pods lost after reboot | LOW | Add `subuid`/`subgid` ranges; `loginctl enable-linger` so long-lived service pods survive logout |
 | Sessions polluting host `~/.claude` | MEDIUM | Move persistence to harnessed-owned dir; clean stray host project entries; remount at stable path |
 | 1Password resolution failing in container | LOW | Provision a service-account token, inject as `OP_SERVICE_ACCOUNT_TOKEN`; or resolve on host and pass env |
 | Corrupted first-run image cache | LOW | `harnessed build --build` (forced rebuild) / remove the partial image and rerun |
@@ -397,18 +371,17 @@ How roadmap phases should address these pitfalls.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| DooD bind paths (1) | Phase 1 — bootstrap + tools image | `podman inspect` shows host-absolute mount sources; instance sees real project/profile |
-| Rootless socket / scope (4) | Phase 1 — bootstrap | Socket auto-detected/enabled; `DOCKER_HOST` set; runs survive reboot with lingering |
-| First-run build latency (10) | Phase 1 — bootstrap | Progress banner shown; second run is a cache hit; canceled build recovers cleanly |
-| `~/.claude.json` race (2) | Phase 2 — transparent mode port | Host `.claude.json` byte-identical after a run; no new `*.backup.*` from container |
-| Onboarding stub fields (3) | Phase 3 — isolated auth seeding | `--fresh` headless run: zero prompts; stub snapshot test green |
-| Session slug / host pollution (11) | Phase 3 — isolated state layout | Stable legible slug; sessions reconnect; nothing in host `~/.claude` |
-| MCP transport mismatch (5) | Phase 4 — pod + hatago | `hatago://servers` / `claude mcp list` shows all declared servers connected |
-| Recipe name collisions (6) | Phase 5 — assembler | Negative test: dup name fails build, both recipes named; report shows `✗ (sync conflict)` |
-| pnpm via mise + tuning (7) | Phase 5 — supply-chain policy | pnpm-only install graph; documented window + allowlist; native build succeeds |
-| Non-interactive build / warn-skip (12) | Phase 5 — scan gate | No-TTY build: missing token warns+skips; high-severity dep fails build |
-| Secrets in layers/profiles (8) | Phase 3 + Phase 5 | Profile + image-layer secret scan finds nothing; creds env-only at runtime |
-| 1Password in-container (9) | Phase 6 — secrets (varlock/op) | Service-account-token resolution succeeds in container; inert without schema |
+| Rootless podman host setup (3) | Phase 1 — bootstrap | Podman present + rootless usable (subuid/subgid); long-lived service pods survive reboot with lingering |
+| First-run build latency (9) | Phase 1 — bootstrap | Progress banner shown; second run is a cache hit; canceled build recovers cleanly |
+| `~/.claude.json` race (1) | Phase 2 — transparent mode port | Host `.claude.json` byte-identical after a run; no new `*.backup.*` from container |
+| Onboarding stub fields (2) | Phase 3 — isolated auth seeding | `--fresh` headless run: zero prompts; stub snapshot test green |
+| Session slug / host pollution (10) | Phase 3 — isolated state layout | Stable legible slug; sessions reconnect; nothing in host `~/.claude` |
+| MCP transport mismatch (4) | Phase 4 — pod + hatago | `hatago://servers` / `claude mcp list` shows all declared servers connected |
+| Recipe name collisions (5) | Phase 5 — assembler | Negative test: dup name fails build, both recipes named; report shows `✗ (sync conflict)` |
+| pnpm via mise + tuning (6) | Phase 5 — supply-chain policy | pnpm-only install graph; documented window + allowlist; native build succeeds |
+| Non-interactive build / warn-skip (11) | Phase 5 — scan gate | No-TTY build: missing token warns+skips; high-severity dep fails build |
+| Secrets in layers/profiles (7) | Phase 3 + Phase 5 | Profile + image-layer secret scan finds nothing; creds env-only at runtime |
+| 1Password in-container (8) | Phase 6 — secrets (varlock/op) | Service-account-token resolution succeeds in container; inert without schema |
 | Capability drift (all) | Phase 8 — capability test/report | Per-stack markdown report matches manifest oracle; `--fresh` no state bleed |
 
 ## Sources
@@ -416,8 +389,7 @@ How roadmap phases should address these pitfalls.
 - pnpm — *Mitigating supply chain attacks* (`minimumReleaseAge`, `onlyBuiltDependencies`, store integrity): <https://pnpm.io/supply-chain-security>; *pnpm in 2025* (v10 "security by default", lifecycle scripts no longer implicitly trusted): <https://pnpm.io/blog/2025/12/29/pnpm-in-2025>; *pnpm 11.0 supply-chain defaults*: <https://blog.ogwilliam.com/post/pnpm-11-supply-chain-security.html>; min-age window guidance (1440–2880 min): <https://gajus.com/blog/3-pnpm-settings-to-protect-yourself-from-supply-chain-attacks>, <https://github.com/pnpm/pnpm/issues/9921>
 - hatago MCP Hub — transport independence (stdio/Streamable HTTP/SSE/WebSocket), unified catalog: <https://dev.to/himorishige/getting-started-with-multi-mcp-using-hatago-mcp-hub-one-config-to-connect-them-all-2bjp>; repo + `serve --http --port 3535` `/mcp` endpoint: <https://github.com/himorishige/hatago-mcp-hub>, <https://www.npmjs.com/package/@himorishige/hatago-mcp-hub>; stdio→HTTP wrapping rationale: <https://github.com/pyroprompts/mcp-stdio-to-streamable-http-adapter>
 - Claude Code config — `CLAUDE_CONFIG_DIR` relocation + containerized `.claude.json` location bug/workaround: <https://github.com/anthropics/claude-code/issues/14313>, <https://github.com/anthropics/claude-code/issues/3833>, <https://code.claude.com/docs/en/claude-directory>, <https://ccusage.com/guide/custom-paths>; onboarding skip (`hasCompletedOnboarding`, minimal-stub, `firstStartTime`/`numStartups`): <https://www.vellum.ai/skills/headless-claude-code>, <https://github.com/tfvchow/field-notes-public/issues/10>, <https://github.com/anthropics/claude-code/issues/29029>, <https://jedi.be/blog/2025/automating-claude-code-configuration/>
-- Rootless podman socket — enable user socket, `DOCKER_HOST`, lingering: <https://docs.podman.io/en/latest/markdown/podman-system-service.1.html>, <https://man.archlinux.org/man/podman-system-service.1.en>, <https://oneuptime.com/blog/post/2026-03-18-enable-podman-socket-rootless-users/view>, <https://access.redhat.com/solutions/7011472>
-- Docker-out-of-Docker bind mounts resolve on the daemon host: <https://docs.docker.com/engine/storage/bind-mounts/>, <https://stackoverflow.com/questions/39151188/is-there-a-way-to-start-a-sibling-docker-container-mounting-volumes-from-the-hos>
+- Rootless podman — rootless mode and `loginctl enable-linger` (user-session lingering for long-lived pods): <https://docs.podman.io/en/latest/markdown/podman-system-service.1.html>, <https://man.archlinux.org/man/podman-system-service.1.en>, <https://oneuptime.com/blog/post/2026-03-18-enable-podman-socket-rootless-users/view>, <https://access.redhat.com/solutions/7011472>
 - 1Password in containers — app-auth socket unsupported inside containers, use service-account token (`OP_SERVICE_ACCOUNT_TOKEN`): <https://www.nodejs-security.com/blog/mitigate-supply-chain-security-with-devcontainers-and-1password-for-nodejs-local-development>, <https://1password.com/blog/1password-service-accounts>, <https://www.mackorone.com/2023/12/06/1password-service-accounts.html>
 - mise npm/pnpm backend — `npm.package_manager` setting, `pnpm:` backend: <https://mise.jdx.dev/dev-tools/backends/npm.html>, <https://github.com/jdx/mise/discussions/4879>, <https://github.com/michaelprowacki/mise-pnpm>
 - Credential-free scanners — osv-scanner ("no account required, no usage limits"), pip-audit (public OSV/PyPI): <https://github.com/google/osv-scanner>, <https://appsecsanta.com/osv-scanner>, <https://pypi.org/project/pip-audit/>
