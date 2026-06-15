@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# container — back-compat alias → `harnessed transparent` (design §14 / D-07).
+#
+# Preserves existing muscle memory. All behavior lives in `harnessed`; this just forwards args
+# (path + flags like --claude / --zai / --build / --list / --stop / --remove / --clean / --no-firewall)
+# to the transparent stack.
+
+SCRIPT_PATH="$0"
+while [ -L "$SCRIPT_PATH" ]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+exec "$SCRIPT_DIR/harnessed" transparent "$@"
