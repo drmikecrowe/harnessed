@@ -29,12 +29,14 @@ host config — reproducibly, with podman as the only host dependency.
 - ✓ Host-mirror sandbox: bind-mount host `~/.claude` (+ `.codex`/`.opencode`/`.gemini`), project, and host auth into an isolated container — existing (`container.sh`)
 - ✓ Host-integration mount layer: 1Password SSH agent, GPG/YubiKey signing, `~/.ssh` (ro), git config (ro), egress firewall, project mount — existing (`container.sh` `start_new_container`)
 - ✓ Installer + PATH symlink + image build/list/stop/remove/clean lifecycle — existing (`install.sh`, `container.sh`)
+- ✓ `harnessed transparent` + `container` alias: host-mirror sandbox via the host-native harnessed engine (bash bootstrap + base/claude images, `podman build` on the host) — Phase 1
+- ✓ `~/.claude.json` corruption fixed: per-instance copy-on-start (host whole-file blob never rw-bind-mounted) — Phase 1
 
 ### Active
 
 <!-- New `harnessed` scope. Hypotheses until shipped and validated. -->
 
-- [ ] One `harnessed` engine with two config modes: `transparent` (host-mirror, the old `container`) and `isolated` (auth seeded + composed profile, zero host config)
+- [ ] One `harnessed` engine with two config modes: `transparent` (host-mirror, the old `container`) and `isolated` (auth seeded + composed profile, zero host config) — transparent ✓ (P1); isolated → P2
 - [ ] Runtime stack composition as a podman pod: harness container + hatago MCP hub on a shared network (`harnessed-net`)
 - [ ] hatago MCP hub aggregating a stack's MCP servers behind one HTTP endpoint; light `pnpm dlx`/`uvx` stdio servers baked as hatago children
 - [ ] Shared, service-scoped sidecars (hindsight, openbrain) — own image/volume/lifecycle, concurrently attachable by multiple instances
@@ -47,8 +49,7 @@ host config — reproducibly, with podman as the only host dependency.
 - [ ] omp harness support via `claude-hooks-bridge` + pi-adapter (Claude format is canonical; one harness per stack)
 - [ ] State & lifecycle: persistent by default, `--fresh` for throwaway; service volumes service-scoped; harness session state (`projects/` + `history.jsonl`) persisted host-side by default
 - [ ] CLI surface: `harnessed <stack> [path]`, `build`, `install`/`uninstall` (launcher shim), `new`, `list`, `stop`, `rm`, `svc up/down/list`, `auth snyk|socket`, `--fresh`
-- [ ] Containerized tooling, host runs podman natively (no Docker-out-of-Docker): thin dependency-free `harnessed` bash bootstrap + `harnessed-tools` assembler image that emits files; host `podman build` builds the images; a generated `~/.local/bin/<stack>` host-bash launcher runs the pod
-- [ ] `container` retained as a thin alias → `harnessed transparent`
+- [ ] Containerized tooling, host runs podman natively (no Docker-out-of-Docker): thin dependency-free `harnessed` bash bootstrap + `harnessed-tools` assembler image that emits files; host `podman build` builds the images; a generated `~/.local/bin/<stack>` host-bash launcher runs the pod — bootstrap + host `podman build` ✓ (P1); assembler image → P2
 - [ ] Documentation as gated deliverable: README, design doc, recipe-authoring guide, stack guide, secrets setup, service authoring, troubleshooting/ops
 - [ ] Integration-only capability test per stack: build → run `--fresh` headless → assert declared MCP/skills/commands present → render a markdown capability report
 
@@ -101,7 +102,7 @@ host config — reproducibly, with podman as the only host dependency.
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| One engine, two config modes (`transparent`/`isolated`) | Same base image/mounts/auth; differ only on config source — minimal surface, `transparent` = old `container` | — Pending |
+| One engine, two config modes (`transparent`/`isolated`) | Same base image/mounts/auth; differ only on config source — minimal surface, `transparent` = old `container` | ✓ transparent shipped (P1); isolated pending |
 | Per-container merge, not host merge | Isolation removes the collision that killed the host-merge attempt | — Pending |
 | Compose stacks at runtime in a podman pod | `FROM` can't union two sibling systems; runtime pod can | — Pending |
 | hatago in the pod over HTTP (not stdio in harness container) | Keeps `npx`/`uvx` out of the harness container; one MCP endpoint | — Pending |
@@ -110,10 +111,11 @@ host config — reproducibly, with podman as the only host dependency.
 | Hand-authored recipes assembled ahead of time (not dynamic) | Reproducible, committed artifacts; "not dynamic" | — Pending |
 | Split output: committed→mounted profile (files) + baked→images (MCP deps) | Editable/versioned extensions; clean/pinned host | — Pending |
 | pnpm everywhere with managed supply-chain config | Quarantine new releases, deny lifecycle scripts, store integrity | — Pending |
-| `harnessed-tools` is a file-emitting assembler; host runs podman build/run | Only host dep is podman/docker; avoids DooD (no socket, no host-path footgun, clean TTY) | — Pending |
+| `harnessed-tools` is a file-emitting assembler; host runs podman build/run | Only host dep is podman/docker; avoids DooD (no socket, no host-path footgun, clean TTY) | ✓ host-native transparent shipped (P1) |
 | Default persistent, `--fresh` to wipe | Accumulation is the value of memory systems; `--fresh` for clean-room runs | — Pending |
 | Integration-only testing, manifest as oracle | Tests survive refactors; capability report doubles as user artifact | — Pending |
 | varlock + 1Password optional (opt-in) | Works fully without it; copy `.env.schema.example` to turn on | — Pending |
+| Bash launchers run under `set -euo pipefail`; fallible probes use `local var=$(…)` or `\|\| true` | A bare `var=$(pipeline)` aborts the launcher when the pipeline fails (e.g. YubiKey/jq probe with no match) — caught live in P1 | ✓ Good (P1 bugfix `a963a69`) |
 
 ## Evolution
 
@@ -133,4 +135,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-14 after initialization*
+*Last updated: 2026-06-14 after Phase 1 (Containerized Engine + Transparent Stack)*
