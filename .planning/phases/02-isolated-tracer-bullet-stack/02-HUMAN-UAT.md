@@ -55,6 +55,12 @@ note: |
   `claude -p` → {"subtype":"success","is_error":false,"result":"READY"} — NO onboarding/login
   prompt; `time` MCP connected via hatago. Candidate stub field set CONFIRMED sufficient
   (hasCompletedOnboarding, firstStartTime, numStartups, oauthAccount, userID).
+  FOLLOW-UP (operator interactive use, fixed in 57b13b9): in the interactive `--fresh` session the
+  `time` MCP was NOT loaded and `claude mcp list` showed the user's claude.ai account-synced
+  servers (isolation leak). Root cause: claude doesn't read `~/.claude/.mcp.json`, and the entry
+  lacked `type: http`. Fix: emit `type: http`; launch claude with `--mcp-config <profile .mcp.json>
+  --strict-mcp-config` (loads ONLY hatago, ignores account/project/user MCP). Validated: claude in
+  the instance CALLS `mcp__hatago__time_get_current_time` → returns the time, is_error=false.
 
 ### 3. Assert-green leg — `harnessed test tracer-time` (02-03 gate, Phase 2 success criteria)
 expected: |

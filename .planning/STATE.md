@@ -5,7 +5,7 @@ milestone_name: milestone
 status: executing
 stopped_at: Phase 02 complete + verified (passed); Phase 03 ready
 last_updated: "2026-06-15T11:23:57.101Z"
-last_activity: 2026-06-15 -- Phase 02 verified PASSED (all 3 gates green); Phase 03 ready
+last_activity: 2026-06-15 -- Phase 02 verified PASSED (all 3 gates green) + post-close fix: isolated claude loads only profile hatago MCP (no account leak); Phase 03 ready
 progress:
   total_phases: 5
   completed_phases: 2

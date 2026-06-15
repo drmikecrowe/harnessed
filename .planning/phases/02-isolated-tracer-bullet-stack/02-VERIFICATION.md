@@ -111,3 +111,19 @@ All three blocking gates were executed green on a host with rootless podman + re
 ---
 *Verified: 2026-06-15 (static) + live gate execution*
 *Verifier: Claude (subagent VerifyP2) + orchestrator live finalization*
+
+## Post-completion fix (operator interactive use)
+
+After phase close, the operator ran the **interactive** `./harnessed tracer-time --fresh` and found
+the `time` MCP server was not loaded (so the skill failed), while `claude mcp list` showed the
+user's claude.ai **account-synced** MCP servers — an isolation leak. The headless capability test
+stayed green because it checks the **hatago endpoint** directly, not whether **claude** loads it
+(endpoint-exposure vs claude-integration are distinct layers).
+
+Root cause: claude does not read a profile-only `~/.claude/.mcp.json`, and the entry lacked
+`type: http`. Fix (`57b13b9`): emit `type: http`; launch claude with
+`--mcp-config <profile .mcp.json> --strict-mcp-config` (loads ONLY the profile's hatago endpoint,
+ignoring account/project/user MCP sources); the capability test's claude backstops use the same
+strict flags and the `claude mcp list` tier was dropped (it ignores `--mcp-config`). Validated:
+claude in the isolated instance CALLS `mcp__hatago__time_get_current_time` and returns the time
+(`is_error=false`); account-synced servers no longer appear; capability test remains green.
