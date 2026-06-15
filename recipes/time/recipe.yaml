@@ -1,0 +1,28 @@
+# Recipe: time — a network-free, credential-free time/timezone MCP server + a no-dep skill.
+#
+# This is the tracer-bullet recipe (design §11 / D-01..D-03): exactly ONE light stdio MCP
+# server (run as a hatago child, stdio→HTTP) and ONE standalone skill shipped by the recipe.
+# No `plugins:` vendoring and no `deps:` — so no dependency install and no supply-chain scan
+# are needed this phase (those land in Phase 3).
+#
+# Only the fields the tracer bullet exercises are required; the assembler parses the rest
+# forward (D-14), so future recipes may add `plugins`, `deps`, `hooks`, etc.
+name: time
+description: Time and timezone queries via the network-free uvx mcp-server-time stdio MCP server.
+
+# --- MCP layer ---
+# `transport: stdio` is explicit (RESEARCH Pitfall B): a stdio server is wrapped by hatago as a
+# child (stdio→HTTP). The harness never speaks to this command directly — it reaches hatago's
+# single Streamable-HTTP endpoint, and hatago spawns this command.
+mcp:
+  servers:
+    - name: time
+      command: uvx
+      args: [mcp-server-time]
+      transport: stdio
+
+# --- File-extension layer (Claude-canonical) ---
+# A STANDALONE skill dir shipped by this recipe (not a vendored plugin). The assembler fans it
+# into the harness-native profile path (.claude/skills/time-helper) and fails fast on collision.
+skills:
+  - path: skills/time-helper
