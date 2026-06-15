@@ -17,10 +17,12 @@ ARG UV_VERSION=0.11.8
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
 
 # --- hatago MCP hub, pinned (pnpm global; NEVER npm/npx) -------------------------------
+# pnpm's global bin dir is $PNPM_HOME/bin (a subdir); it must be on PATH or `pnpm add -g`
+# aborts with "global bin directory … is not in PATH". Pre-create it for determinism.
 ENV PNPM_HOME="/home/harnessed/.local/share/pnpm"
-ENV PATH="${PNPM_HOME}:${PATH}"
+ENV PATH="${PNPM_HOME}/bin:${PATH}"
 ARG HATAGO_VERSION=0.0.16
-RUN pnpm add -g "@himorishige/hatago-mcp-hub@${HATAGO_VERSION}"
+RUN mkdir -p "$PNPM_HOME/bin" && pnpm add -g "@himorishige/hatago-mcp-hub@${HATAGO_VERSION}"
 
 # --- Bake the light stdio server (pinned) so `uvx mcp-server-time` runs offline ---------
 ARG MCP_SERVER_TIME_VERSION=2026.6.4
