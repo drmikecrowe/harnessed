@@ -31,6 +31,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -47,6 +48,8 @@ HATAGO_ENDPOINT = "http://localhost:3535/mcp"
 HATAGO_SERVERS_URI = "hatago://servers"
 # In-container harness home → the mounted profile lives at $CONTAINER_HOME/.claude (launcher §4b).
 CONTAINER_HOME = os.environ.get("CONTAINER_HOME", "/home/harnessed")
+# hatago's HTTP port inside the pod (the readiness signal: bound ⇒ children connected).
+HATAGO_PORT = int(os.environ.get("HATAGO_PORT", "3535"))
 
 
 class CapabilityError(Exception):
@@ -202,10 +205,12 @@ def launch_headless(
     launcher's "Isolated pod running headless: <instance>" success line.
     """
     bin_path = _harnessed_bin(harnessed_bin)
-    cleanup_project = False
     if project_path is None:
+        # No caller-supplied project: make a scratch dir. The CALLER owns its lifetime — it is the
+        # pod's project bind-mount and MUST persist until teardown. Deleting it while the pod runs
+        # breaks `podman exec` (crun getcwd EPERM). run_capability_test manages cleanup after
+        # teardown; direct callers must do the same.
         project_path = tempfile.mkdtemp(prefix=f"harnessed-test-{stack_name}-")
-        cleanup_project = True
 
     env = {**os.environ, "HARNESSED_HEADLESS": "true"}
     try:
@@ -218,10 +223,6 @@ def launch_headless(
         )
     except (subprocess.SubprocessError, OSError) as exc:
         raise CapabilityError(f"headless launch failed to start: {exc}") from exc
-    finally:
-        if cleanup_project:
-            # The project mount is read at compose; the scratch dir is no longer needed.
-            shutil.rmtree(project_path, ignore_errors=True)
 
     combined = f"{proc.stdout}\n{proc.stderr}"
     match = re.search(r"Isolated pod running headless:\s+(\S+)", combined)
@@ -246,6 +247,30 @@ def teardown(instance: str, *, harnessed_bin: str | None = None) -> None:
         )
     except (subprocess.SubprocessError, OSError):
         pass
+
+
+def wait_ready(instance: str, *, port: int = HATAGO_PORT, timeout: int = 60) -> bool:
+    """Poll until the harness member is exec-ready AND hatago's HTTP port is bound.
+
+    hatago needs a few seconds to boot and connect its stdio children before it binds
+    :<port>; introspecting before then yields false negatives (the MCP probe finds nothing
+    and the filesystem skill probe can race a not-yet-exec-ready member). Returns True once a
+    TCP connect to 127.0.0.1:<port> from inside the pod succeeds, False on timeout.
+    """
+    deadline = time.monotonic() + timeout
+    probe = f'timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/{port}" 2>/dev/null'
+    while time.monotonic() < deadline:
+        try:
+            proc = subprocess.run(
+                [_runtime(), "exec", instance, "bash", "-lc", probe],
+                capture_output=True, text=True, timeout=10,
+            )
+        except (subprocess.SubprocessError, OSError):
+            proc = None
+        if proc is not None and proc.returncode == 0:
+            return True
+        time.sleep(1)
+    return False
 
 
 # --- MCP introspection: hatago resource (primary) → claude mcp list → LLM backstop ---------------
@@ -459,12 +484,24 @@ def run_capability_test(
     Returns the single structured `CapabilityReport` that drives both the report and the exit code.
     """
     expected = expected_capabilities(root, stack_name)
-    instance = launch_headless(
-        root, stack_name, project_path=project_path, harnessed_bin=harnessed_bin
-    )
+
+    # Own the scratch project dir for the WHOLE test: it is the pod's project bind-mount and must
+    # outlive launch→introspect→teardown (deleting it mid-run breaks `podman exec`). A caller-
+    # supplied project_path is left untouched.
+    own_project = project_path is None
+    if own_project:
+        project_path = tempfile.mkdtemp(prefix=f"harnessed-test-{stack_name}-")
     try:
-        live = introspect(instance)
+        instance = launch_headless(
+            root, stack_name, project_path=project_path, harnessed_bin=harnessed_bin
+        )
+        try:
+            wait_ready(instance)
+            live = introspect(instance)
+        finally:
+            if not keep:
+                teardown(instance, harnessed_bin=harnessed_bin)
     finally:
-        if not keep:
-            teardown(instance, harnessed_bin=harnessed_bin)
+        if own_project and not keep:
+            shutil.rmtree(project_path, ignore_errors=True)
     return build_report(stack_name, expected, live)

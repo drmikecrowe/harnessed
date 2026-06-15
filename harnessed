@@ -139,15 +139,26 @@ if [ "$TEST" = true ]; then
     fi
     # Ensure the harness/base images exist (the pod's harness member runs the capability probes).
     ensure_images
-    PYBIN="${HARNESSED_PYTHON:-python3}"
-    if ! command -v "$PYBIN" >/dev/null 2>&1; then
-        print_error "harnessed test needs a host python3 with ruamel.yaml + rich (set HARNESSED_PYTHON)"
+    # The host-side test needs ruamel.yaml + rich. Resolution order (keeps the persistent host
+    # dependency surface at "podman only"):
+    #   1. HARNESSED_PYTHON override — an interpreter the operator guarantees has the deps.
+    #   2. uv (ephemeral --with deps; no host-python pollution) — preferred.
+    #   3. a host python3 that already imports ruamel.yaml + rich.
+    # set -e would abort on a red result; capture the status and propagate it as the exit code.
+    test_rc=0
+    run_env=(PYTHONPATH="$HARNESSED_DIR/tools" CONTAINER_RUNTIME="$CONTAINER_RUNTIME" HARNESSED_DIR="$HARNESSED_DIR")
+    if [ -n "${HARNESSED_PYTHON:-}" ]; then
+        env "${run_env[@]}" "$HARNESSED_PYTHON" -m harnessed.cli test "${TEST_ARGS[@]}" --root "$HARNESSED_DIR" || test_rc=$?
+    elif command -v uv >/dev/null 2>&1; then
+        env "${run_env[@]}" uv run --no-project --quiet --with ruamel.yaml --with rich \
+            python -m harnessed.cli test "${TEST_ARGS[@]}" --root "$HARNESSED_DIR" || test_rc=$?
+    elif command -v python3 >/dev/null 2>&1 && python3 -c 'import ruamel.yaml, rich' >/dev/null 2>&1; then
+        env "${run_env[@]}" python3 -m harnessed.cli test "${TEST_ARGS[@]}" --root "$HARNESSED_DIR" || test_rc=$?
+    else
+        print_error "harnessed test needs 'uv' (recommended) or a host python3 with ruamel.yaml + rich."
+        print_error "Install uv (https://astral.sh/uv) or run: pip install ruamel.yaml rich (or set HARNESSED_PYTHON)."
         exit 1
     fi
-    # set -e would abort on a red result; capture the test status and propagate it as the exit code.
-    test_rc=0
-    PYTHONPATH="$HARNESSED_DIR/tools" CONTAINER_RUNTIME="$CONTAINER_RUNTIME" HARNESSED_DIR="$HARNESSED_DIR" \
-        "$PYBIN" -m harnessed.cli test "${TEST_ARGS[@]}" --root "$HARNESSED_DIR" || test_rc=$?
     exit "$test_rc"
 fi
 if [ "$LIST" = true ]; then list_instances; exit 0; fi
