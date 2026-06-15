@@ -89,8 +89,8 @@ Plans:
 
 Plans:
 
-- [ ] 03-01: pnpm-everywhere managed config in the base image + recipe validation flagging raw npm/npx
-- [ ] 03-02: osv-scanner + pip-audit gate integrated into `harnessed build` (fail on high-severity)
+- [ ] 03-01: pnpm-everywhere managed config (BLD-01) — ship lib/pnpm/config.yaml, pin pnpm@11, route mise through pnpm, COPY config into base/hatago/tools/legacy images; correct design §7 + CLAUDE.md stale claims
+- [ ] 03-02: credential-free scan gate (BLD-02) + raw npm/npx recipe lint (BLD-03) — osv-scanner offline DB + pip-audit with a CVSS>=HIGH Python gate wired into build_stack (scoped source scan + host image scan); validate_no_raw_npm in the assembler fail-fast path
 
 ### Phase 4: Shared Services + Recipe Breadth + Full CLI
 
