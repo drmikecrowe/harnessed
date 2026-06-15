@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# harnessed — launch isolated, composable harness stacks.
+#
+# Host-native: podman/docker is the only host dependency. The host builds images
+# (`podman build`) and runs containers directly; there is NO daemon-in-container,
+# NO rootless API socket, and NO Docker-out-of-Docker (design §15).
+#
+# Phase 1 surface:
+#   harnessed transparent [path]   launch the host-mirror stack (today's `container`)
+#   harnessed [path]               default stack = transparent
+#   harnessed build | --build      (re)build the base/claude images
+#   harnessed --list               list harnessed instances
+#   harnessed --stop   [path]      stop the instance for a project
+#   harnessed --remove [path]      remove the instance for a project
+#   harnessed --clean              remove all stopped harnessed instances
+#   harnessed --no-firewall ...    skip the egress firewall for this run
+
+set -euo pipefail
+
+# Resolve this script's real directory (follow symlinks so a PATH symlink works).
+SCRIPT_PATH="$0"
+while [ -L "$SCRIPT_PATH" ]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
+HARNESSED_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+export HARNESSED_DIR
+
+# shellcheck source=lib/harnessed-common.sh
+. "$HARNESSED_DIR/lib/harnessed-common.sh"
+
+usage() {
+    cat <<'EOF'
+harnessed — launch isolated, composable harness stacks
+
+Usage:
+  harnessed [stack] [path]        Launch a stack (default stack: transparent)
+  harnessed transparent [path]    Host-mirror stack: live host config + project
+  harnessed build | --build       (Re)build the base/claude images
+  harnessed --list                List harnessed instances
+  harnessed --stop   [path]       Stop the instance for a project
+  harnessed --remove [path]       Remove the instance for a project
+  harnessed --clean               Remove all stopped harnessed instances
+  harnessed --no-firewall ...     Skip the egress firewall for this run
+  harnessed -h | --help           Show this help
+
+Podman (or docker) is the only host dependency.
+EOF
+}
+
+detect_runtime
+
+# --- Parse args ------------------------------------------------------------
+BUILD=false; LIST=false; STOP=false; REMOVE=false; CLEAN=false
+STACK="transparent"; PROJECT_PATH=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)      usage; exit 0 ;;
+        -b|--build|build) BUILD=true; shift ;;
+        -l|--list)      LIST=true; shift ;;
+        -s|--stop)      STOP=true; shift ;;
+        -r|--remove)    REMOVE=true; shift ;;
+        --clean)        CLEAN=true; shift ;;
+        --no-firewall)  NO_FIREWALL=true; export NO_FIREWALL; shift ;;
+        transparent)    STACK="transparent"; shift ;;
+        -*)             print_error "Unknown option: $1"; usage; exit 1 ;;
+        *)
+            if [ -z "$PROJECT_PATH" ]; then PROJECT_PATH="$1"
+            else print_error "Unexpected argument: $1"; usage; exit 1; fi
+            shift ;;
+    esac
+done
+
+# --- Image-only operations -------------------------------------------------
+if [ "$BUILD" = true ]; then build_images true; exit 0; fi
+if [ "$LIST" = true ]; then list_instances; exit 0; fi
+if [ "$CLEAN" = true ]; then clean_instances; exit 0; fi
+
+# --- Resolve project path → instance ---------------------------------------
+[ -z "$PROJECT_PATH" ] && PROJECT_PATH="$(pwd)"
+PROJECT_PATH="$(cd "$PROJECT_PATH" 2>/dev/null && pwd || echo "$PROJECT_PATH")"
+INSTANCE="$(generate_instance_name "$STACK" "$PROJECT_PATH")"
+
+if [ "$STOP" = true ]; then stop_instance "$INSTANCE"; exit 0; fi
+if [ "$REMOVE" = true ]; then remove_instance "$INSTANCE"; exit 0; fi
+
+# --- Launch the stack ------------------------------------------------------
+ensure_images
+
+case "$STACK" in
+    transparent)
+        # shellcheck source=lib/harnessed-transparent.sh
+        . "$HARNESSED_DIR/lib/harnessed-transparent.sh"
+        harnessed_transparent "$PROJECT_PATH"
+        ;;
+    *)
+        print_error "Unknown stack: $STACK"
+        usage
+        exit 1
+        ;;
+esac
