@@ -89,7 +89,7 @@ Plans:
 
 Plans:
 
-- [ ] 03-01: pnpm-everywhere managed config (BLD-01) — ship lib/pnpm/config.yaml, pin pnpm@11, route mise through pnpm, COPY config into base/hatago/tools/legacy images; correct design §7 + CLAUDE.md stale claims
+- [x] 03-01: pnpm-everywhere managed config (BLD-01) — ship lib/pnpm/config.yaml, pin pnpm@11, route mise through pnpm, COPY config into base/hatago/tools/legacy images; correct design §7 + CLAUDE.md stale claims
 - [ ] 03-02: credential-free scan gate (BLD-02) + raw npm/npx recipe lint (BLD-03) — osv-scanner offline DB + pip-audit with a CVSS>=HIGH Python gate wired into build_stack (scoped source scan + host image scan); validate_no_raw_npm in the assembler fail-fast path
 
 ### Phase 4: Shared Services + Recipe Breadth + Full CLI
@@ -143,6 +143,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Containerized Engine + Transparent Stack | 3/3 | Complete   | 2026-06-15 |
 | 2. Isolated Tracer-Bullet Stack | 3/3 | Complete    | 2026-06-15 |
-| 3. Supply-Chain Gate + pnpm-Everywhere | 0/2 | Not started | - |
+| 3. Supply-Chain Gate + pnpm-Everywhere | 1/2 | In Progress|  |
 | 4. Shared Services + Recipe Breadth + Full CLI | 0/3 | Not started | - |
 | 5. Secrets, Hardening + Docs Completeness | 0/2 | Not started | - |
