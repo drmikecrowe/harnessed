@@ -3,17 +3,16 @@ status: partial
 phase: 02-isolated-tracer-bullet-stack
 source: [02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md]
 started: 2026-06-15T10:40:00Z
-updated: 2026-06-15T10:40:00Z
+updated: 2026-06-15T11:10:00Z
 ---
 
 ## Current Test
 
-[testing paused — 3 items outstanding]
+[testing paused — 2 items outstanding]
 
-These are the three `checkpoint:human-verify gate="blocking"` gates from the Phase 2 plans.
-All implementation is complete and statically verified (see 02-VERIFICATION.md), but the
-runtime "assert green" legs require **host rootless podman + real Claude OAuth credentials**,
-which only the operator can run. Run them on a machine with podman + `claude login` done.
+Test 1 (build leg) PASSED after a fix (pnpm global bin dir `$PNPM_HOME/bin` was missing from
+PATH in `base/Dockerfile.hatago`). Tests 2 & 3 require **host rootless podman + real Claude OAuth
+credentials**, which only the operator can run. Run them on a machine with `claude login` done.
 
 ## Tests
 
@@ -26,7 +25,14 @@ expected: |
       `profiles/tracer-time/hatago.config.json` exist.
     - `hatago.config.json` lists the `time` server as a stdio child.
   Run: `./harnessed build tracer-time`
-result: [pending]
+result: pass
+note: |
+  Operator hit "pnpm add -g … exit status 1". Root cause: pnpm 11's global bin dir is
+  $PNPM_HOME/bin, but the Dockerfile put $PNPM_HOME on PATH → "global bin directory … is not in
+  PATH". Fixed in base/Dockerfile.hatago. Re-validated with real podman: containerized
+  `harnessed-tools assemble` (idempotent, committed profile byte-unchanged) + host
+  `podman build -f base/Dockerfile.hatago` both exit 0; hatago 0.0.16 + mcp-server-time baked
+  and resolvable; `hatago serve` supports --http/-p/--port/-c/--config.
 
 ### 2. Run leg — `harnessed tracer-time --fresh` headless no-prompt boot (02-02 gate, RESEARCH Pitfall A)
 expected: |
@@ -55,9 +61,9 @@ result: [pending]
 ## Summary
 
 total: 3
-passed: 0
+passed: 1
 issues: 0
-pending: 3
+pending: 2
 skipped: 0
 blocked: 0
 

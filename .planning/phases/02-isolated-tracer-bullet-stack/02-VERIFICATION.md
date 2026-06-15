@@ -2,7 +2,7 @@
 phase: 02-isolated-tracer-bullet-stack
 verified: 2026-06-15T00:00:00Z
 status: human_needed
-score: 8/12 plan must-have truths statically verified (4 are live-runtime → operator-gated; 0 failed)
+score: 9/12 plan must-have truths verified (3 remain live-runtime → operator-gated; 0 failed). Gate 1 (build) executed + fixed post-verification.
 ---
 
 # Phase 2: Isolated Tracer-Bullet Stack Verification Report
@@ -21,7 +21,7 @@ The three plans each close with a `checkpoint:human-verify gate="blocking"` that
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1-1 | `harnessed build <stack>` runs harnessed-tools (emit-only) then host `podman build`, producing `profiles/.../​.claude/` + `hatago.config.json` + emitted Dockerfile/launcher — nothing assembled at container start | ? NEEDS HUMAN | Wiring verified: `lib/harnessed-common.sh:88-105` `build_stack` → `ensure_tools_image` → `run --rm --userns=keep-id -v repo:repo … assemble` → host `podman build` of `base/Dockerfile.hatago`. EMIT reproducibility VERIFIED: `assemble tracer-time` into `/tmp/bd` then `diff -r profiles/tracer-time /tmp/bd/profiles/tracer-time` → byte-identical. The containerized run + host `podman build` need podman → operator-gated. |
+| 1-1 | `harnessed build <stack>` runs harnessed-tools (emit-only) then host `podman build`, producing `profiles/.../​.claude/` + `hatago.config.json` + emitted Dockerfile/launcher — nothing assembled at container start | ✓ VERIFIED | Executed end-to-end with real podman (post-verification, operator gate 1). Containerized `harnessed-tools assemble tracer-time --build-dir <repo>` (the exact `build_stack` run flags) → exit 0, committed profile byte-unchanged (idempotent). Host `podman build -f base/Dockerfile.hatago` → exit 0; hatago 0.0.16 + `mcp-server-time` baked + resolvable. NOTE: original build failed at `pnpm add -g` — pnpm 11's global bin dir is `$PNPM_HOME/bin`, not `$PNPM_HOME`; fixed PATH + pre-create in `base/Dockerfile.hatago`. |
 | 1-2 | The assembler fans the standalone skill into the profile AND fails the build (non-zero, both names) on a name collision | ✓ VERIFIED | Emit produced `profiles/tracer-time/.claude/skills/time-helper/SKILL.md` (byte-identical, copytree in `synclinks.py:66-75`). Crafted dup `time2` recipe shipping `time-helper`: `assemble dup` → exit 1, stderr names BOTH `recipes/time/skills/time-helper` and `recipes/time2/skills/time-helper` (`synclinks.py:56-63`, `assemble.py:_merge_servers` mirrors for MCP names). |
 | 1-3 | harnessed-tools never invokes podman/docker — only reads/writes the mounted build dir | ✓ VERIFIED | Shellout audit of `tools/harnessed/*.py`: `subprocess`/`os.system`/`Popen`/`import docker`/`import podman` present ONLY in `capability.py` (the host-native test driver added in 02-03, not the assembler). `assemble.py`/`schema.py`/`synclinks.py`/`emit.py`/`cli.py` are shellout-free. `harnessed` itself has no `CONTAINER_HOST`/`DOCKER_HOST`/`.sock`. |
 | 1-4 | `base/Dockerfile.hatago` bakes hatago hub + light stdio server (`uvx mcp-server-time`) so hatago runs it as a stdio→HTTP child | ✓ VERIFIED | `base/Dockerfile.hatago:11-34`: `FROM harnessed-base`, `pnpm add -g @himorishige/hatago-mcp-hub@0.0.16` (pinned, no npm/npx), `uv tool install mcp-server-time==2026.6.4` (pinned), `CMD ["hatago","serve","--http","--port","3535"]`. `hatago.config.json` declares `time` as a stdio child (`command:uvx`,`args:[mcp-server-time]`, no `url`). Live image build operator-gated. |
