@@ -61,6 +61,22 @@ def write_mcp_json(harness_dir: Path) -> Path:
     return out
 
 
+def write_settings_json(harness_dir: Path, servers: list[McpServer]) -> Path:
+    """Emit `.claude/settings.json` — pre-approve the hatago hub's MCP tools.
+
+    Without this, an interactive isolated session prompts for permission the first time it uses an
+    MCP tool, so a skill that drives (e.g.) the time server appears to "fail". The server-level
+    wildcard `mcp__<hub>` allows every tool hatago exposes — the hub's child tool names are only
+    known at runtime, so the hub-level grant is the static, assembler-knowable permission.
+    """
+    settings: dict = {}
+    if servers:
+        settings["permissions"] = {"allow": [f"mcp__{HATAGO_MCP_KEY}"]}
+    out = harness_dir / "settings.json"
+    _write_json(out, settings)
+    return out
+
+
 def _hatago_entry(server: McpServer) -> dict:
     """Map an MCP server to a hatago `mcpServers` entry (schema per hatago docs)."""
     if server.is_stdio_child:

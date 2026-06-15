@@ -119,6 +119,16 @@ harnessed_isolated() {
     # Egress firewall on the harness container (NET_ADMIN); shared pod netns → covers hatago too.
     apply_firewall "$instance"
 
+    # Wait for hatago to be ready before attaching: it connects its stdio children, fires
+    # tools/list_changed, THEN binds :$HATAGO_PORT (~a few seconds). Attaching claude before the
+    # port is up yields an empty/failed MCP connection for the session.
+    print_info "Waiting for hatago hub on :$HATAGO_PORT ..."
+    local _i
+    for _i in $(seq 1 30); do
+        "$CONTAINER_RUNTIME" exec "$instance" bash -lc "timeout 1 bash -c 'echo > /dev/tcp/127.0.0.1/$HATAGO_PORT'" >/dev/null 2>&1 && break
+        sleep 1
+    done
+
     # Headless (capability test, 02-03): leave the pod running for podman-exec introspection.
     if [ "$headless" = "true" ]; then
         print_success "Isolated pod running headless: $instance (hatago: ${instance}-hatago)"

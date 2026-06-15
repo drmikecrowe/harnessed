@@ -68,6 +68,7 @@ def assemble(root: Path, stack_name: str, build_dir: Path) -> AssembleResult:
     emit.ensure_profile_tree(harness_dir)
     syncer.fan(harness_dir)
     emit.write_mcp_json(harness_dir)
+    emit.write_settings_json(harness_dir, servers)
     emit.write_hatago_config(profile_dir, servers)
 
     baked = [s for s in servers if s.is_stdio_child]
