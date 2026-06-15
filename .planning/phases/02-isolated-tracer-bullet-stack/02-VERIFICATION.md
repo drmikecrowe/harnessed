@@ -127,3 +127,14 @@ ignoring account/project/user MCP sources); the capability test's claude backsto
 strict flags and the `claude mcp list` tier was dropped (it ignores `--mcp-config`). Validated:
 claude in the isolated instance CALLS `mcp__hatago__time_get_current_time` and returns the time
 (`is_error=false`); account-synced servers no longer appear; capability test remains green.
+
+Follow-up (`629f76e`): the server then loaded but the time tool still wasn't usable interactively —
+claude prompts for permission on first MCP-tool use, so the skill appeared to fail. Made the MCP
+integration proper **assembler/build output** (per design §7): the assembler now emits
+`.claude/settings.json` pre-approving the hub's tools (`permissions.allow: ["mcp__hatago"]`,
+committed into `profiles/tracer-time/`), and the launcher waits for hatago's port to bind before
+attaching claude. Validated (real podman + credentials): the committed profile alone — no
+`--allowedTools`, no tweaks — drives `mcp__hatago__time_get_current_time` returning the live time
+3/3. The `--mcp-config … --strict-mcp-config` launch flags remain required (claude does not
+auto-read `~/.claude/.mcp.json`, and account-synced MCP servers can't be excluded by profile
+config alone); per design they belong in the assembler-emitted launcher.
