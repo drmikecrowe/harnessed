@@ -15,6 +15,10 @@ print_error()   { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 # --- Identity --------------------------------------------------------------
 HARNESSED_BASE_IMAGE="harnessed-base:latest"
 HARNESSED_CLAUDE_IMAGE="harnessed-claude:latest"
+# hatago MCP hub image (baked hub + light stdio servers; design §6 / D-06).
+HARNESSED_HATAGO_IMAGE="harnessed-hatago:latest"
+# Build-time assembler image (emit-only; design §15 / D-12). Built on first `harnessed build <stack>`.
+HARNESSED_TOOLS_IMAGE="harnessed-tools:latest"
 # In-container home — the legible session-slug root (design §15 / D-06).
 CONTAINER_HOME="/home/harnessed"
 NO_FIREWALL="${NO_FIREWALL:-false}"
@@ -34,7 +38,7 @@ detect_runtime() {
 # --- Images (built and run on the HOST) ------------------------------------
 image_exists() { "$CONTAINER_RUNTIME" image inspect "$1" >/dev/null 2>&1; }
 
-# Build the base then the claude image via host `podman build`. $1=force (true|false).
+# Build the base, claude, then hatago image via host `podman build`. $1=force (true|false).
 build_images() {
     local force="${1:-false}"
 
@@ -59,7 +63,45 @@ build_images() {
         "$CONTAINER_RUNTIME" build -t "$HARNESSED_CLAUDE_IMAGE" \
             -f "$HARNESSED_DIR/base/Dockerfile.harnessed-claude" "$HARNESSED_DIR"
     fi
+    if [ "$force" = "true" ] || ! image_exists "$HARNESSED_HATAGO_IMAGE"; then
+        print_info "Building $HARNESSED_HATAGO_IMAGE ..."
+        "$CONTAINER_RUNTIME" build -t "$HARNESSED_HATAGO_IMAGE" \
+            -f "$HARNESSED_DIR/base/Dockerfile.hatago" "$HARNESSED_DIR"
+    fi
     print_success "harnessed images ready"
+}
+
+# Ensure the emit-only assembler image exists; build it from tools/Dockerfile on first use.
+ensure_tools_image() {
+    if ! image_exists "$HARNESSED_TOOLS_IMAGE"; then
+        print_info "Building $HARNESSED_TOOLS_IMAGE ..."
+        "$CONTAINER_RUNTIME" build -t "$HARNESSED_TOOLS_IMAGE" \
+            -f "$HARNESSED_DIR/tools/Dockerfile" "$HARNESSED_DIR/tools"
+    fi
+}
+
+# Assemble a stack into a committed profile + build its hatago image (design §15, D-12).
+#   1. ensure the emit-only assembler image exists
+#   2. run it (mounted build dir) to EMIT profiles/<stack>/ + hatago.config.json — never the daemon
+#   3. host `podman build` the hatago image from the emitted/baked Dockerfile
+# $1 = stack name. The build dir is the repo (HARNESSED_DIR), so the profile is committed.
+build_stack() {
+    local stack="$1"
+    if [ -z "$stack" ]; then print_error "build_stack: stack name required"; return 1; fi
+    if [ ! -f "$HARNESSED_DIR/stacks/$stack/stack.yaml" ]; then
+        print_error "Unknown stack: $stack (no stacks/$stack/stack.yaml)"; return 1
+    fi
+    ensure_tools_image
+    print_info "Assembling stack '$stack' (emit-only) ..."
+    # EMIT step: the assembler only reads/writes the mounted build dir; it never drives podman.
+    "$CONTAINER_RUNTIME" run --rm --userns=keep-id \
+        -v "$HARNESSED_DIR":"$HARNESSED_DIR" -w "$HARNESSED_DIR" \
+        "$HARNESSED_TOOLS_IMAGE" assemble "$stack" --build-dir "$HARNESSED_DIR"
+    # BUILD step: the HOST builds the hatago image from base/Dockerfile.hatago.
+    print_info "Building $HARNESSED_HATAGO_IMAGE for stack '$stack' ..."
+    "$CONTAINER_RUNTIME" build -t "$HARNESSED_HATAGO_IMAGE" \
+        -f "$HARNESSED_DIR/base/Dockerfile.hatago" "$HARNESSED_DIR"
+    print_success "Stack '$stack' assembled → profiles/$stack/ + $HARNESSED_HATAGO_IMAGE"
 }
 
 # Build images on first run if missing (auto-build; D-04).
