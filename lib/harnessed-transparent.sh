@@ -36,11 +36,11 @@ harnessed_transparent() {
         [ -f "$zai_config" ] || { print_error "Z.AI config not found: $zai_config"; exit 1; }
         command -v jq >/dev/null 2>&1 || { print_error "jq is required on the host for --zai"; exit 1; }
         local api_url api_key haiku_model sonnet_model opus_model
-        api_url=$(jq -r '.apiUrl // ""' "$zai_config")
-        api_key=$(jq -r '.apiKey // ""' "$zai_config")
-        haiku_model=$(jq -r '.haikuModel // "glm-4.5-air"' "$zai_config")
-        sonnet_model=$(jq -r '.sonnetModel // "glm-5.0"' "$zai_config")
-        opus_model=$(jq -r '.opusModel // "glm-5.0"' "$zai_config")
+        api_url=$(jq -r '.apiUrl // ""' "$zai_config") || true
+        api_key=$(jq -r '.apiKey // ""' "$zai_config") || true
+        haiku_model=$(jq -r '.haikuModel // "glm-4.5-air"' "$zai_config") || true
+        sonnet_model=$(jq -r '.sonnetModel // "glm-5.0"' "$zai_config") || true
+        opus_model=$(jq -r '.opusModel // "glm-5.0"' "$zai_config") || true
         [ -n "$api_url" ] && [ -n "$api_key" ] || { print_error "apiUrl/apiKey missing in $zai_config"; exit 1; }
         print_info "Z.AI: endpoint=$api_url | haiku=$haiku_model | sonnet=$sonnet_model | opus=$opus_model | key=${api_key:0:4}...${api_key: -4}"
         exec_env+=( -e "ANTHROPIC_BASE_URL=$api_url" -e "ANTHROPIC_AUTH_TOKEN=$api_key" \
@@ -53,7 +53,7 @@ harnessed_transparent() {
     # Always whitelist the Z.AI egress host if a config is present.
     if [ -f "$HOME/.zai.json" ] && command -v jq >/dev/null 2>&1; then
         local zai_host
-        zai_host=$(jq -r '.apiUrl // ""' "$HOME/.zai.json" 2>/dev/null | sed 's|https\?://||' | cut -d'/' -f1)
+        zai_host=$(jq -r '.apiUrl // ""' "$HOME/.zai.json" 2>/dev/null | sed 's|https\?://||' | cut -d'/' -f1) || true
         [ -n "$zai_host" ] && extra_hosts+=("$zai_host")
     fi
 

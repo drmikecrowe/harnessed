@@ -39,8 +39,8 @@ harnessed_host_integration_mounts() {
 
     # YubiKey USB device passthrough (Yubico vendor ID 1050).
     local yk_bus yk_dev yk_device
-    yk_bus=$(lsusb 2>/dev/null | grep -i "yubico\|1050" | head -1 | awk '{print $2}')
-    yk_dev=$(lsusb 2>/dev/null | grep -i "yubico\|1050" | head -1 | awk '{print $4}' | tr -d ':')
+    yk_bus=$(lsusb 2>/dev/null | grep -i "yubico\|1050" | head -1 | awk '{print $2}') || true
+    yk_dev=$(lsusb 2>/dev/null | grep -i "yubico\|1050" | head -1 | awk '{print $4}' | tr -d ':') || true
     if [ -n "$yk_bus" ] && [ -n "$yk_dev" ]; then
         yk_device="/dev/bus/usb/$yk_bus/$yk_dev"
         [ -e "$yk_device" ] && MOUNT_ARGS+=( --device "$yk_device" )
