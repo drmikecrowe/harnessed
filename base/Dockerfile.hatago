@@ -30,7 +30,7 @@ USER root
 COPY lib/pnpm/config.yaml /tmp/pnpm-config.yaml
 RUN mkdir -p /home/harnessed/.config/pnpm && \
     mv /tmp/pnpm-config.yaml /home/harnessed/.config/pnpm/config.yaml && \
-    chown -R harnessed:harnessed /home/harnessed/.config/pnpm
+    chown -R harnessed:harnessed /home/harnessed/.config
 USER harnessed
 RUN mkdir -p "$PNPM_HOME/bin" && pnpm add -g "@himorishige/hatago-mcp-hub@${HATAGO_VERSION}"
 

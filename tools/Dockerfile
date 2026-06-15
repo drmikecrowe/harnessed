@@ -30,7 +30,7 @@ RUN useradd --create-home --uid 1000 tools
 # honor minimumReleaseAge/strictDepBuilds/allowBuilds. (osv-scanner/pip-audit = plan 03-02.)
 RUN mkdir -p /home/tools/.config/pnpm
 COPY lib/pnpm/config.yaml /home/tools/.config/pnpm/config.yaml
-RUN chown -R tools:tools /home/tools/.config/pnpm
+RUN chown -R tools:tools /home/tools/.config
 USER tools
 WORKDIR /work
 

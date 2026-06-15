@@ -58,7 +58,7 @@ USER root
 COPY lib/pnpm/config.yaml /tmp/pnpm-config.yaml
 RUN mkdir -p /container/${USERNAME}/.config/pnpm && \
     mv /tmp/pnpm-config.yaml /container/${USERNAME}/.config/pnpm/config.yaml && \
-    chown -R ${USERNAME}:${USERNAME} /container/${USERNAME}/.config/pnpm
+    chown -R ${USERNAME}:${USERNAME} /container/${USERNAME}/.config
 USER ${USERNAME}
 
 # Configure mise tools. npm.package_manager=pnpm routes the npm: tools through pnpm
