@@ -104,9 +104,10 @@ build_stack() {
     print_success "Stack '$stack' assembled → profiles/$stack/ + $HARNESSED_HATAGO_IMAGE"
 }
 
-# Build images on first run if missing (auto-build; D-04).
+# Build images on first run if missing (auto-build; D-04). Ensures BOTH the claude harness image
+# and the hatago hub image, so an isolated stack's pod has its hatago member available.
 ensure_images() {
-    if ! image_exists "$HARNESSED_CLAUDE_IMAGE"; then
+    if ! image_exists "$HARNESSED_CLAUDE_IMAGE" || ! image_exists "$HARNESSED_HATAGO_IMAGE"; then
         print_warning "harnessed images not found. Building (first run)…"
         build_images false
     fi
@@ -115,6 +116,10 @@ ensure_images() {
 # --- Instance lifecycle ----------------------------------------------------
 container_exists()  { "$CONTAINER_RUNTIME" container inspect "$1" >/dev/null 2>&1; }
 container_running() { [ "$("$CONTAINER_RUNTIME" container inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = "true" ]; }
+# Isolated stacks run as a pod named after the instance (harnessed-<stack>-<projhash>); transparent
+# has no pod. `pod exists` is a podman concept (docker has none) — the 2>/dev/null swallows the
+# docker error so the caller cleanly falls through to the single-container path.
+pod_exists() { "$CONTAINER_RUNTIME" pod exists "$1" 2>/dev/null; }
 
 # Stable instance name: harnessed-<stack>-<projhash>.
 generate_instance_name() {
@@ -144,6 +149,13 @@ list_instances() {
 
 stop_instance() {
     local name="$1"
+    # Isolated: the pod shares the instance name and bundles the harness + hatago members.
+    if pod_exists "$name"; then
+        print_info "Stopping pod: $name"
+        "$CONTAINER_RUNTIME" pod stop -t 0 "$name" >/dev/null
+        print_success "Pod stopped"
+        return 0
+    fi
     container_exists "$name" || { print_error "Instance does not exist: $name"; exit 1; }
     if container_running "$name"; then
         print_info "Stopping instance: $name"
@@ -156,6 +168,13 @@ stop_instance() {
 
 remove_instance() {
     local name="$1"
+    # Isolated: removing the pod tears down all members (harness + hatago + infra).
+    if pod_exists "$name"; then
+        print_info "Removing pod: $name"
+        "$CONTAINER_RUNTIME" pod rm -f "$name" >/dev/null
+        print_success "Pod removed"
+        return 0
+    fi
     container_exists "$name" || { print_error "Instance does not exist: $name"; exit 1; }
     container_running "$name" && "$CONTAINER_RUNTIME" stop -t 0 "$name"
     print_info "Removing instance: $name"

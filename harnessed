@@ -5,9 +5,10 @@
 # (`podman build`) and runs containers directly; there is NO daemon-in-container,
 # NO rootless API socket, and NO Docker-out-of-Docker (design §15).
 #
-# Phase 1 surface:
+# Surface:
 #   harnessed transparent [path]   launch the host-mirror stack (today's `container`)
 #   harnessed [path]               default stack = transparent
+#   harnessed <stack> [path] [--fresh]   launch an isolated stack: assembled profile + pod (harness + hatago)
 #   harnessed build [<stack>]      assemble a stack (emit-only) + build hatago, or rebuild base/claude/hatago images
 #   harnessed --list               list harnessed instances
 #   harnessed --stop   [path]      stop the instance for a project
@@ -33,12 +34,15 @@ harnessed — launch isolated, composable harness stacks
 Usage:
   harnessed [stack] [path]        Launch a stack (default stack: transparent)
   harnessed transparent [path]    Host-mirror stack: live host config + project
+  harnessed <stack> [path] [--fresh]
+                                  Isolated stack: assembled profile + pod (harness + hatago)
   harnessed build <stack>         Assemble a stack into a committed profile + build the hatago image
   harnessed build | --build       (Re)build the base/claude/hatago images
   harnessed --list                List harnessed instances
-  harnessed --stop   [path]       Stop the instance for a project
-  harnessed --remove [path]       Remove the instance for a project
+  harnessed --stop   [stack] [path]   Stop the instance/pod for a project
+  harnessed --remove [stack] [path]   Remove the instance/pod for a project
   harnessed --clean               Remove all stopped harnessed instances
+  harnessed --fresh ...           Tear down any existing pod/instance first (isolated)
   harnessed --no-firewall ...     Skip the egress firewall for this run
   harnessed -h | --help           Show this help
 
@@ -49,8 +53,8 @@ EOF
 detect_runtime
 
 # --- Parse args ------------------------------------------------------------
-BUILD=false; LIST=false; STOP=false; REMOVE=false; CLEAN=false
-CLAUDE=false; ZAI=false
+BUILD=false; LIST=false; STOP=false; REMOVE=false; CLEAN=false; FRESH=false
+CLAUDE=false; ZAI=false; STACK_SELECTED=false
 STACK="transparent"; PROJECT_PATH=""; BUILD_STACK=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -68,11 +72,27 @@ while [[ $# -gt 0 ]]; do
         --no-firewall)  NO_FIREWALL=true; export NO_FIREWALL; shift ;;
         --claude)       CLAUDE=true; shift ;;
         --zai)          ZAI=true; shift ;;
-        transparent)    STACK="transparent"; shift ;;
+        --fresh)        FRESH=true; shift ;;
+        transparent)    STACK="transparent"; STACK_SELECTED=true; shift ;;
         -*)             print_error "Unknown option: $1"; usage; exit 1 ;;
         *)
-            if [ -z "$PROJECT_PATH" ]; then PROJECT_PATH="$1"
-            else print_error "Unexpected argument: $1"; usage; exit 1; fi
+            # First bareword: a stack name (stacks/<name>/stack.yaml) OR a non-existent stack-like
+            # token selects the stack (the dispatch validates + errors clearly); an existing
+            # directory is the project path for the default transparent stack. Second bareword is
+            # always the project path.
+            if [ "$STACK_SELECTED" = false ] && [ -z "$PROJECT_PATH" ]; then
+                if [ -f "$HARNESSED_DIR/stacks/$1/stack.yaml" ]; then
+                    STACK="$1"; STACK_SELECTED=true
+                elif [ -d "$1" ]; then
+                    PROJECT_PATH="$1"
+                else
+                    STACK="$1"; STACK_SELECTED=true
+                fi
+            elif [ -z "$PROJECT_PATH" ]; then
+                PROJECT_PATH="$1"
+            else
+                print_error "Unexpected argument: $1"; usage; exit 1
+            fi
             shift ;;
     esac
 done
@@ -109,8 +129,14 @@ case "$STACK" in
         harnessed_transparent "$PROJECT_PATH" "$CLAUDE" "$ZAI"
         ;;
     *)
-        print_error "Unknown stack: $STACK"
-        usage
-        exit 1
+        # Isolated stacks: any non-transparent stack, resolved against stacks/<stack>/stack.yaml.
+        if [ ! -f "$HARNESSED_DIR/stacks/$STACK/stack.yaml" ]; then
+            print_error "Unknown stack: $STACK (no stacks/$STACK/stack.yaml)"
+            usage
+            exit 1
+        fi
+        # shellcheck source=lib/harnessed-isolated.sh
+        . "$HARNESSED_DIR/lib/harnessed-isolated.sh"
+        harnessed_isolated "$STACK" "$PROJECT_PATH" "$FRESH"
         ;;
 esac
