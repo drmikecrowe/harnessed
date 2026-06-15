@@ -202,11 +202,17 @@ npm/npx. Rationale: <https://pnpm.io/supply-chain-security>. A managed pnpm conf
 
 - **`minimumReleaseAge`** — quarantine newly published versions (cooldown) so a compromised
   release isn't installed the moment it lands.
-- **lifecycle scripts default-denied** — postinstall/build scripts run only for an explicit
-  `allowBuilds` allowlist.
+- **lifecycle scripts default-denied** — `strictDepBuilds` (live in the global config) makes
+  pnpm exit non-zero on any unreviewed postinstall/build script. The curated `allowBuilds`
+  except-list is **project-scoped** (pnpm-workspace.yaml / config-dependencies): pnpm v11
+  rejects it from the global config, so it is deferred until a build-script package (e.g.
+  esbuild) actually needs to run.
 - **store integrity verification** + content-addressed store.
 
-These three ship **on by default** in pnpm@11; the policy lives in the managed global `~/.config/pnpm/config.yaml` (shipped from `lib/pnpm/config.yaml`) — **not** `.npmrc`, which is auth/registry-only in v11.
+`minimumReleaseAge`, `strictDepBuilds`, and store-integrity ship in the managed global
+`~/.config/pnpm/config.yaml` (shipped from `lib/pnpm/config.yaml`) — **not** `.npmrc`, which
+is auth/registry-only in v11. (`allowBuilds` is the one exception: it belongs in each
+project's `pnpm-workspace.yaml`, not the global config — verified in the phase-3 checkpoint.)
 
 `npx <pkg>` → `pnpm dlx <pkg>`; `npm install` → `pnpm install`. **Recipe validation** (part of
 `harnessed build`) flags any raw `npm`/`npx` in a recipe's scripts/deps and points at the pnpm
@@ -417,9 +423,11 @@ Then `claude-openbrain-headroom-caveman [path]` from any directory starts that i
   instance sessions separate? (Recommendation: harnessed-owned.)
 - **Container home path.** `/home/harnessed/<relpath>` (vs `container.sh`'s `/container/$USER`)
   for a legible, stable project slug — confirm it doesn't break the harness installs.
-- **pnpm rollout.** mise currently installs node tools via its `npm:` backend; confirm it can
-  route through pnpm (or `pnpm add -g`). Decide the `allowBuilds` allowlist +
-  `minimumReleaseAge` window — too tight blocks legit native builds, too loose weakens the guard.
+- **pnpm rollout (resolved, phase 3).** mise routes its `npm:` backend through pnpm
+  (`npm.package_manager=pnpm`, confirmed in the harnessed-base build). `minimumReleaseAge=1440`
+  + `strictDepBuilds` (default-deny) ship in the global config. `allowBuilds` is project-scoped
+  (pnpm-workspace.yaml) — v11 rejects it globally — so the allowlist is deferred until a
+  build-script package (esbuild) actually needs to run.
 - **`CLAUDE_CONFIG_DIR` relocation.** Verify whether it relocates `~/.claude.json` (not just the
   `.claude/` dir). If yes, both modes can point Claude at a per-instance config dir instead of
   copy-on-start, fully decoupling container state from the host file. [INFERENCE — verify.]

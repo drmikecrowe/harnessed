@@ -8,16 +8,24 @@
 # pnpm 11 reads policy here (or in pnpm-workspace.yaml). `.npmrc` is auth/registry-only
 # in v11 — do NOT put policy there. The removed v10 keys (onlyBuiltDependencies /
 # neverBuiltDependencies / ignoredBuiltDependencies / ignoreDepScripts) are deleted in
-# v11 and silently ignored; only `allowBuilds` works as the lifecycle allowlist.
+# v11 and silently ignored. `allowBuilds` is the v11 lifecycle-allowlist KEY NAME, but v11
+# rejects it from the GLOBAL config (see the commented block below) — it is project-scoped.
 minimumReleaseAge: 1440          # minutes (1 day). v11 default; explicit so it is auditable.
 minimumReleaseAgeStrict: true    # fail-closed rather than silently falling back to an older version.
 blockExoticSubdeps: true         # block git/tarball/non-registry subdeps (v11 default).
 verifyStoreIntegrity: true       # content-addressed store integrity check on link (v11 default).
-strictDepBuilds: true            # non-zero exit on any unreviewed build/postinstall script = lifecycle default-deny.
-allowBuilds:                     # curated allowlist — packages permitted to run native build scripts.
-  esbuild: true                  # the only real native-builder in this stack today.
-  # better-sqlite3: true         # add entries only as real native-build deps appear.
-  # sharp: true                  # a denied build must surface "add to allowBuilds", not a silent skip.
+strictDepBuilds: true            # lifecycle default-deny: non-zero exit on any unreviewed build/postinstall script. LIVE in the v11 global config.
+# allowBuilds is intentionally NOT set here. pnpm v11 rejects it from the global config
+# ("Move them to a project-level pnpm-workspace.yaml") and silently ignores it — setting
+# it here warns on every run and gives a false sense of being configured. The allowlist is
+# project-scoped (pnpm-workspace.yaml / config-dependencies) and does NOT apply to global
+# installs. strictDepBuilds default-deny is in effect; when a build-script package (e.g.
+# esbuild) actually needs to run, add it to that project's pnpm-workspace.yaml.
+# (Phase-3 checkpoint 03-01 finding A.) Seed list for that future project file:
+# allowBuilds:
+#   esbuild: true
+#   # better-sqlite3: true   # add entries only as real native-build deps appear.
+#   # sharp: true            # a denied build must surface "add to allowBuilds", not a silent skip.
 # Escape hatch for first-party / just-published deps blocked by strict mode (RESEARCH Pitfall 2):
 # minimumReleaseAgeExclude:
 #   - "@yourorg/*"
