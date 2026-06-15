@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "hatago": {
+      "type": "http",
       "url": "http://localhost:3535/mcp"
     }
   }

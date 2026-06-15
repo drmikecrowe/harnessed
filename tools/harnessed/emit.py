@@ -49,9 +49,15 @@ def _write_json(path: Path, data: dict) -> None:
 
 
 def write_mcp_json(harness_dir: Path) -> Path:
-    """Emit the harness `.mcp.json` — exactly ONE entry pointing at the hatago endpoint."""
+    """Emit the harness `.mcp.json` — exactly ONE entry pointing at the hatago endpoint.
+
+    `type: http` is REQUIRED — Claude Code only treats an entry as a Streamable-HTTP server
+    when the type is set; without it the server is not loaded. The launcher passes this file
+    via `claude --mcp-config <file> --strict-mcp-config`, so hatago is the ONLY MCP server the
+    isolated harness sees (no host/project/account-synced servers leak in).
+    """
     out = harness_dir / ".mcp.json"
-    _write_json(out, {"mcpServers": {HATAGO_MCP_KEY: {"url": HATAGO_ENDPOINT}}})
+    _write_json(out, {"mcpServers": {HATAGO_MCP_KEY: {"type": "http", "url": HATAGO_ENDPOINT}}})
     return out
 
 

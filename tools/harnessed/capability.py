@@ -364,31 +364,22 @@ def _mcp_from_hatago(instance: str) -> dict[str, str]:
     return found
 
 
-def _mcp_from_claude_list(instance: str) -> dict[str, str]:
-    """Secondary: parse `claude mcp list` (shows the hub + per-server connection status)."""
-    raw = _exec(instance, "claude mcp list 2>/dev/null")
-    if not raw:
-        return {}
-    found: dict[str, str] = {}
-    for line in raw.splitlines():
-        line = line.strip()
-        m = re.match(r"^([A-Za-z0-9_.-]+):\s*(.*)$", line)
-        if not m:
-            continue
-        name, rest = m.group(1), m.group(2).lower()
-        disconnected = any(tok in rest for tok in ("✗", "fail", "disconnect", "error", "not connected"))
-        if not disconnected and ("✓" in line or "connect" in rest or rest):
-            found[name] = "connected"
-    return found
-
-
 def _mcp_from_llm(instance: str) -> dict[str, str]:
-    """Backstop: ask the harness, headless, to emit connected MCP servers as a JSON array."""
+    """Backstop: ask the harness (headless, isolated MCP config) for connected MCP servers.
+
+    Uses the SAME `--mcp-config <profile .mcp.json> --strict-mcp-config` the launcher uses, so the
+    view matches the real isolated session (hatago only; no host/project/account-synced servers).
+    """
     prompt = (
         "List the MCP servers currently connected (including any provided through the hatago hub). "
         'Respond with ONLY a JSON array of server name strings, e.g. ["time"]. No prose.'
     )
-    raw = _exec(instance, f"claude -p {json.dumps(prompt)} --output-format json", timeout=180)
+    mcp_cfg = f"{CONTAINER_HOME}/.claude/.mcp.json"
+    raw = _exec(
+        instance,
+        f"claude -p {json.dumps(prompt)} --mcp-config {mcp_cfg} --strict-mcp-config --output-format json",
+        timeout=180,
+    )
     names = _names_from_llm_json(raw)
     return {name: "connected (llm backstop)" for name in names}
 
@@ -415,16 +406,19 @@ def _names_from_llm_json(raw: str) -> set[str]:
 
 
 def introspect_mcp(instance: str) -> tuple[dict[str, str], str]:
-    """Return ({connected server -> status}, source-label), preferring machine-readable sources."""
+    """Return ({connected server -> status}, source-label), preferring machine-readable sources.
+
+    hatago's `hatago://servers` resource is the machine-readable primary (auth-free; lists the
+    connected child servers). `claude mcp list` is intentionally NOT used — it ignores
+    `--mcp-config`, so it cannot see the isolated profile's hatago server and would instead
+    surface the user's account-synced servers. The strict-config LLM probe is the backstop.
+    """
     servers = _mcp_from_hatago(instance)
     if servers:
         return servers, HATAGO_SERVERS_URI
-    servers = _mcp_from_claude_list(instance)
-    if servers:
-        return servers, "claude mcp list"
     servers = _mcp_from_llm(instance)
     if servers:
-        return servers, "claude -p (llm backstop)"
+        return servers, "claude -p (strict isolated config)"
     return {}, HATAGO_SERVERS_URI
 
 

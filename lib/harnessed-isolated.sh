@@ -125,9 +125,14 @@ harnessed_isolated() {
         return 0
     fi
 
-    # Interactive attach (host-native TTY). .mcp.json points at http://localhost:3535/mcp.
+    # Interactive attach (host-native TTY). Load ONLY the profile's hatago MCP endpoint via
+    # --mcp-config + --strict-mcp-config: this is what makes claude actually connect to hatago
+    # (a profile-only ~/.claude/.mcp.json is otherwise NOT read by claude) AND keeps isolation —
+    # --strict-mcp-config ignores every other MCP source, so the user's account-synced servers
+    # (claude.ai remote MCP) never leak into the isolated instance.
+    local mcp_cfg="$CONTAINER_HOME/.claude/.mcp.json"
     "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
-        bash -l -c "$mise_init && claude"
+        bash -l -c "$mise_init && claude --mcp-config '$mcp_cfg' --strict-mcp-config"
     stop_if_last_session "$instance" "$relpath"
     print_success "Instance session ended"
 }
