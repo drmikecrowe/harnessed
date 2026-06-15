@@ -37,7 +37,11 @@ RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
 ARG USERNAME=harnessed
 RUN usermod -l ${USERNAME} ubuntu && \
     groupmod -n ${USERNAME} ubuntu && \
-    usermod -d /home/${USERNAME} -m ${USERNAME}
+    usermod -d /home/${USERNAME} ${USERNAME} && \
+    mkdir -p /home/${USERNAME} && \
+    cp -an /home/ubuntu/. /home/${USERNAME}/ 2>/dev/null || true && \
+    rm -rf /home/ubuntu && \
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}
