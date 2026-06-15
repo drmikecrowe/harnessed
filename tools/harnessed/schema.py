@@ -1,0 +1,218 @@
+"""Parse + validate recipe.yaml / stack.yaml into typed objects.
+
+EMIT-ONLY assembler component: this module only reads files and builds in-memory
+objects. It never invokes podman/docker and never writes anything.
+
+Parsing is tolerant of unknown fields (design D-14): only the fields the tracer
+bullet exercises are required; everything else is preserved on `.raw` and parsed
+forward so future recipes can add `plugins`, `deps`, `hooks`, etc. without a schema
+change here.
+
+This module is also the test oracle for the per-stack capability test (plan 02-03),
+which imports `load_stack_with_recipes` + `expected_capabilities` to derive what the
+running instance must expose. Keep the parse API clean and reusable.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from ruamel.yaml import YAML
+
+_yaml = YAML(typ="safe", pure=True)
+
+# Harness → config directory name (Claude Code canonical, design §8). One harness per stack.
+HARNESS_CONFIG_DIR = {
+    "claude": ".claude",
+}
+
+
+class SchemaError(Exception):
+    """A recipe/stack manifest is missing a required field or is malformed."""
+
+
+def _load_yaml(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as fh:
+        data = _yaml.load(fh)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise SchemaError(f"{path}: expected a YAML mapping at the top level")
+    return data
+
+
+@dataclass
+class McpServer:
+    """One MCP server declared by a recipe (design §11 MCP layer).
+
+    `transport` is explicit (RESEARCH Pitfall B). A `stdio` server (with `command`)
+    is run by hatago as a child (stdio→HTTP) and must be baked into the hatago image;
+    a network-native server (`url`, transport http/sse) is proxied by hatago by URL.
+    """
+
+    name: str
+    command: str | None = None
+    args: list[str] = field(default_factory=list)
+    transport: str = "stdio"
+    url: str | None = None
+    service: str | None = None
+    url_env: str | None = None
+    env: dict = field(default_factory=dict)
+    headers: dict = field(default_factory=dict)
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def is_stdio_child(self) -> bool:
+        """A stdio server hatago must bake + spawn (vs a network-native URL proxy)."""
+        return self.transport == "stdio" and self.command is not None
+
+
+@dataclass
+class FileExt:
+    """A standalone file-extension dir shipped by a recipe (skills/ or commands/)."""
+
+    path: str  # relative to the recipe dir
+
+    @property
+    def name(self) -> str:
+        # Harness-native target name = the leaf dir name (e.g. skills/time-helper → time-helper).
+        return Path(self.path).name
+
+
+@dataclass
+class Recipe:
+    name: str
+    description: str = ""
+    servers: list[McpServer] = field(default_factory=list)
+    skills: list[FileExt] = field(default_factory=list)
+    commands: list[FileExt] = field(default_factory=list)
+    root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
+    raw: dict = field(default_factory=dict)
+
+
+@dataclass
+class Stack:
+    name: str
+    config: str = "isolated"
+    harness: str = "claude"
+    recipes: list[str] = field(default_factory=list)
+    services: list[str] = field(default_factory=list)
+    permissions: str | None = None
+    state: dict = field(default_factory=dict)
+    raw: dict = field(default_factory=dict)
+
+    @property
+    def harness_config_dir(self) -> str:
+        if self.harness not in HARNESS_CONFIG_DIR:
+            raise SchemaError(
+                f"stack '{self.name}': unsupported harness '{self.harness}' "
+                f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+            )
+        return HARNESS_CONFIG_DIR[self.harness]
+
+
+def _parse_servers(raw_mcp: dict) -> list[McpServer]:
+    servers: list[McpServer] = []
+    for entry in (raw_mcp or {}).get("servers", []) or []:
+        if "name" not in entry:
+            raise SchemaError(f"mcp server entry missing 'name': {entry!r}")
+        servers.append(
+            McpServer(
+                name=entry["name"],
+                command=entry.get("command"),
+                args=list(entry.get("args", []) or []),
+                transport=entry.get("transport", "stdio"),
+                url=entry.get("url"),
+                service=entry.get("service"),
+                url_env=entry.get("url_env"),
+                env=dict(entry.get("env", {}) or {}),
+                headers=dict(entry.get("headers", {}) or {}),
+                raw=dict(entry),
+            )
+        )
+    return servers
+
+
+def _parse_fileext(raw_list) -> list[FileExt]:
+    out: list[FileExt] = []
+    for entry in raw_list or []:
+        if isinstance(entry, str):
+            out.append(FileExt(path=entry))
+        elif isinstance(entry, dict) and "path" in entry:
+            out.append(FileExt(path=entry["path"]))
+        else:
+            raise SchemaError(f"skill/command entry must be a path or {{path: ...}}: {entry!r}")
+    return out
+
+
+def load_recipe(recipe_dir: Path) -> Recipe:
+    recipe_dir = Path(recipe_dir)
+    manifest = recipe_dir / "recipe.yaml"
+    if not manifest.is_file():
+        raise SchemaError(f"recipe manifest not found: {manifest}")
+    raw = _load_yaml(manifest)
+    if "name" not in raw:
+        raise SchemaError(f"{manifest}: required field 'name' is missing")
+    return Recipe(
+        name=raw["name"],
+        description=raw.get("description", ""),
+        servers=_parse_servers(raw.get("mcp", {}) or {}),
+        skills=_parse_fileext(raw.get("skills")),
+        commands=_parse_fileext(raw.get("commands")),
+        root=recipe_dir,
+        raw=raw,
+    )
+
+
+def load_stack(stack_dir: Path) -> Stack:
+    stack_dir = Path(stack_dir)
+    manifest = stack_dir / "stack.yaml"
+    if not manifest.is_file():
+        raise SchemaError(f"stack manifest not found: {manifest}")
+    raw = _load_yaml(manifest)
+    if "name" not in raw:
+        raise SchemaError(f"{manifest}: required field 'name' is missing")
+    return Stack(
+        name=raw["name"],
+        config=raw.get("config", "isolated"),
+        harness=raw.get("harness", "claude"),
+        recipes=list(raw.get("recipes", []) or []),
+        services=list(raw.get("services", []) or []),
+        permissions=raw.get("permissions"),
+        state=dict(raw.get("state", {}) or {}),
+        raw=raw,
+    )
+
+
+def load_stack_with_recipes(root: Path, stack_name: str) -> tuple[Stack, list[Recipe]]:
+    """Load a stack and every recipe it references, resolved under `root`.
+
+    `root` is the directory holding `stacks/` and `recipes/` (the repo root or the
+    mounted build dir). Reusable by the capability test (plan 02-03).
+    """
+    root = Path(root)
+    stack = load_stack(root / "stacks" / stack_name)
+    recipes = [load_recipe(root / "recipes" / name) for name in stack.recipes]
+    return stack, recipes
+
+
+@dataclass
+class Capabilities:
+    """What a stack's running instance is expected to expose — the test oracle (§18)."""
+
+    mcp_servers: list[str]
+    skills: list[str]
+    commands: list[str]
+
+
+def expected_capabilities(stack: Stack, recipes: list[Recipe]) -> Capabilities:
+    """Derive the declared capabilities from the manifest (plan 02-03 reuses this)."""
+    mcp: list[str] = []
+    skills: list[str] = []
+    commands: list[str] = []
+    for recipe in recipes:
+        mcp.extend(s.name for s in recipe.servers)
+        skills.extend(s.name for s in recipe.skills)
+        commands.extend(c.name for c in recipe.commands)
+    return Capabilities(mcp_servers=mcp, skills=skills, commands=commands)
