@@ -38,6 +38,8 @@ Usage:
                                   Isolated stack: assembled profile + pod (harness + hatago)
   harnessed build <stack>         Assemble a stack into a committed profile + build the hatago image
   harnessed build | --build       (Re)build the base/claude/hatago images
+  harnessed test <stack>          Capability test: launch the stack --fresh headless + assert it
+                                  exposes the manifest's declared MCP servers/skills (markdown report)
   harnessed --list                List harnessed instances
   harnessed --stop   [stack] [path]   Stop the instance/pod for a project
   harnessed --remove [stack] [path]   Remove the instance/pod for a project
@@ -55,7 +57,7 @@ detect_runtime
 # --- Parse args ------------------------------------------------------------
 BUILD=false; LIST=false; STOP=false; REMOVE=false; CLEAN=false; FRESH=false
 CLAUDE=false; ZAI=false; STACK_SELECTED=false
-STACK="transparent"; PROJECT_PATH=""; BUILD_STACK=""
+STACK="transparent"; PROJECT_PATH=""; BUILD_STACK=""; TEST=false; TEST_ARGS=(); TEST_STACK=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)      usage; exit 0 ;;
@@ -64,6 +66,14 @@ while [[ $# -gt 0 ]]; do
             BUILD=true; shift
             # `harnessed build <stack>` assembles a stack; bare `harnessed build` rebuilds images.
             if [[ $# -gt 0 && "$1" != -* ]]; then BUILD_STACK="$1"; shift; fi
+            ;;
+        test)
+            # `harnessed test <stack> [flags]` → per-stack capability test (design §18). Consume the
+            # rest of argv verbatim (stack + any --json/--keep) as the python cli's test invocation.
+            TEST=true; shift
+            TEST_ARGS=("$@")
+            if [[ ${#TEST_ARGS[@]} -gt 0 && "${TEST_ARGS[0]}" != -* ]]; then TEST_STACK="${TEST_ARGS[0]}"; fi
+            break
             ;;
         -l|--list)      LIST=true; shift ;;
         -s|--stop)      STOP=true; shift ;;
@@ -107,6 +117,38 @@ if [ "$BUILD" = true ]; then
         build_images true
     fi
     exit 0
+fi
+
+# --- Capability test (design §18 / D-10, D-11) -----------------------------
+# `harnessed test <stack>`: ensure the stack is built, then run the per-stack capability test —
+# launch --fresh HEADLESS (the 02-02 launcher) + assert the manifest's declared capabilities are
+# live. The test drives HOST podman (launch + `podman exec` introspection + teardown), so it runs
+# host-native python — NOT the emit-only tools image (no daemon-in-container). The SAME structured
+# result drives the markdown report AND the exit code; its non-zero status propagates (green/red).
+if [ "$TEST" = true ]; then
+    if [ -z "$TEST_STACK" ]; then
+        print_error "harnessed test: stack name required (usage: harnessed test <stack>)"; usage; exit 1
+    fi
+    if [ ! -f "$HARNESSED_DIR/stacks/$TEST_STACK/stack.yaml" ]; then
+        print_error "Unknown stack: $TEST_STACK (no stacks/$TEST_STACK/stack.yaml)"; usage; exit 1
+    fi
+    # Ensure built: assembled profile + hatago image. Assemble + build if either is missing.
+    if [ ! -d "$HARNESSED_DIR/profiles/$TEST_STACK/.claude" ] || ! image_exists "$HARNESSED_HATAGO_IMAGE"; then
+        print_info "Stack '$TEST_STACK' not fully built — assembling + building hatago first"
+        build_stack "$TEST_STACK"
+    fi
+    # Ensure the harness/base images exist (the pod's harness member runs the capability probes).
+    ensure_images
+    PYBIN="${HARNESSED_PYTHON:-python3}"
+    if ! command -v "$PYBIN" >/dev/null 2>&1; then
+        print_error "harnessed test needs a host python3 with ruamel.yaml + rich (set HARNESSED_PYTHON)"
+        exit 1
+    fi
+    # set -e would abort on a red result; capture the test status and propagate it as the exit code.
+    test_rc=0
+    PYTHONPATH="$HARNESSED_DIR/tools" CONTAINER_RUNTIME="$CONTAINER_RUNTIME" HARNESSED_DIR="$HARNESSED_DIR" \
+        "$PYBIN" -m harnessed.cli test "${TEST_ARGS[@]}" --root "$HARNESSED_DIR" || test_rc=$?
+    exit "$test_rc"
 fi
 if [ "$LIST" = true ]; then list_instances; exit 0; fi
 if [ "$CLEAN" = true ]; then clean_instances; exit 0; fi
