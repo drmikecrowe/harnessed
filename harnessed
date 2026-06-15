@@ -49,6 +49,7 @@ detect_runtime
 
 # --- Parse args ------------------------------------------------------------
 BUILD=false; LIST=false; STOP=false; REMOVE=false; CLEAN=false
+CLAUDE=false; ZAI=false
 STACK="transparent"; PROJECT_PATH=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -59,6 +60,8 @@ while [[ $# -gt 0 ]]; do
         -r|--remove)    REMOVE=true; shift ;;
         --clean)        CLEAN=true; shift ;;
         --no-firewall)  NO_FIREWALL=true; export NO_FIREWALL; shift ;;
+        --claude)       CLAUDE=true; shift ;;
+        --zai)          ZAI=true; shift ;;
         transparent)    STACK="transparent"; shift ;;
         -*)             print_error "Unknown option: $1"; usage; exit 1 ;;
         *)
@@ -88,7 +91,7 @@ case "$STACK" in
     transparent)
         # shellcheck source=lib/harnessed-transparent.sh
         . "$HARNESSED_DIR/lib/harnessed-transparent.sh"
-        harnessed_transparent "$PROJECT_PATH"
+        harnessed_transparent "$PROJECT_PATH" "$CLAUDE" "$ZAI"
         ;;
     *)
         print_error "Unknown stack: $STACK"
