@@ -1,0 +1,6 @@
+# BLD-02 fixture: a recipe pinning a dependency with a STABLE HIGH OSV advisory. The supply-chain
+# scan gate (CVSS >= HIGH) MUST abort `harnessed build vuln-stack` at the source-scan step.
+# requests==2.19.0 carries CVE-2018-18074 (GHSA-x84v-xcm2-53pg, CVSS 7.5) plus transitive HIGHs in
+# its resolved urllib3 — any of which trip the gate. The requirements.txt is what osv-scanner scans.
+name: vuln-recipe
+description: BLD-02 HIGH fixture — requests==2.19.0 (CVE-2018-18074, CVSS 7.5); the scan must abort.

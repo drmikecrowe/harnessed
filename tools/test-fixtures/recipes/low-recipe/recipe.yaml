@@ -1,0 +1,10 @@
+# BLD-02 fixture: a recipe pinning a dependency with a STABLE advisory scored CVSS < 7.0.
+# The supply-chain scan MUST pass this fixture (warnings only) — proving the gate is severity-aware
+# (a naive exit-1-as-high gate would abort here, so the two are distinguishable).
+#
+# mistune==0.7.4 (deviation from the plan's urllib3==1.24.1): urllib3==1.24.1 resolves 19 advisories
+# including multiple HIGH (its CVE-2019-11324 is actually CVSS 7.5, not MEDIUM) — it would abort and
+# defeat this fixture's purpose. mistune==0.7.4 is self-contained (no transitive deps) with 8
+# MODERATE findings, all CVSS 6.1 (< HIGH=7.0), confirmed against the osv-scanner DB on 2026-06-15.
+name: low-recipe
+description: BLD-02 sub-HIGH fixture — mistune==0.7.4 (8 MODERATE findings, max CVSS 6.1); the scan must pass.

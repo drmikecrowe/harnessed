@@ -15,3 +15,6 @@ extra-tools.txt
 !.gemini/.gitkeep
 
 .dockerignore
+
+# Throwaway fixture profiles emitted by `harnessed build <fixture-stack> --root tools/test-fixtures`.
+tools/test-fixtures/profiles/

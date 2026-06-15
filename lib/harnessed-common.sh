@@ -84,24 +84,59 @@ ensure_tools_image() {
 #   1. ensure the emit-only assembler image exists
 #   2. run it (mounted build dir) to EMIT profiles/<stack>/ + hatago.config.json — never the daemon
 #   3. host `podman build` the hatago image from the emitted/baked Dockerfile
-# $1 = stack name. The build dir is the repo (HARNESSED_DIR), so the profile is committed.
+# $1 = stack name. ROOT (${HARNESSED_ROOT:-$HARNESSED_DIR}) resolves stacks/ + recipes/ and is the
+# profile build dir. --root lets a fixture stack exercise the full wired path without polluting the
+# real stacks/ + recipes/ (PORT-01 / BLOCKER-2(b)).
 build_stack() {
     local stack="$1"
+    local ROOT="${HARNESSED_ROOT:-$HARNESSED_DIR}"
     if [ -z "$stack" ]; then print_error "build_stack: stack name required"; return 1; fi
-    if [ ! -f "$HARNESSED_DIR/stacks/$stack/stack.yaml" ]; then
-        print_error "Unknown stack: $stack (no stacks/$stack/stack.yaml)"; return 1
+    if [ ! -f "$ROOT/stacks/$stack/stack.yaml" ]; then
+        print_error "Unknown stack: $stack (no $ROOT/stacks/$stack/stack.yaml)"; return 1
     fi
     ensure_tools_image
-    print_info "Assembling stack '$stack' (emit-only) ..."
-    # EMIT step: the assembler only reads/writes the mounted build dir; it never drives podman.
+
+    print_info "Assembling stack '$stack' (emit-only) under $ROOT ..."
+    # EMIT step: the assembler only reads/writes the mounted ROOT; it never drives podman.
+    # Fail-fast: a recipe lint / collision abort (non-zero) propagates via errexit before emit.
     "$CONTAINER_RUNTIME" run --rm --userns=keep-id \
-        -v "$HARNESSED_DIR":"$HARNESSED_DIR" -w "$HARNESSED_DIR" \
-        "$HARNESSED_TOOLS_IMAGE" assemble "$stack" --build-dir "$HARNESSED_DIR"
-    # BUILD step: the HOST builds the hatago image from base/Dockerfile.hatago.
+        -v "$ROOT":"$ROOT" -w "$ROOT" \
+        "$HARNESSED_TOOLS_IMAGE" assemble "$stack" --root "$ROOT" --build-dir "$ROOT"
+
+    # [BLD-02a] SCOPED source/Python scan (emit-compatible): the tools image scans THIS stack's
+    # recipe dirs + emitted profile only — never the whole repo — so a committed fixture cannot
+    # red-line an unrelated build. Capture the exit safely: the launcher runs set -euo pipefail, so
+    # a bare scanner pipeline would abort on osv-scanner's non-zero exit (Constraint 9 / a963a69).
+    print_info "Running supply-chain source scan for stack '$stack' ..."
+    local src_rc=0
+    "$CONTAINER_RUNTIME" run --rm --userns=keep-id \
+        -v "$ROOT":"$ROOT" -w "$ROOT" \
+        "$HARNESSED_TOOLS_IMAGE" scan "$stack" --root "$ROOT" --build-dir "$ROOT" || src_rc=$?
+    if [ "$src_rc" -ne 0 ]; then
+        print_error "supply-chain source scan failed for stack '$stack' (HIGH+ finding)"
+        return 1
+    fi
+
+    # BUILD step: the HOST builds the hatago image from base/Dockerfile.hatago (always the real repo).
     print_info "Building $HARNESSED_HATAGO_IMAGE for stack '$stack' ..."
     "$CONTAINER_RUNTIME" build -t "$HARNESSED_HATAGO_IMAGE" \
         -f "$HARNESSED_DIR/base/Dockerfile.hatago" "$HARNESSED_DIR"
-    print_success "Stack '$stack' assembled → profiles/$stack/ + $HARNESSED_HATAGO_IMAGE"
+
+    # [BLD-02b] Image scan (host-driven, mirrors `harnessed test`): podman save → osv image scan in
+    # a throwaway tools container. No daemon socket mounted; the save tar is temp + cleaned up.
+    print_info "Running supply-chain image scan for $HARNESSED_HATAGO_IMAGE ..."
+    local img_tar img_rc=0
+    img_tar="$(mktemp --suffix=.tar)"
+    "$CONTAINER_RUNTIME" save "$HARNESSED_HATAGO_IMAGE" -o "$img_tar"
+    "$CONTAINER_RUNTIME" run --rm -v "$img_tar":"$img_tar":ro \
+        "$HARNESSED_TOOLS_IMAGE" scan-image "$img_tar" || img_rc=$?
+    rm -f "$img_tar"
+    if [ "$img_rc" -ne 0 ]; then
+        print_error "supply-chain image scan failed for $HARNESSED_HATAGO_IMAGE (HIGH+ finding)"
+        return 1
+    fi
+
+    print_success "Stack '$stack' assembled → profiles/$stack/ + $HARNESSED_HATAGO_IMAGE (scans clean)"
 }
 
 # Build images on first run if missing (auto-build; D-04). Ensures BOTH the claude harness image

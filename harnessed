@@ -57,7 +57,7 @@ detect_runtime
 # --- Parse args ------------------------------------------------------------
 BUILD=false; LIST=false; STOP=false; REMOVE=false; CLEAN=false; FRESH=false
 CLAUDE=false; ZAI=false; STACK_SELECTED=false
-STACK="transparent"; PROJECT_PATH=""; BUILD_STACK=""; TEST=false; TEST_ARGS=(); TEST_STACK=""
+STACK="transparent"; PROJECT_PATH=""; BUILD_STACK=""; TEST=false; TEST_ARGS=(); TEST_STACK=""; ROOT_OVERRIDE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)      usage; exit 0 ;;
@@ -80,6 +80,13 @@ while [[ $# -gt 0 ]]; do
         -r|--remove)    REMOVE=true; shift ;;
         --clean)        CLEAN=true; shift ;;
         --no-firewall)  NO_FIREWALL=true; export NO_FIREWALL; shift ;;
+        --root)
+            # `--root <dir>` → HARNESSED_ROOT: an alternate stacks/ + recipes/ root for
+            # `harnessed build` (PORT-01) and the fixture build path (BLOCKER-2(b)).
+            shift
+            [ $# -gt 0 ] || { print_error "--root requires a directory argument"; usage; exit 1; }
+            ROOT_OVERRIDE="$1"; shift
+            ;;
         --claude)       CLAUDE=true; shift ;;
         --zai)          ZAI=true; shift ;;
         --fresh)        FRESH=true; shift ;;
@@ -106,6 +113,18 @@ while [[ $# -gt 0 ]]; do
             shift ;;
     esac
 done
+
+# --- Resolve --root to an absolute HARNESSED_ROOT (default: the repo) --------------
+# `harnessed build <stack> --root <dir>` exercises the full wired build path against an alternate
+# stacks/ + recipes/ root (fixtures or a multi-project layout) without polluting the real stacks/
+# + recipes/. build_stack reads ROOT=${HARNESSED_ROOT:-$HARNESSED_DIR}.
+if [ -n "$ROOT_OVERRIDE" ]; then
+    if [ ! -d "$ROOT_OVERRIDE" ]; then
+        print_error "--root: not a directory: $ROOT_OVERRIDE"; exit 1
+    fi
+    HARNESSED_ROOT="$(cd "$ROOT_OVERRIDE" && pwd)"
+    export HARNESSED_ROOT
+fi
 
 # --- Image-only operations -------------------------------------------------
 if [ "$BUILD" = true ]; then
