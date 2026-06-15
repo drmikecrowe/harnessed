@@ -47,6 +47,55 @@ The original project runs containers as root via Docker and uses NVM for Node.js
 - **Egress firewall** — iptables whitelist blocks all outbound traffic except approved endpoints (Anthropic, GitHub, npm, pip, mise, Z.AI); applied at every session start via `--cap-add NET_ADMIN`; `--no-firewall` to opt out
 - **XDG-aware git config** — checks `~/.config/git` before `~/.gitconfig`
 
+## Where This Is Headed: `harnessed`
+
+> **Status:** design spec — architecture decisions confirmed, schemas/repo-layout/CLI proposed. Full detail in [docs/harnessed-design.md](docs/harnessed-design.md). `container` keeps working exactly as documented below; `harnessed` is the engine it folds into, and `container` becomes a thin alias for `harnessed transparent`.
+
+`container` does one thing well: build an isolated container that **mirrors your host's tool setup** — auth, config, skills, MCP, plugins all bind-mounted from `~`. That's the right SKU for "my laptop, sandboxed."
+
+It's the **wrong** SKU for *experimenting* with commands, skills, plugins, or memory systems, because it drags every host default into the container. Trying to fix that by **merging** a curated set back into the host config doesn't work either: a single shared host namespace (`~/.claude`, `~/.agents`) can't hold every experiment at once — systems like openbrain and hindsight collide, per-runtime `settingSources` drift, and vendored dependencies pollute `~`.
+
+**The insight:** do the merge **per container**, where each stack is isolated, so the collision that kills a shared-host merge disappears by construction.
+
+### One engine, two modes
+
+There's a single executable, `harnessed`. Every stack it launches shares the same base image, the same host-integration mounts (1Password/GPG agents, YubiKey, SSH/git config, egress firewall, the project folder), and the same host auth. Stacks differ on exactly **one axis** — where the config layer (skills/commands/hooks/MCP) comes from:
+
+| Mode | Config source | Mental model |
+| --- | --- | --- |
+| **`transparent`** | host `~/.claude` (+ `.codex`/`.opencode`/`.gemini`) bind-mounted live | "my laptop, sandboxed" — today's `container` |
+| **`isolated`** | auth seeded + an assembled **stack profile** mounted; nothing from host config | "clean room with exactly what I picked" |
+
+Same engine, same operational mounts, one switch. `transparent` is the degenerate case — harness container only, host config mounted live. `isolated` is authenticated but carries **no host defaults**.
+
+### What a stack is
+
+An `isolated` stack is composed **at runtime** inside a podman pod, not baked at build time (`FROM` is linear inheritance — it can't union two sibling systems). A running stack is:
+
+- **harness container** — runs `claude` or `omp`, auth seeded read-only from `~/.claude/.credentials.json`, the current folder mounted, the stack profile mounted into the harness config dir.
+- **hatago** — an MCP hub that aggregates every one of the stack's MCP servers behind **one** HTTP endpoint; the harness's `.mcp.json` just points at it. Light `npx`/`uvx` servers run as hatago's children; heavy ones are proxied over the pod network.
+- **shared services** — heavy, stateful systems (hindsight = postgres+MCP, openbrain), each its **own** image/container/volume with a lifecycle independent of any instance.
+
+A stack is assembled from **recipes** — hand-authored, per-integration definitions (hindsight, gsd, caveman, …) declaring an MCP layer and/or a file-extension layer (skills/commands/agents/hooks/rules in Claude-canonical form). Recipes are resolved **ahead of time** into a committed, version-controlled **profile** (mounted into the harness, so it's editable and diffable) plus pinned **images** (so the host stays clean and reproducible). Nothing is assembled at container start.
+
+### Benefits — and how each helps
+
+- **Isolated experimentation, zero host pollution.** Each stack is its own clean room, so you can try a new skill, plugin, or memory system without ever touching `~/.claude` and without two experiments stepping on each other. The collision that sank host-merging is gone by construction.
+- **Composable, reproducible stacks.** A stack is just a manifest (`harness` + `recipes` + `services`). Name it, commit it, and rebuild it identically anywhere; `harnessed new`/`build`/`install` scaffold it, assemble it, and drop a launcher on your PATH so `my-stack [path]` works from any directory.
+- **Shared memory across harnesses.** Service volumes are *service-scoped*, not instance-scoped (`hindsight-data`, never `harnessed-data-<stack>`), so `claude+hindsight` and `omp+hindsight` read and write **one** memory. Services are long-lived and concurrent: multiple instances attach to the same running postgres/MCP at once, and the service outlives any instance (`harnessed svc up/down`).
+- **Supply-chain security as a build gate.** Profiles and images are scanned **before** they're committed or published — osv-scanner + pip-audit (credential-free baseline), snyk/Socket.dev when a token is present. Every JavaScript install routes through **pnpm** with `minimumReleaseAge` cooldowns and lifecycle scripts default-denied. `harnessed build` fails on high-severity findings, and a nightly job re-scans installed images so a CVE disclosed *after* build still surfaces.
+- **Secrets and auth referenced, never baked.** Host credentials — Claude OAuth token, scanner tokens, optional 1Password via varlock — reach the instance as env or read-only mounts at launch. They are never written into a committed profile or an image layer.
+- **One canonical format.** Claude Code format is the single source of truth for skills/commands/hooks/plugins; `omp` consumes it at runtime through a bridge. Author once, run on either harness — no re-authoring.
+- **A single host dependency.** The only thing you install is podman/docker. The host builds and runs containers natively; all assembly logic lives in a containerized `harnessed-tools` image (Python + scanners + pnpm) that only **emits** a Dockerfile + profile + a launcher script — no host Python/node/uv version roulette, and no daemon-in-container.
+- **Sessions you can inspect.** By default an isolated instance persists `projects/` + `history.jsonl` to a harnessed-owned dir on the host with a stable, legible project slug, so sessions survive recreation and stay inspectable; `--fresh` gives a throwaway clean-room run instead.
+- **Proof it built right.** Each stack ships a capability test: bring the instance up headless and assert it exposes exactly the MCP servers, skills, and commands its manifest declares. The result renders as a per-capability markdown report (✓ connected / ✗ missing) for humans and as a green/red signal for CI — one mechanism, two audiences.
+
+### In practice
+
+- **A/B two memory systems.** Run `claude+hindsight` and `claude+openbrain` as separate stacks side by side; neither touches your host config or the other's state.
+- **Compare harnesses on equal footing.** Point `claude+hindsight` and `omp+hindsight` at the **same** memory volume and judge which harness drives it better — same data, different engine.
+- **Clean-room a flaky plugin.** `--fresh` a stack to reproduce from zero state, then tear it down leaving no residue in `~`.
+
 ## Quickstart
 
 ### Prerequisites
