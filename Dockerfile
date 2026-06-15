@@ -50,11 +50,25 @@ WORKDIR /container/${USERNAME}
 RUN curl -fsSL https://mise.run | bash
 ENV PATH="/container/${USERNAME}/.local/share/mise/shims:/container/${USERNAME}/.local/bin:${PATH}"
 
-# Configure mise tools
+# Managed pnpm supply-chain config (Phase 3 / BLD-01). Must be in place before
+# mise's npm: backend resolves globals (RESEARCH Pitfall 5). The legacy home is
+# /container/${USERNAME}; COPY to a temp path then mv (COPY dest paths don't
+# expand ARG the same way RUN does).
+USER root
+COPY lib/pnpm/config.yaml /tmp/pnpm-config.yaml
+RUN mkdir -p /container/${USERNAME}/.config/pnpm && \
+    mv /tmp/pnpm-config.yaml /container/${USERNAME}/.config/pnpm/config.yaml && \
+    chown -R ${USERNAME}:${USERNAME} /container/${USERNAME}/.config/pnpm
+USER ${USERNAME}
+
+# Configure mise tools. npm.package_manager=pnpm routes the npm: tools through pnpm
+# so the managed policy governs them (RESEARCH Pitfall 5); set BEFORE `mise use -g`.
+# pnpm@11 (not @latest) so the v11 supply-chain defaults are in effect (Node 22+ required).
 RUN mise settings set experimental true && \
+    mise settings set npm.package_manager pnpm && \
     mise use -g \
         node@22 \
-        pnpm@latest \
+        pnpm@11 \
         python@latest \
         fd \
         ripgrep \

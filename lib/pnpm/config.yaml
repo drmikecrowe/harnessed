@@ -1,0 +1,24 @@
+# lib/pnpm/config.yaml — single source of truth for the managed pnpm supply-chain policy (BLD-01).
+#
+# COPY'd into ~/.config/pnpm/config.yaml in every image that runs pnpm
+# (harnessed-base, hatago, harnessed-tools, and the legacy `container` image) so
+# every JS install — global (`pnpm add -g`), per-recipe (`pnpm install`), and
+# hatago's bundled servers — is policy-governed.
+#
+# pnpm 11 reads policy here (or in pnpm-workspace.yaml). `.npmrc` is auth/registry-only
+# in v11 — do NOT put policy there. The removed v10 keys (onlyBuiltDependencies /
+# neverBuiltDependencies / ignoredBuiltDependencies / ignoreDepScripts) are deleted in
+# v11 and silently ignored; only `allowBuilds` works as the lifecycle allowlist.
+minimumReleaseAge: 1440          # minutes (1 day). v11 default; explicit so it is auditable.
+minimumReleaseAgeStrict: true    # fail-closed rather than silently falling back to an older version.
+blockExoticSubdeps: true         # block git/tarball/non-registry subdeps (v11 default).
+verifyStoreIntegrity: true       # content-addressed store integrity check on link (v11 default).
+strictDepBuilds: true            # non-zero exit on any unreviewed build/postinstall script = lifecycle default-deny.
+allowBuilds:                     # curated allowlist — packages permitted to run native build scripts.
+  esbuild: true                  # the only real native-builder in this stack today.
+  # better-sqlite3: true         # add entries only as real native-build deps appear.
+  # sharp: true                  # a denied build must surface "add to allowBuilds", not a silent skip.
+# Escape hatch for first-party / just-published deps blocked by strict mode (RESEARCH Pitfall 2):
+# minimumReleaseAgeExclude:
+#   - "@yourorg/*"
+#   - "yourpkg@1.2.3"
