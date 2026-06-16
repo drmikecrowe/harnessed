@@ -11,10 +11,18 @@ MCP server ({url: http://ping:8080/mcp, type: http}). The /health route is what
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
 mcp = FastMCP("ping")
+# The service is proxied by hatago over the podman host-gateway `host.containers.internal`
+# (plan 04-01 rootless model). FastMCP's DNS-rebinding protection rejects that Host header by
+# default (421 Misdirected Request), so allow it alongside the localhost defaults.
+mcp.settings.transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", "host.containers.internal:*"],
+)
 
 
 @mcp.tool()
