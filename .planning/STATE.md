@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 04 — 3/3 plans auto tasks committed (integration gate clean); 3 blocking checkpoints pending podman verification by operator
-last_updated: "2026-06-16T15:30:00.000Z"
-last_activity: 2026-06-16 -- Phase 04 execution: 12/12 auto tasks committed across 04-01/04-02/04-03, post-merge integration gate CLEAN; checkpoints pending
+status: ready_to_verify
+stopped_at: Phase 04 EXECUTED — 3/3 plans complete + verified (04-01 services, 04-02 state/CLI, 04-03 omp/recipe-breadth); ready for /gsd-verify-phase 4
+last_updated: "2026-06-16T19:30:00.000Z"
+last_activity: 2026-06-16 -- Phase 04 complete: all 3 plans executed, checkpoints passed (svc up/down + concurrent attach; state persistence; omp image + recipe breadth), 4 checkpoint-fixes committed (rootless networking, firewall, FastMCP host-header, omp bun)
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 11
-  completed_plans: 8
-  percent: 60
+  completed_plans: 11
+  percent: 80
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 04 (shared-services-recipe-breadth-full-cli) — EXECUTING
-Plan: 3 of 3 (auto tasks committed; checkpoints pending podman)
-Status: Executing Phase 04 — auto tasks done, awaiting operator podman verification
-Last activity: 2026-06-16 -- 12 auto tasks committed, integration gate clean
+Phase: 04 (shared-services-recipe-breadth-full-cli) — EXECUTED (3/3 plans verified)
+Plan: 3 of 3 complete (04-01, 04-02, 04-03 all verified + SUMMARY written)
+Status: Phase 04 executed — ready for /gsd-verify-phase 4
+Last activity: 2026-06-16 -- all 3 plans verified (svc concurrent-attach, state persistence, omp+recipe-breadth); 4 checkpoint-fixes committed
 
-Progress: [██████░░░░] 60% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 executing (auto tasks 3/3, checkpoints pending)
+Progress: [████████░░] 80% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ executed (3/3 verified) · Phase 05 pending
 
 ## Performance Metrics
 

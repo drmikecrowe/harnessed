@@ -20,7 +20,7 @@ observable end-to-end capability (vertical-MVP mode).
 - [x] **Phase 1: Containerized Engine + Transparent Stack** - Host bash bootstrap/launcher + host `podman build`; `harnessed transparent`/`container` re-delivers the host-mirror sandbox (completed 2026-06-15)
 - [x] **Phase 2: Isolated Tracer-Bullet Stack** - One harness + one MCP server + one skill, isolated and reproducible, asserted green by the capability test (completed 2026-06-15)
 - [x] **Phase 3: Supply-Chain Gate + pnpm-Everywhere** - `harnessed build` vets every dependency before it is committed or baked (completed 2026-06-15)
-- [ ] **Phase 4: Shared Services + Recipe Breadth + Full CLI** - Concurrent service sidecars, more recipes, and the full operable command/lifecycle surface
+- [x] **Phase 4: Shared Services + Recipe Breadth + Full CLI** - Concurrent service sidecars, more recipes, and the full operable command/lifecycle surface (completed 2026-06-16)
 - [ ] **Phase 5: Secrets, Hardening + Docs Completeness** - Opt-in varlock/1Password secrets, token-gated scanners, nightly re-scan, and the gated doc set
 
 ## Phase Details
@@ -112,7 +112,7 @@ Plans:
 
 - [x] 04-01: Shared service sidecars (image/volume/lifecycle) + `svc up/down/list` + concurrent attach over harnessed-net
 - [x] 04-02: State persistence + `--fresh` + full CLI (`list`/`stop`/`rm`/`new`/`install`/`uninstall` shims)
-- [ ] 04-03: omp harness support via bridge + a second recipe with its own capability test
+- [x] 04-03: omp harness support via bridge + a second recipe with its own capability test
 
 ### Phase 5: Secrets, Hardening + Docs Completeness
 
@@ -144,5 +144,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Containerized Engine + Transparent Stack | 3/3 | Complete   | 2026-06-15 |
 | 2. Isolated Tracer-Bullet Stack | 3/3 | Complete    | 2026-06-15 |
 | 3. Supply-Chain Gate + pnpm-Everywhere | 2/2 | Complete    | 2026-06-16 |
-| 4. Shared Services + Recipe Breadth + Full CLI | 2/3 | In Progress|  |
+| 4. Shared Services + Recipe Breadth + Full CLI | 3/3 | Complete   | 2026-06-16 |
 | 5. Secrets, Hardening + Docs Completeness | 0/2 | Not started | - |
