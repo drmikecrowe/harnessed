@@ -77,6 +77,16 @@ Network-native entry: `{"<name>":{"url":"http://host:port","type":"http","header
 
 ## 2. Plan 04-01: Shared service sidecars (SVC-01, SVC-02, SVC-03)
 
+> **⚠ SUPERSEDED — rootless networking pivot (see 04-01-SUMMARY).** §2b(ii)–(iv) below assumed a
+> rootless bridge (`harnessed-net`) for DNS-by-service-name. The checkpoint proved rootless bridges
+> are unsupported on the target host (`netavark: create bridge: Operation not supported` for ANY
+> container on ANY user-defined bridge). The shipped model is **publish-to-0.0.0.0 + reach via the
+> podman host-gateway `host.containers.internal:<port>`** — no bridge. Consequences: the assembler
+> URL is `http://host.containers.internal:<port>/mcp` (not `http://<service>:<port>`); the egress
+> firewall must allow `host.containers.internal` (169.254.1.2); and a proxied FastMCP service must
+> add `host.containers.internal:*` to `TransportSecuritySettings.allowed_hosts`. All SVC invariants
+> (one service, many attachers, service-scoped volume, independent lifecycle) are preserved.
+
 ### 2a. The model (design §3, §9)
 
 A **shared service** is a heavy/stateful sidecar (hindsight = postgres+MCP, openbrain) that is:
