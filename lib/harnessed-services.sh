@@ -14,10 +14,17 @@
 # Expects CONTAINER_RUNTIME + HARNESSED_DIR (set by harnessed-common.sh, sourced by the
 # launcher before this lib).
 
+# Ensure a named container network exists (idempotent). Used by ensure_harnessed_net and the
+# isolated launcher's HARNESSED_NET override (plan 04-01 Task 3).
+ensure_named_net() {
+    local net="$1"
+    "$CONTAINER_RUNTIME" network exists "$net" 2>/dev/null \
+        || "$CONTAINER_RUNTIME" network create "$net" >/dev/null
+}
+
 # Ensure the default shared bridge exists (harnessed-net). Idempotent.
 ensure_harnessed_net() {
-    "$CONTAINER_RUNTIME" network exists harnessed-net 2>/dev/null \
-        || "$CONTAINER_RUNTIME" network create harnessed-net >/dev/null
+    ensure_named_net harnessed-net
 }
 
 # Read a scalar value from services/<name>/service.yaml (flat `key: value` pairs).
