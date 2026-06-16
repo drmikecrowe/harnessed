@@ -10,10 +10,13 @@
 #   harnessed [path]               default stack = transparent
 #   harnessed <stack> [path] [--fresh]   launch an isolated stack: assembled profile + pod (harness + hatago)
 #   harnessed build [<stack>]      assemble a stack (emit-only) + build hatago, or rebuild base/claude/hatago images
-#   harnessed --list               list harnessed instances
-#   harnessed --stop   [path]      stop the instance for a project
-#   harnessed --remove [path]      remove the instance for a project
-#   harnessed --clean              remove all stopped harnessed instances
+#   harnessed list                 list authored stacks + running instances
+#   harnessed stop <stack>         stop every instance of a stack
+#   harnessed rm <stack>           remove every instance of a stack
+#   harnessed --list               (legacy) list harnessed instances
+#   harnessed --stop   [path]      (legacy) stop the instance for a project
+#   harnessed --remove [path]      (legacy) remove the instance for a project
+#   harnessed --clean              (legacy) remove all stopped harnessed instances
 #   harnessed --no-firewall ...    skip the egress firewall for this run
 
 set -euo pipefail
@@ -43,10 +46,13 @@ Usage:
   harnessed svc up <service>      Start a shared service sidecar on harnessed-net (own image + volume)
   harnessed svc down <service>    Stop a service (volume kept); add --purge to remove the volume
   harnessed svc list              List running harnessed-managed services
-  harnessed --list                List harnessed instances
-  harnessed --stop   [stack] [path]   Stop the instance/pod for a project
-  harnessed --remove [stack] [path]   Remove the instance/pod for a project
-  harnessed --clean               Remove all stopped harnessed instances
+  harnessed list                  List authored stacks + running instances
+  harnessed stop <stack>          Stop every instance of a stack (all projects)
+  harnessed rm <stack>            Remove every instance of a stack (all projects)
+  harnessed --list                (legacy) List harnessed instances
+  harnessed --stop   [stack] [path]   (legacy) Stop the instance/pod for a project
+  harnessed --remove [stack] [path]   (legacy) Remove the instance/pod for a project
+  harnessed --clean               (legacy) Remove all stopped harnessed instances
   harnessed --fresh ...           Tear down any existing pod/instance first (isolated)
   harnessed --no-firewall ...     Skip the egress firewall for this run
   harnessed -h | --help           Show this help
@@ -62,6 +68,8 @@ BUILD=false; LIST=false; STOP=false; REMOVE=false; CLEAN=false; FRESH=false
 CLAUDE=false; ZAI=false; STACK_SELECTED=false
 STACK="transparent"; PROJECT_PATH=""; BUILD_STACK=""; TEST=false; TEST_ARGS=(); TEST_STACK=""; ROOT_OVERRIDE=""
 SVC_ACTION=""; SVC_TARGET=""; SVC_PURGE=false
+SUB_LIST=false; SUB_STOP=false; SUB_REMOVE=false
+SUB_STOP_STACK=""; SUB_RM_STACK=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)      usage; exit 0 ;;
@@ -103,6 +111,23 @@ while [[ $# -gt 0 ]]; do
                     print_error "unknown svc action: $SVC_ACTION (use up|down|list)"; usage; exit 1
                     ;;
             esac
+            ;;
+        list)
+            # `harnessed list` → §13 subcommand: authored stacks + running instances (CLI-01).
+            # Parsed before the stack-name fallthrough so a stack named `list` cannot collide (P-04-07).
+            SUB_LIST=true; shift
+            ;;
+        stop)
+            # `harnessed stop <stack>` → stop every instance of a stack by name (CLI-01).
+            shift
+            [ $# -gt 0 ] || { print_error "stop requires a stack name"; usage; exit 1; }
+            SUB_STOP=true; SUB_STOP_STACK="$1"; shift
+            ;;
+        rm)
+            # `harnessed rm <stack>` → remove every instance of a stack by name (CLI-01).
+            shift
+            [ $# -gt 0 ] || { print_error "rm requires a stack name"; usage; exit 1; }
+            SUB_REMOVE=true; SUB_RM_STACK="$1"; shift
             ;;
         -l|--list)      LIST=true; shift ;;
         -s|--stop)      STOP=true; shift ;;
@@ -174,6 +199,19 @@ if [ -n "$SVC_ACTION" ]; then
         list) svc_list ;;
     esac
     exit 0
+fi
+
+# --- §13 stack/instance subcommands (plan 04-02 / CLI-01): list | stop <stack> | rm <stack> ---
+# First-class subcommands (design §13). Dispatch exits — they are top-level commands, not a launch
+# path. The legacy --list/--stop/--remove/--clean flags keep their own dispatch below (back-compat).
+if [ "$SUB_LIST" = true ]; then
+    . "$HARNESSED_DIR/lib/harnessed-cli.sh"; list_all; exit 0
+fi
+if [ "$SUB_STOP" = true ]; then
+    . "$HARNESSED_DIR/lib/harnessed-cli.sh"; stop_stack "$SUB_STOP_STACK"; exit 0
+fi
+if [ "$SUB_REMOVE" = true ]; then
+    . "$HARNESSED_DIR/lib/harnessed-cli.sh"; rm_stack "$SUB_RM_STACK"; exit 0
 fi
 
 # --- Image-only operations -------------------------------------------------
