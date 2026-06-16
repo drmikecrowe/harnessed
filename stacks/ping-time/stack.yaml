@@ -1,0 +1,11 @@
+# Stack: ping-time — proves a stdio recipe (time) + a service recipe (ping) compose into one
+# stack with a shared service sidecar (plan 04-01 / SVC-02).
+#
+# `time` is a stdio MCP server (hatago child); `ping` is a service-referenced network-native
+# server proxied by hatago over harnessed-net. The `services: [ping]` field auto-starts the
+# ping sidecar on launch (ensure_service_up) — a standalone container, not a pod member.
+name: ping-time
+config: isolated
+harness: claude
+recipes: [time, ping]
+services: [ping]

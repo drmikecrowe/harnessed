@@ -118,6 +118,24 @@ class Stack:
         return HARNESS_CONFIG_DIR[self.harness]
 
 
+@dataclass
+class ServiceDef:
+    """A shared service sidecar definition (design §3/§9, plan 04-01 SVC-01).
+
+    A service is its OWN image/container/volume on `harnessed-net`, with a lifecycle
+    independent of any instance. A recipe references it via `mcp.servers[].service`;
+    the assembler resolves the service name → a hatago URL-proxy entry pointing at
+    `http://<name>:<port>/mcp` (plan 04-01 Task 4).
+    """
+
+    name: str
+    image: str
+    port: int
+    volume: str = ""
+    healthcheck: str = ""
+    raw: dict = field(default_factory=dict)
+
+
 def _parse_servers(raw_mcp: dict) -> list[McpServer]:
     servers: list[McpServer] = []
     for entry in (raw_mcp or {}).get("servers", []) or []:
@@ -187,6 +205,31 @@ def load_stack(stack_dir: Path) -> Stack:
         services=list(raw.get("services", []) or []),
         permissions=raw.get("permissions"),
         state=dict(raw.get("state", {}) or {}),
+        raw=raw,
+    )
+
+
+def load_service(root: Path, name: str) -> ServiceDef:
+    """Load services/<name>/service.yaml under `root` (mirrors load_recipe/load_stack).
+
+    Requires `name`, `image`, and `port`; defaults `volume` to `<name>-data`. Raises
+    SchemaError on a missing file or required field (same fail-fast shape as load_recipe).
+    Reusable by the assembler to resolve a `service:`-referenced MCP server → its port.
+    """
+    root = Path(root)
+    manifest = root / "services" / name / "service.yaml"
+    if not manifest.is_file():
+        raise SchemaError(f"service manifest not found: {manifest}")
+    raw = _load_yaml(manifest)
+    for field_name in ("name", "image", "port"):
+        if field_name not in raw:
+            raise SchemaError(f"{manifest}: required field '{field_name}' is missing")
+    return ServiceDef(
+        name=raw["name"],
+        image=raw["image"],
+        port=int(raw["port"]),
+        volume=raw.get("volume") or f"{name}-data",
+        healthcheck=raw.get("healthcheck", ""),
         raw=raw,
     )
 
