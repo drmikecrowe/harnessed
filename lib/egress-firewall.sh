@@ -52,11 +52,15 @@ iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
-# Allow access to the host gateway (for connecting to local services on the host)
+# Allow access to the host gateway (for connecting to local services on the host). Rootless podman
+# has TWO relevant gateways: the default-route gateway (HOST_GW) and the podman host-gateway
+# `host.containers.internal` — the address shared service sidecars publish their ports to (plan
+# 04-01). iptables is netns-wide, so allowing this unblocks the whole pod, including the hatago
+# MCP proxy that reaches host-published services.
 HOST_GW=$(ip route 2>/dev/null | awk '/default/ {print $3; exit}')
-if [ -n "$HOST_GW" ]; then
-    iptables -A OUTPUT -d "$HOST_GW" -j ACCEPT
-fi
+[ -n "$HOST_GW" ] && iptables -A OUTPUT -d "$HOST_GW" -j ACCEPT
+PODMAN_GW=$(getent ahosts host.containers.internal 2>/dev/null | awk '{print $1}' | head -1)
+[ -n "$PODMAN_GW" ] && iptables -A OUTPUT -d "$PODMAN_GW" -j ACCEPT
 
 # Detect ip6tables availability
 HAS_IP6TABLES=false
