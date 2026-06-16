@@ -15,6 +15,10 @@ print_error()   { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 # --- Identity --------------------------------------------------------------
 HARNESSED_BASE_IMAGE="harnessed-base:latest"
 HARNESSED_CLAUDE_IMAGE="harnessed-claude:latest"
+# omp harness image (FROM harnessed-base + omp + pre-installed claude-hooks-bridge; design §6/§8).
+# Lazy-built by ensure_omp_image ONLY for omp stacks (plan 04-03 / HRN-01) — claude-only users
+# are never forced to build omp.
+HARNESSED_OMP_IMAGE="harnessed-omp:latest"
 # hatago MCP hub image (baked hub + light stdio servers; design §6 / D-06).
 HARNESSED_HATAGO_IMAGE="harnessed-hatago:latest"
 # Build-time assembler image (emit-only; design §15 / D-12). Built on first `harnessed build <stack>`.
@@ -145,6 +149,22 @@ ensure_images() {
     if ! image_exists "$HARNESSED_CLAUDE_IMAGE" || ! image_exists "$HARNESSED_HATAGO_IMAGE"; then
         print_warning "harnessed images not found. Building (first run)…"
         build_images false
+    fi
+}
+
+# Ensure the omp harness image exists; build it from base/Dockerfile.harnessed-omp on first use.
+# LAZY (plan 04-03 / HRN-01): called by the isolated launcher ONLY for `harness: omp` stacks, so
+# claude-only users are never forced to build omp (which pulls omp + the bridge over the network).
+# Mirrors ensure_tools_image. The base image is a prerequisite — build_images covers it.
+ensure_omp_image() {
+    if ! image_exists "$HARNESSED_OMP_IMAGE"; then
+        if ! image_exists "$HARNESSED_BASE_IMAGE"; then
+            print_warning "harnessed-base not found. Building base first…"
+            build_images false
+        fi
+        print_info "Building $HARNESSED_OMP_IMAGE ..."
+        "$CONTAINER_RUNTIME" build -t "$HARNESSED_OMP_IMAGE" \
+            -f "$HARNESSED_DIR/base/Dockerfile.harnessed-omp" "$HARNESSED_DIR"
     fi
 }
 

@@ -1,0 +1,19 @@
+# Recipe: omp — the omp (Oh My Pi) base recipe (design §11).
+#
+# Declares the claude-hooks-bridge extension dependency so an omp stack pulls it. The
+# profile is Claude-canonical regardless of harness (design §8: single source of truth) —
+# omp consumes .claude/ skills/hooks/commands at runtime via the bridge. No re-authoring.
+#
+# The `extensions:` list is parsed FORWARD (D-14): the assembler does NOT bake or vendor
+# it — the bridge is pre-installed in the harnessed-omp IMAGE (base/Dockerfile.harnessed-omp),
+# not per-recipe. This recipe DOCUMENTS the runtime dependency; an omp stack references it
+# to make the contract explicit (design §11 omp base recipe).
+#
+# No MCP servers / skills / commands — this recipe contributes no capabilities of its own;
+# it only carries the omp runtime contract for stacks that select `harness: omp`.
+name: omp
+description: omp/pi base — consume Claude-format hooks/skills via claude-hooks-bridge.
+
+# omp-native extensions the instance expects to be available (installed image-time, not vendored).
+extensions:
+  - package: npm:@drmikecrowe/omp-claude-hooks-bridge

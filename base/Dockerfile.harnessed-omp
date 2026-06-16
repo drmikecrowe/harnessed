@@ -1,0 +1,25 @@
+# harnessed-omp — the omp (Oh My Pi) harness image.
+#
+# FROM harnessed-base (lineage only, §6) + omp (via mise) + the pre-installed
+# claude-hooks-bridge extension. omp consumes the SAME Claude-canonical profile
+# (.claude/) as the claude harness — the bridge maps Claude hooks/skills at
+# runtime (design §8). No re-authoring. Build the base first.
+#
+# Lazy-built: `ensure_omp_image` (lib/harnessed-common.sh) builds this only when an
+# omp stack first launches, so claude-only users never build omp (plan 04-03 / HRN-01).
+
+FROM harnessed-base:latest
+
+# Install omp via mise (mirrors the host install; the base has mise + shims on PATH).
+# Pinned to the verified v16 line. `mise use -g` lands `omp` on the mise shim PATH.
+# Supply-chain (T-04-09): omp is the host harness (first-party, MIT-class); scanned on
+# build (BLD-02 via build_stack's image-scan path when an omp stack is assembled).
+ARG OMP_VERSION=16.0.1
+RUN mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" && mise install
+
+# Pre-install the claude-hooks-bridge extension so an omp stack auto-loads it via omp
+# extension discovery (no per-launch -e). Owner-authored npm package (MIT); pinned by
+# omp's plugin lock under ~/.omp/plugins. Installed into the image layer (design §8/§11).
+RUN omp plugin install @drmikecrowe/omp-claude-hooks-bridge
+
+CMD ["/bin/bash"]
