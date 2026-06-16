@@ -1,0 +1,17 @@
+# Recipe: greet — a skill-only recipe (recipe-breadth tracer, plan 04-03).
+#
+# The second recipe proving the assembler composes MULTIPLE recipes into one profile and the
+# capability test asserts BOTH (design §18 / success criterion 2). Where `time` carries an MCP
+# server + a skill, `greet` is the file-extension-ONLY analog: a standalone skill, NO MCP server.
+# So `stacks/claude-multi` (recipes: [time, greet]) exposes the `time` MCP server AND the
+# `greet` skill — two recipes, two capability kinds, both asserted.
+#
+# No `plugins:` vendoring and no `deps:` (no install, no supply-chain scan this phase).
+name: greet
+description: A greeting skill (recipe-breadth tracer — second recipe in a stack).
+
+# --- File-extension layer (Claude-canonical) ---
+# A STANDALONE skill dir shipped by this recipe (not a vendored plugin). The assembler fans it
+# into the harness-native profile path (.claude/skills/greet-helper) and fails fast on collision.
+skills:
+  - path: skills/greet-helper
