@@ -40,6 +40,9 @@ Usage:
   harnessed build | --build       (Re)build the base/claude/hatago images
   harnessed test <stack>          Capability test: launch the stack --fresh headless + assert it
                                   exposes the manifest's declared MCP servers/skills (markdown report)
+  harnessed svc up <service>      Start a shared service sidecar on harnessed-net (own image + volume)
+  harnessed svc down <service>    Stop a service (volume kept); add --purge to remove the volume
+  harnessed svc list              List running harnessed-managed services
   harnessed --list                List harnessed instances
   harnessed --stop   [stack] [path]   Stop the instance/pod for a project
   harnessed --remove [stack] [path]   Remove the instance/pod for a project
@@ -58,6 +61,7 @@ detect_runtime
 BUILD=false; LIST=false; STOP=false; REMOVE=false; CLEAN=false; FRESH=false
 CLAUDE=false; ZAI=false; STACK_SELECTED=false
 STACK="transparent"; PROJECT_PATH=""; BUILD_STACK=""; TEST=false; TEST_ARGS=(); TEST_STACK=""; ROOT_OVERRIDE=""
+SVC_ACTION=""; SVC_TARGET=""; SVC_PURGE=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)      usage; exit 0 ;;
@@ -74,6 +78,31 @@ while [[ $# -gt 0 ]]; do
             TEST_ARGS=("$@")
             if [[ ${#TEST_ARGS[@]} -gt 0 && "${TEST_ARGS[0]}" != -* ]]; then TEST_STACK="${TEST_ARGS[0]}"; fi
             break
+            ;;
+        svc)
+            # `harnessed svc up|down|list <service>` → shared service lifecycle (plan 04-01 / SVC-01).
+            # Parsed BEFORE the stack-name fallthrough so a service named like a stack does not collide.
+            shift
+            SVC_ACTION="${1:-}"
+            [ -n "$SVC_ACTION" ] || { print_error "svc requires an action (up|down|list)"; usage; exit 1; }
+            shift
+            case "$SVC_ACTION" in
+                up)
+                    [ $# -gt 0 ] || { print_error "svc up requires a service name"; usage; exit 1; }
+                    SVC_TARGET="$1"; shift
+                    ;;
+                down)
+                    [ $# -gt 0 ] || { print_error "svc down requires a service name"; usage; exit 1; }
+                    SVC_TARGET="$1"; shift
+                    [ "${1:-}" = "--purge" ] && { SVC_PURGE=true; shift; }
+                    ;;
+                list)
+                    SVC_TARGET=""
+                    ;;
+                *)
+                    print_error "unknown svc action: $SVC_ACTION (use up|down|list)"; usage; exit 1
+                    ;;
+            esac
             ;;
         -l|--list)      LIST=true; shift ;;
         -s|--stop)      STOP=true; shift ;;
@@ -124,6 +153,27 @@ if [ -n "$ROOT_OVERRIDE" ]; then
     fi
     HARNESSED_ROOT="$(cd "$ROOT_OVERRIDE" && pwd)"
     export HARNESSED_ROOT
+fi
+
+# --- Service lifecycle (plan 04-01 / SVC-01, SVC-03) ------------------------
+# `harnessed svc up|down|list <service>` manages shared service sidecars on harnessed-net
+# (own image/container/volume, labelled harnessed-service=<name>). Dispatch exits — svc is a
+# top-level command, not a launch path.
+if [ -n "$SVC_ACTION" ]; then
+    # shellcheck source=lib/harnessed-services.sh
+    . "$HARNESSED_DIR/lib/harnessed-services.sh"
+    case "$SVC_ACTION" in
+        up)   svc_up "$SVC_TARGET" ;;
+        down)
+            if [ "$SVC_PURGE" = true ]; then
+                svc_down "$SVC_TARGET" --purge
+            else
+                svc_down "$SVC_TARGET"
+            fi
+            ;;
+        list) svc_list ;;
+    esac
+    exit 0
 fi
 
 # --- Image-only operations -------------------------------------------------
