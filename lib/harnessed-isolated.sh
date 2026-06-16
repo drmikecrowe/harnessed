@@ -108,12 +108,17 @@ harnessed_isolated() {
     fi
     MOUNT_ARGS+=( -v "$run_claude:$CONTAINER_HOME/.claude:rw" )
 
-    # Pod network: harnessed-net is the DEFAULT for isolated stacks (plan 04-01 / SVC-02) so
-    # pod members resolve shared services by DNS name. The $net var honors the override env if
-    # set, otherwise defaults to harnessed-net. Members still reach hatago at
-    # localhost:3535 (shared pod netns) — the named bridge is ADDITIVE, not a replacement.
-    ensure_named_net "$net"
-    local pod_net_args=( --network "$net" )
+    # Pod network: DEFAULT rootless (pasta) networking — NOT a bridge. Rootless bridges are
+    # unsupported on most hosts (netavark "create bridge: Operation not supported"), so shared
+    # services publish their port to 0.0.0.0 and pod members reach them via the host gateway
+    # `host.containers.internal:<port>` (plan 04-01 rootless fix). Members still reach hatago at
+    # localhost:3535 (shared pod netns). HARNESSED_NET is an explicit opt-in bridge override for
+    # hosts that DO support rootless bridges.
+    local pod_net_args=()
+    if [ -n "${HARNESSED_NET:-}" ]; then
+        ensure_named_net "$HARNESSED_NET"
+        pod_net_args=( --network "$HARNESSED_NET" )
+    fi
 
     # Compose the pod (harness + hatago share the netns). keep-id maps the container user to the
     # host UID so mounted project/profile/credential paths are owned correctly. userns is a

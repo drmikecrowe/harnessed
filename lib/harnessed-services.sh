@@ -91,12 +91,17 @@ svc_up() {
     "$CONTAINER_RUNTIME" volume exists "$volume" 2>/dev/null \
         || "$CONTAINER_RUNTIME" volume create "$volume" >/dev/null
 
-    # Ensure the shared network.
-    ensure_harnessed_net
+    local port
+    port="$(_svc_yaml_val "$service" port)"
 
     print_info "Starting service: $service"
+    # Rootless service model (plan 04-01 fix): publish the port to 0.0.0.0 — NO bridge. Rootless
+    # bridges are unsupported on most hosts (netavark "create bridge: Operation not supported"),
+    # so peer instances/pods reach this service via the host gateway `host.containers.internal:<port>`.
+    # The service is a standalone container (not a pod member); its lifecycle is independent of any
+    # instance (design §9). HARNESSED_NET remains an explicit opt-in bridge for hosts that support it.
     "$CONTAINER_RUNTIME" run -d \
-        --network harnessed-net \
+        -p "$port:$port" \
         --name "$service" \
         --label harnessed-service="$service" \
         --userns=keep-id \

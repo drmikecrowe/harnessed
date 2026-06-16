@@ -60,7 +60,11 @@ def _resolve_service_servers(servers: list[McpServer], root: Path) -> list[McpSe
     for server in servers:
         if server.service and not server.is_stdio_child:
             svc = load_service(root, server.service)
-            server.url = f"http://{server.service}:{svc.port}/mcp"
+            # Rootless model (plan 04-01 fix): no bridge — services publish to 0.0.0.0 and peers
+            # reach them via the podman host gateway `host.containers.internal`. A rootless bridge
+            # is unsupported on most hosts (netavark "Operation not supported"), so DNS-by-service-
+            # name over harnessed-net was replaced with the host-gateway address.
+            server.url = f"http://host.containers.internal:{svc.port}/mcp"
             if server.transport == "stdio":
                 server.transport = "http"
     return servers
