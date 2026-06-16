@@ -15,7 +15,9 @@ FROM harnessed-base:latest
 # Supply-chain (T-04-09): omp is the host harness (first-party, MIT-class); scanned on
 # build (BLD-02 via build_stack's image-scan path when an omp stack is assembled).
 ARG OMP_VERSION=16.0.1
-RUN mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" && mise install
+# omp plugins are Bun-based (the claude-hooks-bridge ships a bun.lock + TS entry). Install bun via
+# mise so `omp plugin install` can resolve/run them.
+RUN mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" bun && mise install
 
 # Pre-install the claude-hooks-bridge extension so an omp stack auto-loads it via omp
 # extension discovery (no per-launch -e). Owner-authored npm package (MIT); pinned by
