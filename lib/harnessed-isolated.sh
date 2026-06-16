@@ -20,10 +20,10 @@
 # capability test (plan 02-03) launches via this path (`--fresh` headless) and asserts against
 # the live instance.
 
-# Pod network: default = podman's default pod network (rootless pasta; no host bridge needed).
-# Set HARNESSED_NET=<name> to opt into a custom bridge network where rootless bridge creation
-# is supported (D-05). Members share a netns either way, so the harness always reaches hatago
-# at localhost:$HATAGO_PORT.
+# Pod network: harnessed-net is the DEFAULT for isolated stacks (plan 04-01 / SVC-02) so pod
+# members resolve shared services by DNS name (http://<service>:<port>). Set HARNESSED_NET=<name>
+# to override the network name (advanced/multi-network). Members share a netns either way, so
+# the harness always reaches hatago at localhost:$HATAGO_PORT.
 HARNESSED_NET="${HARNESSED_NET:-}"
 HATAGO_PORT="${HATAGO_PORT:-3535}"
 
@@ -33,6 +33,7 @@ harnessed_isolated() {
 
     . "$HARNESSED_DIR/lib/harnessed-mounts.sh"
     . "$HARNESSED_DIR/lib/harnessed-isolated-config.sh"
+    . "$HARNESSED_DIR/lib/harnessed-services.sh"
 
     [ -d "$project_path" ] || { print_error "Project directory does not exist: $project_path"; exit 1; }
 
@@ -47,6 +48,7 @@ harnessed_isolated() {
     headless="${HARNESSED_HEADLESS:-false}"
 
     local mise_init="source ~/.bashrc && mise trust -a 2>/dev/null"
+    local net="${HARNESSED_NET:-harnessed-net}"
 
     # --fresh: tear down any existing pod/instance before recreate — no state bleed (D-11).
     if [ "$fresh" = "true" ]; then
@@ -83,21 +85,31 @@ harnessed_isolated() {
     cp -a "$profile_dir/.claude" "$run_claude"
     MOUNT_ARGS+=( -v "$run_claude:$CONTAINER_HOME/.claude:rw" )
 
-    # Pod network: opt into a named bridge only when HARNESSED_NET is set AND the host supports
-    # rootless bridge creation; otherwise use the default pod network (pasta). The harness reaches
-    # hatago over the shared pod netns (localhost) regardless of the external network.
-    local pod_net_args=()
-    if [ -n "$HARNESSED_NET" ]; then
-        "$CONTAINER_RUNTIME" network exists "$HARNESSED_NET" 2>/dev/null \
-            || "$CONTAINER_RUNTIME" network create "$HARNESSED_NET" >/dev/null
-        pod_net_args=( --network "$HARNESSED_NET" )
-    fi
+    # Pod network: harnessed-net is the DEFAULT for isolated stacks (plan 04-01 / SVC-02) so
+    # pod members resolve shared services by DNS name. The $net var honors the override env if
+    # set, otherwise defaults to harnessed-net. Members still reach hatago at
+    # localhost:3535 (shared pod netns) — the named bridge is ADDITIVE, not a replacement.
+    ensure_named_net "$net"
+    local pod_net_args=( --network "$net" )
 
     # Compose the pod (harness + hatago share the netns). keep-id maps the container user to the
     # host UID so mounted project/profile/credential paths are owned correctly. userns is a
     # POD-level property (set on the infra container); pod MEMBERS must NOT pass --userns, so it
     # is stripped from the member args below.
     "$CONTAINER_RUNTIME" pod create --name "$pod" --userns=keep-id "${pod_net_args[@]}" >/dev/null
+
+    # Auto-start the stack's declared shared services (plan 04-01 / SVC-02, design §9: an instance
+    # starts it if absent; it outlives instances). The service is a STANDALONE container on the
+    # shared network, NOT a pod member — its lifecycle is independent of this pod. This runs
+    # after pod create and before the members so the service is up when hatago tries to proxy it.
+    local svc_line svc
+    svc_line="$(sed -n 's/^services: *//p' "$HARNESSED_DIR/stacks/$stack/stack.yaml")"
+    svc_line="${svc_line#[}"          # strip inline-array brackets: [a, b] → a, b
+    svc_line="${svc_line%]}"
+    for svc in $svc_line; do
+        svc="${svc%,}"
+        [ -n "$svc" ] && ensure_service_up "$svc"
+    done
 
     # hatago member: serve ONE Streamable-HTTP endpoint on :3535 from the mounted per-stack
     # config (which baked stdio servers to expose; the image CMD is overridden to add --config).
