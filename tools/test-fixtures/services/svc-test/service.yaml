@@ -1,0 +1,5 @@
+name: svc-test
+image: x
+volume: svc-test-data
+port: 9000
+healthcheck: "curl -sf http://localhost:9000/health || exit 1"

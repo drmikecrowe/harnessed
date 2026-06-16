@@ -1,0 +1,5 @@
+name: svc-stack
+config: isolated
+harness: claude
+recipes: [svc-recipe]
+services: [svc-test]

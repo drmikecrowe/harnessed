@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import emit
-from .schema import McpServer, Recipe, Stack, load_stack_with_recipes, validate_no_raw_npm
+from .schema import McpServer, Recipe, Stack, load_service, load_stack_with_recipes, validate_no_raw_npm
 from .synclinks import CollisionError, LinkSyncer
 
 
@@ -48,6 +48,24 @@ def _merge_servers(recipes: list[Recipe]) -> list[McpServer]:
     return servers
 
 
+def _resolve_service_servers(servers: list[McpServer], root: Path) -> list[McpServer]:
+    """Resolve ``service:``-referenced MCP servers to network-native URLs (plan 04-01 / SVC-01).
+
+    A recipe declares a service-referenced server with ``service: <name>`` and NO command
+    (``is_stdio_child`` is False). The assembler resolves the service name → port by reading
+    ``services/<name>/service.yaml`` and sets ``url`` + ``transport`` so ``emit._hatago_entry``
+    emits a ``{url, type: http}`` hatago proxy entry. The resolution lives HERE so emit stays
+    dumb (it already emits network-native servers as ``{url, type}`` — no emit change needed).
+    """
+    for server in servers:
+        if server.service and not server.is_stdio_child:
+            svc = load_service(root, server.service)
+            server.url = f"http://{server.service}:{svc.port}/mcp"
+            if server.transport == "stdio":
+                server.transport = "http"
+    return servers
+
+
 def assemble(root: Path, stack_name: str, build_dir: Path) -> AssembleResult:
     root = Path(root)
     build_dir = Path(build_dir)
@@ -64,7 +82,7 @@ def assemble(root: Path, stack_name: str, build_dir: Path) -> AssembleResult:
     for recipe in recipes:
         syncer.add_recipe(recipe)
 
-    servers = _merge_servers(recipes)
+    servers = _resolve_service_servers(_merge_servers(recipes), root)
 
     profile_dir = build_dir / "profiles" / stack.name
     harness_dir = profile_dir / stack.harness_config_dir

@@ -1,0 +1,8 @@
+name: svc-recipe
+description: Fixture recipe referencing a shared service (assembler-resolution test, plan 04-01).
+
+mcp:
+  servers:
+    - name: svc-test
+      service: svc-test
+      transport: http
