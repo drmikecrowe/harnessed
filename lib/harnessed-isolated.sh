@@ -78,11 +78,17 @@ harnessed_isolated() {
     # Copy-on-start into a per-instance state dir and mount THAT rw: the committed profile is the
     # immutable template, so the running harness never writes runtime state (projects/, backups/,
     # caches) or the ro-credential mountpoint stub back into the version-controlled tree
-    # (reproducibility + credential hygiene, T-02-07/T-02-04). Refreshed every (re)create.
+    # (reproducibility + credential hygiene, T-02-07/T-02-04). PERSISTENT by default (STA-01): the
+    # wipe + reseed runs ONLY on first create (state dir absent) OR under --fresh (clean-room), so a
+    # normal recreate REUSES the accumulated .claude (projects/, history.jsonl, …) and a memory
+    # system accumulates host-side under $XDG_STATE_HOME/harnessed/$instance (STA-02). --fresh is
+    # now meaningfully distinct (wipe) from a normal run (reuse).
     local run_claude="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$instance/.claude"
-    rm -rf "$run_claude"
     mkdir -p "$(dirname "$run_claude")"
-    cp -a "$profile_dir/.claude" "$run_claude"
+    if [ "$fresh" = "true" ] || [ ! -d "$run_claude" ]; then
+        rm -rf "$run_claude"
+        cp -a "$profile_dir/.claude" "$run_claude"
+    fi
     MOUNT_ARGS+=( -v "$run_claude:$CONTAINER_HOME/.claude:rw" )
 
     # Pod network: harnessed-net is the DEFAULT for isolated stacks (plan 04-01 / SVC-02) so
