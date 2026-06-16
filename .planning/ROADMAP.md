@@ -75,7 +75,7 @@ Plans:
 
 ### Phase 3: Supply-Chain Gate + pnpm-Everywhere
 
-**Goal**: Make `harnessed build` trustworthy — pnpm-everywhere managed config plus a credential-free scan gate that fails on high-severity findings before anything is committed or baked.
+**Goal**: As a stack author, I want to build stacks knowing `harnessed build` enforces pnpm-everywhere managed config and a credential-free HIGH-severity scan gate, so that no dependency with a high-severity vulnerability is committed or baked into an image.
 **Mode:** mvp
 **Depends on**: Phase 2
 **Requirements**: BLD-01, BLD-02, BLD-03
