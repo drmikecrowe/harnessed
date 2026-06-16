@@ -25,8 +25,11 @@ from ruamel.yaml import YAML
 _yaml = YAML(typ="safe", pure=True)
 
 # Harness → config directory name (Claude Code canonical, design §8). One harness per stack.
+# omp consumes the SAME Claude-canonical profile (.claude/) via the claude-hooks-bridge —
+# single source of truth (plan 04-03 / HRN-01). No separate config dir, no re-authoring.
 HARNESS_CONFIG_DIR = {
     "claude": ".claude",
+    "omp": ".claude",
 }
 
 

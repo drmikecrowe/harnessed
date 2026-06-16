@@ -31,6 +31,18 @@ HATAGO_PORT="${HATAGO_PORT:-3535}"
 harnessed_isolated() {
     local stack="$1" project_path="$2" fresh="${3:-false}"
 
+    # Read the stack's harness (flat scalar grep — the manifest is authored). Default claude.
+    # omp stacks run the harness member from harnessed-omp:latest and attach via omp
+    # (--profile); claude stacks use harnessed-claude:latest + claude --mcp-config (plan 04-03).
+    local harness
+    harness="$(sed -n 's/^harness:[[:space:]]*//p' "$HARNESSED_DIR/stacks/$stack/stack.yaml" | tr -d '[:space:]')"
+    harness="${harness:-claude}"
+    local harness_image="$HARNESSED_CLAUDE_IMAGE"
+    [ "$harness" = "omp" ] && harness_image="$HARNESSED_OMP_IMAGE"
+    # LAZY: build the omp image only when an omp stack actually launches (HRN-01). The claude +
+    # hatago images are ensured by the bootstrap's ensure_images call before this function.
+    [ "$harness" = "omp" ] && ensure_omp_image
+
     . "$HARNESSED_DIR/lib/harnessed-mounts.sh"
     . "$HARNESSED_DIR/lib/harnessed-isolated-config.sh"
     . "$HARNESSED_DIR/lib/harnessed-services.sh"
@@ -60,8 +72,13 @@ harnessed_isolated() {
     # Re-attach to an already-running instance (interactive only; like transparent).
     if [ "$headless" != "true" ] && container_running "$instance"; then
         print_info "Attaching to running instance: $instance"
-        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
-            bash -l -c "$mise_init && claude"
+        if [ "$harness" = "omp" ]; then
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+                bash -l -c "$mise_init && omp --profile \"$instance\""
+        else
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+                bash -l -c "$mise_init && claude"
+        fi
         stop_if_last_session "$instance" "$relpath"
         return 0
     fi
@@ -124,7 +141,8 @@ harnessed_isolated() {
         "$HARNESSED_HATAGO_IMAGE" \
         hatago serve --http --port "$HATAGO_PORT" --config "$CONTAINER_HOME/hatago.config.json" >/dev/null
 
-    # harness member: the claude container — profile-only config, §4a + isolated §4b mounts.
+    # harness member: the harness container (claude or omp) — profile-only config, §4a + isolated
+    # §4b mounts. omp stacks run harnessed-omp (the bridge auto-loads — pre-installed in the image).
     # Strip --userns=keep-id from the member args (inherited from the pod; illegal on a member).
     local member_args=() _arg
     for _arg in "${MOUNT_ARGS[@]}"; do
@@ -132,7 +150,7 @@ harnessed_isolated() {
         member_args+=( "$_arg" )
     done
     "$CONTAINER_RUNTIME" run -d --pod "$pod" --name "$instance" "${member_args[@]}" \
-        "$HARNESSED_CLAUDE_IMAGE" sleep infinity >/dev/null
+        "$harness_image" sleep infinity >/dev/null
 
     # Egress firewall on the harness container (NET_ADMIN); shared pod netns → covers hatago too.
     apply_firewall "$instance"
@@ -153,14 +171,21 @@ harnessed_isolated() {
         return 0
     fi
 
-    # Interactive attach (host-native TTY). Load ONLY the profile's hatago MCP endpoint via
-    # --mcp-config + --strict-mcp-config: this is what makes claude actually connect to hatago
-    # (a profile-only ~/.claude/.mcp.json is otherwise NOT read by claude) AND keeps isolation —
-    # --strict-mcp-config ignores every other MCP source, so the user's account-synced servers
-    # (claude.ai remote MCP) never leak into the isolated instance.
+    # Interactive attach (host-native TTY). The harness attach command branches on stack.harness
+    # (plan 04-03): claude loads ONLY the profile's hatago MCP endpoint via --mcp-config +
+    # --strict-mcp-config (a profile-only ~/.claude/.mcp.json is otherwise NOT read by claude, and
+    # --strict-mcp-config keeps isolation — account-synced servers never leak in); omp consumes the
+    # Claude-canonical profile via the pre-installed bridge and isolates the session with --profile
+    # (the bridge auto-loads — no per-launch -e). omp's MCP wiring to hatago is resolved in the
+    # checkpoint (P-04-11; same localhost:3535 endpoint, shared pod netns).
     local mcp_cfg="$CONTAINER_HOME/.claude/.mcp.json"
-    "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
-        bash -l -c "$mise_init && claude --mcp-config '$mcp_cfg' --strict-mcp-config"
+    if [ "$harness" = "omp" ]; then
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            bash -l -c "$mise_init && omp --profile \"$instance\""
+    else
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            bash -l -c "$mise_init && claude --mcp-config '$mcp_cfg' --strict-mcp-config"
+    fi
     stop_if_last_session "$instance" "$relpath"
     print_success "Instance session ended"
 }
