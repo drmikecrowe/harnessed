@@ -50,9 +50,9 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Build
 
-- [ ] **BLD-01**: All JavaScript installs (global, per-recipe, hatago servers) use pnpm with managed supply-chain config (`minimumReleaseAge`, lifecycle default-deny, store integrity)
-- [ ] **BLD-02**: `harnessed build` runs osv-scanner + pip-audit (credential-free) and fails on high-severity findings
-- [ ] **BLD-03**: Recipe validation flags any raw `npm`/`npx` usage and points at the pnpm equivalent
+- [x] **BLD-01**: All JavaScript installs (global, per-recipe, hatago servers) use pnpm with managed supply-chain config (`minimumReleaseAge`, lifecycle default-deny, store integrity)
+- [x] **BLD-02**: `harnessed build` runs osv-scanner + pip-audit (credential-free) and fails on high-severity findings
+- [x] **BLD-03**: Recipe validation flags any raw `npm`/`npx` usage and points at the pnpm equivalent
 
 ### Services
 
@@ -141,9 +141,9 @@ Which phase covers which requirement.
 | MCP-03 | Phase 2 | Complete |
 | TST-01 | Phase 2 | Complete |
 | TST-02 | Phase 2 | Complete |
-| BLD-01 | Phase 3 | Pending |
-| BLD-02 | Phase 3 | Pending |
-| BLD-03 | Phase 3 | Pending |
+| BLD-01 | Phase 3 | Complete |
+| BLD-02 | Phase 3 | Complete |
+| BLD-03 | Phase 3 | Complete |
 | SVC-01 | Phase 4 | Pending |
 | SVC-02 | Phase 4 | Pending |
 | SVC-03 | Phase 4 | Pending |

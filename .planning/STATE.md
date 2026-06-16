@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-last_updated: "2026-06-15T20:57:14.012Z"
-last_activity: 2026-06-15 -- Phase 03 execution started
+status: ready_to_plan
+last_updated: 2026-06-16T10:31:07.930Z
+last_activity: 2026-06-16 -- Phase 03 complete (2/2), UAT 8/8, security threats_open:0
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 6
-  percent: 40
+  completed_plans: 8
+  percent: 60
+stopped_at: Phase 03 complete (2/2) — ready to discuss Phase 4
 ---
 
 # Project State
@@ -20,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** Compose a named stack and launch an isolated, authenticated instance that exposes exactly the skills/commands/MCP/services it declares — nothing from host config — reproducibly, podman the only host dependency.
-**Current focus:** Phase 03 — supply-chain-gate-pnpm-everywhere
+**Current focus:** Phase 4 — shared services + recipe breadth + full cli
 
 ## Current Position
 
-Phase: 03 (supply-chain-gate-pnpm-everywhere) — COMPLETE ✓ (pending phase verification)
-Plan: 03-01 ✓ (BLD-01) + 03-02 ✓ (BLD-02 + BLD-03) — both executed + checkpoint-verified
-Status: Phase 03 executed — 2 of 2 plans done; ready for phase verification
-Last activity: 2026-06-15 -- Plan 03-02 complete: CVSS>=HIGH scan gate (osv-scanner offline PyPI+npm + pip-audit) + raw-npm/npx lint wired into build_stack; proven by HIGH-abort (requests==2.19.0→GHSA-x84v-xcm2-53pg) AND LOW-green (mistune==0.7.4 builds green) — the severity-gate proof; npm-lint aborts with pnpm equivalent; tracer-time full build green incl. hatago image scan.
+Phase: 4
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-06-16
 
-Progress: [██████░░░░] 60% — Phase 02 ✓ verified · Phase 03 ✓ executed (2/2 plans, checkpoint-verified) · ready for /gsd-verify-work 3
+Progress: [██████░░░░] 60% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ complete (UAT 8/8, threats_open:0) · ready to plan Phase 4
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 5
+- Total plans completed: 7
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -44,6 +45,7 @@ Progress: [██████░░░░] 60% — Phase 02 ✓ verified · Phas
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 2 | 3 | - | - |
+| 03 | 2 | - | - |
 
 **Recent Trend:**
 
