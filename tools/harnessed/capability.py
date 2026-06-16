@@ -26,6 +26,7 @@ code and are guarded behind the launch.
 from __future__ import annotations
 
 import json
+import shlex
 import os
 import re
 import shutil
@@ -273,6 +274,48 @@ def wait_ready(instance: str, *, port: int = HATAGO_PORT, timeout: int = 60) -> 
     return False
 
 
+# --- Harness-aware backstops (plan 04-03 / HRN-01) ----------------------------------------------
+#
+# The PRIMARY checks (hatago `hatago://servers` resource + mounted-profile filesystem listing)
+# are harness-INDEPENDENT and unchanged. Only the LLM backstop command differs: an omp stack is
+# introspected via `omp -p --mode json` instead of `claude -p --output-format json`. The same
+# profile (Claude-canonical, design §8) backs both — omp consumes it via the bridge.
+
+
+def _harness_of(root: Path | str, stack_name: str) -> str:
+    """Read the stack's harness from its manifest (default 'claude' on any read failure).
+
+    The capability test branches the LLM backstop on this: omp stacks use omp -p --mode json.
+    A missing/malformed manifest falls back to claude (the historical default) so the harness-
+    independent primary checks still run.
+    """
+    try:
+        stack = schema.load_stack(Path(root) / "stacks" / stack_name)
+    except schema.SchemaError:
+        return "claude"
+    return stack.harness or "claude"
+
+
+def _llm_cmd(harness: str, prompt: str) -> list[str]:
+    """The headless LLM-backstop argv for a harness (plan 04-03).
+
+    claude → claude -p <prompt> --output-format json
+    omp    → omp    -p <prompt> --mode json
+
+    The PRIMARY MCP/skill checks do not use this — only the fallback when the machine-readable
+    sources are empty. Callers append harness-specific isolation flags (claude: --mcp-config +
+    --strict-mcp-config; omp: --profile) before rendering to a bash snippet for `_exec`.
+    """
+    if harness == "omp":
+        return ["omp", "-p", prompt, "--mode", "json"]
+    return ["claude", "-p", prompt, "--output-format", "json"]
+
+
+def _llm_cmd_str(argv: list[str]) -> str:
+    """Render an LLM-backstop argv as a single bash-safe snippet for `_exec` (shlex-quoted)."""
+    return " ".join(shlex.quote(a) for a in argv)
+
+
 # --- MCP introspection: hatago resource (primary) → claude mcp list → LLM backstop ---------------
 
 
@@ -364,22 +407,24 @@ def _mcp_from_hatago(instance: str) -> dict[str, str]:
     return found
 
 
-def _mcp_from_llm(instance: str) -> dict[str, str]:
+def _mcp_from_llm(instance: str, harness: str = "claude") -> dict[str, str]:
     """Backstop: ask the harness (headless, isolated MCP config) for connected MCP servers.
 
-    Uses the SAME `--mcp-config <profile .mcp.json> --strict-mcp-config` the launcher uses, so the
-    view matches the real isolated session (hatago only; no host/project/account-synced servers).
+    claude uses the SAME `--mcp-config <profile .mcp.json> --strict-mcp-config` the launcher uses,
+    so the view matches the real isolated session (hatago only; no host/project/account-synced
+    servers). omp has no `mcp list` parity — it is probed via `omp -p --mode json --profile` (the
+    hatago resource is the authoritative MCP source either way; this is the rare fallback).
     """
     prompt = (
         "List the MCP servers currently connected (including any provided through the hatago hub). "
         'Respond with ONLY a JSON array of server name strings, e.g. ["time"]. No prose.'
     )
-    mcp_cfg = f"{CONTAINER_HOME}/.claude/.mcp.json"
-    raw = _exec(
-        instance,
-        f"claude -p {json.dumps(prompt)} --mcp-config {mcp_cfg} --strict-mcp-config --output-format json",
-        timeout=180,
-    )
+    argv = _llm_cmd(harness, prompt)
+    if harness == "omp":
+        argv += ["--profile", instance]
+    else:
+        argv += ["--mcp-config", f"{CONTAINER_HOME}/.claude/.mcp.json", "--strict-mcp-config"]
+    raw = _exec(instance, _llm_cmd_str(argv), timeout=180)
     names = _names_from_llm_json(raw)
     return {name: "connected (llm backstop)" for name in names}
 
@@ -405,20 +450,20 @@ def _names_from_llm_json(raw: str) -> set[str]:
     return {str(item) for item in arr if isinstance(item, (str,))}
 
 
-def introspect_mcp(instance: str) -> tuple[dict[str, str], str]:
+def introspect_mcp(instance: str, harness: str = "claude") -> tuple[dict[str, str], str]:
     """Return ({connected server -> status}, source-label), preferring machine-readable sources.
 
     hatago's `hatago://servers` resource is the machine-readable primary (auth-free; lists the
-    connected child servers). `claude mcp list` is intentionally NOT used — it ignores
-    `--mcp-config`, so it cannot see the isolated profile's hatago server and would instead
-    surface the user's account-synced servers. The strict-config LLM probe is the backstop.
+    connected child servers) and is harness-INDEPENDENT. `claude mcp list` / `omp` parity is
+    intentionally NOT the primary — the hatago resource is authoritative. The harness-specific
+    headless LLM probe (`_mcp_from_llm`) is the backstop; `harness` only routes that fallback.
     """
     servers = _mcp_from_hatago(instance)
     if servers:
         return servers, HATAGO_SERVERS_URI
-    servers = _mcp_from_llm(instance)
+    servers = _mcp_from_llm(instance, harness)
     if servers:
-        return servers, "claude -p (strict isolated config)"
+        return servers, f"{harness} -p (strict isolated config)"
     return {}, HATAGO_SERVERS_URI
 
 
@@ -434,25 +479,30 @@ def _fileext_from_filesystem(instance: str, subdir: str) -> set[str]:
     return {line.strip() for line in raw.splitlines() if line.strip()}
 
 
-def _skills_from_llm(instance: str) -> set[str]:
+def _skills_from_llm(instance: str, harness: str = "claude") -> set[str]:
     """Backstop: ask the harness, headless, to emit the skills it sees as a JSON array."""
     prompt = (
         "List the skills currently available to you. "
         'Respond with ONLY a JSON array of skill name strings, e.g. ["time-helper"]. No prose.'
     )
-    raw = _exec(instance, f"claude -p {json.dumps(prompt)} --output-format json", timeout=180)
+    raw = _exec(instance, _llm_cmd_str(_llm_cmd(harness, prompt)), timeout=180)
     return _names_from_llm_json(raw)
 
 
-def introspect(instance: str) -> LiveCapabilities:
-    """Gather the live instance's actual capabilities (MCP + skills + commands)."""
-    mcp, mcp_source = introspect_mcp(instance)
+def introspect(instance: str, harness: str = "claude") -> LiveCapabilities:
+    """Gather the live instance's actual capabilities (MCP + skills + commands).
+
+    `harness` only routes the LLM fallback (`_mcp_from_llm`/`_skills_from_llm`); the primary
+    checks — hatago's `hatago://servers` resource and the mounted-profile filesystem listing —
+    are harness-independent (plan 04-03). Defaults to claude so the historical call path is intact.
+    """
+    mcp, mcp_source = introspect_mcp(instance, harness)
 
     skills = _fileext_from_filesystem(instance, "skills")
     skills_source = "mounted profile filesystem"
     if not skills:
-        skills = _skills_from_llm(instance)
-        skills_source = "claude -p (llm backstop)"
+        skills = _skills_from_llm(instance, harness)
+        skills_source = f"{harness} -p (llm backstop)"
 
     commands = _fileext_from_filesystem(instance, "commands")
 
@@ -478,6 +528,9 @@ def run_capability_test(
     Returns the single structured `CapabilityReport` that drives both the report and the exit code.
     """
     expected = expected_capabilities(root, stack_name)
+    # Harness-aware backstop (plan 04-03): route the LLM fallback on stack.harness. The primary
+    # hatago/filesystem checks run unchanged regardless of harness.
+    harness = _harness_of(root, stack_name)
 
     # Own the scratch project dir for the WHOLE test: it is the pod's project bind-mount and must
     # outlive launch→introspect→teardown (deleting it mid-run breaks `podman exec`). A caller-
@@ -491,7 +544,7 @@ def run_capability_test(
         )
         try:
             wait_ready(instance)
-            live = introspect(instance)
+            live = introspect(instance, harness)
         finally:
             if not keep:
                 teardown(instance, harnessed_bin=harnessed_bin)
