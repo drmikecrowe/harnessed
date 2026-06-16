@@ -52,3 +52,38 @@ rm_stack() {
     done < <("$CONTAINER_RUNTIME" pod ls --filter "name=harnessed-${stack}-" --format '{{.Name}}')
     [ "$matched" = true ] || print_info "No instances to remove for stack '$stack'"
 }
+
+# new_stack <stack> [harness] [recipes]: scaffold stacks/<stack>/stack.yaml (CLI-02).
+# Validates harness ∈ {claude, omp} (hard error otherwise — P-04-09), refuses to overwrite an
+# existing stack (P-04-08), and writes the tracer-time manifest shape (name/config/harness/
+# recipes). Recipes need NOT pre-exist (warn, don't fail) — a recipe can be authored after the
+# stack, so absence is a warning, not an error (P-04-09).
+new_stack() {
+    local stack="$1" harness="${2:-claude}" recipes="${3:-}"
+    case "$harness" in
+        claude|omp) ;;
+        *) print_error "unknown harness: $harness (claude|omp)"; exit 1 ;;
+    esac
+    local stack_dir="$HARNESSED_DIR/stacks/$stack"
+    [ -f "$stack_dir/stack.yaml" ] && { print_error "stack '$stack' already exists"; exit 1; }
+    mkdir -p "$stack_dir"
+    # Comma-joined "a,b,c" → inline-array "a, b, c" (the stack.yaml convention; normalize
+    # spacing first so "a, b" and "a ,b" all land as "a, b"). Empty → "[]".
+    local r="$recipes"
+    r="${r//, /,}"; r="${r// ,/,}"
+    local recipes_yaml="[]"
+    [ -n "$r" ] && recipes_yaml="[${r//,/, }]"
+    cat > "$stack_dir/stack.yaml" <<EOF
+# Stack: $stack — scaffolded by harnessed new.
+name: $stack
+config: isolated      # isolated (default) | transparent
+harness: $harness     # claude | omp  (exactly one)
+recipes: $recipes_yaml
+EOF
+    # Warn (don't fail) on recipes that don't exist yet — authorable after the stack.
+    local rec
+    for rec in ${r//,/ }; do
+        [ -d "$HARNESSED_DIR/recipes/$rec" ] || print_warning "recipe '$rec' not found under recipes/ (author it before building)"
+    done
+    print_success "scaffolded stacks/$stack/stack.yaml"
+}
