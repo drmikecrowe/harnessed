@@ -298,6 +298,11 @@ if [ "$TEST" = true ]; then
     fi
     # Ensure the harness/base images exist (the pod's harness member runs the capability probes).
     ensure_images
+    # An omp test stack runs its harness member from harnessed-omp: ensure it up front so a
+    # missing image surfaces as a clear bash build error (not a mid-test CapabilityError). The
+    # headless launch inside the test lazy-builds it too; this just moves the build to the right
+    # layer (plan 04-03 / HRN-01).
+    grep -q '^harness:[[:space:]]*omp' "$HARNESSED_DIR/stacks/$TEST_STACK/stack.yaml" 2>/dev/null && ensure_omp_image
     # The host-side test needs ruamel.yaml + rich. Resolution order (keeps the persistent host
     # dependency surface at "podman only"):
     #   1. HARNESSED_PYTHON override — an interpreter the operator guarantees has the deps.
