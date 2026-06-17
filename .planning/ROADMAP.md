@@ -94,7 +94,7 @@ Plans:
 
 ### Phase 4: Shared Services + Recipe Breadth + Full CLI
 
-**Goal**: Add the cross-instance concurrency model (service-scoped shared sidecars) and the full operable surface — more recipes, state/`--fresh`, the complete CLI and launcher shims, and omp-via-bridge.
+**Goal**: As a stack operator, I want to run concurrent harness instances that share service-scoped sidecars and operate the full stack, instance, and session lifecycle through the `harnessed` CLI, so that multiple instances can run together over a shared network, I can add more recipes to a stack, and every lifecycle action works predictably by name with default persistence and clean-room `--fresh` runs.
 **Mode:** mvp
 **Depends on**: Phase 3
 **Requirements**: SVC-01, SVC-02, SVC-03, STA-01, STA-02, CLI-01, CLI-02, CLI-03, HRN-01
