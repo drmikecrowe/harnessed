@@ -78,6 +78,10 @@ SUB_LIST=false; SUB_STOP=false; SUB_REMOVE=false
 SUB_STOP_STACK=""; SUB_RM_STACK=""
 SUB_NEW=false; SUB_NEW_STACK=""; SUB_NEW_HARNESS="claude"; SUB_NEW_RECIPES=""
 SUB_INSTALL_ACTION=""; SUB_INSTALL_STACK=""
+# Bare invocation (no args) shows help instead of silently launching the transparent
+# stack (UAT gap 6B). A single bareword (e.g. a project path) still launches transparent —
+# the guard is on $# == 0, not on the STACK default.
+[ $# -eq 0 ] && { usage; exit 0; }
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)      usage; exit 0 ;;

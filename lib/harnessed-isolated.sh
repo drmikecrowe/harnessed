@@ -98,9 +98,12 @@ harnessed_isolated() {
     # (reproducibility + credential hygiene, T-02-07/T-02-04). PERSISTENT by default (STA-01): the
     # wipe + reseed runs ONLY on first create (state dir absent) OR under --fresh (clean-room), so a
     # normal recreate REUSES the accumulated .claude (projects/, history.jsonl, …) and a memory
-    # system accumulates host-side under $XDG_STATE_HOME/harnessed/$instance (STA-02). --fresh is
-    # now meaningfully distinct (wipe) from a normal run (reuse).
-    local run_claude="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$instance/.claude"
+    # system accumulates host-side under $XDG_STATE_HOME/harnessed/<project>/<stack> (STA-02),
+    # keyed by a LEGIBLE flattened project path (UAT gap 6) — NOT the opaque hash instance name
+    # ($instance still keys the pod/container; DNS-label ≤63-char limits apply there, not here).
+    # --fresh is now meaningfully distinct (wipe) from a normal run (reuse).
+    local state_project="${relpath//'/'/-}"   # project_relpath() home-relative → readable slug
+    local run_claude="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$state_project/$stack/.claude"
     mkdir -p "$(dirname "$run_claude")"
     if [ "$fresh" = "true" ] || [ ! -d "$run_claude" ]; then
         rm -rf "$run_claude"

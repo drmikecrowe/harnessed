@@ -19,6 +19,14 @@ uat_svc_count()   { [ -n "$RT" ] || { echo 0; return; }
                     "$RT" ps --filter "label=harnessed-service=$1" --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' '; }
 # Pod/instance name = generate_instance_name (hash form; unchanged by the planned slug fix).
 uat_instance_name() { local h; h="$(printf '%s' "${2%/}" | shasum | cut -c1-8)"; echo "harnessed-${1}-${h}"; }
+# State dir mirroring the launcher's legible layout (gap 6): $STATE/harnessed/<flattened-relpath>/<stack>.
+# Mirrors lib/harnessed-common.sh project_relpath (home-relative, else basename) + slash→dash flatten.
+uat_state_dir() { # stack project
+    local rel="${2%/}" stack="$1"
+    if [[ "$rel" == "$HOME/"* ]]; then rel="${rel#"$HOME"/}"; else rel="$(basename "$rel")"; fi
+    rel="${rel//'/'/-}"
+    echo "${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$rel/$stack"
+}
 # Newest state dir for a stack (robust to the slug formula — finds by mtime + stack name).
 uat_newest_state_dir() { # state_root stack
     local root="$1" stack="$2" d found=""
@@ -218,12 +226,12 @@ test_state_persists() {
     inst="$(uat_instance_name ping-time "$proj")"
     arrange
     "$HARNESSED" svc down ping --purge >/dev/null 2>&1 || true
-    uat_pod_rm "$inst"; rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$inst"
+    uat_pod_rm "$inst"; rm -rf "$(uat_state_dir ping-time "$proj")"
     mkdir -p "$proj"
     # establish accumulated state: first create + a marker, then tear the pod down
     uat_run_env "HARNESSED_HEADLESS=true" "$HARNESSED" ping-time "$proj"
     assert_exit_zero "$UAT_RC" "first headless create exits 0" || { uat_pod_rm "$inst"; rm -rf "$proj"; return; }
-    sd="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$inst/.claude"
+    sd="$(uat_state_dir ping-time "$proj")/.claude"
     echo "u4t" > "$sd/UAT_MARKER"
     uat_pod_rm "$inst"
     act
@@ -231,7 +239,7 @@ test_state_persists() {
     assert
     assert_exit_zero "$UAT_RC" "recreate (no --fresh) exits 0"
     assert_exists "$sd/UAT_MARKER" "marker survives a normal recreate (state persists by default)"
-    uat_pod_rm "$inst"; rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$inst" "$proj"
+    uat_pod_rm "$inst"; rm -rf "$(uat_state_dir ping-time "$proj")" "$proj"
     "$HARNESSED" svc down ping --purge >/dev/null 2>&1 || true
 }
 
@@ -241,11 +249,11 @@ test_fresh_wipes() {
     inst="$(uat_instance_name ping-time "$proj")"
     arrange
     "$HARNESSED" svc down ping --purge >/dev/null 2>&1 || true
-    uat_pod_rm "$inst"; rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$inst"
+    uat_pod_rm "$inst"; rm -rf "$(uat_state_dir ping-time "$proj")"
     mkdir -p "$proj"
     uat_run_env "HARNESSED_HEADLESS=true" "$HARNESSED" ping-time "$proj"
     assert_exit_zero "$UAT_RC" "first headless create exits 0" || { uat_pod_rm "$inst"; rm -rf "$proj"; return; }
-    sd="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$inst/.claude"
+    sd="$(uat_state_dir ping-time "$proj")/.claude"
     echo "u4t" > "$sd/UAT_MARKER"
     uat_pod_rm "$inst"
     act
@@ -253,25 +261,26 @@ test_fresh_wipes() {
     assert
     assert_exit_zero "$UAT_RC" "recreate (--fresh) exits 0"
     assert_not_exists "$sd/UAT_MARKER" "--fresh wipes accumulated state (clean-room)"
-    uat_pod_rm "$inst"; rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$inst" "$proj"
+    uat_pod_rm "$inst"; rm -rf "$(uat_state_dir ping-time "$proj")" "$proj"
     "$HARNESSED" svc down ping --purge >/dev/null 2>&1 || true
 }
 
 test_legible_slug() {
     needs_container && { skip_test "skipped (--quick)"; return; }
-    local proj="$HOME/.cache/uat-legible-$$" state_root found inst
+    local proj="$HOME/.cache/uat-legible-$$" inst sd
     inst="$(uat_instance_name ping-time "$proj")"   # pod name (hash; unchanged by the slug fix)
-    state_root="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed"
+    sd="$(uat_state_dir ping-time "$proj")"          # EXPECTED legible state dir
     arrange
     "$HARNESSED" svc down ping --purge >/dev/null 2>&1 || true
+    uat_pod_rm "$inst"; rm -rf "$sd" "$proj"
     mkdir -p "$proj"
     act
     uat_run_env "HARNESSED_HEADLESS=true" "$HARNESSED" ping-time "$proj"
     assert
     assert_exit_zero "$UAT_RC" "headless launch exits 0"
-    found="$(uat_newest_state_dir "$state_root" ping-time)"
-    assert_match 'uat-legible' "$(basename "$found")" "state slug is legible (path-based, not an opaque hash)"
-    uat_pod_rm "$inst"; rm -rf "$found" "$proj"
+    assert_exists "$sd/.claude" "state created at the legible path"
+    assert_match 'uat-legible' "$sd" "state slug is legible (path-based, not an opaque hash)"
+    uat_pod_rm "$inst"; rm -rf "$sd" "$proj"; rmdir "$(dirname "$sd")" 2>/dev/null || true
     "$HARNESSED" svc down ping --purge >/dev/null 2>&1 || true
 }
 
