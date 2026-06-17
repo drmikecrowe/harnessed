@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# uat-common.sh — shared UAT harness: AAA section markers, pure-bash assertions,
+# shellcheck shell=bash disable=SC2034 # UAT_OUT/UAT_RC are shared capture vars read by test fns
+ # uat-common.sh — shared UAT harness: AAA section markers, pure-bash assertions,
 # per-test pass/fail tracking, and a summary.
 #
 # A UAT test is a function named `test_<id>`. It is driven by `run_test <id> "<label>"`.

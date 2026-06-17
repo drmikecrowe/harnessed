@@ -47,7 +47,7 @@ if [[ $PHASE =~ ^[0-9]+$ ]]; then PHASE="$(printf '%02d' "$PHASE")"; fi
 SUITE="$HERE/phase-$PHASE.sh"
 if [ ! -f "$SUITE" ]; then
     echo "error: no UAT suite for phase $PHASE ($SUITE)" >&2
-    local _s="" _f; for _f in "$HERE"/phase-*.sh; do [ -f "$_f" ] && _s+="$(basename "$_f") "; done
+    _s=""; for _f in "$HERE"/phase-*.sh; do [ -f "$_f" ] && _s+="$(basename "$_f") "; done
     echo "available: ${_s:-<none>}" >&2
     exit 2
 fi
