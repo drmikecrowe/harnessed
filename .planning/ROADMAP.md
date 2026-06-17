@@ -106,13 +106,14 @@ Plans:
   4. Stacks persist by default and `--fresh` yields a clean-room run; harness session history persists host-side with a legible slug
   5. An `omp` stack runs the same Claude-canonical recipes via `claude-hooks-bridge` + pi-adapter
 
-**Plans**: 3 plans
+**Plans**: 4 plans (3 planned + 1 gap-closure)
 
 Plans:
 
 - [x] 04-01: Shared service sidecars (image/volume/lifecycle) + `svc up/down/list` + concurrent attach over harnessed-net
 - [x] 04-02: State persistence + `--fresh` + full CLI (`list`/`stop`/`rm`/`new`/`install`/`uninstall` shims)
 - [x] 04-03: omp harness support via bridge + a second recipe with its own capability test
+- [x] 04-04: UAT gap closure — bare `harnessed` shows help (gap 6B) + legible path-based state-dir slug (gap 6)
 
 ### Phase 5: Secrets, Hardening + Docs Completeness
 
@@ -144,5 +145,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Containerized Engine + Transparent Stack | 3/3 | Complete   | 2026-06-15 |
 | 2. Isolated Tracer-Bullet Stack | 3/3 | Complete    | 2026-06-15 |
 | 3. Supply-Chain Gate + pnpm-Everywhere | 2/2 | Complete    | 2026-06-16 |
-| 4. Shared Services + Recipe Breadth + Full CLI | 3/3 | Complete   | 2026-06-16 |
+| 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
 | 5. Secrets, Hardening + Docs Completeness | 0/2 | Not started | - |

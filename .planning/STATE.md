@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_verify
-stopped_at: Phase 04 EXECUTED — 3/3 plans complete + verified (04-01 services, 04-02 state/CLI, 04-03 omp/recipe-breadth); ready for /gsd-verify-phase 4
-last_updated: "2026-06-16T19:30:00.000Z"
-last_activity: 2026-06-16 -- Phase 04 complete: all 3 plans executed, checkpoints passed (svc up/down + concurrent attach; state persistence; omp image + recipe breadth), 4 checkpoint-fixes committed (rootless networking, firewall, FastMCP host-header, omp bun)
+status: phase_4_verified
+stopped_at: Phase 04 VERIFIED — automated UAT suite (16 AAA tests) green; 2 gaps closed via 04-04 (no-args help + legible slug); ready for /gsd-plan-phase 5
+last_updated: "2026-06-17T21:20:44.000Z"
+last_activity: 2026-06-17 -- Phase 04 UAT: built automated AAA suite (tools/uat, 16 tests); closed 2 gaps (04-04: bare harnessed shows help, legible path-based state slug); 16/16 tests + 50/50 checks green
 progress:
   total_phases: 5
-  completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
+  completed_phases: 4
+  total_plans: 12
+  completed_plans: 12
   percent: 80
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** Compose a named stack and launch an isolated, authenticated instance that exposes exactly the skills/commands/MCP/services it declares — nothing from host config — reproducibly, podman the only host dependency.
-**Current focus:** Phase 04 — shared-services-recipe-breadth-full-cli
+**Current focus:** Phase 05 — secrets-hardening-docs-completeness (Phase 04 verified + gap-closed)
 
 ## Current Position
 
-Phase: 04 (shared-services-recipe-breadth-full-cli) — EXECUTED (3/3 plans verified)
-Plan: 3 of 3 complete (04-01, 04-02, 04-03 all verified + SUMMARY written)
-Status: Phase 04 executed — ready for /gsd-verify-phase 4
-Last activity: 2026-06-16 -- all 3 plans verified (svc concurrent-attach, state persistence, omp+recipe-breadth); 4 checkpoint-fixes committed
+Phase: 04 (shared-services-recipe-breadth-full-cli) — VERIFIED (4/4 plans, incl. gap-closure 04-04)
+Plan: 4 of 4 complete (04-01 services, 04-02 state/CLI, 04-03 omp/recipe-breadth, 04-04 UAT gap closure)
+Status: Phase 04 verified + UAT green (16/16) — ready for /gsd-plan-phase 5
+Last activity: 2026-06-17 -- automated AAA UAT suite built (tools/uat, 16 tests); 2 UAT gaps closed (04-04: no-args help + legible state slug); 16/16 tests + 50/50 checks green
 
-Progress: [████████░░] 80% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ executed (3/3 verified) · Phase 05 pending
+Progress: [████████░░] 80% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ verified + gap-closed (4/4) · Phase 05 pending
 
 ## Performance Metrics
 
