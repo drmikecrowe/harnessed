@@ -337,3 +337,34 @@ def run_image_scan(archive_tar: Path | str) -> ScanResult:
         )
     warnings = [vid for vid in _all_finding_ids(data)]
     return ScanResult(scope="image", highs=[], warnings=warnings)
+
+
+def run_image_scan_online(archive_tar: Path | str) -> ScanResult:
+    """Scan a saved image archive ONLINE via osv-scanner (SEC-04 nightly re-scan).
+
+    Same as run_image_scan but drops the two build-time DB flags so osv-scanner contacts
+    osv.dev for newly-disclosed advisories (RESEARCH Pitfall 6 — the whole point of the
+    nightly: the build-time DB only knows about CVEs at build time, so a stale-DB nightly would
+    see nothing new forever; that vacuous "0 findings" is the Pitfall 6 warning sign). Raises
+    ScanError on any HIGH+ finding. The exit-128 investigate-branch is preserved for the same
+    reason — a forever-128 is the symptom of a scan that is not actually seeing packages.
+
+    Driven by `harnessed rescan` (the systemd timer's ExecStart): the host iterates installed
+    harnessed-labelled images, `podman save`s each, and runs scan-image-online <tar> in a
+    throwaway tools container. No daemon-in-container; no API socket mounted.
+    """
+    archive_tar = Path(archive_tar)
+    proc = _run(["osv-scanner", "scan", "image", "--archive", str(archive_tar), "--format", "json"])
+    if proc.returncode == 128:
+        warnings = [f"osv-scanner found no packages in image archive (exit 128 — investigate)"]
+        return ScanResult(scope="image", highs=[], warnings=warnings)
+    data = _parse_json(proc.stdout) or {}
+    highs = gate(data)
+    if highs:
+        unique = sorted(set(highs))
+        raise ScanError(
+            f"supply-chain image scan found {len(unique)} HIGH+ finding(s) "
+            f"(CVSS >= {HIGH}): {', '.join(unique)}"
+        )
+    warnings = [vid for vid in _all_finding_ids(data)]
+    return ScanResult(scope="image", highs=[], warnings=warnings)

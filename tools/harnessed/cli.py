@@ -20,7 +20,7 @@ from . import report
 from .assemble import assemble
 from .capability import CapabilityError, run_capability_test
 from .emit import HATAGO_ENDPOINT
-from .scan import ScanError, run_image_scan, run_source_scan
+from .scan import ScanError, run_image_scan, run_image_scan_online, run_source_scan
 from .schema import RecipeLintError, SchemaError
 from .synclinks import CollisionError
 
@@ -102,8 +102,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="supply-chain image scan of a saved image archive via osv-scanner (BLD-02)",
     )
     sci.add_argument("archive", help="path to a podman/docker image archive tar (from `podman save`)")
+    sci_online = sub.add_parser(
+        "scan-image-online",
+        help="ONLINE supply-chain image scan (fresh DB; nightly re-scan / SEC-04)",
+    )
+    sci_online.add_argument("archive", help="path to a podman/docker image archive tar (from `podman save`)")
     return parser
-
 
 def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
     root = Path(args.root) if args.root else Path.cwd()
@@ -177,6 +181,23 @@ def _run_scan_image(args: argparse.Namespace, out: Console, err: Console) -> int
     return 0
 
 
+def _run_scan_image_online(args: argparse.Namespace, out: Console, err: Console) -> int:
+    """Run the ONLINE image-archive scan (SEC-04 nightly re-scan); exit 1 on any HIGH+ finding.
+
+    Mirrors _run_scan_image but calls run_image_scan_online (fresh osv.dev DB — catches CVEs
+    disclosed after the image was built; the whole point of the nightly timer).
+    """
+    try:
+        result = run_image_scan_online(Path(args.archive))
+    except ScanError as exc:
+        err.print(f"[bold red]supply-chain image scan failed:[/bold red] {exc}", highlight=False)
+        return 1
+    out.print(f"[bold green]Supply-chain image scan clean[/bold green] (HIGH < CVSS {7.0:.1f}; online)")
+    for warning in sorted(set(result.warnings)):
+        out.print(f"  [yellow]warning:[/yellow] {warning}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -190,6 +211,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_scan(args, out, err)
     if args.command == "scan-image":
         return _run_scan_image(args, out, err)
+    if args.command == "scan-image-online":
+        return _run_scan_image_online(args, out, err)
     parser.error(f"unknown command: {args.command}")
     return 2
 
