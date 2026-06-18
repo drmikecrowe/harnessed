@@ -158,6 +158,12 @@ harnessed_isolated() {
     fi
     local -a env_args=()
     [ -n "$secret_env" ] && env_args=( --env-file "$secret_env" )
+    # T-05-06 full coverage: wipe the resolved-secret temp env-file on ANY return from here
+    # (a `set -e` abort on either member launch / apply_firewall / the readiness wait, or an
+    # early return) — not only the two happy-path unlinks at the tail below. A RETURN trap is
+    # scoped to this function (bash restores the prior trap on return), so this is the single
+    # source of cleanup; the explicit `rm -f`s at the tail remain as harmless happy-path belts.
+    [ -n "$secret_env" ] && trap 'rm -f "${secret_env:-}" 2>/dev/null || true' RETURN
     # hatago member: serve ONE Streamable-HTTP endpoint on :3535 from the mounted per-stack
     # config (which baked stdio servers to expose; the image CMD is overridden to add --config).
     "$CONTAINER_RUNTIME" run -d --pod "$pod" --name "${instance}-hatago" \

@@ -35,7 +35,16 @@ harnessed_rescan_images() {
         [ -n "$img" ] || continue
         print_info "Re-scanning $img (online) ..."
         tar="$(mktemp --suffix=.tar)"
-        "$CONTAINER_RUNTIME" save "$img" -o "$tar"
+        # Safe save under set -e: an image removed between list and save, or a transient podman
+        # error, must NOT abort the whole nightly or leak the tar (the rm at loop-tail is
+        # unreachable on failure). Mirror the scan step's finding-isolation: skip this image,
+        # track the failure, keep scanning the rest.
+        if ! "$CONTAINER_RUNTIME" save "$img" -o "$tar"; then
+            print_error "Could not save $img for re-scan (removed?) — skipping; tar cleaned"
+            rm -f "$tar"
+            rc=1
+            continue
+        fi
         # Safe exit capture under set -euo pipefail (Constraint 9 / a963a69): a bare scanner
         # pipeline would abort the whole launcher on a HIGH exit. `|| img_rc=$?` swallows it so
         # the loop continues; the overall rc tracks any failure.
