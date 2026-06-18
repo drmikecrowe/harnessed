@@ -279,6 +279,8 @@ The import line to extend is `tools/harnessed/cli.py:23`: `from .scan import Sca
 ```
 `resolve_secret_env` (RESEARCH Code §1) is this shape with: the schema mounted ro, the op agent socket mounted (already at `$CONTAINER_HOME/.1password/agent.sock` per `lib/harnessed-mounts.sh:23-27`), a temp env-file mounted rw, `varlock load --format env` redirected into it. The function returns the env-file path; the caller unlinks after launch. **Inertness = the first line is `[ -f "$HARNESSED_SCHEMA" ] || return 0`** — no schema ⇒ no varlock invocation, no `op` call, today's behavior unchanged.
 
+> **Correction (post-implementation, commit 81a7f3f):** this agent-socket-mount pattern is **WRONG for op app-auth** — the 1Password desktop app authorizes the calling terminal (not an in-container `op`), and `~/.1password/agent.sock` is the SSH agent (git signing), not the op app-auth transport. Resolution now runs **on the HOST** via `varlock load --format env`; keep this container shape only for the headless `OP_SERVICE_ACCOUNT_TOKEN` fallback.
+
 **The host-config-mounted container pattern to copy (SEC-03 auth_scanner):** `lib/harnessed-services.sh:103-109`:
 ```bash
 "$CONTAINER_RUNTIME" run -d \

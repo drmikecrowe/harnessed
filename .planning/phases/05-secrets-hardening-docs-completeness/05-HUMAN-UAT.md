@@ -3,26 +3,24 @@ status: partial
 phase: 05-secrets-hardening-docs-completeness
 source: [05-VERIFICATION.md]
 started: 2026-06-18T12:30:00Z
-updated: 2026-06-18T12:30:00Z
+updated: 2026-06-18T19:00:00Z
 ---
 
 # Phase 05 — Human UAT (operator-only verification items)
 
-The phase is **code-complete and 4/7 requirements are fully VERIFIED live**
-(SEC-02, SEC-04, DOC-01, DOC-02, DOC-03). The 4 items below are the
-**operator-only live legs** of SEC-01 / SEC-03 / SEC-04 — they need the 1Password
-desktop app + agent socket, a real TTY + browser, or a one-time host policy flip,
-none of which an automated executor can exercise. They drive the
-`status: human_needed` verdict in `05-VERIFICATION.md`.
-
-The nightly timer is already installed + scheduled + its full online rescan path
-ran live today; the secrets code is verified inert-until-schema + no-leak + correct
-exit-code semantics. These items confirm the **live** resolution/auth/persistence
-behavior end-to-end.
+The phase is **code-complete and 6/7 requirements are fully VERIFIED live**
+(SEC-01, SEC-02, SEC-04, DOC-01, DOC-02, DOC-03). HV-1 and HV-2 below — live
+`op://` resolution and the build scan receiving it — are now **PASS** after the
+host-side resolution fix (commit `81a7f3f`): resolution runs `varlock` on the host
+(the 1Password desktop app authorizes the calling terminal; an in-container `op`
+cannot be), and the resolved env reaches isolated pods, transparent instances,
+sidecar services, and the build scan. Two operator-only legs remain (HV-3, HV-4):
+snyk's interactive **browser** auth and the one-time `loginctl enable-linger` policy
+flip — neither is a code gap; both need a human/operator action.
 
 ## Current Test
 
-[awaiting operator run — see HV-1..HV-4]
+[HV-1 + HV-2 PASS (verified live). Awaiting operator: HV-3 (snyk browser auth), HV-4 (linger flip).]
 
 ## Tests
 
@@ -31,7 +29,7 @@ expected: with `~/.config/harnessed/.env.schema` pointed at real 1Password vault
 items, `./harnessed tracer-time --fresh` resolves `op://` refs and the resolved
 `SNYK_TOKEN` is present in the pod env; `grep -r SNYK_TOKEN profiles/` returns
 nothing; the temp env-file is gone after launch.
-result: [pending]
+result: PASS — verified live (host-side resolution, fix `81a7f3f`); `SNYK_TOKEN` (264 chars) + `SOCKET_SECURITY_API_KEY` present in the pod env; temp env-file unlinked. First run prompts the 1Password app to Authorize the terminal (one-time).
 needs: 1Password desktop app running (agent socket at `~/.1password/agent.sock`) + real vault items.
 ```bash
 mkdir -p ~/.config/harnessed && cp .env.schema.example ~/.config/harnessed/.env.schema
@@ -45,7 +43,7 @@ expected: with the schema from HV-1 present and the launcher env cleared of
 `SNYK_TOKEN`, `./harnessed build tracer-time` invokes snyk (output must NOT
 contain `snyk skipped (no SNYK_TOKEN)`) — proving `build_stack`'s
 `resolve_secret_env` call feeds the scan step.
-result: [pending]
+result: PASS — verified live; `harnessed build` resolves on the host and forwards the token to the source scan (no `snyk skipped (no SNYK_TOKEN)` warning); build exits 0.
 needs: schema from HV-1 + live 1Password.
 ```bash
 unset SNYK_TOKEN SOCKET_SECURITY_API_KEY
@@ -78,9 +76,9 @@ loginctl show-user "$USER" --property=Linger   # expected: Linger=yes
 ## Summary
 
 total: 4
-passed: 0
+passed: 2
 issues: 0
-pending: 4
+pending: 2
 skipped: 0
 blocked: 0
 

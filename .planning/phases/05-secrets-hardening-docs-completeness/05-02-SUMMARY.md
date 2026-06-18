@@ -62,6 +62,9 @@ completed: 2026-06-18
 - **Files modified:** 5 (2 created, 3 modified)
 
 ## Accomplishments
+
+> **Correction (post-implementation, commit 81a7f3f):** the throwaway-container / agent-socket resolution described in this section **does not work** and was superseded — the 1Password desktop app authorizes the *calling terminal*, not an in-container `op`, and `~/.1password/agent.sock` is the SSH agent socket (git signing), not the op app-auth transport. Live `op://` resolution is now **VERIFIED working on the HOST** via `varlock load --format env`, wired into all four launch paths (isolated, transparent, services, build scan); the in-container path survives only as the headless `OP_SERVICE_ACCOUNT_TOKEN` fallback.
+
 - `harnessed` now has an opt-in 1Password secrets layer: with `~/.config/harnessed/.env.schema` present, secrets resolve from 1Password via varlock inside a throwaway `harnessed-tools` container and reach the pod members as **env only** (mode-0600 temp `--env-file`, unlinked after launch). Without the schema, today's behavior is unchanged bit-for-bit (INERTNESS verified).
 - `harnessed build`'s scan step ALSO calls `resolve_secret_env` before invoking snyk/socket, so the build-time scan receives 1Password-resolved tokens (not just the raw launcher env's `snyk skipped (no SNYK_TOKEN)`).
 - `harnessed auth snyk|socket` (SEC-03) drives the vendor CLI's own auth inside a `--rm -it` tools container with `-e HOME=$CONTAINER_HOME` + `~/.config` rw-mounted — the token persists to host config (e.g. `~/.config/configstore/snyk.json`), never an image layer.

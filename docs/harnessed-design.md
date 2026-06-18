@@ -486,7 +486,8 @@ image. Podman/docker is the only thing the user must have.
 **varlock is optional — harnessed works fully without it.** It's an opt-in secrets source: if you
 use it, secrets resolve from **1Password** instead of loose files. varlock reads a `.env.schema`
 (`@env-spec` DSL) whose secret values are `op(op://Vault/Item/field)` references, validates them, and
-injects the resolved values into a process via `varlock run -- <cmd>`. Copying the shipped
+injects the resolved values into a process (`varlock run -- <cmd>`, or `varlock load --format env`
+to emit the dotenv, which is what harnessed uses — see below). Copying the shipped
 `.env.schema.example` is what turns it on; users who skip it lose nothing else.
 
 **Schema locations (XDG):**
@@ -499,19 +500,25 @@ injects the resolved values into a process via `varlock run -- <cmd>`. Copying t
 
 **How harnessed uses it:**
 
-- On launch, `harnessed` checks for a relevant `.env.schema`. **Present (opt-in) →** wrap the launch
-  in `varlock run --` so resolved env reaches the tool container / instance / sidecar. **Absent (the
-  default) →** plain host env passthrough (the §7 scanner present/skip logic still applies); with no
-  schema, varlock is never invoked.
-- varlock + the `op` CLI may be baked into `harnessed-tools` so opt-in users need nothing extra on
-  the host (still podman-only), but they stay **inert unless a schema exists**. Resolution uses the
-  **mounted 1Password agent socket** (already in §4a, `allowAppAuth`).
+- On launch, `harnessed` checks for a relevant `.env.schema`. **Present (opt-in) →** resolution runs
+  `varlock load --format env` **on the host**; the resolved dotenv is written to a mode-0600 temp
+  env-file that the launcher spreads into the container (`--env-file`, unlinked after launch). This
+  reaches **all four** launch paths — the isolated pod, the transparent instance, per-service sidecars
+  (`~/.config/<service>/.env.schema`), and the build scan. **Absent (the default) →** plain host env
+  passthrough (the §7 scanner present/skip logic still applies); with no schema, varlock is never
+  invoked.
+- **App-auth runs on the host, not in the container.** 1Password's desktop app authorizes the `op` CLI
+  by *calling application* — the user's terminal. An `op` running inside a throwaway container has no
+  host app to bind the grant to, so app-auth (`@initOp(allowAppAuth=true)`) fails there ("cannot
+  connect to 1Password app") regardless of which socket is mounted. The `~/.1password/agent.sock`
+  mounted in §4a is the **SSH agent** (for git commit signing), **not** the `op` app-auth transport.
+  So varlock + `op` run on the host; the resolved env is what crosses into the container.
+- The in-container path is the **headless fallback**, used only when the host has no `varlock` (e.g.
+  CI, the nightly timer): there the schema resolves inside a `--rm` tools container with
+  `OP_SERVICE_ACCOUNT_TOKEN` (HTTPS bearer auth — no desktop app, no app-auth, no socket). It stays
+  **inert unless a schema exists.**
 - Resolved secrets are injected as **env only** — never written to the repo, a committed profile, or
   an image layer (same rule as Claude auth).
-
-**To verify:** in-container 1Password resolution — app-auth through the mounted agent socket vs a
-headless **service-account token** (`OP_SERVICE_ACCOUNT_TOKEN`, the cleaner container story).
-Confirm which your 1Password setup supports. [INFERENCE — verify.]
 
 ## 17. Proposed: documentation (first-class deliverable)
 

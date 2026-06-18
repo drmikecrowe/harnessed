@@ -223,6 +223,8 @@ D) harnessed rescan  (called by the nightly systemd user timer, SEC-04)
 
 **Resolution transport:** the `op` agent socket (`~/.1password/agent.sock`) is **already mounted** at `$CONTAINER_HOME/.1password/agent.sock` (`lib/harnessed-mounts.sh:23-27`) with `SSH_AUTH_SOCK` pointing at it. `@initOp(allowAppAuth=true)` in the schema tells the varlock 1Password plugin to use it. For headless (nightly timer / CI), `OP_SERVICE_ACCOUNT_TOKEN` is the documented fallback.
 
+> **Correction (post-implementation, commit 81a7f3f):** this transport claim is WRONG — `~/.1password/agent.sock` is the **SSH agent** socket (git signing), not the op app-auth transport; strace showed op app-auth binds the DBus session bus + `/run/user/$UID/1Password-BrowserSupport.sock` and authorizes the calling terminal, which an in-container `op` lacks. Resolution now runs **on the HOST** via `varlock load --format env`; the in-container path survives only as the `OP_SERVICE_ACCOUNT_TOKEN` headless fallback.
+
 **Anti-pattern:** resolving on the host (requires host Node — breaks "podman-only"); OR baking resolved values into the profile/image (violates §16); OR leaving the temp env-file around (mode-0600 + unlink-on-exit; never write it under the repo or the profile dir).
 
 ### Pattern 2 — Token-gated scanners: env-presence gate, native severity where it exists (SEC-02)
@@ -599,6 +601,8 @@ harnessed_rescan_images() {
 | `loginctl enable-linger` | SEC-04 (timer fires while logged out) | ✗ **OFF** on the host (verified) | — (host prerequisite) | none — MUST be enabled for the nightly to fire; document in setup/troubleshooting |
 | osv.dev / deps.dev network | SEC-04 online nightly re-scan | ✓ (host has network) | online mode in the nightly | offline DB (defeats the purpose — Pitfall 6) |
 | Socket.dev network | SEC-02 socket scan | ✓ (host has network) | server-side scan | warn-and-skip on network failure (Pitfall 4) |
+
+> **Correction (post-implementation, commit 81a7f3f):** the `1Password agent socket` row above mis-states the transport — `~/.1password/agent.sock` is the **SSH agent** (git signing), not the op app-auth transport (op authorizes the calling terminal via DBus + `/run/user/$UID/1Password-BrowserSupport.sock`). Resolution now runs **on the HOST** via `varlock load --format env`; the socket mount is irrelevant to op app-auth.
 
 **Missing with no fallback:**
 - `loginctl enable-linger $USER` — without it the nightly timer does not fire while logged out. This is a **documented host setup step**, not a blocker (the feature ships; the operator runs the one-time command).
