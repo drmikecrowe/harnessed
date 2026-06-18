@@ -1,0 +1,12 @@
+# tools/pnpm-workspace.yaml — project-scoped lifecycle allowlist (pnpm v11 reads allowBuilds
+# HERE, not from the global config.yaml in ~/.config/pnpm/). Only packages whose
+# postinstall/build script has been reviewed are listed.
+#
+# The managed global policy (lib/pnpm/config.yaml → inlined into the tools image at
+# /home/tools/.config/pnpm/config.yaml) sets `strictDepBuilds: true` (lifecycle default-deny).
+# pnpm v11 rejects `allowBuilds` from the GLOBAL config and silently ignores it (see the
+# self-documenting comment in lib/pnpm/config.yaml:18-23); the allowlist is project-scoped, so
+# it lives in this file in the tools build context. `pnpm add -g` runs from /home/tools (the
+# tools user's home, where this file is COPY'd) so pnpm discovers it for the global install.
+allowBuilds:
+  snyk: true   # snyk's wrapper_dist/bootstrap.js exec fetches the platform binary at install (RESEARCH Pitfall 3 / 05-01 T-05-01)

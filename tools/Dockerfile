@@ -14,7 +14,7 @@ FROM python:3.13-slim
 
 # jq is available in-image for JSON shaping/inspection of emitted artifacts (design STACK).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends jq curl ca-certificates \
+    && apt-get install -y --no-install-recommends jq curl ca-certificates gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/harnessed-tools
@@ -54,13 +54,65 @@ RUN mkdir -p /tmp/osv-dl \
     && test -d "${XDG_CACHE_HOME}/osv-scanner" \
     && chown -R 1000:1000 "${XDG_CACHE_HOME}"
 
+# [Phase 5 / SEC-01] 1Password CLI (`op`) — CLI only, NOT the desktop app (SEC-01 resolves op://
+# refs via varlock at run; op is INERT in the image unless a .env.schema with op:// refs exists).
+# Mirrors the apt key-ring + signed-by shape at base/Dockerfile.harnessed-base:27-33 (drops the
+# `1password` desktop package — tools needs only the `op` binary). Installed as root before the
+# `tools` user is created. gnupg (added above) provides `gpg --dearmor` for the key import.
+RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
+    gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
+    tee /etc/apt/sources.list.d/1password.list && \
+    apt-get update && apt-get install -y --no-install-recommends 1password-cli && \
+    rm -rf /var/lib/apt/lists/* && \
+    op --version
+
 # Match the host UID (paired with `--userns=keep-id` at run) so emitted files in the
 # bind-mounted build dir are owned by the host user, not root.
 RUN useradd --create-home --uid 1000 tools
-# pnpm supply-chain config is intentionally NOT baked here. tools is emit-only Python with
-# no JS installs, and its build context is tools/ (so lib/pnpm/config.yaml is outside it).
-# Bake the policy when node deps actually land (phase-3 checkpoint 03-01 finding B).
+# [Phase 5 / SEC-01+SEC-02] pnpm-workspace.yaml (project-scoped lifecycle allowlist). COPY'd as
+# root then chowned to the tools user. pnpm v11 reads `allowBuilds` HERE, not from the global
+# config.yaml (lib/pnpm/config.yaml:18-23 — the global config rejects it and silently ignores it).
+# snyk's postinstall (wrapper_dist/bootstrap.js exec) needs `allowBuilds: {snyk: true}` under
+# strictDepBuilds (RESEARCH Pitfall 3 / threat T-05-01). `pnpm add -g` runs from /home/tools so
+# pnpm discovers this file for the global install.
+COPY pnpm-workspace.yaml /home/tools/pnpm-workspace.yaml
+RUN chown tools:tools /home/tools/pnpm-workspace.yaml
 USER tools
+ENV HOME=/home/tools
+# pnpm global binaries (varlock/snyk/socket from `pnpm add -g`) land in PNPM_HOME; mise shims
+# (node/pnpm/mise) complete the PATH (mirrors base/Dockerfile.harnessed-base:52).
+ENV PNPM_HOME=/home/tools/.local/share/pnpm
+ENV PATH="/home/tools/.local/share/pnpm:/home/tools/.local/share/mise/shims:/home/tools/.local/bin:${PATH}"
+
+# [Phase 5] Managed pnpm supply-chain config (mirrors lib/pnpm/config.yaml:13-17). The tools
+# build context is tools/ (lib/harnessed-common.sh:83) so lib/pnpm/config.yaml is NOT COPY-able;
+# the five policy keys are inlined. allowBuilds lives in pnpm-workspace.yaml above (project-scoped).
+RUN mkdir -p /home/tools/.config/pnpm && \
+    printf 'minimumReleaseAge: 1440\nminimumReleaseAgeStrict: true\nblockExoticSubdeps: true\nverifyStoreIntegrity: true\nstrictDepBuilds: true\n' \
+        > /home/tools/.config/pnpm/config.yaml
+
+# [Phase 5 / SEC-01+SEC-02] mise (runtime manager) + Node@24 + pnpm@11 (the base-image precedent
+# at base/Dockerfile.harnessed-base:50-80). npm.package_manager=pnpm routes the npm: tools through
+# pnpm so the managed policy governs them (RESEARCH Pitfall 5). Installed as the tools user so
+# shims + global bins land under /home/tools (paired with --userns=keep-id at run).
+RUN curl -fsSL https://mise.run | bash
+RUN cd /home/tools && \
+    mise settings set experimental true && \
+    mise settings set npm.package_manager pnpm && \
+    mise use -g node@24 pnpm@11 && \
+    mise install
+
+# [Phase 5 / SEC-01+SEC-02] Secrets + scanner CLIs via pnpm (version-pinned, never @latest).
+# All INERT in the image — varlock/op activate only when a .env.schema exists (SEC-01); snyk/socket
+# only when their token is in the launcher env (SEC-02, scan.py env-gate). The snyk postinstall
+# fetches its platform binary; allowBuilds:{snyk:true} in pnpm-workspace.yaml is the deliberate
+# exception to strictDepBuilds (RESEARCH Pitfall 3 / PATTERNS — verified at the checkpoint build).
+RUN cd /home/tools && \
+    pnpm add -g varlock@1.7.1 @varlock/1password-plugin@1.2.0 snyk@1.1305.1 socket@1.1.122 && \
+    varlock --version && \
+    snyk --version && \
+    socket --version
 WORKDIR /work
 
 # The console script installed from pyproject ([project.scripts] harnessed-tools).
