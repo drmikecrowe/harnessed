@@ -132,7 +132,7 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Scanner CLIs baked into tools image (Node+varlock+op+snyk+socket) + token-gated snyk/socket invokers in scan.py + build_stack token forwarding (SEC-02)
+- [x] 05-01-PLAN.md — Scanner CLIs baked into tools image (Node+varlock+op+snyk+socket) + token-gated snyk/socket invokers in scan.py + build_stack token forwarding (SEC-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -157,4 +157,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Isolated Tracer-Bullet Stack | 3/3 | Complete    | 2026-06-15 |
 | 3. Supply-Chain Gate + pnpm-Everywhere | 2/2 | Complete    | 2026-06-16 |
 | 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
-| 5. Secrets, Hardening + Docs Completeness | 0/4 | Not started | - |
+| 5. Secrets, Hardening + Docs Completeness | 1/4 | In Progress|  |

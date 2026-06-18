@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-18T11:01:00.415Z"
-last_activity: 2026-06-18 -- Phase 5 planning complete
+last_updated: "2026-06-18T11:59:50Z"
+last_activity: 2026-06-18 -- 05-01 complete (scanner image bake + token-gated snyk/socket)
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 16
-  completed_plans: 12
-  percent: 75
+  completed_plans: 13
+  percent: 81
 ---
 
 # Project State
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** Compose a named stack and launch an isolated, authenticated instance that exposes exactly the skills/commands/MCP/services it declares — nothing from host config — reproducibly, podman the only host dependency.
-**Current focus:** Phase 05 — secrets-hardening-docs-completeness (Phase 04 verified + gap-closed)
+**Current focus:** Phase 05 — secrets-hardening-docs-completeness
 
 ## Current Position
 
-Phase: 04 (shared-services-recipe-breadth-full-cli) — VERIFIED (4/4 plans, incl. gap-closure 04-04)
-Plan: 4 of 4 complete (04-01 services, 04-02 state/CLI, 04-03 omp/recipe-breadth, 04-04 UAT gap closure)
-Status: Ready to execute
-Last activity: 2026-06-18 -- Phase 5 planning complete
+Phase: 05 (secrets-hardening-docs-completeness) — EXECUTING
+Plan: 05-01 COMPLETE; 05-02 next (opt-in varlock/1Password secrets + auth)
+Status: Executing Phase 05 (Wave 1 done)
+Last activity: 2026-06-18 -- 05-01 complete (scanner image bake + token-gated snyk/socket; SEC-02 satisfied, SEC-01 partial)
 
-Progress: [████████░░] 80% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ verified + gap-closed (4/4) · Phase 05 pending
+Progress: [█████████░] 81% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05: 05-01 ✓ (foundational scanner image baked)
 
 ## Performance Metrics
 
@@ -62,6 +62,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - Init: One engine, two config modes (transparent/isolated); same base image/mounts/auth, differ only on config source
 - Init: Compose stacks at runtime in a podman pod (FROM can't union sibling systems)
 - Init: Single containerized Python tool image; host bash is a thin bootstrap (podman the only host dep)
+- 05-01: snyk's platform binary is fetched LAZILY at first run, not a postinstall build script — pnpm 11 strictDepBuilds never blocked it; allowBuilds:{snyk:true} is defensive, not load-bearing
+- 05-01: socket@1.1.122 tripped minimumReleaseAge (published <24h pre-bake) — resolved with minimumReleaseAgeExclude:[socket@1.1.122] (scoped to the audited pin)
+- 05-01: SEC-02 complete (token-gated snyk/socket warn-and-skip verified); SEC-01 PARTIAL (CLI foundation only — detect-and-resolve launcher wiring is 05-02)
 
 ### Pending Todos
 
