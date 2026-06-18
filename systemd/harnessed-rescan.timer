@@ -1,0 +1,14 @@
+# harnessed-rescan.timer — nightly image re-scan (SEC-04).
+# Copy to ~/.config/systemd/user/ and: systemctl --user enable --now harnessed-rescan.timer
+# PREREQUISITE: loginctl enable-linger $USER (without it the timer does NOT fire while
+# you are logged out — the user systemd instance is torn down on logout unless lingering is
+# enabled). See docs/guides/troubleshooting.md (plan 05-04).
+[Unit]
+Description=Nightly harnessed image re-scan (post-build CVE catch)
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
