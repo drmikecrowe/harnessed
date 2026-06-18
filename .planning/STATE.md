@@ -10,7 +10,7 @@ progress:
   completed_phases: 4        # phase 05 executed + verified human_needed (awaiting 4 operator-only items)
   total_plans: 16
   completed_plans: 16
-  percent: 95
+  percent: 97
 ---
 
 # Project State
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 Phase: 05 (secrets-hardening-docs-completeness) — EXECUTED (4/4 plans) + VERIFIED `human_needed`
 Plan: 05-04 complete (Phase 05 all 4 plans done — 05-01/02/03/04 ✓); verification = human_needed
-Status: Code + docs shipped and verified. 4/7 requirements fully VERIFIED live (SEC-02, SEC-04, DOC-01/02/03); 3 carry operator-only live legs (SEC-01, SEC-03, SEC-04-linger) → 4 items in 05-HUMAN-UAT.md awaiting the operator (live 1Password op:// resolution, build-scan-with-resolved-tokens, snyk browser-auth, loginctl enable-linger). Code review: 1 medium + 1 low fixed inline (e494520); 3 low accepted as follow-ups. Phase closes fully once the operator runs the 4 HV items.
-Last activity: 2026-06-18 -- Phase 05 executed + verified (human_needed); 4 operator-only items in 05-HUMAN-UAT.md
+Status: Code + docs shipped and verified. 6/7 requirements fully VERIFIED live (SEC-01, SEC-02, SEC-04, DOC-01/02/03). SEC-01 1Password resolution was reworked to run **host-side** (varlock on the host — the desktop app authorizes the calling terminal; an in-container op cannot be, and ~/.1password/agent.sock is the SSH agent, not the op app-auth transport); fix 81a7f3f wires it into all 4 launch paths (isolated/transparent/services/build) and HV-1+HV-2 are now VERIFIED live. 2 operator-only legs remain in 05-HUMAN-UAT.md: HV-3 (snyk browser auth) + HV-4 (loginctl enable-linger). Code review: 1 medium + 1 low fixed inline (e494520); 3 low accepted as follow-ups.
+Last activity: 2026-06-18 -- SEC-01 resolution moved host-side (fix 81a7f3f) + wired into all launch paths; HV-1/HV-2 verified live; phase + design + codebase docs corrected (258ba31). 2 operator items remain.
 
-Progress: [█████████░] 95% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ executed (4/4 plans) · verification human_needed (4 operator-only items pending)
+Progress: [█████████░] 97% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ executed (4/4 plans) · verification human_needed (2 operator-only legs: HV-3 snyk browser auth, HV-4 linger)
 
 ## Performance Metrics
 
