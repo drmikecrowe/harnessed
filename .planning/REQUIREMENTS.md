@@ -77,9 +77,9 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Secrets & Hardening
 
-- [ ] **SEC-01**: varlock + 1Password secrets are opt-in via `.env.schema` (inert when absent) and injected as env only — never baked or committed
+- [x] **SEC-01**: varlock + 1Password secrets are opt-in via `.env.schema` (inert when absent) and injected as env only — never baked or committed
 - [x] **SEC-02**: Token-gated scanners (snyk/Socket.dev) run when a token is present and warn-and-skip otherwise, keeping `harnessed build` non-interactive
-- [ ] **SEC-03**: `harnessed auth snyk|socket` sets a scanner token once, persisted to host config (never an image layer)
+- [x] **SEC-03**: `harnessed auth snyk|socket` sets a scanner token once, persisted to host config (never an image layer)
 - [ ] **SEC-04**: A nightly re-scan timer re-runs osv-scanner against installed images to catch post-build CVEs
 
 ### Documentation
@@ -153,9 +153,9 @@ Which phase covers which requirement.
 | CLI-02 | Phase 4 | Pending |
 | CLI-03 | Phase 4 | Pending |
 | HRN-01 | Phase 4 | Pending |
-| SEC-01 | Phase 5 | Pending |
+| SEC-01 | Phase 5 | Complete |
 | SEC-02 | Phase 5 | Complete |
-| SEC-03 | Phase 5 | Pending |
+| SEC-03 | Phase 5 | Complete |
 | SEC-04 | Phase 5 | Pending |
 | DOC-01 | Phase 5 | Pending |
 | DOC-02 | Phase 5 | Pending |
