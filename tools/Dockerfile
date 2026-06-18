@@ -14,7 +14,7 @@ FROM python:3.13-slim
 
 # jq is available in-image for JSON shaping/inspection of emitted artifacts (design STACK).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends jq curl ca-certificates gnupg \
+    && apt-get install -y --no-install-recommends jq curl ca-certificates gnupg libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/harnessed-tools
@@ -83,13 +83,16 @@ ENV HOME=/home/tools
 # pnpm global binaries (varlock/snyk/socket from `pnpm add -g`) land in PNPM_HOME; mise shims
 # (node/pnpm/mise) complete the PATH (mirrors base/Dockerfile.harnessed-base:52).
 ENV PNPM_HOME=/home/tools/.local/share/pnpm
-ENV PATH="/home/tools/.local/share/pnpm:/home/tools/.local/share/mise/shims:/home/tools/.local/bin:${PATH}"
+ENV PATH="/home/tools/.local/share/pnpm/bin:/home/tools/.local/share/mise/shims:/home/tools/.local/bin:${PATH}"
 
 # [Phase 5] Managed pnpm supply-chain config (mirrors lib/pnpm/config.yaml:13-17). The tools
 # build context is tools/ (lib/harnessed-common.sh:83) so lib/pnpm/config.yaml is NOT COPY-able;
 # the five policy keys are inlined. allowBuilds lives in pnpm-workspace.yaml above (project-scoped).
+# minimumReleaseAgeExclude is the documented Pitfall 2 escape hatch for socket@1.1.122 (the
+# RESEARCH-verified latest, audited [OK], but published <24h before this bake — blocked by the
+# 24h minimumReleaseAge policy). Scoped to this exact pinned version, not a blanket bypass.
 RUN mkdir -p /home/tools/.config/pnpm && \
-    printf 'minimumReleaseAge: 1440\nminimumReleaseAgeStrict: true\nblockExoticSubdeps: true\nverifyStoreIntegrity: true\nstrictDepBuilds: true\n' \
+    printf 'minimumReleaseAge: 1440\nminimumReleaseAgeStrict: true\nblockExoticSubdeps: true\nverifyStoreIntegrity: true\nstrictDepBuilds: true\nminimumReleaseAgeExclude:\n  - socket@1.1.122\n' \
         > /home/tools/.config/pnpm/config.yaml
 
 # [Phase 5 / SEC-01+SEC-02] mise (runtime manager) + Node@24 + pnpm@11 (the base-image precedent
