@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-18T12:30:00Z"
-last_activity: 2026-06-18 -- 05-02 complete (opt-in varlock secrets + harnessed auth + secrets doc)
+last_updated: "2026-06-18T13:05:00Z"
+last_activity: 2026-06-18 -- 05-03 complete (nightly re-scan timer: run_image_scan_online + harnessed rescan + systemd user units)
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 16
-  completed_plans: 14
-  percent: 88
+  completed_plans: 15
+  percent: 94
 ---
 
 # Project State
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 ## Current Position
 
 Phase: 05 (secrets-hardening-docs-completeness) — EXECUTING
-Plan: 05-02 COMPLETE; 05-03 next (nightly re-scan timer)
-Status: Executing Phase 05 (Wave 2 done)
-Last activity: 2026-06-18 -- 05-02 complete (opt-in varlock/1Password secrets via resolve_secret_env + harnessed auth snyk|socket + docs/guides/secrets.md; SEC-01 + SEC-03 complete)
+Plan: 05-03 COMPLETE; 05-04 next (documentation surface: README + guides + AGENTS.md reconciliation)
+Status: Executing Phase 05 (Wave 3 done)
+Last activity: 2026-06-18 -- 05-03 complete (nightly image re-scan: run_image_scan_online [online osv.dev DB] + scan-image-online CLI + harnessed rescan [iterates harnessed-* images, scans each online, finding on one surfaces without aborting the rest] + static systemd user-timer units; SEC-04 complete)
 
-Progress: [██████████░] 88% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05: 05-01 ✓ 05-02 ✓ (opt-in secrets + auth landed)
+Progress: [██████████░] 94% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05: 05-01 ✓ 05-02 ✓ 05-03 ✓ (nightly re-scan timer landed)
 
 ## Performance Metrics
 
@@ -66,6 +66,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - 05-02: auth_scanner drives snyk auth / socket login in a --rm -it tools container with -e HOME=$CONTAINER_HOME + ~/.config rw-mounted → token persists to host config (e.g. ~/.config/configstore/snyk.json), never an image layer (T-05-07)
 - 05-02: mise shims break under the non-native HOME ($CONTAINER_HOME=/home/harnessed vs the tools image's native /home/tools); fixed by prepending /home/tools/.local/share/mise/installs/node/latest/bin to PATH inside the throwaway resolve/auth containers so the pnpm-global CLIs (varlock/snyk/socket) find node directly
 - 05-02: SEC-01 + SEC-03 marked complete (code + INERTNESS + structure verified; live op resolution + interactive snyk auth = operator-confirmed — needs 1Password desktop app + browser flow)
+- 05-03: run_image_scan_online is run_image_scan MINUS the --offline/--offline-vulnerabilities flags (the build-time gate stays offline-deterministic; the nightly is online-fresh — Pitfall 6). Keeps exit-128 investigate-branch + gate() HIGH check + ScanError. scan-image-online CLI subcommand exposes it
+- 05-03: harnessed rescan iterates podman images --filter reference='harnessed-*', podman save each, scan-image-online per image in a throwaway tools container; safe exit capture (`|| img_rc=$?`) so a finding on one image sets rc=1 but does NOT abort scanning the rest (each image independent). Process-substitution loop so rc mutations escape the body
+- 05-03: systemd USER units (rootless; not system units) — timer OnCalendar=daily + Persistent=true, service Type=oneshot ExecStart=%h/.local/bin/harnessed rescan. loginctl enable-linger $USER is a HARD prerequisite (Pitfall 5; Linger=no on host) — documented in unit comments + carried to 05-04 troubleshooting
+- 05-03: SEC-04 marked complete (all 6 checkpoint steps verified real: rescan exit 0 on 6 images online; online-vs-offline contrast proves online sees Debian ecosystem the offline DB lacks; timer scheduled; service journal shows full path; build-time offline scan unchanged). Operational note: rebuild harnessed-tools after a tools/harnessed/*.py upgrade (ensure_tools_image is build-if-missing, not staleness-aware)
 ### Pending Todos
 
 None yet.
