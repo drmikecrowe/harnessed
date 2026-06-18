@@ -129,12 +129,21 @@ Plans:
   4. README + recipe/stack guides + secrets/service/troubleshooting docs exist and match shipped behavior
 
 **Plans**: 4 plans
-
 Plans:
+**Wave 1**
 
 - [ ] 05-01-PLAN.md — Scanner CLIs baked into tools image (Node+varlock+op+snyk+socket) + token-gated snyk/socket invokers in scan.py + build_stack token forwarding (SEC-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 05-02-PLAN.md — Opt-in varlock/1Password secrets (resolve_secret_env + --env-file to pod) + `harnessed auth snyk|socket` + docs/guides/secrets.md (SEC-01, SEC-03, DOC-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 05-03-PLAN.md — Nightly re-scan timer: scan-image-online + `harnessed rescan` + systemd user-timer units (SEC-04)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 05-04-PLAN.md — Documentation surface: README + recipe-authoring/stacks/service-authoring/troubleshooting guides + AGENTS.md reconciliation (DOC-01, DOC-02, DOC-03)
 
 ## Progress
