@@ -91,7 +91,24 @@ harnessed_transparent() {
     MOUNT_ARGS+=( -v "$HARNESSED_DIR/.opencode:$CONTAINER_HOME/.config/opencode" )
     MOUNT_ARGS+=( -v "$HARNESSED_DIR/.gemini:$CONTAINER_HOME/.gemini" )
 
+    # [SEC-01] Opt-in secret resolution — the SAME host-side path as the isolated launcher
+    # (resolve_secret_env runs varlock on the HOST; inert when no ~/.config/harnessed/.env.schema).
+    # Spread --env-file into the instance so resolved op:// secrets reach the transparent session
+    # as env only (never a profile/image/file — T-05-05). The RETURN trap wipes the mode-0600 temp
+    # on ANY exit (T-05-06). Only the create path resolves; a re-attach reuses the env baked at create.
+    . "$HARNESSED_DIR/lib/harnessed-secrets.sh"
+    local secret_env resolve_rc=0
+    secret_env="$(resolve_secret_env)" || resolve_rc=$?
+    if [ "$resolve_rc" -ne 0 ]; then
+        print_error "secret resolution failed; aborting launch"
+        return 1
+    fi
+    local -a env_args=()
+    [ -n "$secret_env" ] && env_args=( --env-file "$secret_env" )
+    [ -n "$secret_env" ] && trap 'rm -f "${secret_env:-}" 2>/dev/null || true' RETURN
+
     "$CONTAINER_RUNTIME" run -d --name "$instance" "${MOUNT_ARGS[@]}" \
+        "${env_args[@]}" \
         "$HARNESSED_CLAUDE_IMAGE" sleep infinity >/dev/null
 
     apply_firewall "$instance" "${extra_hosts[@]+"${extra_hosts[@]}"}"

@@ -4,15 +4,20 @@
 # Two functions:
 #   resolve_secret_env  — detect ~/.config/harnessed/.env.schema (INERT when absent: a single
 #                         `[ -f ]` test; no schema ⇒ return 0 ⇒ varlock NEVER invoked, today's
-#                         behavior unchanged bit-for-bit). When present, run a throwaway
-#                         harnessed-tools container that mounts a writable scratch dir as
-#                         $CONTAINER_HOME (the schema ro + the resolved env-file rw + the op
-#                         agent socket + the .config data dir), exports `-e HOME=$CONTAINER_HOME`
-#                         so `op` resolves the agent socket at the mounted
-#                         $CONTAINER_HOME/.1password/agent.sock, runs `varlock load --format env`,
-#                         and writes the resolved dotenv to the env-file. Echoes the env-file path
-#                         (mode 0600); the caller unlinks it after launch (T-05-06). The host
-#                         stays podman-only — varlock/`op` live in the tools image (Pattern 1).
+#                         behavior unchanged bit-for-bit). When present, resolve `op://` refs ON
+#                         THE HOST via `varlock load --format env`. This is load-bearing: the
+#                         1Password desktop app authorizes the `op` CLI by CALLING APPLICATION
+#                         (your terminal), so app-auth (`@initOp(allowAppAuth=true)`) works on the
+#                         host but CANNOT work inside the throwaway container — there the desktop
+#                         app has no host app to bind the grant to and `op` fails with "cannot
+#                         connect to 1Password app" no matter which socket is mounted (the agent
+#                         socket is the SSH agent, NOT the op app-auth transport). Matches design
+#                         §16 ("wrap the launch in `varlock run --`"). Writes the resolved dotenv
+#                         to a mode-0600 temp env-file; echoes its path (caller unlinks after
+#                         launch, T-05-06). Hosts WITHOUT varlock fall back to in-container
+#                         resolution, which then requires OP_SERVICE_ACCOUNT_TOKEN (bearer auth —
+#                         no desktop app). varlock on the host is opt-in; the no-secrets path
+#                         stays podman-only.
 #   auth_scanner        — `harnessed auth snyk|socket` handler. A `--rm -it` tools container with
 #                         `-e HOME=$CONTAINER_HOME` + `~/.config` rw-mounted drives the vendor
 #                         CLI's own auth so the token writes to the mounted host path (e.g.
@@ -39,7 +44,7 @@ export HARNESSED_SCHEMA
 # invariant holds); this just re-points PATH inside the throwaway container.
 _HARNESSED_TOOLS_NODE_PATH="/home/tools/.local/share/mise/installs/node/latest/bin"
 
-# resolve_secret_env — detect-and-resolve the host-level .env.schema.
+# resolve_secret_env — detect-and-resolve the host-level .env.schema (see header for WHY host).
 # Stdout: the path to a mode-0600 temp env-file holding the resolved dotenv (caller unlinks
 # after launch), or empty when no schema is present (the inert path) / when varlock emitted
 # nothing. Returns non-zero only on resolution FAILURE (a present schema that won't resolve).
@@ -49,76 +54,72 @@ resolve_secret_env() {
 
     print_info "Resolving secrets via varlock (schema: $HARNESSED_SCHEMA) ..." >&2
 
-    # Writable host scratch dir → mounted as $CONTAINER_HOME. Podman otherwise creates
-    # /home/harnessed as root (uid 0), which blocks varlock's plugin data writes
-    # ($HOME/.config). A host-owned scratch dir + --userns=keep-id gives the container's
-    # tools user (uid 1000 == host uid) full write access. Holds the ro schema copy + the rw
-    # env-file + the .config data dir + the .1password socket mountpoint.
-    local tmpdir
-    tmpdir="$(mktemp -d -t harnessed-secrets.XXXX)"
-    cp "$HARNESSED_SCHEMA" "$tmpdir/.env.schema"
-    : > "$tmpdir/.env.resolved"
-    chmod 600 "$tmpdir/.env.resolved"
-    mkdir -m 700 "$tmpdir/.config"
-    # Pre-create the .1password dir so the agent-socket bind-mount target's parent is host-
-    # owned (podman would otherwise create it as root, breaking `rm -rf "$tmpdir"` on cleanup).
-    mkdir -m 700 "$tmpdir/.1password"
+    local envfile schema_dir raw errlog rc=0
+    envfile="$(mktemp -t harnessed-env.XXXX --suffix=.env)"; chmod 600 "$envfile"
+    raw="$(mktemp -t harnessed-secrets-raw.XXXX)"; chmod 600 "$raw"
+    errlog="$(mktemp -t harnessed-secrets-err.XXXX)"
+    schema_dir="$(dirname "$HARNESSED_SCHEMA")"
 
-    # The 1Password agent socket — same transport as lib/harnessed-mounts.sh:22-27 (app-auth,
-    # allowAppAuth=true). varlock's @initOp reads SSH_AUTH_SOCK and connects to the desktop app.
-    local op_agent="$HOME/.1password/agent.sock"
-    local -a agent_args=()
-    if [ -S "$op_agent" ]; then
-        agent_args+=( -v "$op_agent:$CONTAINER_HOME/.1password/agent.sock" )
-        agent_args+=( -e "SSH_AUTH_SOCK=$CONTAINER_HOME/.1password/agent.sock" )
-    fi
-
-    # Headless fallback (CLAUDE.md caution: scope narrowly; never export in a shell profile).
-    # Forwarded ONLY when already in the launcher env — never prompt, never echo.
-    local -a svcacct_args=()
-    if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
-        svcacct_args+=( -e "OP_SERVICE_ACCOUNT_TOKEN=$OP_SERVICE_ACCOUNT_TOKEN" )
-    fi
-
-    # Throwaway tools container (Pattern 1, mirrors lib/harnessed-common.sh:106-108):
-    #   --rm             → no image layer holds the resolved env (T-05-05)
-    #   --userns=keep-id → the scratch-dir files are writable by the tools uid (host uid)
-    #   -e HOME=$CONTAINER_HOME → `op` resolves the agent socket at the mounted
-    #                       $CONTAINER_HOME/.1password/agent.sock (NOT /home/tools/.1password/…)
-    #   varlock load --format env → dotenv (podman --env-file compatible); NOT --format shell,
-    #                       whose KEY='value'/`export KEY=…` lines podman parses as literal text
-    # The PATH prepend (above) keeps the pnpm-global CLIs resolvable under the new HOME.
-    local rc=0 errout
-    errout="$("$CONTAINER_RUNTIME" run --rm --userns=keep-id \
-        -e "HOME=$CONTAINER_HOME" \
-        -v "$tmpdir":"$CONTAINER_HOME":rw \
-        "${agent_args[@]}" \
-        "${svcacct_args[@]}" \
-        --entrypoint bash \
-        "$HARNESSED_TOOLS_IMAGE" \
-        -lc "export PATH=\"$_HARNESSED_TOOLS_NODE_PATH:\$PATH\"; cd \"\$HOME\" && varlock load --format env | sed -E 's/^([^=]+)=\\\"(.*)\\\"\$/\\1=\\2/' > \"\$HOME/.env.resolved\"")" 2>&1 || rc=$?
-
-    if [ "$rc" -ne 0 ]; then
+    if command -v varlock >/dev/null 2>&1; then
+        # HOST resolution (the default). `op` app-auth works here because the desktop app
+        # authorizes the calling terminal (header). The subshell `cd` keeps the launcher's cwd
+        # intact; `|| rc=$?` captures the exit under the launcher's `set -euo pipefail`.
+        ( cd "$schema_dir" && varlock load --format env ) >"$raw" 2>"$errlog" || rc=$?
+    elif [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+        # Headless fallback (no host varlock — e.g. the nightly timer / CI): resolve in a
+        # throwaway tools container using the service-account token (HTTPS bearer auth — no
+        # desktop app, no app-auth, no socket). --rm ⇒ no image layer holds the resolved env.
+        # The scratch dir is mounted as $CONTAINER_HOME so varlock's plugin can write its data
+        # ($HOME/.config) under a host-owned, --userns=keep-id-writable path.
+        local tmpdir
+        tmpdir="$(mktemp -d -t harnessed-secrets.XXXX)"
+        cp "$HARNESSED_SCHEMA" "$tmpdir/.env.schema"
+        mkdir -m 700 "$tmpdir/.config"
+        "$CONTAINER_RUNTIME" run --rm --userns=keep-id \
+            -e "HOME=$CONTAINER_HOME" \
+            -e "OP_SERVICE_ACCOUNT_TOKEN=$OP_SERVICE_ACCOUNT_TOKEN" \
+            -v "$tmpdir":"$CONTAINER_HOME":rw \
+            --entrypoint bash \
+            "$HARNESSED_TOOLS_IMAGE" \
+            -lc "export PATH=\"$_HARNESSED_TOOLS_NODE_PATH:\$PATH\"; cd \"\$HOME\" && varlock load --format env" \
+            >"$raw" 2>"$errlog" || rc=$?
         rm -rf "$tmpdir"
-        print_error "varlock resolution failed (exit $rc):" >&2
-        printf '%s\n' "$errout" >&2
-        print_error "Confirm the 1Password desktop app is running (agent socket: $op_agent)" >&2
-        print_error "or set OP_SERVICE_ACCOUNT_TOKEN (headless). See docs/guides/secrets.md." >&2
+    else
+        rm -f "$envfile" "$raw" "$errlog"
+        print_error "secret resolution needs host 'varlock' (1Password desktop app-auth) OR OP_SERVICE_ACCOUNT_TOKEN (headless)." >&2
+        print_error "Install varlock on the host (e.g. \`npm i -g varlock\`) for the desktop-app flow, or export a scoped service-account token. See docs/guides/secrets.md." >&2
         return 1
     fi
 
-    # Move the resolved env out of the scratch dir to a stable path the caller unlinks (T-05-06).
-    local final=""
-    if [ -s "$tmpdir/.env.resolved" ]; then
-        final="$(mktemp -t harnessed-env.XXXX --suffix=.env)"
-        chmod 600 "$final"
-        mv "$tmpdir/.env.resolved" "$final"
-    else
-        # varlock succeeded but emitted nothing — schema is valid but resolves no env. Treat
-        # as inert (no --env-file to spread); warn so the operator notices.
-        print_warning "varlock resolved no env from $HARNESSED_SCHEMA (empty dotenv)" >&2
+    if [ "$rc" -ne 0 ]; then
+        rm -f "$envfile" "$raw"
+        print_error "varlock resolution failed (exit $rc):" >&2
+        sed 's/^/    /' "$errlog" >&2
+        rm -f "$errlog"
+        if command -v varlock >/dev/null 2>&1; then
+            print_error "Is the 1Password desktop app running, unlocked, and CLI integration authorized for this terminal?" >&2
+            print_error "(1Password → Settings → Developer → 'Integrate with 1Password CLI'; the first run prompts to Authorize.) See docs/guides/secrets.md." >&2
+        else
+            print_error "Check OP_SERVICE_ACCOUNT_TOKEN and the op:// refs in the schema. See docs/guides/secrets.md." >&2
+        fi
+        return 1
     fi
-    rm -rf "$tmpdir"
+    rm -f "$errlog"
+
+    # Unquote varlock's dotenv (KEY="value" → KEY=value) so podman --env-file reads the value,
+    # not the literal quotes. Result is mode-0600; the caller spreads it via --env-file and
+    # unlinks after launch (T-05-06).
+    local final=""
+    if [ -s "$raw" ]; then
+        sed -E 's/^([^=]+)="(.*)"$/\1=\2/' "$raw" > "$envfile"
+        final="$envfile"
+    else
+        # varlock succeeded but emitted nothing — schema valid but resolves no env. Treat as
+        # inert (no --env-file to spread); warn so the operator notices.
+        print_warning "varlock resolved no env from $HARNESSED_SCHEMA (empty dotenv)" >&2
+        rm -f "$envfile"
+    fi
+    rm -f "$raw"
     [ -n "$final" ] && echo "$final"
 }
 

@@ -100,13 +100,34 @@ svc_up() {
     # so peer instances/pods reach this service via the host gateway `host.containers.internal:<port>`.
     # The service is a standalone container (not a pod member); its lifecycle is independent of any
     # instance (design §9). HARNESSED_NET remains an explicit opt-in bridge for hosts that support it.
+    # [SEC-01] Per-service secret resolution (design §16): a per-service schema at
+    # ~/.config/<service>/.env.schema resolves on the HOST via the shared resolve_secret_env
+    # (inert when absent). Spread --env-file into the sidecar so op:// secrets reach it as env
+    # only; the mode-0600 temp is unlinked right after the -d create reads it (T-05-06).
+    . "$HARNESSED_DIR/lib/harnessed-secrets.sh"
+    local svc_secret_env svc_resolve_rc=0
+    svc_secret_env="$(HARNESSED_SCHEMA="$HOME/.config/$service/.env.schema" resolve_secret_env)" || svc_resolve_rc=$?
+    if [ "$svc_resolve_rc" -ne 0 ]; then
+        print_error "secret resolution failed for service '$service'; not starting"
+        return 1
+    fi
+    local -a svc_env_args=()
+    [ -n "$svc_secret_env" ] && svc_env_args=( --env-file "$svc_secret_env" )
+    local svc_run_rc=0
     "$CONTAINER_RUNTIME" run -d \
         -p "$port:$port" \
         --name "$service" \
         --label harnessed-service="$service" \
         --userns=keep-id \
         -v "$volume:$data_path" \
-        "$image" >/dev/null
+        "${svc_env_args[@]}" \
+        "$image" >/dev/null || svc_run_rc=$?
+    # [T-05-06] Unlink the resolved env temp right after the -d create reads it (any outcome).
+    [ -n "$svc_secret_env" ] && rm -f "$svc_secret_env"
+    if [ "$svc_run_rc" -ne 0 ]; then
+        print_error "Service '$service' failed to start (run exit $svc_run_rc)"
+        return 1
+    fi
 
     # Wait for the healthcheck to pass (up to 30s). If the image has no HEALTHCHECK,
     # fall back to checking the container is running.
