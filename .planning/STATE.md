@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-18T13:22:45Z"
-last_activity: 2026-06-18 -- 05-04 complete (README + 4 how-to guides + AGENTS.md reconciliation; DOC-01/02/03 complete; Phase 05 all plans done)
+last_updated: "2026-06-18T13:35:00Z"
+last_activity: 2026-06-18 -- Phase 05 executed (4/4 plans) + verified human_needed (4 operator-only items in 05-HUMAN-UAT.md); code-review medium+low fixed inline (e494520)
 progress:
   total_phases: 5
-  completed_phases: 5
+  completed_phases: 4        # phase 05 executed + verified human_needed (awaiting 4 operator-only items)
   total_plans: 16
   completed_plans: 16
-  percent: 100
+  percent: 95
 ---
 
 # Project State
@@ -24,12 +24,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 05 (secrets-hardening-docs-completeness) — COMPLETE
-Plan: 05-04 COMPLETE (Phase 05 all plans done — 05-01/02/03/04 ✓)
-Status: Phase 05 complete (Wave 4 done); v1 milestone documentation surface shipped
-Last activity: 2026-06-18 -- 05-04 complete (README rewrite as the harnessed entry point: two modes [transparent/isolated], podman-only install, first-run build, copy-paste quickstart, full command surface incl. auth snyk|socket + rescan; AGENTS.md reconciled [redirects to README, preserves the don't-run-interactively guard]; 4 how-to guides under docs/guides/ — recipe-authoring [recipes/time+ping], stacks [tracer-time+transparent+ping-time], service-authoring [services/ping triple, Streamable-HTTP], troubleshooting [podman, first-run build, ~/.claude.json, --fresh, host-persisted sessions, SEC-04 nightly timer: loginctl enable-linger + install + diagnostics + online-vs-offline]; DOC-01/02/03 complete)
+Phase: 05 (secrets-hardening-docs-completeness) — EXECUTED (4/4 plans) + VERIFIED `human_needed`
+Plan: 05-04 complete (Phase 05 all 4 plans done — 05-01/02/03/04 ✓); verification = human_needed
+Status: Code + docs shipped and verified. 4/7 requirements fully VERIFIED live (SEC-02, SEC-04, DOC-01/02/03); 3 carry operator-only live legs (SEC-01, SEC-03, SEC-04-linger) → 4 items in 05-HUMAN-UAT.md awaiting the operator (live 1Password op:// resolution, build-scan-with-resolved-tokens, snyk browser-auth, loginctl enable-linger). Code review: 1 medium + 1 low fixed inline (e494520); 3 low accepted as follow-ups. Phase closes fully once the operator runs the 4 HV items.
+Last activity: 2026-06-18 -- Phase 05 executed + verified (human_needed); 4 operator-only items in 05-HUMAN-UAT.md
 
-Progress: [██████████] 100% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ (all 4 plans: 05-01 scanner bake · 05-02 secrets+auth · 05-03 nightly rescan · 05-04 docs)
+Progress: [█████████░] 95% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ executed (4/4 plans) · verification human_needed (4 operator-only items pending)
 
 ## Performance Metrics
 
