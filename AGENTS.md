@@ -1,94 +1,63 @@
-# Code Container (`container`)
+# harnessed — AI assistant instructions
 
 Repo: https://github.com/drmikecrowe/code-container
 
-This file contains instructions for AI coding assistants on how to setup and customize `container` for users.
+This file tells AI coding assistants how to set up and customize **`harnessed`**. The user-facing
+entry point is **[README.md](README.md)** — read it first for install, the two config modes
+(transparent / isolated), the quickstart, and the command surface. Full architecture rationale is in
+[docs/harnessed-design.md](docs/harnessed-design.md); how-to guides are under
+[docs/guides/](docs/guides).
 
-Note: You are not allowed to run the `container` command as it will bring up an interactive shell inside the container. It is meant for user consumption only.
+> [!IMPORTANT]
+> **Do not run `harnessed` or `container` yourself.** Both launch an interactive shell inside a
+> container (transparent attaches a live harness; isolated attaches a pod). They are for user
+> consumption only. Use `harnessed build`, `harnessed test`, `harnessed list`, or read the source to
+> reason about behavior instead.
 
-## Setup Instructions
+## Setup instructions
 
-If the user asks you to setup `container`, follow the following steps.
+If the user asks you to set up harnessed, walk them through it one step at a time (do not dump the
+whole sequence):
 
-Pre-setup:
-- Read `./Dockerfile`
-- Read `./container.sh`
-
-Setup: Do one step at a time. Do not overload the user with instructions.
-1. Ask user to run the installer:
+1. **Prerequisite:** Podman (preferred) or Docker is the only host dependency. No host
+   Python/node/uv is needed.
+2. **Install:** have the user run the installer (it clones to `~/.local/share/code-container` and
+   symlinks `harnessed` + the `container` alias onto their PATH):
    ```bash
    curl -fsSL https://raw.githubusercontent.com/drmikecrowe/code-container/main/install.sh | bash
    ```
-   This clones to `~/.local/share/code-container` and symlinks `container` onto their PATH. The installer is fully verbose and handles everything.
-2. Do for user: Provide a list of included packages in `Dockerfile`. Then, ask user if they would like to add more packages into container environment. If yes, see `Add Packages/Dependencies` section below.
-3. Do for user: Build Docker image:
+3. **First-run build** (user runs these):
    ```bash
-   container --build
+   harnessed build                       # build the shared base/harness/hatago images
+   harnessed build tracer-time           # assemble an isolated stack (emit profile + scan + hatago build)
    ```
+4. **Run** (user runs): `harnessed transparent` (host-mirror sandbox) or `harnessed tracer-time`
+   (the isolated sample stack). See the [quickstart](README.md#quickstart).
 
-Post-setup:
-1. Provide instructions on how to use container:
-  ```
-  cd /path/to/project
-  container
-  opencode # OR: codex OR: claude
-  ```
-2. Give users a quick overview of common commands.
-  ```bash
-  container
-  container --build          # Rebuild Docker image
-  container --list           # List all containers
-  container --stop           # Stop current container
-  container --remove         # Remove current container
-  container --clean          # Remove all stopped containers
-  ```
-3. Ask users if they would like to customize local harness permissions to disable permission prompts. If yes, see Harness Permissions below.
+## Customizing harnessed
 
-## Customization
+- **Add a recipe** (MCP layer + skills/commands): author `recipes/<name>/recipe.yaml`. See
+  [docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md) (worked examples:
+  `recipes/time`, `recipes/ping`).
+- **Compose a stack**: author `stacks/<name>/stack.yaml`, or scaffold with `harnessed new <stack>
+  --harness <claude|omp> --recipes a,b,c`. See [docs/guides/stacks.md](docs/guides/stacks.md).
+- **Add a shared service sidecar**: `services/<name>/` (its own `Dockerfile` + `service.yaml` +
+  server). See [docs/guides/service-authoring.md](docs/guides/service-authoring.md) (worked example:
+  `services/ping`).
+- **Opt-in secrets** (varlock + 1Password): see [docs/guides/secrets.md](docs/guides/secrets.md).
+- **Troubleshoot** (podman, first-run build, `--fresh`, sessions, the nightly re-scan timer): see
+  [docs/guides/troubleshooting.md](docs/guides/troubleshooting.md).
 
-### Add Packages/Dependencies (Dockerfile)
+> Note: you may only modify files **in this repository**. Do not modify files in the user's home
+> directory (`~/`) unless they explicitly ask.
 
-Add new tools by extending the RUN commands in `Dockerfile`:
+## Harness permissions
 
-```dockerfile
-# System packages (Ubuntu/Debian)
-RUN apt-get update && apt-get install -y \
-    postgresql-client \
-    redis-tools
+If the user asks to configure harnesses to run without permission prompts inside a transparent
+instance, read and follow [Permissions.md](Permissions.md).
 
-# Global npm packages
-RUN npm install -g typescript
+## Conventions
 
-# Global pip packages
-RUN pip install requests pandas
-```
-
-**After modifying:**
-- Run `container --build` to rebuild.
-- Run `container --remove` or `container --clean` to remove outdated containers based on the old image.
-
-### Add Mount Points (container.sh)
-
-Add shared volumes by modifying `start_new_container()` in `container.sh`:
-
-```bash
-# Shared directory (persists across containers)
--v "$SCRIPT_DIR/custom-dir:/root/target-path"
-
-# Read-only mount from host
--v "$HOME/.config:/root/.config:ro"
-```
-
-**After modifying:** No rebuild needed; changes apply to new containers.
-
-## Harness Permissions
-
-If the user asks you to configure harnesses to run without permission prompts inside `container`, read and follow instructions in [Permissions.md](/Permissions.md).
-
-Note: You may only modify the user's configuration files in this repository only. Do not modify the files in their home directory (`~/`).
-
-## What Persists
-
-**Per-container:** All installed packages, file changes, databases, shell history
-**Shared:** npm/pip caches, AI harness configs/conversations, Python user packages
-**Read-only:** Git config, SSH keys
+Follow [CLAUDE.md](CLAUDE.md) for project conventions and constraints (pnpm everywhere; Claude Code
+format is canonical; credentials referenced from host, never baked; SSE MCP transport is deprecated
+in favor of Streamable HTTP).
