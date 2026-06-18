@@ -1,11 +1,12 @@
 ---
 phase: 05-secrets-hardening-docs-completeness
 review: 05-REVIEW
-status: issues            # clean | issues | skipped
+status: issues            # clean | issues | skipped — medium + 1 low resolved post-review (3 low remain)
 scope: source/config changes shipped in phase-05 commits (31067bb..5201b77); docs excluded
 reviewer: Reviewer-05 (security-focused code review, advisory / non-blocking)
 date: 2026-06-18
-finding_counts: { high: 0, medium: 1, low: 4 }
+finding_counts: { high: 0, medium: 0, low: 3 }   # was {0,1,4}; #1(med)+#3(low) fixed in e494520
+addressed_post_review: { "1": "e494520", "3": "e494520" }
 ---
 
 # Phase 05 — Source Code Review (advisory)
@@ -176,3 +177,31 @@ This review is advisory and non-blocking. The phase-05 source is sound; the one 
 (#1) has a small, localized fix (a cleanup trap) and a mode-0600/$TMPDIR blast radius that keeps
 it from being high-severity. The four low findings are robustness and supply-chain hygiene
 improvements. Recommended as follow-ups, not gates.
+
+---
+
+## Post-review: findings addressed
+
+Two findings were fixed inline after this review (the medium security gap + the rescan-save
+low), committed as `fix(05): secret temp env-file cleanup on error paths + resilient rescan save`
+(`e494520`):
+
+- **#1 (medium → resolved):** `lib/harnessed-isolated.sh` now installs a scoped `RETURN` trap
+  immediately after `resolve_secret_env` succeeds, so the mode-0600 temp env-file is unlinked on
+  *any* exit from `harnessed_isolated` — a `set -e` abort on either member `podman run`, the
+  readiness wait, `apply_firewall`, or an early return — not only the two happy-path `rm -f`s at
+  the tail (which remain as harmless belts). This closes T-05-06 on **all** paths.
+- **#3 (low → resolved):** `lib/harnessed-rescan.sh` now wraps `podman save` in `if ! …; then
+  rm -f "$tar"; rc=1; continue; fi`, so one unsaveable image (removed between list and save, or a
+  transient podman error) skips without aborting the nightly or leaking the tar — mirroring the
+  scan step's finding-isolation.
+
+Re-verified: `bash -n` clean on both files; live `./harnessed rescan` still returns exit 0 with
+all images clean (online) — the save-step wrap does not perturb the loop.
+
+**Remaining open (3 low, non-blocking, accepted as follow-ups):** #2 (varlock dotenv unquoter is
+not backslash/quote-escaping-aware — latent for non-alphanumeric secrets; varlock is audited to
+escape, so not active today); #4 (secrets.sh failure-path `errout` capture is a no-op — podman
+stderr already flows live to the terminal, and no secret is echoed); #5 (Dockerfile node@24 /
+pnpm@11 are major pins, `op` via unpinned apt — matches the base-image precedent; only a concern
+if bit-for-bit reproducible tools images become a goal).
