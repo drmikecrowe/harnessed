@@ -113,7 +113,15 @@ build_stack() {
     # a bare scanner pipeline would abort on osv-scanner's non-zero exit (Constraint 9 / a963a69).
     print_info "Running supply-chain source scan for stack '$stack' ..."
     local src_rc=0
+    # [SEC-02] Forward scanner tokens ONLY when set in the launcher env (raw env, varlock-resolved,
+    # or ~/.config/configstore). `${VAR:-}` is set -euo pipefail-safe (a bare $SNYK_TOKEN aborts on
+    # unset — Constraint 9); the tools image's scan.py does the env-presence gate (warn-and-skip on
+    # absence). NEVER prompt for a token (SEC-02 contract).
+    local TOKEN_ARGS=()
+    [ -n "${SNYK_TOKEN:-}" ] && TOKEN_ARGS+=( -e "SNYK_TOKEN=$SNYK_TOKEN" )
+    [ -n "${SOCKET_SECURITY_API_KEY:-}" ] && TOKEN_ARGS+=( -e "SOCKET_SECURITY_API_KEY=$SOCKET_SECURITY_API_KEY" )
     "$CONTAINER_RUNTIME" run --rm --userns=keep-id \
+        "${TOKEN_ARGS[@]}" \
         -v "$ROOT":"$ROOT" -w "$ROOT" \
         "$HARNESSED_TOOLS_IMAGE" scan "$stack" --root "$ROOT" --build-dir "$ROOT" || src_rc=$?
     if [ "$src_rc" -ne 0 ]; then

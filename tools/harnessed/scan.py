@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -199,6 +200,88 @@ def _audit_pip(requirement: Path, warnings: list[str]) -> None:
                 warnings.append(f"pip-audit: {vid}")
 
 
+def _snyk_vuln_ids(snyk_json: dict) -> list[str]:
+    """Finding ids from `snyk test --severity-threshold=high --json` (exit 1 = HIGH+ at threshold)."""
+    vulns = snyk_json.get("vulnerabilities") or []
+    return [v.get("id") for v in vulns if isinstance(v, dict) and v.get("id")]
+
+
+def _socket_alerts(socket_json: dict) -> list[str]:
+    """Short strings for Socket.dev scan alerts (warnings only — Socket has no CVSS threshold)."""
+    out: list[str] = []
+    # `socket scan create --json` nests alerts under a top-level key; honor the common shapes.
+    candidates = socket_json.get("alerts") or socket_json.get("data") or []
+    if isinstance(candidates, dict):
+        candidates = candidates.get("alerts") or []
+    for entry in candidates:
+        if isinstance(entry, dict):
+            label = entry.get("id") or entry.get("type") or entry.get("key") or entry.get("title")
+            if label:
+                out.append(str(label))
+        elif isinstance(entry, str) and entry:
+            out.append(entry)
+    return out
+
+
+def _scan_snyk(target: Path, highs: list[str], warnings: list[str]) -> None:
+    """snyk test --severity-threshold=high, env-gated on SNYK_TOKEN (SEC-02).
+
+    The load-bearing difference from osv-scanner: with `--severity-threshold=high` snyk's EXIT CODE
+    IS the gate (docs.snyk.io/snyk-cli/exit-codes), not Python-over-JSON: 0 clean, 1 vulns at the
+    HIGH+ threshold found (ABORT), 2 failure, 3 no-supported-projects (warn). Do NOT treat snyk's
+    non-zero like osv-scanner's (osv 1 = any finding; snyk 1 = HIGH+ at threshold — exactly the gate).
+
+    Token-gated: no SNYK_TOKEN ⇒ warn-and-skip (the credential-free osv-scanner + pip-audit baseline
+    stays the gate); `harnessed build` never prompts (SEC-02 contract). snyk scans only when the
+    target has a package.json (manifest-less dirs are skipped — snyk cannot scan them).
+    """
+    if not os.environ.get("SNYK_TOKEN"):
+        warnings.append("snyk skipped (no SNYK_TOKEN) — credential-free baseline remains the gate")
+        return
+    manifest = target / "package.json"
+    if not manifest.is_file():
+        return
+    proc = _run(["snyk", "test", "--severity-threshold=high", "--json", "--file", str(manifest)])
+    if proc.returncode == 1:
+        # HIGH+ finding(s) at the threshold — parse ids and ABORT the build (the gate).
+        data = _parse_json(proc.stdout)
+        ids = _snyk_vuln_ids(data) if data is not None else []
+        if ids:
+            highs.extend(ids)
+        else:
+            # Exit 1 but no parseable ids — fail-closed: surface as a HIGH+ signal to investigate.
+            highs.append(f"snyk: HIGH+ finding in {target.name} (exit 1; parse JSON output)")
+    elif proc.returncode in (2, 3):
+        warnings.append(
+            f"snyk: exit {proc.returncode} for {target.name} (failure / no supported projects) — investigate"
+        )
+    # returncode 0 ⇒ clean (no action)
+
+
+def _scan_socket(target: Path, warnings: list[str]) -> None:
+    """socket scan create (server-side), env-gated on SOCKET_SECURITY_API_KEY|TOKEN (SEC-02).
+
+    Socket.dev's model is policy/alert-based — it surfaces NO CVSS severity threshold the way snyk
+    does — so findings render as WARNINGS only and NEVER abort the build. Server-side (uploads the
+    manifest to Socket.dev), so it adds a network dependency + quota cost: absence of the token OR a
+    network/quota failure warns-and-skips WITHOUT aborting (Pitfall 4). Both SOCKET_SECURITY_API_KEY
+    and SOCKET_SECURITY_API_TOKEN are accepted (verified live, RESEARCH §socket).
+    """
+    token = os.environ.get("SOCKET_SECURITY_API_KEY") or os.environ.get("SOCKET_SECURITY_API_TOKEN")
+    if not token:
+        warnings.append("socket skipped (no SOCKET_SECURITY_API_KEY) — optional scanner")
+        return
+    proc = _run(["socket", "scan", "create", "--json", str(target)])
+    if proc.returncode != 0:
+        warnings.append(f"socket: non-zero exit {proc.returncode} (network/quota?) — skipped")
+        return
+    data = _parse_json(proc.stdout)
+    if data is None:
+        return
+    for alert in _socket_alerts(data):
+        warnings.append(f"socket: {alert}")
+
+
 def run_source_scan(root: Path | str, stack_name: str, build_dir: Path | str) -> ScanResult:
     """SCOPED source/Python scan of one stack (BLD-02a). Raises ScanError on any HIGH+ finding.
 
@@ -221,6 +304,8 @@ def run_source_scan(root: Path | str, stack_name: str, build_dir: Path | str) ->
         _scan_source_osv(target, highs, warnings)
         for requirement in target.rglob("requirements.txt"):
             _audit_pip(requirement, warnings)
+        _scan_snyk(target, highs, warnings)
+        _scan_socket(target, warnings)
 
     if highs:
         unique = sorted(set(highs))
