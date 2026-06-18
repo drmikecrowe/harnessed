@@ -84,9 +84,9 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Documentation
 
-- [ ] **DOC-01**: README documents what harnessed is, the two modes, install, first-run build, and a quickstart
-- [ ] **DOC-02**: Recipe-authoring and stack guides document writing recipes/stacks with a worked example
-- [ ] **DOC-03**: Secrets-setup, service-authoring, and troubleshooting/ops docs exist
+- [x] **DOC-01**: README documents what harnessed is, the two modes, install, first-run build, and a quickstart
+- [x] **DOC-02**: Recipe-authoring and stack guides document writing recipes/stacks with a worked example
+- [x] **DOC-03**: Secrets-setup, service-authoring, and troubleshooting/ops docs exist
 
 ## v2 Requirements
 
@@ -157,9 +157,9 @@ Which phase covers which requirement.
 | SEC-02 | Phase 5 | Complete |
 | SEC-03 | Phase 5 | Complete |
 | SEC-04 | Phase 5 | Complete |
-| DOC-01 | Phase 5 | Pending |
-| DOC-02 | Phase 5 | Pending |
-| DOC-03 | Phase 5 | Pending |
+| DOC-01 | Phase 5 | Complete |
+| DOC-02 | Phase 5 | Complete |
+| DOC-03 | Phase 5 | Complete |
 
 **Coverage:**
 

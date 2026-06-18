@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-18T13:05:00Z"
-last_activity: 2026-06-18 -- 05-03 complete (nightly re-scan timer: run_image_scan_online + harnessed rescan + systemd user units)
+last_updated: "2026-06-18T13:22:45Z"
+last_activity: 2026-06-18 -- 05-04 complete (README + 4 how-to guides + AGENTS.md reconciliation; DOC-01/02/03 complete; Phase 05 all plans done)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 16
-  completed_plans: 15
-  percent: 94
+  completed_plans: 16
+  percent: 100
 ---
 
 # Project State
@@ -24,12 +24,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 05 (secrets-hardening-docs-completeness) — EXECUTING
-Plan: 05-03 COMPLETE; 05-04 next (documentation surface: README + guides + AGENTS.md reconciliation)
-Status: Executing Phase 05 (Wave 3 done)
-Last activity: 2026-06-18 -- 05-03 complete (nightly image re-scan: run_image_scan_online [online osv.dev DB] + scan-image-online CLI + harnessed rescan [iterates harnessed-* images, scans each online, finding on one surfaces without aborting the rest] + static systemd user-timer units; SEC-04 complete)
+Phase: 05 (secrets-hardening-docs-completeness) — COMPLETE
+Plan: 05-04 COMPLETE (Phase 05 all plans done — 05-01/02/03/04 ✓)
+Status: Phase 05 complete (Wave 4 done); v1 milestone documentation surface shipped
+Last activity: 2026-06-18 -- 05-04 complete (README rewrite as the harnessed entry point: two modes [transparent/isolated], podman-only install, first-run build, copy-paste quickstart, full command surface incl. auth snyk|socket + rescan; AGENTS.md reconciled [redirects to README, preserves the don't-run-interactively guard]; 4 how-to guides under docs/guides/ — recipe-authoring [recipes/time+ping], stacks [tracer-time+transparent+ping-time], service-authoring [services/ping triple, Streamable-HTTP], troubleshooting [podman, first-run build, ~/.claude.json, --fresh, host-persisted sessions, SEC-04 nightly timer: loginctl enable-linger + install + diagnostics + online-vs-offline]; DOC-01/02/03 complete)
 
-Progress: [██████████░] 94% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05: 05-01 ✓ 05-02 ✓ 05-03 ✓ (nightly re-scan timer landed)
+Progress: [██████████] 100% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ (all 4 plans: 05-01 scanner bake · 05-02 secrets+auth · 05-03 nightly rescan · 05-04 docs)
 
 ## Performance Metrics
 
