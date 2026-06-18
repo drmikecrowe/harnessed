@@ -111,7 +111,22 @@ build_stack() {
     # recipe dirs + emitted profile only — never the whole repo — so a committed fixture cannot
     # red-line an unrelated build. Capture the exit safely: the launcher runs set -euo pipefail, so
     # a bare scanner pipeline would abort on osv-scanner's non-zero exit (Constraint 9 / a963a69).
-    print_info "Running supply-chain source scan for stack '$stack' ..."
+
+    # [SEC-01 / plan 05-02] resolve_secret_env: when ~/.config/harnessed/.env.schema is present,
+    # resolve op:// refs via varlock+1Password in a throwaway tools container; the resulting
+    # --env-file supplements the raw-env TOKEN_ARGS so the build-time snyk/socket scan receives
+    # the 1Password-resolved tokens (not just `snyk skipped (no SNYK_TOKEN)` from the raw
+    # launcher env). INERT when no schema (resolve_secret_env returns 0 with empty stdout).
+    . "$HARNESSED_DIR/lib/harnessed-secrets.sh"
+    local build_secret_env build_resolve_rc=0
+    build_secret_env="$(resolve_secret_env)" || build_resolve_rc=$?
+    if [ "$build_resolve_rc" -ne 0 ]; then
+        print_error "secret resolution failed for build; aborting"
+        return 1
+    fi
+    local -a build_env_args=()
+    [ -n "$build_secret_env" ] && build_env_args=( --env-file "$build_secret_env" )
+
     local src_rc=0
     # [SEC-02] Forward scanner tokens ONLY when set in the launcher env (raw env, varlock-resolved,
     # or ~/.config/configstore). `${VAR:-}` is set -euo pipefail-safe (a bare $SNYK_TOKEN aborts on
@@ -121,9 +136,12 @@ build_stack() {
     [ -n "${SNYK_TOKEN:-}" ] && TOKEN_ARGS+=( -e "SNYK_TOKEN=$SNYK_TOKEN" )
     [ -n "${SOCKET_SECURITY_API_KEY:-}" ] && TOKEN_ARGS+=( -e "SOCKET_SECURITY_API_KEY=$SOCKET_SECURITY_API_KEY" )
     "$CONTAINER_RUNTIME" run --rm --userns=keep-id \
+        "${build_env_args[@]}" \
         "${TOKEN_ARGS[@]}" \
         -v "$ROOT":"$ROOT" -w "$ROOT" \
         "$HARNESSED_TOOLS_IMAGE" scan "$stack" --root "$ROOT" --build-dir "$ROOT" || src_rc=$?
+    # [T-05-06] Unlink the resolved env temp file (mode 0600) right after the scan step.
+    [ -n "$build_secret_env" ] && rm -f "$build_secret_env"
     if [ "$src_rc" -ne 0 ]; then
         print_error "supply-chain source scan failed for stack '$stack' (HIGH+ finding)"
         return 1
