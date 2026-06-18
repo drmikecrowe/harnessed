@@ -37,32 +37,38 @@ and tell varlock to use the mounted agent socket for app-auth).
 
 ## How resolution works
 
-`harnessed` is host-podman-only — there is no host Node, no host varlock, no host `op`.
-Resolution happens **inside a throwaway `harnessed-tools` container**:
+`harnessed` runs `varlock` **on the host** to resolve `op://` refs. This is required, not a
+preference: 1Password's desktop app authorizes the `op` CLI by **calling application** (your
+terminal), so app-auth (`@initOp(allowAppAuth=true)`) works on the host but **cannot** work
+from inside a container — there the desktop app has no host app to bind the grant to, and `op`
+fails with *"cannot connect to 1Password app"* no matter which socket is mounted. (The
+`~/.1password/agent.sock` mounted into every stack is the **SSH agent**, for git signing — not
+the `op` app-auth transport.)
 
 1. The launcher detects `~/.config/harnessed/.env.schema` (one `[ -f ]` test — inert when
-   absent).
-2. It runs a `--rm --userns=keep-id` `harnessed-tools` container with:
-   - `-e HOME=$CONTAINER_HOME` so the `tools` user resolves the agent socket to the mounted
-     `$CONTAINER_HOME/.1password/agent.sock` (NOT the unmounted `/home/tools/.1password/…`).
-   - The schema (ro) + a writable scratch `$CONTAINER_HOME` (resolved env crosses back here).
-   - The 1Password agent socket (`~/.1password/agent.sock` → `$CONTAINER_HOME/.1password/agent.sock`).
-3. Inside the container: `varlock load --format env` resolves the `op://` refs against the
-   agent socket and emits dotenv (`KEY=value`) lines.
-4. The host captures the result into a **mode-0600 temp `--env-file`** under `$TMPDIR` and
-   passes it to both pod members (hatago + harness) via `--env-file`.
-5. After the interactive attach returns, the temp file is **unlinked** (T-05-06).
+   absent; with no schema, `varlock` is never invoked).
+2. It runs `varlock load --format env` **on the host**, in the schema's directory. The first
+   run prompts the 1Password desktop app to **Authorize** your terminal for CLI access —
+   approve it once and the grant persists.
+3. The resolved dotenv is captured into a **mode-0600 temp `--env-file`** under `$TMPDIR`.
+4. That `--env-file` is spread into the launched container(s) — **both pod members** (isolated),
+   the **instance** (transparent), the **sidecar** (`svc up`), and the **scan step**
+   (`harnessed build`) — so resolved secrets reach the container as **env only**, never a
+   profile, image layer, or repo file (T-05-05).
+5. The temp file is **unlinked** after launch (T-05-06).
 
-The agent socket is the same one already wired for every stack by
-[lib/harnessed-mounts.sh:22-27](../../lib/harnessed-mounts.sh) (the `op` app-auth transport,
-`allowAppAuth=true`). No token is written to disk; the desktop app holds the credential.
+This needs `varlock` on the host (`npm i -g varlock`); `op` (already on most 1Password hosts) is
+driven by varlock via app-auth. The "podman-only host" invariant still holds for the
+**no-secrets** path — varlock is never touched without a schema. Hosts without host `varlock`
+fall back to the headless path below.
 
 ## Headless / CI fallback (`OP_SERVICE_ACCOUNT_TOKEN`)
 
-For environments without the desktop app (CI, the nightly re-scan timer), set
-`OP_SERVICE_ACCOUNT_TOKEN` in the launcher env. varlock's 1Password plugin will use it
-instead of the agent socket. `harnessed` forwards it through to the throwaway resolve
-container only when it is already set — it never prompts and never echoes.
+For environments without the 1Password desktop app **or** without host `varlock` (CI, the
+nightly re-scan timer, a headless server), set `OP_SERVICE_ACCOUNT_TOKEN` in the launcher env.
+With a service-account token, resolution runs in a throwaway `harnessed-tools` container (HTTPS
+bearer auth — no desktop app, no app-auth, no socket). `harnessed` forwards the token only when
+it is already set — it never prompts and never echoes.
 
 > **Caution (per CLAUDE.md "What NOT to Use"):** a visible service-account token leaks into
 > any process sharing the env. **Scope it narrowly to the invocation** — prefix it on the
@@ -82,20 +88,26 @@ sidecar. The schema syntax is identical; see the `.env.schema.example` header co
 present and warns-and-skips otherwise. Two ways to provide a token:
 
 1. **Via `.env.schema` (this guide)** — the `SNYK_TOKEN` / `SOCKET_SECURITY_API_KEY` refs
-   resolve from 1Password the same way as any other secret, and reach the build-time scan
-   step via the same `--env-file` path (`build_stack` calls `resolve_secret_env` before the
-   scan). This is the recommended path for operators already using varlock.
-2. **Via `harnessed auth snyk|socket`** — one-shot setup that persists the token to host
-   config (`~/.config/configstore/snyk.json` for snyk), never an image layer:
+   resolve from 1Password and reach the build-time scan step via the same host-resolved
+   `--env-file` path (`build_stack` calls `resolve_secret_env` before the scan). Recommended for
+   operators already using varlock. Get a **Snyk** token at
+   <https://app.snyk.io/account/personal-access-tokens> (Account settings → Personal Access
+   Tokens → Generate); a **Socket** key from <https://socket.dev> → Settings → API tokens.
+2. **Via the launcher env directly** — for a one-off without varlock/1Password, export the token
+   before building. The build scan is env-gated on `SNYK_TOKEN`, and `build_stack` forwards it:
+
+   ```bash
+   SNYK_TOKEN='<token>' harnessed build tracer-time     # scoped to the one invocation
+   ```
+3. **Via `harnessed auth snyk|socket`** — persists the token to host config
+   (`~/.config/configstore/snyk.json` for snyk), for **interactive `snyk`/`op` use inside the
+   tools container**. This does **not** feed `harnessed build`'s scan step — that gate is the
+   `SNYK_TOKEN` env var, not configstore — so use path 1 or 2 for the build scan:
 
    ```bash
    harnessed auth snyk      # opens a browser flow at a TTY; writes configstore/snyk.json
    harnessed auth socket    # prompts for the API token; stores in socket's config
    ```
-
-   The token persists across launches on the host; `harnessed build` reads it via the
-   standard scanner-config path. Use this when you do NOT want varlock/1Password and just
-   want a persistent scanner token.
 
 ## Verification
 

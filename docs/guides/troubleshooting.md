@@ -136,10 +136,14 @@ knows about CVEs at build time). You can see the contrast directly:
 
 The opt-in secrets workflow is documented in **[secrets.md](secrets.md)**. Common issues:
 
-- **`op://` refs unresolved** — the 1Password agent socket isn't reachable. Is the **desktop app
-  running and unlocked?** (The socket `~/.1password/agent.sock` is what varlock resolves through,
-  via app-auth.) For headless/CI, use a narrowly-scoped `OP_SERVICE_ACCOUNT_TOKEN` instead — see the
-  caution in [secrets.md](secrets.md) (the "Headless / CI fallback" section).
+- **`op://` refs unresolved / "cannot connect to 1Password app"** — resolution runs `varlock`
+  **on the host** (the desktop app authorizes your terminal; an in-container `op` cannot be
+  authorized — that error is expected from inside a container). Check, in order: (1) host
+  `varlock` is installed — `command -v varlock` (`npm i -g varlock`); (2) the 1Password desktop
+  app is running, unlocked, with **Settings → Developer → "Integrate with 1Password CLI"**
+  enabled; (3) you **Authorized** your terminal at the 1Password prompt on first use. For
+  headless/CI (no desktop app), set a narrowly-scoped `OP_SERVICE_ACCOUNT_TOKEN` instead — see
+  [secrets.md](secrets.md) "Headless / CI fallback".
 - **Resolved value missing from the pod env** — confirm `~/.config/harnessed/.env.schema` exists and
   has a non-`@optional` entry for the key; the schema's `op(op://Vault/Item/field)` ref must point at
   a real vault item.
