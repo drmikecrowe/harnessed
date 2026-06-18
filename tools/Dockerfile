@@ -78,6 +78,13 @@ RUN useradd --create-home --uid 1000 tools
 # pnpm discovers this file for the global install.
 COPY pnpm-workspace.yaml /home/tools/pnpm-workspace.yaml
 RUN chown tools:tools /home/tools/pnpm-workspace.yaml
+# /etc/profile rewrites PATH for LOGIN shells (e.g. `bash -lc`), dropping the Docker ENV PATH
+# below — so the mise-managed (node/pnpm) and pnpm-global (varlock/snyk/socket) CLIs would be
+# invisible there. Re-export them from profile.d so the CLIs are discoverable in every entry mode
+# (the scan step uses the harnessed-tools ENTRYPOINT = non-login = ENV PATH; varlock resolution in
+# 05-02 will use a login shell). Written as root (system location) before the USER switch.
+RUN printf '#!/bin/sh\nexport PNPM_HOME=/home/tools/.local/share/pnpm\nexport PATH="/home/tools/.local/share/pnpm/bin:/home/tools/.local/share/mise/shims:/home/tools/.local/bin${PATH:+:$PATH}"\n' \
+        > /etc/profile.d/harnessed-tools.sh && chmod 644 /etc/profile.d/harnessed-tools.sh
 USER tools
 ENV HOME=/home/tools
 # pnpm global binaries (varlock/snyk/socket from `pnpm add -g`) land in PNPM_HOME; mise shims
