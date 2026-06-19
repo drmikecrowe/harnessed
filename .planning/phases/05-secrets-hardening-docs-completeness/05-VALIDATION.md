@@ -96,10 +96,11 @@ by the maintainer after the host-side resolution fix (`81a7f3f`); HV-3/HV-4 rema
 ## Validation Audit 2026-06-19
 
 State A re-audit (`/gsd-validate-phase`): cross-referenced all 7 Phase 05 requirements
-(SEC-01..04, DOC-01..03) against `tools/uat/phase-05.sh` and re-ran the full suite
-(`./tools/uat/run-uat.sh 5`) — 8 passed, 38 checks, 0 failed. Every requirement's
-automatable leg is COVERED and green; the 4 live legs (HV-1..HV-4) remain irreducibly
-manual-only. No new gaps; no auditor spawn or test generation required.
+(SEC-01..04, DOC-01..03) against `tools/uat/phase-05.sh` and independently re-ran the full
+suite live this pass (`./tools/uat/run-uat.sh 5`) — **8 passed, 38 checks, 0 failed** (~155s,
+podman runtime). Every requirement's automatable leg is COVERED and green; the 4 live legs
+(HV-1..HV-4) remain irreducibly manual-only. No new gaps; no auditor spawn or test generation
+required. `nyquist_compliant` stays `false` by design (manual legs, not missing tests).
 
 | Metric | Count |
 |--------|-------|
