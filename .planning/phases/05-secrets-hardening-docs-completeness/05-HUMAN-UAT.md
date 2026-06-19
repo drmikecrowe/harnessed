@@ -3,7 +3,7 @@ status: partial
 phase: 05-secrets-hardening-docs-completeness
 source: [05-VERIFICATION.md]
 started: 2026-06-18T12:30:00Z
-updated: 2026-06-18T19:00:00Z
+updated: 2026-06-19T00:00:00Z
 ---
 
 # Phase 05 — Human UAT (operator-only verification items)
@@ -14,13 +14,13 @@ The phase is **code-complete and 6/7 requirements are fully VERIFIED live**
 host-side resolution fix (commit `81a7f3f`): resolution runs `varlock` on the host
 (the 1Password desktop app authorizes the calling terminal; an in-container `op`
 cannot be), and the resolved env reaches isolated pods, transparent instances,
-sidecar services, and the build scan. Two operator-only legs remain (HV-3, HV-4):
-snyk's interactive **browser** auth and the one-time `loginctl enable-linger` policy
-flip — neither is a code gap; both need a human/operator action.
+sidecar services, and the build scan. After 2026-06-19, **HV-4 is also PASS** (`loginctl
+enable-linger` flipped `Linger=yes`). One operator-only leg remains (HV-3): snyk's interactive
+**browser** auth — not a code gap, it needs a human at a real TTY with a snyk account.
 
 ## Current Test
 
-[HV-1 + HV-2 PASS (verified live). Awaiting operator: HV-3 (snyk browser auth), HV-4 (linger flip).]
+[HV-1, HV-2, HV-4 PASS. Awaiting operator: HV-3 (snyk browser auth) — the only remaining leg.]
 
 ## Tests
 
@@ -66,8 +66,8 @@ podman images --filter dangling=true
 expected: the timer is already scheduled and its service→rescan path already ran
 live today; the only thing keeping it from firing overnight is `Linger=no`. A
 one-time host policy flip (not a code change) sets `Linger=yes`.
-result: [pending]
-needs: operator host policy decision.
+result: PASS — `loginctl enable-linger "$USER"` ran 2026-06-19 (polkit-authorized, no sudo); `loginctl show-user --property=Linger` → `Linger=yes`. The scheduled nightly timer will now fire while logged out.
+needs: operator host policy decision. [DONE]
 ```bash
 loginctl enable-linger "$USER"
 loginctl show-user "$USER" --property=Linger   # expected: Linger=yes
@@ -76,9 +76,9 @@ loginctl show-user "$USER" --property=Linger   # expected: Linger=yes
 ## Summary
 
 total: 4
-passed: 2
+passed: 3
 issues: 0
-pending: 2
+pending: 1
 skipped: 0
 blocked: 0
 

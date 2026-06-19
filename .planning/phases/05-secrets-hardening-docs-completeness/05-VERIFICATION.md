@@ -127,28 +127,29 @@ podman images --filter dangling=true     # expected: no leftover auth layer (the
 ```
 **Expected:** `~/.config/configstore/snyk.json` holds the token; no dangling image from the auth container.
 
-**HV-4 — SEC-04 linger prerequisite (the only thing keeping the nightly from firing overnight).**
-Currently `Linger=no` on the host (confirmed by the verifier). This is a one-time host policy flip,
-not a code change:
+**HV-4 — SEC-04 linger prerequisite (survive-logout for the nightly timer). ✓ RESOLVED 2026-06-19.**
+`loginctl enable-linger "$USER"` ran 2026-06-19 (polkit-authorized, no sudo); the host now reports
+`Linger=yes`. This was a one-time host policy flip, not a code change:
 ```bash
 loginctl enable-linger "$USER"
-loginctl show-user "$USER" --property=Linger   # expected: Linger=yes
+loginctl show-user "$USER" --property=Linger   # → Linger=yes (confirmed)
 ```
-**Expected:** `Linger=yes`; the timer then fires overnight while logged out. (Timer is already scheduled + the service→rescan path already ran live today; only the survive-logout property is unflipped.)
+**Result:** `Linger=yes`; the already-scheduled nightly timer (service→rescan path already run live)
+will now fire overnight while logged out.
 
 ## Verdict
 
-**Status: `human_needed`** — 2 operator-only legs remain, both genuinely requiring human action.
+**Status: `human_needed`** — 1 operator-only leg remains (HV-3), genuinely requiring human action.
 
 Phase 05's goal is met and now largely verified live: opt-in inert-by-default secrets (VERIFIED),
 **host-side `op://` resolution reaching isolated / transparent / services / build** (VERIFIED, fix
 `81a7f3f` — HV-1/HV-2), token-gated scanners (VERIFIED), `harnessed auth` to host config via a
 `--rm` container (code-VERIFIED), the nightly online rescan timer scheduled + its path run live
 (VERIFIED), and the gated doc set (README + 5 guides) matching shipped behavior. **6 of 7
-requirements + all 4 success criteria are fully VERIFIED.** The remaining operator-only legs are
-**HV-3** (snyk's interactive **browser** auth flow) and **HV-4** (the one-time `loginctl
-enable-linger` policy flip) — neither is a code gap. With those two done by the operator, the
-phase closes fully.
+requirements + all 4 success criteria are fully VERIFIED.** HV-4 (`loginctl enable-linger`) is
+now **RESOLVED** (2026-06-19, `Linger=yes`). The sole remaining operator-only leg is **HV-3**
+(snyk's interactive **browser** auth flow at a real TTY) — not a code gap. With HV-3 done by the
+operator, the phase closes fully and `status` flips to `passed` (SEC-03 → passed).
 
 **No NOT-MET findings.** (Source was modified post-verification by fix `81a7f3f` to move secret
 resolution host-side; re-verified live — see SEC-01 / HV-1 / HV-2.)
