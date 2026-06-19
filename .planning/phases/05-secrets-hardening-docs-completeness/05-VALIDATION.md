@@ -52,7 +52,7 @@ test_suite: tools/uat/phase-05.sh
 | **DOC-02** | recipe-authoring + stacks guides exist and cite **real** on-disk examples | `doc_authoring_guides` | artifact / fast | `run-uat.sh 5 --quick` | ✅ green |
 | **DOC-03** | secrets (host-side model + Snyk PAT URL + headless fallback) + service-authoring + troubleshooting (linger prereq) | `doc_ops_guides` | artifact / fast | `run-uat.sh 5 --quick` | ✅ green |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky — full suite last run 2026-06-18: 8 passed, 38 checks, 0 failed.*
+*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky — full suite re-run 2026-06-19: 8 passed, 38 checks, 0 failed (audit re-verification; identical to the 2026-06-18 baseline).*
 
 ---
 
@@ -90,3 +90,19 @@ by the maintainer after the host-side resolution fix (`81a7f3f`); HV-3/HV-4 rema
 - [ ] `nyquist_compliant: true` — NOT set: 4 irreducible live legs are manual-only by design (operator 1Password / browser / overnight), tracked in 05-HUMAN-UAT.md
 
 **Approval:** validated (partial) 2026-06-18 — all automatable behavior is green; remaining gaps are manual-only by nature, not missing tests.
+
+---
+
+## Validation Audit 2026-06-19
+
+State A re-audit (`/gsd-validate-phase`): cross-referenced all 7 Phase 05 requirements
+(SEC-01..04, DOC-01..03) against `tools/uat/phase-05.sh` and re-ran the full suite
+(`./tools/uat/run-uat.sh 5`) — 8 passed, 38 checks, 0 failed. Every requirement's
+automatable leg is COVERED and green; the 4 live legs (HV-1..HV-4) remain irreducibly
+manual-only. No new gaps; no auditor spawn or test generation required.
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
