@@ -9,26 +9,26 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Engine
 
-- [ ] **ENG-01**: A dependency-free `harnessed` bash bootstrap detects podman/docker and builds required images on first run (`--build` to force)
-- [ ] **ENG-02**: harnessed builds images via host `podman build` and launches stacks via a generated host-bash launcher using host `podman` — no daemon-in-container (no Docker-out-of-Docker); the only host dependency is podman/docker
-- [ ] **ENG-03**: The final interactive harness attach runs host-natively for a clean TTY
+- [x] **ENG-01**: A dependency-free `harnessed` bash bootstrap detects podman/docker and builds required images on first run (`--build` to force)
+- [x] **ENG-02**: harnessed builds images via host `podman build` and launches stacks via a generated host-bash launcher using host `podman` — no daemon-in-container (no Docker-out-of-Docker); the only host dependency is podman/docker
+- [x] **ENG-03**: The final interactive harness attach runs host-natively for a clean TTY
 
 ### Modes
 
-- [ ] **MODE-01**: `harnessed transparent [path]` launches a host-mirror instance (host `~/.claude` + `.codex`/`.config/opencode`/`.gemini` mounted live)
-- [ ] **MODE-02**: `container` invokes `harnessed transparent` as a thin alias with the same behavior as today
+- [x] **MODE-01**: `harnessed transparent [path]` launches a host-mirror instance (host `~/.claude` + `.codex`/`.config/opencode`/`.gemini` mounted live)
+- [x] **MODE-02**: `container` invokes `harnessed transparent` as a thin alias with the same behavior as today
 - [x] **MODE-03**: `harnessed <stack> [path]` (isolated) mounts only the assembled profile — no host config layer
 
 ### Auth
 
-- [ ] **AUTH-01**: Transparent instances are authenticated via the live-mounted host config (no re-login)
+- [x] **AUTH-01**: Transparent instances are authenticated via the live-mounted host config (no re-login)
 - [x] **AUTH-02**: Isolated instances authenticate by mounting `~/.claude/.credentials.json` read-only plus a generated `.claude.json` stub that boots headlessly with no onboarding/login prompt
 
 ### Mounts
 
-- [ ] **MNT-01**: Every stack mounts the host-integration layer (1Password SSH agent, GPG/YubiKey signing, `~/.ssh` ro, git config ro, `/etc/machine-id` ro)
-- [ ] **MNT-02**: Every stack mounts the project at a stable in-container path and applies the egress firewall
-- [ ] **MNT-03**: `~/.claude.json` is never rw-bind-mounted; transparent mode gets a writable per-instance copy (copy-on-start or `CLAUDE_CONFIG_DIR`)
+- [x] **MNT-01**: Every stack mounts the host-integration layer (1Password SSH agent, GPG/YubiKey signing, `~/.ssh` ro, git config ro, `/etc/machine-id` ro)
+- [x] **MNT-02**: Every stack mounts the project at a stable in-container path and applies the egress firewall
+- [x] **MNT-03**: `~/.claude.json` is never rw-bind-mounted; transparent mode gets a writable per-instance copy (copy-on-start or `CLAUDE_CONFIG_DIR`)
 
 ### Recipes
 
@@ -56,24 +56,24 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Services
 
-- [ ] **SVC-01**: A shared service sidecar (e.g. hindsight, openbrain) runs as its own image/container with a service-scoped volume
-- [ ] **SVC-02**: Multiple instances attach concurrently to one running shared service over `harnessed-net`
-- [ ] **SVC-03**: `harnessed svc up|down|list` manages shared services independently of any instance
+- [x] **SVC-01**: A shared service sidecar (e.g. hindsight, openbrain) runs as its own image/container with a service-scoped volume
+- [x] **SVC-02**: Multiple instances attach concurrently to one running shared service over `harnessed-net`
+- [x] **SVC-03**: `harnessed svc up|down|list` manages shared services independently of any instance
 
 ### State
 
-- [ ] **STA-01**: Stacks are persistent by default; `--fresh` starts with empty throwaway state volumes
-- [ ] **STA-02**: Harness session state (`projects/` + `history.jsonl`) persists host-side with a legible Claude session slug
+- [x] **STA-01**: Stacks are persistent by default; `--fresh` starts with empty throwaway state volumes
+- [x] **STA-02**: Harness session state (`projects/` + `history.jsonl`) persists host-side with a legible Claude session slug
 
 ### CLI
 
-- [ ] **CLI-01**: `harnessed list|stop|rm` manage stacks and running instances
-- [ ] **CLI-02**: `harnessed new <stack> --harness <h> --recipes a,b,c` scaffolds a stack manifest
-- [ ] **CLI-03**: `harnessed install|uninstall <stack>` writes/removes a `~/.local/bin/<stack>` launcher shim
+- [x] **CLI-01**: `harnessed list|stop|rm` manage stacks and running instances
+- [x] **CLI-02**: `harnessed new <stack> --harness <h> --recipes a,b,c` scaffolds a stack manifest
+- [x] **CLI-03**: `harnessed install|uninstall <stack>` writes/removes a `~/.local/bin/<stack>` launcher shim
 
 ### Harness
 
-- [ ] **HRN-01**: A stack targets exactly one harness (`claude` or `omp`); omp consumes Claude-canonical extensions via `claude-hooks-bridge` + pi-adapter
+- [x] **HRN-01**: A stack targets exactly one harness (`claude` or `omp`); omp consumes Claude-canonical extensions via `claude-hooks-bridge` + pi-adapter
 
 ### Secrets & Hardening
 
@@ -121,15 +121,15 @@ Which phase covers which requirement.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENG-01 | Phase 1 | Pending |
-| ENG-02 | Phase 1 | Pending |
-| ENG-03 | Phase 1 | Pending |
-| MODE-01 | Phase 1 | Pending |
-| MODE-02 | Phase 1 | Pending |
-| AUTH-01 | Phase 1 | Pending |
-| MNT-01 | Phase 1 | Pending |
-| MNT-02 | Phase 1 | Pending |
-| MNT-03 | Phase 1 | Pending |
+| ENG-01 | Phase 1 | Complete |
+| ENG-02 | Phase 1 | Complete |
+| ENG-03 | Phase 1 | Complete |
+| MODE-01 | Phase 1 | Complete |
+| MODE-02 | Phase 1 | Complete |
+| AUTH-01 | Phase 1 | Complete |
+| MNT-01 | Phase 1 | Complete |
+| MNT-02 | Phase 1 | Complete |
+| MNT-03 | Phase 1 | Complete |
 | MODE-03 | Phase 2 | Complete |
 | AUTH-02 | Phase 2 | Complete |
 | RCP-01 | Phase 2 | Complete |
@@ -144,15 +144,15 @@ Which phase covers which requirement.
 | BLD-01 | Phase 3 | Complete |
 | BLD-02 | Phase 3 | Complete |
 | BLD-03 | Phase 3 | Complete |
-| SVC-01 | Phase 4 | Pending |
-| SVC-02 | Phase 4 | Pending |
-| SVC-03 | Phase 4 | Pending |
-| STA-01 | Phase 4 | Pending |
-| STA-02 | Phase 4 | Pending |
-| CLI-01 | Phase 4 | Pending |
-| CLI-02 | Phase 4 | Pending |
-| CLI-03 | Phase 4 | Pending |
-| HRN-01 | Phase 4 | Pending |
+| SVC-01 | Phase 4 | Complete |
+| SVC-02 | Phase 4 | Complete |
+| SVC-03 | Phase 4 | Complete |
+| STA-01 | Phase 4 | Complete |
+| STA-02 | Phase 4 | Complete |
+| CLI-01 | Phase 4 | Complete |
+| CLI-02 | Phase 4 | Complete |
+| CLI-03 | Phase 4 | Complete |
+| HRN-01 | Phase 4 | Complete |
 | SEC-01 | Phase 5 | Complete |
 | SEC-02 | Phase 5 | Complete |
 | SEC-03 | Phase 5 | Complete |
@@ -169,4 +169,4 @@ Which phase covers which requirement.
 
 ---
 *Requirements defined: 2026-06-14*
-*Last updated: 2026-06-14 after initial definition*
+*Last updated: 2026-06-21 — all 5 phases verified Complete; 39/39 v1 requirements satisfied (milestone v1.0 complete)*
