@@ -1,3 +1,50 @@
+---
+phase: 01-containerized-engine-transparent-stack
+plan: 01
+subsystem: infra
+tags: [bootstrap, podman, bash, base-image, claude-code, lineage]
+
+# Dependency graph
+requires: []
+provides:
+  - "harnessed — dependency-free host bash bootstrap: resolves real dir (symlink-aware), sources the shared lib, detects podman/docker, dispatches transparent/build/--build/--list/--stop/--remove/--clean"
+  - "lib/harnessed-common.sh — shared helpers (detect_runtime, image_exists, build_images, ensure_images, instance lifecycle generate_instance_name→harnessed-<stack>-<projhash>, list/stop/remove/clean_instances, project_relpath, apply_firewall)"
+  - "base/Dockerfile.harnessed-base — mise/node@22/pnpm/python toolchain + common tools + 1Password CLI; harnessed user with HOME=/home/harnessed (D-06)"
+  - "base/Dockerfile.harnessed-claude — FROM harnessed-base + Claude Code installer (lineage only, §6)"
+affects: [01-02-transparent-mounts, 01-03-transparent-stack]
+
+# Tech tracking
+tech-stack:
+  added: ["mise/node@22 toolchain", "pnpm", "python", "1password-cli"]
+  patterns:
+  - "No DooD (ENG-02): host runs podman build/run directly — no socket, no CONTAINER_HOST/DOCKER_HOST, no daemon-in-container"
+  - "D-04: images auto-build on first run; harnessed build/--build forces a rebuild"
+  - "keep-id userns maps the host user to the fixed harnessed user (UID 1000) with HOME=/home/harnessed (D-06)"
+
+key-files:
+  created:
+  - harnessed
+  - lib/harnessed-common.sh
+  - base/Dockerfile.harnessed-base
+  - base/Dockerfile.harnessed-claude
+
+key-decisions:
+  - "No DooD (ENG-02): the host runs podman build/run directly. No socket, no CONTAINER_HOST/DOCKER_HOST, no daemon-in-container. The harnessed-tools assembler image is deferred to Phase 2."
+  - "D-06: in-container home is /home/harnessed; the fixed harnessed user keeps UID 1000 so --userns=keep-id maps the host user."
+  - "D-04: images auto-build on first run; harnessed build/--build forces a rebuild."
+  - "container parity (toward MODE-02): --list/--stop/--remove/--clean ported so the Phase-1 container alias keeps today's behavior."
+
+patterns-established:
+  - "Host-native bootstrap: dependency-free bash dispatcher sources lib/ and runs podman directly (no DooD)"
+  - "Image lineage: harnessed-claude FROM harnessed-base (lineage only, §6)"
+  - "Instance lifecycle naming: generate_instance_name → harnessed-<stack>-<projhash>"
+
+requirements-completed: [ENG-01, ENG-02]
+
+# Metrics
+completed: 2026-06-14
+---
+
 # Plan 01-01 Summary: Containerized Engine (host bootstrap + image lineage)
 
 **Completed:** 2026-06-14
