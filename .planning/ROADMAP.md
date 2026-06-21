@@ -21,7 +21,7 @@ observable end-to-end capability (vertical-MVP mode).
 - [x] **Phase 2: Isolated Tracer-Bullet Stack** - One harness + one MCP server + one skill, isolated and reproducible, asserted green by the capability test (completed 2026-06-15)
 - [x] **Phase 3: Supply-Chain Gate + pnpm-Everywhere** - `harnessed build` vets every dependency before it is committed or baked (completed 2026-06-15)
 - [x] **Phase 4: Shared Services + Recipe Breadth + Full CLI** - Concurrent service sidecars, more recipes, and the full operable command/lifecycle surface (completed 2026-06-16)
-- [~] **Phase 5: Secrets, Hardening + Docs Completeness** - Opt-in varlock/1Password secrets, token-gated scanners, nightly re-scan, and the gated doc set (executed 2026-06-18; verified `human_needed` — 4 operator-only items in 05-HUMAN-UAT.md: live 1Password op:// resolution, build-scan-with-resolved-tokens, snyk browser-auth, loginctl enable-linger)
+- [x] **Phase 5: Secrets, Hardening + Docs Completeness** - Opt-in varlock/1Password secrets, token-gated scanners, nightly re-scan, and the gated doc set (completed 2026-06-21; all 7 requirements VERIFIED live — HV-1..HV-4 all PASS, snyk browser auth landed via the --network=host callback fix)
 
 ## Phase Details
 
@@ -157,4 +157,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Isolated Tracer-Bullet Stack | 3/3 | Complete    | 2026-06-15 |
 | 3. Supply-Chain Gate + pnpm-Everywhere | 2/2 | Complete    | 2026-06-16 |
 | 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
-| 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-18 |
+| 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-21 |

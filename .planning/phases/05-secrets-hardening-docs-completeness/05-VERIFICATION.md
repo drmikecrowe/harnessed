@@ -1,6 +1,6 @@
 ---
 phase: 05-secrets-hardening-docs-completeness
-status: human_needed
+status: passed
 verified_by: Verifier-05 (GSD phase-5 verifier)
 verified: 2026-06-18
 # VERIFIED = re-run/inspected by the verifier and it holds
@@ -10,7 +10,7 @@ verified: 2026-06-18
 requirements:
   SEC-01: passed         # host-side varlock resolution VERIFIED live (token reaches pod); inertness + no-leak VERIFIED (fix 81a7f3f)
   SEC-02: passed         # warn-and-skip + token-present + exit-code map all VERIFIED
-  SEC-03: human_needed   # auth_scanner code + dispatch VERIFIED; live snyk auth/browser operator-only
+  SEC-03: passed         # auth_scanner code + dispatch VERIFIED; live snyk browser auth verified 2026-06-21 (token persisted) after --network=host callback fix
   SEC-04: passed         # online scan + timer + journal path all VERIFIED live
   DOC-01: passed         # README + AGENTS reconciled, VERIFIED
   DOC-02: passed         # recipe-authoring + stacks, VERIFIED
@@ -139,17 +139,19 @@ will now fire overnight while logged out.
 
 ## Verdict
 
-**Status: `human_needed`** — 1 operator-only leg remains (HV-3), genuinely requiring human action.
+**Status: `passed`** — all 7 requirements fully VERIFIED; no operator legs remain.
 
 Phase 05's goal is met and now largely verified live: opt-in inert-by-default secrets (VERIFIED),
 **host-side `op://` resolution reaching isolated / transparent / services / build** (VERIFIED, fix
 `81a7f3f` — HV-1/HV-2), token-gated scanners (VERIFIED), `harnessed auth` to host config via a
 `--rm` container (code-VERIFIED), the nightly online rescan timer scheduled + its path run live
-(VERIFIED), and the gated doc set (README + 5 guides) matching shipped behavior. **6 of 7
+(VERIFIED), and the gated doc set (README + 5 guides) matching shipped behavior. **All 7
 requirements + all 4 success criteria are fully VERIFIED.** HV-4 (`loginctl enable-linger`) is
-now **RESOLVED** (2026-06-19, `Linger=yes`). The sole remaining operator-only leg is **HV-3**
-(snyk's interactive **browser** auth flow at a real TTY) — not a code gap. With HV-3 done by the
-operator, the phase closes fully and `status` flips to `passed` (SEC-03 → passed).
+RESOLVED (2026-06-19, `Linger=yes`) and HV-3 (snyk's browser auth) is RESOLVED (2026-06-21):
+`harnessed auth snyk` completed the OAuth flow and persisted the token to
+`~/.config/configstore/snyk.json`, after the `--network=host` callback fix (`27fe91b`) — the
+`-p` publish failed because rootless pasta does not forward published ports to the container
+loopback snyk binds. **Phase 05 is fully verified and closed.**
 
 **No NOT-MET findings.** (Source was modified post-verification by fix `81a7f3f` to move secret
 resolution host-side; re-verified live — see SEC-01 / HV-1 / HV-2.)

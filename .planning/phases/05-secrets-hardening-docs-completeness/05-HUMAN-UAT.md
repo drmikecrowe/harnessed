@@ -1,26 +1,22 @@
 ---
-status: partial
+status: complete
 phase: 05-secrets-hardening-docs-completeness
 source: [05-VERIFICATION.md]
 started: 2026-06-18T12:30:00Z
-updated: 2026-06-19T00:00:00Z
+updated: 2026-06-21T00:00:00Z
 ---
 
 # Phase 05 — Human UAT (operator-only verification items)
 
-The phase is **code-complete and 6/7 requirements are fully VERIFIED live**
-(SEC-01, SEC-02, SEC-04, DOC-01, DOC-02, DOC-03). HV-1 and HV-2 below — live
-`op://` resolution and the build scan receiving it — are now **PASS** after the
-host-side resolution fix (commit `81a7f3f`): resolution runs `varlock` on the host
-(the 1Password desktop app authorizes the calling terminal; an in-container `op`
-cannot be), and the resolved env reaches isolated pods, transparent instances,
-sidecar services, and the build scan. After 2026-06-19, **HV-4 is also PASS** (`loginctl
-enable-linger` flipped `Linger=yes`). One operator-only leg remains (HV-3): snyk's interactive
-**browser** auth — not a code gap, it needs a human at a real TTY with a snyk account.
+The phase is **code-complete and all 7 requirements are fully VERIFIED live**
+(SEC-01..04, DOC-01..03). All four human-verification legs now PASS: HV-1/HV-2 (live `op://`
+resolution + build scan receiving it) after the host-side resolution fix (`81a7f3f`); HV-4
+(`loginctl enable-linger` → `Linger=yes`, 2026-06-19); and HV-3 (snyk browser auth) after the
+`--network=host` callback fix (`27fe91b`, 2026-06-21). No operator legs remain.
 
 ## Current Test
 
-[HV-1, HV-2, HV-4 PASS. Awaiting operator: HV-3 (snyk browser auth) — the only remaining leg.]
+[All HV-1..HV-4 PASS. Phase 05 fully verified — no operator legs remain.]
 
 ## Tests
 
@@ -54,16 +50,15 @@ unset SNYK_TOKEN SOCKET_SECURITY_API_KEY
 expected: from a real TTY, `./harnessed auth snyk` completes the browser flow and
 `~/.config/configstore/snyk.json` holds the token; `podman images --filter
 dangling=true` shows no leftover auth layer (the `--rm` guarantee).
-result: [pending] — BLOCKER FIXED 2026-06-21 (`27fe91b`): `snyk auth` runs an OAuth flow with a
-callback listener on the container's loopback `127.0.0.1:8080`, and snyk redirects the host browser
-to `http://127.0.0.1:8080/authorization-code/callback`. The first fix attempt (`-p 127.0.0.1:8080:8080`)
-FAILED — rootless pasta delivers published ports to the container's outward interface, not its
-loopback, so snyk's 127.0.0.1-only listener reset the connection. Corrected fix in `auth_scanner`
-(`lib/harnessed-secrets.sh`): run the snyk auth container with `--network=host` so snyk's
-`127.0.0.1:8080` IS the host loopback and the redirect lands directly (verified end-to-end: host
-GET → snyk `301 → app.snyk.io/authenticated`). snyk still binds loopback only — no LAN exposure.
-Auth should now complete; awaiting an operator run to confirm the token persists.
-needs: real TTY + browser + snyk account.
+result: PASS — verified live 2026-06-21 after the `--network=host` callback fix (`27fe91b`).
+`./harnessed auth snyk` completed the OAuth browser flow; `~/.config/configstore/snyk.json` now
+holds the OAuth token (`INTERNAL_OAUTH_TOKEN_STORAGE`, 1005 bytes). The auth container runs `--rm`
+(a `run`, not a build) so it leaves no image layer. Background: snyk's callback listens on the
+container loopback `127.0.0.1:8080`; the first attempt (`-p 127.0.0.1:8080:8080`) failed because
+rootless pasta forwards published ports to the container's outward interface, not its loopback
+(connection reset). `--network=host` makes snyk's `127.0.0.1:8080` the host loopback so the browser
+redirect lands directly (no LAN exposure — snyk still binds loopback only).
+needs: real TTY + browser + snyk account. [DONE]
 ```bash
 ./harnessed auth snyk
 cat ~/.config/configstore/snyk.json
@@ -84,9 +79,9 @@ loginctl show-user "$USER" --property=Linger   # expected: Linger=yes
 ## Summary
 
 total: 4
-passed: 3
+passed: 4
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-18T13:35:00Z"
-last_activity: 2026-06-18 -- Phase 05 executed (4/4 plans) + verified human_needed (4 operator-only items in 05-HUMAN-UAT.md); code-review medium+low fixed inline (e494520)
+last_updated: "2026-06-21T01:00:00Z"
+last_activity: 2026-06-21 -- Phase 05 fully verified + closed; HV-3 (snyk browser auth) landed after the --network=host callback fix (27fe91b), token persisted; all 7 reqs VERIFIED. Milestone v1.0 at 5/5 phases.
 progress:
   total_phases: 5
-  completed_phases: 4        # phase 05 executed + verified human_needed (awaiting 4 operator-only items)
+  completed_phases: 5
   total_plans: 16
   completed_plans: 16
-  percent: 97
+  percent: 100
 ---
 
 # Project State
@@ -24,12 +24,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 05 (secrets-hardening-docs-completeness) — EXECUTED (4/4 plans) + VERIFIED `human_needed`
-Plan: 05-04 complete (Phase 05 all 4 plans done — 05-01/02/03/04 ✓); verification = human_needed
-Status: Code + docs shipped and verified. 6/7 requirements fully VERIFIED live (SEC-01, SEC-02, SEC-04, DOC-01/02/03). SEC-01 1Password resolution was reworked to run **host-side** (varlock on the host — the desktop app authorizes the calling terminal; an in-container op cannot be, and ~/.1password/agent.sock is the SSH agent, not the op app-auth transport); fix 81a7f3f wires it into all 4 launch paths (isolated/transparent/services/build) and HV-1+HV-2 are now VERIFIED live. 2 operator-only legs remain in 05-HUMAN-UAT.md: HV-3 (snyk browser auth) + HV-4 (loginctl enable-linger). Code review: 1 medium + 1 low fixed inline (e494520); 3 low accepted as follow-ups.
-Last activity: 2026-06-18 -- SEC-01 resolution moved host-side (fix 81a7f3f) + wired into all launch paths; HV-1/HV-2 verified live; phase + design + codebase docs corrected (258ba31). 2 operator items remain.
+Phase: 05 (secrets-hardening-docs-completeness) — COMPLETE (4/4 plans) + fully VERIFIED (status: passed)
+Plan: 05-04 complete (Phase 05 all 4 plans done — 05-01/02/03/04 ✓); verification = passed
+Status: Phase 05 closed. All 7 requirements VERIFIED live (SEC-01..04, DOC-01..03). The 4 human-verification legs all PASS: HV-1/HV-2 (live op:// resolution + build scan, fix 81a7f3f), HV-4 (loginctl enable-linger → Linger=yes), HV-3 (snyk OAuth browser auth → token persisted, after the --network=host callback fix 27fe91b). Phases 03/04 verification artifacts written (UAT promoted to VERIFICATION.md + live re-run) so the stats counter reads them as Complete.
+Last activity: 2026-06-21 -- HV-3 landed; the auth container now runs --network=host (snyk binds the container loopback 127.0.0.1:8080; rootless pasta does not forward published ports there, so -p failed). Milestone v1.0 code-complete + fully verified.
 
-Progress: [█████████░] 97% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ executed (4/4 plans) · verification human_needed (2 operator-only legs: HV-3 snyk browser auth, HV-4 linger)
+Progress: [██████████] 100% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ COMPLETE (all HV legs PASS)
 
 ## Performance Metrics
 
