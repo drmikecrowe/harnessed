@@ -48,7 +48,8 @@ Usage:
   harnessed build | --build       (Re)build the base/claude/hatago images
   harnessed test <stack>          Capability test: launch the stack --fresh headless + assert it
                                   exposes the manifest's declared MCP servers/skills (markdown report)
-  harnessed svc up <service>      Start a shared service sidecar on harnessed-net (own image + volume)
+  harnessed svc up <service>      Start a shared service sidecar (own image + volume; host-published,
+                                  reached via host.containers.internal — HARNESSED_NET bridge is opt-in)
   harnessed svc down <service>    Stop a service (volume kept); add --purge to remove the volume
   harnessed svc list              List running harnessed-managed services
   harnessed list                  List authored stacks + running instances
@@ -250,7 +251,8 @@ if [ -n "$ROOT_OVERRIDE" ]; then
 fi
 
 # --- Service lifecycle (plan 04-01 / SVC-01, SVC-03) ------------------------
-# `harnessed svc up|down|list <service>` manages shared service sidecars on harnessed-net
+# `harnessed svc up|down|list <service>` manages shared service sidecars (host-published,
+# reached via host.containers.internal; HARNESSED_NET bridge is the opt-in for bridge-capable hosts)
 # (own image/container/volume, labelled harnessed-service=<name>). Dispatch exits — svc is a
 # top-level command, not a launch path.
 if [ -n "$SVC_ACTION" ]; then
