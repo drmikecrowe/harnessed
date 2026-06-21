@@ -97,19 +97,24 @@ invokes the command directly.
 A server declared with `service: <name>` + `transport: http` is **resolved by
 the assembler to a network-native URL** (`tools/harnessed/assemble.py:51-70`,
 plan 04-01) by reading `services/<name>/service.yaml`. hatago proxies it; the
-service runs as its **own** container on `harnessed-net`.
+service runs as its **own** container on a host-published port (reachable via
+`host.containers.internal:<port>`; or by DNS name over the `HARNESSED_NET` bridge
+on bridge-capable hosts).
 
 - **Canonical example:** `recipes/ping/recipe.yaml:10-14` — `service: ping`
-  resolves to `{url: http://ping:8080/mcp, type: http}`.
+  resolves to `{url: http://host.containers.internal:8080/mcp, type: http}`
+  (the host-gateway form; `http://ping:8080/mcp` is the `HARNESSED_NET` opt-in bridge form).
 
 > **MCP transport note (design §14):** SSE is deprecated in the current MCP spec
 > (2025-06-18) and in Claude Code. Use **Streamable HTTP**. hatago's
 > stdio→HTTP wrapping is how servers that only speak stdio get exposed over
 > Streamable HTTP.
 
-## Shared Services (sidecars over harnessed-net)
+## Shared Services (host-published sidecars)
 
-A shared service is its **own image/container/volume** on `harnessed-net`, with
+A shared service is its **own image/container/volume** on a host-published port
+(reachable via `host.containers.internal:<port>`; or by DNS name over the `HARNESSED_NET`
+bridge on bridge-capable hosts), with
 a lifecycle **independent of any instance** (design §3/§9). Multiple harnessed
 instances attach to the same running service concurrently.
 
@@ -267,7 +272,7 @@ HOST (podman/docker rootless)
         │
         └── [ hatago hub ]  :3535
                ├── stdio children (uvx mcp-server-time, baked offline)
-               └── HTTP proxies ──▶ shared services on harnessed-net
+               └── HTTP proxies ──▶ shared services (host.containers.internal:<port>)
                                       (ping FastMCP :8080; hindsight/openbrain designed)
 
 SCANNERS (build-time): osv-scanner + pip-audit (always) ▸ snyk/Socket (token, opt-in)

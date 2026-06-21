@@ -125,10 +125,12 @@ class Stack:
 class ServiceDef:
     """A shared service sidecar definition (design §3/§9, plan 04-01 SVC-01).
 
-    A service is its OWN image/container/volume on `harnessed-net`, with a lifecycle
-    independent of any instance. A recipe references it via `mcp.servers[].service`;
-    the assembler resolves the service name → a hatago URL-proxy entry pointing at
-    `http://<name>:<port>/mcp` (plan 04-01 Task 4).
+    A service is its OWN image/container/volume on a host-published port
+    (reachable via `host.containers.internal:<port>`; or by DNS name over the `HARNESSED_NET`
+    bridge on bridge-capable hosts), with a lifecycle independent of any instance. A recipe
+    references it via `mcp.servers[].service`; the assembler resolves the service name →
+    a hatago URL-proxy entry pointing at `http://host.containers.internal:<port>/mcp`
+    (the `HARNESSED_NET` opt-in bridge form is `http://<name>:<port>/mcp`; plan 04-01 Task 4).
     """
 
     name: str

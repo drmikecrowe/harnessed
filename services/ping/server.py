@@ -3,8 +3,9 @@
 Exposes one `ping` tool over MCP streamable-http on :8080 and a plain /health
 endpoint for container healthchecks. Lightweight: no external state, no DB.
 
-The service runs standalone on harnessed-net; hatago proxies it as a network-native
-MCP server ({url: http://ping:8080/mcp, type: http}). The /health route is what
+The service publishes its port to `0.0.0.0`; hatago proxies it via the podman host
+gateway `host.containers.internal:8080` as a network-native MCP server
+({url: http://host.containers.internal:8080/mcp, type: http}; `http://ping:8080/mcp` is the `HARNESSED_NET` opt-in bridge form). The /health route is what
 `svc up` polls to confirm readiness (design §9 lifecycle).
 """
 

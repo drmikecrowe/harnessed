@@ -150,7 +150,7 @@ host config — reproducibly, with podman as the only host dependency.
 - **Config source:** bind-mount host `~/.claude` (rw), `~/.codex`, `~/.config/opencode`, `~/.gemini` (rw) live; MCP comes from the host's own `.mcp.json`/`.claude.json`.
 - **`.claude.json`:** copy-on-start per-instance copy (or `CLAUDE_CONFIG_DIR`) — **never** rw-bind the host file.
 - Because it's "my laptop, sandboxed" — the supply-chain/hatago/profile machinery doesn't apply.
-- **Engine:** podman **pod** `harnessed-<stack>-<projhash>` on `harnessed-net`: harness container + **hatago** + shared services by reference.
+- **Engine:** podman **pod** `harnessed-<stack>-<projhash>` on rootless (pasta) networking by default (shared services are host-published, reached via `host.containers.internal:<port>`; `HARNESSED_NET` is the opt-in bridge for bridge-capable hosts): harness container + **hatago** + shared services by reference.
 - **Config source:** auth seeded (`~/.claude/.credentials.json` ro + generated minimal `.claude.json` stub); skills/commands/agents/hooks/rules/`.mcp.json`/`settings.json` come **only** from the committed `profiles/<name>/` mount; `.mcp.json` → `localhost:<hatago-port>`.
 - Full supply-chain gate at build; pnpm-everywhere; capability test as oracle (§18).
 - Native canonical format — mount the profile's `.claude/` tree directly; `claude mcp list` / `hatago://servers` for capability assertions.
