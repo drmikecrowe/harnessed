@@ -51,7 +51,7 @@ sibling systems. See §6.)
         │  [ harnessed-<harness> ]  ──→  [ hatago ]      │
         │    mounts cwd + profile      MCP hub · HTTP    │
         └───────────────────────────────────────┬───────┘
-                                                 │ MCP over harnessed-net
+                                                 │ MCP over host.containers.internal (HARNESSED_NET: opt-in)
                           ┌──────────────────────┴──────────────────────┐
                           ▼                                              ▼
                    [ hindsight ]                               [ openbrain ]
@@ -237,12 +237,32 @@ harnesses adapt *out* of it:
 - **Service volumes are service-scoped & harness-independent** — `hindsight-data`, not
   `harnessed-data-<stack>`. This is what lets `claude+hindsight` and `omp+hindsight` share **one**
   memory.
-- **Shared instance, concurrent.** One long-lived `hindsight` container on `harnessed-net`, owned by
-  the *service* not any instance; postgres serves both instances at once. An instance starts it if
-  absent; it outlives instances (`harnessed svc up/down`).
+- **Shared instance, concurrent.** One long-lived `hindsight` container, owned by the *service*
+  not any instance; postgres serves both instances at once. An instance starts it if absent; it
+  outlives instances (`harnessed svc up/down`). The service **publishes its port to `0.0.0.0`**
+  and peers reach it via the podman host gateway **`host.containers.internal:<port>`** (the
+  primary reachability model); the `harnessed-net` bridge + DNS-by-name is the **`HARNESSED_NET`
+  opt-in** for bridge-capable hosts (a rootless bridge is unsupported on most hosts — netavark
+  "Operation not supported").
 - **Harness-state** — `projects/` + `history.jsonl` persist to the **host** by default
   (harnessed-scoped, path-mirrored for a stable slug; `session_state: volume` for throwaway).
   Other ephemeral state (`sessions/`, caches) stays in a per-instance volume.
+
+### Operator prerequisites for the host-gateway reachability model
+
+The publish + host-gateway model above depends on two operator-side controls that already ship
+in the repo. They are documented here as **prerequisites**, not implementation details:
+
+1. **Egress-firewall allow rule for `host.containers.internal`.** Rootless podman exposes the
+   host gateway at `host.containers.internal` (`169.254.1.2`). `lib/egress-firewall.sh:55-63`
+   computes `PODMAN_GW=$(getent ahosts host.containers.internal …)` and adds an iptables allow
+   rule for it — distinct from the default-route gateway. Without this rule the proxy path is
+   blocked (iptables is netns-wide, so it gates hatago too).
+2. **FastMCP `allowed_hosts`.** A Streamable-HTTP service proxied over
+   `host.containers.internal` MUST add it to `TransportSecuritySettings.allowed_hosts`, or
+   FastMCP's DNS-rebinding protection returns `421 Misdirected Request`. Canonical implementation:
+   `services/ping/server.py:19-25` (commit `6f6c1b3`); see also the "Networking note" in
+   `docs/guides/service-authoring.md`.
 
 ---
 
@@ -373,7 +393,7 @@ harnessed new <stack> --harness claude --recipes a,b,c   # scaffold a stack mani
 harnessed list                # stacks + running instances
 harnessed stop <stack>
 harnessed rm <stack>
-harnessed svc up <service>    # start a shared service on harnessed-net
+harnessed svc up <service>    # start a shared service (publishes its port; peers reach it via host.containers.internal, or by DNS name under HARNESSED_NET)
 harnessed svc down <service>
 harnessed svc list
 harnessed auth snyk|socket    # one-time: set a scanner token (persisted to host config)
@@ -382,7 +402,7 @@ harnessed auth snyk|socket    # one-time: set a scanner token (persisted to host
 **Naming/identity (proposed):**
 - pod: `harnessed-<stack>-<projhash>` — same stack runnable across projects without recreate
   (bind mounts are fixed at creation, so the project is part of identity).
-- shared services: global by name (`hindsight`), on `harnessed-net`.
+- shared services: global by name (`hindsight`), reached via the host gateway `host.containers.internal:<port>` (or by DNS name over the `HARNESSED_NET` bridge on bridge-capable hosts).
 
 ### Generated launcher shim (`harnessed install`)
 
