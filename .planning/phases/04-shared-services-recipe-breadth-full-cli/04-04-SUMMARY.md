@@ -5,6 +5,7 @@ subsystem: infra
 tags: [cli, launcher, state-persistence, uat, gap-closure]
 gap_closure: true
 
+# Dependency graph
 requires:
   - phase: 04-shared-services-recipe-breadth-full-cli
     provides: the automated UAT suite (tools/uat) whose two red tests define these gaps

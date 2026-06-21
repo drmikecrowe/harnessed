@@ -4,6 +4,7 @@ plan: 02
 subsystem: infra
 tags: [state-persistence, cli, launcher-shim, xdg-state, bash]
 
+# Dependency graph
 requires:
   - phase: 02-isolated-tracer-bullet-stack
     provides: the isolated launcher copy-on-start model + project_relpath legible slug

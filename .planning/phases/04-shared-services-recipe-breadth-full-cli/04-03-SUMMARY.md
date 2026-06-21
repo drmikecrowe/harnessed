@@ -4,6 +4,7 @@ plan: 03
 subsystem: infra
 tags: [omp, oh-my-pi, claude-hooks-bridge, recipe-breadth, multi-harness, mise, bun]
 
+# Dependency graph
 requires:
   - phase: 02-isolated-tracer-bullet-stack
     provides: the isolated pod model + the capability test harness
