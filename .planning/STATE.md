@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-21T11:05:19Z"
-last_activity: 2026-06-21 -- Phase 06 inserted (tech debt: dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene); pending planning. Phases 01–05 remain complete; milestone v1.0 reopened for cleanup.
+last_updated: "2026-06-21T12:32:54.834Z"
+last_activity: 2026-06-21 -- Phase 06 planning complete
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 16
+  total_plans: 18
   completed_plans: 16
   percent: 83
 ---
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 Phase: 06 (tech-debt cleanup) — INSERTED, pending planning (0 plans). Phase 05 (secrets-hardening-docs-completeness) remains COMPLETE (4/4) + VERIFIED (passed).
 Plan: — (Phase 06 not yet planned; awaiting planning)
-Status: Phase 05 closed. All 7 requirements VERIFIED live (SEC-01..04, DOC-01..03). The 4 human-verification legs all PASS: HV-1/HV-2 (live op:// resolution + build scan, fix 81a7f3f), HV-4 (loginctl enable-linger → Linger=yes), HV-3 (snyk OAuth browser auth → token persisted, after the --network=host callback fix 27fe91b). Phases 03/04 verification artifacts written (UAT promoted to VERIFICATION.md + live re-run) so the stats counter reads them as Complete.
-Last activity: 2026-06-21 -- Phase 06 inserted via /gsd-phase --insert 6 (dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene). Awaiting planning.
+Status: Ready to execute
+Last activity: 2026-06-21 -- Phase 06 planning complete
 
 Progress: [████████░░] 83% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ · Phase 06 ⏳ pending planning
 
@@ -70,6 +70,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - 05-03: harnessed rescan iterates podman images --filter reference='harnessed-*', podman save each, scan-image-online per image in a throwaway tools container; safe exit capture (`|| img_rc=$?`) so a finding on one image sets rc=1 but does NOT abort scanning the rest (each image independent). Process-substitution loop so rc mutations escape the body
 - 05-03: systemd USER units (rootless; not system units) — timer OnCalendar=daily + Persistent=true, service Type=oneshot ExecStart=%h/.local/bin/harnessed rescan. loginctl enable-linger $USER is a HARD prerequisite (Pitfall 5; Linger=no on host) — documented in unit comments + carried to 05-04 troubleshooting
 - 05-03: SEC-04 marked complete (all 6 checkpoint steps verified real: rescan exit 0 on 6 images online; online-vs-offline contrast proves online sees Debian ecosystem the offline DB lacks; timer scheduled; service journal shows full path; build-time offline scan unchanged). Operational note: rebuild harnessed-tools after a tools/harnessed/*.py upgrade (ensure_tools_image is build-if-missing, not staleness-aware)
+
 ### Pending Todos
 
 - Persist agy auth via in-pod keyring (`.planning/todos/pending/2026-06-21-persist-agy-auth-via-in-pod-keyring.md`) — antigravity OAuth persistence (Option 2; host-keyring mount rejected)
