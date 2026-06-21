@@ -155,9 +155,20 @@ auth_scanner() {
     # one-shot + interactive TTY; --userns=keep-id makes the rw-mounted host config writable by
     # the tools uid (host uid). The PATH prepend keeps the vendor CLIs resolvable (mise shims
     # break under the non-native HOME — see resolve_secret_env).
+    # `snyk auth` runs an OAuth flow: it starts a callback listener on 127.0.0.1:8080 INSIDE the
+    # container, opens the host browser to snyk.io, then snyk redirects the browser back to
+    # http://127.0.0.1:8080/authorization-code/callback?code=...  The host loopback is a different
+    # netns than the container's, so that redirect only reaches the listener if we publish the
+    # callback port. Rootless pasta forwards published ports to the CONTAINER's loopback, so
+    # `-p 127.0.0.1:8080:8080` lands on snyk's listener while binding host-side to loopback ONLY
+    # (the callback is purely local — never expose it to the LAN). snyk hardcodes :8080. NOTE: this
+    # collides with a running `ping` service on :8080 — stop it first if auth fails to bind.
+    # `socket login` prompts for an API token (no browser callback) → no port needed.
     local cmd
+    local -a port_args=()
     if [ "$tool" = "snyk" ]; then
         cmd="snyk auth"
+        port_args=( -p 127.0.0.1:8080:8080 )
     else
         cmd="socket login"
     fi
@@ -167,6 +178,7 @@ auth_scanner() {
         -e "HOME=$CONTAINER_HOME" \
         -v "$HOME/.config":"$CONTAINER_HOME/.config":rw \
         "${agent_args[@]}" \
+        "${port_args[@]}" \
         --entrypoint bash \
         "$HARNESSED_TOOLS_IMAGE" \
         -lc "export PATH=\"$_HARNESSED_TOOLS_NODE_PATH:\$PATH\"; $cmd" || auth_rc=$?
