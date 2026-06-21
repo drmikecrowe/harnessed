@@ -1,7 +1,7 @@
 # harnessed-rescan.service — re-scan installed harnessed images for newly-disclosed CVEs.
 # Driven by harnessed-rescan.timer. Requires network egress to osv.dev at scan time (the online
 # DB — the build-time gate uses the offline DB; the nightly cannot). Assumes the `harnessed`
-# launcher is installed at ~/.local/bin/harnessed (`harnessed install` shim, Phase 4) or on PATH.
+# launcher is installed at ~/.local/bin/harnessed (installed by the curl bootstrap) or on PATH.
 [Unit]
 Description=Re-scan installed harnessed images for newly-disclosed CVEs
 

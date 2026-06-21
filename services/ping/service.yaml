@@ -1,8 +1,10 @@
 # Service: ping — a lightweight network-native MCP tracer service (plan 04-01 / SVC-01).
 #
-# The smallest shared-service sidecar: its own image/container/volume on harnessed-net,
-# exposing one `ping` tool over MCP streamable-http. Two concurrent instances attach to
-# ONE running ping container (SVC-02 proof). Service-scoped volume persists across
+# The smallest shared-service sidecar: its own image/container/volume, host-published
+# (reachable via `host.containers.internal:8080`; or by DNS name over the `HARNESSED_NET`
+# bridge on bridge-capable hosts), exposing one `ping` tool over MCP streamable-http. Two
+# concurrent instances attach to ONE running ping container (SVC-02 proof). Service-scoped
+# volume persists across
 # `svc down` (design §9).
 name: ping
 image: harnessed-ping:latest

@@ -1,9 +1,10 @@
 # Recipe: ping — references the ping shared service as a network-native MCP server.
 #
 # No `command`: this is a SERVICE reference, not a stdio child. The assembler (plan 04-01
-# Task 4) resolves `service: ping` → {url: http://ping:8080/mcp, type: http} by reading
-# services/ping/service.yaml. hatago proxies it by URL; the service runs as its own
-# container on harnessed-net (design §3/§9).
+# Task 4) resolves `service: ping` → {url: http://host.containers.internal:8080/mcp,
+# type: http} by reading services/ping/service.yaml. hatago proxies it by URL; the service
+# runs host-published (reachable via `host.containers.internal:<port>`; or by DNS name
+# `http://ping:8080/mcp` over the `HARNESSED_NET` bridge on bridge-capable hosts — design §3/§9).
 name: ping
 description: Tracer shared service — a network-native ping MCP server.
 

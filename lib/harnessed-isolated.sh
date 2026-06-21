@@ -20,10 +20,12 @@
 # capability test (plan 02-03) launches via this path (`--fresh` headless) and asserts against
 # the live instance.
 
-# Pod network: harnessed-net is the DEFAULT for isolated stacks (plan 04-01 / SVC-02) so pod
-# members resolve shared services by DNS name (http://<service>:<port>). Set HARNESSED_NET=<name>
-# to override the network name (advanced/multi-network). Members share a netns either way, so
-# the harness always reaches hatago at localhost:$HATAGO_PORT.
+# Pod network: DEFAULT rootless (pasta) networking — NOT a bridge. Rootless bridges are
+# unsupported on most hosts (netavark "create bridge: Operation not supported"), so pod
+# members reach shared services via the host gateway `host.containers.internal:<port>`
+# (plan 04-01 rootless fix). The `HARNESSED_NET` bridge is the opt-in for bridge-capable
+# hosts (DNS-by-name, http://<service>:<port>). Members share a netns either way, so the
+# harness always reaches hatago at localhost:$HATAGO_PORT.
 HARNESSED_NET="${HARNESSED_NET:-}"
 HATAGO_PORT="${HATAGO_PORT:-3535}"
 
@@ -60,6 +62,9 @@ harnessed_isolated() {
     headless="${HARNESSED_HEADLESS:-false}"
 
     local mise_init="source ~/.bashrc && mise trust -a 2>/dev/null"
+    # Preserved as the literal default-name anchor (D-01/D-03); the live pod-network block
+    # below reads ${HARNESSED_NET:-} directly, so $net is assigned-but-unused on this path.
+    # KEPT per D-04 ("if unsure, leave it and add a clarifying comment").
     local net="${HARNESSED_NET:-harnessed-net}"
 
     # --fresh: tear down any existing pod/instance before recreate — no state bleed (D-11).

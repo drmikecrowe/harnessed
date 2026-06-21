@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # harnessed — shared service lifecycle (plan 04-01 / SVC-01, SVC-03).
 #
-# A shared service is its OWN image/container/volume on harnessed-net, with a lifecycle
-# independent of any instance (design §3/§9). `svc up|down|list` manages them by name;
-# isolated stacks auto-start declared services via ensure_service_up.
+# A shared service is its OWN image/container/volume on a host-published port (reachable via
+# `host.containers.internal:<port>`; or by DNS name over the `HARNESSED_NET` bridge on
+# bridge-capable hosts), with a lifecycle independent of any instance (design §3/§9).
+# `svc up|down|list` manages them by name; isolated stacks auto-start declared services
+# via ensure_service_up.
 #
 # Service-scoped persistence: the named volume `<service>-data` survives `svc down` by
 # default (that's the value — one memory across instances). `--purge` is the explicit destroy.
@@ -63,8 +65,9 @@ build_service_image() {
 # svc_up <service> — start a service-scoped shared sidecar (idempotent).
 #
 # Ensures the image (builds from services/<name>/Dockerfile if absent), creates the named
-# volume if absent, runs -d on harnessed-net with --label harnessed-service=<name> +
-# --userns=keep-id, then waits for the healthcheck.
+# volume if absent, publishes its port to 0.0.0.0 (rootless; peers reach it via
+# `host.containers.internal:<port>`) with `--label harnessed-service=<name>` +
+# `--userns=keep-id`, then waits for the healthcheck.
 svc_up() {
     local service="$1"
     local SVC_DIR="$HARNESSED_DIR/services/$service"
