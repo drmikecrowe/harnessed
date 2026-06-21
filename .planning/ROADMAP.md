@@ -22,7 +22,7 @@ observable end-to-end capability (vertical-MVP mode).
 - [x] **Phase 3: Supply-Chain Gate + pnpm-Everywhere** - `harnessed build` vets every dependency before it is committed or baked (completed 2026-06-15)
 - [x] **Phase 4: Shared Services + Recipe Breadth + Full CLI** - Concurrent service sidecars, more recipes, and the full operable command/lifecycle surface (completed 2026-06-16)
 - [x] **Phase 5: Secrets, Hardening + Docs Completeness** - Opt-in varlock/1Password secrets, token-gated scanners, nightly re-scan, and the gated doc set (completed 2026-06-21; all 7 requirements VERIFIED live — HV-1..HV-4 all PASS, snyk browser auth landed via the --network=host callback fix)
-- [ ] **Phase 6: Address tech debt: dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene** - Clear post-v1.0 tech debt: remove dead `harnessed-net` (podman network) code, correct stale comments, normalize `*-SUMMARY.md` frontmatter (planned; inserted 2026-06-21)
+- [x] **Phase 6: Address tech debt: dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene** - Clear post-v1.0 tech debt: remove dead `harnessed-net` (podman network) code, correct stale comments, normalize `*-SUMMARY.md` frontmatter (planned; inserted 2026-06-21) (completed 2026-06-21)
 
 ## Phase Details
 
@@ -177,4 +177,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Supply-Chain Gate + pnpm-Everywhere | 2/2 | Complete    | 2026-06-16 |
 | 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
 | 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-21 |
-| 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 0/? | Planned | — |
+| 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 2/2 | Complete   | 2026-06-21 |
