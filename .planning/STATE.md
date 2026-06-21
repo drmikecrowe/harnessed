@@ -72,7 +72,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - 05-03: SEC-04 marked complete (all 6 checkpoint steps verified real: rescan exit 0 on 6 images online; online-vs-offline contrast proves online sees Debian ecosystem the offline DB lacks; timer scheduled; service journal shows full path; build-time offline scan unchanged). Operational note: rebuild harnessed-tools after a tools/harnessed/*.py upgrade (ensure_tools_image is build-if-missing, not staleness-aware)
 ### Pending Todos
 
-None yet.
+- Persist agy auth via in-pod keyring (`.planning/todos/pending/2026-06-21-persist-agy-auth-via-in-pod-keyring.md`) — antigravity OAuth persistence (Option 2; host-keyring mount rejected)
 
 ### Blockers/Concerns
 
