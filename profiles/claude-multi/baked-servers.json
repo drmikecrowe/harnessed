@@ -1,0 +1,13 @@
+{
+  "stack": "claude-multi",
+  "servers": [
+    {
+      "name": "time",
+      "command": "uvx",
+      "args": [
+        "mcp-server-time"
+      ],
+      "transport": "stdio"
+    }
+  ]
+}

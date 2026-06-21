@@ -1,0 +1,17 @@
+# Stack: antigravity-time — the antigravity (agy) proof stack (plan 04-03 / HRN-04, design §8/§11).
+#
+# The SAME Claude-canonical `time` recipe (one stdio MCP server + one skill) run on the antigravity
+# harness, plus the `antigravity` base recipe that DOCUMENTS the harness contract (it contributes no
+# profile files of its own). Proves an antigravity stack reaches the `time` server through the hatago
+# hub via its image-baked ~/.gemini/config/mcp_config.json MCP config. The capability test renders
+# its report (the hatago `hatago://servers` MCP check + mounted-profile filesystem checks are
+# harness-independent; the `agy -p` backstop is the rare fallback). Note: agy does not natively
+# consume the profile's Claude skill — the skill shows as present (profile mounted) but agy's real
+# capability here is the MCP `time` server via hatago.
+#
+# Only antigravity-stack fields are exercised; `services`, `permissions`, and `state` use defaults
+# and are parsed forward by the assembler (D-14).
+name: antigravity-time
+config: isolated      # isolated (default) | transparent
+harness: antigravity  # claude | omp | opencode | gemini | antigravity  (exactly one)
+recipes: [time, antigravity]

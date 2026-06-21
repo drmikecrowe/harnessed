@@ -1,0 +1,43 @@
+---
+import { docsUrls } from "../data/nav";
+---
+
+<div class="promo">
+  <div class="container promo-inner">
+    <span class="promo-text">
+      Work in progress: agentic AI security is young. Use at your own risk.
+    </span>
+    <a class="promo-link" href={docsUrls.troubleshooting}>Read the caveats</a>
+  </div>
+</div>
+
+<style>
+  .promo {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .promo-inner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    padding-block: var(--space-sm);
+    flex-wrap: nowrap;
+  }
+  .promo-text {
+    font-size: var(--text-body-sm);
+    font-weight: 500;
+  }
+  .promo-link {
+    font-size: var(--text-body-sm);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    opacity: 0.85;
+  }
+  @media (max-width: 480px) {
+    .promo-link {
+      display: none;
+    }
+  }
+</style>

@@ -7,7 +7,7 @@ See @AGENTS.md for project instructions
 **harnessed**
 
 `harnessed` is one executable that launches **isolated, composable harness stacks** — each a
-podman pod running an AI coding harness (`claude`/`omp`) plus an MCP hub (hatago) plus optional
+podman pod running an AI coding harness (`claude`/`omp`/`opencode`/`gemini`/`antigravity`/`codex`) plus an MCP hub (hatago) plus optional
 shared services (hindsight, openbrain). It evolves this repo's existing `container` tool: the
 current "my laptop, sandboxed" behavior folds in as the built-in `transparent` stack, while new
 `isolated` stacks let you experiment with curated sets of skills/commands/hooks/MCP/memory systems
@@ -156,7 +156,10 @@ host config — reproducibly, with podman as the only host dependency.
 - Native canonical format — mount the profile's `.claude/` tree directly; `claude mcp list` / `hatago://servers` for capability assertions.
 - Headless capability test: `claude -p … --output-format json`.
 - Claude format is still canonical; omp consumes it via **`claude-hooks-bridge`** + `lib-pi-adapter.sh` (no re-authoring). The `omp` base recipe pulls `npm:@ryan_nookpi/pi-extension-claude-hooks-bridge` (installed via pnpm).
-- One harness per stack — never claude+omp together (§8).
+- **opencode** is also first-class and consumes the **same** `.claude/` profile — it reads `.claude/skills/**/SKILL.md` + `~/.claude/CLAUDE.md` natively (no bridge, no re-authoring). MCP is wired via the image-baked `~/.config/opencode/opencode.json` → hatago endpoint (opencode ignores `.mcp.json`); `.claude/commands` and `.claude/agents` are NOT consumed (skills + CLAUDE.md/AGENTS.md only).
+- **gemini** (Google gemini-cli) is also first-class and mounts the **same** `.claude/` profile for parity, but does NOT natively read Claude skills/commands (its native asset format differs). Capability wiring is MCP via the image-baked `~/.gemini/settings.json`, whose `mcpServers` points one remote (Streamable-HTTP) server at the hatago hub (`http://localhost:3535/mcp`). Auth: host `~/.gemini` OAuth creds (mounted) or `GEMINI_API_KEY`/`GOOGLE_API_KEY` env.
+- **codex** (OpenAI Codex CLI) is also first-class and mounts the **same** `.claude/` profile for parity, but likewise does NOT natively read Claude skills/commands/agents (it reads `AGENTS.md` + its own `~/.codex/prompts` format). Capability wiring is MCP via the image-baked `~/.codex/config.toml`, whose `[mcp_servers.hatago]` entry points one remote (Streamable-HTTP) server at the hatago hub (`url = "http://localhost:3535/mcp"` — codex 0.139+ natively supports remote Streamable-HTTP MCP, no stdio bridge). Auth: host `~/.codex/auth.json` (mounted ro) or `OPENAI_API_KEY` env.
+- One harness per stack — exactly one of `claude`, `omp`, `opencode`, `gemini`, `antigravity`, or `codex`, never two together (§8).
 - Bake it into the **hatago** image; hatago spawns it as a child and wraps **stdio→HTTP**. Run via `pnpm dlx <pkg>` (Node) or `uvx <pkg>` (Python).
 - Its **own** `services/<name>/Dockerfile`, **own** volume (`hindsight-data`, service-scoped), independent lifecycle (`harnessed svc up/down`); likely already network-native Streamable HTTP, proxied by hatago rather than child-spawned.
 - Resolve `op://` via the **mounted agent socket** (`allowAppAuth`) already in the §4a mount layer — no token on disk.

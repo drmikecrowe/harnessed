@@ -1,0 +1,53 @@
+# harnessed-opencode — the opencode (sst/opencode) harness image.
+#
+# FROM harnessed-base (lineage only, §6) + a working, version-pinned opencode + a baked global
+# config that points opencode's MCP at the hatago hub. opencode consumes the SAME Claude-canonical
+# profile (.claude/) as the claude harness: it reads .claude/skills/**/SKILL.md and ~/.claude/CLAUDE.md
+# natively (sst/opencode skill/index.ts, instruction.ts) — design §8, single source of truth. No
+# re-authoring. Build the base first.
+#
+# Why the official installer (not mise/pnpm): the base image installs npm:opencode-ai, but that npm
+# package is only a thin WRAPPER whose postinstall downloads the real platform binary — and the
+# managed pnpm supply-chain policy (strictDepBuilds default-deny, design §7) blocks that postinstall,
+# so the base shim is non-functional. The official installer fetches the prebuilt Bun binary directly
+# into ~/.opencode/bin (no lifecycle script; no pnpm minimumReleaseAge gate) — the SAME curl-installer
+# exception already granted to the claude harness (Dockerfile.harnessed-claude). The built image is
+# still covered by the build-time + nightly image supply-chain scans (BLD-02 / SEC-04).
+#
+# opencode does NOT read .claude/.mcp.json, so MCP is wired here instead: the baked
+# ~/.config/opencode/opencode.json declares the single hatago Streamable-HTTP endpoint
+# (http://localhost:3535/mcp — the FIXED in-pod hub address, identical for every stack, so the
+# config is static and bakeable, mirroring omp baking the bridge into its image).
+#
+# Lazy-built: `ensure_opencode_image` (lib/harnessed-common.sh) builds this only when an opencode
+# stack first launches, so claude/omp users never build opencode (plan 04-03 / HRN-02).
+
+FROM harnessed-base:latest
+
+# Install a pinned, working opencode via the vendor installer into ~/.opencode/bin (a real platform
+# binary, not the npm wrapper). --no-modify-path: we add the dir to PATH explicitly in .bashrc so the
+# login-shell attach (`bash -l -c "... opencode"`) and the headless capability backstop resolve it.
+ARG OPENCODE_VERSION=1.17.9
+RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}" --no-modify-path && \
+    echo 'export PATH="$HOME/.opencode/bin:$PATH"' >> /home/harnessed/.bashrc
+
+# Bake the global opencode config: ONE remote MCP server → the hatago hub. The endpoint is the
+# fixed in-pod hub address (shared pod netns), so this is static — opencode tries StreamableHTTP
+# first (sst/opencode mcp/index.ts), which is exactly what hatago serves. This is opencode's analog
+# of the profile's .claude/.mcp.json (which opencode ignores); the rest of the config layer
+# (skills, CLAUDE.md) comes from the mounted .claude/ profile at runtime.
+RUN mkdir -p /home/harnessed/.config/opencode && \
+    cat > /home/harnessed/.config/opencode/opencode.json <<'JSON'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "hatago": {
+      "type": "remote",
+      "url": "http://localhost:3535/mcp",
+      "enabled": true
+    }
+  }
+}
+JSON
+
+CMD ["/bin/bash"]

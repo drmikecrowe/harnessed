@@ -17,8 +17,8 @@ A recipe lives at `recipes/<name>/recipe.yaml`. It can contribute to two layers:
 - **File-extension layer** — `skills` / `commands` (and `agents`/`hooks`/`rules` via plugins) in
   Claude-canonical form, fanned into harness-native profile paths.
 
-A recipe may have either layer, both, or (like `recipes/omp`) neither — it can exist only to declare
-a runtime contract. Only the fields the recipe exercises are required; the assembler parses the rest
+A recipe may have either layer, both, or (like `recipes/omp`, `recipes/opencode`, `recipes/gemini`,
+`recipes/antigravity`, and `recipes/codex`) neither — it can exist only to declare a runtime contract. Only the fields the recipe exercises are required; the assembler parses the rest
 forward.
 
 ## The `recipe.yaml` schema

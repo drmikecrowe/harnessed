@@ -40,7 +40,7 @@ whole sequence):
   [docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md) (worked examples:
   `recipes/time`, `recipes/ping`).
 - **Compose a stack**: author `stacks/<name>/stack.yaml`, or scaffold with `harnessed new <stack>
-  --harness <claude|omp> --recipes a,b,c`. See [docs/guides/stacks.md](docs/guides/stacks.md).
+  --harness <claude|omp|opencode|gemini|antigravity|codex> --recipes a,b,c`. See [docs/guides/stacks.md](docs/guides/stacks.md).
 - **Add a shared service sidecar**: `services/<name>/` (its own `Dockerfile` + `service.yaml` +
   server). See [docs/guides/service-authoring.md](docs/guides/service-authoring.md) (worked example:
   `services/ping`).

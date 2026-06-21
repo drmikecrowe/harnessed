@@ -75,7 +75,7 @@ resolve_secret_env() {
         tmpdir="$(mktemp -d -t harnessed-secrets.XXXX)"
         cp "$HARNESSED_SCHEMA" "$tmpdir/.env.schema"
         mkdir -m 700 "$tmpdir/.config"
-        "$CONTAINER_RUNTIME" run --rm --userns=keep-id \
+        "$CONTAINER_RUNTIME" run --rm $(rt_userns_args) \
             -e "HOME=$CONTAINER_HOME" \
             -e "OP_SERVICE_ACCOUNT_TOKEN=$OP_SERVICE_ACCOUNT_TOKEN" \
             -v "$tmpdir":"$CONTAINER_HOME":rw \
@@ -176,7 +176,7 @@ auth_scanner() {
     fi
 
     local auth_rc=0
-    "$CONTAINER_RUNTIME" run --rm -it --userns=keep-id \
+    "$CONTAINER_RUNTIME" run --rm -it $(rt_userns_args) \
         -e "HOME=$CONTAINER_HOME" \
         -v "$HOME/.config":"$CONTAINER_HOME/.config":rw \
         "${agent_args[@]}" \

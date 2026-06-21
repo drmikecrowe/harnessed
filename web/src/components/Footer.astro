@@ -1,0 +1,150 @@
+---
+import Icon from "./Icon.astro";
+import { repoUrl, docsUrls } from "../data/nav";
+
+const columns = [
+  {
+    head: "Docs",
+    links: [
+      { label: "Design spec", href: docsUrls.design },
+      { label: "Recipe guide", href: docsUrls.recipe },
+      { label: "Stacks guide", href: docsUrls.stacks },
+      { label: "Secrets", href: docsUrls.secrets },
+      { label: "Troubleshooting", href: docsUrls.troubleshooting },
+    ],
+  },
+  {
+    head: "Project",
+    links: [
+      { label: "GitHub", href: repoUrl },
+      { label: "Recipes", href: `${repoUrl}/tree/main/recipes` },
+      { label: "Stacks", href: `${repoUrl}/tree/main/stacks` },
+      { label: "Services", href: `${repoUrl}/tree/main/services` },
+    ],
+  },
+  {
+    head: "Security",
+    links: [
+      { label: "Supply chain", href: `${repoUrl}#supply-chain--security` },
+      { label: "pnpm everywhere", href: `${repoUrl}#supply-chain--security` },
+      { label: "Scanners", href: `${repoUrl}#supply-chain--security` },
+      { label: "Nightly re-scan", href: docsUrls.troubleshooting },
+    ],
+  },
+];
+---
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a class="footer-wordmark" href={import.meta.env.BASE_URL}>harnessed</a>
+        <p class="t-body-sm footer-tagline">Contain the AI, not the repo.</p>
+        <a class="footer-social" href={repoUrl} aria-label="harnessed on GitHub">
+          <Icon name="brand-github" size={22} />
+        </a>
+      </div>
+
+      <div class="footer-cols">
+        {
+          columns.map((col) => (
+            <nav class="footer-col" aria-label={col.head}>
+              <h4 class="footer-col-head">{col.head}</h4>
+              <ul role="list">
+                {col.links.map((l) => (
+                  <li>
+                    <a href={l.href}>{l.label}</a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))
+        }
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p class="t-micro">
+        Forked from <a href="https://github.com/kevinMEH/code-container">kevinMEH/code-container</a>.
+      </p>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    background: var(--color-footer-bg);
+    color: var(--color-on-dark);
+    padding-block: var(--space-section) var(--space-xxl);
+  }
+  .footer-top {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-xxxl);
+    flex-wrap: wrap;
+  }
+  .footer-brand {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    align-items: flex-start;
+  }
+  .footer-wordmark {
+    font-size: var(--text-card-title);
+    font-weight: 600;
+    color: var(--color-on-dark);
+  }
+  .footer-tagline {
+    color: var(--color-muted);
+  }
+  .footer-social {
+    color: var(--color-on-dark);
+    display: inline-flex;
+    margin-top: var(--space-sm);
+    opacity: 0.85;
+  }
+  .footer-cols {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    gap: var(--space-xxxl);
+  }
+  .footer-col-head {
+    font-size: var(--text-body-sm);
+    font-weight: 500;
+    color: var(--color-on-dark);
+    margin-bottom: var(--space-md);
+  }
+  .footer-col ul {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xxs);
+  }
+  .footer-col a {
+    font-size: var(--text-body-sm);
+    color: var(--color-muted);
+    padding: var(--space-xxs) 0;
+  }
+  .footer-col a:active {
+    opacity: 0.7;
+  }
+  .footer-bottom {
+    margin-top: var(--space-section);
+    padding-top: var(--space-xl);
+    border-top: 1px solid #2a2a2a;
+  }
+  .footer-bottom a {
+    color: var(--color-muted);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  @media (max-width: 767px) {
+    .footer-top {
+      flex-direction: column;
+      gap: var(--space-xxxl);
+    }
+    .footer-cols {
+      grid-template-columns: repeat(2, auto);
+      gap: var(--space-xxl);
+    }
+  }
+</style>

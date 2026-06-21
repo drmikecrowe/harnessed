@@ -1,0 +1,32 @@
+# harnessed-gemini — the gemini-cli (Google) harness image.
+#
+# FROM harnessed-base (lineage only, §6) + a baked global config that points gemini-cli's MCP at the
+# hatago hub. gemini-cli is ALREADY installed and working in the base image (npm:@google/gemini-cli —
+# a pure-JS CLI with no blocked postinstall, unlike opencode), so this image only bakes the config.
+# All harnesses consume the SAME committed Claude-canonical profile (.claude/) — design §8 — but
+# gemini does NOT natively consume Claude skills/commands (its native assets differ; it reads
+# GEMINI.md + its own extension/command format). The profile is still mounted for parity; gemini's
+# real capability wiring here is MCP via hatago. Build the base first.
+#
+# Lazy-built: `ensure_gemini_image` (lib/harnessed-common.sh) builds this only when a gemini stack
+# first launches (plan 04-03 / HRN-03).
+
+FROM harnessed-base:latest
+
+# Bake the global gemini config: ONE http MCP server → the hatago hub. This is the EXACT shape
+# gemini-cli itself writes for `gemini mcp add --transport http <name> <url>` (verified against the
+# base image's gemini-cli v0.46.0): the remote field is `url` + `type: "http"` (gemini-cli has no
+# `httpUrl` key). gemini does NOT read the profile's .claude/.mcp.json. The endpoint is the fixed
+RUN mkdir -p /home/harnessed/.gemini && \
+    cat > /home/harnessed/.gemini/settings.json <<'JSON'
+{
+  "mcpServers": {
+    "hatago": {
+      "url": "http://localhost:3535/mcp",
+      "type": "http"
+    }
+  }
+}
+JSON
+
+CMD ["/bin/bash"]

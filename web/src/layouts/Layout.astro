@@ -1,0 +1,49 @@
+---
+import "@fontsource/dm-sans/400.css";
+import "@fontsource/dm-sans/500.css";
+import "@fontsource/dm-sans/600.css";
+import "@fontsource/dm-sans/700.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/600.css";
+import "../styles/base.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "harnessed: Isolated, composable harness stacks",
+  description = "One executable launches a podman pod with your AI coding harness, an MCP hub, and optional shared services. Compose skills and memory per stack.",
+} = Astro.props;
+
+const base = import.meta.env.BASE_URL;
+const ogImage = new URL(base + "banner.png", Astro.site).toString();
+const favicon = base + "favicon.svg";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href={favicon} />
+    <meta name="generator" content={Astro.generator} />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:url" content={Astro.url.toString()} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "stack": "gemini-time",
+  "servers": [
+    {
+      "name": "time",
+      "command": "uvx",
+      "args": [
+        "mcp-server-time"
+      ],
+      "transport": "stdio"
+    }
+  ]
+}

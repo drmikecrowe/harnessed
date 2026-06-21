@@ -1,0 +1,104 @@
+---
+import Section from "./Section.astro";
+import ComparisonTable from "./ComparisonTable.astro";
+
+const modes = [
+  {
+    name: "Transparent",
+    badge: "built-in",
+    desc: "Host config bind-mounted live: your skills, MCP, and auth, firewalled. My laptop, sandboxed.",
+    command: "harnessed transparent",
+  },
+  {
+    name: "Isolated",
+    badge: "clean room",
+    desc: "Auth seeded, profile mounted, nothing from host config. Clean room with exactly what I picked.",
+    command: "harnessed <stack>",
+  },
+];
+---
+
+<Section id="modes" class="modes">
+  <header class="section-head" data-reveal>
+    <h2 class="t-heading-lg">One engine, two config modes.</h2>
+    <p class="lead">
+      Every stack shares the same base image, host mounts, and auth. Stacks differ
+      on exactly one axis: where the config layer comes from.
+    </p>
+  </header>
+
+  <div class="mode-grid" data-reveal>
+    {
+      modes.map((m) => (
+        <article class="mode-card">
+          <div class="mode-top">
+            <h3 class="t-heading-sm mode-name">{m.name}</h3>
+            <span class="mode-badge">{m.badge}</span>
+          </div>
+          <p class="t-body-md mode-desc">{m.desc}</p>
+          <code class="mode-cmd">{m.command}</code>
+        </article>
+      ))
+    }
+  </div>
+
+  <div class="table-wrap" data-reveal>
+    <ComparisonTable />
+  </div>
+</Section>
+
+<style>
+  .modes {
+    background: var(--color-surface-soft);
+  }
+  .mode-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-xl);
+    margin-bottom: var(--space-xxxl);
+  }
+  .mode-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-xl);
+    padding: var(--space-xxl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+  .mode-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+  }
+  .mode-name {
+    color: var(--color-ink);
+  }
+  .mode-badge {
+    font-size: var(--text-caption);
+    font-weight: 600;
+    color: var(--color-success-text);
+    background: var(--color-success-bg);
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+  }
+  .mode-desc {
+    color: var(--color-charcoal);
+  }
+  .mode-cmd {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: var(--text-body-sm);
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    padding: var(--space-xs) var(--space-md);
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--color-hairline);
+    align-self: flex-start;
+  }
+  @media (max-width: 767px) {
+    .mode-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

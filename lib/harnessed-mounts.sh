@@ -11,8 +11,9 @@
 harnessed_host_integration_mounts() {
     local project_path="$1" relpath="$2"
 
-    # Base run flags: rootless UID mapping, NET_ADMIN (egress firewall), TERM, project + workdir.
-    MOUNT_ARGS+=( --userns=keep-id --cap-add NET_ADMIN -e "TERM=xterm-256color" )
+    # Base run flags: rootless UID mapping (provider-specific via rt_userns_args), NET_ADMIN
+    # (egress firewall), TERM, project + workdir.
+    MOUNT_ARGS+=( $(rt_userns_args) --cap-add NET_ADMIN -e "TERM=xterm-256color" )
     MOUNT_ARGS+=( -w "$CONTAINER_HOME/$relpath" )
     MOUNT_ARGS+=( -v "$project_path:$CONTAINER_HOME/$relpath" )
 

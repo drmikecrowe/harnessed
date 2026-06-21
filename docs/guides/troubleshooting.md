@@ -18,6 +18,52 @@ see [secrets.md](secrets.md).
 - `podman` ≥ 5.6 is recommended (current 5.8.x). Docker works as a fallback (the egress firewall is
   tested on Podman).
 
+## Container runtimes (podman / Docker / Apple `container`)
+
+`harnessed` is provider-agnostic. Isolated mode — the harness container + the hatago hub sharing
+one `localhost:3535` — is expressed per-runtime by [`lib/harnessed-runtime.sh`](../../lib/harnessed-runtime.sh):
+
+- **podman** — a pod (`pod create` + `run --pod`); rootless uid mapping via `--userns=keep-id`.
+- **Docker** — a shared network namespace: hatago runs first, the harness joins it with
+  `--network container:<hatago>` (same localhost); rootless Docker remaps uids daemon-side (no
+  `--userns` flag). The two members are flat containers (`<instance>` + `<instance>-hatago`).
+- **Apple `container`** — not yet supported (one lightweight VM + IP per container, no shared
+  netns / `--network container:`); tracked as a follow-up (needs a named-network + a non-localhost
+  MCP endpoint).
+
+`detect_runtime` prefers podman, else docker. Force one with `CONTAINER_RUNTIME=docker harnessed …`.
+
+### Full UAT on a fresh host (e.g. a Docker NAS)
+
+After `git pull` on the target host:
+
+```bash
+cd /path/to/code-container
+harnessed build                 # build the shared base + claude + hatago images on this runtime
+./tools/uat/run-uat.sh 6        # the HARNESS MATRIX: build + capability-test every harness
+# …or one harness end to end:
+harnessed build codex-time && harnessed test codex-time
+# …or only the fast checks (manifests + harness validation, no containers):
+./tools/uat/run-uat.sh 6 --quick
+```
+
+The matrix builds each `<harness>-time` proof stack, launches it `--fresh` headless, asserts the
+`time` MCP server is reachable through hatago **and** the `time-helper` skill is present, then tears
+it down. A green matrix proves that runtime drives **every** harness (claude, omp, opencode, gemini,
+antigravity, codex) correctly. Add a harness → add a line to `UAT_MATRIX` in
+[`tools/uat/phase-06.sh`](../../tools/uat/phase-06.sh).
+
+### Docker caveats
+
+- **Egress firewall** needs rootless `NET_ADMIN` + iptables in the shared netns. If it can't apply,
+  the launcher warns and continues; pass `--no-firewall` to skip it explicitly.
+- **File ownership** — rootless Docker remaps uids daemon-side (there is no `--userns=keep-id`). If
+  mounted project/profile files end up unwritable inside the container, configure the daemon's
+  `userns-remap`, or run the build/UAT as the same uid that owns the repo.
+- **Shared service sidecars** (`services:` / `harnessed svc`) are **not wired for Docker yet** — the
+  hatago proxy resolves them via `host.containers.internal`, a podman-only name. The harness-matrix
+  proof stacks declare no services, so the UAT itself is unaffected.
+
 ## First-run build issues
 
 Images build on the host via `podman build` the first time they're needed. If a build fails:

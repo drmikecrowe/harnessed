@@ -1,0 +1,42 @@
+---
+import Layout from "../layouts/Layout.astro";
+import PromoBanner from "../components/PromoBanner.astro";
+import Nav from "../components/Nav.astro";
+import Hero from "../components/Hero.astro";
+import ModesSection from "../components/ModesSection.astro";
+import HarnessMatrix from "../components/HarnessMatrix.astro";
+import HowItWorks from "../components/HowItWorks.astro";
+import SecurityMatrix from "../components/SecurityMatrix.astro";
+import StatRow from "../components/StatRow.astro";
+import Quickstart from "../components/Quickstart.astro";
+import CompareTable from "../components/CompareTable.astro";
+import Footer from "../components/Footer.astro";
+---
+
+<Layout>
+  <header class="site-header">
+    <PromoBanner />
+    <Nav />
+  </header>
+
+  <main>
+    <Hero />
+    <ModesSection />
+    <HarnessMatrix />
+    <HowItWorks />
+    <SecurityMatrix />
+    <StatRow />
+    <Quickstart />
+    <CompareTable />
+  </main>
+
+  <Footer />
+</Layout>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+</style>

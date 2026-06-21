@@ -3,9 +3,9 @@
 **Analysis Date:** 2026-06-17
 
 `harnessed` is, at its core, an **integrator**: it composes a harness (claude /
-omp), an MCP hub (hatago), MCP servers (stdio children + HTTP sidecars), shared
-services, host auth/signing, and supply-chain scanners into one isolated podman
-pod. This document covers every external system `harnessed` talks to and the
+omp / opencode / gemini / antigravity / codex), an MCP hub (hatago), MCP servers (stdio children + HTTP sidecars), shared
+services, host auth/signing, and supply-chain scanners into one isolated shared-netns
+group (a podman pod, or a docker shared-netns pair — provider-abstracted by `lib/harnessed-runtime.sh`).
 file that wires it.
 
 The cardinal rule, repeated throughout: **no Docker-out-of-Docker**
@@ -20,15 +20,19 @@ dependency and the substrate every other integration rides on.
 
 - **Detection:** `detect_runtime()` in `lib/harnessed-common.sh:31-40` prefers
   podman, falls back to docker, exits if neither is found.
-- **Rootless UID mapping:** every instance gets `--userns=keep-id` so the
-  in-container `harnessed` user (UID 1000) maps to the host user and bind-mounted
-  project/profile/credential paths are owned correctly. Set once in
-  `lib/harnessed-mounts.sh:15`, reused by every stack.
-- **Pod model (isolated stacks):** the harness container and hatago are
-  **pod members sharing a netns** (`lib/harnessed-isolated.sh:127`), so the
-  harness reaches hatago at `http://localhost:3535/mcp` with no cross-container
-  networking. `--userns=keep-id` is a **pod-level** property; it is stripped
-  from member args (`lib/harnessed-isolated.sh:152-156`).
+- **Rootless UID mapping:** the in-container `harnessed` user (UID 1000) maps to the host
+  user so bind-mounted project/profile/credential paths are owned correctly. This is
+  **provider-abstracted** by `rt_userns_args()` in `lib/harnessed-runtime.sh`: podman rootless
+  emits `--userns=keep-id` (set once in `lib/harnessed-mounts.sh:15`); rootless docker remaps
+  uids daemon-side and emits nothing (`--userns=keep-id` is invalid there).
+- **Group model (isolated stacks):** the harness container and hatago **share a netns** so
+  the harness reaches hatago at `http://localhost:3535/mcp` with no cross-container networking.
+  The shared-netns "group" is **provider-abstracted** by `lib/harnessed-runtime.sh`:
+  podman → a **pod** (`pod create` + `run --pod`; `--userns=keep-id` is a pod-level property,
+  stripped from member args); docker → a **shared-netns pair** — hatago runs first, the harness
+  joins with `--network container:<instance>-hatago` (rootless docker remaps uids daemon-side,
+  no `--userns`). Apple `container` is **not supported yet** (one VM+IP per container, no shared
+  netns) — tracked follow-up (needs a named network + non-localhost MCP endpoint).
 - **Networking:** rootless **pasta** is the default (NOT a bridge — rootless
   bridges are unsupported on most hosts). Shared services publish their port to
   `0.0.0.0` and pod members reach them via the host gateway
@@ -36,6 +40,9 @@ dependency and the substrate every other integration rides on.
   opt-in bridge override (`lib/harnessed-isolated.sh:111-121`).
 - **`host.containers.internal`** is whitelisted by the egress firewall
   (`lib/egress-firewall.sh:62-63`) so the pod can reach host-published services.
+- **Docker caveats:** egress firewall is **best-effort** under rootless docker (NET_ADMIN is
+  limited), and shared service sidecars are **not yet wired for docker** (they assume the podman
+  `host.containers.internal` name). The podman path is the reference implementation.
 - **Transparent mode is degenerate:** a single container, no pod, no hatago
   (`lib/harnessed-transparent.sh:94`).
 
@@ -248,10 +255,59 @@ Exactly **one** harness per stack (design §8), selected by `harness:` in
   bridge's plugins are Bun-based) and the pre-installed
   **`@drmikecrowe/omp-claude-hooks-bridge`** extension
   (`base/Dockerfile.harnessed-omp:17-25`).
+- **opencode** (`harnessed-opencode` image) — `base/Dockerfile.harnessed-opencode`
+  (`FROM harnessed-base`). Built **lazily** via `ensure_opencode_image`
+  (`lib/harnessed-common.sh`) only when an `harness: opencode` stack first launches
+  (plan HRN-02), so claude/omp-only users never pull opencode. Pinned **opencode
+  1.17.9** (`ARG OPENCODE_VERSION=1.17.9`), with a baked global
+  `~/.config/opencode/opencode.json` declaring one remote (Streamable-HTTP) MCP
+  server → the hatago hub (`http://localhost:3535/mcp`). Image var
+  `HARNESSED_OPENCODE_IMAGE`. Isolated auth seeds via a read-only mount of host
+  `~/.local/share/opencode/auth.json` (no `.claude.json` stub).
+- **gemini** (`harnessed-gemini` image) — `base/Dockerfile.harnessed-gemini`
+  (`FROM harnessed-base`). Built **lazily** via `ensure_gemini_image`
+  (`lib/harnessed-common.sh`) only when an `harness: gemini` stack first launches
+  (plan HRN-03), so non-gemini users never pull it. The gemini-cli is already
+  installed and working in `harnessed-base` (v0.46.0, pure-JS, no broken
+  postinstall), so the image just bakes a global `~/.gemini/settings.json`
+  declaring one remote (Streamable-HTTP) MCP server → the hatago hub
+  (`http://localhost:3535/mcp`). Image var `HARNESSED_GEMINI_IMAGE`. Auth: host
+  `~/.gemini` OAuth creds (mounted) or `GEMINI_API_KEY`/`GOOGLE_API_KEY` env.
+- **antigravity** (`harnessed-antigravity` image, `agy` CLI) —
+  `base/Dockerfile.harnessed-antigravity` (`FROM harnessed-base`). Built **lazily**
+  via `ensure_antigravity_image` (`lib/harnessed-common.sh`) only when an
+  `harness: antigravity` stack first launches (plan HRN-04). The `agy` CLI is
+  installed via the official vendor curl installer
+  (`curl -fsSL https://antigravity.google/cli/install.sh | bash` — a standalone Go
+  binary in `~/.local/bin`). A baked `~/.gemini/config/mcp_config.json` declares
+  one remote server (`serverUrl`) → the hatago hub (`http://localhost:3535/mcp`).
+  Image var `HARNESSED_ANTIGRAVITY_IMAGE`. Auth: `ANTIGRAVITY_API_KEY` env or
+  one-time OAuth creds.
+- **codex** (`harnessed-codex` image, OpenAI Codex CLI) —
+  `base/Dockerfile.harnessed-codex` (`FROM harnessed-base`). Built **lazily**
+  via `ensure_codex_image` (`lib/harnessed-common.sh`) only when an
+  `harness: codex` stack first launches (plan HRN-05). The codex-cli is already
+  installed and working in `harnessed-base` (v0.139.0, `npm:@openai/codex` ships
+  platform binaries as optionalDependencies — no blocked postinstall), so the image
+  just bakes a global `~/.codex/config.toml` whose `[mcp_servers.hatago]` entry
+  declares one remote (Streamable-HTTP) MCP server → the hatago hub
+  (`url = "http://localhost:3535/mcp"` — codex 0.139+ natively supports remote
+  Streamable-HTTP MCP, no stdio bridge). It mounts the **same** `.claude/` profile
+  for parity but does **not** natively consume Claude skills/commands. Image var
+  `HARNESSED_CODEX_IMAGE`. Auth: host `~/.codex/auth.json` (mounted ro) or
+  `OPENAI_API_KEY` env.
 - **Canonical format = Claude Code** (design §8). omp consumes the **same**
-  `.claude/` profile as claude via the bridge — no re-authoring. The omp base
-  recipe (`recipes/omp/recipe.yaml`) only **documents** the bridge extension
-  dependency; it contributes no profile files of its own.
+  `.claude/` profile as claude via the bridge — no re-authoring. opencode also
+  consumes the same profile, reading `.claude/skills/**/SKILL.md` +
+  `~/.claude/CLAUDE.md` **natively** (no bridge), but it does **not** read
+  `.claude/commands` or `.claude/agents` (skills + CLAUDE.md/AGENTS.md only), and
+  its MCP is wired via the baked `~/.config/opencode` config rather than
+  `.mcp.json`. **gemini, antigravity, and codex** mount the same `.claude/` profile for
+  parity but do **not** natively consume any Claude assets (their native formats
+  differ) — their real capability wiring is MCP via the image-baked config →
+  hatago. The omp, opencode, gemini, antigravity, and codex base recipes (`recipes/omp`,
+  `recipes/opencode`, `recipes/gemini`, `recipes/antigravity`, `recipes/codex`) only **document**
+  their extension/config dependencies; none contributes profile files of its own.
 - **Transparent** (`stacks/transparent/`) mounts host `~/.claude`,
   `~/.codex`, `~/.config/opencode`, `~/.gemini` **live** (the degenerate,
   "my-laptop-sandboxed" case). It is the old `container` SKU; the `container`
@@ -262,12 +318,12 @@ Exactly **one** harness per stack (design §8), selected by `harness:` in
 ```
 HOST (podman/docker rootless)
   │
-  ├── harnessed (bash bootstrap) ──lib/harnessed-*.sh──▶ podman pod create/run/exec
+  ├── harnessed (bash bootstrap) ──lib/harnessed-*.sh──▶ pod create/run/exec (podman) | --network container: (docker)
   │        │
   │        └── harnessed-tools (python assembler, emit-only) ──▶ profiles/<stack>/ + scans
   │
-  └── pod: harnessed-<stack>-<proj>  (shared netns)
-        ├── [ harness: claude | omp ]  ──▶ .mcp.json → http://localhost:3535/mcp
+  └── group: harnessed-<stack>-<proj>  (shared netns: podman pod | docker --network container: pair)
+        ├── [ harness: claude | omp | opencode | gemini | antigravity | codex ]  ──▶ .mcp.json → http://localhost:3535/mcp
         │      mounts: §4a host-integration + profile (.claude/) + ro credential
         │
         └── [ hatago hub ]  :3535

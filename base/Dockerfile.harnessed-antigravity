@@ -1,0 +1,47 @@
+# harnessed-antigravity — the Antigravity CLI (`agy`, Google) harness image.
+#
+# FROM harnessed-base (lineage only, §6) + the `agy` CLI (a standalone native binary) + a baked
+# global MCP config that points agy at the hatago hub. All harnesses consume the SAME committed
+# Claude-canonical profile (.claude/) — design §8 — but agy does NOT natively read Claude
+# skills/commands (it is gemini-cli-derived, living under ~/.gemini/); its real capability wiring
+# here is MCP via hatago. The profile is still mounted for parity. Build the base first.
+#
+# Why the official installer (not mise/pnpm): `agy` is a Go binary served by Google's installer
+# (the npm package `agy` is an unrelated 2022 placeholder squat — never use it). The installer
+# fetches a sha512-verified native binary into ~/.local/bin/agy — the SAME curl-installer exception
+# already granted to the claude + opencode harnesses. ~/.local/bin is already on PATH in the base
+# image (the claude install relies on this). The built image is covered by the build-time + nightly
+# image supply-chain scans (BLD-02 / SEC-04).
+#
+# Lazy-built: `ensure_antigravity_image` (lib/harnessed-common.sh) builds this only when an
+# antigravity stack first launches (plan 04-03 / HRN-04).
+#
+# AUTH CAVEAT (isolated mode): agy authenticates via Google OAuth and persists tokens in the OS
+# system keyring (Secret Service); it has NO documented API-key env-var. A clean-room container has
+# no keyring daemon, so agy prompts for an interactive browser/printed-URL login on first launch and
+# does not persist across recreates. This is a known limitation of the antigravity harness in
+# isolated mode (the harness builds + launches + reaches hatago regardless); see docs.
+
+FROM harnessed-base:latest
+
+# Install the agy CLI via the official vendor installer (native binary → ~/.local/bin/agy, already on
+# PATH). The installer queries Google's signed manifest, verifies sha512, and wires PATH via
+# `agy install`. No version-pin flag is exposed by the installer (agy self-updates from the manifest).
+RUN curl -fsSL https://antigravity.google/cli/install.sh | bash
+
+# Bake the global agy MCP config: ONE remote MCP server → the hatago hub. agy reads the shared
+# ~/.gemini/config/mcp_config.json (migrated path as of agy 1.0.3) and uses `serverUrl` for a remote
+# Streamable-HTTP server (NOT gemini-cli's `httpUrl`/`url`). The endpoint is the fixed in-pod hub
+# address (shared pod netns), so this is static.
+RUN mkdir -p /home/harnessed/.gemini/config && \
+    cat > /home/harnessed/.gemini/config/mcp_config.json <<'JSON'
+{
+  "mcpServers": {
+    "hatago": {
+      "serverUrl": "http://localhost:3535/mcp"
+    }
+  }
+}
+JSON
+
+CMD ["/bin/bash"]

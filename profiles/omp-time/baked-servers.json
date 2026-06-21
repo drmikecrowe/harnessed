@@ -1,0 +1,13 @@
+{
+  "stack": "omp-time",
+  "servers": [
+    {
+      "name": "time",
+      "command": "uvx",
+      "args": [
+        "mcp-server-time"
+      ],
+      "transport": "stdio"
+    }
+  ]
+}

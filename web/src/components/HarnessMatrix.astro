@@ -1,0 +1,57 @@
+---
+import Section from "./Section.astro";
+import HarnessCard from "./HarnessCard.astro";
+import { harnesses } from "../data/harnesses";
+---
+
+<Section id="harnesses" class="matrix">
+  <header class="section-head section-head--center" data-reveal>
+    <h2 class="t-heading-lg">Six harnesses, one canonical profile.</h2>
+    <p class="lead">
+      Claude Code format is the single source of truth. Other harnesses adapt
+      out of it, with no re-authoring.
+    </p>
+  </header>
+
+  <div class="card-grid" data-reveal>
+    {
+      harnesses.map((h) => (
+        <div class="card-slot">
+          <HarnessCard
+            name={h.name}
+            variant={h.variant}
+            tagline={h.tagline}
+            hero={h.hero}
+          />
+        </div>
+      ))
+    }
+  </div>
+</Section>
+
+<style>
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-xl);
+  }
+  @media (max-width: 1023px) {
+    .card-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (max-width: 767px) {
+    .card-grid {
+      display: flex;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      gap: var(--space-md);
+      padding-bottom: var(--space-sm);
+      -webkit-overflow-scrolling: touch;
+    }
+    .card-slot {
+      flex: 0 0 78%;
+      scroll-snap-align: start;
+    }
+  }
+</style>

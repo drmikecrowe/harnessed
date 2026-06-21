@@ -1,0 +1,89 @@
+---
+import Section from "./Section.astro";
+import Icon from "./Icon.astro";
+
+const steps = [
+  {
+    label: "Step 1",
+    icon: "puzzle",
+    title: "Compose",
+    body: "Pick a harness, add recipes (MCP servers and skills). Author one stack.yaml.",
+  },
+  {
+    label: "Step 2",
+    icon: "hammer",
+    title: "Build",
+    body: "harnessed build assembles a committed profile, scans the supply chain, and builds pinned images.",
+  },
+  {
+    label: "Step 3",
+    icon: "player-play",
+    title: "Run",
+    body: "Launch an isolated pod: harness plus hatago plus shared services. Exactly what the stack declares, nothing more.",
+  },
+];
+---
+
+<Section id="how" class="how">
+  <header class="section-head section-head--center" data-reveal>
+    <h2 class="t-heading-lg">Compose, build, run.</h2>
+  </header>
+
+  <ol class="steps" role="list" data-reveal>
+    {
+      steps.map((s) => (
+        <li class="step">
+          <span class="step-icon">
+            <Icon name={s.icon} size={28} />
+          </span>
+          <span class="step-label">{s.label}</span>
+          <h3 class="t-card-title">{s.title}</h3>
+          <p class="t-body-sm step-body">{s.body}</p>
+        </li>
+      ))
+    }
+  </ol>
+</Section>
+
+<style>
+  .how {
+    background: var(--color-surface-soft);
+  }
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-xl);
+  }
+  .step {
+    background: var(--color-canvas);
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-xl);
+    padding: var(--space-xxl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+  .step-icon {
+    color: var(--color-ink);
+    display: inline-flex;
+    margin-bottom: var(--space-xs);
+  }
+  .step-label {
+    font-size: var(--text-caption);
+    font-weight: 600;
+    color: var(--color-steel);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .step h3 {
+    color: var(--color-ink);
+  }
+  .step-body {
+    color: var(--color-charcoal);
+  }
+  @media (max-width: 1023px) {
+    .steps {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

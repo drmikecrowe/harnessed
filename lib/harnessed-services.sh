@@ -20,7 +20,7 @@
 # isolated launcher's HARNESSED_NET override (plan 04-01 Task 3).
 ensure_named_net() {
     local net="$1"
-    "$CONTAINER_RUNTIME" network exists "$net" 2>/dev/null \
+    rt_network_exists "$net" \
         || "$CONTAINER_RUNTIME" network create "$net" >/dev/null
 }
 
@@ -91,7 +91,7 @@ svc_up() {
     image_exists "$image" || build_service_image "$service"
 
     # Ensure the named volume (service-scoped persistence).
-    "$CONTAINER_RUNTIME" volume exists "$volume" 2>/dev/null \
+    rt_volume_exists "$volume" \
         || "$CONTAINER_RUNTIME" volume create "$volume" >/dev/null
 
     local port
@@ -121,7 +121,7 @@ svc_up() {
         -p "$port:$port" \
         --name "$service" \
         --label harnessed-service="$service" \
-        --userns=keep-id \
+        $(rt_userns_args) \
         -v "$volume:$data_path" \
         "${svc_env_args[@]}" \
         "$image" >/dev/null || svc_run_rc=$?

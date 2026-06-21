@@ -1,0 +1,156 @@
+---
+import Button from "./Button.astro";
+import { navLinks, repoUrl } from "../data/nav";
+---
+
+<header class="nav">
+  <div class="container nav-inner">
+    <a class="wordmark" href={import.meta.env.BASE_URL}>harnessed</a>
+
+    <input id="nav-toggle" type="checkbox" class="nav-toggle" autocomplete="off" />
+    <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu">
+      <span class="burger-line"></span>
+      <span class="burger-line"></span>
+      <span class="burger-line"></span>
+    </label>
+
+    <nav class="nav-menu" aria-label="Primary">
+      <ul class="nav-links" role="list">
+        {
+          navLinks.map((l) => (
+            <li>
+              <a href={l.href}>{l.label}</a>
+            </li>
+          ))
+        }
+      </ul>
+      <div class="nav-actions">
+        <Button variant="secondary" href={repoUrl}>GitHub</Button>
+        <Button variant="primary" href="#quickstart">Get started</Button>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: relative;
+    background: var(--color-canvas);
+    border-bottom: 1px solid var(--color-hairline-soft);
+  }
+  .nav-inner {
+    height: var(--nav-height);
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+  }
+  .wordmark {
+    font-size: var(--text-card-title);
+    font-weight: 600;
+    color: var(--color-ink);
+    letter-spacing: -0.01em;
+    margin-right: auto;
+  }
+
+  /* ---- checkbox hack (visually hidden, keyboard-reachable) ---- */
+  .nav-toggle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* ---- desktop: inline row ---- */
+  .nav-menu {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xxl);
+  }
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xl);
+  }
+  .nav-links a {
+    font-size: var(--text-body-sm);
+    font-weight: 500;
+    color: var(--color-charcoal);
+  }
+  .nav-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+  .nav-burger {
+    display: none;
+  }
+
+  /* ---- mobile (<1024px): drawer ---- */
+  @media (max-width: 1023px) {
+    .nav-burger {
+      display: inline-flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+      width: 40px;
+      height: 40px;
+      padding: 0 8px;
+      cursor: pointer;
+      border-radius: var(--radius-md);
+    }
+    .burger-line {
+      display: block;
+      height: 2px;
+      width: 100%;
+      background: var(--color-ink);
+      border-radius: 1px;
+    }
+
+    .nav-menu {
+      position: absolute;
+      top: var(--nav-height);
+      left: 0;
+      right: 0;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      background: var(--color-canvas);
+      border-bottom: 1px solid var(--color-hairline);
+      box-shadow: var(--shadow-2);
+      padding: 0 var(--container-gutter);
+      transform: translateY(-8px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--dur) var(--ease),
+        transform var(--dur) var(--ease);
+    }
+    .nav-toggle:checked ~ .nav-menu {
+      transform: none;
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .nav-links {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+    }
+    .nav-links li {
+      border-bottom: 1px solid var(--color-hairline-soft);
+    }
+    .nav-links a {
+      display: block;
+      padding: var(--space-md) 0;
+      font-size: var(--text-body-md);
+    }
+    .nav-actions {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-sm);
+      padding: var(--space-md) 0;
+    }
+    .nav-actions :global(.btn) {
+      width: 100%;
+    }
+  }
+</style>

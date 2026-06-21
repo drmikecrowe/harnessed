@@ -1,0 +1,64 @@
+---
+import Section from "./Section.astro";
+import CodeBlock from "./CodeBlock.astro";
+import Button from "./Button.astro";
+import { repoUrl } from "../data/nav";
+
+const blocks = [
+  {
+    label: "install",
+    code: "curl -fsSL https://raw.githubusercontent.com/drmikecrowe/harnessed/main/install.sh | bash",
+  },
+  { label: "build an isolated stack", code: "harnessed build tracer-time" },
+  { label: "run it", code: "harnessed tracer-time" },
+];
+---
+
+<Section id="quickstart" class="qs">
+  <header class="section-head section-head--center" data-reveal>
+    <h2 class="t-heading-lg">Get running in a minute.</h2>
+  </header>
+
+  <div class="qs-blocks" data-reveal>
+    {blocks.map((b) => <CodeBlock label={b.label} code={b.code} />)}
+  </div>
+
+  <div class="qs-note" data-reveal>
+    <p class="t-body-sm">
+      Or sandbox your laptop: <code class="inline-code">harnessed transparent</code>.
+    </p>
+    <Button variant="link" href={repoUrl}>View on GitHub</Button>
+  </div>
+</Section>
+
+<style>
+  .qs {
+    background: var(--color-canvas);
+  }
+  .qs-blocks {
+    max-width: 720px;
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+  .qs-note {
+    max-width: 720px;
+    margin: var(--space-xl) auto 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+  }
+  .qs-note p {
+    color: var(--color-steel);
+  }
+  .inline-code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+  }
+</style>

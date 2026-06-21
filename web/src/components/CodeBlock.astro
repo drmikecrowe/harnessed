@@ -1,0 +1,53 @@
+---
+/** DESIGN.md inline-code styling: monospace, surface bg, badge-code label. */
+interface Props {
+  label?: string;
+  code: string;
+}
+
+const { label, code } = Astro.props;
+---
+
+<div class="cblock">
+  {
+    label && (
+      <span class="cblock-label">
+        <code>{label}</code>
+      </span>
+    )
+  }
+  <pre><code>{code}</code></pre>
+</div>
+
+<style>
+  .cblock {
+    background: var(--color-surface);
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .cblock-label {
+    display: inline-block;
+    margin: var(--space-md) 0 0 var(--space-md);
+  }
+  .cblock-label code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: var(--color-brand-blue-200);
+    color: var(--color-brand-blue-deep);
+    font-size: var(--text-caption);
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+  }
+  .cblock pre {
+    margin: 0;
+    padding: var(--space-md) var(--space-lg);
+    overflow-x: auto;
+  }
+  .cblock code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: var(--text-body-sm);
+    color: var(--color-ink);
+    white-space: pre;
+  }
+</style>

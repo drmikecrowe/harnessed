@@ -1,0 +1,27 @@
+# harnessed-codex — the OpenAI Codex CLI harness image.
+#
+# FROM harnessed-base (lineage only, §6) + a baked global config that points codex's MCP at the
+# hatago hub. codex is ALREADY installed and working in the base image (npm:@openai/codex — it ships
+# per-platform Rust binaries as optionalDependencies, so no blocked postinstall, unlike opencode),
+# so this image only bakes the config. All harnesses consume the SAME committed Claude-canonical
+# profile (.claude/) — design §8 — but codex does NOT natively consume Claude skills/commands (it
+# reads AGENTS.md + its own ~/.codex/prompts format). The profile is still mounted for parity;
+# codex's real capability wiring here is MCP via hatago. Build the base first.
+#
+# Lazy-built: `ensure_codex_image` (lib/harnessed-common.sh) builds this only when a codex stack
+# first launches (plan 04-03 / HRN-05).
+
+FROM harnessed-base:latest
+
+# Bake the global codex config: ONE remote MCP server → the hatago hub. codex 0.139+ natively
+# supports remote Streamable-HTTP MCP servers — this is the EXACT shape codex itself writes for
+# `codex mcp add hatago --url <url>` (verified against the base image's codex): a
+# `[mcp_servers.<name>]` table with a `url` key. The endpoint is the fixed in-pod hub address
+# (shared pod netns), so this config is static. codex does NOT read the profile's .claude/.mcp.json.
+RUN mkdir -p /home/harnessed/.codex && \
+    cat > /home/harnessed/.codex/config.toml <<'TOML'
+[mcp_servers.hatago]
+url = "http://localhost:3535/mcp"
+TOML
+
+CMD ["/bin/bash"]

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "logLevel": "info",
+  "mcpServers": {
+    "time": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-time"
+      ]
+    }
+  }
+}

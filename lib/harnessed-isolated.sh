@@ -34,16 +34,25 @@ harnessed_isolated() {
     local stack="$1" project_path="$2" fresh="${3:-false}"
 
     # Read the stack's harness (flat scalar grep — the manifest is authored). Default claude.
-    # omp stacks run the harness member from harnessed-omp:latest and attach via omp
-    # (--profile); claude stacks use harnessed-claude:latest + claude --mcp-config (plan 04-03).
+    # omp stacks run from harnessed-omp and attach via `omp --profile`; opencode stacks run from
+    # harnessed-opencode and attach via `opencode` (TUI in the project cwd); claude stacks use
+    # harnessed-claude + `claude --mcp-config` (plan 04-03 / HRN-01, HRN-02).
     local harness
     harness="$(sed -n 's/^harness:[[:space:]]*//p' "$HARNESSED_DIR/stacks/$stack/stack.yaml" | tr -d '[:space:]')"
     harness="${harness:-claude}"
     local harness_image="$HARNESSED_CLAUDE_IMAGE"
     [ "$harness" = "omp" ] && harness_image="$HARNESSED_OMP_IMAGE"
-    # LAZY: build the omp image only when an omp stack actually launches (HRN-01). The claude +
-    # hatago images are ensured by the bootstrap's ensure_images call before this function.
+    [ "$harness" = "opencode" ] && harness_image="$HARNESSED_OPENCODE_IMAGE"
+    [ "$harness" = "gemini" ] && harness_image="$HARNESSED_GEMINI_IMAGE"
+    [ "$harness" = "antigravity" ] && harness_image="$HARNESSED_ANTIGRAVITY_IMAGE"
+    [ "$harness" = "codex" ] && harness_image="$HARNESSED_CODEX_IMAGE"
+    # LAZY: build a non-claude harness image only when such a stack actually launches (HRN-01..05).
+    # The claude + hatago images are ensured by the bootstrap's ensure_images call before this.
     [ "$harness" = "omp" ] && ensure_omp_image
+    [ "$harness" = "opencode" ] && ensure_opencode_image
+    [ "$harness" = "gemini" ] && ensure_gemini_image
+    [ "$harness" = "antigravity" ] && ensure_antigravity_image
+    [ "$harness" = "codex" ] && ensure_codex_image
 
     . "$HARNESSED_DIR/lib/harnessed-mounts.sh"
     . "$HARNESSED_DIR/lib/harnessed-isolated-config.sh"
@@ -70,8 +79,7 @@ harnessed_isolated() {
     # --fresh: tear down any existing pod/instance before recreate — no state bleed (D-11).
     if [ "$fresh" = "true" ]; then
         print_info "--fresh: tearing down existing pod/instance for $instance"
-        "$CONTAINER_RUNTIME" pod rm -f "$pod" >/dev/null 2>&1 || true
-        "$CONTAINER_RUNTIME" rm -f "$instance" >/dev/null 2>&1 || true
+        rt_group_teardown "$instance" "$pod"
     fi
 
     # Re-attach to an already-running instance (interactive only; like transparent).
@@ -80,6 +88,18 @@ harnessed_isolated() {
         if [ "$harness" = "omp" ]; then
             "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
                 bash -l -c "$mise_init && omp --profile \"$instance\""
+        elif [ "$harness" = "opencode" ]; then
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+                bash -l -c "$mise_init && opencode"
+        elif [ "$harness" = "gemini" ]; then
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+                bash -l -c "$mise_init && gemini"
+        elif [ "$harness" = "antigravity" ]; then
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+                bash -l -c "$mise_init && agy"
+        elif [ "$harness" = "codex" ]; then
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+                bash -l -c "$mise_init && codex"
         else
             "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
                 bash -l -c "$mise_init && claude"
@@ -94,8 +114,9 @@ harnessed_isolated() {
     # §4a host-integration mounts (reused verbatim — D-16): userns/firewall/agents/signing/project.
     local MOUNT_ARGS=()
     harnessed_host_integration_mounts "$project_path" "$relpath"
-    # §4b isolated auth: ro credential + generated token-free stub (D-07).
-    harnessed_isolated_auth_mounts "$instance"
+    # §4b isolated auth: harness-aware. claude/omp → ro ~/.claude/.credentials.json + token-free
+    # .claude.json stub (D-07); opencode → ro ~/.local/share/opencode/auth.json (HRN-02).
+    harnessed_isolated_auth_mounts "$instance" "$harness"
     # Config source = the committed profile ONLY (no host config layer — unlike transparent).
     # Copy-on-start into a per-instance state dir and mount THAT rw: the committed profile is the
     # immutable template, so the running harness never writes runtime state (projects/, backups/,
@@ -132,7 +153,7 @@ harnessed_isolated() {
     # host UID so mounted project/profile/credential paths are owned correctly. userns is a
     # POD-level property (set on the infra container); pod MEMBERS must NOT pass --userns, so it
     # is stripped from the member args below.
-    "$CONTAINER_RUNTIME" pod create --name "$pod" --userns=keep-id "${pod_net_args[@]}" >/dev/null
+    rt_group_create "$instance" "$pod" "${pod_net_args[@]}"
 
     # Auto-start the stack's declared shared services (plan 04-01 / SVC-02, design §9: an instance
     # starts it if absent; it outlives instances). The service is a STANDALONE container on the
@@ -158,7 +179,7 @@ harnessed_isolated() {
     secret_env="$(resolve_secret_env)" || resolve_rc=$?
     if [ "$resolve_rc" -ne 0 ]; then
         print_error "secret resolution failed; aborting launch"
-        "$CONTAINER_RUNTIME" pod rm -f "$pod" >/dev/null 2>&1 || true
+        rt_group_teardown "$instance" "$pod"
         return 1
     fi
     local -a env_args=()
@@ -171,7 +192,7 @@ harnessed_isolated() {
     [ -n "$secret_env" ] && trap 'rm -f "${secret_env:-}" 2>/dev/null || true' RETURN
     # hatago member: serve ONE Streamable-HTTP endpoint on :3535 from the mounted per-stack
     # config (which baked stdio servers to expose; the image CMD is overridden to add --config).
-    "$CONTAINER_RUNTIME" run -d --pod "$pod" --name "${instance}-hatago" \
+    "$CONTAINER_RUNTIME" run -d $(rt_hatago_placement "$instance" "$pod") --name "${instance}-hatago" \
         "${env_args[@]}" \
         -v "$profile_dir/hatago.config.json:$CONTAINER_HOME/hatago.config.json:ro" \
         "$HARNESSED_HATAGO_IMAGE" \
@@ -185,7 +206,7 @@ harnessed_isolated() {
         [ "$_arg" = "--userns=keep-id" ] && continue
         member_args+=( "$_arg" )
     done
-    "$CONTAINER_RUNTIME" run -d --pod "$pod" --name "$instance" "${member_args[@]}" \
+    "$CONTAINER_RUNTIME" run -d $(rt_harness_placement "$instance" "$pod") --name "$instance" "${member_args[@]}" \
         "${env_args[@]}" \
         "$harness_image" sleep infinity >/dev/null
 
@@ -220,6 +241,29 @@ harnessed_isolated() {
     if [ "$harness" = "omp" ]; then
         "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
             bash -l -c "$mise_init && omp --profile \"$instance\""
+    elif [ "$harness" = "opencode" ]; then
+        # opencode reads the SAME profile's .claude/skills natively and reaches hatago via its baked
+        # ~/.config/opencode config (it ignores .mcp.json), so a bare `opencode` in the project cwd
+        # is the attach (no MCP flags); shared pod netns → same localhost:3535 endpoint.
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            bash -l -c "$mise_init && opencode"
+    elif [ "$harness" = "gemini" ]; then
+        # gemini reaches hatago via its baked ~/.gemini/settings.json (mcpServers → localhost:3535);
+        # a bare `gemini` in the project cwd is the attach. Claude skills/commands are not natively
+        # consumed (its native assets differ) — the profile is still mounted for parity.
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            bash -l -c "$mise_init && gemini"
+    elif [ "$harness" = "antigravity" ]; then
+        # antigravity (agy) reaches hatago via its baked ~/.gemini/config/mcp_config.json
+        # (serverUrl → localhost:3535); a bare `agy` in the project cwd is the attach.
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            bash -l -c "$mise_init && agy"
+    elif [ "$harness" = "codex" ]; then
+        # codex reaches hatago via its baked ~/.codex/config.toml ([mcp_servers.hatago] url, native
+        # streamable-HTTP); a bare `codex` in the project cwd is the attach. Reads AGENTS.md but not
+        # Claude skills/commands — the profile is still mounted for parity.
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            bash -l -c "$mise_init && codex"
     else
         "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
             bash -l -c "$mise_init && claude --mcp-config '$mcp_cfg' --strict-mcp-config"

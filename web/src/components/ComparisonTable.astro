@@ -1,0 +1,81 @@
+---
+/** DESIGN.md `data-table` — modes comparison. */
+
+const headers = ["Mode", "Config source", "When to use"];
+const rows: { mode: string; source: string; when: string }[] = [
+  {
+    mode: "transparent",
+    source: "host ~/.claude (+ .codex / .config/opencode / .gemini) bind-mounted live",
+    when: "My laptop, sandboxed. Your own config, firewalled.",
+  },
+  {
+    mode: "isolated",
+    source: "auth seeded + an assembled stack profile mounted; nothing from host config",
+    when: "Clean room with exactly what I picked. Curated skill/MCP combos per container.",
+  },
+];
+---
+
+<div class="table-scroll">
+  <table class="dtable">
+    <thead>
+      <tr>
+        {headers.map((h) => <th>{h}</th>)}
+      </tr>
+    </thead>
+    <tbody>
+      {
+        rows.map((r) => (
+          <tr>
+            <td><code class="mode-code">{r.mode}</code></td>
+            <td>{r.source}</td>
+            <td>{r.when}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</div>
+
+<style>
+  .table-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-md);
+  }
+  .dtable {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--color-canvas);
+    font-size: var(--text-body-sm);
+    color: var(--color-ink);
+    min-width: 640px;
+  }
+  .dtable thead th {
+    background: var(--color-surface);
+    color: var(--color-steel);
+    font-size: var(--text-caption);
+    font-weight: 600;
+    text-align: left;
+    padding: var(--space-sm) var(--space-md);
+    border-bottom: 1px solid var(--color-hairline);
+  }
+  .dtable tbody td {
+    padding: var(--space-md);
+    border-bottom: 1px solid var(--color-hairline-soft);
+    vertical-align: top;
+    color: var(--color-charcoal);
+  }
+  .dtable tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .mode-code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: var(--color-brand-blue-200);
+    color: var(--color-brand-blue-deep);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-size: var(--text-body-sm);
+    font-weight: 600;
+  }
+</style>

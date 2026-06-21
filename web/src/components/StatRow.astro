@@ -1,0 +1,45 @@
+---
+import Section from "./Section.astro";
+import { stats } from "../data/stats";
+---
+
+<Section tight class="stats">
+  <div class="stat-row" data-reveal>
+    {
+      stats.map((s) => (
+        <div class="stat">
+          <div class="t-heading-lg stat-value">{s.value}</div>
+          <div class="t-body-sm stat-label">{s.label}</div>
+        </div>
+      ))
+    }
+  </div>
+</Section>
+
+<style>
+  .stats {
+    background: var(--color-surface);
+    border-block: 1px solid var(--color-hairline-soft);
+  }
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-xl);
+  }
+  .stat {
+    text-align: center;
+  }
+  .stat-value {
+    color: var(--color-ink);
+  }
+  .stat-label {
+    color: var(--color-steel);
+    margin-top: var(--space-xxs);
+  }
+  @media (max-width: 767px) {
+    .stat-row {
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-xxl);
+    }
+  }
+</style>

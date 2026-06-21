@@ -1,0 +1,17 @@
+# Stack: codex-time — the codex proof stack (plan 04-03 / HRN-05, design §8/§11).
+#
+# The SAME Claude-canonical `time` recipe (one stdio MCP server + one skill) run on the OpenAI Codex
+# harness, plus the `codex` base recipe that DOCUMENTS the harness contract (it contributes no
+# profile files of its own). Proves a codex stack reaches the `time` server through the hatago hub
+# via its image-baked ~/.codex/config.toml ([mcp_servers.hatago] url). The capability test renders
+# its report (the hatago `hatago://servers` MCP check + mounted-profile filesystem checks are
+# harness-independent; the `codex exec` backstop is the rare fallback). Note: codex does not natively
+# consume the profile's Claude skill — the skill shows as present (profile mounted) but codex's real
+# capability here is the MCP `time` server via hatago.
+#
+# Only codex-stack fields are exercised; `services`, `permissions`, and `state` use defaults and are
+# parsed forward by the assembler (D-14).
+name: codex-time
+config: isolated      # isolated (default) | transparent
+harness: codex        # claude | omp | opencode | gemini | antigravity | codex  (exactly one)
+recipes: [time, codex]

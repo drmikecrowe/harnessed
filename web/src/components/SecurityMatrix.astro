@@ -1,0 +1,44 @@
+---
+import Section from "./Section.astro";
+import SecurityTile from "./SecurityTile.astro";
+import { securityFeatures } from "../data/security";
+---
+
+<Section id="security" class="sec">
+  <header class="section-head" data-reveal>
+    <h2 class="t-heading-lg">Security is the default, not an add-on.</h2>
+    <p class="lead">
+      Every stack runs pnpm, a build-time scan gate, an egress firewall, and
+      secrets that never touch an image layer.
+    </p>
+  </header>
+
+  <div class="tile-grid" data-reveal>
+    {
+      securityFeatures.map((f) => (
+        <SecurityTile icon={f.icon} title={f.title} desc={f.desc} />
+      ))
+    }
+  </div>
+</Section>
+
+<style>
+  .sec {
+    background: var(--color-canvas);
+  }
+  .tile-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-xl);
+  }
+  @media (max-width: 1023px) {
+    .tile-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (max-width: 480px) {
+    .tile-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,18 @@
+---
+/** Standard section wrapper with container + rhythm. */
+interface Props {
+  id?: string;
+  hero?: boolean;
+  tight?: boolean;
+  class?: string;
+}
+
+const { id, hero = false, tight = false, class: className = "" } = Astro.props;
+const mod = hero ? "section--hero" : tight ? "section--tight" : "section";
+---
+
+<section id={id} class={`${mod} ${className}`.trim()}>
+  <div class="container">
+    <slot />
+  </div>
+</section>

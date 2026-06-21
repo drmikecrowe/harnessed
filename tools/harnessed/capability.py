@@ -236,16 +236,20 @@ def launch_headless(
 
 
 def teardown(instance: str, *, harnessed_bin: str | None = None) -> None:
-    """Tear the instance down after the test (`--fresh` semantics; no state bleed, T-02-08)."""
+    """Tear the instance down after the test (`--fresh` semantics; no state bleed, T-02-08).
+
+    Provider-neutral: podman groups the members in a pod (`pod rm -f` removes harness + hatago);
+    docker has no pod, so the two flat members (<instance> + <instance>-hatago, sharing a netns)
+    are force-removed directly.
+    """
     runtime = _runtime()
-    # Direct pod removal is the most reliable teardown (removes harness + hatago members).
+    cmd = (
+        [runtime, "pod", "rm", "-f", instance]
+        if runtime == "podman"
+        else [runtime, "rm", "-f", instance, f"{instance}-hatago"]
+    )
     try:
-        subprocess.run(
-            [runtime, "pod", "rm", "-f", instance],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except (subprocess.SubprocessError, OSError):
         pass
 
@@ -297,17 +301,30 @@ def _harness_of(root: Path | str, stack_name: str) -> str:
 
 
 def _llm_cmd(harness: str, prompt: str) -> list[str]:
-    """The headless LLM-backstop argv for a harness (plan 04-03).
+    """The headless LLM-backstop argv for a harness (plan 04-03 / HRN-02..HRN-05).
 
-    claude → claude -p <prompt> --output-format json
-    omp    → omp    -p <prompt> --mode json
+    claude      → claude -p <prompt> --output-format json
+    omp         → omp    -p <prompt> --mode json
+    opencode    → opencode run <prompt> --format json
+    gemini      → gemini -p <prompt> --output-format json
+    antigravity → agy    -p <prompt>
+    codex       → codex exec <prompt>
 
     The PRIMARY MCP/skill checks do not use this — only the fallback when the machine-readable
     sources are empty. Callers append harness-specific isolation flags (claude: --mcp-config +
-    --strict-mcp-config; omp: --profile) before rendering to a bash snippet for `_exec`.
+    --strict-mcp-config; omp: --profile; opencode/gemini/antigravity/codex: none — each reads its
+    own image-baked MCP config) before rendering to a bash snippet for `_exec`.
     """
     if harness == "omp":
         return ["omp", "-p", prompt, "--mode", "json"]
+    if harness == "opencode":
+        return ["opencode", "run", prompt, "--format", "json"]
+    if harness == "gemini":
+        return ["gemini", "-p", prompt, "--output-format", "json"]
+    if harness == "antigravity":
+        return ["agy", "-p", prompt]
+    if harness == "codex":
+        return ["codex", "exec", prompt]
     return ["claude", "-p", prompt, "--output-format", "json"]
 
 
@@ -412,8 +429,9 @@ def _mcp_from_llm(instance: str, harness: str = "claude") -> dict[str, str]:
 
     claude uses the SAME `--mcp-config <profile .mcp.json> --strict-mcp-config` the launcher uses,
     so the view matches the real isolated session (hatago only; no host/project/account-synced
-    servers). omp has no `mcp list` parity — it is probed via `omp -p --mode json --profile` (the
-    hatago resource is the authoritative MCP source either way; this is the rare fallback).
+    servers). omp has no `mcp list` parity — it is probed via `omp -p --mode json --profile`.
+    opencode reads its baked ~/.config/opencode MCP config (hatago only), so no extra flags. The
+    hatago resource is the authoritative MCP source either way; this is the rare fallback.
     """
     prompt = (
         "List the MCP servers currently connected (including any provided through the hatago hub). "
@@ -422,8 +440,9 @@ def _mcp_from_llm(instance: str, harness: str = "claude") -> dict[str, str]:
     argv = _llm_cmd(harness, prompt)
     if harness == "omp":
         argv += ["--profile", instance]
-    else:
+    elif harness == "claude":
         argv += ["--mcp-config", f"{CONTAINER_HOME}/.claude/.mcp.json", "--strict-mcp-config"]
+    # opencode/gemini/antigravity/codex: no isolation flags — each reads its own image-baked MCP config.
     raw = _exec(instance, _llm_cmd_str(argv), timeout=180)
     names = _names_from_llm_json(raw)
     return {name: "connected (llm backstop)" for name in names}

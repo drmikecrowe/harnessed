@@ -1,0 +1,48 @@
+---
+import Section from "./Section.astro";
+import Button from "./Button.astro";
+import { docsUrls } from "../data/nav";
+---
+
+<Section id="hero" hero class="hero">
+  <div class="hero-content" data-reveal>
+    <h1 class="t-hero-display hero-headline">
+      Isolated, composable harness stacks.
+    </h1>
+    <p class="t-subtitle hero-subtitle">
+      One executable launches an isolated pod with your AI harness, an MCP hub,
+      and optional shared services.
+    </p>
+    <div class="hero-cta">
+      <Button variant="primary" href="#quickstart">Get started</Button>
+      <Button variant="secondary" href={docsUrls.design}>Read the docs</Button>
+    </div>
+  </div>
+</Section>
+
+<style>
+  .hero {
+    text-align: center;
+  }
+  .hero-content {
+    max-width: 760px;
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xl);
+  }
+  .hero-headline {
+    color: var(--color-ink);
+  }
+  .hero-subtitle {
+    color: var(--color-steel);
+    max-width: 600px;
+  }
+  .hero-cta {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+</style>

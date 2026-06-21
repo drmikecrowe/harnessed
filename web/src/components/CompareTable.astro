@@ -1,0 +1,146 @@
+---
+import Section from "./Section.astro";
+import { repoUrl } from "../data/nav";
+
+const headers = [
+  "Project",
+  "Primary use case",
+  "Auth model",
+  "Threat model",
+  "Runtime",
+  "AI harnesses",
+];
+
+const rows: {
+  project: string;
+  url: string;
+  self?: boolean;
+  use: string;
+  auth: string;
+  threat: string;
+  runtime: string;
+  harness: string;
+}[] = [
+  {
+    project: "harnessed",
+    url: repoUrl,
+    self: true,
+    use: "Power-user daily driver across multiple AI harnesses",
+    auth: "Seamless; host credentials shared into container",
+    threat: "Contain the AI, not the repo",
+    runtime: "Podman (rootless) or Docker",
+    harness: "claude, omp, opencode, gemini, antigravity, codex",
+  },
+  {
+    project: "NVIDIA OpenShell",
+    url: "https://github.com/NVIDIA/OpenShell",
+    use: "Enterprise sandboxing with policy enforcement",
+    auth: "Credential providers inject keys; never exposed",
+    threat: "Full defense-in-depth",
+    runtime: "K3s inside Docker",
+    harness: "Claude, OpenCode, Codex, Copilot",
+  },
+  {
+    project: "Anthropic devcontainer",
+    url: "https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo",
+    use: "VS Code team dev environments",
+    auth: "Per-container setup",
+    threat: "Consistent team environments",
+    runtime: "Docker / Dev Containers",
+    harness: "Claude",
+  },
+  {
+    project: "Trail of Bits",
+    url: "https://github.com/trailofbits/claude-code-devcontainer",
+    use: "Security auditing of untrusted code",
+    auth: "Fully isolated",
+    threat: "Malicious repos / adversarial input",
+    runtime: "Docker",
+    harness: "Claude",
+  },
+];
+---
+
+<Section id="compare" class="compare">
+  <header class="section-head" data-reveal>
+    <h2 class="t-heading-lg">How it compares.</h2>
+    <p class="lead">
+      Three projects solve adjacent problems. Pick the one that matches your
+      threat model and workflow.
+    </p>
+  </header>
+
+  <div class="table-scroll" data-reveal>
+    <table class="ctable">
+      <thead>
+        <tr>
+          {headers.map((h) => <th>{h}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {
+          rows.map((r) => (
+            <tr class={r.self ? "row-self" : ""}>
+              <td>
+                <a class="proj" href={r.url}>
+                  {r.project}
+                </a>
+              </td>
+              <td>{r.use}</td>
+              <td>{r.auth}</td>
+              <td>{r.threat}</td>
+              <td>{r.runtime}</td>
+              <td>{r.harness}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+</Section>
+
+<style>
+  .compare {
+    background: var(--color-surface-soft);
+  }
+  .table-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-md);
+  }
+  .ctable {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--color-canvas);
+    font-size: var(--text-body-sm);
+    color: var(--color-charcoal);
+    min-width: 960px;
+  }
+  .ctable thead th {
+    background: var(--color-surface);
+    color: var(--color-steel);
+    font-size: var(--text-caption);
+    font-weight: 600;
+    text-align: left;
+    padding: var(--space-sm) var(--space-md);
+    border-bottom: 1px solid var(--color-hairline);
+    white-space: nowrap;
+  }
+  .ctable tbody td {
+    padding: var(--space-md);
+    border-bottom: 1px solid var(--color-hairline-soft);
+    vertical-align: top;
+  }
+  .ctable tbody tr:last-child td {
+    border-bottom: none;
+  }
+  .row-self {
+    background: var(--color-surface-soft);
+  }
+  .proj {
+    font-size: var(--text-body-sm);
+    font-weight: 600;
+    color: var(--color-ink);
+    white-space: nowrap;
+  }
+</style>

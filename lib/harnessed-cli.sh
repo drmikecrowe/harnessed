@@ -36,8 +36,7 @@ stop_stack() {
         [ -n "$pod" ] || continue
         matched=true
         stop_instance "$pod"
-    done < <("$CONTAINER_RUNTIME" pod ls --filter "name=harnessed-${stack}-" \
-              --filter status=running --format '{{.Name}}')
+    done < <(rt_group_names "harnessed-${stack}-" running)
     [ "$matched" = true ] || print_info "No running instances for stack '$stack'"
 }
 
@@ -49,20 +48,20 @@ rm_stack() {
         [ -n "$pod" ] || continue
         matched=true
         remove_instance "$pod"
-    done < <("$CONTAINER_RUNTIME" pod ls --filter "name=harnessed-${stack}-" --format '{{.Name}}')
+    done < <(rt_group_names "harnessed-${stack}-")
     [ "$matched" = true ] || print_info "No instances to remove for stack '$stack'"
 }
 
 # new_stack <stack> [harness] [recipes]: scaffold stacks/<stack>/stack.yaml (CLI-02).
-# Validates harness ∈ {claude, omp} (hard error otherwise — P-04-09), refuses to overwrite an
-# existing stack (P-04-08), and writes the tracer-time manifest shape (name/config/harness/
+# Validates harness ∈ {claude, omp, opencode} (hard error otherwise — P-04-09), refuses to overwrite
+# an existing stack (P-04-08), and writes the tracer-time manifest shape (name/config/harness/
 # recipes). Recipes need NOT pre-exist (warn, don't fail) — a recipe can be authored after the
 # stack, so absence is a warning, not an error (P-04-09).
 new_stack() {
     local stack="$1" harness="${2:-claude}" recipes="${3:-}"
     case "$harness" in
-        claude|omp) ;;
-        *) print_error "unknown harness: $harness (claude|omp)"; exit 1 ;;
+        claude|omp|opencode|gemini|antigravity|codex) ;;
+        *) print_error "unknown harness: $harness (claude|omp|opencode|gemini|antigravity|codex)"; exit 1 ;;
     esac
     local stack_dir="$HARNESSED_DIR/stacks/$stack"
     [ -f "$stack_dir/stack.yaml" ] && { print_error "stack '$stack' already exists"; exit 1; }
@@ -77,7 +76,7 @@ new_stack() {
 # Stack: $stack — scaffolded by harnessed new.
 name: $stack
 config: isolated      # isolated (default) | transparent
-harness: $harness     # claude | omp  (exactly one)
+harness: $harness     # claude | omp | opencode | gemini | antigravity | codex  (exactly one)
 recipes: $recipes_yaml
 EOF
     # Warn (don't fail) on recipes that don't exist yet — authorable after the stack.

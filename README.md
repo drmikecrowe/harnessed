@@ -2,7 +2,7 @@
   <img src=".github/README/banner.png" alt="Banner" />
 </p>
 
-#### harnessed — Isolated, composable harness stacks (Claude Code / omp + an MCP hub + optional shared services)
+#### harnessed — Isolated, composable harness stacks (Claude Code / omp / opencode / gemini / antigravity / codex + an MCP hub + optional shared services)
 
 You can read my [announcement here](https://mikesshinyobjects.tech/posts/2026/2026-03-20-code-container-isolating-ai-harnesses/)
 
@@ -11,12 +11,12 @@ You can read my [announcement here](https://mikesshinyobjects.tech/posts/2026/20
 > [!WARNING]
 > **Work in progress** — this project is still evolving rapidly and the field of agentic AI security is very young. Use at your own risk.
 >
-> **Docker users:** the egress firewall and related network changes have only been tested with Podman. Behaviour on Docker may differ.
+> **Container runtimes:** isolated mode is provider-agnostic — it runs on **podman** (pods) and **Docker** (a shared network namespace via `--network container:`), abstracted by [`lib/harnessed-runtime.sh`](lib/harnessed-runtime.sh). Verify any host with the harness matrix: `./tools/uat/run-uat.sh 6`. On Docker the egress firewall needs rootless `NET_ADMIN` (best-effort — `--no-firewall` to skip) and shared **service sidecars** aren't wired yet (the `host.containers.internal` name). **Apple `container`** is a tracked follow-up (one VM/IP per container, no shared netns). See [troubleshooting](docs/guides/troubleshooting.md).
 
 ---
 
 `harnessed` is **one executable** that launches **isolated, composable harness stacks** — each a
-podman pod running an AI coding harness (`claude` or `omp`) plus an MCP hub (hatago) plus optional
+podman pod running an AI coding harness (`claude`, `omp`, `opencode`, `gemini`, `antigravity`, or `codex`) plus an MCP hub (hatago) plus optional
 shared services (hindsight, openbrain, …). You compose a named stack (one harness + chosen recipes)
 and launch an isolated, authenticated instance that exposes **exactly** the skills/commands/MCP/
 services it declares — nothing from the host config — reproducibly, with **podman as the only host
@@ -67,7 +67,7 @@ To uninstall, remove the symlinks and the cloned directory.
 
 Images are built on the host with `podman build` the first time they're needed. The image lineage:
 
-- **`harnessed-base`** → **`harnessed-claude`** / **`harnessed-omp`** — the harness runtimes (mise/node/python + common tooling, then the harness install).
+- **`harnessed-base`** → **`harnessed-claude`** / **`harnessed-omp`** / **`harnessed-opencode`** / **`harnessed-gemini`** / **`harnessed-antigravity`** / **`harnessed-codex`** — the harness runtimes (mise/node/python + common tooling, then the harness install).
 - **`hatago`** — the MCP hub (aggregates a stack's MCP servers behind one HTTP endpoint; light `pnpm dlx`/`uvx` servers baked in).
 - **`harnessed-tools`** — the emit-only assembler image (Python + scanners + pnpm + varlock + `op`). Needed only for `isolated` stacks.
 
@@ -114,7 +114,7 @@ it first.
 | `harnessed svc up \| down \| list <service>` | Manage shared service sidecars (own image + volume) |
 | `harnessed list` | List authored stacks + running instances |
 | `harnessed stop \| rm <stack>` | Stop / remove every instance of a stack |
-| `harnessed new <stack> [--harness claude\|omp] [--recipes a,b,c]` | Scaffold a stack manifest |
+| `harnessed new <stack> [--harness claude\|omp\|opencode\|gemini\|antigravity\|codex] [--recipes a,b,c]` | Scaffold a stack manifest |
 | `harnessed install \| uninstall <stack>` | Write / remove a `~/.local/bin/<stack>` launcher shim |
 | `harnessed auth snyk \| socket` | Set a scanner token (persisted to host `~/.config`; never an image layer) |
 | `harnessed rescan` | Re-scan installed harnessed images online (the nightly timer's trigger) |
@@ -170,7 +170,7 @@ Three projects solve adjacent problems — pick the one that matches your threat
 | **Auth model**       | Seamless — host credentials shared into container    | Credential providers inject keys; never exposed in sandbox               | Per-container setup                                                                                       | Fully isolated                                                           |
 | **Threat model**     | Contain the AI, not the repo                         | Full defense-in-depth (filesystem, network, process, inference)          | Consistent team environments                                                                              | Malicious repos / adversarial input                                      |
 | **Runtime**          | Podman (rootless) or Docker                          | K3s (Kubernetes) inside Docker                                           | Docker / Dev Containers spec                                                                              | Docker                                                                   |
-| **AI harnesses**     | Claude, omp (via bridge)                             | Claude, OpenCode, Codex, Copilot                                         | Claude                                                                                                    | Claude                                                                   |
+| **AI harnesses**     | Claude, omp (via bridge), opencode, gemini, antigravity, codex   | Claude, OpenCode, Codex, Copilot                                           | Claude                                                                                                    | Claude                                                                   |
 
 **Use this project** if you want YOLO-mode AI assistance on your own trusted code (transparent), or
 isolated, composable experimentation across skill/MCP/memory combinations (isolated), without the

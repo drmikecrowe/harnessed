@@ -1,0 +1,14 @@
+# Recipe: antigravity — the Antigravity CLI (`agy`, Google) base recipe (design §8/§11).
+#
+# Contract-only, like recipes/omp and recipes/opencode: it contributes NO MCP servers / skills /
+# commands of its own. It documents the antigravity harness runtime contract so an antigravity stack
+# can reference it explicitly:
+#
+#   - antigravity (agy) reaches the hatago hub via the harnessed-antigravity IMAGE, which bakes
+#     ~/.gemini/config/mcp_config.json with one remote MCP server (serverUrl) pointing at the hub
+#     (http://localhost:3535/mcp). agy does NOT read the profile's .claude/.mcp.json.
+#   - The committed Claude-canonical profile (.claude/) is still mounted for parity, but agy does NOT
+#     natively consume Claude skills/commands/agents. A recipe targeting antigravity should expose
+#     capabilities as MCP servers (through hatago), not Claude skills/commands.
+name: antigravity
+description: Antigravity (agy) base — reach hatago via the image-baked ~/.gemini/config/mcp_config.json.

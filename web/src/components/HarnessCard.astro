@@ -1,0 +1,81 @@
+---
+/**
+ * DESIGN.md `product-card-*` — vibrant gradient identity card.
+ * One card per harness. Radius-hero (32), brand-color identity,
+ * atmospheric radial-gradient highlight (no shadow; color does the work).
+ * White text passes AA at body-sm on every variant (tuned palette).
+ */
+interface Props {
+  name: string;
+  variant: "coral" | "magenta" | "blue" | "purple" | "cyan" | "blue-deep";
+  tagline: string;
+  /** oversized wordmark treatment (claude) */
+  hero?: boolean;
+}
+
+const { name, variant, tagline, hero = false } = Astro.props;
+---
+
+<article class={`hcard hcard--${variant}`}>
+  <h3 class={`hcard-name ${hero ? "t-display-lg" : "t-heading-lg"}`}>
+    {name}
+  </h3>
+  <p class="t-body-sm hcard-tagline">{tagline}</p>
+</article>
+
+<style>
+  .hcard {
+    border-radius: var(--radius-hero);
+    color: var(--color-on-dark);
+    padding: var(--space-xxl);
+    min-height: 260px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: var(--space-xs);
+    position: relative;
+    overflow: hidden;
+  }
+  /* atmospheric depth via internal radial gradient */
+  .hcard::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      circle at 72% 18%,
+      rgba(255, 255, 255, 0.24),
+      transparent 56%
+    );
+    pointer-events: none;
+  }
+  .hcard > * {
+    position: relative;
+    z-index: 1;
+  }
+  .hcard-name {
+    color: #fff;
+    line-height: 1;
+  }
+  .hcard-tagline {
+    color: #fff;
+  }
+
+  .hcard--coral {
+    background: var(--color-brand-coral);
+  }
+  .hcard--magenta {
+    background: var(--color-brand-magenta);
+  }
+  .hcard--blue {
+    background: var(--color-brand-blue);
+  }
+  .hcard--purple {
+    background: var(--color-brand-purple);
+  }
+  .hcard--cyan {
+    background: var(--color-brand-cyan);
+  }
+  .hcard--blue-deep {
+    background: var(--color-brand-blue-deep);
+  }
+</style>

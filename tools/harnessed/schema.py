@@ -25,11 +25,26 @@ from ruamel.yaml import YAML
 _yaml = YAML(typ="safe", pure=True)
 
 # Harness → config directory name (Claude Code canonical, design §8). One harness per stack.
-# omp consumes the SAME Claude-canonical profile (.claude/) via the claude-hooks-bridge —
-# single source of truth (plan 04-03 / HRN-01). No separate config dir, no re-authoring.
+# All harnesses consume the SAME committed Claude-canonical profile (.claude/) — single source of
+# truth (plan 04-03 / HRN-01..HRN-04). They differ only in HOW they read it + reach hatago:
+#   - claude   — native (.mcp.json + skills/commands/agents).
+#   - omp      — Claude hooks/skills via the pre-installed claude-hooks-bridge.
+#   - opencode — reads .claude/skills/**/SKILL.md + ~/.claude/CLAUDE.md natively; MCP via the
+#                image-baked ~/.config/opencode config (it ignores .mcp.json).
+#   - gemini   — MCP via the image-baked ~/.gemini/settings.json (mcpServers → hatago); Claude
+#                skills/commands are NOT natively consumed (its native assets differ).
+#   - antigravity (agy) — MCP via the image-baked ~/.gemini/config/mcp_config.json (serverUrl →
+#                hatago); Claude skills/commands are NOT natively consumed.
+#   - codex    — MCP via the image-baked ~/.codex/config.toml ([mcp_servers.hatago] url → hatago,
+#                native streamable-HTTP); reads AGENTS.md but NOT Claude skills/commands.
+# No separate profile dir, no re-authoring for any harness.
 HARNESS_CONFIG_DIR = {
     "claude": ".claude",
     "omp": ".claude",
+    "opencode": ".claude",
+    "gemini": ".claude",
+    "antigravity": ".claude",
+    "codex": ".claude",
 }
 
 

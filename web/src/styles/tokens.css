@@ -1,0 +1,96 @@
+/* ============================================================
+   harnessed web — design tokens
+   Source of truth: DESIGN.md (MiniMax-inspired system).
+   Brand-color hex are tuned from DESIGN.md color *names* to pass
+   white-text WCAG AA (4.5:1) at body-sm. See plan §Verification.
+   ============================================================ */
+
+:root {
+  /* ---- Surface & ink ---- */
+  --color-primary: #0b0b0b;
+  --color-ink-strong: #000000;
+  --color-ink: #161616;
+  --color-charcoal: #2b2b2b;
+  --color-slate: #545454;
+  --color-steel: #767676;
+  --color-stone: #969696;
+  --color-muted: #b0b0b0;
+
+  --color-canvas: #ffffff;
+  --color-surface: #f5f5f5;
+  --color-surface-soft: #fafafa;
+  --color-hairline: #e3e3e3;
+  --color-hairline-soft: #ececec;
+
+  --color-footer-bg: #0b0b0b;
+  --color-on-primary: #ffffff;
+  --color-on-dark: #ffffff;
+
+  --color-success-bg: #e4f4ea;
+  --color-success-text: #167a3a;
+  --color-error: #d45656;
+
+  /* ---- Brand identity colors (product-card use ONLY) ---- */
+  --color-brand-coral: #d8351a;
+  --color-brand-magenta: #d11a5e;
+  --color-brand-blue: #2152d6;
+  --color-brand-purple: #6e2be0;
+  --color-brand-cyan: #086a82;
+  --color-brand-blue-deep: #1b3fb8;
+  --color-brand-blue-200: #dce7ff;
+  --color-brand-blue-700: #2747c7;
+
+  /* ---- Typography sizes (responsive display uses clamp) ---- */
+  --text-hero-display: clamp(2rem, 3px + 6vw, 5rem);       /* 80 → 32 */
+  --text-display-lg: clamp(2rem, 17px + 3vw, 3.5rem);        /* 56 → 32 */
+  --text-heading-lg: clamp(2rem, 25px + 1.5vw, 2.5rem);      /* 40 → 32 */
+  --text-heading-md: 2rem;     /* 32 */
+  --text-heading-sm: 1.5rem;   /* 24 */
+  --text-card-title: 1.25rem;  /* 20 */
+  --text-subtitle: 1.125rem;   /* 18 */
+  --text-body-md: 1rem;        /* 16 */
+  --text-body-sm: 0.875rem;    /* 14 */
+  --text-caption: 0.8125rem;   /* 13 */
+  --text-micro: 0.75rem;       /* 12 */
+  --text-button-md: 0.875rem;  /* 14 */
+
+  /* ---- Spacing ---- */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --space-xl: 24px;
+  --space-xxl: 32px;
+  --space-xxxl: 40px;
+  --space-section-sm: 48px;
+  --space-section: 64px;
+  --space-section-lg: 80px;
+  --space-hero: 96px;
+
+  /* ---- Radius ---- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-xxl: 20px;
+  --radius-xxxl: 24px;
+  --radius-hero: 32px;
+  --radius-full: 9999px;
+
+  /* ---- Elevation (DESIGN.md §Elevation, flat-forward) ---- */
+  --shadow-1: rgba(0, 0, 0, 0.04) 0px 1px 2px 0px;
+  --shadow-2: rgba(0, 0, 0, 0.08) 0px 4px 6px 0px;
+  --shadow-3: rgba(0, 0, 0, 0.08) 0px 0px 22px 0px;
+  --shadow-4: rgba(36, 36, 36, 0.08) 0px 12px 16px -4px;
+
+  /* ---- Layout ---- */
+  --container-max: 1280px;
+  --container-gutter: 32px;
+  --nav-height: 64px;
+
+  /* ---- Motion ---- */
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --dur: 180ms;
+}

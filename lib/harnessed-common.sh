@@ -19,6 +19,22 @@ HARNESSED_CLAUDE_IMAGE="harnessed-claude:latest"
 # Lazy-built by ensure_omp_image ONLY for omp stacks (plan 04-03 / HRN-01) — claude-only users
 # are never forced to build omp.
 HARNESSED_OMP_IMAGE="harnessed-omp:latest"
+# opencode harness image (FROM harnessed-base + pinned opencode + baked hatago MCP config;
+# design §6/§8). Lazy-built by ensure_opencode_image ONLY for opencode stacks (plan 04-03 / HRN-02)
+# — claude/omp users are never forced to build opencode.
+HARNESSED_OPENCODE_IMAGE="harnessed-opencode:latest"
+# gemini harness image (FROM harnessed-base + the base-installed gemini-cli + baked
+# ~/.gemini/settings.json mcpServers → hatago). Lazy-built by ensure_gemini_image ONLY for gemini
+# stacks (plan 04-03 / HRN-03).
+HARNESSED_GEMINI_IMAGE="harnessed-gemini:latest"
+# antigravity (agy) harness image (FROM harnessed-base + the agy CLI via the vendor installer +
+# baked ~/.gemini/config/mcp_config.json serverUrl → hatago). Lazy-built by ensure_antigravity_image
+# ONLY for antigravity stacks (plan 04-03 / HRN-04).
+HARNESSED_ANTIGRAVITY_IMAGE="harnessed-antigravity:latest"
+# codex harness image (FROM harnessed-base + the base-installed codex + baked ~/.codex/config.toml
+# [mcp_servers.hatago] url → hatago). Lazy-built by ensure_codex_image ONLY for codex stacks
+# (plan 04-03 / HRN-05).
+HARNESSED_CODEX_IMAGE="harnessed-codex:latest"
 # hatago MCP hub image (baked hub + light stdio servers; design §6 / D-06).
 HARNESSED_HATAGO_IMAGE="harnessed-hatago:latest"
 # Build-time assembler image (emit-only; design §15 / D-12). Built on first `harnessed build <stack>`.
@@ -26,6 +42,11 @@ HARNESSED_TOOLS_IMAGE="harnessed-tools:latest"
 # In-container home — the legible session-slug root (design §15 / D-06).
 CONTAINER_HOME="/home/harnessed"
 NO_FIREWALL="${NO_FIREWALL:-false}"
+
+# Runtime abstraction (provider-agnostic isolated mode: podman pods vs docker shared-netns, userns,
+# network/volume existence). Sourced here so every launcher/CLI that sources common.sh gets it.
+# shellcheck source=lib/harnessed-runtime.sh
+. "$HARNESSED_DIR/lib/harnessed-runtime.sh"
 
 # --- Runtime detection (prefer podman, fall back to docker) ----------------
 detect_runtime() {
@@ -103,7 +124,7 @@ build_stack() {
     print_info "Assembling stack '$stack' (emit-only) under $ROOT ..."
     # EMIT step: the assembler only reads/writes the mounted ROOT; it never drives podman.
     # Fail-fast: a recipe lint / collision abort (non-zero) propagates via errexit before emit.
-    "$CONTAINER_RUNTIME" run --rm --userns=keep-id \
+    "$CONTAINER_RUNTIME" run --rm $(rt_userns_args) \
         -v "$ROOT":"$ROOT" -w "$ROOT" \
         "$HARNESSED_TOOLS_IMAGE" assemble "$stack" --root "$ROOT" --build-dir "$ROOT"
 
@@ -135,7 +156,7 @@ build_stack() {
     local TOKEN_ARGS=()
     [ -n "${SNYK_TOKEN:-}" ] && TOKEN_ARGS+=( -e "SNYK_TOKEN=$SNYK_TOKEN" )
     [ -n "${SOCKET_SECURITY_API_KEY:-}" ] && TOKEN_ARGS+=( -e "SOCKET_SECURITY_API_KEY=$SOCKET_SECURITY_API_KEY" )
-    "$CONTAINER_RUNTIME" run --rm --userns=keep-id \
+    "$CONTAINER_RUNTIME" run --rm $(rt_userns_args) \
         "${build_env_args[@]}" \
         "${TOKEN_ARGS[@]}" \
         -v "$ROOT":"$ROOT" -w "$ROOT" \
@@ -194,13 +215,75 @@ ensure_omp_image() {
     fi
 }
 
+# Ensure the opencode harness image exists; build it from base/Dockerfile.harnessed-opencode on
+# first use. LAZY (plan 04-03 / HRN-02): called by the isolated launcher ONLY for `harness: opencode`
+# stacks, so claude/omp users are never forced to build opencode. Mirrors ensure_omp_image. The base
+# image is a prerequisite — build_images covers it.
+ensure_opencode_image() {
+    if ! image_exists "$HARNESSED_OPENCODE_IMAGE"; then
+        if ! image_exists "$HARNESSED_BASE_IMAGE"; then
+            print_warning "harnessed-base not found. Building base first…"
+            build_images false
+        fi
+        print_info "Building $HARNESSED_OPENCODE_IMAGE ..."
+        "$CONTAINER_RUNTIME" build -t "$HARNESSED_OPENCODE_IMAGE" \
+            -f "$HARNESSED_DIR/base/Dockerfile.harnessed-opencode" "$HARNESSED_DIR"
+    fi
+}
+
+# Ensure the gemini harness image exists; build it from base/Dockerfile.harnessed-gemini on first
+# use. LAZY (plan 04-03 / HRN-03): called by the isolated launcher ONLY for `harness: gemini` stacks.
+# Mirrors ensure_omp_image. The base image is a prerequisite — build_images covers it.
+ensure_gemini_image() {
+    if ! image_exists "$HARNESSED_GEMINI_IMAGE"; then
+        if ! image_exists "$HARNESSED_BASE_IMAGE"; then
+            print_warning "harnessed-base not found. Building base first…"
+            build_images false
+        fi
+        print_info "Building $HARNESSED_GEMINI_IMAGE ..."
+        "$CONTAINER_RUNTIME" build -t "$HARNESSED_GEMINI_IMAGE" \
+            -f "$HARNESSED_DIR/base/Dockerfile.harnessed-gemini" "$HARNESSED_DIR"
+    fi
+}
+
+# Ensure the antigravity (agy) harness image exists; build it from base/Dockerfile.harnessed-antigravity
+# on first use. LAZY (plan 04-03 / HRN-04): called by the isolated launcher ONLY for
+# `harness: antigravity` stacks. Mirrors ensure_omp_image. The base image is a prerequisite.
+ensure_antigravity_image() {
+    if ! image_exists "$HARNESSED_ANTIGRAVITY_IMAGE"; then
+        if ! image_exists "$HARNESSED_BASE_IMAGE"; then
+            print_warning "harnessed-base not found. Building base first…"
+            build_images false
+        fi
+        print_info "Building $HARNESSED_ANTIGRAVITY_IMAGE ..."
+        "$CONTAINER_RUNTIME" build -t "$HARNESSED_ANTIGRAVITY_IMAGE" \
+            -f "$HARNESSED_DIR/base/Dockerfile.harnessed-antigravity" "$HARNESSED_DIR"
+    fi
+}
+
+# Ensure the codex harness image exists; build it from base/Dockerfile.harnessed-codex on first use.
+# LAZY (plan 04-03 / HRN-05): called by the isolated launcher ONLY for `harness: codex` stacks.
+# Mirrors ensure_omp_image. The base image is a prerequisite — build_images covers it.
+ensure_codex_image() {
+    if ! image_exists "$HARNESSED_CODEX_IMAGE"; then
+        if ! image_exists "$HARNESSED_BASE_IMAGE"; then
+            print_warning "harnessed-base not found. Building base first…"
+            build_images false
+        fi
+        print_info "Building $HARNESSED_CODEX_IMAGE ..."
+        "$CONTAINER_RUNTIME" build -t "$HARNESSED_CODEX_IMAGE" \
+            -f "$HARNESSED_DIR/base/Dockerfile.harnessed-codex" "$HARNESSED_DIR"
+    fi
+}
+
 # --- Instance lifecycle ----------------------------------------------------
 container_exists()  { "$CONTAINER_RUNTIME" container inspect "$1" >/dev/null 2>&1; }
 container_running() { [ "$("$CONTAINER_RUNTIME" container inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = "true" ]; }
-# Isolated stacks run as a pod named after the instance (harnessed-<stack>-<projhash>); transparent
-# has no pod. `pod exists` is a podman concept (docker has none) — the 2>/dev/null swallows the
-# docker error so the caller cleanly falls through to the single-container path.
-pod_exists() { "$CONTAINER_RUNTIME" pod exists "$1" 2>/dev/null; }
+# Isolated stacks run as a podman POD named after the instance (members live inside) OR, on docker,
+# as two flat containers (<instance> + <instance>-hatago sharing a netns). `pod exists` is podman-
+# only — rt_uses_pods short-circuits it on docker so the lifecycle falls through to the container
+# path (which also handles the -hatago peer).
+pod_exists() { rt_uses_pods && "$CONTAINER_RUNTIME" pod exists "$1" 2>/dev/null; }
 
 # Stable instance name: harnessed-<stack>-<projhash>.
 generate_instance_name() {
@@ -245,6 +328,8 @@ stop_instance() {
     else
         print_warning "Instance is not running: $name"
     fi
+    # docker: no pod groups the members — also stop the hatago peer (rt_uses_pods → podman handled above).
+    rt_uses_pods || { container_exists "${name}-hatago" && "$CONTAINER_RUNTIME" stop -t 0 "${name}-hatago" >/dev/null 2>&1 || true; }
 }
 
 remove_instance() {
@@ -260,6 +345,8 @@ remove_instance() {
     container_running "$name" && "$CONTAINER_RUNTIME" stop -t 0 "$name"
     print_info "Removing instance: $name"
     "$CONTAINER_RUNTIME" rm "$name"
+    # docker: also remove the hatago peer (no pod to group the members).
+    rt_uses_pods || "$CONTAINER_RUNTIME" rm -f "${name}-hatago" >/dev/null 2>&1 || true
     print_success "Instance removed"
 }
 

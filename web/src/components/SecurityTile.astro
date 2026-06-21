@@ -1,0 +1,42 @@
+---
+import Icon from "./Icon.astro";
+
+interface Props {
+  icon: string;
+  title: string;
+  desc: string;
+}
+
+const { icon, title, desc } = Astro.props;
+---
+
+<article class="stile">
+  <span class="stile-icon">
+    <Icon name={icon} size={28} />
+  </span>
+  <h3 class="t-card-title stile-title">{title}</h3>
+  <p class="t-body-sm stile-desc">{desc}</p>
+</article>
+
+<style>
+  .stile {
+    background: var(--color-canvas);
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-xxxl);
+    padding: var(--space-xl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+  .stile-icon {
+    color: var(--color-ink);
+    display: inline-flex;
+    margin-bottom: var(--space-xs);
+  }
+  .stile-title {
+    color: var(--color-ink);
+  }
+  .stile-desc {
+    color: var(--color-steel);
+  }
+</style>

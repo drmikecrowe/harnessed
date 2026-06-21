@@ -46,6 +46,14 @@ A running **stack** is composed **at runtime**, in a podman **pod** on a shared 
 at build time. (`FROM` is linear inheritance + multi-stage `COPY --from`; it cannot union two
 sibling systems. See §6.)
 
+> **Provider abstraction.** The shared-netns group is runtime-abstracted by
+> `lib/harnessed-runtime.sh` (`rt_*` helpers): podman uses a **pod** (`pod create` + `run --pod`,
+> rootless uid via `--userns=keep-id`); docker uses a **shared-netns pair** — hatago runs first,
+> the harness joins with `--network container:<instance>-hatago` (rootless docker remaps uids
+> daemon-side, no `--userns`). Apple `container` has no shared-netns equivalent (one VM+IP per
+> container) and is a **tracked follow-up** (needs a named network + non-localhost MCP endpoint),
+> not yet supported.
+
             podman pod: harnessed-<stack>-<proj>
         ┌──────────────────────────────────────────────┐
         │  [ harnessed-<harness> ]  ──→  [ hatago ]      │
@@ -59,7 +67,7 @@ sibling systems. See §6.)
                    own image · volume · lifecycle              own image · volume · lifecycle
 ```
 
-- **harness container** — runs the harness (`claude`/`omp`), auth seeded, current folder mounted,
+- **harness container** — runs the harness (`claude`/`omp`/`opencode`/`gemini`/`antigravity`/`codex`), auth seeded, current folder mounted,
   stack profile mounted into the harness config dir.
 - **hatago** — MCP hub. Aggregates all of the stack's MCP servers behind **one** HTTP endpoint;
   the harness container's `.mcp.json` points at `localhost:<port>`. Light `npx`/`uvx` stdio servers run as
@@ -141,7 +149,7 @@ images" operator. So systems are **not** combined via `FROM`; they are combined 
 
 Legitimate build-time images:
 
-- `harnessed-base` — mise/node/python + common tooling → `FROM harnessed-base` → **`harnessed-claude`**, **`harnessed-omp`**.
+- `harnessed-base` — mise/node/python + common tooling → `FROM harnessed-base` → **`harnessed-claude`**, **`harnessed-omp`**, **`harnessed-opencode`**, **`harnessed-gemini`**, **`harnessed-antigravity`**, **`harnessed-codex`**.
 - `hatago` — the hub + the *light* `npx`/`uvx` stdio MCP servers baked in.
 - **Per heavy service** — `services/hindsight/Dockerfile`, `services/openbrain/Dockerfile`, each
   standalone, independently versioned, reusable across stacks.
@@ -227,8 +235,23 @@ harnesses adapt *out* of it:
 - **omp** — consumes Claude-format hooks/skills at runtime via
   `claude-hooks-bridge` (`~/Programming/AI/omp-extensions/claude-hooks-bridge`) +
   `lib-pi-adapter.sh`. **No re-authoring.** The `omp` base recipe pulls these in.
+- **opencode** — consumes the **same** Claude-canonical profile: it reads `.claude/skills/**/SKILL.md`
+  and `~/.claude/CLAUDE.md` natively (no bridge, no re-authoring). MCP is wired via the image-baked
+  `~/.config/opencode/opencode.json`, which declares one remote (Streamable-HTTP) MCP server pointing
+  at the hatago hub — opencode **ignores `.mcp.json`**. Caveat: `.claude/commands` and `.claude/agents`
+  are NOT consumed (skills + CLAUDE.md/AGENTS.md port directly).
+- **gemini** — mounts the **same** `.claude/` profile as claude/omp/opencode (`HARNESS_CONFIG_DIR["gemini"] = ".claude"`)
+  but does NOT natively consume Claude skills/commands (its native asset format differs). Capability wiring is MCP via the
+  image-baked `~/.gemini/settings.json`, whose `mcpServers` points one remote (Streamable-HTTP) server at the hatago hub.
+- **antigravity (agy)** — mounts the **same** `.claude/` profile (`HARNESS_CONFIG_DIR["antigravity"] = ".claude"`) but likewise
+  does NOT natively consume Claude skills/commands. Capability wiring is MCP via the image-baked
+  `~/.gemini/config/mcp_config.json`, whose `mcpServers` points one remote server (`serverUrl`) at the hatago hub.
+- **codex (OpenAI Codex CLI)** — mounts the **same** `.claude/` profile (`HARNESS_CONFIG_DIR["codex"] = ".claude"`) but likewise
+  does NOT natively consume Claude skills/commands (it reads `AGENTS.md` + its own `~/.codex/prompts` format). Capability wiring is MCP via the
+  image-baked `~/.codex/config.toml`, whose `[mcp_servers.hatago]` entry points one remote (Streamable-HTTP) server at the hatago hub
+  (`url = "http://localhost:3535/mcp"` — codex 0.139+ natively supports remote Streamable-HTTP MCP, no stdio bridge).
 
-**One harness per stack.** A stack targets exactly `claude` *or* `omp`, never both at once.
+**One harness per stack.** A stack targets exactly one of `claude`, `omp`, `opencode`, `gemini`, `antigravity`, *or* `codex`, never two at once.
 
 ## 9. State & lifecycle
 
@@ -360,7 +383,7 @@ extensions:                     # omp-native extensions installed into the insta
 # isolated stack (recipe-composed)
 name: claude-openbrain-headroom-caveman
 config: isolated              # isolated (default) | transparent
-harness: claude               # claude | omp  (exactly one)
+harness: claude               # claude | omp | opencode | gemini | antigravity | codex  (exactly one)
 permissions: yolo             # prompt (default) | yolo — writes per-harness skip-permission
                               #   config (Permissions.md) into the profile; safe in an isolated instance
 
@@ -430,7 +453,21 @@ Then `claude-openbrain-headroom-caveman [path]` from any directory starts that i
 - **Intra-stack collision policy.** Confirm fail-fast (reuse `sync-plugin-links`' conflict exit)
   is the desired behavior vs last-wins/namespacing when two recipes ship the same skill/command name.
 - **Harness config mount points.** Exact target paths per harness (claude `~/.claude/...`;
-  omp config dir) for the profile mount.
+  omp config dir) for the profile mount. *(Resolved, HRN-02)* opencode mounts the **same** `.claude/`
+  profile as claude/omp (`HARNESS_CONFIG_DIR["opencode"] = ".claude"`), plus a baked
+  `~/.config/opencode/opencode.json` MCP config and a read-only `~/.local/share/opencode/auth.json`.
+- *(Resolved, HRN-03 — gemini)* gemini mounts the **same** `.claude/` profile (`HARNESS_CONFIG_DIR["gemini"] = ".claude"`); the
+  gemini-cli is already installed and working in `harnessed-base` (v0.46.0, pure-JS, no broken postinstall), so the
+  `harnessed-gemini` image just bakes a global `~/.gemini/settings.json` whose `mcpServers` points one remote (Streamable-HTTP)
+  server at `http://localhost:3535/mcp`. Auth: host `~/.gemini` OAuth creds (mounted) or `GEMINI_API_KEY`/`GOOGLE_API_KEY` env.
+- *(Resolved, HRN-04 — antigravity)* antigravity mounts the **same** `.claude/` profile (`HARNESS_CONFIG_DIR["antigravity"] = ".claude"`); the
+  `agy` CLI is installed via the official vendor curl installer (`curl -fsSL https://antigravity.google/cli/install.sh | bash` — a standalone Go binary in `~/.local/bin`). The `harnessed-antigravity` image bakes a `~/.gemini/config/mcp_config.json` whose `mcpServers` points one
+  remote server (`serverUrl`) at `http://localhost:3535/mcp`. Auth: `ANTIGRAVITY_API_KEY` env or one-time OAuth creds.
+- *(Resolved, HRN-05 — codex)* codex mounts the **same** `.claude/` profile (`HARNESS_CONFIG_DIR["codex"] = ".claude"`); codex-cli
+  is already installed and working in `harnessed-base` (v0.139.0, `npm:@openai/codex` ships platform binaries as optionalDependencies —
+  no blocked postinstall), so the `harnessed-codex` image just bakes a global `~/.codex/config.toml` whose `[mcp_servers.hatago]` entry
+  points one remote server (`url = "http://localhost:3535/mcp"`) at the hatago hub (codex 0.139+ natively supports remote Streamable-HTTP MCP —
+  no stdio bridge). Auth: host `~/.codex/auth.json` (mounted ro) or `OPENAI_API_KEY` env.
 - **`container` alias.** Keep `container` as a thin alias → `harnessed transparent` for muscle
   memory, or remove once `harnessed` lands. (Recommendation: keep — zero cost.)
 - **hatago placement.** Confirmed: in the pod over HTTP (not stdio inside the harness container) to keep npx/uvx out of
@@ -500,6 +537,13 @@ just a host launcher running the prebuilt `harnessed-claude` image with the §4a
 
 Net install: `git clone` + symlink the `harnessed` bootstrap; first `build` builds the assembler
 image. Podman/docker is the only thing the user must have.
+
+**Runtime abstraction (provider-agnostic isolated mode).** The shared-netns group is abstracted
+by `lib/harnessed-runtime.sh` (`rt_*`): podman → pod; docker → shared-netns pair
+(`--network container:<hatago>`); Apple `container` not yet (tracked). The harness-matrix UAT —
+`tools/uat/phase-06.sh`, run via `./tools/uat/run-uat.sh 6` (`--quick` = manifest/validation only) —
+is the systematic cross-harness proof and the regression gate for the provider port: one capability
+test per supported harness over the `<harness>-time` proof stacks, plus a fast manifest check.
 
 ## 16. Proposed: secrets — varlock + 1Password (optional)
 
@@ -578,7 +622,7 @@ the behavior is "the instance exposes exactly the MCP servers / skills / command
 **Canonical capability test (per stack):**
 
 1. `harnessed build <stack>` → `harnessed <stack> --fresh <scratch-project>` in **headless** mode
-   (claude `-p … --output-format json`; omp's non-interactive equivalent — exact flags to verify).
+   (claude `-p … --output-format json`; omp's non-interactive equivalent; opencode `opencode run <prompt> --format json`; gemini `gemini -p <prompt>`; antigravity `agy -p <prompt>`; codex `codex exec <prompt>` — exact flags to verify).
 2. Assert the declared capabilities are present, preferring **machine-readable introspection** for
    determinism, with the LLM prompt as the behavioral backstop:
    - **MCP servers** — hatago's `hatago://servers` resource (JSON snapshot of connected servers)
