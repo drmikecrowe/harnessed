@@ -54,14 +54,16 @@ unset SNYK_TOKEN SOCKET_SECURITY_API_KEY
 expected: from a real TTY, `./harnessed auth snyk` completes the browser flow and
 `~/.config/configstore/snyk.json` holds the token; `podman images --filter
 dangling=true` shows no leftover auth layer (the `--rm` guarantee).
-result: [pending] — BLOCKER FIXED 2026-06-19: `snyk auth` runs an OAuth flow whose browser
-redirect targets `http://127.0.0.1:8080/authorization-code/callback`, but the in-container
-listener was unreachable (the auth container published no port). Fixed in `auth_scanner`
-(`lib/harnessed-secrets.sh`) by publishing the callback port loopback-only (`-p 127.0.0.1:8080:8080`);
-rootless pasta forwards it to the container's loopback (validated: a 127.0.0.1:8080 in-container
-listener is now reachable from the host, bound to 127.0.0.1 only — no LAN exposure). Auth should
-now complete; awaiting an operator run to confirm the token persists.
-needs: real TTY + browser + snyk account. (If a `ping` service is up on :8080, stop it first.)
+result: [pending] — BLOCKER FIXED 2026-06-21 (`27fe91b`): `snyk auth` runs an OAuth flow with a
+callback listener on the container's loopback `127.0.0.1:8080`, and snyk redirects the host browser
+to `http://127.0.0.1:8080/authorization-code/callback`. The first fix attempt (`-p 127.0.0.1:8080:8080`)
+FAILED — rootless pasta delivers published ports to the container's outward interface, not its
+loopback, so snyk's 127.0.0.1-only listener reset the connection. Corrected fix in `auth_scanner`
+(`lib/harnessed-secrets.sh`): run the snyk auth container with `--network=host` so snyk's
+`127.0.0.1:8080` IS the host loopback and the redirect lands directly (verified end-to-end: host
+GET → snyk `301 → app.snyk.io/authenticated`). snyk still binds loopback only — no LAN exposure.
+Auth should now complete; awaiting an operator run to confirm the token persists.
+needs: real TTY + browser + snyk account.
 ```bash
 ./harnessed auth snyk
 cat ~/.config/configstore/snyk.json
