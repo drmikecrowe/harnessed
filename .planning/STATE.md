@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 last_updated: "2026-06-21T13:08:15.986Z"
-last_activity: 2026-06-21 -- Phase 06 plans 06-01 + 06-02 executed (pending verification)
+last_activity: 2026-06-21 -- Phase 06 verified: SC-2 + SC-3 PASS, SC-1 GAPS FOUND (stale harnessed-net refs in un-audited files); pending gap closure
 progress:
   total_phases: 6
   completed_phases: 5
@@ -24,12 +24,12 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 06 (tech-debt-cleanup) — PLANS EXECUTED, PENDING VERIFICATION
-Plan: 2 of 2 (06-01 ✓ · 06-02 ✓)
-Status: Plans executed — verification next
-Last activity: 2026-06-21 -- Phase 06 plans 06-01 + 06-02 executed (pending verification)
+Phase: 06 (tech-debt-cleanup) — VERIFIED: GAPS FOUND (SC-1)
+Plan: 2 of 2 executed (06-01 ✓ · 06-02 ✓) · Verification: SC-2 ✓ · SC-3 ✓ · SC-1 ✗ gaps
+Status: Gaps found — gap-closure planning next (`/gsd-plan-phase 6 --gaps`)
+Last activity: 2026-06-21 -- Phase 06 verified: SC-2 + SC-3 PASS, SC-1 GAPS FOUND (stale harnessed-net refs in un-audited files); pending gap closure
 
-Progress: [██████████] 100% plans — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ · Phase 06 ◆ plans executed (verify next)
+Progress: [████████░░] plans done, phase blocked on SC-1 gaps — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ · Phase 06 ◆ gaps found (SC-1)
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 
 - Phase 1: Verify `CLAUDE_CONFIG_DIR` relocates `.claude.json` (top-level file) vs only `.claude/` — choose copy-on-start otherwise (research flag)
 - Phase 2: RESOLVED — the `.claude.json` stub field set (hasCompletedOnboarding, firstStartTime, numStartups, oauthAccount, userID) is proven sufficient for a headless no-prompt boot (gate 2: `claude -p` returned success with no prompt). Pin as a snapshot fixture in a later phase.
+- Phase 6 (SC-1 gap): verification found stale bridge-as-default `harnessed-net` assertions in files plan 06-01 did NOT cover (its `files_modified` listed 6; 06-RESEARCH Item B grep wasn't truly repo-wide). Confirmed against HEAD: `services/ping/server.py:6-7` (docstring contradicts its own :19-25 impl), `tools/harnessed/schema.py:128-131` (ServiceDef docstring — same B1+B4 pattern fixed in 3 peer files but left here), `CLAUDE.md:153` ("pod on harnessed-net" vs pasta default), plus `docs/codebase/INTEGRATIONS.md` (:100,:103,:112-113,:270). Root cause = planning under-inclusion, NOT executor error. Close via `/gsd-plan-phase 6 --gaps` → gap_closure plans → `/gsd-execute-phase 6 --gaps-only`.
 
 ## Deferred Items
 
