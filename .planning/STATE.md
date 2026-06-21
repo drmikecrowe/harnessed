@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-last_updated: "2026-06-21T01:00:00Z"
-last_activity: 2026-06-21 -- Phase 05 fully verified + closed; HV-3 (snyk browser auth) landed after the --network=host callback fix (27fe91b), token persisted; all 7 reqs VERIFIED. Milestone v1.0 at 5/5 phases.
+last_updated: "2026-06-21T11:05:19Z"
+last_activity: 2026-06-21 -- Phase 06 inserted (tech debt: dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene); pending planning. Phases 01–05 remain complete; milestone v1.0 reopened for cleanup.
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
   total_plans: 16
   completed_plans: 16
-  percent: 100
+  percent: 83
 ---
 
 # Project State
@@ -20,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** Compose a named stack and launch an isolated, authenticated instance that exposes exactly the skills/commands/MCP/services it declares — nothing from host config — reproducibly, podman the only host dependency.
-**Current focus:** Phase 05 — secrets-hardening-docs-completeness
+**Current focus:** Phase 06 — tech-debt cleanup (dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene)
 
 ## Current Position
 
-Phase: 05 (secrets-hardening-docs-completeness) — COMPLETE (4/4 plans) + fully VERIFIED (status: passed)
-Plan: 05-04 complete (Phase 05 all 4 plans done — 05-01/02/03/04 ✓); verification = passed
+Phase: 06 (tech-debt cleanup) — INSERTED, pending planning (0 plans). Phase 05 (secrets-hardening-docs-completeness) remains COMPLETE (4/4) + VERIFIED (passed).
+Plan: — (Phase 06 not yet planned; awaiting planning)
 Status: Phase 05 closed. All 7 requirements VERIFIED live (SEC-01..04, DOC-01..03). The 4 human-verification legs all PASS: HV-1/HV-2 (live op:// resolution + build scan, fix 81a7f3f), HV-4 (loginctl enable-linger → Linger=yes), HV-3 (snyk OAuth browser auth → token persisted, after the --network=host callback fix 27fe91b). Phases 03/04 verification artifacts written (UAT promoted to VERIFICATION.md + live re-run) so the stats counter reads them as Complete.
-Last activity: 2026-06-21 -- HV-3 landed; the auth container now runs --network=host (snyk binds the container loopback 127.0.0.1:8080; rootless pasta does not forward published ports there, so -p failed). Milestone v1.0 code-complete + fully verified.
+Last activity: 2026-06-21 -- Phase 06 inserted via /gsd-phase --insert 6 (dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene). Awaiting planning.
 
-Progress: [██████████] 100% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ COMPLETE (all HV legs PASS)
+Progress: [████████░░] 83% — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ · Phase 06 ⏳ pending planning
 
 ## Performance Metrics
 
@@ -89,6 +89,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-15T10:40:00Z
-Stopped at: Phase 02 complete + verified passed; Phase 03 ready to plan/execute
-Resume file: .planning/ROADMAP.md (Phase 3: supply-chain-gate-+-pnpm-everywhere)
+Last session: 2026-06-21T11:05:00Z
+Stopped at: Phase 06 context gathered (tech-debt cleanup) — ready to plan
+Resume file: .planning/phases/06-tech-debt-cleanup/06-CONTEXT.md

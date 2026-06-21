@@ -22,6 +22,7 @@ observable end-to-end capability (vertical-MVP mode).
 - [x] **Phase 3: Supply-Chain Gate + pnpm-Everywhere** - `harnessed build` vets every dependency before it is committed or baked (completed 2026-06-15)
 - [x] **Phase 4: Shared Services + Recipe Breadth + Full CLI** - Concurrent service sidecars, more recipes, and the full operable command/lifecycle surface (completed 2026-06-16)
 - [x] **Phase 5: Secrets, Hardening + Docs Completeness** - Opt-in varlock/1Password secrets, token-gated scanners, nightly re-scan, and the gated doc set (completed 2026-06-21; all 7 requirements VERIFIED live — HV-1..HV-4 all PASS, snyk browser auth landed via the --network=host callback fix)
+- [ ] **Phase 6: Address tech debt: dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene** - Clear post-v1.0 tech debt: remove dead `harnessed-net` (podman network) code, correct stale comments, normalize `*-SUMMARY.md` frontmatter (planned; inserted 2026-06-21)
 
 ## Phase Details
 
@@ -146,10 +147,28 @@ Plans:
 
 - [x] 05-04-PLAN.md — Documentation surface: README + recipe-authoring/stacks/service-authoring/troubleshooting guides + AGENTS.md reconciliation (DOC-01, DOC-02, DOC-03)
 
+### Phase 6: Address tech debt: dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene
+
+**Goal**: Clear accumulated tech debt after the v1.0 milestone — remove dead `harnessed-net` (podman network) code, correct stale comments across code and docs that no longer match shipped behavior, and normalize the `*-SUMMARY.md` frontmatter.
+**Mode:** mvp
+**Depends on**: Phase 5
+**Requirements**: _(pending planning)_
+**Success Criteria** (what must be TRUE):
+
+  1. No dead `harnessed-net` code remains — every reference is live and reachable, or removed
+  2. Stale comments (code + docs) that contradict shipped behavior are corrected
+  3. Every phase `*-SUMMARY.md` carries consistent, well-formed frontmatter
+
+**Plans**: _(pending planning — phase inserted, not yet planned)_
+
+Plans:
+
+- _(to be defined during planning)_
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -158,3 +177,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 3. Supply-Chain Gate + pnpm-Everywhere | 2/2 | Complete    | 2026-06-16 |
 | 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
 | 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-21 |
+| 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 0/? | Planned | — |
