@@ -54,8 +54,14 @@ unset SNYK_TOKEN SOCKET_SECURITY_API_KEY
 expected: from a real TTY, `./harnessed auth snyk` completes the browser flow and
 `~/.config/configstore/snyk.json` holds the token; `podman images --filter
 dangling=true` shows no leftover auth layer (the `--rm` guarantee).
-result: [pending]
-needs: real TTY + browser + snyk account.
+result: [pending] — BLOCKER FIXED 2026-06-19: `snyk auth` runs an OAuth flow whose browser
+redirect targets `http://127.0.0.1:8080/authorization-code/callback`, but the in-container
+listener was unreachable (the auth container published no port). Fixed in `auth_scanner`
+(`lib/harnessed-secrets.sh`) by publishing the callback port loopback-only (`-p 127.0.0.1:8080:8080`);
+rootless pasta forwards it to the container's loopback (validated: a 127.0.0.1:8080 in-container
+listener is now reachable from the host, bound to 127.0.0.1 only — no LAN exposure). Auth should
+now complete; awaiting an operator run to confirm the token persists.
+needs: real TTY + browser + snyk account. (If a `ping` service is up on :8080, stop it first.)
 ```bash
 ./harnessed auth snyk
 cat ~/.config/configstore/snyk.json
