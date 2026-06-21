@@ -177,4 +177,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Supply-Chain Gate + pnpm-Everywhere | 2/2 | Complete    | 2026-06-16 |
 | 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
 | 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-21 |
-| 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 2/2 | Complete   | 2026-06-21 |
+| 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 3/3 | Complete    | 2026-06-21 |
