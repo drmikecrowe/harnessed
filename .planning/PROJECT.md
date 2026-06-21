@@ -135,4 +135,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-14 after Phase 1 (Containerized Engine + Transparent Stack)*
+*Last updated: 2026-06-21 — milestone v1.0 complete (all 6 phases shipped; Phase 06 tech-debt-cleanup closed SC-1/SC-2/SC-3). NOTE: the Active/Validated split above has NOT been migrated phase-by-phase since Phase 1 — a full milestone review (`/gsd-complete-milestone`) should move shipped items Active → Validated.*
