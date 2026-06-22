@@ -1,302 +1,348 @@
 # Technology Stack
 
-**Analysis Date:** 2026-06-22
+> Reference for the `harnessed` codebase. Covers languages, runtimes, frameworks,
+> package managers, key dependencies, and configuration approach.
+>
+> **Principle:** the host needs exactly one dependency — **Podman** (or Docker). Every
+> image is built and run on the host (`podman build` / `podman run`); there is no
+> daemon-in-container, no API socket mounted, no Docker-out-of-Docker (design §15, `harnessed` header lines 1–7).
 
-`harnessed` is an isolated, composable harness-stack launcher. There is **no
-`package.json`, `Cargo.toml`, or `go.mod` at the repo root** — the project is
-deliberately polyglot and host-light. It splits cleanly into two engines:
+---
 
-- a **dependency-free Bash host launcher** (`harnessed` + `lib/*.sh`) that drives
-  podman/docker directly on the host; and
-- an **EMIT-ONLY Python assembler** (`tools/harnessed/*.py`) that runs inside the
-  `harnessed-tools` container image and only reads/writes a mounted build dir —
-  it never drives the daemon (no Docker-out-of-Docker; design §15 / D-12).
+## 1. Languages
 
-The only thing a user must have on the host is **podman or docker**
-(`install.sh:31-33` warns if neither is found). Everything else is provisioned
-inside images.
+### Bash — the primary host CLI
 
-## Languages
+The entire host-side control plane is Bash (`#!/usr/bin/env bash`, `set -euo pipefail`).
+Use Bash for: argument parsing, image lifecycle, pod composition, instance naming,
+firewall application, and just-in-time sourcing of per-feature library modules.
 
-**Primary:**
+| File | Role |
+|---|---|
+| `harnessed` | Root entrypoint (~412 lines). Parses argv, dispatches subcommands, resolves the project path → instance, and launches `transparent` or `isolated` stacks. |
+| `container` | Back-compat alias — `exec "$SCRIPT_DIR/harnessed" transparent "$@"`. |
+| `lib/harnessed-common.sh` | Shared helpers: runtime detection, image build (`build_images`, `build_stack`, `ensure_*_image`), logging, instance lifecycle. |
+| `lib/harnessed-runtime.sh` | Provider abstraction (`rt_*` helpers) hiding podman-pod vs docker-shared-netns differences. |
+| `lib/harnessed-isolated.sh` | Isolated stack launcher (harness pod + hatago). |
+| `lib/harnessed-transparent.sh` | Transparent stack launcher (host-mirror sandbox). |
+| `lib/harnessed-isolated-config.sh` | Isolated auth seeding (ro credential + generated `.claude.json` stub). |
+| `lib/harnessed-secrets.sh` | Opt-in secrets (varlock + 1Password) + scanner-token auth. |
+| `lib/harnessed-services.sh` | Shared service sidecar lifecycle (`svc up|down|list`). |
+| `lib/harnessed-mounts.sh` | Host-integration mount assembly (agents, signing, project). |
+| `lib/harnessed-rescan.sh` | Nightly online image re-scan. |
+| `lib/harnessed-claude-config.sh` | Transparent copy-on-start Claude config. |
+| `lib/harnessed-cli.sh` | `list` / `stop` / `rm` / `new` / `install` subcommand handlers. |
+| `lib/egress-firewall.sh` | iptables egress whitelist (block-by-default). |
+| `install.sh` | One-liner installer: clones repo → `~/.local/share/code-container` + PATH symlinks. |
 
-- **Bash** — the host launcher. `harnessed` is a thin bootstrap that sources
-  `lib/harnessed-common.sh` and dispatches to a per-stack launcher
-  (`lib/harnessed-transparent.sh`, `lib/harnessed-isolated.sh`,
-  `lib/harnessed-services.sh`, `lib/harnessed-mounts.sh`,
-  `lib/harnessed-isolated-config.sh`, `lib/harnessed-claude-config.sh`,
-  `lib/harnessed-secrets.sh`, `lib/harnessed-rescan.sh`,
-  `lib/egress-firewall.sh`). Bash was chosen because every podman/docker call is
-  a host-native shell command — no runtime to install, no version roulette
-  (`docs/harnessed-design.md` §15). `set -euo pipefail` is the baseline
-  (`harnessed:27`).
+**Idioms enforced across the bash modules:**
+- Just-in-time sourcing: feature libraries are `. "$HARNESSED_DIR/lib/..."`'d only in the
+  dispatch arm that needs them (e.g. `lib/harnessed-secrets.sh` is sourced only in the
+  `auth)` and isolated paths), keeping the launch path lean.
+- `rt_*` helpers (`lib/harnessed-runtime.sh`) are the ONLY abstraction over the container
+  runtime — call `rt_uses_pods`, `rt_userns_args`, `rt_group_create`, `rt_hatago_placement`,
+  `rt_harness_placement`, never raw `--pod` / `--network container:` conditionals.
+- Safe subprocess capture under `set -euo pipefail`: `cmd … || rc=$?` swallows a non-zero
+  exit so the launcher doesn't abort (see `lib/harnessed-rescan.sh:51-58`).
 
-- **Python ≥ 3.12** — the assembler. All assembly logic lives in
-  `tools/harnessed/*.py` and runs in a `python:3.13-slim` image
-  (`tools/Dockerfile:13`). The host NEVER runs this Python directly for a build;
-  the launcher `podman run`s the `harnessed-tools` image
-  (`lib/harnessed-common.sh` `ensure_tools_image` / `build_stack`). The one
-  host-Python code path is `harnessed test <stack>`, which resolves deps via
-  `uv run --no-project --with ruamel.yaml --with rich` first
-  (`harnessed:368-377`) so the persistent host surface stays "podman only."
+### Python — the build-time assembler (emit-only)
 
-**Secondary:**
+Python is the **build-time assembler** and the **scanner/capability-test** engine. It runs
+inside the `harnessed-tools` image (`FROM python:3.13-slim`, `tools/Dockerfile`) and, for
+the host-side capability test, via `uv run` or a host `python3`. It **never** invokes
+podman/docker from inside the image and never mounts a daemon socket (`tools/Dockerfile` header).
 
-- **YAML manifests** — the declarative inputs and policy:
-  `stacks/<name>/stack.yaml`, `recipes/<name>/recipe.yaml`,
-  `services/<name>/service.yaml`, and `lib/pnpm/config.yaml`. Parsed with
-  `ruamel.yaml` `typ="safe"` (`tools/harnessed/schema.py:23-25`).
-- **Dockerfile** — image lineage. `FROM` is **lineage only** (design §6):
-  `base/Dockerfile.harnessed-base` → six harness images
-  (`base/Dockerfile.harnessed-{claude,omp,opencode,gemini,antigravity,codex}`),
-  plus `base/Dockerfile.hatago`. Side images: `tools/Dockerfile` (assembler),
-  `services/ping/Dockerfile` (sidecar).
-- **Python for service sidecars** — `services/ping/server.py` is a FastMCP
-  streamable-http server (see INTEGRATIONS.md).
+Use Python for: parsing/validating manifests, fanning skills/commands into the profile,
+merging the hatago config, emitting the harness `.mcp.json`, and all supply-chain scanning.
 
-## Runtime
+| Module | Role |
+|---|---|
+| `tools/harnessed/cli.py` | `harnessed-tools` argparse entrypoint (`assemble` / `test` / `scan` / `scan-image` / `scan-image-online`). |
+| `tools/harnessed/schema.py` | Parse + validate `recipe.yaml` / `stack.yaml` into typed dataclasses. Tolerant of unknown fields (design D-14). |
+| `tools/harnessed/assemble.py` | Orchestrate: load stack + recipes → merge → hand to `emit`. |
+| `tools/harnessed/emit.py` | Write `profiles/<stack>/.claude/**`, `hatago.config.json`, the harness `.mcp.json`, and the baked-server manifest. |
+| `tools/harnessed/scan.py` | Supply-chain scan gate (osv-scanner + pip-audit + snyk + socket), CVSS ≥ 7.0 abort. |
+| `tools/harnessed/capability.py` | Per-stack capability test: manifest oracle vs live `--fresh` introspection. |
+| `tools/harnessed/report.py` | Render the capability test result (markdown / JSON). |
+| `tools/harnessed/synclinks.py` | Fan a plugin's skills/commands into harness-native paths; fail-fast on collision. |
 
-- **Container runtime: podman (preferred) or docker (fallback), rootless by
-  default.** This is the *only* host dependency. Detection is the launcher's
-  first act (`detect_runtime()` in `lib/harnessed-common.sh`, sourced from
-  `lib/harnessed-runtime.sh`). Every subsequent image/container/pod call uses
-  `"$CONTAINER_RUNTIME"`, so the launcher is runtime-agnostic.
+Requires **Python ≥ 3.12** (`tools/pyproject.toml`: `requires-python = ">=3.12"`); the image
+pins **3.13**.
 
-  - **Rootless UID mapping:** the in-container `harnessed` user (UID 1000) maps
-    to the host user so bind-mounted project/profile/credential paths are owned
-    correctly. This is **provider-abstracted** by `rt_userns_args()` in
-    `lib/harnessed-runtime.sh`: podman rootless emits `--userns=keep-id`
-    (set once in `lib/harnessed-mounts.sh:16`); rootless docker remaps uids
-    daemon-side and emits nothing (`--userns=keep-id` is invalid there).
-  - **Group model (isolated stacks):** the harness container and hatago **share
-    a netns** so the harness reaches hatago at `http://localhost:3535/mcp` with
-    no cross-container networking. The shared-netns "group" is abstracted by
-    `lib/harnessed-runtime.sh`: podman → a **pod** (`pod create` + `run --pod`;
-    `--userns=keep-id` is a pod-level property, stripped from member args);
-    docker → a **shared-netns pair** (`--network container:<instance>-hatago`).
+### JavaScript / TypeScript — harness CLIs, hatago, and the web site
 
-- **Host Python (transient):** the host never needs Python for a build (the
-  assembler runs in its own image). `harnessed test <stack>` is the lone
-  host-Python path; it resolves its deps via `uv` (`harnessed:368-377`) or an
-  explicit `HARNESSED_PYTHON` override, never pip-installing on the host.
+Node is present in two places: inside the container images (mise-managed, for the harness
+CLIs and the hatago hub) and for the marketing/docs site (`web/`).
 
-- **Lockfiles:** none for the host (it's dependency-free Bash). The assembler's
-  dependency lock is `tools/pyproject.toml` (+ `tools/uv.lock`); image-level
-  pins live as `ARG *_VERSION=` lines in each Dockerfile.
+---
 
-### Networking model (rootless-first)
+## 2. Runtimes & runtime managers
 
-The **default** networking is rootless **pasta**, not a bridge. Rootless bridges
-are unsupported on most hosts — podman netavark returns
-`create bridge: Operation not supported` (see the comment block at
-`lib/harnessed-isolated.sh:23-28` and `lib/harnessed-services.sh:101-105`).
-Therefore:
+### Podman — the container runtime (host-only dependency)
 
-- **Shared services publish their port to `0.0.0.0`** and peers reach them via
-  the podman host gateway **`host.containers.internal:<port>`**
-  (`lib/harnessed-services.sh:71-127`, design §9). This is the **primary**
-  reachability model.
-- **`HARNESSED_NET=<name>` is an explicit opt-in bridge override** for
-  bridge-capable hosts (DNS-by-name, `http://<service>:<port>`)
-  (`lib/harnessed-isolated.sh:140-150`). It is NOT the default.
-- Pod members share a netns either way, so the harness always reaches hatago at
-  `localhost:$HATAGO_PORT` (default 3535).
+Podman is **preferred**; Docker is a fallback. Detection happens once at startup:
 
-### Package managers (multiple, by design)
-
-The repo uses **five** distinct package managers, each scoped to its layer:
-
-| Manager | Scope | Where |
-|---|---|---|
-| **mise** | in-image toolchain versions (node, python, pnpm, fd, ripgrep, harness CLIs) | `base/Dockerfile.harnessed-base:51,68-80`; each `Dockerfile.harnessed-*` |
-| **pnpm @11** | all JavaScript installs (global, per-recipe, hatago bundled, scanner CLIs) — **never npm/npx** | policy at `lib/pnpm/config.yaml`; enforced via `mise settings set npm.package_manager pnpm` (`base/Dockerfile.harnessed-base:68-69`); allowlist at `tools/pnpm-workspace.yaml` |
-| **uv / uvx** (astral) | Python stdio MCP servers + ephemeral `--with` deps for the capability test | `base/Dockerfile.hatago:16-17,38-39`; `harnessed:368-377` |
-| **pip** | the assembler's own deps (installed from `tools/pyproject.toml` at image build) | `tools/Dockerfile:23` |
-| **apt** | system packages in every Ubuntu-based image | all `Dockerfile.*` |
-
-There is **no `.tool-versions`, `mise.toml`, or `.mise.toml`** at the repo root —
-mise is configured **inside the images** via `mise settings set` +
-`mise use -g`, not via a project-local config. The only mise-related host
-artifacts are the generated per-image `~/.config/mise/config.toml`
-(`base/Dockerfile.harnessed-base:80`) and `extra-tools.txt`, which lists
-additional mise-managed CLI tools (`bat`, `eza`, `jq`, `lazygit`, `ast-grep`,
-`ruff`, …) grafted in at build time (`base/Dockerfile.harnessed-base:85-89`).
-
-## Key Dependencies
-
-### Critical (the assembler depends on these)
-
-From `tools/pyproject.toml:10-14`:
-
-- **`ruamel.yaml` `>=0.18,<0.19`** — the only YAML parser. Used in
-  `tools/harnessed/schema.py` to load every manifest into typed dataclasses
-  (`Recipe`, `Stack`, `ServiceDef`, `McpServer`, `FileExt`). The pin matters:
-  the recipe lint (`validate_no_raw_npm` in `schema.py`) regex-walks raw
-  manifest strings, and emit/scan depend on the parsed shape.
-- **`rich` `>=14,<15`** — terminal rendering. The capability report is rendered
-  as a markdown table through `rich.markdown.Markdown`
-  (`tools/harnessed/report.py`); `--json` bypasses rich for clean CI stdout.
-  `rich.console.Console` is threaded through the CLI (`tools/harnessed/cli.py`).
-- **`pip-audit` `==2.10.1`** — the Python half of the always-on supply-chain
-  gate (BLD-02). Pinned exactly because its JSON schema drives
-  `scan.py:_audit_pip`. Runs against any `requirements.txt` in a recipe dir or
-  emitted profile.
-
-### Infrastructure (baked into images, pinned)
-
-- **`osv-scanner` v2.3.8** — a static Go binary, the source/image half of the
-  supply-chain gate. Pinned to a GitHub release and **checksum-verified against
-  the release `SHA256SUMS` before `chmod +x`** (threat T-03-05). The offline OSV
-  DB is pre-seeded per-ecosystem so scans run deterministically with no network
-  hit at scan time (`tools/Dockerfile:37-55`). Invoked offline:
-  `osv-scanner scan source --offline --offline-vulnerabilities` and
-  `scan image --archive` (`tools/harnessed/scan.py:170,326`).
-- **`mise`** — the runtime manager inside every `harnessed-*` image. Installed
-  from `https://mise.run` (`base/Dockerfile.harnessed-base:51`); shims go on
-  PATH (`:52`); `experimental=true` + `npm.package_manager=pnpm` are set before
-  `mise use -g` (`:68-69`) so the `npm:` harness CLIs route through pnpm.
-- **`pnpm` @11** — required (not `@latest`) so the **v11** supply-chain defaults
-  are in effect (Node 22+, `base/Dockerfile.harnessed-base:71`). Policy lives in
-  `lib/pnpm/config.yaml` and is COPY'd into `~/.config/pnpm/config.yaml` in
-  every image that runs pnpm.
-- **1Password CLI (`op`) + desktop app** — installed from 1Password's apt repo
-  in `base/Dockerfile.harnessed-base:27-33`; CLI-only in the tools image
-  (`tools/Dockerfile:57-68`). Primary use is `op-ssh-sign` for SSH commit
-  signing; optional secrets resolution via varlock (§16) is opt-in.
-- **`uv` / `uvx` `0.11.8`** — astral's Python tool runner. Pinned
-  (`base/Dockerfile.hatago:16-17`). `uv tool install` bakes `mcp-server-time`
-  into the hatago image so the stdio child resolves offline at run time
-  (`base/Dockerfile.hatago:38-39`).
-- **hatago MCP hub `@himorishige/hatago-mcp-hub@0.0.16`** — pinned, pnpm global
-  (`base/Dockerfile.hatago:24-35`). See INTEGRATIONS.md.
-
-### Supply-chain scanners (committed, token-gated)
-
-All four scanners ship in the `harnessed-tools` image (`tools/Dockerfile`):
-
-- **`osv-scanner` 2.3.8** + **`pip-audit` 2.10.1** — credential-free, always-on
-  gate (`tools/harnessed/scan.py`).
-- **`snyk`** + **`socket`** (Socket.dev) — pnpm-global, **token-gated**
-  (`tools/Dockerfile:116-125`). They activate only when `SNYK_TOKEN` /
-  `SOCKET_SECURITY_API_KEY` is present (`scan.py:_scan_snyk:226`,
-  `_scan_socket:261`); absent ⇒ warn-and-skip. One-time token setup:
-  `harnessed auth snyk|socket` (`lib/harnessed-secrets.sh:130-193`).
-
-### The managed pnpm supply-chain config
-
-`lib/pnpm/config.yaml` is the **single source of truth** for the JS supply-chain
-policy (BLD-01). It is intentionally v11-shaped — the removed v10 keys
-(`onlyBuiltDependencies`, etc.) are absent, and `allowBuilds` is deliberately
-**not** set globally (pnpm v11 rejects it from global config; it is
-project-scoped in `tools/pnpm-workspace.yaml`). What IS set:
-
-```yaml
-# lib/pnpm/config.yaml:13-17
-minimumReleaseAge: 1440          # minutes (1 day). v11 default; explicit so it is auditable.
-minimumReleaseAgeStrict: true    # fail-closed rather than silently falling back.
-blockExoticSubdeps: true         # block git/tarball/non-registry subdeps.
-verifyStoreIntegrity: true       # content-addressed store integrity check on link.
-strictDepBuilds: true            # lifecycle default-deny: non-zero exit on any unreviewed build/postinstall.
+```bash
+# lib/harnessed-common.sh
+detect_runtime() {
+    if command -v podman >/dev/null 2>&1; then
+        CONTAINER_RUNTIME="podman"
+    elif command -v docker >/dev/null 2>&1; then
+        CONTAINER_RUNTIME="docker"
+    else
+        print_error "Neither podman nor docker found …"; exit 1
+    fi
+    export CONTAINER_RUNTIME
+}
 ```
 
-The `harnessed-base`, `hatago`, and `harnessed-tools` images all COPY this file
-(or its five inlined keys — `tools/Dockerfile:101-103` inlines them because the
-tools build context is `tools/`, not the repo root). The project-scoped
-`allowBuilds` exception list lives in `tools/pnpm-workspace.yaml` (today:
-`snyk: true`, because snyk's postinstall fetches its platform binary).
+All `$CONTAINER_RUNTIME` calls execute on the **host**. The provider differences
+(pod = group on podman; `--network container:<peer>` = shared-netns on docker; `--userns=keep-id`
+podman-only) are hidden behind `lib/harnessed-runtime.sh`. Apple `container` (one VM + IP per
+container) has no shared-netns equivalent and is a tracked follow-up, not yet supported.
 
-## Multi-Harness Support
+### mise — the runtime manager (in-image)
 
-A stack targets **exactly one** of six harnesses (design §8), selected by
-`harness:` in `stacks/<name>/stack.yaml`. The canonical profile format is
-Claude Code (`.claude/`); other harnesses adapt *out* of it
-(`tools/harnessed/schema.py:41-48`, `HARNESS_CONFIG_DIR`):
+[mise](https://mise.jdx.dev) manages Node, pnpm, Python, and CLI tools inside every image
+that needs them (`base/Dockerfile.harnessed-base:50-80`, `tools/Dockerfile:109-114`). Use
+`mise use -g <tool>` to pin a tool version; `mise settings set npm.package_manager pnpm`
+routes `npm:`-backend tools through pnpm so the supply-chain policy governs them.
 
-| Harness | Image (lazy-built) | Profile consume | MCP wiring to hatago |
+Key pins in `base/Dockerfile.harnessed-base`:
+
+```dockerfile
+RUN mise settings set experimental true && \
+    mise settings set npm.package_manager pnpm && \
+    mise use -g \
+        node@22 \
+        pnpm@11 \
+        python@latest \
+        fd \
+        ripgrep \
+        npm:opencode-ai \
+        npm:@openai/codex \
+        npm:@google/gemini-cli
+```
+
+### uv / uvx — Python tool runner (Astral)
+
+[uv](https://astral.sh/uv) is used two ways:
+1. **Hatago image** (`base/Dockerfile.hatago:16-17,39`): `uv tool install` bakes the light
+   stdio MCP server (`mcp-server-time`) so it resolves offline at run time.
+2. **Host capability test** (`harnessed:368-370`): `uv run --no-project --quiet --with ruamel.yaml --with rich`
+   is the preferred path to run the test with zero host-Python pollution.
+
+Pin: `UV_VERSION=0.11.8` (`base/Dockerfile.hatago`).
+
+---
+
+## 3. Frameworks
+
+| Framework | Where | Version |
+|---|---|---|
+| **Astro** | `web/` marketing/docs site (static, GitHub Pages) | `^6.4.8` (`web/package.json`) |
+| **FastMCP / `mcp[cli]`** | `services/ping/server.py` — streamable-HTTP MCP tracer | latest via `pip install "mcp[cli]"` (`services/ping/Dockerfile`) |
+| **hatago MCP hub** | In-pod MCP aggregator (`@himorishige/hatago-mcp-hub`) | `0.0.16` (`base/Dockerfile.hatago`) |
+
+The `web/` site is a minimal Astro project (no UI framework / SSR adapter). Its only
+runtime deps are two `@fontsource` packages + Astro itself. Build: `pnpm build` → static
+output served at `base: "/harnessed/"` (`web/astro.config.mjs`).
+
+---
+
+## 4. Package managers
+
+There is a **strict separation**: no package manager runs on the host. The host only needs
+Podman. Every package install happens inside an image build.
+
+### uv — Python dependencies (tools image)
+
+`tools/pyproject.toml` declares the project; `tools/uv.lock` (78 KB) is the lockfile.
+The image installs via `pip install --no-cache-dir .` (`tools/Dockerfile:23`) from the
+copied `pyproject.toml` + `harnessed/` package.
+
+### pnpm 11 — all JavaScript, everywhere
+
+**Use pnpm for every JS install — global, per-recipe, and hatago's bundled servers. Never
+raw `npm`/`npx`.** (`npx <pkg>` → `pnpm dlx <pkg>`; `npm install` → `pnpm install`.) Recipe
+validation in `schema.py` lints raw `npm`/`npx` and points at the pnpm equivalent (`RecipeLintError`).
+
+The managed supply-chain policy ships from a single source of truth:
+
+| Config file | Scope | Key keys |
+|---|---|---|
+| `lib/pnpm/config.yaml` | **Global** (COPY'd into every image's `~/.config/pnpm/config.yaml`) | `minimumReleaseAge: 1440`, `minimumReleaseAgeStrict: true`, `blockExoticSubdeps: true`, `verifyStoreIntegrity: true`, `strictDepBuilds: true` |
+| `tools/pnpm-workspace.yaml` | **Project-scoped** (pnpm v11 rejects `allowBuilds` from global config) | `allowBuilds: { snyk: true }` — the deliberate exception to lifecycle default-deny |
+
+> **Pitfall (documented in `lib/pnpm/config.yaml:18-23`):** pnpm v11 silently ignores
+> `allowBuilds` in the *global* config and warns on every run. Put lifecycle exceptions in
+> the project's `pnpm-workspace.yaml` instead. `minimumReleaseAgeExclude` is the escape
+> hatch for first-party / just-published deps (e.g. `socket@1.1.122`).
+
+### mise — tool CLIs
+
+`extra-tools.txt` lists extra mise-managed CLIs (`bat`, `eza`, `sd`, `jq`, `lazygit`,
+`ast-grep`, `ruff`, …) installed into `harnessed-base`. One tool per line; rebuild with
+`harnessed build`.
+
+---
+
+## 5. Key dependencies
+
+### Python (`tools/pyproject.toml`, locked in `tools/uv.lock`)
+
+| Package | Version | Purpose |
+|---|---|---|
+| `ruamel.yaml` | `0.18.17` (`>=0.18,<0.19`) | YAML parsing of `recipe.yaml` / `stack.yaml` (`schema.py`, `YAML(typ="safe", pure=True)`) |
+| `rich` | `14.3.4` (`>=14,<15`) | Terminal rendering for the CLI + capability reports |
+| `pip-audit` | `2.10.1` (exact pin) | Python dependency vulnerability scan (warnings only; no CVSS in its JSON) |
+
+`pip-audit` is pinned **exactly** (`==2.10.1`) rather than a range — it is a security tool,
+so reproducibility matters.
+
+### JavaScript — pnpm-global CLIs in the tools image (`tools/Dockerfile:122`)
+
+```dockerfile
+pnpm add -g varlock@1.7.1 @varlock/1password-plugin@1.2.0 snyk@1.1305.1 socket@1.1.122
+```
+
+All four are **inert** in the image: varlock/`op` activate only when a `.env.schema` exists;
+snyk/socket only when their token is in the launcher env (`scan.py` env-gates them).
+
+### JavaScript — hatago image (`base/Dockerfile.hatago`)
+
+```dockerfile
+ARG HATAGO_VERSION=0.0.16
+RUN pnpm add -g "@himorishige/hatago-mcp-hub@${HATAGO_VERSION}"
+ARG MCP_SERVER_TIME_VERSION=2026.6.4
+RUN uv tool install "mcp-server-time==${MCP_SERVER_TIME_VERSION}"
+```
+
+### JavaScript — web site (`web/package.json`)
+
+| Package | Version |
+|---|---|
+| `astro` | `^6.4.8` |
+| `@fontsource/dm-sans` | `^5.2.8` |
+| `@fontsource/inter` | `^5.2.8` |
+
+`packageManager: "pnpm@11.8.0"` is pinned in `web/package.json`.
+
+---
+
+## 6. Image tier
+
+Images are **built on the host** and compose a stack **at runtime**, not at build time.
+`FROM` is lineage only (design §6) — there is no "union two images" operator.
+
+```mermaid
+flowchart TD
+    BASE["harnessed-base<br/>ubuntu:24.04 + mise + node22 + pnpm11 + python + 1Password"]
+    CLAUDE["harnessed-claude<br/>+ Claude Code CLI"]
+    OMP["harnessed-omp<br/>+ omp v16 + claude-hooks-bridge"]
+    OC["harnessed-opencode<br/>+ opencode 1.17.9"]
+    GEM["harnessed-gemini<br/>+ gemini-cli config"]
+    AGY["harnessed-antigravity<br/>+ agy CLI"]
+    CODEX["harnessed-codex<br/>+ codex config"]
+    HUB["harnessed-hatago<br/>+ hatago hub + stdio servers"]
+    TOOLS["harnessed-tools<br/>python:3.13 + assembler + scanners"]
+    BASE --> CLAUDE
+    BASE --> OMP
+    BASE --> OC
+    BASE --> GEM
+    BASE --> AGY
+    BASE --> CODEX
+    BASE --> HUB
+    TOOLS -. emit-only .-> HUB
+```
+
+| Image | Base | Dockerfile | Built when |
 |---|---|---|---|
-| `claude` | `harnessed-claude:latest` | native (skills/commands/agents/hooks) | `claude --mcp-config .mcp.json --strict-mcp-config` (`lib/harnessed-isolated.sh:267-270`) |
-| `omp` | `harnessed-omp:latest` | Claude hooks/skills via pre-installed `claude-hooks-bridge` | via bridge → `localhost:3535` |
-| `opencode` | `harnessed-opencode:latest` | `.claude/skills/**/SKILL.md` + `CLAUDE.md` natively (NOT commands/agents) | baked `~/.config/opencode` (ignores `.mcp.json`) |
-| `gemini` | `harnessed-gemini:latest` | none (native format differs); profile mounted for parity | baked `~/.gemini/settings.json` `mcpServers` |
-| `antigravity` (agy) | `harnessed-antigravity:latest` | none; profile mounted for parity | baked `~/.gemini/config/mcp_config.json` `serverUrl` |
-| `codex` | `harnessed-codex:latest` | none (reads `AGENTS.md`); profile mounted for parity | baked `~/.codex/config.toml` `[mcp_servers.hatago]` (native streamable-HTTP) |
+| `harnessed-base:latest` | `ubuntu:24.04` | `base/Dockerfile.harnessed-base` | First launch / `harnessed build` |
+| `harnessed-claude:latest` | `harnessed-base` | `base/Dockerfile.harnessed-claude` | `ensure_images` |
+| `harnessed-omp:latest` | `harnessed-base` | `base/Dockerfile.harnessed-omp` | **Lazy** — omp stacks only (HRN-01) |
+| `harnessed-opencode:latest` | `harnessed-base` | `base/Dockerfile.harnessed-opencode` | **Lazy** — opencode stacks only (HRN-02) |
+| `harnessed-gemini:latest` | `harnessed-base` | `base/Dockerfile.harnessed-gemini` | **Lazy** — gemini stacks only (HRN-03) |
+| `harnessed-antigravity:latest` | `harnessed-base` | `base/Dockerfile.harnessed-antigravity` | **Lazy** — antigravity stacks only (HRN-04) |
+| `harnessed-codex:latest` | `harnessed-base` | `base/Dockerfile.harnessed-codex` | **Lazy** — codex stacks only (HRN-05) |
+| `harnessed-hatago:latest` | `harnessed-base` | `base/Dockerfile.hatago` | `ensure_images` / `build_stack` |
+| `harnessed-tools:latest` | `python:3.13-slim` | `tools/Dockerfile` | First `build` / `auth` / `rescan` |
+| `harnessed-ping:latest` | `python:3.12-slim` | `services/ping/Dockerfile` | `harnessed svc up ping` |
 
-Non-claude harness images are **lazy-built** — `ensure_<harness>_image` runs
-only when that harness stack first launches (`lib/harnessed-common.sh`,
-`lib/harnessed-isolated.sh:50-55`), so claude-only users never pull omp/opencode/
-gemini/antigravity/codex. Each harness has a proof stack: `stacks/{omp,opencode,
-gemini,antigravity,codex}-time/` + a documenting base recipe in
-`recipes/{omp,opencode,gemini,antigravity,codex}/`.
+**Lazy build rule:** non-claude harness images are built *only* when that harness's stack
+first launches (`ensure_omp_image`, `ensure_opencode_image`, … in `lib/harnessed-common.sh`).
+Claude-only users are never forced to build omp/opencode/gemini/antigravity/codex.
 
-## Configuration Approach
+**Curl-installer exception:** claude, opencode, and antigravity use vendor curl installers
+(not mise/pnpm) because their npm wrappers are non-functional or squat packages
+(`base/Dockerfile.harnessed-opencode:9-15`, `base/Dockerfile.harnessed-antigravity:9-14`).
+These images are still covered by the build-time + nightly image scans.
 
-Three distinct config layers — keep them straight:
+---
 
-1. **Declarative manifests** (authored inputs, parsed forward per design D-14):
-   - `stacks/<name>/stack.yaml` — `name`, `config` (isolated|transparent),
-     `harness` (exactly one of six), `recipes: [...]`, optional `services` /
-     `permissions` / `state`. Schema in `schema.py:load_stack`.
-   - `recipes/<name>/recipe.yaml` — `mcp.servers` + `skills`/`commands`/`agents`/
-     `hooks` + optional `deps`/`extensions`. Schema in `schema.py:load_recipe`.
-   - `services/<name>/service.yaml` — sidecar `image`/`volume`/`port`/
-     `healthcheck` (flat scalars; host-parsed by `_svc_yaml_val` in
-     `lib/harnessed-services.sh:32-38`). Schema in `schema.py:load_service`.
+## 7. Configuration approach
 
-2. **Committed profile output** (generated, then committed):
-   `profiles/<stack>/.claude/{skills,commands,agents,hooks,rules}/` +
-   `hatago.config.json` + `baked-servers.json`. Emitted by
-   `tools/harnessed/emit.py`; mounted into the harness container at run time
-   (read-only at the committed layer; a per-instance copy-on-start makes it
-   writable at `$XDG_STATE_HOME/harnessed/<project>/<stack>/.claude`,
-   `lib/harnessed-isolated.sh:131-138`). See `profiles/tracer-time/` for a
-   worked example.
+### Manifests (YAML, hand-authored)
 
-3. **Policy / build configs** (not harnessed runtime):
-   `lib/pnpm/config.yaml` + `tools/pnpm-workspace.yaml` (JS supply-chain),
-   `tools/pyproject.toml` (assembler deps), `extra-tools.txt` (mise tool list).
-   `.planning/` and `.claude/` are GSD workflow metadata, not product config.
+| Manifest | Location | Parsed by |
+|---|---|---|
+| Stack | `stacks/<name>/stack.yaml` | `schema.load_stack` |
+| Recipe | `recipes/<name>/recipe.yaml` | `schema.load_recipe` |
+| Service | `services/<name>/service.yaml` | `schema.load_service` |
 
-### Secrets
+A stack picks **one harness** and a set of recipes/services. The assembler merges recipes
+into a committed profile + hatago config. Parsing is tolerant of unknown fields (design D-14).
 
-**The default path is zero-config and token-free.** Secrets are an **opt-in**
-layer (design §16):
+### Generated artifacts (emitted, never hand-edited)
 
-- **varlock + 1Password** are OPTIONAL. The repo ships a ready-to-copy template
-  (`.env.schema.example`, the `@env-spec` DSL with
-  `@varlock/1password-plugin@0.3.2`, `@initOp(allowAppAuth=true)`, and
-  `op(op://Private/Snyk/credential)` / `op(op://Private/SocketDev/credential)`
-  refs for `SNYK_TOKEN` / `SOCKET_SECURITY_API_KEY`). Copy it to
-  `~/.config/harnessed/.env.schema` (or `~/.config/<service>/.env.schema` for a
-  per-service sidecar). When a schema is present, resolution runs **on the
-  host** — `resolve_secret_env` (`lib/harnessed-secrets.sh:51-124`) calls
-  `varlock load --format env` and spreads the resolved dotenv into the container
-  as a mode-0600 temp `--env-file` (unlinked after launch, T-05-06). App-auth
-  works on the host because the 1Password desktop app authorizes the calling
-  terminal; an in-container `op` has no host app to bind the grant to (the
-  `agent.sock` mount is the **SSH agent**, not the op app-auth transport). This
-  reaches the isolated pod, the transparent instance, sidecar services
-  (`lib/harnessed-services.sh:110-129`), and the build scan — resolved values
-  stay **env only**, never written to a repo file, committed profile, or image
-  layer. Hosts without `varlock` fall back to in-container resolution, which
-  then needs `OP_SERVICE_ACCOUNT_TOKEN`.
+`harnessed build <stack>` runs the emit-only assembler, which writes to `profiles/<stack>/`:
 
-- **Claude OAuth** is the one secret that always flows, and only as a
-  **read-only bind mount**: `~/.claude/.credentials.json`
-  (`lib/harnessed-isolated-config.sh`). A generated, token-free `~/.claude.json`
-  stub carries only onboarding fields — the host whole-file blob is NEVER
-  mounted (T-02-04/T-02-05). Harness-aware: opencode seeds via ro
-  `~/.local/share/opencode/auth.json`; codex via ro `~/.codex/auth.json`.
+- `profiles/<stack>/.claude/skills|commands|agents|hooks|rules/` — the fanned file-extension tree
+- `profiles/<stack>/.claude/.mcp.json` — **one** entry pointing at `http://localhost:3535/mcp`
+- `profiles/<stack>/.claude/settings.json` — pre-approved hatago MCP tools
+- `profiles/<stack>/hatago.config.json` — the hub's child/proxy server declarations
+- `profiles/<stack>/hatago-baked.json` — manifest of stdio servers the hatago image must bake
 
-- **1Password SSH agent** is the default signing path:
-  `~/.1password/agent.sock` → `$CONTAINER_HOME/.1password/agent.sock`, exported
-  as `SSH_AUTH_SOCK` (`lib/harnessed-mounts.sh:24-27`).
+### Environment / secrets (opt-in, varlock DSL)
 
-- **Scanner tokens** (snyk / Socket.dev) are set once via
-  `harnessed auth snyk|socket` — a `--rm -it` tools container drives the vendor
-  CLI's own auth so the token writes to the rw-mounted host `~/.config` (e.g.
-  `~/.config/configstore/snyk.json`) and is never captured in an image layer
-  (`lib/harnessed-secrets.sh:130-193`).
+`.env.schema` (`@plugin(@varlock/1password-plugin@1.2.0)` DSL) is the opt-in secrets surface.
+Absent ⇒ the whole subsystem is inert (a single `[ -f ]` test in `lib/harnessed-secrets.sh:53`).
+See `.env.schema.example` and `docs/codebase/INTEGRATIONS.md`.
 
-Use varlock when you want validated, typed, AI-safe secret refs; use plain `op
-run -- <cmd>` or loose env if you don't want the schema layer. See INTEGRATIONS.md
-for the full mount and secret-resolution picture.
+### Supply-chain policy (pnpm)
+
+`lib/pnpm/config.yaml` is the single source of truth, COPY'd into every image. The project-
+scoped lifecycle allowlist lives in `tools/pnpm-workspace.yaml` (pnpm v11 requirement).
+
+### Egress firewall (iptables)
+
+`lib/egress-firewall.sh` is a block-by-default iptables OUTPUT whitelist, applied inside each
+instance via `apply_firewall`. Whitelisted domains: `api.anthropic.com`, `statsig.anthropic.com`,
+`github.com` (+ subdomains), `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`,
+`mise.jdx.dev`. Extra domains (e.g. a Z.AI endpoint) append as arguments.
+
+### Systemd (nightly re-scan)
+
+`systemd/harnessed-rescan.{service,timer}` — a daily user timer whose `ExecStart` is
+`harnessed rescan`. Requires `loginctl enable-linger $USER` or the timer does not fire while
+logged out (`systemd/harnessed-rescan.timer` header).
+
+---
+
+## 8. Quick-reference: what runs where
+
+| Concern | Runs on host | Runs in image |
+|---|---|---|
+| CLI parsing / dispatch | `harnessed` + `lib/*.sh` | — |
+| Image builds | `podman build` | — |
+| Stack assembly (emit) | `podman run harnessed-tools assemble` | Python assembler |
+| Supply-chain scan (source) | `podman run harnessed-tools scan` | osv-scanner + pip-audit + snyk + socket |
+| Supply-chain scan (image) | `podman save` + `harnessed-tools scan-image` | osv-scanner offline |
+| Nightly re-scan | `harnessed rescan` (host loop) | `harnessed-tools scan-image-online` (online DB) |
+| Capability test | `uv run` / host python3 + `podman exec` | — |
+| Harness + hatago | `podman run` (host) | the harness CLI + hatago hub |
+| Secrets resolution | `varlock load` (host) OR tools container | varlock (headless fallback) |
+
+---
+
+*Last verified against source: 2026-06-22.*

@@ -1,145 +1,206 @@
-# Concerns & Technical Debt
+# CONCERNS — Technical Debt, Known Issues & Areas of Concern
 
-**Analysis Date:** 2026-06-22
+> Codebase: `harnessed` (repo root: `/home/mcrowe/Programming/Personal/code-container`)
+> Mapped: 2026-06-22. Severity is **risk × likelihood**, not just severity of impact.
+> Methodology: every item is corroborated against live source (`lib/*.sh`, `tools/harnessed/*.py`, `base/Dockerfile.*`) and cross-checked against `.planning/STATE.md` (Decisions + Blockers/Concerns) and `.planning/PROJECT.md`. Stale historical assertions that the code already contradicts are filed under **Resolved / verified**, not as open debt.
 
-This document catalogues open risks, unresolved design questions, and technical debt in the `harnessed` codebase, grounded in the **current committed state** (HEAD through the multi-harness commit `b418343` + phase-06 tech-debt cleanup). The project is at milestone v1.0: the audit (`.planning/v1.0-MILESTONE-AUDIT.md`) records **39/39 requirements satisfied, 5/5 phases passed, 5/5 E2E flows intact, 0 blockers**, classified `tech_debt` solely to surface the non-critical items below.
+## At a glance
 
-The dominant debt theme has shifted since the prior (2026-06-16) analysis: the v1.0 networking model (publish-to-`0.0.0.0` + podman host-gateway `host.containers.internal:<port>`, with `HARNESSED_NET` as the explicit opt-in bridge) is **reconciled and verified** — phase 06 closed the stale-comment + frontmatter-hygiene + harnessed-net-docs reconciliation (see `.planning/phases/06-tech-debt-cleanup/06-VERIFICATION.md`). The residual debt now clusters around **the multi-harness expansion**: six harnesses (claude, omp, opencode, gemini, antigravity, codex) are supported, but the harness enumeration is hand-synced across ~9 sites with no single registry driving them.
+| Sev | Count | Themes |
+|-----|-------|--------|
+| HIGH | 2 | Unverified docker runtime path; no CI gate on the assembler/launchers |
+| MEDIUM | 6 | Stale-tools-image scan gate, hardcoded mise PATH, quote-stripping sed, egress DNS staleness, floating image tags, integration-only test coverage |
+| LOW | 7 | Dead `ensure_harnessed_net`/`$net`, stale design-doc banner + `[INFERENCE]` markers, sed-based YAML parse, `--network=host` auth, `iptables -F` clobber, PROJECT.md split |
 
----
-
-## High Priority
-
-### H1 — Harness dispatch is duplicated across ~9 sites; adding a harness requires hand-syncing all of them
-
-- **Location:** the harness enumeration is repeated, with no shared registry, in:
-  - `tools/harnessed/schema.py:41-48` — `HARNESS_CONFIG_DIR` (the **one** registry, but it only maps harness→config-dir-name).
-  - `lib/harnessed-common.sh:17-37` — six `HARNESS_*_IMAGE` constants, each mirrored by an `ensure_<harness>_image()` function (`:202-277`).
-  - `lib/harnessed-isolated.sh:43-48` — `[ "$harness" = "omp" ]` × 6 to pick `harness_image`.
-  - `lib/harnessed-isolated.sh:51-55` — `[ "$harness" = "omp" ] && ensure_omp_image` × 5.
-  - `lib/harnessed-isolated.sh:88-106` — re-attach `if/elif` × 6 (one `exec` per harness).
-  - `lib/harnessed-isolated.sh:241-269` — interactive-attach `if/elif` × 6 (a *second* copy of the same chain).
-  - `lib/harnessed-isolated-config.sh:36,50,67,76` — auth-seeding `if` × 4 (one per non-claude harness).
-  - `tools/harnessed/capability.py:318-328` — `_llm_cmd` `if` × 6 (the headless backstop argv).
-  - `tools/uat/phase-06.sh:33-40` — `UAT_MATRIX` (6 entries; its own comment at `:31-32` warns: *"Keep in sync with `HARNESS_CONFIG_DIR`"*).
-- **Impact:** There is no machine-checked contract that these sites agree. A seventh harness (or a rename) requires editing all ~9 locations; a missed site degrades **silently to the claude default** — every one of these chains ends in an `else`/fallthrough that runs claude. The maintainer-sync burden is already self-admitted in code (`phase-06.sh:31-32`). The two attach chains in `harnessed-isolated.sh` (re-attach at `:88` vs. fresh attach at `:241`) are near-identical copies of each other — a particularly easy place for the two copies to drift.
-- **Fix approach:** Promote `HARNESS_CONFIG_DIR` (or a sibling) to the single source of truth and drive the bash side from it. Concretely: (a) emit a generated `lib/harnessed-harnesses.sh` (or a data table the launcher sources) from the Python schema at build time, so `ensure_<harness>_image`, `harness_image`, and the attach/re-attach `exec` lines are table-driven, not hand-enumerated; (b) collapse the two attach chains in `harnessed-isolated.sh` into one function parameterized by `harness` → attach-command; (c) make the UAT matrix derive from `HARNESS_CONFIG_DIR` rather than re-declaring it. Until then, treat any harness addition as a checklist item across all 9 sites.
-
-### H2 — An unknown/typo'd `harness:` in a stack manifest silently launches claude instead of erroring
-
-- **Location:** `lib/harnessed-isolated.sh:41-48` — reads `harness` via `sed` from `stack.yaml` and selects `harness_image` through a chain of literal `[ "$harness" = "omp" ]` checks that all fall through to the `HARNESSED_CLAUDE_IMAGE` default at `:43`. The attach command at `:267-269` likewise falls through to `claude --mcp-config …` in its `else` branch. The capability test's harness reader, `tools/harnessed/capability.py:296-300`, **catches `SchemaError` and returns `"claude"`** — so even the test path masks an unsupported harness.
-- **Impact:** Validation exists in exactly two places — `harnessed new` (`lib/harnessed-cli.sh:63`, a `case` that rejects unknown harnesses) and `schema.Stack.harness_config_dir` (`schema.py:131-135`, raises `SchemaError`). But the **normal launch path never calls the schema**: `harnessed <stack>` dispatches straight into `harnessed_isolated`, which parses the YAML with `sed` and never validates. A hand-edited `stack.yaml` with `harness: typo` (or a harness added to the schema but not yet to the launcher per H1) launches a claude pod against a profile the operator believed was for a different harness — a confusing partial-success, not a clear error. The design's own §18 philosophy ("a mis-wire surfaces as a capability failure") does not rescue this case, because the capability backstop (`_harness_of`) *also* falls back to claude.
-- **Fix approach:** Validate `harness` against `HARNESS_CONFIG_DIR` at the **start** of `harnessed_isolated` (and in `_harness_of`, re-raise rather than swallow). Cheapest correct option: have the bash launcher call the Python schema's `load_stack` (it already shells out to python for the capability test — `harnessed:367-372`) and fail fast on `SchemaError` before any pod is created. Alternatively, source a generated harness table (per H1) so the bash `case` is exhaustive and an unknown harness hits an explicit `*) exit 1`.
+There are **zero** `TODO`/`FIXME`/`HACK`/`XXX`/`WORKAROUND` markers in the live source tree (`lib/`, `tools/harnessed/`, `harnessed`, `services/`, `recipes/`, `base/`). The project deliberately routes unresolved assumptions into prose `[INFERENCE — verify]` markers (see `.planning/phases/06-tech-debt-cleanup/06-CONTEXT.md:144`) rather than code comments, so the absence of in-code TODOs is by design, not evidence of completeness.
 
 ---
 
-## Medium Priority
+## HIGH
 
-### M1 — `harnessed test` detects the harness via fragile `grep` instead of the schema
+### H-1. Docker runtime path is implemented but unverified (WIP)
 
-- **Location:** `harnessed:353-357` — five lines of `grep -q '^harness:[[:space:]]*omp' stacks/$TEST_STACK/stack.yaml && ensure_omp_image` (one per non-claude harness), duplicating the harness parse that `harnessed_isolated` already does at `:41`.
-- **Impact:** Two independent parsers for the same field. The `grep` anchor `^harness:[[:space:]]*` breaks on benign YAML variants the schema accepts (e.g. a leading-BOM, `harness:` at non-zero indentation under a parent block, or an inline trailing comment). The schema's `load_stack` is the authoritative reader; bypassing it means a manifest that assembles + launches cleanly can fail the test's image-ensure step, or vice versa. This is the same root cause as H1/H2 (no shared harness registry) but surfaces specifically in the test path.
-- **Fix approach:** Replace the five greps with one schema-driven read: `harness="$(...)`  via the same mechanism `harnessed_isolated` uses (or, better, a single helper both call), then a `case` over the result to drive the `ensure_*_image` call. Removes the second parser entirely.
+`lib/harnessed-runtime.sh` advertises a provider-agnostic abstraction and ships real docker branches:
 
-### M2 — Brittle literal-string strip of `--userns=keep-id` from pod-member args
+- `rt_hatago_placement` (`lib/harnessed-runtime.sh:51-58`) — docker falls back to `--network "$HARNESSED_NET"` or the default bridge.
+- `rt_harness_placement` (`lib/harnessed-runtime.sh:64-71`) — docker uses `--network container:<instance>-hatago` to join hatago's netns.
+- `rt_group_teardown` (`lib/harnessed-runtime.sh:80-82`) — docker removes the flat `<instance>` + `<instance>-hatago` pair.
 
-- **Location:** `lib/harnessed-isolated.sh:204-208` — a `for` loop that strips the literal token `--userns=keep-id` from `MOUNT_ARGS` before launching the harness member, with the comment *"Strip --userns=keep-id from the member args (inherited from the pod; illegal on a member)."*
-- **Impact:** This is a leak in the `rt_*` runtime abstraction (`lib/harnessed-runtime.sh`). `rt_userns_args()` (`:29-34`) emits `--userns=keep-id` for podman and nothing for docker; the member-launch code then has to know to undo it by **exact string match**. If `rt_userns_args` ever emits a variant (`--userns=keep-id:uid=1000`, `--userns=keep-id:uidmapping=…`), the strip silently fails and the member launch breaks under podman with a confusing "userns illegal on member" error whose root cause is two files away. The abstraction advertises provider-neutrality but leaks the userns detail back to the caller.
-- **Fix approach:** Add `rt_member_args()` / `rt_pod_args()` to `harnessed-runtime.sh` so the member-arg set is constructed *without* userns in the first place, rather than constructed-with-then-stripped. The caller should never have to know that userns is pod-only and pod-level.
+`detect_runtime` (`lib/harnessed-common.sh:52-61`) will happily select `docker` when podman is absent, and every launcher then flows through these untested branches. The most recent commit contradicts the "provider-agnostic" claim:
 
-### M3 — Apple `container` runtime has no shared-netns story (explicitly deferred)
+```
+686833b docs: stress ALPHA status + runtime WIP matrix (podman in testing; docker/apple pending)
+```
 
-- **Location:** `lib/harnessed-runtime.sh:17-18` — *"Apple `container` has NO shared-netns / pod equivalent (one VM + IP per container); it needs a named-network + dynamic MCP endpoint and is tracked as a separate follow-up — NOT handled here."* Tracked at `.planning/todos/pending/2026-06-21-apple-container-named-network-mcp-endpoint.md`. `tools/uat/phase-06.sh:21-23` restates it: the heavy UAT legs *"will fail until the runtime layer is provider-agnostic."*
-- **Impact:** harnessed targets three OCI runtimes (podman, docker, Apple `container`) but only two are wired. The `rt_*` abstraction is structured to make the port *possible*, but a contributor who picks `container` as their runtime today gets a silent fall-through to the docker branch (`rt_uses_pods` returns false for anything not podman, including `container`), which then fails opaquely because Apple `container` does not support `--network container:<peer>`. This is acknowledged, not hidden — but it is a real gap in the "provider-agnostic" claim.
-- **Fix approach:** Either (a) detect Apple `container` explicitly in `detect_runtime` and refuse with a clear "not yet supported" message (fail-fast), or (b) land the named-network + dynamic-MCP-endpoint design in the pending todo. Option (a) is cheap and removes the silent fall-through.
+Apple `container` is correctly gated out (design §3, `lib/harnessed-runtime.sh:17-18`), but **docker is not** — it is reachable code with no recorded verification. A docker host will silently exercise the `--network container:` shared-netns model, the daemon-side uid remap (no `--userns=keep-id`), and `inspect`-based existence checks (`rt_network_exists`/`rt_volume_exists`) that have never been run.
 
-### M4 — Shared-service reachability depends on `host.containers.internal` resolving on the host
+**Fix:** Either (a) gate docker behind an explicit `--runtime docker`/env opt-in with a "experimental" warning until a docker harness-matrix UAT exists (mirror the `tools/uat/phase-06.sh` podman matrix), or (b) add a docker leg to `tools/uat/` and record a VERIFIED entry. Until one of those lands, `detect_runtime` should refuse docker rather than present it as supported.
 
-- **Location:** `lib/egress-firewall.sh:62-63` — `PODMAN_GW=$(getent ahosts host.containers.internal …)`; if empty, the iptables allow-rule for the podman host-gateway is silently skipped. `services/ping/server.py:7-8` documents the matching FastMCP `allowed_hosts` dependency. The assembler hardcodes the URL: `tools/harnessed/assemble.py:67` — `server.url = f"http://host.containers.internal:{svc.port}/mcp"`.
-- **Impact:** This is the **shipped** networking model (rootless pasta + host-gateway, phase 04-01) and it is correct for the target host. The fragility is host-portability: on a host where `host.containers.internal` does not resolve (older podman, some docker roots, or a custom `hosts` setup), the egress firewall never opens the gateway rule AND the assembled MCP URL does not resolve — so a shared-service stack (e.g. `ping-time`) launches but its `time`/`ping` MCP server is unreachable, surfacing as a capability-test failure with no pointer to the DNS name. The `HARNESSED_NET` opt-in bridge is the documented escape hatch, but there is no detection/warning that the primary path is broken on a given host.
-- **Fix approach:** At launch (or `harnessed test` time), probe `getent ahosts host.containers.internal` and emit a `print_warning` (not an error) when it is empty, naming `HARNESSED_NET` as the fallback. Cheap, and turns a silent capability failure into an actionable operator message. The dependency itself is inherent to the rootless model and should stay.
+### H-2. No CI gate on the assembler or launchers
 
-### M5 — Integration-only testing: assembler regressions surface as coarse capability failures (deliberate, but real)
+The only GitHub Actions workflow is `.github/workflows/deploy-web.yml` (deploys the Astro marketing site). There is **no** workflow that runs the UAT suites, the supply-chain scan, or even `bash -n`/`python -m py_compile` on PRs. The verification record lives entirely in `.planning/phases/*/0*-VERIFICATION.md` and is run by hand via `./tools/uat/run-uat.sh <phase>`.
 
-- **Location:** `docs/harnessed-design.md:519-520` (§15: *"Testing is integration-only — see §18 — not assembler unit tests."*); the §18 honest-tradeoff framing. The sole automated oracle is `tools/harnessed/capability.py` (the per-stack `harnessed test` run) + the UAT suites (`tools/uat/phase-0{4,6}.sh`). There are **zero** `test_*.py` / `*_test.py` / `conftest.py` / `*.bats` files in the tree; `tools/test-fixtures/` holds *inputs* to the capability path, not assertions about assembler internals.
-- **Impact:** This is a **deliberate, documented tradeoff**, not an oversight: an assembler bug surfaces as "skill X missing" or "MCP Y not connected" in the capability table, not a pinpointed unit failure. The mitigation the design names — *clear, fail-fast assembler errors* — is implemented for the high-risk paths (`tools/harnessed/assemble.py:36-47` fails fast on duplicate MCP server names; `synclinks.py` reports skill/command collisions). But other failure modes (a profile-mount path error, an MCP-merge that produces a syntactically-valid-but-wrong config, a service-URL mis-resolution) present only as a red capability row, with no assembler-level assertion to localize them. The multi-harness expansion (H1) widens the assembler's surface without widening its test coverage.
-- **Fix approach:** Keep the integration-first stance. The proportionate mitigation is to make every emit/merge failure mode emit a specific, actionable error (audit `tools/harnessed/emit.py`, `assemble.py:_resolve_service_servers`, `synclinks.py` for any silent `return None` / best-effort path), so the capability test is never the *first* signal. Adding a small set of pure-function unit tests for `schema.load_stack` / `assemble._merge_servers` / `capability.build_report` (all already factored as pure, no-podman functions) would be low-cost and would catch the regressions that currently need a full pod boot to surface.
+Consequence: a regression in `tools/harnessed/*.py` (the CVSS gate, the manifest parser, the synclinks collision logic) or in `lib/harnessed-*.sh` can land on `main` with nothing failing. The capability test (`harnessed test <stack>`) is the oracle, but nothing automates it.
+
+**Fix:** Add a `.github/workflows/ci.yml` that, at minimum: (1) `bash -n` every `lib/*.sh` + `harnessed`; (2) `python -m py_compile tools/harnessed/*.py`; (3) run `./tools/uat/run-uat.sh 06 --quick` (the fast, non-container manifest/validation leg that already exists). Wire it to run on push + PR.
 
 ---
 
-## Low Priority / Improvement Opportunities
+## MEDIUM
 
-### L1 — Stale `new_stack` validation comment undercounts the harness set
+### M-1. `ensure_tools_image` is build-if-missing, not staleness-aware
 
-- **Location:** `lib/harnessed-cli.sh:55-56` — comment reads *"Validates harness ∈ {claude, omp, opencode}"*, but the actual `case` at `:63` validates all six: `claude|omp|opencode|gemini|antigravity|codex`.
-- **Note:** Phase 06's comment-reconciliation sweep was scoped to `harnessed-net` references and did not catch this. A maintainer reading the comment believes only three harnesses are scaffoldable. One-line comment fix; the code is correct.
+`lib/harnessed-common.sh:100-106` builds `harnessed-tools` only when the image is absent. After editing any `tools/harnessed/*.py`, the on-disk image keeps running the **old** assembler and the **old** scan gate. `.planning/STATE.md:74` calls this out explicitly:
 
-### L2 — `$net` is assigned-but-unused (deliberately kept, but a trap for maintainers)
+> Operational note: rebuild harnessed-tools after a tools/harnessed/*.py upgrade (ensure_tools_image is build-if-missing, not staleness-aware).
 
-- **Location:** `lib/harnessed-isolated.sh:74-77` — `local net="${HARNESSED_NET:-harnessed-net}"` with a four-line clarifying comment admitting *"the live pod-network block below reads `${HARNESSED_NET:-}` directly, so `$net` is assigned-but-unused on this path. KEPT per D-04 ('if unsure, leave it and add a clarifying comment')."* The live logic is at `:147-150`.
-- **Note:** This is the residual of the phase-06 D-03/D-04 decision to preserve the `:-harnessed-net` default-name anchor rather than delete the dead variable. The comment mitigates the trap, but a future cleanup that removes `$net` must also confirm the literal `harnessed-net` still appears as the `ensure_harnessed_net` default at `lib/harnessed-services.sh:29` — they are coupled only by convention, not by code.
+This is acutely dangerous for the supply-chain gate (`tools/harnessed/scan.py`): a stale image runs a stale CVSS parser / scanner invocation and can report a false-clean on a real HIGH finding. The nightly rescan (`lib/harnessed-rescan.sh:52-53`) reuses the same stale image.
 
-### L3 — Context-mode `PreToolUse` host hook blocked a phase-06 commit (external fragility)
+**Fix:** Make `ensure_tools_image` content-aware — hash `tools/Dockerfile` + `tools/harnessed/*.py` + `tools/pyproject.toml` into a label (`io.harnessed.tools-hash`), and rebuild when the running image's label differs. Cheaper alternative: a `harnessed build --tools` force flag documented next to the STATE.md note, plus a banner in `harnessed rescan` warning if the tools image is older than the newest `.py` mtime.
 
-- **Location:** documented in `.planning/phases/06-tech-debt-cleanup/06-01-SUMMARY.md:100,120` — *"a context-mode PreToolUse hook that pattern-matches the token `curl` in command text and had blocked the first commit attempt."*
-- **Note:** This hook is **not part of harnessed** — it lives in the operator's host environment (the `context-mode` skill). It is flagged here because it is a real operational fragility for *contributors*: a commit message or command containing the token `curl` (e.g. the antigravity installer at `base/Dockerfile.harnessed-antigravity`, which runs `curl -fsSL https://antigravity.google/cli/install.sh | bash`) can trip the hook and block the commit. The phase-06 workaround was to reword a commit message. No harnessed-side action; noted for contributor onboarding docs.
+### M-2. Hardcoded mise node PATH under the non-native HOME
 
-### L4 — Phases 01–04 lack a `*-VALIDATION.md` artifact (process gap, not test-coverage gap)
+`lib/harnessed-secrets.sh:45`:
 
-- **Location:** `.planning/v1.0-MILESTONE-AUDIT.md:117-119` (Nyquist-coverage section) — phases 01-04 have no `VALIDATION.md`; phase 05 has one with `nyquist_compliant: false` (PARTIAL — 4 manual-only live legs, all resolved). Confirmed by directory inventory: only `05-*-VALIDATION.md` and `06-*-VALIDATION.md` exist under `.planning/phases/`.
-- **Note:** The audit is explicit that this is a **missing process artifact, not a test-coverage hole** — each of phases 01-04 is otherwise covered (P1 operator live run, P2 3 live gates, P3 03-UAT 8/8, P4 phase-04.sh 16/16 tests / 50 checks live). Backfilling the four `VALIDATION.md` files is a documentation task; it does not affect the shipped product.
+```bash
+_HARNESSED_TOOLS_NODE_PATH="/home/tools/.local/share/mise/installs/node/latest/bin"
+```
 
-### L5 — Design §14 open items remain open (carried forward, low-risk)
+This is prepended to `PATH` inside the throwaway resolve/auth containers (`:84`, `:186`) so the pnpm-global CLIs (varlock/snyk/socket) find node without going through mise — because mise reads `$HOME/.config/mise/config.toml`, which does not exist at the overridden `$CONTAINER_HOME=/home/harnessed` (`lib/harnessed-secrets.sh:39-44`). The path hardcodes three assumptions: the tools image's native home is `/home/tools`, node is installed under mise's `node/latest` symlink, and that symlink resolves. If the tools image home changes, or mise stops exposing a `latest` symlink, or a different node minor is needed, resolution silently breaks and `varlock`/`snyk`/`socket` become "command not found".
 
-- **Location:** `docs/harnessed-design.md:446-490` (§14 "Open / to verify during execution"). Items still unresolved as of this analysis:
-  - `container` alias (`:471-472`) — recommendation "keep — zero cost"; `install.sh:23` (`BINARIES=("harnessed" "container")`) and the `container` shim already implement this. The §14 item just needs to be formally closed.
-  - `CLAUDE_CONFIG_DIR` relocation (`:488-490`) — still `[INFERENCE — verify]`; if it does not relocate the top-level `~/.claude.json`, `transparent` mode's copy-on-start (`lib/harnessed-transparent.sh`) is the permanent strategy, not an interim one.
-  - Editor/tool configs in isolated mode (`:475-477`) — always-mounted today; no flag to gate for a truly empty env.
-  - Host-projects scope (`:478-480`) — harnessed-owned `~/.local/state/harnessed/…` is the implemented convention (`lib/harnessed-isolated.sh:132`); not test-pinned against an accidental write to the host's real `~/.claude/projects/`.
-- **Note:** None of these block v1.0. They are the architect's own open questions, carried forward. The two `[INFERENCE — verify]` markers (`.claude.json` stub fields at `:448-450` is RESOLVED; `CLAUDE_CONFIG_DIR` at `:488-490` is OPEN) are explicitly excluded from phase-06's scope (D-06) and remain.
+**Fix:** Derive the path at build time and bake it as an image label/env (`ENV HARNESSED_NODE_BIN=…` in `tools/Dockerfile`), then read that env in the launcher instead of hardcoding. This survives home/path changes and makes the coupling visible in one place.
 
-### L6 — omp harness depends on the external `claude-hooks-bridge` npm package
+### M-3. Quote-stripping `sed` for podman `--env-file`
 
-- **Location:** `base/Dockerfile.harnessed-omp` (installs `@drmikecrowe/omp-claude-hooks-bridge` via `omp plugin install`); described in `tools/harnessed/schema.py:31` — *"omp — Claude hooks/skills via the pre-installed claude-hooks-bridge."*
-- **Note:** The omp harness is entirely dependent on this one external (owner-authored, but still external) npm package to map Claude hooks/skills into omp's lifecycle. It is pinned implicitly by `omp plugin install` (omp's plugin lock under `~/.omp/plugins`), not by a lockfile the assembler controls. A bridge update that changes event mapping or the `permissionDecision`/exit-2 contract would silently break omp stacks at the next image rebuild. Lower severity than the prior (2026-06-16) analysis assessed, because the harness matrix UAT (`tools/uat/phase-06.sh:90`, `test_harness_omp`) now exercises the omp stack end-to-end and would catch a bridge regression — but the pinning gap remains.
+`lib/harnessed-secrets.sh:114`:
+
+```bash
+sed -E 's/^([^=]+)="(.*)"$/\1=\2/' "$raw" > "$envfile"
+```
+
+This exists because podman's `--env-file` treats varlock's `KEY="value"` literally (the quotes become part of the value) — documented in `.planning/STATE.md:67` and the function header (`:109-111`). The regex is safe for varlock's one-`KEY="value"`-per-line output, but it is greedy on `(.*)` and would mis-strip a value that itself contains `"`. More subtly, it silently drops the file's quoting semantics: a value with embedded spaces or shell metacharacters survives only because podman re-parses dotenv, not because the transform is correct. There is no test covering a value containing `"` or `=`.
+
+**Fix:** Replace the `sed` with a Python one-liner inside the existing throwaway tools container (`python -c 'import shlex,sys; …'` emitting `KEY=value` with proper escaping), or have varlock emit podman-native dotenv directly (upstream feature). At minimum, add a fixture in `tools/test-fixtures/` exercising a value containing `"` and `=` through `resolve_secret_env`.
+
+### M-4. Egress firewall resolves domains once; DNS rotation makes rules stale
+
+`lib/egress-firewall.sh:78-100` resolves each whitelisted domain (`WHITELIST`, `:11-34`) to IPs **at apply time** and pins iptables rules to those IPs. The firewall is re-applied per session start (`apply_firewall`, `lib/harnessed-common.sh:382-392`, idempotent via `/run/egress-firewall-active`), so a long-lived instance whose CDN rotates IPs (api.anthropic.com, registry.npmjs.org, files.pythonhosted.org all sit behind rotating CDN edges) silently loses egress to a now-blocked IP — the harness fails with opaque connection timeouts, not a firewall message.
+
+Additionally, `iptables -F OUTPUT` (`:42`) flushes **all** OUTPUT rules. If any coexisting process (VPN, another sandbox) installed rules, they are clobbered on every harnessed start.
+
+**Fix:** (1) Resolve domains via `iptables ... -d <fqdn>` is not supported, so the realistic fix is a shorter re-resolve cadence — drop the `/run/egress-firewall-active` idempotency skip for sessions longer than N hours, or add a documented "if a previously-working host goes silent, re-run the firewall" note. (2) Replace the blanket `-F OUTPUT` with a chain-scoped flush (a dedicated `HARNESSED-EGRESS` chain jumped from OUTPUT) so coexisting rules survive.
+
+### M-5. Floating image tags in `harnessed-base`
+
+`base/Dockerfile.harnessed-base:70-78`:
+
+```dockerfile
+mise use -g \
+    node@22 \
+    pnpm@11 \
+    python@latest \
+    fd \
+    ripgrep \
+    npm:opencode-ai \
+    npm:@openai/codex \
+    npm:@google/gemini-cli && \
+```
+
+`node@22`/`pnpm@11` are major-pinned (good). But `python@latest`, `fd`, `ripgrep`, and the three `npm:` harness CLIs (`opencode-ai`, `@openai/codex`, `@google/gemini-cli`) are fully floating. Two builds on different days produce different images. The pnpm supply-chain config (`minimumReleaseAge`, `lib/pnpm/config.yaml`) mitigates the `npm:` tools' install-time risk, but `python@latest` and the mise-native `fd`/`ripgrep` are unbounded, and nothing pins the resolved versions into the image for reproducibility.
+
+**Fix:** Pin to resolved versions (`python@3.13`, `fd@10.x`, etc.) or emit a `mise.toml`/lockfile at build time recording what `latest` resolved to, committed for reproducible rebuilds. The supply-chain scan gate then has a stable manifest to audit.
+
+### M-6. Integration-only test coverage with no unit tests for pure functions
+
+Design §18 (`docs/harnessed-design.md:608-660`) explicitly rejects assembler unit tests: behavior is asserted transitively through the running instance. That is a defensible philosophy, but it leaves the **pure** logic in `tools/harnessed/scan.py` (the CVSS v3.1 base-score math in `_cvss3_base`/`_roundup`/`gate`, `:65-132`) and `tools/harnessed/schema.py` (the raw-npm lint regex `_RAW_NPM_RE`, `:271`) covered only when a full `--fresh` headless pod happens to exercise them. There are no `tools/test_*.py` / `conftest.py` files (confirmed: only `tools/uat/` shell suites + `tools/test-fixtures/` manifests exist). A CVSS-parsing regression that mis-scores a 7.5 as 6.9 (below the `HIGH = 7.0` gate, `scan.py:31`) would let a HIGH CVE through the build gate and surface only as a real-world compromise.
+
+**Fix:** The design rejects coupling to *implementation*, not to *pure functions*. Add a small `tools/tests/test_scan_gate.py` that asserts `gate()` returns known CVE-IDs at/above/below 7.0 from fixture OSV JSON (the dataclass inputs are stable across refactors). This honors §18 (tests survive refactors) while closing the highest-leverage gap.
 
 ---
 
-## TODOs and FIXMEs Found
+## LOW
 
-**No `TODO` / `FIXME` / `HACK` / `XXX` / `WORKAROUND` / `@deprecated` markers exist in the product code** (`lib/`, `tools/`, `harnessed`, `base/`, `recipes/`, `stacks/`, `services/`, `systemd/`, `profiles/` — all searched; the only `XXX`-shape hits are `mktemp -t …XXXX` templates, not markers). The one intentional `# NOTE` marker is `tools/uat/phase-06.sh:21` (the provider-portability caveat — quoted in full in M3).
+### L-1. Dead code: `ensure_harnessed_net()` has no callers
 
-The project's convention is to track open work in **two places other than code comments**:
+`lib/harnessed-services.sh:27-29` defines `ensure_harnessed_net()` (→ `ensure_named_net harnessed-net`), but the isolated launcher only ever calls `ensure_named_net "$HARNESSED_NET"` directly (`lib/harnessed-isolated.sh:148`). A repo-wide search confirms `ensure_harnessed_net` appears only at its own definition. This is residue from the Phase-04 "make harnessed-net the default" plan that was reverted to the publish+host-gateway model (`.planning/phases/04-.../04-01-SUMMARY.md:107-109`).
 
-1. **`[INFERENCE — verify]` markers in design/research docs** — flag unverified assumptions for empirical resolution. Two remain open in `docs/harnessed-design.md` (see L5); the rest are resolved.
-2. **`.planning/todos/{pending,completed}/`** — dated, filed follow-ups. Currently pending: `01-apple-container-named-network-mcp-endpoint.md` (M3). The `completed/` dir holds resolved items for traceability.
+**Fix:** Delete `ensure_harnessed_net()` (and its comment, `:27`). `ensure_named_net` is the only live entry point.
 
-This is healthier than scattering TODOs in code (assumptions are tracked in one place and resolved empirically), but it means "open work" lives in prose/metadata, not in grep-able code comments — a contributor running `grep -rn TODO lib/` will find nothing and may wrongly conclude there is no debt. The items above are the substantive equivalent of those TODOs.
+### L-2. Assigned-but-unused `$net` variable
+
+`lib/harnessed-isolated.sh:77`:
+
+```bash
+local net="${HARNESSED_NET:-harnessed-net}"
+```
+
+The live pod-network block (`:146-150`) reads `${HARNESSED_NET:-}` directly, so `$net` is never referenced. The comment at `:73-76` acknowledges this ("KEPT per D-04 — if unsure, leave it and add a clarifying comment"). The clarifying comment exists; the variable is still dead.
+
+**Fix:** Delete `$net`. The comment already explains why it was historically kept; the code no longer needs it.
+
+### L-3. Stale design-doc status banner + resolved-but-open `[INFERENCE]` markers
+
+`docs/harnessed-design.md:3-5` still reads "Schemas, repo layout, and CLI (§10–§13) are **proposed** … §14 items are **to verify during execution**" — but the milestone is complete (`.planning/STATE.md:6`) and §10–§13 are shipped. Two `[INFERENCE — verify]` markers remain open by policy (D-06: gap-closure must not touch them):
+
+- `docs/harnessed-design.md:450` — the minimal `.claude.json` stub field set. `.planning/STATE.md:83` records this as **RESOLVED** ("proven sufficient for a headless no-prompt boot"). The marker still says "verify empirically."
+- `docs/harnessed-design.md:490` — `CLAUDE_CONFIG_DIR` relocation. Phase 1 chose copy-on-start instead (`.planning/STATE.md:82`), so the assumption is effectively resolved by decision.
+
+**Fix:** Update the §3-5 banner to "shipped" and, per the CONCERNS marker-table convention (`.planning/phases/06-.../06-CONTEXT.md:144`), flip the two `[INFERENCE]` markers to `[RESOLVED — …]` with a one-line citation to the STATE.md decision. (D-06 forbade this during gap-closure execution; it is fair game as standalone debt.)
+
+### L-4. `sed`-based YAML parsing in the launcher
+
+`lib/harnessed-isolated.sh:41` parses `harness:` via `sed -n 's/^harness:[[:space:]]*//p'`, and `:163-167` parses `services:` with bracket/comma stripping. The comment at `:36` calls this out ("flat scalar grep — the manifest is authored"). It breaks on quoted values (`harness: "claude"`), inline comments, or any indentation drift — but manifests are hand-authored and validated by `tools/harnessed/schema.py` at build time, so a malformed manifest fails earlier.
+
+**Fix:** Acceptable as-is for the launcher's hot path (avoids a Python round-trip). Add a one-line guard that the parsed `harness` is in the supported set (it already defaults to `claude` and the image switch at `:43-48` silently maps unknown → claude-image, which is a latent footgun — an `else` error would be clearer).
+
+### L-5. `--network=host` for snyk interactive auth
+
+`lib/harnessed-secrets.sh:171-173,179` runs the snyk auth container with `--network=host` so the browser OAuth callback to snyk's loopback listener (`127.0.0.1:8080`) lands. The comment (`:158-167`) justifies this thoroughly and scopes it to the one-shot interactive auth container. Residual risk: that container shares the host net namespace for the duration of the browser flow.
+
+**Fix:** Acceptable given the justification. Document the blast radius in `docs/guides/secrets.md` (operator should close the flow promptly). No code change.
+
+### L-6. `.planning/PROJECT.md` Active/Validated split is stale
+
+`.planning/PROJECT.md:138` self-reports: "the Active/Validated split above has NOT been migrated phase-by-phase since Phase 1 — a full milestone review (`/gsd-complete-milestone`) should move shipped items Active → Validated." Items like "Runtime stack composition as a podman pod" (`:40`) are checked-off-but-listed-under-Active, and the `harnessed-net` phrasing in that line (`:40`) is itself stale post-pivot.
+
+**Fix:** Run the milestone review, or at minimum correct `:40` to drop the `(harnessed-net)` phrasing in favor of the shipped pasta + host-gateway model.
+
+### L-7. `iptables -P OUTPUT DROP` default-deny without an escape hatch
+
+`lib/egress-firewall.sh:42-43` sets `iptables -P OUTPUT DROP` after flushing. If the whitelist resolution fails for a domain the harness needs (e.g. a new Anthropic telemetry host not in `WHITELIST`, `:11-14`), traffic silently drops. The `failed[]` array (`:80`,`:106`) only warns about *unresolvable* domains, not about *needed-but-unlisted* ones. There is no `--no-firewall` per-run escape documented beyond the launcher flag (`harnessed --no-firewall`, `harnessed:206`).
+
+**Fix:** Acceptable for a security-first tool, but add a troubleshooting pointer in `docs/guides/troubleshooting.md` for "harness can't reach host X → check WHITELIST + re-apply." The `NO_FIREWALL` env (`lib/harnessed-common.sh:44`) is the documented escape.
 
 ---
 
-## Missing or Weak Areas
+## Resolved / verified (not open debt)
 
-- **No unit tests of any kind** (see M5). Every code path — schema parsing, link-sync collision detection, MCP-merge, emit, service-URL resolution, capability diffing — is exercised only transitively through `capability.py` and the UAT suites. The pure, no-podman functions (`schema.load_stack`, `assemble._merge_servers`, `capability.build_report`, `capability.expected_capabilities`) are explicitly factored to be unit-testable but have no tests pointing at them.
-- **No lockfile pinning surfaced for the Python deps beyond ranged specifiers.** `tools/pyproject.toml` ranges `ruamel.yaml` (`>=0.18,<0.19`) and `rich` (`>=14,<15`); `tools/uv.lock` is now committed (added in `b418343`), which closes the reproducibility gap — but the ranged specs mean a fresh `uv lock` can still drift within the range.
-- **Deferred live-test legs from phase 06.** `.planning/phases/06-tech-debt-cleanup/06-VERIFICATION.md:143-147` defers three live gates to `/gsd-verify-work`: `harnessed test ping-time`, `harnessed test tracer-time`, and `bash tools/uat/run-uat.sh`. The deferral is principled (rootless `podman.socket` inactive on the verification host + the working tree carried uncommitted WIP at the time), and the static gates are the load-bearing verification for a comment/doc-only phase. These remain un-run on the current HEAD against a live podman host.
-- **Per-harness auth-seeding coverage is uneven.** `lib/harnessed-isolated-config.sh` seeds credentials for claude/omp (ro `.credentials.json` + stub), opencode (`:36-44`), gemini (`:50-61`), and codex (`:76-84`), but antigravity (`:67-70`) explicitly *cannot* be pre-seeded — it uses Google OAuth into a system keyring that a clean-room container lacks, so `agy` prompts for an interactive login on every fresh launch and does not persist across recreates. This is a documented UX limitation (HRN-04), not a bug, but it makes antigravity the weakest of the six harnesses for isolated/reproducible use. A follow-up is filed at `.planning/todos/pending/2026-06-21-persist-agy-auth-via-in-pod-keyring.md` to close the gap via an in-pod keyring.
-- **`harnessed test` exit-code contract depends on the capability report's internal assertion.** `tools/uat/phase-06.sh:51` asserts `assert_exit_zero "$UAT_RC"`, but the non-zero propagation path (`harnessed:364-378`) captures `test_rc` explicitly to defeat `set -e` — a subtle contract that a refactor of the launcher's test block could quietly break. Covered by the UAT, but only when the UAT actually runs (see the deferred-live-tests bullet above).
+These appear in `.planning/STATE.md:84` (Blockers/Concerns) as the **SC-1 gap** — "stale bridge-as-default `harnessed-net` assertions in files plan 06-01 did NOT cover." A repo-wide search on 2026-06-22 confirms the live code is now **clean**: the only `harnessed-net` references outside `.planning/` historical docs are (a) the intentional `HARNESSED_NET` opt-in (`lib/harnessed-isolated.sh:29,77,147-149`), (b) the accurate replacement-doc comment in `tools/harnessed/assemble.py:65-67`, and (c) the corrected reachability prose in `docs/harnessed-design.md:266-269` (host.containers.internal primary, bridge opt-in).
+
+The four files STATE.md flagged were all corrected by the SC-1 gap closure (commit `153c0f6` + `1ab4df5`):
+
+| File | STATE.md claim | Current state (verified 2026-06-22) |
+|------|----------------|-------------------------------------|
+| `services/ping/server.py:6-8` | docstring contradicts `:19-25` impl | Consistent — both describe `host.containers.internal` as primary, `HARNESSED_NET` as opt-in |
+| `tools/harnessed/schema.py:140-149` (`ServiceDef`) | stale B1+B4 pattern left unfixed | Corrected — docstring states host-gateway primary, bridge opt-in |
+| `CLAUDE.md:153` | "pod on harnessed-net" vs pasta default | Corrected — "rootless (pasta) networking by default … HARNESSED_NET is the opt-in bridge" |
+| `docs/codebase/INTEGRATIONS.md` | stale transport phrasing | Regenerated by `map-codebase` (commit `1ab4df5`) |
+
+**Takeaway:** the `pasta vs harnessed-net` concern is closed in code. The only residue is the dead `ensure_harnessed_net()` (L-1) and `$net` (L-2) variables.
+
+## Accepted tradeoffs (by design, not debt)
+
+- **No assembler unit tests** — design §18; the mitigation gap is scoped narrowly in M-6 above (pure functions only).
+- **`set -euo pipefail` with `local var=$(…)` / `|| true` probes** — `.planning/PROJECT.md:118` records this as a deliberate, learned convention (bugfix `a963a69`); any edit to `lib/*.sh` must preserve it.
+- **varlock/1Password opt-in via a single `[ -f $HARNESSED_SCHEMA ]` test** — INERTNESS guarantee (`lib/harnessed-secrets.sh:52-53`); no schema ⇒ varlock never invoked. Verified in `.planning/phases/05-.../05-02-SUMMARY.md:135`.
+- **Secrets never baked/committed** — env-only via mode-0600 temp `--env-file`, unlinked via a RETURN trap (`lib/harnessed-isolated.sh:187-192`). Verified no token-bearing layers (`.planning/.../05-02-SUMMARY.md:138`).
+- **Offline build-time scan vs online nightly scan** — the correct separation; `run_image_scan` (offline, deterministic) vs `run_image_scan_online` (nightly, fresh DB) in `tools/harnessed/scan.py:319-370`. The only residual risk is M-1 (stale tools image running old scan logic).
+
+## Open follow-ups (tracked, not debt)
+
+- `.planning/todos/pending/2026-06-21-apple-container-named-network-mcp-endpoint.md` — Apple `container` support (design §3 follow-up; correctly gated out today).
+- `.planning/todos/pending/2026-06-21-persist-agy-auth-via-in-pod-keyring.md` — antigravity OAuth persistence (Option 2; host-keyring mount rejected).
 
 ---
 
-## Appendix — What changed since the 2026-06-16 analysis (resolution audit)
-
-For traceability, the prior HIGH items and their current status:
-
-| Prior item | Status now | Evidence |
-|---|---|---|
-| H1 — Phase 04 runtime verification open | **RESOLVED** | `phase-04.sh` 16/16 tests, 50/50 checks live (`.planning/v1.0-MILESTONE-AUDIT.md:68`); UAT gaps closed by 04-04. |
-| H1a — Bare `harnessed` silently launches `transparent` | **RESOLVED** | No-args guard at `harnessed:91`: `[ $# -eq 0 ] && { usage; exit 0; }`. |
-| H1b — State-dir slug is an opaque hash | **RESOLVED** | State dir is now keyed by a legible flattened project path: `lib/harnessed-isolated.sh:131` — `state_project="${relpath//'/'/-}"`. The hash still keys the pod/container name (DNS-label constraint), correctly decoupled. |
-| H2 — Rootless-podman bridge unsupported | **RESOLVED (reconciled)** | Publish-to-`0.0.0.0` + host-gateway is the documented PRIMARY model; `HARNESSED_NET` is the explicit opt-in. Phase 06 (commits `d3eda19`, `0ec61f3`, `f39790b`, `4f925e7`, `153c0f6`) reconciled all authoritative docs/code/manifests/CLI. Surviving `harnessed-net` refs are verified live opt-in / accurate (see `.planning/phases/06-tech-debt-cleanup/06-VERIFICATION.md:50-63`). |
-| H3 — omp harness unknowns unverified | **RESOLVED** | Harness-matrix UAT (`tools/uat/phase-06.sh:90` `test_harness_omp`) exercises the omp stack end-to-end. |
-| M2 — `CLAUDE_CONFIG_DIR` relocation unverified | **OPEN** (see L5) | Still `[INFERENCE]` at `docs/harnessed-design.md:488-490`. |
-| M4 — 49 unstaged `.agents/` deletions | **RESOLVED** | Committed in `b418343` (the multi-harness commit swept the `.agents/` cleanup). Working tree is now clean. |
-
-The networking-reconciliation debt that dominated the prior analysis is closed; the multi-harness expansion debt (H1/H2 above) is the new center of gravity.
+*Last verified against HEAD on 2026-06-22. Re-run `rg -n 'TODO|FIXME|HACK|XXX|WORKAROUND' lib tools harnessed services recipes base` after edits to confirm the zero-marker invariant still holds.*

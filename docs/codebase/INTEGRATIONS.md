@@ -1,430 +1,342 @@
 # External Integrations
 
-**Analysis Date:** 2026-06-22
+> Reference for the `harnessed` codebase. Covers external APIs/services, the MCP gateway
+> (hatago), authentication providers, databases (none — confirmed), webhooks, image/
+> vulnerability scanning, and registry interactions.
+>
+> **Core invariant (design §15):** the host needs only Podman. No daemon-in-container, no
+> API socket is ever mounted. External network egress is **deny-by-default** inside running
+> stacks (`lib/egress-firewall.sh`); every external endpoint a stack reaches must be on the
+> whitelist.
 
-`harnessed` is, at its core, an **integrator**: it composes a harness (one of
-**claude / omp / opencode / gemini / antigravity / codex**), an MCP hub
-(hatago), MCP servers (stdio children + HTTP sidecars), shared services, host
-auth/signing, and supply-chain scanners into one isolated shared-netns group (a
-podman pod, or a docker shared-netns pair — provider-abstracted by
-`lib/harnessed-runtime.sh`).
+---
 
-The cardinal rule, repeated throughout: **no Docker-out-of-Docker** (design §15).
-Every podman/docker call runs on the **host** via `"$CONTAINER_RUNTIME"`. The
-assembler image only emits files; it never mounts a daemon socket.
+## 1. Egress surface — what the codebase talks to
 
-## Container Runtime (the core integration)
+Running stacks see a **locked-down** network. `lib/egress-firewall.sh:11-34` is the complete
+allow-list:
 
-**podman (preferred) or docker (fallback), rootless.** This is the *only* host
-dependency and the substrate every other integration rides on.
+```bash
+WHITELIST=(
+    api.anthropic.com          # Anthropic / Claude API
+    statsig.anthropic.com      # Claude telemetry/feature flags
+    github.com                 # git, gh CLI, release downloads, raw files
+    api.github.com
+    codeload.github.com
+    objects.githubusercontent.com
+    raw.githubusercontent.com
+    uploads.github.com
+    alive.github.com
+    registry.npmjs.org         # npm registry
+    pypi.org                   # Python packages
+    files.pythonhosted.org
+    mise.jdx.dev               # mise tool manager
+)
+```
 
-- **Detection:** `detect_runtime()` in `lib/harnessed-common.sh` prefers
-  podman, falls back to docker, exits if neither is found.
-- **Rootless UID mapping:** the in-container `harnessed` user (UID 1000) maps to
-  the host user so bind-mounted project/profile/credential paths are owned
-  correctly. Provider-abstracted by `rt_userns_args()` in
-  `lib/harnessed-runtime.sh`: podman rootless emits `--userns=keep-id` (set once
-  in `lib/harnessed-mounts.sh:16`); rootless docker remaps uids daemon-side and
-  emits nothing.
-- **Group model (isolated stacks):** the harness container and hatago **share a
-  netns** so the harness reaches hatago at `http://localhost:3535/mcp` with no
-  cross-container networking. Provider-abstracted by `lib/harnessed-runtime.sh`:
-  podman → a **pod** (`pod create` + `run --pod`; `--userns=keep-id` is a
-  pod-level property, stripped from member args); docker → a **shared-netns
-  pair** — hatago runs first, the harness joins with
-  `--network container:<instance>-hatago`. Apple `container` is **not supported
-  yet** (one VM+IP per container, no shared netns) — tracked follow-up (needs a
-  named network + non-localhost MCP endpoint).
-- **`transparent` mode is degenerate:** a single container, no pod, no hatago
-  (`lib/harnessed-transparent.sh`).
+Plus two always-allowed targets computed at runtime: the default-route gateway (`HOST_GW`)
+and the podman host-gateway `host.containers.internal` (`PODMAN_GW`, `169.254.1.2`) —
+needed so pod members can reach host-published service sidecars
+(`lib/egress-firewall.sh:55-63`). Extra domains (e.g. a Z.AI API host) are appended as
+arguments by the launcher.
 
-### Networking model (rootless-first — the primary model)
+**Use this list as the source of truth** for what a running stack can contact. Adding a new
+external integration that the harness must reach at runtime means adding its host here.
 
-This is load-bearing and was previously misdocumented. The authoritative sources
-are `lib/harnessed-services.sh:71-127`, `lib/harnessed-isolated.sh:23-30,140-150`,
-`services/ping/server.py:22-25`, and design §9.
+### Build-time egress (image builds, un-firewalled)
 
-**Shared services publish their port to `0.0.0.0` on rootless podman *pasta*
-networking (NOT a bridge).** Rootless bridges are unsupported on most hosts —
-podman netavark returns `create bridge: Operation not supported`. Peer pods and
-instances reach a published service via the **podman host gateway
-`host.containers.internal:<port>`**. This is the **primary** reachability model.
+Image *builds* run on the host and are not behind the egress firewall, so they reach
+additional endpoints to fetch installers and binaries:
 
-`HARNESSED_NET=<name>` is an **explicit opt-in bridge override** for
-bridge-capable hosts only (DNS-by-name: `http://<service>:<port>`). It is NOT the
-default, and NOT required for any normal flow. Setting it makes
-`lib/harnessed-isolated.sh:147-150` create + attach the named network to the pod;
-services still publish to `0.0.0.0` either way.
-
-Two operator-side prerequisites make the host-gateway path work (both ship in the
-repo):
-
-1. **Egress-firewall allow rule for `host.containers.internal`.** Rootless
-   podman exposes the host gateway at `host.containers.internal`
-   (`169.254.1.2`). `lib/egress-firewall.sh:55-63` computes
-   `PODMAN_GW=$(getent ahosts host.containers.internal …)` and adds an iptables
-   allow rule for it — distinct from the default-route gateway. iptables is
-   netns-wide, so this unblocks the whole pod, including the hatago MCP proxy
-   that reaches host-published services. Without this rule the proxy path is
-   blocked.
-2. **FastMCP `allowed_hosts`.** A Streamable-HTTP service proxied over
-   `host.containers.internal` MUST add it to
-   `TransportSecuritySettings.allowed_hosts`, or FastMCP's DNS-rebinding
-   protection returns `421 Misdirected Request`. Canonical implementation:
-   `services/ping/server.py:22-25`; see also the "Networking note" in
-   `docs/guides/service-authoring.md`.
-
-**Docker caveats:** egress firewall is **best-effort** under rootless docker
-(NET_ADMIN is limited), and shared service sidecars assume the podman
-`host.containers.internal` name. The podman path is the reference implementation.
-
-## hatago — the MCP Hub
-
-**`@himorishige/hatago-mcp-hub@0.0.16`** (pinned, pnpm global — never npm/npx).
-hatago aggregates every MCP server a stack declares behind **one**
-Streamable-HTTP endpoint, so the harness's `.mcp.json` points at a single URL
-instead of N stdio children. It proxies two server shapes: **stdio children**
-(spawned as child processes; stdio↔HTTP bridging) and **HTTP proxies** (forwards
-by URL to network-native sidecars).
-
-- **Image:** `base/Dockerfile.hatago` (`FROM harnessed-base`). The hub is
-  installed via
-  `pnpm add -g "@himorishige/hatago-mcp-hub@${HATAGO_VERSION}"` with the managed
-  `lib/pnpm/config.yaml` policy in effect (`base/Dockerfile.hatago:24-35`).
-  `PNPM_HOME/bin` is pre-created on PATH (`:22-23`).
-- **Endpoint:** `hatago serve --http --port 3535` (`base/Dockerfile.hatago:46`).
-  The harness reaches `http://localhost:3535/mcp` (shared pod netns).
-- **Pod member:** launched as the second pod member and **waited on** before the
-  harness attaches — hatago connects its stdio children, fires
-  `tools/list_changed`, THEN binds :3535; attaching before that yields an empty
-  MCP connection (`lib/harnessed-isolated.sh:193-224`).
-- **Config:** the per-stack `hatago.config.json` (emitted by the assembler,
-  `tools/harnessed/emit.py`) is mounted **read-only** and appended to the CMD
-  via `--config` (`lib/harnessed-isolated.sh:193-199`). Example from
-  `profiles/tracer-time/hatago.config.json`:
-  ```json
-  {"version":1,"logLevel":"info","mcpServers":{"time":{"command":"uvx","args":["mcp-server-time"]}}}
-  ```
-- **Introspection:** the hub exposes a `hatago://servers` resource (JSON snapshot
-  of connected children) used by the capability test (`tools/harnessed/capability.py`,
-  design §18).
-
-## MCP Servers (two transport shapes)
-
-Recipes declare MCP servers in `recipes/<name>/recipe.yaml` under `mcp.servers`.
-The assembler routes each to one of two shapes based on its declaration
-(`tools/harnessed/assemble.py`, `tools/harnessed/emit.py`):
-
-### stdio children (hatago wraps stdio → HTTP)
-
-A server with `transport: stdio` + `command` is spawned **by hatago as a child
-process**; hatago speaks stdio to it and HTTP to the harness. The harness never
-invokes the command directly.
-
-- **Canonical example:** `recipes/time/recipe.yaml:17-22` —
-  `command: uvx`, `args: [mcp-server-time]`.
-- **Baked for offline determinism:** stdio servers the hatago image must bake
-  are recorded in `profiles/<stack>/baked-servers.json` (`tools/harnessed/emit.py`)
-  and installed image-time. Today one is baked: **`mcp-server-time==2026.6.4`**
-  via `uv tool install` (`base/Dockerfile.hatago:38-39`), so
-  `uvx mcp-server-time` resolves offline at run time (egress firewall blocks the
-  network).
-- **uvx (not pip):** astral's runner is the convention for Python stdio MCP
-  servers; uv's cache makes them resolvable offline.
-
-### HTTP service sidecars (hatago proxies by URL)
-
-A server declared with `service: <name>` + `transport: http` is **resolved by
-the assembler to a network-native URL** (`tools/harnessed/assemble.py`, plan
-04-01) by reading `services/<name>/service.yaml`. hatago proxies it by URL; the
-service runs as its **own** container on a host-published port, reached via
-`host.containers.internal:<port>` (the primary rootless model). Over the opt-in
-`HARNESSED_NET` bridge, the DNS-by-name form `http://<service>:<port>` also
-works.
-
-- **Canonical example:** `recipes/ping/recipe.yaml:10-14` — `service: ping`
-  resolves to `{url: http://host.containers.internal:8080/mcp, type: http}`
-  (the host-gateway form; `http://ping:8080/mcp` is the `HARNESSED_NET` opt-in
-  bridge form).
-
-> **MCP transport note (design §14):** SSE is deprecated in the current MCP spec
-> (2025-06-18) and in Claude Code. Use **Streamable HTTP**. hatago's
-> stdio→HTTP wrapping is how servers that only speak stdio get exposed over
-> Streamable HTTP.
-
-## Shared Services (host-published sidecars)
-
-A shared service is its **own image/container/volume** on a host-published port
-(reachable via `host.containers.internal:<port>`; or by DNS name over the
-`HARNESSED_NET` opt-in bridge on bridge-capable hosts), with a lifecycle
-**independent of any instance** (design §3/§9). Multiple harnessed instances
-attach to the same running service concurrently.
-
-- **Lifecycle:** `harnessed svc up|down|list <service>` in
-  `lib/harnessed-services.sh`. `--purge` destroys the named volume; without it
-  the volume survives `svc down` (service-scoped persistence — the whole point).
-  Isolated stacks auto-start declared services via `ensure_service_up`
-  (`lib/harnessed-isolated.sh:158-169`).
-- **Service-scoped volumes:** named `<service>-data` (e.g. `ping-data`), NOT
-  `harnessed-data-<stack>` — this is what lets `claude+X` and `omp+X` share one
-  memory.
-- **`svc up`** (`lib/harnessed-services.sh:71-154`): builds the service image if
-  absent (running the BLD-02 scan), creates the named volume if absent, then
-  `podman run -d -p "$port:$port" --name "$service" --label harnessed-service=…
-  $(rt_userns_args) -v "$volume:$data_path" … "$image"`. Publishes to `0.0.0.0`
-  on rootless pasta; peers reach it via `host.containers.internal`. Waits up to
-  30s for the healthcheck. Per-service secret resolution: a schema at
-  `~/.config/<service>/.env.schema` resolves on the host via the shared
-  `resolve_secret_env` (inert when absent) and spreads via `--env-file`
-  (`lib/harnessed-services.sh:106-129`).
-- **ping** (`services/ping/`) — the tracer sidecar. A minimal **FastMCP**
-  streamable-http server (`services/ping/server.py`) exposing one `ping` tool
-  on :8080 and a `/health` route for the container HEALTHCHECK. Notably, it
-  explicitly allows `host.containers.internal:*` in FastMCP's
-  `TransportSecuritySettings` (`services/ping/server.py:22-25`) because the
-  rootless model proxies through that Host header, which DNS-rebinding
-  protection rejects by default (421). Built from `services/ping/Dockerfile`
-  (`python:3.12-slim` + `pip install "mcp[cli]"`).
-- **hindsight / openbrain** — designed (design §3, §9, §16) as heavy/stateful
-  sidecars (postgres+MCP). **Not yet implemented**: `services/` currently
-  contains only `ping/`.
-
-## Supply-Chain Scanners (build-time + nightly)
-
-### Build-time gate (BLD-02)
-
-`harnessed build <stack>` runs a **scoped** scan of exactly what that build
-assembles — the stack's recipe dirs + the emitted profile, never the whole repo
-— then an **image** scan of the built hatago image. Both abort on any HIGH+
-(CVSS ≥ 7.0) finding (`tools/harnessed/scan.py:31`, `HIGH = 7.0`).
-
-- **osv-scanner v2.3.8** (credential-free) — both halves:
-  - source scan: `osv-scanner scan source --offline --offline-vulnerabilities`
-    (`scan.py:170`), offline DB pre-seeded in the image.
-  - image scan: host `podman save` →
-    `osv-scanner scan image --offline … --archive` (`scan.py:326`). No daemon
-    socket mounted — only the saved tar is passed read-only.
-- **pip-audit 2.10.1** (credential-free) — any `requirements.txt` found by
-  `rglob` in a recipe dir or the emitted profile; findings are **warnings only**
-  (its JSON carries no CVSS, so it cannot gate).
-- **CVSS gating** is computed in pure Python (`scan.py:72-115`) — the FIRST.org
-  v3.1 base-score formula — so the HIGH decision is unit-testable and does not
-  depend on scanner exit codes (which are deliberately swallowed, `scan.py`).
-
-### Token-gated scanners (committed, warn-and-skip)
-
-**snyk** and **Socket.dev** are wired in `tools/harnessed/scan.py` and shipped in
-the `harnessed-tools` image (`tools/Dockerfile:116-125`). The contract is
-**warn-and-skip**: if the token is absent, that scanner is skipped with a
-warning and the build stays non-interactive; the credential-free osv-scanner +
-pip-audit baseline gate always runs.
-
-- **snyk** — `_scan_snyk` (`scan.py:226-258`), env-gated on `SNYK_TOKEN`. With
-  `--severity-threshold=high`, snyk's **exit code IS the gate** (1 = HIGH+ at
-  threshold → abort), unlike osv-scanner (whose exit 1 = any finding). Only
-  scans targets with a `package.json`.
-- **Socket.dev** — `_scan_socket` (`scan.py:261-282`), env-gated on
-  `SOCKET_SECURITY_API_KEY` (or `_TOKEN`). Server-side scan; findings are
-  **warnings only** (Socket has no CVSS threshold) and never abort the build.
-
-One-time token setup: **`harnessed auth snyk|socket`**
-(`lib/harnessed-secrets.sh:130-193`) runs the vendor CLI's own auth inside a
-`--rm -it` tools container with `~/.config` rw-mounted so the token persists to
-the host path (e.g. `~/.config/configstore/snyk.json`) and is **never captured in
-an image layer** (T-05-07). `snyk auth` uses `--network=host` (its OAuth
-callback binds loopback and rootless pasta port-forward cannot reach it);
-`socket login` prompts for an API token (no callback).
-
-### Nightly re-scan (SEC-04)
-
-`lib/harnessed-rescan.sh::harnessed_rescan_images` iterates installed
-`harnessed-*` images, `podman save`s each, and re-scans **online** (fresh
-osv.dev DB — NOT the build-time offline DB) via `scan-image-online`
-(`tools/harnessed/scan.py:342+`). The online mode is load-bearing: the offline
-build-time DB only knows about CVEs at build time, so a stale-DB nightly would
-see nothing new forever (RESEARCH Pitfall 6). A HIGH on one image surfaces but
-does NOT abort the scan of the remaining images; the overall rc tracks any
-failure. Triggers:
-
-- **Manual:** `harnessed rescan` (`harnessed:306-315`).
-- **Nightly:** `systemd/harnessed-rescan.timer` (`OnCalendar=daily`,
-  `Persistent=true`) → `systemd/harnessed-rescan.service`
-  (`ExecStart=%h/.local/bin/harnessed rescan`). Copy to
-  `~/.config/systemd/user/`; **requires `loginctl enable-linger $USER`** or the
-  timer does not fire while logged out (the user systemd instance is torn down
-  on logout).
-
-## 1Password (SSH signing + optional secrets)
-
-- **SSH commit signing (`op-ssh-sign`)** — the 1Password CLI + desktop app are
-  installed from 1Password's apt repo in `base/Dockerfile.harnessed-base:27-33`
-  (CLI-only in the tools image, `tools/Dockerfile:57-68`).
-- **SSH agent socket** — the default `SSH_AUTH_SOCK` source. Mounted from
-  `~/.1password/agent.sock` and exported (`lib/harnessed-mounts.sh:24-27`).
-- **Optional secrets resolution (design §16)** — varlock + `op` resolve
-  `op(op://Vault/Item/field)` refs into env. The repo ships a ready-to-copy
-  `.env.schema.example` (the `@env-spec` DSL with
-  `@varlock/1password-plugin@0.3.2` + `@initOp(allowAppAuth=true)`, holding the
-  `SNYK_TOKEN` / `SOCKET_SECURITY_API_KEY` refs); copy it to
-  `~/.config/harnessed/.env.schema` to opt in. Resolution runs **on the host**
-  via `lib/harnessed-secrets.sh::resolve_secret_env` (`:51-124`), which calls
-  `varlock load --format env` and spreads the resolved dotenv into the container
-  as a mode-0600 temp `--env-file` (unlinked after launch). It reaches **all
-  launch paths**: the isolated pod (`lib/harnessed-isolated.sh:177-192`), the
-  transparent instance (`lib/harnessed-transparent.sh`), sidecar services
-  (`lib/harnessed-services.sh:110-129` + `~/.config/<service>/.env.schema`), and
-  the build scan. See STACK.md → Secrets.
-
-**Resolution model (design §16):** 1Password's desktop app authorizes the `op`
-CLI by *calling application* (your terminal), so **app-auth runs on the host** —
-an `op` inside the throwaway container has no host app to bind the grant to and
-fails ("cannot connect to 1Password app") no matter which socket is mounted. The
-`~/.1password/agent.sock` mount above is the **SSH agent** (git signing), not
-the `op` app-auth transport. Hosts without `varlock` fall back to in-container
-resolution (`resolve_secret_env:68-86`), which then requires
-`OP_SERVICE_ACCOUNT_TOKEN` (HTTPS bearer auth — no desktop app); scope that
-token narrowly, since it leaks into any process sharing the env.
-
-## Host Integration Mounts (§4a — shared by EVERY stack)
-
-`lib/harnessed-mounts.sh::harnessed_host_integration_mounts()` is sourced by
-both the transparent and isolated launchers and appends podman/docker
-`-v`/`--device` flags to a shared `MOUNT_ARGS` array. These are **operational**
-mounts (auth/signing/agents/firewall) — not the config-experiment surface,
-which is mode-specific (§4b). Everything is conditional on the host actually
-having the artifact, so a bare host still launches.
-
-| Integration | Mount | File |
+| Endpoint | Reached by | Purpose |
 |---|---|---|
-| Egress firewall script + NET_ADMIN | `lib/egress-firewall.sh` → `/usr/local/sbin/egress-firewall` ro; `--cap-add NET_ADMIN` | `lib/harnessed-mounts.sh:16,21`, applied `lib/harnessed-common.sh::apply_firewall` |
-| 1Password SSH agent | `~/.1password/agent.sock` → `$CONTAINER_HOME/.1password/agent.sock`, `SSH_AUTH_SOCK` set | `lib/harnessed-mounts.sh:24-27` |
-| GPG agent SSH socket (YubiKey) | `/run/user/$UID/gnupg/S.gpg-agent.ssh` → `.gnupg-sockets/S.gpg-agent.ssh` | `:30-35` |
-| GPG config (YubiKey commit/SSH signing) | `~/.gnupg` ro | `:38-39` |
-| YubiKey USB device | `--device /dev/bus/usb/$bus/$dev` (Yubico vendor 1050, probed via `lsusb`) | `:41-47` |
-| Z.AI config (GLM models) | `~/.zai.json` ro | `:50-51` |
-| Per-tool `~/.config/<tool>` dirs | e.g. nvim; from `extra-tools.txt`, with a name-remap table (`neovim→nvim`, skip-list for `ast-grep`/`markdownlint-cli2`) | `:54-68` |
-| Git config | `~/.config/git` ro, else legacy `~/.gitconfig` ro | `:71-75` |
-| Host machine-id | `/etc/machine-id` ro (lets Claude Code see the same machine, avoids re-auth) | `:78-79` |
-| SSH keys/config | `~/.ssh` ro | `:81-82` |
-| Project | `$project_path` → `$CONTAINER_HOME/<relpath>`, set as workdir | `:17-18` |
+| `claude.ai/install.sh` | `base/Dockerfile.harnessed-claude:7` | Claude Code CLI installer |
+| `opencode.ai/install` | `base/Dockerfile.harnessed-opencode:31` | opencode platform binary |
+| `antigravity.google/cli/install.sh` | `base/Dockerfile.harnessed-antigravity:30` | `agy` Go binary |
+| `astral.sh/uv/<ver>/install.sh` | `base/Dockerfile.hatago:17` | uv/uvx (Python tool runner) |
+| `mise.run` | `base/Dockerfile.harnessed-base:51`, `tools/Dockerfile:109` | mise runtime manager |
+| `downloads.1password.com/linux/...` | `base/Dockerfile.harnessed-base:28-32`, `tools/Dockerfile:62-67` | 1Password CLI + desktop app (apt repo) |
+| `github.com/.../osv-scanner` releases | `tools/Dockerfile:38-54` | osv-scanner static Go binary (SHA256-verified) |
+| `registry.npmjs.org` | all `pnpm add -g` / `pnpm install` | JS packages |
+| `pypi.org` / `files.pythonhosted.org` | `pip install` / `uv tool install` | Python packages |
 
-### Egress firewall
+---
 
-`lib/egress-firewall.sh` is the primary exfiltration defense (closes the vector
-identified in agentic-AI security research). It flushes `OUTPUT`, sets default
-`DROP`, and allowlists a fixed domain set (`lib/egress-firewall.sh:11-34`):
+## 2. The MCP gateway — hatago
 
-- Anthropic / Claude API: `api.anthropic.com`, `statsig.anthropic.com`
-- GitHub (git, gh CLI, release downloads, raw): `github.com`, `api.github.com`,
-  `codeload.github.com`, `objects.githubusercontent.com`,
-  `raw.githubusercontent.com`, `uploads.github.com`, `alive.github.com`
-- npm registry: `registry.npmjs.org`
-- Python packages: `pypi.org`, `files.pythonhosted.org`
-- mise tool manager: `mise.jdx.dev`
+[hatago](https://github.com/himorishige/hatago) (`@himorishige/hatago-mcp-hub@0.0.16`) is the
+**single MCP aggregation point** for every isolated stack. It is the only thing the harness
+container's MCP config points at.
 
-It then unblocks the podman host-gateway (`lib/egress-firewall.sh:55-63`,
-`PODMAN_GW=$(getent ahosts host.containers.internal …)` + default-route
-`HOST_GW`), DNS (port 53), loopback, and established/related. Extra domains
-(e.g. a Z.AI endpoint host read from `~/.zai.json` via jq) are appended at apply
-time (`lib/harnessed-transparent.sh:53-58`). Re-applied each session; idempotent
-via a `/run/egress-firewall-active` flag (`lib/egress-firewall.sh:102-103`). Skip
-with `--no-firewall`.
+### Architecture
 
-## Harnesses (the things being launched)
-
-Exactly **one** harness per stack (design §8), selected by `harness:` in
-`stack.yaml`. The canonical profile format is Claude Code; others adapt *out* of
-it (`tools/harnessed/schema.py:41-48`, `HARNESS_CONFIG_DIR`).
-
-- **claude** (`harnessed-claude:latest`) — `base/Dockerfile.harnessed-claude`
-  (`FROM harnessed-base` + the official Claude Code installer). The isolated
-  launcher attaches via `claude --mcp-config <profile>/.claude/.mcp.json
-  --strict-mcp-config` (`lib/harnessed-isolated.sh:267-270`) so only the
-  profile's hatago endpoint loads and account-synced servers never leak in.
-- **omp** (`harnessed-omp:latest`) — `base/Dockerfile.harnessed-omp`. Built
-  **lazily** via `ensure_omp_image` only when an `harness: omp` stack first
-  launches (`lib/harnessed-common.sh`, plan 04-03 / HRN-01), so claude-only
-  users never pull omp + the bridge. omp via the pre-installed
-  **`@drmikecrowe/omp-claude-hooks-bridge`** extension; consumes the Claude
-  profile via the bridge. Attach: `omp --profile "<instance>"`
-  (`lib/harnessed-isolated.sh:241-243`).
-- **opencode** (`harnessed-opencode:latest`) —
-  `base/Dockerfile.harnessed-opencode` (`FROM harnessed-base`). Built **lazily**
-  via `ensure_opencode_image` (HRN-02). Pinned opencode. Reads the **same**
-  `.claude/skills/**/SKILL.md` + `~/.claude/CLAUDE.md` natively (no bridge, no
-  re-authoring) but does NOT read `.claude/commands` or `.claude/agents`. MCP is
-  wired via the image-baked `~/.config/opencode` (it ignores `.mcp.json`). Auth:
-  ro mount of host `~/.local/share/opencode/auth.json`. Attach: bare `opencode`
-  (`lib/harnessed-isolated.sh:244-249`).
-- **gemini** (`harnessed-gemini:latest`) — `base/Dockerfile.harnessed-gemini`
-  (`FROM harnessed-base`). Built **lazily** via `ensure_gemini_image` (HRN-03).
-  The gemini-cli is already in `harnessed-base`; the image just bakes a global
-  `~/.gemini/settings.json` whose `mcpServers` declares one remote
-  (Streamable-HTTP) server → the hatago hub. Does NOT natively consume Claude
-  skills/commands (profile mounted for parity). Auth: host `~/.gemini` OAuth
-  creds (mounted) or `GEMINI_API_KEY`/`GOOGLE_API_KEY` env. Attach: bare `gemini`
-  (`lib/harnessed-isolated.sh:250-255`).
-- **antigravity** (`harnessed-antigravity:latest`, `agy` CLI) —
-  `base/Dockerfile.harnessed-antigravity` (`FROM harnessed-base`). Built
-  **lazily** via `ensure_antigravity_image` (HRN-04). The `agy` CLI is installed
-  via the official vendor curl installer
-  (`curl -fsSL https://antigravity.google/cli/install.sh | bash` — a standalone
-  Go binary in `~/.local/bin`). Bakes `~/.gemini/config/mcp_config.json` whose
-  `mcpServers` declares one remote server (`serverUrl`) → the hatago hub. Auth:
-  `ANTIGRAVITY_API_KEY` env or one-time OAuth creds. Attach: bare `agy`
-  (`lib/harnessed-isolated.sh:256-260`).
-- **codex** (`harnessed-codex:latest`, OpenAI Codex CLI) —
-  `base/Dockerfile.harnessed-codex` (`FROM harnessed-base`). Built **lazily** via
-  `ensure_codex_image` (HRN-05). The codex-cli is already in `harnessed-base`
-  (v0.139.0, `npm:@openai/codex` ships platform binaries as
-  optionalDependencies — no blocked postinstall). The image bakes a global
-  `~/.codex/config.toml` whose `[mcp_servers.hatago]` entry declares one remote
-  (Streamable-HTTP) server → the hatago hub
-  (`url = "http://localhost:3535/mcp"` — codex 0.139+ natively supports remote
-  Streamable-HTTP MCP, no stdio bridge). Reads `AGENTS.md` but NOT Claude
-  skills/commands (profile mounted for parity). Auth: host `~/.codex/auth.json`
-  (mounted ro) or `OPENAI_API_KEY` env. Attach: bare `codex`
-  (`lib/harnessed-isolated.sh:261-266`).
-- **Canonical format = Claude Code** (design §8). omp consumes the **same**
-  `.claude/` profile as claude via the bridge — no re-authoring. opencode also
-  consumes the same profile natively (skills + CLAUDE.md/AGENTS.md only).
-  gemini/antigravity/codex mount the same profile for parity but their real
-  capability wiring is MCP via the image-baked config → hatago. The omp,
-  opencode, gemini, antigravity, and codex base recipes (`recipes/{omp,opencode,
-  gemini,antigravity,codex}/`) only **document** their extension/config
-  dependencies; none contributes profile files of its own.
-- **Transparent** (`stacks/transparent/`) mounts host `~/.claude`, `~/.codex`,
-  `~/.config/opencode`, `~/.gemini` **live** (the degenerate,
-  "my-laptop-sandboxed" case). It is the old `container` SKU; the `container`
-  script is a thin alias → `harnessed transparent` (`install.sh:15` lists both
-  binaries for the PATH symlink).
-
-## Summary — what talks to what
+A running isolated stack is a podman pod with two members sharing a netns:
 
 ```
-HOST (podman/docker rootless, pasta networking)
-  │
-  ├── harnessed (bash bootstrap) ──lib/harnessed-*.sh──▶ pod create/run/exec (podman) | --network container: (docker)
-  │        │
-  │        ├── harnessed-tools (python assembler, emit-only) ──▶ profiles/<stack>/ + build-time scans
-  │        │
-  │        └── harnessed rescan ──▶ nightly ONLINE re-scan of installed harnessed-* images
-  │
-  ├── shared services (standalone containers, host-published 0.0.0.0:<port>)
-  │        └── reached via host.containers.internal:<port>   (HARNESSED_NET bridge = opt-in)
-  │            e.g. ping FastMCP :8080  (hindsight/openbrain designed)
-  │
-  └── group: harnessed-<stack>-<proj>  (shared netns: podman pod | docker --network container: pair)
-        ├── [ harness: claude | omp | opencode | gemini | antigravity | codex ]
-        │     mounts: §4a host-integration + profile (.claude/) + ro credential
-        │     → harness-baked config points at http://localhost:3535/mcp
-        │
-        └── [ hatago hub ]  :3535
-               ├── stdio children (uvx mcp-server-time, baked offline)
-               └── HTTP proxies ──▶ host.containers.internal:<port>  (shared services)
-
-SCANNERS:  build-time  osv-scanner + pip-audit (always) ▸ snyk/Socket (token, opt-in, warn-and-skip)
-           nightly     osv-scanner ONLINE (SEC-04 timer) — catches post-build CVEs
-SECRETS:   varlock + 1Password op  ▸  inert unless ~/.config/harnessed/.env.schema
-           Claude/opencode/codex OAuth ▸ ro credential mounts (no stub secrets)
+        podman pod: harnessed-<stack>-<proj>
+    ┌──────────────────────────────────────────────┐
+    │  [ harness container ]  ──→  [ hatago ]        │
+    │    .mcp.json → localhost:3535   MCP hub · HTTP │
+    └─────────────────────────┬────────────────────┘
+                              │ (hatago proxies)
+                   ┌──────────┴──────────┐
+                   ▼                     ▼
+            stdio children        network-native URLs
+            (baked in image)      (incl. shared services)
 ```
+
+- **hatago** serves one **Streamable-HTTP** endpoint on port `3535` → `http://localhost:3535/mcp`
+  (`base/Dockerfile.hatago:45-46`, `tools/harnessed/emit.py:25-26`). `HATAGO_ENDPOINT` is the
+  constant every harness config references.
+- The harness `.mcp.json` (`emit.write_mcp_json`) points at **exactly one** entry — hatago —
+  never at a stdio server directly.
+- hatago's own config (`profiles/<stack>/hatago.config.json`, `emit.write_hatago_config`)
+  declares each server as either a **stdio child** (baked into the hatago image, spawned by
+  hatago) or a **network-native proxy** (reached by URL, including shared services).
+
+### MCP server transports (`tools/harnessed/schema.py:69-92`)
+
+A recipe declares MCP servers via `mcp.servers[]`. Two transports:
+
+| Transport | How hatago serves it | Baked? |
+|---|---|---|
+| `stdio` (default) + `command` | hatago spawns it as a child (stdio → HTTP) | **Yes** — the command + its deps must be in the hatago image |
+| `http` / `sse` + `url` | hatago proxies by URL | No — reached at runtime |
+| `service: <name>` | resolved to `http://host.containers.internal:<port>/mcp` | No — a shared service sidecar |
+
+`McpServer.is_stdio_child` is the discriminator (`schema.py:89-92`). The assembler emits a
+`hatago-baked.json` manifest of stdio servers so the hatago Dockerfile can bake them
+(`emit.write_baked_manifest`).
+
+### How each harness reaches hatago
+
+Every harness is configured (baked into its image) to point one remote MCP server at the
+fixed in-pod hub address:
+
+| Harness | Config file | Shape |
+|---|---|---|
+| claude / omp | `.claude/.mcp.json` (emitted profile) | `{ "mcpServers": { "hatago": { "url": "…/mcp" } } }` |
+| opencode | `~/.config/opencode/opencode.json` | `{ "mcp": { "hatago": { "type": "remote", "url": "…/mcp" } } }` |
+| gemini | `~/.gemini/settings.json` | `{ "mcpServers": { "hatago": { "url": "…/mcp", "type": "http" } } }` |
+| antigravity (agy) | `~/.gemini/config/mcp_config.json` | `{ "mcpServers": { "hatago": { "serverUrl": "…/mcp" } } }` |
+| codex | `~/.codex/config.toml` | `[mcp_servers.hatago]\nurl = "…/mcp"` |
+
+The endpoint is **always** `http://localhost:3535/mcp` because pod members share a netns.
+Transparent mode is the degenerate case: no hatago, no profile — MCP comes from the host's own
+config mounted live.
+
+### Shared service sidecars
+
+A shared service (`harnessed svc up <name>`) is its own image/container/volume on a
+host-published port, reached via `host.containers.internal:<port>` (the primary model) or by
+DNS name over the opt-in `HARNESSED_NET` bridge. The only implemented service is **ping**
+(`services/ping/service.yaml` — a FastMCP streamable-http tracer on port 8080). A recipe
+references a service via `mcp.servers[].service`; the assembler resolves it to a hatago
+URL-proxy entry.
+
+---
+
+## 3. Authentication providers
+
+Auth is **seeded, never baked or committed.** Every credential is a read-only bind mount or
+a resolved env value; no token ever lands in an image layer or the repo.
+
+### Harness auth (per `lib/harnessed-isolated-config.sh`)
+
+| Harness | Credential source | Env fallback | Notes |
+|---|---|---|---|
+| **claude / omp** | `~/.claude/.credentials.json` (ro) + a **generated** token-free `.claude.json` stub | `CLAUDE_CODE_OAUTH_TOKEN` | The stub carries only onboarding/identity fields (`hasCompletedOnboarding`, `firstStartTime`, `numStartups`, `oauthAccount`, `userID`) — **zero** token keys. The host `~/.claude.json` blob is **never** mounted (it races with host Claude and corrupts state). |
+| **opencode** | `~/.local/share/opencode/auth.json` (ro, XDG data) | `ANTHROPIC_API_KEY`, `OPENCODE_AUTH_CONTENT` | No onboarding gate; mounting the host file is sufficient. |
+| **gemini** | `~/.gemini/oauth_creds.json` + `google_accounts.json` (ro) | `GEMINI_API_KEY`, `GOOGLE_API_KEY` | Google OAuth credential cache. |
+| **antigravity (agy)** | **None mountable** | **None documented** | agy uses Google OAuth into the OS **system keyring (Secret Service)**. A clean-room container has no keyring daemon, so agy prompts for an interactive printed-URL login on first launch and does **not** persist across recreates. This is a known limitation of the antigravity harness in isolated mode (`base/Dockerfile.harnessed-antigravity:19-23`, `lib/harnessed-isolated-config.sh:63-70`). |
+| **codex** | `~/.codex/auth.json` (ro) | `OPENAI_API_KEY` | Written by `codex login` (ChatGPT-account OAuth or API key). If absent, codex prompts to log in on launch. |
+
+The generated Claude stub is built with `jq` (`lib/harnessed-isolated-config.sh:114-124`):
+
+```bash
+jq -n \
+    --argjson oauthAccount "$oauth_account" \
+    --argjson userID "$user_id" \
+    --arg firstStartTime "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+    '{ hasCompletedOnboarding: true,
+       firstStartTime: $firstStartTime,
+       numStartups: 1,
+       oauthAccount: $oauthAccount,
+       userID: $userID }' > "$stub"
+```
+
+### Secrets resolution — varlock + 1Password (opt-in, `lib/harnessed-secrets.sh`)
+
+The opt-in secrets subsystem resolves `op://` references in a host `.env.schema` into a
+mode-0600 dotenv, spread into the container via `--env-file`. It is **inert by default**:
+`resolve_secret_env` returns immediately if `$HARNESSED_SCHEMA`
+(`~/.config/harnessed/.env.schema`) is absent (`lib/harnessed-secrets.sh:53`).
+
+Two resolution paths, decided by what is available on the host:
+
+| Path | When | Mechanism |
+|---|---|---|
+| **Host** (default) | `varlock` is on the host `$PATH` | `varlock load --format env`. The 1Password desktop app authorizes the `op` CLI by **calling application** (the terminal), so app-auth works on the host but **cannot** work inside a throwaway container (the agent socket there is the SSH agent, not the op app-auth transport). |
+| **Headless** (fallback) | `OP_SERVICE_ACCOUNT_TOKEN` is set (no host varlock — CI, the nightly timer) | A `--rm` tools container resolves `op://` refs via HTTPS bearer auth (no desktop app, no socket). The scratch dir is mounted as `$CONTAINER_HOME` so varlock's plugin writes under a host-owned path. |
+
+If neither is available, resolution fails with a clear error pointing at the install options
+(`lib/harnessed-secrets.sh:87-92`). The resolved dotenv is **unquoted** before use
+(`KEY="value"` → `KEY=value`) so `podman --env-file` reads the value, not literal quotes
+(`lib/harnessed-secrets.sh:113-114`).
+
+The `.env.schema` DSL (`@plugin(@varlock/1password-plugin@1.2.0)`, `@initOp(allowAppAuth=true)`)
+is documented in `.env.schema.example`. Per-service schemas live in
+`~/.config/<service>/.env.schema`.
+
+### Scanner-token auth — snyk / socket (`harnessed auth`)
+
+`harnessed auth snyk|socket` drives the vendor CLI's own auth inside a `--rm -it` tools
+container so the token persists to the rw-mounted host `~/.config` (`auth_scanner`,
+`lib/harnessed-secrets.sh:130-193`):
+
+- **snyk** — OAuth browser flow. snyk binds `127.0.0.1:8080` *inside* the container and
+  redirects the host browser there. Port publishing does **not** work under rootless pasta
+  (`-p 127.0.0.1:8080:8080` hits the outward interface, not loopback → "Connection reset").
+  The reliable fix is `--network=host` (scoped to this one-shot auth container only; snyk
+  binds loopback so nothing is LAN-exposed). Token → `~/.config/configstore/snyk.json`.
+- **socket** — prompts for an API token (no browser callback) → no host networking needed.
+
+`--rm` guarantees no image layer captures the token; the `HOME=$CONTAINER_HOME` override is
+load-bearing — without it the vendor CLI writes to the unmounted `/home/tools/.config` and
+the token is lost on exit. The 1Password SSH agent socket is mounted if present so SSH-based
+signing works during the auth session.
+
+---
+
+## 4. Databases — none
+
+**Confirmed: there are no databases in the implemented codebase.** A search for
+`postgres|sqlite|mysql|redis|mongodb` across the repo finds matches only in:
+- `.claude/` skill content (the GSD framework's research/checklist templates — not harnessed code)
+- `.npm/_cacache/` (npm registry metadata cache — unrelated)
+- `.planning/` phase docs (discussing pnpm `better-sqlite3` as a *hypothetical* future
+  `allowBuilds` entry)
+
+The design doc (`docs/harnessed-design.md` §3, §9) references **hindsight** as a planned
+"postgres + MCP" shared service and **openbrain** as another, but neither is implemented —
+the only service under `services/` is `ping` (a stateless FastMCP tracer). The hatago hub and
+all scanners are stateless at runtime; the only persistent state is filesystem-backed
+(profiles, service volumes, host-mirrored `~/.claude/projects/`).
+
+**Implication:** no connection strings, no DB drivers, no migrations. If a future service
+needs a database, follow the sidecar pattern (`services/<name>/` with its own Dockerfile +
+`service.yaml`), reached via `host.containers.internal:<port>`.
+
+---
+
+## 5. Webhooks — none
+
+There are no inbound webhooks and no outbound webhook deliveries in the codebase. The
+`harnessed rescan` nightly job is **timer-driven** (`systemd/harnessed-rescan.timer`,
+`OnCalendar=daily`), not webhook-triggered. Scanner auth is interactive OAuth/API-token, not
+webhook callback (snyk's loopback redirect is a local OAuth callback, not a registered webhook).
+
+---
+
+## 6. Image & vulnerability scanning
+
+The supply-chain gate is the core security integration. It runs at three points:
+**build-time** (source + image), **nightly** (online re-scan), and is gated in pure Python
+at CVSS ≥ 7.0.
+
+### The severity gate (`tools/harnessed/scan.py`)
+
+The **only** HIGH decision point is `scan.gate()` (`scan.py:119-132`), which implements a
+pure CVSS v3.1 base-score computation (`_cvss3_base`, `_roundup`) over OSV finding vectors.
+`HIGH = 7.0`. A finding at or above the threshold adds its id to `highs`; the build aborts.
+Below-threshold findings render as **warnings** and never fail.
+
+```python
+HIGH = 7.0  # The build ABORTS at >= HIGH; below is a warning.
+```
+
+This matters because osv-scanner's `scan` exits 1 on *any* finding with no severity flag, so
+the exit code cannot be the gate — the CVSS math is pure Python over `--format json`
+(`scan.py` docstring, "RESEARCH Pattern 2 / Pitfall 3").
+
+### Scanners
+
+| Scanner | When | Credential | Role | Abort? |
+|---|---|---|---|---|
+| **osv-scanner** `v2.3.8` | build (source + image, **offline**); nightly (image, **online**) | none (public DB) | Source lockfiles, vendored `node_modules`, and `podman save` image archives | Yes — HIGH ids via `gate()` |
+| **pip-audit** `2.10.1` | build (source) | none | Python deps in recipe `requirements.txt`/`pyproject.toml` | No — warnings only (its JSON carries no CVSS) |
+| **snyk test** `--severity-threshold=high` | build (source), env-gated | `SNYK_TOKEN` (`snyk auth`) | npm/pnpm trees | Yes — `snyk` exit 1 ⇒ HIGH ids (`_snyk_vuln_ids`) |
+| **Socket.dev** `socket scan create` | build (source), env-gated | `SOCKET_SECURITY_API_KEY`/`TOKEN` (`socket login`) | Deeper supply-chain signals | No — warnings only (Socket has no CVSS threshold) |
+
+Credentialed scanners (snyk, socket) are **env-gated**: present → use silently; missing → warn
+and skip (the build stays non-interactive/reproducible for CI and the nightly timer). The
+credential-free osv-scanner + pip-audit remain the baseline gate. Tokens reach the tools image
+via env or `varlock`-resolved `op://` refs — never an image layer (design §7).
+
+### Three scan entrypoints (`tools/harnessed/cli.py`)
+
+| Subcommand | Function | Offline? | Driven by |
+|---|---|---|---|
+| `scan` | `run_source_scan` — scoped source/Python scan of one stack (`scan.py:285`) | Yes | `harnessed build <stack>` (BLD-02a) |
+| `scan-image` | `run_image_scan` — scan a `podman save` archive (`scan.py:319`) | **Yes** (pre-seeded OSV DB) | `build_stack` (BLD-02b) |
+| `scan-image-online` | `run_image_scan_online` — same, but **online** (`scan.py:342`) | **No** — drops `--offline` so osv-scanner sees newly-disclosed CVEs | `harnessed rescan` (SEC-04 nightly) |
+
+### The offline DB (deterministic builds)
+
+`tools/Dockerfile:37-55` pre-seeds the OSV DB into `XDG_CACHE_HOME=/opt/osv-cache` so
+build-time scans run deterministically with **no** osv.dev/deps.dev hit at scan time. The DB
+is seeded per-ecosystem (PyPI, npm) by a scan with `--download-offline-databases` against real
+manifests; scans use `--offline --offline-vulnerabilities`. This is the "Open Q3 LOCK" — the
+nightly *online* re-scan is what catches post-build CVEs.
+
+### osv-scanner binary integrity
+
+The static Go binary is downloaded from a pinned GitHub release and **checksum-verified
+against the release `SHA256SUMS` before `chmod +x`** (`tools/Dockerfile:38-54`, threat
+T-03-05 — "never trust an unverified download").
+
+---
+
+## 7. Registry & distribution interactions
+
+### Container images — local-only, no registry
+
+**There is no container registry.** Every image is built locally on the host via `podman build`
+and referenced by its local tag (`harnessed-base:latest`, `harnessed-hatago:latest`, …). Images
+are never pushed or pulled from a remote registry. The only "distribution" is `install.sh`,
+which `git clone`s the repo and symlinks the `harnessed` / `container` scripts into `~/.local/bin`
+(`install.sh:64-74`). Image lineage is local `FROM` only (design §6).
+
+### Package registries
+
+| Registry | Client | What's pulled |
+|---|---|---|
+| **npm** (`registry.npmjs.org`) | `pnpm` (never `npm`) | JS deps: hatago hub, pnpm-global CLIs (varlock/snyk/socket), web/ Astro deps, harness CLIs (via mise `npm:` backend) |
+| **PyPI** (`pypi.org`, `files.pythonhosted.org`) | `pip` / `uv` | Python deps (ruamel.yaml, rich, pip-audit, `mcp[cli]`) |
+| **GitHub releases** | `curl` (checksum-verified) | osv-scanner binary (`tools/Dockerfile`) |
+| **GitHub repos** | `mise use -g github:...` | omp (`github:can1357/oh-my-pi@16.0.1`, `base/Dockerfile.harnessed-omp:20`) |
+| **Vendor installers** | `curl \| bash` | claude, opencode, antigravity (`base/Dockerfile.harnessed-*`) — the curl-installer exception |
+
+### Supply-chain policy enforcement on registries
+
+`blockExoticSubdeps: true` (`lib/pnpm/config.yaml`) blocks git/tarball/non-registry subdeps at
+the npm registry. `minimumReleaseAge: 1440` quarantines newly-published versions (24h cooldown)
+so a compromised release isn't installed the moment it lands. `verifyStoreIntegrity: true`
+content-addresses the pnpm store. `minimumReleaseAgeExclude` is the documented escape hatch
+for first-party / just-published deps (used for `socket@1.1.122` in `tools/Dockerfile:102`).
+
+---
+
+## 8. External services NOT integrated (designed but unimplemented)
+
+For completeness — these appear in the design doc but have **no implementation** in the repo:
+
+- **hindsight** (postgres + MCP memory service) — referenced in `docs/harnessed-design.md` §3/§9;
+  no `services/hindsight/` exists.
+- **openbrain** (shared memory service) — same; design-only.
+- **Apple `container` runtime** — no shared-netns/pod equivalent; tracked as a follow-up needing
+  a named-network + non-localhost MCP endpoint (`lib/harnessed-runtime.sh:17-18`).
+
+---
+
+*Last verified against source: 2026-06-22.*

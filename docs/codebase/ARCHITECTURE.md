@@ -1,452 +1,396 @@
-# Architecture
+# Architecture — `harnessed`
 
-**Analysis Date:** 2026-06-22
+> Generated 2026-06-22. Grounded in `docs/harnessed-design.md` (authoritative) and corroborated
+> against the actual source. The design doc is the source of truth for *why*; this document is the
+> source of truth for *how the code is wired*.
 
-`harnessed` composes hand-authored recipes into named stacks, assembles them into
-committed profiles, and launches isolated shared-netns groups (a podman **pod**, or a
-docker shared-netns pair via `lib/harnessed-runtime.sh`) — a **harness container**
-(`claude`, `omp`, `opencode`, `gemini`, `antigravity`, or `codex`) plus a **hatago** MCP
-hub, with optional shared service sidecars. The architectural source of truth is
-`docs/harnessed-design.md`; this document distills the *implemented* architecture and the
-rootless networking model the launcher actually ships.
-
----
-
-## Pattern
-
-**Emit-only build-time assembler + host-native launcher. No Docker-out-of-Docker (DooD).**
-
-Two engines, one hard boundary between them:
-
-| Engine | Language | Runs where | Touches podman? |
-|---|---|---|---|
-| **Assembler** (`tools/harnessed/`) | Python | inside the `harnessed-tools` image | **Never.** Only reads/writes a mounted dir and *emits* files. |
-| **Launcher** (`harnessed` + `lib/*.sh`) | Bash | on the host | **Yes — natively.** Every `podman build`/`podman run`/`podman pod` runs on the host. |
-
-The rationale (design §15) is that splitting "generate the build/run inputs" (needs
-Python) from "execute `podman build`/`podman run`" (needs the daemon) removes every cost
-of driving the daemon from inside a container:
-
-- **No API socket to mount, no `CONTAINER_HOST`/`DOCKER_HOST`.** podman is invoked
-  directly on the host.
-- **No host-absolute-path footgun.** The launcher runs on the host, so `$HOME`/`$PWD`/
-  project paths are host-native by construction — the classic DooD bind-path gotcha
-  cannot occur.
-- **Clean TTY for free.** The interactive `podman exec -it` attach is host-native.
-
-Within that, the runtime model is **composition at runtime, not at build time** (§3/§6):
-`FROM` is linear inheritance and cannot union two sibling systems, so a running stack is
-composed in a **shared-netns group** (podman pod, or docker `--network container:` pair,
-via `lib/harnessed-runtime.sh`) — never baked into one image.
-
-### Rootless networking model (the implemented truth)
-
-This is the single most-load-bearing invariant in the runtime, and the design that the
-launcher commits to:
-
-- **Default networking is rootless `pasta`.** Pods/instances are created with **no
-  `--network` flag** and therefore get podman's default rootless (pasta) netns — *not* a
-  bridge. A rootless bridge is unsupported on most hosts (`netavark: create bridge:
-  Operation not supported`), so the launcher never assumes one. See
-  `lib/harnessed-isolated.sh:140-150`.
-- **Shared services publish their port to `0.0.0.0`.** `svc_up` runs the sidecar with
-  `-p "$port:$port"` and *no* `--network` flag (`lib/harnessed-services.sh:120-127`); the
-  comment at `lib/harnessed-services.sh:101-105` names this the "plan 04-01 rootless fix."
-- **Peers reach a service via the podman host gateway.** Because the service is published
-  to the host and the pod shares a rootless netns, the harness/hatago reach it at
-  `host.containers.internal:<port>`. The assembler bakes this URL into the hatago config
-  at *emit time*: `_resolve_service_servers` in `tools/harnessed/assemble.py:51-70` sets
-  `server.url = f"http://host.containers.internal:{svc.port}/mcp"`.
-- **`harnessed-net` is an explicit opt-in bridge**, not the default. `HARNESSED_NET` env
-  var (empty by default) is the only thing that turns the bridge on for
-  bridge-capable hosts (`lib/harnessed-isolated.sh:147-150`,
-  `lib/harnessed-services.sh:27-30`). On such a host, services become reachable by DNS
-  name (`http://<service>:<port>`); everywhere else the publish + host-gateway model is
-  authoritative.
-
-Two operator-side prerequisites this model depends on (documented in design §9, not
-implemented by the launch path — they already ship):
-
-1. **An egress-firewall allow rule for `host.containers.internal`.**
-   `lib/egress-firewall.sh:55-63` resolves `PODMAN_GW=$(getent ahosts
-   host.containers.internal …)` and adds an iptables allow for it. Because iptables is
-   netns-wide, this unblocks the whole pod, including the hatago MCP proxy.
-2. **FastMCP `allowed_hosts`.** A Streamable-HTTP service proxied over
-   `host.containers.internal` MUST add it to `TransportSecuritySettings.allowed_hosts`,
-   or FastMCP's DNS-rebinding protection returns `421 Misdirected Request`. Canonical
-   implementation: `services/ping/server.py:19-26`.
-
-> **Read the old docs with care.** Any framing that puts shared services "on
-> `harnessed-net`" by default, or describes `harnessed-net` as the primary/only network,
-> is stale. `harnessed-net` exists (idempotent in `ensure_named_net` /
-> `ensure_harnessed_net`) but is inert unless `HARNESSED_NET` is set.
+`harnessed` is a **bash-first CLI** that composes named containerized "stacks" of AI coding
+harnesses (`claude` / `omp` / `opencode` / `gemini` / `antigravity` / `codex`) on **Podman**
+(Docker-compatible). The host's only dependency is the container engine; every other piece of logic
+either lives in dependency-free bash or in a single containerized Python toolset. This document
+walks the layering, the two config modes, runtime composition, the Python tools image, the egress
+firewall, and the build/scan/rescan lifecycle.
 
 ---
 
-## Layers
+## 1. Architectural pattern
 
-Five layers, ordered build-time → run-time. Each layer only depends on the layer(s) above
-it in this list.
+`harnessed` follows a **thin-host-bootstrap + containerized-toolset** split, layered as:
 
-### 1. Authored inputs (data, not code)
-- `recipes/<name>/recipe.yaml` — one hand-authored integration definition per project
-  (MCP servers + file-extension dirs). See `recipes/time/recipe.yaml`.
-- `stacks/<name>/stack.yaml` — composes a harness + a chosen set of recipes (+ services).
-  See `stacks/tracer-time/stack.yaml`.
-- `services/<name>/service.yaml` — a shared sidecar definition
-  (image/port/volume/healthcheck). See `services/ping/service.yaml`.
-
-### 2. Build-time assembler — `tools/harnessed/` (Python, emit-only)
-Runs inside the `harnessed-tools` image. Holds *all* assembly logic: parse/validate
-YAML, fan skills/commands with collision-checking, merge `hatago.config.json`, generate
-the harness `.mcp.json`/`settings.json`, lint recipes, scan supply-chain. It reads
-`recipes/`+`stacks/`+`services/` under a root and **emits** `profiles/<stack>/` +
-`hatago.config.json` + a baked-servers manifest. It never invokes podman.
-
-### 3. Image tier — `base/`, `services/`, `tools/Dockerfile`
-Standalone, independently-versioned images, built by the **host** (`podman build`):
-- `base/Dockerfile.harnessed-base` → `base/Dockerfile.harnessed-claude` /
-  `.harnessed-omp` / `.harnessed-opencode` / `.harnessed-gemini` /
-  `.harnessed-antigravity` / `.harnessed-codex` (lineage via `FROM`).
-- `base/Dockerfile.hatago` — the MCP hub + light stdio servers baked in.
-- `services/<name>/Dockerfile` — one per heavy/stateful sidecar.
-- `tools/Dockerfile` — the assembler image itself.
-
-### 4. Generated artifacts — `profiles/<stack>/` (committed, mounted)
-The assembler's output. Committed to git and **mounted** into the harness container at
-run time: `.claude/{skills,commands,agents,hooks,rules}/`, `.mcp.json`, `settings.json`,
-`hatago.config.json`, `baked-servers.json`. See `profiles/tracer-time/`.
-
-### 5. Host runtime — `harnessed` + `lib/*.sh` (bash)
-The launcher. Computes the §4a/§4b mounts on the host, runs the shared-netns group via
-host `$CONTAINER_RUNTIME` (podman pod, or docker pair — abstracted by
-`lib/harnessed-runtime.sh`), attaches with host-native `podman exec -it`. Also drives the
-assembler image (`build_stack` runs `podman run harnessed-tools assemble …`).
-
-> **Layering rule of thumb:** `tools/` emits files; `lib/` runs containers. If you are
-> tempted to call podman from Python, or to parse YAML from bash, you are crossing the
-> boundary in the wrong direction.
-
----
-
-## Entry Points
-
-### `harnessed` — the host launcher (`harnessed`)
-A thin host bash bootstrap (412 lines). It sources `lib/harnessed-common.sh`, then runs a
-single `while [[ $# -gt 0 ]]; do case "$1" in …` arg-parse loop (`harnessed:92-239`).
-Bare invocation (`$# == 0`) prints help instead of silently launching transparent
-(`harnessed:91`). The case arms dispatch to one of three shapes:
-
-1. **Top-level subcommands** (each dispatches then `exit 0` — not a launch path):
-   - `build [<stack>]` → `build_stack` (assemble + host build) or `build_images`
-     (rebuild base/claude/hatago). `harnessed:318-327`
-   - `test <stack>` → ensures the build, then runs the host-side capability test via
-     `python -m harnessed.cli test`. `harnessed:329-379`
-   - `svc up|down|list <service>` → sources `lib/harnessed-services.sh` and dispatches.
-     `harnessed:258-273`
-   - `list | stop <stack> | rm <stack> | new <stack> | install | uninstall` → source
-     `lib/harnessed-cli.sh` and dispatch. `harnessed:278-297`
-   - `auth snyk|socket` → one-shot scanner-token setup (sources secrets lib). `harnessed:298-305`
-   - `rescan` → SEC-04 nightly image re-scan (sources rescan lib). `harnessed:306-315`
-
-2. **Launch path** — the fallthrough. First bareword is a stack name (if
-   `stacks/$1/stack.yaml` exists) or a project path (if it's a directory); second bareword
-   is the project path. Resolves to an instance name, then `case "$STACK"` dispatches to
-   the mode launcher (`harnessed:394-411`):
-   - `transparent` → `lib/harnessed-transparent.sh::harnessed_transparent`
-   - anything else → `lib/harnessed-isolated.sh::harnessed_isolated`
-
-3. **Legacy flags** (`--list`/`--stop`/`--remove`/`--clean`/`--fresh`/`--no-firewall`) keep
-   back-compat with the old `container` command.
-
-`detect_runtime` (run at the top) prefers podman, falls back to docker — podman/docker is
-the only host dependency.
-
-### `tools/harnessed/cli.py` — the assembler CLI entrypoint
-`python -m harnessed.cli`, run *inside* the `harnessed-tools` image by `build_stack`. An
-argparse CLI with five subcommands (`cli.py:28-110`):
-
-- **`assemble <stack> --build-dir <dir> [--root <dir>]`** — the core emit step. Calls
-  `assemble.assemble()`; writes `profiles/<stack>/` + `hatago.config.json`.
-- **`test <stack> [--project …] [--keep] [--json]`** — the per-stack capability test
-  (design §18). Launches the stack `--fresh` headless via the *host* `harnessed` launcher,
-  introspects the live instance, asserts the manifest's declared capabilities are present,
-  and renders a markdown report (or JSON for CI). This one subcommand drives host podman —
-  it is the exception that proves the emit-only rule, and it runs host-native, not inside
-  the tools image.
-- **`scan <stack> --build-dir <dir>`** — the scoped source/Python supply-chain scan
-  (BLD-02a); exit 1 on any HIGH+ finding.
-- **`scan-image <archive>`** — the image-archive scan (osv-scanner over a `podman save`
-  tar); exit 1 on any HIGH+ finding. (BLD-02b)
-- **`scan-image-online <archive>`** — the ONLINE variant (fresh osv.dev DB) used by the
-  SEC-04 nightly re-scan.
-
----
-
-## Data Flow: assemble → build → launch
-
-### 1. Author
-Write `recipes/<name>/recipe.yaml` (MCP servers + skills/commands) and compose it in
-`stacks/<name>/stack.yaml`:
-
-```yaml
-# stacks/tracer-time/stack.yaml
-name: tracer-time
-config: isolated
-harness: claude
-recipes: [time]
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  harnessed  (the `harnessed` executable: dependency-free host bash)  │
+│    parse argv → detect_runtime → dispatch                            │
+└───────────────┬──────────────────────────────────────────────────────┘
+                │ sources (just-in-time)
+                ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  lib/harnessed-*.sh  (the bash module library)                       │
+│   common · cli · runtime · services · secrets · mounts ·            │
+│   isolated · isolated-config · transparent · rescan · claude-config │
+│   + lib/egress-firewall.sh                                           │
+└───────┬───────────────────────────────────────┬──────────────────────┘
+        │ emit-only invocation (build)          │ host podman build/run (launch)
+        ▼                                       ▼
+┌─────────────────────────┐         ┌──────────────────────────────────┐
+│ harnessed-tools (Python)│         │ host podman (the ONLY daemon)    │
+│  the assembler image    │         │  pod create / run / exec / build │
+│  assemble·scan·test     │         │  NEVER driven from a container   │
+└─────────────────────────┘         └──────────────────────────────────┘
 ```
 
-```yaml
-# recipes/time/recipe.yaml — a light stdio server + a standalone skill
-mcp:
-  servers:
-    - name: time
-      command: uvx
-      args: [mcp-server-time]
-      transport: stdio          # stdio → hatago runs it as a child
-skills:
-  - path: skills/time-helper    # standalone dir, fanned into .claude/skills/time-helper
+Three properties make this hold together:
+
+1. **Podman is the only host dependency.** The host bootstrap (`harnessed` + `lib/harnessed-*.sh`)
+   is plain bash with no Python/node/uv — version roulette is confined to images. See `CLAUDE.md`
+   §"Tech stack" and design §15.
+2. **No Docker-out-of-Docker (DooD).** The Python toolset **only emits files** into a bind-mounted
+   build dir; it never mounts the daemon socket and never invokes `podman`. The *host* runs
+   `podman build` on the emitted Dockerfiles and `podman run` for the live pod. This removes the
+   API-socket mount, the host-absolute-path bind footgun, and TTY-tunneling cost (design §15).
+3. **`FROM` is for base lineage only; composition happens at runtime.** Docker `FROM` is linear
+   inheritance — there is no "union two sibling images" operator. So harness + hatago + services are
+   *never* baked together; they are combined in a podman **pod** at launch (design §3, §6).
+
+---
+
+## 2. Layering: the launcher → lib module split
+
+### The bootstrap: `harnessed`
+
+`harnessed` (the root executable, ~410 lines) is the single host entry point. It:
+
+1. Resolves its own directory (following symlinks so a PATH symlink works) and exports
+   `HARNESSED_DIR`.
+2. Sources `lib/harnessed-common.sh` (which transitively sources `lib/harnessed-runtime.sh`).
+3. Calls `detect_runtime` to pick podman over docker (`lib/harnessed-common.sh:52-61`).
+4. Parses argv with a `case`/`while` loop and dispatches to subcommand handlers or a launch path.
+
+Dispatch is **just-in-time sourcing**: each subcommand sources only the lib it needs (`svc)` sources
+`harnessed-services.sh`; `list`/`stop`/`rm`/`new`/`install` source `harnessed-cli.sh`; `auth)`
+sources `harnessed-secrets.sh`; `rescan)` sources `harnessed-rescan.sh`; `test)` drives host
+Python). The launch path (`harnessed:394-411`) sources either `harnessed-transparent.sh` or
+`harnessed-isolated.sh` based on the resolved stack name.
+
+### The lib module library (`lib/`)
+
+| Module | Role | When sourced |
+|---|---|---|
+| `lib/harnessed-common.sh` | Logging, runtime detection, image build/ensure, instance lifecycle, identity. The shared substrate. | always (by the bootstrap) |
+| `lib/harnessed-runtime.sh` | Provider abstraction (`rt_*`): hides podman-pods vs docker-shared-netns vs (future) Apple `container`. | always (sourced by common.sh) |
+| `lib/harnessed-cli.sh` | First-class subcommands by name: `list`/`stop`/`rm`/`new`/`install`/`uninstall` | subcommand dispatch |
+| `lib/harnessed-mounts.sh` | The §4a host-integration mount layer (auth/signing/agents/firewall), shared by EVERY stack | launch paths |
+| `lib/harnessed-transparent.sh` | The transparent launcher — host config mounted live | `harnessed transparent` / default |
+| `lib/harnessed-isolated.sh` | The isolated launcher — composes the pod (harness + hatago), attaches | `harnessed <stack>` |
+| `lib/harnessed-isolated-config.sh` | Isolated §4b auth seeding (ro credential + generated `.claude.json` stub) | isolated launcher |
+| `lib/harnessed-claude-config.sh` | Transparent `.claude.json` copy-on-start safety | transparent launcher |
+| `lib/harnessed-services.sh` | Shared service lifecycle (`svc up/down/list`, `ensure_service_up`) | `svc` dispatch + isolated launcher |
+| `lib/harnessed-secrets.sh` | Opt-in varlock + 1Password resolution (`resolve_secret_env`) + scanner-token auth | isolated/transparent launch + `build` + `auth` |
+| `lib/harnessed-rescan.sh` | Nightly image re-scan (`harnessed_rescan_images`) | `rescan` dispatch + systemd timer |
+| `lib/egress-firewall.sh` | Runs *inside* the container (NET_ADMIN): whitelist-based iptables egress | mounted into every instance |
+
+**Convention:** every lib module is host-native bash. The header of each module states the contract
+it expects (`HARNESSED_DIR`, `CONTAINER_RUNTIME`, etc.) and what it sources. Use the same shape for
+new modules — a clearly-commented `usage:` line, append-to-`MOUNT_ARGS` rather than global mutation
+where a caller owns the array.
+
+---
+
+## 3. The transparent vs isolated config-mode split
+
+There is **one** executable and **one** engine. Stacks differ on a single axis: *where the config
+layer (skills/commands/hooks/MCP) comes from* (design §2).
+
+| Mode | Config source | Mental model | Pod? | hatago? | Assembler? |
+|---|---|---|---|---|---|
+| **`transparent`** | host `~/.claude` (+ `.codex`/`.config/opencode`/`.gemini`) mounted **live** | "my laptop, sandboxed" | no | no | no |
+| **`isolated`** | the assembled, committed `profiles/<stack>/.claude` only; auth seeded; **nothing** from host config | "clean room with exactly what I picked" | yes | yes | yes |
+
+### What is shared (the §4a host-integration layer)
+
+Both modes build on `harnessed_host_integration_mounts` in `lib/harnessed-mounts.sh:11-83`. This is
+the **operational** mount layer — credentials, signing, agents, firewall — *not* the
+config-experiment surface, so it belongs in every instance:
+
+- 1Password SSH agent socket, GPG agent SSH socket + `~/.gnupg` (ro), YubiKey USB passthrough
+- `~/.ssh` (ro), git config (ro), `/etc/machine-id` (ro), `~/.zai.json` (ro)
+- per-tool `~/.config/<tool>` dirs (from `extra-tools.txt`)
+- the egress firewall script mounted to `/usr/local/sbin/egress-firewall`
+- the current project folder mounted at `/home/harnessed/<relpath>`
+
+Base run flags are appended here too: `$(rt_userns_args)` (provider-specific UID mapping),
+`--cap-add NET_ADMIN`, `-w`, and TERM. This module is the one place to add a new host-integration
+mount that applies to *all* stacks.
+
+### What differs (the §4b config source)
+
+**`transparent`** (`lib/harnessed-transparent.sh`): mounts host config live —
+`~/.claude` (rw, append-mostly dir tree), `~/.codex`, `~/.config/opencode`, `~/.gemini`. The one
+safety fix: `~/.claude.json` is **never** rw-bind-mounted (it's a whole-file blob Claude rewrites
+constantly — a shared rw mount races and corrupts host state). Instead
+`harnessed_claude_json_copy_mount` (`lib/harnessed-claude-config.sh:10-24`) seeds a writable
+per-instance copy under `$XDG_STATE_HOME/harnessed/<instance>/.claude.json` once and mounts *that*.
+
+**`isolated`** (`lib/harnessed-isolated.sh`): carries no host config layer. Auth is seeded by
+`harnessed_isolated_auth_mounts` (`lib/harnessed-isolated-config.sh`):
+
+- `~/.claude/.credentials.json` mounted **read-only** (the real OAuth token; never copied into a
+  profile or image layer).
+- a **generated**, token-free `~/.claude.json` stub carrying only onboarding/identity fields
+  (`hasCompletedOnboarding`, `firstStartTime`, `numStartups`, `oauthAccount`, `userID`) — zero
+  credential values. opencode/gemini/codex seed their own credential stores instead (HRN-02..05).
+
+The config source itself is the committed profile, **copy-on-started** into a per-instance state dir
+(`lib/harnessed-isolated.sh:131-138`): the committed profile is the immutable template; the running
+harness never writes runtime state (projects/, backups/, caches) back into the version-controlled
+tree. A normal recreate **reuses** accumulated `.claude`; `--fresh` wipes + reseeds (clean-room).
+
+---
+
+## 4. Runtime composition: how a stack is composed at runtime
+
+A running `isolated` stack is a podman **pod** composed at runtime — harness container + hatago +
+attached services — sharing a network namespace. This is the core model (design §3):
+
+```
+        podman pod: harnessed-<stack>-<projhash>
+   ┌───────────────────────────────────────────────────┐
+   │  [ harnessed-<harness> ]  ──→  [ hatago ]          │
+   │    mounts cwd + profile      MCP hub · :3535       │
+   └─────────────────────────────┬─────────────────────┘
+                                 │ MCP over the pod netns (localhost:3535)
+            ┌────────────────────┴───────────────────────┐
+            ▼                                            ▼
+     [ hindsight ]                              [ openbrain ]    ← shared services
+     own image · volume · lifecycle             (attached by reference,
+                                                host-published, independent)
 ```
 
-### 2. `harnessed build <stack>` → `lib/harnessed-common.sh::build_stack`
-Five host-driven steps (`lib/harnessed-common.sh:115-191`):
+### The pipeline: recipe → profile scan → pod assembly → harness attach
+
+`harnessed build <stack>` → `harnessed <stack>` runs the full lifecycle. The pieces, in order:
+
+**1. Recipe → profile (emit-only assemble).** `build_stack` (`lib/harnessed-common.sh:115-191`)
+ensures the `harnessed-tools` assembler image exists, then runs it **emit-only**:
 
 ```bash
-# (a) ensure the emit-only assembler image exists (built from tools/Dockerfile)
-ensure_tools_image
-
-# (b) EMIT: the assembler only reads/writes the mounted ROOT; it never drives podman.
-#     Fail-fast: a recipe lint / collision abort propagates via errexit before emit.
 "$CONTAINER_RUNTIME" run --rm $(rt_userns_args) \
     -v "$ROOT":"$ROOT" -w "$ROOT" \
     "$HARNESSED_TOOLS_IMAGE" assemble "$stack" --root "$ROOT" --build-dir "$ROOT"
-
-# (c) SOURCE SCAN (BLD-02a): scoped to THIS stack's recipe dirs + emitted profile only.
-"$CONTAINER_RUNTIME" run --rm … "$HARNESSED_TOOLS_IMAGE" scan "$stack" --root "$ROOT" --build-dir "$ROOT"
-
-# (d) BUILD: the HOST builds the hatago image from base/Dockerfile.hatago.
-"$CONTAINER_RUNTIME" build -t "$HARNESSED_HATAGO_IMAGE" -f …/base/Dockerfile.hatago …
-
-# (e) IMAGE SCAN (BLD-02b): host → tar → osv-scanner in a throwaway tools container.
-"$CONTAINER_RUNTIME" save "$HARNESSED_HATAGO_IMAGE" -o "$img_tar"
-"$CONTAINER_RUNTIME" run --rm -v "$img_tar":"$img_tar":ro "$HARNESSED_TOOLS_IMAGE" scan-image "$img_tar"
 ```
 
-Inside step (b), `tools/harnessed/assemble.py::assemble` runs the full pipeline
-(`assemble.py:73-112`):
+The assembler (`tools/harnessed/assemble.py:73-112`) loads `stacks/<stack>/stack.yaml` + its recipes
+(`schema.load_stack_with_recipes`), **fails fast** on raw npm/npx (`validate_no_raw_npm`) and on MCP
+server-name collisions (`_merge_servers`), then **fans** each recipe's skills/commands into the
+harness-native profile path (`.claude/skills/<leaf>`), **resolves** service-referenced MCP servers to
+network URLs (`_resolve_service_servers`), and **emits**:
 
-```
-load_stack_with_recipes(root, stack_name)            # parse stack.yaml + every recipe
-  → validate_no_raw_npm(recipe)  for each recipe     # BLD-03 lint, fail-fast, pre-emit
-  → LinkSyncer.add_recipe(recipe)  for each recipe   # register skills/commands, collision-check
-  → _merge_servers(recipes)                          # collect MCP servers, collision-check on name
-  → _resolve_service_servers(servers, root)          # service: refs → http://host.containers.internal:<port>/mcp
-  → emit.reset_profile / ensure_profile_tree         # wipe + recreate .claude/{skills,commands,…}/
-  → syncer.fan(harness_dir)                          # copytree each registered skill/command
-  → emit.write_mcp_json(harness_dir)                 # .mcp.json = ONE entry → hatago endpoint
-  → emit.write_settings_json(harness_dir, servers)   # pre-approve the hatago hub's tools
-  → emit.write_hatago_config(profile_dir, servers)   # hatago.config.json (children + URL proxies)
-  → emit.write_baked_manifest(profile_dir, stack, baked)  # which stdio servers the hatago image bakes
-```
+- `profiles/<stack>/.claude/{skills,commands,agents,hooks,rules}/` — the assembled profile
+- `profiles/<stack>/.claude/.mcp.json` — exactly **one** entry pointing at hatago
+  (`emit.write_mcp_json`):
+  ```json
+  { "mcpServers": { "hatago": { "type": "http", "url": "http://localhost:3535/mcp" } } }
+  ```
+- `profiles/<stack>/.claude/settings.json` — pre-approves the hatago hub's MCP tools
+- `profiles/<stack>/hatago.config.json` — declares each server as a hatago child/proxy
+- `profiles/<stack>/baked-servers.json` — the stdio servers the hatago image must bake
 
-Both collision checks (`LinkSyncer._register` on skill/command names,
-`_merge_servers` on MCP server names) raise **before any file is written**, so a failed
-build leaves no half-emitted profile.
+**2. Profile scan (supply-chain gate).** The assembler runs a **scoped** source/Python scan of just
+this stack's recipe dirs + emitted profile (`tools/harnessed/scan.py`, `run_source_scan`). osv-scanner
+(offline) + pip-audit are the credential-free baseline; snyk/Socket.dev run only when a token is
+present (warn-and-skip otherwise). The gate aborts on CVSS ≥ HIGH (`scan.HIGH = 7.0`, computed from
+the CVSS v3.1 vector in `scan._cvss3_base`/`scan.gate`).
 
-### 3. `harnessed <stack> [path]` → `lib/harnessed-isolated.sh::harnessed_isolated`
-The launch path (`lib/harnessed-isolated.sh:33-274`). Per-instance state is the pivot:
+**3. Image build (host).** The *host* builds the hatago image from the emitted artifacts:
+`podman build -t harnessed-hatago:latest -f base/Dockerfile.hatago`. Then a **host-driven image scan**
+runs: `podman save` → throwaway tar → `harnessed-tools scan-image` in a `--rm` container.
 
-```bash
-# Copy-on-start the committed profile into a per-project/per-stack state dir (PERSISTENT
-# by default; wiped only on first create or under --fresh). Keyed by a LEGIBLE flattened
-# project path + stack, NOT the opaque instance hash. The profile is the immutable template.
-local state_project="${relpath//'/'/-}"
-local run_claude="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$state_project/$stack/.claude"
-if [ "$fresh" = "true" ] || [ ! -d "$run_claude" ]; then
-    rm -rf "$run_claude"; cp -a "$profile_dir/.claude" "$run_claude"
-fi
+**4. Pod assembly + harness attach (host launch).** `harnessed <stack>` resolves the harness image
+(claude/omp/opencode/gemini/antigravity/codex), lazily builds non-claude images only when needed
+(`ensure_omp_image`, etc.), then `harnessed_isolated` (`lib/harnessed-isolated.sh:33-274`):
 
-# Compose the shared-netns group. keep-id maps the container user → host UID; userns is a
-# POD-level property. Rootless (pasta) networking by default — NO bridge.
-local pod_net_args=()
-if [ -n "${HARNESSED_NET:-}" ]; then              # the ONLY thing that turns the bridge on
-    ensure_named_net "$HARNESSED_NET"
-    pod_net_args=( --network "$HARNESSED_NET" )
-fi
-rt_group_create "$instance" "$pod" "${pod_net_args[@]}"
+1. tears down any existing pod/instance under `--fresh` (`rt_group_teardown`);
+2. reuses or reseeds the per-instance profile copy (§3);
+3. `rt_group_create` — creates the pod (podman) / no-op (docker, hatago owns the netns);
+4. **auto-starts** declared `services:` via `ensure_service_up` (a standalone container, *not* a pod
+   member; lifecycle independent of the pod);
+5. resolves opt-in secrets (`resolve_secret_env`) into a mode-0600 temp `--env-file`, spread into
+   *both* pod members, then wiped via a `RETURN` trap;
+6. runs hatago (`rt_hatago_placement`) serving the single Streamable-HTTP endpoint on `:3535`;
+7. runs the harness member (`rt_harness_placement`) with `sleep infinity`;
+8. `apply_firewall` on the harness container (NET_ADMIN; shared netns → covers hatago);
+9. **waits** for hatago readiness (a TCP probe loop on `:$HATAGO_PORT`), then attaches.
 
-# Auto-start the stack's declared shared services (design §9). Each service is a STANDALONE
-# container that publishes its port to 0.0.0.0 — NOT a pod member. Its lifecycle is
-# independent of this pod.
-for svc in $svc_line; do ensure_service_up "$svc"; done
+The attach branches on the harness (`lib/harnessed-isolated.sh:240-270`): claude loads the profile's
+hatago endpoint via `claude --mcp-config <cfg> --strict-mcp-config`; omp runs `omp --profile`; the
+others run their bare CLI (opencode/gemini/antigravity/codex reach hatago via image-baked config, not
+`.mcp.json`). `HARNESSED_HEADLESS=true` skips the attach and leaves the pod up for `podman exec`
+introspection — this is the capability-test path.
 
-# hatago member: one Streamable-HTTP endpoint on :3535 from the mounted per-stack config.
-"$CONTAINER_RUNTIME" run -d $(rt_hatago_placement "$instance" "$pod") --name "${instance}-hatago" \
-    -v "$profile_dir/hatago.config.json:…/hatago.config.json:ro" \
-    "$HARNESSED_HATAGO_IMAGE" hatago serve --http --port "$HATAGO_PORT" --config …
+### The provider abstraction (`rt_*`)
 
-# harness member: profile-only config + §4a + §4b mounts; sleeps until attach.
-"$CONTAINER_RUNTIME" run -d $(rt_harness_placement "$instance" "$pod") --name "$instance" \
-    "${member_args[@]}" "$harness_image" sleep infinity
+`lib/harnessed-runtime.sh` hides the two ways to express a shared-netns group:
 
-apply_firewall "$instance"           # egress firewall (NET_ADMIN) on the harness container
-# …wait for hatago's port (shared netns → localhost:3535)…
-"$CONTAINER_RUNTIME" exec -it … "$instance" bash -lc "$mise_init && claude --mcp-config '$mcp_cfg' --strict-mcp-config"
-```
+- **podman** → a **pod** (`pod create` + `run --pod`); rootless UID via `--userns=keep-id` set on the
+  pod's infra container.
+- **docker** → a **shared-netns pair**: hatago runs first, the harness joins with
+  `--network container:<instance>-hatago`; rootless docker remaps UIDs daemon-side so `--userns` is
+  omitted.
 
-The harness `.mcp.json` points at exactly **one** endpoint —
-`http://localhost:3535/mcp` (`emit.py::HATAGO_ENDPOINT`) — because pod members share a
-netns. hatago aggregates every MCP server behind that one endpoint: light stdio servers
-run as hatago's children (baked into the hatago image), heavy services are proxied by URL
-over the network at `http://host.containers.internal:<port>/mcp`.
+Keep launchers runtime-independent: call `rt_group_create` / `rt_hatago_placement` /
+`rt_harness_placement` / `rt_group_teardown` / `rt_uses_pods`, never branch on `$CONTAINER_RUNTIME`
+in launcher code. Apple `container` has no shared-netns equivalent and is a tracked follow-up (not
+handled here).
 
-> **Provider portability:** the launch path above is the podman shape.
-> `lib/harnessed-runtime.sh` (`rt_*` helpers) abstracts the shared-netns group so the same
-> launcher also runs on docker (hatago starts first, the harness joins with `--network
-> container:<instance>-hatago`; no `--userns` — rootless docker remaps uids daemon-side).
-> Apple `container` (one VM+IP per container, no shared netns) is a tracked follow-up, not
-> yet supported.
+### Networking: the rootless host-gateway model
 
-`transparent` is the degenerate case (`lib/harnessed-transparent.sh`): no pod, no hatago,
-no services — just a harness container with the host config mounted live.
-
-### Networking recap (service-referenced recipe → live instance)
-
-```
-recipe declares:  mcp.servers[].service: ping        (no command → not a stdio child)
-                                                              │
-  emit time                                                   ▼
-  _resolve_service_servers ──► url = http://host.containers.internal:8080/mcp
-  tools/harnessed/assemble.py:67                              │
-                                                              │  baked into hatago.config.json
-                                                              ▼
-  launch time                                                 │
-  ensure_service_up(ping) ──► podman run -d -p 8080:8080 …     │   (publishes to 0.0.0.0; no --network)
-  lib/harnessed-services.sh:120-127                           │
-                                                              │  hatago (in the pod) proxies the URL
-                                                              ▼
-  harness ──► .mcp.json → localhost:3535/mcp ──► hatago ──► host.containers.internal:8080/mcp ──► ping
-```
-
-The harness never speaks to the service host directly; it only ever talks to hatago over
-the shared pod netns. hatago's URL-proxy entry is what crosses the rootless boundary to
-the host-published port.
+Pod members share a netns, so the harness always reaches hatago at `localhost:$HATAGO_PORT` (default
+3535). Shared *services* publish their port to `0.0.0.0` and are reached via the podman host gateway
+`host.containers.internal:<port>` — **rootless bridges are unsupported on most hosts** (netavark
+"Operation not supported"), so the `HARNESSED_NET` bridge is an explicit opt-in for bridge-capable
+hosts (DNS-by-name) (design §9). Two operator prerequisites keep this working:
+`lib/egress-firewall.sh:55-63` adds an iptables allow rule for `host.containers.internal`, and a
+Streamable-HTTP service proxied over it MUST add it to `TransportSecuritySettings.allowed_hosts`
+(canonical: `services/ping/server.py:19-25`).
 
 ---
 
-## Key Abstractions
+## 5. The Python tools image (`harnessed-tools`)
 
-All defined in `tools/harnessed/schema.py` unless noted. The assembler is the single
-source of truth for these types; the host launcher reads the manifests with flat `sed`
-greps (it has no YAML dependency).
+`harnessed-tools` (`tools/Dockerfile`, built from `tools/`) is the **build-time assembler image** — a
+single Python toolset that holds *all* assembly logic. It is distinct from the runtime bash layer:
 
-- **`Stack`** (`schema.py:118`) — a composed unit: `name`, `config` (`isolated`|
-  `transparent`), `harness` (`claude`|`omp`|`opencode`|`gemini`|`antigravity`|`codex`,
-  exactly one), `recipes[]`, `services[]`, `permissions`, `state{}`. The
-  `harness_config_dir` property (`schema.py:136`) maps harness → the Claude-canonical
-  `.claude` dir. **All six harnesses consume the same committed `.claude` profile**
-  (`HARNESS_CONFIG_DIR` in `schema.py:41-48`) — single source of truth. They differ only
-  in *how* they read it and reach hatago (design §8):
-    - `claude` — native (`.mcp.json` + skills/commands/agents).
-    - `omp` — Claude hooks/skills via the pre-installed `claude-hooks-bridge`.
-    - `opencode` — reads `.claude/skills/**/SKILL.md` + `~/.claude/CLAUDE.md` natively;
-      MCP via the image-baked `~/.config/opencode` config (ignores `.mcp.json`).
-    - `gemini` — MCP via the image-baked `~/.gemini/settings.json`; Claude skills/commands
-      are NOT natively consumed.
-    - `antigravity` (agy) — MCP via the image-baked `~/.gemini/config/mcp_config.json`;
-      Claude skills/commands NOT natively consumed.
-    - `codex` — MCP via the image-baked `~/.codex/config.toml` (`[mcp_servers.hatago]`,
-      native streamable-HTTP); reads `AGENTS.md` but NOT Claude skills/commands.
-  No separate profile dir, no re-authoring for any harness.
-- **`Recipe`** (`schema.py:107`) — one integration: `servers[]`, `skills[]`,
-  `commands[]`, `root` (the recipe dir, for resolving relative paths), `raw` (forward-
-  parsed unknown fields, D-14).
-- **`McpServer`** (`schema.py:69`) — one MCP server. `transport` is explicit (RESEARCH
-  Pitfall B): a `stdio` server with a `command` is run by hatago as a child
-  (`is_stdio_child` → True → baked into the hatago image); a network-native server or a
-  `service:`-referenced one is proxied by URL. Carries `url_env`, `env`, `headers`,
-  `service`.
-- **`ServiceDef`** (`schema.py:139`) — a shared sidecar: `name`, `image`, `port`,
-  `volume` (defaults `<name>-data`), `healthcheck`. Referenced from a recipe via
-  `mcp.servers[].service`; resolved by `_resolve_service_servers` into a hatago URL-proxy
-  entry pointing at `host.containers.internal:<port>/mcp`.
-- **`FileExt`** (`schema.py:95`) — a standalone file-extension dir shipped by a recipe;
-  `leaf` is the harness-native leaf name used for collision-checking.
-- **`Capabilities` / `expected_capabilities(stack, recipes)`** (`schema.py:347-365`) — the
-  **test oracle** (design §18). Derives the MCP servers + skills + commands the running
-  instance must expose, directly from the manifest. The capability test asserts the live
-  instance matches.
-- **`LinkSyncer`** (`synclinks.py`) — the collision-checking fan. Registers each
-  recipe's skills/commands by harness-native leaf name as recipes are added; two recipes
-  shipping the same name is a **fail-fast `CollisionError`** that names both source paths
-  — never a silent last-wins overwrite. `fan()` then `copytree`s the registered tree.
-- **`AssembleResult`** (`assemble.py:24`) — the assembler's return value: `stack`,
-  `recipes`, `profile_dir`, `servers`, `baked` (the stdio children the hatago image must
-  bake), `skills[]`, `commands[]`.
+- **Emit-only.** Its entrypoint (`harnessed-tools`) is invoked as
+  `assemble` / `scan` / `scan-image` / `scan-image-online` / `test` (`tools/harnessed/cli.py`). The
+  `assemble`/`scan` subcommands only read/write the bind-mounted build dir; they never invoke
+  podman and never mount the daemon socket (design §15, threat T-02-03).
+- **Python + rich + ruamel.yaml + scanners.** Built from `python:3.13-slim`; adds jq, a
+  checksum-verified pinned `osv-scanner`, pre-seeded offline OSV DBs, varlock/`op`/snyk/socket (all
+  *inert* unless a `.env.schema` or token exists), and a managed pnpm supply-chain config
+  (`minimumReleaseAge`/`strictDepBuilds`).
+- **UID-paired.** The image creates a `tools` user at uid 1000, paired with `--userns=keep-id` at
+  run, so emitted files in the bind-mounted build dir are owned by the host user, not root.
 
-Two cross-cutting invariants the abstractions enforce:
+The Python package (`tools/harnessed/`) is a clean module set:
 
-- **Fail-fast, pre-emit.** `validate_no_raw_npm`, the skill/command collision check, and
-  the MCP-server-name collision check all run *before* `emit.reset_profile` wipes
-  anything. A bad build leaves the previous profile intact.
-- **Claude-canonical format is the single source of truth** (§8). Skills/commands/hooks
-  are authored once in Claude format; every harness mounts the same `.claude` profile and
-  adapts *out* of it at runtime. One harness per stack.
+| Module | Role |
+|---|---|
+| `tools/harnessed/schema.py` | Typed `Recipe` / `Stack` / `McpServer` / `FileExt` / `ServiceDef` models; `HARNESS_CONFIG_DIR`; the raw-npm lint (`validate_no_raw_npm`); `expected_capabilities` (the test oracle) |
+| `tools/harnessed/assemble.py` | The assembly orchestration (`assemble`) — merge servers, resolve services, fan skills, drive `emit` |
+| `tools/harnessed/emit.py` | Pure file-emission (`reset_profile`, `write_mcp_json`, `write_hatago_config`, `write_baked_manifest`); `HATAGO_ENDPOINT` |
+| `tools/harnessed/scan.py` | The supply-chain gate: CVSS computation, `gate`, `run_source_scan`, `run_image_scan`, `run_image_scan_online` |
+| `tools/harnessed/capability.py` | The per-stack capability test: manifest oracle vs live `--fresh` introspection (`run_capability_test`) |
+| `tools/harnessed/report.py` | Renders the capability result as a rich markdown table (or `--json` for CI) |
+| `tools/harnessed/synclinks.py` | Fans skills/commands into harness-native paths; `CollisionError` on name clash |
+
+**Why a container, not host Python:** it removes host Python/node/uv version roulette and keeps the
+host dependency surface at "podman only." The one exception is `harnessed test`, which drives host
+podman (launch + `podman exec` introspection + teardown) and so runs host-native Python — resolved
+via `HARNESSED_PYTHON` / `uv run --with ruamel.yaml --with rich` / a system python3
+(`harnessed:358-378`).
 
 ---
 
-## State Management
+## 6. The egress-firewall layer
 
-Four independent state scopes, by design (§9). They must not be confused.
+The egress firewall (`lib/egress-firewall.sh`) is the primary exfiltration control: it runs **inside**
+each instance as root (the container has `--cap-add NET_ADMIN` from the §4a layer), flushes the
+OUTPUT chain, sets default DROP, then allows only loopback, established/related, DNS, the podman host
+gateways, and a small **whitelist** of resolved domains (api.anthropic.com, GitHub, npm registry,
+pypi.org, mise.jdx.dev, …). Extra domains (e.g. a Z.AI endpoint) are appended at call time.
 
-### 1. Per-project/per-stack harness profile (the live `.claude`)
-Location: `${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/<state_project>/<stack>/.claude`
-where `<state_project>` is the legible flattened `$HOME`-relative project path
-(`lib/harnessed-isolated.sh:131-132`). This is the **copy-on-start** of the committed
-profile — the running harness writes runtime state (`projects/`, `history.jsonl`, caches,
-backups) here, never back into the version-controlled `profiles/<stack>/` tree.
-Persistent across recreates by default (STA-01): the wipe + reseed runs only on first
-create (state dir absent) or under `--fresh`. Keyed by a *legible* project path so a
-memory system accumulates host-side and stays inspectable (STA-02); the opaque `$instance`
-hash still keys the pod/container (DNS-label ≤63-char limits apply there, not here).
+It is applied by `apply_firewall` (`lib/harnessed-common.sh:383-392`), which is **idempotent** via a
+`/run/egress-firewall-active` flag file and is skipped with `--no-firewall`. Because iptables is
+netns-wide, applying it on the harness container covers the whole pod (hatago included). Rules are
+in-memory, so they are re-applied at each session start. This is the layer to extend when a new
+recipe needs a new outbound destination.
 
-### 2. Per-instance `.claude.json` stub (onboarding bypass)
-Location: `${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/<instance>/claude.json`
-(`lib/harnessed-isolated-config.sh:97`). A **generated, token-free** stub built with `jq`:
-`hasCompletedOnboarding`, `firstStartTime`, `numStartups`, `oauthAccount`, `userID`
-(`lib/harnessed-isolated-config.sh:114-124`). The host whole-file blob is *never* mounted
-(it races with host Claude and corrupts state). Auth comes from the read-only
-`~/.claude/.credentials.json` mount — the only credential surface. Other harnesses seed
-their own credential stores instead: opencode → `~/.local/share/opencode/auth.json` ro,
-gemini → `~/.gemini/oauth_creds.json` ro, codex → `~/.codex/auth.json` ro; antigravity
-has no mountable credential (interactive login on first launch) — all in
-`lib/harnessed-isolated-config.sh`.
+---
 
-### 3. Service-scoped sidecar volumes (shared memory)
-Location: podman named volume `<service>-data` (e.g. `ping-data`), mounted at the
-service's `data_path` (default `/data`, `lib/harnessed-services.sh:79-82`). Survives
-`svc down` by default — that is the whole point of a shared service (one memory across
-instances, design §9). `svc down --purge` is the explicit destroy. The service *container*
-is named `<service>` and labelled `harnessed-service=<name>`; its lifecycle is independent
-of any instance (`ensure_service_up` starts it if absent, instances attach concurrently).
+## 7. Build / scan / rescan lifecycle
 
-### 4. Committed profile template (`profiles/<stack>/`)
-Location: `profiles/<stack>/.claude/{skills,commands,agents,hooks,rules}/` +
-`.mcp.json` + `settings.json`, and `profiles/<stack>/{hatago.config.json,baked-servers.json}`.
-The assembler's output, committed to git, treated as the **immutable template** the live
-profile (scope 1) is seeded from. Never written to at run time.
+```
+harnessed build <stack>
+  └─ ensure harnessed-tools image  (build from tools/Dockerfile on first use)
+  └─ EMIT:  harnessed-tools assemble <stack>   → profiles/<stack>/ + hatago.config.json
+  └─ SOURCE SCAN: harnessed-tools scan <stack>  → HIGH+ ⇒ abort
+  └─ HOST BUILD:  podman build base/Dockerfile.hatago → harnessed-hatago:latest
+  └─ IMAGE SCAN:  podman save → harnessed-tools scan-image → HIGH+ ⇒ abort
 
-> **The transparent contrast.** `transparent` (`lib/harnessed-transparent.sh`) has no
-> profile, no hatago, no service scopes. Host `~/.claude` is mounted rw live, and a
-> writable per-instance copy of `~/.claude.json` is seeded at start
-> (`lib/harnessed-claude-config.sh`) — copy-on-start of the host blob rather than a
-> generated stub. MCP comes from the host's own `.mcp.json`/`.claude.json`.
+harnessed <stack>           → compose pod, attach  (auto-builds missing images)
+harnessed test <stack>      → --fresh headless launch + manifest-oracle assertion
+harnessed rescan            → nightly: re-scan installed images ONLINE (fresh DB)
+```
 
-### Resolved-secret transient state (opt-in)
-When `~/.config/harnessed/.env.schema` (or `~/.config/<service>/.env.schema`) is present,
-`resolve_secret_env` (`lib/harnessed-secrets.sh`) resolves `op(op://…)` refs via varlock +
-1Password into a **mode-0600 temp env-file** that is spread into the pod via `--env-file`
-and **unlinked right after launch** (a RETURN-trap guarantees cleanup on any exit path,
-`lib/harnessed-isolated.sh:187-192`). Inert when no schema exists. Resolved secrets reach
-the pod as **env only** — never the profile or an image layer.
+**Build** (`build_stack`) is the gated path: assemble (emit-only) → scoped source scan → host hatago
+build → image scan. A HIGH finding at either scan aborts the build (`scan.ScanError` propagates as a
+non-zero exit). The credential-free osv-scanner + pip-audit are always the baseline; snyk/Socket.dev
+are token-gated (warn-and-skip when absent — the build stays non-interactive/reproducible). Scanner
+tokens reach the scan step as **env only** (forwarded from the launcher env or varlock-resolved),
+never a profile or image layer.
+
+**Test** (`harnessed test`) is the capability oracle (design §18): it derives *expected* MCP
+servers/skills/commands from the manifest (`schema.expected_capabilities`), launches the stack
+`--fresh` headless, introspects the live pod (hatago's `hatago://servers` resource, the mounted
+profile filesystem), diffs actual-vs-expected into one structured result, and tears the instance
+down. The same result drives a rich markdown report (`report.py`) and the CI exit code — one
+mechanism, two audiences. **There are no assembler unit tests by design** — the assembler is covered
+*transitively* (wire the wrong thing and the capability test fails).
+
+**Rescan** (`harnessed rescan` / `lib/harnessed-rescan.sh`, driven by
+`systemd/harnessed-rescan.timer`) is the post-build CVE catch: it iterates installed
+`harnessed-*`-labelled images, `podman save`s each, and re-scans it **online** (fresh osv.dev DB, via
+`scan-image-online`) so a CVE disclosed *after* build still surfaces. Each image is scanned
+independently (a HIGH on one does not abort the rest); the overall exit code tracks any failure. The
+timer requires `loginctl enable-linger $USER` so it fires while logged out.
+
+---
+
+## 8. Key abstractions (glossary)
+
+- **Stack** — a named manifest (`stacks/<name>/stack.yaml`): one harness + recipes + (optional)
+  services. The unit you launch.
+- **Recipe** — a hand-authored integration definition (`recipes/<name>/recipe.yaml`) contributing to
+  the MCP layer and/or the file-extension layer (design §5).
+- **Profile** — the generated, committed output (`profiles/<stack>/`) mounted into the harness
+  container; the version-controlled source of truth for an isolated stack's config.
+- **hatago** — the MCP hub. Aggregates all of a stack's MCP servers behind **one** Streamable-HTTP
+  endpoint (`localhost:3535/mcp`); spawns stdio servers as children (stdio→HTTP), proxies network
+  servers by URL.
+- **Shared service** — a heavy/stateful sidecar (own image/container/volume, host-published,
+  lifecycle independent of any instance); attached by reference (`services:` in the stack).
+- **Instance** — one running pod (isolated) or container (transparent), named
+  `harnessed-<stack>-<projhash>`; identity is stack + project path.
+- **Provider** — the container runtime, abstracted by `rt_*`: podman (pods) or docker (shared
+  netns).
+
+## 9. Entry points
+
+| Entry point | What it is |
+|---|---|
+| `harnessed` | The host bootstrap CLI (dependency-free bash). Parses argv, dispatches to subcommands or a launch path. |
+| `container` | Back-compat alias → `harnessed transparent` (muscle memory). Symlinked by `install.sh`. |
+| `tools/harnessed/cli.py` (`main`) | The `harnessed-tools` console script (the assembler image entrypoint): `assemble`/`scan`/`scan-image`/`scan-image-online`/`test`. |
+| `lib/egress-firewall.sh` | Runs *inside* each instance (not a host entry point) as `/usr/local/sbin/egress-firewall`. |
+| `services/<name>/server.py` | A service's MCP server (e.g. `services/ping/server.py`); its own image, run host-published. |
+
+## 10. State management
+
+State is **default-persistent, `--fresh` to wipe** (design §9):
+
+- **Harness state** (isolated): `projects/` + `history.jsonl` persist to a harnessed-owned host dir
+  with a **legible** flattened project slug (`$XDG_STATE_HOME/harnessed/<project>/<stack>/.claude`),
+  so sessions survive instance recreation and stay inspectable. `--fresh` is the throwaway path.
+- **Service volumes are service-scoped & harness-independent** (`<service>-data`, e.g. `ping-data`)
+  — this is what lets `claude+hindsight` and `omp+hindsight` share *one* memory. A service is a
+  shared instance: one long-lived container, outlives instances (`svc up/down`); `--purge` destroys
+  the volume.
+- **Ephemeral state** (sessions/, caches) stays in a per-instance path.
+- **Credentials** are env-only / ro-mount-only — never a profile, a committed file, or an image
+  layer (same rule for Claude auth and scanner tokens).
+
+## See also
+
+- `docs/codebase/STRUCTURE.md` — directory layout, naming, and where to add new code.
+- `docs/harnessed-design.md` — the authoritative *why* (decisions §2–§9, schemas §10–§13).
+- `docs/guides/` — recipe-authoring, stacks, service-authoring, secrets, troubleshooting.
