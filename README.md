@@ -4,14 +4,24 @@
 
 #### harnessed — Isolated, composable harness stacks (Claude Code / omp / opencode / gemini / antigravity / codex + an MCP hub + optional shared services)
 
+> [!WARNING]
+> **⚠️ ALPHA SOFTWARE — not production-ready.** harnessed is under active development and the field
+> of agentic AI security is very young. Expect breaking changes, rough edges, and incomplete
+> features. **Use at your own risk.**
+>
+> **Container runtimes — all WIP:**
+>
+> | Runtime | Status | Notes |
+> | --- | --- | --- |
+> | **podman** (rootless) | 🧪 **in testing** | The reference runtime (pods). Most complete path — verify your host with `./tools/uat/run-uat.sh 6`. |
+> | **Docker** | ⏳ **pending** | A shared-network-namespace path exists (`--network container:`) but is **not yet verified**. Egress firewall needs rootless `NET_ADMIN` (best-effort — `--no-firewall` to skip); shared **service sidecars** aren't wired (no `host.containers.internal`). |
+> | **Apple `container`** | ⏳ **pending** | Tracked follow-up. One VM/IP per container, no shared netns — needs a different networking story. |
+>
+> Runtime differences are abstracted by [`lib/harnessed-runtime.sh`](lib/harnessed-runtime.sh). See [troubleshooting](docs/guides/troubleshooting.md).
+
 You can read my [announcement here](https://mikesshinyobjects.tech/posts/2026/2026-03-20-code-container-isolating-ai-harnesses/)
 
 > Forked from [kevinMEH/code-container](https://github.com/kevinMEH/code-container) and extended significantly for rootless Podman, hardware authentication (YubiKey, 1Password), seamless Claude Code auth, composable isolated stacks, and alternative AI providers.
-
-> [!WARNING]
-> **Work in progress** — this project is still evolving rapidly and the field of agentic AI security is very young. Use at your own risk.
->
-> **Container runtimes:** isolated mode is provider-agnostic — it runs on **podman** (pods) and **Docker** (a shared network namespace via `--network container:`), abstracted by [`lib/harnessed-runtime.sh`](lib/harnessed-runtime.sh). Verify any host with the harness matrix: `./tools/uat/run-uat.sh 6`. On Docker the egress firewall needs rootless `NET_ADMIN` (best-effort — `--no-firewall` to skip) and shared **service sidecars** aren't wired yet (the `host.containers.internal` name). **Apple `container`** is a tracked follow-up (one VM/IP per container, no shared netns). See [troubleshooting](docs/guides/troubleshooting.md).
 
 ---
 
@@ -48,7 +58,7 @@ authenticated but carries **no host defaults**. See [design §2](docs/harnessed-
 
 ## Install
 
-**Podman (preferred) or Docker is the only host dependency.** No host Python/node/uv is required —
+**Podman (rootless) is the only host dependency** — it's the reference runtime (Docker support is pending; see the runtime table above). No host Python/node/uv is required —
 all assembly logic lives in a containerized `harnessed-tools` image ([design §15](docs/harnessed-design.md)).
 
 ```bash
@@ -169,7 +179,7 @@ Three projects solve adjacent problems — pick the one that matches your threat
 | **Primary use case** | Power-user daily driver across multiple AI harnesses | Enterprise sandboxing with policy enforcement                            | VS Code team dev environments                                                                             | Security auditing of untrusted code                                      |
 | **Auth model**       | Seamless — host credentials shared into container    | Credential providers inject keys; never exposed in sandbox               | Per-container setup                                                                                       | Fully isolated                                                           |
 | **Threat model**     | Contain the AI, not the repo                         | Full defense-in-depth (filesystem, network, process, inference)          | Consistent team environments                                                                              | Malicious repos / adversarial input                                      |
-| **Runtime**          | Podman (rootless) or Docker                          | K3s (Kubernetes) inside Docker                                           | Docker / Dev Containers spec                                                                              | Docker                                                                   |
+| **Runtime**          | Podman (rootless); Docker pending                    | K3s (Kubernetes) inside Docker                                           | Docker / Dev Containers spec                                                                              | Docker                                                                   |
 | **AI harnesses**     | Claude, omp (via bridge), opencode, gemini, antigravity, codex   | Claude, OpenCode, Codex, Copilot                                           | Claude                                                                                                    | Claude                                                                   |
 
 **Use this project** if you want YOLO-mode AI assistance on your own trusted code (transparent), or
