@@ -1,6 +1,6 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-06-16
+**Analysis Date:** 2026-06-22
 
 This repo runs **two engines in two dialects**, and the boundary between them is the
 single most important convention to internalize:
@@ -57,10 +57,48 @@ Every executable bash file opens with:
 set -euo pipefail
 ```
 
-`harnessed` sets it at line 25. Sourced libraries (`lib/*.sh`) do **not** re-set it —
+`harnessed` sets it at line 27. Sourced libraries (`lib/*.sh`) do **not** re-set it —
 they inherit the caller's shell. Because `errexit` is on, a bare failing pipeline
 aborts the script; where a non-zero exit is expected and meaningful, **capture it
 explicitly** rather than suppress it (see "Capturing a meaningful exit" below).
+
+### The replacement-doc comment convention
+
+There is no separate API documentation; **every bash function carries a header
+comment block that IS the spec**. The comment sits above the `name() {` line, names
+the parameters, states the contract, and cites the design decision or plan task. Read
+these before editing a function — they are authoritative. Two flavors, both from
+`lib/harnessed-services.sh`:
+
+```bash
+# svc_up <service> — start a service-scoped shared sidecar (idempotent).
+#
+# Ensures the image (builds from services/<name>/Dockerfile if absent), creates the named
+# volume if absent, publishes its port to 0.0.0.0 (rootless; peers reach it via
+# `host.containers.internal:<port>`) with `--label harnessed-service=<name>` +
+# `--userns=keep-id`, then waits for the healthcheck.
+svc_up() {
+```
+
+```bash
+# Read a scalar value from services/<name>/service.yaml (flat `key: value` pairs).
+# The manifest is flat scalars, so a lightweight sed parse keeps the host dependency-free
+# (no YAML lib needed on the host).
+_svc_yaml_val() {
+```
+
+Rules:
+- **Parameter signature on the first line**: `<fn> <param1> [<param2>] — one-sentence purpose`.
+- Cite the design section / plan task the function implements (`(plan 04-01 / SVC-01)`,
+  `(design §9)`). This is the traceability the GSD workflow relies on.
+- State the non-obvious contract: idempotency, what survives, what is `:ro`/`:rw`,
+  what is lazy-built.
+- Library file headers follow the same shape: a block at the top of `lib/*.sh` stating
+  the file's responsibility + the host-native invariant, then `Expects …` for the
+  globals it requires (`CONTAINER_RUNTIME`, `HARNESSED_DIR`).
+
+When you add or change a function, update its header comment in the same edit — a
+comment that contradicts the code is worse than none.
 
 ### Logging: the four `print_*` helpers
 
@@ -78,8 +116,7 @@ print_error()   { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
 Conventions:
 - **`print_error` writes to stderr** (note `>&2`); the other three write to stdout.
-  Any capture of `harnessed` output for the capability test parses stdout, so keep
-  errors off stdout.
+  The capability test and the UAT suites parse stdout, so keep errors off stdout.
 - Each helper takes **exactly one `$1` argument** — a single message string. Do not
   pass structured data; build the string at the call site.
 - Prefix every side-effecting step with `print_info` ("Assembling stack…", "Building
@@ -96,7 +133,7 @@ uniform across the launcher and libraries — **name the problem, then stop**:
 [ $# -gt 0 ] || { print_error "stop requires a stack name"; usage; exit 1; }
 ```
 ```bash
-# lib/harnessed-common.sh — a library returns non-zero so the caller's errexit fires
+# lib/harnessed-common.sh:118-121 — a library returns non-zero so the caller's errexit fires
 build_stack() {
     local stack="$1"
     if [ -z "$stack" ]; then print_error "build_stack: stack name required"; return 1; fi
@@ -107,19 +144,21 @@ build_stack() {
 }
 ```
 
-Rule of thumb: in `harnessed` and the per-command libraries, a bad invocation calls
-`usage` then `exit 1`; in `lib/harnessed-common.sh` helpers that may be reused, `return 1`
-and let the caller's `set -e` abort.
+Rule of thumb: in `harnessed` and the per-command libraries (`lib/harnessed-cli.sh`,
+`lib/harnessed-services.sh`), a bad invocation calls `usage` then `exit 1`; in
+`lib/harnessed-common.sh` helpers that may be reused, `return 1` and let the caller's
+`set -e` abort.
 
 ### Capturing a meaningful exit under `errexit`
 
 `set -e` aborts on non-zero, so when a non-zero exit is **the signal** (a scanner
-found a HIGH vuln; an image scan failed), capture the status into a local and branch:
+found a HIGH vuln; an image scan failed; a capability test went red), capture the
+status into a local and branch:
 
 ```bash
-# lib/harnessed-common.sh:115-122 — the BLD-02a source scan
+# lib/harnessed-common.sh:151-169 — the BLD-02a source scan
 local src_rc=0
-"$CONTAINER_RUNTIME" run --rm --userns=keep-id \
+"$CONTAINER_RUNTIME" run --rm $(rt_userns_args) \
     -v "$ROOT":"$ROOT" -w "$ROOT" \
     "$HARNESSED_TOOLS_IMAGE" scan "$stack" --root "$ROOT" --build-dir "$ROOT" || src_rc=$?
 if [ "$src_rc" -ne 0 ]; then
@@ -128,39 +167,38 @@ if [ "$src_rc" -ne 0 ]; then
 fi
 ```
 
-The same `|| var=$?` idiom is used for the image scan (`img_rc`) and for the
-capability test's python invocation (`test_rc`). Never silence with `|| true` when
-the exit code matters; never let a bare pipeline abort when it doesn't.
+The same `|| var=$?` idiom is used for the image scan (`img_rc`), the service run
+(`svc_run_rc`, `lib/harnessed-services.sh:119-127`), secret resolution
+(`resolve_rc`), and the capability test's python invocation (`test_rc`,
+`harnessed:364-378`). Never silence with `|| true` when the exit code matters; never
+let a bare pipeline abort when it doesn't.
 
 ### The source-then-call structure
 
 `harnessed` is a **thin dispatcher**: it parses argv, then sources exactly the
 library it needs and calls one function, then exits. No library is sourced
 unconditionally — that keeps the common case (launch a stack) from pulling in the
-service/CLI machinery:
+service/CLI/secrets machinery. Every dispatch arm ends with `exit 0`:
 
 ```bash
 # harnessed — top-level subcommands dispatch with `. … ; fn ; exit 0`
 if [ "$SUB_LIST" = true ]; then
     . "$HARNESSED_DIR/lib/harnessed-cli.sh"; list_all; exit 0
 fi
-...
-case "$STACK" in
-    transparent)
-        # shellcheck source=lib/harnessed-transparent.sh
-        . "$HARNESSED_DIR/lib/harnessed-transparent.sh"
-        harnessed_transparent "$PROJECT_PATH" "$CLAUDE" "$ZAI" ;;
-    *)
-        # shellcheck source=lib/harnessed-isolated.sh
-        . "$HARNESSED_DIR/lib/harnessed-isolated.sh"
-        harnessed_isolated "$STACK" "$PROJECT_PATH" "$FRESH" ;;
-esac
+if [ "$SUB_NEW" = true ]; then
+    . "$HARNESSED_DIR/lib/harnessed-cli.sh"; new_stack "$SUB_NEW_STACK" "$SUB_NEW_HARNESS" "$SUB_NEW_RECIPES"; exit 0
+fi
+if [ -n "$SVC_ACTION" ]; then
+    . "$HARNESSED_DIR/lib/harnessed-services.sh"
+    case "$SVC_ACTION" in up) svc_up "$SVC_TARGET" ;; ... esac
+    exit 0
+fi
 ```
 
-And the isolated launcher itself sources its helpers at the top of the function that
-needs them (`lib/harnessed-isolated.sh:46-48`), not at script load. Match this: source
-lazily, annotate every `. ` with a `# shellcheck source=` comment, and dispatch with a
-trailing `exit 0`.
+The isolated launcher itself sources its helpers lazily at the top of the function
+that needs them (`lib/harnessed-isolated.sh:57-59`), not at script load. Match this:
+source lazily, annotate every `. ` with a `# shellcheck source=` comment, and
+dispatch with a trailing `exit 0`.
 
 ### `local` for every function-scoped variable
 
@@ -168,11 +206,12 @@ There are no global mutable work variables in functions. Every helper declares i
 inputs and scratch on the first line:
 
 ```bash
-# lib/harnessed-common.sh
+# lib/harnessed-common.sh:289-290
 generate_instance_name() {
     local stack="$1" project_path="${2%/}" hash
     ...
 }
+# lib/harnessed-common.sh:116-117
 build_stack() {
     local stack="$1"
     local ROOT="${HARNESSED_ROOT:-$HARNESSED_DIR}"
@@ -181,10 +220,11 @@ build_stack() {
 ```
 
 The only "globals" are module-level **constants** (`HARNESSED_BASE_IMAGE`,
-`CONTAINER_HOME`, `NO_FIREWALL`) declared at the top of `lib/harnessed-common.sh`,
-and a small set of parse-state flags (`BUILD`, `STACK`, `FRESH`, …) in the launcher.
-Use `${VAR:-default}` at the point of read for optional values (e.g.
-`fresh="${3:-false}"`, `headless="${HARNESSED_HEADLESS:-false}"`).
+`HARNESSED_OMP_IMAGE`, … `CONTAINER_HOME`, `NO_FIREWALL`) declared at the top of
+`lib/harnessed-common.sh:16-44`, and a set of parse-state flags (`BUILD`, `STACK`,
+`FRESH`, `SUB_NEW_HARNESS`, …) in the launcher. Use `${VAR:-default}` at the point
+of read for optional values (e.g. `fresh="${3:-false}"`,
+`headless="${HARNESSED_HEADLESS:-false}"`, `HARNESSED_NET="${HARNESSED_NET:-}"`).
 
 ### The `MOUNT_ARGS` array pattern (caller declares, helpers append)
 
@@ -194,12 +234,12 @@ This is the central composition idiom for building a `podman run` invocation. Th
 run command:
 
 ```bash
-# lib/harnessed-isolated.sh:90-109 — the isolated launcher
+# lib/harnessed-isolated.sh:115-138 — the isolated launcher
 local MOUNT_ARGS=()
 harnessed_host_integration_mounts "$project_path" "$relpath"   # §4a host-integration layer
-harnessed_isolated_auth_mounts "$instance"                      # §4b isolated auth
+harnessed_isolated_auth_mounts "$instance" "$harness"          # §4b isolated auth (harness-aware)
 ...
-MOUNT_ARGS+=( -v "$run_claude:$CONTAINER_HOME/.claude:rw" )     # profile (config source)
+MOUNT_ARGS+=( -v "$run_claude:$CONTAINER_HOME/.claude:rw" )    # profile (per-instance copy-on-start)
 ```
 
 Each helper (`lib/harnessed-mounts.sh`, `lib/harnessed-isolated-config.sh`) documents
@@ -211,16 +251,18 @@ that it appends to `MOUNT_ARGS` in its header comment:
 ```
 
 The final invocation splats the array. Where a pod-level property must be stripped
-from a member (`--userns=keep-id` is illegal on a pod member), filter explicitly:
+from a member (`--userns=keep-id` is set on the pod infra, illegal on a member), the
+placement comes from the runtime abstraction, and `--userns` is filtered explicitly:
 
 ```bash
-# lib/harnessed-isolated.sh:152-158
+# lib/harnessed-isolated.sh:204-211
 local member_args=() _arg
 for _arg in "${MOUNT_ARGS[@]}"; do
     [ "$_arg" = "--userns=keep-id" ] && continue
     member_args+=( "$_arg" )
 done
-"$CONTAINER_RUNTIME" run -d --pod "$pod" --name "$instance" "${member_args[@]}" \
+"$CONTAINER_RUNTIME" run -d $(rt_harness_placement "$instance" "$pod") --name "$instance" "${member_args[@]}" \
+    "${env_args[@]}" \
     "$harness_image" sleep infinity >/dev/null
 ```
 
@@ -228,12 +270,15 @@ done
 document the `:ro`/`:rw` suffix in the comment — read-only is the default for host
 secrets, read-write only for state the instance owns.
 
-### Runtime detection: podman-first, docker-fallback
+### Runtime detection + the provider-neutral `rt_*` vocabulary
 
-Exactly one function decides the runtime, called once at launcher boot:
+Exactly one function decides the runtime, called once at launcher boot
+(`harnessed:75`). It only sets `CONTAINER_RUNTIME`; everything else is hidden behind
+a small vocabulary in **`lib/harnessed-runtime.sh`** (sourced by `common.sh:48-49`)
+so launchers stay podman/docker-agnostic:
 
 ```bash
-# lib/harnessed-common.sh:31-40
+# lib/harnessed-common.sh:52-61
 detect_runtime() {
     if command -v podman >/dev/null 2>&1; then
         CONTAINER_RUNTIME="podman"
@@ -246,9 +291,62 @@ detect_runtime() {
 }
 ```
 
-After that, **always** invoke through `"$CONTAINER_RUNTIME"` — never call `podman` or
-`docker` directly. The capability test mirrors this in Python
-(`_runtime()` in `capability.py`) so the two engines agree.
+The two runtimes diverge on **how a multi-container group that shares a network
+namespace is expressed** — and that is the whole reason `harnessed-runtime.sh`
+exists. Podman uses a first-class POD (`pod create` + `run --pod`); docker has no pod,
+so hatago is run first and the harness joins its netns via
+`--network container:<hatago>`. The `rt_*` functions hide that:
+
+| Function (`lib/harnessed-runtime.sh`) | podman | docker |
+|---|---|---|
+| `rt_uses_pods` (`:24`) | true | false |
+| `rt_userns_args` (`:29`) | `--userns=keep-id` | *(nothing — daemon remaps uids)* |
+| `rt_group_create <inst> <pod> [net…]` (`:40`) | `pod create` (carries userns + net) | no-op (netns owned by hatago) |
+| `rt_hatago_placement <inst> <pod>` (`:51`) | `--pod <pod>` | `--network <HARNESSED_NET>` or default bridge |
+| `rt_harness_placement <inst> <pod>` (`:64`) | `--pod <pod>` | `--network container:<inst>-hatago` |
+| `rt_group_teardown <inst> <pod>` (`:75`) | `pod rm -f` | `rm -f <inst> <inst>-hatago` |
+| `rt_network_exists` / `rt_volume_exists` (`:88`/`:92`) | `… exists` | `inspect` |
+| `rt_group_names <prefix> [running]` (`:101`) | `pod ls` | `ps` filtered by name, minus `-hatago` |
+
+**Always invoke the runtime through `"$CONTAINER_RUNTIME"` and place members via the
+`rt_*` helpers** — never call `podman`/`docker` directly and never hard-code a pod
+flag. The lifecycle helpers (`pod_exists`, `stop_instance`, `remove_instance` in
+`common.sh:286-351`) all branch on `rt_uses_pods` so docker's flat-container path
+falls through correctly. The capability test mirrors this in Python (`_runtime()` and
+the provider-neutral `teardown()` in `capability.py:238-254`) so the two engines
+agree.
+
+### Multi-harness dispatch (the `[ "$harness" = "X" ]` cascade)
+
+Six harnesses are supported — `claude`, `omp`, `opencode`, `gemini`, `antigravity`,
+`codex` (`harnessed new --harness`, validated in `schema.HARNESS_CONFIG_DIR`). Each
+maps to one lazy-built image + one attach command. The isolated launcher reads the
+harness as a flat scalar and cascades twice — once to pick the image + ensure it
+lazily, once to pick the attach command:
+
+```bash
+# lib/harnessed-isolated.sh:41-55 — image + lazy build
+local harness
+harness="$(sed -n 's/^harness:[[:space:]]*//p' "$HARNESSED_DIR/stacks/$stack/stack.yaml" | tr -d '[:space:]')"
+harness="${harness:-claude}"
+local harness_image="$HARNESSED_CLAUDE_IMAGE"
+[ "$harness" = "omp" ] && harness_image="$HARNESSED_OMP_IMAGE"
+[ "$harness" = "opencode" ] && harness_image="$HARNESSED_OPENCODE_IMAGE"
+[ "$harness" = "gemini" ] && harness_image="$HARNESSED_GEMINI_IMAGE"
+[ "$harness" = "antigravity" ] && harness_image="$HARNESSED_ANTIGRAVITY_IMAGE"
+[ "$harness" = "codex" ] && harness_image="$HARNESSED_CODEX_IMAGE"
+# LAZY: build a non-claude harness image only when such a stack actually launches (HRN-01..05).
+[ "$harness" = "omp" ] && ensure_omp_image
+... # (one ensure_* per harness)
+```
+
+The attach command mirrors it: `claude --mcp-config <profile> --strict-mcp-config`,
+`omp --profile`, or a bare `opencode` / `gemini` / `agy` / `codex` (each reaches
+hatago via its image-baked config — see `lib/harnessed-isolated.sh:233-270`). When
+adding a seventh harness: add the image constant + `ensure_*` to `common.sh`, the two
+cascade lines to the isolated launcher, the `HARNESS_CONFIG_DIR` entry in
+`schema.py`, the `--harness` help/validation in `harnessed`, and the `_llm_cmd` arm
+in `capability.py`.
 
 ### Reading manifests in bash: flat `sed`, no YAML lib
 
@@ -257,13 +355,17 @@ authored as **flat scalars**, so the launcher parses them with targeted `sed`/`g
 rather than a real parser. Only the Python assembler loads YAML for real.
 
 ```bash
-# lib/harnessed-isolated.sh:38 — read a stack's harness (one scalar)
+# lib/harnessed-isolated.sh:41 — read a stack's harness (one scalar)
 harness="$(sed -n 's/^harness:[[:space:]]*//p' "$HARNESSED_DIR/stacks/$stack/stack.yaml" | tr -d '[:space:]')"
-harness="${harness:-claude}"
 ```
 ```bash
-# lib/harnessed-services.sh — the service library reads flat scalars the same way
-# _svc_yaml_val reads a single `key: value` line from services/<name>/service.yaml
+# lib/harnessed-isolated.sh:163-169 — read a stack's inline-array services: [a, b]
+svc_line="$(sed -n 's/^services: *//p' "$HARNESSED_DIR/stacks/$stack/stack.yaml")"
+svc_line="${svc_line#[}"; svc_line="${svc_line%]}"   # strip [a, b] → a, b
+for svc in $svc_line; do svc="${svc%,}"; [ -n "$svc" ] && ensure_service_up "$svc"; done
+```
+```bash
+# lib/harnessed-services.sh:35-38 — _svc_yaml_val reads a single `key: value` from service.yaml
 ```
 
 If you need a *structured* manifest read, that code belongs in Python (under
@@ -279,7 +381,7 @@ template for new code.
 ### Module header: docstring, future annotations, stdlib, local
 
 ```python
-# tools/harnessed/capability.py:1, 26-39
+# tools/harnessed/capability.py:1, 24-39
 """Per-stack capability test — manifest oracle vs live --fresh introspection (design §18).
 
 The stack manifest is the **oracle**: ... [paragraphs explaining the module's role]
@@ -306,11 +408,11 @@ Conventions:
 
 ### `@dataclass` for every typed record
 
-Domain objects are frozen-shape `@dataclass`es with `field(default_factory=…)` for
-mutable defaults. This is the only data modeling style in the package:
+Domain objects are `@dataclass`es with `field(default_factory=…)` for mutable
+defaults. This is the only data modeling style in the package:
 
 ```python
-# tools/harnessed/schema.py:54-77
+# tools/harnessed/schema.py:69-92
 @dataclass
 class McpServer:
     """One MCP server declared by a recipe (design §11 MCP layer).
@@ -355,7 +457,7 @@ Use `X | Y` (not `Union[X, Y]`) and `list[T]` / `dict[K, V]` / `set[T]` (not
 `List`/`Dict`/`Set`). Optional-with-default reads `x: T | None = None`:
 
 ```python
-# tools/harnessed/capability.py:518-525
+# tools/harnessed/capability.py:537-544
 def run_capability_test(
     root: Path | str,
     stack_name: str,
@@ -375,7 +477,7 @@ Triple-quoted, imperative mood, explaining **what + why**, citing the design
 decision where relevant. The docstring is where the "why this exists" lives:
 
 ```python
-# tools/harnessed/synclinks.py:1-10 (module) and the collision contract
+# tools/harnessed/synclinks.py:1 (module docstring stating the collision contract)
 """Fan recipe skills/commands into harness-native profile paths, fail-fast on collision.
 ...
 Two recipes shipping the same skill/command name is a **fail-fast** error that names
@@ -390,7 +492,7 @@ Exceptions are domain-specific and named after the *failure*, not a generic
 stating when it fires:
 
 ```python
-# tools/harnessed/schema.py
+# tools/harnessed/schema.py:51-56
 class SchemaError(Exception):
     """A recipe/stack manifest is missing a required field or is malformed."""
 
@@ -403,12 +505,12 @@ class CollisionError(Exception):
     """Two recipes ship a skill/command with the same harness-native name."""
 ```
 ```python
-# tools/harnessed/scan.py
+# tools/harnessed/scan.py:49-50
 class ScanError(Exception):
     """A supply-chain scan found a HIGH+ finding (CVSS >= HIGH) — the build must abort."""
 ```
 ```python
-# tools/harnessed/capability.py
+# tools/harnessed/capability.py:56-57
 class CapabilityError(Exception):
     """The capability test could not be run (launch failed, instance not found, etc.)."""
 ```
@@ -417,7 +519,7 @@ Note that `RecipeLintError` **extends `SchemaError`** — a lint failure *is* a 
 malformation, so the CLI can catch the whole family in one `except`:
 
 ```python
-# tools/harnessed/cli.py:108-114
+# tools/harnessed/cli.py:112-118
 def _run_assemble(args, out, err):
     ...
     try:
@@ -438,7 +540,7 @@ profile. The assembler's `assemble()` is the canonical example — every gate fi
 before `emit.reset_profile`:
 
 ```python
-# tools/harnessed/assemble.py:73-99
+# tools/harnessed/assemble.py:73-94
 def assemble(root, stack_name, build_dir):
     stack, recipes = load_stack_with_recipes(root, stack_name)
 
@@ -450,6 +552,8 @@ def assemble(root, stack_name, build_dir):
     syncer = LinkSyncer()
     for recipe in recipes:
         syncer.add_recipe(recipe)
+
+    servers = _resolve_service_servers(_merge_servers(recipes), root)
     ...
     emit.reset_profile(profile_dir)   # <-- first write happens HERE, after all checks
 ```
@@ -484,21 +588,19 @@ your named exception with an actionable message (name the offending value and th
 
 The assembler modules (`schema.py`, `assemble.py`, `emit.py`, `synclinks.py`,
 `scan.py`) may not invoke a container runtime. They read the mounted build dir and
-write to it — nothing else. The header of `emit.py` states the contract:
+write to it — nothing else. The headers state the contract:
 
 ```python
 # tools/harnessed/emit.py:1
 """Write the assembled artifacts into the mounted build dir (EMIT ONLY).
 ...
 """
-```
-```python
-# tools/harnessed/assemble.py:11-12
+# tools/harnessed/assemble.py:11
 EMIT ONLY: nothing here invokes podman/docker or mounts a daemon socket.
 ```
 
 The **one** module that *does* shell out is `capability.py` — and it is never run
-inside the tools image. `harnessed test` runs it host-native (see `harnessed:306-325`
+inside the tools image. `harnessed test` runs it host-native (see `harnessed:335-378`
 for the `HARNESSED_PYTHON` → `uv run --with …` → host `python3` resolution chain).
 Keep this split absolute: emit-time code = pure filesystem; test-time code =
 subprocess + `podman exec`.
@@ -579,7 +681,7 @@ tracer stack is the minimal reference:
 # stacks/tracer-time/stack.yaml
 name: tracer-time
 config: isolated      # isolated (default) | transparent
-harness: claude       # claude | omp  (exactly one)
+harness: claude       # claude | omp | opencode | gemini | antigravity | codex  (exactly one)
 recipes: [time]
 ```
 
@@ -587,18 +689,23 @@ Conventions:
 - `config: isolated` (default) means the config layer comes from an assembled profile;
   `config: transparent` means it comes from live host config (the built-in
   `transparent` stack omits `harness` and mounts host configs wholesale).
-- `harness` is **exactly one** of `claude` | `omp` (validated by `Stack.harness_config_dir`
-  → `SchemaError` on an unknown value). omp consumes the *same* Claude-canonical
-  profile via the bridge — no separate config dir, no re-authoring (design §8).
+- `harness` is **exactly one** of the six supported harnesses — validated by
+  `Stack.harness_config_dir` (`schema.py:136`, backed by the `HARNESS_CONFIG_DIR` map
+  at `schema.py:48`) → `SchemaError` on an unknown value. `harnessed new --harness`
+  mirrors the same set. All six harnesses consume the **same** Claude-canonical
+  profile (`.claude/`); they differ only in *how* they read it and reach hatago — no
+  separate config dir, no re-authoring (design §8).
 - `services: [name, …]` references `services/<name>/service.yaml`; the launcher
   auto-starts each via `ensure_service_up` (design §9). Optional.
 - `permissions` / `state` are parsed forward and currently use defaults.
 
 ### `services/<name>/service.yaml`
 
-A shared service is its **own** image/container/volume on `harnessed-net`, with a
-lifecycle independent of any instance. Flat scalars only (the bash service library
-reads them with `sed`):
+A shared service is its **own** image/container/volume on a **host-published port**
+(reachable via `host.containers.internal:<port>` on the default rootless network; or
+by DNS name over the `HARNESSED_NET` bridge on bridge-capable hosts), with a lifecycle
+independent of any instance. Flat scalars only (the bash service library reads them
+with `sed`):
 
 ```yaml
 # services/ping/service.yaml
@@ -614,13 +721,49 @@ Conventions:
   is what lets a `claude` instance and an `omp` instance share one memory.
 - `healthcheck` is a shell command run inside the service container; `svc up` polls it.
 - A recipe references a service via `mcp.servers[].service: <name>`; the assembler
-  resolves it to a hatago URL-proxy entry (`_resolve_service_servers` in `assemble.py`).
+  resolves it to a hatago URL-proxy entry pointing at the host gateway
+  (`_resolve_service_servers` in `assemble.py:51-70` →
+  `url: http://host.containers.internal:<port>/mcp`).
+
+### Shared-service networking — the host-gateway model (get this right)
+
+The default pod network is **rootless `pasta` — NOT a bridge**. Rootless bridges are
+unsupported on most hosts (`netavark: create bridge: Operation not supported`), so
+shared services **publish their port to `0.0.0.0`** and peer pods/instances reach them
+via the podman host gateway `host.containers.internal:<port>`. The `harnessed-net`
+bridge is an **explicit opt-in** (`HARNESSED_NET` env var) for bridge-capable hosts
+only — it is additive DNS-by-name, never the default/primary path.
+
+The three authoritative spots:
+
+1. **`svc_up` publishes to `0.0.0.0`** (`lib/harnessed-services.sh:101-127`):
+   ```bash
+   # Rootless service model (plan 04-01 fix): publish the port to 0.0.0.0 — NO bridge.
+   # Rootless bridges are unsupported on most hosts (netavark "create bridge: Operation
+   # not supported"), so peer instances/pods reach this service via the host gateway
+   # `host.containers.internal:<port>`. ... HARNESSED_NET remains an explicit opt-in.
+   "$CONTAINER_RUNTIME" run -d \
+       -p "$port:$port" \
+       --name "$service" --label harnessed-service="$service" \
+       $(rt_userns_args) -v "$volume:$data_path" "$image"
+   ```
+2. **The pod-network block is opt-in** (`lib/harnessed-isolated.sh:140-150`): the pod
+   uses rootless networking by default; `HARNESSED_NET` adds `--network "$HARNESSED_NET"`
+   only when set. Pod members share a netns either way, so the harness always reaches
+   hatago at `localhost:$HATAGO_PORT`.
+3. **The assembler resolves `service:` servers to the host gateway**
+   (`tools/harnessed/assemble.py:51-70`): `server.url = f"http://host.containers.internal:{svc.port}/mcp"`.
+
+Do not describe shared services as "on `harnessed-net`" without the opt-in qualifier —
+that framing is wrong for the default rootless path.
 
 ### Claude-canonical layout is the single source of truth
 
 Skills/commands/hooks/agents/rules are authored in **Claude Code format**. omp adapts
-*out* of it via `claude-hooks-bridge` — there is no omp-native format and no
-re-authoring (design §8). The emitted profile is always
+*out* of it via `claude-hooks-bridge`; opencode reads `.claude/skills/**/SKILL.md`
+natively; gemini/antigravity/codex reach hatago via their own image-baked MCP config
+but do not natively consume Claude skills — the profile is still mounted for parity
+(design §8). The emitted profile is always
 `profiles/<stack>/.claude/{skills,commands,agents,hooks,rules}/` + `.mcp.json` +
 `settings.json`.
 
@@ -653,13 +796,13 @@ esbuild) actually needs to run.
 
 ### 2. Recipe lint: `validate_no_raw_npm` (fail-fast at assemble time)
 
-`tools/harnessed/schema.py:296` rejects raw `npm`/`npx` in a recipe's MCP commands,
+`tools/harnessed/schema.py:313` rejects raw `npm`/`npx` in a recipe's MCP commands,
 scripts, deps, or vendored `package.json` scripts — and **names the pnpm
 equivalent** in the error. Detection is word-boundaried (`\bnpx\b`,
 `\bnpm\s+(install|ci|run|exec|i)\b`) so a package named `npmlog` is not flagged:
 
 ```python
-# tools/harnessed/schema.py:296-310
+# tools/harnessed/schema.py:313-345
 def validate_no_raw_npm(recipe: Recipe) -> None:
     """Reject recipes that reach for raw npm/npx; name the pnpm equivalent (BLD-03, fail-fast)."""
     for server in recipe.servers:
@@ -692,8 +835,10 @@ authoritative list of substitutions the linter suggests.
 
 | You are adding… | Put it in… | Style |
 |---|---|---|
-| A host-side podman step (mount, lifecycle, scan) | a `lib/harnessed-*.sh` helper | bash: `print_*`, `local`, append to `MOUNT_ARGS`, `"$CONTAINER_RUNTIME"` |
+| A host-side podman step (mount, lifecycle, scan) | a `lib/harnessed-*.sh` helper | bash: `print_*`, `local`, append to `MOUNT_ARGS`, `"$CONTAINER_RUNTIME"` + `rt_*` placement |
+| A runtime-specific behavior (pod vs shared-netns) | `lib/harnessed-runtime.sh` behind an `rt_*` helper | provider-neutral; `rt_uses_pods` branches |
 | A new CLI subcommand | parse in `harnessed`, dispatch with `. lib/… ; fn ; exit 0` | bash dispatcher |
+| A new harness | image constant + `ensure_*` in `common.sh`; two cascade lines in the isolated launcher; `HARNESS_CONFIG_DIR` + `_llm_cmd` arms | six-harness cascade |
 | A new manifest field | parse it in `tools/harnessed/schema.py` (carry unknowns on `raw`) | `@dataclass` + `field(default_factory=…)` |
 | A new assembly step | `tools/harnessed/assemble.py` (before `emit.*`) or `emit.py` | pure, emit-only, fail-fast |
 | A new validation rule | a named `Exception` subclass, raised before any `emit.*` | fail-fast with an actionable message |
