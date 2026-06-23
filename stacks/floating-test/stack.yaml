@@ -1,0 +1,8 @@
+# Phase 8 test fixture — references floating-recipe to trigger ASM-02 at build time.
+#
+# When `harnessed build floating-test` is run, the assembler reads floating-recipe/Dockerfile,
+# detects the --branch main floating ref, and raises PinValidationError before emitting any
+# docker build context. Used by test_pin_validation_rejects_floating UAT test.
+name: floating-test
+harness: claude
+recipes: [floating-recipe]
