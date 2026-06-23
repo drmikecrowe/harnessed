@@ -17,7 +17,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import emit
-from .schema import McpServer, Recipe, Stack, load_service, load_stack_with_recipes, validate_no_raw_npm
+from .schema import (
+    HarnessCompatError,
+    McpServer,
+    PinValidationError,
+    Recipe,
+    Stack,
+    load_service,
+    load_stack_with_recipes,
+    validate_harness_compat,
+    validate_no_raw_npm,
+    validate_pin,
+)
 from .synclinks import CollisionError, LinkSyncer
 
 
@@ -76,10 +87,14 @@ def assemble(root: Path, stack_name: str, build_dir: Path) -> AssembleResult:
 
     stack, recipes = load_stack_with_recipes(root, stack_name)
 
-    # Fail-fast recipe validation (BLD-03): reject raw npm/npx BEFORE any file is emitted
-    # (the same gate position as the server-name collision check below).
+    # Fail-fast recipe validation (BLD-03 + ASM-01 + ASM-02): reject raw npm/npx, incompatible
+    # harness compositions, and floating Dockerfile refs BEFORE any file is emitted.
     for recipe in recipes:
         validate_no_raw_npm(recipe)
+        validate_harness_compat(recipe, stack.harness)  # ASM-01: harness compat gate (T-08-02)
+        dockerfile = recipe.root / "Dockerfile"
+        if dockerfile.is_file():
+            validate_pin(recipe.name, dockerfile.read_text(encoding="utf-8"))  # ASM-02 (T-08-01)
 
     # Fan skills/commands (registers + collision-checks before any file is written).
     syncer = LinkSyncer()
@@ -97,6 +112,7 @@ def assemble(root: Path, stack_name: str, build_dir: Path) -> AssembleResult:
     emit.write_mcp_json(harness_dir)
     emit.write_settings_json(harness_dir, servers)
     emit.write_hatago_config(profile_dir, servers)
+    emit.write_derived_dockerfile(profile_dir, stack, recipes)  # ASM-03
 
     baked = [s for s in servers if s.is_stdio_child]
     emit.write_baked_manifest(profile_dir, stack, baked)
