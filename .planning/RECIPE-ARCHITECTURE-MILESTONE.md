@@ -478,26 +478,100 @@ agents/omp/
 The Dockerfile installs omp and its bridge. Reference the existing `base/Dockerfile.harnessed-omp`
 and the `recipes/omp/recipe.yaml` for the bridge package.
 
-#### 2d: Update the build system
+#### 2d: Update the assembler (ASM-01 / ASM-02 / ASM-03)
 
+Full spec: §5 "Assembler Changes". Summary of what must be implemented:
+
+**ASM-01 — Harness-compatibility check** (`tools/harnessed/assemble.py`):
+- Before emitting any Dockerfile, for each recipe in the stack check that `stack.harness` is in
+  `recipe.harnesses`. Fail with a clean error (e.g. `"recipe gstack supports [claude], cannot
+  compose onto harness omp"`) — not a cryptic mid-build failure.
+- Acceptance: `harnessed build bad-stack` (omp + gstack) exits non-zero with the recipe name and
+  its `harnesses:` list in the error message. No Dockerfile is emitted.
+
+**ASM-02 — Pin validation**:
+- Scan each recipe Dockerfile body for floating refs: `--branch main`, `--branch master`,
+  unversioned `latest` in package installs. Any floating ref is a validation error.
+- Acceptance: a recipe Dockerfile with `git clone --branch main` fails `harnessed build` with
+  the offending line identified before `podman build` starts.
+
+**ASM-03 — Derived Dockerfile emission + HARNESS build ARG**:
+- Emit `profiles/<stack>/Dockerfile.harnessed-<stack>`:
+  - First line: `FROM harnessed-<agent>:latest`
+  - Second line: `ARG HARNESS=<agent>` (value from stack.yaml `harness:`)
+  - Then each recipe Dockerfile body in recipe order (FROM line stripped, comment header added)
+- The generated launcher script runs:
+  `podman build --build-arg HARNESS=<agent> -f Dockerfile.harnessed-<stack> -t harnessed-<stack> .`
+- Acceptance: `profiles/gstack-time/Dockerfile.harnessed-gstack-time` contains `ARG HARNESS=claude`
+  and the gstack recipe body; `harnessed build gstack-time` completes and `podman images` lists
+  `harnessed-gstack-time`.
+
+**Build system plumbing**:
 - `harnessed build` (bare) builds: `harnessed-base` + all `agents/*/Dockerfile` + `hatago`
-- `harnessed build <stack>` assembles the stack: reads recipes, emits derived Dockerfile, builds
-- The old `base/Dockerfile.harnessed-claude` and `base/Dockerfile.harnessed-omp` become the
-  `agents/` Dockerfiles (move, don't duplicate)
-- `lib/harnessed-common.sh` image-name constants update to reflect the new build paths
+- `harnessed build <stack>` triggers the assembler, then the host builds the derived image
+- Move `base/Dockerfile.harnessed-claude` / `base/Dockerfile.harnessed-omp` → `agents/`
+- `lib/harnessed-common.sh` image-name constants update to reflect the new paths
 
-#### 2e: Update the launcher
+#### 2e: Update the launcher (MNT2-01 through MNT2-06)
 
-- The launcher uses `harnessed-<stack>` (the derived image) instead of `harnessed-<harness>`
-- The profile mount changes from dir-replace to surgical file mounts (see §4)
+Full spec: §4 "Profile Mount Model Change". Summary of what must be implemented:
+
+**MNT2-01 — Surgical config-file mount** (not whole-dir):
+- Remove the `copy-on-start` / whole-dir bind-mount of `~/.claude/` (or equivalent).
+- Mount only the specific config files from the profile: `.mcp.json` and `settings.json` for
+  claude; per-harness equivalents for omp/opencode/etc (see §4 per-harness table).
+- Acceptance: after `harnessed gstack-time`, `ls ~/.claude/skills/` inside the container shows
+  gstack skills (image-baked); host `~/.claude/skills/` is unchanged.
+
+**MNT2-02 — Path mirroring**:
+- Set `--workdir $HOST_PWD` in the launcher (pass `HOST_PWD` from the host env).
+- Acceptance: inside the running container, `pwd` equals the host project path byte-for-byte.
+  After a session, the host gains `~/.claude/projects/-home-mcrowe-…-code-container/<uuid>.jsonl`
+  (the `-home-mcrowe-…` slug, not a `-container-mcrowe-…` slug).
+
+**MNT2-03 — Claude Code history surfacing**:
+- rw-mount (per-project / UUID-keyed, collision-free):
+  `projects/<project-slug>/`, `file-history/`, `tasks/`, `session-env/`, `todos/`
+- Guarded teardown merge for `history.jsonl` (ships **disabled**; no-op on schema mismatch).
+- Never mount: `skills/`, `commands/`, `hooks/`, `rules/`, `plugins/`, cache, `.credentials.json`.
+- Acceptance: after a throwaway session, host has a new `~/.claude/projects/<slug>/<uuid>.jsonl`;
+  host `~/.claude/skills/` is unchanged.
+
+**MNT2-04 — omp history surfacing**:
+- rw-mount: `agent/sessions/<project-slug>/`; optionally `agent/blobs/`.
+- Guarded teardown for `history.db` by `cwd` (ships **disabled**).
+- **Never** mount `agent.db` (co-locates `auth_credentials`).
+- Acceptance: after a throwaway omp session, host has a new
+  `~/.omp/agent/sessions/<slug>/<ts>_<uuid>.jsonl`; `~/.omp/agent.db` is unchanged.
+
+**MNT2-05 — antigravity history surfacing**:
+- rw-mount: `antigravity-cli/conversations/`, `antigravity-cli/brain/`, `antigravity-cli/implicit/`
+  (UUID-namespaced, WAL-safe).
+- Guarded teardown for `history.jsonl` + `cache/projects.json` + `cache/last_conversations.json`
+  (ships **disabled**).
+- Never mount `antigravity-oauth-token`, `bin/`, `log/`, or parent `~/.gemini/`.
+- Acceptance: after a throwaway antigravity session, host has a new
+  `~/.gemini/antigravity-cli/conversations/<cid>.db` and `brain/<cid>/`.
+
+**MNT2-06 — Data-driven mount manifests**:
+- All mount paths and teardown-merge targets live in a structured per-harness config (not inline
+  `-v` flags). The launcher reads this config to build its `podman run` mount args.
+- Acceptance: no mount paths are hardcoded in the launcher bash; changing a harness's paths
+  requires editing one config entry.
+
+**Other launcher changes**:
+- Use `harnessed-<stack>` (the derived image) instead of `harnessed-<harness>`
 - `ensure_images` / `ensure_claude_image` / `ensure_omp_image` update to build from `agents/`
 
-**Acceptance:**
+**Acceptance (Task 2 combined):**
 - `harnessed build` produces `harnessed-base`, `harnessed-claude`, `harnessed-omp`, `hatago`
-- `harnessed-base` has bun, rust, go on PATH (verify: `podman run harnessed-base mise ls`)
-- `harnessed-base` does NOT have claude/codex/gemini CLIs
-- `harnessed-claude` has the claude CLI (`podman run harnessed-claude claude --version`)
-- `harnessed-omp` has the omp CLI
+- `harnessed-base` has bun, rust, go on PATH; does NOT have claude/codex/gemini CLIs
+- `harnessed-claude` has the claude CLI; `harnessed-omp` has the omp CLI
+- Incompatible recipe composition exits non-zero with a clean error before any build
+- Floating ref in a recipe Dockerfile exits non-zero with the offending line identified
+- Derived `Dockerfile.harnessed-<stack>` contains `ARG HARNESS=<agent>` and concatenated bodies
+- Container `pwd` matches host project path; Claude slug is `-home-mcrowe-…` not `-container-mcrowe-…`
+- Image-baked skills visible inside the container; host `~/.claude/skills/` unchanged after session
 
 ---
 
