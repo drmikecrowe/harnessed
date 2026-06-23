@@ -187,7 +187,12 @@ Plans:
   2. `harnessed-claude` builds `FROM harnessed-base` and passes `claude --version` inside the container without re-downloading runtimes
   3. `harnessed-omp` builds `FROM harnessed-base` and passes `omp --version` inside the container
   4. `harnessed build` (bare, no stack argument) produces `harnessed-base`, `harnessed-claude`, `harnessed-omp`, and `hatago` without error
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 07-01-PLAN.md — Rebuild Dockerfile.harnessed-base: node@24, bun, rust, go; strip harness CLIs (IMG-01)
+- [ ] 07-02-PLAN.md — agents/ directory (claude + omp agent.yaml) + build_images() wiring for bare build (IMG-02)
 
 ### Phase 8: Dockerfile Recipe Model + Assembler + Supply-Chain Gate
 
@@ -254,7 +259,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
 | 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-21 |
 | 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 3/3 | Complete    | 2026-06-21 |
-| 7. Fat Base + Agent Images | 0/TBD | Not started | - |
+| 7. Fat Base + Agent Images | 0/2 | Not started | - |
 | 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 0/TBD | Not started | - |
 | 9. Surgical Profile Mount + History Surfacing | 0/TBD | Not started | - |
 | 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
