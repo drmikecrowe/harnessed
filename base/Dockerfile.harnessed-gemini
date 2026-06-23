@@ -1,17 +1,22 @@
 # harnessed-gemini — the gemini-cli (Google) harness image.
 #
 # FROM harnessed-base (lineage only, §6) + a baked global config that points gemini-cli's MCP at the
-# hatago hub. gemini-cli is ALREADY installed and working in the base image (npm:@google/gemini-cli —
-# a pure-JS CLI with no blocked postinstall, unlike opencode), so this image only bakes the config.
-# All harnesses consume the SAME committed Claude-canonical profile (.claude/) — design §8 — but
-# gemini does NOT natively consume Claude skills/commands (its native assets differ; it reads
-# GEMINI.md + its own extension/command format). The profile is still mounted for parity; gemini's
-# real capability wiring here is MCP via hatago. Build the base first.
+# hatago hub. This image installs the gemini CLI locally via mise (npm:@google/gemini-cli), then
+# bakes the config. The CLI is pure-JS with no blocked postinstall. All harnesses consume the SAME
+# committed Claude-canonical profile (.claude/) — design §8 — but gemini does NOT natively consume
+# Claude skills/commands (its native assets differ; it reads GEMINI.md + its own extension/command
+# format). The profile is still mounted for parity; gemini's real capability wiring here is MCP via
+# hatago. Build the base first.
 #
 # Lazy-built: `ensure_gemini_image` (lib/harnessed-common.sh) builds this only when a gemini stack
 # first launches (plan 04-03 / HRN-03).
 
 FROM harnessed-base:latest
+
+# Install the Google Gemini CLI — previously inherited from harnessed-base; now self-contained
+# so harnessed-base has no harness CLIs (IMG-01). Uses the same mise + pnpm supply-chain policy
+# already active in the base image (npm.package_manager=pnpm, managed pnpm config).
+RUN mise use -g npm:@google/gemini-cli && mise install
 
 # Bake the global gemini config: ONE http MCP server → the hatago hub. This is the EXACT shape
 # gemini-cli itself writes for `gemini mcp add --transport http <name> <url>` (verified against the
