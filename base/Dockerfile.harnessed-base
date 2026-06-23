@@ -65,13 +65,13 @@ USER ${USERNAME}
 # gemini) are each installed in their own harness image FROM this base.
 # Note: opencode-ai removed — non-functional in base. npm.package_manager=pnpm routes npm: tools
 # through pnpm so the managed policy governs them (RESEARCH Pitfall 5); set BEFORE `mise use -g`.
-# pnpm@11 (not @latest) so the v11 supply-chain defaults are in effect (Node 24 LTS required).
+# pnpm@11 (not @latest) so the v11 supply-chain defaults are in effect (Node ≥ 20 required; node@22 LTS).
 RUN mise settings set experimental true && \
     mise settings set npm.package_manager pnpm && \
     mise use -g \
-        node@24 \
+        node@22 \
         pnpm@11 \
-        python@3.13 \
+        python@3.12 \
         bun@1.2 \
         rust@1.87 \
         go@1.24 \
