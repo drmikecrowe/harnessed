@@ -63,7 +63,7 @@ detect_runtime() {
 # --- Images (built and run on the HOST) ------------------------------------
 image_exists() { "$CONTAINER_RUNTIME" image inspect "$1" >/dev/null 2>&1; }
 
-# Build the base, claude, omp, then hatago images via host `podman build`. $1=force (true|false).
+# Build the base, claude, then hatago image via host `podman build`. $1=force (true|false).
 build_images() {
     local force="${1:-false}"
 
@@ -87,11 +87,6 @@ build_images() {
         print_info "Building $HARNESSED_CLAUDE_IMAGE ..."
         "$CONTAINER_RUNTIME" build -t "$HARNESSED_CLAUDE_IMAGE" \
             -f "$HARNESSED_DIR/base/Dockerfile.harnessed-claude" "$HARNESSED_DIR"
-    fi
-    if [ "$force" = "true" ] || ! image_exists "$HARNESSED_OMP_IMAGE"; then
-        print_info "Building $HARNESSED_OMP_IMAGE ..."
-        "$CONTAINER_RUNTIME" build -t "$HARNESSED_OMP_IMAGE" \
-            -f "$HARNESSED_DIR/base/Dockerfile.harnessed-omp" "$HARNESSED_DIR"
     fi
     if [ "$force" = "true" ] || ! image_exists "$HARNESSED_HATAGO_IMAGE"; then
         print_info "Building $HARNESSED_HATAGO_IMAGE ..."
@@ -198,7 +193,7 @@ build_stack() {
 # Build images on first run if missing (auto-build; D-04). Ensures BOTH the claude harness image
 # and the hatago hub image, so an isolated stack's pod has its hatago member available.
 ensure_images() {
-    if ! image_exists "$HARNESSED_CLAUDE_IMAGE" || ! image_exists "$HARNESSED_OMP_IMAGE" || ! image_exists "$HARNESSED_HATAGO_IMAGE"; then
+    if ! image_exists "$HARNESSED_CLAUDE_IMAGE" || ! image_exists "$HARNESSED_HATAGO_IMAGE"; then
         print_warning "harnessed images not found. Building (first run)…"
         build_images false
     fi
