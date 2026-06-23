@@ -56,6 +56,14 @@ class RecipeLintError(SchemaError):
     """A recipe uses raw npm/npx instead of the pnpm equivalent (BLD-03 supply-chain lint)."""
 
 
+class HarnessCompatError(SchemaError):
+    """A recipe's declared harnesses list does not include the stack's harness."""
+
+
+class PinValidationError(SchemaError):
+    """A recipe Dockerfile contains a floating ref (--branch main/master, :latest, @latest)."""
+
+
 def _load_yaml(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as fh:
         data = _yaml.load(fh)
@@ -111,6 +119,8 @@ class Recipe:
     servers: list[McpServer] = field(default_factory=list)
     skills: list[FileExt] = field(default_factory=list)
     commands: list[FileExt] = field(default_factory=list)
+    harnesses: list[str] = field(default_factory=lambda: list(HARNESS_CONFIG_DIR.keys()))
+    expect: list[str] = field(default_factory=list)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
     raw: dict = field(default_factory=dict)
 
@@ -204,6 +214,8 @@ def load_recipe(recipe_dir: Path) -> Recipe:
         servers=_parse_servers(raw.get("mcp", {}) or {}),
         skills=_parse_fileext(raw.get("skills")),
         commands=_parse_fileext(raw.get("commands")),
+        harnesses=list(raw.get("harnesses") or list(HARNESS_CONFIG_DIR.keys())),
+        expect=list(raw.get("expect") or []),
         root=recipe_dir,
         raw=raw,
     )
@@ -269,6 +281,14 @@ def load_stack_with_recipes(root: Path, stack_name: str) -> tuple[Stack, list[Re
 # --- BLD-03: raw npm/npx recipe lint (RESEARCH Pattern 3 / Code §7) -----------------------------
 # Word-boundaried COMMAND tokens only — a package named like `npmlog` must NOT match (Pitfall 4).
 _RAW_NPM_RE = re.compile(r"\bnpx\b|\bnpm\s+(install|ci|run|exec|i)\b")
+# --- ASM-02: floating Dockerfile ref gate (T-08-01) -----------------------------------------------
+# Detects --branch main/master/HEAD, :latest (not as a URL path segment), and @latest.
+_FLOATING_REF_RE = re.compile(
+    r'--branch\s+(main|master|HEAD)\b'
+    r'|(?<!\w):latest\b'
+    r'|@latest\b',
+    re.IGNORECASE,
+)
 # Offending token → the pnpm equivalent the author must use (BLD-03 "points at the pnpm equivalent").
 _NPM_TO_PNPM = {
     "npx": "pnpm dlx",
@@ -341,6 +361,34 @@ def validate_no_raw_npm(recipe: Recipe) -> None:
         raise RecipeLintError(
             f"recipe '{recipe.name}': raw npm/npx token '{token}' detected in a command/script. "
             f"Replace it with the pnpm equivalent '{equiv}'."
+        )
+
+
+def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
+    """Raises PinValidationError if the Dockerfile body contains a floating ref (ASM-02).
+
+    Checks for --branch main/master/HEAD, :latest (not in URL paths), and @latest.
+    Called from assemble() before any file is emitted (T-08-01 mitigation).
+    """
+    match = _FLOATING_REF_RE.search(dockerfile_body)
+    if match:
+        raise PinValidationError(
+            f"recipe '{recipe_name}': Dockerfile contains a floating ref '{match.group(0).strip()}'. "
+            "Pin to a tag (e.g. v1.2.3) or SHA (e.g. @sha256:...) instead of floating branches or :latest."
+        )
+
+
+def validate_harness_compat(recipe: Recipe, stack_harness: str) -> None:
+    """Raises HarnessCompatError if the recipe does not support the stack's harness (ASM-01).
+
+    An empty harnesses list means no constraint (all harnesses allowed). Called from assemble()
+    before any file is emitted (T-08-02 mitigation).
+    """
+    if recipe.harnesses and stack_harness not in recipe.harnesses:
+        raise HarnessCompatError(
+            f"recipe '{recipe.name}' does not support harness '{stack_harness}'. "
+            f"Supported harnesses: {', '.join(sorted(recipe.harnesses))}. "
+            "Either update the recipe's harnesses: field or use a compatible stack harness."
         )
 
 
