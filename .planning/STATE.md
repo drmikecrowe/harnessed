@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: milestone_complete
-last_updated: 2026-06-21T14:53:39.793Z
-last_activity: 2026-06-21 -- Phase 06 complete (SC-1 repo-wide gap closure); milestone v1.0 complete
+milestone: v2.0
+milestone_name: Recipe Architecture & Agent Rebuild
+status: planning
+last_updated: "2026-06-23T10:40:11.484Z"
+last_activity: 2026-06-23
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 19
-  completed_plans: 19
-  percent: 100
-stopped_at: Milestone complete (Phase 06 was final phase)
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,12 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-14)
 
 ## Current Position
 
-Phase: 06
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-06-21
-
-Progress: [██████████] all plans done — Phase 01 ✓ · Phase 02 ✓ · Phase 03 ✓ · Phase 04 ✓ · Phase 05 ✓ · Phase 06 ✓ (SC-1/SC-2/SC-3 passed; live legs deferred to /gsd-verify-work)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-23 — Milestone v2.0 started
 
 ## Performance Metrics
 

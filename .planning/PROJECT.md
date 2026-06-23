@@ -2,17 +2,30 @@
 
 ## What This Is
 
-`harnessed` is one executable that launches **isolated, composable harness stacks** — each a
-podman pod running an AI coding harness (`claude`/`omp`) plus an MCP hub (hatago) plus optional
-shared services (hindsight, openbrain). It evolves this repo's existing `container` tool: the
-current "my laptop, sandboxed" behavior folds in as the built-in `transparent` stack, while new
-`isolated` stacks let you experiment with curated sets of skills/commands/hooks/MCP/memory systems
-**per container**, where isolation makes the collisions that killed a host-merge approach
-disappear by construction.
+`harnessed` is one executable that launches **containerized, composable harness stacks** — each
+a podman pod running an AI coding harness (`claude`/`omp`/`opencode`/`gemini`/`antigravity`/`codex`)
+plus an MCP hub (hatago) plus optional shared services. A **stack** is one harness + chosen
+recipes; a **recipe** is a Dockerfile + a YAML manifest that runs a framework's own installer
+(pinned to a tag/SHA). Each stack produces a separate derived image (`harnessed-<stack>`), so
+`claude+gstack` and `claude+gsd` coexist without conflict.
 
 It is for developers (initially the author) who want to compose and trial harness configurations
 — different skill/plugin/MCP/memory combinations — in clean, reproducible, throwaway-or-persistent
 environments without dragging every host default into the container or polluting `~`.
+
+## Current Milestone: v2.0 Recipe Architecture & Agent Rebuild
+
+**Goal:** Replace the typed-YAML recipe model with a Dockerfile-based model where recipes run frameworks' own installers, rebuild the image lineage into 3 layers (base → agent → stack), and validate with a combined capability test backed by a supply-chain gate.
+
+**Target features:**
+- Fat base (`harnessed-base`): all runtimes pre-installed (node@24, bun, rust, go, python, pnpm@11); NO harness CLIs in base
+- `agents/` directory: `type:agent` recipes that build standalone cached harness images (`harnessed-claude`, `harnessed-omp`)
+- Dockerfile-based recipe model: `recipe.yaml` (`harnesses:`, `mcp:`, `expect:`) + `Dockerfile` that runs the framework's own installer, pinned to a tag/SHA, with `--host ${HARNESS}`
+- Assembler: harness-compatibility check, pin validation, Dockerfile body concatenation, `HARNESS` build ARG injection
+- Surgical profile mount: `.mcp.json` + `settings.json` only — image-baked skills survive
+- Supply-chain gate: assembler rejects unpinned sources; osv-scanner V2 scans derived image post-build; nightly rescan continues
+- Combined capability test: structured MCP probe (deterministic) + un-primed ask-the-agent with negative control (decoy)
+- Proof-of-concept: `recipes/gstack/` + `stacks/gstack-time/` verified green end-to-end
 
 ## Core Value
 
@@ -34,35 +47,38 @@ host config — reproducibly, with podman as the only host dependency.
 
 ### Active
 
-<!-- New `harnessed` scope. Hypotheses until shipped and validated. -->
+<!-- v2.0 scope. Hypotheses until shipped and validated. -->
 
-- [ ] One `harnessed` engine with two config modes: `transparent` (host-mirror, the old `container`) and `isolated` (auth seeded + composed profile, zero host config) — transparent ✓ (P1); isolated → P2
-- [ ] Runtime stack composition as a podman pod: harness container + hatago MCP hub on a shared network (`harnessed-net`)
-- [ ] hatago MCP hub aggregating a stack's MCP servers behind one HTTP endpoint; light `pnpm dlx`/`uvx` stdio servers baked as hatago children
-- [ ] Shared, service-scoped sidecars (hindsight, openbrain) — own image/volume/lifecycle, concurrently attachable by multiple instances
-- [ ] `isolated` auth seeding: mount `~/.claude/.credentials.json` read-only + generate a minimal `.claude.json` stub (no host config), with profile-supplied skills/commands/agents/hooks/rules/`.mcp.json`/`settings.json`
-- [ ] Hand-authored recipes (`recipes/<name>/recipe.yaml`) contributing an MCP layer and/or a Claude-canonical file-extension layer
-- [ ] Authored stack manifests (`stacks/<name>/stack.yaml`) composing harness + recipes + services + permissions + state
-- [ ] Build-time assembler (runs in the `harnessed-tools` container, emits files only): vendor plugins, fan skills/commands into harness-native paths (fail-fast on collision), wire hooks, emit a `Dockerfile` (+ build context) + committed `profiles/<name>/` + `hatago.config.json` + a generated launcher; the host runs `podman build` to produce baked images
-- [ ] Supply-chain gate at build time: osv-scanner + pip-audit (credential-free) always; snyk + Socket.dev when a token is present (warn-and-skip otherwise); fail on high-severity
-- [ ] pnpm-everywhere policy (managed config: `minimumReleaseAge`, lifecycle-script default-deny, store integrity); recipe validation flags raw `npm`/`npx`
-- [ ] omp harness support via `claude-hooks-bridge` + pi-adapter (Claude format is canonical; one harness per stack)
-- [ ] State & lifecycle: persistent by default, `--fresh` for throwaway; service volumes service-scoped; harness session state (`projects/` + `history.jsonl`) persisted host-side by default
-- [ ] CLI surface: `harnessed <stack> [path]`, `build`, `install`/`uninstall` (launcher shim), `new`, `list`, `stop`, `rm`, `svc up/down/list`, `auth snyk|socket`, `--fresh`
-- [ ] Containerized tooling, host runs podman natively (no Docker-out-of-Docker): thin dependency-free `harnessed` bash bootstrap + `harnessed-tools` assembler image that emits files; host `podman build` builds the images; a generated `~/.local/bin/<stack>` host-bash launcher runs the pod — bootstrap + host `podman build` ✓ (P1); assembler image → P2
-- [ ] Documentation as gated deliverable: README, design doc, recipe-authoring guide, stack guide, secrets setup, service authoring, troubleshooting/ops
-- [ ] Integration-only capability test per stack: build → run `--fresh` headless → assert declared MCP/skills/commands present → render a markdown capability report
+- [ ] **IMG-01**: Fat `harnessed-base` with all runtimes pre-installed (node@24, bun, rust, go, python, pnpm@11) — NO harness CLIs in base (harnesses move to per-agent images)
+- [ ] **IMG-02**: `agents/` directory — `type:agent` recipes that build standalone cached harness images (`harnessed-claude`, `harnessed-omp`) via `FROM harnessed-base + one harness CLI`
+- [ ] **IMG-03**: `harnessed-<stack>` derived image: `FROM harnessed-<agent>` + recipe Dockerfile bodies concatenated by the assembler; one per stack, built by the host
+- [ ] **RCP-01**: Recipe is a `Dockerfile` + `recipe.yaml` (`harnesses:`, `mcp:`, `expect:`); `Dockerfile` runs the framework's own installer, parameterized by `--host ${HARNESS}`, pinned to a tag/SHA
+- [ ] **RCP-02**: `harnesses:` field in `recipe.yaml` declares which harnesses the recipe's installer supports; assembler refuses unsupported compositions with a clean error
+- [ ] **RCP-03**: `expect:` is a smoke-check subset (stable entries confirming the install landed, not a completeness oracle); assembled and passed to the capability test
+- [ ] **ASM-01**: Assembler harness-compatibility check (recipe `harnesses:` vs stack `harness:`) before any Dockerfile emission
+- [ ] **ASM-02**: Assembler pin validation — floating `--branch main` / unpinned package refs are a validation error; `git clone --branch <tag>` or exact version required
+- [ ] **ASM-03**: Assembler emits `profiles/<stack>/Dockerfile.harnessed-<stack>` with `ARG HARNESS=<agent>` and concatenated recipe bodies; host runs `podman build --build-arg HARNESS=<agent>`
+- [ ] **MNT-01**: Surgical profile mount — launcher mounts individual config files (`.mcp.json`, `settings.json`) not the whole `~/.claude/` dir; image-baked skills survive (no dir-replace)
+- [ ] **SC-01**: Supply-chain gate on `harnessed build <stack>`: assembler rejects unpinned sources (ASM-02); osv-scanner V2 scans the derived image post-build; fail on high-severity
+- [ ] **SC-02**: Nightly rescan timer rescans built stack images (existing systemd-timer pattern continues); residual known-limitation documented
+- [ ] **TST-01**: Structured MCP probe: assert manifest's MCP servers connected via hatago `/servers` (deterministic, no model call)
+- [ ] **TST-02**: Un-primed ask-the-agent skills/tools probe with negative control: a decoy entry mixed into the prompt; agent claimed-decoy-present → INVALID (priming detected), non-zero exit
+- [ ] **TST-03**: Markdown capability report: ✓/✗ per MCP server (structured) and per `expect:` entry (agent); INVALID banner on priming detection
+- [ ] **DOC-01**: All narrative docs updated to new architecture — fat base, Dockerfile recipes, pinned sources, combined capability test; no "isolated"/"transparent" terminology remains
 
 ### Out of Scope
 
-- Combining two harness systems via Docker `FROM` — `FROM` is linear inheritance + multi-stage `COPY`, not a union operator; systems are combined at runtime in a pod (§6)
-- Runtime/dynamic assembly of recipes — recipes are hand-authored and assembled ahead of time into committed artifacts (§5)
-- More than one harness per stack — a stack targets exactly `claude` or `omp`, never both (§8)
+- Combining two harness systems via Docker `FROM` — `FROM` is linear inheritance, not a union operator; systems are combined at runtime in a pod (§6)
+- More than one harness per stack — a stack targets exactly one harness, never two (§8)
 - A second config canonical format — Claude Code format is the single source of truth; omp adapts out of it via bridge (§8)
 - npm/npx for JavaScript installs — pnpm everywhere for supply-chain safety (§7)
 - Assembler unit tests — testing internals couples to implementation; behavior is verified transitively through the running instance (§18)
 - Requiring host Python/node/uv — podman/docker is the only host dependency (§15)
-- Baking or committing credentials (Claude auth, scanner tokens, 1Password secrets) — referenced from host, injected as env only, never an image layer or repo file (§7, §16)
+- Baking or committing credentials (Claude auth, scanner tokens, 1Password secrets) — referenced from host, injected as env only (§7, §16)
+- Reinterpreting vendor framework installers — recipes run the framework's own `./setup`; the assembler does not parse skill trees or understand the framework's layout
+- Version-controlling vendor skill data — the reproducibility unit is the pinned tag/SHA in the recipe, not a committed copy of the vendor's installed files
+- Closing the pnpm-cooldown gap for vendor `./setup` scripts — a vendor installer shelling raw `npm install` bypasses our pnpm policy; documented known limitation, not a blocking issue (§8 supply-chain gate)
+- `completeness oracle` capability tests — `expect:` is a smoke check (stable subset confirming install landed), not an enumeration of everything a framework ships
 
 ## Context
 
@@ -116,6 +132,11 @@ host config — reproducibly, with podman as the only host dependency.
 | Integration-only testing, manifest as oracle | Tests survive refactors; capability report doubles as user artifact | — Pending |
 | varlock + 1Password optional (opt-in) | Works fully without it; copy `.env.schema.example` to turn on | — Pending |
 | Bash launchers run under `set -euo pipefail`; fallible probes use `local var=$(…)` or `\|\| true` | A bare `var=$(pipeline)` aborts the launcher when the pipeline fails (e.g. YubiKey/jq probe with no match) — caught live in P1 | ✓ Good (P1 bugfix `a963a69`) |
+| Recipes are Dockerfiles, not typed-YAML skill trees | "Run the framework's installer" — the assembler doesn't reinterpret the install/layout. Assembler does not parse SKILL.md files or discover skill trees. | — v2.0 |
+| We version the recipe's tag, not the vendor's data | Pinned tag/SHA in recipe.yaml is the reproducibility unit; committed vendored skill trees were a mistake (required surveilling every install destination) | — v2.0 |
+| Supply chain: pin + scan-the-image (not scan-vendored-deps) | Nothing is vendored; installer runs at build; gate = assembler rejects unpinned + osv-scanner V2 image scan + nightly rescan | — v2.0 |
+| Harness is parameterized in recipe Dockerfiles (`--host ${HARNESS}`) | Recipe declares `harnesses:` it supports; assembler injects `ARG HARNESS` and refuses unsupported compositions with a clean error | — v2.0 |
+| Capability test: two oracles, un-primed | Structured probe for MCP (deterministic); ask-the-agent for skills/tools with a negative control (decoy) to detect priming/sycophancy | — v2.0 |
 
 ## Evolution
 
@@ -135,4 +156,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-21 — milestone v1.0 complete (all 6 phases shipped; Phase 06 tech-debt-cleanup closed SC-1/SC-2/SC-3). NOTE: the Active/Validated split above has NOT been migrated phase-by-phase since Phase 1 — a full milestone review (`/gsd-complete-milestone`) should move shipped items Active → Validated.*
+*Last updated: 2026-06-23 — milestone v2.0 started (Recipe Architecture & Agent Rebuild). NOTE: the Active/Validated split from v1.0 was not fully migrated phase-by-phase — a full milestone review (`/gsd-complete-milestone`) should move v1.0 shipped items Active → Validated after v2.0 ships.*
