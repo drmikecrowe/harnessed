@@ -1,17 +1,22 @@
 # harnessed-codex — the OpenAI Codex CLI harness image.
 #
 # FROM harnessed-base (lineage only, §6) + a baked global config that points codex's MCP at the
-# hatago hub. codex is ALREADY installed and working in the base image (npm:@openai/codex — it ships
-# per-platform Rust binaries as optionalDependencies, so no blocked postinstall, unlike opencode),
-# so this image only bakes the config. All harnesses consume the SAME committed Claude-canonical
-# profile (.claude/) — design §8 — but codex does NOT natively consume Claude skills/commands (it
-# reads AGENTS.md + its own ~/.codex/prompts format). The profile is still mounted for parity;
-# codex's real capability wiring here is MCP via hatago. Build the base first.
+# hatago hub. This image installs the codex CLI locally via mise (npm:@openai/codex), then bakes
+# the config. The CLI ships per-platform Rust binaries as optionalDependencies, so no blocked
+# postinstall. All harnesses consume the SAME committed Claude-canonical profile (.claude/) —
+# design §8 — but codex does NOT natively consume Claude skills/commands (it reads AGENTS.md +
+# its own ~/.codex/prompts format). The profile is still mounted for parity; codex's real
+# capability wiring here is MCP via hatago. Build the base first.
 #
 # Lazy-built: `ensure_codex_image` (lib/harnessed-common.sh) builds this only when a codex stack
 # first launches (plan 04-03 / HRN-05).
 
 FROM harnessed-base:latest
+
+# Install the OpenAI Codex CLI — previously inherited from harnessed-base; now self-contained
+# so harnessed-base has no harness CLIs (IMG-01). Uses the same mise + pnpm supply-chain policy
+# already active in the base image (npm.package_manager=pnpm, managed pnpm config).
+RUN mise use -g npm:@openai/codex && mise install
 
 # Bake the global codex config: ONE remote MCP server → the hatago hub. codex 0.139+ natively
 # supports remote Streamable-HTTP MCP servers — this is the EXACT shape codex itself writes for
