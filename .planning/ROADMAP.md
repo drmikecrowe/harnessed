@@ -183,12 +183,13 @@ Plans:
 **Depends on**: Phase 6 (v1.0 complete)
 **Requirements**: IMG-01, IMG-02
 **Success Criteria** (what must be TRUE):
+
   1. `harnessed-base` has bun, rust, go, node@24, python, pnpm@11 on PATH (`podman run harnessed-base mise ls` confirms); does NOT have claude, omp, codex, or gemini CLIs
   2. `harnessed-claude` builds `FROM harnessed-base` and passes `claude --version` inside the container without re-downloading runtimes
   3. `harnessed-omp` builds `FROM harnessed-base` and passes `omp --version` inside the container
   4. `harnessed build` (bare, no stack argument) produces `harnessed-base`, `harnessed-claude`, `harnessed-omp`, and `hatago` without error
-**Plans**: 2 plans
 
+**Plans**: 2 plans
 Plans:
 
 - [ ] 07-01-PLAN.md — Rebuild Dockerfile.harnessed-base: node@24, bun, rust, go; strip harness CLIs (IMG-01)
@@ -200,10 +201,12 @@ Plans:
 **Depends on**: Phase 7
 **Requirements**: RCP2-01, RCP2-02, RCP2-03, ASM-01, ASM-02, ASM-03, IMG-03, SC-01, SC-02, SC-03, SC-04
 **Success Criteria** (what must be TRUE):
+
   1. `harnessed build gstack-time` emits `profiles/gstack-time/Dockerfile.harnessed-gstack-time` with `ARG HARNESS=claude` and concatenated recipe bodies, then builds the derived image `harnessed-gstack-time`
   2. Composing a claude-only recipe (e.g. gstack) onto an omp stack produces a clean validation error before any Dockerfile is emitted or build step runs
   3. A recipe Dockerfile with a floating `--branch main` ref is rejected by the assembler with a pin-validation error; a pinned tag/SHA passes cleanly
   4. `harnessed build gstack-time` scans the derived image with osv-scanner V2 and fails the build on HIGH-severity CVEs; the nightly rescan timer covers `harnessed-<stack>` images; snyk/socket container scans run when tokens are present and warn-and-skip (without prompting) when absent
+
 **Plans**: TBD
 **UI hint**: no
 
@@ -213,12 +216,14 @@ Plans:
 **Depends on**: Phase 8
 **Requirements**: MNT2-01, MNT2-02, MNT2-03, MNT2-04, MNT2-05, MNT2-06
 **Success Criteria** (what must be TRUE):
+
   1. A running `gstack-time` instance shows gstack skills loaded — recipe-installed skills are visible because the profile dir-mount no longer overwrites the image's `~/.claude/skills/`
   2. `profiles/gstack-time/` contains only `.mcp.json` and `settings.json`; no `.claude/` directory tree is committed to the profile
   3. After a session, new claude project history entries appear on the host at `~/.claude/projects/<slug>/` without modifying the host `~/.claude.json` or credentials
   4. After a session, omp session history appears on the host at `~/.omp/agent/sessions/<slug>/` without touching `agent.db` (which co-locates auth credentials)
   5. After a session, antigravity conversation history appears on the host at `~/.gemini/antigravity-cli/conversations/` without touching the OAuth token or `~/.gemini/` settings proper
   6. Each harness's mount and teardown set is encoded in a structured per-harness manifest file — changing a path is a one-line manifest edit, not a search-and-replace through launcher code
+
 **Plans**: TBD
 
 ### Phase 10: opencode/codex Investigation + Combined Capability Test
@@ -227,11 +232,13 @@ Plans:
 **Depends on**: Phase 9
 **Requirements**: MNT2-07, TST2-01, TST2-02, TST2-03
 **Success Criteria** (what must be TRUE):
+
   1. `docs/research/home-folder-opencode-requirements.md` and `docs/research/home-folder-codex-requirements.md` exist with classified path inventories (history / config / cache / auth) and proposed mount manifests following the cross-harness invariants
   2. `harnessed test gstack-time` confirms the `time` MCP server is connected via hatago without making a model call (structured MCP probe passes deterministically)
   3. `harnessed test gstack-time` passes the agent probe: gstack skills confirmed present; the decoy capability is in `"missing"` (agent correctly reports it absent)
   4. A simulated test run where the agent claims the decoy present exits non-zero with status INVALID — distinct from a capability-failure non-zero exit — and the capability report shows the INVALID banner
   5. `profiles/gstack-time/capability-report.md` is written after every test run showing ✓/✗ per MCP server and per `expect:` entry, plus the INVALID banner when priming is detected
+
 **Plans**: TBD
 
 ### Phase 11: Architecture Documentation
@@ -240,10 +247,12 @@ Plans:
 **Depends on**: Phase 10
 **Requirements**: DOC2-01
 **Success Criteria** (what must be TRUE):
+
   1. README describes the 3-layer image lineage (base → agent → stack), the Dockerfile + recipe.yaml recipe model, and a working quickstart that builds a stack and runs the capability test
   2. `docs/harnessed-design.md` §7 describes recipe = Dockerfile (not typed-YAML fields), supply chain = pin sources + scan the derived image (not scan vendored deps); §18 describes the two-oracle capability test with the negative control
   3. The recipe-authoring guide shows a complete worked example: `harnesses:`, `expect:` smoke check, pinned `git clone`, `--host ${HARNESS}`, and the "run the framework's installer" principle
   4. `rg -r "isolated|transparent" docs/ README.md CLAUDE.md AGENTS.md` returns no narrative usage of those terms in the updated docs
+
 **Plans**: TBD
 
 ## Progress
