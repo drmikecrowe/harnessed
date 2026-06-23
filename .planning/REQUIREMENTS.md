@@ -88,14 +88,65 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **DOC-02**: Recipe-authoring and stack guides document writing recipes/stacks with a worked example
 - [x] **DOC-03**: Secrets-setup, service-authoring, and troubleshooting/ops docs exist
 
-## v2 Requirements
+## v2.0 Requirements — Recipe Architecture & Agent Rebuild (Active)
+
+Active requirements for the v2.0 milestone. Each maps to a phase in ROADMAP.md.
+
+### Image Lineage
+
+- [ ] **IMG-01**: Fat `harnessed-base` with all runtimes pre-installed (mise, node@24, bun, rust, go, python, pnpm@11, 1Password CLI, osv-scanner, yq, jq, git, common dev tools, egress firewall, pnpm supply-chain config). **No harness CLIs in base** — harnesses move to per-agent images.
+- [ ] **IMG-02**: `agents/` directory — `type:agent` recipe entries that build standalone cached harness images (`harnessed-claude`, `harnessed-omp`) via `FROM harnessed-base + one harness CLI + config-baking`.
+- [ ] **IMG-03**: `harnessed-<stack>` derived image: `FROM harnessed-<agent>` + recipe Dockerfile bodies concatenated by the assembler; one image per stack, built by the host via `podman build`.
+
+### Recipe Model
+
+- [ ] **RCP2-01**: A recipe is a **directory** containing `Dockerfile` + `recipe.yaml`. The Dockerfile runs the framework's own installer, parameterized by `--host ${HARNESS}`, pinned to a tag or SHA (no floating branches). `recipe.yaml` declares `harnesses:`, `mcp:` (optional), `expect:` (optional).
+- [ ] **RCP2-02**: `harnesses:` field declares which harnesses the recipe's installer supports; assembler refuses unsupported compositions with a clean human-readable error.
+- [ ] **RCP2-03**: `expect:` is a smoke-check subset (stable entries confirming install landed), not a completeness oracle. A framework shipping more than listed is success; fewer is failure.
+
+### Assembler
+
+- [ ] **ASM-01**: Harness-compatibility check: assembler validates `recipe.harnesses` vs `stack.harness` before emitting any Dockerfile. Incompatible compositions are a validation error (not a build error).
+- [ ] **ASM-02**: Pin validation: floating refs (`--branch main`, `--branch master`, unversioned `latest`) in a recipe Dockerfile are a validation error. Only pinned refs accepted.
+- [ ] **ASM-03**: Assembler emits `profiles/<stack>/Dockerfile.harnessed-<stack>` with `ARG HARNESS=<agent>` and concatenated recipe bodies. Host runs `podman build --build-arg HARNESS=<agent>`. Assembler emits files only — does not invoke `podman build`.
+
+### Profile Mount
+
+- [ ] **MNT2-01**: Surgical config-file mount — launcher mounts individual config files (`.mcp.json`, `settings.json`; per-harness equivalents for omp/opencode/etc.), not the whole `~/.claude/` dir. Image-baked skills survive (no dir-replace).
+- [ ] **MNT2-02**: Path mirroring — container working directory set to the **identical absolute host path** of the project (`--workdir $HOST_PWD`). Ensures Claude project slug, omp session slug, and antigravity `workspace` key all match the host; embedded transcript paths are host-coherent; DooD `-v $PWD:$PWD` requires no translation.
+- [ ] **MNT2-03**: Claude Code history surfacing — for claude stacks: rw-mount `projects/<slug>/`, `file-history/`, `tasks/`, `session-env/`, `todos/`. `history.jsonl` surfaced via guarded teardown merge (ships disabled). Config dirs never mounted.
+- [ ] **MNT2-04**: omp history surfacing — rw-mount `agent/sessions/<project-slug>/` and optionally `agent/blobs/`. `history.db` via guarded teardown export by `cwd` (ships disabled). `agent.db` **never** mounted (co-locates `auth_credentials`).
+- [ ] **MNT2-05**: antigravity history surfacing — rw-mount `antigravity-cli/conversations/`, `antigravity-cli/brain/`, `antigravity-cli/implicit/` (UUID-named, collision-free). `history.jsonl` + `cache/projects.json` + `cache/last_conversations.json` via guarded teardown merge (ships disabled). `antigravity-oauth-token` and `~/.gemini/` proper never mounted.
+- [ ] **MNT2-06**: Data-driven mount manifests — the mount/teardown set for each harness is defined in a structured per-harness config, not inline `-v` flags.
+- [ ] **MNT2-07**: opencode and codex history layouts are **to be investigated** during their execution phases (see `docs/research/home-folder-harness-history-overview.md`). Each investigation produces a `home-folder-<harness>-requirements.md` and a manifest entry. Gates opencode/codex stack completion but does not block claude/omp/antigravity phases.
+
+### Supply Chain
+
+- [ ] **SC-01**: Assembler pin gate (ASM-02) + post-build osv-scanner V2 image scan of `harnessed-<stack>:latest`. High-severity CVEs fail the build. Credential-free, always-on.
+- [ ] **SC-02**: Nightly rescan timer extended to cover `harnessed-<stack>` images. Known limitation documented: vendor `./setup` shelling raw `npm install` bypasses pnpm supply-chain policy — accepted, not blocking.
+- [ ] **SC-03**: Snyk container scan on derived image — warn-and-skip when `SNYK_TOKEN` absent; runs `snyk container test harnessed-<stack>:latest --severity-threshold=high` when present. **Never prompts; build stays non-interactive.** Token set via `harnessed auth snyk`.
+- [ ] **SC-04**: Socket.dev analysis on derived image — warn-and-skip when `SOCKET_SECURITY_API_KEY` absent; runs when present. **Never prompts.** Token set via `harnessed auth socket`.
+
+### Capability Test
+
+- [ ] **TST2-01**: Structured MCP probe — assert all `mcp.servers` in `hatago.config.json` appear in `hatago /servers`. Deterministic, no model call.
+- [ ] **TST2-02**: Un-primed ask-the-agent skills/tools probe with negative control — merged `expect:` entries + one decoy shuffled; agent asked for JSON `{"have":[...],"missing":[...]}` with no enumeration prompt. Decoy in `"have"` → **INVALID** exit (priming detected, distinct from capability failure). Any `expect:` entry in `"missing"` → capability failure.
+- [ ] **TST2-03**: Markdown capability report — ✓/✗ per MCP server (TST2-01) and per `expect:` entry (TST2-02); INVALID banner on priming detection; written to `profiles/<stack>/capability-report.md`.
+
+### Documentation
+
+- [ ] **DOC2-01**: All narrative docs updated to new architecture (fat base, Dockerfile recipes, 3-layer lineage, surgical mount, supply-chain gate, combined capability test). No "isolated"/"transparent" terminology remains. Each new feature lands with its doc section.
+
+---
+
+## v2 Requirements — Future (Deferred)
 
 Deferred to a future release. Tracked but not in the current roadmap.
 
 ### Future
 
 - **TUI-01**: A `textual` TUI (stack picker / live build dashboard) beyond `rich` reports
-- **IMG-01**: A prebuilt/published `harnessed-tools` image to cut first-run build latency
+- **TOOLS-IMG-01**: A prebuilt/published `harnessed-tools` image to cut first-run build latency
 - **SEC-05**: Per-stack secret overrides referenced from `stack.yaml`
 - **PORT-01**: Multi-project / cross-machine stack portability conventions
 
@@ -161,12 +212,44 @@ Which phase covers which requirement.
 | DOC-02 | Phase 5 | Complete |
 | DOC-03 | Phase 5 | Complete |
 
-**Coverage:**
+**v1.0 Coverage:**
 
 - v1 requirements: 39 total
 - Mapped to phases: 39
 - Unmapped: 0 ✓
 
+**v2.0 Coverage (pending roadmap):**
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| IMG-01 | TBD | Pending |
+| IMG-02 | TBD | Pending |
+| IMG-03 | TBD | Pending |
+| RCP2-01 | TBD | Pending |
+| RCP2-02 | TBD | Pending |
+| RCP2-03 | TBD | Pending |
+| ASM-01 | TBD | Pending |
+| ASM-02 | TBD | Pending |
+| ASM-03 | TBD | Pending |
+| MNT2-01 | TBD | Pending |
+| MNT2-02 | TBD | Pending |
+| MNT2-03 | TBD | Pending |
+| MNT2-04 | TBD | Pending |
+| MNT2-05 | TBD | Pending |
+| MNT2-06 | TBD | Pending |
+| MNT2-07 | TBD | Pending |
+| SC-01 | TBD | Pending |
+| SC-02 | TBD | Pending |
+| SC-03 | TBD | Pending |
+| SC-04 | TBD | Pending |
+| TST2-01 | TBD | Pending |
+| TST2-02 | TBD | Pending |
+| TST2-03 | TBD | Pending |
+| DOC2-01 | TBD | Pending |
+
+- v2.0 requirements: 24 total
+- Phase assignments: populated after roadmap is created
+
 ---
 *Requirements defined: 2026-06-14*
-*Last updated: 2026-06-21 — all 5 phases verified Complete; 39/39 v1 requirements satisfied (milestone v1.0 complete)*
+*Last updated: 2026-06-23 — v2.0 milestone requirements added (24 requirements across 7 categories); phase assignments pending roadmap*
