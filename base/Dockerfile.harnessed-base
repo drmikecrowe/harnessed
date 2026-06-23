@@ -61,19 +61,23 @@ RUN mkdir -p /home/${USERNAME}/.config/pnpm && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
 USER ${USERNAME}
 
-# Core runtimes + harness CLIs. npm.package_manager=pnpm routes the npm: tools
-# through pnpm so the managed policy governs them (RESEARCH Pitfall 5); set BEFORE
-# `mise use -g`. pnpm@11 (not @latest) so the v11 supply-chain defaults are in effect
-# (Node 22+ required).
+# Core runtimes + codex/gemini CLIs (codex/gemini images rely on these being in the base;
+# migration to agent-local install is deferred — follow-up phase). No claude/omp CLIs (IMG-01 partial).
+# Note: opencode-ai removed — non-functional in base.
+# npm.package_manager=pnpm routes the npm: tools through pnpm so the managed policy governs them
+# (RESEARCH Pitfall 5); set BEFORE `mise use -g`. pnpm@11 (not @latest) so the v11 supply-chain
+# defaults are in effect (Node 24 LTS required).
 RUN mise settings set experimental true && \
     mise settings set npm.package_manager pnpm && \
     mise use -g \
-        node@22 \
+        node@24 \
         pnpm@11 \
         python@latest \
+        bun \
+        rust \
+        go \
         fd \
         ripgrep \
-        npm:opencode-ai \
         npm:@openai/codex \
         npm:@google/gemini-cli && \
     mise install && \
