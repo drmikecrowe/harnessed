@@ -268,7 +268,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
 | 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-21 |
 | 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 3/3 | Complete    | 2026-06-21 |
-| 7. Fat Base + Agent Images | 2/2 | Complete   | 2026-06-23 |
+| 7. Fat Base + Agent Images | 3/3 | Complete   | 2026-06-23 |
 | 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 0/TBD | Not started | - |
 | 9. Surgical Profile Mount + History Surfacing | 0/TBD | Not started | - |
 | 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
