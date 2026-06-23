@@ -71,10 +71,10 @@ RUN mise settings set experimental true && \
     mise use -g \
         node@24 \
         pnpm@11 \
-        python@latest \
-        bun \
-        rust \
-        go \
+        python@3.13 \
+        bun@1.2 \
+        rust@1.87 \
+        go@1.24 \
         fd \
         ripgrep && \
     mise install && \
