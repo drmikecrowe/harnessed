@@ -26,7 +26,7 @@ observable end-to-end capability (vertical-MVP mode).
 
 ## v2.0 Phases
 
-- [ ] **Phase 7: Fat Base + Agent Images** - Rebuild harnessed-base as a fat toolchain image (no harness CLIs) and create standalone cached agent images for each harness CLI
+- [x] **Phase 7: Fat Base + Agent Images** - Rebuild harnessed-base as a fat toolchain image (no harness CLIs) and create standalone cached agent images for each harness CLI (completed 2026-06-23)
 - [ ] **Phase 8: Dockerfile Recipe Model + Assembler + Supply-Chain Gate** - Replace typed-YAML recipes with Dockerfile-based recipes; update the assembler to emit derived stack images; gate every derived build on pin validation and an osv-scanner image scan
 - [ ] **Phase 9: Surgical Profile Mount + History Surfacing** - Stop mounting the whole profile directory; mount only individual config files so image-baked skills survive; surface per-harness project history (claude, omp, antigravity) to the host via data-driven manifests
 - [ ] **Phase 10: opencode/codex Investigation + Combined Capability Test** - Investigate opencode and codex history layouts; replace the v1 capability test with the two-oracle approach (structured MCP probe + un-primed ask-the-agent with negative control)
@@ -192,8 +192,8 @@ Plans:
 **Plans**: 2 plans
 Plans:
 
-- [ ] 07-01-PLAN.md — Rebuild Dockerfile.harnessed-base: node@24, bun, rust, go; strip harness CLIs (IMG-01)
-- [ ] 07-02-PLAN.md — agents/ directory (claude + omp agent.yaml) + build_images() wiring for bare build (IMG-02)
+- [x] 07-01-PLAN.md — Rebuild Dockerfile.harnessed-base: node@24, bun, rust, go; strip harness CLIs (IMG-01)
+- [x] 07-02-PLAN.md — agents/ directory (claude + omp agent.yaml) + build_images() wiring for bare build (IMG-02)
 
 ### Phase 8: Dockerfile Recipe Model + Assembler + Supply-Chain Gate
 
@@ -268,7 +268,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
 | 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-21 |
 | 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 3/3 | Complete    | 2026-06-21 |
-| 7. Fat Base + Agent Images | 0/2 | Not started | - |
+| 7. Fat Base + Agent Images | 2/2 | Complete   | 2026-06-23 |
 | 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 0/TBD | Not started | - |
 | 9. Surgical Profile Mount + History Surfacing | 0/TBD | Not started | - |
 | 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
