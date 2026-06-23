@@ -184,10 +184,10 @@ Plans:
 **Requirements**: IMG-01, IMG-02
 **Success Criteria** (what must be TRUE):
 
-  1. `harnessed-base` has bun, rust, go, node@24, python, pnpm@11 on PATH (`podman run harnessed-base mise ls` confirms); does NOT have claude, omp, codex, or gemini CLIs
+  1. `harnessed-base` has bun, rust, go, node@24, python, pnpm@11 on PATH (`podman run harnessed-base mise ls` confirms); does NOT have claude, omp, codex, or gemini CLIs (IMG-01 complete)
   2. `harnessed-claude` builds `FROM harnessed-base` and passes `claude --version` inside the container without re-downloading runtimes
   3. `harnessed-omp` builds `FROM harnessed-base` and passes `omp --version` inside the container
-  4. `harnessed build` (bare, no stack argument) produces `harnessed-base`, `harnessed-claude`, `harnessed-omp`, and `hatago` without error
+  4. `harnessed build` (bare, no stack argument) produces `harnessed-base`, `harnessed-claude`, and `harnessed-hatago`; `harnessed-omp` is lazy-built on first omp stack launch (HRN-01 contract)
 
 **Plans**: 2 plans
 Plans:
