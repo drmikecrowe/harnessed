@@ -212,8 +212,8 @@ Plans:
 Plans:
 **Wave 1** *(parallel)*
 
-- [ ] 08-01-PLAN.md — Python assembler layer: schema (harnesses/expect/validators), emit (write_derived_dockerfile), assemble wiring, snyk container scan (RCP2-01..03, ASM-01..03, SC-03)
-- [ ] 08-02-PLAN.md — Test artifacts: gstack recipe, gstack-time stack, rejection fixtures (RCP2-01..03, ASM-01..02)
+- [x] 08-01-PLAN.md — Python assembler layer: schema (harnesses/expect/validators), emit (write_derived_dockerfile), assemble wiring, snyk container scan (RCP2-01..03, ASM-01..03, SC-03)
+- [x] 08-02-PLAN.md — Test artifacts: gstack recipe, gstack-time stack, rejection fixtures (RCP2-01..03, ASM-01..02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -278,7 +278,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-21 |
 | 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 3/3 | Complete    | 2026-06-21 |
 | 7. Fat Base + Agent Images | 3/3 | Complete   | 2026-06-23 |
-| 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 0/3 | Not started | - |
+| 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 2/3 | In Progress|  |
 | 9. Surgical Profile Mount + History Surfacing | 0/TBD | Not started | - |
 | 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
 | 11. Architecture Documentation | 0/TBD | Not started | - |

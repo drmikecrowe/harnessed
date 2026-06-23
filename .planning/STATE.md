@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Recipe Architecture & Agent Rebuild
 status: executing
-last_updated: "2026-06-23T13:53:48.862Z"
-last_activity: 2026-06-23 -- Phase 8 planning complete
+last_updated: "2026-06-23T14:02:03.356Z"
+last_activity: 2026-06-23 -- Phase 08 execution started
 progress:
   total_phases: 11
   completed_phases: 1
@@ -20,13 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** Compose a named stack and launch an isolated, authenticated instance that exposes exactly the skills/commands/MCP/services it declares — nothing from host config — reproducibly, podman the only host dependency.
-**Current focus:** Phase 08 (next)
+**Current focus:** Phase 08 — dockerfile-recipe-model-assembler-supply-chain-gate
 
 ## Current Position
 
-Phase: 07 (fat-base-agent-images) — COMPLETE ✓
+Phase: 08 (dockerfile-recipe-model-assembler-supply-chain-gate) — EXECUTING
+Plan: 1 of 3
 Phase: 08 — not yet started
-Last activity: 2026-06-23 -- Phase 8 planning complete
+Last activity: 2026-06-23 -- Phase 08 execution started
 
 ## Performance Metrics
 
