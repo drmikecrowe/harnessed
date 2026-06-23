@@ -20,7 +20,7 @@ from . import report
 from .assemble import assemble
 from .capability import CapabilityError, run_capability_test
 from .emit import HATAGO_ENDPOINT
-from .scan import ScanError, run_image_scan, run_image_scan_online, run_source_scan
+from .scan import ScanError, run_image_scan, run_image_scan_online, run_snyk_container_scan, run_source_scan
 from .schema import RecipeLintError, SchemaError
 from .synclinks import CollisionError
 
@@ -107,6 +107,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="ONLINE supply-chain image scan (fresh DB; nightly re-scan / SEC-04)",
     )
     sci_online.add_argument("archive", help="path to a podman/docker image archive tar (from `podman save`)")
+
+    snyk_ctr = sub.add_parser(
+        "scan-snyk-container",
+        help="snyk container test on a built image (SC-03; token-gated, warn-and-skip without SNYK_TOKEN)",
+    )
+    snyk_ctr.add_argument(
+        "image_name",
+        help="container image name to scan, e.g. harnessed-gstack-time:latest",
+    )
     return parser
 
 def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
@@ -198,6 +207,22 @@ def _run_scan_image_online(args: argparse.Namespace, out: Console, err: Console)
     return 0
 
 
+def _run_scan_snyk_container(args: argparse.Namespace, out: Console, err: Console) -> int:
+    """Run snyk container test on a built image; exit 1 on HIGH+ finding (SC-03).
+
+    Warns-and-skips without a SNYK_TOKEN so the build stays non-interactive.
+    """
+    try:
+        result = run_snyk_container_scan(args.image_name)
+    except ScanError as exc:
+        err.print(f"[bold red]snyk container scan failed:[/bold red] {exc}", highlight=False)
+        return 1
+    out.print(f"[bold green]snyk container scan clean[/bold green] for [bold]{args.image_name}[/bold]")
+    for warning in sorted(set(result.warnings)):
+        out.print(f"  [yellow]warning:[/yellow] {warning}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -213,6 +238,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_scan_image(args, out, err)
     if args.command == "scan-image-online":
         return _run_scan_image_online(args, out, err)
+    if args.command == "scan-snyk-container":
+        return _run_scan_snyk_container(args, out, err)
     parser.error(f"unknown command: {args.command}")
     return 2
 

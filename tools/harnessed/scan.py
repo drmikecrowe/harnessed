@@ -339,6 +339,50 @@ def run_image_scan(archive_tar: Path | str) -> ScanResult:
     return ScanResult(scope="image", highs=[], warnings=warnings)
 
 
+def _scan_snyk_container_image(image_name: str, highs: list[str], warnings: list[str]) -> None:
+    """snyk container test <image> --severity-threshold=high (SC-03).
+
+    Env-gated on SNYK_TOKEN (same warn-and-skip contract as _scan_snyk). Never prompts.
+    Exit code 1 = HIGH+ vuln found → abort. 2/3 = failure/no-projects → warn.
+    Note: snyk running inside the tools container may fail with exit 2 if it cannot access
+    the local image (no daemon socket mounted) — the exit 2 path handles this gracefully.
+    """
+    if not os.environ.get("SNYK_TOKEN"):
+        warnings.append(
+            "snyk container test skipped (no SNYK_TOKEN) — credential-free osv-scanner baseline remains the gate"
+        )
+        return
+    proc = _run(["snyk", "container", "test", image_name, "--severity-threshold=high", "--json"])
+    if proc.returncode == 1:
+        data = _parse_json(proc.stdout)
+        ids = _snyk_vuln_ids(data) if data is not None else []
+        if ids:
+            highs.extend(ids)
+        else:
+            highs.append(f"snyk container test: HIGH+ finding in {image_name} (exit 1; parse JSON for details)")
+    elif proc.returncode in (2, 3):
+        warnings.append(
+            f"snyk container test: exit {proc.returncode} for {image_name} (failure / no supported projects) — investigate"
+        )
+    # returncode 0 ⇒ clean (no action)
+
+
+def run_snyk_container_scan(image_name: str) -> ScanResult:
+    """Top-level: snyk container test on a built image (SC-03). Raises ScanError on HIGH+.
+
+    Warn-and-skips when SNYK_TOKEN is absent so `harnessed build` stays non-interactive.
+    The credential-free osv-scanner baseline remains the primary gate.
+    """
+    highs: list[str] = []
+    warnings: list[str] = []
+    _scan_snyk_container_image(image_name, highs, warnings)
+    if highs:
+        raise ScanError(
+            f"snyk container test found {len(highs)} HIGH+ finding(s) in {image_name}: {', '.join(sorted(set(highs)))}"
+        )
+    return ScanResult(scope=f"snyk-container:{image_name}", highs=[], warnings=warnings)
+
+
 def run_image_scan_online(archive_tar: Path | str) -> ScanResult:
     """Scan a saved image archive ONLINE via osv-scanner (SEC-04 nightly re-scan).
 
