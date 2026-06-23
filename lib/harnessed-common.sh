@@ -187,7 +187,52 @@ build_stack() {
         return 1
     fi
 
-    print_success "Stack '$stack' assembled → profiles/$stack/ + $HARNESSED_HATAGO_IMAGE (scans clean)"
+    # [IMG-03] Build the derived harnessed-<stack> image from the assembler-emitted Dockerfile.
+    local derived_image="" derived_dockerfile stack_harness
+    derived_dockerfile="$ROOT/profiles/$stack/Dockerfile.harnessed-${stack}"
+    if [ -f "$derived_dockerfile" ]; then
+        # Extract harness from emitted Dockerfile (no yq on host — pure bash).
+        stack_harness="$(sed -n 's/^ARG HARNESS=//p' "$derived_dockerfile" | head -1)"
+        stack_harness="${stack_harness:-claude}"
+        derived_image="harnessed-${stack}:latest"
+
+        print_info "Building $derived_image for stack '$stack' ..."
+        "$CONTAINER_RUNTIME" build \
+            --build-arg "HARNESS=${stack_harness}" \
+            -t "$derived_image" \
+            -f "$derived_dockerfile" \
+            "$ROOT"
+
+        # [SC-01] Post-build osv-scanner V2 image scan of the derived image (mirrors BLD-02b).
+        print_info "Running supply-chain image scan for $derived_image ..."
+        local derived_tar derived_img_rc=0
+        derived_tar="$(mktemp --suffix=.tar)"
+        "$CONTAINER_RUNTIME" save "$derived_image" -o "$derived_tar"
+        "$CONTAINER_RUNTIME" run --rm -v "$derived_tar":"$derived_tar":ro \
+            "$HARNESSED_TOOLS_IMAGE" scan-image "$derived_tar" || derived_img_rc=$?
+        rm -f "$derived_tar"
+        if [ "$derived_img_rc" -ne 0 ]; then
+            print_error "supply-chain image scan failed for $derived_image (HIGH+ finding)"
+            return 1
+        fi
+
+        # [SC-03] Snyk container test (token-gated; warn-and-skip without prompting).
+        local snyk_rc=0
+        "$CONTAINER_RUNTIME" run --rm $(rt_userns_args) \
+            "${TOKEN_ARGS[@]}" \
+            "$HARNESSED_TOOLS_IMAGE" scan-snyk-container "$derived_image" || snyk_rc=$?
+        if [ "$snyk_rc" -ne 0 ]; then
+            print_error "snyk container test found HIGH+ finding in $derived_image"
+            return 1
+        fi
+    fi
+
+    # [SC-04] Socket source scan of recipe dirs (socket CLI has no container mode — Pitfall 7).
+    # SC-04 is satisfied by the existing BLD-02a source scan above, which already covers recipe
+    # directories that contributed to the derived image. socket scan create does not support
+    # container image layers; source-level analysis is equivalent for pre-build manifests.
+
+    print_success "Stack '$stack' assembled → profiles/$stack/ + $HARNESSED_HATAGO_IMAGE${derived_image:+ + $derived_image} (scans clean)"
 }
 
 # Build images on first run if missing (auto-build; D-04). Ensures BOTH the claude harness image
