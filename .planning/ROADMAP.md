@@ -24,6 +24,14 @@ observable end-to-end capability (vertical-MVP mode).
 - [x] **Phase 5: Secrets, Hardening + Docs Completeness** - Opt-in varlock/1Password secrets, token-gated scanners, nightly re-scan, and the gated doc set (completed 2026-06-21; all 7 requirements VERIFIED live — HV-1..HV-4 all PASS, snyk browser auth landed via the --network=host callback fix)
 - [x] **Phase 6: Address tech debt: dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene** - Clear post-v1.0 tech debt: remove dead `harnessed-net` (podman network) code, correct stale comments, normalize `*-SUMMARY.md` frontmatter (planned; inserted 2026-06-21) (completed 2026-06-21)
 
+## v2.0 Phases
+
+- [ ] **Phase 7: Fat Base + Agent Images** - Rebuild harnessed-base as a fat toolchain image (no harness CLIs) and create standalone cached agent images for each harness CLI
+- [ ] **Phase 8: Dockerfile Recipe Model + Assembler + Supply-Chain Gate** - Replace typed-YAML recipes with Dockerfile-based recipes; update the assembler to emit derived stack images; gate every derived build on pin validation and an osv-scanner image scan
+- [ ] **Phase 9: Surgical Profile Mount + History Surfacing** - Stop mounting the whole profile directory; mount only individual config files so image-baked skills survive; surface per-harness project history (claude, omp, antigravity) to the host via data-driven manifests
+- [ ] **Phase 10: opencode/codex Investigation + Combined Capability Test** - Investigate opencode and codex history layouts; replace the v1 capability test with the two-oracle approach (structured MCP probe + un-primed ask-the-agent with negative control)
+- [ ] **Phase 11: Architecture Documentation** - Update all narrative docs to reflect the new architecture; remove stale terminology
+
 ## Phase Details
 
 ### Phase 1: Containerized Engine + Transparent Stack
@@ -165,10 +173,78 @@ Plans:
 
 - _(to be defined during planning)_
 
+---
+
+## v2.0 Phase Details
+
+### Phase 7: Fat Base + Agent Images
+
+**Goal**: Rebuild `harnessed-base` as a fat toolchain image (all runtimes pre-installed, no harness CLIs) and create the `agents/` directory with standalone cached images for the claude and omp harness CLIs.
+**Depends on**: Phase 6 (v1.0 complete)
+**Requirements**: IMG-01, IMG-02
+**Success Criteria** (what must be TRUE):
+  1. `harnessed-base` has bun, rust, go, node@24, python, pnpm@11 on PATH (`podman run harnessed-base mise ls` confirms); does NOT have claude, omp, codex, or gemini CLIs
+  2. `harnessed-claude` builds `FROM harnessed-base` and passes `claude --version` inside the container without re-downloading runtimes
+  3. `harnessed-omp` builds `FROM harnessed-base` and passes `omp --version` inside the container
+  4. `harnessed build` (bare, no stack argument) produces `harnessed-base`, `harnessed-claude`, `harnessed-omp`, and `hatago` without error
+**Plans**: TBD
+
+### Phase 8: Dockerfile Recipe Model + Assembler + Supply-Chain Gate
+
+**Goal**: Replace the typed-YAML recipe model with a Dockerfile-based model where recipes run frameworks' own installers; update the assembler to perform harness-compat checks, pin validation, and Dockerfile body concatenation that emits a derived `harnessed-<stack>` image; gate every derived build on pin validation and an osv-scanner V2 image scan.
+**Depends on**: Phase 7
+**Requirements**: RCP2-01, RCP2-02, RCP2-03, ASM-01, ASM-02, ASM-03, IMG-03, SC-01, SC-02, SC-03, SC-04
+**Success Criteria** (what must be TRUE):
+  1. `harnessed build gstack-time` emits `profiles/gstack-time/Dockerfile.harnessed-gstack-time` with `ARG HARNESS=claude` and concatenated recipe bodies, then builds the derived image `harnessed-gstack-time`
+  2. Composing a claude-only recipe (e.g. gstack) onto an omp stack produces a clean validation error before any Dockerfile is emitted or build step runs
+  3. A recipe Dockerfile with a floating `--branch main` ref is rejected by the assembler with a pin-validation error; a pinned tag/SHA passes cleanly
+  4. `harnessed build gstack-time` scans the derived image with osv-scanner V2 and fails the build on HIGH-severity CVEs; the nightly rescan timer covers `harnessed-<stack>` images; snyk/socket container scans run when tokens are present and warn-and-skip (without prompting) when absent
+**Plans**: TBD
+**UI hint**: no
+
+### Phase 9: Surgical Profile Mount + History Surfacing
+
+**Goal**: Stop mounting the whole `~/.claude/` profile directory; mount only individual config files (`.mcp.json`, `settings.json`, and per-harness equivalents) so image-baked recipe skills survive; surface per-harness project history for claude, omp, and antigravity back to the host via data-driven mount manifests.
+**Depends on**: Phase 8
+**Requirements**: MNT2-01, MNT2-02, MNT2-03, MNT2-04, MNT2-05, MNT2-06
+**Success Criteria** (what must be TRUE):
+  1. A running `gstack-time` instance shows gstack skills loaded — recipe-installed skills are visible because the profile dir-mount no longer overwrites the image's `~/.claude/skills/`
+  2. `profiles/gstack-time/` contains only `.mcp.json` and `settings.json`; no `.claude/` directory tree is committed to the profile
+  3. After a session, new claude project history entries appear on the host at `~/.claude/projects/<slug>/` without modifying the host `~/.claude.json` or credentials
+  4. After a session, omp session history appears on the host at `~/.omp/agent/sessions/<slug>/` without touching `agent.db` (which co-locates auth credentials)
+  5. After a session, antigravity conversation history appears on the host at `~/.gemini/antigravity-cli/conversations/` without touching the OAuth token or `~/.gemini/` settings proper
+  6. Each harness's mount and teardown set is encoded in a structured per-harness manifest file — changing a path is a one-line manifest edit, not a search-and-replace through launcher code
+**Plans**: TBD
+
+### Phase 10: opencode/codex Investigation + Combined Capability Test
+
+**Goal**: Investigate opencode and codex home-folder history layouts to produce classified path inventories and mount manifests (unblocking future stack support); replace the v1 capability test with the two-oracle approach — a deterministic structured MCP probe plus an un-primed ask-the-agent probe with a negative control that catches sycophantic priming.
+**Depends on**: Phase 9
+**Requirements**: MNT2-07, TST2-01, TST2-02, TST2-03
+**Success Criteria** (what must be TRUE):
+  1. `docs/research/home-folder-opencode-requirements.md` and `docs/research/home-folder-codex-requirements.md` exist with classified path inventories (history / config / cache / auth) and proposed mount manifests following the cross-harness invariants
+  2. `harnessed test gstack-time` confirms the `time` MCP server is connected via hatago without making a model call (structured MCP probe passes deterministically)
+  3. `harnessed test gstack-time` passes the agent probe: gstack skills confirmed present; the decoy capability is in `"missing"` (agent correctly reports it absent)
+  4. A simulated test run where the agent claims the decoy present exits non-zero with status INVALID — distinct from a capability-failure non-zero exit — and the capability report shows the INVALID banner
+  5. `profiles/gstack-time/capability-report.md` is written after every test run showing ✓/✗ per MCP server and per `expect:` entry, plus the INVALID banner when priming is detected
+**Plans**: TBD
+
+### Phase 11: Architecture Documentation
+
+**Goal**: Update all narrative docs to describe the new architecture — 3-layer image lineage, Dockerfile recipe model, pinned sources, surgical profile mounts, combined capability test — and remove any remaining stale or obsolete terminology.
+**Depends on**: Phase 10
+**Requirements**: DOC2-01
+**Success Criteria** (what must be TRUE):
+  1. README describes the 3-layer image lineage (base → agent → stack), the Dockerfile + recipe.yaml recipe model, and a working quickstart that builds a stack and runs the capability test
+  2. `docs/harnessed-design.md` §7 describes recipe = Dockerfile (not typed-YAML fields), supply chain = pin sources + scan the derived image (not scan vendored deps); §18 describes the two-oracle capability test with the negative control
+  3. The recipe-authoring guide shows a complete worked example: `harnesses:`, `expect:` smoke check, pinned `git clone`, `--host ${HARNESS}`, and the "run the framework's installer" principle
+  4. `rg -r "isolated|transparent" docs/ README.md CLAUDE.md AGENTS.md` returns no narrative usage of those terms in the updated docs
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -178,3 +254,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 4. Shared Services + Recipe Breadth + Full CLI | 4/4 | Complete   | 2026-06-17 |
 | 5. Secrets, Hardening + Docs Completeness | 4/4 | Complete   | 2026-06-21 |
 | 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 3/3 | Complete    | 2026-06-21 |
+| 7. Fat Base + Agent Images | 0/TBD | Not started | - |
+| 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 0/TBD | Not started | - |
+| 9. Surgical Profile Mount + History Surfacing | 0/TBD | Not started | - |
+| 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
+| 11. Architecture Documentation | 0/TBD | Not started | - |

@@ -218,38 +218,39 @@ Which phase covers which requirement.
 - Mapped to phases: 39
 - Unmapped: 0 ✓
 
-**v2.0 Coverage (pending roadmap):**
+**v2.0 Coverage:**
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| IMG-01 | TBD | Pending |
-| IMG-02 | TBD | Pending |
-| IMG-03 | TBD | Pending |
-| RCP2-01 | TBD | Pending |
-| RCP2-02 | TBD | Pending |
-| RCP2-03 | TBD | Pending |
-| ASM-01 | TBD | Pending |
-| ASM-02 | TBD | Pending |
-| ASM-03 | TBD | Pending |
-| MNT2-01 | TBD | Pending |
-| MNT2-02 | TBD | Pending |
-| MNT2-03 | TBD | Pending |
-| MNT2-04 | TBD | Pending |
-| MNT2-05 | TBD | Pending |
-| MNT2-06 | TBD | Pending |
-| MNT2-07 | TBD | Pending |
-| SC-01 | TBD | Pending |
-| SC-02 | TBD | Pending |
-| SC-03 | TBD | Pending |
-| SC-04 | TBD | Pending |
-| TST2-01 | TBD | Pending |
-| TST2-02 | TBD | Pending |
-| TST2-03 | TBD | Pending |
-| DOC2-01 | TBD | Pending |
+| IMG-01 | Phase 7 | Pending |
+| IMG-02 | Phase 7 | Pending |
+| IMG-03 | Phase 8 | Pending |
+| RCP2-01 | Phase 8 | Pending |
+| RCP2-02 | Phase 8 | Pending |
+| RCP2-03 | Phase 8 | Pending |
+| ASM-01 | Phase 8 | Pending |
+| ASM-02 | Phase 8 | Pending |
+| ASM-03 | Phase 8 | Pending |
+| MNT2-01 | Phase 9 | Pending |
+| MNT2-02 | Phase 9 | Pending |
+| MNT2-03 | Phase 9 | Pending |
+| MNT2-04 | Phase 9 | Pending |
+| MNT2-05 | Phase 9 | Pending |
+| MNT2-06 | Phase 9 | Pending |
+| MNT2-07 | Phase 10 | Pending |
+| SC-01 | Phase 8 | Pending |
+| SC-02 | Phase 8 | Pending |
+| SC-03 | Phase 8 | Pending |
+| SC-04 | Phase 8 | Pending |
+| TST2-01 | Phase 10 | Pending |
+| TST2-02 | Phase 10 | Pending |
+| TST2-03 | Phase 10 | Pending |
+| DOC2-01 | Phase 11 | Pending |
 
 - v2.0 requirements: 24 total
-- Phase assignments: populated after roadmap is created
+- Mapped to phases: 24
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-14*
-*Last updated: 2026-06-23 — v2.0 milestone requirements added (24 requirements across 7 categories); phase assignments pending roadmap*
+*Last updated: 2026-06-23 — v2.0 milestone requirements added (24 requirements across 7 categories); phase assignments populated (Phases 7–11)*
