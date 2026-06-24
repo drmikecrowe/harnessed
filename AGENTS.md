@@ -3,14 +3,14 @@
 Repo: https://github.com/drmikecrowe/code-container
 
 This file tells AI coding assistants how to set up and customize **`harnessed`**. The user-facing
-entry point is **[README.md](README.md)** — read it first for install, the two config modes
-(transparent / isolated), the quickstart, and the command surface. Full architecture rationale is in
+entry point is **[README.md](README.md)** — read it first for install, the quickstart, and the
+command surface. Full architecture rationale is in
 [docs/harnessed-design.md](docs/harnessed-design.md); how-to guides are under
 [docs/guides/](docs/guides).
 
 > [!IMPORTANT]
-> **Do not run `harnessed` or `container` yourself.** Both launch an interactive shell inside a
-> container (transparent attaches a live harness; isolated attaches a pod). They are for user
+> **Do not run `harnessed` yourself.** It launches an interactive shell inside a container
+> (attaches a pod). It is for user
 > consumption only. Use `harnessed build`, `harnessed test`, `harnessed list`, or read the source to
 > reason about behavior instead.
 
@@ -22,17 +22,17 @@ whole sequence):
 1. **Prerequisite:** Podman (preferred) or Docker is the only host dependency. No host
    Python/node/uv is needed.
 2. **Install:** have the user run the installer (it clones to `~/.local/share/code-container` and
-   symlinks `harnessed` + the `container` alias onto their PATH):
+   symlinks `harnessed` onto their PATH):
    ```bash
    curl -fsSL https://raw.githubusercontent.com/drmikecrowe/code-container/main/install.sh | bash
    ```
 3. **First-run build** (user runs these):
    ```bash
    harnessed build                       # build the shared base/harness/hatago images
-   harnessed build tracer-time           # assemble an isolated stack (emit profile + scan + hatago build)
+   harnessed build tracer-time           # assemble a stack (emit profile + scan + hatago build)
    ```
-4. **Run** (user runs): `harnessed transparent` (host-mirror sandbox) or `harnessed tracer-time`
-   (the isolated sample stack). See the [quickstart](README.md#quickstart).
+4. **Run** (user runs): `harnessed tracer-time` (the sample stack). See the
+   [quickstart](README.md#quickstart).
 
 ## Customizing harnessed
 
@@ -53,8 +53,8 @@ whole sequence):
 
 ## Harness permissions
 
-If the user asks to configure harnesses to run without permission prompts inside a transparent
-instance, read and follow [Permissions.md](Permissions.md).
+If the user asks to configure harnesses to run without permission prompts inside a stack instance,
+read and follow [Permissions.md](Permissions.md).
 
 ## Conventions
 
