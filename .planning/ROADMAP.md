@@ -233,7 +233,21 @@ Plans:
   5. After a session, antigravity conversation history appears on the host at `~/.gemini/antigravity-cli/conversations/` without touching the OAuth token or `~/.gemini/` settings proper
   6. Each harness's mount and teardown set is encoded in a structured per-harness manifest file — changing a path is a one-line manifest edit, not a search-and-replace through launcher code
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+**Wave 1** *(parallel)*
+
+- [ ] 09-01-PLAN.md — YAML mount manifests (6 files) + harnessed-manifest-mounts.sh helper (MNT2-06, MNT2-03/04/05)
+- [ ] 09-02-PLAN.md — Python assembler refactor: emit.py + assemble.py fan-out removal (MNT2-01 assembler side)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 09-03-PLAN.md — Launcher surgery: harnessed-isolated.sh guard + copy-mount removal + workdir/mcp_cfg fix (MNT2-01/02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 09-04-PLAN.md — Phase 9 UAT suite (MNT2-01 through MNT2-06 smoke + integration tests)
 
 ### Phase 10: opencode/codex Investigation + Combined Capability Test
 
