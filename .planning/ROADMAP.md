@@ -293,6 +293,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 3/3 | Complete    | 2026-06-21 |
 | 7. Fat Base + Agent Images | 3/3 | Complete   | 2026-06-23 |
 | 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 3/3 | Complete   | 2026-06-23 |
-| 9. Surgical Profile Mount + History Surfacing | 4/4 | Complete   | 2026-06-24 |
+| 9. Surgical Profile Mount + History Surfacing | 4/4 | Complete    | 2026-06-24 |
 | 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
 | 11. Architecture Documentation | 0/TBD | Not started | - |

@@ -112,12 +112,12 @@ Active requirements for the v2.0 milestone. Each maps to a phase in ROADMAP.md.
 
 ### Profile Mount
 
-- [ ] **MNT2-01**: Surgical config-file mount — launcher mounts individual config files (`.mcp.json`, `settings.json`; per-harness equivalents for omp/opencode/etc.), not the whole `~/.claude/` dir. Image-baked skills survive (no dir-replace).
-- [ ] **MNT2-02**: Path mirroring — container working directory set to the **identical absolute host path** of the project (`--workdir $HOST_PWD`). Ensures Claude project slug, omp session slug, and antigravity `workspace` key all match the host; embedded transcript paths are host-coherent; DooD `-v $PWD:$PWD` requires no translation.
-- [ ] **MNT2-03**: Claude Code history surfacing — for claude stacks: rw-mount `projects/<slug>/`, `file-history/`, `tasks/`, `session-env/`, `todos/`. `history.jsonl` surfaced via guarded teardown merge (ships disabled). Config dirs never mounted.
-- [ ] **MNT2-04**: omp history surfacing — rw-mount `agent/sessions/<project-slug>/` and optionally `agent/blobs/`. `history.db` via guarded teardown export by `cwd` (ships disabled). `agent.db` **never** mounted (co-locates `auth_credentials`).
-- [ ] **MNT2-05**: antigravity history surfacing — rw-mount `antigravity-cli/conversations/`, `antigravity-cli/brain/`, `antigravity-cli/implicit/` (UUID-named, collision-free). `history.jsonl` + `cache/projects.json` + `cache/last_conversations.json` via guarded teardown merge (ships disabled). `antigravity-oauth-token` and `~/.gemini/` proper never mounted.
-- [ ] **MNT2-06**: Data-driven mount manifests — the mount/teardown set for each harness is defined in a structured per-harness config, not inline `-v` flags.
+- [x] **MNT2-01**: Surgical config-file mount — launcher mounts individual config files (`.mcp.json`, `settings.json`; per-harness equivalents for omp/opencode/etc.), not the whole `~/.claude/` dir. Image-baked skills survive (no dir-replace).
+- [x] **MNT2-02**: Path mirroring — container working directory set to the **identical absolute host path** of the project (`--workdir $HOST_PWD`). Ensures Claude project slug, omp session slug, and antigravity `workspace` key all match the host; embedded transcript paths are host-coherent; DooD `-v $PWD:$PWD` requires no translation.
+- [x] **MNT2-03**: Claude Code history surfacing — for claude stacks: rw-mount `projects/<slug>/`, `file-history/`, `tasks/`, `session-env/`, `todos/`. `history.jsonl` surfaced via guarded teardown merge (ships disabled). Config dirs never mounted.
+- [x] **MNT2-04**: omp history surfacing — rw-mount `agent/sessions/<project-slug>/` and optionally `agent/blobs/`. `history.db` via guarded teardown export by `cwd` (ships disabled). `agent.db` **never** mounted (co-locates `auth_credentials`).
+- [x] **MNT2-05**: antigravity history surfacing — rw-mount `antigravity-cli/conversations/`, `antigravity-cli/brain/`, `antigravity-cli/implicit/` (UUID-named, collision-free). `history.jsonl` + `cache/projects.json` + `cache/last_conversations.json` via guarded teardown merge (ships disabled). `antigravity-oauth-token` and `~/.gemini/` proper never mounted.
+- [x] **MNT2-06**: Data-driven mount manifests — the mount/teardown set for each harness is defined in a structured per-harness config, not inline `-v` flags.
 - [ ] **MNT2-07**: opencode and codex history layouts are **to be investigated** during their execution phases (see `docs/research/home-folder-harness-history-overview.md`). Each investigation produces a `home-folder-<harness>-requirements.md` and a manifest entry. Gates opencode/codex stack completion but does not block claude/omp/antigravity phases.
 
 ### Supply Chain
@@ -231,12 +231,12 @@ Which phase covers which requirement.
 | ASM-01 | Phase 8 | Pending |
 | ASM-02 | Phase 8 | Pending |
 | ASM-03 | Phase 8 | Pending |
-| MNT2-01 | Phase 9 | Pending |
-| MNT2-02 | Phase 9 | Pending |
-| MNT2-03 | Phase 9 | Pending |
-| MNT2-04 | Phase 9 | Pending |
-| MNT2-05 | Phase 9 | Pending |
-| MNT2-06 | Phase 9 | Pending |
+| MNT2-01 | Phase 9 | Complete |
+| MNT2-02 | Phase 9 | Complete |
+| MNT2-03 | Phase 9 | Complete |
+| MNT2-04 | Phase 9 | Complete |
+| MNT2-05 | Phase 9 | Complete |
+| MNT2-06 | Phase 9 | Complete |
 | MNT2-07 | Phase 10 | Pending |
 | SC-01 | Phase 8 | Pending |
 | SC-02 | Phase 8 | Pending |

@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Phases
-status: Ready to execute
-last_updated: "2026-06-24T13:11:22.780Z"
+status: ready_to_plan
+last_updated: 2026-06-24T15:29:42.725Z
 last_activity: 2026-06-24 -- Phase 09 execution started
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 10
-  completed_plans: 6
+  completed_plans: 10
   percent: 18
+stopped_at: Phase 09 complete (4/4) — ready to discuss Phase 10
 ---
 
 # Project State
@@ -20,20 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-14)
 
 **Core value:** Compose a named stack and launch an isolated, authenticated instance that exposes exactly the skills/commands/MCP/services it declares — nothing from host config — reproducibly, podman the only host dependency.
-**Current focus:** Phase 09 — surgical-profile-mount-history-surfacing
+**Current focus:** Phase 10 — opencode/codex investigation + combined capability test
 
 ## Current Position
 
-Phase: 09 (surgical-profile-mount-history-surfacing) — EXECUTING
-Plan: 1 of 4
+Phase: 10
+Plan: Not started
 Phase: 08 — not yet started
-Last activity: 2026-06-24 -- Phase 09 execution started
+Last activity: 2026-06-24
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 10
+- Total plans completed: 14
 - Average duration: — min
 - Total execution time: 0.0 hours
 
@@ -44,6 +45,7 @@ Last activity: 2026-06-24 -- Phase 09 execution started
 | 2 | 3 | - | - |
 | 03 | 2 | - | - |
 | 06 | 3 | - | - |
+| 09 | 4 | - | - |
 
 **Recent Trend:**
 
