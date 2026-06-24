@@ -15,8 +15,13 @@ function of the recipes/stack (reproducible build).
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
+
+# Matches exactly `ARG HARNESS` (with optional trailing whitespace) — the build-stage scope
+# anchor emitted by the assembler. Must NOT strip ARGs like ARG HARNESS_PROXY_URL (WR-04).
+_ARG_HARNESS_RE = re.compile(r'^ARG\s+HARNESS\s*$', re.IGNORECASE)
 
 from .schema import McpServer, Recipe, Stack
 
@@ -123,7 +128,7 @@ def write_derived_dockerfile(profile_dir: Path, stack: Stack, recipes: list[Reci
         filtered = [
             ln for ln in body_lines
             if not ln.strip().upper().startswith("FROM ")
-            and not ln.strip().upper().startswith("ARG HARNESS")
+            and not _ARG_HARNESS_RE.match(ln.strip())
         ]
         lines.append(f"# --- recipe: {recipe.name} ---")
         lines.extend(filtered)
