@@ -128,8 +128,6 @@ def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
     out.print(f"[bold green]Assembled[/bold green] stack [bold]{result.stack.name}[/bold]")
     out.print(f"  profile:  {result.profile_dir}")
     out.print(f"  harness:  {result.stack.harness}")
-    out.print(f"  skills:   {', '.join(result.skills) or '(none)'}")
-    out.print(f"  commands: {', '.join(result.commands) or '(none)'}")
     out.print(f"  mcp:      {', '.join(s.name for s in result.servers) or '(none)'} "
               f"→ {HATAGO_ENDPOINT}")
     out.print(f"  baked:    {', '.join(s.name for s in result.baked) or '(none)'} (hatago image)")
