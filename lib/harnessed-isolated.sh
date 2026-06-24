@@ -87,22 +87,22 @@ harnessed_isolated() {
     if [ "$headless" != "true" ] && container_running "$instance"; then
         print_info "Attaching to running instance: $instance"
         if [ "$harness" = "omp" ]; then
-            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
                 bash -l -c "$mise_init && omp --profile \"$instance\""
         elif [ "$harness" = "opencode" ]; then
-            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
                 bash -l -c "$mise_init && opencode"
         elif [ "$harness" = "gemini" ]; then
-            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
                 bash -l -c "$mise_init && gemini"
         elif [ "$harness" = "antigravity" ]; then
-            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
                 bash -l -c "$mise_init && agy"
         elif [ "$harness" = "codex" ]; then
-            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
                 bash -l -c "$mise_init && codex"
         else
-            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+            "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
                 bash -l -c "$mise_init && claude"
         fi
         stop_if_last_session "$instance" "$relpath"
@@ -223,35 +223,35 @@ harnessed_isolated() {
     # Claude-canonical profile via the pre-installed bridge and isolates the session with --profile
     # (the bridge auto-loads — no per-launch -e). omp's MCP wiring to hatago is resolved in the
     # checkpoint (P-04-11; same localhost:3535 endpoint, shared pod netns).
-    local mcp_cfg="$CONTAINER_HOME/.claude/.mcp.json"
+    local mcp_cfg="$CONTAINER_HOME/.mcp.json"
     if [ "$harness" = "omp" ]; then
-        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
             bash -l -c "$mise_init && omp --profile \"$instance\""
     elif [ "$harness" = "opencode" ]; then
         # opencode reads the SAME profile's .claude/skills natively and reaches hatago via its baked
         # ~/.config/opencode config (it ignores .mcp.json), so a bare `opencode` in the project cwd
         # is the attach (no MCP flags); shared pod netns → same localhost:3535 endpoint.
-        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
             bash -l -c "$mise_init && opencode"
     elif [ "$harness" = "gemini" ]; then
         # gemini reaches hatago via its baked ~/.gemini/settings.json (mcpServers → localhost:3535);
         # a bare `gemini` in the project cwd is the attach. Claude skills/commands are not natively
         # consumed (its native assets differ) — the profile is still mounted for parity.
-        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
             bash -l -c "$mise_init && gemini"
     elif [ "$harness" = "antigravity" ]; then
         # antigravity (agy) reaches hatago via its baked ~/.gemini/config/mcp_config.json
         # (serverUrl → localhost:3535); a bare `agy` in the project cwd is the attach.
-        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
             bash -l -c "$mise_init && agy"
     elif [ "$harness" = "codex" ]; then
         # codex reaches hatago via its baked ~/.codex/config.toml ([mcp_servers.hatago] url, native
         # streamable-HTTP); a bare `codex` in the project cwd is the attach. Reads AGENTS.md but not
         # Claude skills/commands — the profile is still mounted for parity.
-        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
             bash -l -c "$mise_init && codex"
     else
-        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$CONTAINER_HOME/$relpath" "$instance" \
+        "$CONTAINER_RUNTIME" exec -it -e "TERM=xterm-256color" -w "$project_path" "$instance" \
             bash -l -c "$mise_init && claude --mcp-config '$mcp_cfg' --strict-mcp-config"
     fi
     stop_if_last_session "$instance" "$relpath"
