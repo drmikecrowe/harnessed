@@ -138,6 +138,83 @@ Contrast: `time` (stdio child hatago must bake + spawn) vs `ping` (HTTP sidecar 
 URL). Use stdio for light, dependency-free servers you want baked in; use a service for stateful or
 shared systems that outlive any instance.
 
+## Worked example 3: a Dockerfile recipe (installs a framework CLI)
+
+[`recipes/gstack/`](../../recipes/gstack/) exercises the Phase 8 Dockerfile recipe model — a recipe
+that installs tooling via a Dockerfile body, with no MCP server or standalone skill dir.
+
+### recipe.yaml
+
+```yaml
+name: gstack
+description: Installs the gstack tooling via its framework installer.
+harnesses: [claude]
+expect: [gstack-skill]
+```
+
+- `harnesses: [claude]` — this recipe is claude-only. Composing it onto an `omp` or `opencode`
+  stack is a validation error; the assembler rejects the combination before emitting any Dockerfile.
+- `expect: [gstack-skill]` — after a successful `harnessed build gstack-time`, the capability test
+  (`harnessed test gstack-time`) must confirm that `gstack-skill` is present in the running
+  instance. Use this field to declare the capabilities your Dockerfile install step is expected to
+  deliver.
+
+### Dockerfile
+
+```dockerfile
+# No FROM line — the assembler prepends `FROM harnessed-${HARNESS}:latest` when concatenating.
+ARG HARNESS=claude
+
+# "Run the framework's own installer" — let the framework install itself, pinned to an exact version.
+RUN pnpm dlx @gstack/install@1.2.3 --host ${HARNESS}
+```
+
+Rules for recipe Dockerfiles:
+
+- **No `FROM` line.** The assembler supplies `FROM harnessed-${HARNESS}:latest` as the header;
+  adding your own `FROM` produces a malformed concatenated Dockerfile.
+- **`ARG HARNESS=claude` at the top.** The `ARG` is stripped during concatenation but is required
+  so standalone Docker builds can resolve `${HARNESS}` references in the body.
+- **Pinned installs only.** Floating refs (`@latest`, `--branch main`, `--branch master`) are
+  rejected by the assembler's pin validation (`PinValidationError`). Every downloadable resource
+  must carry an exact version pin (e.g. `@1.2.3`, `--version 1.2.3`).
+
+### "Run the framework's own installer" principle
+
+Recipe Dockerfiles do not manually copy files, vendor deps, or reconstruct what a framework's
+installer already knows how to do. Instead they invoke the framework's published installer at an
+exact version:
+
+```bash
+pnpm dlx @framework/install@<version> --host ${HARNESS}
+```
+
+The `--host ${HARNESS}` flag lets the installer configure itself for the target harness (e.g. claude
+vs omp). This keeps recipes thin: the recipe declares *what* to install and *at which version*; the
+framework controls *how* it is installed.
+
+### Pin discipline
+
+`ARG` declarations are the standard way to express version pins in a recipe Dockerfile:
+
+```dockerfile
+ARG GSTACK_VERSION=1.2.3
+RUN pnpm dlx @gstack/install@${GSTACK_VERSION} --host ${HARNESS}
+```
+
+The assembler validates that every downloadable resource has a pinned version. Floating refs
+(`@latest`, `--branch main`) fail the build — `PinValidationError` is raised before any image
+layer is written.
+
+### Build-and-test lifecycle
+
+```bash
+harnessed build gstack-time   # assembles gstack + time recipes into harnessed-gstack-time image,
+                               # runs osv-scanner + pip-audit supply-chain gate on derived image
+harnessed gstack-time         # launch the stack (podman pod: harness + hatago)
+harnessed test gstack-time    # capability report: ✓ gstack-skill (expect), ✓ time (mcp)
+```
+
 ## Transports
 
 | Transport | When | Notes |
