@@ -98,7 +98,7 @@ and agents, *not* the config-experiment surface, so they belong in every instanc
 - egress firewall (`--cap-add NET_ADMIN`, `egress-firewall.sh`)
 - the current project folder, mounted at the work dir
 
-### 4b. Config source — the mode axis
+### 4b. Config source — surgical per-file mounts
 
 **`transparent`:** bind-mount host config live (like today's `container`, with one safety fix —
 the `.claude.json` caveat below):
@@ -113,15 +113,30 @@ the `.claude.json` caveat below):
 - `~/.codex`, `~/.config/opencode`, `~/.gemini` (rw)
 - MCP comes from host config as-is; no hatago, no profile, no auth stub.
 
-**`isolated`:** auth seeded, config from the profile (the core trick), grounded in the real
-`~/.claude` layout:
+**`isolated`:** auth seeded, config from the profile via **surgical per-file mounts** — the core
+isolation trick:
 
 - The real credential is **`~/.claude/.credentials.json`** (OAuth token). Mount it read-only.
+  Auth credential mounts are handled by the §4a host-integration layer — never by the per-harness
+  manifest (manifests list only config/skill files, never auth credential paths).
 - **`~/.claude.json`** is *not* auth — it's `oauthAccount` metadata + ~450 KB of config/state
   (`projects`, `mcpServers`, caches). **Do not mount it.** **Generate** a minimal stub with only
   the fields needed to skip onboarding (see §14 — exact set to verify).
-- `skills/`, `commands/`, `agents/`, `hooks/`, `rules/`, `.mcp.json`, `settings.json` come
-  **only** from the stack profile (§7); `.mcp.json` points at hatago.
+- **Surgical per-file mounts via `lib/manifests/<harness>.yaml`.** Profile assets are NOT mounted
+  as a whole `profiles/<stack>/` directory. Each harness has a YAML manifest
+  (`lib/manifests/claude.yaml`, `lib/manifests/omp.yaml`, etc.) with two top-level keys:
+  - `profile_files`: individual filenames (e.g. `.mcp.json`, `settings.json`) mounted read-only
+    from `profiles/<stack>/` into the container's harness config dir. The bash helper
+    `lib/harnessed-manifest-mounts.sh` reads the manifest at launch time and applies harness-aware
+    container target paths: claude/omp/opencode mount profile files to `~/.claude/<f>`;
+    gemini/antigravity/codex skip profile file mounting (their MCP config is image-baked).
+  - `history_dirs`: `$HOME`-relative paths bind-mounted read-write for history surfacing (e.g.
+    `.claude/projects`, `.claude/todos`, `.claude/tasks` for claude).
+
+  Why surgical? Mounting a whole directory lets host defaults (other skills, stale config, personal
+  CLAUDE.md) bleed into the container — exactly the "no host defaults" invariant §4 protects.
+  Individual per-file mounts make the container's config surface exactly what the profile declares,
+  no more.
 - Session state — `~/.claude/projects/` + `history.jsonl` — persists to the **host** by default,
   so sessions survive instance recreation and stay inspectable. The project is mounted at a stable
   in-container path (e.g. `/home/harnessed/<relpath>`) so Claude's slug is legible
@@ -154,38 +169,83 @@ Legitimate build-time images:
 - **Per heavy service** — `services/hindsight/Dockerfile`, `services/openbrain/Dockerfile`, each
   standalone, independently versioned, reusable across stacks.
 
-## 7. Assembly — split: build-time vendor/sync (committed) + baked images
+## 7. Assembly — Dockerfile recipe model + supply-chain gate
 
-The build-time assembler **reuses prior art** (to be ported into this repo):
+A **recipe** contributes a `Dockerfile` (no `FROM` line) that the assembler concatenates into the
+derived stack Dockerfile. The recipe's `recipe.yaml` carries metadata only — MCP server declarations,
+harness compatibility, and a smoke-check list. Build steps live in the Dockerfile, not in YAML fields.
 
-| Step | Prior-art source (host) | Role |
-|---|---|---|
-| acquire | `~/.agents/bin/vendor-plugin` | resolve a Claude plugin (marketplace / url / git-subdir + sha) → copy + install uv/npm deps |
-| colocate | `~/.agents.20260603/bin/sync-plugin-links` | fan a plugin's `skills/`+`commands/` into harness-native paths; **fail-fast on name collision** |
-| wire hooks | `~/.agents.20260603/hooks/{run-hook.sh,<Event>.d,lib-pi-adapter.sh}` + universal-hooks `activate` | one hook codebase dispatched per runtime; pi-adapter normalizes omp/GSD payloads → Claude shape |
+### Recipe = Dockerfile body
 
-**Where output lands:**
-- **Committed → mounted:** the assembled file-extension tree is written into the git-controlled
-  **profile** dir and **mounted** into the harness container (editable, versioned — satisfies VISION's
-  "commands, skills, agents and hooks proxied to a git-controlled folder").
-- **Baked → images:** MCP servers + their `npx`/`uvx`/python deps are baked into images
-  (host stays clean, reproducible, pinned).
+Each recipe's `Dockerfile` declares `ARG HARNESS=<default-harness>` at the top. This lets the body
+reference `${HARNESS}` for harness-specific installs (e.g. `pnpm dlx @gstack/install --host ${HARNESS}`).
+The assembler:
 
-Nothing is assembled at container start → satisfies "not dynamic."
+1. Strips each recipe's `ARG HARNESS` declaration (and any `FROM` line — recipes must not have one).
+2. Emits `FROM harnessed-${HARNESS}:latest` as the derived Dockerfile header.
+3. Concatenates recipe bodies in declaration order under that header, annotated with recipe names as comments.
+4. Writes the result to `profiles/<stack>/Dockerfile.harnessed-<stack>`.
 
-### Supply-chain security (build-time gate)
+Example emitted derived Dockerfile:
+```dockerfile
+# Generated by harnessed assemble — do not edit.
+FROM harnessed-claude:latest
+ARG HARNESS=claude
 
-Vendored deps and built images are **scanned before** a profile is committed or an image is
-published — porting the audit suite from `~/.config/dorothy/commands/nightly-updates`:
+# ── recipe: time ──
+# (time MCP server is baked into the hatago config — no RUN steps needed)
 
-- **osv-scanner** — credential-free; scan lockfiles / `node_modules` of vendored plugins + images.
-- **snyk test** `--severity-threshold=high` — **needs a token**; npm/pnpm trees (synthesize a
-  `package.json` from `pnpm ls`/`npm ls -g` for manifest-less globals, per the `nightly-updates` trick).
-- **pip-audit** — credential-free; Python deps in any recipe shipping `requirements.txt`/`pyproject.toml`.
-- **Socket.dev** (optional) — **needs a token**; deeper supply-chain signals if you add it.
+# ── recipe: gstack (pinned) ──
+ARG GSTACK_REF=v1.4.0
+RUN git clone --branch ${GSTACK_REF} --depth 1 https://github.com/garrytan/gstack.git \
+    ~/.claude/skills/gstack && cd ~/.claude/skills/gstack && ./setup --host ${HARNESS}
+```
 
-`harnessed build` fails on high-severity findings. A nightly job (the systemd-timer pattern from
-`nightly-updates`) can re-scan installed images so a CVE disclosed after build still surfaces.
+### recipe.yaml declares metadata, not build steps
+
+`recipe.yaml` carries:
+- `name`, `description` — identity.
+- `harnesses:` — the harnesses this recipe's installer supports. The assembler refuses to compose
+  the recipe onto a stack whose harness is not listed (clean error, not a cryptic build failure).
+- `mcp.servers:` — MCP server entries merged into `hatago.config.json` across all recipes in the stack.
+- `expect:` — a smoke-check subset of skills/tools the capability test (§18) asks the agent about.
+  Not a completeness oracle; `expect:` confirms the install landed, not that nothing extra was added.
+
+The prior assembly model — which resolved plugins, fanned skills/commands trees into the profile, and
+committed them — is superseded. Skills are image-baked by recipe Dockerfiles; the profile carries
+only assembler-generated config files (`.mcp.json`, `settings.json`).
+
+### Supply chain = pin sources in Dockerfiles + scan the derived image
+
+**Two non-negotiables on every recipe Dockerfile:**
+
+1. **Pin every source.** A floating ref (`--branch main`, unversioned `pnpm dlx @pkg`) is a
+   validation error — the assembler refuses before any build starts. Acceptable pins: `--branch v1.4.0`,
+   `pnpm dlx @pkg@1.2.3`, `ARG PKG_REF=abc123def` (commit SHA).
+
+2. **Scan the built derived image.** After `podman build` produces `harnessed-<stack>:latest`:
+   - **osv-scanner V2 (always-on, credential-free):** `osv-scanner scan image harnessed-<stack>:latest`.
+     Fails on high-severity findings. Catches transitive CVEs that a source-only scan misses — the
+     recipe model runs arbitrary upstream installers, so scanning the derived image is the only gate
+     that sees what actually landed.
+   - **Snyk container scan (warn-and-skip if no `SNYK_TOKEN`):** `snyk container test harnessed-<stack>:latest --severity-threshold=high`.
+     Never prompts; build stays non-interactive.
+   - **Socket.dev (warn-and-skip if no `SOCKET_SECURITY_API_KEY`):** source-scan coverage (Socket
+     has no container-image mode; the recipe Dockerfile source directories are the scan target).
+
+`harnessed build` fails on high-severity findings. A nightly job (the systemd-timer pattern) can
+re-scan installed `harnessed-<stack>` images so a CVE disclosed after build still surfaces.
+
+### Assembler output
+
+For each stack build the assembler produces:
+- `profiles/<stack>/Dockerfile.harnessed-<stack>` — the concatenated derived Dockerfile.
+- `profiles/<stack>/hatago.config.json` — MCP server config assembled from `recipe.yaml mcp.servers`
+  entries across all recipes.
+- `profiles/<stack>/.mcp.json` and `profiles/<stack>/settings.json` — per-stack config files mounted
+  surgically into the container at launch (§4b).
+
+The host then runs `podman build --build-arg HARNESS=<agent> -t harnessed-<stack>:latest -f profiles/<stack>/Dockerfile.harnessed-<stack> .`.
 
 ### Scanner credentials (snyk / Socket.dev)
 
@@ -223,8 +283,8 @@ is auth/registry-only in v11. (`allowBuilds` is the one exception: it belongs in
 project's `pnpm-workspace.yaml`, not the global config — verified in the phase-3 checkpoint.)
 
 `npx <pkg>` → `pnpm dlx <pkg>`; `npm install` → `pnpm install`. **Recipe validation** (part of
-`harnessed build`) flags any raw `npm`/`npx` in a recipe's scripts/deps and points at the pnpm
-equivalent. (Requires updating the ported `vendor-plugin`, which currently shells `npm install`.)
+`harnessed build`) flags any raw `npm`/`npx` in a recipe Dockerfile and points at the pnpm
+equivalent.
 
 ## 8. Canonical format = Claude Code; omp via bridge
 
@@ -605,45 +665,72 @@ Cadence: each section lands **with** the feature it documents (a feature isn't "
 exist), per this repo's existing AGENTS.md / README conventions. This design spec stays current as
 decisions change (as it has through this session).
 
-## 18. Proposed: testing — integration only, behavior through the instance
+## 18. Testing — integration only, behavior through the instance
 
 Per the project's TDD philosophy (`tdd` skill): **test behavior through the public interface, and
 write tests that survive refactors.** For harnessed the public interface is the **running instance**, and
 the behavior is "the instance exposes exactly the MCP servers / skills / commands its stack declares."
 
-- **No assembler unit tests.** Testing `vendor`/`sync-links`/merge internals couples to
-  implementation and breaks on refactor — the anti-pattern the TDD skill warns against. The
-  assembler is covered *transitively*: wire the wrong thing and the capability test fails.
+- **No assembler unit tests.** Testing assembler internals couples to implementation and breaks on
+  refactor — the anti-pattern the TDD skill warns against. The assembler is covered *transitively*:
+  wire the wrong thing and the capability test fails.
 - **The stack manifest is the test oracle.** Expected capabilities (`recipes` → MCP servers +
-  skills + commands; `services`) are derived from `stack.yaml`; the test asserts the live instance
-  matches. It reads like a spec: "`claude-openbrain-headroom-caveman` exposes MCP `openbrain` and
-  skills `headroom`, `caveman`."
+  skills/tools; `services`) are derived from `stack.yaml` + its recipes; the test asserts the live
+  instance matches. It reads like a spec: "`gstack-time` exposes MCP `time` and skills `review`, `qa`."
 
-**Canonical capability test (per stack):**
+**Two-oracle capability test (per stack):**
 
-1. `harnessed build <stack>` → `harnessed <stack> --fresh <scratch-project>` in **headless** mode
-   (claude `-p … --output-format json`; omp's non-interactive equivalent; opencode `opencode run <prompt> --format json`; gemini `gemini -p <prompt>`; antigravity `agy -p <prompt>`; codex `codex exec <prompt>` — exact flags to verify).
-2. Assert the declared capabilities are present, preferring **machine-readable introspection** for
-   determinism, with the LLM prompt as the behavioral backstop:
-   - **MCP servers** — hatago's `hatago://servers` resource (JSON snapshot of connected servers)
-     and/or `claude mcp list`; assert the manifest's servers are connected.
-   - **Skills / commands** — ask the harness, headless, to emit the skills/commands it sees as JSON
-     and diff against the manifest; the natural-language "confirm you can use skill X, MCP Y" prompt
-     is the human-readable check on top.
-3. Tear the instance down (`--fresh` guarantees no state bleed between runs).
+The capability test uses two complementary oracles that prove different things:
 
-**Capability report — the test output is a user artifact.** The same check renders a **markdown
-report** ("how well the recipe built"), not just a CI pass/fail. The expected-from-manifest vs
-present-in-instance comparison becomes a per-capability table:
+**Oracle 1 — Structured MCP probe (deterministic).** Hit hatago's `hatago://servers` resource — a
+JSON snapshot of the connected child servers behind the hub — and/or `claude mcp list`. Assert that
+every `mcp.servers` entry declared in the stack's recipes appears as connected. No model call; fast
+and deterministic.
+
+**Oracle 2 — Un-primed agent probe (behavioral).** Ask the harness, headless, what capabilities it
+has — deliberately NOT priming it with the expected list. The prompt names the `expect:` skills/tools
+from the recipe PLUS a **decoy** capability (a name that exists in neither the recipe nor the image).
+The agent must report which it has and which it lacks, without the test telling it which are real.
+
+```bash
+podman exec <container> claude -p 'You have a set of skills and tools available. For EACH name below, answer "have" or "missing" — do not assume; check what is actually loaded.
+
+office-hours, plan-ceo-review, review, qa, ship, browse, <decoy-not-installed>
+
+Respond as JSON: {"have": [...], "missing": [...]}'
+```
+
+**Negative control (anti-sycophancy gate).** The decoy MUST appear in `missing`. If the agent
+claims the decoy is present, the test exits with status **INVALID** — distinct from a normal
+capability-failure non-zero exit. INVALID means priming/sycophancy was detected: the model is
+hallucinating agreement, not reporting what it actually loaded. An INVALID result causes the run to
+fail regardless of how all other capabilities scored.
+
+Why un-primed with a negative control? Naming expected capabilities in a "respond YES" prompt primes
+the model to confirm capabilities it never loaded. The decoy closes that hole: a model that actually
+checked its loaded skills gets the decoy right; a model hallucinating agreement claims it.
+
+**Assertion logic:**
+1. Oracle 1: assert each `mcp.servers` entry appears in `hatago://servers` — fail if not connected.
+2. Oracle 2: assert decoy is in `missing` → INVALID if it is in `have`; assert each `expect:` entry is in `have` — fail any that appear in `missing`.
+
+**Capability report — the test output is a user artifact.** `harnessed test <stack>` writes
+`profiles/<stack>/capability-report.md` after every run, rendering a per-capability table showing
+✓/✗ for each MCP server and `expect:` entry, plus an INVALID banner when priming is detected:
 
 ```
-## claude-openbrain-headroom-caveman — capability report
-| capability | kind    | status                    |
-|------------|---------|---------------------------|
-| openbrain  | mcp     | ✓ connected               |
-| headroom   | skill   | ✓ present                 |
-| caveman    | skill   | ✓ present                 |
-| gsd        | command | ✗ missing (sync conflict) |
+## gstack-time — capability report
+| capability      | kind  | status      |
+|-----------------|-------|-------------|
+| time            | mcp   | ✓ connected |
+| office-hours    | skill | ✓ present   |
+| plan-ceo-review | skill | ✓ present   |
+| review          | skill | ✓ present   |
+| qa              | skill | ✓ present   |
+| ship            | skill | ✓ present   |
+| browse          | tool  | ✓ present   |
+
+INVALID: agent claimed decoy capability '<decoy>' — sycophancy/priming detected.
 ```
 
 `harnessed build` renders it with `rich` (already in the tools image; markdown → terminal); CI
@@ -656,5 +743,5 @@ minimal stack — one harness + one MCP server + one skill — with its capabili
 test. Never "write all recipes, then all tests."
 
 **Honest tradeoff:** integration-only means an assembler bug surfaces as a capability failure, not a
-pinpointed unit failure — coarser to debug. Mitigate with clear assembler errors (e.g.
-`sync-plugin-links`' explicit conflict reporting) so a failed build says *what* it couldn't wire.
+pinpointed unit failure — coarser to debug. Mitigate with clear assembler errors (e.g. pin-validation
+rejections with the offending line) so a failed build says *what* it couldn't wire.
