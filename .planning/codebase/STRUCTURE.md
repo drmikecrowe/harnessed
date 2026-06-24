@@ -1,0 +1,314 @@
+# Codebase Structure
+
+**Analysis Date:** 2026-06-24
+
+## Directory Layout
+
+```
+code-container/
+├── harnessed                    # Host bootstrap CLI (bash, the only host entrypoint)
+├── install.sh                   # Installer: clones repo + symlinks harnessed onto PATH
+├── uninstall.sh                 # Uninstaller
+├── Dockerfile                   # Legacy single-container image (pre-harnessed)
+├── AGENTS.md                    # AI assistant instructions (points to CLAUDE.md)
+├── CLAUDE.md                    # Project instructions + technology stack reference
+├── DESIGN.md                    # Design rationale (§ references used throughout codebase)
+├── Permissions.md               # Harness permission configuration guide
+├── extra-tools.txt              # User-editable list of extra mise tools to bake
+├── skills-lock.json             # Vendored skill lock file
+│
+├── lib/                         # Bash library modules sourced by harnessed bootstrap
+│   ├── harnessed-common.sh      # Image names, runtime detection, instance lifecycle
+│   ├── harnessed-isolated.sh    # Isolated stack pod launcher (main launch path)
+│   ├── harnessed-mounts.sh      # §4a host-integration mounts (SSH/GPG/git/project)
+│   ├── harnessed-isolated-config.sh  # §4b auth seeding (credentials + stub)
+│   ├── harnessed-cli.sh         # Subcommands: list/stop/rm/new/install/uninstall
+│   ├── harnessed-services.sh    # Shared service lifecycle (svc up/down/list)
+│   ├── harnessed-secrets.sh     # Optional varlock + 1Password secrets layer
+│   ├── harnessed-runtime.sh     # Runtime abstraction (podman pods vs docker)
+│   ├── harnessed-rescan.sh      # Nightly CVE rescan trigger (SEC-04)
+│   ├── harnessed-manifest-mounts.sh  # Per-harness profile file mounts
+│   ├── egress-firewall.sh       # iptables egress firewall (applied inside harness)
+│   ├── manifests/               # Per-harness mount manifests (YAML)
+│   │   ├── claude.yaml          # profile_files + history_dirs for claude harness
+│   │   ├── omp.yaml
+│   │   ├── opencode.yaml
+│   │   ├── gemini.yaml
+│   │   ├── antigravity.yaml
+│   │   └── codex.yaml
+│   └── pnpm/
+│       └── config.yaml          # Managed pnpm supply-chain policy (baked into images)
+│
+├── base/                        # Dockerfiles for base + harness images
+│   ├── Dockerfile.harnessed-base       # Lineage root (Ubuntu + mise + pnpm + python)
+│   ├── Dockerfile.harnessed-claude     # FROM base + Claude Code CLI
+│   ├── Dockerfile.harnessed-omp        # FROM base + omp + claude-hooks-bridge
+│   ├── Dockerfile.harnessed-opencode   # FROM base + opencode + baked MCP config
+│   ├── Dockerfile.harnessed-gemini     # FROM base + gemini-cli + baked MCP config
+│   ├── Dockerfile.harnessed-antigravity # FROM base + agy + baked MCP config
+│   ├── Dockerfile.harnessed-codex      # FROM base + codex + baked MCP config
+│   └── Dockerfile.hatago               # hatago MCP hub image
+│
+├── agents/                      # Agent manifest files (harness image declarations)
+│   ├── claude/agent.yaml
+│   └── omp/agent.yaml
+│
+├── stacks/                      # Stack manifests (user-authored, one per stack)
+│   ├── tracer-time/stack.yaml   # Tracer bullet: claude + time recipe
+│   ├── ping-time/stack.yaml
+│   ├── claude-multi/stack.yaml
+│   ├── omp-time/stack.yaml
+│   ├── opencode-time/stack.yaml
+│   ├── gemini-time/stack.yaml
+│   ├── codex-time/stack.yaml
+│   └── antigravity-time/stack.yaml
+│
+├── recipes/                     # Recipe manifests + skill assets (user-authored)
+│   ├── time/
+│   │   ├── recipe.yaml          # MCP server declaration + skills reference
+│   │   └── skills/time-helper/  # Standalone skill shipped by this recipe
+│   ├── ping/recipe.yaml         # Service-referenced MCP server
+│   ├── greet/
+│   │   ├── recipe.yaml
+│   │   └── skills/greet-helper/
+│   ├── omp/recipe.yaml
+│   ├── opencode/recipe.yaml
+│   ├── gemini/recipe.yaml
+│   ├── codex/recipe.yaml
+│   ├── antigravity/recipe.yaml
+│   ├── gstack/recipe.yaml
+│   └── floating-recipe/recipe.yaml  # Test fixture (intentional bad pin)
+│
+├── services/                    # Shared service sidecars (own image + volume)
+│   └── ping/
+│       ├── Dockerfile
+│       ├── server.py            # MCP streamable-HTTP server
+│       └── service.yaml         # name, image, volume, port, healthcheck
+│
+├── profiles/                    # Committed assembled profiles (generated by assembler)
+│   ├── tracer-time/
+│   │   ├── .claude/skills/      # Fanned skill trees from recipes
+│   │   ├── .mcp.json            # Single hatago endpoint
+│   │   ├── hatago.config.json   # hatago child-server config
+│   │   ├── baked-servers.json   # Servers the hatago image must bake
+│   │   └── settings.json        # Pre-approved MCP tools
+│   └── <other-stacks>/          # Same structure for each assembled stack
+│
+├── tools/                       # Build-time tooling (runs inside harnessed-tools container)
+│   ├── Dockerfile               # harnessed-tools image (Python + scanners)
+│   ├── pyproject.toml           # Python package declaration
+│   ├── uv.lock                  # Python dependency lockfile
+│   ├── pnpm-workspace.yaml
+│   ├── harnessed/               # Python package: the emit-only assembler
+│   │   ├── __init__.py
+│   │   ├── cli.py               # CLI entry point (assemble/test/scan subcommands)
+│   │   ├── schema.py            # Parse + validate recipe/stack YAML → typed dataclasses
+│   │   ├── assemble.py          # Orchestrate assembly (read → fan → merge → emit)
+│   │   ├── emit.py              # Write profile artifacts (EMIT ONLY, no podman)
+│   │   ├── scan.py              # Supply-chain scan gate (osv-scanner + pip-audit + snyk)
+│   │   ├── capability.py        # Per-stack capability test (manifest oracle vs live pod)
+│   │   ├── report.py            # Rich terminal rendering of capability results
+│   │   └── synclinks.py         # Fan skills/commands into profile tree (collision detect)
+│   ├── test-fixtures/           # Minimal fixture manifests for assembler unit tests
+│   │   ├── recipes/             # low-recipe, npm-recipe, svc-recipe, vuln-recipe
+│   │   ├── stacks/              # Corresponding test stacks
+│   │   └── services/
+│   └── uat/                     # User acceptance tests (integration-level, phase-based)
+│       ├── run-uat.sh
+│       ├── uat-common.sh
+│       ├── phase-04.sh
+│       ├── phase-05.sh
+│       ├── phase-06.sh
+│       ├── phase-08.sh
+│       └── phase-09.sh
+│
+├── docs/                        # Documentation
+│   ├── guides/                  # How-to guides (recipe authoring, stacks, services, secrets)
+│   ├── prompts/                 # LLM prompts for authoring guides
+│   └── research/                # Research notes
+│
+├── systemd/                     # Systemd user timer for nightly rescan (SEC-04)
+│
+├── web/                         # Static documentation website (Astro)
+│   └── src/
+│       ├── pages/
+│       ├── components/
+│       ├── layouts/
+│       ├── data/
+│       └── styles/
+│
+├── .planning/                   # GSD planning artifacts (phases, roadmap, codebase docs)
+│   ├── PROJECT.md
+│   ├── ROADMAP.md
+│   ├── STATE.md
+│   ├── codebase/                # This directory
+│   ├── milestones/
+│   ├── phases/
+│   └── todos/
+│
+└── .agents/                     # Project-scoped agent skills
+    └── skills/
+```
+
+## Directory Purposes
+
+**`lib/`:**
+- Purpose: All bash modules sourced by the `harnessed` bootstrap at runtime
+- Contains: Launch logic, mount construction, auth seeding, service lifecycle, CLI subcommands
+- Key files: `harnessed-common.sh` (shared helpers), `harnessed-isolated.sh` (main launch path), `harnessed-mounts.sh` (§4a mounts)
+
+**`base/`:**
+- Purpose: Dockerfiles for the harness image lineage
+- Contains: `harnessed-base` (lineage root) + one Dockerfile per supported harness + hatago hub
+- Key files: `Dockerfile.harnessed-base` (toolchain foundation), `Dockerfile.hatago` (MCP hub)
+
+**`stacks/`:**
+- Purpose: User-authored stack manifests — each declares ONE harness + recipe list
+- Contains: One subdirectory per stack, each with `stack.yaml`
+- Key files: `stacks/tracer-time/stack.yaml` (reference example)
+
+**`recipes/`:**
+- Purpose: User-authored recipe manifests + bundled skill/command assets
+- Contains: One subdirectory per recipe with `recipe.yaml` + optional `skills/` subdirs
+- Key files: `recipes/time/recipe.yaml` (tracer bullet reference)
+
+**`services/`:**
+- Purpose: Shared service sidecars with independent lifecycle
+- Contains: One subdirectory per service with `Dockerfile`, `server.py`, `service.yaml`
+- Key files: `services/ping/service.yaml` (reference example)
+
+**`profiles/`:**
+- Purpose: Committed assembled profiles — the output of `harnessed build <stack>`
+- Contains: One subdirectory per assembled stack; regenerated from scratch on each build
+- Key files: `profiles/<stack>/.mcp.json`, `profiles/<stack>/hatago.config.json`
+- Generated: Yes (by assembler); Committed: Yes (deterministic; profiles are version-controlled)
+
+**`tools/harnessed/`:**
+- Purpose: Python package implementing the emit-only assembler and capability tester
+- Contains: `schema.py`, `assemble.py`, `emit.py`, `scan.py`, `capability.py`, `report.py`, `synclinks.py`
+- Key files: `cli.py` (entrypoint), `schema.py` (manifest oracle used by test + assemble)
+
+**`tools/uat/`:**
+- Purpose: Integration-level user acceptance tests (phase-based)
+- Contains: One shell script per implementation phase (`phase-04.sh` through `phase-09.sh`)
+- Key files: `uat-common.sh` (shared UAT helpers)
+
+**`lib/manifests/`:**
+- Purpose: Per-harness mount manifest YAML files
+- Contains: `<harness>.yaml` with `profile_files` and `history_dirs` lists
+- Key files: `lib/manifests/claude.yaml` (reference)
+
+**`lib/pnpm/`:**
+- Purpose: Managed pnpm supply-chain policy applied to ALL pnpm trees in images
+- Contains: `config.yaml` (COPIED into images during build; never a runtime-only config)
+
+## Naming Conventions
+
+**Files:**
+- Bash lib modules: `harnessed-<purpose>.sh` (e.g. `harnessed-mounts.sh`)
+- Python modules: lowercase snake_case (e.g. `assemble.py`, `scan.py`)
+- Dockerfiles: `Dockerfile.<image-name>` in `base/`, plain `Dockerfile` in `services/<name>/`
+- YAML manifests: `stack.yaml`, `recipe.yaml`, `service.yaml`, `agent.yaml` — always singular
+
+**Directories:**
+- Stack names: `kebab-case` (e.g. `tracer-time`, `ping-time`)
+- Recipe names: `kebab-case`, usually a noun (e.g. `time`, `ping`, `greet`)
+- Service names: match recipe reference name (e.g. `ping`)
+- Profile names: exactly match stack names (assembler enforces this)
+
+**Container/pod names:**
+- Pod instances: `harnessed-<stack>-<projhash>` (generated by `generate_instance_name` in `lib/harnessed-common.sh`)
+- Images: `harnessed-<component>:latest` (e.g. `harnessed-base:latest`, `harnessed-claude:latest`, `harnessed-hatago:latest`)
+
+## Key File Locations
+
+**Entry Points:**
+- `harnessed`: Host CLI bootstrap — all user-facing commands start here
+- `tools/harnessed/cli.py`: harnessed-tools assembler entrypoint (runs inside container)
+
+**Configuration:**
+- `stacks/<name>/stack.yaml`: Stack declaration (harness + recipes)
+- `recipes/<name>/recipe.yaml`: Recipe declaration (MCP servers + skills)
+- `services/<name>/service.yaml`: Service declaration (image + volume + port)
+- `lib/pnpm/config.yaml`: Global pnpm supply-chain policy (baked into images)
+- `lib/manifests/<harness>.yaml`: Per-harness mount manifest
+
+**Core Logic:**
+- `lib/harnessed-isolated.sh`: Main stack launch function (`harnessed_isolated`)
+- `lib/harnessed-mounts.sh`: §4a host-integration mount construction
+- `lib/harnessed-isolated-config.sh`: §4b auth seeding
+- `tools/harnessed/schema.py`: Manifest parsing (used by both assembler and capability test)
+- `tools/harnessed/assemble.py`: Assembly orchestration
+- `tools/harnessed/emit.py`: Profile artifact emission
+
+**Dockerfiles:**
+- `base/Dockerfile.harnessed-base`: Toolchain lineage root
+- `base/Dockerfile.harnessed-claude`: Claude Code harness image
+- `base/Dockerfile.hatago`: hatago MCP hub image
+- `tools/Dockerfile`: harnessed-tools assembler image
+
+**Testing:**
+- `tools/uat/phase-*.sh`: Integration UAT scripts (phase-based)
+- `tools/test-fixtures/`: Minimal fixture manifests for assembler unit tests
+- `tools/harnessed/capability.py`: Per-stack capability test (manifest oracle vs live pod)
+
+## Where to Add New Code
+
+**New harness support (e.g. a new AI coding tool):**
+- Image: `base/Dockerfile.harnessed-<harness>` (FROM harnessed-base)
+- Agent manifest: `agents/<harness>/agent.yaml`
+- Harness image constant: `lib/harnessed-common.sh` (add `HARNESSED_<HARNESS>_IMAGE`)
+- Lazy-build call: `lib/harnessed-isolated.sh` (add `ensure_<harness>_image` call)
+- Schema constant: `tools/harnessed/schema.py` (`HARNESS_CONFIG_DIR` dict + validation set)
+- CLI scaffolder: `lib/harnessed-cli.sh` (`new_stack` harness case list)
+- Auth seeding: `lib/harnessed-isolated-config.sh` (`harnessed_isolated_auth_mounts` function)
+- Harness mount manifest: `lib/manifests/<harness>.yaml`
+
+**New recipe:**
+- Create `recipes/<name>/recipe.yaml` (follow `recipes/time/recipe.yaml` as template)
+- Optional: `recipes/<name>/skills/<skill-name>/SKILL.md` for bundled skills
+
+**New stack:**
+- Create `stacks/<name>/stack.yaml` (or use `harnessed new <name> --harness <h> --recipes a,b`)
+- Run `harnessed build <name>` to assemble the profile
+
+**New shared service:**
+- Create `services/<name>/Dockerfile`, `services/<name>/server.py`, `services/<name>/service.yaml`
+- Reference in recipe: `service: <name>` under `mcp.servers[]`
+
+**New lib bash module:**
+- Create `lib/harnessed-<purpose>.sh`
+- Source it in `lib/harnessed-isolated.sh` or `lib/harnessed-common.sh` as appropriate
+
+**New Python assembler module:**
+- Create `tools/harnessed/<module>.py`
+- Import from `tools/harnessed/cli.py` or `tools/harnessed/assemble.py`
+
+**New UAT test:**
+- Create `tools/uat/phase-<NN>.sh` (use `tools/uat/uat-common.sh` helpers)
+
+## Special Directories
+
+**`profiles/`:**
+- Purpose: Committed assembled profiles (output of `harnessed build <stack>`)
+- Generated: Yes (by `harnessed-tools assemble`)
+- Committed: Yes — profiles are version-controlled as the build artifact
+
+**`tools/__pycache__/`:**
+- Purpose: Python bytecode cache
+- Generated: Yes
+- Committed: No (in `.gitignore`)
+
+**`.planning/`:**
+- Purpose: GSD planning workflow artifacts (phases, roadmap, todos, codebase docs)
+- Generated: Partially (phases generated by GSD commands)
+- Committed: Yes
+
+**`.agents/skills/`:**
+- Purpose: Project-scoped agent skills for Claude Code
+- Generated: No (authored)
+- Committed: Yes
+
+---
+
+*Structure analysis: 2026-06-24*
