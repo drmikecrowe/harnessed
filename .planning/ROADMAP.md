@@ -238,8 +238,8 @@ Plans:
 Plans:
 **Wave 1** *(parallel)*
 
-- [ ] 09-01-PLAN.md — YAML mount manifests (6 files) + harnessed-manifest-mounts.sh helper (MNT2-06, MNT2-03/04/05)
-- [ ] 09-02-PLAN.md — Python assembler refactor: emit.py + assemble.py fan-out removal (MNT2-01 assembler side)
+- [x] 09-01-PLAN.md — YAML mount manifests (6 files) + harnessed-manifest-mounts.sh helper (MNT2-06, MNT2-03/04/05)
+- [x] 09-02-PLAN.md — Python assembler refactor: emit.py + assemble.py fan-out removal (MNT2-01 assembler side)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -293,6 +293,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 3/3 | Complete    | 2026-06-21 |
 | 7. Fat Base + Agent Images | 3/3 | Complete   | 2026-06-23 |
 | 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 3/3 | Complete   | 2026-06-23 |
-| 9. Surgical Profile Mount + History Surfacing | 0/TBD | Not started | - |
+| 9. Surgical Profile Mount + History Surfacing | 2/4 | In Progress|  |
 | 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
 | 11. Architecture Documentation | 0/TBD | Not started | - |
