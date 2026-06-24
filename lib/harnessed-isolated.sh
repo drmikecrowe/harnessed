@@ -11,7 +11,7 @@
 # share a netns, so the harness reaches hatago's single Streamable-HTTP endpoint at
 # http://localhost:3535/mcp (the profile's .mcp.json; MCP-01/MCP-02, D-04).
 #
-# Mirrors lib/harnessed-transparent.sh's shape; reuses §4a mounts verbatim (D-16,
+# Reuses §4a mounts verbatim (D-16,
 # harnessed_host_integration_mounts), apply_firewall, and the instance/lifecycle helpers from
 # lib/harnessed-common.sh (D-15). Host-native: every podman call runs on the host, no DooD.
 #
@@ -83,7 +83,7 @@ harnessed_isolated() {
         rt_group_teardown "$instance" "$pod"
     fi
 
-    # Re-attach to an already-running instance (interactive only; like transparent).
+    # Re-attach to an already-running instance (interactive only).
     if [ "$headless" != "true" ] && container_running "$instance"; then
         print_info "Attaching to running instance: $instance"
         if [ "$harness" = "omp" ]; then
