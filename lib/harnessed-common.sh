@@ -133,36 +133,77 @@ build_stack() {
     # red-line an unrelated build. Capture the exit safely: the launcher runs set -euo pipefail, so
     # a bare scanner pipeline would abort on osv-scanner's non-zero exit (Constraint 9 / a963a69).
 
-    # [SEC-01 / plan 05-02] resolve_secret_env: when ~/.config/harnessed/.env.schema is present,
-    # resolve op:// refs via varlock+1Password in a throwaway tools container; the resulting
-    # --env-file supplements the raw-env TOKEN_ARGS so the build-time snyk/socket scan receives
-    # the 1Password-resolved tokens (not just `snyk skipped (no SNYK_TOKEN)` from the raw
-    # launcher env). INERT when no schema (resolve_secret_env returns 0 with empty stdout).
+    # [SEC-01 / plan 05-02] Token discovery + resolution. Three sources, in priority order:
+    #   1. Raw host env (SNYK_TOKEN / SOCKET_SECURITY_API_KEY already exported — highest priority)
+    #   2. Secondary host-readable: ~/.config/harnessed/.env (plain dotenv) and
+    #      ~/.config/configstore/snyk.json (token stored by `harnessed auth snyk`)
+    #   3. .env.schema → varlock+1Password (op:// refs resolved on the host; result is also
+    #      passed as --env-file to the source scan container so scan.py receives all tokens)
+    # HARNESSED_NO_SCANS=true → skip all discovery; credentialed scanners warn+skip naturally.
+    # _snyk/_sock track the best-known value across sources to prevent duplicates in TOKEN_ARGS.
     . "$HARNESSED_DIR/lib/harnessed-secrets.sh"
-    local build_secret_env build_resolve_rc=0
-    build_secret_env="$(resolve_secret_env)" || build_resolve_rc=$?
-    if [ "$build_resolve_rc" -ne 0 ]; then
-        print_error "secret resolution failed for build; aborting"
-        return 1
+    local _snyk="" _sock=""
+    local TOKEN_ARGS=() build_env_args=() build_secret_env=""
+
+    if [ "${HARNESSED_NO_SCANS:-false}" != "true" ]; then
+        # Source 1: raw host env (highest priority; set -euo pipefail-safe via ${VAR:-}).
+        [ -n "${SNYK_TOKEN:-}" ]              && _snyk="$SNYK_TOKEN"
+        [ -n "${SOCKET_SECURITY_API_KEY:-}" ] && _sock="$SOCKET_SECURITY_API_KEY"
+
+        # Source 2: secondary host-readable stores (fills gaps only; [ -z ] guards enforce priority).
+        local _disc_line
+        while IFS= read -r _disc_line; do
+            [ -n "$_disc_line" ] || continue
+            case "$_disc_line" in
+                SNYK_TOKEN=*)              [ -z "$_snyk" ] && _snyk="${_disc_line#SNYK_TOKEN=}" ;;
+                SOCKET_SECURITY_API_KEY=*) [ -z "$_sock" ] && _sock="${_disc_line#SOCKET_SECURITY_API_KEY=}" ;;
+            esac
+        done < <(discover_scanner_tokens)
+
+        # Source 3: .env.schema → varlock (op:// resolved on host; also passed as --env-file to
+        # the source scan so the container receives the token regardless of TOKEN_ARGS discovery).
+        local build_resolve_rc=0
+        build_secret_env="$(resolve_secret_env)" || build_resolve_rc=$?
+        if [ "$build_resolve_rc" -ne 0 ]; then
+            print_error "secret resolution failed for build; aborting"
+            return 1
+        fi
+        [ -n "$build_secret_env" ] && build_env_args=( --env-file "$build_secret_env" )
     fi
-    local -a build_env_args=()
-    [ -n "$build_secret_env" ] && build_env_args=( --env-file "$build_secret_env" )
+
+    # [SEC-02] Build TOKEN_ARGS from whatever we've discovered so far (sources 1+2).
+    # Source 3 (varlock) goes to the container as --env-file; we lift it into TOKEN_ARGS below
+    # so the snyk-container step (which has no env-file) also receives it. NEVER prompt (SEC-02).
+    [ -n "$_snyk" ] && TOKEN_ARGS+=( -e "SNYK_TOKEN=$_snyk" )
+    [ -n "$_sock" ] && TOKEN_ARGS+=( -e "SOCKET_SECURITY_API_KEY=$_sock" )
 
     local src_rc=0
-    # [SEC-02] Forward scanner tokens ONLY when set in the launcher env (raw env, varlock-resolved,
-    # or ~/.config/configstore). `${VAR:-}` is set -euo pipefail-safe (a bare $SNYK_TOKEN aborts on
-    # unset — Constraint 9); the tools image's scan.py does the env-presence gate (warn-and-skip on
-    # absence). NEVER prompt for a token (SEC-02 contract).
-    local TOKEN_ARGS=()
-    [ -n "${SNYK_TOKEN:-}" ] && TOKEN_ARGS+=( -e "SNYK_TOKEN=$SNYK_TOKEN" )
-    [ -n "${SOCKET_SECURITY_API_KEY:-}" ] && TOKEN_ARGS+=( -e "SOCKET_SECURITY_API_KEY=$SOCKET_SECURITY_API_KEY" )
     "$CONTAINER_RUNTIME" run --rm $(rt_userns_args) \
         "${build_env_args[@]}" \
         "${TOKEN_ARGS[@]}" \
         -v "$ROOT":"$ROOT" -w "$ROOT" \
         "$HARNESSED_TOOLS_IMAGE" scan "$stack" --root "$ROOT" --build-dir "$ROOT" || src_rc=$?
+    # Lift varlock-resolved tokens from the env-file into TOKEN_ARGS before unlinking (T-05-06)
+    # so later steps (scan-snyk-container) receive them even when absent from sources 1+2.
+    if [ -f "${build_secret_env:-}" ]; then
+        local _line
+        while IFS= read -r _line; do
+            case "$_line" in
+                SNYK_TOKEN=*)
+                    if [ -z "$_snyk" ]; then
+                        _snyk="${_line#SNYK_TOKEN=}"
+                        TOKEN_ARGS+=( -e "SNYK_TOKEN=$_snyk" )
+                    fi ;;
+                SOCKET_SECURITY_API_KEY=*)
+                    if [ -z "$_sock" ]; then
+                        _sock="${_line#SOCKET_SECURITY_API_KEY=}"
+                        TOKEN_ARGS+=( -e "SOCKET_SECURITY_API_KEY=$_sock" )
+                    fi ;;
+            esac
+        done < "$build_secret_env"
+    fi
     # [T-05-06] Unlink the resolved env temp file (mode 0600) right after the scan step.
-    [ -n "$build_secret_env" ] && rm -f "$build_secret_env"
+    [ -n "${build_secret_env:-}" ] && rm -f "$build_secret_env"
     if [ "$src_rc" -ne 0 ]; then
         print_error "supply-chain source scan failed for stack '$stack' (HIGH+ finding)"
         return 1

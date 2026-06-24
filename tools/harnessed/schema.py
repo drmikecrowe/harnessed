@@ -128,7 +128,6 @@ class Recipe:
 @dataclass
 class Stack:
     name: str
-    config: str = "isolated"
     harness: str = "claude"
     recipes: list[str] = field(default_factory=list)
     services: list[str] = field(default_factory=list)
@@ -231,7 +230,6 @@ def load_stack(stack_dir: Path) -> Stack:
         raise SchemaError(f"{manifest}: required field 'name' is missing")
     return Stack(
         name=raw["name"],
-        config=raw.get("config", "isolated"),
         harness=raw.get("harness", "claude"),
         recipes=list(raw.get("recipes", []) or []),
         services=list(raw.get("services", []) or []),
@@ -369,8 +367,13 @@ def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
 
     Checks for --branch main/master/HEAD, :latest (not in URL paths), and @latest.
     Called from assemble() before any file is emitted (T-08-01 mitigation).
+    Comment lines (# ...) are excluded so a comment that explains the :latest convention
+    does not self-trigger the gate.
     """
-    match = _FLOATING_REF_RE.search(dockerfile_body)
+    stripped = "\n".join(
+        line for line in dockerfile_body.splitlines() if not line.lstrip().startswith("#")
+    )
+    match = _FLOATING_REF_RE.search(stripped)
     if match:
         raise PinValidationError(
             f"recipe '{recipe_name}': Dockerfile contains a floating ref '{match.group(0).strip()}'. "

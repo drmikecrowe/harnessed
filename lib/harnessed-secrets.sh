@@ -123,6 +123,50 @@ resolve_secret_env() {
     [ -n "$final" ] && echo "$final"
 }
 
+# discover_scanner_tokens — read SNYK_TOKEN and SOCKET_SECURITY_API_KEY from secondary host-
+# readable sources WITHOUT requiring varlock or a container. Called from build_stack() after the
+# raw-host-env pass to fill gaps before the varlock/op:// path.
+#
+# Source order (emits only tokens not yet found by the caller; caller guards with [ -z ]):
+#   1. ~/.config/harnessed/.env   — plain dotenv (no quoting required; strips surrounding quotes)
+#   2. ~/.config/configstore/snyk.json — token stored by `harnessed auth snyk` (.api field)
+#      (socket CLI configstore path is model-specific; use the .env file for socket tokens)
+#
+# Stdout: zero or more KEY=value lines (no -e prefix; caller decides how to consume).
+# Never fails (missing files are silently skipped). No container required — pure host bash + sed.
+discover_scanner_tokens() {
+    local _snyk="" _sock=""
+
+    # Source 1: plain dotenv at ~/.config/harnessed/.env
+    local _plain_env="$HOME/.config/harnessed/.env"
+    if [ -f "$_plain_env" ]; then
+        local _line _key _val
+        while IFS= read -r _line; do
+            case "$_line" in '#'*|'') continue ;; esac
+            _key="${_line%%=*}"
+            _val="${_line#*=}"
+            # Strip surrounding double-quotes (KEY="value" → KEY=value).
+            _val="${_val#\"}"; _val="${_val%\"}"
+            case "$_key" in
+                SNYK_TOKEN)              [ -z "$_snyk" ] && _snyk="$_val" ;;
+                SOCKET_SECURITY_API_KEY) [ -z "$_sock" ] && _sock="$_val" ;;
+            esac
+        done < "$_plain_env"
+    fi
+
+    # Source 2: ~/.config/configstore/snyk.json (.api field written by `harnessed auth snyk`)
+    if [ -z "$_snyk" ]; then
+        local _snyk_cfg="$HOME/.config/configstore/snyk.json"
+        if [ -f "$_snyk_cfg" ]; then
+            # Simple sed extract — snyk.json is {"api":"<token>",...}; no host jq required (§15).
+            _snyk="$(sed -n 's/.*"api"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_snyk_cfg" 2>/dev/null | head -1)"
+        fi
+    fi
+
+    [ -n "$_snyk" ] && echo "SNYK_TOKEN=$_snyk"
+    [ -n "$_sock" ] && echo "SOCKET_SECURITY_API_KEY=$_sock"
+}
+
 # auth_scanner <tool> — `harnessed auth snyk|socket` (SEC-03). Drives the vendor CLI's own auth
 # inside a `--rm` tools container so the token persists to the rw-mounted host ~/.config (e.g.
 # ~/.config/configstore/snyk.json for snyk). `--rm` ⇒ no image layer captures the token

@@ -6,4 +6,6 @@
 # this file must NOT contain a FROM line.
 ARG HARNESS=claude
 
-RUN pnpm dlx @gstack/install --host ${HARNESS} --version 1.2.3
+# Fixture placeholder — illustrates pnpm dlx usage pattern for recipe Dockerfiles.
+# A real recipe would run: pnpm dlx @gstack/install --host ${HARNESS} --version 1.2.3
+RUN echo "gstack fixture: pnpm dlx @gstack/install --host ${HARNESS} --version 1.2.3"
