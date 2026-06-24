@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.0
-milestone_name: Phases
-status: milestone_complete
-last_updated: 2026-06-24T16:37:41.102Z
-last_activity: 2026-06-24 -- Phase 11 execution started
+milestone_name: Recipe Architecture & Agent Rebuild
+status: archived
+last_updated: 2026-06-24T00:00:00.000Z
+last_activity: 2026-06-24 -- Milestone v2.0 archived
 progress:
   total_phases: 11
-  completed_phases: 3
+  completed_phases: 10
   total_plans: 14
   completed_plans: 14
-  percent: 27
-stopped_at: Milestone complete (Phase 11 was final phase)
+  percent: 100
+stopped_at: Milestone v2.0 archived — next milestone pending
 ---
 
 # Project State
@@ -85,11 +85,14 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 
 ## Deferred Items
 
-Items acknowledged and carried forward from previous milestone close:
+Items acknowledged and carried forward from v2.0 milestone close (2026-06-24):
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| Phase | Phase 10: opencode/codex investigation + combined capability test (TST2-01/02/03, MNT2-07) | Not started | 2026-06-24 |
+| Verification | Phase 08: 08-VERIFICATION.md human_needed (container-runtime tests) | human_needed | 2026-06-24 |
+| Todo | apple-container named-network MCP endpoint investigation | Pending | 2026-06-24 |
+| Todo | persist antigravity auth via in-pod keyring | Pending | 2026-06-24 |
 
 ## Session Continuity
 

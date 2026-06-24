@@ -24,13 +24,15 @@ observable end-to-end capability (vertical-MVP mode).
 - [x] **Phase 5: Secrets, Hardening + Docs Completeness** - Opt-in varlock/1Password secrets, token-gated scanners, nightly re-scan, and the gated doc set (completed 2026-06-21; all 7 requirements VERIFIED live — HV-1..HV-4 all PASS, snyk browser auth landed via the --network=host callback fix)
 - [x] **Phase 6: Address tech debt: dead harnessed-net code + stale comments + SUMMARY frontmatter hygiene** - Clear post-v1.0 tech debt: remove dead `harnessed-net` (podman network) code, correct stale comments, normalize `*-SUMMARY.md` frontmatter (planned; inserted 2026-06-21) (completed 2026-06-21)
 
-## v2.0 Phases
+## v2.0 Phases — ✅ SHIPPED 2026-06-24
 
-- [x] **Phase 7: Fat Base + Agent Images** - Rebuild harnessed-base as a fat toolchain image (no harness CLIs) and create standalone cached agent images for each harness CLI (completed 2026-06-23)
-- [x] **Phase 8: Dockerfile Recipe Model + Assembler + Supply-Chain Gate** - Replace typed-YAML recipes with Dockerfile-based recipes; update the assembler to emit derived stack images; gate every derived build on pin validation and an osv-scanner image scan (completed 2026-06-23)
-- [x] **Phase 9: Surgical Profile Mount + History Surfacing** - Stop mounting the whole profile directory; mount only individual config files so image-baked skills survive; surface per-harness project history (claude, omp, antigravity) to the host via data-driven manifests (completed 2026-06-24)
-- [ ] **Phase 10: opencode/codex Investigation + Combined Capability Test** - Investigate opencode and codex history layouts; replace the v1 capability test with the two-oracle approach (structured MCP probe + un-primed ask-the-agent with negative control)
-- [x] **Phase 11: Architecture Documentation** - Update all narrative docs to reflect the new architecture; remove stale terminology (completed 2026-06-24)
+> See [.planning/milestones/v2.0-ROADMAP.md](.planning/milestones/v2.0-ROADMAP.md) for full phase details and milestone summary.
+
+- [x] **Phase 7: Fat Base + Agent Images** - Fat harnessed-base (all runtimes, no harness CLIs); agents/ directory with cached harnessed-claude/omp images (completed 2026-06-23)
+- [x] **Phase 8: Dockerfile Recipe Model + Assembler + Supply-Chain Gate** - Recipes are Dockerfiles; assembler emits harnessed-<stack>; pin validation + osv-scanner V2 gate (completed 2026-06-23)
+- [x] **Phase 9: Surgical Profile Mount + History Surfacing** - Mount only .mcp.json + settings.json; image-baked skills survive; per-harness history via YAML manifests (completed 2026-06-24)
+- [⏭] **Phase 10: opencode/codex Investigation + Combined Capability Test** - Deferred: opencode/codex history layouts + two-oracle capability test (TST2-01/02/03, MNT2-07)
+- [x] **Phase 11: Architecture Documentation** - All narrative docs updated to new architecture; "isolated"/"transparent" removed (completed 2026-06-24)
 
 ## Phase Details
 

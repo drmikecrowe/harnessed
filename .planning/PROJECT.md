@@ -13,7 +13,18 @@ It is for developers (initially the author) who want to compose and trial harnes
 — different skill/plugin/MCP/memory combinations — in clean, reproducible, throwaway-or-persistent
 environments without dragging every host default into the container or polluting `~`.
 
-## Current Milestone: v2.0 Recipe Architecture & Agent Rebuild
+## Current State: v2.0 Shipped 2026-06-24
+
+**Shipped:** 3-layer image lineage (harnessed-base → harnessed-<harness> → harnessed-<stack>);
+Dockerfile recipe model (recipes run frameworks' own installers, pinned to tag/SHA); surgical profile
+mounts (.mcp.json + settings.json only, image-baked skills survive); osv-scanner V2 supply-chain gate;
+per-harness YAML mount manifests; full architecture documentation updated.
+
+**Deferred to next milestone:** Phase 10 (opencode/codex history investigation + two-oracle capability test).
+
+**Next milestone:** To be defined via `/gsd-new-milestone`. Key work: Phase 10 completion (TST2-01/02/03, MNT2-07) + additional harness support.
+
+## Previous Milestone: v2.0 Recipe Architecture & Agent Rebuild ✅
 
 **Goal:** Replace the typed-YAML recipe model with a Dockerfile-based model where recipes run frameworks' own installers, rebuild the image lineage into 3 layers (base → agent → stack), and validate with a combined capability test backed by a supply-chain gate.
 
