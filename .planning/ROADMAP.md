@@ -30,7 +30,7 @@ observable end-to-end capability (vertical-MVP mode).
 - [x] **Phase 8: Dockerfile Recipe Model + Assembler + Supply-Chain Gate** - Replace typed-YAML recipes with Dockerfile-based recipes; update the assembler to emit derived stack images; gate every derived build on pin validation and an osv-scanner image scan (completed 2026-06-23)
 - [x] **Phase 9: Surgical Profile Mount + History Surfacing** - Stop mounting the whole profile directory; mount only individual config files so image-baked skills survive; surface per-harness project history (claude, omp, antigravity) to the host via data-driven manifests (completed 2026-06-24)
 - [ ] **Phase 10: opencode/codex Investigation + Combined Capability Test** - Investigate opencode and codex history layouts; replace the v1 capability test with the two-oracle approach (structured MCP probe + un-primed ask-the-agent with negative control)
-- [ ] **Phase 11: Architecture Documentation** - Update all narrative docs to reflect the new architecture; remove stale terminology
+- [x] **Phase 11: Architecture Documentation** - Update all narrative docs to reflect the new architecture; remove stale terminology (completed 2026-06-24)
 
 ## Phase Details
 
@@ -281,10 +281,10 @@ Plans:
 Plans:
 **Wave 1** *(all parallel — no shared files)*
 
-- [ ] 11-01-PLAN.md — README 3-layer image lineage + quickstart capability test + CLAUDE.md/AGENTS.md narrative cleanup
-- [ ] 11-02-PLAN.md — docs/harnessed-design.md §7 (Dockerfile recipe model) + §18 (two-oracle capability test)
-- [ ] 11-03-PLAN.md — docs/guides/recipe-authoring.md Dockerfile recipe model + harnesses:/expect: worked example
-- [ ] 11-04-PLAN.md — docs/guides/troubleshooting.md + service-authoring.md + secrets.md narrative cleanup
+- [x] 11-01-PLAN.md — README 3-layer image lineage + quickstart capability test + CLAUDE.md/AGENTS.md narrative cleanup
+- [x] 11-02-PLAN.md — docs/harnessed-design.md §7 (Dockerfile recipe model) + §18 (two-oracle capability test)
+- [x] 11-03-PLAN.md — docs/guides/recipe-authoring.md Dockerfile recipe model + harnesses:/expect: worked example
+- [x] 11-04-PLAN.md — docs/guides/troubleshooting.md + service-authoring.md + secrets.md narrative cleanup
 
 ## Progress
 
@@ -303,4 +303,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 3/3 | Complete   | 2026-06-23 |
 | 9. Surgical Profile Mount + History Surfacing | 4/4 | Complete    | 2026-06-24 |
 | 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
-| 11. Architecture Documentation | 0/4 | Not started | - |
+| 11. Architecture Documentation | 4/4 | Complete   | 2026-06-24 |
