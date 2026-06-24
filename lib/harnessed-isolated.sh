@@ -57,11 +57,12 @@ harnessed_isolated() {
     . "$HARNESSED_DIR/lib/harnessed-mounts.sh"
     . "$HARNESSED_DIR/lib/harnessed-isolated-config.sh"
     . "$HARNESSED_DIR/lib/harnessed-services.sh"
+    . "$HARNESSED_DIR/lib/harnessed-manifest-mounts.sh"
 
     [ -d "$project_path" ] || { print_error "Project directory does not exist: $project_path"; exit 1; }
 
     local profile_dir="$HARNESSED_DIR/profiles/$stack"
-    [ -d "$profile_dir/.claude" ] || {
+    [ -f "$profile_dir/.mcp.json" ] || {
         print_error "Stack '$stack' has no assembled profile (run: harnessed build $stack)"; exit 1; }
 
     local relpath instance pod headless
@@ -117,25 +118,10 @@ harnessed_isolated() {
     # §4b isolated auth: harness-aware. claude/omp → ro ~/.claude/.credentials.json + token-free
     # .claude.json stub (D-07); opencode → ro ~/.local/share/opencode/auth.json (HRN-02).
     harnessed_isolated_auth_mounts "$instance" "$harness"
-    # Config source = the committed profile ONLY (no host config layer — unlike transparent).
-    # Copy-on-start into a per-instance state dir and mount THAT rw: the committed profile is the
-    # immutable template, so the running harness never writes runtime state (projects/, backups/,
-    # caches) or the ro-credential mountpoint stub back into the version-controlled tree
-    # (reproducibility + credential hygiene, T-02-07/T-02-04). PERSISTENT by default (STA-01): the
-    # wipe + reseed runs ONLY on first create (state dir absent) OR under --fresh (clean-room), so a
-    # normal recreate REUSES the accumulated .claude (projects/, history.jsonl, …) and a memory
-    # system accumulates host-side under $XDG_STATE_HOME/harnessed/<project>/<stack> (STA-02),
-    # keyed by a LEGIBLE flattened project path (UAT gap 6) — NOT the opaque hash instance name
-    # ($instance still keys the pod/container; DNS-label ≤63-char limits apply there, not here).
-    # --fresh is now meaningfully distinct (wipe) from a normal run (reuse).
-    local state_project="${relpath//'/'/-}"   # project_relpath() home-relative → readable slug
-    local run_claude="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$state_project/$stack/.claude"
-    mkdir -p "$(dirname "$run_claude")"
-    if [ "$fresh" = "true" ] || [ ! -d "$run_claude" ]; then
-        rm -rf "$run_claude"
-        cp -a "$profile_dir/.claude" "$run_claude"
-    fi
-    MOUNT_ARGS+=( -v "$run_claude:$CONTAINER_HOME/.claude:rw" )
+    # Config source = manifest-driven surgical mounts (MNT2-01/MNT2-06): per-harness profile
+    # config files (ro), history dirs (rw), and path-mirroring bind (MNT2-02). The old
+    # whole-dir copy-and-mount block is replaced by a single harnessed_manifest_mounts call.
+    harnessed_manifest_mounts "$harness" "$profile_dir" "$project_path" "$relpath"
 
     # Pod network: DEFAULT rootless (pasta) networking — NOT a bridge. Rootless bridges are
     # unsupported on most hosts (netavark "create bridge: Operation not supported"), so shared
