@@ -2,7 +2,7 @@
   <img src=".github/README/banner.png" alt="Banner" />
 </p>
 
-#### harnessed — Isolated, composable harness stacks (Claude Code / omp / opencode / gemini / antigravity / codex + an MCP hub + optional shared services)
+#### harnessed — Composable harness stacks (Claude Code / omp / opencode / gemini / antigravity / codex + an MCP hub + optional shared services)
 
 > [!WARNING]
 > **⚠️ ALPHA SOFTWARE — not production-ready.** harnessed is under active development and the field
@@ -21,14 +21,14 @@
 
 You can read my [announcement here](https://mikesshinyobjects.tech/posts/2026/2026-03-20-code-container-isolating-ai-harnesses/)
 
-> Forked from [kevinMEH/code-container](https://github.com/kevinMEH/code-container) and extended significantly for rootless Podman, hardware authentication (YubiKey, 1Password), seamless Claude Code auth, composable isolated stacks, and alternative AI providers.
+> Forked from [kevinMEH/code-container](https://github.com/kevinMEH/code-container) and extended significantly for rootless Podman, hardware authentication (YubiKey, 1Password), seamless Claude Code auth, composable harness stacks, and alternative AI providers.
 
 ---
 
-`harnessed` is **one executable** that launches **isolated, composable harness stacks** — each a
+`harnessed` is **one executable** that launches **composable harness stacks** — each a
 podman pod running an AI coding harness (`claude`, `omp`, `opencode`, `gemini`, `antigravity`, or `codex`) plus an MCP hub (hatago) plus optional
 shared services (hindsight, openbrain, …). You compose a named stack (one harness + chosen recipes)
-and launch an isolated, authenticated instance that exposes **exactly** the skills/commands/MCP/
+and launch an authenticated instance that exposes **exactly** the skills/commands/MCP/
 services it declares — nothing from the host config — reproducibly, with **podman as the only host
 dependency**.
 
@@ -75,11 +75,16 @@ To uninstall, remove the symlinks and the cloned directory.
 
 ## First-run build
 
-Images are built on the host with `podman build` the first time they're needed. The image lineage:
+Images are built on the host with `podman build` the first time they're needed. The image lineage is three layers:
 
-- **`harnessed-base`** → **`harnessed-claude`** / **`harnessed-omp`** / **`harnessed-opencode`** / **`harnessed-gemini`** / **`harnessed-antigravity`** / **`harnessed-codex`** — the harness runtimes (mise/node/python + common tooling, then the harness install).
+- **Layer 1 — `harnessed-base`**: fat toolchain image (mise, node@24, python, pnpm; no harness CLI).
+- **Layer 2 — `harnessed-<harness>`**: FROM `harnessed-base` + harness CLI installed (one image per harness: `harnessed-claude`, `harnessed-omp`, `harnessed-opencode`, `harnessed-gemini`, `harnessed-antigravity`, `harnessed-codex`).
+- **Layer 3 — `harnessed-<stack>`**: derived stack image built by `harnessed build <stack>` — FROM `harnessed-<harness>` + recipe Dockerfiles concatenated (e.g. `harnessed-gstack-time` FROM `harnessed-claude`).
+
+Supporting images (not part of the base→agent→stack lineage):
+
 - **`hatago`** — the MCP hub (aggregates a stack's MCP servers behind one HTTP endpoint; light `pnpm dlx`/`uvx` servers baked in).
-- **`harnessed-tools`** — the emit-only assembler image (Python + scanners + pnpm + varlock + `op`). Needed only for `isolated` stacks.
+- **`harnessed-tools`** — the emit-only assembler image (Python + scanners + pnpm + varlock + `op`). Needed for stack assembly.
 
 ```bash
 harnessed build          # (re)build the base/claude/hatago images
@@ -107,10 +112,17 @@ cd /path/to/project
 harnessed build tracer-time && harnessed tracer-time
 ```
 
-`tracer-time` is the smallest end-to-end isolated slice: the `claude` harness + the `time` recipe
+`tracer-time` is the smallest end-to-end stack slice: the `claude` harness + the `time` recipe
 (one light stdio MCP server + one standalone skill), composed into a committed profile and run as a
-pod (harness + hatago). Running an unbuilt isolated stack errors and tells you to `harnessed build`
-it first.
+pod (harness + hatago). Running an unbuilt stack errors and tells you to `harnessed build` it first.
+
+After building, verify the stack's declared capabilities with the capability test:
+
+```bash
+harnessed test tracer-time
+```
+
+`harnessed test` launches the stack headless, runs the two-oracle capability check, and writes a per-capability report to `profiles/tracer-time/capability-report.md` (✓ connected / ✗ missing).
 
 ## Command surface
 
@@ -182,9 +194,8 @@ Three projects solve adjacent problems — pick the one that matches your threat
 | **Runtime**          | Podman (rootless); Docker pending                    | K3s (Kubernetes) inside Docker                                           | Docker / Dev Containers spec                                                                              | Docker                                                                   |
 | **AI harnesses**     | Claude, omp (via bridge), opencode, gemini, antigravity, codex   | Claude, OpenCode, Codex, Copilot                                           | Claude                                                                                                    | Claude                                                                   |
 
-**Use this project** if you want YOLO-mode AI assistance on your own trusted code (transparent), or
-isolated, composable experimentation across skill/MCP/memory combinations (isolated), without the
-friction of re-authentication or tool switching every session.
+**Use this project** if you want composable experimentation across skill/MCP/memory combinations,
+without the friction of re-authentication or tool switching every session.
 
 **Use [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)** if you need enterprise-grade sandboxing with declarative security policies, a privacy-aware LLM proxy, and Kubernetes orchestration for multi-agent environments.
 
