@@ -24,9 +24,11 @@ harnessed_manifest_mounts() {
     # Target path is harness-aware per D-03 and Pitfall 4 (09-RESEARCH.md):
     #   claude, omp, opencode  → ~/.claude/<f>  (consume Claude-canonical profile)
     #   gemini, antigravity, codex → config is image-baked; skip (do not overwrite image config)
-    local f
+    local f yq_out
+    yq_out="$(yq '.profile_files[]' "$manifest")" || {
+        print_warning "Failed to read profile_files from $manifest (yq exit $?)"; return 1; }
     while IFS= read -r f; do
-        [ -z "$f" ] && continue
+        [ -z "$f" ] || [ "$f" = "null" ] && continue
         local src="$profile_dir/$f"
         local dst
         if [ "$harness" = "claude" ] || [ "$harness" = "omp" ] || [ "$harness" = "opencode" ]; then
@@ -40,19 +42,21 @@ harnessed_manifest_mounts() {
         else
             print_warning "Profile file not found (stack may need rebuild): $src"
         fi
-    done < <(yq '.profile_files[]' "$manifest" 2>/dev/null)
+    done <<< "$yq_out"
 
     # History dirs — rw-mount each $HOME-relative path from host to container.
     # mkdir -p before every bind to avoid root-owned dir creation in DooD mode (Pitfall 1
     # in shared patterns; see also harnessed-isolated-config.sh mkdir -p pattern).
-    local d
+    local d yq_hist_out
+    yq_hist_out="$(yq '.history_dirs[]' "$manifest")" || {
+        print_warning "Failed to read history_dirs from $manifest (yq exit $?)"; return 1; }
     while IFS= read -r d; do
-        [ -z "$d" ] && continue
+        [ -z "$d" ] || [ "$d" = "null" ] && continue
         local host_dir="$HOME/$d"
         local container_dir="$CONTAINER_HOME/$d"
         mkdir -p "$host_dir"
         MOUNT_ARGS+=( -v "$host_dir:$container_dir:rw" )
-    done < <(yq '.history_dirs[]' "$manifest" 2>/dev/null)
+    done <<< "$yq_hist_out"
 
     # omp: history surfaced at a per-project slug subdir (MNT2-04).
     # Slug MUST be computed from HOST $relpath (not container HOME) — Pitfall 2 in 09-RESEARCH.md.
