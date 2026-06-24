@@ -1,8 +1,0 @@
-# Built-in transparent stack — "my laptop, sandboxed" (today's `container`, via the harnessed engine).
-#
-# transparent is the degenerate stack: the harness container only (no pod, no hatago, no assembler).
-# Its config source is the LIVE host harness config, not an assembled profile (design §2 / §4b).
-name: transparent
-config: transparent
-# `harness` is intentionally omitted: transparent mirrors all host harness configs
-# (~/.claude + .codex/.opencode/.gemini) and the user picks one in the shell.
