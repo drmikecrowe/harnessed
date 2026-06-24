@@ -75,7 +75,6 @@ new_stack() {
     cat > "$stack_dir/stack.yaml" <<EOF
 # Stack: $stack — scaffolded by harnessed new.
 name: $stack
-config: isolated      # isolated (default) | transparent
 harness: $harness     # claude | omp | opencode | gemini | antigravity | codex  (exactly one)
 recipes: $recipes_yaml
 EOF

@@ -4,7 +4,7 @@
 #
 # What this script does (nothing hidden):
 #   1. Clones the repo to ~/.local/share/code-container (or pulls if already present)
-#   2. Symlinks `harnessed` (and the `container` back-compat alias) into a directory on your PATH
+#   2. Symlinks `harnessed` into a directory on your PATH
 #      - Prefers ~/.local/bin if it's on your PATH (no sudo needed)
 #      - Falls back to /usr/local/bin via sudo
 
@@ -12,7 +12,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/drmikecrowe/code-container.git"
 INSTALL_DIR="$HOME/.local/share/code-container"
-BINARIES=("harnessed" "container")
+BINARIES=("harnessed")
 
 # --- Helpers ---
 
@@ -45,7 +45,7 @@ else
     ok "Cloned successfully"
 fi
 
-chmod +x "$INSTALL_DIR/harnessed" "$INSTALL_DIR/container"
+chmod +x "$INSTALL_DIR/harnessed"
 chmod +x "$INSTALL_DIR"/lib/*.sh 2>/dev/null || true
 
 # --- Step 2: Symlink into PATH ---
@@ -76,7 +76,7 @@ done
 # --- Step 3: Verify ---
 
 if command -v harnessed >/dev/null 2>&1; then
-    ok "Done! Run 'harnessed build' to build the images, then 'harnessed transparent' (or 'container') in any project."
+    ok "Done! Run 'harnessed build' to build the images, then build and run a stack: 'harnessed build tracer-time && harnessed tracer-time'."
 else
     warn "Installed, but 'harnessed' isn't found on PATH. You may need to restart your shell."
 fi

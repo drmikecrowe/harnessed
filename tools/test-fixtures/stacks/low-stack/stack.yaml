@@ -1,5 +1,4 @@
 # BLD-02 fixture stack — resolves low-recipe under the --root test-fixtures layout.
 name: low-stack
-config: isolated
 harness: claude
 recipes: [low-recipe]

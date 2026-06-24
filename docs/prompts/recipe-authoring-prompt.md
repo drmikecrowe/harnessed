@@ -17,7 +17,7 @@ recipe. Paste the block below and fill in the brief at the bottom.
 ````markdown
 # Task: author a `harnessed` recipe
 
-You are authoring ONE recipe for `harnessed` — a tool that assembles isolated,
+You are authoring ONE recipe for `harnessed` — a tool that assembles
 single-purpose AI-harness containers. A **recipe** is a hand-authored integration
 for one capability bundle (an MCP server and/or a set of skills/commands). Recipes
 are composed into **stacks** and assembled **ahead of time** into a committed,

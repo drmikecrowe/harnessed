@@ -1,20 +1,17 @@
 .claude/*
-.codex/*
-.opencode/*
-.gemini/*
 .npm
 pip
 .local
 
-container.claude.json
 extra-tools.txt
 
 !.claude/.gitkeep
-!.codex/.gitkeep
-!.opencode/.gitkeep
-!.gemini/.gitkeep
 
 .dockerignore
+
+# Generated stack profiles — output of `harnessed build`, regenerated on every build.
+# stacks/<name>/stack.yaml is the authored source of truth; profiles/ is the mount artifact.
+/profiles/
 
 # Throwaway fixture profiles emitted by `harnessed build <fixture-stack> --root tools/test-fixtures`.
 tools/test-fixtures/profiles/

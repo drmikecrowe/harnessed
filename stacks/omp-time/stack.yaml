@@ -11,6 +11,5 @@
 # Only omp-stack fields are exercised; `services`, `permissions`, and `state` use defaults and are
 # parsed forward by the assembler (D-14).
 name: omp-time
-config: isolated      # isolated (default) | transparent
 harness: omp          # claude | omp  (exactly one)
 recipes: [time, omp]

@@ -4,8 +4,8 @@
 # paths ($HOME, the project path) and targets live under $CONTAINER_HOME. Appends podman/docker
 # run args to the MOUNT_ARGS array (the caller declares `MOUNT_ARGS=()`).
 #
-# Does NOT mount ~/.claude* — that is config-mode-specific (transparent vs isolated) and handled
-# by the per-stack launcher. Ported from container.sh:start_new_container (37-146).
+# Does NOT mount ~/.claude* — that is handled by the per-stack launcher
+# (ported from container.sh:start_new_container, 37-146).
 
 # Usage: harnessed_host_integration_mounts "<project_path>" "<project_relpath>"
 harnessed_host_integration_mounts() {

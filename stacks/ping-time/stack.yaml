@@ -6,7 +6,6 @@
 # `HARNESSED_NET` bridge is the opt-in for bridge-capable hosts). The `services: [ping]` field auto-starts the
 # ping sidecar on launch (ensure_service_up) — a standalone container, not a pod member.
 name: ping-time
-config: isolated
 harness: claude
 recipes: [time, ping]
 services: [ping]

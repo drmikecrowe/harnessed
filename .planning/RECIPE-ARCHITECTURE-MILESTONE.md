@@ -19,8 +19,12 @@ un-primed ask-the-agent). Ship two agent images (claude, omp) and one proof-of-c
 ### 1. Image Lineage (3 layers)
 
 ```
-harnessed-base          Fat toolchain: mise, node@24, bun, rust, python, go, pnpm@11,
-                        1Password CLI, common dev tools, egress firewall, pnpm supply-chain config.
+harnessed-base          Toolchain: mise, python@3.12, node@22, pnpm@11, bun, rust, go,
+                        common CLI tools (fd, ripgrep), 1Password CLI, egress firewall,
+                        pnpm supply-chain config.
+                        Conservative version pins (NOT latest) for maximum compatibility —
+                        most frameworks support python 3.12 + node 22 LTS. Recipes override
+                        via `mise use -g <tool>@<version>` when they need a different version.
                         NO harness CLIs (moved out — a claude stack must not carry omp/codex/gemini).
 
 harnessed-<agent>       Agent base: FROM harnessed-base + ONE harness CLI + its config baking
@@ -34,9 +38,10 @@ harnessed-<stack>       Derived stack image: FROM harnessed-<agent> + recipe Doc
   harnessed-gstack        Contains everything the recipes installed (skills, tools, plugins).
 ```
 
-The fat base is deliberate: every runtime is pre-installed so recipe Dockerfiles never need to
-install a runtime — they just run the framework's own installer (`./setup`, `pip install`,
-`cargo install`, whatever). This is the devcontainer philosophy: rich base, thin derivatives.
+The base pins conservative stable versions (python 3.12, node 22 LTS — not latest) so most
+recipes work out-of-the-box without version overrides. mise is pre-installed so a recipe that
+needs a different version adds one line: `RUN mise use -g python@3.13 && mise install`. The
+philosophy: boring defaults that maximize compatibility, with mise as the override mechanism.
 
 ### 2. Recipe Model (Dockerfile + YAML)
 

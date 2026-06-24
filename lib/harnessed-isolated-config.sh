@@ -7,9 +7,6 @@
 #      (the host whole-file blob is NEVER mounted — carries Phase 1's MNT-03 / Pitfall 1 rule
 #      forward; rw-mounting it races with host Claude and corrupts state — T-02-05).
 #
-# This is the isolated analog of lib/harnessed-claude-config.sh (transparent copy-on-start, D-09):
-# transparent COPIES the host blob; isolated GENERATES a stub.
-#
 # RESEARCH Pitfall A (HIGHEST RISK): the exact field set Claude gates onboarding on is [INFERENCE].
 # The candidate set generated below is:
 #     hasCompletedOnboarding  (primary onboarding gate, corroborated)
@@ -92,8 +89,7 @@ harnessed_isolated_auth_mounts() {
         print_warning "No host credential at $host_cred — isolated auth will be unseeded (run 'claude login' on the host first)."
     fi
 
-    # (2) generated minimal .claude.json stub (NO token) at a per-instance state dir
-    # (same convention as harnessed-claude-config.sh:12).
+    # (2) generated minimal .claude.json stub (NO token) at a per-instance state dir.
     local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/$instance"
     mkdir -p "$state_dir"
     local stub="$state_dir/claude.json"

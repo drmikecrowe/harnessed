@@ -112,7 +112,6 @@ test_doc_readme() {
     act
     assert
     assert_exists "$f" "README.md ships at the repo root"
-    assert_file_contains "$f" "transparent" "README documents the transparent mode"
     assert_file_contains "$f" "isolated" "README documents the isolated mode"
     assert_file_contains "$f" "harnessed build" "README documents the first-run build"
     assert_file_contains "$f" "podman" "README states the podman-only host dependency"

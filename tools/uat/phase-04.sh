@@ -5,7 +5,7 @@
 # uat_run_phase entrypoint. Every test follows Arrange → Act → Assert (AAA).
 #
 # Two tests encode KNOWN GAPS as red regression checks (go green when the fix lands):
-#   - no_args_help     (UAT gap 6B): bare `harnessed` should show usage, not launch transparent
+#   - no_args_help     (UAT gap 6B): bare `harnessed` should show usage
 #   - legible_slug     (UAT gap 6) : state-dir slug should be a legible path, not a hash
 #
 # Heavy tests (container launches) self-skip under `--quick`.
@@ -37,18 +37,6 @@ uat_newest_state_dir() { # state_root stack
     echo "$found"
 }
 needs_container() { [ "$UAT_QUICK" = "true" ]; }   # true ⇒ this test should skip
-# Tear down any transparent pods/containers left by the (currently buggy) bare invocation.
-uat_clean_transparent() {
-    [ -n "$RT" ] || return
-    local c
-    for c in $("$RT" ps -a --format '{{.Names}}' 2>/dev/null); do
-        [[ $c == *transparent* ]] && "$RT" rm -f "$c" >/dev/null 2>&1
-    done
-    local p
-    for p in $("$RT" pod ls --format '{{.Name}}' 2>/dev/null); do
-        [[ $p == *transparent* ]] && "$RT" pod rm -f "$p" >/dev/null 2>&1
-    done
-}
 
 # ─── Section A: shared services (svc) ──────────────────────────────────────────
 
@@ -138,17 +126,67 @@ test_omp_bridge() {
 # ─── Section C: CLI surface ────────────────────────────────────────────────────
 
 test_no_args_help() {
-    arrange
-    uat_clean_transparent
     act
-    # Desired (gap 6B): bare invocation shows usage and exits 0. Today it launches
-    # transparent (interactive) — bounded by `timeout` so it cannot hang the suite.
-    echo "    ▸ timeout 12 $HARNESSED  (no args)"
-    UAT_OUT=$(timeout 12 "$HARNESSED" 2>&1); UAT_RC=$?
+    # Gap 6B: bare invocation shows usage and exits 0 (no stack given).
+    uat_run "$HARNESSED"
     assert
     assert_exit_zero "$UAT_RC" "bare harnessed exits 0"
-    assert_contains "Usage" "$UAT_OUT" "shows usage/help (not a silent transparent launch)"
-    uat_clean_transparent
+    assert_contains "Usage" "$UAT_OUT" "shows usage/help"
+}
+
+# Regression: transparent mode was removed. These assert the new behavior so it
+# cannot silently regress (all non-container — run under --quick).
+test_transparent_removed() {
+    local tmp; tmp="$(mktemp -d)"
+    arrange
+    # transparent is no longer a mode — it's an unknown stack name.
+    act
+    uat_run "$HARNESSED" transparent
+    assert
+    assert_exit_nonzero "$UAT_RC" "harnessed transparent exits non-zero"
+    assert_contains "Unknown stack: transparent" "$UAT_OUT" "reports transparent as an unknown stack"
+    # A bare directory argument no longer launches transparent — it's an unknown stack.
+    act
+    uat_run "$HARNESSED" "$tmp"
+    assert
+    assert_exit_nonzero "$UAT_RC" "bare directory argument exits non-zero"
+    assert_contains "Unknown stack" "$UAT_OUT" "treats a directory as a (missing) stack name"
+    # --fresh with no stack is a missing stack, not a transparent launch.
+    act
+    uat_run "$HARNESSED" --fresh
+    assert
+    assert_exit_nonzero "$UAT_RC" "--fresh with no stack exits non-zero"
+    assert_contains "Unknown stack" "$UAT_OUT" "reports the missing stack"
+    # The container back-compat alias is gone.
+    assert_not_exists "$HARNESSED_DIR/container" "container alias file is removed"
+    rmdir "$tmp"
+}
+
+test_removed_flags_rejected() {
+    act
+    uat_run "$HARNESSED" --claude
+    assert
+    assert_exit_nonzero "$UAT_RC" "--claude is rejected (removed transparent-only flag)"
+    assert_contains "Unknown option" "$UAT_OUT" "reports --claude as unknown"
+    act
+    uat_run "$HARNESSED" --zai
+    assert
+    assert_exit_nonzero "$UAT_RC" "--zai is rejected (removed transparent-only flag)"
+    assert_contains "Unknown option" "$UAT_OUT" "reports --zai as unknown"
+}
+
+test_manifest_no_config() {
+    arrange
+    rm -rf "$HARNESSED_DIR/stacks/uatcfg"
+    act
+    uat_run "$HARNESSED" new uatcfg --harness claude --recipes time
+    assert
+    assert_exit_zero "$UAT_RC" "new scaffolds a stack"
+    # The config: field was removed — the scaffolded manifest must not carry it.
+    assert_not_contains "config:" "$(cat "$HARNESSED_DIR/stacks/uatcfg/stack.yaml")" "scaffolded manifest has no config: field"
+    # And the real manifests are clean too.
+    assert_not_contains "config:" "$(cat "$HARNESSED_DIR/stacks/tracer-time/stack.yaml")" "tracer-time manifest has no config: field"
+    rm -rf "$HARNESSED_DIR/stacks/uatcfg"
 }
 
 test_list_surface() {
@@ -298,6 +336,9 @@ uat_run_phase() {
     run_test recipe_breadth         "recipe breadth — second recipe asserted"
     run_test omp_bridge             "omp stack runs the recipe via the bridge"
     run_test no_args_help           "bare harnessed shows help (gap 6B)"
+    run_test transparent_removed    "transparent mode is removed (regression)"
+    run_test removed_flags_rejected "--claude/--zai flags are removed (regression)"
+    run_test manifest_no_config     "manifests carry no config: field (regression)"
     run_test list_surface           "list shows stacks + instances"
     run_test new_scaffold_refuse    "new scaffolds + refuses overwrite"
     run_test new_bad_harness        "new rejects an unknown harness"

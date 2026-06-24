@@ -12,6 +12,5 @@
 # Only codex-stack fields are exercised; `services`, `permissions`, and `state` use defaults and are
 # parsed forward by the assembler (D-14).
 name: codex-time
-config: isolated      # isolated (default) | transparent
 harness: codex        # claude | omp | opencode | gemini | antigravity | codex  (exactly one)
 recipes: [time, codex]
