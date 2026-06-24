@@ -19,6 +19,7 @@ RT="$(uat_runtime)"   # podman | docker | "" (empty if neither present)
 
 # ─── suite helpers ──────────────────────────────────────────────────────────────
 needs_container() { [ "$UAT_QUICK" = "true" ]; }   # true ⇒ this test should skip
+uat_instance_name() { local h; h="$(printf '%s' "${2%/}" | shasum | cut -c1-8)"; echo "harnessed-${1}-${h}"; }
 
 # ─── Section A: Smoke tests (no container required) ─────────────────────────────
 
