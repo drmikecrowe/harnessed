@@ -135,7 +135,7 @@ Active requirements for the v2.0 milestone. Each maps to a phase in ROADMAP.md.
 
 ### Documentation
 
-- [ ] **DOC2-01**: All narrative docs updated to new architecture (fat base, Dockerfile recipes, 3-layer lineage, surgical mount, supply-chain gate, combined capability test). No "isolated"/"transparent" terminology remains. Each new feature lands with its doc section.
+- [x] **DOC2-01**: All narrative docs updated to new architecture (fat base, Dockerfile recipes, 3-layer lineage, surgical mount, supply-chain gate, combined capability test). No "isolated"/"transparent" terminology remains. Each new feature lands with its doc section.
 
 ---
 
@@ -245,7 +245,7 @@ Which phase covers which requirement.
 | TST2-01 | Phase 10 | Pending |
 | TST2-02 | Phase 10 | Pending |
 | TST2-03 | Phase 10 | Pending |
-| DOC2-01 | Phase 11 | Pending |
+| DOC2-01 | Phase 11 | Complete |
 
 - v2.0 requirements: 24 total
 - Mapped to phases: 24
