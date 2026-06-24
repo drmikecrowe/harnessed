@@ -1,0 +1,21 @@
+# lib/manifests/omp.yaml — per-harness mount manifest for the omp harness.
+#
+# Source: CONTEXT.md D-01, D-02, D-03.
+#
+# profile_files: filenames to mount ro from profiles/<stack>/ into the container.
+#   omp reads Claude-canonical .mcp.json via the claude-hooks-bridge (variant §6).
+#
+# history_dirs: intentionally empty.
+#   omp history at ~/.omp/agent/sessions/<slug>/ is mounted by harnessed_manifest_mounts
+#   via HOST relpath slug — see Pitfall 2 in 09-RESEARCH.md. The generic history_dirs loop
+#   would mount ~/.omp/agent/sessions/ (ALL projects) to the container, violating the
+#   per-slug isolation required by MNT2-04. The per-slug bind is in the omp-specific block
+#   inside harnessed_manifest_mounts().
+#
+# NEVER list in this file: agent.db or any auth credential path.
+
+profile_files:
+  - .mcp.json
+  - settings.json
+
+history_dirs: []  # omp slug bind is in harnessed_manifest_mounts bash function, not here
