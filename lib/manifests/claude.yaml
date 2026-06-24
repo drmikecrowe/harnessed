@@ -6,7 +6,7 @@
 # profile_files: filenames to mount ro from profiles/<stack>/ into the container.
 # history_dirs:  $HOME-relative paths to rw-mount for history surfacing (MNT2-03).
 #
-# NEVER list in this file: agent.db, .credentials.json, or any auth credential path.
+# NEVER include OAuth/credential files — those are handled by isolated-auth-mounts.
 
 profile_files:
   - .mcp.json
