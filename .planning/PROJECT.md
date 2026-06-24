@@ -64,7 +64,7 @@ host config — reproducibly, with podman as the only host dependency.
 - [ ] **TST-01**: Structured MCP probe: assert manifest's MCP servers connected via hatago `/servers` (deterministic, no model call)
 - [ ] **TST-02**: Un-primed ask-the-agent skills/tools probe with negative control: a decoy entry mixed into the prompt; agent claimed-decoy-present → INVALID (priming detected), non-zero exit
 - [ ] **TST-03**: Markdown capability report: ✓/✗ per MCP server (structured) and per `expect:` entry (agent); INVALID banner on priming detection
-- [ ] **DOC-01**: All narrative docs updated to new architecture — fat base, Dockerfile recipes, pinned sources, combined capability test; no "isolated"/"transparent" terminology remains
+- [x] **DOC-01**: All narrative docs updated to new architecture — fat base, Dockerfile recipes, pinned sources, combined capability test; no "isolated"/"transparent" terminology remains — Validated in Phase 11: architecture-documentation
 
 ### Out of Scope
 
