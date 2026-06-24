@@ -160,7 +160,7 @@ mcp:
       transport: http
 ```
 
-**Networking note:** by default isolated stacks use rootless (pasta) networking, so pod members reach
+**Networking note:** by default stacks use rootless (pasta) networking, so pod members reach
 a shared service via the host gateway `host.containers.internal:<port>`. That is why `server.py`
 adds `host.containers.internal` to FastMCP's allowed hosts. On hosts that support rootless bridges,
 set `HARNESSED_NET=<name>` and members resolve the service by DNS name instead (`http://<name>:<port>`).

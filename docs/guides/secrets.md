@@ -26,7 +26,7 @@ cp .env.schema.example ~/.config/harnessed/.env.schema
 #       SOCKET_SECURITY_API_KEY=op(op://Private/SocketDev/credential)
 $EDITOR ~/.config/harnessed/.env.schema
 
-# 3. Launch any isolated stack. Resolved secrets reach the pod as env only.
+# 3. Launch any stack. Resolved secrets reach the pod as env only.
 harnessed tracer-time
 ```
 
@@ -51,8 +51,8 @@ the `op` app-auth transport.)
    run prompts the 1Password desktop app to **Authorize** your terminal for CLI access —
    approve it once and the grant persists.
 3. The resolved dotenv is captured into a **mode-0600 temp `--env-file`** under `$TMPDIR`.
-4. That `--env-file` is spread into the launched container(s) — **both pod members** (isolated),
-   the **instance** (transparent), the **sidecar** (`svc up`), and the **scan step**
+4. That `--env-file` is spread into the launched container(s) — **both pod members**,
+   the **sidecar** (`svc up`), and the **scan step**
    (`harnessed build`) — so resolved secrets reach the container as **env only**, never a
    profile, image layer, or repo file (T-05-05).
 5. The temp file is **unlinked** after launch (T-05-06).
