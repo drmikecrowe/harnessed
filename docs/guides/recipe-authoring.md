@@ -11,14 +11,17 @@ examples from this repo's `recipes/`.
 
 ## What a recipe is
 
-A recipe lives at `recipes/<name>/recipe.yaml`. It can contribute to two layers:
+A recipe lives at `recipes/<name>/recipe.yaml`. It can contribute to three things:
 
 - **MCP layer** — server entries (under `mcp.servers`) merged into the stack's hatago config.
 - **File-extension layer** — `skills` / `commands` (and `agents`/`hooks`/`rules` via plugins) in
   Claude-canonical form, fanned into harness-native profile paths.
+- **Dockerfile body** — installation steps appended to the derived stack image; the primary way to
+  install tooling, frameworks, or CLIs into the stack. The assembler concatenates Dockerfile bodies
+  in recipe order to build the derived `harnessed-<stack>` image.
 
-A recipe may have either layer, both, or (like `recipes/omp`, `recipes/opencode`, `recipes/gemini`,
-`recipes/antigravity`, and `recipes/codex`) neither — it can exist only to declare a runtime contract. Only the fields the recipe exercises are required; the assembler parses the rest
+A recipe may have any combination of these, or (like `recipes/omp`, `recipes/opencode`, `recipes/gemini`,
+`recipes/antigravity`, and `recipes/codex`) none — it can exist only to declare a runtime contract. Only the fields the recipe exercises are required; the assembler parses the rest
 forward.
 
 ## The `recipe.yaml` schema
@@ -29,6 +32,12 @@ The typed model lives in [`tools/harnessed/schema.py`](../../tools/harnessed/sch
 ```yaml
 name: <recipe-name>            # required
 description: <one-liner>        # optional
+harnesses: [claude]             # optional — harnesses this recipe is compatible with (e.g. [claude],
+                                # [claude, omp]). Omit to allow all harnesses. The assembler rejects
+                                # composing a claude-only recipe onto an omp stack with a validation
+                                # error before emitting any Dockerfile.
+expect: [skill-name]            # optional — capabilities the Oracle 2 capability test must confirm
+                                # present after a successful build; checked by `harnessed test`.
 
 # --- MCP layer (optional) ---
 mcp:
@@ -61,6 +70,11 @@ Notes:
   (design §7).
 - Forward-parsed fields (`plugins`, `deps`, `hooks`, `extensions`) are accepted but only exercised
   where relevant; see [`recipes/omp/recipe.yaml`](../../recipes/omp/recipe.yaml) for `extensions`.
+
+If a recipe needs to install tooling into the stack image, it ships a `Dockerfile` alongside
+`recipe.yaml`. The assembler concatenates the Dockerfile bodies of all recipes in the stack's recipe
+order, prepends `FROM harnessed-${HARNESS}:latest`, and builds the derived `harnessed-<stack>`
+image from the result. See "Worked example 3" for the full pattern.
 
 ## Worked example 1: the `time` recipe (stdio MCP + a standalone skill)
 
@@ -123,6 +137,83 @@ mcp:
 Contrast: `time` (stdio child hatago must bake + spawn) vs `ping` (HTTP sidecar hatago proxies by
 URL). Use stdio for light, dependency-free servers you want baked in; use a service for stateful or
 shared systems that outlive any instance.
+
+## Worked example 3: a Dockerfile recipe (installs a framework CLI)
+
+[`recipes/gstack/`](../../recipes/gstack/) exercises the Phase 8 Dockerfile recipe model — a recipe
+that installs tooling via a Dockerfile body, with no MCP server or standalone skill dir.
+
+### recipe.yaml
+
+```yaml
+name: gstack
+description: Installs the gstack tooling via its framework installer.
+harnesses: [claude]
+expect: [gstack-skill]
+```
+
+- `harnesses: [claude]` — this recipe is claude-only. Composing it onto an `omp` or `opencode`
+  stack is a validation error; the assembler rejects the combination before emitting any Dockerfile.
+- `expect: [gstack-skill]` — after a successful `harnessed build gstack-time`, the capability test
+  (`harnessed test gstack-time`) must confirm that `gstack-skill` is present in the running
+  instance. Use this field to declare the capabilities your Dockerfile install step is expected to
+  deliver.
+
+### Dockerfile
+
+```dockerfile
+# No FROM line — the assembler prepends `FROM harnessed-${HARNESS}:latest` when concatenating.
+ARG HARNESS=claude
+
+# "Run the framework's own installer" — let the framework install itself, pinned to an exact version.
+RUN pnpm dlx @gstack/install@1.2.3 --host ${HARNESS}
+```
+
+Rules for recipe Dockerfiles:
+
+- **No `FROM` line.** The assembler supplies `FROM harnessed-${HARNESS}:latest` as the header;
+  adding your own `FROM` produces a malformed concatenated Dockerfile.
+- **`ARG HARNESS=claude` at the top.** The `ARG` is stripped during concatenation but is required
+  so standalone Docker builds can resolve `${HARNESS}` references in the body.
+- **Pinned installs only.** Floating refs (`@latest`, `--branch main`, `--branch master`) are
+  rejected by the assembler's pin validation (`PinValidationError`). Every downloadable resource
+  must carry an exact version pin (e.g. `@1.2.3`, `--version 1.2.3`).
+
+### "Run the framework's own installer" principle
+
+Recipe Dockerfiles do not manually copy files, vendor deps, or reconstruct what a framework's
+installer already knows how to do. Instead they invoke the framework's published installer at an
+exact version:
+
+```bash
+pnpm dlx @framework/install@<version> --host ${HARNESS}
+```
+
+The `--host ${HARNESS}` flag lets the installer configure itself for the target harness (e.g. claude
+vs omp). This keeps recipes thin: the recipe declares *what* to install and *at which version*; the
+framework controls *how* it is installed.
+
+### Pin discipline
+
+`ARG` declarations are the standard way to express version pins in a recipe Dockerfile:
+
+```dockerfile
+ARG GSTACK_VERSION=1.2.3
+RUN pnpm dlx @gstack/install@${GSTACK_VERSION} --host ${HARNESS}
+```
+
+The assembler validates that every downloadable resource has a pinned version. Floating refs
+(`@latest`, `--branch main`) fail the build — `PinValidationError` is raised before any image
+layer is written.
+
+### Build-and-test lifecycle
+
+```bash
+harnessed build gstack-time   # assembles gstack + time recipes into harnessed-gstack-time image,
+                               # runs osv-scanner + pip-audit supply-chain gate on derived image
+harnessed gstack-time         # launch the stack (podman pod: harness + hatago)
+harnessed test gstack-time    # capability report: ✓ gstack-skill (expect), ✓ time (mcp)
+```
 
 ## Transports
 
