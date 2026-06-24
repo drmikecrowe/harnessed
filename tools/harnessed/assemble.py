@@ -13,12 +13,12 @@ EMIT ONLY: nothing here invokes podman/docker or mounts a daemon socket.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import emit
 from .schema import McpServer, Recipe, Stack, load_service, load_stack_with_recipes, validate_no_raw_npm
-from .synclinks import CollisionError, LinkSyncer
+from .synclinks import CollisionError
 
 
 @dataclass
@@ -28,8 +28,6 @@ class AssembleResult:
     profile_dir: Path
     servers: list[McpServer]
     baked: list[McpServer]
-    skills: list[str] = field(default_factory=list)
-    commands: list[str] = field(default_factory=list)
 
 
 def _merge_servers(recipes: list[Recipe]) -> list[McpServer]:
@@ -81,21 +79,13 @@ def assemble(root: Path, stack_name: str, build_dir: Path) -> AssembleResult:
     for recipe in recipes:
         validate_no_raw_npm(recipe)
 
-    # Fan skills/commands (registers + collision-checks before any file is written).
-    syncer = LinkSyncer()
-    for recipe in recipes:
-        syncer.add_recipe(recipe)
-
     servers = _resolve_service_servers(_merge_servers(recipes), root)
 
     profile_dir = build_dir / "profiles" / stack.name
-    harness_dir = profile_dir / stack.harness_config_dir
 
     emit.reset_profile(profile_dir)
-    emit.ensure_profile_tree(harness_dir)
-    syncer.fan(harness_dir)
-    emit.write_mcp_json(harness_dir)
-    emit.write_settings_json(harness_dir, servers)
+    emit.write_mcp_json(profile_dir)
+    emit.write_settings_json(profile_dir, servers)
     emit.write_hatago_config(profile_dir, servers)
 
     baked = [s for s in servers if s.is_stdio_child]
@@ -107,6 +97,4 @@ def assemble(root: Path, stack_name: str, build_dir: Path) -> AssembleResult:
         profile_dir=profile_dir,
         servers=servers,
         baked=baked,
-        skills=sorted(syncer.skills),
-        commands=sorted(syncer.commands),
     )
