@@ -20,7 +20,7 @@ see [secrets.md](secrets.md).
 
 ## Container runtimes (podman / Docker / Apple `container`)
 
-`harnessed` is provider-agnostic. Isolated mode — the harness container + the hatago hub sharing
+`harnessed` is provider-agnostic. The harness stack — the harness container + the hatago hub sharing
 one `localhost:3535` — is expressed per-runtime by [`lib/harnessed-runtime.sh`](../../lib/harnessed-runtime.sh):
 
 - **podman** — a pod (`pod create` + `run --pod`); rootless uid mapping via `--userns=keep-id`.
@@ -81,7 +81,7 @@ Images build on the host via `podman build` the first time they're needed. If a 
   podman build -t harnessed-tools:latest -f tools/Dockerfile tools/
   ```
 
-- **Running an unbuilt isolated stack** errors with `Stack '<stack>' has no assembled profile (run:
+- **Running an unbuilt stack** errors with `Stack '<stack>' has no assembled profile (run:
   harnessed build <stack>)`. Build it first:
 
   ```bash
@@ -90,16 +90,16 @@ Images build on the host via `podman build` the first time they're needed. If a 
 
 ## `~/.claude.json` onboarding prompt
 
-An isolated instance authenticates by mounting `~/.claude/.credentials.json` read-only plus a
+A stack instance authenticates by mounting `~/.claude/.credentials.json` read-only plus a
 **generated, token-free `.claude.json` stub** that boots headlessly with no onboarding/login prompt
 (AUTH-02).
 
-- **If `claude` prompts for onboarding in an isolated instance**, the stub is missing a required
+- **If `claude` prompts for onboarding in a stack instance**, the stub is missing a required
   field. The proven field set (`hasCompletedOnboarding`, `firstStartTime`, `numStartups`,
   `oauthAccount`, `userID`) is sufficient for a headless no-prompt boot; a re-build regenerates it.
-- **Transparent mode** never rw-mounts the host `.claude.json` — it uses a **copy-on-start**
+- When running with host config mounted live, the host `.claude.json` is never rw-mounted — it uses a **copy-on-start**
   per-instance copy (MNT-03). If the host file is the source of trouble, the per-instance copy is
-  isolated from it.
+  unaffected.
 
 ## `--fresh` clean-room runs
 
@@ -117,7 +117,7 @@ normal run: it wipes; a normal run accumulates.
 
 ## Host-persisted sessions
 
-By default an isolated instance persists harness session state (`projects/` + `history.jsonl`) to a
+By default a stack instance persists harness session state (`projects/` + `history.jsonl`) to a
 harnessed-owned dir on the host under a **legible, flattened project path** (STA-02):
 
 ```
