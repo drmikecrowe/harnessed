@@ -6,19 +6,17 @@ See @AGENTS.md for project instructions
 
 **harnessed**
 
-`harnessed` is one executable that launches **isolated, composable harness stacks** — each a
+`harnessed` is one executable that launches **containerized, composable harness stacks** — each a
 podman pod running an AI coding harness (`claude`/`omp`/`opencode`/`gemini`/`antigravity`/`codex`) plus an MCP hub (hatago) plus optional
-shared services (hindsight, openbrain). It evolves this repo's existing `container` tool: the
-current "my laptop, sandboxed" behavior folds in as the built-in `transparent` stack, while new
-`isolated` stacks let you experiment with curated sets of skills/commands/hooks/MCP/memory systems
-**per container**, where isolation makes the collisions that killed a host-merge approach
-disappear by construction.
+shared services (hindsight, openbrain). Each stack lets you experiment with curated sets of
+skills/commands/hooks/MCP/memory systems **per container**, where container boundaries make the
+collisions that killed a host-merge approach disappear by construction.
 
 It is for developers (initially the author) who want to compose and trial harness configurations
 — different skill/plugin/MCP/memory combinations — in clean, reproducible, throwaway-or-persistent
 environments without dragging every host default into the container or polluting `~`.
 
-**Core Value:** You can compose a named stack (one harness + chosen recipes) and launch an isolated, authenticated
+**Core Value:** You can compose a named stack (one harness + chosen recipes) and launch an authenticated
 instance that exposes **exactly** the skills/commands/MCP/services it declares — nothing from the
 host config — reproducibly, with podman as the only host dependency.
 
@@ -137,7 +135,7 @@ host config — reproducibly, with podman as the only host dependency.
 | **Build-time `FROM`-union of two harness systems** | `FROM` is linear inheritance + multi-stage `COPY --from`; there is **no** "union two sibling images" operator (§6). Trying to bake hindsight+openbrain into one image fails by construction. | Compose at **runtime** in a podman **pod** (§3): separate images, shared network, shared services attached by reference. |
 | **Host Python / node / uv as a runtime dependency** | Version roulette on every user's machine; defeats "podman is the only host dep" (§15). | All logic in the **`harnessed-tools`** image; host runs a dependency-free bash bootstrap. |
 | **Rootful podman / privileged Docker daemon** | Grants host-root blast radius for a personal dev tool; unnecessary. | **Rootless** `podman.socket` scoped to your UID (full control of *your* user's containers — acceptable, state it). |
-| **Bind-mounting `~/.claude.json` rw** | Single whole-file blob Claude rewrites constantly; a shared rw mount races the host (lost writes/corruption) and merges container state back into the host file (§4b). | **transparent:** copy-on-start writable per-instance copy (or `CLAUDE_CONFIG_DIR` relocation). **isolated:** generate a minimal stub; never mount it. Mount only `~/.claude/.credentials.json` (ro). |
+| **Bind-mounting `~/.claude.json` rw** | Single whole-file blob Claude rewrites constantly; a shared rw mount races the host (lost writes/corruption) and merges container state back into the host file (§4b). | Generate a minimal stub; never mount it. Mount only `~/.claude/.credentials.json` (ro). |
 | **Container-internal paths in `-v` flags** | DooD bind sources resolve on the **host** daemon; the tool container's internal view points at nothing. The classic DooD footgun. | Pass host `HOME`/`PWD` as env; every `-v` the tool issues uses **host-absolute** paths. |
 | **Baking/committing credentials** (Claude OAuth, `SNYK_TOKEN`, `SOCKET_SECURITY_API_KEY`, `op://` secrets) | Tokens in an image layer or repo file leak permanently and can't be rotated cleanly. | Reference from host, inject as **env only** at launch; `harnessed auth …` persists to mounted host config, never a layer. |
 | **`OP_SERVICE_ACCOUNT_TOKEN` left in a long-lived shell env** | A visible service-account token can leak into unintended processes sharing the env (documented 1Password caution). | Prefer the **mounted desktop-app agent socket** (app-auth, `allowAppAuth`) for interactive use; reserve the service-account token for headless/CI where no agent exists, and scope it narrowly. |
