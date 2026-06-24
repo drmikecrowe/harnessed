@@ -12,7 +12,7 @@
 #   (oauth_creds.json) and is a different tool's home (Pitfall 6 in 09-RESEARCH.md).
 #   Mount only the three specific named subdirs.
 #
-# NEVER list in this file: antigravity-oauth-token, .credentials.json, or ~/.gemini/ itself.
+# NEVER include credential files or the parent ~/.gemini/ dir — those hold OAuth tokens.
 
 profile_files:
   - .mcp.json
