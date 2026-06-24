@@ -11,14 +11,17 @@ examples from this repo's `recipes/`.
 
 ## What a recipe is
 
-A recipe lives at `recipes/<name>/recipe.yaml`. It can contribute to two layers:
+A recipe lives at `recipes/<name>/recipe.yaml`. It can contribute to three things:
 
 - **MCP layer** — server entries (under `mcp.servers`) merged into the stack's hatago config.
 - **File-extension layer** — `skills` / `commands` (and `agents`/`hooks`/`rules` via plugins) in
   Claude-canonical form, fanned into harness-native profile paths.
+- **Dockerfile body** — installation steps appended to the derived stack image; the primary way to
+  install tooling, frameworks, or CLIs into the stack. The assembler concatenates Dockerfile bodies
+  in recipe order to build the derived `harnessed-<stack>` image.
 
-A recipe may have either layer, both, or (like `recipes/omp`, `recipes/opencode`, `recipes/gemini`,
-`recipes/antigravity`, and `recipes/codex`) neither — it can exist only to declare a runtime contract. Only the fields the recipe exercises are required; the assembler parses the rest
+A recipe may have any combination of these, or (like `recipes/omp`, `recipes/opencode`, `recipes/gemini`,
+`recipes/antigravity`, and `recipes/codex`) none — it can exist only to declare a runtime contract. Only the fields the recipe exercises are required; the assembler parses the rest
 forward.
 
 ## The `recipe.yaml` schema
@@ -29,6 +32,12 @@ The typed model lives in [`tools/harnessed/schema.py`](../../tools/harnessed/sch
 ```yaml
 name: <recipe-name>            # required
 description: <one-liner>        # optional
+harnesses: [claude]             # optional — harnesses this recipe is compatible with (e.g. [claude],
+                                # [claude, omp]). Omit to allow all harnesses. The assembler rejects
+                                # composing a claude-only recipe onto an omp stack with a validation
+                                # error before emitting any Dockerfile.
+expect: [skill-name]            # optional — capabilities the Oracle 2 capability test must confirm
+                                # present after a successful build; checked by `harnessed test`.
 
 # --- MCP layer (optional) ---
 mcp:
@@ -61,6 +70,11 @@ Notes:
   (design §7).
 - Forward-parsed fields (`plugins`, `deps`, `hooks`, `extensions`) are accepted but only exercised
   where relevant; see [`recipes/omp/recipe.yaml`](../../recipes/omp/recipe.yaml) for `extensions`.
+
+If a recipe needs to install tooling into the stack image, it ships a `Dockerfile` alongside
+`recipe.yaml`. The assembler concatenates the Dockerfile bodies of all recipes in the stack's recipe
+order, prepends `FROM harnessed-${HARNESS}:latest`, and builds the derived `harnessed-<stack>`
+image from the result. See "Worked example 3" for the full pattern.
 
 ## Worked example 1: the `time` recipe (stdio MCP + a standalone skill)
 
