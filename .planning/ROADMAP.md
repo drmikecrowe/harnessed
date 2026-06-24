@@ -243,7 +243,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 09-03-PLAN.md — Launcher surgery: harnessed-isolated.sh guard + copy-mount removal + workdir/mcp_cfg fix (MNT2-01/02)
+- [x] 09-03-PLAN.md — Launcher surgery: harnessed-isolated.sh guard + copy-mount removal + workdir/mcp_cfg fix (MNT2-01/02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -293,6 +293,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Address tech debt: harnessed-net code, stale comments, SUMMARY frontmatter | 3/3 | Complete    | 2026-06-21 |
 | 7. Fat Base + Agent Images | 3/3 | Complete   | 2026-06-23 |
 | 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 3/3 | Complete   | 2026-06-23 |
-| 9. Surgical Profile Mount + History Surfacing | 2/4 | In Progress|  |
+| 9. Surgical Profile Mount + History Surfacing | 3/4 | In Progress|  |
 | 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
 | 11. Architecture Documentation | 0/TBD | Not started | - |
