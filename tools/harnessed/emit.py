@@ -26,10 +26,6 @@ HATAGO_PORT = 3535
 HATAGO_ENDPOINT = f"http://localhost:{HATAGO_PORT}/mcp"
 HATAGO_MCP_KEY = "hatago"
 
-# The harness-native subdirs the assembler manages (Claude-canonical, design §4b/§7).
-PROFILE_SUBDIRS = ("skills", "commands", "agents", "hooks", "rules")
-
-
 def reset_profile(profile_dir: Path) -> None:
     """Wipe and recreate the profile dir so emission is fully reproducible."""
     if profile_dir.exists():
@@ -37,18 +33,12 @@ def reset_profile(profile_dir: Path) -> None:
     profile_dir.mkdir(parents=True)
 
 
-def ensure_profile_tree(harness_dir: Path) -> None:
-    """Create the harness-native subdir skeleton (forward-compat for all extension kinds)."""
-    for sub in PROFILE_SUBDIRS:
-        (harness_dir / sub).mkdir(parents=True, exist_ok=True)
-
-
 def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def write_mcp_json(harness_dir: Path) -> Path:
+def write_mcp_json(profile_dir: Path) -> Path:
     """Emit the harness `.mcp.json` — exactly ONE entry pointing at the hatago endpoint.
 
     `type: http` is REQUIRED — Claude Code only treats an entry as a Streamable-HTTP server
@@ -56,13 +46,13 @@ def write_mcp_json(harness_dir: Path) -> Path:
     via `claude --mcp-config <file> --strict-mcp-config`, so hatago is the ONLY MCP server the
     isolated harness sees (no host/project/account-synced servers leak in).
     """
-    out = harness_dir / ".mcp.json"
+    out = profile_dir / ".mcp.json"
     _write_json(out, {"mcpServers": {HATAGO_MCP_KEY: {"type": "http", "url": HATAGO_ENDPOINT}}})
     return out
 
 
-def write_settings_json(harness_dir: Path, servers: list[McpServer]) -> Path:
-    """Emit `.claude/settings.json` — pre-approve the hatago hub's MCP tools.
+def write_settings_json(profile_dir: Path, servers: list[McpServer]) -> Path:
+    """Emit `settings.json` — pre-approve the hatago hub's MCP tools.
 
     Without this, an interactive isolated session prompts for permission the first time it uses an
     MCP tool, so a skill that drives (e.g.) the time server appears to "fail". The server-level
@@ -72,7 +62,7 @@ def write_settings_json(harness_dir: Path, servers: list[McpServer]) -> Path:
     settings: dict = {}
     if servers:
         settings["permissions"] = {"allow": [f"mcp__{HATAGO_MCP_KEY}"]}
-    out = harness_dir / "settings.json"
+    out = profile_dir / "settings.json"
     _write_json(out, settings)
     return out
 
