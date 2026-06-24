@@ -18,7 +18,7 @@
 RT="$(uat_runtime)"   # podman | docker | "" (empty if neither present)
 
 # ─── suite helpers ──────────────────────────────────────────────────────────────
-needs_container() { [ "$UAT_QUICK" = "true" ]; }   # true ⇒ this test should skip
+skip_if_quick() { [ "$UAT_QUICK" = "true" ]; }   # true ⇒ this test should skip (WR-02: renamed from needs_container)
 uat_instance_name() { local h; h="$(printf '%s' "${2%/}" | shasum | cut -c1-8)"; echo "harnessed-${1}-${h}"; }
 
 # ─── Section A: Smoke tests (no container required) ─────────────────────────────
@@ -117,14 +117,13 @@ test_profile_shape_after_build() {
 # stack is not built (profile .mcp.json absent).
 
 test_path_mirroring() {
-    needs_container && { skip_test "skipped (--quick)"; return; }
+    skip_if_quick && { skip_test "skipped (--quick)"; return; }
     [ -z "$RT" ] && { skip_test "no container runtime found"; return; }
     if [ ! -f "$HARNESSED_DIR/profiles/gstack-time/.mcp.json" ]; then
         skip_test "skipped — gstack-time not built (run: harnessed build gstack-time)"
         return
     fi
     arrange
-    local host_pwd; host_pwd="$(pwd)"
     local proj="/tmp/uat-mirror-$$"
     local inst; inst="$(uat_instance_name gstack-time "$proj")"
     mkdir -p "$proj"
@@ -133,17 +132,22 @@ test_path_mirroring() {
     uat_run_env "HARNESSED_HEADLESS=true" "$HARNESSED" gstack-time "$proj"
     assert
     assert_exit_zero "$UAT_RC" "headless gstack-time launch exits 0 (MNT2-02)"
-    # Exec pwd inside the harness container — must match host cwd (path mirroring).
+    # Verify the project directory is accessible at its host absolute path inside the container
+    # (MNT2-02 path mirroring: the bind mount makes $proj accessible at the same absolute path).
+    local check
+    check="$("$RT" exec "$inst" bash -c "test -d '$proj' && echo EXISTS" 2>/dev/null || echo "MISSING")"
+    assert_eq "EXISTS" "$check" "host project path accessible at same absolute path in container (MNT2-02)"
+    # Also verify the container working directory is set to the project path.
     local ctr_pwd
-    ctr_pwd="$("$RT" exec "$inst" bash -c 'pwd' 2>/dev/null || echo "EXEC_FAILED")"
-    assert_eq "$host_pwd" "$ctr_pwd" "container pwd matches host pwd (path mirroring active)"
+    ctr_pwd="$("$RT" exec -w "$proj" "$inst" bash -c 'pwd' 2>/dev/null || echo "EXEC_FAILED")"
+    assert_eq "$proj" "$ctr_pwd" "container pwd at project path matches host path (MNT2-02)"
     # Teardown
     uat_pod_rm "$inst"
     rm -rf "$proj"
 }
 
 test_claude_history_surfaced() {
-    needs_container && { skip_test "skipped (--quick)"; return; }
+    skip_if_quick && { skip_test "skipped (--quick)"; return; }
     [ -z "$RT" ] && { skip_test "no container runtime found"; return; }
     if [ ! -f "$HARNESSED_DIR/profiles/gstack-time/.mcp.json" ]; then
         skip_test "skipped — gstack-time not built (run: harnessed build gstack-time)"
@@ -167,7 +171,7 @@ test_claude_history_surfaced() {
 }
 
 test_omp_history_surfaced() {
-    needs_container && { skip_test "skipped (--quick)"; return; }
+    skip_if_quick && { skip_test "skipped (--quick)"; return; }
     [ -z "$RT" ] && { skip_test "no container runtime found"; return; }
     if [ ! -f "$HARNESSED_DIR/profiles/omp-time/.mcp.json" ]; then
         skip_test "skipped — omp-time not built (run: harnessed build omp-time)"
@@ -175,7 +179,16 @@ test_omp_history_surfaced() {
     fi
     arrange
     local proj; proj="$(pwd)"
-    local relpath; relpath="$(realpath --relative-to="$HOME" "$proj" 2>/dev/null || basename "$proj")"
+    # Replicate production project_relpath() exactly (lib/harnessed-common.sh:389-392):
+    # use basename as fallback for paths outside $HOME, not realpath --relative-to which
+    # emits ../ prefixes and diverges from the slug the production code computes (WR-03).
+    local p="${proj%/}"
+    local relpath
+    if [[ "$p" == "$HOME/"* ]]; then
+        relpath="${p#"$HOME"/}"
+    else
+        relpath="$(basename "$p")"
+    fi
     local omp_slug="-${relpath//\//'-'}"
     local inst; inst="$(uat_instance_name omp-time "$proj")"
     act
@@ -189,7 +202,7 @@ test_omp_history_surfaced() {
 }
 
 test_antigravity_history_surfaced() {
-    needs_container && { skip_test "skipped (--quick)"; return; }
+    skip_if_quick && { skip_test "skipped (--quick)"; return; }
     [ -z "$RT" ] && { skip_test "no container runtime found"; return; }
     if [ ! -f "$HARNESSED_DIR/profiles/antigravity-time/.mcp.json" ]; then
         skip_test "skipped — antigravity-time not built (run: harnessed build antigravity-time)"
