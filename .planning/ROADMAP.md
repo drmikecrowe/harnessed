@@ -276,7 +276,15 @@ Plans:
   3. The recipe-authoring guide shows a complete worked example: `harnesses:`, `expect:` smoke check, pinned `git clone`, `--host ${HARNESS}`, and the "run the framework's installer" principle
   4. `rg -r "isolated|transparent" docs/ README.md CLAUDE.md AGENTS.md` returns no narrative usage of those terms in the updated docs
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+**Wave 1** *(all parallel — no shared files)*
+
+- [ ] 11-01-PLAN.md — README 3-layer image lineage + quickstart capability test + CLAUDE.md/AGENTS.md narrative cleanup
+- [ ] 11-02-PLAN.md — docs/harnessed-design.md §7 (Dockerfile recipe model) + §18 (two-oracle capability test)
+- [ ] 11-03-PLAN.md — docs/guides/recipe-authoring.md Dockerfile recipe model + harnesses:/expect: worked example
+- [ ] 11-04-PLAN.md — docs/guides/troubleshooting.md + service-authoring.md + secrets.md narrative cleanup
 
 ## Progress
 
@@ -295,4 +303,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Dockerfile Recipe Model + Assembler + Supply-Chain Gate | 3/3 | Complete   | 2026-06-23 |
 | 9. Surgical Profile Mount + History Surfacing | 4/4 | Complete    | 2026-06-24 |
 | 10. opencode/codex Investigation + Combined Capability Test | 0/TBD | Not started | - |
-| 11. Architecture Documentation | 0/TBD | Not started | - |
+| 11. Architecture Documentation | 0/4 | Not started | - |
