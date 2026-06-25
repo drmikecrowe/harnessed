@@ -7,23 +7,23 @@ MCP tool) that runs as its **own** image/container/volume on the shared network,
 
 For the *why* (why services are service-scoped, why they outlive instances, why they're separate
 images), read [docs/harnessed-design.md §3 & §9](../harnessed-design.md). This guide shows the *how*
-with a worked example from [`services/ping/`](../../services/ping/).
+with a worked example from [`catalog/services/ping/`](../../catalog/services/ping/).
 
 ## What a service is
 
-A service lives at `services/<name>/` and ships **three** things:
+A service lives at `catalog/services/<name>/` and ships **three** things:
 
 | File | Role |
 | --- | --- |
-| `services/<name>/service.yaml` | the manifest: `name`, `image`, `port`, `volume`, `healthcheck` |
-| `services/<name>/Dockerfile` | the service's **own** image lineage (independent of the harness images) |
+| `catalog/services/<name>/service.yaml` | the manifest: `name`, `image`, `port`, `volume`, `healthcheck` |
+| `catalog/services/<name>/Dockerfile` | the service's **own** image lineage (independent of the harness images) |
 | the server itself (e.g. `server.py`) | the actual MCP server (Streamable HTTP) |
 
 You manage services by name with `harnessed svc up|down|list` (see [lib/harnessed-services.sh](../../lib/harnessed-services.sh)), and a stack references one by listing it under `services:`.
 
 ## The `service.yaml` manifest
 
-The typed model lives in [`tools/harnessed/schema.py`](../../tools/harnessed/schema.py) (`ServiceDef`).
+The typed model lives in [`src/harnessed/schema.py`](../../src/harnessed/schema.py) (`ServiceDef`).
 Flat scalars:
 
 ```yaml
@@ -42,7 +42,7 @@ hatago URL-proxy entry pointing at `http://<name>:<port>/mcp` (see *Attaching fr
 `ping` is the smallest shared-service sidecar — one `ping` MCP tool over Streamable HTTP, no
 external state. All three files:
 
-### `services/ping/service.yaml`
+### `catalog/services/ping/service.yaml`
 
 ```yaml
 name: ping
@@ -58,7 +58,7 @@ healthcheck: "curl -sf http://localhost:8080/health || exit 1"
   memory across instances). `--purge` is the explicit destroy.
 - `healthcheck` — what `svc up` polls to confirm readiness before returning.
 
-### `services/ping/Dockerfile`
+### `catalog/services/ping/Dockerfile`
 
 ```dockerfile
 FROM python:3.12-slim
@@ -76,7 +76,7 @@ The service has its **own** image lineage (`FROM python:3.12-slim`) — it is no
 harness image. The `HEALTHCHECK` mirrors the manifest's `healthcheck` so `podman` and `svc up` agree
 on readiness.
 
-### `services/ping/server.py`
+### `catalog/services/ping/server.py`
 
 A FastMCP server over **Streamable HTTP**, with a `/health` route alongside the MCP endpoint:
 
@@ -135,7 +135,7 @@ The service is labelled `harnessed-service=<name>` and runs on the shared networ
 pod member. A stack that declares the service **auto-starts** it on launch:
 
 ```yaml
-# stacks/ping-time/stack.yaml
+# catalog/stacks/ping-time/stack.yaml
 name: ping-time
 config: isolated
 harness: claude
@@ -152,7 +152,7 @@ A recipe references a service via `mcp.servers[].service`. The assembler resolve
 hatago URL-proxy entry, so hatago proxies the network-native server:
 
 ```yaml
-# recipes/ping/recipe.yaml
+# catalog/recipes/ping/recipe.yaml
 mcp:
   servers:
     - name: ping
@@ -170,5 +170,5 @@ set `HARNESSED_NET=<name>` and members resolve the service by DNS name instead (
 - [docs/harnessed-design.md §3 & §9](../harnessed-design.md) — the *why* (runtime pod, service-scoped state & lifecycle).
 - [Recipe-authoring guide](recipe-authoring.md) — the service-ref MCP shape (`service:` / `transport: http`).
 - [Stacks guide](stacks.md) — declaring `services:` in a stack manifest.
-- [`services/ping/`](../../services/ping/) — the worked example (manifest + image + server).
-- [`tools/harnessed/schema.py`](../../tools/harnessed/schema.py) — the typed `ServiceDef` model.
+- [`catalog/services/ping/`](../../catalog/services/ping/) — the worked example (manifest + image + server).
+- [`src/harnessed/schema.py`](../../src/harnessed/schema.py) — the typed `ServiceDef` model.

@@ -1,0 +1,9 @@
+# Stack: claude_gstack_ping_time_greet — full claude stack across all capability recipes.
+#   gstack  → Dockerfile recipe (installs a skill + command into the agent image)
+#   ping    → network-native MCP via the ping service sidecar
+#   time    → stdio MCP server + the time-helper skill
+#   greet   → skill-only (greet-helper)
+name: claude_gstack_ping_time_greet
+harness: claude
+recipes: [gstack, ping, time, greet]
+services: []

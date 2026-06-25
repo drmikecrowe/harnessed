@@ -1,0 +1,13 @@
+# Recipe: gstack — Dockerfile recipe model example.
+#
+# Installs a skill + a command into the agent image's Claude-canonical ~/.claude tree via its
+# Dockerfile (the assembler cannot see these by parsing skills:/commands:, so they are declared in
+# `expect:` for the capability test to probe). Recipes are harness-independent — any harness-specific
+# step branches on the ${HARNESS} build arg inside the Dockerfile, never a recipe-level exclusion.
+name: gstack
+description: Dockerfile recipe model example — installs a skill + command into the agent image.
+
+# What the capability test must find in the running container after a successful build.
+expect:
+  skills: [gstack-skill]
+  commands: [gstack-cmd]

@@ -1,18 +1,18 @@
 # Composing stacks
 
-A **stack** is a manifest (`stacks/<name>/stack.yaml`) that composes **one** harness with a chosen
+A **stack** is a manifest (`catalog/stacks/<name>/stack.yaml`) that composes **one** harness with a chosen
 set of recipes (and optional shared services). A running stack is a podman pod — harness
 container + hatago + any declared services — composed at runtime, not baked at build time (`FROM`
 can't union sibling systems; design §3, §6).
 
 For the *why* (why one harness per stack, the runtime-pod model), read
 [docs/harnessed-design.md §2 & §12](../harnessed-design.md). This guide shows the *how* with worked
-examples from this repo's `stacks/`.
+examples from this repo's `catalog/stacks/`.
 
 ## What a stack is
 
 ```
-stacks/<name>/stack.yaml        # the manifest (you author or scaffold)
+catalog/stacks/<name>/stack.yaml        # the manifest (you author or scaffold)
   ↓ harnessed build <stack>     # assemble (emit-only) + scan + host podman build
 profiles/<name>/                # GENERATED + committed; mounted into the harness container
   .claude/{skills,commands,...} # the assembled, version-controlled profile
@@ -24,13 +24,13 @@ Recipes are resolved **ahead of time** into a committed profile plus pinned imag
 
 ## The `stack.yaml` schema
 
-The typed model lives in [`tools/harnessed/schema.py`](../../tools/harnessed/schema.py) (`Stack`).
+The typed model lives in [`src/harnessed/schema.py`](../../src/harnessed/schema.py) (`Stack`).
 Key fields:
 
 ```yaml
 name: <stack>                     # required
 harness: claude                   # claude | omp | opencode | gemini | antigravity | codex  (exactly one)
-recipes: [a, b, c]                # list of recipes/ to compose
+recipes: [a, b, c]                # list of catalog/recipes/ to compose
 services: [ping]                  # optional — shared sidecars to attach (auto-started on launch)
 permissions: yolo                 # optional — prompt (default) | yolo (writes skip-permission config)
 state:                            # optional
@@ -52,7 +52,7 @@ Notes:
 
 ## Worked example 1: `tracer-time` (claude, one recipe)
 
-[`stacks/tracer-time/stack.yaml`](../../stacks/tracer-time/stack.yaml) is the Phase 2 tracer bullet —
+[`catalog/stacks/tracer-time/stack.yaml`](../../catalog/stacks/tracer-time/stack.yaml) is the Phase 2 tracer bullet —
 the smallest end-to-end slice:
 
 ```yaml
@@ -69,14 +69,14 @@ harnessed tracer-time            # launch the pod (harness + hatago), attach
 harnessed test tracer-time       # capability report: ✓ time (mcp), ✓ time-helper (skill)
 ```
 
-`harnessed build` emits the `profiles/tracer-time/` tree (assembled from `recipes/time`) and builds
+`harnessed build` emits the `profiles/tracer-time/` tree (assembled from `catalog/recipes/time`) and builds
 the hatago image. `harnessed tracer-time` composes the pod and attaches; `harnessed test` brings the
 instance up `--fresh` headless and asserts the manifest's declared capabilities are live (design
 §18). Running an unbuilt stack errors and tells you to `harnessed build` first.
 
 ## Worked example 2: `ping-time` (a stack with a shared service)
 
-[`stacks/ping-time/stack.yaml`](../../stacks/ping-time/stack.yaml) composes a stdio recipe (`time`)
+[`catalog/stacks/ping-time/stack.yaml`](../../catalog/stacks/ping-time/stack.yaml) composes a stdio recipe (`time`)
 with a service-ref recipe (`ping`) and attaches a shared sidecar:
 
 ```yaml
@@ -95,13 +95,13 @@ services: [ping]
 
 Authoring the sidecar itself is covered in the [service-authoring guide](service-authoring.md).
 
-> Other stacks in this repo follow the same shape: [`stacks/claude-multi`](../../stacks/claude-multi/stack.yaml)
-> (two recipes on claude — proves multi-recipe composition) and [`stacks/omp-time`](../../stacks/omp-time/stack.yaml)
+> Other stacks in this repo follow the same shape: [`catalog/stacks/claude-multi`](../../catalog/stacks/claude-multi/stack.yaml)
+> (two recipes on claude — proves multi-recipe composition) and [`catalog/stacks/omp-time`](../../catalog/stacks/omp-time/stack.yaml)
 > (the same `time` recipe on the `omp` harness via the bridge — proves one canonical profile runs on
-> either harness). [`stacks/opencode-time`](../../stacks/opencode-time/stack.yaml) runs the same `time`
-> recipe on the `opencode` harness. [`stacks/gemini-time`](../../stacks/gemini-time/stack.yaml),
-> [`stacks/antigravity-time`](../../stacks/antigravity-time/stack.yaml), and
-> [`stacks/codex-time`](../../stacks/codex-time/stack.yaml) run the same `time` recipe on
+> either harness). [`catalog/stacks/opencode-time`](../../catalog/stacks/opencode-time/stack.yaml) runs the same `time`
+> recipe on the `opencode` harness. [`catalog/stacks/gemini-time`](../../catalog/stacks/gemini-time/stack.yaml),
+> [`catalog/stacks/antigravity-time`](../../catalog/stacks/antigravity-time/stack.yaml), and
+> [`catalog/stacks/codex-time`](../../catalog/stacks/codex-time/stack.yaml) run the same `time` recipe on
 > the `gemini`, `antigravity`, and `codex` harnesses — proving one canonical profile runs on all six harnesses.
 
 ## Scaffolding a new stack
@@ -111,7 +111,7 @@ overwrite an existing stack:
 
 ```bash
 harnessed new my-stack --harness claude --recipes time,greet
-# → writes stacks/my-stack/stack.yaml:
+# → writes catalog/stacks/my-stack/stack.yaml:
 #   name: my-stack
 #   harness: claude
 #   recipes: [time, greet]
@@ -142,4 +142,4 @@ the [troubleshooting guide](troubleshooting.md) for the state-dir layout and `--
 - [docs/harnessed-design.md §2 & §12](../harnessed-design.md) — the *why* (the stack model, the stack manifest, state).
 - [Recipe-authoring guide](recipe-authoring.md) — author the recipes a stack composes.
 - [Service-authoring guide](service-authoring.md) — author the sidecars a stack attaches.
-- [`tools/harnessed/schema.py`](../../tools/harnessed/schema.py) — the typed `Stack` model.
+- [`src/harnessed/schema.py`](../../src/harnessed/schema.py) — the typed `Stack` model.

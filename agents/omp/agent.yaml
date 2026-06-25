@@ -1,8 +1,0 @@
-type: agent
-harness: omp
-image: harnessed-omp
-dockerfile: base/Dockerfile.harnessed-omp
-description: >
-  Oh My Pi harness. FROM harnessed-base + omp (via mise, pinned v16) +
-  pre-installed claude-hooks-bridge extension. Consumes Claude-canonical profiles
-  via the bridge at runtime.

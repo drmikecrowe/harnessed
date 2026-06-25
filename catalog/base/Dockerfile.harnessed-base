@@ -1,0 +1,97 @@
+# harnessed-base — toolchain image (mise/node/pnpm/python + common dev tools)
+# Lineage root. `harnessed-claude` (and later `harnessed-omp`) build FROM this (§6: FROM = lineage only).
+# Built and run on the HOST (no DooD). Home is /home/harnessed for a legible session slug (§15 / D-06).
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/New_York
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# System dependencies and common build tools
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    curl \
+    wget \
+    unzip \
+    ca-certificates \
+    libssl-dev \
+    zlib1g-dev \
+    libffi-dev \
+    vim \
+    tree \
+    gnupg \
+    iptables
+
+# 1Password CLI + desktop app (for SSH signing with op-ssh-sign)
+RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
+    gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
+    tee /etc/apt/sources.list.d/1password.list && \
+    apt-get update && apt-get install -y 1password 1password-cli && \
+    rm -rf /var/lib/apt/lists/*
+
+# Fixed container user `harnessed` with home /home/harnessed (rename the stock ubuntu user,
+# keeping UID 1000 so `--userns=keep-id` maps the host user cleanly).
+ARG USERNAME=harnessed
+RUN usermod -l ${USERNAME} ubuntu && \
+    groupmod -n ${USERNAME} ubuntu && \
+    usermod -d /home/${USERNAME} ${USERNAME} && \
+    mkdir -p /home/${USERNAME} && \
+    cp -an /home/ubuntu/. /home/${USERNAME}/ 2>/dev/null || true && \
+    rm -rf /home/ubuntu && \
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
+
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}
+ENV HOME=/home/${USERNAME}
+
+# mise (runtime manager) + shims on PATH
+RUN curl -fsSL https://mise.run | bash
+ENV PATH="/home/${USERNAME}/.local/share/mise/shims:/home/${USERNAME}/.local/bin:${PATH}"
+
+# Managed pnpm supply-chain config (Phase 3 / BLD-01). Must be in place before
+# mise's npm: backend resolves globals (RESEARCH Pitfall 5). Root COPY + chown
+# mirrors the extra-tools.txt dance below.
+USER root
+COPY catalog/base/pnpm/config.yaml /tmp/pnpm-config.yaml
+RUN mkdir -p /home/${USERNAME}/.config/pnpm && \
+    mv /tmp/pnpm-config.yaml /home/${USERNAME}/.config/pnpm/config.yaml && \
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config
+USER ${USERNAME}
+
+# Core runtimes — no harness CLIs in base (IMG-01 complete). Harness CLIs (claude, omp, codex,
+# gemini) are each installed in their own harness image FROM this base.
+# Note: opencode-ai removed — non-functional in base. npm.package_manager=pnpm routes npm: tools
+# through pnpm so the managed policy governs them (RESEARCH Pitfall 5); set BEFORE `mise use -g`.
+# pnpm@11 (not @latest) so the v11 supply-chain defaults are in effect (Node ≥ 20 required; node@22 LTS).
+RUN mise settings set experimental true && \
+    mise settings set npm.package_manager pnpm && \
+    mise use -g \
+        node@22 \
+        pnpm@11 \
+        python@3.12 \
+        bun@1.2 \
+        rust@1.87 \
+        go@1.24 \
+        fd \
+        ripgrep && \
+    mise install && \
+    mise trust ~/.config/mise/config.toml
+
+# Extra user-specified tools (edit extra-tools.txt to add more).
+# Switch to root for COPY to avoid Podman overlay layer corrupting home dir ownership.
+USER root
+COPY extra-tools.txt /tmp/extra-tools.txt
+RUN chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
+USER ${USERNAME}
+RUN grep -v '^\s*#' /tmp/extra-tools.txt | grep -v '^\s*$' | awk '{print $1}' | \
+    xargs -r mise use -g && mise install
+
+# Interactive shell config
+RUN echo 'PS1="\[\033[01;32m\][harnessed]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/${USERNAME}/.bashrc && \
+    echo 'eval "$(mise activate bash)"' >> /home/${USERNAME}/.bashrc && \
+    echo 'mise trust -a 2>/dev/null' >> /home/${USERNAME}/.bashrc
+
+CMD ["/bin/bash"]

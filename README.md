@@ -34,27 +34,14 @@ dependency**.
 
 It's for developers who want to compose and trial harness configurations — different
 skill/plugin/MCP/memory combinations — in clean, reproducible, throwaway-or-persistent environments
-without dragging every host default into the container or polluting `~`. The existing `container`
-"my laptop, sandboxed" behavior folds in as the built-in `transparent` stack; `container` remains a
-thin alias for `harnessed transparent`.
+without dragging every host default into the container or polluting `~`.
 
 > The full architecture and design rationale live in **[docs/harnessed-design.md](docs/harnessed-design.md)**
 > (§1–§18 — the *why*). This README is the *how*: install, build, and run.
 
-## One engine, two modes
+## Isolated mode
 
-Every stack shares the same base image, the same host-integration mounts (1Password/GPG agents,
-YubiKey, SSH/git config, egress firewall, the project folder), and the same host auth. Stacks differ
-on exactly **one axis** — where the config layer (skills/commands/hooks/MCP) comes from:
-
-| Mode | Command | Config source | When to use |
-| --- | --- | --- | --- |
-| **`transparent`** | `harnessed transparent [path]` (or just `harnessed [path]`) | host `~/.claude` (+ `.codex`/`.config/opencode`/`.gemini`) bind-mounted live | "My laptop, sandboxed" — your own config, firewalled. This is the old `container`. |
-| **`isolated`** | `harnessed <stack> [path]` | auth seeded + an assembled **stack profile** mounted; nothing from host config | "Clean room with exactly what I picked" — experiment with curated skill/MCP/service combos per container. |
-
-Same engine, same operational mounts, one switch. `transparent` is the degenerate case — harness
-container only, host config mounted live (no pod, no hatago, no assembler). `isolated` is
-authenticated but carries **no host defaults**. See [design §2](docs/harnessed-design.md).
+Every stack runs in **isolated mode**: auth seeded from host credentials, config layer (skills/commands/hooks/MCP) sourced exclusively from an assembled stack profile — **nothing from host config** leaks in. The harness container + hatago MCP hub run as a podman pod. See [design §2](docs/harnessed-design.md).
 
 ## Install
 
@@ -66,8 +53,8 @@ curl -fsSL https://raw.githubusercontent.com/drmikecrowe/code-container/main/ins
 ```
 
 The installer clones the repo to `~/.local/share/code-container` (or pulls latest if already
-installed) and symlinks `harnessed` — plus the `container` back-compat alias — onto your PATH
-(`~/.local/bin` if it's on PATH, else `/usr/local/bin` via sudo). The installer is fully verbose.
+installed) and symlinks `harnessed` onto your PATH (`~/.local/bin` if it's on PATH, else
+`/usr/local/bin` via sudo). The installer is fully verbose.
 
 To uninstall, remove the symlinks and the cloned directory.
 
@@ -98,14 +85,7 @@ via host `podman build`); later runs are cache hits.
 
 ## Quickstart
 
-**1. Transparent mode** — your host config, sandboxed (the old `container`):
-
-```bash
-cd /path/to/project
-harnessed transparent      # or: container   (launches the harness with host config mounted live)
-```
-
-**2. Isolated mode** — a curated stack, built then run:
+Build and launch the `tracer-time` sample stack — the claude harness + the `time` recipe (one light stdio MCP server + one standalone skill):
 
 ```bash
 cd /path/to/project
@@ -128,8 +108,6 @@ harnessed test tracer-time
 
 | Command | What it does |
 | --- | --- |
-| `harnessed [stack] [path]` | Launch a stack against cwd (default stack: `transparent`) |
-| `harnessed transparent [path]` | Host-mirror stack: live host config + project |
 | `harnessed <stack> [path] [--fresh]` | Isolated stack: assembled profile + pod (harness + hatago) |
 | `harnessed build [<stack>]` | Build the base/harness/hatago images, or assemble + build one stack |
 | `harnessed test <stack>` | Capability test: launch `--fresh` headless + assert declared capabilities (markdown report) |
@@ -159,7 +137,7 @@ remain for muscle memory (they dispatch to the per-instance path).
 ## Supply chain & security
 
 - **pnpm everywhere** — every JavaScript install (global, per-recipe, hatago's bundled servers) uses **pnpm**, never `npm`/`npx`; `pnpm dlx` replaces `npx`. A managed supply-chain config applies `minimumReleaseAge` cooldowns and lifecycle-script default-deny. Recipe validation flags raw `npm`/`npx` and points at the pnpm equivalent ([design §7](docs/harnessed-design.md)).
-- **Build-time scan gate** — `harnessed build` runs **osv-scanner** + **pip-audit** (credential-free, always) and **snyk**/**Socket.dev** when a token is present (warn-and-skip otherwise, so the build stays non-interactive). It **fails on high-severity** findings. See [BLD-02/SEC-02](.planning/REQUIREMENTS.md).
+- **Build-time scan gate** — `harnessed build` runs **osv-scanner** + **pip-audit** (credential-free, always) and **snyk**/**Socket.dev** when a token is present (warn-and-skip otherwise, so the build stays non-interactive). It **fails on high-severity** findings ([design §7](docs/harnessed-design.md)).
 - **Opt-in secrets** — varlock + 1Password resolve `op://` refs into the pod as **env only** (never a profile, image layer, or repo file). Copy `.env.schema.example` to `~/.config/harnessed/.env.schema` to turn it on. See **[docs/guides/secrets.md](docs/guides/secrets.md)**.
 - **Nightly re-scan** — a systemd user timer re-runs osv-scanner **online** against installed images so a CVE disclosed *after* build still surfaces. See **[troubleshooting](docs/guides/troubleshooting.md#nightly-re-scan-timer-sec-04)** for setup (including the `loginctl enable-linger` prerequisite).
 - **Secrets/auth referenced, never baked** — Claude OAuth, scanner tokens, and 1Password secrets reach the instance as env or read-only mounts; never an image layer.
@@ -173,12 +151,6 @@ remain for muscle memory (they dispatch to the per-instance path).
 - **Compare harnesses on equal footing.** Point `claude+hindsight` and `omp+hindsight` at the **same** service-scoped memory volume and judge which harness drives it better — same data, different engine.
 - **Clean-room a flaky plugin.** `harnessed <stack> --fresh` reproduces from zero state, then tears down leaving no residue in `~`.
 - **Proof it built right.** Each stack ships a capability test: bring the instance up headless and assert it exposes exactly the MCP servers/skills/commands its manifest declares — rendered as a per-capability markdown report (✓ connected / ✗ missing).
-
-## The `container` back-compat alias
-
-`container` keeps working as a thin alias for `harnessed transparent` (the host-mirror sandbox). If
-you only ever wanted "my laptop, sandboxed", `container` is unchanged. `harnessed` is the engine it
-folds into.
 
 ---
 

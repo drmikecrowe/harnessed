@@ -2,62 +2,49 @@
 
 Repo: https://github.com/drmikecrowe/code-container
 
-This file tells AI coding assistants how to set up and customize **`harnessed`**. The user-facing
-entry point is **[README.md](README.md)** — read it first for install, the quickstart, and the
-command surface. Full architecture rationale is in
-[docs/harnessed-design.md](docs/harnessed-design.md); how-to guides are under
-[docs/guides/](docs/guides).
+Start with **[ARCHITECTURE.md](ARCHITECTURE.md)** (layout + vocabulary + the build/launch model) and
+**[CONTRIBUTING.md](CONTRIBUTING.md)** (dev setup + how to add catalog content). This file holds only
+operational notes. The deeper rationale is in [docs/harnessed-design.md](docs/harnessed-design.md);
+how-to guides are under [docs/guides/](docs/guides).
 
 > [!IMPORTANT]
-> **Do not run `harnessed` yourself.** It launches an interactive shell inside a container
-> (attaches a pod). It is for user
-> consumption only. Use `harnessed build`, `harnessed test`, `harnessed list`, or read the source to
-> reason about behavior instead.
+> **Do not run `harnessed <stack>` yourself.** Launching attaches an interactive shell inside a pod —
+> it is for the user. To reason about behavior use `harnessed build`, `harnessed test`,
+> `harnessed list`, or read the source.
 
-## Setup instructions
+## Dev workflow (for working ON harnessed)
 
-If the user asks you to set up harnessed, walk them through it one step at a time (do not dump the
-whole sequence):
+harnessed is a host Python CLI in `src/harnessed/`. Set up and verify with:
 
-1. **Prerequisite:** Podman (preferred) or Docker is the only host dependency. No host
-   Python/node/uv is needed.
-2. **Install:** have the user run the installer (it clones to `~/.local/share/code-container` and
-   symlinks `harnessed` onto their PATH):
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/drmikecrowe/code-container/main/install.sh | bash
-   ```
-3. **First-run build** (user runs these):
-   ```bash
-   harnessed build                       # build the shared base/harness/hatago images
-   harnessed build tracer-time           # assemble a stack (emit profile + scan + hatago build)
-   ```
-4. **Run** (user runs): `harnessed tracer-time` (the sample stack). See the
-   [quickstart](README.md#quickstart).
+```bash
+uv sync --extra dev && export PATH="$PWD/.venv/bin:$PATH"
+uv run pytest -q                                    # fast unit + assembly tests
+HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py   # live container tests
+```
 
-## Customizing harnessed
+The CLI runs on the host (edits under `src/harnessed/` are live). `harnessed build <stack>` assembles
+in-process and builds images; `harnessed test <stack>` is the capability oracle.
 
-- **Add a recipe** (MCP layer + skills/commands): author `recipes/<name>/recipe.yaml`. See
-  [docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md) (worked examples:
-  `recipes/time`, `recipes/ping`).
-- **Compose a stack**: author `stacks/<name>/stack.yaml`, or scaffold with `harnessed new <stack>
-  --harness <claude|omp|opencode|gemini|antigravity|codex> --recipes a,b,c`. See [docs/guides/stacks.md](docs/guides/stacks.md).
-- **Add a shared service sidecar**: `services/<name>/` (its own `Dockerfile` + `service.yaml` +
-  server). See [docs/guides/service-authoring.md](docs/guides/service-authoring.md) (worked example:
-  `services/ping`).
-- **Opt-in secrets** (varlock + 1Password): see [docs/guides/secrets.md](docs/guides/secrets.md).
-- **Troubleshoot** (podman, first-run build, `--fresh`, sessions, the nightly re-scan timer): see
-  [docs/guides/troubleshooting.md](docs/guides/troubleshooting.md).
+## Customizing (catalog content)
 
-> Note: you may only modify files **in this repository**. Do not modify files in the user's home
-> directory (`~/`) unless they explicitly ask.
+Everything authorable is under `catalog/` (and the user overlay `~/.config/harnessed/catalog`):
 
-## Harness permissions
+- **Recipe** → `catalog/recipes/<name>/recipe.yaml` — see
+  [docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md) (examples: `catalog/recipes/time`,
+  `catalog/recipes/ping`, `catalog/recipes/gstack`). Recipes are harness-independent (no `harnesses:`).
+- **Stack** → `catalog/stacks/<agent>_<recipe>…/stack.yaml`, or `harnessed new <name> --harness <agent>
+  --recipes a,b,c`. See [docs/guides/stacks.md](docs/guides/stacks.md).
+- **Agent** → `catalog/agents/<name>/agent.yaml` + its Dockerfile. Agents are not recipes.
+- **Service** → `catalog/services/<name>/` — see
+  [docs/guides/service-authoring.md](docs/guides/service-authoring.md) (example: `catalog/services/ping`).
+- **Secrets** (opt-in varlock + 1Password): [docs/guides/secrets.md](docs/guides/secrets.md).
+- **Troubleshooting**: [docs/guides/troubleshooting.md](docs/guides/troubleshooting.md).
 
-If the user asks to configure harnesses to run without permission prompts inside a stack instance,
-read and follow [Permissions.md](Permissions.md).
+> You may only modify files **in this repository**. Do not modify the user's home directory (`~/`)
+> unless they explicitly ask.
 
 ## Conventions
 
-Follow [CLAUDE.md](CLAUDE.md) for project conventions and constraints (pnpm everywhere; Claude Code
-format is canonical; credentials referenced from host, never baked; SSE MCP transport is deprecated
-in favor of Streamable HTTP).
+See [CLAUDE.md](CLAUDE.md) for the non-negotiable constraints (host-native CLI; Claude format
+canonical; recipes harness-independent; pnpm everywhere; pinned downloads; credentials never baked;
+Streamable-HTTP MCP).

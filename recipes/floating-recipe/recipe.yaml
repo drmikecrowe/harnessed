@@ -1,8 +1,0 @@
-# Phase 8 test fixture — triggers ASM-02 pin validation rejection.
-#
-# This recipe exists only to exercise the assembler's validate_pin() gate.
-# Its Dockerfile contains a floating --branch ref that causes PinValidationError
-# when the assembler processes the floating-test stack.
-name: floating-recipe
-description: Phase 8 test fixture — contains a floating Dockerfile ref to trigger ASM-02 rejection.
-harnesses: [claude]

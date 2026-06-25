@@ -18,3 +18,9 @@ tools/test-fixtures/profiles/
 
 # Stray SSH debug log (not part of the project)
 ssh-verbose.log
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/

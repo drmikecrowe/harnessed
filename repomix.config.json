@@ -29,8 +29,6 @@
   },
   "include": [
     "docs/**",
-    ".planning/*.md",
-    ".planning/codebase/*.md",
     "README.md"
   ],
   "ignore": {

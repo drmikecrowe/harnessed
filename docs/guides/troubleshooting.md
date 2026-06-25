@@ -73,7 +73,7 @@ Images build on the host via `podman build` the first time they're needed. If a 
 - **The tools image is the longest build.** `harnessed-tools` pulls Node/pnpm + the supply-chain
   scanners + varlock + `op` (Phase 5). First-run latency here is expected; later runs are cache hits.
 - **`harnessed build` aborts on HIGH** — see [Supply-chain scan failures](#supply-chain-scan-failures).
-- **A `harnessed` upgrade that touched `tools/harnessed/*.py` is not picked up by `rescan`.**
+- **A `harnessed` upgrade that touched `src/harnessed/*.py` is not picked up by `rescan`.**
   `ensure_tools_image` is a build-if-missing guard, **not** a staleness guard. After upgrading, rebuild
   the tools image so the assembler/scanner entrypoints are current:
 
@@ -211,8 +211,58 @@ The opt-in secrets workflow is documented in **[secrets.md](secrets.md)**. Commo
   (deterministic); the nightly timer uses the **online** DB (fresh). A CVE disclosed *after* you
   built won't fail the build but will surface in the nightly — see [Nightly re-scan timer](#nightly-re-scan-timer-sec-04).
 
+## Recipe build & test FAQ
+
+Hard-won answers from exercising the recipe → `build` → `test` loop end to end. The full
+engineering log (symptom → root cause → fix per issue) is in
+[docs/recipe-build-findings.md](../recipe-build-findings.md).
+
+- **I edited `src/harnessed/*.py` but `harnessed build` still behaves the old way.** The assembler
+  runs *inside* the `harnessed-tools` image, which is built once and cached. Rebuild it after any
+  change under `src/harnessed/`:
+  ```bash
+  podman build -t harnessed-tools:latest -f tools/Dockerfile tools
+  ```
+  The launcher itself runs on the host, so launcher-only edits take effect immediately.
+
+- **What exactly does `harnessed test <stack>` assert?** It launches the stack `--fresh` headless and
+  diffs the running instance against the manifest oracle: each declared **MCP server** must be
+  connected (read from hatago's `hatago://servers` resource) and each declared **skill/command** must
+  be present (read from the mounted `~/.claude` profile). Both checks are **auth-free** — you do *not*
+  need Claude credentials for a green capability report. `--json` prints the structured result; exit
+  code 0 means every declared capability is present.
+
+- **A `service:` recipe (e.g. `ping`) reports its MCP server as not connected.** The service sidecar
+  must be running and host-published. `harnessed <stack>` now starts referenced services
+  automatically before creating the pod; you can also manage one explicitly:
+  ```bash
+  harnessed svc up ping     # build (if needed) + start host-published; persists across --fresh
+  harnessed svc down ping   # stop + remove
+  ```
+  Services intentionally **outlive** instances — `--fresh` tears down only the pod, not the service.
+
+- **My OMP stack runs the same skills as the Claude stack.** Expected. The profile is
+  Claude-canonical (single source of truth); OMP consumes the same `.claude/` tree via the
+  pre-installed `claude-hooks-bridge`. Compose an OMP stack with the same capability recipes plus the
+  `omp` base recipe, e.g. `harnessed new omp-multi --harness omp --recipes time,greet,omp`.
+
+- **A build I *expected* to fail (floating pin) — what should I see?** A one-line `error:` and a
+  non-zero exit, not a traceback. Floating Dockerfile refs (`@latest`, `--branch main`) trip the pin
+  gate, validated *before* any image layer is written.
+
+- **Can a recipe be restricted to one harness?** No — recipes are harness-independent by design.
+  Every harness consumes the same Claude-canonical profile, so a recipe never declares a `harnesses:`
+  field. If a recipe needs harness-specific install steps, branch on the `${HARNESS}` build arg
+  *inside* its Dockerfile. (A "claude stack" is simply `harness: claude` with whatever recipes you
+  want — there is no such thing as a claude-only *recipe*.)
+
+- **A Dockerfile recipe's `expect:` capability isn't verified.** Known gap — `recipe.expect` is parsed
+  but not yet wired into the capability oracle, and the derived `Dockerfile.harnessed-<stack>` image
+  is emitted but not yet built/run by the launcher. See findings F7/F8.
+
 ## See also
 
+- [docs/recipe-build-findings.md](../recipe-build-findings.md) — the engineering findings log behind this FAQ.
 - [docs/harnessed-design.md §15 & §17](../harnessed-design.md) — the *why* (host-native execution, docs cadence).
 - [secrets.md](secrets.md) — the opt-in varlock + 1Password workflow.
 - [README.md](../../README.md) — the command surface and quickstart.

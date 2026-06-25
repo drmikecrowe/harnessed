@@ -1,7 +1,0 @@
-type: agent
-harness: claude
-image: harnessed-claude
-dockerfile: base/Dockerfile.harnessed-claude
-description: >
-  Claude Code harness. FROM harnessed-base + official Claude Code CLI installer.
-  Builds without re-downloading runtimes (all in harnessed-base).

@@ -1,7 +1,0 @@
-# Stack: gstack-time — Phase 8 test artifact.
-#
-# Exercises the Phase 8 Dockerfile recipe model: the `claude` harness + two recipes
-# (gstack via Dockerfile, time via MCP server). Used in Phase 8 success-criteria verification.
-name: gstack-time
-harness: claude
-recipes: [gstack, time]

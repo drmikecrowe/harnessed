@@ -1,9 +1,0 @@
-# Phase 8 test fixture — harness: omp + claude-only gstack recipe triggers ASM-01 rejection.
-#
-# gstack declares harnesses: [claude]; this stack declares harness: omp.
-# When the assembler processes this stack, validate_harness_compat() detects the mismatch
-# and raises HarnessCompatError before any image build begins.
-# Used by test_harness_compat_rejected UAT test.
-name: omp-gstack-test
-harness: omp
-recipes: [gstack]

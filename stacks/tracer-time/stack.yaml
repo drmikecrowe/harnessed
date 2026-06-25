@@ -1,9 +1,0 @@
-# Stack: tracer-time — the Phase 2 tracer bullet (design §12 / D-01, D-14).
-#
-# The smallest end-to-end isolated slice: the `claude` harness + the `time` recipe (one light
-# stdio MCP server + one standalone skill), composed into a committed profile and run isolated.
-# Only the tracer-bullet fields are set; `services`, `permissions`, and `state` use defaults and
-# are parsed forward by the assembler (D-14).
-name: tracer-time
-harness: claude       # claude | omp  (exactly one)
-recipes: [time]

@@ -1,0 +1,8 @@
+# Stack: claude_floating-recipe — pin-gate rejection fixture.
+# floating-recipe ships a Dockerfile with a floating ref; assembling this stack must raise
+# PinValidationError before any image layer is written. Its "integration test" asserts the
+# build is rejected cleanly (non-zero exit, no traceback).
+name: claude_floating-recipe
+harness: claude
+recipes: [floating-recipe]
+services: []
