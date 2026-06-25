@@ -15,6 +15,14 @@ USER root
 # "Playwright Chromium could not be launched". Install the system deps first — bun is in the base
 # image and install-deps shells out to apt, hence USER root.
 RUN bunx playwright install-deps chromium
-RUN git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack && cd ~/.claude/skills/gstack && ./setup
-RUN cd ~/.claude/skills/gstack && ./bin/gstack-config set redact_prepush_hook true — /ship
+# Pin gstack to an exact commit (upstream publishes no release tags). Shallow fetch-by-SHA — GitHub
+# allows fetching a reachable commit. Bump GSTACK_REF to update; use the full 40-char SHA.
+ARG GSTACK_REF=11de390be1be6849eb9a15f91ff4922dd16c589a
+RUN git init -q ~/.claude/skills/gstack \
+    && cd ~/.claude/skills/gstack \
+    && git remote add origin https://github.com/garrytan/gstack.git \
+    && git fetch --depth 1 origin ${GSTACK_REF} \
+    && git checkout -q FETCH_HEAD \
+    && ./setup
+RUN cd ~/.claude/skills/gstack && ./bin/gstack-config set redact_prepush_hook true -- /ship
 USER harnessed
