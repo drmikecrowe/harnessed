@@ -14,7 +14,7 @@ examples from this repo's `catalog/stacks/`.
 ```
 catalog/stacks/<name>/stack.yaml        # the manifest (you author or scaffold)
   ↓ harnessed build <stack>     # assemble (emit-only) + scan + host podman build
-profiles/<name>/                # GENERATED + committed; mounted into the harness container
+$XDG_DATA_HOME/harnessed/profiles/<name>/   # GENERATED (never committed); mounted into the harness container
   .claude/{skills,commands,...} # the assembled, version-controlled profile
   hatago.config.json
 ```
@@ -29,7 +29,7 @@ Key fields:
 
 ```yaml
 name: <stack>                     # required
-harness: claude                   # claude | omp | opencode | gemini | antigravity | codex  (exactly one)
+harness: claude                   # claude | omp  (exactly one)
 recipes: [a, b, c]                # list of catalog/recipes/ to compose
 services: [ping]                  # optional — shared sidecars to attach (auto-started on launch)
 permissions: yolo                 # optional — prompt (default) | yolo (writes skip-permission config)
@@ -41,46 +41,40 @@ state:                            # optional
 Notes:
 
 - **One harness per stack** (design §8). `claude` mounts the profile natively; `omp` consumes the
-  *same* Claude-canonical profile via `claude-hooks-bridge`; **`opencode`** also consumes the same
-  `.claude/` profile, reading `.claude/skills/**/SKILL.md` + `CLAUDE.md` natively (MCP wired via the
-  image-baked `~/.config/opencode` config instead of `.mcp.json`) — no re-authoring for either.
-  **`gemini`**, **`antigravity`** (`agy`), and **`codex`** (OpenAI Codex CLI) mount the same `.claude/` profile for parity but do NOT
-  natively consume Claude skills/commands (their native asset formats differ); their real capability
-  wiring is MCP via image-baked config (`gemini` → `~/.gemini/settings.json`, `antigravity` →
-  `~/.gemini/config/mcp_config.json`, `codex` → `~/.codex/config.toml`) pointing at the hatago hub.
+  *same* Claude-canonical profile via `claude-hooks-bridge` — no re-authoring needed for either.
 - Only the fields you exercise are required; the assembler parses the rest forward.
 
-## Worked example 1: `tracer-time` (claude, one recipe)
+## Worked example 1: `claude_time` (claude, one recipe)
 
-[`catalog/stacks/tracer-time/stack.yaml`](../../catalog/stacks/tracer-time/stack.yaml) is the Phase 2 tracer bullet —
-the smallest end-to-end slice:
+[`catalog/stacks/claude_time/stack.yaml`](../../catalog/stacks/claude_time/stack.yaml) is the smallest
+end-to-end slice:
 
 ```yaml
-name: tracer-time
-harness: claude       # claude | omp | opencode | gemini | antigravity | codex  (exactly one)
+name: claude_time
+harness: claude       # claude | omp  (exactly one)
 recipes: [time]
 ```
 
 The full lifecycle:
 
 ```bash
-harnessed build tracer-time      # assemble → scan → build hatago → image scan
-harnessed tracer-time            # launch the pod (harness + hatago), attach
-harnessed test tracer-time       # capability report: ✓ time (mcp), ✓ time-helper (skill)
+harnessed build claude_time      # assemble → scan → build hatago → image scan
+harnessed claude_time            # launch the pod (harness + hatago), attach
+harnessed test claude_time       # capability report: ✓ time (mcp), ✓ time-helper (skill)
 ```
 
-`harnessed build` emits the `profiles/tracer-time/` tree (assembled from `catalog/recipes/time`) and builds
-the hatago image. `harnessed tracer-time` composes the pod and attaches; `harnessed test` brings the
+`harnessed build` emits the `$XDG_DATA_HOME/harnessed/profiles/claude_time/` tree (assembled from `catalog/recipes/time`) and builds
+the hatago image. `harnessed claude_time` composes the pod and attaches; `harnessed test` brings the
 instance up `--fresh` headless and asserts the manifest's declared capabilities are live (design
 §18). Running an unbuilt stack errors and tells you to `harnessed build` first.
 
-## Worked example 2: `ping-time` (a stack with a shared service)
+## Worked example 2: `claude_ping_time` (a stack with a shared service)
 
-[`catalog/stacks/ping-time/stack.yaml`](../../catalog/stacks/ping-time/stack.yaml) composes a stdio recipe (`time`)
-with a service-ref recipe (`ping`) and attaches a shared sidecar:
+An illustrative `claude_ping_time` stack (scaffold it with `harnessed new`, below) composes a stdio
+recipe (`time`) with a service-ref recipe (`ping`) and attaches a shared sidecar:
 
 ```yaml
-name: ping-time
+name: claude_ping_time
 harness: claude
 recipes: [time, ping]
 services: [ping]
@@ -95,14 +89,10 @@ services: [ping]
 
 Authoring the sidecar itself is covered in the [service-authoring guide](service-authoring.md).
 
-> Other stacks in this repo follow the same shape: [`catalog/stacks/claude-multi`](../../catalog/stacks/claude-multi/stack.yaml)
-> (two recipes on claude — proves multi-recipe composition) and [`catalog/stacks/omp-time`](../../catalog/stacks/omp-time/stack.yaml)
-> (the same `time` recipe on the `omp` harness via the bridge — proves one canonical profile runs on
-> either harness). [`catalog/stacks/opencode-time`](../../catalog/stacks/opencode-time/stack.yaml) runs the same `time`
-> recipe on the `opencode` harness. [`catalog/stacks/gemini-time`](../../catalog/stacks/gemini-time/stack.yaml),
-> [`catalog/stacks/antigravity-time`](../../catalog/stacks/antigravity-time/stack.yaml), and
-> [`catalog/stacks/codex-time`](../../catalog/stacks/codex-time/stack.yaml) run the same `time` recipe on
-> the `gemini`, `antigravity`, and `codex` harnesses — proving one canonical profile runs on all six harnesses.
+> Other stacks in this repo follow the same shape: [`catalog/stacks/claude_gstack_ping_time_greet`](../../catalog/stacks/claude_gstack_ping_time_greet/stack.yaml)
+> (three recipes on claude — proves multi-recipe composition) and [`catalog/stacks/omp_gstack_ping_time_greet`](../../catalog/stacks/omp_gstack_ping_time_greet/stack.yaml)
+> (the same recipes on the `omp` harness via the bridge — proves one canonical profile runs on
+> either harness).
 
 ## Scaffolding a new stack
 
@@ -117,7 +107,7 @@ harnessed new my-stack --harness claude --recipes time,greet
 #   recipes: [time, greet]
 ```
 
-`--harness` must be `claude`, `omp`, `opencode`, `gemini`, `antigravity`, or `codex` (hard error otherwise). Recipes need not pre-exist yet —
+`--harness` must be `claude` or `omp` (hard error otherwise). Recipes need not pre-exist yet —
 `harnessed new` **warns** (not fails) if a recipe dir is missing, so you can author the stack first
 and the recipes after.
 

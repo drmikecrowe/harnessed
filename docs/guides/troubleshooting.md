@@ -9,8 +9,8 @@ see [secrets.md](secrets.md).
 
 `harnessed` is **host-native**: every `podman`/`docker` command runs on the host directly. There is
 **no daemon-in-container, no Docker-out-of-Docker, and no rootless API socket mounted**
-([design §15](../harnessed-design.md)). The `harnessed-tools` assembler image only **emits files**
-(Dockerfile + profile + launcher); the host then runs ordinary `podman build` / `podman run`.
+([design §15](../harnessed-design.md)). Assembly (Dockerfile + profile generation) runs in-process
+inside the host Python CLI; the host then runs ordinary `podman build` / `podman run`.
 
 - You do **not** need to `systemctl --user enable --now podman.socket` for harnessed's core flow. The
   socket is only relevant if a container must *drive* the host engine — and harnessed never does.
@@ -21,7 +21,7 @@ see [secrets.md](secrets.md).
 ## Container runtimes (podman / Docker / Apple `container`)
 
 `harnessed` is provider-agnostic. The harness stack — the harness container + the hatago hub sharing
-one `localhost:3535` — is expressed per-runtime by [`lib/harnessed-runtime.sh`](../../lib/harnessed-runtime.sh):
+one `localhost:3535` — is expressed per-runtime by [`src/harnessed/launcher.py`](../../src/harnessed/launcher.py):
 
 - **podman** — a pod (`pod create` + `run --pod`); rootless uid mapping via `--userns=keep-id`.
 - **Docker** — a shared network namespace: hatago runs first, the harness joins it with
@@ -33,25 +33,22 @@ one `localhost:3535` — is expressed per-runtime by [`lib/harnessed-runtime.sh`
 
 `detect_runtime` prefers podman, else docker. Force one with `CONTAINER_RUNTIME=docker harnessed …`.
 
-### Full UAT on a fresh host (e.g. a Docker NAS)
+### Full integration test on a fresh host (e.g. a Docker NAS)
 
 After `git pull` on the target host:
 
 ```bash
-cd /path/to/code-container
-harnessed build                 # build the shared base + claude + hatago images on this runtime
-./tools/uat/run-uat.sh 6        # the HARNESS MATRIX: build + capability-test every harness
-# …or one harness end to end:
-harnessed build codex-time && harnessed test codex-time
-# …or only the fast checks (manifests + harness validation, no containers):
-./tools/uat/run-uat.sh 6 --quick
+cd /path/to/harnessed
+# build + capability-test every stack in catalog/stacks/ (auto-discovered):
+HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py
+# fast unit / assembly checks (no containers):
+uv run pytest -q
 ```
 
-The matrix builds each `<harness>-time` proof stack, launches it `--fresh` headless, asserts the
-`time` MCP server is reachable through hatago **and** the `time-helper` skill is present, then tears
-it down. A green matrix proves that runtime drives **every** harness (claude, omp, opencode, gemini,
-antigravity, codex) correctly. Add a harness → add a line to `UAT_MATRIX` in
-[`tools/uat/phase-06.sh`](../../tools/uat/phase-06.sh).
+The integration suite builds each stack in `catalog/stacks/`, launches it `--fresh` headless,
+asserts declared MCP servers are reachable and declared skills are present, then tears it down.
+Real stacks today: `claude_time` (smallest), `claude_gstack_ping_time_greet`,
+`omp_gstack_ping_time_greet`, `claude_floating-recipe`. Add a stack → it is picked up automatically.
 
 ### Docker caveats
 
@@ -70,17 +67,11 @@ Images build on the host via `podman build` the first time they're needed. If a 
 
 - **podman version / disk / context** — confirm `podman --version` ≥ 5.6, that you have disk space,
   and that you're running from the repo root (the build context).
-- **The tools image is the longest build.** `harnessed-tools` pulls Node/pnpm + the supply-chain
-  scanners + varlock + `op` (Phase 5). First-run latency here is expected; later runs are cache hits.
 - **`harnessed build` aborts on HIGH** — see [Supply-chain scan failures](#supply-chain-scan-failures).
-- **A `harnessed` upgrade that touched `src/harnessed/*.py` is not picked up by `rescan`.**
-  `ensure_tools_image` is a build-if-missing guard, **not** a staleness guard. After upgrading, rebuild
-  the tools image so the assembler/scanner entrypoints are current:
-
-  ```bash
-  podman build -t harnessed-tools:latest -f tools/Dockerfile tools/
-  ```
-
+- **A `harnessed` upgrade that touched `src/harnessed/*.py`** takes effect immediately — the
+  assembler runs in-process on the host (there is no tools image to rebuild). If behaviour still
+  looks stale, confirm your shell's `harnessed` resolves to the updated install
+  (`which harnessed` / `pipx upgrade harnessed`).
 - **Running an unbuilt stack** errors with `Stack '<stack>' has no assembled profile (run:
   harnessed build <stack>)`. Build it first:
 
@@ -105,10 +96,10 @@ A stack instance authenticates by mounting `~/.claude/.credentials.json` read-on
 
 `harnessed <stack> --fresh` tears down any existing pod/instance for the project, wipes the
 per-instance state dir, and reseeds it from the committed profile — a true clean-room run with no
-state bleed (design §9, [lib/harnessed-isolated.sh](../../lib/harnessed-isolated.sh)):
+state bleed (design §9, [`src/harnessed/launcher.py`](../../src/harnessed/launcher.py)):
 
 ```bash
-harnessed tracer-time --fresh      # wipe + reseed, then attach
+harnessed claude_time --fresh      # wipe + reseed, then attach
 ```
 
 A **normal** run (no `--fresh`) **reuses** the accumulated per-instance `.claude` (projects/,
@@ -218,12 +209,10 @@ engineering log (symptom → root cause → fix per issue) is in
 [docs/recipe-build-findings.md](../recipe-build-findings.md).
 
 - **I edited `src/harnessed/*.py` but `harnessed build` still behaves the old way.** The assembler
-  runs *inside* the `harnessed-tools` image, which is built once and cached. Rebuild it after any
-  change under `src/harnessed/`:
-  ```bash
-  podman build -t harnessed-tools:latest -f tools/Dockerfile tools
-  ```
-  The launcher itself runs on the host, so launcher-only edits take effect immediately.
+  runs in-process on the host, so edits under `src/harnessed/` take effect immediately with no image
+  rebuild. Verify your shell resolves to the edited install: `which harnessed`. If you installed via
+  `uv tool install` or `pipx`, re-install from the local clone (`uv tool install -e .` /
+  `pipx install -e .`) or confirm the venv on PATH is the one you edited.
 
 - **What exactly does `harnessed test <stack>` assert?** It launches the stack `--fresh` headless and
   diffs the running instance against the manifest oracle: each declared **MCP server** must be

@@ -27,7 +27,7 @@ cp .env.schema.example ~/.config/harnessed/.env.schema
 $EDITOR ~/.config/harnessed/.env.schema
 
 # 3. Launch any stack. Resolved secrets reach the pod as env only.
-harnessed tracer-time
+harnessed claude_time
 ```
 
 The `.env.schema.example` shipped at the repo root is the canonical template — copy it,
@@ -66,13 +66,13 @@ fall back to the headless path below.
 
 For environments without the 1Password desktop app **or** without host `varlock` (CI, the
 nightly re-scan timer, a headless server), set `OP_SERVICE_ACCOUNT_TOKEN` in the launcher env.
-With a service-account token, resolution runs in a throwaway `harnessed-tools` container (HTTPS
-bearer auth — no desktop app, no app-auth, no socket). `harnessed` forwards the token only when
-it is already set — it never prompts and never echoes.
+With a service-account token, resolution runs host-native in-process (HTTPS bearer auth — no
+desktop app, no app-auth, no socket). `harnessed` forwards the token only when it is already set
+— it never prompts and never echoes.
 
 > **Caution (per CLAUDE.md "What NOT to Use"):** a visible service-account token leaks into
 > any process sharing the env. **Scope it narrowly to the invocation** — prefix it on the
-> command line (`OP_SERVICE_ACCOUNT_TOKEN=… harnessed tracer-time`) or inject via your CI
+> command line (`OP_SERVICE_ACCOUNT_TOKEN=… harnessed claude_time`) or inject via your CI
 > secret store. Do **not** `export` it in your shell profile or `~/.bashrc`, and do not
 > leave it in a long-lived shell session.
 
@@ -97,16 +97,7 @@ present and warns-and-skips otherwise. Two ways to provide a token:
    before building. The build scan is env-gated on `SNYK_TOKEN`, and `build_stack` forwards it:
 
    ```bash
-   SNYK_TOKEN='<token>' harnessed build tracer-time     # scoped to the one invocation
-   ```
-3. **Via `harnessed auth snyk|socket`** — persists the token to host config
-   (`~/.config/configstore/snyk.json` for snyk), for **interactive `snyk`/`op` use inside the
-   tools container**. This does **not** feed `harnessed build`'s scan step — that gate is the
-   `SNYK_TOKEN` env var, not configstore — so use path 1 or 2 for the build scan:
-
-   ```bash
-   harnessed auth snyk      # opens a browser flow at a TTY; writes configstore/snyk.json
-   harnessed auth socket    # prompts for the API token; stores in socket's config
+   SNYK_TOKEN='<token>' harnessed build claude_time     # scoped to the one invocation
    ```
 
 ## Verification

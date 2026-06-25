@@ -13,11 +13,11 @@
 >
 > | Runtime | Status | Notes |
 > | --- | --- | --- |
-> | **podman** (rootless) | 🧪 **in testing** | The reference runtime (pods). Most complete path — verify your host with `./tools/uat/run-uat.sh 6`. |
+> | **podman** (rootless) | 🧪 **in testing** | The reference runtime (pods). Most complete path — verify your host with `HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py`. |
 > | **Docker** | ⏳ **pending** | A shared-network-namespace path exists (`--network container:`) but is **not yet verified**. Egress firewall needs rootless `NET_ADMIN` (best-effort — `--no-firewall` to skip); shared **service sidecars** aren't wired (no `host.containers.internal`). |
 > | **Apple `container`** | ⏳ **pending** | Tracked follow-up. One VM/IP per container, no shared netns — needs a different networking story. |
 >
-> Runtime differences are abstracted by [`lib/harnessed-runtime.sh`](lib/harnessed-runtime.sh). See [troubleshooting](docs/guides/troubleshooting.md).
+> Runtime differences (pod vs shared-netns) are handled inside the host CLI (`src/harnessed/launcher.py`). See [troubleshooting](docs/guides/troubleshooting.md).
 
 You can read my [announcement here](https://mikesshinyobjects.tech/posts/2026/2026-03-20-code-container-isolating-ai-harnesses/)
 
@@ -26,7 +26,7 @@ You can read my [announcement here](https://mikesshinyobjects.tech/posts/2026/20
 ---
 
 `harnessed` is **one executable** that launches **composable harness stacks** — each a
-podman pod running an AI coding harness (`claude`, `omp`, `opencode`, `gemini`, `antigravity`, or `codex`) plus an MCP hub (hatago) plus optional
+podman pod running an AI coding harness (`claude` or `omp` today) plus an MCP hub (hatago) plus optional
 shared services (hindsight, openbrain, …). You compose a named stack (one harness + chosen recipes)
 and launch an authenticated instance that exposes **exactly** the skills/commands/MCP/
 services it declares — nothing from the host config — reproducibly, with **podman as the only host
@@ -45,18 +45,23 @@ Every stack runs in **isolated mode**: auth seeded from host credentials, config
 
 ## Install
 
-**Podman (rootless) is the only host dependency** — it's the reference runtime (Docker support is pending; see the runtime table above). No host Python/node/uv is required —
-all assembly logic lives in a containerized `harnessed-tools` image ([design §15](docs/harnessed-design.md)).
+`harnessed` is a **host Python CLI** (Python ≥ 3.12) that drives podman directly — there is no tool
+container. You need two host dependencies: **podman** (rootless; the reference runtime — Docker
+support is pending, see the runtime table above) and **[uv](https://docs.astral.sh/uv/)** (or pipx)
+to install the CLI.
+
+Install the CLI onto your PATH from a clone:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/drmikecrowe/code-container/main/install.sh | bash
+git clone https://github.com/drmikecrowe/harnessed.git
+uv tool install ./harnessed          # or: pipx install ./harnessed
 ```
 
-The installer clones the repo to `~/.local/share/code-container` (or pulls latest if already
-installed) and symlinks `harnessed` onto your PATH (`~/.local/bin` if it's on PATH, else
-`/usr/local/bin` via sudo). The installer is fully verbose.
+This puts `harnessed` in `~/.local/bin` (ensure it's on your PATH; `uv tool update-shell` sets it up).
+To uninstall: `uv tool uninstall harnessed` (or `pipx uninstall harnessed`).
 
-To uninstall, remove the symlinks and the cloned directory.
+> **Working on the CLI itself?** Use an editable dev env instead — see [CONTRIBUTING.md](CONTRIBUTING.md)
+> (`uv sync --extra dev` + `export PATH="$PWD/.venv/bin:$PATH"`).
 
 > **Linux** — tested on Manjaro; should work on any systemd distro. macOS/WSL untested.
 
@@ -65,44 +70,47 @@ To uninstall, remove the symlinks and the cloned directory.
 Images are built on the host with `podman build` the first time they're needed. The image lineage is three layers:
 
 - **Layer 1 — `harnessed-base`**: fat toolchain image (mise, node@24, python, pnpm; no harness CLI).
-- **Layer 2 — `harnessed-<harness>`**: FROM `harnessed-base` + harness CLI installed (one image per harness: `harnessed-claude`, `harnessed-omp`, `harnessed-opencode`, `harnessed-gemini`, `harnessed-antigravity`, `harnessed-codex`).
-- **Layer 3 — `harnessed-<stack>`**: derived stack image built by `harnessed build <stack>` — FROM `harnessed-<harness>` + recipe Dockerfiles concatenated (e.g. `harnessed-gstack-time` FROM `harnessed-claude`).
+- **Layer 2 — `harnessed-<agent>`**: FROM `harnessed-base` + the agent CLI installed (one image per agent: `harnessed-claude`, `harnessed-omp`).
+- **Layer 3 — `harnessed-<stack>`**: derived stack image built by `harnessed build <stack>` — FROM `harnessed-<agent>` + the stack's recipe Dockerfiles concatenated (e.g. `harnessed-claude_gstack_ping_time_greet` FROM `harnessed-claude`).
 
-Supporting images (not part of the base→agent→stack lineage):
+Supporting image (not part of the base→agent→stack lineage):
 
 - **`hatago`** — the MCP hub (aggregates a stack's MCP servers behind one HTTP endpoint; light `pnpm dlx`/`uvx` servers baked in).
-- **`harnessed-tools`** — the emit-only assembler image (Python + scanners + pnpm + varlock + `op`). Needed for stack assembly.
+
+Assembly runs **host-native in-process** (no tool container) — the host CLI emits the profile and
+the `Dockerfile.harnessed-<stack>`, then drives `podman build`.
 
 ```bash
-harnessed build          # (re)build the base/claude/hatago images
-harnessed build <stack>  # assemble one stack: emit profile + build hatago (+ supply-chain scan)
+harnessed build          # (re)build the shared base/agent/hatago images
+harnessed build <stack>  # assemble one stack: emit profile + build images (+ supply-chain scan)
 ```
 
-Bare `harnessed build` rebuilds the shared base/harness/hatago images. `harnessed build <stack>`
-runs the assembler (emit-only), a scoped source/dependency scan, the host hatago image build, and an
-image scan — producing a committed `profiles/<stack>/` tree. Expect first-run latency (images build
-via host `podman build`); later runs are cache hits.
+Bare `harnessed build` rebuilds the shared base/agent/hatago images. `harnessed build <stack>`
+assembles in-process, runs a scoped source/dependency scan, builds the hatago image and (if any
+recipe ships a Dockerfile) the derived `harnessed-<stack>` image with an image scan — emitting the
+profile to `$XDG_DATA_HOME/harnessed/profiles/<stack>/` (the clone stays immutable source). Expect
+first-run latency (images build via host `podman build`); later runs are cache hits.
 
 ## Quickstart
 
-Build and launch the `tracer-time` sample stack — the claude harness + the `time` recipe (one light stdio MCP server + one standalone skill):
+Build and launch the `claude_time` sample stack — the `claude` agent + the `time` recipe (one light stdio MCP server + one standalone skill):
 
 ```bash
 cd /path/to/project
-harnessed build tracer-time && harnessed tracer-time
+harnessed build claude_time && harnessed claude_time
 ```
 
-`tracer-time` is the smallest end-to-end stack slice: the `claude` harness + the `time` recipe
-(one light stdio MCP server + one standalone skill), composed into a committed profile and run as a
-pod (harness + hatago). Running an unbuilt stack errors and tells you to `harnessed build` it first.
+`claude_time` is the smallest end-to-end stack slice: the `claude` agent + the `time` recipe
+(one light stdio MCP server + one standalone skill), composed into a profile and run as a
+pod (agent + hatago). Running an unbuilt stack errors and tells you to `harnessed build` it first.
 
 After building, verify the stack's declared capabilities with the capability test:
 
 ```bash
-harnessed test tracer-time
+harnessed test claude_time
 ```
 
-`harnessed test` launches the stack headless, runs the two-oracle capability check, and writes a per-capability report to `profiles/tracer-time/capability-report.md` (✓ connected / ✗ missing).
+`harnessed test` launches the stack headless, runs the two-oracle capability check, and writes a per-capability report to `$XDG_DATA_HOME/harnessed/profiles/claude_time/capability-report.md` (✓ connected / ✗ missing).
 
 ## Command surface
 
@@ -114,16 +122,15 @@ harnessed test tracer-time
 | `harnessed svc up \| down \| list <service>` | Manage shared service sidecars (own image + volume) |
 | `harnessed list` | List authored stacks + running instances |
 | `harnessed stop \| rm <stack>` | Stop / remove every instance of a stack |
-| `harnessed new <stack> [--harness claude\|omp\|opencode\|gemini\|antigravity\|codex] [--recipes a,b,c]` | Scaffold a stack manifest |
+| `harnessed new <stack> [--harness claude\|omp] [--recipes a,b,c]` | Scaffold a stack manifest |
 | `harnessed install \| uninstall <stack>` | Write / remove a `~/.local/bin/<stack>` launcher shim |
-| `harnessed auth snyk \| socket` | Set a scanner token (persisted to host `~/.config`; never an image layer) |
 | `harnessed rescan` | Re-scan installed harnessed images online (the nightly timer's trigger) |
 | `harnessed --fresh ...` | Tear down any existing pod/instance first (isolated) |
 | `harnessed --no-firewall ...` | Skip the egress firewall for this run |
 | `harnessed -h \| --help` | Show help |
 
-Run `harnessed --help` for the full surface. The legacy `--list`/`--stop`/`--remove`/`--clean` flags
-remain for muscle memory (they dispatch to the per-instance path).
+Run `harnessed --help` for the full surface. Scanner tokens (e.g. `SNYK_TOKEN`) are read from the
+environment — there is no `harnessed auth` command (see [Supply chain & security](#supply-chain--security)).
 
 ## Guides
 
@@ -164,7 +171,7 @@ Three projects solve adjacent problems — pick the one that matches your threat
 | **Auth model**       | Seamless — host credentials shared into container    | Credential providers inject keys; never exposed in sandbox               | Per-container setup                                                                                       | Fully isolated                                                           |
 | **Threat model**     | Contain the AI, not the repo                         | Full defense-in-depth (filesystem, network, process, inference)          | Consistent team environments                                                                              | Malicious repos / adversarial input                                      |
 | **Runtime**          | Podman (rootless); Docker pending                    | K3s (Kubernetes) inside Docker                                           | Docker / Dev Containers spec                                                                              | Docker                                                                   |
-| **AI harnesses**     | Claude, omp (via bridge), opencode, gemini, antigravity, codex   | Claude, OpenCode, Codex, Copilot                                           | Claude                                                                                                    | Claude                                                                   |
+| **AI harnesses**     | Claude, omp (via bridge); more planned   | Claude, OpenCode, Codex, Copilot                                           | Claude                                                                                                    | Claude                                                                   |
 
 **Use this project** if you want composable experimentation across skill/MCP/memory combinations,
 without the friction of re-authentication or tool switching every session.

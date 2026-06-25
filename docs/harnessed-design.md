@@ -30,8 +30,8 @@ A running **stack** is composed **at runtime**, in a podman **pod** on a shared 
 at build time. (`FROM` is linear inheritance + multi-stage `COPY --from`; it cannot union two
 sibling systems. See §6.)
 
-> **Provider abstraction.** The shared-netns group is runtime-abstracted by
-> `lib/harnessed-runtime.sh` (`rt_*` helpers): podman uses a **pod** (`pod create` + `run --pod`,
+> **Provider abstraction.** The shared-netns group is runtime-abstracted by the host CLI
+> (`src/harnessed/launcher.py`): podman uses a **pod** (`pod create` + `run --pod`,
 > rootless uid via `--userns=keep-id`); docker uses a **shared-netns pair** — hatago runs first,
 > the harness joins with `--network container:<instance>-hatago` (rootless docker remaps uids
 > daemon-side, no `--userns`). Apple `container` has no shared-netns equivalent (one VM+IP per
@@ -91,8 +91,8 @@ Auth seeded, config from the profile via **surgical per-file mounts** — the co
   as a whole `profiles/<stack>/` directory. Each harness has a YAML manifest
   (`lib/manifests/claude.yaml`, `lib/manifests/omp.yaml`, etc.) with two top-level keys:
   - `profile_files`: individual filenames (e.g. `.mcp.json`, `settings.json`) mounted read-only
-    from `profiles/<stack>/` into the container's harness config dir. The bash helper
-    `lib/harnessed-manifest-mounts.sh` reads the manifest at launch time and applies harness-aware
+    from `profiles/<stack>/` into the container's harness config dir. The host CLI
+    (`src/harnessed/launcher.py`) reads the manifest at launch time and applies harness-aware
     container target paths: claude/omp/opencode mount profile files to `~/.claude/<f>`;
     gemini/antigravity/codex skip profile file mounting (their MCP config is image-baked).
   - `history_dirs`: `$HOME`-relative paths bind-mounted read-write for history surfacing (e.g.
@@ -218,8 +218,8 @@ as Claude auth: **reference host creds, never bake or commit them.**
 
 - **Present → use, silently.** Sources, in order: raw `SNYK_TOKEN` / `SOCKET_SECURITY_API_KEY` env
   or host config (`~/.config/configstore/snyk.json`); **or**, if you use varlock (§16, optional), an
-  `op(op://…)` ref in `~/.config/harnessed/.env.schema`. Either way it reaches `harnessed-tools` at
-  launch — never an image layer.
+  `op(op://…)` ref in `~/.config/harnessed/.env.schema`. Either way it resolves host-native
+  in-process at launch — never an image layer.
 - **Missing → warn and skip that scanner**, not an interactive prompt. `harnessed build` must stay
   non-interactive / reproducible (CI, the nightly timer), and a typed token must never land in a
   repo or image layer. The credential-free `osv-scanner` + `pip-audit` remain the baseline gate.
@@ -316,34 +316,24 @@ in the repo. They are documented here as **prerequisites**, not implementation d
 ## 10. Proposed: repo layout
 
 ```
-code-container/
-  harnessed                    # Python CLI entry point (pipx install / uvx harnessed); see §15
-  .env.schema.example          # varlock secrets template → ~/.config/harnessed/.env.schema (§16)
-  tools/                       # harnessed-tools Python package: CLI + assembler
-    pyproject.toml             # [project.scripts] harnessed = "harnessed.launcher:app"
-    harnessed/                 # launcher, cli, assemble, schema, emit, scan, paths
-  base/
-    Dockerfile.harnessed-base    # mise/node/python + common tooling
-    Dockerfile.harnessed-claude  # FROM harnessed-base + claude install
-    Dockerfile.harnessed-omp     # FROM harnessed-base + omp install
-    Dockerfile.hatago          # hatago + light pnpm-dlx/uvx MCP servers
-  services/                    # heavy/stateful sidecars, each its own image
-    hindsight/Dockerfile
-    openbrain/Dockerfile
-  recipes/                     # hand-authored per-integration definitions
-    omp/recipe.yaml            # base recipe: claude-hooks-bridge + pi-adapter
-    hindsight/recipe.yaml
-    gsd/recipe.yaml
-    caveman/recipe.yaml
-  stacks/                      # authored stack manifests (harness + recipes)
-    claude-openbrain-headroom-caveman/stack.yaml
-  profiles/                    # GENERATED + committed; mounted into the harness container
-    claude-openbrain-headroom-caveman/
-      .mcp.json                # hatago endpoint (at profile root, NOT in .claude/)
-      settings.json
-      hatago.config.json
-  lib/                         # runtime bash injected into instances (NOT the assembler — see tools/)
-    egress-firewall.sh         # iptables allow for host.containers.internal gateway
+harnessed/
+├── pyproject.toml            # the Python project (name: harnessed)
+├── src/harnessed/            # the application — ALL assembly + launch logic
+│   ├── launcher.py           #   `harnessed` CLI (Typer): build / launch / test / new / svc / …
+│   ├── cli.py                #   `harnessed-tools` (assemble/scan/test entrypoints)
+│   ├── assemble.py  emit.py  #   emit-only assembler: stack + recipes → a profile
+│   ├── schema.py             #   typed models + catalog resolution (Agent/Recipe/Service/Stack)
+│   ├── capability.py report.py  # the capability test (the integration oracle)
+│   ├── paths.py              #   host/container paths + catalog roots
+│   ├── scan.py  synclinks.py
+├── tests/                    # pytest (unit + podman-gated integration); tests/fixtures/
+├── catalog/                  # everything contributors author
+│   ├── agents/<name>/agent.yaml      # an AI harness (claude, omp) + its image/Dockerfile
+│   ├── base/                         # shared base + hatago Dockerfiles, pnpm policy, egress script
+│   ├── recipes/<name>/               # recipe.yaml [+ skills/ commands/ Dockerfile]
+│   ├── services/<name>/              # service.yaml + Dockerfile + server
+│   └── stacks/<agent>_<recipe>…/stack.yaml
+└── docs/
 ```
 
 Relationship: `recipes/` (inputs) + `stacks/<name>/stack.yaml` (composition) → **assemble** →
@@ -441,7 +431,7 @@ harnessed auth snyk|socket    # one-time: set a scanner token (persisted to host
 ### Generated launcher shim (`harnessed install`)
 
 `harnessed install <stack>` writes an executable `~/.local/bin/<stack>` so you can launch an instance
-by name from anywhere (mirrors the repo's existing `install.sh`, which puts `container` on PATH):
+by name from anywhere (mirrors how the `harnessed` CLI itself is put on PATH via `uv tool install` / pipx):
 
 ```bash
 #!/usr/bin/env bash
@@ -506,7 +496,7 @@ Python package; the only additional host tool is podman.
 - **Install:** `pipx install harnessed` (persistent, on PATH) or `uvx harnessed` (zero-install, runs
   the latest published version). `pipx` installs into an isolated venv; no host Python pollution.
 - **`harnessed` Python CLI (Typer).** All launch/build/list/stop logic lives in
-  `tools/harnessed/launcher.py` as a Typer CLI. `os.execvp` is used for the interactive attach so
+  `src/harnessed/launcher.py` as a Typer CLI. `os.execvp` is used for the interactive attach so
   the TTY is native with no tunneling.
 - **Assembly (build time).** `harnessed build <stack>` runs the assembler in-process: parse/validate
   YAML, emit `.mcp.json` + `settings.json` + `hatago.config.json` into
@@ -530,11 +520,12 @@ Net install: `pipx install harnessed` (or `uvx harnessed` for zero-install); fir
 assembles the profile and builds the container images. Podman/docker + pipx/uvx are the only host deps.
 
 **Runtime abstraction (provider-agnostic isolated mode).** The shared-netns group is abstracted
-by `lib/harnessed-runtime.sh` (`rt_*`): podman → pod; docker → shared-netns pair
-(`--network container:<hatago>`); Apple `container` not yet (tracked). The harness-matrix UAT —
-`tools/uat/phase-06.sh`, run via `./tools/uat/run-uat.sh 6` (`--quick` = manifest/validation only) —
-is the systematic cross-harness proof and the regression gate for the provider port: one capability
-test per supported harness over the `<harness>-time` proof stacks, plus a fast manifest check.
+by the host CLI (`src/harnessed/launcher.py`): podman → pod; docker → shared-netns pair
+(`--network container:<hatago>`); Apple `container` not yet (tracked). Integration coverage is
+provided by pytest: `uv run pytest -q` (fast, no containers) and
+`HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py` (live — builds + capability-tests
+every stack in `catalog/stacks/`, auto-discovered). The live suite is the regression gate for
+provider ports and cross-harness correctness.
 
 ## 16. Proposed: secrets — varlock + 1Password (optional)
 

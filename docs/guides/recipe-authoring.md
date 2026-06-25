@@ -102,11 +102,11 @@ skills:
 - `skills/time-helper` is a standalone skill dir shipped by this recipe; it lands at
   `.claude/skills/time-helper` in the assembled profile.
 
-A stack that references it (`catalog/stacks/tracer-time`, `catalog/stacks/claude-multi`) builds + runs it via:
+A stack that references it (`catalog/stacks/claude_time`) builds + runs it via:
 
 ```bash
-harnessed build tracer-time && harnessed tracer-time
-harnessed test tracer-time      # capability report: ✓ time (mcp) connected, ✓ time-helper (skill) present
+harnessed build claude_time && harnessed claude_time
+harnessed test claude_time      # capability report: ✓ time (mcp) connected, ✓ time-helper (skill) present
 ```
 
 ## Worked example 2: the `ping` recipe (a service reference, no command)

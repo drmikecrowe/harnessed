@@ -19,7 +19,7 @@ A service lives at `catalog/services/<name>/` and ships **three** things:
 | `catalog/services/<name>/Dockerfile` | the service's **own** image lineage (independent of the harness images) |
 | the server itself (e.g. `server.py`) | the actual MCP server (Streamable HTTP) |
 
-You manage services by name with `harnessed svc up|down|list` (see [lib/harnessed-services.sh](../../lib/harnessed-services.sh)), and a stack references one by listing it under `services:`.
+You manage services by name with `harnessed svc up|down|list` (implemented in [`src/harnessed/launcher.py`](../../src/harnessed/launcher.py)), and a stack references one by listing it under `services:`.
 
 ## The `service.yaml` manifest
 
@@ -122,7 +122,7 @@ if __name__ == "__main__":
 ## Lifecycle
 
 `harnessed svc up|down|list` manages shared services by name — independent of any instance
-([lib/harnessed-services.sh](../../lib/harnessed-services.sh)):
+(implemented in [`src/harnessed/launcher.py`](../../src/harnessed/launcher.py)):
 
 ```bash
 harnessed svc up ping        # build image (first use) + create volume + run -d + wait for healthcheck
