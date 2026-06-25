@@ -15,4 +15,5 @@ USER root
 # image and install-deps shells out to apt, hence USER root.
 RUN bunx playwright install-deps chromium
 RUN git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack && cd ~/.claude/skills/gstack && ./setup
+RUN cd ~/.claude/skills/gstack && ./bin/gstack-config set redact_prepush_hook true — /ship
 USER harnessed
