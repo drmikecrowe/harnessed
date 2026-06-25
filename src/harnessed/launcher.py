@@ -10,11 +10,13 @@ Replaces the bash launcher (harnessed + lib/*.sh) with a Typer CLI that:
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -320,6 +322,47 @@ def _build_mount_args(
     return args
 
 
+def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
+    """Mount a minimal, token-free ~/.claude.json stub so Claude Code skips first-run onboarding.
+
+    The real OAuth token is the read-only ~/.claude/.credentials.json mount (see
+    _build_mount_args). But Claude Code *also* gates its onboarding (the "Select login method"
+    screen) on ~/.claude.json — a credentialed container with no .claude.json still shows
+    onboarding. We seed ONLY onboarding + identity fields (never the token), copied from the host
+    ~/.claude.json, written to a per-instance state dir and mounted rw so Claude's runtime writes
+    never touch the host file. (design §4b; ports lib/harnessed-isolated-config.sh.)
+    """
+    if harness not in ("claude", "omp"):
+        return []
+
+    oauth_account: object = {}
+    user_id: object = ""
+    host_json = Path.home() / ".claude.json"
+    if host_json.is_file():
+        try:
+            data = json.loads(host_json.read_text(encoding="utf-8"))
+            oauth_account = data.get("oauthAccount", {})
+            user_id = data.get("userID", "")
+        except (ValueError, OSError):
+            pass  # missing/malformed host config → seed the onboarding flag only
+
+    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
+    state_dir = state_root / "harnessed" / inst
+    state_dir.mkdir(parents=True, exist_ok=True)
+    stub = state_dir / "claude.json"
+    stub.write_text(
+        json.dumps({
+            "hasCompletedOnboarding": True,
+            "firstStartTime": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "numStartups": 1,
+            "oauthAccount": oauth_account,
+            "userID": user_id,
+        }),
+        encoding="utf-8",
+    )
+    return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
+
+
 # --- Shared-service sidecars (design §3/§9) ------------------------------------
 #
 # A recipe references a service via `mcp.servers[].service: <name>`; the assembler resolves it to a
@@ -451,6 +494,8 @@ def launch(
 
     # Build mount args.
     mount_args = _build_mount_args(harness, prof, project_path, relpath)
+    # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the ro credential).
+    mount_args += _claude_config_seed_mount(harness, inst)
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")
