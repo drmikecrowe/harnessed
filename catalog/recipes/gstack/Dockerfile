@@ -8,10 +8,11 @@
 # baked extensions into the assembled profile after building this image, so they are visible to the
 # agent (and the capability test) at runtime exactly like recipe-shipped skills.
 USER root
-RUN mkdir -p /home/harnessed/.claude/skills/gstack-skill /home/harnessed/.claude/commands && \
-    printf '%b' '---\nname: gstack-skill\ndescription: Installed by the gstack Dockerfile recipe.\n---\n# gstack skill\nInstalled into the agent image by the gstack recipe Dockerfile.\n' \
-      > /home/harnessed/.claude/skills/gstack-skill/SKILL.md && \
-    printf '%b' '---\nname: gstack-cmd\ndescription: gstack command installed via the Dockerfile recipe.\n---\n# /gstack-cmd\nRun the gstack workflow.\n' \
-      > /home/harnessed/.claude/commands/gstack-cmd.md && \
-    chown -R harnessed:harnessed /home/harnessed/.claude
+# gstack drives a headless Chromium via Playwright. Its ./setup runs `playwright install chromium`
+# (the browser binary) but NOT `playwright install-deps` (the OS shared libraries Chromium needs to
+# launch), so on the Ubuntu base the browser downloads yet chromium.launch() fails with
+# "Playwright Chromium could not be launched". Install the system deps first — bun is in the base
+# image and install-deps shells out to apt, hence USER root.
+RUN bunx playwright install-deps chromium
+RUN git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack && cd ~/.claude/skills/gstack && ./setup
 USER harnessed
