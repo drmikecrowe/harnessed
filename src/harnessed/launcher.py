@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -678,17 +679,30 @@ def new_stack(
 def install_stack(
     stack: str = typer.Argument(..., help="Stack name"),
 ) -> None:
-    """Write a ~/.local/bin/<stack> launcher shim."""
+    """Write a ~/.local/bin/<stack> launcher shim that runs `harnessed <stack>`."""
+    import shlex
     import stat
+
+    if not (paths.find_in_catalog("stacks", stack) / "stack.yaml").is_file():
+        _err.print(f"[bold red]error:[/bold red] no such stack '{stack}' (see `harnessed list`)")
+        raise typer.Exit(1)
+
+    # Bake in the absolute path to THIS `harnessed` binary so the shim works even when
+    # `harnessed` itself is not on PATH (e.g. a dev .venv). Prefer the PATH-resolved
+    # location (stable across shells), fall back to the running interpreter's script.
+    harnessed_bin = shutil.which("harnessed") or str(Path(sys.argv[0]).resolve())
+
     bin_dir = Path.home() / ".local" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     shim = bin_dir / stack
     shim.write_text(
-        f"#!/usr/bin/env bash\nexec harnessed {stack} \"$@\"\n",
+        f"#!/usr/bin/env bash\nexec {shlex.quote(harnessed_bin)} {shlex.quote(stack)} \"$@\"\n",
         encoding="utf-8",
     )
     shim.chmod(shim.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    _out.print(f"[green][SUCCESS][/green] Installed shim: {shim}")
+    _out.print(f"[green][SUCCESS][/green] Installed shim: {shim} -> harnessed {stack}")
+    if str(bin_dir) not in os.environ.get("PATH", "").split(os.pathsep):
+        _out.print(f"[yellow]note:[/yellow] {bin_dir} is not on your PATH — add it to run `{stack}` directly.")
 
 
 @app.command("uninstall")
