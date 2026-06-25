@@ -137,85 +137,85 @@ Contrast: `time` (stdio child hatago must bake + spawn) vs `ping` (HTTP sidecar 
 URL). Use stdio for light, dependency-free servers you want baked in; use a service for stateful or
 shared systems that outlive any instance.
 
-## Worked example 3: a Dockerfile recipe (installs a framework CLI)
+## Worked example 3: a Dockerfile recipe (run the project's own installer)
 
-[`catalog/recipes/gstack/`](../../catalog/recipes/gstack/) exercises the Phase 8 Dockerfile recipe model — a recipe
-that installs tooling via a Dockerfile body, with no MCP server or standalone skill dir.
+[`catalog/recipes/gstack/`](../../catalog/recipes/gstack/) installs a third-party skill suite (Garry
+Tan's [gstack](https://github.com/garrytan/gstack)) by baking it into the agent image with a
+Dockerfile body — no MCP server, no standalone skill dir.
+
+**The whole trick: do what the project's install docs tell you to do.** gstack's README says "clone
+the repo and run `./setup`", so that is exactly what the recipe Dockerfile runs — the same commands
+you'd run on the host. You don't hand-copy files or reverse-engineer the layout; you replicate the
+upstream installer.
 
 ### recipe.yaml
 
 ```yaml
 name: gstack
-description: Installs a skill + command into the agent image via its Dockerfile.
+description: Garry Tan's gstack skill suite installed via its upstream ./setup.
 expect:
-  skills:   [gstack-skill]
-  commands: [gstack-cmd]
+  skills: [gstack, browse, make-pdf]
 ```
 
-- **Recipes are harness-independent.** A recipe never declares which harnesses it supports — every
-  harness consumes the same Claude-canonical profile, and any harness-specific need is handled
-  *inside* the Dockerfile via the `${HARNESS}` build arg (e.g. `--host ${HARNESS}`), not by excluding
-  harnesses at the recipe level. The assembler passes `HARNESS` through so one recipe builds on
-  claude, omp, opencode, … alike.
-- `expect: [gstack-skill]` — after a successful `harnessed build gstack-time`, the capability test
-  (`harnessed test gstack-time`) must confirm that `gstack-skill` is present in the running
-  instance. Use this field to declare the capabilities your Dockerfile install step is expected to
-  deliver.
+- **`expect:` declares what the Dockerfile installs.** The assembler fans standalone `skills:` /
+  `commands:` *directories* into the profile, but it can't see what a Dockerfile RUN step drops into
+  `~/.claude/`. So you list the skills/commands/plugins it bakes and the capability test probes for
+  them in the running container. gstack installs ~50 skills into `~/.claude/skills`; three stable
+  ones are enough to prove the install worked.
+- **Recipes are harness-independent.** A recipe never lists which harnesses it supports — every
+  harness consumes the same Claude-canonical profile. If a step genuinely differs per harness,
+  branch on the `${HARNESS}` build arg *inside* the Dockerfile; never exclude harnesses at the
+  recipe level.
 
 ### Dockerfile
 
 ```dockerfile
-# No FROM line — the assembler prepends `FROM harnessed-${HARNESS}:latest` when concatenating.
-ARG HARNESS=claude
-
-# "Run the framework's own installer" — let the framework install itself, pinned to an exact version.
-RUN pnpm dlx @gstack/install@1.2.3 --host ${HARNESS}
+USER root
+# gstack's Chromium (via Playwright) needs OS libraries its ./setup doesn't install.
+RUN bunx playwright install-deps chromium
+# Run gstack's own documented install — clone + ./setup, exactly as on the host.
+RUN git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack \
+    && cd ~/.claude/skills/gstack && ./setup
+USER harnessed
 ```
 
 Rules for recipe Dockerfiles:
 
-- **No `FROM` line.** The assembler supplies `FROM harnessed-${HARNESS}:latest` as the header;
-  adding your own `FROM` produces a malformed concatenated Dockerfile.
-- **`ARG HARNESS=claude` at the top.** The `ARG` is stripped during concatenation but is required
-  so standalone Docker builds can resolve `${HARNESS}` references in the body.
-- **Pinned installs only.** Floating refs (`@latest`, `--branch main`, `--branch master`) are
-  rejected by the assembler's pin validation (`PinValidationError`). Every downloadable resource
-  must carry an exact version pin (e.g. `@1.2.3`, `--version 1.2.3`).
+- **No `FROM`, no `ARG HARNESS`.** The assembler prepends `FROM harnessed-${HARNESS}:latest` and
+  re-declares `ARG HARNESS` *after* it, so `${HARNESS}` is already available in your body. Adding
+  your own `FROM` or `ARG HARNESS` produces a malformed concatenated Dockerfile.
+- **`USER root` for system installs, then `USER harnessed`.** apt and `playwright install-deps` need
+  root; drop back to the unprivileged user before the body ends.
+- **Pin every download.** Explicit floating refs — `@latest`, `--branch main`/`master`/`HEAD`, a
+  bare `:latest` tag — are rejected by the assembler's pin validation (`PinValidationError`) before
+  any layer is built. Pin to a tag or commit SHA for reproducibility.
 
-### "Run the framework's own installer" principle
+### The principle: replicate the upstream installer
 
-Recipe Dockerfiles do not manually copy files, vendor deps, or reconstruct what a framework's
-installer already knows how to do. Instead they invoke the framework's published installer at an
-exact version:
+A recipe Dockerfile doesn't hand-copy files or reconstruct what a project's installer already does —
+it runs the project's published install steps. Look at the upstream install docs and replicate them,
+whatever shape they take:
 
-```bash
-pnpm dlx @framework/install@<version> --host ${HARNESS}
-```
+| Upstream install docs say… | Recipe Dockerfile runs… |
+| --- | --- |
+| "clone the repo and run `./setup`" | `RUN git clone … && cd … && ./setup` (gstack) |
+| "`pnpm dlx <pkg>@x.y.z`" | `RUN pnpm dlx <pkg>@x.y.z` |
+| "`uv tool install <pkg>==x.y.z`" | `RUN uv tool install <pkg>==x.y.z` |
+| "`apt install <foo>`" | `RUN apt-get install -y <foo>` (under `USER root`) |
 
-The `--host ${HARNESS}` flag lets the installer configure itself for the target harness (e.g. claude
-vs omp). This keeps recipes thin: the recipe declares *what* to install and *at which version*; the
-framework controls *how* it is installed.
+Two things to watch for:
 
-### Pin discipline
-
-`ARG` declarations are the standard way to express version pins in a recipe Dockerfile:
-
-```dockerfile
-ARG GSTACK_VERSION=1.2.3
-RUN pnpm dlx @gstack/install@${GSTACK_VERSION} --host ${HARNESS}
-```
-
-The assembler validates that every downloadable resource has a pinned version. Floating refs
-(`@latest`, `--branch main`) fail the build — `PinValidationError` is raised before any image
-layer is written.
+- **Missing system deps.** An installer may pull an application but not its OS libraries — gstack
+  downloads Chromium but not Chromium's shared libs, so the recipe adds `playwright install-deps`.
+- **Harness targeting.** Most installers are harness-agnostic or auto-detect the agent (gstack's
+  `./setup` does). If one needs to know the target, pass it the `${HARNESS}` build arg.
 
 ### Build-and-test lifecycle
 
 ```bash
-harnessed build gstack-time   # assembles gstack + time recipes into harnessed-gstack-time image,
-                               # runs osv-scanner + pip-audit supply-chain gate on derived image
-harnessed gstack-time         # launch the stack (podman pod: harness + hatago)
-harnessed test gstack-time    # capability report: ✓ gstack-skill (expect), ✓ time (mcp)
+harnessed build claude_gstack_ping_time_greet   # assemble + build the derived image (supply-chain gate)
+harnessed claude_gstack_ping_time_greet         # launch the pod (harness + hatago)
+harnessed test  claude_gstack_ping_time_greet   # capability report: ✓ gstack/browse/make-pdf skills present
 ```
 
 ## Transports

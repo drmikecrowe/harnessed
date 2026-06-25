@@ -1,12 +1,13 @@
 # Recipe Dockerfile for: gstack
 #
-# No FROM line and no `ARG HARNESS` declaration — the assembler prepends
-# `FROM harnessed-${HARNESS}:latest` and re-declares `ARG HARNESS` after FROM, so ${HARNESS} is
-# available here without the recipe pinning it to a specific harness. Recipes stay harness-independent.
+# No FROM and no `ARG HARNESS` — the assembler prepends `FROM harnessed-${HARNESS}:latest` and
+# re-declares `ARG HARNESS` after it, so ${HARNESS} is available here and recipes stay
+# harness-independent.
 #
-# Installs a skill + a command into the Claude-canonical ~/.claude tree. The launcher extracts these
-# baked extensions into the assembled profile after building this image, so they are visible to the
-# agent (and the capability test) at runtime exactly like recipe-shipped skills.
+# Authoring a Dockerfile recipe = run the project's OWN documented install commands. gstack's docs
+# say "git clone + ./setup", so that's what we run (the same as on the host); ./setup bakes its
+# skills into ~/.claude/skills, and the launcher merges those into the profile so they're live at
+# runtime. The only addition is the one OS dependency gstack's ./setup omits (Playwright's libs).
 USER root
 # gstack drives a headless Chromium via Playwright. Its ./setup runs `playwright install chromium`
 # (the browser binary) but NOT `playwright install-deps` (the OS shared libraries Chromium needs to
