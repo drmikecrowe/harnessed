@@ -88,6 +88,28 @@ def _container_running(rt: str, name: str) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
+def _inspect_id(rt: str, kind: str, ref: str, fmt: str) -> str:
+    r = subprocess.run([rt, kind, "inspect", "-f", fmt, ref], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _img_differs(current: str, used: str) -> bool:
+    """True iff two image IDs are both known and differ (sha256: prefix normalized).
+
+    Either side empty (image/container gone, inspect failed) → can't tell → not stale.
+    """
+    norm = lambda s: s.strip().removeprefix("sha256:")  # noqa: E731
+    cur, prev = norm(current), norm(used)
+    return bool(cur and prev and cur != prev)
+
+
+def _container_stale(rt: str, name: str, image: str) -> bool:
+    """True if the running container was created from a different image than current `image:latest`
+    (i.e. the image was rebuilt since the container started — a re-attach would run the old build)."""
+    return _img_differs(_inspect_id(rt, "image", image, "{{.Id}}"),
+                        _inspect_id(rt, "container", name, "{{.Image}}"))
+
+
 def _rt_uses_pods(rt: str) -> bool:
     return rt == "podman"
 
@@ -530,12 +552,29 @@ def launch(
         _out.print(f"[blue][INFO][/blue] --fresh: tearing down existing pod/instance for {inst}")
         _pod_teardown(rt, inst, pod)
 
-    # Re-attach to running instance (interactive only).
+    # Re-attach to a running instance (interactive only) — but if it was built from an older image
+    # (rebuilt since it started), a re-attach would silently run the stale build. Offer to recreate.
     headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
     if not headless and _container_running(rt, inst):
-        _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
-        _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod)
-        return
+        if _container_stale(rt, inst, harness_image):
+            if sys.stdin.isatty() and typer.confirm(
+                f"'{inst}' is running on an older build of {harness_image}. "
+                "Recreate it with the new build?",
+                default=True,
+            ):
+                _out.print(f"[blue][INFO][/blue] Recreating {inst} on the rebuilt image …")
+                _pod_teardown(rt, inst, pod)  # fall through to a fresh create below
+            else:
+                _out.print(
+                    "[yellow]note:[/yellow] attaching to the existing (older-build) instance — "
+                    "run with --fresh to update."
+                )
+                _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod)
+                return
+        else:
+            _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
+            _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod)
+            return
 
     # Start any shared-service sidecars this stack's recipes reference (host-published; reached from
     # the pod via host.containers.internal:<port>). Idempotent — skips services already running.

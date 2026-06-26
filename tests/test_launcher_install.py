@@ -66,3 +66,22 @@ class TestInstallShim:
 
         assert exc.value.exit_code == 1
         assert not (home / ".local" / "bin" / "claude_time").exists()
+
+
+class TestImageStaleness:
+    """`_img_differs` decides whether a running container is on an older image build."""
+
+    def test_different_ids_are_stale(self):
+        assert launcher._img_differs("aaa111", "bbb222") is True
+
+    def test_same_ids_not_stale(self):
+        assert launcher._img_differs("aaa111", "aaa111") is False
+
+    def test_sha256_prefix_normalized(self):
+        # image inspect may yield a bare hash; container inspect a sha256:-prefixed one.
+        assert launcher._img_differs("sha256:aaa111", "aaa111") is False
+
+    def test_missing_id_is_not_stale(self):
+        # inspect failure on either side → can't tell → don't nag / don't recreate.
+        assert launcher._img_differs("", "aaa111") is False
+        assert launcher._img_differs("aaa111", "") is False
