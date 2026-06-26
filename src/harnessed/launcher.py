@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -298,13 +299,8 @@ def _build_mount_args(
         host_d.mkdir(parents=True, exist_ok=True)
         args += ["-v", f"{host_d}:{ctr_home}/{rel}:rw"]
 
-    # omp: per-project slug session dir
-    if harness == "omp":
-        omp_slug = "-" + relpath.replace("/", "-")
-        host_omp = Path(home) / ".omp" / "agent" / "sessions" / omp_slug
-        ctr_omp = f"{ctr_home}/.omp/agent/sessions/{omp_slug}"
-        host_omp.mkdir(parents=True, exist_ok=True)
-        args += ["-v", f"{host_omp}:{ctr_omp}:rw"]
+    # omp: the whole agent dir (auth + sessions) is a per-instance mount seeded by
+    # _omp_auth_seed_mount (appended in launch()) — it supersedes the old per-slug session mount.
 
     # Auth mounts (ro credentials)
     creds = Path(home) / ".claude" / ".credentials.json"
@@ -361,6 +357,61 @@ def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
         encoding="utf-8",
     )
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
+
+
+# Host omp state we DON'T carry into the isolated pod — only auth (auth_credentials +
+# auth_schema_version) survives; the container's omp recreates these on first run.
+_OMP_HISTORY_TABLES = (
+    "threads", "jobs", "usage_history", "usage_cost_history",
+    "model_usage", "stage1_outputs", "cache",
+)
+
+
+def _omp_auth_seed_mount(harness: str, inst: str) -> list[str]:
+    """Seed omp's credentials into a per-instance agent dir so the pod launches authenticated.
+
+    omp (Oh My Pi) keeps credentials in its OWN store — ~/.omp/agent/agent.db, table
+    auth_credentials (anthropic OAuth + any API keys) — NOT in ~/.claude. We snapshot the host DB
+    into a per-instance state dir (sqlite3 stdlib .backup → WAL-safe), strip the host's
+    threads/jobs/usage/cache so no host history bleeds in, and mount that dir rw at ~/.omp/agent.
+    Re-seeded on each container creation, so the credentials stay current. Parallel to the Claude
+    .credentials.json seeding; the mount supersedes the old per-slug session mount.
+    """
+    if harness != "omp":
+        return []
+
+    host_db = Path.home() / ".omp" / "agent" / "agent.db"
+    if not host_db.is_file():
+        _err.print(
+            "[yellow]note:[/yellow] no omp credential store at ~/.omp/agent/agent.db — "
+            "omp will prompt to log in (run `omp` on the host first)."
+        )
+        return []
+
+    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
+    inst_agent = state_root / "harnessed" / inst / "omp-agent"
+    inst_agent.mkdir(parents=True, exist_ok=True)
+    target = inst_agent / "agent.db"
+
+    try:
+        src = sqlite3.connect(f"file:{host_db}?mode=ro", uri=True)
+        dst = sqlite3.connect(str(target))
+        try:
+            src.backup(dst)  # consistent online snapshot (handles the host's WAL)
+            existing = {r[0] for r in dst.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            for tbl in _OMP_HISTORY_TABLES:
+                if tbl in existing:
+                    dst.execute(f"DELETE FROM {tbl}")
+            dst.commit()
+        finally:
+            src.close()
+            dst.close()
+    except sqlite3.Error as exc:
+        _err.print(f"[yellow]note:[/yellow] could not seed omp auth ({exc}) — omp may prompt to log in.")
+        return []
+
+    return ["-v", f"{inst_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
 
 
 # --- Shared-service sidecars (design §3/§9) ------------------------------------
@@ -496,6 +547,8 @@ def launch(
     mount_args = _build_mount_args(harness, prof, project_path, relpath)
     # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the ro credential).
     mount_args += _claude_config_seed_mount(harness, inst)
+    # Seed omp's own credential store (~/.omp/agent/agent.db) into a per-instance agent dir.
+    mount_args += _omp_auth_seed_mount(harness, inst)
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")
