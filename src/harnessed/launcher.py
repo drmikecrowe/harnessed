@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -240,6 +239,31 @@ def _pod_teardown(rt: str, instance: str, pod: str) -> None:
             subprocess.run([rt, "rm", "-f", name], capture_output=True)
 
 
+def _attach_marker(inst: str) -> Path:
+    """Host-side marker whose mtime records when `inst` was last interactively attached."""
+    return paths.xdg_state_home() / "harnessed" / "attached" / inst
+
+
+def _touch_attach_marker(inst: str) -> None:
+    m = _attach_marker(inst)
+    m.parent.mkdir(parents=True, exist_ok=True)
+    m.touch()
+
+
+def _session_active(rt: str, inst: str) -> bool:
+    """True while an interactive harness session is attached.
+
+    An idle instance runs only its PID-1 `sleep infinity`; an attached one also carries the
+    `bash -l -c … <harness>` exec tree. Any process other than `sleep` counts as activity.
+    """
+    result = subprocess.run([rt, "top", inst, "comm"], capture_output=True, text=True)
+    if result.returncode != 0:
+        return False
+    # Drop the header row `top` prints; treat any surviving non-`sleep` process as a live session.
+    procs = [line.strip() for line in result.stdout.splitlines()[1:] if line.strip()]
+    return any(c != "sleep" for c in procs)
+
+
 def _apply_firewall(rt: str, instance: str) -> None:
     if os.environ.get("NO_FIREWALL", "false").lower() == "true":
         return
@@ -359,85 +383,28 @@ def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
 
 
-# Host omp state we DON'T carry into the isolated pod — only auth (auth_credentials +
-# auth_schema_version) survives; the container's omp recreates these on first run.
-_OMP_HISTORY_TABLES = (
-    "threads", "jobs", "usage_history", "usage_cost_history",
-    "model_usage", "stage1_outputs", "cache",
-)
+def _omp_agent_mount(harness: str) -> list[str]:
+    """Bind-mount the host's omp agent dir so the pod shares one omp state with the host.
 
-
-def _omp_auth_seed_mount(harness: str, inst: str) -> list[str]:
-    """Seed omp's credentials into a per-instance agent dir so the pod launches authenticated.
-
-    omp (Oh My Pi) keeps credentials in its OWN store — ~/.omp/agent/agent.db, table
-    auth_credentials (anthropic OAuth + any API keys) — NOT in ~/.claude. We snapshot the host DB
-    into a per-instance state dir (sqlite3 stdlib .backup → WAL-safe), strip the host's
-    threads/jobs/usage/cache so no host history bleeds in, and mount that dir rw at ~/.omp/agent.
-    Re-seeded on each container creation, so the credentials stay current. Parallel to the Claude
-    .credentials.json seeding; the mount supersedes the old per-slug session mount.
+    omp (Oh My Pi) keeps everything under ~/.omp/agent — credentials (agent.db `auth_credentials`,
+    plaintext JSON), setup/provider config (config.yml), usage tracking, and sessions. Rather than
+    copy a per-instance snapshot, we bind-mount the host dir rw: auth is always current, usage is
+    written back to the single host ledger, and sessions are shared across the host and every
+    container (the user runs these containers as their primary omp — the host is not a separate
+    source of truth). The omp image bakes ~/.omp/{plugins,natives}, NOT agent/, so this shadows
+    nothing. Trade-off: full host-state sharing (not isolated); SQLite/WAL coordinates concurrent
+    host+container access on the same kernel, but avoid heavy simultaneous writes from both.
     """
     if harness != "omp":
         return []
-
-    host_db = Path.home() / ".omp" / "agent" / "agent.db"
-    if not host_db.is_file():
+    host_agent = Path.home() / ".omp" / "agent"
+    if not host_agent.is_dir():
         _err.print(
-            "[yellow]note:[/yellow] no omp credential store at ~/.omp/agent/agent.db — "
-            "omp will prompt to log in (run `omp` on the host first)."
+            "[yellow]note:[/yellow] no ~/.omp/agent on the host — omp will prompt to log in "
+            "(run `omp` on the host first)."
         )
         return []
-
-    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
-    inst_agent = state_root / "harnessed" / inst / "omp-agent"
-    inst_agent.mkdir(parents=True, exist_ok=True)
-    target = inst_agent / "agent.db"
-
-    try:
-        src = sqlite3.connect(f"file:{host_db}?mode=ro", uri=True)
-        dst = sqlite3.connect(str(target))
-        try:
-            if target.stat().st_size > 0:
-                # Instance already has a DB: keep its accumulated usage/threads, refresh only the
-                # credentials so the token stays current across restarts.
-                cols = [d[0] for d in src.execute(
-                    "SELECT * FROM auth_credentials LIMIT 0").description]
-                rows = src.execute("SELECT * FROM auth_credentials").fetchall()
-                placeholders = ",".join("?" * len(cols))
-                dst.execute("DELETE FROM auth_credentials")
-                dst.executemany(
-                    f"INSERT INTO auth_credentials ({','.join(cols)}) VALUES ({placeholders})",
-                    rows,
-                )
-            else:
-                # First creation: snapshot the host DB (online .backup handles the WAL), then strip
-                # host history so the instance starts with credentials only and tracks its own usage.
-                src.backup(dst)
-                existing = {r[0] for r in dst.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'")}
-                for tbl in _OMP_HISTORY_TABLES:
-                    if tbl in existing:
-                        dst.execute(f"DELETE FROM {tbl}")
-            dst.commit()
-        finally:
-            src.close()
-            dst.close()
-    except sqlite3.Error as exc:
-        _err.print(f"[yellow]note:[/yellow] could not seed omp auth ({exc}) — omp may prompt to log in.")
-        return []
-
-    # omp's setup state + provider/model config live in agent/config.yml (setupVersion gates the
-    # first-run wizard) — credentials in agent.db are NOT enough on their own. Seed it once; it
-    # carries no tokens (those stay in agent.db).
-    host_cfg = host_db.parent / "config.yml"
-    inst_cfg = inst_agent / "config.yml"
-    if host_cfg.is_file() and not inst_cfg.is_file():
-        try:
-            shutil.copy2(host_cfg, inst_cfg)
-        except OSError as exc:
-            _err.print(f"[yellow]note:[/yellow] could not seed omp config.yml ({exc}).")
-
-    return ["-v", f"{inst_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
+    return ["-v", f"{host_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
 
 
 # --- Shared-service sidecars (design §3/§9) ------------------------------------
@@ -507,6 +474,7 @@ def launch(
     stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
     fresh: bool = typer.Option(False, "--fresh", help="Tear down any existing pod/instance first"),
+    rm: bool = typer.Option(False, "--rm", help="Ephemeral: tear the pod down when the interactive session exits"),
     no_firewall: bool = typer.Option(False, "--no-firewall", help="Skip egress firewall"),
 ) -> None:
     """Launch an isolated harness stack against a project directory."""
@@ -559,7 +527,7 @@ def launch(
     headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
     if not headless and _container_running(rt, inst):
         _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
-        _attach(rt, harness, inst, project_path)
+        _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod)
         return
 
     # Start any shared-service sidecars this stack's recipes reference (host-published; reached from
@@ -573,8 +541,8 @@ def launch(
     mount_args = _build_mount_args(harness, prof, project_path, relpath)
     # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the ro credential).
     mount_args += _claude_config_seed_mount(harness, inst)
-    # Seed omp's own credential store (~/.omp/agent/agent.db) into a per-instance agent dir.
-    mount_args += _omp_auth_seed_mount(harness, inst)
+    # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
+    mount_args += _omp_agent_mount(harness)
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")
@@ -616,14 +584,28 @@ def launch(
     _wait_hatago(rt, inst)
 
     if headless:
+        if rm:
+            _out.print("[yellow]note:[/yellow] --rm has no effect in headless mode (no interactive session to exit)")
         _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago: {inst}-hatago)")
         return
 
-    _attach(rt, harness, inst, project_path)
+    _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod)
 
 
-def _attach(rt: str, harness: str, inst: str, project_path: Path) -> None:
-    """Exec into the running instance with the harness command (os.execvp for clean TTY)."""
+def _attach(
+    rt: str,
+    harness: str,
+    inst: str,
+    project_path: Path,
+    *,
+    ephemeral: bool = False,
+    pod: Optional[str] = None,
+) -> None:
+    """Exec into the running instance with the harness command.
+
+    Default: os.execvp hands the TTY to the container natively (clean attach, no post-exit hook).
+    ephemeral (--rm): run the exec as a child so the pod can be torn down when the session exits.
+    """
     mise_init = "source ~/.bashrc && mise trust -a 2>/dev/null"
     mcp_cfg = str(paths.container_mcp_config())
 
@@ -631,6 +613,7 @@ def _attach(rt: str, harness: str, inst: str, project_path: Path) -> None:
     harness_cmd = harness_cmd_tpl.format(mcp_cfg=mcp_cfg, instance=inst)
     shell_cmd = f"{mise_init} && {harness_cmd}"
 
+    _touch_attach_marker(inst)
     exec_argv = [
         rt, "exec", "-it",
         "-e", "TERM=xterm-256color",
@@ -638,8 +621,18 @@ def _attach(rt: str, harness: str, inst: str, project_path: Path) -> None:
         inst,
         "bash", "-l", "-c", shell_cmd,
     ]
-    # os.execvp replaces this process — hands the TTY to the container natively.
-    os.execvp(rt, exec_argv)
+
+    if not ephemeral:
+        # os.execvp replaces this process — hands the TTY to the container natively.
+        os.execvp(rt, exec_argv)
+
+    # Keep this process alive so we can reap the pod once the interactive session exits.
+    try:
+        subprocess.run(exec_argv)
+    finally:
+        _out.print(f"[blue][INFO][/blue] --rm: tearing down pod {pod or inst}")
+        _pod_teardown(rt, inst, pod or inst)
+        _attach_marker(inst).unlink(missing_ok=True)
 
 
 @app.command("build")
@@ -708,6 +701,53 @@ def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
         subprocess.run([rt, "rm", "-f", name], capture_output=True)
     if not names:
         _out.print(f"No instances found for stack '{stack}'")
+
+
+@app.command("reap")
+def reap(
+    idle: int = typer.Option(120, "--idle", help="Reap instances detached at least this many minutes"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be reaped without tearing down"),
+) -> None:
+    """Tear down instances whose interactive session exited and stayed idle.
+
+    An instance is reapable when no session is attached (only its PID-1 `sleep infinity` runs)
+    and its last attach was at least --idle minutes ago. Instances never interactively attached
+    (headless / externally driven) and shared services are left untouched.
+    """
+    import time
+
+    rt = _runtime()
+    result = subprocess.run(
+        [rt, "ps", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
+        capture_output=True, text=True,
+    )
+    members = [
+        n.strip() for n in result.stdout.splitlines()
+        if n.strip() and not n.strip().endswith("-hatago")
+    ]
+
+    reaped = 0
+    for inst in members:
+        marker = _attach_marker(inst)
+        if not marker.exists():
+            continue  # never interactively attached — leave it alone
+        if _session_active(rt, inst):
+            continue
+        idle_min = (time.time() - marker.stat().st_mtime) / 60
+        if idle_min < idle:
+            continue
+        reaped += 1
+        if dry_run:
+            _out.print(f"[yellow]would reap[/yellow] {inst} (idle {idle_min:.0f}m)")
+            continue
+        _out.print(f"[blue][INFO][/blue] Reaping {inst} (idle {idle_min:.0f}m)")
+        _pod_teardown(rt, inst, inst)
+        marker.unlink(missing_ok=True)
+
+    if reaped == 0:
+        _out.print(f"No idle instances to reap (threshold: {idle}m)")
+    elif not dry_run:
+        _out.print(f"[green][SUCCESS][/green] Reaped {reaped} idle instance(s)")
 
 
 @app.command("clean")
@@ -879,7 +919,7 @@ def rescan() -> None:
 # to `launch` (the `harnessed <stack> [project] [--fresh]` shorthand the README documents and the
 # capability test relies on).
 _COMMANDS = {
-    "launch", "build", "list", "stop", "rm", "clean", "test", "new",
+    "launch", "build", "list", "stop", "rm", "reap", "clean", "test", "new",
     "install", "uninstall", "rescan", "svc",
 }
 

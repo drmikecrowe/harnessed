@@ -1,10 +1,10 @@
-"""Tests for omp credential seeding (Oh My Pi keeps auth in its own SQLite store).
+"""Tests for omp agent-dir sharing.
 
-omp authenticates from ~/.omp/agent/agent.db (table auth_credentials), not ~/.claude. The launcher
-must snapshot that store per-instance, carry the credentials, and strip host history.
+omp (Oh My Pi) keeps its credentials, setup config, usage and sessions under ~/.omp/agent. The
+launcher bind-mounts the host dir rw so the pod shares one omp state with the host (always-current
+auth + unified usage tracking), rather than copying a per-instance snapshot.
 """
 
-import sqlite3
 from pathlib import Path
 
 from harnessed import launcher
@@ -12,86 +12,31 @@ from harnessed import launcher
 CONTAINER_HOME = launcher._CONTAINER_HOME_STR
 
 
-def _fake_host_omp_db(home: Path):
-    """Create a minimal ~/.omp/agent/agent.db with an auth cred + some host history."""
-    agent = home / ".omp" / "agent"
-    agent.mkdir(parents=True)
-    db = sqlite3.connect(str(agent / "agent.db"))
-    db.execute("CREATE TABLE auth_credentials (id INTEGER PRIMARY KEY, provider TEXT, data TEXT)")
-    db.execute("INSERT INTO auth_credentials (provider, data) VALUES ('anthropic', 'oauth-token')")
-    db.execute("CREATE TABLE threads (id INTEGER PRIMARY KEY, body TEXT)")
-    db.execute("INSERT INTO threads (body) VALUES ('host session — must NOT leak')")
-    db.execute("CREATE TABLE cache (k TEXT)")
-    db.execute("INSERT INTO cache (k) VALUES ('host')")
-    db.commit()
-    db.close()
-    # omp's setup gate + provider/model config (no tokens) — must be seeded too.
-    (agent / "config.yml").write_text("setupVersion: 1\nproviders:\n")
-
-
 def _home(monkeypatch, tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: home)
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     return home
 
 
-def _seeded_db(mount: list[str]) -> Path:
-    assert mount[0] == "-v"
-    return Path(mount[1].split(":")[0]) / "agent.db"
+class TestOmpAgentMount:
+    def test_bind_mounts_host_agent_dir_rw(self, monkeypatch, tmp_path):
+        home = _home(monkeypatch, tmp_path)
+        (home / ".omp" / "agent").mkdir(parents=True)
 
+        mount = launcher._omp_agent_mount("omp")
 
-class TestOmpAuthSeed:
-    def test_carries_credentials_strips_history(self, monkeypatch, tmp_path):
-        _home(monkeypatch, tmp_path)
-        _fake_host_omp_db(Path.home())
+        assert mount[0] == "-v"
+        src, dst, mode = mount[1].rsplit(":", 2)
+        assert Path(src) == home / ".omp" / "agent"
+        assert dst == f"{CONTAINER_HOME}/.omp/agent"
+        assert mode == "rw"
 
-        mount = launcher._omp_auth_seed_mount("omp", "harnessed-omp_x-deadbeef")
-
-        # Mounted rw at the container's ~/.omp/agent.
-        assert mount[1].endswith(f":{CONTAINER_HOME}/.omp/agent:rw")
-        db = sqlite3.connect(str(_seeded_db(mount)))
-        # Credentials carried over.
-        assert db.execute("SELECT data FROM auth_credentials WHERE provider='anthropic'").fetchone()[0] == "oauth-token"
-        # Host history stripped — table kept (schema), rows gone.
-        assert db.execute("SELECT COUNT(*) FROM threads").fetchone()[0] == 0
-        assert db.execute("SELECT COUNT(*) FROM cache").fetchone()[0] == 0
-        db.close()
-        # config.yml (setup gate) seeded alongside the DB, else omp reruns its setup wizard.
-        seeded_cfg = _seeded_db(mount).parent / "config.yml"
-        assert seeded_cfg.is_file()
-        assert "setupVersion: 1" in seeded_cfg.read_text()
-
-    def test_no_host_store_returns_empty(self, monkeypatch, tmp_path):
-        _home(monkeypatch, tmp_path)  # no ~/.omp/agent/agent.db created
-        assert launcher._omp_auth_seed_mount("omp", "inst-x") == []
+    def test_no_host_agent_dir_returns_empty(self, monkeypatch, tmp_path):
+        _home(monkeypatch, tmp_path)  # no ~/.omp/agent
+        assert launcher._omp_agent_mount("omp") == []
 
     def test_non_omp_harness_noop(self, monkeypatch, tmp_path):
         home = _home(monkeypatch, tmp_path)
-        _fake_host_omp_db(home)
-        assert launcher._omp_auth_seed_mount("claude", "inst-x") == []
-
-    def test_reseed_preserves_instance_usage_and_refreshes_auth(self, monkeypatch, tmp_path):
-        home = _home(monkeypatch, tmp_path)
-        _fake_host_omp_db(home)
-        m1 = launcher._omp_auth_seed_mount("omp", "inst-y")
-
-        # Simulate omp accumulating usage in the per-instance DB during a container session.
-        idb = sqlite3.connect(str(_seeded_db(m1)))
-        idb.execute("INSERT INTO threads (body) VALUES ('instance work — must survive restart')")
-        idb.commit(); idb.close()
-
-        # Host rotates the credential; the next container start must refresh auth WITHOUT wiping usage.
-        hdb = sqlite3.connect(str(home / ".omp" / "agent" / "agent.db"))
-        hdb.execute("UPDATE auth_credentials SET data='rotated' WHERE provider='anthropic'")
-        hdb.commit(); hdb.close()
-
-        launcher._omp_auth_seed_mount("omp", "inst-y")
-
-        db = sqlite3.connect(str(_seeded_db(m1)))
-        # Credential refreshed to the current host value...
-        assert db.execute("SELECT data FROM auth_credentials WHERE provider='anthropic'").fetchone()[0] == "rotated"
-        # ...and the instance's accumulated usage survived the restart.
-        assert db.execute("SELECT COUNT(*) FROM threads").fetchone()[0] == 1
-        db.close()
+        (home / ".omp" / "agent").mkdir(parents=True)
+        assert launcher._omp_agent_mount("claude") == []
