@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -407,6 +408,47 @@ def _omp_agent_mount(harness: str) -> list[str]:
     return ["-v", f"{host_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
 
 
+def _tool_version(exe: str) -> str | None:
+    """Best-effort semver from `<exe> --version` on the host (None if absent/unparseable)."""
+    path = shutil.which(exe)
+    if not path:
+        return None
+    try:
+        proc = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"\d+\.\d+\.\d+", (proc.stdout or "") + (proc.stderr or ""))
+    return match.group(0) if match else None
+
+
+def _omp_image_version() -> str | None:
+    """The omp version the image pins — the default of `ARG OMP_VERSION=` in its Dockerfile."""
+    try:
+        dockerfile = _harnessed_dir() / load_agent("omp").dockerfile
+        match = re.search(r"ARG\s+OMP_VERSION=(\S+)", dockerfile.read_text(encoding="utf-8"))
+        return match.group(1) if match else None
+    except (OSError, SchemaError):
+        return None
+
+
+def _version_skew_message(tool: str, host_v: str | None, img_v: str | None) -> str | None:
+    """Warning text when host and image tool versions differ (None if matched or undeterminable)."""
+    if host_v and img_v and host_v != img_v:
+        return (
+            f"{tool} version skew — host {host_v} != image {img_v}. The pod shares your host "
+            f"~/.omp/agent (rw); an older {tool} could corrupt it. Align OMP_VERSION in "
+            f"catalog/base/Dockerfile.harnessed-{tool} to {host_v} (then rebuild the {tool} image)."
+        )
+    return None
+
+
+def _warn_omp_version_skew() -> None:
+    """Warn (never block — operator's call) when the host omp differs from the image's pinned omp."""
+    msg = _version_skew_message("omp", _tool_version("omp"), _omp_image_version())
+    if msg:
+        _err.print(f"[yellow]warning:[/yellow] {msg}")
+
+
 # --- Shared-service sidecars (design §3/§9) ------------------------------------
 #
 # A recipe references a service via `mcp.servers[].service: <name>`; the assembler resolves it to a
@@ -543,6 +585,8 @@ def launch(
     mount_args += _claude_config_seed_mount(harness, inst)
     # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
     mount_args += _omp_agent_mount(harness)
+    if harness == "omp":
+        _warn_omp_version_skew()  # rw-shared agent.db → flag host/image version drift
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")
@@ -703,14 +747,14 @@ def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
         _out.print(f"No instances found for stack '{stack}'")
 
 
-@app.command("reap")
-def reap(
-    idle: int = typer.Option(120, "--idle", help="Reap instances detached at least this many minutes"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be reaped without tearing down"),
+@app.command("prune")
+def prune(
+    idle: int = typer.Option(120, "--idle", help="Prune instances detached at least this many minutes"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be pruned without tearing down"),
 ) -> None:
     """Tear down instances whose interactive session exited and stayed idle.
 
-    An instance is reapable when no session is attached (only its PID-1 `sleep infinity` runs)
+    An instance is prunable when no session is attached (only its PID-1 `sleep infinity` runs)
     and its last attach was at least --idle minutes ago. Instances never interactively attached
     (headless / externally driven) and shared services are left untouched.
     """
@@ -726,7 +770,7 @@ def reap(
         if n.strip() and not n.strip().endswith("-hatago")
     ]
 
-    reaped = 0
+    pruned = 0
     for inst in members:
         marker = _attach_marker(inst)
         if not marker.exists():
@@ -736,18 +780,18 @@ def reap(
         idle_min = (time.time() - marker.stat().st_mtime) / 60
         if idle_min < idle:
             continue
-        reaped += 1
+        pruned += 1
         if dry_run:
-            _out.print(f"[yellow]would reap[/yellow] {inst} (idle {idle_min:.0f}m)")
+            _out.print(f"[yellow]would prune[/yellow] {inst} (idle {idle_min:.0f}m)")
             continue
-        _out.print(f"[blue][INFO][/blue] Reaping {inst} (idle {idle_min:.0f}m)")
+        _out.print(f"[blue][INFO][/blue] Pruning {inst} (idle {idle_min:.0f}m)")
         _pod_teardown(rt, inst, inst)
         marker.unlink(missing_ok=True)
 
-    if reaped == 0:
-        _out.print(f"No idle instances to reap (threshold: {idle}m)")
+    if pruned == 0:
+        _out.print(f"No idle instances to prune (threshold: {idle}m)")
     elif not dry_run:
-        _out.print(f"[green][SUCCESS][/green] Reaped {reaped} idle instance(s)")
+        _out.print(f"[green][SUCCESS][/green] Pruned {pruned} idle instance(s)")
 
 
 @app.command("clean")
@@ -919,7 +963,7 @@ def rescan() -> None:
 # to `launch` (the `harnessed <stack> [project] [--fresh]` shorthand the README documents and the
 # capability test relies on).
 _COMMANDS = {
-    "launch", "build", "list", "stop", "rm", "reap", "clean", "test", "new",
+    "launch", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
     "install", "uninstall", "rescan", "svc",
 }
 

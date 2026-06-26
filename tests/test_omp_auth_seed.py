@@ -40,3 +40,21 @@ class TestOmpAgentMount:
         home = _home(monkeypatch, tmp_path)
         (home / ".omp" / "agent").mkdir(parents=True)
         assert launcher._omp_agent_mount("claude") == []
+
+
+class TestVersionSkew:
+    def test_skew_produces_warning(self):
+        msg = launcher._version_skew_message("omp", "16.1.10", "16.0.1")
+        assert msg and "16.1.10" in msg and "16.0.1" in msg
+
+    def test_matched_versions_no_warning(self):
+        assert launcher._version_skew_message("omp", "16.1.10", "16.1.10") is None
+
+    def test_undeterminable_version_no_warning(self):
+        assert launcher._version_skew_message("omp", "16.1.10", None) is None
+        assert launcher._version_skew_message("omp", None, "16.0.1") is None
+
+    def test_reads_pinned_version_from_omp_dockerfile(self):
+        # The real catalog omp Dockerfile pins OMP_VERSION; parsing it must yield a semver.
+        v = launcher._omp_image_version()
+        assert v is not None and v.count(".") == 2
