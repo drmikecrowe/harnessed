@@ -397,12 +397,27 @@ def _omp_auth_seed_mount(harness: str, inst: str) -> list[str]:
         src = sqlite3.connect(f"file:{host_db}?mode=ro", uri=True)
         dst = sqlite3.connect(str(target))
         try:
-            src.backup(dst)  # consistent online snapshot (handles the host's WAL)
-            existing = {r[0] for r in dst.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'")}
-            for tbl in _OMP_HISTORY_TABLES:
-                if tbl in existing:
-                    dst.execute(f"DELETE FROM {tbl}")
+            if target.stat().st_size > 0:
+                # Instance already has a DB: keep its accumulated usage/threads, refresh only the
+                # credentials so the token stays current across restarts.
+                cols = [d[0] for d in src.execute(
+                    "SELECT * FROM auth_credentials LIMIT 0").description]
+                rows = src.execute("SELECT * FROM auth_credentials").fetchall()
+                placeholders = ",".join("?" * len(cols))
+                dst.execute("DELETE FROM auth_credentials")
+                dst.executemany(
+                    f"INSERT INTO auth_credentials ({','.join(cols)}) VALUES ({placeholders})",
+                    rows,
+                )
+            else:
+                # First creation: snapshot the host DB (online .backup handles the WAL), then strip
+                # host history so the instance starts with credentials only and tracks its own usage.
+                src.backup(dst)
+                existing = {r[0] for r in dst.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'")}
+                for tbl in _OMP_HISTORY_TABLES:
+                    if tbl in existing:
+                        dst.execute(f"DELETE FROM {tbl}")
             dst.commit()
         finally:
             src.close()

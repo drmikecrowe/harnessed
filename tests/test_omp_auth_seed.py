@@ -66,15 +66,26 @@ class TestOmpAuthSeed:
         _fake_host_omp_db(home)
         assert launcher._omp_auth_seed_mount("claude", "inst-x") == []
 
-    def test_reseed_overwrites_with_current_host_creds(self, monkeypatch, tmp_path):
+    def test_reseed_preserves_instance_usage_and_refreshes_auth(self, monkeypatch, tmp_path):
         home = _home(monkeypatch, tmp_path)
         _fake_host_omp_db(home)
         m1 = launcher._omp_auth_seed_mount("omp", "inst-y")
-        # Host rotates the credential; re-seed must pick it up.
+
+        # Simulate omp accumulating usage in the per-instance DB during a container session.
+        idb = sqlite3.connect(str(_seeded_db(m1)))
+        idb.execute("INSERT INTO threads (body) VALUES ('instance work — must survive restart')")
+        idb.commit(); idb.close()
+
+        # Host rotates the credential; the next container start must refresh auth WITHOUT wiping usage.
         hdb = sqlite3.connect(str(home / ".omp" / "agent" / "agent.db"))
         hdb.execute("UPDATE auth_credentials SET data='rotated' WHERE provider='anthropic'")
         hdb.commit(); hdb.close()
+
         launcher._omp_auth_seed_mount("omp", "inst-y")
+
         db = sqlite3.connect(str(_seeded_db(m1)))
+        # Credential refreshed to the current host value...
         assert db.execute("SELECT data FROM auth_credentials WHERE provider='anthropic'").fetchone()[0] == "rotated"
+        # ...and the instance's accumulated usage survived the restart.
+        assert db.execute("SELECT COUNT(*) FROM threads").fetchone()[0] == 1
         db.close()
