@@ -160,24 +160,30 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
     _out.print("[green][SUCCESS][/green] harnessed images ready")
 
 
-def _ensure_harness_image(rt: str, harness: str) -> None:
-    """Build the agent image (from its agent.yaml Dockerfile) if it is not present."""
+def _build_agent_image(rt: str, harness: str) -> None:
+    """(Re)build the agent image from its agent.yaml Dockerfile (podman layer cache decides whether
+    anything actually rebuilds). Build args from agent.yaml are the single source of truth for pinned
+    tool versions (e.g. OMP_VERSION) — the agent Dockerfile's ARG carries no default and is supplied
+    here, so changing the pin here cache-busts exactly the version layer and onward."""
     agent = load_agent(harness)
     image = _agent_image(harness)
-    if not _image_exists(rt, image):
-        if not _image_exists(rt, _BASE_IMAGE):
-            _out.print("[yellow][WARNING][/yellow] harnessed-base not found. Building base first…")
-            _build_images_cmd(rt, force=False)
-        hdir = _harnessed_dir()
-        dockerfile = hdir / agent.dockerfile if agent.dockerfile else _catalog_base(
-            f"Dockerfile.harnessed-{harness}")
-        # Build args declared in agent.yaml are the single source of truth for pinned tool versions
-        # (e.g. OMP_VERSION) — the agent Dockerfile's ARG carries no default and is supplied here.
-        build_args: list[str] = []
-        for key, val in agent.build_args.items():
-            build_args += ["--build-arg", f"{key}={val}"]
-        _out.print(f"[blue][INFO][/blue] Building {image} ...")
-        _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, str(hdir)])
+    if not _image_exists(rt, _BASE_IMAGE):
+        _out.print("[yellow][WARNING][/yellow] harnessed-base not found. Building base first…")
+        _build_images_cmd(rt, force=False)
+    hdir = _harnessed_dir()
+    dockerfile = hdir / agent.dockerfile if agent.dockerfile else _catalog_base(
+        f"Dockerfile.harnessed-{harness}")
+    build_args: list[str] = []
+    for key, val in agent.build_args.items():
+        build_args += ["--build-arg", f"{key}={val}"]
+    _out.print(f"[blue][INFO][/blue] Building {image} ...")
+    _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, str(hdir)])
+
+
+def _ensure_harness_image(rt: str, harness: str) -> None:
+    """Build the agent image only if it is not present (launch-time lazy build)."""
+    if not _image_exists(rt, _agent_image(harness)):
+        _build_agent_image(rt, harness)
 
 
 def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
@@ -207,6 +213,11 @@ def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
     _out.print(f"[blue][INFO][/blue] Building {_HATAGO_IMAGE} for stack '{stack}' ...")
     hdir = _harnessed_dir()
     _run([rt, "build", "-t", _HATAGO_IMAGE, "-f", str(_catalog_base("Dockerfile.hatago")), str(hdir)])
+
+    # (Re)build the agent base image so a changed agent Dockerfile / build_args (e.g. OMP_VERSION)
+    # actually propagates — the derived image is `FROM` it. Cache-backed: a no-op when unchanged,
+    # but a changed pin cache-busts the version layer and, in turn, the derived image's FROM.
+    _build_agent_image(rt, load_stack(stack_dir).harness)
 
     # Dockerfile recipes: build the derived per-stack image from the emitted Dockerfile, then merge
     # its baked ~/.claude extensions into the profile so they are visible at runtime (the profile
