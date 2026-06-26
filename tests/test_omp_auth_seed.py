@@ -25,6 +25,8 @@ def _fake_host_omp_db(home: Path):
     db.execute("INSERT INTO cache (k) VALUES ('host')")
     db.commit()
     db.close()
+    # omp's setup gate + provider/model config (no tokens) — must be seeded too.
+    (agent / "config.yml").write_text("setupVersion: 1\nproviders:\n")
 
 
 def _home(monkeypatch, tmp_path):
@@ -56,6 +58,10 @@ class TestOmpAuthSeed:
         assert db.execute("SELECT COUNT(*) FROM threads").fetchone()[0] == 0
         assert db.execute("SELECT COUNT(*) FROM cache").fetchone()[0] == 0
         db.close()
+        # config.yml (setup gate) seeded alongside the DB, else omp reruns its setup wizard.
+        seeded_cfg = _seeded_db(mount).parent / "config.yml"
+        assert seeded_cfg.is_file()
+        assert "setupVersion: 1" in seeded_cfg.read_text()
 
     def test_no_host_store_returns_empty(self, monkeypatch, tmp_path):
         _home(monkeypatch, tmp_path)  # no ~/.omp/agent/agent.db created

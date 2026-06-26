@@ -426,6 +426,17 @@ def _omp_auth_seed_mount(harness: str, inst: str) -> list[str]:
         _err.print(f"[yellow]note:[/yellow] could not seed omp auth ({exc}) — omp may prompt to log in.")
         return []
 
+    # omp's setup state + provider/model config live in agent/config.yml (setupVersion gates the
+    # first-run wizard) — credentials in agent.db are NOT enough on their own. Seed it once; it
+    # carries no tokens (those stay in agent.db).
+    host_cfg = host_db.parent / "config.yml"
+    inst_cfg = inst_agent / "config.yml"
+    if host_cfg.is_file() and not inst_cfg.is_file():
+        try:
+            shutil.copy2(host_cfg, inst_cfg)
+        except OSError as exc:
+            _err.print(f"[yellow]note:[/yellow] could not seed omp config.yml ({exc}).")
+
     return ["-v", f"{inst_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
 
 
