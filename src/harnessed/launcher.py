@@ -149,8 +149,13 @@ def _ensure_harness_image(rt: str, harness: str) -> None:
         hdir = _harnessed_dir()
         dockerfile = hdir / agent.dockerfile if agent.dockerfile else _catalog_base(
             f"Dockerfile.harnessed-{harness}")
+        # Build args declared in agent.yaml are the single source of truth for pinned tool versions
+        # (e.g. OMP_VERSION) — the agent Dockerfile's ARG carries no default and is supplied here.
+        build_args: list[str] = []
+        for key, val in agent.build_args.items():
+            build_args += ["--build-arg", f"{key}={val}"]
         _out.print(f"[blue][INFO][/blue] Building {image} ...")
-        _run([rt, "build", "-t", image, "-f", str(dockerfile), str(hdir)])
+        _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, str(hdir)])
 
 
 def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:

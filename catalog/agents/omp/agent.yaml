@@ -1,7 +1,12 @@
+# yaml-language-server: $schema=../../../schemas/agent.schema.json
 type: agent
 harness: omp
 image: harnessed-omp
 dockerfile: catalog/base/Dockerfile.harnessed-omp
+# Pinned tool versions for the image build (passed as --build-arg). Single source of truth — the
+# Dockerfile's matching ARG carries no default. Keep aligned with your host omp (shared ~/.omp/agent).
+build_args:
+  OMP_VERSION: "16.1.2"
 description: >
   Oh My Pi harness. FROM harnessed-base + omp (via mise, pinned v16) +
   pre-installed claude-hooks-bridge extension. Consumes Claude-canonical profiles

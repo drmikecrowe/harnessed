@@ -14,7 +14,9 @@ FROM harnessed-base:latest
 # Pinned to the verified v16 line. `mise use -g` lands `omp` on the mise shim PATH.
 # Supply-chain (T-04-09): omp is the host harness (first-party, MIT-class); scanned on
 # build (BLD-02 via build_stack's image-scan path when an omp stack is assembled).
-ARG OMP_VERSION=16.0.1
+# No default: the launcher supplies OMP_VERSION via --build-arg from catalog/agents/omp/agent.yaml
+# (build_args) — the single source of truth. A standalone `podman build` must pass --build-arg.
+ARG OMP_VERSION
 # omp plugins are Bun-based (the claude-hooks-bridge ships a bun.lock + TS entry). Install bun via
 # mise so `omp plugin install` can resolve/run them.
 RUN mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" bun && mise install

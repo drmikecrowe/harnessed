@@ -12,6 +12,7 @@ from harnessed.schema import (
     validate_pin,
     load_stack,
     load_service,
+    load_agent,
     SchemaError,
 )
 
@@ -101,6 +102,28 @@ class TestLoadStack:
         (d / "stack.yaml").write_text("- not: a mapping")
         with pytest.raises(SchemaError, match="expected a YAML mapping"):
             load_stack(d)
+
+
+class TestLoadAgent:
+    def _write(self, tmp_path, name, body):
+        d = tmp_path / "agents" / name
+        d.mkdir(parents=True)
+        (d / "agent.yaml").write_text(body)
+
+    def test_build_args_parsed_and_stringified(self, tmp_path):
+        # Unquoted 16.1.2 is a YAML string (two dots); the loader must stringify scalars for --build-arg.
+        self._write(tmp_path, "omp", "harness: omp\nimage: harnessed-omp\nbuild_args:\n  OMP_VERSION: 16.1.2\n")
+        agent = load_agent("omp", root=tmp_path)
+        assert agent.build_args == {"OMP_VERSION": "16.1.2"}
+
+    def test_no_build_args_defaults_empty(self, tmp_path):
+        self._write(tmp_path, "claude", "harness: claude\nimage: harnessed-claude\n")
+        assert load_agent("claude", root=tmp_path).build_args == {}
+
+    def test_build_args_non_mapping_raises(self, tmp_path):
+        self._write(tmp_path, "omp", "harness: omp\nimage: harnessed-omp\nbuild_args: [OMP_VERSION]\n")
+        with pytest.raises(SchemaError, match="build_args"):
+            load_agent("omp", root=tmp_path)
 
     def test_missing_name_raises(self, tmp_path):
         d = tmp_path / "no-name"

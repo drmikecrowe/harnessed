@@ -352,6 +352,7 @@ class Agent:
     image: str
     dockerfile: str = ""
     description: str = ""
+    build_args: dict[str, str] = field(default_factory=dict)
     root: Path = field(default_factory=Path)
     raw: dict = field(default_factory=dict)
 
@@ -366,12 +367,18 @@ def load_agent(name: str, root: Path | None = None) -> Agent:
     for field_name in ("harness", "image"):
         if field_name not in raw:
             raise SchemaError(f"{manifest}: required field '{field_name}' is missing")
+    raw_args = raw.get("build_args") or {}
+    if not isinstance(raw_args, dict):
+        raise SchemaError(f"{manifest}: 'build_args' must be a mapping of NAME: value")
+    # podman --build-arg takes NAME=value strings; stringify scalars (e.g. an unquoted version).
+    build_args = {str(k): str(v) for k, v in raw_args.items()}
     return Agent(
         name=name,
         harness=raw["harness"],
         image=raw["image"],
         dockerfile=raw.get("dockerfile", ""),
         description=raw.get("description", ""),
+        build_args=build_args,
         root=agent_dir,
         raw=raw,
     )

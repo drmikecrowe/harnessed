@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harnessed.dev/schemas/agent.schema.json",
+  "title": "harnessed agent",
+  "description": "An AI coding harness definition (catalog/agents/<name>/agent.yaml). Declares how the harness container image is built. An agent is NOT a recipe — recipes compose ONTO an agent. See ARCHITECTURE.md §Vocabulary and docs/harnessed-design.md §6/§8.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["harness", "image"],
+  "properties": {
+    "type": {
+      "description": "Catalog kind marker. Always 'agent' for an agent manifest.",
+      "const": "agent"
+    },
+    "harness": {
+      "description": "The AI coding harness this agent runs. Exactly one per agent. All harnesses consume the same Claude-canonical profile; they differ only in how they read it and reach hatago (design §8).",
+      "$ref": "#/$defs/harness"
+    },
+    "image": {
+      "description": "The container image tag built for this agent (e.g. harnessed-claude). FROM harnessed-base + the harness CLI installer.",
+      "type": "string",
+      "minLength": 1
+    },
+    "dockerfile": {
+      "description": "Path (repo-relative) to the Dockerfile that builds this agent image.",
+      "type": "string"
+    },
+    "build_args": {
+      "description": "Build arguments passed to `podman build` for this agent's image (each as --build-arg NAME=value). The single source of truth for pinned tool versions (e.g. OMP_VERSION); the agent Dockerfile's matching ARG carries no default. Keys must match the Dockerfile ARG names.",
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number"] }
+    },
+    "description": {
+      "description": "Human-readable summary of the agent.",
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "harness": {
+      "type": "string",
+      "enum": ["claude", "omp", "opencode", "gemini", "antigravity", "codex"]
+    }
+  }
+}
