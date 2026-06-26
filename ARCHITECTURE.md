@@ -83,3 +83,9 @@ credentials needed for a green report).
 Claude format is canonical (every other agent adapts out of it); pnpm everywhere (no npm/npx); `uvx`
 for light Python MCP servers; credentials referenced from the host, never baked; Streamable-HTTP MCP
 (SSE is deprecated).
+
+**Auth is per-harness.** claude seeds a read-only credential mount + a token-free onboarding stub
+(isolated). **omp is a deliberate exception**: it stores auth/usage/sessions together in
+`~/.omp/agent`, so the launcher **bind-mounts that host dir read-write** (shared host state, not
+isolated) and runs plain `omp` (never `--profile`). This is intentional — do not "fix" it back to
+isolation; see [design §4c](docs/harnessed-design.md) for the full rationale.

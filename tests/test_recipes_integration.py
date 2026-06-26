@@ -66,9 +66,10 @@ def test_big_stacks_declare_all_four_recipes():
     for stack in ("claude_gstack_ping_time_greet", "omp_gstack_ping_time_greet"):
         _stk, caps = _oracle(stack)
         assert {"time", "ping"} <= set(caps.mcp_servers), f"{stack}: missing MCP servers"
-        # time-helper/greet-helper are fanned skill dirs; gstack/browse/make-pdf are baked by the
-        # gstack Dockerfile and declared via its expect: block.
-        assert {"time-helper", "greet-helper", "gstack", "browse", "make-pdf"} <= set(caps.skills), f"{stack}: skills"
+        # time-helper/greet-helper are fanned skill dirs; `gstack` is the anchor skill the gstack
+        # Dockerfile bakes (declared via its expect: block). The rest of gstack's expect: list is a
+        # tunable representative set, so we don't pin it here.
+        assert {"time-helper", "greet-helper", "gstack"} <= set(caps.skills), f"{stack}: skills"
 
 
 def test_floating_pin_is_rejected(tmp_path):

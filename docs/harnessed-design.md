@@ -110,6 +110,44 @@ Auth seeded, config from the profile via **surgical per-file mounts** — the co
 
 Every stack is authenticated but carries **no host defaults** — exactly what was picked.
 
+### 4c. omp auth is a deliberate exception: shared host state, not isolated
+
+The surgical-mount model above keeps **claude** auth isolated — a read-only `~/.claude/.credentials.json`
+mount (the OAuth token, always current) plus a generated token-free `~/.claude.json` stub to skip
+onboarding. No host state is writable from the container.
+
+**omp does not fit that model, and we intentionally do not force it to.** omp (Oh My Pi) keeps
+*everything* — credentials, the setup gate (`config.yml` `setupVersion`), provider/model config,
+usage tracking, and sessions — in one place: `~/.omp/agent/` (credentials live in `agent.db` →
+`auth_credentials`, as plaintext-JSON OAuth/API entries). There is no separate, mountable credential
+file to isolate. So for omp the launcher **bind-mounts the host `~/.omp/agent` read-write** into the
+pod (`_omp_agent_mount`), and launches plain `omp` (NOT `omp --profile <instance>` — `--profile`
+points omp at an isolated, *empty* store, which is exactly why a credential-only seed left it at the
+login screen).
+
+Why this is the right call here — and why it's safe to break the isolation invariant for omp only:
+
+- **The container is the user's primary omp, not a sandbox of it.** When you live in these
+  containers, the host is just another client of one shared omp state — there is no "host source of
+  truth" to protect *from* the container. Isolating omp per-instance would fragment auth, usage, and
+  sessions across every stack and force a re-login dance on each launch.
+- **Unified, always-current state.** Auth never goes stale (read live, not copied); usage tracking
+  writes back to the single host ledger; sessions are visible across the host and every container.
+- **We tried the isolated path and it was worse.** A per-instance snapshot (copy `agent.db`, strip
+  history, refresh creds, seed `config.yml`) was built and rejected: it duplicated state, reset usage
+  on recreation, and still had to copy most of the agent dir to work — all cost, no isolation benefit
+  the user wanted.
+- **Scope of the exception.** Only omp shares writable host state. claude's credential stays
+  read-only; nothing else bind-mounts a host state dir. The tradeoff (full host-state sharing; the
+  container's omp can write the host DB) is accepted deliberately for omp and documented here so it
+  is not "fixed" back to isolation — doing so silently re-breaks omp auth.
+- **Version note.** Because the container's omp writes the host's shared `agent.db`, keep the image's
+  pinned omp (`OMP_VERSION` in `catalog/base/Dockerfile.harnessed-omp`) reasonably aligned with the
+  host's. An older container omp *reading* a newer DB has been fine in practice (it read the token
+  without trouble); the theoretical risk is an older omp *writing* an incompatible schema. We chose
+  not to add a launch-time version gate — it was noise for a risk that hasn't materialized; align the
+  pin if it ever does.
+
 ## 5. Composition unit: recipes (hand-authored, not dynamic)
 
 A **recipe** is a hand-authored integration definition for **one** project (hindsight, gsd,
