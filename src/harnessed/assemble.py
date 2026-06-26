@@ -13,6 +13,7 @@ EMIT ONLY: nothing here invokes podman/docker or mounts a daemon socket.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -102,7 +103,10 @@ def assemble(root: Path | None, stack_name: str, build_dir: Path) -> AssembleRes
     emit.write_mcp_json(profile_dir)
     emit.write_settings_json(profile_dir, servers)
     emit.write_hatago_config(profile_dir, servers)
-    emit.write_derived_dockerfile(profile_dir, stack, recipes)  # ASM-03
+    # ASM-03 — derived Dockerfile, with a final supply-chain scan layer (BLD-02) unless the build
+    # opted out via --no-security-scans (HARNESSED_NO_SCANS).
+    with_scan = os.environ.get("HARNESSED_NO_SCANS") != "true"
+    emit.write_derived_dockerfile(profile_dir, stack, recipes, with_scan=with_scan)
 
     # Fan each recipe's standalone skills/commands into the harness-native profile tree
     # (<profile>/.claude/{skills,commands}). The launcher mounts these dirs into the instance and

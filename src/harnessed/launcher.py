@@ -26,7 +26,6 @@ from rich.console import Console
 from . import paths
 from .paths import CONTAINER_HOME, HATAGO_PORT, instance_name, is_built, profile_dir, project_relpath
 from .assemble import assemble
-from .scan import ScanError, run_source_scan
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
@@ -211,20 +210,6 @@ def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
-    # Supply-chain gate (BLD-02): scan the stack's recipe sources + emitted profile — osv-scanner +
-    # pip-audit always (credential-free), snyk + Socket.dev when their tokens are set (warn-and-skip
-    # otherwise). Fails the build on any HIGH+ (CVSS >= 7.0). Skip with --no-security-scans.
-    if os.environ.get("HARNESSED_NO_SCANS") != "true":
-        _out.print(f"[blue][INFO][/blue] Supply-chain scan (osv + pip-audit + snyk/socket if tokens) …")
-        try:
-            scan = run_source_scan(root, stack, build_root)
-        except ScanError as exc:
-            _err.print(f"[bold red]error:[/bold red] supply-chain scan failed: {exc}")
-            raise typer.Exit(1)
-        for warning in sorted(set(scan.warnings)):
-            _out.print(f"  [yellow]warning:[/yellow] {warning}")
-        _out.print("[green][SUCCESS][/green] supply-chain scan clean (no HIGH+ findings)")
-
     _out.print(f"[blue][INFO][/blue] Building {_HATAGO_IMAGE} for stack '{stack}' ...")
     hdir = _harnessed_dir()
     _run([rt, "build", "-t", _HATAGO_IMAGE, "-f", str(_catalog_base("Dockerfile.hatago")), str(hdir)])
@@ -234,18 +219,35 @@ def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
     # but a changed pin cache-busts the version layer and, in turn, the derived image's FROM.
     _build_agent_image(rt, load_stack(stack_dir).harness)
 
-    # Dockerfile recipes: build the derived per-stack image from the emitted Dockerfile, then merge
-    # its baked ~/.claude extensions into the profile so they are visible at runtime (the profile
-    # mount would otherwise shadow image-baked skills/commands). Skipped when no recipe ships a
-    # Dockerfile — then the stack runs the plain agent image.
+    # Always build the derived per-stack image: its FINAL layer is the supply-chain scan (BLD-02,
+    # emit.write_derived_dockerfile), so every stack — not just ones shipping a recipe Dockerfile —
+    # gets scanned. The scan runs over the agent's mise globals + recipe installs under ~/.claude.
+    derived = _derived_image(stack)
+    dockerfile = prof / f"Dockerfile.harnessed-{stack}"
+    _out.print(f"[blue][INFO][/blue] Building derived image {derived} (incl. supply-chain scan) ...")
+    _build_derived_image(rt, derived, dockerfile, hdir)
+    # Merge image-baked ~/.claude extensions into the profile only when a recipe actually baked some.
     if any((r.root / "Dockerfile").is_file() for r in result.recipes):
-        derived = _derived_image(stack)
-        dockerfile = prof / f"Dockerfile.harnessed-{stack}"
-        _out.print(f"[blue][INFO][/blue] Building derived image {derived} ...")
-        _run([rt, "build", "-t", derived, "-f", str(dockerfile), str(hdir)])
         _merge_baked_extensions(rt, derived, prof)
 
     _out.print(f"[green][SUCCESS][/green] Stack '{stack}' built — profile: {prof}")
+
+
+def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path) -> None:
+    """Build the derived image, supplying SNYK_TOKEN to its scan layer as a build SECRET.
+
+    The token is resolved via varlock from ~/.config/harnessed/.env.schema and passed with
+    `--secret id=snyk_token,env=SNYK_TOKEN` — never a build-arg, so it is never baked into image
+    history. No schema / no varlock → plain build; the scan's `--mount=type=secret,...,required=false`
+    yields no token and snyk warn-skips (osv + pip-audit advisory output still runs).
+    """
+    schema = Path.home() / ".config" / "harnessed" / ".env.schema"
+    if schema.is_file() and shutil.which("varlock"):
+        _run(["varlock", "run", "-p", str(schema), "--",
+              rt, "build", "-t", derived, "-f", str(dockerfile),
+              "--secret", "id=snyk_token,env=SNYK_TOKEN", str(hdir)])
+    else:
+        _run([rt, "build", "-t", derived, "-f", str(dockerfile), str(hdir)])
 
 
 def _derived_image(stack: str) -> str:

@@ -10,8 +10,26 @@ from harnessed.emit import (
     write_settings_json,
     write_hatago_config,
     write_baked_manifest,
+    write_derived_dockerfile,
 )
 from harnessed.schema import McpServer, Stack
+
+
+class TestWriteDerivedDockerfile:
+    def _stack(self):
+        return Stack(name="claude_time", harness="claude", recipes=["time"], services=[])
+
+    def test_appends_supply_chain_scan_run_by_default(self, tmp_path):
+        out = write_derived_dockerfile(tmp_path, self._stack(), [])
+        body = out.read_text()
+        assert "FROM harnessed-${HARNESS}:latest" in body
+        # The final supply-chain layer (BLD-02) runs even when no recipe ships a Dockerfile.
+        assert "harnessed-scan" in body
+        assert "--mount=type=secret,id=snyk_token" in body
+
+    def test_no_scan_when_disabled(self, tmp_path):
+        out = write_derived_dockerfile(tmp_path, self._stack(), [], with_scan=False)
+        assert "harnessed-scan" not in out.read_text()
 
 
 class TestWriteMcpJson:

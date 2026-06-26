@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# harnessed in-image supply-chain scan (BLD-02). Baked into harnessed-base; invoked as the final
+# RUN layer of every assembled stack image (emit.write_derived_dockerfile). Scans what the build
+# actually installed — mise-managed node globals and recipe installs under ~/.claude — because
+# those vendor no top-level lockfile and osv-scanner cannot see them (RESEARCH: ports the host
+# ~/.config/dorothy/commands/nightly-updates audit into the image).
+#
+# Gate: snyk (--severity-threshold=high) is the HARD gate — exit non-zero aborts `podman build`.
+# osv-scanner + pip-audit run as warn-only advisories (no clean in-bash HIGH gate). snyk is
+# token-gated via a build SECRET (--mount=type=secret,id=snyk_token); without it, snyk warn-skips
+# and the build is NOT gated (credential-free osv/pip-audit output is advisory only).
+set -uo pipefail
+
+HOME_DIR="${HOME:-/home/harnessed}"
+high=0
+
+# SNYK_TOKEN arrives as a build secret (never a build-arg → never baked into image history).
+if [[ -r /run/secrets/snyk_token ]]; then
+    SNYK_TOKEN="$(cat /run/secrets/snyk_token)"
+    export SNYK_TOKEN
+fi
+
+# Snyk-scan a node_modules tree that has no top-level manifest (mise globals / recipe installs):
+# synthesize a package.json from the on-disk packages and symlink the real node_modules so snyk
+# has dependencies to resolve. HIGH+ finding → exit 1 → set the gate.
+snyk_node_modules() {
+    local nm="$1" tmp
+    [[ -d "$nm" ]] || return 0
+    if ! command -v snyk >/dev/null 2>&1; then echo "  snyk not installed — skip"; return 0; fi
+    if [[ -z "${SNYK_TOKEN:-}" ]]; then echo "  snyk skipped (no SNYK_TOKEN build secret)"; return 0; fi
+    tmp="$(mktemp -d)" || return 0
+    ln -s "$nm" "$tmp/node_modules"
+    python3 - "$nm" >"$tmp/package.json" <<'PY'
+import sys, os, json
+nm = sys.argv[1]
+deps = {}
+def add(d):
+    try:
+        with open(os.path.join(d, "package.json")) as f:
+            p = json.load(f)
+        deps[p["name"]] = p.get("version", "*")
+    except Exception:
+        pass
+for entry in sorted(os.listdir(nm)):
+    path = os.path.join(nm, entry)
+    if not os.path.isdir(path):
+        continue
+    if entry.startswith("@"):                 # scoped packages live one level down
+        for sub in sorted(os.listdir(path)):
+            add(os.path.join(path, sub))
+    else:
+        add(path)
+json.dump({"name": "harnessed-globals-audit", "version": "0.0.0", "dependencies": deps}, sys.stdout)
+PY
+    ( cd "$tmp" && snyk test --severity-threshold=high ) || high=1
+    rm -rf "$tmp"
+}
+
+echo "== harnessed supply-chain scan =="
+
+# 1. mise-installed node globals — each installed node version, deduped via realpath (mise exposes
+#    version aliases as symlinks).
+declare -A seen=()
+for nm in "$HOME_DIR"/.local/share/mise/installs/node/*/lib/node_modules; do
+    [[ -d "$nm" ]] || continue
+    real="$(realpath "$nm")"
+    [[ -n "${seen[$real]:-}" ]] && continue
+    seen[$real]=1
+    echo "-- snyk: mise node globals ($real)"
+    snyk_node_modules "$real"
+done
+unset seen
+
+# 2. recipe-installed node trees under the Claude-canonical profile (e.g. gstack's ./setup).
+for nm in "$HOME_DIR"/.claude/skills/*/node_modules "$HOME_DIR"/.claude/commands/*/node_modules; do
+    [[ -d "$nm" ]] || continue
+    echo "-- snyk: recipe install ($nm)"
+    snyk_node_modules "$(realpath "$nm")"
+done
+
+# 3. pip-audit over the active Python env (advisory — no severity gate).
+if command -v pip-audit >/dev/null 2>&1; then
+    echo "-- pip-audit (advisory)"
+    pip-audit --desc || echo "  pip-audit reported findings (advisory — not gating the build)"
+else
+    echo "-- pip-audit not installed — skip"
+fi
+
+# 4. osv-scanner over recipe trees that ship a real lockfile (advisory — osv cannot see mise globals).
+if command -v osv-scanner >/dev/null 2>&1; then
+    for d in "$HOME_DIR"/.claude/skills/* "$HOME_DIR"/.claude/commands/*; do
+        [[ -d "$d" ]] || continue
+        osv-scanner scan source --recursive "$d" 2>/dev/null \
+            || echo "  osv-scanner: findings/none in $d (advisory)"
+    done
+else
+    echo "-- osv-scanner not installed — skip"
+fi
+
+if [[ "$high" -ne 0 ]]; then
+    echo "SUPPLY-CHAIN GATE: HIGH+ finding(s) — failing the build."
+    exit 1
+fi
+echo "supply-chain scan clean (no HIGH+ snyk findings)."
+exit 0

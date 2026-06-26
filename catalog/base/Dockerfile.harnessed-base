@@ -89,6 +89,17 @@ USER ${USERNAME}
 RUN grep -v '^\s*#' /tmp/extra-tools.txt | grep -v '^\s*$' | awk '{print $1}' | \
     xargs -r mise use -g && mise install
 
+# Supply-chain scanners (BLD-02) + the in-image scan script, baked once and invoked as the final
+# layer of every assembled stack image (emit.write_derived_dockerfile). osv-scanner + pip-audit are
+# credential-free; snyk is token-gated at build via a build secret. uv backs pip-audit (uvx policy).
+RUN mise use -g uv osv-scanner && mise install \
+    && uv tool install pip-audit \
+    && pnpm add -g snyk
+USER root
+COPY catalog/base/harnessed-scan /usr/local/bin/harnessed-scan
+RUN chmod 0755 /usr/local/bin/harnessed-scan
+USER ${USERNAME}
+
 # Interactive shell config
 RUN echo 'PS1="\[\033[01;32m\][harnessed]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/${USERNAME}/.bashrc && \
     echo 'eval "$(mise activate bash)"' >> /home/${USERNAME}/.bashrc && \

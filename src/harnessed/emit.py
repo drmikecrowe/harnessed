@@ -100,7 +100,9 @@ def write_hatago_config(profile_dir: Path, servers: list[McpServer]) -> Path:
     return out
 
 
-def write_derived_dockerfile(profile_dir: Path, stack: Stack, recipes: list[Recipe]) -> Path:
+def write_derived_dockerfile(
+    profile_dir: Path, stack: Stack, recipes: list[Recipe], *, with_scan: bool = True
+) -> Path:
     """Emit profiles/<stack>/Dockerfile.harnessed-<stack> for host `podman build` (ASM-03).
 
     The output Dockerfile:
@@ -133,6 +135,17 @@ def write_derived_dockerfile(profile_dir: Path, stack: Stack, recipes: list[Reci
         lines.append(f"# --- recipe: {recipe.name} ---")
         lines.extend(filtered)
         lines.append("")
+
+    if with_scan:
+        # Final layer: in-image supply-chain gate (BLD-02). Scans what the build installed (mise
+        # globals + recipe trees under ~/.claude); snyk HIGH+ → non-zero → aborts the build. SNYK_TOKEN
+        # arrives as a build secret (never a build-arg → never baked); required=false so a tokenless
+        # build still proceeds (snyk warn-skips). Disabled by `harnessed build --no-security-scans`.
+        lines += [
+            "# --- supply-chain scan (BLD-02) ---",
+            "RUN --mount=type=secret,id=snyk_token,required=false,mode=0444 harnessed-scan",
+            "",
+        ]
 
     out = profile_dir / f"Dockerfile.harnessed-{stack.name}"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
