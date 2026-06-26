@@ -55,7 +55,9 @@ _CONTAINER_HOME_STR = str(CONTAINER_HOME)
 # Attach command for each harness inside the container.
 _HARNESS_ATTACH_CMD = {
     "claude": "claude --mcp-config '{mcp_cfg}' --strict-mcp-config",
-    "omp": "omp --profile '{instance}'",
+    # No `--profile`: that isolates auth/sessions/settings into a separate store, which would ignore
+    # the bind-mounted ~/.omp/agent. We share the host's default omp profile (auth + usage + sessions).
+    "omp": "omp",
     "opencode": "opencode",
     "gemini": "gemini",
     "antigravity": "agy",
