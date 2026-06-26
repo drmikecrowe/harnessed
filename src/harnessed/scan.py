@@ -282,14 +282,17 @@ def _scan_socket(target: Path, warnings: list[str]) -> None:
         warnings.append(f"socket: {alert}")
 
 
-def run_source_scan(root: Path | str, stack_name: str, build_dir: Path | str) -> ScanResult:
+def run_source_scan(root: Path | str | None, stack_name: str, build_dir: Path | str) -> ScanResult:
     """SCOPED source/Python scan of one stack (BLD-02a). Raises ScanError on any HIGH+ finding.
 
     Scope = exactly what this build assembles: the stack's recipe dirs (resolved via
     `schema.load_stack_with_recipes`) plus the emitted `build_dir/profiles/<stack>/` — never the
     whole repo (a committed fixture under tools/test-fixtures/ cannot red-line another build).
+
+    `root` None → resolve the stack + recipes across the catalog roots (the normal `harnessed build`
+    path); a concrete root pins resolution to one tree (fixtures/tests).
     """
-    root = Path(root)
+    root = Path(root) if root is not None else None
     build_dir = Path(build_dir)
     stack, recipes = schema.load_stack_with_recipes(root, stack_name)
 

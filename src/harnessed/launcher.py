@@ -26,6 +26,7 @@ from rich.console import Console
 from . import paths
 from .paths import CONTAINER_HOME, HATAGO_PORT, instance_name, is_built, profile_dir, project_relpath
 from .assemble import assemble
+from .scan import ScanError, run_source_scan
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
@@ -209,6 +210,20 @@ def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
         # build that is *meant* to fail should read as a one-line error, not a Python traceback.
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
+
+    # Supply-chain gate (BLD-02): scan the stack's recipe sources + emitted profile — osv-scanner +
+    # pip-audit always (credential-free), snyk + Socket.dev when their tokens are set (warn-and-skip
+    # otherwise). Fails the build on any HIGH+ (CVSS >= 7.0). Skip with --no-security-scans.
+    if os.environ.get("HARNESSED_NO_SCANS") != "true":
+        _out.print(f"[blue][INFO][/blue] Supply-chain scan (osv + pip-audit + snyk/socket if tokens) …")
+        try:
+            scan = run_source_scan(root, stack, build_root)
+        except ScanError as exc:
+            _err.print(f"[bold red]error:[/bold red] supply-chain scan failed: {exc}")
+            raise typer.Exit(1)
+        for warning in sorted(set(scan.warnings)):
+            _out.print(f"  [yellow]warning:[/yellow] {warning}")
+        _out.print("[green][SUCCESS][/green] supply-chain scan clean (no HIGH+ findings)")
 
     _out.print(f"[blue][INFO][/blue] Building {_HATAGO_IMAGE} for stack '{stack}' ...")
     hdir = _harnessed_dir()
