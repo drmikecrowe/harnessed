@@ -171,6 +171,7 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 - [ ] **[hyperpowers](https://github.com/withzombies/hyperpowers)** — workflow guidance (task tracking, plan management, TDD) · *skills + hooks recipe*
 - [ ] **[beads](https://github.com/steveyegge/beads)** — git-backed, dependency-aware issue tracker / persistent memory for coding agents (`bd` CLI, Dolt-backed) · *CLI + skills recipe*
 - [ ] **[agent-carnet](https://github.com/yamadashy/agent-carnet)** — shared file-based markdown notebook for agents (`.carnet/`, auto-expiring), bundles a skill · *CLI + skills recipe*
+- [ ] **[Superpowers](https://github.com/obra/Superpowers)** — composable software-development methodology skill suite (TDD, code review, subagent-driven dev) · *skills recipe*
 
 ## Supply chain & security
 
