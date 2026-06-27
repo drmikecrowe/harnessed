@@ -151,23 +151,24 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 
 **Shipped**
 
-- [x] **gstack** — Garry Tan's skill suite (browser automation, design, PDF, …), installed via its
-  upstream `./setup` (`catalog/recipes/gstack/`). *The first real non-development recipe.*
+- [x] **[gstack](https://github.com/garrytan/gstack)** — Garry Tan's skill suite (browser automation,
+  design, PDF, …), installed via its upstream `./setup` (`catalog/recipes/gstack/`). *The first real
+  non-development recipe.*
 
 **Planned** — packages classified in [docs/RECIPE-STRESS-TEST.md](docs/RECIPE-STRESS-TEST.md)
 (repos, install commands, data models, and architecture gaps each one surfaces):
 
-- [ ] **serena** — semantic code intelligence MCP (LSP-backed retrieval/editing, 40+ languages) · *MCP recipe*
-- [ ] **agentmemory** — persistent memory server (53 MCP tools, 12 hooks, HTTP :3111) · *service + recipe*
-- [ ] **headroom** — context/tool-output compression before it reaches the LLM · *MCP recipe*
-- [ ] **gbrain** — knowledge brain (synthesis, graph traversal, gap analysis) · *service + recipe*
-- [ ] **solidspec** — multi-methodology spec-driven development CLI · *skills recipe*
-- [ ] **codebase-memory-mcp** — codebase knowledge graph (158 languages, C binary) · *MCP recipe*
-- [ ] **context-mode** — context-window optimization / tool-output sandbox (6 hooks) · *MCP + hooks recipe*
-- [ ] **tokensave** — pre-indexed semantic code knowledge graph (80+ MCP tools, Rust) · *MCP recipe*
-- [ ] **caveman** — concise-output / token-compression skill · *skills recipe*
-- [ ] **hindsight** — memory/recall sidecar (multi-container Postgres stack) · *existing service*
-- [ ] **hyperpowers** — workflow guidance (task tracking, plan management, TDD) · *skills + hooks recipe*
+- [ ] **[serena](https://github.com/oraios/serena)** — semantic code intelligence MCP (LSP-backed retrieval/editing, 40+ languages) · *MCP recipe*
+- [ ] **[agentmemory](https://github.com/rohitg00/agentmemory)** — persistent memory server (53 MCP tools, 12 hooks, HTTP :3111) · *service + recipe*
+- [ ] **[headroom](https://github.com/headroomlabs-ai/headroom)** — context/tool-output compression before it reaches the LLM · *MCP recipe*
+- [ ] **[gbrain](https://github.com/garrytan/gbrain)** — knowledge brain (synthesis, graph traversal, gap analysis) · *service + recipe*
+- [ ] **[solidspec](https://github.com/jyjeanne/solidspec)** — multi-methodology spec-driven development CLI · *skills recipe*
+- [ ] **[codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)** — codebase knowledge graph (158 languages, C binary) · *MCP recipe*
+- [ ] **[context-mode](https://github.com/mksglu/context-mode)** — context-window optimization / tool-output sandbox (6 hooks) · *MCP + hooks recipe*
+- [ ] **[tokensave](https://github.com/aovestdipaperino/tokensave)** — pre-indexed semantic code knowledge graph (80+ MCP tools, Rust) · *MCP recipe*
+- [ ] **[caveman](https://github.com/JuliusBrussee/caveman)** — concise-output / token-compression skill · *skills recipe*
+- [ ] **[hindsight](https://hindsight.vectorize.io)** — memory/recall sidecar (multi-container Postgres stack) · *existing service*
+- [ ] **[hyperpowers](https://github.com/withzombies/hyperpowers)** — workflow guidance (task tracking, plan management, TDD) · *skills + hooks recipe*
 
 ## Supply chain & security
 
