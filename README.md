@@ -143,6 +143,32 @@ environment — there is no `harnessed auth` command (see [Supply chain & securi
 - **[Troubleshooting](docs/guides/troubleshooting.md)** — podman setup, first-run build, `--fresh`, host-persisted sessions, the nightly re-scan timer.
 - **[Architecture & design](docs/harnessed-design.md)** — the *why* behind every decision (§1–§18).
 
+## Recipe roadmap
+
+The shipped recipes today are mostly **tracer/development** recipes — minimal slices used to exercise
+the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-recipe`). The
+**non-development** recipes — real third-party tooling — are the ones worth tracking:
+
+**Shipped**
+
+- [x] **gstack** — Garry Tan's skill suite (browser automation, design, PDF, …), installed via its
+  upstream `./setup` (`catalog/recipes/gstack/`). *The first real non-development recipe.*
+
+**Planned** — packages classified in [docs/RECIPE-STRESS-TEST.md](docs/RECIPE-STRESS-TEST.md)
+(repos, install commands, data models, and architecture gaps each one surfaces):
+
+- [ ] **serena** — semantic code intelligence MCP (LSP-backed retrieval/editing, 40+ languages) · *MCP recipe*
+- [ ] **agentmemory** — persistent memory server (53 MCP tools, 12 hooks, HTTP :3111) · *service + recipe*
+- [ ] **headroom** — context/tool-output compression before it reaches the LLM · *MCP recipe*
+- [ ] **gbrain** — knowledge brain (synthesis, graph traversal, gap analysis) · *service + recipe*
+- [ ] **solidspec** — multi-methodology spec-driven development CLI · *skills recipe*
+- [ ] **codebase-memory-mcp** — codebase knowledge graph (158 languages, C binary) · *MCP recipe*
+- [ ] **context-mode** — context-window optimization / tool-output sandbox (6 hooks) · *MCP + hooks recipe*
+- [ ] **tokensave** — pre-indexed semantic code knowledge graph (80+ MCP tools, Rust) · *MCP recipe*
+- [ ] **caveman** — concise-output / token-compression skill · *skills recipe*
+- [ ] **hindsight** — memory/recall sidecar (multi-container Postgres stack) · *existing service*
+- [ ] **hyperpowers** — workflow guidance (task tracking, plan management, TDD) · *skills + hooks recipe*
+
 ## Supply chain & security
 
 - **pnpm everywhere** — every JavaScript install (global, per-recipe, hatago's bundled servers) uses **pnpm**, never `npm`/`npx`; `pnpm dlx` replaces `npx`. A managed supply-chain config applies `minimumReleaseAge` cooldowns and lifecycle-script default-deny. Recipe validation flags raw `npm`/`npx` and points at the pnpm equivalent ([design §7](docs/harnessed-design.md)).
