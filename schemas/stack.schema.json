@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harnessed.dev/schemas/stack.schema.json",
+  "title": "harnessed stack",
+  "description": "A composition of one harness + a chosen set of recipes (catalog/stacks/<agent>_<recipe>…/stack.yaml). Nothing is resolved at runtime; recipes are assembled ahead of time. See docs/harnessed-design.md §5/§12.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "description": "Stack identity. Convention: <agent>_<recipe>[_<recipe>…] (underscores between fields; hyphens allowed within a name).",
+      "type": "string",
+      "minLength": 1
+    },
+    "harness": {
+      "description": "The single harness this stack targets. Exactly one per stack (never two at once). Defaults to claude.",
+      "$ref": "#/$defs/harness",
+      "default": "claude"
+    },
+    "permissions": {
+      "description": "Permission mode written into the profile. 'prompt' (default) asks before tool use; 'yolo' writes per-harness skip-permission config — safe in an isolated instance.",
+      "type": "string",
+      "enum": ["prompt", "yolo"]
+    },
+    "recipes": {
+      "description": "Recipe names composed onto the harness, in declaration order. Each must resolve in the catalog (user overlay first, then repo).",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "services": {
+      "description": "Shared services attached by reference. Started host-published, idempotently, outliving the instance.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "state": {
+      "description": "State and lifecycle options. Default persistent; `--fresh` overrides at runtime.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "persist": {
+          "description": "Keep state across runs (default true). `--fresh` at runtime forces a throwaway volume.",
+          "type": "boolean",
+          "default": true
+        },
+        "session_state": {
+          "description": "Where Claude session state (projects/ + history.jsonl) lives. 'host' (default) persists to a harnessed-owned host dir, inspectable; 'volume' uses a throwaway per-instance volume.",
+          "type": "string",
+          "enum": ["host", "volume"],
+          "default": "host"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "harness": {
+      "type": "string",
+      "enum": ["claude", "omp", "opencode", "gemini", "antigravity", "codex"]
+    }
+  }
+}

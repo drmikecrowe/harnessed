@@ -32,6 +32,12 @@ def xdg_config_home() -> Path:
     return Path(xdg) if xdg else Path.home() / ".config"
 
 
+def xdg_state_home() -> Path:
+    """Return $XDG_STATE_HOME, defaulting to ~/.local/state."""
+    xdg = os.environ.get("XDG_STATE_HOME", "")
+    return Path(xdg) if xdg else Path.home() / ".local" / "state"
+
+
 def repo_root() -> Path:
     """The installed source root (HARNESSED_DIR override, else the package's repo).
 

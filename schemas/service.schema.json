@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harnessed.dev/schemas/service.schema.json",
+  "title": "harnessed service",
+  "description": "A shared sidecar service definition (catalog/services/<name>/service.yaml). Its own image/container/volume on a host-published port, with a lifecycle independent of any instance. A recipe references it via mcp.servers[].service. See docs/harnessed-design.md §3/§9.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["name", "image", "port"],
+  "properties": {
+    "name": {
+      "description": "Service identity. Global by name (e.g. hindsight) — reached via host.containers.internal:<port>, or by DNS name over the HARNESSED_NET bridge.",
+      "type": "string",
+      "minLength": 1
+    },
+    "image": {
+      "description": "The container image tag for this service (e.g. harnessed-ping:latest).",
+      "type": "string",
+      "minLength": 1
+    },
+    "port": {
+      "description": "The host-published port the service listens on (1–65535). Peers reach it at host.containers.internal:<port>.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "volume": {
+      "description": "Service-scoped, harness-independent named volume (defaults to <name>-data). Persists across `svc down`.",
+      "type": "string"
+    },
+    "healthcheck": {
+      "description": "Shell command used as the container healthcheck (e.g. curl -sf http://localhost:8080/health || exit 1).",
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "yaml.schemas": {
+    "./schemas/agent.schema.json": "catalog/**/agent.yaml",
+    "./schemas/recipe.schema.json": "catalog/**/recipe.yaml",
+    "./schemas/service.schema.json": "catalog/**/service.yaml",
+    "./schemas/stack.schema.json": "catalog/**/stack.yaml"
+  }
+}

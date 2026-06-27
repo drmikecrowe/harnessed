@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
 # Recipe: gstack â€” install a third-party skill suite by running its own upstream installer.
 #
 # The whole recipe is: do what gstack's install docs say (git clone + ./setup), in a Dockerfile.
@@ -9,4 +10,4 @@ description: Garry Tan's gstack skill suite (browser automation, design, PDF, â€
 # What the capability test must find in the running container after a successful build. gstack
 # installs many skills into ~/.claude/skills (and no ~/.claude/commands); declare a stable few.
 expect:
-  skills: [gstack, browse, make-pdf]
+  skills: [gstack, office-hours, qa, plan-ceo-review, review]

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
 # Test fixture — triggers the pin-validation rejection (PinValidationError).
 #
 # Exists only to exercise the assembler's validate_pin() gate: its Dockerfile contains a floating

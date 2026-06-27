@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
 # Recipe: time — a network-free, credential-free time/timezone MCP server + a no-dep skill.
 #
 # This is the tracer-bullet recipe (design §11 / D-01..D-03): exactly ONE light stdio MCP

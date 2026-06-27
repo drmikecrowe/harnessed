@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harnessed.dev/schemas/recipe.schema.json",
+  "title": "harnessed recipe",
+  "description": "A composable capability bundle added ONTO an agent (catalog/recipes/<name>/recipe.yaml). Harness-independent — no `harnesses:` field; harness-specific build steps branch on ${HARNESS} inside the recipe's Dockerfile. Carries metadata only; build steps live in the Dockerfile. See docs/harnessed-design.md §7/§11.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "description": "Recipe identity.",
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "description": "Human-readable summary of what this recipe contributes.",
+      "type": "string"
+    },
+    "mcp": {
+      "description": "MCP layer: server entries merged into the stack's hatago config across all recipes.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "servers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/mcpServer" }
+        }
+      }
+    },
+    "skills": {
+      "description": "Standalone skill dirs shipped by this recipe (Claude-canonical), fanned into the profile's .claude/skills/. Each entry is a path relative to the recipe dir.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/fileExt" }
+    },
+    "commands": {
+      "description": "Standalone command dirs shipped by this recipe (Claude-canonical), fanned into the profile's .claude/commands/. Each entry is a path relative to the recipe dir.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/fileExt" }
+    },
+    "expect": {
+      "description": "Smoke-check subset the capability test probes after building — for capabilities delivered via the recipe's Dockerfile (which the assembler cannot infer by parsing). Not a completeness oracle.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "skills":   { "type": "array", "items": { "type": "string" }, "description": "Skill names expected at ~/.claude/skills/<name>." },
+        "commands": { "type": "array", "items": { "type": "string" }, "description": "Command names expected at ~/.claude/commands/<name>." },
+        "plugins":  { "type": "array", "items": { "type": "string" }, "description": "Plugin names expected at ~/.claude/plugins/<name>." },
+        "mcp":      { "type": "array", "items": { "type": "string" }, "description": "MCP server names expected connected through the hatago hub." }
+      }
+    },
+    "plugins": {
+      "description": "Vendored Claude plugins (forward field, design §11). Either a marketplace+plugin reference or a url+sha[+subdir] reference.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/plugin" }
+    },
+    "hooks": {
+      "description": "Claude-canonical hooks shipped by this recipe (forward field, design §11).",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "event_dir": {
+          "description": "Directory (relative to the recipe) of NN-name.sh handlers grouped under <Event>.d/.",
+          "type": "string"
+        }
+      }
+    },
+    "deps": {
+      "description": "Dependency declarations (forward field, design §11). Usually auto-detected from a vendored plugin; declare here for standalone recipes/overrides. uv for Python, pnpm for Node (never npm/npx).",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "python": {
+          "description": "requirements.txt → `uv pip install -r`; pyproject.toml → `uv venv` + `uv pip install -e .`.",
+          "type": "string"
+        },
+        "node": {
+          "description": "package.json → `pnpm install` (managed supply-chain config).",
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "mcpServer": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name"],
+      "description": "One MCP server. A stdio server (with `command`) is run by hatago as a child (stdio→HTTP). A network-native server (`url`/`service`, transport http) is proxied by hatago. `service` and `command` are mutually exclusive.",
+      "properties": {
+        "name": { "description": "Server name (unique within the stack).", "type": "string", "minLength": 1 },
+        "command": { "description": "Executable for a stdio child server (e.g. uvx). Mutually exclusive with `service`. Never raw npm/npx — use pnpm dlx.", "type": "string" },
+        "args": { "description": "Arguments to `command`.", "type": "array", "items": { "type": "string" } },
+        "transport": {
+          "description": "Transport. 'stdio' (default) → hatago child; 'http' → Streamable-HTTP URL proxy. 'sse' is deprecated.",
+          "type": "string",
+          "enum": ["stdio", "http", "sse"],
+          "default": "stdio"
+        },
+        "url": { "description": "Endpoint for a network-native server (transport http).", "type": "string" },
+        "service": { "description": "Reference to a shared service (services/<name>); the assembler resolves it to a hatago URL-proxy entry. Mutually exclusive with `command`.", "type": "string" },
+        "url_env": { "description": "Optional env var injected into the instance carrying the resolved URL.", "type": "string" },
+        "env": { "description": "Environment variables for the server.", "type": "object" },
+        "headers": { "description": "HTTP headers for a network-native server.", "type": "object" }
+      },
+      "not": {
+        "required": ["service", "command"]
+      }
+    },
+    "fileExt": {
+      "description": "A standalone skill/command dir: a bare path string, or { path: ... }.",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["path"],
+          "properties": { "path": { "type": "string", "minLength": 1 } }
+        }
+      ]
+    },
+    "plugin": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "A vendored Claude plugin reference: marketplace+plugin, or url+sha[+subdir].",
+      "properties": {
+        "marketplace": { "type": "string" },
+        "plugin": { "type": "string" },
+        "url": { "type": "string" },
+        "sha": { "type": "string" },
+        "subdir": { "type": "string" }
+      }
+    }
+  }
+}

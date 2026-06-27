@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
 # Stack: claude_floating-recipe — pin-gate rejection fixture.
 # floating-recipe ships a Dockerfile with a floating ref; assembling this stack must raise
 # PinValidationError before any image layer is written. Its "integration test" asserts the

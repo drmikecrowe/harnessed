@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
 # Stack: omp_gstack_ping_time_greet — the same recipes on the omp agent.
 # omp consumes the identical Claude-canonical profile via the pre-installed claude-hooks-bridge
 # (declared by the omp agent, NOT a recipe). No re-authoring; the recipe set is unchanged.
