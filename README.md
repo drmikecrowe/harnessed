@@ -155,7 +155,7 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
   design, PDF, …), installed via its upstream `./setup` (`catalog/recipes/gstack/`). *The first real
   non-development recipe.*
 
-**Planned** — packages classified in [docs/RECIPE-STRESS-TEST.md](docs/RECIPE-STRESS-TEST.md)
+**Planned** — packages classified in [docs/todos/2026-06-27-recipe-stress-test.md](docs/todos/2026-06-27-recipe-stress-test.md)
 (repos, install commands, data models, and architecture gaps each one surfaces):
 
 - [ ] **[serena](https://github.com/oraios/serena)** — semantic code intelligence MCP (LSP-backed retrieval/editing, 40+ languages) · *MCP recipe*

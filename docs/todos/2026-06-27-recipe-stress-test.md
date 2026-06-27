@@ -1,5 +1,18 @@
 # Recipe Stress-Test: 11 Real-World Packages
 
+> [!WARNING]
+> **Planning artifact — pre-dates the host-native restructure. Snippets are illustrative ONLY.**
+> The `recipe.yaml` / `Dockerfile` examples below use the **old schema** and will not build:
+> `harnesses:` field (removed — recipes are harness-independent), `FROM harnessed-claude:latest` and
+> `ARG HARNESS=` in recipe Dockerfiles (forbidden — the assembler prepends them), `expect.tools:`
+> (not a real kind — it's `skills`/`commands`/`plugins`/`mcp`), and `recipes/` paths (now
+> `catalog/recipes/`). For current syntax see [recipe-authoring.md](../guides/recipe-authoring.md).
+>
+> **What's still valuable:** the classification matrix, per-package install commands / data models,
+> the Architecture Gaps, and the Considerations. The gaps were re-audited against the live code on
+> 2026-06-27 — the confirmed ones (settings.json merge, persistent data folders, multi-container
+> services) are tracked in [immediate.md](immediate.md); the rest closed as not-gaps.
+
 > **Purpose:** validate the recipe architecture (`.planning/RECIPE-ARCHITECTURE-MILESTONE.md`)
 > against real packages. Each package is classified by recipe type, data model, and the specific
 > challenges it surfaces. Gaps in the architecture are collected at the end.
