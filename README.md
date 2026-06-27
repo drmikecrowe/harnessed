@@ -86,10 +86,12 @@ harnessed build <stack>  # assemble one stack: emit profile + build images (+ su
 ```
 
 Bare `harnessed build` rebuilds the shared base/agent/hatago images. `harnessed build <stack>`
-assembles in-process, runs a scoped source/dependency scan, builds the hatago image and (if any
-recipe ships a Dockerfile) the derived `harnessed-<stack>` image with an image scan — emitting the
-profile to `$XDG_DATA_HOME/harnessed/profiles/<stack>/` (the clone stays immutable source). Expect
-first-run latency (images build via host `podman build`); later runs are cache hits.
+rebuilds the base (so base-image changes propagate), assembles in-process, then builds the hatago,
+agent, and derived `harnessed-<stack>` images. The derived image's final layer runs an **in-image,
+advisory** supply-chain scan over what actually landed — emitting the profile to
+`$XDG_DATA_HOME/harnessed/profiles/<stack>/` (the clone stays immutable source) plus an advisory
+`scan-report.json` alongside it. Expect first-run latency (images build via host `podman build`);
+later runs are cache hits.
 
 ## Quickstart
 
@@ -144,7 +146,7 @@ environment — there is no `harnessed auth` command (see [Supply chain & securi
 ## Supply chain & security
 
 - **pnpm everywhere** — every JavaScript install (global, per-recipe, hatago's bundled servers) uses **pnpm**, never `npm`/`npx`; `pnpm dlx` replaces `npx`. A managed supply-chain config applies `minimumReleaseAge` cooldowns and lifecycle-script default-deny. Recipe validation flags raw `npm`/`npx` and points at the pnpm equivalent ([design §7](docs/harnessed-design.md)).
-- **Build-time scan gate** — `harnessed build` runs **osv-scanner** + **pip-audit** (credential-free, always) and **snyk**/**Socket.dev** when a token is present (warn-and-skip otherwise, so the build stays non-interactive). It **fails on high-severity** findings ([design §7](docs/harnessed-design.md)).
+- **In-image supply-chain scan (advisory)** — the derived image's final layer runs **snyk** (over mise node globals + recipe installs, via a synthesized manifest; token-gated by a build *secret*, warn-skips without one), plus credential-free **osv-scanner** (recipe lockfiles) and **pip-audit** (the Python env). It **reports** a compact severity summary and writes `scan-report.json` — it does **not** fail the build. Rationale: harnessed installs third-party agent tooling whose dependency trees always carry open advisories, so a hard gate would block every build on code you don't control; visibility is the deliverable ([design §7](docs/harnessed-design.md)).
 - **Opt-in secrets** — varlock + 1Password resolve `op://` refs into the pod as **env only** (never a profile, image layer, or repo file). Copy `.env.schema.example` to `~/.config/harnessed/.env.schema` to turn it on. See **[docs/guides/secrets.md](docs/guides/secrets.md)**.
 - **Nightly re-scan** — a systemd user timer re-runs osv-scanner **online** against installed images so a CVE disclosed *after* build still surfaces. See **[troubleshooting](docs/guides/troubleshooting.md#nightly-re-scan-timer-sec-04)** for setup (including the `loginctl enable-linger` prerequisite).
 - **Secrets/auth referenced, never baked** — Claude OAuth, scanner tokens, and 1Password secrets reach the instance as env or read-only mounts; never an image layer.

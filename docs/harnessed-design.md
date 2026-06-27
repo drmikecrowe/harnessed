@@ -217,7 +217,7 @@ The prior assembly model — which resolved plugins, fanned skills/commands tree
 committed them — is superseded. Skills are image-baked by recipe Dockerfiles; the profile carries
 only assembler-generated config files (`.mcp.json`, `settings.json`).
 
-### Supply chain = pin sources in Dockerfiles + scan the derived image
+### Supply chain = pin sources in Dockerfiles + an in-image advisory scan
 
 **Two non-negotiables on every recipe Dockerfile:**
 
@@ -225,18 +225,29 @@ only assembler-generated config files (`.mcp.json`, `settings.json`).
    validation error — the assembler refuses before any build starts. Acceptable pins: `--branch v1.4.0`,
    `pnpm dlx @pkg@1.2.3`, `ARG PKG_REF=abc123def` (commit SHA).
 
-2. **Scan the built derived image.** After `podman build` produces `harnessed-<stack>:latest`:
-   - **osv-scanner V2 (always-on, credential-free):** `osv-scanner scan image harnessed-<stack>:latest`.
-     Fails on high-severity findings. Catches transitive CVEs that a source-only scan misses — the
-     recipe model runs arbitrary upstream installers, so scanning the derived image is the only gate
-     that sees what actually landed.
-   - **Snyk container scan (warn-and-skip if no `SNYK_TOKEN`):** `snyk container test harnessed-<stack>:latest --severity-threshold=high`.
-     Never prompts; build stays non-interactive.
-   - **Socket.dev (warn-and-skip if no `SOCKET_SECURITY_API_KEY`):** source-scan coverage (Socket
-     has no container-image mode; the recipe Dockerfile source directories are the scan target).
+2. **Scan what actually landed, in-image.** The scan runs as the derived image's **final RUN layer**
+   (`catalog/base/harnessed-scan`, baked into the base; emitted by `emit.write_derived_dockerfile`),
+   not as a post-build pass over an image archive. A host-side *source* scan is useless here — recipes
+   vendor nothing; every dependency installs into the image — so the scan runs inside it over the
+   trees that have no top-level lockfile a host could see:
+   - **snyk (token-gated by a build *secret*, warn-skips without one):** scans the mise-managed node
+     globals and each recipe's `node_modules` by synthesizing a `package.json` from the on-disk
+     packages and pointing `snyk test` at it. The `SNYK_TOKEN` arrives via
+     `--mount=type=secret,id=snyk_token` (never a build-arg → never baked into image history).
+   - **osv-scanner (credential-free):** `osv-scanner scan source --recursive` over the recipe trees —
+     sees real lockfiles (`bun.lock`, `package-lock.json`) the synth manifest misses.
+   - **pip-audit (credential-free):** the active Python env.
 
-`harnessed build` fails on high-severity findings. A nightly job (the systemd-timer pattern) can
-re-scan installed `harnessed-<stack>` images so a CVE disclosed after build still surfaces.
+   **Advisory, never gating.** Each scanner runs in JSON mode; a single compact severity summary is
+   printed and a consolidated `~/.harnessed/scan-report.json` is written (the launcher copies it to
+   `profiles/<stack>/scan-report.json` and echoes a one-line host summary). The scan always exits 0.
+   The recipe model runs arbitrary upstream installers whose dependency trees essentially always carry
+   open HIGH advisories at any moment (and node's own bundled npm carries CVEs the user can't fix) —
+   so a hard build-gate would make the recipe system unusable. Visibility, not enforcement, is the
+   contract; raw scanner output is suppressed unless `HARNESSED_SCAN_VERBOSE=1`.
+
+A nightly job (the systemd-timer pattern) re-scans installed `harnessed-<stack>` images **online** so
+a CVE disclosed after build still surfaces.
 
 ### Assembler output
 
@@ -249,20 +260,20 @@ For each stack build the assembler produces:
 
 The host then runs `podman build --build-arg HARNESS=<agent> -t harnessed-<stack>:latest -f profiles/<stack>/Dockerfile.harnessed-<stack> .`.
 
-### Scanner credentials (snyk / Socket.dev)
+### Scanner credentials (snyk)
 
-Only the credentialed scanners need this; `osv-scanner` and `pip-audit` use public DBs. Same rule
-as Claude auth: **reference host creds, never bake or commit them.**
+Only snyk needs a credential; `osv-scanner` and `pip-audit` use public DBs. Same rule as Claude
+auth: **reference host creds, never bake or commit them.** There is no `harnessed auth` command — the
+token is resolved host-native and handed to the build as a *secret*, never typed interactively.
 
-- **Present → use, silently.** Sources, in order: raw `SNYK_TOKEN` / `SOCKET_SECURITY_API_KEY` env
-  or host config (`~/.config/configstore/snyk.json`); **or**, if you use varlock (§16, optional), an
-  `op(op://…)` ref in `~/.config/harnessed/.env.schema`. Either way it resolves host-native
-  in-process at launch — never an image layer.
-- **Missing → warn and skip that scanner**, not an interactive prompt. `harnessed build` must stay
-  non-interactive / reproducible (CI, the nightly timer), and a typed token must never land in a
-  repo or image layer. The credential-free `osv-scanner` + `pip-audit` remain the baseline gate.
-- **Opt-in setup:** `harnessed auth snyk|socket` runs the CLI's own `auth` inside the tool
-  container and persists to the mounted host config — so a token is set deliberately, once.
+- **Present → use, silently.** If `~/.config/harnessed/.env.schema` declares `SNYK_TOKEN` (e.g. an
+  `op(op://…)` ref) and `varlock` is installed, `_build_derived_image` wraps the derived `podman
+  build` in `varlock run … -- podman build … --secret id=snyk_token,env=SNYK_TOKEN`. The scan layer
+  reads it from `/run/secrets/snyk_token` (`--mount=type=secret`), so it never enters image history.
+- **Missing → snyk warn-skips**, not an interactive prompt. No schema / no varlock → a plain build
+  with no secret; the scan still runs `osv-scanner` + `pip-audit`. `harnessed build` must stay
+  non-interactive / reproducible (CI, the nightly timer), and a token must never land in a repo or
+  image layer.
 
 ### pnpm everywhere (supply-chain policy)
 
@@ -458,7 +469,6 @@ harnessed clean               # remove built profiles from XDG data dir
 harnessed svc up <service>    # start a shared service (publishes its port; peers reach it via host.containers.internal, or by DNS name under HARNESSED_NET)
 harnessed svc down <service>
 harnessed svc list
-harnessed auth snyk|socket    # one-time: set a scanner token (persisted to host config)
 ```
 
 **Naming/identity (proposed):**

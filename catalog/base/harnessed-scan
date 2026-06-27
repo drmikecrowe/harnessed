@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
-# harnessed in-image supply-chain scan (BLD-02). Baked into harnessed-base; invoked as the final
-# RUN layer of every assembled stack image (emit.write_derived_dockerfile). Scans what the build
-# actually installed — mise-managed node globals and recipe installs under ~/.claude — because
-# those vendor no top-level lockfile and osv-scanner cannot see them (RESEARCH: ports the host
-# ~/.config/dorothy/commands/nightly-updates audit into the image).
+# harnessed in-image supply-chain scan (BLD-02). Baked into harnessed-base; invoked as the final RUN
+# layer of every assembled stack image (emit.write_derived_dockerfile). Scans what the build actually
+# installed — mise-managed node globals and recipe installs under ~/.claude — because those vendor no
+# top-level lockfile a host-side scan could see.
 #
-# Gate: snyk (--severity-threshold=high) is the HARD gate — exit non-zero aborts `podman build`.
-# osv-scanner + pip-audit run as warn-only advisories (no clean in-bash HIGH gate). snyk is
-# token-gated via a build SECRET (--mount=type=secret,id=snyk_token); without it, snyk warn-skips
-# and the build is NOT gated (credential-free osv/pip-audit output is advisory only).
+# ADVISORY, never gating. harnessed installs third-party agent tooling by running upstream installers,
+# whose JS dependency trees almost always carry open HIGHs at any moment — a hard build-gate on those
+# would make the recipe system unusable. So the scan REPORTS posture and always exits 0. Each scanner
+# runs in JSON mode; a single compact severity summary is printed (raw JSON only with
+# HARNESSED_SCAN_VERBOSE=1) and a consolidated report is written to ~/.harnessed/scan-report.json,
+# which the launcher copies into the stack profile dir. snyk is token-gated via a build SECRET
+# (--mount=type=secret,id=snyk_token); without a token snyk is skipped and only the credential-free
+# osv-scanner / pip-audit contribute.
 set -uo pipefail
 
 HOME_DIR="${HOME:-/home/harnessed}"
-high=0
+REPORT_DIR="$HOME_DIR/.harnessed"
+REPORT="$REPORT_DIR/scan-report.json"
+WORK="$(mktemp -d)"
+MANIFEST="$WORK/manifest"
+: >"$MANIFEST"
+mkdir -p "$REPORT_DIR"
 
 # SNYK_TOKEN arrives as a build secret (never a build-arg → never baked into image history).
 if [[ -r /run/secrets/snyk_token ]]; then
@@ -20,14 +28,14 @@ if [[ -r /run/secrets/snyk_token ]]; then
     export SNYK_TOKEN
 fi
 
-# Snyk-scan a node_modules tree that has no top-level manifest (mise globals / recipe installs):
-# synthesize a package.json from the on-disk packages and symlink the real node_modules so snyk
-# has dependencies to resolve. HIGH+ finding → exit 1 → set the gate.
-snyk_node_modules() {
-    local nm="$1" tmp
+# snyk-scan a node_modules tree that has no top-level manifest: synthesize a package.json from the
+# on-disk packages, symlink the real node_modules, capture JSON, and record it in $MANIFEST.
+snyk_scan() {
+    local nm="$1" label="$2" tmp out
     [[ -d "$nm" ]] || return 0
-    if ! command -v snyk >/dev/null 2>&1; then echo "  snyk not installed — skip"; return 0; fi
-    if [[ -z "${SNYK_TOKEN:-}" ]]; then echo "  snyk skipped (no SNYK_TOKEN build secret)"; return 0; fi
+    command -v snyk >/dev/null 2>&1 || return 0
+    [[ -n "${SNYK_TOKEN:-}" ]] || return 0
+    echo "  · snyk: ${label}"
     tmp="$(mktemp -d)" || return 0
     ln -s "$nm" "$tmp/node_modules"
     python3 - "$nm" >"$tmp/package.json" <<'PY'
@@ -52,54 +60,167 @@ for entry in sorted(os.listdir(nm)):
         add(path)
 json.dump({"name": "harnessed-globals-audit", "version": "0.0.0", "dependencies": deps}, sys.stdout)
 PY
-    ( cd "$tmp" && snyk test --severity-threshold=high ) || high=1
+    out="$WORK/snyk-$(printf '%s' "$label" | tr -c 'A-Za-z0-9' '_').json"
+    ( cd "$tmp" && snyk test --json ) >"$out" 2>/dev/null
     rm -rf "$tmp"
+    [[ -s "$out" ]] && printf 'snyk|%s|%s\n' "$label" "$out" >>"$MANIFEST"
 }
 
-echo "== harnessed supply-chain scan =="
+echo "== harnessed supply-chain scan (advisory) =="
 
-# 1. mise-installed node globals — each installed node version, deduped via realpath (mise exposes
-#    version aliases as symlinks).
+# 1. mise-installed node globals (node-release-bundled npm/corepack), deduped via realpath.
 declare -A seen=()
 for nm in "$HOME_DIR"/.local/share/mise/installs/node/*/lib/node_modules; do
     [[ -d "$nm" ]] || continue
     real="$(realpath "$nm")"
     [[ -n "${seen[$real]:-}" ]] && continue
     seen[$real]=1
-    echo "-- snyk: mise node globals ($real)"
-    snyk_node_modules "$real"
+    snyk_scan "$real" "node globals"
 done
 unset seen
 
-# 2. recipe-installed node trees under the Claude-canonical profile (e.g. gstack's ./setup).
+# 2. recipe-installed node trees under the Claude-canonical profile.
 for nm in "$HOME_DIR"/.claude/skills/*/node_modules "$HOME_DIR"/.claude/commands/*/node_modules; do
     [[ -d "$nm" ]] || continue
-    echo "-- snyk: recipe install ($nm)"
-    snyk_node_modules "$(realpath "$nm")"
+    snyk_scan "$(realpath "$nm")" "recipe: $(basename "$(dirname "$nm")")"
 done
 
-# 3. pip-audit over the active Python env (advisory — no severity gate).
-if command -v pip-audit >/dev/null 2>&1; then
-    echo "-- pip-audit (advisory)"
-    pip-audit --desc || echo "  pip-audit reported findings (advisory — not gating the build)"
-else
-    echo "-- pip-audit not installed — skip"
-fi
-
-# 4. osv-scanner over recipe trees that ship a real lockfile (advisory — osv cannot see mise globals).
+# 3. osv-scanner over recipe trees that ship a real lockfile (sees bun.lock/package-lock that snyk's
+#    synth manifest misses). One JSON pass over the whole profile.
 if command -v osv-scanner >/dev/null 2>&1; then
-    for d in "$HOME_DIR"/.claude/skills/* "$HOME_DIR"/.claude/commands/*; do
-        [[ -d "$d" ]] || continue
-        osv-scanner scan source --recursive "$d" 2>/dev/null \
-            || echo "  osv-scanner: findings/none in $d (advisory)"
-    done
-else
-    echo "-- osv-scanner not installed — skip"
+    osv_dirs=()
+    [[ -d "$HOME_DIR/.claude/skills" ]] && osv_dirs+=("$HOME_DIR/.claude/skills")
+    [[ -d "$HOME_DIR/.claude/commands" ]] && osv_dirs+=("$HOME_DIR/.claude/commands")
+    if [[ ${#osv_dirs[@]} -gt 0 ]]; then
+        echo "  · osv-scanner: recipe lockfiles"
+        osv-scanner scan source --recursive --format json "${osv_dirs[@]}" >"$WORK/osv.json" 2>/dev/null
+        [[ -s "$WORK/osv.json" ]] && printf 'osv|recipe lockfiles|%s\n' "$WORK/osv.json" >>"$MANIFEST"
+    fi
 fi
 
-if [[ "$high" -ne 0 ]]; then
-    echo "SUPPLY-CHAIN GATE: HIGH+ finding(s) — failing the build."
-    exit 1
+# 4. pip-audit over the active Python env.
+if command -v pip-audit >/dev/null 2>&1; then
+    echo "  · pip-audit: python env"
+    pip-audit --format=json >"$WORK/pip-audit.json" 2>/dev/null
+    [[ -s "$WORK/pip-audit.json" ]] && printf 'pip-audit|python env|%s\n' "$WORK/pip-audit.json" >>"$MANIFEST"
 fi
-echo "supply-chain scan clean (no HIGH+ snyk findings)."
+
+# Summarize every scanner's JSON into one compact table + a consolidated report. Advisory only.
+HARNESSED_SCAN_REPORT="$REPORT" python3 - "$MANIFEST" <<'PY'
+import sys, os, json
+
+rows = []   # {source, tool, critical, high, other, notable:[...]}
+
+def sev_from_cvss(score):
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return None
+    if s >= 9.0: return "critical"
+    if s >= 7.0: return "high"
+    if s >= 4.0: return "medium"
+    if s > 0:    return "low"
+    return None
+
+def load(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+def parse_snyk(doc):
+    # snyk --json is one object, or a list when multiple projects are detected. Dedup by vuln id.
+    projects = doc if isinstance(doc, list) else [doc]
+    by_id = {}
+    for proj in projects:
+        for v in (proj or {}).get("vulnerabilities", []) or []:
+            vid = v.get("id")
+            if vid:
+                by_id[vid] = ((v.get("severity") or "").lower(), v.get("packageName") or v.get("name") or "?")
+    return list(by_id.values())
+
+def parse_osv(doc):
+    # osv-scanner --format json: results[].packages[].groups[].max_severity is a CVSS score string.
+    items = []
+    for res in (doc or {}).get("results", []) or []:
+        for pkg in res.get("packages", []) or []:
+            name = (pkg.get("package") or {}).get("name", "?")
+            for grp in pkg.get("groups", []) or []:
+                sev = sev_from_cvss(grp.get("max_severity"))
+                if sev:
+                    items.append((sev, name))
+    return items
+
+def parse_pip_audit(doc):
+    # pip-audit --format=json: {"dependencies":[{"name","vulns":[...]}]} (no severity field).
+    items = []
+    deps = doc.get("dependencies", []) if isinstance(doc, dict) else (doc or [])
+    for dep in deps:
+        for _v in dep.get("vulns", []) or []:
+            items.append(("unknown", dep.get("name", "?")))
+    return items
+
+PARSERS = {"snyk": parse_snyk, "osv": parse_osv, "pip-audit": parse_pip_audit}
+
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        tool, source, path = line.split("|", 2)
+        doc = load(path)
+        if doc is None:
+            continue
+        items = PARSERS[tool](doc)
+        crit = sum(1 for s, _ in items if s == "critical")
+        high = sum(1 for s, _ in items if s == "high")
+        notable, seen = [], set()
+        for want in ("critical", "high"):
+            for s, pkg in items:
+                if s == want and pkg not in seen:
+                    seen.add(pkg); notable.append(pkg)
+        rows.append({"source": source, "tool": tool, "critical": crit,
+                     "high": high, "other": len(items) - crit - high, "notable": notable[:4]})
+
+tot_c = sum(r["critical"] for r in rows)
+tot_h = sum(r["high"] for r in rows)
+
+report = {"advisory": True, "gating": 0,
+          "totals": {"critical": tot_c, "high": tot_h},
+          "sources": rows}
+try:
+    with open(os.environ["HARNESSED_SCAN_REPORT"], "w") as f:
+        json.dump(report, f, indent=2)
+except Exception:
+    pass
+
+flagged = [r for r in rows if r["critical"] or r["high"]]
+print("")
+print("  supply-chain summary — advisory (build not gated)")
+if not rows:
+    print("  (no scanner output — snyk token absent and/or scanners missing)")
+elif not flagged:
+    print("  no high/critical advisories across %d source(s)." % len(rows))
+else:
+    print("  %-34s %4s %4s   notable packages" % ("SOURCE", "CRIT", "HIGH"))
+    for r in sorted(flagged, key=lambda r: (-r["critical"], -r["high"])):
+        label = ("%s · %s" % (r["tool"], r["source"]))[:34]
+        print("  %-34s %4d %4d   %s" % (label, r["critical"], r["high"], ", ".join(r["notable"])))
+    print("  " + "-" * 62)
+print("  %d critical · %d high across %d source(s) · 0 gating" % (tot_c, tot_h, len(rows)))
+print("  full report: %s" % os.environ.get("HARNESSED_SCAN_REPORT", "?"))
+print("")
+PY
+
+# Escape hatch: dump raw scanner JSON for debugging (suppressed by default to keep builds readable).
+if [[ -n "${HARNESSED_SCAN_VERBOSE:-}" ]]; then
+    echo "-- HARNESSED_SCAN_VERBOSE: raw scanner JSON --"
+    for f in "$WORK"/*.json; do
+        [[ -e "$f" ]] || continue
+        echo "### $f"; cat "$f"
+    done
+fi
+
+rm -rf "$WORK"
 exit 0

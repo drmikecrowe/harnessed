@@ -84,21 +84,20 @@ sidecar. The schema syntax is identical; see the `.env.schema.example` header co
 
 ## Scanner tokens
 
-`harnessed build` runs the supply-chain scanners (snyk, Socket.dev) when their tokens are
-present and warns-and-skips otherwise. Two ways to provide a token:
+The in-image supply-chain scan uses **snyk** when a token is available, and warn-skips otherwise
+(osv-scanner + pip-audit always run). The token reaches the scan as a build **secret**, never a
+build-arg:
 
-1. **Via `.env.schema` (this guide)** — the `SNYK_TOKEN` / `SOCKET_SECURITY_API_KEY` refs
-   resolve from 1Password and reach the build-time scan step via the same host-resolved
-   `--env-file` path (`build_stack` calls `resolve_secret_env` before the scan). Recommended for
-   operators already using varlock. Get a **Snyk** token at
-   <https://app.snyk.io/account/personal-access-tokens> (Account settings → Personal Access
-   Tokens → Generate); a **Socket** key from <https://socket.dev> → Settings → API tokens.
-2. **Via the launcher env directly** — for a one-off without varlock/1Password, export the token
-   before building. The build scan is env-gated on `SNYK_TOKEN`, and `build_stack` forwards it:
+- Declare `SNYK_TOKEN` in `~/.config/harnessed/.env.schema` (e.g.
+  `SNYK_TOKEN=op(op://Private/Snyk/credential)`) and have `varlock` installed. `_build_derived_image`
+  then wraps the derived `podman build` in `varlock run … -- podman build … --secret
+  id=snyk_token,env=SNYK_TOKEN`; the scan layer reads it from `/run/secrets/snyk_token`, so it never
+  enters image history.
+- No schema entry / no varlock → a plain build with no secret, and snyk warn-skips
+  (`snyk skipped (no SNYK_TOKEN build secret)`) — correct non-interactive behavior.
 
-   ```bash
-   SNYK_TOKEN='<token>' harnessed build claude_time     # scoped to the one invocation
-   ```
+Get a **Snyk** token at <https://app.snyk.io/account/personal-access-tokens> (Account settings →
+Personal Access Tokens → Generate).
 
 ## Verification
 

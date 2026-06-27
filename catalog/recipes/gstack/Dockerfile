@@ -15,6 +15,15 @@ USER root
 # "Playwright Chromium could not be launched". Install the system deps first — bun is in the base
 # image and install-deps shells out to apt, hence USER root.
 RUN bunx playwright install-deps chromium
+# `bunx` above ran as root with HOME=/home/harnessed, creating a root-owned ~/.bun. The harnessed
+# `bun install` in ./setup below would then fail with "unable to write files to tempdir: AccessDenied"
+# (bun's cache lives under ~/.bun). Hand bun's home back to the runtime user before dropping privileges.
+RUN chown -R harnessed:harnessed /home/harnessed/.bun
+# Drop to harnessed BEFORE the install: ./setup creates ~/.claude/skills/gstack/node_modules, and
+# HOME=/home/harnessed persists under root — so installing as root would leave root-owned files in
+# harnessed's home that the harnessed user (and the supply-chain scan) can't read. install-deps above
+# is the only step that needs root (it shells out to apt).
+USER harnessed
 # Pin gstack to an exact commit (upstream publishes no release tags). Shallow fetch-by-SHA — GitHub
 # allows fetching a reachable commit. Bump GSTACK_REF to update; use the full 40-char SHA.
 ARG GSTACK_REF=11de390be1be6849eb9a15f91ff4922dd16c589a
@@ -25,4 +34,3 @@ RUN git init -q ~/.claude/skills/gstack \
     && git checkout -q FETCH_HEAD \
     && ./setup
 RUN cd ~/.claude/skills/gstack && ./bin/gstack-config set redact_prepush_hook true -- /ship
-USER harnessed

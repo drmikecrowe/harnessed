@@ -137,10 +137,12 @@ def write_derived_dockerfile(
         lines.append("")
 
     if with_scan:
-        # Final layer: in-image supply-chain gate (BLD-02). Scans what the build installed (mise
-        # globals + recipe trees under ~/.claude); snyk HIGH+ → non-zero → aborts the build. SNYK_TOKEN
-        # arrives as a build secret (never a build-arg → never baked); required=false so a tokenless
-        # build still proceeds (snyk warn-skips). Disabled by `harnessed build --no-security-scans`.
+        # Final layer: in-image supply-chain scan (BLD-02), ADVISORY — it reports a severity summary
+        # and writes a report but never fails the build (harnessed installs third-party tooling whose
+        # dep trees always carry open advisories; a hard gate would block every build). Scans what the
+        # build installed (mise globals + recipe trees under ~/.claude). SNYK_TOKEN arrives as a build
+        # secret (never a build-arg → never baked); required=false so a tokenless build still proceeds
+        # (snyk warn-skips). Disabled entirely by `harnessed build --no-security-scans`.
         lines += [
             "# --- supply-chain scan (BLD-02) ---",
             "RUN --mount=type=secret,id=snyk_token,required=false,mode=0444 harnessed-scan",

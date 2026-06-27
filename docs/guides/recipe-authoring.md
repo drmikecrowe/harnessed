@@ -241,9 +241,10 @@ Two hard rules, both enforced by the build ([design §7](../harnessed-design.md)
    the uv runner. Python dependencies declare `deps.python` (`pyproject.toml` → `uv venv` +
    `uv pip install -e .`, or `requirements.txt` → `uv pip install -r`).
 
-`harnessed build` then scans recipe sources + dependencies with osv-scanner + pip-audit
-(credential-free, always) and snyk/Socket.dev when a token is present — **failing on high-severity**
-findings. See the [troubleshooting guide](troubleshooting.md) for scan-failure diagnostics.
+The derived image's final layer then runs an **advisory** in-image scan over what your recipe
+installed — snyk (token-gated by a build secret) plus credential-free osv-scanner + pip-audit. It
+reports a severity summary and writes `scan-report.json`; it does **not** fail the build. See the
+[troubleshooting guide](troubleshooting.md) for reading the scan report.
 
 ## Adding a recipe to a stack
 

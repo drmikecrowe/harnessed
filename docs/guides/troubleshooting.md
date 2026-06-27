@@ -187,20 +187,25 @@ The opt-in secrets workflow is documented in **[secrets.md](secrets.md)**. Commo
 - **A resolved value reached the pod with surrounding quotes** — this was a fixed bug (varlock's
   `--format env` quoting); update to the current launcher.
 
-## Supply-chain scan failures
+## Supply-chain scan (advisory)
 
-`harnessed build` runs osv-scanner + pip-audit (always) and snyk/Socket.dev (token-gated), and
-**fails on HIGH**:
+The derived image's final layer runs an **advisory** in-image scan — snyk (token-gated by a build
+secret) plus credential-free osv-scanner + pip-audit. It **never fails the build**; it reports a
+compact severity summary in the build log and writes a report.
 
-- **Read the finding.** The abort names the finding id (e.g. a GHSA). The intentional regression
-  fixture `tools/test-fixtures/vuln-stack` demonstrates the abort path.
-- **snyk / Socket.dev warn-and-skip without a token** (SEC-02) — if you expected them to run, check
-  that `SNYK_TOKEN` / `SOCKET_SECURITY_API_KEY` is in the launcher env (or resolved via varlock /
-  `harnessed auth snyk|socket`). Without a token you'll see `warning: snyk skipped (no SNYK_TOKEN)`
-  — that is correct non-interactive behavior, not a failure.
-- **Build-time scan vs nightly scan** — the build-time gate uses the **offline** osv DB
-  (deterministic); the nightly timer uses the **online** DB (fresh). A CVE disclosed *after* you
-  built won't fail the build but will surface in the nightly — see [Nightly re-scan timer](#nightly-re-scan-timer-sec-04).
+- **Read the report.** After a build, `harnessed` copies the in-image report to
+  `profiles/<stack>/scan-report.json` and prints a one-line summary (`⚠ supply-chain (advisory): N
+  critical · M high …`). The JSON lists per-source counts and notable packages. Set
+  `HARNESSED_SCAN_VERBOSE=1` in the build to dump the raw scanner JSON.
+- **snyk warn-skips without a token** — if you expected snyk findings, check that
+  `~/.config/harnessed/.env.schema` declares `SNYK_TOKEN` and `varlock` is installed (the token is
+  passed as a build `--secret`). Without it you'll see `snyk skipped (no SNYK_TOKEN build secret)` —
+  correct non-interactive behavior, not a failure. osv-scanner + pip-audit still run.
+- **Why advisory, not a gate** — harnessed installs third-party agent tooling whose dependency trees
+  (and node's own bundled npm) always carry open advisories; a hard gate would block every build on
+  code you can't fix. To act on a finding, bump the upstream pin (e.g. a recipe's `*_REF`) so upstream
+  owns the fix. A CVE disclosed *after* you built surfaces in the **online** nightly re-scan — see
+  [Nightly re-scan timer](#nightly-re-scan-timer-sec-04).
 
 ## Recipe build & test FAQ
 

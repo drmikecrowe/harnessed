@@ -160,6 +160,15 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
     _out.print("[green][SUCCESS][/green] harnessed images ready")
 
 
+def _build_base_image(rt: str) -> None:
+    """Force-(re)build the parameterised base so edits to Dockerfile.harnessed-base (the supply-chain
+    scan script, extra-tools, scanner installs) propagate into every FROM-derived agent / hatago /
+    stack image. Layer-cached: a no-op when the base Dockerfile is unchanged."""
+    _out.print(f"[blue][INFO][/blue] Building {_BASE_IMAGE} ...")
+    _run([rt, "build", "-t", _BASE_IMAGE, "-f", str(_catalog_base("Dockerfile.harnessed-base")),
+          str(_harnessed_dir())])
+
+
 def _build_agent_image(rt: str, harness: str) -> None:
     """(Re)build the agent image from its agent.yaml Dockerfile (podman layer cache decides whether
     anything actually rebuilds). Build args from agent.yaml are the single source of truth for pinned
@@ -210,6 +219,11 @@ def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
+    # Always rebuild the parameterised base first: hatago and the agent image below are both `FROM
+    # harnessed-base`, so a stale base (e.g. after editing Dockerfile.harnessed-base) would silently
+    # propagate into every derived image. Cache-backed — a no-op when the base Dockerfile is unchanged.
+    _build_base_image(rt)
+
     _out.print(f"[blue][INFO][/blue] Building {_HATAGO_IMAGE} for stack '{stack}' ...")
     hdir = _harnessed_dir()
     _run([rt, "build", "-t", _HATAGO_IMAGE, "-f", str(_catalog_base("Dockerfile.hatago")), str(hdir)])
@@ -229,6 +243,9 @@ def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
     # Merge image-baked ~/.claude extensions into the profile only when a recipe actually baked some.
     if any((r.root / "Dockerfile").is_file() for r in result.recipes):
         _merge_baked_extensions(rt, derived, prof)
+
+    # Surface the advisory supply-chain report (baked by the derived image's final scan layer).
+    _surface_scan_report(rt, derived, prof)
 
     _out.print(f"[green][SUCCESS][/green] Stack '{stack}' built — profile: {prof}")
 
@@ -284,6 +301,35 @@ def _merge_baked_extensions(rt: str, image: str, prof: Path) -> None:
             )
     finally:
         subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+
+
+def _surface_scan_report(rt: str, image: str, prof: Path) -> None:
+    """Copy the in-image supply-chain report (harnessed-scan, the derived image's final layer) to the
+    profile dir and print a one-line advisory summary. The scan is advisory — this surfaces its posture
+    host-side so the user sees it without digging into the image or scrolling the build log."""
+    cid = subprocess.run([rt, "create", image], capture_output=True, text=True).stdout.strip()
+    if not cid:
+        return
+    dest = prof / "scan-report.json"
+    try:
+        subprocess.run(
+            [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.harnessed/scan-report.json", str(dest)],
+            capture_output=True,
+        )
+    finally:
+        subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+    if not dest.is_file():
+        return
+    try:
+        totals = json.loads(dest.read_text())["totals"]
+        crit, high = totals["critical"], totals["high"]
+    except (json.JSONDecodeError, KeyError, OSError):
+        return
+    if crit or high:
+        _out.print(f"[yellow]⚠ supply-chain (advisory):[/yellow] {crit} critical · {high} high "
+                   f"— report: {dest}")
+    else:
+        _out.print(f"[green]✓ supply-chain:[/green] no high/critical advisories — report: {dest}")
 
 
 # --- Pod / container lifecycle helpers -----------------------------------------

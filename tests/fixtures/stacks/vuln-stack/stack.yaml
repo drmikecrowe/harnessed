@@ -1,4 +1,0 @@
-# BLD-02 fixture stack — resolves vuln-recipe under the --root test-fixtures layout.
-name: vuln-stack
-harness: claude
-recipes: [vuln-recipe]
