@@ -1,6 +1,6 @@
 # harnessed — AI assistant instructions
 
-Repo: https://github.com/drmikecrowe/code-container
+Repo: https://github.com/drmikecrowe/harnessed
 
 Start with **[ARCHITECTURE.md](ARCHITECTURE.md)** (layout + vocabulary + the build/launch model) and
 **[CONTRIBUTING.md](CONTRIBUTING.md)** (dev setup + how to add catalog content). This file holds only

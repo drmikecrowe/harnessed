@@ -17,7 +17,9 @@ Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can
 - **Claude format is canonical** — every other agent adapts out of the same `.claude/` profile.
 - **Recipes are harness-independent** — no `harnesses:` field; harness-specific steps branch on
   `${HARNESS}` inside the recipe Dockerfile.
-- **pnpm everywhere** (no npm/npx; `pnpm dlx` replaces npx); **`uvx`** for light Python MCP servers.
+- **pnpm for package installs** — the recipe lint rejects raw `npm`/`npx` (`pnpm dlx` replaces `npx`).
+  The one exception is upgrading npm itself in the base image (`npm install -g npm@<pin>`) — there is
+  no pnpm equivalent. **`uvx`** for light Python MCP servers.
 - **Pin every download** in recipe Dockerfiles (no `@latest`/`--branch main` — the build rejects them).
 - **Credentials referenced from the host, never baked** into an image or committed.
 - **Streamable-HTTP MCP** only (SSE is deprecated).
