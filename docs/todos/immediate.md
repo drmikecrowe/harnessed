@@ -127,8 +127,8 @@ app's published port via `host.containers.internal:<port>`.
 1. **Compose runtime dependency.** Compose-backed services need `podman compose` / `podman-compose`
    — a new host requirement *beyond bare podman*. Confirm the tool, or evaluate `podman kube play`.
    Single-image services keep working with no new dep.
-2. **Secrets.** Extend the existing varlock layer (today scoped to the harness pod) to resolve
-   `op://` refs into the **service** launch env passed to compose.
+2. **Secrets.** Resolve `op://` refs into the **service** launch env passed to compose — built on
+   the launch-time secret-injection mechanism that does **not exist yet** (see items 4 & 5).
 3. **Volumes — named vs bind (Consideration 3).** The compose file uses named volumes
    (`alloydb_data`). Rewriting to bind mounts under `HARNESSED_DATA_DIR` (per the data-dir
    convention) edges toward reinterpreting the file — decide whether to rewrite, parameterize, or
@@ -142,3 +142,75 @@ app's published port via `host.containers.internal:<port>`.
 [2026-06-27-recipe-stress-test.md](2026-06-27-recipe-stress-test.md). This is the largest item here
 and the blocker for the Tier-3 hindsight recipe on the README roadmap. GAP 5 (service/recipe
 boundary) folds entirely into this; the single-container `service:` path already works (see `ping`).
+
+---
+
+## 4. Launch-time env-secret injection + a `secrets:` declaration (recipe & service)
+
+**Status:** confirmed gap · **Area:** schema / launch / secrets · **Files:**
+`src/harnessed/schema.py`, `src/harnessed/launcher.py`, `docs/guides/secrets.md`
+
+**Problem.** At launch, harnessed injects **no** env-var secrets into the pod and calls varlock
+**zero** times. Verified across the full launch path (`launch()` → `_build_mount_args` →
+`harness_run`/`hatago_run`, `launcher.py:660–712`): pod members run with only `-v` mounts (profile,
+project, file-based credentials) plus non-secret `-e` like `TERM`. The **only** varlock call in `src/`
+is at *build* time, for `SNYK_TOKEN` only, as a scan-layer build secret (`launcher.py:254–265`).
+
+So file-based auth (Claude OAuth, omp, gemini/codex) reaches the container via read-only mounts, but
+**arbitrary env-var secrets — API keys for MCP servers, services, or API-key harness auth — have no
+path into a running stack.** Tools that need `GITHUB_TOKEN`, `OPENAI_API_KEY`, a DB URL, etc. can't
+get them.
+
+**Direction.** A `secrets:` block on `recipe.yaml` (and `service.yaml`) declaring **key name +
+source type**, resolved host-side at launch and injected as env:
+
+```yaml
+# recipe.yaml — shareable, NO personal vault paths
+secrets:
+  ANTHROPIC_API_KEY: varlock      # resolve this key from ~/.config/harnessed/.env.schema (varlock)
+  GITHUB_TOKEN:      env          # pass through from host $GITHUB_TOKEN
+  SOME_KEY:          envfile      # from ~/.config/harnessed/.env
+```
+```
+# ~/.config/harnessed/.env.schema — personal, the existing varlock home
+ANTHROPIC_API_KEY=op(op://Private/ANTHROPIC_API_KEY/credential)
+```
+
+Why key+source-type, **not** an inline `op://` ref: recipes are shared catalog content — an inline
+`op://Private/...` leaks the author's 1Password structure to every consumer. Keep the personal ref in
+the user's `.env.schema`; the recipe names only the key and where to source it. The `env`/`envfile`
+source types double as the "secret-source pluggability" the stress-test doc's Consideration 1 raised
+(non-1Password users).
+
+**Mechanics that constrain the design:**
+
+- Resolve host-side at launch; inject as `-e` / mode-0600 `--env-file` into the right pod member(s).
+  **Never** write resolved values into the profile or `hatago.config.json` (on-disk) — that is why
+  the existing static `McpServer.env` literal cannot carry secrets.
+- Never log values (stop-and-ask rule).
+- Decide which member consumes each key (harness vs hatago-spawned stdio child vs service);
+  simplest is inject into all pod members, services get their own.
+- This is also what item 3 (compose-backed services) builds on for service secrets.
+
+**Note.** New finding (not in the stress-test doc). Related to Consideration 1 there.
+
+---
+
+## 5. `secrets.md` documents a launch-time flow that isn't implemented
+
+**Status:** confirmed docs-vs-code drift · **Area:** docs · **Files:** `docs/guides/secrets.md`
+
+**Problem.** `docs/guides/secrets.md` (lines ~48–58) describes, in step-by-step detail, a launch-time
+secret flow: launcher detects `~/.config/harnessed/.env.schema` → runs `varlock load --format env` →
+captures to a mode-0600 temp `--env-file` → spreads it into both pod members → unlinks after launch.
+**None of this exists in the code** (see item 4 — no `varlock load`, no `--env-file`, no temp
+dotenv). The guide presents a designed-but-unbuilt (or regressed) feature as shipping.
+
+**Decision required (paired with item 4):**
+- **Build it** — implement the `--env-file` launch flow as documented, as the delivery vehicle for
+  item 4's `secrets:` declaration; then the guide becomes accurate. (Preferred — the guide is
+  effectively the spec.)
+- **Or correct the guide** now to match the code (only build-time `SNYK_TOKEN` resolution today), and
+  track the launch flow purely under item 4.
+
+Don't leave the guide asserting behavior the code doesn't have.
