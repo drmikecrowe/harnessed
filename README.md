@@ -169,6 +169,8 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 - [ ] **[caveman](https://github.com/JuliusBrussee/caveman)** — concise-output / token-compression skill · *skills recipe*
 - [ ] **[hindsight](https://hindsight.vectorize.io)** — memory/recall sidecar (multi-container Postgres stack) · *existing service*
 - [ ] **[hyperpowers](https://github.com/withzombies/hyperpowers)** — workflow guidance (task tracking, plan management, TDD) · *skills + hooks recipe*
+- [ ] **[beads](https://github.com/steveyegge/beads)** — git-backed, dependency-aware issue tracker / persistent memory for coding agents (`bd` CLI, Dolt-backed) · *CLI + skills recipe*
+- [ ] **[agent-carnet](https://github.com/yamadashy/agent-carnet)** — shared file-based markdown notebook for agents (`.carnet/`, auto-expiring), bundles a skill · *CLI + skills recipe*
 
 ## Supply chain & security
 
