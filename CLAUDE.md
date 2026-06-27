@@ -7,6 +7,9 @@ Project instructions for AI assistants. The canonical, always-current sources ar
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — dev setup and how to add a recipe / agent / service / stack.
 - **[AGENTS.md](AGENTS.md)** — operational notes (don't run `harnessed` yourself, etc.).
 - **[docs/harnessed-design.md](docs/harnessed-design.md)** — the deeper rationale (the *why*).
+- **[docs/codebase/](docs/codebase/)** — generated codebase maps (regenerate with `/map-codebase`):
+  STACK, STRUCTURE, ARCHITECTURE, CONVENTIONS, INTEGRATIONS, TESTING, CONCERNS. The *where the code
+  lives, how it's written, and what's wired to what* reference — start here before navigating `src/`.
 
 Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can't drift.
 

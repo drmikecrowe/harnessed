@@ -72,6 +72,7 @@ harnessed/
 │   └── test_omp_auth_seed.py
 ├── docs/                   # Documentation
 │   ├── harnessed-design.md # Full design rationale (the "why")
+│   ├── codebase/           # Codebase maps (this file)
 │   ├── guides/             # How-to guides (recipe-authoring, stacks, service-authoring, secrets, troubleshooting)
 │   ├── prompts/
 │   ├── research/
@@ -89,8 +90,6 @@ harnessed/
 │   └── public/
 ├── systemd/                # systemd user timer units (nightly re-scan)
 ├── .agents/                # Agent skills (Claude Code skill tree)
-├── .planning/              # GSD planning artifacts
-│   └── codebase/           # Codebase maps (this file)
 ├── pyproject.toml          # Python project config + entry points + deps
 ├── pnpm-workspace.yaml     # pnpm supply-chain policy
 ├── ARCHITECTURE.md         # Authoritative architecture doc (in-repo, checked in)
@@ -235,9 +234,9 @@ harnessed/
 - Committed: Yes (reference); production profiles land in `$XDG_DATA_HOME/harnessed/profiles/`
 - Note: Never hand-edit — always regenerate with `harnessed build <stack>`
 
-**`.planning/`:**
-- Purpose: GSD planning artifacts (phases, codebase maps)
-- Generated: Yes — by GSD workflow commands
+**`docs/codebase/`:**
+- Purpose: Generated codebase maps (this file and its siblings)
+- Generated: Yes — by the `/map-codebase` workflow
 - Committed: Yes
 
 **`tools/`:**
