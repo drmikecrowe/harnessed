@@ -23,11 +23,14 @@ for one capability bundle (an MCP server and/or a set of skills/commands). Recip
 are composed into **stacks** and assembled **ahead of time** into a committed,
 version-controlled profile — nothing is resolved at container start.
 
-A recipe lives at `recipes/<name>/recipe.yaml` and contributes to two layers:
+A recipe lives at `recipes/<name>/recipe.yaml` and contributes to up to three things:
 - **MCP layer** — server entries under `mcp.servers`, merged into the stack's hatago config.
 - **File-extension layer** — `skills` / `commands` in Claude-canonical form, fanned
   into harness-native profile paths.
-A recipe may have either layer, both, or neither.
+- **Dockerfile body** — a `recipes/<name>/Dockerfile` (body only) whose steps install tooling into
+  the derived stack image; the assembler concatenates recipe Dockerfile bodies in recipe order. This
+  is how you install a third-party CLI / skill suite by running its **own** documented installer.
+A recipe may have any combination of these, or none.
 
 ## Output
 
@@ -35,13 +38,20 @@ Produce the full file tree, each file in its own fenced block with its path:
 1. `recipes/<name>/recipe.yaml`
 2. Any skill/command dirs it ships: `recipes/<name>/skills/<leaf>/SKILL.md` (frontmatter
    `name` + `description`, then markdown body).
-Do not write prose outside the files except a short rationale for the transport choice.
+3. `recipes/<name>/Dockerfile` (body only) if it installs tooling into the image.
+Do not write prose outside the files except a short rationale for the transport choice and (if you
+ship a Dockerfile) which upstream install command you are replicating.
 
 ## `recipe.yaml` schema (only fields you exercise are required)
 
 ```yaml
 name: <recipe-name>            # required
 description: <one-liner>       # optional
+
+expect:                        # declare capabilities a Dockerfile installs that the assembler can't
+  skills:   [skill-name]       # see (RUN steps are opaque); the capability test probes each in the
+  commands: [cmd-name]         # running container. Only needed when a Dockerfile bakes skills/commands/MCP.
+  mcp:      [server-name]
 
 mcp:                           # MCP layer (optional)
   servers:
@@ -81,6 +91,17 @@ commands:
 5. **A `service:` ref needs a separate service to exist** (its own image/Dockerfile/server +
    `services/<name>/service.yaml`). If the brief implies a stateful/shared/long-lived backend,
    say so and note the service must be authored too (out of scope for this recipe file).
+6. **Dockerfile recipes run the project's OWN installer.** To install a third-party tool / skill
+   suite, ship `recipes/<name>/Dockerfile` — **body only, NO `FROM`, NO `ARG HARNESS`** (the
+   assembler prepends `FROM harnessed-${HARNESS}:latest` and re-declares `ARG HARNESS`). Replicate
+   the upstream project's documented install verbatim — `RUN git clone <url> … && ./setup`,
+   `RUN pnpm dlx <pkg>@x.y.z`, `RUN uv tool install <pkg>==x.y.z` — never hand-copy files.
+   - **Pin every download** — no `@latest`, `--branch main`/`HEAD`, or bare `:latest` (the build
+     rejects them); pin to a tag or commit SHA. If upstream publishes no tags, fetch a specific SHA.
+   - **`USER root` for system installs, then `USER harnessed`.** Prefer running installers that write
+     into `~/.claude`/`~` as `harnessed` so they don't leave root-owned files.
+   - **Declare what it bakes in `expect:`** — RUN steps are invisible to the assembler, so the
+     capability test relies on `expect.skills`/`commands`/`mcp` to know what to probe.
 
 ## Decision guide
 
@@ -88,6 +109,8 @@ commands:
 - Stateful, shared, or long-lived backend that outlives any instance → **service ref**
   (`service:` + `transport: http`) + a companion service.
 - A behavior/instruction bundle with no server → **skills/commands only**, no `mcp:`.
+- A third-party CLI / skill suite installed by running its published installer → **Dockerfile recipe**
+  (replicate upstream's `git clone … && ./setup` / `pnpm dlx …`) + `expect:` listing what it bakes in.
 
 ## Worked example (stdio MCP + a standalone skill)
 
@@ -118,9 +141,10 @@ endpoint) to answer time questions. Call `get_current_time` with an IANA timezon
 ## Acceptance (how it'll be validated)
 
 The recipe is added to a stack and exercised with:
-`harnessed build <stack>` (assemble + supply-chain scan, fails on raw npm/npx and on
-HIGH-severity vuln) → `harnessed test <stack>` (capability report: each declared MCP
-server connects, each skill/command is present). Author so both pass.
+`harnessed build <stack>` (assemble + supply-chain scan, fails on raw npm/npx and on an
+unpinned download) → `harnessed test <stack>` (capability report: each declared MCP
+server connects, each skill/command — including everything in `expect:` — is present).
+Author so both pass.
 
 ────────────────────────────────────────
 ## THE RECIPE TO BUILD

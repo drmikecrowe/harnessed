@@ -154,14 +154,14 @@ upstream installer.
 name: gstack
 description: Garry Tan's gstack skill suite installed via its upstream ./setup.
 expect:
-  skills: [gstack, browse, make-pdf]
+  skills: [gstack, office-hours, qa, plan-ceo-review, review]
 ```
 
 - **`expect:` declares what the Dockerfile installs.** The assembler fans standalone `skills:` /
   `commands:` *directories* into the profile, but it can't see what a Dockerfile RUN step drops into
   `~/.claude/`. So you list the skills/commands/plugins it bakes and the capability test probes for
-  them in the running container. gstack installs ~50 skills into `~/.claude/skills`; three stable
-  ones are enough to prove the install worked.
+  them in the running container. gstack installs ~50 skills into `~/.claude/skills`; a stable handful
+  is enough to prove the install worked.
 - **Recipes are harness-independent.** A recipe never lists which harnesses it supports — every
   harness consumes the same Claude-canonical profile. If a step genuinely differs per harness,
   branch on the `${HARNESS}` build arg *inside* the Dockerfile; never exclude harnesses at the
@@ -173,11 +173,22 @@ expect:
 USER root
 # gstack's Chromium (via Playwright) needs OS libraries its ./setup doesn't install.
 RUN bunx playwright install-deps chromium
-# Run gstack's own documented install — clone + ./setup, exactly as on the host.
-RUN git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack \
-    && cd ~/.claude/skills/gstack && ./setup
 USER harnessed
+# Run gstack's own documented install — clone + ./setup, exactly as on the host. Upstream publishes
+# no release tags, so pin to an exact commit SHA (fetch-by-SHA) — a bare clone of the default branch
+# is a floating ref and fails pin validation.
+ARG GSTACK_REF=11de390be1be6849eb9a15f91ff4922dd16c589a
+RUN git init -q ~/.claude/skills/gstack && cd ~/.claude/skills/gstack \
+    && git remote add origin https://github.com/garrytan/gstack.git \
+    && git fetch --depth 1 origin ${GSTACK_REF} && git checkout -q FETCH_HEAD \
+    && ./setup
 ```
+
+> This is the core pattern trimmed for clarity. The real
+> [`catalog/recipes/gstack/Dockerfile`](../../catalog/recipes/gstack/Dockerfile) also hands ownership
+> of the root-created `~/.bun` cache back to `harnessed` before `./setup` and sets a gstack config
+> flag — both gstack-specific. The general lesson: run installers that write into `~` as `harnessed`,
+> and fix up ownership of any caches an earlier `USER root` step created.
 
 Rules for recipe Dockerfiles:
 
@@ -215,7 +226,7 @@ Two things to watch for:
 ```bash
 harnessed build claude_gstack_ping_time_greet   # assemble + build the derived image (supply-chain gate)
 harnessed claude_gstack_ping_time_greet         # launch the pod (harness + hatago)
-harnessed test  claude_gstack_ping_time_greet   # capability report: ✓ gstack/browse/make-pdf skills present
+harnessed test  claude_gstack_ping_time_greet   # capability report: ✓ declared gstack skills present
 ```
 
 ## Transports
