@@ -143,6 +143,21 @@ def persist_project_dir(recipe: str, project_path: str | Path, name: str) -> Pat
     return persist_root() / recipe / project_hash(project_path) / name
 
 
+def persist_allowlist_path() -> Path:
+    """User-owned allowlist gating `global:` persist mounts: $XDG_CONFIG_HOME/harnessed/persist-allowlist.
+
+    Default-deny: a recipe's `global:` persist entry is only bind-mounted if its realpath is
+    listed here (or nested under a listed dir). FORMAT — one host path per line; blank lines and
+    lines beginning with `#` are comments. `~` and `$VARS` are expanded and the path is
+    realpath-canonicalized before comparison, so a symlink or `..` cannot smuggle a path past the
+    list. The file is USER-owned (lives in the user config dir, never the repo) so a recipe can
+    never widen its own access — only the human running harnessed can. A handful of sensitive dirs
+    (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/harnessed`, and `$HOME` itself) are hard-denied
+    REGARDLESS of this file.
+    """
+    return xdg_config_home() / "harnessed" / "persist-allowlist"
+
+
 def project_relpath(project_path: str | Path) -> str:
     """Legible project relpath under host $HOME → mounted at CONTAINER_HOME/<relpath>."""
     p = Path(project_path)

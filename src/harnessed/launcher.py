@@ -25,6 +25,7 @@ from rich.console import Console
 
 from . import emit
 from . import paths
+from . import persist
 from .paths import CONTAINER_HOME, HATAGO_PORT, instance_name, is_built, profile_dir, project_relpath
 from .assemble import assemble
 from .synclinks import CollisionError
@@ -632,35 +633,35 @@ def _omp_agent_mount(harness: str) -> list[str]:
 
 
 def _persist_mounts(stack: str, project_path: Path) -> list[str]:
-    """Bind-mount each recipe's declared project-scoped persist folders (rw) so their state
-    survives `--fresh`.
+    """Bind-mount each recipe's declared persist folders (rw) so their state survives `--fresh`.
 
-    Project scope only (T4a). Each entry names a `$HOME`-relative folder the tool writes to
-    inside the container (e.g. `.context-mode`); harnessed maps it to
-    persist/<recipe>/<project-hash>/<name>/ on the host, created here. Ownership is correct by
-    construction: the dir is created by the invoking user and `--userns=keep-id` maps that uid
-    1:1 inside the pod.
+    Project scope (T4a): each entry names a `$HOME`-relative folder the tool writes to inside the
+    container (e.g. `.context-mode`); harnessed maps it to persist/<recipe>/<project-hash>/<name>/
+    on the host, created here. Ownership is correct by construction (the invoking user creates it).
 
-    Global scope is parsed but NOT mounted here — it rw-exposes a real host dir and is gated
-    behind the user-owned persist allowlist (T4b). A recipe that declares one fails loudly
-    rather than mounting it unguarded.
+    Global scope (T4b): an entry names a REAL host dir (e.g. `~/.gbrain`) shared with host-native
+    runs. It mounts PATH-PRESERVING (host <realpath> → container <same realpath>) so the tool finds
+    its data where it expects — but ONLY after `persist.resolve_global_persist` clears it: a
+    hard-denied sensitive dir (`~/.ssh` etc.) or any path absent from the user-owned allowlist
+    fails loudly here and the pod is never created.
+
+    Ownership (T5): every target dir is ownership-guarded — a pre-existing dir owned by another uid
+    would silently EACCES under `--userns=keep-id`, so it is rejected with a remediation.
     """
     _, recipes = load_stack_with_recipes(None, stack)
     args: list[str] = []
     for recipe in recipes:
         spec = recipe.persist
-        if spec.global_dirs:
-            raise SchemaError(
-                f"recipe '{recipe.name}': global persist scope is not available yet "
-                f"(declared {spec.global_dirs}). A global entry rw-mounts a real host dir into "
-                "the pod and requires the user-owned persist allowlist (T4b) before harnessed "
-                "will mount it. Use project scope, or wait for the allowlist."
-            )
         for name in spec.project:
             host_dir = paths.persist_project_dir(recipe.name, project_path, name)
+            persist.guard_ownership(host_dir)
             host_dir.mkdir(parents=True, exist_ok=True)
             ctr_dir = f"{_CONTAINER_HOME_STR}/{name}"
             args += ["-v", f"{host_dir}:{ctr_dir}:rw"]
+        for entry in spec.global_dirs:
+            host_dir = persist.resolve_global_persist(entry)
+            persist.guard_ownership(host_dir)
+            args += ["-v", f"{host_dir}:{host_dir}:rw"]
     return args
 
 
