@@ -20,6 +20,16 @@ CONTAINER_HOME = Path("/home/harnessed")
 HATAGO_PORT = 3535
 
 
+def hatago_port() -> int:
+    """The hatago hub port — honors the `HATAGO_PORT` env override, default `HATAGO_PORT`."""
+    return int(os.environ.get("HATAGO_PORT", str(HATAGO_PORT)))
+
+
+def hatago_endpoint() -> str:
+    """hatago's single Streamable-HTTP endpoint inside the shared pod netns (design D-04)."""
+    return f"http://localhost:{hatago_port()}/mcp"
+
+
 def xdg_data_home() -> Path:
     """Return $XDG_DATA_HOME, defaulting to ~/.local/share."""
     xdg = os.environ.get("XDG_DATA_HOME", "")

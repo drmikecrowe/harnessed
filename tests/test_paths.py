@@ -132,6 +132,24 @@ class TestProjectRelpath:
         assert paths.project_relpath(p) == "myproject"
 
 
+class TestHatagoPort:
+    def test_defaults_to_constant(self, monkeypatch):
+        monkeypatch.delenv("HATAGO_PORT", raising=False)
+        assert paths.hatago_port() == paths.HATAGO_PORT
+
+    def test_honors_env_override(self, monkeypatch):
+        monkeypatch.setenv("HATAGO_PORT", "4040")
+        assert paths.hatago_port() == 4040
+
+    def test_endpoint_uses_default_port(self, monkeypatch):
+        monkeypatch.delenv("HATAGO_PORT", raising=False)
+        assert paths.hatago_endpoint() == f"http://localhost:{paths.HATAGO_PORT}/mcp"
+
+    def test_endpoint_honors_env_override(self, monkeypatch):
+        monkeypatch.setenv("HATAGO_PORT", "4040")
+        assert paths.hatago_endpoint() == "http://localhost:4040/mcp"
+
+
 class TestContainerPaths:
     def test_mcp_config_at_container_home_root(self):
         p = paths.container_mcp_config()

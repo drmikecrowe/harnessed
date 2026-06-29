@@ -44,14 +44,15 @@ SKILL = "skill"
 COMMAND = "command"
 PLUGIN = "plugin"
 
-# hatago's single Streamable-HTTP endpoint inside the shared pod netns (design D-04).
-HATAGO_ENDPOINT = "http://localhost:3535/mcp"
+# hatago's single Streamable-HTTP endpoint inside the shared pod netns (design D-04). Single
+# source: `paths.hatago_endpoint()` (honors the `HATAGO_PORT` env override).
+HATAGO_ENDPOINT = paths.hatago_endpoint()
 # The hub's connected-servers resource (the JSON snapshot of child servers behind hatago).
 HATAGO_SERVERS_URI = "hatago://servers"
 # In-container harness home → the mounted profile lives at $CONTAINER_HOME/.claude (launcher §4b).
 CONTAINER_HOME = os.environ.get("CONTAINER_HOME", "/home/harnessed")
 # hatago's HTTP port inside the pod (the readiness signal: bound ⇒ children connected).
-HATAGO_PORT = int(os.environ.get("HATAGO_PORT", "3535"))
+HATAGO_PORT = paths.hatago_port()
 
 
 class CapabilityError(Exception):
@@ -210,8 +211,9 @@ def launch_headless(
     """Launch the stack `--fresh` HEADLESS via the 02-02 launcher; return the live instance name.
 
     Sets `HARNESSED_HEADLESS=true` so the launcher composes + starts the pod WITHOUT the interactive
-    claude attach (members stay up for `podman exec`). The instance/pod name is parsed from the
-    launcher's "Isolated pod running headless: <instance>" success line.
+    claude attach (members stay up for `podman exec`). The instance/pod name is host-derived via
+    `paths.instance_name` — the SAME derivation the launcher uses (stack + sha1[:8] of the resolved
+    project path) — so the oracle never depends on scraping the launcher's stdout (T-02 fragility).
     """
     bin_path = _harnessed_bin(harnessed_bin)
     if project_path is None:
@@ -233,14 +235,15 @@ def launch_headless(
     except (subprocess.SubprocessError, OSError) as exc:
         raise CapabilityError(f"headless launch failed to start: {exc}") from exc
 
-    combined = f"{proc.stdout}\n{proc.stderr}"
-    match = re.search(r"Isolated pod running headless:\s+(\S+)", combined)
-    if not match:
+    if proc.returncode != 0:
+        combined = f"{proc.stdout}\n{proc.stderr}".strip()
         raise CapabilityError(
             "headless launch did not report a running instance "
-            f"(exit {proc.returncode}); output:\n{combined.strip()}"
+            f"(exit {proc.returncode}); output:\n{combined}"
         )
-    return match.group(1)
+    # Host-derive the pod name instead of scraping stdout: instance_name is a pure function of the
+    # stack + resolved project path, the SAME inputs the launcher hashes — so the two can't drift.
+    return paths.instance_name(stack_name, Path(project_path).resolve())
 
 
 def teardown(instance: str, *, harnessed_bin: str | None = None) -> None:

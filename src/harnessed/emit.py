@@ -24,12 +24,13 @@ from pathlib import Path
 # anchor emitted by the assembler. Must NOT strip ARGs like ARG HARNESS_PROXY_URL (WR-04).
 _ARG_HARNESS_RE = re.compile(r'^ARG\s+HARNESS\s*$', re.IGNORECASE)
 
+from . import paths
 from .schema import McpServer, Recipe, Stack
 
-# hatago's single Streamable-HTTP endpoint (design D-04; default port 3535). The harness
-# `.mcp.json` points ONLY here — never at a stdio server directly.
-HATAGO_PORT = 3535
-HATAGO_ENDPOINT = f"http://localhost:{HATAGO_PORT}/mcp"
+# hatago's single Streamable-HTTP endpoint (design D-04; default port 3535, `HATAGO_PORT`
+# overridable). Single source: `paths.hatago_endpoint()`. The harness `.mcp.json` points ONLY
+# here — never at a stdio server directly.
+HATAGO_ENDPOINT = paths.hatago_endpoint()
 HATAGO_MCP_KEY = "hatago"
 
 def reset_profile(profile_dir: Path) -> None:
