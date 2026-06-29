@@ -1,0 +1,3 @@
+[env]
+# Activate the project's Python virtual environment on cd into this directory.
+_.source = ".venv/bin/activate"
