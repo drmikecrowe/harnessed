@@ -5,11 +5,13 @@ from pathlib import Path
 
 from harnessed.schema import (
     McpServer,
+    PersistSpec,
     Recipe,
     RecipeLintError,
     PinValidationError,
     validate_no_raw_npm,
     validate_pin,
+    load_recipe,
     load_stack,
     load_service,
     load_agent,
@@ -278,3 +280,46 @@ class TestLoadServicePortRange:
         root = self._make_service(tmp_path, 3535)
         svc = load_service(root, "mySvc")
         assert svc.port == 3535
+
+
+class TestPersistParse:
+    """T4a — persist: declaration shape, explicit scope keys, project-name validation."""
+
+    def _load(self, tmp_path, body: str) -> Recipe:
+        d = tmp_path / "rcp"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "recipe.yaml").write_text(body)
+        return load_recipe(d)
+
+    def test_absent_persist_is_empty(self, tmp_path):
+        r = self._load(tmp_path, "name: r\n")
+        assert r.persist == PersistSpec()
+        assert r.persist.project == [] and r.persist.global_dirs == []
+
+    def test_project_and_global_parsed(self, tmp_path):
+        r = self._load(tmp_path, "name: r\npersist:\n  project: [.context-mode]\n  global: [~/.gbrain]\n")
+        assert r.persist.project == [".context-mode"]
+        assert r.persist.global_dirs == ["~/.gbrain"]
+
+    def test_bare_list_rejected(self, tmp_path):
+        # Scope must be a named key, never inferred from the string shape.
+        with pytest.raises(SchemaError, match="explicit scope keys"):
+            self._load(tmp_path, "name: r\npersist: [context]\n")
+
+    def test_unknown_scope_key_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="unknown scope key"):
+            self._load(tmp_path, "name: r\npersist:\n  shared: [x]\n")
+
+    @pytest.mark.parametrize("bad", ["../escape", "a/b", "~/.ssh", "/etc/passwd", "..", "."])
+    def test_traversal_project_names_rejected(self, tmp_path, bad):
+        with pytest.raises(SchemaError, match="not a valid name"):
+            self._load(tmp_path, f"name: r\npersist:\n  project: ['{bad}']\n")
+
+    @pytest.mark.parametrize("ok", [".context-mode", "cache", "my_data", "a.b-c", "...idx"])
+    def test_valid_project_names_accepted(self, tmp_path, ok):
+        r = self._load(tmp_path, f"name: r\npersist:\n  project: ['{ok}']\n")
+        assert r.persist.project == [ok]
+
+    def test_empty_global_entry_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="non-empty host path"):
+            self._load(tmp_path, "name: r\npersist:\n  global: ['']\n")

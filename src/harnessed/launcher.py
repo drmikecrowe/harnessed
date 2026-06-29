@@ -631,6 +631,39 @@ def _omp_agent_mount(harness: str) -> list[str]:
     return ["-v", f"{host_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
 
 
+def _persist_mounts(stack: str, project_path: Path) -> list[str]:
+    """Bind-mount each recipe's declared project-scoped persist folders (rw) so their state
+    survives `--fresh`.
+
+    Project scope only (T4a). Each entry names a `$HOME`-relative folder the tool writes to
+    inside the container (e.g. `.context-mode`); harnessed maps it to
+    persist/<recipe>/<project-hash>/<name>/ on the host, created here. Ownership is correct by
+    construction: the dir is created by the invoking user and `--userns=keep-id` maps that uid
+    1:1 inside the pod.
+
+    Global scope is parsed but NOT mounted here — it rw-exposes a real host dir and is gated
+    behind the user-owned persist allowlist (T4b). A recipe that declares one fails loudly
+    rather than mounting it unguarded.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    args: list[str] = []
+    for recipe in recipes:
+        spec = recipe.persist
+        if spec.global_dirs:
+            raise SchemaError(
+                f"recipe '{recipe.name}': global persist scope is not available yet "
+                f"(declared {spec.global_dirs}). A global entry rw-mounts a real host dir into "
+                "the pod and requires the user-owned persist allowlist (T4b) before harnessed "
+                "will mount it. Use project scope, or wait for the allowlist."
+            )
+        for name in spec.project:
+            host_dir = paths.persist_project_dir(recipe.name, project_path, name)
+            host_dir.mkdir(parents=True, exist_ok=True)
+            ctr_dir = f"{_CONTAINER_HOME_STR}/{name}"
+            args += ["-v", f"{host_dir}:{ctr_dir}:rw"]
+    return args
+
+
 # --- Shared-service sidecars (design §3/§9) ------------------------------------
 #
 # A recipe references a service via `mcp.servers[].service: <name>`; the assembler resolves it to a
@@ -797,6 +830,8 @@ def launch(
     mount_args += _claude_config_seed_mount(harness, inst)
     # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
     mount_args += _omp_agent_mount(harness)
+    # Persist recipe-declared project-scoped folders (rw) so their state survives --fresh.
+    mount_args += _persist_mounts(stack, project_path)
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")

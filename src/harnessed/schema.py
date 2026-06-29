@@ -156,6 +156,63 @@ def _parse_expect(raw_expect) -> Expect:
     )
 
 
+# A project-scoped persist entry is a single $HOME-relative folder name (e.g. `.context-mode`)
+# that the tool writes to inside the container. The strict charset keeps it ONE path component,
+# so the name can never traverse out of the per-project data dir harnessed maps it to. '.' and
+# '..' pass the charset but are path navigation, not names — rejected explicitly.
+_PERSIST_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+@dataclass
+class PersistSpec:
+    """Folders a recipe declares must survive harnessed's `--fresh` (fresh-container) launches.
+
+    Scope is an EXPLICIT key, never inferred from the string shape (a bare-name-vs-path
+    convention silently flips isolation semantics):
+      - `project`: bare `$HOME`-relative folder names. harnessed owns the host path and keys it
+        per (recipe, project) — isolated; project A's data never reaches project B.
+      - `global`:  the tool's real host dir (e.g. `~/.gbrain`), shared with host-native runs.
+        Parsed here so the schema is complete, but mounting is gated behind the user-owned
+        persist allowlist (T4b) — declaring one currently fails loudly at launch, never mounts.
+    """
+
+    project: list[str] = field(default_factory=list)
+    global_dirs: list[str] = field(default_factory=list)
+
+
+def _parse_persist(raw_persist) -> PersistSpec:
+    """Parse the `persist:` block: a mapping {project: [names], global: [paths]}."""
+    if not raw_persist:
+        return PersistSpec()
+    if not isinstance(raw_persist, dict):
+        raise SchemaError(
+            "recipe 'persist' must be a mapping with explicit scope keys "
+            "(e.g. persist: {project: [.context-mode], global: [~/.gbrain]}). "
+            "A bare list is rejected — scope must be named, not inferred from the path shape."
+        )
+    unknown = sorted(set(raw_persist) - {"project", "global"})
+    if unknown:
+        raise SchemaError(
+            f"recipe 'persist' has unknown scope key(s) {unknown} — "
+            "only 'project' and 'global' are valid."
+        )
+    project = list(raw_persist.get("project") or [])
+    for entry in project:
+        if not isinstance(entry, str) or entry in (".", "..") or not _PERSIST_NAME_RE.match(entry):
+            raise SchemaError(
+                f"recipe persist project entry {entry!r} is not a valid name — use a bare name "
+                "matching [A-Za-z0-9._-] (no '/', '..', '~', or absolute path). Project-scoped data "
+                "is keyed per project by harnessed; you name the folder, not its host path."
+            )
+    global_dirs = list(raw_persist.get("global") or [])
+    for entry in global_dirs:
+        if not isinstance(entry, str) or not entry.strip():
+            raise SchemaError(
+                f"recipe persist global entry must be a non-empty host path: {entry!r}"
+            )
+    return PersistSpec(project=project, global_dirs=global_dirs)
+
+
 @dataclass
 class Recipe:
     name: str
@@ -164,6 +221,7 @@ class Recipe:
     skills: list[FileExt] = field(default_factory=list)
     commands: list[FileExt] = field(default_factory=list)
     expect: Expect = field(default_factory=Expect)
+    persist: PersistSpec = field(default_factory=PersistSpec)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
     raw: dict = field(default_factory=dict)
 
@@ -272,6 +330,7 @@ def load_recipe(recipe_dir: Path) -> Recipe:
         skills=_parse_fileext(raw.get("skills")),
         commands=_parse_fileext(raw.get("commands")),
         expect=_parse_expect(raw.get("expect")),
+        persist=_parse_persist(raw.get("persist")),
         root=recipe_dir,
         raw=raw,
     )

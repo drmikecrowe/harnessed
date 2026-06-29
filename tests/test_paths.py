@@ -70,6 +70,56 @@ class TestInstanceName:
         assert a == b
 
 
+class TestProjectHash:
+    def test_stable_for_same_input(self):
+        assert paths.project_hash("/home/user/project") == paths.project_hash("/home/user/project")
+
+    def test_eight_hex_chars(self):
+        h = paths.project_hash("/home/user/project")
+        assert len(h) == 8
+        assert all(c in "0123456789abcdef" for c in h)
+
+    def test_trailing_slash_stripped(self):
+        assert paths.project_hash("/home/user/project") == paths.project_hash("/home/user/project/")
+
+    def test_is_the_key_inside_instance_name(self):
+        # Single source: instance_name must embed exactly project_hash (no independent digest).
+        h = paths.project_hash("/home/user/project")
+        assert paths.instance_name("my-stack", "/home/user/project") == f"harnessed-my-stack-{h}"
+
+    def test_different_projects_differ(self):
+        assert paths.project_hash("/home/user/a") != paths.project_hash("/home/user/b")
+
+
+class TestPersistDir:
+    def test_under_xdg_data_persist_namespace(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        assert paths.persist_root() == tmp_path / "harnessed" / "persist"
+
+    def test_persist_root_is_sibling_of_profiles_root(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        assert paths.persist_root().parent == paths.profiles_root().parent
+        assert paths.persist_root() != paths.profiles_root()
+
+    def test_project_dir_keyed_by_recipe_project_and_name(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        h = paths.project_hash("/home/user/proj")
+        d = paths.persist_project_dir("context-mode", "/home/user/proj", ".context-mode")
+        assert d == tmp_path / "harnessed" / "persist" / "context-mode" / h / ".context-mode"
+
+    def test_two_recipes_same_name_dont_collide(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        a = paths.persist_project_dir("recipe-a", "/home/user/proj", "cache")
+        b = paths.persist_project_dir("recipe-b", "/home/user/proj", "cache")
+        assert a != b
+
+    def test_same_recipe_different_projects_isolated(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        a = paths.persist_project_dir("context-mode", "/home/user/proj-a", "idx")
+        b = paths.persist_project_dir("context-mode", "/home/user/proj-b", "idx")
+        assert a != b
+
+
 class TestProjectRelpath:
     def test_path_under_home(self, monkeypatch, tmp_path):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)

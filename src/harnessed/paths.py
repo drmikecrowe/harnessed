@@ -97,11 +97,40 @@ def is_built(stack: str) -> bool:
     return (profile_dir(stack) / ".mcp.json").is_file()
 
 
-def instance_name(stack: str, project_path: str | Path) -> str:
-    """Stable instance name: harnessed-<stack>-<sha1[:8] of project_path>."""
+def project_hash(project_path: str | Path) -> str:
+    """Stable 8-hex project key: sha1[:8] of the normalized project path.
+
+    Single source for the per-project key used by BOTH `instance_name` and persist-dir
+    resolution — no caller recomputes the digest independently, so the pod name and its
+    persisted data can never drift apart on a trailing slash or symlink (the same
+    `.rstrip("/")` normalization governs both).
+    """
     p = str(Path(project_path)).rstrip("/")
-    h = hashlib.sha1(p.encode()).hexdigest()[:8]
-    return f"harnessed-{stack}-{h}"
+    return hashlib.sha1(p.encode()).hexdigest()[:8]
+
+
+def instance_name(stack: str, project_path: str | Path) -> str:
+    """Stable instance name: harnessed-<stack>-<project_hash>."""
+    return f"harnessed-{stack}-{project_hash(project_path)}"
+
+
+def persist_root() -> Path:
+    """Root for recipe-declared persistent data (XDG DATA).
+
+    A sibling of `profiles_root()` under harnessed's data dir, in its own `persist/`
+    namespace so a recipe name can never collide with `profiles/` or another top-level
+    data dir. Bind mounts (not named volumes) live here — the host owns the bytes.
+    """
+    return xdg_data_home() / "harnessed" / "persist"
+
+
+def persist_project_dir(recipe: str, project_path: str | Path, name: str) -> Path:
+    """Host dir for a project-scoped persist entry: persist/<recipe>/<project_hash>/<name>/.
+
+    Keyed by BOTH recipe and project: two recipes that each declare `project: [name]`
+    never share a dir, and the same recipe in two different projects stays isolated.
+    """
+    return persist_root() / recipe / project_hash(project_path) / name
 
 
 def project_relpath(project_path: str | Path) -> str:
