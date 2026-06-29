@@ -38,30 +38,72 @@ below is ranked by *"does this serve that loop,"* not by feature glamour. Multi-
 
 ---
 
-## The decision to resolve first (this is what gates everything downstream)
+## The locked next slice (CEO review, 2026-06-29 — recipe-first)
 
-### D1 · `persist` scope-key — **decide before any persist code**
-Memory/context tools *are* persistence; state written **outside** the project dir today dies on
-`--fresh`. A recipe needs to declare persistent folders and harnessed bind-mounts them — but the host
-target must encode the right scope, and that shape must be settled before implementing:
+**D1 is no longer a paper decision.** The CEO review chose **recipe-first**: author a real context
+recipe now and let it *spec* persist, rather than deciding the scope-key in the abstract. The spike is
+**context-mode (project-scoped)** — deliberately the harder half of D1, so the `sha1(project_path)`
+keying gets exercised instead of deferred. agentmemory (global) was rejected as the spike: it only
+exercises the trivial global path and skips validating the just-shipped settings.json merge.
 
-- **Per-(stack, project)** — an index/cache *of this project*, keyed by the existing
-  `sha1(project_path)` → `~/.local/share/harnessed/<stack>/<project-hash>/<name>/`.
-- **Per-stack / global** — personal state independent of any project (a knowledge brain like gbrain)
-  → `~/.local/share/harnessed/<stack>/<name>/`.
+**Persist declaration shape (refined by /autoplan eng+DX review, 2026-06-29):** scope is an **explicit
+key**, not inferred from the string shape (a bare-name-vs-path convention silently flips isolation
+semantics — UC1):
 
-The author likely indicates scope *per folder* (the tool knows whether its data is project-scoped or
-global). **Settle the declaration shape, then implement** (see spec §A). This is the single
-highest-leverage unblock for the context-recipe goal.
+```yaml
+persist:
+  project: [context]     # → ~/.local/share/harnessed/<recipe>/<sha1(project)>/context  (isolated per project)
+  global:  [~/.gbrain]   # → the tool's real host dir, allowlist-gated (shared with host-native runs)
+```
+
+- **project key** is a **bare name** validated by a charset allowlist `^[A-Za-z0-9._-]+$` (reject
+  `.`/`..`/empty), mapped via the **same `paths.instance_name` helper** that names the pod (no
+  independent `sha1` — avoids trailing-slash/symlink drift). Renaming/moving the project orphans its
+  data — documented, not silently migrated.
+- **global** entries name a real host dir, gated by a **user-owned default-deny allowlist**
+  (`~/.config/harnessed/persist-allowlist`) — the recipe references it, never self-authorizes. Resolved
+  target is `realpath`-canonicalized and hard-denied under `~/.ssh`, `~/.aws`, `~/.gnupg`,
+  `~/.config/harnessed`, `$HOME` even if listed. *(A `global:` entry rw-mounts a host dir into the
+  otherwise-sandboxed pod — without this gate a recipe could mount host secrets. UC2.)*
+
+**The slice (revised order — T4a is the binding prereq; T1/T2/T7/T8 parallelize):**
+1. **T1 · schema `--strict`** — a **known-field allowlist** (typed ∪ forward-parsed: keep
+   `extensions`/`plugins`/`deps`/`hooks`/`scripts` for D-14 forward-compat — a blanket reject breaks
+   omp + the supply-chain lint), **on by default** in `build`+`test` with a `--no-strict` escape. Also
+   flip `schemas/recipe.schema.json` to `additionalProperties:false` so the editor catches `skkills:`
+   live. Typo errors carry a Levenshtein "did you mean" hint.
+2. **T4a · persist schema + project scope** — the explicit-key field above, charset validation, shared
+   key helper, mounts emitted by a **new `_persist_mounts(stack, recipes, project)`** appended in
+   `launch()` (NOT a `_build_mount_args` signature change — matches the `_omp_agent_mount` pattern).
+3. **T4b · global allowlist** *(its own security-design task, split out of persist)* — the user-owned
+   default-deny mechanism above.
+4. **T3 · author context-mode** (project-scoped) — namespace the host dir by **recipe name AND project
+   hash** (two recipes both choosing `project:[context]` must not collide); loud inline comment that
+   bare = per-project; it must actually **green** the round-trip (no placeholder like
+   `openbrain-example`).
+5. **T6 · tests** — FAST-layer units cover the pure logic (parse / charset validation / project-key /
+   allowlist) so default CI catches regressions; the **podman-gated** lane (skipped by default) runs the
+   round-trip (write → `--fresh` → read) **+ two-project isolation**. The **sentinel is injected
+   host-side** so the oracle stays auth-free. Default `pytest` green does NOT prove persistence —
+   document that in the test module.
+6. **T5 · ownership guard** — a minimal `--userns=keep-id` mkdir that **fails loudly on owner mismatch**;
+   apply where global real-dirs bite. Largely redundant for harnessed-created project dirs (don't
+   gold-plate).
+7. **T2 · `capability.py` cleanup** *(DEMOTED — not a prereq)* — delete the stdout regex
+   (`capability.py:237`); the instance name is already host-derivable via `paths.instance_name()`. The
+   round-trip test computes it directly, so T2 never blocked T6.
+
+See spec §A for the underlying mechanics. Full per-task list + audit trail:
+`~/.gstack/projects/drmikecrowe-harnessed/tasks-eng-review-*.jsonl` and `…-autoplan-audit.md`.
 
 ## Ranked open work
 
-### TIER 1 — harden the author → test loop (do alongside / right after D1)
-| Item | Why now |
-|------|---------|
-| **persist** (spec §A) | Unblocked by D1. Without it a memory recipe "installs fine" but forgets everything across sessions. |
-| **schema `--strict` author mode** | A misspelled recipe field (`skkills:`) is swallowed silently today — a real time-sink once hand-authoring N recipes. Pays off by recipe #2. |
-| **`capability.py` oracle de-fragilize** | The `harnessed test` oracle scrapes the instance name from stdout via regex (`capability.py`). Harden the tool you live in — export via a machine-readable channel. |
+### TIER 1 — the recipe-first slice
+See "The locked next slice" above for the authoritative, /autoplan-reviewed task breakdown (T1–T9,
+revised order). Summary: **T4a (persist schema + project scope) is the binding prereq**; T1 (`--strict`,
+on-by-default), T7 (HATAGO_PORT), T8 (`_service_refs` test), and T2 (capability.py cleanup, demoted)
+parallelize. T4a → {T4b global-allowlist security · T3 author context-mode · T5 ownership guard ·
+T6 round-trip + two-project isolation test}.
 
 ### TIER 2 — secrets (conditional, but now has a first consumer)
 | Item | Trigger / note |
@@ -72,9 +114,20 @@ highest-leverage unblock for the context-recipe goal.
 ### TIER 3 — background hygiene, no urgency
 - **Scan-subsystem cleanup** — dead `scan.py` + `test_scan.py`, legacy `harnessed-tools`,
   advisory-only supply chain. Mostly deletion; gated on **D2**.
-- **HATAGO_PORT consolidation** — port defined in one place (`paths.py`), imported elsewhere;
-  de-risks a future endpoint fix.
-- **`_service_refs` catalog-root bug + missing test** — fix and test together.
+- **HATAGO_PORT consolidation** — the port is duplicated across **four** sites, not three: `paths.py:20`
+  (imported by `launcher.py`), an independent literal in `emit.py:31`, `capability.py:54`
+  (`os.environ.get("HATAGO_PORT","3535")`), **plus a hardcoded endpoint string `http://localhost:3535/mcp`
+  at `capability.py:48`**. Trap: `capability.py:54` honors a `HATAGO_PORT` env override but `paths.py:20`
+  is a bare constant — naively importing it drops the override. Fix: a `paths.py` **accessor that honors
+  the env var**, import it in the other three, fold in the endpoint string.
+- **persist lifecycle GC** *(new, from /autoplan)* — persist dirs live at `XDG_DATA/harnessed/<stack>/…`,
+  a sibling of `profiles_root()`, so `harnessed clean`/`rm` never touch them. Document the gap now;
+  defer a `harnessed persist prune` subcommand to TODOS.
+- **`_service_refs` — repro the bug first, then fix + test.** The claimed catalog-root bug
+  (`launcher.py:645-653`) was **not visible on inspection** — it uses `load_stack_with_recipes(None, …)`,
+  which resolves both catalog roots correctly. Either it's subtler than a read shows, was already fixed,
+  or it's misdiagnosed. Do not start a fix until a failing repro exists; the missing test stands either
+  way.
 
 ### BOTTOM — explicitly deprioritized
 - **Compose-backed multi-container services** (spec §D) — serves the hindsight recipe (lowest
@@ -82,11 +135,17 @@ highest-leverage unblock for the context-recipe goal.
   hindsight comes back up. The single-container `service:` path already works (see `ping`).
 
 ## Open decisions (for the review)
-- **D1 · persist scope-key** — per-project `sha1` vs global (above). **Resolve next.**
+- **D1 · persist scope-key — RESOLVED (CEO review 2026-06-29).** Recipe-first: context-mode (project
+  scope) is the spike; storage follows scope (project → bare-name shadow tree; global → tool's real
+  host dir). See "The locked next slice" above.
 - **D2 · scan subsystem** — keep `run_image_scan_online` (nightly rescan) or delete the gating
   scanner + `harnessed-tools` + `test_scan.py`? Optional opt-in `--strict-scans`? Gates TIER 3.
+  *(Verified still present in the tree: `scan.py`, `tests/test_scan.py`, `run_image_scan_online`.)*
 - **D3 · omp rw mount** — the omp agent dir is rw-mounted with full host credential access; accept
-  the documented trade-off, or copy-on-start / ro auth files?
+  the documented trade-off (ARCHITECTURE.md §4c — intentional), or copy-on-start / ro auth files? The
+  outside voice flagged this as under-ranked **for the incoming context-recipe class** (persistent
+  state + possibly-egressing MCP); re-weigh blast radius when the first such recipe lands, but it
+  remains a deliberate, documented exception — not a bug to "fix" back to isolation.
 - **D4 · secrets.md** — build §B as the delivery vehicle (guide becomes accurate), or correct the
   guide now and track the launch flow under §B?
 
@@ -128,3 +187,23 @@ runs `podman compose -f <file> up -d` with secret-resolved env (built on §B), w
 and the recipe's `service:` MCP ref points at the app port via `host.containers.internal:<port>`.
 Needs its own design doc — open questions: compose runtime dependency, named-vs-bind volumes,
 lifecycle surface (`svc up|down|list`).
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | clean | HOLD_SCOPE; recipe-first slice locked; 0 critical gaps; 3 doc corrections |
+| Eng Review | `/plan-eng-review` (via `/autoplan`) | Architecture & tests (required) | 1 | clean | 1 critical (allowlist) + 2 high (mount seam, T2 mis-scope) resolved; 13 auto-decisions |
+| DX Review | `/plan-devex-review` (via `/autoplan`) | Recipe-author DX | 1 | clean | scope-ambiguity + allowlist-wall fixed via UC1/UC2; on-by-default `--strict` |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | skipped (no UI scope) |
+
+- **CROSS-MODEL:** Codex not installed throughout — independent voices were Claude subagents (CEO
+  outside-voice + eng + DX). CEO outside-voice: 8 pts, 2 folded in, 1 rejected (`openbrain-example` is a
+  user-copied template; key lives in the user's own overlay). Eng+DX converged independently on the same
+  two issues (persist scope ambiguity + the global-allowlist hole) → raised as user challenges, both
+  resolved: explicit `{project,global}` key (UC1) and a user-owned default-deny allowlist with T4 split
+  into T4a/T4b (UC2).
+- **VERDICT:** CEO + ENG + DX CLEARED — recipe-first slice reviewed and locked; ready to implement.
+  Binding prereq: T4a (persist schema). Full task list in `tasks-eng-review-*.jsonl`.
+
+NO UNRESOLVED DECISIONS
