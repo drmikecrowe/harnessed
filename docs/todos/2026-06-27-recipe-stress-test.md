@@ -11,7 +11,7 @@
 > **What's still valuable:** the classification matrix, per-package install commands / data models,
 > the Architecture Gaps, and the Considerations. The gaps were re-audited against the live code on
 > 2026-06-27 — the confirmed ones (settings.json merge, persistent data folders, multi-container
-> services) are tracked in [immediate.md](immediate.md); the rest closed as not-gaps.
+> services) are tracked in [ROADMAP.md](ROADMAP.md); the rest closed as not-gaps.
 
 > **Purpose:** validate the recipe architecture (`.planning/RECIPE-ARCHITECTURE-MILESTONE.md`)
 > against real packages. Each package is classified by recipe type, data model, and the specific

@@ -1,7 +1,7 @@
 # Roadmap & triage — immediate.md + CONCERNS.md
 
 **Date:** 2026-06-27 · **Source:** office-hours + plan-ceo-review of
-[immediate.md](immediate.md) and [../codebase/CONCERNS.md](../codebase/CONCERNS.md)
+[immediate.md](ROADMAP.md) (since distilled → ROADMAP.md) and [../codebase/CONCERNS.md](../codebase/CONCERNS.md)
 
 This sequences the confirmed work in `immediate.md` together with a triage of
 `CONCERNS.md`, **anchored to the actual near-term goal**: author context-management
