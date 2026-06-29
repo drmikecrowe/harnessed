@@ -1,0 +1,24 @@
+name: tests
+
+# Runs the hermetic pytest suite. No `paths:` filter on purpose: when this workflow is a
+# required status check, a path filter would deadlock PRs that don't touch the filtered paths
+# (the check never reports → the PR can never merge). The suite is small and fast, so always run.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv (+ Python 3.12)
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      # Hermetic: no podman on the runner, so the HARNESSED_PODMAN-gated integration tests skip.
+      - name: Run tests
+        run: uv run --extra dev pytest
