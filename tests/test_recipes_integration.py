@@ -121,3 +121,78 @@ def test_live_negative_stack_is_rejected():
     result = _run_cli("build", NEGATIVE_STACK)
     assert result.returncode != 0, "expected the floating-pin build to be rejected"
     assert "Traceback" not in result.stderr, "build crashed instead of rejecting cleanly"
+
+
+# --- Layer 2b: settings.json post-build merge (podman-gated) ---------------------------------------
+#
+# The pure merge logic (emit.merge_settings / read_baked_settings) is exhaustively unit-tested in
+# test_emit.py. These tests cover the part units can't: the real `podman create` + `cp` extraction
+# of an image-baked ~/.claude/settings.json and the overwrite of the profile floor. We bake a
+# throwaway image rather than a catalog fixture because no catalog recipe writes settings.json yet.
+
+from harnessed.launcher import _merge_baked_settings, _runtime  # noqa: E402
+from harnessed.paths import CONTAINER_HOME  # noqa: E402
+
+# Pinned base (project hygiene — no floating tags), small + cached after first pull.
+_TEST_BASE = "docker.io/library/alpine:3.20"
+_FLOOR = {"permissions": {"allow": ["mcp__hatago"]}}  # what emit.write_settings_json emits
+
+
+def _build_image_with(tmp: Path, tag: str, settings: dict | None) -> str:
+    """Build a throwaway image; bake `settings` at CONTAINER_HOME/.claude/settings.json if given."""
+    rt = _runtime()
+    ctx = tmp / "img"
+    ctx.mkdir()
+    if settings is None:
+        (ctx / "Dockerfile").write_text(f"FROM {_TEST_BASE}\n")
+    else:
+        (ctx / "settings.json").write_text(json.dumps(settings))
+        # COPY creates the intermediate .claude dir; no shell quoting of JSON needed.
+        (ctx / "Dockerfile").write_text(
+            f"FROM {_TEST_BASE}\nCOPY settings.json {CONTAINER_HOME}/.claude/settings.json\n"
+        )
+    assert subprocess.run([rt, "build", "-t", tag, str(ctx)], capture_output=True,
+                          text=True).returncode == 0, f"failed to build fixture image {tag}"
+    return rt
+
+
+@podman
+def test_merge_baked_settings_unions_grant_and_preserves_baked(tmp_path):
+    """Real image bakes settings.json (hook + custom allow + a conflicting deny) → the post-build
+    merge preserves the baked content and re-applies harnessed's required grant."""
+    tag = "harnessed-test-settings-baked:latest"
+    baked = {
+        "hooks": {"PreToolUse": [{"matcher": "Bash"}]},
+        "permissions": {"allow": ["mcp__custom"], "deny": ["mcp__hatago"]},
+    }
+    rt = _build_image_with(tmp_path, tag, baked)
+    prof = tmp_path / "profile"
+    prof.mkdir()
+    (prof / "settings.json").write_text(json.dumps(_FLOOR))  # the assemble-time floor
+    try:
+        _merge_baked_settings(rt, tag, prof)
+        merged = json.loads((prof / "settings.json").read_text())
+    finally:
+        subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
+
+    assert merged["hooks"] == {"PreToolUse": [{"matcher": "Bash"}]}, "baked hook dropped (regression)"
+    assert "mcp__hatago" in merged["permissions"]["allow"], "required grant not unioned"
+    assert "mcp__custom" in merged["permissions"]["allow"], "baked allow entry lost"
+    assert "mcp__hatago" not in merged["permissions"].get("deny", []), "deny conflict not resolved"
+
+
+@podman
+def test_merge_baked_settings_keeps_floor_when_image_has_no_settings(tmp_path):
+    """Image bakes no settings.json → `podman cp` fails → the assemble-time floor stub stands."""
+    tag = "harnessed-test-settings-bare:latest"
+    rt = _build_image_with(tmp_path, tag, None)
+    prof = tmp_path / "profile"
+    prof.mkdir()
+    (prof / "settings.json").write_text(json.dumps(_FLOOR))
+    try:
+        _merge_baked_settings(rt, tag, prof)
+        result = json.loads((prof / "settings.json").read_text())
+    finally:
+        subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
+
+    assert result == _FLOOR, "floor stub should be untouched when nothing is baked"

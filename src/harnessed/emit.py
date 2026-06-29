@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from copy import deepcopy
 from pathlib import Path
 
 # Matches exactly `ARG HARNESS` (with optional trailing whitespace) — the build-stage scope
@@ -56,20 +57,104 @@ def write_mcp_json(profile_dir: Path) -> Path:
     return out
 
 
-def write_settings_json(profile_dir: Path, servers: list[McpServer]) -> Path:
-    """Emit `settings.json` — pre-approve the hatago hub's MCP tools.
+def required_settings(servers: list[McpServer]) -> dict:
+    """harnessed's REQUIRED settings.json contribution — the *only* thing the harness must add on
+    top of whatever a recipe/base installer baked.
 
-    Without this, an interactive isolated session prompts for permission the first time it uses an
-    MCP tool, so a skill that drives (e.g.) the time server appears to "fail". The server-level
-    wildcard `mcp__<hub>` allows every tool hatago exposes — the hub's child tool names are only
-    known at runtime, so the hub-level grant is the static, assembler-knowable permission.
+    Today that is the hatago hub permission grant, and only when the stack actually has servers
+    (no servers → hatago exposes nothing → no grant needed). The server-level wildcard
+    `mcp__<hub>` allows every tool hatago exposes; the hub's child tool names are only known at
+    runtime, so the hub-level grant is the static, assembler-knowable permission. This is the
+    single source of truth for "what the harness requires" — both the assemble-time floor
+    (`write_settings_json`) and the post-build merge (`merge_settings`, via the launcher) use it.
     """
-    settings: dict = {}
     if servers:
-        settings["permissions"] = {"allow": [f"mcp__{HATAGO_MCP_KEY}"]}
+        return {"permissions": {"allow": [f"mcp__{HATAGO_MCP_KEY}"]}}
+    return {}
+
+
+def write_settings_json(profile_dir: Path, servers: list[McpServer]) -> Path:
+    """Emit the assemble-time `settings.json` FLOOR — pre-approve the hatago hub's MCP tools.
+
+    Without the grant, an interactive isolated session prompts for permission the first time it
+    uses an MCP tool, so a skill that drives (e.g.) the time server appears to "fail".
+
+    This runs at ASSEMBLE time, *before* the image exists, so it cannot yet include a recipe/base
+    installer's own `settings.json` (hooks, extra permissions). The launcher replaces this floor
+    post-build via `merge_settings()` once the image artifact exists; if no recipe/base baked a
+    `settings.json`, this floor stands unchanged.
+    """
     out = profile_dir / "settings.json"
-    _write_json(out, settings)
+    _write_json(out, required_settings(servers))
     return out
+
+
+def read_baked_settings(text: str | None, *, warn=None) -> dict | None:
+    """Parse an image-baked `settings.json`'s raw text into a dict for `merge_settings()`.
+
+    Distinguishes the two "no usable baked file" cases the launcher must NOT conflate:
+      - text is None         → the file was absent or `podman cp` failed. Return None silently;
+                               the caller keeps the assemble-time floor unchanged.
+      - text is malformed    → a recipe installer wrote broken JSON. Return None and WARN, rather
+                               than crashing `harnessed build` over a recipe's bad file.
+    A valid JSON object returns the parsed dict. A valid-but-non-object (list/number/string) is
+    treated as malformed — `settings.json` must be a JSON object.
+    """
+    if text is None:
+        return None
+    _warn = warn or (lambda _m: None)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        _warn("image settings.json is not valid JSON — keeping harnessed's default")
+        return None
+    if not isinstance(data, dict):
+        _warn("image settings.json is not a JSON object — keeping harnessed's default")
+        return None
+    return data
+
+
+def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
+    """Resolve the FINAL settings.json = the image's installer-written file with harnessed's
+    required grant surgically re-applied. This is NOT a generic deep-merge.
+
+        baked (authoritative, post-install)        required (harnessed's sole addition)
+        ───────────────────────────────────        ────────────────────────────────────
+        { hooks, permissions, … }                  { permissions: { allow: [mcp__hatago] } }
+                       └──────────────┬─────────────────────────┘
+                                      ▼
+        result = baked, then for each grant in required.permissions.allow:
+          • ensure grant ∈ permissions.allow   (union, dedup, order-preserving)
+          • drop  grant ∈ permissions.deny     (REQUIRED WINS — hatago is the only MCP path; a
+                                                 recipe that denies it would break every tool)
+        Every OTHER baked key (hooks, other permissions) is carried through VERBATIM. Only
+        `permissions.allow` is unioned — a generic nested merge would corrupt array-valued keys
+        such as `hooks` or `permissions.deny`.
+
+    `baked is None` (no image file / cp failed) → return `required` unchanged (the floor stub).
+    """
+    if baked is None:
+        return required
+    _warn = warn or (lambda _m: None)
+    grants = required.get("permissions", {}).get("allow", [])
+    if not grants:
+        # Harness contributes nothing (e.g. a serverless stack) — the baked file stands as-is.
+        return baked
+    result = deepcopy(baked)
+    perms = result.setdefault("permissions", {})
+    allow = perms.get("allow")
+    if not isinstance(allow, list):
+        allow = []
+        perms["allow"] = allow
+    deny = perms.get("deny")
+    for grant in grants:
+        if isinstance(deny, list) and grant in deny:
+            deny[:] = [d for d in deny if d != grant]
+            _warn(f"image settings.json denies {grant}; harnessed re-enables it "
+                  "(required for the MCP hub)")
+        if grant not in allow:
+            allow.append(grant)
+    return result
 
 
 def _hatago_entry(server: McpServer) -> dict:

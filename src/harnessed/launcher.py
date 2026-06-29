@@ -23,6 +23,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 
+from . import emit
 from . import paths
 from .paths import CONTAINER_HOME, HATAGO_PORT, instance_name, is_built, profile_dir, project_relpath
 from .assemble import assemble
@@ -244,6 +245,12 @@ def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
     if any((r.root / "Dockerfile").is_file() for r in result.recipes):
         _merge_baked_extensions(rt, derived, prof)
 
+    # Replace the assemble-time settings.json FLOOR with the image's installer-written
+    # settings.json (merged with harnessed's required grant). UNCONDITIONAL — a settings.json can
+    # be baked by the agent BASE image, not only by a recipe Dockerfile, so this must NOT hide
+    # behind the recipe-bake gate above.
+    _merge_baked_settings(rt, derived, prof)
+
     # Surface the advisory supply-chain report (baked by the derived image's final scan layer).
     _surface_scan_report(rt, derived, prof)
 
@@ -301,6 +308,62 @@ def _merge_baked_extensions(rt: str, image: str, prof: Path) -> None:
             )
     finally:
         subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+
+
+def _merge_baked_settings(rt: str, image: str, prof: Path) -> None:
+    """Replace the assemble-time settings.json FLOOR with the image's installer-written
+    settings.json, surgically re-applying harnessed's required grant (emit.merge_settings).
+
+    Why post-build: the installer-written ~/.claude/settings.json (hooks, permissions) only
+    exists AFTER the image is built. Writing settings.json from scratch at assemble time and
+    mounting it :ro (the old behaviour) masked whatever a recipe/base installer baked.
+
+    Why UNCONDITIONAL (mirrors _surface_scan_report, not the recipe-bake gate): a settings.json
+    can be baked by the agent BASE image, not only by a recipe Dockerfile — gating on recipe-bake
+    would leave base-sourced settings stomped by the floor.
+
+    Ordering invariant: build() runs assemble → build → here, so the floor stub
+    (emit.write_settings_json) is always already on disk; we read it back as `required` (the
+    single source of truth for harnessed's contribution) and overwrite it with the merge.
+
+    Failure modes are split deliberately: a `podman cp` of an ABSENT file exits non-zero →
+    baked_text stays None → floor kept silently; a baked file that is MALFORMED json →
+    emit.read_baked_settings warns and the floor is kept. A recipe's bad settings.json never
+    crashes the build.
+    """
+    stub = prof / "settings.json"
+    required: dict = {}
+    if stub.is_file():
+        try:
+            required = json.loads(stub.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            required = {}
+
+    cid = subprocess.run([rt, "create", image], capture_output=True, text=True).stdout.strip()
+    if not cid:
+        return
+    baked_text: str | None = None
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "settings.json"
+            cp = subprocess.run(
+                [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.claude/settings.json", str(dest)],
+                capture_output=True,
+            )
+            # cp of a missing file exits non-zero → baked_text stays None (distinct from malformed).
+            if cp.returncode == 0 and dest.is_file():
+                baked_text = dest.read_text(encoding="utf-8")
+    finally:
+        subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+
+    def _warn(msg: str) -> None:
+        _out.print(f"[yellow]⚠ settings:[/yellow] {msg}")
+
+    baked = emit.read_baked_settings(baked_text, warn=_warn)
+    if baked is None:
+        return  # nothing usable baked; the floor stub already on disk is correct.
+    merged = emit.merge_settings(baked, required, warn=_warn)
+    stub.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
 
 
 def _surface_scan_report(rt: str, image: str, prof: Path) -> None:
