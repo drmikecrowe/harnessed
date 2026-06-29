@@ -47,10 +47,11 @@ app = typer.Typer(
 _out = Console()
 _err = Console(stderr=True)
 
-# --- shared image names (base + hatago; agent images come from catalog/agents/<h>/agent.yaml) ---
+# --- shared image names (base; agent images come from catalog/agents/<h>/agent.yaml) ---
+# hatago is no longer a separate image — it is baked into harnessed-base and runs in-container
+# (hatago-consolidation), so there is no _HATAGO_IMAGE.
 _BASE_IMAGE = "harnessed-base:latest"
 _CLAUDE_IMAGE = "harnessed-claude:latest"
-_HATAGO_IMAGE = "harnessed-hatago:latest"
 _CONTAINER_HOME_STR = str(CONTAINER_HOME)
 
 # Attach command for each harness inside the container.
@@ -238,7 +239,6 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
     pairs = [
         (_BASE_IMAGE, _catalog_base("Dockerfile.harnessed-base")),
         (_CLAUDE_IMAGE, _catalog_base("Dockerfile.harnessed-claude")),
-        (_HATAGO_IMAGE, _catalog_base("Dockerfile.hatago")),
     ]
     for image, dockerfile in pairs:
         if force or not _image_exists(rt, image):
@@ -309,14 +309,11 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
-    # Always rebuild the parameterised base first: hatago and the agent image below are both `FROM
-    # harnessed-base`, so a stale base (e.g. after editing Dockerfile.harnessed-base) would silently
-    # propagate into every derived image. Cache-backed — a no-op when the base Dockerfile is unchanged.
+    # Always rebuild the parameterised base first: the agent image below is `FROM harnessed-base`
+    # (which now also bakes hatago + the time server — hatago-consolidation), so a stale base (e.g.
+    # after editing Dockerfile.harnessed-base) would silently propagate into every derived image.
+    # Cache-backed — a no-op when the base Dockerfile is unchanged.
     _build_base_image(rt)
-
-    _out.print(f"[blue][INFO][/blue] Building {_HATAGO_IMAGE} for stack '{stack}' ...")
-    hdir = _harnessed_dir()
-    _run([rt, "build", "-t", _HATAGO_IMAGE, "-f", str(_catalog_base("Dockerfile.hatago")), str(hdir)])
 
     # (Re)build the agent base image so a changed agent Dockerfile / build_args (e.g. OMP_VERSION)
     # actually propagates — the derived image is `FROM` it. Cache-backed: a no-op when unchanged,
@@ -508,15 +505,23 @@ def _touch_attach_marker(inst: str) -> None:
 def _session_active(rt: str, inst: str) -> bool:
     """True while an interactive harness session is attached.
 
-    An idle instance runs only its PID-1 `sleep infinity`; an attached one also carries the
-    `bash -l -c … <harness>` exec tree. Any process other than `sleep` counts as activity.
+    After the hatago-consolidation an idle instance is NOT just `sleep infinity`: it also runs the
+    detached in-container hatago hub (a `node` process) and any stdio MCP children hatago spawned
+    (`uvx mcp-server-time`, …). So the old "any non-sleep process = active" rule is wrong — it would
+    never report idle and `harnessed prune` would never fire. Detect the session positively instead,
+    by its controlling terminal: only the interactive attach (`exec -it … bash -l -c <harness>`) owns
+    a real pts; every infra process (sleep, hatago, stdio children) runs with no tty.
+
+    NOTE (podman-gated): the exact idle/attached tty strings must be confirmed against live
+    `<rt> top <inst> tty` output — this is the hatago-consolidation's main verification point.
     """
-    result = subprocess.run([rt, "top", inst, "comm"], capture_output=True, text=True)
+    result = subprocess.run([rt, "top", inst, "tty"], capture_output=True, text=True)
     if result.returncode != 0:
         return False
-    # Drop the header row `top` prints; treat any surviving non-`sleep` process as a live session.
-    procs = [line.strip() for line in result.stdout.splitlines()[1:] if line.strip()]
-    return any(c != "sleep" for c in procs)
+    # Drop the header row; a process owning a real terminal (pts/N) is the attached session. Infra
+    # processes report no tty ("?" on podman, "-"/"" elsewhere).
+    ttys = [line.strip() for line in result.stdout.splitlines()[1:] if line.strip()]
+    return any(t not in ("?", "-", "") for t in ttys)
 
 
 def _apply_firewall(rt: str, instance: str) -> None:
@@ -1103,11 +1108,9 @@ def launch(
     pod = inst
     start_dir = _resolve_start_dir(project_path, agent_start_folder)
 
-    # Ensure harness image exists (lazy-build for non-claude harnesses).
+    # Ensure harness image exists (lazy-build for non-claude harnesses). hatago is baked into it now
+    # (hatago-consolidation), so there is no separate hatago image to check for.
     _ensure_harness_image(rt, harness)
-    if not _image_exists(rt, _HATAGO_IMAGE):
-        _err.print(f"[bold red]error:[/bold red] hatago image not found — run: harnessed build {stack}")
-        raise typer.Exit(1)
 
     # --fresh: tear down existing pod.
     if fresh:
@@ -1185,20 +1188,12 @@ def launch(
     hatago_cfg_host = prof / "hatago.config.json"
     hatago_cfg_ctr = str(paths.hatago_config_container())
 
-    # Start hatago member.
-    hatago_run = [
-        rt, "run", "-d",
-        *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
-        "--name", f"{inst}-hatago",
-        "-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro",
-        _HATAGO_IMAGE,
-        "hatago", "serve", "--http", "--port", str(paths.hatago_port()),
-        "--config", hatago_cfg_ctr,
-    ]
-    _run(hatago_run, capture_output=True)
-
-    # Filter out --userns=keep-id from member (pod-level property).
+    # Filter out --userns=keep-id from member (pod-level property). Mount the hatago config (ro) into
+    # the HARNESS container — after the hatago-consolidation, hatago runs IN this container (not a
+    # separate pod member), so the hub and the stdio children it spawns share this container's home
+    # and see the project bind-mount.
     member_mounts = [a for a in mount_args if a != "--userns=keep-id"]
+    member_mounts += ["-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro"]
     harness_run = [
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
@@ -1209,6 +1204,17 @@ def launch(
     _run(harness_run, capture_output=True)
 
     _apply_firewall(rt, inst)
+
+    # Start hatago detached INSIDE the harness container (hatago-consolidation). `exec -d` runs it as
+    # a separate process group, so a harness crash does not take hatago with it and vice versa. Same
+    # endpoint (:3535) — but same container now, so .mcp.json's http://localhost:3535/mcp resolves
+    # without a shared netns. nohup + redirect so it survives detach and never blocks. The login
+    # shell (`-lc`) activates mise → hatago is on PATH (baked into harnessed-base).
+    _run([
+        rt, "exec", "-d", inst, "bash", "-lc",
+        f"nohup hatago serve --http --port {paths.hatago_port()} "
+        f"--config {hatago_cfg_ctr} >/tmp/hatago.log 2>&1 &",
+    ], capture_output=True)
     _wait_hatago(rt, inst)
 
     if headless:

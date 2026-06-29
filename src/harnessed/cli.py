@@ -130,7 +130,7 @@ def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
     out.print(f"  harness:  {result.stack.harness}")
     out.print(f"  mcp:      {', '.join(s.name for s in result.servers) or '(none)'} "
               f"→ {HATAGO_ENDPOINT}")
-    out.print(f"  baked:    {', '.join(s.name for s in result.baked) or '(none)'} (hatago image)")
+    out.print(f"  baked:    {', '.join(s.name for s in result.baked) or '(none)'} (stdio children, in-container hatago)")
     return 0
 
 

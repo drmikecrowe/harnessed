@@ -115,6 +115,16 @@ COPY catalog/base/harnessed-scan /usr/local/bin/harnessed-scan
 RUN chmod 0755 /usr/local/bin/harnessed-scan
 USER ${USERNAME}
 
+# --- hatago MCP hub + the network-free `time` stdio server (hatago-consolidation) ----------------
+# hatago now runs INSIDE every harness container (no separate hatago image), so the hub and the
+# stdio children it spawns must live here. Pinned (never npm/npx; the pnpm supply-chain config baked
+# above governs `pnpm add -g`). `mcp-server-time` is the `time` recipe's stdio child — baked so it
+# resolves offline at run time under the egress firewall (same guarantee the old hatago image gave).
+ARG HATAGO_VERSION=0.0.16
+ARG MCP_SERVER_TIME_VERSION=2026.6.4
+RUN mkdir -p "$PNPM_HOME/bin" && pnpm add -g "@himorishige/hatago-mcp-hub@${HATAGO_VERSION}" \
+    && uv tool install "mcp-server-time==${MCP_SERVER_TIME_VERSION}"
+
 # Interactive shell config
 RUN echo 'PS1="\[\033[01;32m\][harnessed]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/${USERNAME}/.bashrc && \
     echo 'eval "$(mise activate bash)"' >> /home/${USERNAME}/.bashrc && \

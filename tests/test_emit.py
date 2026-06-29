@@ -12,7 +12,6 @@ from harnessed.emit import (
     write_mcp_json,
     write_settings_json,
     write_hatago_config,
-    write_baked_manifest,
     write_derived_dockerfile,
 )
 from harnessed.schema import McpServer, Stack
@@ -98,17 +97,6 @@ class TestWriteHatagoConfig:
         write_hatago_config(tmp_path, [])
         data = json.loads((tmp_path / "hatago.config.json").read_text())
         assert data["version"] == 1
-
-
-class TestWriteBakedManifest:
-    def test_baked_manifest_lists_stdio_servers(self, tmp_path):
-        stack = Stack(name="my-stack", harness="claude")
-        baked = [McpServer(name="time", command="pnpm", args=["dlx", "@time/server"], transport="stdio")]
-        write_baked_manifest(tmp_path, stack, baked)
-        data = json.loads((tmp_path / "baked-servers.json").read_text())
-        assert data["stack"] == "my-stack"
-        assert len(data["servers"]) == 1
-        assert data["servers"][0]["name"] == "time"
 
 
 class TestRequiredSettings:
