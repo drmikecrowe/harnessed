@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: context-mode — the project-scoped persist spike (T3).
+#
+# The MINIMAL real recipe that exercises the just-landed persist feature (T4a). It is NOT a full
+# indexing engine: it ships one standalone skill that writes a per-project context log under
+# ~/.context-mode, and declares that folder as project-scoped persist so the notes survive a
+# `harnessed --fresh` (fresh-container) launch. The point is to prove persist end-to-end with the
+# smallest real capability.
+name: context-mode
+description: Project-scoped context-notes spike — a skill that persists notes under ~/.context-mode.
+
+# --- File-extension layer (Claude-canonical) ---
+# A STANDALONE skill dir. The assembler fans it into .claude/skills/context-mode and the capability
+# oracle picks it up by leaf name (no expect: block needed — it's not Dockerfile-delivered). The
+# skill is what actually writes to ~/.context-mode, giving persist something to carry across launches.
+skills:
+  - path: skills/context-mode
+
+# --- Persist layer (T4a) ---
+# LOUD: each entry is a BARE $HOME-relative folder NAME, never a path. A bare name under the
+# `project:` scope means PER-PROJECT ISOLATION — harnessed owns the host dir and keys it per
+# (recipe, project), so project A's notes never reach project B, and mounts it rw at ~/.context-mode
+# inside the pod. Do NOT change `.context-mode` to a real host path (e.g. ~/.context-mode) to "share"
+# it: that is the globally-shared `global:` scope, which is gated behind the user persist allowlist
+# (T4b) and fails loudly at launch — a path here would silently flip isolation semantics.
+persist:
+  project: [.context-mode]
