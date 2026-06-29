@@ -85,3 +85,38 @@ class TestImageStaleness:
         # inspect failure on either side → can't tell → don't nag / don't recreate.
         assert launcher._img_differs("", "aaa111") is False
         assert launcher._img_differs("aaa111", "") is False
+
+
+
+
+class TestStoppedLeftover:
+    """`_stopped_leftover` decides whether launch() must recreate a stopped instance before
+    `pod create` (a same-name pod otherwise 125s "already in use")."""
+
+    def _set(self, monkeypatch, *, running, exists, podman, pod_exists):
+        monkeypatch.setattr(launcher, "_container_running", lambda rt, inst: running)
+        monkeypatch.setattr(launcher, "_container_exists", lambda rt, inst: exists)
+        monkeypatch.setattr(launcher, "_rt_uses_pods", lambda rt: podman)
+        monkeypatch.setattr(launcher, "_pod_exists", lambda rt, pod: pod_exists)
+
+    def test_running_instance_is_never_a_leftover(self, monkeypatch):
+        self._set(monkeypatch, running=True, exists=True, podman=True, pod_exists=True)
+        assert launcher._stopped_leftover("podman", "inst", "inst") is False
+
+    def test_stopped_container_is_a_leftover(self, monkeypatch):
+        self._set(monkeypatch, running=False, exists=True, podman=True, pod_exists=True)
+        assert launcher._stopped_leftover("podman", "inst", "inst") is True
+
+    def test_partial_create_pod_only_is_a_leftover(self, monkeypatch):
+        # Pod created but harness container never started (crash between create + run).
+        self._set(monkeypatch, running=False, exists=False, podman=True, pod_exists=True)
+        assert launcher._stopped_leftover("podman", "inst", "inst") is True
+
+    def test_nothing_present_is_not_a_leftover(self, monkeypatch):
+        self._set(monkeypatch, running=False, exists=False, podman=True, pod_exists=False)
+        assert launcher._stopped_leftover("podman", "inst", "inst") is False
+
+    def test_docker_has_no_pod_concept(self, monkeypatch):
+        # _rt_uses_pods False → pod check skipped; only the container check matters.
+        self._set(monkeypatch, running=False, exists=False, podman=False, pod_exists=True)
+        assert launcher._stopped_leftover("docker", "inst", "inst") is False

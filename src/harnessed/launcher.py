@@ -89,6 +89,27 @@ def _container_running(rt: str, name: str) -> bool:
     return result.returncode == 0 and result.stdout.strip() == "true"
 
 
+def _container_exists(rt: str, name: str) -> bool:
+    """True if a container named `name` exists in any state (running, exited, created)."""
+    return subprocess.run(
+        [rt, "container", "inspect", name], capture_output=True,
+    ).returncode == 0
+
+
+def _pod_exists(rt: str, pod: str) -> bool:
+    """True if a podman pod named `pod` exists in any state (created/running/exited)."""
+    return subprocess.run([rt, "pod", "inspect", pod], capture_output=True).returncode == 0
+
+
+def _stopped_leftover(rt: str, inst: str, pod: str) -> bool:
+    """True if a prior (non-ephemeral) session left a stopped instance/pod that would block a fresh
+    `pod create` with "name already in use". A *running* instance is re-attached, never torn down
+    here — only genuinely stopped leftovers qualify."""
+    if _container_running(rt, inst):
+        return False
+    return _container_exists(rt, inst) or (_rt_uses_pods(rt) and _pod_exists(rt, pod))
+
+
 def _inspect_id(rt: str, kind: str, ref: str, fmt: str) -> str:
     r = subprocess.run([rt, kind, "inspect", "-f", fmt, ref], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else ""
@@ -139,7 +160,16 @@ def _ensure_profile_dir(stack: str) -> Path:
 
 
 def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, check=check, **kwargs)
+    try:
+        return subprocess.run(cmd, check=check, **kwargs)
+    except subprocess.CalledProcessError as exc:
+        # Captured output is otherwise swallowed — surface it so failures read as an error,
+        # not a bare traceback (e.g. "name already in use: pod already exists").
+        for label, stream in (("stdout", exc.stdout), ("stderr", exc.stderr)):
+            text = stream.decode(errors="replace") if isinstance(stream, (bytes, bytearray)) else (stream or "")
+            if text.strip():
+                _err.print(f"[bold red]{label}:[/bold red] {text.strip()}")
+        raise
 
 
 def _catalog_base(rt_path: str) -> Path:
@@ -712,6 +742,12 @@ def launch(
             _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
             _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod)
             return
+    # Stopped leftover: a previous non-ephemeral session exited without tearing down its pod (only
+    # --rm cleans up). A same-name `pod create` would fail "name already in use", so remove the
+    # stopped instance and recreate. A running instance is re-attached via the guard above.
+    if _stopped_leftover(rt, inst, pod):
+        _out.print(f"[blue][INFO][/blue] Recreating stopped instance '{inst}' from a prior session …")
+        _pod_teardown(rt, inst, pod)
 
     # Start any shared-service sidecars this stack's recipes reference (host-published; reached from
     # the pod via host.containers.internal:<port>). Idempotent — skips services already running.
