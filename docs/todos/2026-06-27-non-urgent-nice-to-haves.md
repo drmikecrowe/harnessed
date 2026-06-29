@@ -1,2 +1,2 @@
 - [ ] Install ccstatusline@latest
-- [ ]
+- [ ] Ability to add to the system prompt
