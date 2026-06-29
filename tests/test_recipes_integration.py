@@ -24,7 +24,12 @@ from pathlib import Path
 import pytest
 
 from harnessed.assemble import assemble
-from harnessed.schema import PinValidationError, expected_capabilities, load_stack_with_recipes
+from harnessed.schema import (
+    PinValidationError,
+    expected_capabilities,
+    load_recipe,
+    load_stack_with_recipes,
+)
 
 ROOT = Path(__file__).resolve().parents[1]  # repo root (HARNESSED_DIR for catalog resolution)
 
@@ -80,6 +85,19 @@ def test_floating_pin_is_rejected(tmp_path):
     """The negative fixture stack trips the pin gate before any image layer is written."""
     with pytest.raises(PinValidationError):
         assemble(None, NEGATIVE_STACK, tmp_path)
+
+
+def test_all_catalog_recipes_pass_strict():
+    """Every shipped recipe must load under `--strict` — no typo'd/unknown top-level field.
+
+    `harnessed build`/`test` run strict by default, so a stray field in the catalog would break the
+    authoring path. This guards it in CI (the strict mechanism itself is unit-tested in test_schema).
+    """
+    recipes_dir = ROOT / "catalog" / "recipes"
+    names = sorted(p.name for p in recipes_dir.iterdir() if (p / "recipe.yaml").is_file())
+    assert names, "no catalog recipes found"
+    for name in names:
+        load_recipe(recipes_dir / name, strict=True)  # raises SchemaError on any unknown field
 
 
 # --- Layer 2: live container check (podman-gated) -------------------------------------------------

@@ -315,7 +315,53 @@ def _parse_fileext(raw_list) -> list[FileExt]:
     return out
 
 
-def load_recipe(recipe_dir: Path) -> Recipe:
+# Recipe fields the parser knows: the typed YAML keys PLUS the D-14 forward fields that
+# `_recipe_raw_strings` reads off `.raw` (scripts/deps/plugins/hooks). `--strict` rejects anything
+# else as a likely typo (e.g. `skkills:`). This is a known-field ALLOWLIST, not strict-everything:
+# the D-14 forward fields stay legal so a recipe can still carry plugins/deps/hooks/scripts without a
+# schema change here. A genuinely NEW forward field is added to this set (or built with --no-strict).
+KNOWN_RECIPE_FIELDS = frozenset({
+    "name", "description", "mcp", "skills", "commands", "expect", "persist",  # typed
+    "plugins", "hooks", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
+})
+
+
+def _levenshtein(a: str, b: str) -> int:
+    """Edit distance — only called on the rare strict-reject path to suggest the intended field."""
+    if a == b:
+        return 0
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+
+def _suggest_field(unknown: str) -> str | None:
+    """The closest known field within edit distance 2 (so `skkills` → `skills`), else None."""
+    best = min(KNOWN_RECIPE_FIELDS, key=lambda k: _levenshtein(unknown, k))
+    return best if _levenshtein(unknown, best) <= 2 else None
+
+
+def _validate_recipe_fields(raw: dict, manifest: Path) -> None:
+    """Strict mode: reject unknown top-level recipe fields (catches typos like `skkills:`)."""
+    unknown = sorted(set(raw) - KNOWN_RECIPE_FIELDS)
+    if not unknown:
+        return
+    described = [
+        f"{f!r}" + (f" (did you mean {s!r}?)" if (s := _suggest_field(f)) else "")
+        for f in unknown
+    ]
+    raise SchemaError(
+        f"{manifest}: unknown recipe field(s) in --strict mode: {', '.join(described)}. "
+        f"Known fields: {', '.join(sorted(KNOWN_RECIPE_FIELDS))}. "
+        "Fix the typo, or build with --no-strict if this is an intentional forward field."
+    )
+
+
+def load_recipe(recipe_dir: Path, *, strict: bool = False) -> Recipe:
     recipe_dir = Path(recipe_dir)
     manifest = recipe_dir / "recipe.yaml"
     if not manifest.is_file():
@@ -323,6 +369,8 @@ def load_recipe(recipe_dir: Path) -> Recipe:
     raw = _load_yaml(manifest)
     if "name" not in raw:
         raise SchemaError(f"{manifest}: required field 'name' is missing")
+    if strict:
+        _validate_recipe_fields(raw, manifest)
     return Recipe(
         name=raw["name"],
         description=raw.get("description", ""),
@@ -387,15 +435,20 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
     )
 
 
-def load_stack_with_recipes(root: Path | None, stack_name: str) -> tuple[Stack, list[Recipe]]:
+def load_stack_with_recipes(
+    root: Path | None, stack_name: str, *, strict: bool = False
+) -> tuple[Stack, list[Recipe]]:
     """Load a stack and every recipe it references.
 
     `root` given → resolve stacks/ and recipes/ under that single root (fixtures/tests). `root`
     None → resolve each across the catalog roots (user overlay first), so a stack in the user
     catalog can compose recipes shipped in the repo catalog. Reusable by the capability test.
+
+    `strict` → validate each recipe's top-level fields against `KNOWN_RECIPE_FIELDS` (the
+    authoring guardrail; `harnessed build`/`test` pass it, `--no-strict` opts out).
     """
     stack = load_stack(_resolve_dir(root, "stacks", stack_name))
-    recipes = [load_recipe(_resolve_dir(root, "recipes", name)) for name in stack.recipes]
+    recipes = [load_recipe(_resolve_dir(root, "recipes", name), strict=strict) for name in stack.recipes]
     return stack, recipes
 
 

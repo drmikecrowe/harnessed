@@ -255,11 +255,14 @@ def _ensure_harness_image(rt: str, harness: str) -> None:
         _build_agent_image(rt, harness)
 
 
-def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
+def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool = True) -> None:
     """Assemble a stack IN-PROCESS (host-native, emit-only — no tool container) + build hatago.
 
     `root` is an optional single catalog root (tests); None resolves across the catalog roots
     (repo catalog/ + user ~/.config/harnessed/catalog, user wins).
+
+    `strict` (default True — the authoring gate for `build`/`test`) rejects unknown recipe-manifest
+    fields so a typo like `skkills:` fails loudly instead of silently dropping the capability.
     """
     stack_dir = (root / "stacks" / stack) if root else paths.find_in_catalog("stacks", stack)
     if not (stack_dir / "stack.yaml").is_file():
@@ -272,7 +275,7 @@ def _build_stack(rt: str, stack: str, root: Path | None = None) -> None:
 
     _out.print(f"[blue][INFO][/blue] Assembling stack '{stack}' ...")
     try:
-        result = assemble(root, stack, build_root)
+        result = assemble(root, stack, build_root, strict=strict)
     except (SchemaError, CollisionError) as exc:
         # Clean rejection (raw npm/npx, floating pin, name collision, missing recipe/agent) — a
         # build that is *meant* to fail should read as a one-line error, not a Python traceback.
@@ -934,6 +937,10 @@ def build(
     stack: Optional[str] = typer.Argument(None, help="Stack to assemble; omit to rebuild base images"),
     root: Optional[str] = typer.Option(None, "--root", help="Alternate stacks/recipes root"),
     no_scans: bool = typer.Option(False, "--no-security-scans", help="Skip credentialed scans"),
+    no_strict: bool = typer.Option(
+        False, "--no-strict",
+        help="Allow unknown recipe-manifest fields (disables the typo guardrail)",
+    ),
     force: bool = typer.Option(False, "--force", help="Force rebuild of base images"),
 ) -> None:
     """Assemble a stack (emit + build hatago), or rebuild base/claude/hatago images."""
@@ -942,7 +949,7 @@ def build(
     rt = _runtime()
     root_path = Path(root).resolve() if root else None
     if stack:
-        _build_stack(rt, stack, root_path)
+        _build_stack(rt, stack, root_path, strict=not no_strict)
     else:
         _build_images_cmd(rt, force=force)
 

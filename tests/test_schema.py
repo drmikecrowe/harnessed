@@ -323,3 +323,44 @@ class TestPersistParse:
     def test_empty_global_entry_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="non-empty host path"):
             self._load(tmp_path, "name: r\npersist:\n  global: ['']\n")
+
+
+class TestStrictRecipeFields:
+    """T1 — `--strict` known-field allowlist: catch typos, preserve D-14 forward fields."""
+
+    def _load(self, tmp_path, body: str, *, strict: bool) -> Recipe:
+        d = tmp_path / "rcp"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "recipe.yaml").write_text(body)
+        return load_recipe(d, strict=strict)
+
+    def test_non_strict_ignores_unknown_field(self, tmp_path):
+        # Default (D-14 tolerant): an unknown field is preserved on .raw, never rejected.
+        r = self._load(tmp_path, "name: r\nskkills: [oops]\n", strict=False)
+        assert r.name == "r"
+        assert r.raw["skkills"] == ["oops"]
+
+    def test_strict_rejects_unknown_field_with_suggestion(self, tmp_path):
+        with pytest.raises(SchemaError, match=r"skkills.*did you mean 'skills'"):
+            self._load(tmp_path, "name: r\nskkills: [oops]\n", strict=True)
+
+    def test_strict_allows_all_typed_fields(self, tmp_path):
+        body = (
+            "name: r\ndescription: d\nmcp:\n  servers: []\n"
+            "skills: [skills/x]\ncommands: [commands/y]\n"
+            "expect:\n  skills: [x]\npersist:\n  project: [.x]\n"
+        )
+        r = self._load(tmp_path, body, strict=True)
+        assert r.name == "r"
+
+    @pytest.mark.parametrize("forward", ["plugins", "hooks", "deps", "scripts"])
+    def test_strict_allows_d14_forward_fields(self, tmp_path, forward):
+        # The whole point of the allowlist: forward fields stay legal under --strict.
+        r = self._load(tmp_path, f"name: r\n{forward}: []\n", strict=True)
+        assert r.name == "r"
+
+    def test_strict_error_names_the_unknown_and_lists_known(self, tmp_path):
+        with pytest.raises(SchemaError) as exc:
+            self._load(tmp_path, "name: r\ntotally_made_up: 1\n", strict=True)
+        msg = str(exc.value)
+        assert "totally_made_up" in msg and "Known fields" in msg and "--no-strict" in msg

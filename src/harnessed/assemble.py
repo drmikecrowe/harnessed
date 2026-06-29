@@ -77,13 +77,18 @@ def _resolve_service_servers(servers: list[McpServer], root: Path | None) -> lis
     return servers
 
 
-def assemble(root: Path | None, stack_name: str, build_dir: Path) -> AssembleResult:
+def assemble(
+    root: Path | None, stack_name: str, build_dir: Path, *, strict: bool = False
+) -> AssembleResult:
     """Assemble a stack into a profile. `root` None → resolve recipes/stacks/services across the
-    catalog roots (user overlay first); a Path restricts resolution to that single root."""
+    catalog roots (user overlay first); a Path restricts resolution to that single root.
+
+    `strict` → reject unknown recipe-manifest fields (typo guardrail); `harnessed build` passes it
+    on by default, `--no-strict` opts out."""
     root = Path(root) if root is not None else None
     build_dir = Path(build_dir)
 
-    stack, recipes = load_stack_with_recipes(root, stack_name)
+    stack, recipes = load_stack_with_recipes(root, stack_name, strict=strict)
 
     # Fail-fast recipe validation (BLD-03 + ASM-02): reject raw npm/npx and floating Dockerfile refs
     # BEFORE any file is emitted. Recipes are harness-independent (any harness consumes the same

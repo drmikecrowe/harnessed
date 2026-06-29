@@ -4,7 +4,7 @@
   "title": "harnessed recipe",
   "description": "A composable capability bundle added ONTO an agent (catalog/recipes/<name>/recipe.yaml). Harness-independent — no `harnesses:` field; harness-specific build steps branch on ${HARNESS} inside the recipe's Dockerfile. Carries metadata only; build steps live in the Dockerfile. See docs/harnessed-design.md §7/§11.",
   "type": "object",
-  "additionalProperties": true,
+  "additionalProperties": false,
   "required": ["name"],
   "properties": {
     "name": {
@@ -76,6 +76,27 @@
         "node": {
           "description": "package.json → `pnpm install` (managed supply-chain config).",
           "type": "string"
+        }
+      }
+    },
+    "scripts": {
+      "description": "Build/setup script command strings (forward field, design §11). Scanned by the supply-chain lint (no raw npm/npx — use pnpm dlx).",
+      "type": ["array", "object"]
+    },
+    "persist": {
+      "description": "Folders that must survive harnessed's --fresh launches. Scope is an explicit key (never inferred from the string shape).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project": {
+          "description": "Bare $HOME-relative folder names (e.g. .context-mode); harnessed keys each per (recipe, project) — isolated.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "global": {
+          "description": "Real host dirs (e.g. ~/.gbrain) shared with host-native runs; gated by the user-owned persist allowlist.",
+          "type": "array",
+          "items": { "type": "string" }
         }
       }
     }
