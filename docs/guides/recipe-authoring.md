@@ -229,6 +229,88 @@ harnessed claude_gstack_ping_time_greet         # launch the pod (harness + hata
 harnessed test  claude_gstack_ping_time_greet   # capability report: ✓ declared gstack skills present
 ```
 
+## Worked example 4: a remote url MCP server (+ a local-overlay stack)
+
+[`catalog/recipes/openbrain-example/recipe.yaml`](../../catalog/recipes/openbrain-example/recipe.yaml)
+is the third MCP shape — a **network-native** server referenced by a **direct URL**, with no
+`command` (it is not a stdio child) and no `service` (it is not a local sidecar). hatago proxies the
+remote server by URL; the harness only ever sees hatago's single endpoint.
+
+```yaml
+name: openbrain-example
+description: Template — a remote, url-based Streamable-HTTP MCP server (modelled on OB1/OpenBrain).
+
+mcp:
+  servers:
+    - name: openbrain-example
+      url: https://YOUR-PROJECT.supabase.co/functions/v1/open-brain-mcp?key=YOUR_OB1_KEY
+      transport: http
+```
+
+- **`url:` + `transport: http`** — a remote Streamable-HTTP server, used **as-is**. Use it for any
+  MCP server that already runs somewhere reachable: a hosted function, a SaaS endpoint, your own box.
+- **Three shapes, recap:** `time` is a stdio child hatago bakes + spawns; `ping` is a local sidecar
+  resolved from `service:`; `openbrain-example` is a remote URL hatago proxies directly. `_hatago_entry`
+  emits `{url, type: http, headers?}` for the network-native shapes.
+
+### Networking: `localhost` is the pod, not the host
+
+hatago runs *inside the pod*. A remote `https://…` URL needs nothing special. But a server on the
+**host** (say `http://localhost:8787/mcp`) is **not** reachable as `localhost` from the pod — rewrite
+it to `http://host.containers.internal:8787/mcp`, the same host-gateway address the `service:`
+resolver emits (`assemble.py`).
+
+### Auth and secrets
+
+`_hatago_entry` writes the `url:` (and any `headers:`) **verbatim** into the generated
+`hatago.config.json`. A server like OB1 authenticates with a `?key=` query parameter, so the key
+rides in the URL. That file is emitted under `$XDG_DATA_HOME/harnessed/profiles/<stack>/` — host-local,
+never an image layer, never committed — but it **is** on disk in plaintext. So:
+
+- **Never commit a real key.** The repo recipe above is a template with a placeholder; a recipe
+  carrying your real key belongs only in your **user-overlay** catalog (below).
+- `url_env` is accepted by the schema but **not yet wired** into emission — there is no built-in
+  env-substitution for a url server's URL today, so the key goes in the URL.
+
+### The local-overlay workflow (a stack that lives outside this repo)
+
+You don't have to add a private stack to this repo at all. The user-overlay catalog
+`~/.config/harnessed/catalog` is searched **first** and wins on name clash (`paths.catalog_roots`),
+so author the real recipe + stack there and build/run/test them by name:
+
+```
+~/.config/harnessed/catalog/recipes/openbrain/recipe.yaml   # your real URL + key
+~/.config/harnessed/catalog/stacks/claude_openbrain/stack.yaml
+```
+
+```yaml
+# ~/.config/harnessed/catalog/recipes/openbrain/recipe.yaml
+name: openbrain
+description: OB1 (OpenBrain) personal-memory MCP server over Streamable HTTP.
+mcp:
+  servers:
+    - name: openbrain
+      url: https://YOUR-PROJECT.supabase.co/functions/v1/open-brain-mcp?key=XXXX
+      transport: http
+```
+
+```yaml
+# ~/.config/harnessed/catalog/stacks/claude_openbrain/stack.yaml
+name: claude_openbrain
+harness: claude
+recipes: [openbrain]
+```
+
+```bash
+harnessed build claude_openbrain
+harnessed claude_openbrain
+harnessed test  claude_openbrain      # ✓ openbrain (mcp) connected
+```
+
+> The committed [`claude_openbrain-example`](../../catalog/stacks/claude_openbrain-example/stack.yaml)
+> stack documents this shape. Its URL is a placeholder, so it assembles (and the fast assembly test
+> covers it) but is excluded from the live capability sweep — there is no real endpoint to connect to.
+
 ## Transports
 
 | Transport | When | Notes |

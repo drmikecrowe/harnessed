@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: openbrain-example — TEMPLATE for a remote, url-based Streamable-HTTP MCP server.
+#
+# This is the third MCP shape: a network-native server referenced by a DIRECT URL, with NO
+# `command` (not a stdio child like `time`) and NO `service` (not a local sidecar like `ping`).
+# hatago proxies the remote server purely by URL; the harness only sees hatago's single endpoint.
+# Use this shape for any MCP server that already runs somewhere reachable — a hosted function, a
+# SaaS endpoint, or your own box.
+#
+# It is modelled on OB1 (OpenBrain), an MCP server deployed as a Supabase edge function. The URL
+# below is a PLACEHOLDER. To run it for real, copy this recipe into your user-overlay catalog
+# (~/.config/harnessed/catalog/recipes/<name>/) and substitute your endpoint + key. See
+# docs/guides/recipe-authoring.md "Worked example 4" for the full local-overlay workflow.
+#
+# Transport: `http` (Streamable HTTP). SSE is deprecated and rejected by the build.
+#
+# Networking: a remote https URL is used AS-IS. A server running on the HOST (e.g.
+# http://localhost:8787/mcp) is NOT reachable as `localhost` from inside the pod — rewrite it to
+# http://host.containers.internal:8787/mcp (the same host-gateway address the `service:` resolver
+# emits). A remote URL like the one below needs no rewrite.
+#
+# Auth / secrets: the assembler writes the `url:` (and any `headers:`) VERBATIM into the generated
+# hatago.config.json under $XDG_DATA_HOME/harnessed/profiles/ — host-local, never an image layer,
+# never committed, but on disk in plaintext. Never commit a real key: a recipe carrying one belongs
+# only in your private user-overlay catalog. (`url_env` is accepted by the schema but not yet wired
+# into emission, so the key rides in the URL today.)
+name: openbrain-example
+description: Template — a remote, url-based Streamable-HTTP MCP server (modelled on OB1/OpenBrain).
+
+mcp:
+  servers:
+    - name: openbrain-example
+      url: https://YOUR-PROJECT.supabase.co/functions/v1/open-brain-mcp?key=YOUR_OB1_KEY
+      transport: http

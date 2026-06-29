@@ -31,6 +31,10 @@ ROOT = Path(__file__).resolve().parents[1]  # repo root (HARNESSED_DIR for catal
 # Negative fixture handled separately; everything else is built + launched + probed by the live layer.
 NEGATIVE_STACK = "claude_floating-recipe"
 
+# Illustrative templates that ASSEMBLE but point at a placeholder URL — covered by the fast
+# assembly/oracle sweep, but skipped by the live connect test (no real endpoint to reach).
+NO_LIVE_CONNECT = {"claude_openbrain-example"}
+
 
 def _catalog_stacks() -> list[str]:
     stacks_dir = ROOT / "catalog" / "stacks"
@@ -94,7 +98,7 @@ def _run_cli(*args: str, timeout: int = 600) -> subprocess.CompletedProcess:
 
 
 @podman
-@pytest.mark.parametrize("stack", REAL_STACKS)
+@pytest.mark.parametrize("stack", [s for s in REAL_STACKS if s not in NO_LIVE_CONNECT])
 def test_live_capabilities_present_in_container(stack):
     """build + test the stack; every declared skill/command/plugin/mcp is present in the container."""
     assert _run_cli("build", stack).returncode == 0, f"{stack}: build failed"

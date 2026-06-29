@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# Stack: claude_openbrain-example — Claude + a single remote, url-based MCP server.
+# Naming: <agent>_<recipe> (claude + openbrain-example).
+#
+# TEMPLATE / illustrative. The openbrain-example recipe points at a PLACEHOLDER URL, so this stack
+# assembles (and the fast assembly/oracle test covers it) but is intentionally excluded from the
+# live capability sweep — there is no real endpoint to connect to. To run it for real, copy the
+# recipe into your user-overlay catalog and fill in your endpoint + key (see
+# docs/guides/recipe-authoring.md "Worked example 4").
+name: claude_openbrain-example
+harness: claude
+recipes: [openbrain-example]
+services: []
