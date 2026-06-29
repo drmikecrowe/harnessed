@@ -26,7 +26,7 @@ from rich.console import Console
 from . import emit
 from . import paths
 from . import persist
-from .paths import CONTAINER_HOME, HATAGO_PORT, instance_name, is_built, profile_dir, project_relpath
+from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
 from .assemble import assemble
 from .synclinks import CollisionError
 from .schema import (
@@ -498,8 +498,10 @@ def _apply_firewall(rt: str, instance: str) -> None:
     ], capture_output=True)
 
 
-def _wait_hatago(rt: str, instance: str, port: int = HATAGO_PORT, timeout: int = 30) -> None:
+def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> None:
     import time
+    if port is None:
+        port = paths.hatago_port()  # honor the HATAGO_PORT env override (single source: paths)
     _out.print(f"[blue][INFO][/blue] Waiting for hatago hub on :{port} ...")
     for _ in range(timeout):
         result = subprocess.run(
@@ -854,7 +856,7 @@ def launch(
         "--name", f"{inst}-hatago",
         "-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro",
         _HATAGO_IMAGE,
-        "hatago", "serve", "--http", "--port", str(HATAGO_PORT),
+        "hatago", "serve", "--http", "--port", str(paths.hatago_port()),
         "--config", hatago_cfg_ctr,
     ]
     _run(hatago_run, capture_output=True)
