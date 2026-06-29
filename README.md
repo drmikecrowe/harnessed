@@ -173,7 +173,7 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 - [ ] **[agent-carnet](https://github.com/yamadashy/agent-carnet)** — shared file-based markdown notebook for agents (`.carnet/`, auto-expiring), bundles a skill · *CLI + skills recipe*
 - [ ] **[Superpowers](https://github.com/obra/Superpowers)** — composable software-development methodology skill suite (TDD, code review, subagent-driven dev) · *skills recipe*
 - [ ] **[rtk](https://github.com/rtk-ai/rtk)** — Rust Token Killer: CLI proxy that compresses dev-command output to cut LLM tokens 60–90% · *CLI + hooks recipe*
-- [ ] **[OB1 / Open Brain](https://github.com/NateBJones-Projects/OB1)** — personal knowledge infrastructure: shared persistent memory + vector search across AI tools (MCP + Supabase/Postgres backend) · *service + recipe*
+- [x] **[OB1 / Open Brain](https://github.com/NateBJones-Projects/OB1)** — personal knowledge infrastructure: shared persistent memory + vector search across AI tools (MCP + Supabase/Postgres backend) · *service + recipe*
 
 ## Supply chain & security
 
