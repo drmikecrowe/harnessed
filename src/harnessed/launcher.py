@@ -110,6 +110,34 @@ def _stopped_leftover(rt: str, inst: str, pod: str) -> bool:
     return _container_exists(rt, inst) or (_rt_uses_pods(rt) and _pod_exists(rt, pod))
 
 
+def _resolve_start_dir(project_path: Path, agent_start_folder: Optional[str]) -> Path:
+    """Resolve the agent's working directory.
+
+    Default: the project root. With --agent-start-folder, the named subfolder (relative to the
+    project root, or absolute) — the project root is still mounted in full, so the agent can see the
+    whole tree but opens in the chosen subfolder. Must exist and live under the project root (the
+    only mounted project tree)."""
+    if not agent_start_folder:
+        return project_path
+    start = Path(agent_start_folder)
+    start = start if start.is_absolute() else project_path / start
+    start = start.resolve()
+    if not start.is_dir():
+        _err.print(
+            f"[bold red]error:[/bold red] --agent-start-folder not found (or not a directory): {start}"
+        )
+        raise typer.Exit(1)
+    try:
+        start.relative_to(project_path)
+    except ValueError:
+        _err.print(
+            f"[bold red]error:[/bold red] --agent-start-folder must be inside the project "
+            f"({project_path}): {start}"
+        )
+        raise typer.Exit(1)
+    return start
+
+
 def _inspect_id(rt: str, kind: str, ref: str, fmt: str) -> str:
     r = subprocess.run([rt, kind, "inspect", "-f", fmt, ref], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else ""
@@ -672,6 +700,10 @@ def launch(
     fresh: bool = typer.Option(False, "--fresh", help="Tear down any existing pod/instance first"),
     rm: bool = typer.Option(False, "--rm", help="Ephemeral: tear the pod down when the interactive session exits"),
     no_firewall: bool = typer.Option(False, "--no-firewall", help="Skip egress firewall"),
+    agent_start_folder: Optional[str] = typer.Option(
+        None, "--agent-start-folder",
+        help="Start the agent in this subfolder of the project (root is still mounted in full)",
+    ),
 ) -> None:
     """Launch an isolated harness stack against a project directory."""
     if no_firewall:
@@ -707,6 +739,7 @@ def launch(
     relpath = project_relpath(project_path)
     inst = instance_name(stack, project_path)
     pod = inst
+    start_dir = _resolve_start_dir(project_path, agent_start_folder)
 
     # Ensure harness image exists (lazy-build for non-claude harnesses).
     _ensure_harness_image(rt, harness)
@@ -736,11 +769,11 @@ def launch(
                     "[yellow]note:[/yellow] attaching to the existing (older-build) instance — "
                     "run with --fresh to update."
                 )
-                _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod)
+                _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod, start_dir=start_dir)
                 return
         else:
             _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
-            _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod)
+            _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod, start_dir=start_dir)
             return
     # Stopped leftover: a previous non-ephemeral session exited without tearing down its pod (only
     # --rm cleans up). A same-name `pod create` would fail "name already in use", so remove the
@@ -755,6 +788,8 @@ def launch(
 
     _out.print(f"[blue][INFO][/blue] Creating isolated pod: {pod} (harness + hatago)")
     _out.print(f"[blue][INFO][/blue] Project: {project_path} -> {CONTAINER_HOME / relpath}")
+    if start_dir != project_path:
+        _out.print(f"[blue][INFO][/blue] Agent start folder: {start_dir}")
 
     # Build mount args.
     mount_args = _build_mount_args(harness, prof, project_path, relpath)
@@ -808,7 +843,7 @@ def launch(
         _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago: {inst}-hatago)")
         return
 
-    _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod)
+    _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod, start_dir=start_dir)
 
 
 def _attach(
@@ -819,11 +854,13 @@ def _attach(
     *,
     ephemeral: bool = False,
     pod: Optional[str] = None,
+    start_dir: Optional[Path] = None,
 ) -> None:
     """Exec into the running instance with the harness command.
 
     Default: os.execvp hands the TTY to the container natively (clean attach, no post-exit hook).
     ephemeral (--rm): run the exec as a child so the pod can be torn down when the session exits.
+    start_dir: working directory for the agent (defaults to project_path; --agent-start-folder).
     """
     mise_init = "source ~/.bashrc && mise trust -a 2>/dev/null"
     mcp_cfg = str(paths.container_mcp_config())
@@ -836,7 +873,7 @@ def _attach(
     exec_argv = [
         rt, "exec", "-it",
         "-e", "TERM=xterm-256color",
-        "-w", str(project_path),
+        "-w", str(start_dir or project_path),
         inst,
         "bash", "-l", "-c", shell_cmd,
     ]

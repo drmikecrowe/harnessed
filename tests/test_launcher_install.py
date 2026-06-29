@@ -120,3 +120,40 @@ class TestStoppedLeftover:
         # _rt_uses_pods False → pod check skipped; only the container check matters.
         self._set(monkeypatch, running=False, exists=False, podman=False, pod_exists=True)
         assert launcher._stopped_leftover("docker", "inst", "inst") is False
+
+
+class TestResolveStartDir:
+    """`_resolve_start_dir` resolves the agent's working directory for --agent-start-folder."""
+
+    def test_none_returns_project_root(self, tmp_path):
+        assert launcher._resolve_start_dir(tmp_path, None) == tmp_path
+
+    def test_relative_subfolder_resolves_under_project(self, tmp_path):
+        sub = tmp_path / "packages" / "web"
+        sub.mkdir(parents=True)
+        assert launcher._resolve_start_dir(tmp_path, "packages/web") == sub
+
+    def test_absolute_subfolder_under_project(self, tmp_path):
+        sub = tmp_path / "svc"
+        sub.mkdir()
+        assert launcher._resolve_start_dir(tmp_path, str(sub)) == sub
+
+    def test_nonexistent_folder_exits(self, tmp_path):
+        with pytest.raises(typer.Exit):
+            launcher._resolve_start_dir(tmp_path, "nope/missing")
+
+    def test_file_not_directory_exits(self, tmp_path):
+        f = tmp_path / "file.txt"
+        f.write_text("x")
+        with pytest.raises(typer.Exit):
+            launcher._resolve_start_dir(tmp_path, "file.txt")
+
+    def test_outside_project_exits(self, tmp_path):
+        # A dir that exists on the host but is not under the mounted project tree.
+        outside = tmp_path.parent / "elsewhere_check"
+        outside.mkdir(exist_ok=True)
+        try:
+            with pytest.raises(typer.Exit):
+                launcher._resolve_start_dir(tmp_path, str(outside))
+        finally:
+            outside.rmdir()
