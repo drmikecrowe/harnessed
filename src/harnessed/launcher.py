@@ -487,8 +487,9 @@ def _pod_teardown(rt: str, instance: str, pod: str) -> None:
     if _rt_uses_pods(rt):
         subprocess.run([rt, "pod", "rm", "-f", pod], capture_output=True)
     else:
-        for name in (instance, f"{instance}-hatago"):
-            subprocess.run([rt, "rm", "-f", name], capture_output=True)
+        # Single flat container now — hatago runs in-container (hatago-consolidation), not a
+        # separate `{instance}-hatago` member.
+        subprocess.run([rt, "rm", "-f", instance], capture_output=True)
 
 
 def _attach_marker(inst: str) -> Path:
@@ -502,8 +503,8 @@ def _touch_attach_marker(inst: str) -> None:
     m.touch()
 
 
-def _session_active(rt: str, inst: str) -> bool:
-    """True while an interactive harness session is attached.
+def _session_active(rt: str, inst: str) -> bool | None:
+    """Whether an interactive harness session is attached: True/False, or None when undetermined.
 
     After the hatago-consolidation an idle instance is NOT just `sleep infinity`: it also runs the
     detached in-container hatago hub (a `node` process) and any stdio MCP children hatago spawned
@@ -512,12 +513,16 @@ def _session_active(rt: str, inst: str) -> bool:
     by its controlling terminal: only the interactive attach (`exec -it … bash -l -c <harness>`) owns
     a real pts; every infra process (sleep, hatago, stdio children) runs with no tty.
 
+    Returns None (not False) when `top` fails — a transient runtime hiccup must NOT be read as
+    "confirmed idle", or `prune` would tear down a live attached session on a momentary error. The
+    caller treats None conservatively (do not prune).
+
     NOTE (podman-gated): the exact idle/attached tty strings must be confirmed against live
     `<rt> top <inst> tty` output — this is the hatago-consolidation's main verification point.
     """
     result = subprocess.run([rt, "top", inst, "tty"], capture_output=True, text=True)
     if result.returncode != 0:
-        return False
+        return None  # couldn't determine — caller must not treat this as idle
     # Drop the header row; a process owning a real terminal (pts/N) is the attached session. Infra
     # processes report no tty ("?" on podman, "-"/"" elsewhere).
     ttys = [line.strip() for line in result.stdout.splitlines()[1:] if line.strip()]
@@ -533,7 +538,14 @@ def _apply_firewall(rt: str, instance: str) -> None:
     ], capture_output=True)
 
 
-def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> None:
+def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> bool:
+    """Poll until the in-container hatago hub accepts connections on `port`.
+
+    Returns True once the port is live, False on timeout. hatago is started with `exec -d …
+    nohup … &` (hatago-consolidation), so the launch never sees a non-zero exit when hatago fails
+    to bind — a missing-from-base binary, a bad config, or a crashed hub all look identical to a
+    slow start. The caller must surface a False so we don't report `[SUCCESS]` over a dead MCP hub.
+    """
     import time
     if port is None:
         port = paths.hatago_port()  # honor the HATAGO_PORT env override (single source: paths)
@@ -545,15 +557,19 @@ def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int =
             capture_output=True,
         )
         if result.returncode == 0:
-            return
+            return True
         time.sleep(1)
+    _err.print(
+        f"[bold red]error:[/bold red] hatago hub never came up on :{port} after {timeout}s — "
+        f"MCP tools will be unavailable. Inspect the hub log: {rt} exec {instance} cat /tmp/hatago.log"
+    )
+    return False
 
 
 def _build_mount_args(
     harness: str,
     prof: Path,
     mount_path: Path,
-    relpath: str,
 ) -> list[str]:
     """Assemble -v mount arguments for the harness container.
 
@@ -1159,7 +1175,7 @@ def launch(
         _out.print(f"[blue][INFO][/blue] Agent start folder: {start_dir}")
 
     # Build mount args.
-    mount_args = _build_mount_args(harness, prof, mount_path, relpath)
+    mount_args = _build_mount_args(harness, prof, mount_path)
     # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the ro credential).
     mount_args += _claude_config_seed_mount(harness, inst)
     # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
@@ -1215,12 +1231,16 @@ def launch(
         f"nohup hatago serve --http --port {paths.hatago_port()} "
         f"--config {hatago_cfg_ctr} >/tmp/hatago.log 2>&1 &",
     ], capture_output=True)
-    _wait_hatago(rt, inst)
+    hatago_up = _wait_hatago(rt, inst)
 
     if headless:
         if rm:
             _out.print("[yellow]note:[/yellow] --rm has no effect in headless mode (no interactive session to exit)")
-        _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago: {inst}-hatago)")
+        if not hatago_up:
+            # Headless callers (CI / capability tests) have no terminal to notice a degraded hub, so
+            # a dead hatago must be a hard failure here, not a green SUCCESS line.
+            raise typer.Exit(1)
+        _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago in-container)")
         return
 
     _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod, start_dir=start_dir)
@@ -1350,9 +1370,11 @@ def prune(
 ) -> None:
     """Tear down instances whose interactive session exited and stayed idle.
 
-    An instance is prunable when no session is attached (only its PID-1 `sleep infinity` runs)
-    and its last attach was at least --idle minutes ago. Instances never interactively attached
-    (headless / externally driven) and shared services are left untouched.
+    An instance is prunable when no session is attached and its last attach was at least --idle
+    minutes ago. After hatago-consolidation an idle instance is not just its PID-1 `sleep infinity`:
+    it also runs the in-container hatago hub and the stdio MCP children it spawned, so attachment is
+    detected positively by a controlling terminal (see `_session_active`), not by process count.
+    Instances never interactively attached (headless / externally driven) are left untouched.
     """
     import time
 
@@ -1361,17 +1383,19 @@ def prune(
         [rt, "ps", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
         capture_output=True, text=True,
     )
-    members = [
-        n.strip() for n in result.stdout.splitlines()
-        if n.strip() and not n.strip().endswith("-hatago")
-    ]
+    # hatago no longer runs as a separate `{inst}-hatago` member (hatago-consolidation), so every
+    # `harnessed-` container listed here is a prunable instance.
+    members = [n.strip() for n in result.stdout.splitlines() if n.strip()]
 
     pruned = 0
     for inst in members:
         marker = _attach_marker(inst)
         if not marker.exists():
             continue  # never interactively attached — leave it alone
-        if _session_active(rt, inst):
+        # Prune ONLY on a confirmed-idle reading. `_session_active` returns None when `top` failed
+        # (transient runtime hiccup): treat unknown as "leave it alone" so a momentary error never
+        # tears down a live attached session. The next prune run retries.
+        if _session_active(rt, inst) is not False:
             continue
         idle_min = (time.time() - marker.stat().st_mtime) / 60
         if idle_min < idle:
