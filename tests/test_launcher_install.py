@@ -243,7 +243,7 @@ class TestBuildMountArgs:
         monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
         parent = tmp_path / "harnessed"
         parent.mkdir()
-        args = launcher._build_mount_args("claude", tmp_path / "prof", parent, "harnessed")
+        args = launcher._build_mount_args("claude", tmp_path / "prof", parent)
         assert "-v" in args and f"{parent}:{parent}" in args
         # The narrower project path is NOT mounted separately — it's covered by the parent mirror.
         assert not any(str(parent / "main") in a for a in args)
