@@ -139,6 +139,33 @@ def _resolve_start_dir(project_path: Path, agent_start_folder: Optional[str]) ->
     return start
 
 
+def _resolve_mount_path(project_path: Path, mount_folder: Optional[str]) -> Path:
+    """Resolve the folder path-mirrored into the container.
+
+    Default: the project itself (current behavior). With --mount-folder, the named folder — which
+    MUST contain the project — so a parent dir (e.g. a linked-worktree root) is exposed while the
+    agent still starts in the project. Mirror of `_resolve_start_dir`'s containment check, inverted:
+    there the start dir must be *under* the project; here the project must be *under* the mount.
+    """
+    if not mount_folder:
+        return project_path
+    mount_path = Path(mount_folder).resolve()
+    if not mount_path.is_dir():
+        _err.print(
+            f"[bold red]error:[/bold red] --mount-folder not found (or not a directory): {mount_path}"
+        )
+        raise typer.Exit(1)
+    try:
+        project_path.relative_to(mount_path)
+    except ValueError:
+        _err.print(
+            f"[bold red]error:[/bold red] --mount-folder must contain the project "
+            f"({project_path}): {mount_path}"
+        )
+        raise typer.Exit(1)
+    return mount_path
+
+
 def _inspect_id(rt: str, kind: str, ref: str, fmt: str) -> str:
     r = subprocess.run([rt, kind, "inspect", "-f", fmt, ref], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else ""
@@ -520,10 +547,14 @@ def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int =
 def _build_mount_args(
     harness: str,
     prof: Path,
-    project_path: Path,
+    mount_path: Path,
     relpath: str,
 ) -> list[str]:
-    """Assemble -v mount arguments for the harness container."""
+    """Assemble -v mount arguments for the harness container.
+
+    `mount_path` is the host folder path-mirrored into the container (the project itself by default,
+    or a parent dir via --mount-folder). The agent's cwd (start_dir) lives at or under it.
+    """
     args: list[str] = []
     ctr_home = _CONTAINER_HOME_STR
 
@@ -566,8 +597,9 @@ def _build_mount_args(
     if fw.is_file():
         args += ["-v", f"{fw}:/usr/local/sbin/egress-firewall:ro"]
 
-    # Path mirroring (MNT2-02): project accessible at its host absolute path inside container.
-    args += ["-v", f"{project_path}:{project_path}"]
+    # Path mirroring (MNT2-02): the mount root is accessible at its host absolute path inside the
+    # container (so the agent sees host paths). With --mount-folder this is a parent of the project.
+    args += ["-v", f"{mount_path}:{mount_path}"]
 
     return args
 
@@ -743,6 +775,12 @@ def launch(
         None, "--agent-start-folder",
         help="Start the agent in this subfolder of the project (root is still mounted in full)",
     ),
+    mount_folder: Optional[str] = typer.Option(
+        None, "--mount-folder",
+        help="Mount this folder (must contain the project) instead of the project itself; the agent "
+             "still starts in the project. Exposes a parent dir (e.g. a linked-worktree root) while "
+             "you work in a subfolder.",
+    ),
 ) -> None:
     """Launch an isolated harness stack against a project directory."""
     if no_firewall:
@@ -754,6 +792,10 @@ def launch(
     if not project_path.is_dir():
         _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project_path}")
         raise typer.Exit(1)
+
+    # The folder path-mirrored into the container. Defaults to the project; --mount-folder widens it
+    # to a parent (e.g. a linked-worktree root) while the agent still starts in the project.
+    mount_path = _resolve_mount_path(project_path, mount_folder)
 
     stack_yaml = _stacks_dir() / stack / "stack.yaml"
     if not stack_yaml.is_file():
@@ -827,11 +869,13 @@ def launch(
 
     _out.print(f"[blue][INFO][/blue] Creating isolated pod: {pod} (harness + hatago)")
     _out.print(f"[blue][INFO][/blue] Project: {project_path} -> {CONTAINER_HOME / relpath}")
+    if mount_path != project_path:
+        _out.print(f"[blue][INFO][/blue] Mounting folder: {mount_path} (project lives under it)")
     if start_dir != project_path:
         _out.print(f"[blue][INFO][/blue] Agent start folder: {start_dir}")
 
     # Build mount args.
-    mount_args = _build_mount_args(harness, prof, project_path, relpath)
+    mount_args = _build_mount_args(harness, prof, mount_path, relpath)
     # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the ro credential).
     mount_args += _claude_config_seed_mount(harness, inst)
     # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.

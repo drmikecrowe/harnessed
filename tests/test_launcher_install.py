@@ -157,3 +157,51 @@ class TestResolveStartDir:
                 launcher._resolve_start_dir(tmp_path, str(outside))
         finally:
             outside.rmdir()
+
+
+class TestResolveMountPath:
+    """`_resolve_mount_path` widens the path-mirror mount via --mount-folder (must contain project)."""
+
+    def test_none_returns_project(self, tmp_path):
+        project = tmp_path / "harnessed" / "main"
+        project.mkdir(parents=True)
+        assert launcher._resolve_mount_path(project, None) == project
+
+    def test_parent_folder_containing_project(self, tmp_path):
+        parent = tmp_path / "harnessed"
+        project = parent / "main"
+        project.mkdir(parents=True)
+        assert launcher._resolve_mount_path(project, str(parent)) == parent
+
+    def test_project_itself_is_allowed(self, tmp_path):
+        project = tmp_path / "p"
+        project.mkdir()
+        assert launcher._resolve_mount_path(project, str(project)) == project
+
+    def test_nonexistent_mount_exits(self, tmp_path):
+        project = tmp_path / "p"
+        project.mkdir()
+        with pytest.raises(typer.Exit):
+            launcher._resolve_mount_path(project, str(tmp_path / "missing"))
+
+    def test_mount_not_containing_project_exits(self, tmp_path):
+        # A sibling dir that does NOT contain the project — invalid.
+        project = tmp_path / "a" / "main"
+        project.mkdir(parents=True)
+        sibling = tmp_path / "b"
+        sibling.mkdir()
+        with pytest.raises(typer.Exit):
+            launcher._resolve_mount_path(project, str(sibling))
+
+
+class TestBuildMountArgs:
+    """The path-mirror `-v` targets the mount root (project by default, a parent via --mount-folder)."""
+
+    def test_mirrors_the_mount_path(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        parent = tmp_path / "harnessed"
+        parent.mkdir()
+        args = launcher._build_mount_args("claude", tmp_path / "prof", parent, "harnessed")
+        assert "-v" in args and f"{parent}:{parent}" in args
+        # The narrower project path is NOT mounted separately — it's covered by the parent mirror.
+        assert not any(str(parent / "main") in a for a in args)
