@@ -669,6 +669,100 @@ def _omp_agent_mount(harness: str) -> list[str]:
     return ["-v", f"{host_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
 
 
+def _ssh_agent_args(home: Path, gpg_ssh_sock: Path) -> list[str]:
+    """Forward the host's SSH signing/auth agent into the container, setting SSH_AUTH_SOCK.
+
+    Two agents, in precedence order (ports container.sh):
+    - 1Password SSH agent (`~/.1password/agent.sock`) — the primary path. op-ssh-sign signs commits
+      through it and `git push` over SSH authenticates through it. Private keys never leave 1Password.
+    - gpg-agent SSH socket (`/run/user/<uid>/gnupg/S.gpg-agent.ssh`) — the YubiKey path. Always
+      mounted when present, but only claims SSH_AUTH_SOCK when 1Password's socket is absent, so a
+      machine with both keeps 1Password as the active signer.
+
+    Each is conditioned on the socket actually existing on the host, so this is a clean no-op when
+    neither agent is running.
+    """
+    ctr = _CONTAINER_HOME_STR
+    args: list[str] = []
+    op_agent = home / ".1password" / "agent.sock"
+    op_present = op_agent.is_socket()
+    if op_present:
+        ctr_sock = f"{ctr}/.1password/agent.sock"
+        args += ["-v", f"{op_agent}:{ctr_sock}", "-e", f"SSH_AUTH_SOCK={ctr_sock}"]
+    if gpg_ssh_sock.is_socket():
+        ctr_gpg = f"{ctr}/.gnupg-sockets/S.gpg-agent.ssh"
+        args += ["-v", f"{gpg_ssh_sock}:{ctr_gpg}"]
+        if not op_present:  # 1Password wins; gpg only drives SSH_AUTH_SOCK when it's the only agent
+            args += ["-e", f"SSH_AUTH_SOCK={ctr_gpg}"]
+    return args
+
+
+def _yubikey_device_args() -> list[str]:
+    """`--device` passthrough for a connected YubiKey (Yubico vendor id 1050) so in-container gpg/
+    op-ssh can reach the token. Best-effort: parses `lsusb`, returns [] when lsusb is missing or no
+    key is present. Ports the YubiKey passthrough from container.sh.
+    """
+    try:
+        out = subprocess.run(["lsusb"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if out.returncode != 0:
+        return []
+    for line in out.stdout.splitlines():
+        low = line.lower()
+        if "yubico" not in low and "1050" not in low:
+            continue
+        # "Bus 003 Device 004: ID 1050:0407 Yubico.com ..." → /dev/bus/usb/003/004
+        parts = line.split()
+        if len(parts) >= 4:
+            bus, dev = parts[1], parts[3].rstrip(":")
+            device = f"/dev/bus/usb/{bus}/{dev}"
+            if Path(device).exists():
+                return ["--device", device]
+    return []
+
+
+def _credential_forward_args(home: Path | None = None) -> list[str]:
+    """Forward the host's git signing + push credential surface into the harness container.
+
+    Restores what the bash launcher (container.sh) forwarded, so the agent can `git push` and sign
+    commits from inside the container WITHOUT baking any secret into an image. Every piece is
+    conditioned on host-side existence — a clean no-op on a host without 1Password / GPG / a YubiKey.
+
+    - SSH signing/auth agent (1Password primary, gpg-agent/YubiKey fallback) — see `_ssh_agent_args`.
+    - `~/.gnupg` (ro): GPG config + trustdb for YubiKey signing.
+    - YubiKey USB device passthrough (`--device`) — see `_yubikey_device_args`.
+    - git config (`~/.config/git` dir, else legacy `~/.gitconfig`, ro): carries user.signingkey,
+      gpg.format=ssh, gpg.ssh.program=op-ssh-sign, commit.gpgsign so commits actually sign.
+    - `~/.ssh` (ro): known_hosts + ssh config for host verification. Private keys live in the agent.
+
+    NOTE: the dropped "transparent mode" (rw `~/.claude`) is intentionally NOT restored — only the
+    SSH/GPG/git-signing surface.
+    """
+    home = home or Path.home()
+    ctr = _CONTAINER_HOME_STR
+    args = _ssh_agent_args(home, Path(f"/run/user/{os.getuid()}/gnupg/S.gpg-agent.ssh"))
+
+    gnupg = home / ".gnupg"
+    if gnupg.is_dir():
+        args += ["-v", f"{gnupg}:{ctr}/.gnupg:ro"]
+
+    args += _yubikey_device_args()
+
+    xdg_git = home / ".config" / "git"
+    legacy_git = home / ".gitconfig"
+    if xdg_git.is_dir():
+        args += ["-v", f"{xdg_git}:{ctr}/.config/git:ro"]
+    elif legacy_git.is_file():
+        args += ["-v", f"{legacy_git}:{ctr}/.gitconfig:ro"]
+
+    ssh_dir = home / ".ssh"
+    if ssh_dir.is_dir():
+        args += ["-v", f"{ssh_dir}:{ctr}/.ssh:ro"]
+
+    return args
+
+
 def _persist_mounts(stack: str, project_path: Path) -> list[str]:
     """Bind-mount each recipe's declared persist folders (rw) so their state survives `--fresh`.
 
@@ -882,6 +976,9 @@ def launch(
     mount_args += _omp_agent_mount(harness)
     # Persist recipe-declared project-scoped folders (rw) so their state survives --fresh.
     mount_args += _persist_mounts(stack, project_path)
+    # Forward the host's git signing + push credentials (1Password/GPG/YubiKey agent, git config,
+    # ~/.ssh) so the agent can push and sign from inside the container — no secret baked into an image.
+    mount_args += _credential_forward_args()
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")

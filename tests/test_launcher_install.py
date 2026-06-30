@@ -205,3 +205,134 @@ class TestBuildMountArgs:
         assert "-v" in args and f"{parent}:{parent}" in args
         # The narrower project path is NOT mounted separately — it's covered by the parent mirror.
         assert not any(str(parent / "main") in a for a in args)
+
+
+class TestCredentialForwarding:
+    """`_credential_forward_args` / `_ssh_agent_args` / `_yubikey_device_args` forward the host's
+    git signing + push surface (1Password/GPG/YubiKey agent, git config, ~/.ssh) into the harness
+    container, conditioned on host-side existence. Ports container.sh's optional_args block."""
+
+    CTR = launcher._CONTAINER_HOME_STR
+
+    @pytest.fixture
+    def cred_home(self):
+        # AF_UNIX socket paths cap at ~108 chars, so use a SHORT /tmp home, not pytest's long tmp_path.
+        import shutil
+        import tempfile
+        home = Path(tempfile.mkdtemp(prefix="hshome"))
+        socks: list = []
+        yield home, socks
+        for s in socks:
+            try:
+                s.close()
+            except OSError:
+                pass
+        shutil.rmtree(home, ignore_errors=True)
+
+    @staticmethod
+    def _mksock(p: Path, keep: list):
+        import socket
+        p.parent.mkdir(parents=True, exist_ok=True)
+        s = socket.socket(socket.AF_UNIX)
+        s.bind(str(p))
+        keep.append(s)
+
+    # --- _ssh_agent_args: 1Password primary, gpg-agent (YubiKey) fallback ---
+
+    def test_no_agents_is_empty(self, cred_home):
+        home, _ = cred_home
+        assert launcher._ssh_agent_args(home, home / "nope.sock") == []
+
+    def test_1password_socket_sets_auth_sock(self, cred_home):
+        home, socks = cred_home
+        self._mksock(home / ".1password" / "agent.sock", socks)
+        args = launcher._ssh_agent_args(home, home / "nogpg.sock")
+        ctr_sock = f"{self.CTR}/.1password/agent.sock"
+        assert f"{home / '.1password' / 'agent.sock'}:{ctr_sock}" in args
+        assert f"SSH_AUTH_SOCK={ctr_sock}" in args
+
+    def test_1password_wins_over_gpg(self, cred_home):
+        home, socks = cred_home
+        self._mksock(home / ".1password" / "agent.sock", socks)
+        gpg = home / "gpg.sock"
+        self._mksock(gpg, socks)
+        args = launcher._ssh_agent_args(home, gpg)
+        # Both sockets mounted, but SSH_AUTH_SOCK stays 1Password (the active signer).
+        assert f"SSH_AUTH_SOCK={self.CTR}/.1password/agent.sock" in args
+        assert f"SSH_AUTH_SOCK={self.CTR}/.gnupg-sockets/S.gpg-agent.ssh" not in args
+        assert any("S.gpg-agent.ssh" in a for a in args)  # gpg socket still bind-mounted
+
+    def test_gpg_fallback_when_no_1password(self, cred_home):
+        home, socks = cred_home
+        gpg = home / "gpg.sock"
+        self._mksock(gpg, socks)
+        args = launcher._ssh_agent_args(home, gpg)
+        assert f"SSH_AUTH_SOCK={self.CTR}/.gnupg-sockets/S.gpg-agent.ssh" in args
+
+    # --- _yubikey_device_args: USB passthrough via lsusb ---
+
+    def test_yubikey_present_adds_device(self, monkeypatch):
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 003 Device 004: ID 1050:0407 Yubico.com\n"),
+        )
+        real_exists = Path.exists
+        monkeypatch.setattr(
+            launcher.Path, "exists",
+            lambda self: True if str(self) == "/dev/bus/usb/003/004" else real_exists(self),
+        )
+        assert launcher._yubikey_device_args() == ["--device", "/dev/bus/usb/003/004"]
+
+    def test_yubikey_absent_returns_empty(self, monkeypatch):
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 001 Device 002: ID 8087:0029 Intel Corp.\n"),
+        )
+        assert launcher._yubikey_device_args() == []
+
+    def test_yubikey_no_lsusb_is_clean(self, monkeypatch):
+        def boom(*a, **k):
+            raise FileNotFoundError("lsusb")
+        monkeypatch.setattr(launcher.subprocess, "run", boom)
+        assert launcher._yubikey_device_args() == []
+
+    # --- _credential_forward_args: git config + ~/.ssh + ~/.gnupg (agent/yubikey isolated) ---
+
+    def _isolate(self, monkeypatch):
+        # The SSH-agent + YubiKey pieces are tested above; isolate them so these assert the mounts.
+        monkeypatch.setattr(launcher, "_ssh_agent_args", lambda home, gpg: [])
+        monkeypatch.setattr(launcher, "_yubikey_device_args", lambda: [])
+
+    def test_empty_home_is_noop(self, tmp_path, monkeypatch):
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        home.mkdir()
+        assert launcher._credential_forward_args(home) == []
+
+    def test_legacy_gitconfig_mounted_ro(self, tmp_path, monkeypatch):
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".gitconfig").write_text("[user]\n  name = x\n")
+        args = launcher._credential_forward_args(home)
+        assert f"{home / '.gitconfig'}:{self.CTR}/.gitconfig:ro" in args
+
+    def test_xdg_gitconfig_wins_over_legacy(self, tmp_path, monkeypatch):
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        (home / ".config" / "git").mkdir(parents=True)
+        (home / ".gitconfig").write_text("x")
+        args = launcher._credential_forward_args(home)
+        assert f"{home / '.config' / 'git'}:{self.CTR}/.config/git:ro" in args
+        assert not any(a.endswith(".gitconfig:ro") or "/.gitconfig:" in a for a in args)
+
+    def test_ssh_and_gnupg_mounted_ro(self, tmp_path, monkeypatch):
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        (home / ".ssh").mkdir(parents=True)
+        (home / ".gnupg").mkdir()
+        args = launcher._credential_forward_args(home)
+        assert f"{home / '.ssh'}:{self.CTR}/.ssh:ro" in args
+        assert f"{home / '.gnupg'}:{self.CTR}/.gnupg:ro" in args
