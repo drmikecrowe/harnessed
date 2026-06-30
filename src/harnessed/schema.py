@@ -162,6 +162,11 @@ def _parse_expect(raw_expect) -> Expect:
 # '..' pass the charset but are path navigation, not names — rejected explicitly.
 _PERSIST_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# A stack `ssh_keys` entry is a single private-key basename under ~/.ssh (e.g. `id_ed25519`). Same
+# one-path-component charset as persist names so a stack can never name `../foo` or an absolute path
+# and escape ~/.ssh; '.'/'..' pass the charset but are navigation, rejected explicitly at parse.
+_SSH_KEY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
 
 @dataclass
 class PersistSpec:
@@ -233,6 +238,11 @@ class Stack:
     recipes: list[str] = field(default_factory=list)
     services: list[str] = field(default_factory=list)
     permissions: str | None = None
+    # Private SSH key basenames (under ~/.ssh) the user opts into mounting read-only into the
+    # container, for hosts WITHOUT an SSH agent (1Password/gpg). Public keys + config + known_hosts
+    # are forwarded by default; private keys are NOT, unless named here. Validated to a single path
+    # component (no `/`, no `..`) so a stack can never escape ~/.ssh — see _SSH_KEY_NAME_RE.
+    ssh_keys: list[str] = field(default_factory=list)
     state: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
 
@@ -398,15 +408,43 @@ def load_stack(stack_dir: Path) -> Stack:
             f"{manifest}: unsupported harness '{harness}' "
             f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
         )
+    ssh_keys = _parse_ssh_keys(raw.get("ssh_keys"), manifest)
     return Stack(
         name=raw["name"],
         harness=harness,
         recipes=list(raw.get("recipes", []) or []),
         services=list(raw.get("services", []) or []),
         permissions=raw.get("permissions"),
+        ssh_keys=ssh_keys,
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
     )
+
+
+def _parse_ssh_keys(raw_keys, manifest: Path) -> list[str]:
+    """Validate the stack `ssh_keys:` list — private-key basenames under ~/.ssh, opt-in.
+
+    Each entry must be a single path component (the `_SSH_KEY_NAME_RE` charset, never '.'/'..'), so a
+    stack can only ever name a key that lives directly in ~/.ssh — it can't point at `../id_rsa`, an
+    absolute path, or any host file outside ~/.ssh. A non-list or a bad entry fails loudly here rather
+    than silently mounting nothing (these are credentials — a typo must not pass).
+    """
+    if not raw_keys:
+        return []
+    if not isinstance(raw_keys, list):
+        raise SchemaError(
+            f"{manifest}: 'ssh_keys' must be a list of private-key basenames under ~/.ssh "
+            f"(e.g. ssh_keys: [id_ed25519]), got {type(raw_keys).__name__}"
+        )
+    keys: list[str] = []
+    for entry in raw_keys:
+        if not isinstance(entry, str) or entry in (".", "..") or not _SSH_KEY_NAME_RE.match(entry):
+            raise SchemaError(
+                f"{manifest}: ssh_keys entry {entry!r} is not a valid key name — use a bare "
+                f"basename under ~/.ssh (letters, digits, '.', '_', '-'; no '/' or '..')"
+            )
+        keys.append(entry)
+    return keys
 
 
 def load_service(root: Path | None, name: str) -> ServiceDef:

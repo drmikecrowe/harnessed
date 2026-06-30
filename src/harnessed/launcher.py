@@ -669,27 +669,99 @@ def _omp_agent_mount(harness: str) -> list[str]:
     return ["-v", f"{host_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
 
 
-def _ssh_agent_args(home: Path, gpg_ssh_sock: Path) -> list[str]:
+def _host_os() -> str:
+    """'macos' | 'linux' | 'other'. Drives per-OS agent socket paths + YubiKey passthrough."""
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    return "other"
+
+
+def _op_agent_socket(home: Path) -> Path:
+    """Host path to the 1Password SSH agent socket, per OS (paths are 1Password-published)."""
+    if _host_os() == "macos":
+        return home / "Library" / "Group Containers" / "2BUA8C4S2C.com.1password" / "t" / "agent.sock"
+    return home / ".1password" / "agent.sock"
+
+
+def _gpg_ssh_socket() -> Path | None:
+    """Host path to the gpg-agent SSH socket (YubiKey-resident keys), cross-platform.
+
+    `gpgconf --list-dirs agent-ssh-socket` is the portable source of truth on Linux AND macOS; fall
+    back to the Linux default only when gpgconf isn't on PATH. None when undeterminable.
+    """
+    try:
+        out = subprocess.run(
+            ["gpgconf", "--list-dirs", "agent-ssh-socket"], capture_output=True, text=True, timeout=5
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return Path(out.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if _host_os() == "linux":
+        return Path(f"/run/user/{os.getuid()}/gnupg/S.gpg-agent.ssh")
+    return None
+
+
+def _macos_op_socket_mount_source(rt: str, host_sock: Path) -> Path | None:
+    """macOS only: a path the container runtime can bind-mount for the 1Password agent socket.
+
+    PENDING VERIFICATION (macOS-gated — I could not test this from Linux). On macOS the container
+    runtime is a Linux VM (podman machine / Docker Desktop), and a host unix socket does NOT
+    traverse the host→VM file share, so a plain `-v <host_sock>:…` usually fails. The working pattern
+    is to reverse-forward the socket INTO the VM and bind-mount the in-VM path. This wires the podman
+    machine reverse-forward; it is UNVERIFIED on real hardware — see
+    docs/todos/2026-06-30-macos-ssh-agent-forwarding.md before trusting it.
+
+    Returns the in-VM socket path on a best-effort success, else None (caller falls back to the raw
+    host path + a note). Never raises; never blocks the launch.
+    """
+    if rt != "podman":
+        return None  # Docker Desktop uses a different relay; not wired yet (see the todo).
+    vm_sock = Path("/tmp/harnessed-op-agent.sock")
+    try:
+        # Reverse-forward host_sock → vm_sock inside the running podman machine, backgrounded.
+        subprocess.run(
+            ["podman", "machine", "ssh", "-f", "-N", "-T", "-R", f"{vm_sock}:{host_sock}"],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return vm_sock
+
+
+def _ssh_agent_args(home: Path, gpg_ssh_sock: Path | None, *, rt: str = "podman") -> list[str]:
     """Forward the host's SSH signing/auth agent into the container, setting SSH_AUTH_SOCK.
 
     Two agents, in precedence order (ports container.sh):
-    - 1Password SSH agent (`~/.1password/agent.sock`) — the primary path. op-ssh-sign signs commits
-      through it and `git push` over SSH authenticates through it. Private keys never leave 1Password.
-    - gpg-agent SSH socket (`/run/user/<uid>/gnupg/S.gpg-agent.ssh`) — the YubiKey path. Always
-      mounted when present, but only claims SSH_AUTH_SOCK when 1Password's socket is absent, so a
-      machine with both keeps 1Password as the active signer.
+    - 1Password SSH agent — primary. op-ssh-sign signs commits through it and `git push` over SSH
+      authenticates through it. Private keys never leave 1Password. Path is OS-aware
+      (`_op_agent_socket`); on macOS the mountable source may be a podman-machine relay path.
+    - gpg-agent SSH socket — the YubiKey path. Mounted when present, but only claims SSH_AUTH_SOCK
+      when 1Password's socket is absent, so a machine with both keeps 1Password as the active signer.
 
-    Each is conditioned on the socket actually existing on the host, so this is a clean no-op when
-    neither agent is running.
+    Each is conditioned on the socket existing, so this is a clean no-op when neither agent is running.
     """
     ctr = _CONTAINER_HOME_STR
     args: list[str] = []
-    op_agent = home / ".1password" / "agent.sock"
+    op_agent = _op_agent_socket(home)
     op_present = op_agent.is_socket()
     if op_present:
+        source = op_agent
+        if _host_os() == "macos":
+            relayed = _macos_op_socket_mount_source(rt, op_agent)
+            if relayed is not None:
+                source = relayed
+            else:
+                _err.print(
+                    "[yellow]note:[/yellow] macOS 1Password agent forwarding is unverified "
+                    "(host→VM socket relay) — if push/sign fails, see "
+                    "docs/todos/2026-06-30-macos-ssh-agent-forwarding.md"
+                )
         ctr_sock = f"{ctr}/.1password/agent.sock"
-        args += ["-v", f"{op_agent}:{ctr_sock}", "-e", f"SSH_AUTH_SOCK={ctr_sock}"]
-    if gpg_ssh_sock.is_socket():
+        args += ["-v", f"{source}:{ctr_sock}", "-e", f"SSH_AUTH_SOCK={ctr_sock}"]
+    if gpg_ssh_sock is not None and gpg_ssh_sock.is_socket():
         ctr_gpg = f"{ctr}/.gnupg-sockets/S.gpg-agent.ssh"
         args += ["-v", f"{gpg_ssh_sock}:{ctr_gpg}"]
         if not op_present:  # 1Password wins; gpg only drives SSH_AUTH_SOCK when it's the only agent
@@ -699,9 +771,12 @@ def _ssh_agent_args(home: Path, gpg_ssh_sock: Path) -> list[str]:
 
 def _yubikey_device_args() -> list[str]:
     """`--device` passthrough for a connected YubiKey (Yubico vendor id 1050) so in-container gpg/
-    op-ssh can reach the token. Best-effort: parses `lsusb`, returns [] when lsusb is missing or no
-    key is present. Ports the YubiKey passthrough from container.sh.
+    op-ssh can reach the token. LINUX ONLY: macOS runs the container in a Linux VM with no
+    `/dev/bus/usb`, so USB passthrough isn't possible there (the YubiKey reaches the container via
+    the gpg-agent SSH socket relay instead). Best-effort `lsusb` parse; [] when absent.
     """
+    if _host_os() != "linux":
+        return []
     try:
         out = subprocess.run(["lsusb"], capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
@@ -722,26 +797,65 @@ def _yubikey_device_args() -> list[str]:
     return []
 
 
-def _credential_forward_args(home: Path | None = None) -> list[str]:
+def _ssh_dir_mounts(home: Path, ssh_keys: list[str]) -> list[str]:
+    """Forward the non-secret SSH surface + opt-in private keys, file-by-file (NOT the whole ~/.ssh).
+
+    The repo hard-denies `~/.ssh` to recipes for a reason (persist.py); blanket-mounting it would
+    drop every private key into the container. Instead:
+    - Always (when present, ro): `config`, `known_hosts`, and every `*.pub` — host verification +
+      ssh config + public identities, none of which are secret.
+    - Private keys ONLY when the stack's `ssh_keys:` opts them in by basename — for hosts without an
+      agent (1Password/gpg). The name is schema-validated to a single component, so it can't escape
+      ~/.ssh; we still re-check the resolved path stays under ~/.ssh as defense-in-depth.
+    """
+    ctr = _CONTAINER_HOME_STR
+    ssh_dir = home / ".ssh"
+    if not ssh_dir.is_dir():
+        return []
+    args: list[str] = []
+    for name in ("config", "known_hosts"):
+        f = ssh_dir / name
+        if f.is_file():
+            args += ["-v", f"{f}:{ctr}/.ssh/{name}:ro"]
+    for pub in sorted(ssh_dir.glob("*.pub")):
+        args += ["-v", f"{pub}:{ctr}/.ssh/{pub.name}:ro"]
+    for name in ssh_keys:
+        key = (ssh_dir / name).resolve()
+        # Defense-in-depth: never mount a path that resolves outside ~/.ssh (symlink/traversal).
+        if key.parent != ssh_dir.resolve() or not key.is_file():
+            _err.print(
+                f"[yellow]note:[/yellow] ssh_keys: '{name}' not found in ~/.ssh (or not a regular "
+                f"file) — skipping."
+            )
+            continue
+        args += ["-v", f"{key}:{ctr}/.ssh/{name}:ro"]
+    return args
+
+
+def _credential_forward_args(
+    home: Path | None = None, ssh_keys: list[str] | None = None, rt: str = "podman"
+) -> list[str]:
     """Forward the host's git signing + push credential surface into the harness container.
 
-    Restores what the bash launcher (container.sh) forwarded, so the agent can `git push` and sign
-    commits from inside the container WITHOUT baking any secret into an image. Every piece is
-    conditioned on host-side existence — a clean no-op on a host without 1Password / GPG / a YubiKey.
+    Restores what the bash launcher (container.sh) forwarded — so the agent can `git push` and sign
+    commits inside the container WITHOUT baking any secret into an image — but OS-aware and with the
+    blunt whole-`~/.ssh` mount narrowed to the non-secret surface plus opt-in private keys. Every
+    piece is conditioned on host-side existence, so it's a clean no-op when nothing is configured.
 
     - SSH signing/auth agent (1Password primary, gpg-agent/YubiKey fallback) — see `_ssh_agent_args`.
     - `~/.gnupg` (ro): GPG config + trustdb for YubiKey signing.
-    - YubiKey USB device passthrough (`--device`) — see `_yubikey_device_args`.
+    - YubiKey USB device passthrough (`--device`, Linux only) — see `_yubikey_device_args`.
     - git config (`~/.config/git` dir, else legacy `~/.gitconfig`, ro): carries user.signingkey,
       gpg.format=ssh, gpg.ssh.program=op-ssh-sign, commit.gpgsign so commits actually sign.
-    - `~/.ssh` (ro): known_hosts + ssh config for host verification. Private keys live in the agent.
+    - ssh config + known_hosts + public keys (ro), plus stack `ssh_keys` opt-in privates — see
+      `_ssh_dir_mounts`.
 
-    NOTE: the dropped "transparent mode" (rw `~/.claude`) is intentionally NOT restored — only the
-    SSH/GPG/git-signing surface.
+    NOTE: the dropped "transparent mode" (rw `~/.claude`) is intentionally NOT restored.
     """
     home = home or Path.home()
+    ssh_keys = ssh_keys or []
     ctr = _CONTAINER_HOME_STR
-    args = _ssh_agent_args(home, Path(f"/run/user/{os.getuid()}/gnupg/S.gpg-agent.ssh"))
+    args = _ssh_agent_args(home, _gpg_ssh_socket(), rt=rt)
 
     gnupg = home / ".gnupg"
     if gnupg.is_dir():
@@ -756,9 +870,7 @@ def _credential_forward_args(home: Path | None = None) -> list[str]:
     elif legacy_git.is_file():
         args += ["-v", f"{legacy_git}:{ctr}/.gitconfig:ro"]
 
-    ssh_dir = home / ".ssh"
-    if ssh_dir.is_dir():
-        args += ["-v", f"{ssh_dir}:{ctr}/.ssh:ro"]
+    args += _ssh_dir_mounts(home, ssh_keys)
 
     return args
 
@@ -977,8 +1089,9 @@ def launch(
     # Persist recipe-declared project-scoped folders (rw) so their state survives --fresh.
     mount_args += _persist_mounts(stack, project_path)
     # Forward the host's git signing + push credentials (1Password/GPG/YubiKey agent, git config,
-    # ~/.ssh) so the agent can push and sign from inside the container — no secret baked into an image.
-    mount_args += _credential_forward_args()
+    # ssh config/known_hosts/pubkeys + stack-declared private keys) so the agent can push and sign
+    # from inside the container — no secret baked into an image.
+    mount_args += _credential_forward_args(ssh_keys=stk.ssh_keys, rt=rt)
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")

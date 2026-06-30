@@ -302,7 +302,7 @@ class TestCredentialForwarding:
 
     def _isolate(self, monkeypatch):
         # The SSH-agent + YubiKey pieces are tested above; isolate them so these assert the mounts.
-        monkeypatch.setattr(launcher, "_ssh_agent_args", lambda home, gpg: [])
+        monkeypatch.setattr(launcher, "_ssh_agent_args", lambda *a, **k: [])
         monkeypatch.setattr(launcher, "_yubikey_device_args", lambda: [])
 
     def test_empty_home_is_noop(self, tmp_path, monkeypatch):
@@ -328,11 +328,100 @@ class TestCredentialForwarding:
         assert f"{home / '.config' / 'git'}:{self.CTR}/.config/git:ro" in args
         assert not any(a.endswith(".gitconfig:ro") or "/.gitconfig:" in a for a in args)
 
-    def test_ssh_and_gnupg_mounted_ro(self, tmp_path, monkeypatch):
+    def test_gnupg_mounted_ro(self, tmp_path, monkeypatch):
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        (home / ".gnupg").mkdir(parents=True)
+        args = launcher._credential_forward_args(home)
+        assert f"{home / '.gnupg'}:{self.CTR}/.gnupg:ro" in args
+
+    def test_whole_ssh_dir_is_never_mounted(self, tmp_path, monkeypatch):
+        # Regression guard: the blunt `-v ~/.ssh:/.ssh` mount (which dropped ALL private keys into
+        # the container) must NOT come back. ~/.ssh is forwarded file-by-file via _ssh_dir_mounts.
         self._isolate(monkeypatch)
         home = tmp_path / "home"
         (home / ".ssh").mkdir(parents=True)
-        (home / ".gnupg").mkdir()
+        (home / ".ssh" / "id_secret").write_text("PRIVATE")  # not opted in
         args = launcher._credential_forward_args(home)
-        assert f"{home / '.ssh'}:{self.CTR}/.ssh:ro" in args
-        assert f"{home / '.gnupg'}:{self.CTR}/.gnupg:ro" in args
+        assert f"{home / '.ssh'}:{self.CTR}/.ssh:ro" not in args
+        assert not any("id_secret" in a for a in args)  # un-declared private key never mounted
+
+
+class TestSshDirMounts:
+    """`_ssh_dir_mounts` forwards the non-secret SSH surface (config, known_hosts, *.pub) always, and
+    private keys ONLY when the stack's ssh_keys opts them in by basename — never the whole dir."""
+
+    CTR = launcher._CONTAINER_HOME_STR
+
+    def test_public_surface_mounted_ro(self, tmp_path):
+        ssh = tmp_path / ".ssh"
+        ssh.mkdir()
+        (ssh / "config").write_text("Host *\n")
+        (ssh / "known_hosts").write_text("github.com ssh-ed25519 AAAA\n")
+        (ssh / "id_ed25519.pub").write_text("ssh-ed25519 AAAA pub\n")
+        (ssh / "id_ed25519").write_text("PRIVATE")  # present but NOT opted-in
+        args = launcher._ssh_dir_mounts(tmp_path, [])
+        assert f"{ssh / 'config'}:{self.CTR}/.ssh/config:ro" in args
+        assert f"{ssh / 'known_hosts'}:{self.CTR}/.ssh/known_hosts:ro" in args
+        assert f"{ssh / 'id_ed25519.pub'}:{self.CTR}/.ssh/id_ed25519.pub:ro" in args
+        # The private key is present but not declared → must NOT be mounted.
+        assert not any(a == f"{ssh / 'id_ed25519'}:{self.CTR}/.ssh/id_ed25519:ro" for a in args)
+
+    def test_declared_private_key_mounted_ro(self, tmp_path):
+        ssh = tmp_path / ".ssh"
+        ssh.mkdir()
+        (ssh / "id_work").write_text("PRIVATE")
+        args = launcher._ssh_dir_mounts(tmp_path, ["id_work"])
+        assert f"{ssh / 'id_work'}:{self.CTR}/.ssh/id_work:ro" in args
+
+    def test_declared_but_missing_key_is_skipped(self, tmp_path):
+        ssh = tmp_path / ".ssh"
+        ssh.mkdir()
+        args = launcher._ssh_dir_mounts(tmp_path, ["nope"])
+        assert not any("nope" in a for a in args)
+
+    def test_no_ssh_dir_is_noop(self, tmp_path):
+        assert launcher._ssh_dir_mounts(tmp_path, ["id_work"]) == []
+
+    def test_symlink_escaping_ssh_is_refused(self, tmp_path):
+        # A symlink in ~/.ssh pointing at a secret OUTSIDE ~/.ssh must not be followed out.
+        ssh = tmp_path / ".ssh"
+        ssh.mkdir()
+        outside = tmp_path / "elsewhere_key"
+        outside.write_text("PRIVATE")
+        (ssh / "evil").symlink_to(outside)
+        args = launcher._ssh_dir_mounts(tmp_path, ["evil"])
+        assert not any("elsewhere_key" in a or "/evil:" in a for a in args)
+
+
+class TestHostOsPaths:
+    """OS-aware agent socket + gpg socket detection (macOS vs Linux)."""
+
+    def test_op_socket_linux(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher.sys, "platform", "linux")
+        assert launcher._op_agent_socket(tmp_path) == tmp_path / ".1password" / "agent.sock"
+
+    def test_op_socket_macos(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher.sys, "platform", "darwin")
+        got = launcher._op_agent_socket(tmp_path)
+        assert got == tmp_path / "Library" / "Group Containers" / "2BUA8C4S2C.com.1password" / "t" / "agent.sock"
+
+    def test_gpg_socket_prefers_gpgconf(self, monkeypatch):
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=0, stdout="/run/user/1000/gnupg/S.gpg-agent.ssh\n"),
+        )
+        assert launcher._gpg_ssh_socket() == Path("/run/user/1000/gnupg/S.gpg-agent.ssh")
+
+    def test_gpg_socket_linux_fallback_when_no_gpgconf(self, monkeypatch):
+        def boom(*a, **k):
+            raise FileNotFoundError("gpgconf")
+        monkeypatch.setattr(launcher.subprocess, "run", boom)
+        monkeypatch.setattr(launcher.sys, "platform", "linux")
+        assert str(launcher._gpg_ssh_socket()).endswith("/gnupg/S.gpg-agent.ssh")
+
+    def test_yubikey_skipped_off_linux(self, monkeypatch):
+        monkeypatch.setattr(launcher.sys, "platform", "darwin")
+        # Even if lsusb would match, the non-Linux guard returns [] before shelling out.
+        assert launcher._yubikey_device_args() == []
