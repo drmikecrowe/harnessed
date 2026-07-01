@@ -138,6 +138,18 @@ class TestLoadStack:
         with pytest.raises(SchemaError, match="ssh_keys"):
             load_stack(d)
 
+    def test_forward_git_credentials_defaults_false(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\n")
+        assert load_stack(d).forward_git_credentials is False
+
+    def test_forward_git_credentials_parsed_true(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\nforward_git_credentials: true\n")
+        assert load_stack(d).forward_git_credentials is True
+
 
 class TestLoadAgent:
     def _write(self, tmp_path, name, body):

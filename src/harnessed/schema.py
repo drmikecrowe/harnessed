@@ -238,10 +238,16 @@ class Stack:
     recipes: list[str] = field(default_factory=list)
     services: list[str] = field(default_factory=list)
     permissions: str | None = None
+    # Opt-in (default OFF): forward the host's git signing + push credential surface (SSH/GPG agent
+    # socket, git config, ssh config/known_hosts/pubkeys) into the container. OFF by default so a
+    # container never gets standing authority to sign/auth as the user unless the stack asks for it.
+    forward_git_credentials: bool = False
     # Private SSH key basenames (under ~/.ssh) the user opts into mounting read-only into the
     # container, for hosts WITHOUT an SSH agent (1Password/gpg). Public keys + config + known_hosts
     # are forwarded by default; private keys are NOT, unless named here. Validated to a single path
-    # component (no `/`, no `..`) so a stack can never escape ~/.ssh — see _SSH_KEY_NAME_RE.
+    # component (no `/`, no `..`) so a stack can never escape ~/.ssh — see _SSH_KEY_NAME_RE. SECURITY:
+    # honored ONLY from the user-overlay catalog, never a shared repo-catalog stack (see the launcher)
+    # — the key owner, not a third-party stack author, must consent to mounting a private key.
     ssh_keys: list[str] = field(default_factory=list)
     state: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
@@ -415,6 +421,7 @@ def load_stack(stack_dir: Path) -> Stack:
         recipes=list(raw.get("recipes", []) or []),
         services=list(raw.get("services", []) or []),
         permissions=raw.get("permissions"),
+        forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
         ssh_keys=ssh_keys,
         state=dict(raw.get("state", {}) or {}),
         raw=raw,

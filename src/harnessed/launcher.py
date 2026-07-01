@@ -872,6 +872,23 @@ def _gnupg_mounts(home: Path) -> list[str]:
     return args
 
 
+def _trusted_ssh_keys(stk_ssh_keys: list[str], from_overlay: bool, stack: str) -> list[str]:
+    """Private-key (`ssh_keys`) mounts are honored ONLY from the user's own overlay catalog.
+
+    A stack.yaml can come from a SHARED repo catalog (per CLAUDE.md). Mounting a real private key is
+    the KEY OWNER's decision, not a third-party stack author's — so `ssh_keys` from anywhere but the
+    user overlay (`~/.config/harnessed/catalog`) is dropped with a warning. (Public keys / config /
+    known_hosts, which are not secret, are unaffected — this only gates private-key files.)
+    """
+    if stk_ssh_keys and not from_overlay:
+        _err.print(
+            f"[yellow]note:[/yellow] ignoring ssh_keys from shared-catalog stack '{stack}' — declare "
+            f"private keys only in your user overlay (~/.config/harnessed/catalog)."
+        )
+        return []
+    return stk_ssh_keys
+
+
 def _credential_forward_args(
     home: Path | None = None, ssh_keys: list[str] | None = None, rt: str = "podman"
 ) -> list[str]:
@@ -1041,7 +1058,10 @@ def launch(
     # to a parent (e.g. a linked-worktree root) while the agent still starts in the project.
     mount_path = _resolve_mount_path(project_path, mount_folder)
 
-    stack_yaml = _stacks_dir() / stack / "stack.yaml"
+    # Resolve overlay-first (user catalog wins) so we also know the stack's SOURCE: private-key
+    # forwarding is trusted only from the user's own overlay, never a shared repo-catalog stack.
+    stack_dir = paths.find_in_catalog("stacks", stack)
+    stack_yaml = stack_dir / "stack.yaml"
     if not stack_yaml.is_file():
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_yaml})")
         raise typer.Exit(1)
@@ -1051,10 +1071,12 @@ def launch(
         raise typer.Exit(1)
 
     try:
-        stk = load_stack(_stacks_dir() / stack)
+        stk = load_stack(stack_dir)
     except SchemaError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}")
         raise typer.Exit(1)
+
+    stack_from_overlay = stack_dir.resolve().is_relative_to(paths.user_catalog().resolve())
 
     harness = stk.harness
     # Prefer the derived per-stack image (recipe Dockerfile layers); fall back to the plain agent.
@@ -1127,9 +1149,13 @@ def launch(
     # Persist recipe-declared project-scoped folders (rw) so their state survives --fresh.
     mount_args += _persist_mounts(stack, project_path)
     # Forward the host's git signing + push credentials (1Password/GPG/YubiKey agent, git config,
-    # ssh config/known_hosts/pubkeys + stack-declared private keys) so the agent can push and sign
-    # from inside the container — no secret baked into an image.
-    mount_args += _credential_forward_args(ssh_keys=stk.ssh_keys, rt=rt)
+    # ssh config/known_hosts/pubkeys + opt-in private keys) so the agent can push and sign — no
+    # secret baked into an image. OPT-IN per stack (default off): a container gets standing authority
+    # to sign/auth as the user only when the stack asks. Private keys (ssh_keys) are honored ONLY from
+    # the user's own overlay catalog — a shared repo-catalog stack must not mount your private key.
+    if stk.forward_git_credentials:
+        trusted_keys = _trusted_ssh_keys(stk.ssh_keys, stack_from_overlay, stack)
+        mount_args += _credential_forward_args(ssh_keys=trusted_keys, rt=rt)
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")

@@ -416,6 +416,21 @@ class TestSshDirMounts:
         assert not any("elsewhere_key" in a or "/evil:" in a for a in args)
 
 
+class TestTrustedSshKeys:
+    """Review Finding 1: private-key `ssh_keys` mounts are honored ONLY from the user overlay — a
+    shared repo-catalog stack must never mount the user's private key without the owner's consent."""
+
+    def test_overlay_stack_keys_honored(self):
+        assert launcher._trusted_ssh_keys(["id_ed25519"], True, "mystack") == ["id_ed25519"]
+
+    def test_repo_catalog_keys_dropped(self):
+        assert launcher._trusted_ssh_keys(["id_ed25519"], False, "shared") == []
+
+    def test_no_keys_is_noop_either_way(self):
+        assert launcher._trusted_ssh_keys([], False, "s") == []
+        assert launcher._trusted_ssh_keys([], True, "s") == []
+
+
 class TestHostOsPaths:
     """OS-aware agent socket + gpg socket detection (macOS vs Linux)."""
 
