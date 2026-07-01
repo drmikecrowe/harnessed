@@ -328,12 +328,34 @@ class TestCredentialForwarding:
         assert f"{home / '.config' / 'git'}:{self.CTR}/.config/git:ro" in args
         assert not any(a.endswith(".gitconfig:ro") or "/.gitconfig:" in a for a in args)
 
-    def test_gnupg_mounted_ro(self, tmp_path, monkeypatch):
+    def test_gnupg_nonsecret_files_mounted_but_not_keyring(self, tmp_path, monkeypatch):
+        # Security regression guard (review Finding 2): the whole ~/.gnupg mount leaked
+        # private-keys-v1.d/*.key. Only the non-secret files may be forwarded; the private keyring
+        # must NEVER be mounted.
         self._isolate(monkeypatch)
         home = tmp_path / "home"
-        (home / ".gnupg").mkdir(parents=True)
+        gnupg = home / ".gnupg"
+        (gnupg / "private-keys-v1.d").mkdir(parents=True)
+        (gnupg / "private-keys-v1.d" / "DEADBEEF.key").write_text("SECRET-KEY-MATERIAL")
+        (gnupg / "pubring.kbx").write_text("pub")
+        (gnupg / "trustdb.gpg").write_text("trust")
         args = launcher._credential_forward_args(home)
-        assert f"{home / '.gnupg'}:{self.CTR}/.gnupg:ro" in args
+        assert f"{gnupg / 'pubring.kbx'}:{self.CTR}/.gnupg/pubring.kbx:ro" in args
+        # The whole-dir mount and the private keyring must both be absent.
+        assert f"{gnupg}:{self.CTR}/.gnupg:ro" not in args
+        assert not any("private-keys-v1.d" in a for a in args)
+
+    def test_pubkey_with_colon_in_name_is_skipped(self, tmp_path, monkeypatch):
+        # Review Finding 5: a ~/.ssh/*.pub filename containing ':' would reparse the -v mount spec.
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        ssh = home / ".ssh"
+        ssh.mkdir(parents=True)
+        (ssh / "normal.pub").write_text("pub")
+        (ssh / "evil:x:ro.pub").write_text("pub")  # ':' reparses the -v spec; must be skipped
+        args = launcher._credential_forward_args(home)
+        assert any("normal.pub" in a for a in args)
+        assert not any("evil" in a for a in args)
 
     def test_whole_ssh_dir_is_never_mounted(self, tmp_path, monkeypatch):
         # Regression guard: the blunt `-v ~/.ssh:/.ssh` mount (which dropped ALL private keys into
@@ -425,3 +447,26 @@ class TestHostOsPaths:
         monkeypatch.setattr(launcher.sys, "platform", "darwin")
         # Even if lsusb would match, the non-Linux guard returns [] before shelling out.
         assert launcher._yubikey_device_args() == []
+
+    def test_macos_relay_returns_none_on_failed_forward(self, monkeypatch):
+        # Review Finding 4: a failed reverse-forward must NOT return a path (which would point
+        # SSH_AUTH_SOCK at a dead socket) — return None so the caller falls back to the note.
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=255, stdout="", stderr="forward failed"),
+        )
+        assert launcher._macos_op_socket_mount_source("podman", Path("/host/agent.sock")) is None
+
+    def test_macos_relay_returns_vm_sock_on_success(self, monkeypatch):
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=0, stdout="", stderr=""),
+        )
+        assert launcher._macos_op_socket_mount_source("podman", Path("/host/agent.sock")) == Path(
+            "/tmp/harnessed-op-agent.sock"
+        )
+
+    def test_macos_relay_skips_non_podman(self, monkeypatch):
+        assert launcher._macos_op_socket_mount_source("docker", Path("/host/agent.sock")) is None

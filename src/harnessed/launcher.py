@@ -722,12 +722,20 @@ def _macos_op_socket_mount_source(rt: str, host_sock: Path) -> Path | None:
     vm_sock = Path("/tmp/harnessed-op-agent.sock")
     try:
         # Reverse-forward host_sock → vm_sock inside the running podman machine, backgrounded.
-        subprocess.run(
-            ["podman", "machine", "ssh", "-f", "-N", "-T", "-R", f"{vm_sock}:{host_sock}"],
+        # StreamLocalBindUnlink=yes clears a stale vm_sock so a second launch's -R bind doesn't fail
+        # (the fixed path would otherwise leak a dead socket + a backgrounded ssh forever).
+        # ExitOnForwardFailure=yes makes ssh exit non-zero if the forward can't be established, so we
+        # DON'T return a path pointing at nothing.
+        r = subprocess.run(
+            ["podman", "machine", "ssh", "-f", "-N", "-T",
+             "-o", "StreamLocalBindUnlink=yes", "-o", "ExitOnForwardFailure=yes",
+             "-R", f"{vm_sock}:{host_sock}"],
             capture_output=True, text=True, timeout=15,
         )
     except (OSError, subprocess.SubprocessError):
         return None
+    if r.returncode != 0:
+        return None  # forward failed → caller falls back to the note, not a dead socket path
     return vm_sock
 
 
@@ -818,6 +826,12 @@ def _ssh_dir_mounts(home: Path, ssh_keys: list[str]) -> list[str]:
         if f.is_file():
             args += ["-v", f"{f}:{ctr}/.ssh/{name}:ro"]
     for pub in sorted(ssh_dir.glob("*.pub")):
+        # `:` is the podman `-v src:dst:opts` separator — a filename containing one would reparse the
+        # mount spec and redirect the destination. No shell injection (list args), and the file is the
+        # user's own, but skip it defensively rather than mount to an unintended container path.
+        if ":" in pub.name:
+            _err.print(f"[yellow]note:[/yellow] skipping ~/.ssh/{pub.name} (':' in name).")
+            continue
         args += ["-v", f"{pub}:{ctr}/.ssh/{pub.name}:ro"]
     for name in ssh_keys:
         key = (ssh_dir / name).resolve()
@@ -832,6 +846,32 @@ def _ssh_dir_mounts(home: Path, ssh_keys: list[str]) -> list[str]:
     return args
 
 
+def _gnupg_mounts(home: Path) -> list[str]:
+    """Forward only the NON-SECRET GPG files — NEVER the private keyring.
+
+    The bash launcher mounted all of ~/.gnupg, which drags in `private-keys-v1.d/*.key` — the actual
+    secret key material for SOFTWARE openpgp keys (only YubiKey-resident keys are stubs there). `ro`
+    doesn't help: read-only still means fully readable → exfiltratable by an autonomous agent (or a
+    compromised dep) in the container. That also overrides persist.py's hard-deny of ~/.gnupg. So we
+    forward ONLY the public/config surface, file-by-file, and never `private-keys-v1.d/`.
+
+    This means SSH-format signing (op-ssh-sign / gpg-agent SSH socket, see `_ssh_agent_args`) is the
+    supported in-container path; full openpgp GPG *signing* in-container (which needs the gpg-agent
+    socket + selectively-forwarded YubiKey stubs, without the software secrets) is a scoped follow-up
+    — see docs/todos/2026-06-30-macos-ssh-agent-forwarding.md.
+    """
+    ctr = _CONTAINER_HOME_STR
+    gnupg = home / ".gnupg"
+    if not gnupg.is_dir():
+        return []
+    args: list[str] = []
+    for name in ("pubring.kbx", "trustdb.gpg", "gpg.conf", "gpg-agent.conf"):
+        f = gnupg / name
+        if f.is_file():
+            args += ["-v", f"{f}:{ctr}/.gnupg/{name}:ro"]
+    return args
+
+
 def _credential_forward_args(
     home: Path | None = None, ssh_keys: list[str] | None = None, rt: str = "podman"
 ) -> list[str]:
@@ -843,7 +883,7 @@ def _credential_forward_args(
     piece is conditioned on host-side existence, so it's a clean no-op when nothing is configured.
 
     - SSH signing/auth agent (1Password primary, gpg-agent/YubiKey fallback) — see `_ssh_agent_args`.
-    - `~/.gnupg` (ro): GPG config + trustdb for YubiKey signing.
+    - NON-SECRET GPG files only (pubring/trustdb/config, NEVER the private keyring) — `_gnupg_mounts`.
     - YubiKey USB device passthrough (`--device`, Linux only) — see `_yubikey_device_args`.
     - git config (`~/.config/git` dir, else legacy `~/.gitconfig`, ro): carries user.signingkey,
       gpg.format=ssh, gpg.ssh.program=op-ssh-sign, commit.gpgsign so commits actually sign.
@@ -857,9 +897,7 @@ def _credential_forward_args(
     ctr = _CONTAINER_HOME_STR
     args = _ssh_agent_args(home, _gpg_ssh_socket(), rt=rt)
 
-    gnupg = home / ".gnupg"
-    if gnupg.is_dir():
-        args += ["-v", f"{gnupg}:{ctr}/.gnupg:ro"]
+    args += _gnupg_mounts(home)
 
     args += _yubikey_device_args()
 
