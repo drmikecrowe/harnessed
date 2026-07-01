@@ -298,6 +298,21 @@ class TestCredentialForwarding:
         monkeypatch.setattr(launcher.subprocess, "run", boom)
         assert launcher._yubikey_device_args() == []
 
+    def test_yubikey_vendor_id_not_device_number(self, monkeypatch):
+        # LOW-1: "1050" must match the Yubico VENDOR id (ID 1050:), not a high device number — a
+        # line like "Device 1050: ID 1234:5678 Acme" must NOT be selected for --device passthrough.
+        from types import SimpleNamespace
+        real_exists = Path.exists
+        monkeypatch.setattr(
+            launcher.Path, "exists",
+            lambda self: True if str(self) == "/dev/bus/usb/005/1050" else real_exists(self),
+        )
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 005 Device 1050: ID 1234:5678 Acme Widget\n"),
+        )
+        assert launcher._yubikey_device_args() == []
+
     # --- _credential_forward_args: git config + ~/.ssh + ~/.gnupg (agent/yubikey isolated) ---
 
     def _isolate(self, monkeypatch):
@@ -344,6 +359,17 @@ class TestCredentialForwarding:
         # The whole-dir mount and the private keyring must both be absent.
         assert f"{gnupg}:{self.CTR}/.gnupg:ro" not in args
         assert not any("private-keys-v1.d" in a for a in args)
+
+    def test_gnupg_sshcontrol_mounted(self, tmp_path, monkeypatch):
+        # LOW-4: gpg-agent's sshcontrol (keygrips authorized for SSH) is non-secret and needed for the
+        # YubiKey-via-gpg-agent SSH path — include it in the non-secret allowlist.
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        gnupg = home / ".gnupg"
+        gnupg.mkdir(parents=True)
+        (gnupg / "sshcontrol").write_text("ABCDEFGH 0\n")
+        args = launcher._credential_forward_args(home)
+        assert f"{gnupg / 'sshcontrol'}:{self.CTR}/.gnupg/sshcontrol:ro" in args
 
     def test_pubkey_with_colon_in_name_is_skipped(self, tmp_path, monkeypatch):
         # Review Finding 5: a ~/.ssh/*.pub filename containing ':' would reparse the -v mount spec.
@@ -415,6 +441,21 @@ class TestSshDirMounts:
         args = launcher._ssh_dir_mounts(tmp_path, ["evil"])
         assert not any("elsewhere_key" in a or "/evil:" in a for a in args)
 
+    def test_symlinked_public_surface_escaping_ssh_is_refused(self, tmp_path):
+        # MED-3: the always-on surface (config / known_hosts / *.pub) must NOT follow a symlink whose
+        # target escapes ~/.ssh — same containment as the opt-in ssh_keys path. A symlinked
+        # ~/.ssh/config -> <secret> must not mount the secret read-only into the container.
+        ssh = tmp_path / ".ssh"
+        ssh.mkdir()
+        secret = tmp_path / "aws-credentials"
+        secret.write_text("[default]\naws_secret = x")
+        (ssh / "config").symlink_to(secret)      # escaping symlink, always-on mount
+        (ssh / "leak.pub").symlink_to(secret)    # escaping symlink, *.pub mount
+        args = launcher._ssh_dir_mounts(tmp_path, [])
+        assert not any("aws-credentials" in a for a in args)
+        assert not any(a.endswith("/.ssh/config:ro") for a in args)
+        assert not any("leak.pub" in a for a in args)
+
 
 class TestTrustedSshKeys:
     """Review Finding 1: private-key `ssh_keys` mounts are honored ONLY from the user overlay — a
@@ -457,6 +498,12 @@ class TestHostOsPaths:
         monkeypatch.setattr(launcher.subprocess, "run", boom)
         monkeypatch.setattr(launcher.sys, "platform", "linux")
         assert str(launcher._gpg_ssh_socket()).endswith("/gnupg/S.gpg-agent.ssh")
+
+    def test_gpg_socket_with_colon_skips_mount(self, tmp_path, monkeypatch):
+        # LOW-2: a ':' in the gpg-agent socket path would reparse the `-v src:dst` spec → skip mount.
+        monkeypatch.setattr(launcher.Path, "is_socket", lambda self: True)
+        args = launcher._ssh_agent_args(tmp_path, Path("/run/gnupg:weird/S.gpg-agent.ssh"))
+        assert not any("S.gpg-agent.ssh" in a for a in args)
 
     def test_yubikey_skipped_off_linux(self, monkeypatch):
         monkeypatch.setattr(launcher.sys, "platform", "darwin")

@@ -770,10 +770,18 @@ def _ssh_agent_args(home: Path, gpg_ssh_sock: Path | None, *, rt: str = "podman"
         ctr_sock = f"{ctr}/.1password/agent.sock"
         args += ["-v", f"{source}:{ctr_sock}", "-e", f"SSH_AUTH_SOCK={ctr_sock}"]
     if gpg_ssh_sock is not None and gpg_ssh_sock.is_socket():
-        ctr_gpg = f"{ctr}/.gnupg-sockets/S.gpg-agent.ssh"
-        args += ["-v", f"{gpg_ssh_sock}:{ctr_gpg}"]
-        if not op_present:  # 1Password wins; gpg only drives SSH_AUTH_SOCK when it's the only agent
-            args += ["-e", f"SSH_AUTH_SOCK={ctr_gpg}"]
+        # A ':' in the socket path would reparse the `-v src:dst` spec. Sockets don't normally
+        # contain ':', but gpgconf output is host-derived — skip defensively rather than mis-mount.
+        if ":" in str(gpg_ssh_sock):
+            _err.print(
+                f"[yellow]note:[/yellow] gpg-agent SSH socket path {gpg_ssh_sock} contains ':' "
+                "— skipping mount."
+            )
+        else:
+            ctr_gpg = f"{ctr}/.gnupg-sockets/S.gpg-agent.ssh"
+            args += ["-v", f"{gpg_ssh_sock}:{ctr_gpg}"]
+            if not op_present:  # 1Password wins; gpg only drives SSH_AUTH_SOCK when it's the only agent
+                args += ["-e", f"SSH_AUTH_SOCK={ctr_gpg}"]
     return args
 
 
@@ -793,7 +801,7 @@ def _yubikey_device_args() -> list[str]:
         return []
     for line in out.stdout.splitlines():
         low = line.lower()
-        if "yubico" not in low and "1050" not in low:
+        if "yubico" not in low and "id 1050:" not in low:
             continue
         # "Bus 003 Device 004: ID 1050:0407 Yubico.com ..." → /dev/bus/usb/003/004
         parts = line.split()
@@ -817,32 +825,39 @@ def _ssh_dir_mounts(home: Path, ssh_keys: list[str]) -> list[str]:
       ~/.ssh; we still re-check the resolved path stays under ~/.ssh as defense-in-depth.
     """
     ctr = _CONTAINER_HOME_STR
-    ssh_dir = home / ".ssh"
+    ssh_dir = (home / ".ssh").resolve()
     if not ssh_dir.is_dir():
         return []
     args: list[str] = []
+
+    def _mount_named(name: str) -> None:
+        # Resolve the entry and require it be a regular file living DIRECTLY under ~/.ssh.
+        # Symlinks are followed, so a config / known_hosts / *.pub whose target escapes ~/.ssh
+        # (e.g. ~/.ssh/config -> ~/.aws/credentials) is rejected — the same defense-in-depth the
+        # opt-in ssh_keys path uses — rather than mounting the secret target read-only. `:` is the
+        # podman `-v src:dst:opts` separator: a name containing one would reparse the spec (no shell
+        # injection — list args), so skip it.
+        if ":" in name:
+            _err.print(f"[yellow]note:[/yellow] skipping ~/.ssh/{name} (':' in name).")
+            return
+        target = (ssh_dir / name).resolve()
+        if target.parent != ssh_dir or not target.is_file():
+            return
+        args.extend(["-v", f"{target}:{ctr}/.ssh/{name}:ro"])
+
     for name in ("config", "known_hosts"):
-        f = ssh_dir / name
-        if f.is_file():
-            args += ["-v", f"{f}:{ctr}/.ssh/{name}:ro"]
+        _mount_named(name)
     for pub in sorted(ssh_dir.glob("*.pub")):
-        # `:` is the podman `-v src:dst:opts` separator — a filename containing one would reparse the
-        # mount spec and redirect the destination. No shell injection (list args), and the file is the
-        # user's own, but skip it defensively rather than mount to an unintended container path.
-        if ":" in pub.name:
-            _err.print(f"[yellow]note:[/yellow] skipping ~/.ssh/{pub.name} (':' in name).")
-            continue
-        args += ["-v", f"{pub}:{ctr}/.ssh/{pub.name}:ro"]
+        _mount_named(pub.name)
     for name in ssh_keys:
-        key = (ssh_dir / name).resolve()
-        # Defense-in-depth: never mount a path that resolves outside ~/.ssh (symlink/traversal).
-        if key.parent != ssh_dir.resolve() or not key.is_file():
+        target = (ssh_dir / name).resolve()
+        if target.parent != ssh_dir or not target.is_file():
             _err.print(
                 f"[yellow]note:[/yellow] ssh_keys: '{name}' not found in ~/.ssh (or not a regular "
                 f"file) — skipping."
             )
             continue
-        args += ["-v", f"{key}:{ctr}/.ssh/{name}:ro"]
+        args += ["-v", f"{target}:{ctr}/.ssh/{name}:ro"]
     return args
 
 
@@ -865,7 +880,7 @@ def _gnupg_mounts(home: Path) -> list[str]:
     if not gnupg.is_dir():
         return []
     args: list[str] = []
-    for name in ("pubring.kbx", "trustdb.gpg", "gpg.conf", "gpg-agent.conf"):
+    for name in ("pubring.kbx", "trustdb.gpg", "gpg.conf", "gpg-agent.conf", "sshcontrol"):
         f = gnupg / name
         if f.is_file():
             args += ["-v", f"{f}:{ctr}/.gnupg/{name}:ro"]
