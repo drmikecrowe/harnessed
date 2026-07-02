@@ -86,8 +86,8 @@ multi-container services are explicitly the bottom priority.
 
 ## CONCERNS.md disposition (all 16)
 
-**Stale — retire:** ~~hatago-mcp-hub via `pnpm dlx` (latest)~~ is **wrong**. `Dockerfile.hatago:35`
-already pins `@himorishige/hatago-mcp-hub@${HATAGO_VERSION}` (`=0.0.16`, line 24). Delete the entry.
+**Stale — retire:** ~~hatago-mcp-hub via `pnpm dlx` (latest)~~ is **wrong**. `Dockerfile.harnessed-base`
+already pins `@himorishige/hatago-mcp-hub@${HATAGO_VERSION}` (`=0.0.16`) since hatago-consolidation. Delete the entry.
 **Also correct:** CONCERNS' "launcher.py has zero direct unit tests" — overstated; 99 tests pass.
 
 **Folded into the ranking:** scan ×4 → TIER 3 · no-CI → TIER 0 · schema tolerance → TIER 1 ·

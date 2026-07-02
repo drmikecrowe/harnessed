@@ -38,7 +38,7 @@ assembler/launcher being mid-refactor and internally inconsistent.
 ## F3 — assembler no longer fans skills/commands into the profile
 
 - **Symptom:** Current-source `assemble()` emits `.mcp.json`, `settings.json`, `hatago.config.json`,
-  the derived Dockerfile, and `baked-servers.json` — but **no `.claude/` tree**. A recipe's skills
+  and the derived Dockerfile — but **no `.claude/` tree**. A recipe's skills
   (e.g. `time` ships `time-helper`) never reach the profile, so `harnessed test` cannot find them and
   the skill capability is always missing.
 - **Root cause:** the `LinkSyncer` fan-out (skills/commands → `<profile>/.claude/{skills,commands}`)

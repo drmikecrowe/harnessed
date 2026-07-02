@@ -112,7 +112,7 @@ podman exec <instance> env | grep SNYK_TOKEN
 grep -r SNYK_TOKEN profiles/    # expected: no matches
 
 # 3. The value is NOT baked into the image:
-podman history harnessed-hatago:latest | grep -i snyk    # expected: no matches
+podman history harnessed-base:latest | grep -i snyk    # expected: no matches
 
 # 4. The temp env-file is gone after launch:
 ls /tmp/harnessed-env.* 2>/dev/null    # expected: no matches (unlinked post-launch)

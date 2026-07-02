@@ -122,6 +122,48 @@ class TestStoppedLeftover:
         assert launcher._stopped_leftover("docker", "inst", "inst") is False
 
 
+class TestSessionActive:
+    """`_session_active` decides whether an interactive harness session is attached, which
+    gates `harnessed prune`. After hatago-consolidation an idle instance also runs the
+    in-container hatago hub (`node`) and its stdio children (`uvx mcp-server-time`), so the
+    rule is positive: only the interactive attach owns a real pts; every infra process
+    (sleep, hatago, stdio children) runs with no controlling terminal (`?` on podman,
+    `-`/`` elsewhere)."""
+
+    def _top(self, monkeypatch, stdout, *, rc=0):
+        from types import SimpleNamespace
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=rc, stdout=stdout),
+        )
+
+    def test_idle_infra_only_is_inactive(self, monkeypatch):
+        # header + sleep / hatago(node) / uvx child, all with no tty.
+        self._top(monkeypatch, "TTY\n?\n?\n?\n")
+        assert launcher._session_active("podman", "inst") is False
+
+    def test_attached_pts_is_active(self, monkeypatch):
+        # the interactive attach owns pts/0 alongside the no-tty infra rows.
+        self._top(monkeypatch, "TTY\n?\n?\npts/0\n")
+        assert launcher._session_active("podman", "inst") is True
+
+    def test_nonzero_returncode_is_undetermined(self, monkeypatch):
+        # `top` failed (transient runtime hiccup) → can't tell → None, NOT False. prune must not
+        # read this as confirmed-idle and tear down a live session on a momentary error.
+        self._top(monkeypatch, "", rc=1)
+        assert launcher._session_active("podman", "inst") is None
+
+    def test_header_only_is_inactive(self, monkeypatch):
+        self._top(monkeypatch, "TTY\n")
+        assert launcher._session_active("podman", "inst") is False
+
+    @pytest.mark.parametrize("marker", ["-", ""])
+    def test_other_runtime_no_tty_markers_are_inactive(self, monkeypatch, marker):
+        # docker/other runtimes report no-tty as `-` or empty rather than `?`.
+        self._top(monkeypatch, f"TTY\n{marker}\n{marker}\n")
+        assert launcher._session_active("docker", "inst") is False
+
+
 class TestResolveStartDir:
     """`_resolve_start_dir` resolves the agent's working directory for --agent-start-folder."""
 
@@ -201,7 +243,7 @@ class TestBuildMountArgs:
         monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
         parent = tmp_path / "harnessed"
         parent.mkdir()
-        args = launcher._build_mount_args("claude", tmp_path / "prof", parent, "harnessed")
+        args = launcher._build_mount_args("claude", tmp_path / "prof", parent)
         assert "-v" in args and f"{parent}:{parent}" in args
         # The narrower project path is NOT mounted separately — it's covered by the parent mirror.
         assert not any(str(parent / "main") in a for a in args)

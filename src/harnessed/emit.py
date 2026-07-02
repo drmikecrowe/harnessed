@@ -6,7 +6,6 @@ Pure file emission — no podman/docker, no daemon. Everything is written under
   profiles/<stack>/.claude/{skills,commands,agents,hooks,rules}/   the fanned tree
   profiles/<stack>/.claude/.mcp.json                               single hatago endpoint
   profiles/<stack>/hatago.config.json                              hatago child-server config
-  profiles/<stack>/baked-servers.json                              servers the hatago image must bake
 
 The profile is regenerated from scratch on every run so the committed tree is a pure
 function of the recipes/stack (reproducible build).
@@ -240,22 +239,3 @@ def write_derived_dockerfile(
     return out
 
 
-def write_baked_manifest(profile_dir: Path, stack: Stack, baked: list[McpServer]) -> Path:
-    """Emit the manifest of stdio servers the hatago image must bake (base/Dockerfile.hatago)."""
-    out = profile_dir / "baked-servers.json"
-    _write_json(
-        out,
-        {
-            "stack": stack.name,
-            "servers": [
-                {
-                    "name": s.name,
-                    "command": s.command,
-                    "args": list(s.args),
-                    "transport": s.transport,
-                }
-                for s in baked
-            ],
-        },
-    )
-    return out
