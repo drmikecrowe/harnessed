@@ -25,6 +25,7 @@ the recipe's Dockerfile. Three ways a recipe delivers capability:
 - **MCP server** — `mcp.servers:` (stdio child via `command:`, or network-native via `url:`/`service:`).
 - **Skill / command** — ship a `skills/<leaf>/` or `commands/<leaf>/` dir; the assembler fans it into
   the profile's `.claude/`.
+- **Rules** — ship a `rules/<leaf>/` dir; the assembler fans it into the profile's `.claude/rules/` (system-prompt-equivalent guidance for Claude Code).
 - **Dockerfile** — install into the agent image's `~/.claude/…` (or install a CLI). Because the
   assembler can't see what a Dockerfile installs, **declare it** so the capability test can probe it:
 
