@@ -41,6 +41,10 @@ RUN usermod -l ${USERNAME} ubuntu && \
     mkdir -p /home/${USERNAME} && \
     cp -an /home/ubuntu/. /home/${USERNAME}/ 2>/dev/null || true && \
     rm -rf /home/ubuntu && \
+    # Pre-create ~/.ssh with strict 0700 perms so the launcher's per-file credential mounts
+    # (config / known_hosts / *.pub / opt-in keys) land in a correctly-owned dir — otherwise podman
+    # auto-creates the mount-point root-owned and ssh refuses "Bad owner or permissions on ~/.ssh".
+    mkdir -p /home/${USERNAME}/.ssh && chmod 700 /home/${USERNAME}/.ssh && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 
 USER ${USERNAME}
