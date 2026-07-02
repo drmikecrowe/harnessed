@@ -299,6 +299,7 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     prof = _ensure_profile_dir(stack)
     # assemble emits to <build-dir>/profiles/<stack>; pass the dir that *contains* profiles/.
     build_root = paths.profiles_root().parent
+    hdir = _harnessed_dir()
 
     _out.print(f"[blue][INFO][/blue] Assembling stack '{stack}' ...")
     try:
