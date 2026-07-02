@@ -158,14 +158,21 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
 
 
 def _hatago_entry(server: McpServer) -> dict:
-    """Map an MCP server to a hatago `mcpServers` entry (schema per hatago docs)."""
+    """Map an MCP server to a hatago `mcpServers` entry (schema per hatago docs).
+
+    When `url_env` is set, the URL is emitted as `${VAR_NAME}` so the profile file contains no
+    secret value. The env var reaches the container at launch time (via --env-file) and hatago
+    substitutes it at runtime. `url_env` takes precedence over `url` when both are set.
+    """
     if server.is_stdio_child:
         entry: dict = {"command": server.command, "args": list(server.args)}
         if server.env:
             entry["env"] = dict(server.env)
         return entry
     # Network-native server: hatago proxies it by URL (transport http/sse).
-    entry = {"url": server.url, "type": server.transport}
+    # url_env → emit placeholder; resolved at runtime from the container's env (never on disk).
+    url = f"${{{server.url_env}}}" if server.url_env else server.url
+    entry = {"url": url, "type": server.transport}
     if server.headers:
         entry["headers"] = dict(server.headers)
     return entry

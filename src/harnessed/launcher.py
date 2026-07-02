@@ -403,6 +403,54 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     _out.print(f"[green][SUCCESS][/green] Stack '{stack}' built — profile: {prof}")
 
 
+def _resolve_launch_secrets() -> Path | None:
+    """Resolve launch-time secrets from ~/.config/harnessed/.env.schema via varlock.
+
+    If the schema exists and `varlock` is on PATH, runs `varlock load --format env` in the
+    schema's directory, captures stdout into a mode-0600 temp file, and returns its path.
+    The caller MUST unlink the file after the launch command (use try/finally).
+
+    No schema / no varlock → returns None (byte-for-bit fallback, no varlock invocation).
+    `OP_SERVICE_ACCOUNT_TOKEN` is forwarded to the temp file when already set in the host
+    env (headless/CI path — service-account bearer auth, no desktop app required).
+    """
+    schema = Path.home() / ".config" / "harnessed" / ".env.schema"
+    if not (schema.is_file() and shutil.which("varlock")):
+        return None
+
+    result = subprocess.run(
+        ["varlock", "load", "--format", "env"],
+        capture_output=True,
+        text=True,
+        cwd=str(schema.parent),
+    )
+    if result.returncode != 0:
+        _err.print(
+            f"[bold red]error:[/bold red] varlock load failed (exit {result.returncode}): "
+            f"{result.stderr.strip()}"
+        )
+        return None
+
+    lines = result.stdout
+    # Forward OP_SERVICE_ACCOUNT_TOKEN when already set in the host env (headless / CI fallback).
+    op_token = os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")
+    if op_token:
+        lines += f"\nOP_SERVICE_ACCOUNT_TOKEN={op_token}\n"
+
+    fd, tmp = tempfile.mkstemp(prefix="harnessed-env.", suffix=".env")
+    try:
+        os.chmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(lines)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return Path(tmp)
+
+
 def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path) -> None:
     """Build the derived image, supplying SNYK_TOKEN to its scan layer as a build SECRET.
 
@@ -1251,6 +1299,10 @@ def launch(
         trusted_keys = _trusted_ssh_keys(stk.ssh_keys, stack_from_overlay, stack)
         mount_args += _credential_forward_args(ssh_keys=trusted_keys, rt=rt)
 
+    # Resolve launch-time secrets (opt-in: only when ~/.config/harnessed/.env.schema exists and
+    # varlock is installed). Returns a mode-0600 temp env-file path, or None for the no-op path.
+    secrets_env_file = _resolve_launch_secrets()
+
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")
 
@@ -1274,10 +1326,21 @@ def launch(
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
         "--name", inst,
+        *(["--env-file", str(secrets_env_file)] if secrets_env_file else []),
         *member_mounts,
         harness_image, "sleep", "infinity",
     ]
-    _run(harness_run, capture_output=True)
+    try:
+        _run(harness_run, capture_output=True)
+    finally:
+        # Unlink the temp env-file as soon as podman has ingested it into the container's env —
+        # resolved secret values must not linger on disk (T-05-06). Always runs (success or failure).
+        if secrets_env_file:
+            try:
+                secrets_env_file.unlink()
+            except OSError:
+                pass
+            secrets_env_file = None
 
     _apply_firewall(rt, inst)
 
