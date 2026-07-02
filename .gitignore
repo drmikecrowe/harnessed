@@ -18,6 +18,11 @@ extra-tools.txt
 # DX symlinks: catalog/<kind>.local → ~/.config/harnessed/catalog/<kind> (created by `harnessed build`).
 catalog/*.local
 
+# docs/ is an unpinned live clone of the project's GitHub wiki (bootstrapped by
+# `harnessed build`, see _ensure_docs_wiki_clone in launcher.py). Not a submodule --
+# no pinned commit, no pointer-bump PRs. Pull it yourself: git -C docs pull.
+/docs/
+
 # Throwaway fixture profiles emitted by `harnessed build <fixture-stack> --root tools/test-fixtures`.
 tools/test-fixtures/profiles/
 
