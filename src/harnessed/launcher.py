@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -245,6 +246,33 @@ def _ensure_local_catalog_links() -> None:
             raise typer.Exit(1)
         else:
             target.symlink_to(dest)
+
+
+def _ensure_docs_wiki_clone() -> None:
+    """Bootstrap docs/ as an unpinned live clone of the repo's GitHub wiki, when missing.
+
+    docs/ is a plain git clone (not a submodule) of <origin>.wiki.git -- no pinned
+    commit, no pointer-bump PRs; pull it yourself with `git -C docs pull`. Only runs
+    inside a harnessed repo checkout (catalog/ present); leaves an existing docs/ alone.
+    """
+    cwd = Path.cwd()
+    if not (cwd / "catalog").is_dir():
+        return
+    docs_dir = cwd / "docs"
+    if docs_dir.exists():
+        return
+    try:
+        origin_url = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=cwd, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except subprocess.CalledProcessError:
+        return
+    wiki_url = re.sub(r"\.git$", "", origin_url) + ".wiki.git"
+    try:
+        _run(["git", "clone", wiki_url, str(docs_dir)])
+    except subprocess.CalledProcessError:
+        _err.print(f"[yellow]warning:[/yellow] could not clone docs wiki ({wiki_url}); docs/ left missing")
 
 
 def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
@@ -1338,6 +1366,7 @@ def build(
     if no_scans:
         os.environ["HARNESSED_NO_SCANS"] = "true"
     _ensure_local_catalog_links()
+    _ensure_docs_wiki_clone()
     rt = _runtime()
     root_path = Path(root).resolve() if root else None
     if stack:
