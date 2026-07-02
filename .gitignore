@@ -6,6 +6,8 @@ pip
 extra-tools.txt
 
 !.claude/.gitkeep
+!.claude/settings.json
+!.claude/file-suggestion.sh
 
 .dockerignore
 
