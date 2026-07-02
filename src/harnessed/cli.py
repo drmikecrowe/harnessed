@@ -20,6 +20,7 @@ from . import report
 from .assemble import assemble
 from .capability import CapabilityError, run_capability_test
 from .emit import HATAGO_ENDPOINT
+from .persist_gc import _fmt_size, list_entries, prune_project
 from .scan import ScanError, run_image_scan, run_image_scan_online, run_snyk_container_scan, run_source_scan
 from .schema import RecipeLintError, SchemaError
 from .synclinks import CollisionError
@@ -116,6 +117,34 @@ def _build_parser() -> argparse.ArgumentParser:
         "image_name",
         help="container image name to scan, e.g. harnessed-gstack-time:latest",
     )
+
+    sub.add_parser(
+        "persist-list",
+        help="list all persist dirs under persist_root() with recipe, project hash, name, and disk usage",
+    )
+
+    prn = sub.add_parser(
+        "persist-prune",
+        help="remove persist dir(s) for a specific recipe + project (requires --yes; irreversible)",
+    )
+    prn.add_argument("--recipe", required=True, help="recipe name (e.g. context-mode)")
+    prn.add_argument(
+        "--project",
+        required=True,
+        metavar="PATH",
+        help="project path — the hash is re-derived from this path, matching what was used at launch",
+    )
+    prn.add_argument(
+        "--name",
+        default=None,
+        metavar="NAME",
+        help="persist entry name to remove; if omitted ALL entries for this recipe+project are removed",
+    )
+    prn.add_argument(
+        "--yes",
+        action="store_true",
+        help="confirm the destructive removal (required; harnessed refuses to delete without it)",
+    )
     return parser
 
 def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
@@ -205,6 +234,39 @@ def _run_scan_image_online(args: argparse.Namespace, out: Console, err: Console)
     return 0
 
 
+def _run_persist_list(_args: argparse.Namespace, out: Console, _err: Console) -> int:
+    """List all persist dirs: recipe / project_hash / name + disk usage."""
+    entries = list_entries()
+    if not entries:
+        out.print("[dim]No persist dirs found.[/dim]")
+        return 0
+    for e in entries:
+        size = _fmt_size(e.size_bytes)
+        out.print(
+            f"  [bold]{e.recipe}[/bold] / [cyan]{e.project_hash}[/cyan] / {e.name}  "
+            f"[dim]({size})[/dim]  {e.host_dir}",
+            highlight=False,
+        )
+    return 0
+
+
+def _run_persist_prune(args: argparse.Namespace, out: Console, err: Console) -> int:
+    """Remove persist dir(s) for a specific recipe + project; requires --yes."""
+    if not args.yes:
+        err.print(
+            "[bold red]error:[/bold red] persist-prune is irreversible — re-run with [bold]--yes[/bold] to confirm.",
+            highlight=False,
+        )
+        return 1
+    removed = prune_project(args.recipe, args.project, name=args.name)
+    if not removed:
+        out.print("[dim]Nothing to remove (no matching persist dir found).[/dim]")
+        return 0
+    for d in removed:
+        out.print(f"[bold red]removed[/bold red] {d}", highlight=False)
+    return 0
+
+
 def _run_scan_snyk_container(args: argparse.Namespace, out: Console, err: Console) -> int:
     """Run snyk container test on a built image; exit 1 on HIGH+ finding (SC-03).
 
@@ -238,6 +300,10 @@ def main(argv: list[str] | None = None) -> int:
         return _run_scan_image_online(args, out, err)
     if args.command == "scan-snyk-container":
         return _run_scan_snyk_container(args, out, err)
+    if args.command == "persist-list":
+        return _run_persist_list(args, out, err)
+    if args.command == "persist-prune":
+        return _run_persist_prune(args, out, err)
     parser.error(f"unknown command: {args.command}")
     return 2
 
