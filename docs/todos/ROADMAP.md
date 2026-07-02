@@ -105,6 +105,12 @@ on-by-default), T7 (HATAGO_PORT), T8 (`_service_refs` test), and T2 (capability.
 parallelize. T4a → {T4b global-allowlist security · T3 author context-mode · T5 ownership guard ·
 T6 round-trip + two-project isolation test}.
 
+### TIER 1b — quick wins (independent of the persist slice, land any time)
+| Item | Why now |
+|------|---------|
+| **T10 · `rules:` recipe field** (spec §E) | Mirrors the existing `skills:` field; `.claude/rules/` is already an `_EXT_SUBDIRS` entry mounted `:ro` by the launcher, just unpopulated. Near-zero new code — schema field + `LinkSyncer` registration only. Feature request 2026-07-02: recipe-declared markdown rules/system-prompt content. |
+| **T11 · local catalog symlinks** (spec §F) | DX convenience: surface `~/.config/harnessed/catalog/{agents,recipes,services,stacks}` inside the repo tree as `catalog/{kind}.local` symlinks, so the user overlay is editable/browsable without leaving the repo. `harnessed build` ensures both the host-side dirs and the symlinks exist. Purely filesystem convenience — `catalog_roots()` already resolves the overlay directly and needs no change. Feature request 2026-07-02. |
+
 ### TIER 2 — secrets (conditional, but now has a first consumer)
 | Item | Trigger / note |
 |------|----------------|
@@ -187,6 +193,43 @@ runs `podman compose -f <file> up -d` with secret-resolved env (built on §B), w
 and the recipe's `service:` MCP ref points at the app port via `host.containers.internal:<port>`.
 Needs its own design doc — open questions: compose runtime dependency, named-vs-bind volumes,
 lifecycle surface (`svc up|down|list`).
+
+### §E · `rules:` — recipe-declared markdown mounted at `.claude/rules/`
+Parallel field to `skills:` in `Recipe` (`schema.py`): `rules: [{path: rules/my-rule}]`, parsed by the
+same `_parse_fileext`, registered in `synclinks.LinkSyncer` (`assemble.py`), fanned into
+`profile_dir/.claude/rules/<name>` by the existing `LinkSyncer.fan()` copytree. **No emit or launcher
+change required** — `.claude/rules` is already in `_EXT_SUBDIRS` and already mounted `:ro` by the
+launcher; it's just never populated because no recipe declares it today. Also add `rules` to
+`KNOWN_RECIPE_FIELDS` and to `schemas/recipe.schema.json` (matters once T1 `--strict` flips
+`additionalProperties:false` — otherwise `rules:` fails schema validation the moment `--strict` lands).
+Scope: schema field + `LinkSyncer` registration + one round-trip test (recipe declares a rules dir →
+built profile has `.claude/rules/<name>/*.md`) + a CONTRIBUTING.md line under "how to add a recipe".
+Decided 2026-07-02: ship `rules:` now; a harness-agnostic free-form "system prompt" field is a separate,
+lower-priority ask (no CLAUDE.md/AGENTS.md generation pipeline exists to receive it) — only build that
+if a concrete non-Claude harness needs it.
+
+### §F · local catalog symlinks — DX convenience for editing the user overlay
+`catalog_roots()` (`paths.py:67`) already resolves `~/.config/harnessed/catalog` as the first-wins
+overlay root — this feature does **not** touch catalog resolution. It's purely a filesystem convenience:
+surface that overlay inside the repo tree so an author can browse/edit it without `cd`-ing to
+`~/.config/harnessed`. On `harnessed build` (top of the `build()` Typer command, before the
+`_build_stack`/`_build_images_cmd` dispatch — new helper e.g. `_ensure_local_catalog_links()`):
+1. `mkdir(parents=True, exist_ok=True)` for `~/.config/harnessed/catalog/{agents,recipes,services,stacks}`
+   (not `base` — that subdir is repo-internal base-image content, not user-authorable).
+2. For each of the four kinds, ensure `catalog/<kind>.local` in the **current working directory**
+   symlinks to `~/.config/harnessed/catalog/<kind>` — create if absent, leave alone if already the
+   correct symlink, **error loudly** (don't silently overwrite) if the path exists and is not that
+   symlink.
+3. Add `catalog/*.local` to `.gitignore` (the existing root-level `.local` line only matches the
+   repo-root pip dir, not `catalog/*.local` — needs its own entry).
+
+**Open question, not yet resolved:** should step 2 fire unconditionally in whatever cwd `harnessed
+build` runs from (creating `catalog/*.local` in arbitrary project directories with no `catalog/` of
+their own), or only when a `catalog/` dir already exists at cwd (i.e., only inside a harnessed repo
+checkout)? Leaning toward gating on "cwd already has a `catalog/` dir" — this is a repo-maintainer /
+recipe-author convenience, not something a consumer of `harnessed build <stack>` in an unrelated project
+should see appear. Also note: this is the first `os.symlink`/`Path.symlink_to` call in `src/harnessed/`
+— no existing precedent to follow.
 
 ## GSTACK REVIEW REPORT
 
