@@ -225,6 +225,7 @@ class Recipe:
     servers: list[McpServer] = field(default_factory=list)
     skills: list[FileExt] = field(default_factory=list)
     commands: list[FileExt] = field(default_factory=list)
+    rules: list[FileExt] = field(default_factory=list)
     expect: Expect = field(default_factory=Expect)
     persist: PersistSpec = field(default_factory=PersistSpec)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
@@ -337,7 +338,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # the D-14 forward fields stay legal so a recipe can still carry plugins/deps/hooks/scripts without a
 # schema change here. A genuinely NEW forward field is added to this set (or built with --no-strict).
 KNOWN_RECIPE_FIELDS = frozenset({
-    "name", "description", "mcp", "skills", "commands", "expect", "persist",  # typed
+    "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist",  # typed
     "plugins", "hooks", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -393,6 +394,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False) -> Recipe:
         servers=_parse_servers(raw.get("mcp", {}) or {}),
         skills=_parse_fileext(raw.get("skills")),
         commands=_parse_fileext(raw.get("commands")),
+        rules=_parse_fileext(raw.get("rules")),
         expect=_parse_expect(raw.get("expect")),
         persist=_parse_persist(raw.get("persist")),
         root=recipe_dir,
