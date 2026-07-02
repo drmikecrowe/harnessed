@@ -13,6 +13,9 @@ extra-tools.txt
 # stacks/<name>/stack.yaml is the authored source of truth; profiles/ is the mount artifact.
 /profiles/
 
+# DX symlinks: catalog/<kind>.local → ~/.config/harnessed/catalog/<kind> (created by `harnessed build`).
+catalog/*.local
+
 # Throwaway fixture profiles emitted by `harnessed build <fixture-stack> --root tools/test-fixtures`.
 tools/test-fixtures/profiles/
 
