@@ -216,6 +216,37 @@ def _ensure_profile_dir(stack: str) -> Path:
     return p
 
 
+def _ensure_local_catalog_links() -> None:
+    """Ensure user overlay catalog dirs exist; create catalog/<kind>.local symlinks when in a repo checkout."""
+    user_catalog_root = paths.user_catalog()
+    for kind in ("agents", "recipes", "services", "stacks"):
+        (user_catalog_root / kind).mkdir(parents=True, exist_ok=True)
+
+    cwd_catalog = Path.cwd() / "catalog"
+    if not cwd_catalog.is_dir():
+        return
+
+    for kind in ("agents", "recipes", "services", "stacks"):
+        target = cwd_catalog / f"{kind}.local"
+        dest = user_catalog_root / kind
+        if target.is_symlink():
+            if target.resolve() == dest.resolve():
+                continue  # already correct — no-op
+            _err.print(
+                f"[bold red]error:[/bold red] {target} is a symlink pointing at the wrong destination "
+                f"(expected -> {dest}). Remove it manually to proceed."
+            )
+            raise typer.Exit(1)
+        elif target.exists():
+            _err.print(
+                f"[bold red]error:[/bold red] {target} already exists and is not a symlink. "
+                f"Remove it manually to proceed."
+            )
+            raise typer.Exit(1)
+        else:
+            target.symlink_to(dest)
+
+
 def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(cmd, check=check, **kwargs)
@@ -1306,6 +1337,7 @@ def build(
     """Assemble a stack (emit + build hatago), or rebuild base/claude/hatago images."""
     if no_scans:
         os.environ["HARNESSED_NO_SCANS"] = "true"
+    _ensure_local_catalog_links()
     rt = _runtime()
     root_path = Path(root).resolve() if root else None
     if stack:
