@@ -14,7 +14,7 @@ USER root
 # verify against the SHA in checksums.txt, and install the binary. Pin the STANDARD asset name
 # `codebase-memory-mcp-linux-<arch>.tar.gz` (there is a `-portable` tarball sibling — leave it).
 ARG CBM_VERSION=0.8.1
-RUN set -euo pipefail; \
+RUN set -eu; \
     arch="$(uname -m)"; \
     case "$arch" in x86_64|amd64) arch="amd64";; aarch64|arm64) arch="arm64";; *) echo "unsupported $arch" >&2; exit 1;; esac; \
     asset="codebase-memory-mcp-linux-${arch}.tar.gz"; \
@@ -22,7 +22,8 @@ RUN set -euo pipefail; \
     cd /tmp; \
     curl -fsSL "${base}/${asset}" -o "${asset}"; \
     curl -fsSL "${base}/checksums.txt" -o checksums.txt; \
-    grep " ${asset}\$" checksums.txt | sha256sum -c -; \
+    grep " ${asset}\$" checksums.txt > expected.sha256; \
+    sha256sum -c expected.sha256; \
     tar xzf "${asset}"; \
     install -m 0755 codebase-memory-mcp /usr/local/bin/codebase-memory-mcp; \
     rm -rf /tmp/*
