@@ -19,16 +19,17 @@
 # http://host.containers.internal:8787/mcp (the same host-gateway address the `service:` resolver
 # emits). A remote URL like the one below needs no rewrite.
 #
-# Auth / secrets: the assembler writes the `url:` (and any `headers:`) VERBATIM into the generated
-# hatago.config.json under $XDG_DATA_HOME/harnessed/profiles/ — host-local, never an image layer,
-# never committed, but on disk in plaintext. Never commit a real key: a recipe carrying one belongs
-# only in your private user-overlay catalog. (`url_env` is accepted by the schema but not yet wired
-# into emission, so the key rides in the URL today.)
+# Auth / secrets: use `url_env` to keep the key out of the profile on disk. Set the full URL
+# (including the ?key=… query param) in your ~/.config/harnessed/.env.schema as an op:// ref,
+# e.g.:  OB1_URL=op(op://Private/OpenBrain/url)
+# The launcher resolves the ref via varlock and injects it into the container as OB1_URL. hatago
+# substitutes ${OB1_URL} at runtime — the profile file on disk never contains the real URL/key.
+# To use a literal URL without secrets management, replace `url_env` with `url:` instead.
 name: openbrain-example
 description: Template — a remote, url-based Streamable-HTTP MCP server (modelled on OB1/OpenBrain).
 
 mcp:
   servers:
     - name: openbrain-example
-      url: https://YOUR-PROJECT.supabase.co/functions/v1/open-brain-mcp?key=YOUR_OB1_KEY
+      url_env: OB1_URL
       transport: http
