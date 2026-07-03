@@ -17,7 +17,7 @@ USER root
 # Pin to the exact release tag (no @latest / :latest / --branch — the assembler pin gate rejects
 # floating refs). Verify the downloaded tarball against the release's checksums.txt before install.
 ARG BEADS_VERSION=1.0.5
-RUN set -euo pipefail; \
+RUN set -eu; \
     case "$(uname -m)" in \
       x86_64)  asset="bd-${BEADS_VERSION}-x86_64-unknown-linux-musl.tar.gz" ;; \
       aarch64) asset="bd-${BEADS_VERSION}-aarch64-unknown-linux-musl.tar.gz" ;; \
@@ -27,7 +27,8 @@ RUN set -euo pipefail; \
     cd /tmp; \
     curl -fsSL "${base}/${asset}" -o "${asset}"; \
     curl -fsSL "${base}/checksums.txt" -o checksums.txt; \
-    grep -F "${asset}" checksums.txt | sha256sum -c -; \
+    grep -F "${asset}" checksums.txt > expected.sha256; \
+    sha256sum -c expected.sha256; \
     tar -xzf "${asset}"; \
     install -m 0755 bd /usr/local/bin/bd; \
     rm -rf /tmp/*
