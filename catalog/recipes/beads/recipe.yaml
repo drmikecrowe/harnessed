@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: beads — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary that
+# bundles embedded Dolt for local-first, git-free persistent task memory. No MCP, no service, no
+# skill: the agent shells out to `bd` directly. `.beads/` is created at RUNTIME against the mounted
+# project (never at build time — the project isn't mounted during `harnessed build`), by the
+# new-session hook below once that feature lands, or by the agent on first use until then.
+name: beads
+description: bd (beads) — local-first, git-free graph issue tracker / persistent task memory for agents.
+
+# new-session startup hook (TARGET SHAPE). Requires the startup-hooks feature
+# (docs/todos/2026-06-29-startup-hooks.md — currently "design / not started"; beads is its first
+# consumer). When wired, the launcher runs hooks/new-session.sh once, the first time a project is
+# opened, gated on `.beads/` being absent in the project dir: it sets BEADS_DIR=$PWD/.beads and runs
+# `bd init --quiet --stealth`. `--stealth` disables git hook installation, git ops, and the default
+# AGENTS.md mutation, so the user's repo + agent config stay untouched.
+#
+# This block is parsed forward today (hooks is a known recipe field; the nested new_session dict is
+# skipped by the pin/npm lint) so it passes assemble without error even before the launcher consumes
+# it. Until the launcher runs it, the agent has `bd` on PATH and runs init itself on first use.
+hooks:
+  new_session:
+    script: hooks/new-session.sh
+    when_missing: .beads

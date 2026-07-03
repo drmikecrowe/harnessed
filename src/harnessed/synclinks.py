@@ -33,10 +33,12 @@ class LinkSyncer:
     # name -> (source dir, owning recipe name)
     skills: dict[str, tuple[Path, str]] = field(default_factory=dict)
     commands: dict[str, tuple[Path, str]] = field(default_factory=dict)
+    rules: dict[str, tuple[Path, str]] = field(default_factory=dict)
 
     def add_recipe(self, recipe: Recipe) -> None:
         self._register(recipe, recipe.skills, self.skills, "skill")
         self._register(recipe, recipe.commands, self.commands, "command")
+        self._register(recipe, recipe.rules, self.rules, "rule")
 
     @staticmethod
     def _register(
@@ -64,9 +66,10 @@ class LinkSyncer:
             registry[name] = (src, recipe.name)
 
     def fan(self, harness_config_dir: Path) -> None:
-        """Copy every registered skill/command dir into the harness config tree."""
+        """Copy every registered skill/command/rule dir into the harness config tree."""
         self._fan_into(harness_config_dir / "skills", self.skills)
         self._fan_into(harness_config_dir / "commands", self.commands)
+        self._fan_into(harness_config_dir / "rules", self.rules)
 
     @staticmethod
     def _fan_into(dest_root: Path, registry: dict[str, tuple[Path, str]]) -> None:
