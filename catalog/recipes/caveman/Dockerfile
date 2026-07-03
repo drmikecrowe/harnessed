@@ -30,7 +30,7 @@ ARG CAVEMAN_REF=v1.9.0
 # `cp -r …/.` (trailing-slash contents form) puts skills/caveman -> ~/.claude/skills/caveman, NOT
 # ~/.claude/skills/caveman/skills/caveman — the probe paths in `expect:` resolve against the flat
 # layout this produces.
-RUN set -euo pipefail; \
+RUN set -eu; \
     git clone --quiet --depth 1 --branch "${CAVEMAN_REF}" \
         https://github.com/JuliusBrussee/caveman.git /tmp/caveman && \
     mkdir -p ~/.claude/skills ~/.claude/commands ~/.claude/agents && \
