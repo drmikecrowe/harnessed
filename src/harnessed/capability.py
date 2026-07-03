@@ -249,15 +249,15 @@ def launch_headless(
 def teardown(instance: str, *, harnessed_bin: str | None = None) -> None:
     """Tear the instance down after the test (`--fresh` semantics; no state bleed, T-02-08).
 
-    Provider-neutral: podman groups the members in a pod (`pod rm -f` removes harness + hatago);
-    docker has no pod, so the two flat members (<instance> + <instance>-hatago, sharing a netns)
-    are force-removed directly.
+    Provider-neutral: podman groups the members in a pod (`pod rm -f` removes the instance);
+    docker has no pod, so the single flat container is force-removed directly. After
+    hatago-consolidation hatago runs in-container, so there is no separate `<instance>-hatago`.
     """
     runtime = _runtime()
     cmd = (
         [runtime, "pod", "rm", "-f", instance]
         if runtime == "podman"
-        else [runtime, "rm", "-f", instance, f"{instance}-hatago"]
+        else [runtime, "rm", "-f", instance]
     )
     try:
         subprocess.run(cmd, capture_output=True, text=True, timeout=120)

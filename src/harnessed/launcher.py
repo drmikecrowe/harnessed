@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -47,10 +48,11 @@ app = typer.Typer(
 _out = Console()
 _err = Console(stderr=True)
 
-# --- shared image names (base + hatago; agent images come from catalog/agents/<h>/agent.yaml) ---
+# --- shared image names (base; agent images come from catalog/agents/<h>/agent.yaml) ---
+# hatago is no longer a separate image — it is baked into harnessed-base and runs in-container
+# (hatago-consolidation), so there is no _HATAGO_IMAGE.
 _BASE_IMAGE = "harnessed-base:latest"
 _CLAUDE_IMAGE = "harnessed-claude:latest"
-_HATAGO_IMAGE = "harnessed-hatago:latest"
 _CONTAINER_HOME_STR = str(CONTAINER_HOME)
 
 # Attach command for each harness inside the container.
@@ -215,6 +217,64 @@ def _ensure_profile_dir(stack: str) -> Path:
     return p
 
 
+def _ensure_local_catalog_links() -> None:
+    """Ensure user overlay catalog dirs exist; create catalog/<kind>.local symlinks when in a repo checkout."""
+    user_catalog_root = paths.user_catalog()
+    for kind in ("agents", "recipes", "services", "stacks"):
+        (user_catalog_root / kind).mkdir(parents=True, exist_ok=True)
+
+    cwd_catalog = Path.cwd() / "catalog"
+    if not cwd_catalog.is_dir():
+        return
+
+    for kind in ("agents", "recipes", "services", "stacks"):
+        target = cwd_catalog / f"{kind}.local"
+        dest = user_catalog_root / kind
+        if target.is_symlink():
+            if target.resolve() == dest.resolve():
+                continue  # already correct — no-op
+            _err.print(
+                f"[bold red]error:[/bold red] {target} is a symlink pointing at the wrong destination "
+                f"(expected -> {dest}). Remove it manually to proceed."
+            )
+            raise typer.Exit(1)
+        elif target.exists():
+            _err.print(
+                f"[bold red]error:[/bold red] {target} already exists and is not a symlink. "
+                f"Remove it manually to proceed."
+            )
+            raise typer.Exit(1)
+        else:
+            target.symlink_to(dest)
+
+
+def _ensure_docs_wiki_clone() -> None:
+    """Bootstrap docs/ as an unpinned live clone of the repo's GitHub wiki, when missing.
+
+    docs/ is a plain git clone (not a submodule) of <origin>.wiki.git -- no pinned
+    commit, no pointer-bump PRs; pull it yourself with `git -C docs pull`. Only runs
+    inside a harnessed repo checkout (catalog/ present); leaves an existing docs/ alone.
+    """
+    cwd = Path.cwd()
+    if not (cwd / "catalog").is_dir():
+        return
+    docs_dir = cwd / "docs"
+    if docs_dir.exists():
+        return
+    try:
+        origin_url = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=cwd, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except subprocess.CalledProcessError:
+        return
+    wiki_url = re.sub(r"\.git$", "", origin_url) + ".wiki.git"
+    try:
+        _run(["git", "clone", wiki_url, str(docs_dir)])
+    except subprocess.CalledProcessError:
+        _err.print(f"[yellow]warning:[/yellow] could not clone docs wiki ({wiki_url}); docs/ left missing")
+
+
 def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(cmd, check=check, **kwargs)
@@ -238,7 +298,6 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
     pairs = [
         (_BASE_IMAGE, _catalog_base("Dockerfile.harnessed-base")),
         (_CLAUDE_IMAGE, _catalog_base("Dockerfile.harnessed-claude")),
-        (_HATAGO_IMAGE, _catalog_base("Dockerfile.hatago")),
     ]
     for image, dockerfile in pairs:
         if force or not _image_exists(rt, image):
@@ -299,6 +358,7 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     prof = _ensure_profile_dir(stack)
     # assemble emits to <build-dir>/profiles/<stack>; pass the dir that *contains* profiles/.
     build_root = paths.profiles_root().parent
+    hdir = _harnessed_dir()
 
     _out.print(f"[blue][INFO][/blue] Assembling stack '{stack}' ...")
     try:
@@ -309,14 +369,11 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
-    # Always rebuild the parameterised base first: hatago and the agent image below are both `FROM
-    # harnessed-base`, so a stale base (e.g. after editing Dockerfile.harnessed-base) would silently
-    # propagate into every derived image. Cache-backed — a no-op when the base Dockerfile is unchanged.
+    # Always rebuild the parameterised base first: the agent image below is `FROM harnessed-base`
+    # (which now also bakes hatago + the time server — hatago-consolidation), so a stale base (e.g.
+    # after editing Dockerfile.harnessed-base) would silently propagate into every derived image.
+    # Cache-backed — a no-op when the base Dockerfile is unchanged.
     _build_base_image(rt)
-
-    _out.print(f"[blue][INFO][/blue] Building {_HATAGO_IMAGE} for stack '{stack}' ...")
-    hdir = _harnessed_dir()
-    _run([rt, "build", "-t", _HATAGO_IMAGE, "-f", str(_catalog_base("Dockerfile.hatago")), str(hdir)])
 
     # (Re)build the agent base image so a changed agent Dockerfile / build_args (e.g. OMP_VERSION)
     # actually propagates — the derived image is `FROM` it. Cache-backed: a no-op when unchanged,
@@ -344,6 +401,54 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     _surface_scan_report(rt, derived, prof)
 
     _out.print(f"[green][SUCCESS][/green] Stack '{stack}' built — profile: {prof}")
+
+
+def _resolve_launch_secrets() -> Path | None:
+    """Resolve launch-time secrets from ~/.config/harnessed/.env.schema via varlock.
+
+    If the schema exists and `varlock` is on PATH, runs `varlock load --format env` in the
+    schema's directory, captures stdout into a mode-0600 temp file, and returns its path.
+    The caller MUST unlink the file after the launch command (use try/finally).
+
+    No schema / no varlock → returns None (byte-for-bit fallback, no varlock invocation).
+    `OP_SERVICE_ACCOUNT_TOKEN` is forwarded to the temp file when already set in the host
+    env (headless/CI path — service-account bearer auth, no desktop app required).
+    """
+    schema = Path.home() / ".config" / "harnessed" / ".env.schema"
+    if not (schema.is_file() and shutil.which("varlock")):
+        return None
+
+    result = subprocess.run(
+        ["varlock", "load", "--format", "env"],
+        capture_output=True,
+        text=True,
+        cwd=str(schema.parent),
+    )
+    if result.returncode != 0:
+        _err.print(
+            f"[bold red]error:[/bold red] varlock load failed (exit {result.returncode}): "
+            f"{result.stderr.strip()}"
+        )
+        return None
+
+    lines = result.stdout
+    # Forward OP_SERVICE_ACCOUNT_TOKEN when already set in the host env (headless / CI fallback).
+    op_token = os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")
+    if op_token:
+        lines += f"\nOP_SERVICE_ACCOUNT_TOKEN={op_token}\n"
+
+    fd, tmp = tempfile.mkstemp(prefix="harnessed-env.", suffix=".env")
+    try:
+        os.chmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(lines)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return Path(tmp)
 
 
 def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path) -> None:
@@ -490,8 +595,9 @@ def _pod_teardown(rt: str, instance: str, pod: str) -> None:
     if _rt_uses_pods(rt):
         subprocess.run([rt, "pod", "rm", "-f", pod], capture_output=True)
     else:
-        for name in (instance, f"{instance}-hatago"):
-            subprocess.run([rt, "rm", "-f", name], capture_output=True)
+        # Single flat container now — hatago runs in-container (hatago-consolidation), not a
+        # separate `{instance}-hatago` member.
+        subprocess.run([rt, "rm", "-f", instance], capture_output=True)
 
 
 def _attach_marker(inst: str) -> Path:
@@ -505,18 +611,30 @@ def _touch_attach_marker(inst: str) -> None:
     m.touch()
 
 
-def _session_active(rt: str, inst: str) -> bool:
-    """True while an interactive harness session is attached.
+def _session_active(rt: str, inst: str) -> bool | None:
+    """Whether an interactive harness session is attached: True/False, or None when undetermined.
 
-    An idle instance runs only its PID-1 `sleep infinity`; an attached one also carries the
-    `bash -l -c … <harness>` exec tree. Any process other than `sleep` counts as activity.
+    After the hatago-consolidation an idle instance is NOT just `sleep infinity`: it also runs the
+    detached in-container hatago hub (a `node` process) and any stdio MCP children hatago spawned
+    (`uvx mcp-server-time`, …). So the old "any non-sleep process = active" rule is wrong — it would
+    never report idle and `harnessed prune` would never fire. Detect the session positively instead,
+    by its controlling terminal: only the interactive attach (`exec -it … bash -l -c <harness>`) owns
+    a real pts; every infra process (sleep, hatago, stdio children) runs with no tty.
+
+    Returns None (not False) when `top` fails — a transient runtime hiccup must NOT be read as
+    "confirmed idle", or `prune` would tear down a live attached session on a momentary error. The
+    caller treats None conservatively (do not prune).
+
+    NOTE (podman-gated): the exact idle/attached tty strings must be confirmed against live
+    `<rt> top <inst> tty` output — this is the hatago-consolidation's main verification point.
     """
-    result = subprocess.run([rt, "top", inst, "comm"], capture_output=True, text=True)
+    result = subprocess.run([rt, "top", inst, "tty"], capture_output=True, text=True)
     if result.returncode != 0:
-        return False
-    # Drop the header row `top` prints; treat any surviving non-`sleep` process as a live session.
-    procs = [line.strip() for line in result.stdout.splitlines()[1:] if line.strip()]
-    return any(c != "sleep" for c in procs)
+        return None  # couldn't determine — caller must not treat this as idle
+    # Drop the header row; a process owning a real terminal (pts/N) is the attached session. Infra
+    # processes report no tty ("?" on podman, "-"/"" elsewhere).
+    ttys = [line.strip() for line in result.stdout.splitlines()[1:] if line.strip()]
+    return any(t not in ("?", "-", "") for t in ttys)
 
 
 def _apply_firewall(rt: str, instance: str) -> None:
@@ -528,7 +646,14 @@ def _apply_firewall(rt: str, instance: str) -> None:
     ], capture_output=True)
 
 
-def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> None:
+def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> bool:
+    """Poll until the in-container hatago hub accepts connections on `port`.
+
+    Returns True once the port is live, False on timeout. hatago is started with `exec -d …
+    nohup … &` (hatago-consolidation), so the launch never sees a non-zero exit when hatago fails
+    to bind — a missing-from-base binary, a bad config, or a crashed hub all look identical to a
+    slow start. The caller must surface a False so we don't report `[SUCCESS]` over a dead MCP hub.
+    """
     import time
     if port is None:
         port = paths.hatago_port()  # honor the HATAGO_PORT env override (single source: paths)
@@ -540,15 +665,19 @@ def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int =
             capture_output=True,
         )
         if result.returncode == 0:
-            return
+            return True
         time.sleep(1)
+    _err.print(
+        f"[bold red]error:[/bold red] hatago hub never came up on :{port} after {timeout}s — "
+        f"MCP tools will be unavailable. Inspect the hub log: {rt} exec {instance} cat /tmp/hatago.log"
+    )
+    return False
 
 
 def _build_mount_args(
     harness: str,
     prof: Path,
     mount_path: Path,
-    relpath: str,
 ) -> list[str]:
     """Assemble -v mount arguments for the harness container.
 
@@ -667,6 +796,282 @@ def _omp_agent_mount(harness: str) -> list[str]:
         )
         return []
     return ["-v", f"{host_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
+
+
+def _host_os() -> str:
+    """'macos' | 'linux' | 'other'. Drives per-OS agent socket paths + YubiKey passthrough."""
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    return "other"
+
+
+def _op_agent_socket(home: Path) -> Path:
+    """Host path to the 1Password SSH agent socket, per OS (paths are 1Password-published)."""
+    if _host_os() == "macos":
+        return home / "Library" / "Group Containers" / "2BUA8C4S2C.com.1password" / "t" / "agent.sock"
+    return home / ".1password" / "agent.sock"
+
+
+def _gpg_ssh_socket() -> Path | None:
+    """Host path to the gpg-agent SSH socket (YubiKey-resident keys), cross-platform.
+
+    `gpgconf --list-dirs agent-ssh-socket` is the portable source of truth on Linux AND macOS; fall
+    back to the Linux default only when gpgconf isn't on PATH. None when undeterminable.
+    """
+    try:
+        out = subprocess.run(
+            ["gpgconf", "--list-dirs", "agent-ssh-socket"], capture_output=True, text=True, timeout=5
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return Path(out.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if _host_os() == "linux":
+        return Path(f"/run/user/{os.getuid()}/gnupg/S.gpg-agent.ssh")
+    return None
+
+
+def _macos_op_socket_mount_source(rt: str, host_sock: Path) -> Path | None:
+    """macOS only: a path the container runtime can bind-mount for the 1Password agent socket.
+
+    PENDING VERIFICATION (macOS-gated — I could not test this from Linux). On macOS the container
+    runtime is a Linux VM (podman machine / Docker Desktop), and a host unix socket does NOT
+    traverse the host→VM file share, so a plain `-v <host_sock>:…` usually fails. The working pattern
+    is to reverse-forward the socket INTO the VM and bind-mount the in-VM path. This wires the podman
+    machine reverse-forward; it is UNVERIFIED on real hardware — see
+    docs/todos/2026-06-30-macos-ssh-agent-forwarding.md before trusting it.
+
+    Returns the in-VM socket path on a best-effort success, else None (caller falls back to the raw
+    host path + a note). Never raises; never blocks the launch.
+    """
+    if rt != "podman":
+        return None  # Docker Desktop uses a different relay; not wired yet (see the todo).
+    vm_sock = Path("/tmp/harnessed-op-agent.sock")
+    try:
+        # Reverse-forward host_sock → vm_sock inside the running podman machine, backgrounded.
+        # StreamLocalBindUnlink=yes clears a stale vm_sock so a second launch's -R bind doesn't fail
+        # (the fixed path would otherwise leak a dead socket + a backgrounded ssh forever).
+        # ExitOnForwardFailure=yes makes ssh exit non-zero if the forward can't be established, so we
+        # DON'T return a path pointing at nothing.
+        r = subprocess.run(
+            ["podman", "machine", "ssh", "-f", "-N", "-T",
+             "-o", "StreamLocalBindUnlink=yes", "-o", "ExitOnForwardFailure=yes",
+             "-R", f"{vm_sock}:{host_sock}"],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None  # forward failed → caller falls back to the note, not a dead socket path
+    return vm_sock
+
+
+def _ssh_agent_args(home: Path, gpg_ssh_sock: Path | None, *, rt: str = "podman") -> list[str]:
+    """Forward the host's SSH signing/auth agent into the container, setting SSH_AUTH_SOCK.
+
+    Two agents, in precedence order (ports container.sh):
+    - 1Password SSH agent — primary. op-ssh-sign signs commits through it and `git push` over SSH
+      authenticates through it. Private keys never leave 1Password. Path is OS-aware
+      (`_op_agent_socket`); on macOS the mountable source may be a podman-machine relay path.
+    - gpg-agent SSH socket — the YubiKey path. Mounted when present, but only claims SSH_AUTH_SOCK
+      when 1Password's socket is absent, so a machine with both keeps 1Password as the active signer.
+
+    Each is conditioned on the socket existing, so this is a clean no-op when neither agent is running.
+    """
+    ctr = _CONTAINER_HOME_STR
+    args: list[str] = []
+    op_agent = _op_agent_socket(home)
+    op_present = op_agent.is_socket()
+    if op_present:
+        source = op_agent
+        if _host_os() == "macos":
+            relayed = _macos_op_socket_mount_source(rt, op_agent)
+            if relayed is not None:
+                source = relayed
+            else:
+                _err.print(
+                    "[yellow]note:[/yellow] macOS 1Password agent forwarding is unverified "
+                    "(host→VM socket relay) — if push/sign fails, see "
+                    "docs/todos/2026-06-30-macos-ssh-agent-forwarding.md"
+                )
+        ctr_sock = f"{ctr}/.1password/agent.sock"
+        args += ["-v", f"{source}:{ctr_sock}", "-e", f"SSH_AUTH_SOCK={ctr_sock}"]
+    if gpg_ssh_sock is not None and gpg_ssh_sock.is_socket():
+        # A ':' in the socket path would reparse the `-v src:dst` spec. Sockets don't normally
+        # contain ':', but gpgconf output is host-derived — skip defensively rather than mis-mount.
+        if ":" in str(gpg_ssh_sock):
+            _err.print(
+                f"[yellow]note:[/yellow] gpg-agent SSH socket path {gpg_ssh_sock} contains ':' "
+                "— skipping mount."
+            )
+        else:
+            ctr_gpg = f"{ctr}/.gnupg-sockets/S.gpg-agent.ssh"
+            args += ["-v", f"{gpg_ssh_sock}:{ctr_gpg}"]
+            if not op_present:  # 1Password wins; gpg only drives SSH_AUTH_SOCK when it's the only agent
+                args += ["-e", f"SSH_AUTH_SOCK={ctr_gpg}"]
+    return args
+
+
+def _yubikey_device_args() -> list[str]:
+    """`--device` passthrough for a connected YubiKey (Yubico vendor id 1050) so in-container gpg/
+    op-ssh can reach the token. LINUX ONLY: macOS runs the container in a Linux VM with no
+    `/dev/bus/usb`, so USB passthrough isn't possible there (the YubiKey reaches the container via
+    the gpg-agent SSH socket relay instead). Best-effort `lsusb` parse; [] when absent.
+    """
+    if _host_os() != "linux":
+        return []
+    try:
+        out = subprocess.run(["lsusb"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if out.returncode != 0:
+        return []
+    for line in out.stdout.splitlines():
+        low = line.lower()
+        if "yubico" not in low and "id 1050:" not in low:
+            continue
+        # "Bus 003 Device 004: ID 1050:0407 Yubico.com ..." → /dev/bus/usb/003/004
+        parts = line.split()
+        if len(parts) >= 4:
+            bus, dev = parts[1], parts[3].rstrip(":")
+            device = f"/dev/bus/usb/{bus}/{dev}"
+            if Path(device).exists():
+                return ["--device", device]
+    return []
+
+
+def _ssh_dir_mounts(home: Path, ssh_keys: list[str]) -> list[str]:
+    """Forward the non-secret SSH surface + opt-in private keys, file-by-file (NOT the whole ~/.ssh).
+
+    The repo hard-denies `~/.ssh` to recipes for a reason (persist.py); blanket-mounting it would
+    drop every private key into the container. Instead:
+    - Always (when present, ro): `config`, `known_hosts`, and every `*.pub` — host verification +
+      ssh config + public identities, none of which are secret.
+    - Private keys ONLY when the stack's `ssh_keys:` opts them in by basename — for hosts without an
+      agent (1Password/gpg). The name is schema-validated to a single component, so it can't escape
+      ~/.ssh; we still re-check the resolved path stays under ~/.ssh as defense-in-depth.
+    """
+    ctr = _CONTAINER_HOME_STR
+    ssh_dir = (home / ".ssh").resolve()
+    if not ssh_dir.is_dir():
+        return []
+    args: list[str] = []
+
+    def _mount_named(name: str) -> None:
+        # Resolve the entry and require it be a regular file living DIRECTLY under ~/.ssh.
+        # Symlinks are followed, so a config / known_hosts / *.pub whose target escapes ~/.ssh
+        # (e.g. ~/.ssh/config -> ~/.aws/credentials) is rejected — the same defense-in-depth the
+        # opt-in ssh_keys path uses — rather than mounting the secret target read-only. `:` is the
+        # podman `-v src:dst:opts` separator: a name containing one would reparse the spec (no shell
+        # injection — list args), so skip it.
+        if ":" in name:
+            _err.print(f"[yellow]note:[/yellow] skipping ~/.ssh/{name} (':' in name).")
+            return
+        target = (ssh_dir / name).resolve()
+        if target.parent != ssh_dir or not target.is_file():
+            return
+        args.extend(["-v", f"{target}:{ctr}/.ssh/{name}:ro"])
+
+    for name in ("config", "known_hosts"):
+        _mount_named(name)
+    for pub in sorted(ssh_dir.glob("*.pub")):
+        _mount_named(pub.name)
+    for name in ssh_keys:
+        target = (ssh_dir / name).resolve()
+        if target.parent != ssh_dir or not target.is_file():
+            _err.print(
+                f"[yellow]note:[/yellow] ssh_keys: '{name}' not found in ~/.ssh (or not a regular "
+                f"file) — skipping."
+            )
+            continue
+        args += ["-v", f"{target}:{ctr}/.ssh/{name}:ro"]
+    return args
+
+
+def _gnupg_mounts(home: Path) -> list[str]:
+    """Forward only the NON-SECRET GPG files — NEVER the private keyring.
+
+    The bash launcher mounted all of ~/.gnupg, which drags in `private-keys-v1.d/*.key` — the actual
+    secret key material for SOFTWARE openpgp keys (only YubiKey-resident keys are stubs there). `ro`
+    doesn't help: read-only still means fully readable → exfiltratable by an autonomous agent (or a
+    compromised dep) in the container. That also overrides persist.py's hard-deny of ~/.gnupg. So we
+    forward ONLY the public/config surface, file-by-file, and never `private-keys-v1.d/`.
+
+    This means SSH-format signing (op-ssh-sign / gpg-agent SSH socket, see `_ssh_agent_args`) is the
+    supported in-container path; full openpgp GPG *signing* in-container (which needs the gpg-agent
+    socket + selectively-forwarded YubiKey stubs, without the software secrets) is a scoped follow-up
+    — see docs/todos/2026-06-30-macos-ssh-agent-forwarding.md.
+    """
+    ctr = _CONTAINER_HOME_STR
+    gnupg = home / ".gnupg"
+    if not gnupg.is_dir():
+        return []
+    args: list[str] = []
+    for name in ("pubring.kbx", "trustdb.gpg", "gpg.conf", "gpg-agent.conf", "sshcontrol"):
+        f = gnupg / name
+        if f.is_file():
+            args += ["-v", f"{f}:{ctr}/.gnupg/{name}:ro"]
+    return args
+
+
+def _trusted_ssh_keys(stk_ssh_keys: list[str], from_overlay: bool, stack: str) -> list[str]:
+    """Private-key (`ssh_keys`) mounts are honored ONLY from the user's own overlay catalog.
+
+    A stack.yaml can come from a SHARED repo catalog (per CLAUDE.md). Mounting a real private key is
+    the KEY OWNER's decision, not a third-party stack author's — so `ssh_keys` from anywhere but the
+    user overlay (`~/.config/harnessed/catalog`) is dropped with a warning. (Public keys / config /
+    known_hosts, which are not secret, are unaffected — this only gates private-key files.)
+    """
+    if stk_ssh_keys and not from_overlay:
+        _err.print(
+            f"[yellow]note:[/yellow] ignoring ssh_keys from shared-catalog stack '{stack}' — declare "
+            f"private keys only in your user overlay (~/.config/harnessed/catalog)."
+        )
+        return []
+    return stk_ssh_keys
+
+
+def _credential_forward_args(
+    home: Path | None = None, ssh_keys: list[str] | None = None, rt: str = "podman"
+) -> list[str]:
+    """Forward the host's git signing + push credential surface into the harness container.
+
+    Restores what the bash launcher (container.sh) forwarded — so the agent can `git push` and sign
+    commits inside the container WITHOUT baking any secret into an image — but OS-aware and with the
+    blunt whole-`~/.ssh` mount narrowed to the non-secret surface plus opt-in private keys. Every
+    piece is conditioned on host-side existence, so it's a clean no-op when nothing is configured.
+
+    - SSH signing/auth agent (1Password primary, gpg-agent/YubiKey fallback) — see `_ssh_agent_args`.
+    - NON-SECRET GPG files only (pubring/trustdb/config, NEVER the private keyring) — `_gnupg_mounts`.
+    - YubiKey USB device passthrough (`--device`, Linux only) — see `_yubikey_device_args`.
+    - git config (`~/.config/git` dir, else legacy `~/.gitconfig`, ro): carries user.signingkey,
+      gpg.format=ssh, gpg.ssh.program=op-ssh-sign, commit.gpgsign so commits actually sign.
+    - ssh config + known_hosts + public keys (ro), plus stack `ssh_keys` opt-in privates — see
+      `_ssh_dir_mounts`.
+
+    NOTE: the dropped "transparent mode" (rw `~/.claude`) is intentionally NOT restored.
+    """
+    home = home or Path.home()
+    ssh_keys = ssh_keys or []
+    ctr = _CONTAINER_HOME_STR
+    args = _ssh_agent_args(home, _gpg_ssh_socket(), rt=rt)
+
+    args += _gnupg_mounts(home)
+
+    args += _yubikey_device_args()
+
+    xdg_git = home / ".config" / "git"
+    legacy_git = home / ".gitconfig"
+    if xdg_git.is_dir():
+        args += ["-v", f"{xdg_git}:{ctr}/.config/git:ro"]
+    elif legacy_git.is_file():
+        args += ["-v", f"{legacy_git}:{ctr}/.gitconfig:ro"]
+
+    args += _ssh_dir_mounts(home, ssh_keys)
+
+    return args
 
 
 def _persist_mounts(stack: str, project_path: Path) -> list[str]:
@@ -797,7 +1202,10 @@ def launch(
     # to a parent (e.g. a linked-worktree root) while the agent still starts in the project.
     mount_path = _resolve_mount_path(project_path, mount_folder)
 
-    stack_yaml = _stacks_dir() / stack / "stack.yaml"
+    # Resolve overlay-first (user catalog wins) so we also know the stack's SOURCE: private-key
+    # forwarding is trusted only from the user's own overlay, never a shared repo-catalog stack.
+    stack_dir = paths.find_in_catalog("stacks", stack)
+    stack_yaml = stack_dir / "stack.yaml"
     if not stack_yaml.is_file():
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_yaml})")
         raise typer.Exit(1)
@@ -807,10 +1215,12 @@ def launch(
         raise typer.Exit(1)
 
     try:
-        stk = load_stack(_stacks_dir() / stack)
+        stk = load_stack(stack_dir)
     except SchemaError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}")
         raise typer.Exit(1)
+
+    stack_from_overlay = stack_dir.resolve().is_relative_to(paths.user_catalog().resolve())
 
     harness = stk.harness
     # Prefer the derived per-stack image (recipe Dockerfile layers); fall back to the plain agent.
@@ -822,11 +1232,9 @@ def launch(
     pod = inst
     start_dir = _resolve_start_dir(project_path, agent_start_folder)
 
-    # Ensure harness image exists (lazy-build for non-claude harnesses).
+    # Ensure harness image exists (lazy-build for non-claude harnesses). hatago is baked into it now
+    # (hatago-consolidation), so there is no separate hatago image to check for.
     _ensure_harness_image(rt, harness)
-    if not _image_exists(rt, _HATAGO_IMAGE):
-        _err.print(f"[bold red]error:[/bold red] hatago image not found — run: harnessed build {stack}")
-        raise typer.Exit(1)
 
     # --fresh: tear down existing pod.
     if fresh:
@@ -875,13 +1283,25 @@ def launch(
         _out.print(f"[blue][INFO][/blue] Agent start folder: {start_dir}")
 
     # Build mount args.
-    mount_args = _build_mount_args(harness, prof, mount_path, relpath)
+    mount_args = _build_mount_args(harness, prof, mount_path)
     # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the ro credential).
     mount_args += _claude_config_seed_mount(harness, inst)
     # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
     mount_args += _omp_agent_mount(harness)
     # Persist recipe-declared project-scoped folders (rw) so their state survives --fresh.
     mount_args += _persist_mounts(stack, project_path)
+    # Forward the host's git signing + push credentials (1Password/GPG/YubiKey agent, git config,
+    # ssh config/known_hosts/pubkeys + opt-in private keys) so the agent can push and sign — no
+    # secret baked into an image. OPT-IN per stack (default off): a container gets standing authority
+    # to sign/auth as the user only when the stack asks. Private keys (ssh_keys) are honored ONLY from
+    # the user's own overlay catalog — a shared repo-catalog stack must not mount your private key.
+    if stk.forward_git_credentials:
+        trusted_keys = _trusted_ssh_keys(stk.ssh_keys, stack_from_overlay, stack)
+        mount_args += _credential_forward_args(ssh_keys=trusted_keys, rt=rt)
+
+    # Resolve launch-time secrets (opt-in: only when ~/.config/harnessed/.env.schema exists and
+    # varlock is installed). Returns a mode-0600 temp env-file path, or None for the no-op path.
+    secrets_env_file = _resolve_launch_secrets()
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")
@@ -896,36 +1316,54 @@ def launch(
     hatago_cfg_host = prof / "hatago.config.json"
     hatago_cfg_ctr = str(paths.hatago_config_container())
 
-    # Start hatago member.
-    hatago_run = [
-        rt, "run", "-d",
-        *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
-        "--name", f"{inst}-hatago",
-        "-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro",
-        _HATAGO_IMAGE,
-        "hatago", "serve", "--http", "--port", str(paths.hatago_port()),
-        "--config", hatago_cfg_ctr,
-    ]
-    _run(hatago_run, capture_output=True)
-
-    # Filter out --userns=keep-id from member (pod-level property).
+    # Filter out --userns=keep-id from member (pod-level property). Mount the hatago config (ro) into
+    # the HARNESS container — after the hatago-consolidation, hatago runs IN this container (not a
+    # separate pod member), so the hub and the stdio children it spawns share this container's home
+    # and see the project bind-mount.
     member_mounts = [a for a in mount_args if a != "--userns=keep-id"]
+    member_mounts += ["-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro"]
     harness_run = [
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
         "--name", inst,
+        *(["--env-file", str(secrets_env_file)] if secrets_env_file else []),
         *member_mounts,
         harness_image, "sleep", "infinity",
     ]
-    _run(harness_run, capture_output=True)
+    try:
+        _run(harness_run, capture_output=True)
+    finally:
+        # Unlink the temp env-file as soon as podman has ingested it into the container's env —
+        # resolved secret values must not linger on disk (T-05-06). Always runs (success or failure).
+        if secrets_env_file:
+            try:
+                secrets_env_file.unlink()
+            except OSError:
+                pass
+            secrets_env_file = None
 
     _apply_firewall(rt, inst)
-    _wait_hatago(rt, inst)
+
+    # Start hatago detached INSIDE the harness container (hatago-consolidation). `exec -d` runs it as
+    # a separate process group, so a harness crash does not take hatago with it and vice versa. Same
+    # endpoint (:3535) — but same container now, so .mcp.json's http://localhost:3535/mcp resolves
+    # without a shared netns. nohup + redirect so it survives detach and never blocks. The login
+    # shell (`-lc`) activates mise → hatago is on PATH (baked into harnessed-base).
+    _run([
+        rt, "exec", "-d", inst, "bash", "-lc",
+        f"nohup hatago serve --http --port {paths.hatago_port()} "
+        f"--config {hatago_cfg_ctr} >/tmp/hatago.log 2>&1 &",
+    ], capture_output=True)
+    hatago_up = _wait_hatago(rt, inst)
 
     if headless:
         if rm:
             _out.print("[yellow]note:[/yellow] --rm has no effect in headless mode (no interactive session to exit)")
-        _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago: {inst}-hatago)")
+        if not hatago_up:
+            # Headless callers (CI / capability tests) have no terminal to notice a degraded hub, so
+            # a dead hatago must be a hard failure here, not a green SUCCESS line.
+            raise typer.Exit(1)
+        _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago in-container)")
         return
 
     _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod, start_dir=start_dir)
@@ -990,6 +1428,8 @@ def build(
     """Assemble a stack (emit + build hatago), or rebuild base/claude/hatago images."""
     if no_scans:
         os.environ["HARNESSED_NO_SCANS"] = "true"
+    _ensure_local_catalog_links()
+    _ensure_docs_wiki_clone()
     rt = _runtime()
     root_path = Path(root).resolve() if root else None
     if stack:
@@ -1055,9 +1495,11 @@ def prune(
 ) -> None:
     """Tear down instances whose interactive session exited and stayed idle.
 
-    An instance is prunable when no session is attached (only its PID-1 `sleep infinity` runs)
-    and its last attach was at least --idle minutes ago. Instances never interactively attached
-    (headless / externally driven) and shared services are left untouched.
+    An instance is prunable when no session is attached and its last attach was at least --idle
+    minutes ago. After hatago-consolidation an idle instance is not just its PID-1 `sleep infinity`:
+    it also runs the in-container hatago hub and the stdio MCP children it spawned, so attachment is
+    detected positively by a controlling terminal (see `_session_active`), not by process count.
+    Instances never interactively attached (headless / externally driven) are left untouched.
     """
     import time
 
@@ -1066,17 +1508,19 @@ def prune(
         [rt, "ps", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
         capture_output=True, text=True,
     )
-    members = [
-        n.strip() for n in result.stdout.splitlines()
-        if n.strip() and not n.strip().endswith("-hatago")
-    ]
+    # hatago no longer runs as a separate `{inst}-hatago` member (hatago-consolidation), so every
+    # `harnessed-` container listed here is a prunable instance.
+    members = [n.strip() for n in result.stdout.splitlines() if n.strip()]
 
     pruned = 0
     for inst in members:
         marker = _attach_marker(inst)
         if not marker.exists():
             continue  # never interactively attached — leave it alone
-        if _session_active(rt, inst):
+        # Prune ONLY on a confirmed-idle reading. `_session_active` returns None when `top` failed
+        # (transient runtime hiccup): treat unknown as "leave it alone" so a momentary error never
+        # tears down a live attached session. The next prune run retries.
+        if _session_active(rt, inst) is not False:
             continue
         idle_min = (time.time() - marker.stat().st_mtime) / 60
         if idle_min < idle:
