@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: serena — LSP-backed semantic code intelligence over the project (oraios/serena).
+#
+# Serena runs as an MCP server whose DEFAULT transport is stdio (`start-mcp-server`), so it is a
+# plain hatago stdio child: hatago spawns `serena start-mcp-server` in-container, wraps its stdio
+# into the single Streamable-HTTP endpoint the harness talks to, and the child sees the
+# bind-mounted project (`.serena/` lands in the project dir on the host). No `transport:` field is
+# needed — stdio is the schema default. No `url:`/`service:` (it is not a network-native server),
+# no port, no `hooks:` (a stdio child has no daemon lifecycle — hatago owns the spawn).
+#
+# `--context ide` is serena's harness-agnostic generic context for terminal clients (it disables
+# serena's basic file/search tools to avoid overlap with the harness's own). `--project-from-cwd`
+# resolves the project from the child's cwd (= the project root hatago spawns it in). The CLI is
+# baked by the Dockerfile; no skill is shipped (upstream offers none).
+#
+# GATED on the hatago consolidation (see PLAN.md): until hatago lands in the harness container, the
+# stdio child cannot reach the project. The recipe is correct in shape regardless.
+name: serena
+description: Serena — LSP-backed semantic code intelligence (symbol retrieval, editing, refactoring, references) over the project via a stdio MCP server.
+
+# What the capability test probes after a successful build: the serena server connected through
+# the hatago hub. (The capability test only confirms the connection — verify behavior manually.)
+expect:
+  mcp: [serena]
+
+# --- MCP layer ---
+mcp:
+  servers:
+    - name: serena
+      command: serena
+      args: [start-mcp-server, --context, ide, --project-from-cwd]
+      # transport: stdio (schema default). hatago spawns this in-container → it sees the project.
