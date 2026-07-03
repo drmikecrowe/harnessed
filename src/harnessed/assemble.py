@@ -121,8 +121,9 @@ def assemble(
         syncer.add_recipe(recipe)
     syncer.fan(profile_dir / ".claude")
 
+    # stdio children are baked into the harness/stack image and spawned by the in-container hatago
+    # (hatago-consolidation); kept for reporting. No separate baked-servers.json is written.
     baked = [s for s in servers if s.is_stdio_child]
-    emit.write_baked_manifest(profile_dir, stack, baked)
 
     return AssembleResult(
         stack=stack,

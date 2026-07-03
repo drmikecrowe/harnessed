@@ -37,6 +37,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/fileExt" }
     },
+    "rules": {
+      "description": "Standalone rule dirs shipped by this recipe (Claude-canonical), fanned into the profile's .claude/rules/. Each entry is a path relative to the recipe dir.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/fileExt" }
+    },
     "expect": {
       "description": "Smoke-check subset the capability test probes after building — for capabilities delivered via the recipe's Dockerfile (which the assembler cannot infer by parsing). Not a completeness oracle.",
       "type": "object",

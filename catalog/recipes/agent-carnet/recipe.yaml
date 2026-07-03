@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: agent-carnet — bake the agent-carnet CLI (pure-JS Node) and install its upstream-bundled
+# Claude skill into ~/.claude/skills/agent-carnet. No MCP, no service: agent-carnet is a CLI, not a
+# server. The .carnet/ notebook is one-time-initialized by a new-session hook.
+#
+# The skill is installed VERBATIM from the pinned agent-carnet@<VERSION> npm tarball by the Dockerfile
+# (skills/agent-carnet/: SKILL.md + references/{cookbook,frontmatter}.md ship inside the package) —
+# the recipe authors NO skill itself. One immutable npm artifact is both the CLI pin and the skill pin.
+name: agent-carnet
+description: agent-carnet — shared, auto-expiring file-based markdown notebook (.carnet/) for AI agents.
+
+# What the capability test must find in the running container after a successful build: the skill the
+# Dockerfile copies verbatim from the pinned tarball into ~/.claude/skills/agent-carnet. The assembler
+# cannot see what a Dockerfile RUN step installs, so we declare it here.
+expect:
+  skills: [agent-carnet]
+
+# One-time bootstrap: the first time a project folder is opened (when .carnet/ is absent), run
+# `agent-carnet init` in the mounted project to create .carnet/. Git-free + non-touching (no
+# .gitignore entry, no git hooks, no repo discovery).
+#
+# NOTE: depends on the startup-hooks feature (docs/todos/2026-06-29-startup-hooks.md), which is
+# "design / not started" at the time this recipe ships. Until it lands, init is triggered
+# out-of-band (a one-shot `agent-carnet init` in the project). The recipe files are correct in
+# shape regardless — assemble parses `hooks` as a forward field.
+hooks:
+  new_session:
+    script: hooks/new-session.sh
+    when_missing: .carnet

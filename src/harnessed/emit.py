@@ -6,7 +6,6 @@ Pure file emission — no podman/docker, no daemon. Everything is written under
   profiles/<stack>/.claude/{skills,commands,agents,hooks,rules}/   the fanned tree
   profiles/<stack>/.claude/.mcp.json                               single hatago endpoint
   profiles/<stack>/hatago.config.json                              hatago child-server config
-  profiles/<stack>/baked-servers.json                              servers the hatago image must bake
 
 The profile is regenerated from scratch on every run so the committed tree is a pure
 function of the recipes/stack (reproducible build).
@@ -159,14 +158,21 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
 
 
 def _hatago_entry(server: McpServer) -> dict:
-    """Map an MCP server to a hatago `mcpServers` entry (schema per hatago docs)."""
+    """Map an MCP server to a hatago `mcpServers` entry (schema per hatago docs).
+
+    When `url_env` is set, the URL is emitted as `${VAR_NAME}` so the profile file contains no
+    secret value. The env var reaches the container at launch time (via --env-file) and hatago
+    substitutes it at runtime. `url_env` takes precedence over `url` when both are set.
+    """
     if server.is_stdio_child:
         entry: dict = {"command": server.command, "args": list(server.args)}
         if server.env:
             entry["env"] = dict(server.env)
         return entry
     # Network-native server: hatago proxies it by URL (transport http/sse).
-    entry = {"url": server.url, "type": server.transport}
+    # url_env → emit placeholder; resolved at runtime from the container's env (never on disk).
+    url = f"${{{server.url_env}}}" if server.url_env else server.url
+    entry = {"url": url, "type": server.transport}
     if server.headers:
         entry["headers"] = dict(server.headers)
     return entry
@@ -240,22 +246,3 @@ def write_derived_dockerfile(
     return out
 
 
-def write_baked_manifest(profile_dir: Path, stack: Stack, baked: list[McpServer]) -> Path:
-    """Emit the manifest of stdio servers the hatago image must bake (base/Dockerfile.hatago)."""
-    out = profile_dir / "baked-servers.json"
-    _write_json(
-        out,
-        {
-            "stack": stack.name,
-            "servers": [
-                {
-                    "name": s.name,
-                    "command": s.command,
-                    "args": list(s.args),
-                    "transport": s.transport,
-                }
-                for s in baked
-            ],
-        },
-    )
-    return out
