@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: codebase-memory-mcp (cbm) — structural code intelligence via a stdio MCP server.
+#
+# cbm builds a tree-sitter knowledge graph across 158 languages (14 tools: index_repository,
+# search_graph, trace_path, query_graph Cypher, get_architecture, detect_changes, …) into an
+# embedded SQLite DB — a single static C binary, zero runtime deps. Transport: stdio.
+#
+# Like `time`, this is a stdio MCP server: hatago spawns it as a child (stdio→HTTP) and the harness
+# only ever talks to hatago's single Streamable-HTTP endpoint. Unlike `time` (uvx) the server is a
+# baked-in binary, so a Dockerfile installs it (the assembler can't see RUN-step output, hence the
+# `expect:` below). The recipe ships no skill — upstream offers none.
+#
+# Contingent on the hatago consolidation (catalog/todos/2026-06-29-hatago-consolidation.md): until
+# hatago lands in the harness container the stdio child has no project to index, so the recipe is
+# correct in shape but cannot run end-to-end. See PLAN.md.
+name: codebase-memory-mcp
+description: 158-language codebase knowledge graph (tree-sitter) via a stdio MCP server.
+
+# What the capability test must find after a successful build: the cbm MCP server connected through
+# the hatago hub. (The binary itself is installed by the Dockerfile; `expect:` is the only way the
+# capability test learns about it.)
+expect:
+  mcp: [codebase-memory-mcp]
+
+# --- MCP layer ---
+# `transport: stdio` (default): hatago runs `codebase-memory-mcp` as a child, wrapping stdio→HTTP.
+# The command is the absolute-binary name installed into /usr/local/bin by the recipe Dockerfile.
+mcp:
+  servers:
+    - name: codebase-memory-mcp
+      command: codebase-memory-mcp
+      transport: stdio

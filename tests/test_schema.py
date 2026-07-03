@@ -105,6 +105,51 @@ class TestLoadStack:
         with pytest.raises(SchemaError, match="expected a YAML mapping"):
             load_stack(d)
 
+    def test_ssh_keys_default_empty(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\n")
+        assert load_stack(d).ssh_keys == []
+
+    def test_ssh_keys_valid_list_parsed(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\nssh_keys: [id_ed25519, id_work]\n")
+        assert load_stack(d).ssh_keys == ["id_ed25519", "id_work"]
+
+    def test_ssh_keys_traversal_rejected(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\nssh_keys: ['../id_rsa']\n")
+        with pytest.raises(SchemaError, match="ssh_keys"):
+            load_stack(d)
+
+    def test_ssh_keys_absolute_path_rejected(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\nssh_keys: ['/etc/shadow']\n")
+        with pytest.raises(SchemaError, match="ssh_keys"):
+            load_stack(d)
+
+    def test_ssh_keys_non_list_rejected(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\nssh_keys: id_ed25519\n")
+        with pytest.raises(SchemaError, match="ssh_keys"):
+            load_stack(d)
+
+    def test_forward_git_credentials_defaults_false(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\n")
+        assert load_stack(d).forward_git_credentials is False
+
+    def test_forward_git_credentials_parsed_true(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\nforward_git_credentials: true\n")
+        assert load_stack(d).forward_git_credentials is True
+
 
 class TestLoadAgent:
     def _write(self, tmp_path, name, body):

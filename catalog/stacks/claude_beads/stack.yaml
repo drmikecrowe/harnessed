@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# Stack: claude_beads — claude + the beads (bd) recipe.
+# Naming: <agent>_<recipe>… (claude + beads).
+name: claude_beads
+harness: claude
+recipes: [beads]

@@ -40,6 +40,12 @@ NEGATIVE_STACK = "claude_floating-recipe"
 # assembly/oracle sweep, but skipped by the live connect test (no real endpoint to reach).
 NO_LIVE_CONNECT = {"claude_openbrain-example"}
 
+# CLI-only recipes with no skill/command/mcp/plugin surface at all, by design — the agent shells
+# out to the binary directly and there is no `expect:` kind for "a binary is on PATH" (see e.g.
+# catalog/recipes/{beads,rtk}/PLAN.md "Risks / checks"). The assembler-driven oracle is
+# structurally empty for these; verified manually, not by this fast sweep.
+NO_CAPABILITY_ORACLE = {"claude_beads", "claude_rtk"}
+
 
 def _catalog_stacks() -> list[str]:
     stacks_dir = ROOT / "catalog" / "stacks"
@@ -61,7 +67,7 @@ def _oracle(stack: str):
 # --- Layer 1: assembly oracle (fast) --------------------------------------------------------------
 
 
-@pytest.mark.parametrize("stack", REAL_STACKS)
+@pytest.mark.parametrize("stack", [s for s in REAL_STACKS if s not in NO_CAPABILITY_ORACLE])
 def test_stack_assembles_and_oracle_is_nonempty(stack, tmp_path):
     """Every real stack resolves + assembles, and declares at least one capability to probe."""
     assemble(None, stack, tmp_path)  # emits into tmp; raises on any resolution/validation error
