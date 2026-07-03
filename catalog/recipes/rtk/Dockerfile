@@ -19,7 +19,7 @@ USER root
 ARG RTK_VERSION=0.43.0
 # arch detection: x86_64 gets the musl-static asset (zero runtime deps); aarch64 falls back to the
 # gnu asset (no aarch64-musl is published). Any other arch aborts the build loudly.
-RUN set -euo pipefail; \
+RUN set -eu; \
     arch="$(uname -m)"; \
     case "$arch" in \
       x86_64)  asset="rtk-x86_64-unknown-linux-musl.tar.gz" ;; \
