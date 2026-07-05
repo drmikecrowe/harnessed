@@ -7,5 +7,5 @@
 # not precise LSP-grade editing.
 name: claude_review-harness
 harness: claude
-recipes: [beads, caveman, rtk, codebase-memory-mcp]
+recipes: [beads, caveman, rtk, codebase-memory-mcp, mikes-universal-setup]
 services: []

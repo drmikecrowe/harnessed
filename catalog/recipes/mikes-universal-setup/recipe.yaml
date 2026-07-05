@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: mikes-universal-setup — Mike's always-on rules + generic utility skills, published as a
+# worked example of a personal baseline recipe. Previously lived only as an untracked local overlay
+# (catalog/recipes.local/universal, gitignored, with skills symlinked to ~/.agents/skills/); this
+# recipe is that content made portable and committed so others can see the shape of it.
+#
+# Tool-specific personal-workflow skills (obsidian-*, playwriter, ghostty) were deliberately left
+# out — they assume tools not everyone uses, so they don't fit a "universal" example.
+name: mikes-universal-setup
+description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills — an example personal always-on setup."
+
+rules:
+  - path: rules/coding-principles
+  - path: rules/fd
+  - path: rules/rg
+  - path: rules/stop-and-ask
+  - path: rules/token-efficient
+
+skills:
+  - path: skills/agent-browser
+  - path: skills/application-security
+  - path: skills/code-optimizer
+  - path: skills/create-skill
+  - path: skills/defuddle
+  - path: skills/frontend-design
+  - path: skills/handoff
+  - path: skills/map-codebase
+  - path: skills/mermaid-diagrams
+  - path: skills/mise
+  - path: skills/python-uv
+  - path: skills/security-review
+  - path: skills/skill-management
+  - path: skills/tdd
