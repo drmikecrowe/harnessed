@@ -85,7 +85,8 @@ RUN mise settings set experimental true && \
         rust@1.87 \
         go@1.24 \
         fd \
-        ripgrep && \
+        ripgrep \
+        gh@2.96.0 && \
     mise install && \
     mise trust ~/.config/mise/config.toml
 
