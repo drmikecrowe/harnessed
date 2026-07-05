@@ -9,3 +9,9 @@ name: claude_review-harness
 harness: claude
 recipes: [beads, caveman, rtk, codebase-memory-mcp, mikes-universal-setup]
 services: []
+# This is a review-and-file-a-PR stack, so forward the host's git push/sign surface (SSH/GPG agent
+# socket, git config, ssh config/known_hosts/pubkeys) so the agent can push branches and open PRs.
+# Requires a host SSH agent (1Password or gpg-agent/YubiKey). If the host has no agent and uses a raw
+# key, opt that key in via `ssh_keys: [<basename>]` in your OVERLAY copy of this stack — private-key
+# mounts are honored only from the user overlay, never the shared catalog.
+forward_git_credentials: true
