@@ -145,12 +145,23 @@ def _resolve_start_dir(project_path: Path, agent_start_folder: Optional[str]) ->
 def _resolve_mount_path(project_path: Path, mount_folder: Optional[str]) -> Path:
     """Resolve the folder path-mirrored into the container.
 
-    Default: the project itself (current behavior). With --mount-folder, the named folder — which
-    MUST contain the project — so a parent dir (e.g. a linked-worktree root) is exposed while the
-    agent still starts in the project. Mirror of `_resolve_start_dir`'s containment check, inverted:
-    there the start dir must be *under* the project; here the project must be *under* the mount.
+    Default: the project itself, UNLESS project_path sits in a bare + linked-worktree checkout
+    (e.g. `harnessed/.bare` + `harnessed/main`), in which case the default auto-widens to the
+    directory containing the bare repo — so sibling worktrees are visible without typing
+    --mount-folder by hand. With --mount-folder, the named folder — which MUST contain the project —
+    so any parent dir is exposed while the agent still starts in the project. Mirror of
+    `_resolve_start_dir`'s containment check, inverted: there the start dir must be *under* the
+    project; here the project must be *under* the mount.
     """
     if not mount_folder:
+        auto = paths.bare_worktree_container(project_path)
+        if auto is not None:
+            _out.print(
+                f"[blue][INFO][/blue] {project_path} is a linked worktree of a bare repo — "
+                f"auto-widening the mount to {auto} so sibling worktrees are visible "
+                "(pass --mount-folder to override)."
+            )
+            return auto
         return project_path
     mount_path = Path(mount_folder).resolve()
     if not mount_path.is_dir():
@@ -1338,6 +1349,17 @@ def launch(
         _err.print(f"[bold red]error:[/bold red] project directory does not exist: {anchor_path}")
         raise typer.Exit(1)
 
+    # Not inside any git worktree at all (e.g. launching from a bare-repo's parent dir instead of
+    # one of its worktrees) — confirm before mounting/persisting against a directory that has no
+    # git identity to key off of. Skipped outside a tty (headless/scripted), matching the
+    # stale-image confirm below.
+    if paths.git_common_dir(anchor_path) is None and sys.stdin.isatty():
+        if not typer.confirm(
+            f"{anchor_path} doesn't look like a git repository or worktree. Continue anyway?",
+            default=False,
+        ):
+            raise typer.Exit(1)
+
     # The "project" is wherever the agent starts, not wherever you invoked `launch` from — so
     # --agent-start-folder is resolved first, and everything downstream (instance identity, persist
     # keys, relpath, container -w) is keyed on the resolved start_dir. This makes `launch main
@@ -1894,7 +1916,7 @@ def rescan() -> None:
 # to `launch` (the `harnessed <stack> [project] [--fresh]` shorthand the README documents and the
 # capability test relies on).
 _COMMANDS = {
-    "launch", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
+    "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
     "install", "uninstall", "rescan", "svc",
 }
 

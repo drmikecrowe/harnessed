@@ -155,6 +155,28 @@ def git_common_dir(project_path: str | Path) -> Path | None:
         return None
 
 
+def bare_worktree_container(project_path: str | Path) -> Path | None:
+    """Parent directory of a bare repo's git-common-dir, if project_path sits inside a bare +
+    linked-worktree checkout (e.g. `harnessed/.bare` + `harnessed/main`) — otherwise None.
+
+    Same is-bare-repository check as `primary_worktree`. Used to auto-widen the launch mount to the
+    directory containing the bare repo, so sibling worktrees are visible without an explicit
+    `--mount-folder`. Returns None for an ordinary repo, a non-repo directory, or when git is
+    unavailable — callers should fall back to project_path in all of those cases.
+    """
+    gcd = git_common_dir(project_path)
+    if gcd is None:
+        return None
+    try:
+        is_bare = subprocess.run(
+            ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip() == "true"
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+    return gcd.parent if is_bare else None
+
+
 def primary_worktree(project_path: str | Path) -> Path:
     """The work tree that owns the repository's default branch — where a bare + linked-worktree
     checkout keeps its shared, repo-level `location: in_repo` data.

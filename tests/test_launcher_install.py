@@ -236,6 +236,35 @@ class TestResolveMountPath:
         with pytest.raises(typer.Exit):
             launcher._resolve_mount_path(project, str(sibling))
 
+    def test_none_auto_widens_for_bare_worktree_layout(self, tmp_path):
+        # Bare repo + linked worktree, no --mount-folder given: default should auto-widen to the
+        # dir containing the bare repo, not just the worktree itself.
+        import subprocess
+
+        def git(*args, cwd=None):
+            subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+        seed = tmp_path / "seed"
+        git("init", "-q", str(seed))
+        git("commit", "--allow-empty", "-m", "init", cwd=seed)
+        default = subprocess.run(
+            ["git", "-C", str(seed), "symbolic-ref", "--short", "HEAD"],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        bare = tmp_path / "b.git"
+        git("clone", "-q", "--bare", str(seed), str(bare))
+        main_wt = tmp_path / "mainwt"
+        git("--git-dir", str(bare), "worktree", "add", "-q", str(main_wt), default)
+
+        assert launcher._resolve_mount_path(main_wt, None) == tmp_path
+
+    def test_none_does_not_widen_for_ordinary_repo(self, tmp_path):
+        import subprocess
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"],
+                       check=True, capture_output=True)
+        assert launcher._resolve_mount_path(tmp_path, None) == tmp_path
+
 
 class TestBuildMountArgs:
     """The path-mirror `-v` targets the mount root (project by default, a parent via --mount-folder)."""
