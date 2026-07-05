@@ -81,7 +81,12 @@ def required_settings(servers: list[McpServer], recipes: list[Recipe] | None = N
     """harnessed's REQUIRED settings.json contribution — the *only* thing the harness must add on
     top of whatever a recipe/base installer baked.
 
-    Two independent contributions, present only when non-empty:
+    Contributions:
+      - `permissions.defaultMode: acceptEdits` — ALWAYS present. Every isolated container defaults
+        to auto-accept-edits mode; the instance is disposable, so per-edit approval prompts add
+        friction without protection. A recipe/base that baked its own defaultMode keeps it (this is
+        a floor, not an override — see `merge_settings`). Per-stack override (prompt/yolo) is future
+        work — see bd main-c5g.
       - the hatago hub permission grant, only when the stack actually has servers (no servers →
         hatago exposes nothing → no grant needed). The server-level wildcard `mcp__<hub>` allows
         every tool hatago exposes; the hub's child tool names are only known at runtime, so the
@@ -92,8 +97,10 @@ def required_settings(servers: list[McpServer], recipes: list[Recipe] | None = N
     use it.
     """
     out: dict = {}
+    perms: dict = {"defaultMode": "acceptEdits"}
     if servers:
-        out["permissions"] = {"allow": [f"mcp__{HATAGO_MCP_KEY}"]}
+        perms["allow"] = [f"mcp__{HATAGO_MCP_KEY}"]
+    out["permissions"] = perms
     hooks = _recipe_hooks_settings(recipes or [])
     if hooks:
         out["hooks"] = hooks
@@ -153,6 +160,8 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
                        └──────────────┬─────────────────────────┘
                                       ▼
         result = baked, then:
+          • required.permissions.defaultMode → applied ONLY if baked has no defaultMode (floor, not
+            override — a recipe/base that set its own mode keeps it).
           • for each grant in required.permissions.allow:
               - ensure grant ∈ permissions.allow   (union, dedup, order-preserving)
               - drop  grant ∈ permissions.deny     (REQUIRED WINS — hatago is the only MCP path; a
@@ -170,6 +179,12 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
         return required
     _warn = warn or (lambda _m: None)
     result = deepcopy(baked)
+
+    req_mode = required.get("permissions", {}).get("defaultMode")
+    if req_mode is not None:
+        # Floor, not override (unlike the hatago grant below): a settings.json that a recipe/base
+        # explicitly baked with its own defaultMode keeps it; otherwise harnessed's baseline applies.
+        result.setdefault("permissions", {}).setdefault("defaultMode", req_mode)
 
     grants = required.get("permissions", {}).get("allow", [])
     if grants:
