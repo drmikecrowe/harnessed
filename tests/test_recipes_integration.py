@@ -163,7 +163,7 @@ from harnessed.paths import CONTAINER_HOME  # noqa: E402
 
 # Pinned base (project hygiene — no floating tags), small + cached after first pull.
 _TEST_BASE = "docker.io/library/alpine:3.20"
-_FLOOR = {"permissions": {"allow": ["mcp__hatago"]}}  # what emit.write_settings_json emits
+_FLOOR = {"permissions": {"defaultMode": "acceptEdits", "allow": ["mcp__hatago"]}}  # what emit.write_settings_json emits
 
 
 def _build_image_with(tmp: Path, tag: str, settings: dict | None) -> str:

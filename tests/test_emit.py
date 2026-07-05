@@ -17,7 +17,9 @@ from harnessed.emit import (
 from harnessed.schema import HookCommand, McpServer, Recipe, Stack
 
 _GRANT = f"mcp__{HATAGO_MCP_KEY}"
-_REQUIRED = {"permissions": {"allow": [_GRANT]}}
+# Every container defaults to auto-accept-edits; the grant rides alongside it when a stack has servers.
+_MODE = {"defaultMode": "acceptEdits"}
+_REQUIRED = {"permissions": {**_MODE, "allow": [_GRANT]}}
 
 
 def _hook_recipe(name: str, hooks: dict) -> Recipe:
@@ -68,10 +70,11 @@ class TestWriteMcpJson:
 
 
 class TestWriteSettingsJson:
-    def test_no_servers_writes_empty_settings(self, tmp_path):
+    def test_no_servers_writes_defaultmode_floor(self, tmp_path):
+        # Even a serverless/hookless stack gets the auto-accept-edits default in its floor.
         out = write_settings_json(tmp_path, [])
         data = json.loads(out.read_text())
-        assert data == {}
+        assert data == {"permissions": {"defaultMode": "acceptEdits"}}
 
     def test_with_servers_pre_approves_hatago(self, tmp_path):
         servers = [McpServer(name="time", command="pnpm")]
@@ -85,7 +88,8 @@ class TestWriteSettingsJson:
         out = write_settings_json(tmp_path, [], [recipe])
         data = json.loads(out.read_text())
         assert data == {
-            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]}
+            "permissions": {"defaultMode": "acceptEdits"},
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]},
         }
 
 
@@ -119,18 +123,21 @@ class TestRequiredSettings:
     def test_grant_when_servers(self):
         assert required_settings([McpServer(name="time", command="pnpm")]) == _REQUIRED
 
-    def test_empty_when_no_servers(self):
-        assert required_settings([]) == {}
+    def test_defaultmode_only_when_no_servers(self):
+        assert required_settings([]) == {"permissions": {"defaultMode": "acceptEdits"}}
 
-    def test_empty_when_recipes_have_no_hooks(self):
-        assert required_settings([], [_hook_recipe("r", {})]) == {}
+    def test_defaultmode_only_when_recipes_have_no_hooks(self):
+        assert required_settings([], [_hook_recipe("r", {})]) == {
+            "permissions": {"defaultMode": "acceptEdits"}
+        }
 
     def test_hooks_rendered_into_native_claude_shape(self):
         recipe = _hook_recipe("caveman", {
             "SessionStart": [HookCommand(command="caveman-remind", matcher=None)],
         })
         assert required_settings([], [recipe]) == {
-            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]}
+            "permissions": {"defaultMode": "acceptEdits"},
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]},
         }
 
     def test_matcher_included_when_present(self):
@@ -156,6 +163,11 @@ class TestRequiredSettings:
         result = required_settings([McpServer(name="time", command="pnpm")], [recipe])
         assert result["permissions"]["allow"] == [_GRANT]
         assert "SessionStart" in result["hooks"]
+
+    def test_defaultmode_always_acceptedits(self):
+        # Present regardless of servers/hooks — every container defaults to auto-accept-edits.
+        assert required_settings([])["permissions"]["defaultMode"] == "acceptEdits"
+        assert required_settings([McpServer(name="time", command="pnpm")])["permissions"]["defaultMode"] == "acceptEdits"
 
 
 class TestReadBakedSettings:
@@ -214,6 +226,17 @@ class TestMergeSettings:
         assert _GRANT in merged["permissions"]["allow"]
         assert merged["permissions"]["deny"] == ["mcp__keep"]  # only the conflicting grant stripped
         assert len(warns) == 1
+
+    def test_defaultmode_injected_when_baked_lacks_it(self):
+        # Floor: a baked file with no defaultMode gets harnessed's acceptEdits default.
+        merged = merge_settings({"permissions": {"allow": ["mcp__x"]}}, _REQUIRED)
+        assert merged["permissions"]["defaultMode"] == "acceptEdits"
+
+    def test_baked_defaultmode_wins_over_floor(self):
+        # A recipe/base that explicitly baked its own mode keeps it (floor, not override).
+        baked = {"permissions": {"defaultMode": "plan"}}
+        merged = merge_settings(baked, _REQUIRED)
+        assert merged["permissions"]["defaultMode"] == "plan"
 
     def test_no_grant_when_required_empty_baked_untouched(self):
         # Serverless stack (required == {}): the baked file is returned verbatim, no grant injected.
