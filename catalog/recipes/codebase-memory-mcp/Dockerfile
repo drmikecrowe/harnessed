@@ -9,22 +9,10 @@
 # ONLY the binary-extract step of upstream's "Manual install"; do NOT run cbm's own installer
 # (scripts/setup.sh / the `install` command), which auto-configures 11 agents (writes .mcp.json,
 # skills, hooks, AGENTS.md) — harnessed owns all of that.
-USER root
-# Pin to the exact release (v0.8.1). Download the architecture-matched tarball + checksums.txt,
-# verify against the SHA in checksums.txt, and install the binary. Pin the STANDARD asset name
-# `codebase-memory-mcp-linux-<arch>.tar.gz` (there is a `-portable` tarball sibling — leave it).
-ARG CBM_VERSION=0.8.1
-RUN set -eu; \
-    arch="$(uname -m)"; \
-    case "$arch" in x86_64|amd64) arch="amd64";; aarch64|arm64) arch="arm64";; *) echo "unsupported $arch" >&2; exit 1;; esac; \
-    asset="codebase-memory-mcp-linux-${arch}.tar.gz"; \
-    base="https://github.com/DeusData/codebase-memory-mcp/releases/download/v${CBM_VERSION}"; \
-    cd /tmp; \
-    curl -fsSL "${base}/${asset}" -o "${asset}"; \
-    curl -fsSL "${base}/checksums.txt" -o checksums.txt; \
-    grep " ${asset}\$" checksums.txt > expected.sha256; \
-    sha256sum -c expected.sha256; \
-    tar xzf "${asset}"; \
-    install -m 0755 codebase-memory-mcp /usr/local/bin/codebase-memory-mcp; \
-    rm -rf /tmp/*
+#
+# Installed via mise's `github:` backend (harnessed-base already ships mise + shims on PATH — same
+# pattern as the beads recipe): mise resolves the standard (non-`-portable`) asset for the current
+# arch and verifies GitHub artifact attestations.
 USER harnessed
+ARG CBM_VERSION=0.8.1
+RUN mise use -g "github:DeusData/codebase-memory-mcp@${CBM_VERSION}" && mise install
