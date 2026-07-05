@@ -1,6 +1,30 @@
 {
   "fileSuggestion": {
-    "type": "command",
-    "command": ".claude/file-suggestion.sh"
+    "command": ".claude/file-suggestion.sh",
+    "type": "command"
+  },
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "command": "bd prime",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "bd prime",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ]
   }
 }

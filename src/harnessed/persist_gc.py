@@ -63,11 +63,19 @@ def list_entries() -> list[PersistEntry]:
     return entries
 
 
-def prune_project(recipe: str, project_path: str | Path, name: str | None = None) -> list[Path]:
+def prune_project(
+    recipe: str,
+    project_path: str | Path,
+    name: str | None = None,
+    scope: str = "workspace",
+) -> list[Path]:
     """Remove persist dir(s) for a specific recipe + project.  Returns removed dirs.
 
-    Derives the project hash from the given path (same one-way digest used at launch) so
-    the caller need not know the hash.
+    Derives the project hash from the given path using the same algorithm the launcher uses
+    for the given scope:
+      - scope="workspace" (default): keyed by the resolved current path (per-worktree).
+      - scope="project": keyed by git-common-dir if inside a git repo, else falls back to
+        the workspace hash (same as the launcher's fallback at launch time).
 
     If `name` is given, removes only that single entry under the recipe/hash dir.
     If `name` is None, removes ALL entries for this recipe + project combination.
@@ -78,7 +86,11 @@ def prune_project(recipe: str, project_path: str | Path, name: str | None = None
     Returns the list of host dirs that were actually removed (may be empty if the
     target did not exist).
     """
-    ph = paths.project_hash(project_path)
+    if scope == "project":
+        gcd = paths.git_common_dir(project_path)
+        ph = paths.project_hash(gcd if gcd is not None else project_path)
+    else:
+        ph = paths.project_hash(project_path)
     hash_dir = paths.persist_root() / recipe / ph
     if not hash_dir.is_dir():
         return []

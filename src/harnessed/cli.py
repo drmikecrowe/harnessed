@@ -141,6 +141,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="persist entry name to remove; if omitted ALL entries for this recipe+project are removed",
     )
     prn.add_argument(
+        "--scope",
+        choices=["workspace", "project"],
+        default="workspace",
+        help=(
+            "which scope's hash to use when finding the persist dir: "
+            "'workspace' (default, keyed by the exact project path) or "
+            "'project' (keyed by git-common-dir, matching scope: project entries launched "
+            "from any worktree of the same checkout)"
+        ),
+    )
+    prn.add_argument(
         "--yes",
         action="store_true",
         help="confirm the destructive removal (required; harnessed refuses to delete without it)",
@@ -258,7 +269,7 @@ def _run_persist_prune(args: argparse.Namespace, out: Console, err: Console) -> 
             highlight=False,
         )
         return 1
-    removed = prune_project(args.recipe, args.project, name=args.name)
+    removed = prune_project(args.recipe, args.project, name=args.name, scope=args.scope)
     if not removed:
         out.print("[dim]Nothing to remove (no matching persist dir found).[/dim]")
         return 0

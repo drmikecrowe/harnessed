@@ -3,9 +3,16 @@
 #
 # The whole recipe is: clone caveman's pinned tag and copy its upstream skills/commands/agents
 # trees into ~/.claude/ (the exact layout `claude plugin install` drops, minus the plugin-registry
-# wrapping and the Claude-tool hooks we can't express yet — GAP 2). The assembler can't see what a
-# Dockerfile RUN step installs, so `expect:` lists a representative few for the capability test to
-# probe.
+# wrapping). The assembler can't see what a Dockerfile RUN step installs, so `expect:` lists a
+# representative few for the capability test to probe.
+#
+# GAP 2 (Claude-native settings.json hooks, docs/todos/2026-06-27-recipe-stress-test.md) is now
+# implemented (schema.py `hooks:`, merged into settings.json by emit.py) — this recipe is its first
+# consumer. Upstream caveman ships a `SessionStart` hook (`src/hooks/caveman-activate.js`) that
+# auto-activates caveman mode from turn 1; we don't replicate that JS hook verbatim (would need
+# Node + the plugin-loader machinery, out of scope for this lightweight recipe), but `hooks:` below
+# gives the same "first time in this project" nudge via a plain shell one-liner: no Dockerfile
+# change needed, since the whole hook body fits in the `command` string.
 name: caveman
 description: caveman — output-compression skill; agent speaks terse "caveman", ~75% fewer output tokens, full technical accuracy. Levels lite/full/ultra/wenyan.
 
@@ -16,3 +23,18 @@ description: caveman — output-compression skill; agent speaks terse "caveman",
 expect:
   skills:   [caveman, caveman-compress, caveman-commit, caveman-review, caveman-stats]
   commands: [caveman]
+
+# First-run reminder (GAP 2): on SessionStart, print a one-time nudge to run /caveman-init. Gated
+# by a marker file IN THE PROJECT (not $HOME) — `$CLAUDE_PROJECT_DIR` is a real Claude Code env var
+# passed into hook commands, and `.claude/` inside the project is already a writable, expected spot
+# for recipe-local state in this catalog (see beads' `.claude/settings.local.json`). `bash -lc`
+# forces a real shell regardless of how the hook runner invokes the command, so `$VAR` expansion is
+# guaranteed. No `matcher` — fires for every SessionStart sub-type (startup/resume/clear); the
+# marker check (not the matcher) is what makes this "once per project".
+hooks:
+  SessionStart:
+    - command: >-
+        bash -lc 'marker="$CLAUDE_PROJECT_DIR/.claude/.caveman-notified"; if [ ! -e "$marker" ]; then
+        mkdir -p "$(dirname "$marker")" && touch "$marker" && echo "caveman is active in this
+        project for the first time -- run /caveman-init to configure output-compression
+        preferences (intensity level, auto-activation) for this repo."; fi'

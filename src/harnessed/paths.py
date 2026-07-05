@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import subprocess
 from pathlib import Path
 
 # Container home — the legible session-slug root (design §15 / D-06).
@@ -134,13 +135,96 @@ def persist_root() -> Path:
     return xdg_data_home() / "harnessed" / "persist"
 
 
-def persist_project_dir(recipe: str, project_path: str | Path, name: str) -> Path:
-    """Host dir for a project-scoped persist entry: persist/<recipe>/<project_hash>/<name>/.
+def git_common_dir(project_path: str | Path) -> Path | None:
+    """Return the git common dir for project_path (shared across all worktrees), or None.
 
-    Keyed by BOTH recipe and project: two recipes that each declare `project: [name]`
-    never share a dir, and the same recipe in two different projects stays isolated.
+    Uses `git rev-parse --path-format=absolute --git-common-dir`. This is the same path
+    for every worktree of a given checkout, so it is the correct key for cross-worktree
+    persistence. Returns None for non-git directories or when git is not available.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project_path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        p = Path(result.stdout.strip())
+        return p if p.exists() else None
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+
+
+def primary_worktree(project_path: str | Path) -> Path:
+    """The work tree that owns the repository's default branch — where a bare + linked-worktree
+    checkout keeps its shared, repo-level `location: in_repo` data.
+
+    HOST-side mirror of the container's `bd-resolve-beads-dir` (beads recipe): in a NORMAL repo this
+    is just `project_path`; in a BARE + linked-worktree layout the git common dir is a bare repo with
+    NO work tree, so an in-repo item (e.g. beads' `.beads/`) is anchored to the work tree checked out
+    to the bare repo's default branch — NOT the (possibly feature) launch worktree. Keeps the
+    host-side init marker aligned with where the container actually writes. Falls back to
+    `project_path` when git is unavailable, the layout isn't bare, or no default-branch work tree
+    exists.
+    """
+    gcd = git_common_dir(project_path)
+    if gcd is None:
+        return Path(project_path)
+    try:
+        if subprocess.run(
+            ["git", "--git-dir", str(gcd), "rev-parse", "--is-bare-repository"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip() != "true":
+            return Path(project_path)
+        head = subprocess.run(
+            ["git", "--git-dir", str(gcd), "symbolic-ref", "--short", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        porcelain = subprocess.run(
+            ["git", "--git-dir", str(gcd), "worktree", "list", "--porcelain"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return Path(project_path)
+    # Porcelain blocks: "worktree <path>\nHEAD <sha>\nbranch refs/heads/<name>". Return the worktree
+    # whose branch is the bare repo's default branch.
+    target = f"refs/heads/{head}" if head else None
+    current: str | None = None
+    for line in porcelain.splitlines():
+        if line.startswith("worktree "):
+            current = line[len("worktree "):]
+        elif target and line == f"branch {target}" and current:
+            return Path(current)
+    return Path(project_path)
+
+
+def persist_workspace_dir(recipe: str, project_path: str | Path, name: str) -> Path:
+    """Host dir for a workspace-scoped persist entry: persist/<recipe>/<workspace_hash>/<name>/.
+
+    Keyed by the RESOLVED CURRENT PATH (per-worktree/per-branch). Two worktrees of the same
+    git checkout get separate dirs under this scheme. For cross-worktree sharing, use
+    persist_project_dir which keys on the git-common-dir instead.
     """
     return persist_root() / recipe / project_hash(project_path) / name
+
+
+def persist_project_dir(recipe: str, project_path: str | Path, name: str) -> Path:
+    """Host dir for a project-scoped persist entry: keyed by git-common-dir (cross-worktree).
+
+    Two worktrees of the same git checkout resolve to the SAME host dir because they share the
+    same git-common-dir. This is the right scope for tools whose state spans branches
+    (e.g. a beads DB, a cross-branch notes dir).
+
+    Falls back to the workspace hash (same result as persist_workspace_dir) when project_path is
+    not inside a git repository — callers that warn on this fallback must check git_common_dir
+    themselves.
+
+    Keyed by BOTH recipe and project: two recipes that each declare an entry with the same name
+    never share a dir, and the same recipe in two independent checkouts stays isolated.
+    """
+    gcd = git_common_dir(project_path)
+    key_path: str | Path = gcd if gcd is not None else project_path
+    return persist_root() / recipe / project_hash(key_path) / name
 
 
 def persist_allowlist_path() -> Path:

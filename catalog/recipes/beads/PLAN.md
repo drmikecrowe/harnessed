@@ -1,27 +1,28 @@
 # beads recipe — implementation plan
 
-Goal: make `bd` (beads) available in a stack as **local-first, git-free** persistent task memory,
-with `.beads/` living in the user's project folder and zero git side effects.
+Goal: make `bd` (beads) available in a stack in beads' own **default operational mode**: `.beads/`
+lives inside the project (git-tracked), `bd init` installs git hooks and auto-wires the git origin
+as a Dolt remote for `bd dolt push`/`bd dolt pull` sync.
 
-Upstream: <https://github.com/gastownhall/beads> · npm `@beads/bd` (latest 1.0.5, MIT, native
-binary bundling embedded Dolt).
+This is a SIBLING of the [`beads-stealth`](../beads-stealth/PLAN.md) recipe, not a superset:
+`beads-stealth` trades away all of this for total invisibility (`.beads/` outside the repo, zero
+git footprint). `conflicts: [beads-stealth]` in both recipe.yaml files prevents combining them in
+one stack.
+
+Upstream: <https://github.com/gastownhall/beads> · release binary (goreleaser style) · MIT license.
 
 See `README.md` (this dir) for *why* each choice was made. This file is the *how*.
 
 ## Recipe shape
 
-Dockerfile recipe (bake the `bd` CLI) + a `new-session` hook that inits the DB. **No MCP, no
-service** — beads is a CLI, not an MCP server.
-**No skill is shipped:** upstream `bd` offers no standalone Claude skill (it mutates `AGENTS.md`,
-which `--stealth` suppresses), so the recipe authors none — the agent runs `bd` directly; a user
-may add a skill later.
+Dockerfile recipe (bake the `bd` CLI) + a `persist:` entry (`.beads/` in-repo, git-tracked) + an
+`init:` block (`bd init --quiet --non-interactive --role maintainer` run once per project via
+`harnessed init`). **No MCP, no service.**
 
 ```
 catalog/recipes/beads/
-  recipe.yaml
-  Dockerfile            # bake the pinned bd binary
-  hooks/
-    new-session.sh      # bd init --quiet --stealth (runs once, when .beads/ is absent)
+  recipe.yaml        # persist + init declarations
+  Dockerfile         # bake the pinned bd binary + the bd-setup-agent wrapper
   PLAN.md  README.md
 ```
 
@@ -29,93 +30,120 @@ catalog/recipes/beads/
 
 ```yaml
 name: beads
-description: bd (beads) — local-first, git-free graph issue tracker / persistent task memory for agents.
-hooks:
-  new_session:
-    script: hooks/new-session.sh
-    when_missing: .beads     # fire only when the project has no .beads/ yet
+description: "bd (beads) — graph issue tracker / persistent task memory for agents (default mode: in-repo, git-tracked, Dolt-native sync)."
+
+conflicts: [agent-carnet, beads-stealth]
+
+persist:
+  - name: .beads
+    scope: workspace
+    location: in_repo
+    vcs: tracked
+
+init:
+  marker:
+    scope: workspace
+    location: in_repo
+    name: .beads
+  run: bd init --quiet --non-interactive --role maintainer && bd-setup-agent
 ```
 
-> `hooks.new_session` depends on the **startup-hooks** feature
-> (`docs/todos/2026-06-29-startup-hooks.md`). If that feature is not yet built, the agent has the
-> `bd` CLI available and runs `bd init` itself on first use (see "Phasing").
+`location: in_repo` — `.beads/` is already inside the project's own bind-mount; no separate
+persist mount. `vcs: tracked` — harnessed takes no `.gitignore` action; the item is meant to be
+committed (beads manages its own finer-grained exclusions internally, e.g. `.beads/dolt/`).
+
+The `init:` block is executed by `_run_init_for_stack()` in the launcher (auto-run on every
+`harnessed launch`, also runnable explicitly via `harnessed init <stack>`). Because the marker is
+the `.beads/` dir itself, and `bd init` creates that dir on success, the check is self-sealing:
+after the first successful init, all subsequent launches skip it instantly.
 
 ### Dockerfile (bake `bd`)
 
-Primary decision — see README "Install & pinning". Two viable paths; **recommended: pinned release
-binary + checksum verify** (deterministic, matches beads' own security guidance, avoids pnpm
-postinstall fragility). npm path documented as the alternative.
+Primary install: pinned release binary, verified against the release `checksums.txt`. Goreleaser
+asset naming: `beads_<ver>_<os>_<arch>.tar.gz`. **No static `ENV BEADS_DIR`** here (unlike
+`beads-stealth`): `.beads/` lives inside a work tree, at whatever path the project is mounted.
 
-Sketch (binary path — fill in the pinned version, arch detection, and checksum verify against the
-release `checksums.txt`):
+Also bakes two things for **bare + linked-worktree** support (see README "Bare + linked-worktree
+layouts"):
+
+- `/usr/local/bin/bd-resolve-beads-dir` — prints the default-branch work tree's `.beads` when the
+  git common dir is a bare repo (else nothing); exits non-zero for a bare repo with no work tree on
+  its default branch (the `init.run` gate turns that into a hard abort).
+- `/etc/profile.d/beads-dir.sh` — exports `BEADS_DIR` from that helper for every login shell (the
+  agent's `bash -l -c` attach and the init container's `bash -lc`).
+
+Both are baked with Docker `COPY <<'SH'` heredocs (validated to build under podman). The host side
+mirrors the same resolution in `paths.primary_worktree`, used by `_resolve_marker_host_path` so the
+init marker points at the same `.beads` the container writes.
+
+Also bakes `/usr/local/bin/bd-setup-agent`, a harness-aware wrapper resolved at build time from the
+`${HARNESS}` ARG (recipe.yaml's `init.run` is one fixed string shared by every harness, so it can't
+branch on `$HARNESS` at runtime). For `claude`: `bd setup claude --project`. This is needed because
+`bd init` does NOT wire the SessionStart hook or CLAUDE.md section on its own — see "Init via
+`harnessed init`" below.
 
 ```dockerfile
 USER root
-ARG BEADS_VERSION=1.0.5
-# Download the pinned release tarball for the target arch, VERIFY against checksums.txt, install bd
-# to /usr/local/bin. Pin to the exact tag (no :latest / @latest / --branch — assembler rejects them).
-RUN set -euo pipefail; \
-    arch="$(uname -m)"; \
-    # … map arch → release asset name, curl -fsSL the vN.N.N asset + checksums.txt, \
-    # sha256sum -c, install bd to /usr/local/bin, chmod +x …
+ARG BEADS_VERSION=1.0.4
+RUN set -eu; \
+    case "$(uname -m)" in \
+      x86_64)  asset="beads_${BEADS_VERSION}_linux_amd64.tar.gz" ;; \
+      aarch64) asset="beads_${BEADS_VERSION}_linux_arm64.tar.gz" ;; \
+      *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    # … curl + sha256sum verify + install to /usr/local/bin …
+RUN bd --version
 USER harnessed
 ```
 
-Alternative (npm path): `RUN pnpm add -g @beads/bd@${BEADS_VERSION}` as `USER harnessed`.
-**Verify** the native binary actually lands — pnpm may skip the package's postinstall
-(binary-fetch) step; allow build scripts for `@beads/bd` if so, and confirm `pnpm` global bin is on
-`PATH` for the `harnessed` user. (`emit` lint rejects raw `npm`/`npx` — use `pnpm`.)
-
-### hooks/new-session.sh
+## Build / init / test lifecycle
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-# Runs once, in the mounted project dir ($PWD = project root), the first time this project is opened
-# (when .beads/ is absent). Git-free + stealth: .beads/ lives in the project folder, no git hooks,
-# no commits, no repo discovery. Idempotent — bd init is a no-op if .beads/ already exists.
-export BEADS_DIR="$PWD/.beads"
-bd init --quiet --stealth
-```
-
-## Test stack
-
-```yaml
-# catalog/stacks/claude_beads/stack.yaml
-name: claude_beads
-harness: claude
-recipes: [beads]
-```
-
-## Build / test lifecycle
-
-```bash
-harnessed build claude_beads   # assemble + build derived image (supply-chain pin gate runs here)
-harnessed claude_beads         # launch; new-session hook runs `bd init --stealth` in the project
+harnessed build claude_beads   # assemble + build derived image (pin gate)
+harnessed init  claude_beads   # one-time per project: bd init --quiet --non-interactive --role maintainer && bd-setup-agent
+harnessed claude_beads         # launch; init is auto-checked and skipped (marker already exists)
 harnessed test  claude_beads   # capability report: ✓ bd (CLI) available
 ```
 
-Manual verification (no skill is asserted — verify the *behavior* directly):
-
-- After launch against a fresh project dir, `.beads/` exists in that dir on the **host** (persists
-  via the project bind-mount), and contains `embeddeddolt/`.
-- Re-launching the same project does NOT re-init (sentinel present) and does not touch git
-  (`git status` clean; no hooks installed; the user's `AGENTS.md` untouched — `--stealth` skips it).
-- `bd ready --json` / `bd create … ` work inside the instance with zero git calls.
-
-## Phasing
-
-1. **If startup-hooks is built:** ship recipe.yaml + Dockerfile + `hooks/new-session.sh`.
-   Init is automatic and deterministic.
-2. **If not yet:** ship recipe.yaml (no `hooks:`) + Dockerfile only; the agent has the `bd` CLI
-   available and runs `bd init --quiet --stealth` (with `BEADS_DIR="$PWD/.beads"`) itself on first
-   use, or the user adds workflow guidance later. Add the hook once the feature lands.
+Manual verification:
+- After `harnessed init`, the project root has a git-tracked `.beads/` directory (issues.jsonl,
+  config.yaml) and a `.git/hooks/pre-commit`/`post-merge` installed by `bd init`.
+- If the project has a git `origin`, `bd init` auto-wires it as the Dolt remote (`bd dolt push` /
+  `bd dolt pull` sync data under `refs/dolt/data` — NOT a git branch, so protected `main` is
+  unaffected).
+- After `harnessed init`, the project root has `.claude/settings.local.json` (SessionStart hook
+  running `bd prime --hook-json`) and a managed beads section in `CLAUDE.md`.
+- Re-running `harnessed init` prints "already initialized".
+- `bd ready --json` / `bd create …` work inside the instance.
+- `bd setup claude --check` reports the hook + `CLAUDE.md` section as current.
 
 ## Risks / checks
 
-- **Install determinism:** confirm the chosen install path produces a runnable `bd` and passes the
-  assembler pin gate (no floating refs). This is the main build risk — resolve at `harnessed build`.
-- **Concurrency:** embedded mode is single-writer (file lock). Fine for one instance per project;
-  two instances on the same project dir will contend.
-- **Stealth correctness:** verify `--stealth` truly suppresses git hook installation and AGENTS.md
-  mutation in a project that *is* a git repo (the mounted project usually has `.git`).
+- **Single-writer (embedded mode):** embedded Dolt locks the file; one instance per project dir
+  (two worktrees = two containers = two processes writing the same `.beads/` dir — potential
+  contention). Multi-writer needs beads' `--server` mode (external `dolt sql-server`), which this
+  recipe does not set up — evaluated and rejected as unnecessary complexity for now; revisit if
+  concurrent-writer contention actually shows up in practice.
+- **Idempotency:** `bd init` is a no-op if `.beads/` already exists; `harnessed init` skips
+  entirely if the marker dir exists before the command. `bd setup claude` is itself idempotent
+  (updates its marked section rather than duplicating it), so re-running `bd-setup-agent` is safe
+  even outside the marker check.
+- **Real git footprint, by design:** unlike `beads-stealth`, this recipe installs git hooks and
+  commits `.beads/` to the project. That's the point (upstream's own default, and what makes
+  cross-clone/cross-teammate sharing work via `bd dolt push`/`pull`) — but it means `harnessed init`
+  on this recipe mutates the user's actual repo (hooks + tracked files), which `beads-stealth` never
+  does. Choose the recipe deliberately.
+- **`--role maintainer` is a default, not a mandate:** the OSS fork-based contributor pattern
+  (`bd init --role contributor`, private task tracking on a public repo you don't maintain) isn't
+  wired into this recipe's init command — it's a manual override if you need it (see
+  docs/GIT_INTEGRATION.md "Multi-Workspace Sync"). `--team`/`--contributor` themselves are
+  interactive wizards and are rejected in bd's non-interactive mode, so they can't be scripted into
+  `init.run` at all.
+- **Only `claude` wired so far:** `bd-setup-agent` no-ops for any other `${HARNESS}` (e.g. `omp`,
+  which has no built-in `bd setup` recipe upstream). Add a case as new harnesses gain bd support.
+- **Bare + linked-worktree layouts are handled, but abort on a degenerate one:** in a `.bare` +
+  sibling-worktree repo, `bd-resolve-beads-dir` re-anchors `.beads` to the default-branch work tree
+  (see the Dockerfile section + README). If the repo is bare with **no** work tree on its default
+  branch, `init.run` aborts — there is nowhere committable to put `.beads`; the user must add a work
+  tree (or use `beads-stealth`). Verified against a real bare+worktree repo and a synthetic
+  no-default-worktree repo.

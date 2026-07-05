@@ -1,3 +1,7 @@
 [env]
-# Activate the project's Python virtual environment on cd into this directory.
-_.source = ".venv/bin/activate"
+# Keep the venv outside the repo: `uv` running inside a podman container that
+# bind-mounts this repo can corrupt a .venv/ living under the mount. One venv
+# per branch avoids cross-branch dependency clobbering.
+_BRANCH = "{{exec(command=\"git branch --show-current\")}}"
+UV_PROJECT_ENVIRONMENT = "{{env.HOME}}/.local/share/harnessed/venvs/{{env._BRANCH}}/.venv"
+_.source = "{{env.UV_PROJECT_ENVIRONMENT}}/bin/activate"

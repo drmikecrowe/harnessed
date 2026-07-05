@@ -17,8 +17,16 @@ RUN pnpm add -g agent-carnet@${AGENT_CARNET_VERSION}
 RUN agent-carnet --version
 # Install the skill agent-carnet BUNDLES in its npm tarball (skills/agent-carnet/: SKILL.md +
 # references/{cookbook,frontmatter}.md). Copy it verbatim from the just-pinned global package into the
-# container's ~/.claude/skills/agent-carnet — no second source, no floating ref. `pnpm root -g`
-# resolves the global node_modules the line above populated; $HOME is the unprivileged user's.
+# container's ~/.claude/skills/agent-carnet — no second source, no floating ref.
+#
+# `pnpm root -g` does NOT contain a flat `agent-carnet/` subdir the way a local install would —
+# pnpm's global store nests the package under a hashed import-context dir plus its own
+# `node_modules/` (verified against a real `pnpm add -g agent-carnet` install:
+# `<root>/<hash>/node_modules/agent-carnet/...`, itself a symlink into pnpm's content-addressable
+# store). A single global `pnpm add` can register more than one import-context hash for the same
+# resolved version, so glob + take the first match rather than assume exactly one; `cp -rL`
+# dereferences the symlink into a real copy.
 RUN mkdir -p "$HOME/.claude/skills" \
- && cp -r "$(pnpm root -g)/agent-carnet/skills/agent-carnet" "$HOME/.claude/skills/agent-carnet" \
+ && skill_src=$(printf '%s\n' "$(pnpm root -g)"/*/node_modules/agent-carnet/skills/agent-carnet | head -1) \
+ && cp -rL "$skill_src" "$HOME/.claude/skills/agent-carnet" \
  && test -f "$HOME/.claude/skills/agent-carnet/SKILL.md"
