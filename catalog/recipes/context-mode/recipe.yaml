@@ -17,11 +17,11 @@ skills:
   - path: skills/context-mode
 
 # --- Persist layer (T4a) ---
-# LOUD: each entry is a BARE $HOME-relative folder NAME, never a path. A bare name under the
-# `project:` scope means PER-PROJECT ISOLATION — harnessed owns the host dir and keys it per
-# (recipe, project), so project A's notes never reach project B, and mounts it rw at ~/.context-mode
-# inside the pod. Do NOT change `.context-mode` to a real host path (e.g. ~/.context-mode) to "share"
-# it: that is the globally-shared `global:` scope, which is gated behind the user persist allowlist
-# (T4b) and fails loudly at launch — a path here would silently flip isolation semantics.
+# scope: workspace — keyed by the exact launch path (per-worktree). Notes in project A never
+# reach project B.  location: host — harnessed owns the dir at
+# $XDG_DATA_HOME/harnessed/persist/context-mode/<workspace_hash>/.context-mode/ and mounts it
+# rw at ~/.context-mode inside the pod so the skill's writes survive `--fresh` relaunches.
 persist:
-  project: [.context-mode]
+  - name: .context-mode
+    scope: workspace
+    location: host

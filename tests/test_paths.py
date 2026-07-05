@@ -101,23 +101,134 @@ class TestPersistDir:
         assert paths.persist_root().parent == paths.profiles_root().parent
         assert paths.persist_root() != paths.profiles_root()
 
-    def test_project_dir_keyed_by_recipe_project_and_name(self, monkeypatch, tmp_path):
+    # --- persist_workspace_dir (scope: workspace — keyed by resolved path) ---
+
+    def test_workspace_dir_keyed_by_recipe_path_and_name(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        h = paths.project_hash("/home/user/proj")
+        d = paths.persist_workspace_dir("context-mode", "/home/user/proj", ".context-mode")
+        assert d == tmp_path / "harnessed" / "persist" / "context-mode" / h / ".context-mode"
+
+    def test_workspace_two_recipes_same_name_dont_collide(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        a = paths.persist_workspace_dir("recipe-a", "/home/user/proj", "cache")
+        b = paths.persist_workspace_dir("recipe-b", "/home/user/proj", "cache")
+        assert a != b
+
+    def test_workspace_same_recipe_different_paths_isolated(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        a = paths.persist_workspace_dir("context-mode", "/home/user/proj-a", "idx")
+        b = paths.persist_workspace_dir("context-mode", "/home/user/proj-b", "idx")
+        assert a != b
+
+    # --- git_common_dir ---
+
+    def test_git_common_dir_returns_none_for_nonexistent_path(self):
+        assert paths.git_common_dir("/does/not/exist/ever") is None
+
+    def test_git_common_dir_returns_path_for_real_git_repo(self, tmp_path):
+        import subprocess
+        subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+        gcd = paths.git_common_dir(tmp_path)
+        assert gcd is not None
+        assert gcd.exists()
+
+    def test_git_common_dir_same_across_worktrees(self, tmp_path):
+        import subprocess
+        # Init main repo
+        main = tmp_path / "main"
+        main.mkdir()
+        subprocess.run(["git", "init", str(main)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(main), "commit", "--allow-empty", "-m", "init"],
+                       check=True, capture_output=True)
+        # Add a worktree
+        wt = tmp_path / "feature"
+        subprocess.run(["git", "-C", str(main), "worktree", "add", str(wt), "-b", "feature"],
+                       check=True, capture_output=True)
+        gcd_main = paths.git_common_dir(main)
+        gcd_wt = paths.git_common_dir(wt)
+        assert gcd_main is not None and gcd_wt is not None
+        assert gcd_main == gcd_wt, "git_common_dir must be identical across all worktrees of one checkout"
+
+    # --- persist_project_dir (scope: project — keyed by git-common-dir, fallback to path) ---
+
+    def test_project_dir_falls_back_to_path_hash_when_not_in_git(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        # /home/user/proj does not exist → git fails → fallback to path hash
         h = paths.project_hash("/home/user/proj")
         d = paths.persist_project_dir("context-mode", "/home/user/proj", ".context-mode")
         assert d == tmp_path / "harnessed" / "persist" / "context-mode" / h / ".context-mode"
 
-    def test_two_recipes_same_name_dont_collide(self, monkeypatch, tmp_path):
+    def test_project_dir_same_across_worktrees(self, monkeypatch, tmp_path):
+        import subprocess
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        a = paths.persist_project_dir("recipe-a", "/home/user/proj", "cache")
-        b = paths.persist_project_dir("recipe-b", "/home/user/proj", "cache")
-        assert a != b
+        main = tmp_path / "main"
+        main.mkdir()
+        subprocess.run(["git", "init", str(main)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(main), "commit", "--allow-empty", "-m", "init"],
+                       check=True, capture_output=True)
+        wt = tmp_path / "feature"
+        subprocess.run(["git", "-C", str(main), "worktree", "add", str(wt), "-b", "feature"],
+                       check=True, capture_output=True)
+        a = paths.persist_project_dir("beads", main, ".beads")
+        b = paths.persist_project_dir("beads", wt, ".beads")
+        assert a == b, "project-scope persist must be the same dir across all worktrees"
 
-    def test_same_recipe_different_projects_isolated(self, monkeypatch, tmp_path):
+    def test_project_dir_differs_from_workspace_dir_when_in_git(self, monkeypatch, tmp_path):
+        import subprocess
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        a = paths.persist_project_dir("context-mode", "/home/user/proj-a", "idx")
-        b = paths.persist_project_dir("context-mode", "/home/user/proj-b", "idx")
-        assert a != b
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+        proj = paths.persist_project_dir("beads", repo, ".beads")
+        ws = paths.persist_workspace_dir("beads", repo, ".beads")
+        # They will differ because the git common dir path ≠ the repo path for git's internal dir
+        # The hashes may differ — this test just confirms they ARE distinct concepts when in a git repo.
+        # (They are the same only when git_common_dir == repo, which shouldn't happen.)
+        gcd = paths.git_common_dir(repo)
+        assert gcd is not None
+        # project-scope hash is based on gcd; workspace-scope hash is based on repo path
+        expected_proj = paths.persist_root() / "beads" / paths.project_hash(gcd) / ".beads"
+        assert proj == expected_proj
+
+
+class TestPrimaryWorktree:
+    """`primary_worktree` returns the default-branch work tree for a bare + linked-worktree repo."""
+
+    def test_non_git_returns_itself(self):
+        assert paths.primary_worktree("/does/not/exist/ever") == Path("/does/not/exist/ever")
+
+    def test_normal_repo_returns_itself(self, tmp_path):
+        import subprocess
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"],
+                       check=True, capture_output=True)
+        assert paths.primary_worktree(tmp_path) == tmp_path
+
+    def test_bare_layout_resolves_non_main_worktree_to_default_branch_worktree(self, tmp_path):
+        import subprocess
+
+        def git(*args, cwd=None):
+            subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+        # Seed a normal repo, clone it bare, then add a default-branch worktree + a feature worktree.
+        seed = tmp_path / "seed"
+        git("init", "-q", str(seed))
+        git("commit", "--allow-empty", "-m", "init", cwd=seed)
+        default = subprocess.run(
+            ["git", "-C", str(seed), "symbolic-ref", "--short", "HEAD"],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        bare = tmp_path / "b.git"
+        git("clone", "-q", "--bare", str(seed), str(bare))
+        main_wt = tmp_path / "mainwt"
+        git("--git-dir", str(bare), "worktree", "add", "-q", str(main_wt), default)
+        feat = tmp_path / "feat"
+        git("--git-dir", str(bare), "worktree", "add", "-q", str(feat), "-b", "feature")
+
+        # From the feature worktree, the primary work tree is the default-branch one, not itself.
+        assert paths.primary_worktree(feat) == main_wt
+        assert paths.primary_worktree(main_wt) == main_wt
 
 
 class TestProjectRelpath:

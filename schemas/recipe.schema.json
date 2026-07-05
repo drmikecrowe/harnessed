@@ -59,13 +59,19 @@
       "items": { "$ref": "#/$defs/plugin" }
     },
     "hooks": {
-      "description": "Claude-canonical hooks shipped by this recipe (forward field, design §11).",
+      "description": "Declarative Claude Code hooks (GAP 2), merged by the assembler into the profile's settings.json. Maps event name to a list of {command, matcher?} entries. `command` must already exist in the image (baked by this recipe's Dockerfile) — Claude Code's own hook runner invokes it inside the instance; this is NOT the host-side `init:` mechanism (which runs once, before the agent attaches). See docs/todos/2026-06-27-recipe-stress-test.md GAP 2.",
       "type": "object",
-      "additionalProperties": true,
-      "properties": {
-        "event_dir": {
-          "description": "Directory (relative to the recipe) of NN-name.sh handlers grouped under <Event>.d/.",
-          "type": "string"
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command"],
+          "properties": {
+            "command": { "description": "Shell command Claude Code runs when this event fires.", "type": "string", "minLength": 1 },
+            "matcher": { "description": "Optional matcher (tool name for PreToolUse/PostToolUse; \"startup\"|\"resume\"|\"clear\" for SessionStart, etc). Ignored by events that don't support matching.", "type": "string" }
+          }
         }
       }
     },
@@ -88,25 +94,72 @@
       "description": "Build/setup script command strings (forward field, design §11). Scanned by the supply-chain lint (no raw npm/npx — use pnpm dlx).",
       "type": ["array", "object"]
     },
+    "conflicts": {
+      "description": "Names of other recipes this recipe must never be combined with in the same stack (e.g. two recipes that both claim to be the agent's sole cross-session memory store). Checked symmetrically across a stack's recipe list — declaring it on either side is enough.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
     "persist": {
-      "description": "Folders that must survive harnessed's --fresh launches. Scope is an explicit key (never inferred from the string shape).",
+      "description": "Folders/files that must survive harnessed's --fresh launches. A LIST of entries; each declares scope + location explicitly (never inferred from the string shape). See docs/guides/recipe-authoring.md.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/persistEntry" }
+    },
+    "init": {
+      "description": "One-time per-project setup, run once (in a transient container) and gated on a host-side marker. Runs via `harnessed init` and auto-checked on every launch. See docs/guides/recipe-authoring.md.",
       "type": "object",
       "additionalProperties": false,
+      "required": ["marker", "run"],
       "properties": {
-        "project": {
-          "description": "Bare $HOME-relative folder names (e.g. .context-mode); harnessed keys each per (recipe, project) — isolated.",
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "global": {
-          "description": "Real host dirs (e.g. ~/.gbrain) shared with host-native runs; gated by the user-owned persist allowlist.",
-          "type": "array",
-          "items": { "type": "string" }
+        "run": { "description": "Shell command run once in a transient `podman run --rm` (no secrets) when the marker is absent.", "type": "string", "minLength": 1 },
+        "marker": {
+          "description": "Host-side path whose existence means 'already initialized'. Resolved with the same helpers as persist:.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scope", "location", "name"],
+          "properties": {
+            "scope": { "description": "workspace | project (NOT global — a global path can't mark per-project init).", "enum": ["workspace", "project"] },
+            "location": { "description": "host | in_repo — same axes as persist:.", "enum": ["host", "in_repo"] },
+            "name": { "description": "For location: host, the persist dir name; for in_repo, a path relative to the repo's primary work tree.", "type": "string", "minLength": 1 },
+            "file": { "description": "OPTIONAL — a specific file/dir under `name` to check instead of `name` itself.", "type": "string", "minLength": 1 }
+          }
         }
       }
     }
   },
   "$defs": {
+    "persistEntry": {
+      "description": "One persist entry. scope: global bind-mounts a real host `path` as-is; scope: workspace|project stores a `name` (host-managed or in_repo). location: in_repo requires `vcs`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope"],
+      "properties": {
+        "scope": { "description": "workspace (per launch path) | project (per git-common-dir, shared across worktrees) | global (a real host path).", "enum": ["workspace", "project", "global"] },
+        "location": { "description": "host (harnessed-managed dir bind-mounted at ~/<name>) | in_repo (inside the mounted workspace). Omitted for scope: global.", "enum": ["host", "in_repo"] },
+        "name": { "description": "$HOME-relative name (scope: workspace|project). Not used for scope: global.", "type": "string", "minLength": 1 },
+        "path": { "description": "Real host path to bind-mount as-is (scope: global only; must be in the persist allowlist).", "type": "string", "minLength": 1 },
+        "vcs": { "description": "tracked | ignored — git-tracking intent; REQUIRED for location: in_repo, invalid otherwise.", "enum": ["tracked", "ignored"] }
+      },
+      "oneOf": [
+        {
+          "title": "scope: global",
+          "properties": { "scope": { "const": "global" } },
+          "required": ["scope", "path"],
+          "not": { "anyOf": [ { "required": ["location"] }, { "required": ["name"] }, { "required": ["vcs"] } ] }
+        },
+        {
+          "title": "location: host",
+          "properties": { "scope": { "enum": ["workspace", "project"] }, "location": { "const": "host" } },
+          "required": ["scope", "location", "name"],
+          "not": { "anyOf": [ { "required": ["path"] }, { "required": ["vcs"] } ] }
+        },
+        {
+          "title": "location: in_repo",
+          "properties": { "scope": { "enum": ["workspace", "project"] }, "location": { "const": "in_repo" } },
+          "required": ["scope", "location", "name", "vcs"],
+          "not": { "required": ["path"] }
+        }
+      ]
+    },
     "mcpServer": {
       "type": "object",
       "additionalProperties": true,

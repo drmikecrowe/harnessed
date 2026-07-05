@@ -4,6 +4,7 @@ The shim must bake in an ABSOLUTE path to the `harnessed` binary so it works eve
 `harnessed` itself is not on PATH (e.g. a dev .venv) — the item-3 PATH-shim fix.
 """
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -574,3 +575,34 @@ class TestHostOsPaths:
 
     def test_macos_relay_skips_non_podman(self, monkeypatch):
         assert launcher._macos_op_socket_mount_source("docker", Path("/host/agent.sock")) is None
+
+
+class TestBuildDerivedImageNeverTouchesSecrets:
+    """`harnessed build` must never invoke varlock or touch secrets, even when
+    ~/.config/harnessed/.env.schema exists — a credentialed scan is a deliberately separate,
+    explicit step (`harnessed rescan`), not something the build does on your behalf."""
+
+    def test_build_never_invokes_varlock_even_with_schema_present(self, monkeypatch, tmp_path):
+        # Schema present + varlock on PATH — the exact condition that used to trigger a varlock
+        # invocation (and an interactive 1Password prompt in a real environment). Confirm neither
+        # is even consulted: no Path.home() lookup for a schema, no "varlock" in any command run.
+        home = tmp_path / "home"
+        schema_dir = home / ".config" / "harnessed"
+        schema_dir.mkdir(parents=True)
+        (schema_dir / ".env.schema").write_text("SNYK_TOKEN=op(op://x/y/z)\n")
+        monkeypatch.setattr(Path, "home", lambda: home)
+        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock" if name == "varlock" else None)
+
+        calls = []
+
+        def fake_run(cmd, check=True, **kwargs):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+        launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path)
+
+        assert len(calls) == 1, "build must issue exactly one command: the plain podman build"
+        assert calls[0][:2] == ["podman", "build"]
+        assert "varlock" not in calls[0]
+        assert "--secret" not in calls[0], "the build must never claim a secret it doesn't resolve"

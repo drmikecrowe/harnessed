@@ -4,7 +4,11 @@ import pytest
 from pathlib import Path
 
 from harnessed.schema import (
+    HookCommand,
+    InitMarker,
+    InitSpec,
     McpServer,
+    PersistEntry,
     PersistSpec,
     Recipe,
     RecipeLintError,
@@ -328,7 +332,7 @@ class TestLoadServicePortRange:
 
 
 class TestPersistParse:
-    """T4a — persist: declaration shape, explicit scope keys, project-name validation."""
+    """T4a — persist: list-of-entries format, both axes (scope + location), all combinations."""
 
     def _load(self, tmp_path, body: str) -> Recipe:
         d = tmp_path / "rcp"
@@ -336,38 +340,162 @@ class TestPersistParse:
         (d / "recipe.yaml").write_text(body)
         return load_recipe(d)
 
+    def _yaml_entry(self, **kw) -> str:
+        lines = ["persist:"]
+        lines.append("  - " + "\n    ".join(f"{k}: {v}" for k, v in kw.items()))
+        return "name: r\n" + "\n".join(lines) + "\n"
+
+    # --- Empty / absent ---
+
     def test_absent_persist_is_empty(self, tmp_path):
         r = self._load(tmp_path, "name: r\n")
         assert r.persist == PersistSpec()
-        assert r.persist.project == [] and r.persist.global_dirs == []
+        assert r.persist.entries == []
 
-    def test_project_and_global_parsed(self, tmp_path):
-        r = self._load(tmp_path, "name: r\npersist:\n  project: [.context-mode]\n  global: [~/.gbrain]\n")
-        assert r.persist.project == [".context-mode"]
-        assert r.persist.global_dirs == ["~/.gbrain"]
+    # --- Old format migration hint ---
 
-    def test_bare_list_rejected(self, tmp_path):
-        # Scope must be a named key, never inferred from the string shape.
-        with pytest.raises(SchemaError, match="explicit scope keys"):
-            self._load(tmp_path, "name: r\npersist: [context]\n")
+    def test_old_dict_project_format_gives_migration_hint(self, tmp_path):
+        with pytest.raises(SchemaError, match="format has changed"):
+            self._load(tmp_path, "name: r\npersist:\n  project: [.foo]\n")
 
-    def test_unknown_scope_key_rejected(self, tmp_path):
-        with pytest.raises(SchemaError, match="unknown scope key"):
-            self._load(tmp_path, "name: r\npersist:\n  shared: [x]\n")
+    def test_old_dict_global_format_gives_migration_hint(self, tmp_path):
+        with pytest.raises(SchemaError, match="format has changed"):
+            self._load(tmp_path, "name: r\npersist:\n  global: [~/.gbrain]\n")
 
-    @pytest.mark.parametrize("bad", ["../escape", "a/b", "~/.ssh", "/etc/passwd", "..", "."])
-    def test_traversal_project_names_rejected(self, tmp_path, bad):
-        with pytest.raises(SchemaError, match="not a valid name"):
-            self._load(tmp_path, f"name: r\npersist:\n  project: ['{bad}']\n")
+    def test_bare_non_list_rejected(self, tmp_path):
+        with pytest.raises(SchemaError):
+            self._load(tmp_path, "name: r\npersist: not-a-list\n")
+
+    # --- scope validation ---
+
+    def test_missing_scope_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="missing required field 'scope'"):
+            self._load(tmp_path, "name: r\npersist:\n  - name: .foo\n    location: host\n")
+
+    def test_unknown_scope_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="unknown scope"):
+            self._load(tmp_path, self._yaml_entry(scope="shared", name=".foo", location="host"))
+
+    def test_reserved_scope_repo_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="reserved for a future release"):
+            self._load(tmp_path, self._yaml_entry(scope="repo", name=".foo", location="host"))
+
+    # --- scope: workspace + location: host ---
+
+    def test_workspace_host_entry_parsed(self, tmp_path):
+        r = self._load(tmp_path, self._yaml_entry(scope="workspace", name=".ctx", location="host"))
+        assert len(r.persist.entries) == 1
+        e = r.persist.entries[0]
+        assert e.scope == "workspace" and e.location == "host" and e.name == ".ctx"
+        assert e.path is None and e.vcs is None
 
     @pytest.mark.parametrize("ok", [".context-mode", "cache", "my_data", "a.b-c", "...idx"])
-    def test_valid_project_names_accepted(self, tmp_path, ok):
-        r = self._load(tmp_path, f"name: r\npersist:\n  project: ['{ok}']\n")
-        assert r.persist.project == [ok]
+    def test_workspace_host_valid_names_accepted(self, tmp_path, ok):
+        r = self._load(tmp_path, self._yaml_entry(scope="workspace", name=ok, location="host"))
+        assert r.persist.entries[0].name == ok
 
-    def test_empty_global_entry_rejected(self, tmp_path):
-        with pytest.raises(SchemaError, match="non-empty host path"):
-            self._load(tmp_path, "name: r\npersist:\n  global: ['']\n")
+    @pytest.mark.parametrize("bad", ["../escape", "~/.ssh", "/etc/passwd", "..", "."])
+    def test_workspace_host_invalid_names_rejected(self, tmp_path, bad):
+        with pytest.raises(SchemaError):
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=bad, location="host"))
+
+    def test_workspace_host_slash_in_name_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="single path component"):
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name="a/b", location="host"))
+
+    def test_workspace_host_missing_name_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="requires a 'name' field"):
+            self._load(tmp_path, "name: r\npersist:\n  - scope: workspace\n    location: host\n")
+
+    def test_workspace_host_missing_location_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="requires an explicit 'location'"):
+            self._load(tmp_path, "name: r\npersist:\n  - scope: workspace\n    name: .foo\n")
+
+    def test_workspace_vcs_on_host_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="'vcs' is only valid for location: in_repo"):
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="host", vcs="ignored"))
+
+    # --- scope: project + location: host ---
+
+    def test_project_host_entry_parsed(self, tmp_path):
+        r = self._load(tmp_path, self._yaml_entry(scope="project", name=".beads", location="host"))
+        e = r.persist.entries[0]
+        assert e.scope == "project" and e.location == "host" and e.name == ".beads"
+
+    # --- location: in_repo + vcs ---
+
+    def test_workspace_in_repo_tracked_parsed(self, tmp_path):
+        r = self._load(tmp_path, self._yaml_entry(scope="workspace", name="notes.md", location="in_repo", vcs="tracked"))
+        e = r.persist.entries[0]
+        assert e.scope == "workspace" and e.location == "in_repo" and e.vcs == "tracked"
+
+    def test_workspace_in_repo_ignored_parsed(self, tmp_path):
+        r = self._load(tmp_path, self._yaml_entry(scope="workspace", name=".scratch", location="in_repo", vcs="ignored"))
+        e = r.persist.entries[0]
+        assert e.vcs == "ignored"
+
+    def test_in_repo_missing_vcs_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="requires a 'vcs' field"):
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="in_repo"))
+
+    def test_in_repo_unknown_vcs_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="unknown vcs"):
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="in_repo", vcs="symlink"))
+
+    def test_in_repo_allows_nested_paths(self, tmp_path):
+        r = self._load(tmp_path, self._yaml_entry(scope="workspace", name="data/notes.md", location="in_repo", vcs="tracked"))
+        assert r.persist.entries[0].name == "data/notes.md"
+
+    # --- reserved location: external ---
+
+    def test_reserved_location_external_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="reserved for a future release"):
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="external"))
+
+    # --- scope: global ---
+
+    def test_global_entry_parsed(self, tmp_path):
+        r = self._load(tmp_path, "name: r\npersist:\n  - scope: global\n    path: ~/.gbrain\n")
+        e = r.persist.entries[0]
+        assert e.scope == "global" and e.path == "~/.gbrain"
+        assert e.name is None and e.location is None and e.vcs is None
+
+    def test_global_with_location_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="'location' is not valid for scope: global"):
+            self._load(tmp_path, "name: r\npersist:\n  - scope: global\n    path: ~/.gbrain\n    location: host\n")
+
+    def test_global_with_name_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="use 'path'"):
+            self._load(tmp_path, "name: r\npersist:\n  - scope: global\n    name: .gbrain\n")
+
+    def test_global_empty_path_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="non-empty 'path'"):
+            self._load(tmp_path, "name: r\npersist:\n  - scope: global\n    path: ''\n")
+
+    def test_global_path_used_not_name(self, tmp_path):
+        with pytest.raises(SchemaError, match="use 'path'"):
+            self._load(tmp_path, "name: r\npersist:\n  - scope: global\n    name: .gbrain\n")
+
+    # --- unknown fields rejected ---
+
+    def test_unknown_field_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="unknown field"):
+            self._load(tmp_path, self._yaml_entry(scope="workspace", name=".foo", location="host", typo="x"))
+
+    # --- multiple entries ---
+
+    def test_multiple_entries_parsed(self, tmp_path):
+        body = (
+            "name: r\npersist:\n"
+            "  - name: .beads\n    scope: project\n    location: host\n"
+            "  - name: notes.md\n    scope: workspace\n    location: in_repo\n    vcs: ignored\n"
+            "  - scope: global\n    path: ~/.gbrain\n"
+        )
+        r = self._load(tmp_path, body)
+        assert len(r.persist.entries) == 3
+        assert r.persist.entries[0].scope == "project"
+        assert r.persist.entries[1].vcs == "ignored"
+        assert r.persist.entries[2].scope == "global"
 
 
 class TestStrictRecipeFields:
@@ -393,7 +521,8 @@ class TestStrictRecipeFields:
         body = (
             "name: r\ndescription: d\nmcp:\n  servers: []\n"
             "skills: [skills/x]\ncommands: [commands/y]\n"
-            "expect:\n  skills: [x]\npersist:\n  project: [.x]\n"
+            "expect:\n  skills: [x]\n"
+            "persist:\n  - name: .x\n    scope: workspace\n    location: host\n"
         )
         r = self._load(tmp_path, body, strict=True)
         assert r.name == "r"
@@ -409,3 +538,342 @@ class TestStrictRecipeFields:
             self._load(tmp_path, "name: r\ntotally_made_up: 1\n", strict=True)
         msg = str(exc.value)
         assert "totally_made_up" in msg and "Known fields" in msg and "--no-strict" in msg
+
+    def test_strict_allows_init_field(self, tmp_path):
+        body = (
+            "name: r\n"
+            "init:\n"
+            "  run: bd init --quiet --stealth\n"
+            "  marker:\n"
+            "    scope: project\n"
+            "    location: host\n"
+            "    name: .beads\n"
+        )
+        r = self._load(tmp_path, body, strict=True)
+        assert r.name == "r"
+
+
+class TestInitParse:
+    """init: field parsing — marker scope/location, run command, validation."""
+
+    def _load(self, tmp_path, body: str) -> Recipe:
+        d = tmp_path / "rcp"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "recipe.yaml").write_text(body)
+        return load_recipe(d)
+
+    def _body(self, *, run: str, marker: dict) -> str:
+        lines = ["name: r", "init:", f"  run: {run}", "  marker:"]
+        for k, v in marker.items():
+            lines.append(f"    {k}: {v}")
+        return "\n".join(lines) + "\n"
+
+    # --- Absent / None ---
+
+    def test_absent_init_is_none(self, tmp_path):
+        r = self._load(tmp_path, "name: r\n")
+        assert r.init is None
+
+    # --- Valid cases ---
+
+    def test_project_host_valid(self, tmp_path):
+        r = self._load(tmp_path, self._body(
+            run="bd init --quiet --stealth",
+            marker={"scope": "project", "location": "host", "name": ".beads"},
+        ))
+        assert r.init is not None
+        assert r.init.marker.scope == "project"
+        assert r.init.marker.location == "host"
+        assert r.init.marker.name == ".beads"
+        assert r.init.marker.file is None
+        assert r.init.run == "bd init --quiet --stealth"
+
+    def test_workspace_host_valid(self, tmp_path):
+        r = self._load(tmp_path, self._body(
+            run="ctx init",
+            marker={"scope": "workspace", "location": "host", "name": ".ctx"},
+        ))
+        assert r.init.marker.scope == "workspace"
+
+    def test_with_optional_file(self, tmp_path):
+        r = self._load(tmp_path, self._body(
+            run="ctx init",
+            marker={"scope": "workspace", "location": "host", "name": ".ctx", "file": "config"},
+        ))
+        assert r.init.marker.file == "config"
+
+    def test_in_repo_location(self, tmp_path):
+        r = self._load(tmp_path, self._body(
+            run="init-cmd",
+            marker={"scope": "workspace", "location": "in_repo", "name": ".mydir"},
+        ))
+        assert r.init.marker.location == "in_repo"
+
+    # --- run validation ---
+
+    def test_missing_run_rejected(self, tmp_path):
+        body = (
+            "name: r\ninit:\n"
+            "  marker:\n    scope: project\n    location: host\n    name: .beads\n"
+        )
+        with pytest.raises(SchemaError, match="'run' is required"):
+            self._load(tmp_path, body)
+
+    def test_empty_run_rejected(self, tmp_path):
+        body = (
+            "name: r\ninit:\n  run: ''\n"
+            "  marker:\n    scope: project\n    location: host\n    name: .beads\n"
+        )
+        with pytest.raises(SchemaError, match="'run' is required"):
+            self._load(tmp_path, body)
+
+    # --- marker validation ---
+
+    def test_missing_marker_rejected(self, tmp_path):
+        body = "name: r\ninit:\n  run: bd init\n"
+        with pytest.raises(SchemaError, match="'marker' is required"):
+            self._load(tmp_path, body)
+
+    def test_marker_not_a_mapping_rejected(self, tmp_path):
+        body = "name: r\ninit:\n  run: bd init\n  marker: not-a-dict\n"
+        with pytest.raises(SchemaError, match="'marker' is required"):
+            self._load(tmp_path, body)
+
+    # --- scope validation ---
+
+    def test_global_scope_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="scope: global is not valid"):
+            self._load(tmp_path, self._body(
+                run="cmd", marker={"scope": "global", "location": "host", "name": ".x"},
+            ))
+
+    def test_unknown_scope_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="unknown scope"):
+            self._load(tmp_path, self._body(
+                run="cmd", marker={"scope": "shared", "location": "host", "name": ".x"},
+            ))
+
+    def test_missing_scope_rejected(self, tmp_path):
+        body = "name: r\ninit:\n  run: cmd\n  marker:\n    location: host\n    name: .x\n"
+        with pytest.raises(SchemaError, match="missing required field 'scope'"):
+            self._load(tmp_path, body)
+
+    # --- location validation ---
+
+    def test_missing_location_rejected(self, tmp_path):
+        body = "name: r\ninit:\n  run: cmd\n  marker:\n    scope: project\n    name: .x\n"
+        with pytest.raises(SchemaError, match="missing required field 'location'"):
+            self._load(tmp_path, body)
+
+    def test_unknown_location_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="unknown location"):
+            self._load(tmp_path, self._body(
+                run="cmd", marker={"scope": "project", "location": "external", "name": ".x"},
+            ))
+
+    # --- name validation ---
+
+    def test_missing_name_rejected(self, tmp_path):
+        body = "name: r\ninit:\n  run: cmd\n  marker:\n    scope: project\n    location: host\n"
+        with pytest.raises(SchemaError):
+            self._load(tmp_path, body)
+
+    def test_absolute_name_rejected(self, tmp_path):
+        with pytest.raises(SchemaError):
+            self._load(tmp_path, self._body(
+                run="cmd", marker={"scope": "project", "location": "host", "name": "/etc/passwd"},
+            ))
+
+    # --- unknown marker field ---
+
+    def test_unknown_marker_field_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="unknown field"):
+            self._load(tmp_path, self._body(
+                run="cmd",
+                marker={"scope": "project", "location": "host", "name": ".x", "extra": "bad"},
+            ))
+
+    # --- init not a mapping ---
+
+    def test_init_not_a_mapping_rejected(self, tmp_path):
+        with pytest.raises(SchemaError):
+            self._load(tmp_path, "name: r\ninit: not-a-dict\n")
+
+
+class TestHooksParse:
+    """hooks: field parsing (GAP 2) — event validation, command/matcher entries."""
+
+    def _load(self, tmp_path, body: str) -> Recipe:
+        d = tmp_path / "rcp"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "recipe.yaml").write_text(body)
+        return load_recipe(d)
+
+    def test_absent_hooks_is_empty_dict(self, tmp_path):
+        r = self._load(tmp_path, "name: r\n")
+        assert r.hooks == {}
+
+    def test_empty_list_hooks_is_empty_dict(self, tmp_path):
+        # Matches the existing D-14 forward-field test (`hooks: []`) — falsy raw value short-circuits.
+        r = self._load(tmp_path, "name: r\nhooks: []\n")
+        assert r.hooks == {}
+
+    def test_session_start_without_matcher(self, tmp_path):
+        body = (
+            "name: r\nhooks:\n  SessionStart:\n"
+            "    - command: /usr/local/bin/caveman-remind\n"
+        )
+        r = self._load(tmp_path, body)
+        assert r.hooks["SessionStart"] == [HookCommand(command="/usr/local/bin/caveman-remind", matcher=None)]
+
+    def test_pre_tool_use_with_matcher(self, tmp_path):
+        body = (
+            "name: r\nhooks:\n  PreToolUse:\n"
+            "    - matcher: Bash\n      command: some-hook\n"
+        )
+        r = self._load(tmp_path, body)
+        assert r.hooks["PreToolUse"] == [HookCommand(command="some-hook", matcher="Bash")]
+
+    def test_multiple_entries_same_event(self, tmp_path):
+        body = (
+            "name: r\nhooks:\n  PreToolUse:\n"
+            "    - matcher: Bash\n      command: hook-a\n"
+            "    - matcher: Read\n      command: hook-b\n"
+        )
+        r = self._load(tmp_path, body)
+        assert len(r.hooks["PreToolUse"]) == 2
+
+    def test_multiple_events(self, tmp_path):
+        body = (
+            "name: r\nhooks:\n"
+            "  SessionStart:\n    - command: hook-a\n"
+            "  Stop:\n    - command: hook-b\n"
+        )
+        r = self._load(tmp_path, body)
+        assert set(r.hooks) == {"SessionStart", "Stop"}
+
+    def test_unknown_event_rejected(self, tmp_path):
+        body = "name: r\nhooks:\n  SessionStarts:\n    - command: hook-a\n"
+        with pytest.raises(SchemaError, match="unknown event 'SessionStarts'"):
+            self._load(tmp_path, body)
+
+    def test_hooks_not_a_mapping_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="must be a mapping"):
+            self._load(tmp_path, "name: r\nhooks: not-a-dict\n")
+
+    def test_event_not_a_list_rejected(self, tmp_path):
+        body = "name: r\nhooks:\n  SessionStart: not-a-list\n"
+        with pytest.raises(SchemaError, match="must be a non-empty list"):
+            self._load(tmp_path, body)
+
+    def test_empty_event_list_rejected(self, tmp_path):
+        body = "name: r\nhooks:\n  SessionStart: []\n"
+        with pytest.raises(SchemaError, match="must be a non-empty list"):
+            self._load(tmp_path, body)
+
+    def test_entry_missing_command_rejected(self, tmp_path):
+        body = "name: r\nhooks:\n  SessionStart:\n    - matcher: startup\n"
+        with pytest.raises(SchemaError, match="missing required non-empty 'command'"):
+            self._load(tmp_path, body)
+
+    def test_entry_empty_command_rejected(self, tmp_path):
+        body = "name: r\nhooks:\n  SessionStart:\n    - command: ''\n"
+        with pytest.raises(SchemaError, match="missing required non-empty 'command'"):
+            self._load(tmp_path, body)
+
+    def test_entry_not_a_mapping_rejected(self, tmp_path):
+        body = "name: r\nhooks:\n  SessionStart:\n    - just-a-string\n"
+        with pytest.raises(SchemaError, match="entries must be mappings"):
+            self._load(tmp_path, body)
+
+    def test_entry_matcher_not_a_string_rejected(self, tmp_path):
+        body = "name: r\nhooks:\n  SessionStart:\n    - command: hook-a\n      matcher: 5\n"
+        with pytest.raises(SchemaError, match="'matcher' must be a string"):
+            self._load(tmp_path, body)
+
+    def test_entry_unknown_field_rejected(self, tmp_path):
+        body = "name: r\nhooks:\n  SessionStart:\n    - command: hook-a\n      extra: bad\n"
+        with pytest.raises(SchemaError, match="unknown field"):
+            self._load(tmp_path, body)
+
+    def test_strict_allows_typed_hooks_field(self, tmp_path):
+        body = "name: r\nhooks:\n  SessionStart:\n    - command: hook-a\n"
+        d = tmp_path / "rcp"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "recipe.yaml").write_text(body)
+        r = load_recipe(d, strict=True)
+        assert r.name == "r"
+
+
+class TestRecipeConflicts:
+    def test_parse_defaults_to_empty(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\n")
+        assert load_recipe(d).conflicts == []
+
+    def test_parse_conflicts_list(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\nconflicts: [other]\n")
+        assert load_recipe(d).conflicts == ["other"]
+
+    def test_non_list_rejected(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\nconflicts: other\n")
+        with pytest.raises(SchemaError, match="must be a list"):
+            load_recipe(d)
+
+    def test_empty_string_entry_rejected(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\nconflicts: ['']\n")
+        with pytest.raises(SchemaError, match="non-empty strings"):
+            load_recipe(d)
+
+    def _write_recipe(self, root: Path, name: str, conflicts: list[str] | None = None) -> None:
+        d = root / "recipes" / name
+        d.mkdir(parents=True)
+        conflicts_line = f"conflicts: {conflicts}\n" if conflicts else ""
+        (d / "recipe.yaml").write_text(f"name: {name}\n{conflicts_line}")
+
+    def _write_stack(self, root: Path, name: str, recipes: list[str]) -> None:
+        d = root / "stacks" / name
+        d.mkdir(parents=True)
+        (d / "stack.yaml").write_text(f"name: {name}\nharness: claude\nrecipes: {recipes}\n")
+
+    def test_no_conflict_loads_cleanly(self, tmp_path):
+        from harnessed.schema import load_stack_with_recipes
+
+        self._write_recipe(tmp_path, "a")
+        self._write_recipe(tmp_path, "b")
+        self._write_stack(tmp_path, "s", ["a", "b"])
+        _, recipes = load_stack_with_recipes(tmp_path, "s")
+        assert [r.name for r in recipes] == ["a", "b"]
+
+    def test_declared_conflict_raises(self, tmp_path):
+        from harnessed.schema import load_stack_with_recipes
+
+        self._write_recipe(tmp_path, "a", conflicts=["b"])
+        self._write_recipe(tmp_path, "b")
+        self._write_stack(tmp_path, "s", ["a", "b"])
+        with pytest.raises(SchemaError, match="incompatible"):
+            load_stack_with_recipes(tmp_path, "s")
+
+    def test_conflict_is_symmetric_regardless_of_which_side_declares_it(self, tmp_path):
+        from harnessed.schema import load_stack_with_recipes
+
+        self._write_recipe(tmp_path, "a")
+        self._write_recipe(tmp_path, "b", conflicts=["a"])
+        self._write_stack(tmp_path, "s", ["a", "b"])
+        with pytest.raises(SchemaError, match="incompatible"):
+            load_stack_with_recipes(tmp_path, "s")
+
+    def test_conflict_with_recipe_absent_from_stack_is_fine(self, tmp_path):
+        from harnessed.schema import load_stack_with_recipes
+
+        self._write_recipe(tmp_path, "a", conflicts=["not-in-this-stack"])
+        self._write_stack(tmp_path, "s", ["a"])
+        _, recipes = load_stack_with_recipes(tmp_path, "s")
+        assert [r.name for r in recipes] == ["a"]

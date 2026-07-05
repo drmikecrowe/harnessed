@@ -1,7 +1,12 @@
 # yaml-language-server: $schema=../../../schemas/recipe.schema.json
 # Recipe: agent-carnet — bake the agent-carnet CLI (pure-JS Node) and install its upstream-bundled
 # Claude skill into ~/.claude/skills/agent-carnet. No MCP, no service: agent-carnet is a CLI, not a
-# server. The .carnet/ notebook is one-time-initialized by a new-session hook.
+# server. The .carnet/ notebook is one-time-initialized via the `init:` mechanism (marker + run —
+# see beads' recipe.yaml for the same pattern). This recipe used to declare a `hooks: new_session:`
+# block instead (the abandoned startup-hooks design, docs/todos/2026-06-29-startup-hooks.md, never
+# implemented) — migrated to `init:` for the same reason beads was: it's the mechanism that
+# actually runs, and `hooks:` is now a typed field for GAP 2 (Claude-native settings.json hooks),
+# a different mechanism (per-session, Claude-invoked) from this one-time host-side init.
 #
 # The skill is installed VERBATIM from the pinned agent-carnet@<VERSION> npm tarball by the Dockerfile
 # (skills/agent-carnet/: SKILL.md + references/{cookbook,frontmatter}.md ship inside the package) —
@@ -9,21 +14,30 @@
 name: agent-carnet
 description: agent-carnet — shared, auto-expiring file-based markdown notebook (.carnet/) for AI agents.
 
+# beads (`bd remember` / `bd prime`) is also a persistent cross-session memory store. Combining
+# both in one stack gives the agent two competing "sole memory store" instructions (see the
+# `rules:` entry below) and duplicate/contradictory workflow guidance.
+conflicts: [beads]
+
 # What the capability test must find in the running container after a successful build: the skill the
 # Dockerfile copies verbatim from the pinned tarball into ~/.claude/skills/agent-carnet. The assembler
 # cannot see what a Dockerfile RUN step installs, so we declare it here.
 expect:
   skills: [agent-carnet]
 
-# One-time bootstrap: the first time a project folder is opened (when .carnet/ is absent), run
-# `agent-carnet init` in the mounted project to create .carnet/. Git-free + non-touching (no
-# .gitignore entry, no git hooks, no repo discovery).
-#
-# NOTE: depends on the startup-hooks feature (docs/todos/2026-06-29-startup-hooks.md), which is
-# "design / not started" at the time this recipe ships. Until it lands, init is triggered
-# out-of-band (a one-shot `agent-carnet init` in the project). The recipe files are correct in
-# shape regardless — assemble parses `hooks` as a forward field.
-hooks:
-  new_session:
-    script: hooks/new-session.sh
-    when_missing: .carnet
+# Instructs the agent to treat carnet as the sole cross-session memory store instead of the
+# harness's built-in auto-memory system — otherwise both systems accumulate overlapping notes.
+rules:
+  - path: rules/agent-carnet
+
+# One-time bootstrap: runs once per project via `harnessed init <stack>` (or automatically on
+# every `harnessed launch`). The marker is `.carnet/` itself; if it exists, the step is skipped.
+# `agent-carnet init` is git-free + non-touching (no .gitignore entry, no git hooks, no repo
+# discovery) — mirrors beads' `--stealth` posture, just without a flag (agent-carnet has no
+# git-integration mode to opt out of in the first place).
+init:
+  marker:
+    scope: workspace
+    location: in_repo
+    name: .carnet
+  run: agent-carnet init

@@ -8,8 +8,9 @@ The deeper "why" is in [docs/harnessed-design.md](docs/harnessed-design.md); how
 
 A **host Python CLI** that composes and launches containerized AI-coding-harness stacks. It runs on
 the host (installed via pipx/uvx) and drives **podman** directly — there is no tool container and no
-daemon socket. A launched stack is a podman **pod**: the chosen agent + the **hatago** MCP hub (+ any
-referenced service sidecars).
+daemon socket. A launched stack is a podman **pod**: the chosen agent container — which also runs the
+**hatago** MCP hub as an in-container process (hatago-consolidation) — plus any referenced service
+sidecars.
 
 ## Repository layout
 
@@ -27,7 +28,7 @@ harnessed/
 ├── tests/                    # pytest (unit + podman-gated integration); tests/fixtures/
 ├── catalog/                  # everything contributors author (see Vocabulary)
 │   ├── agents/<name>/agent.yaml      # an AI harness (claude, omp, …) + its image/Dockerfile
-│   ├── base/                         # shared base + hatago Dockerfiles, pnpm policy, egress script
+│   ├── base/                         # shared base + per-agent Dockerfiles (hatago baked into base), pnpm policy, egress script
 │   ├── recipes/<name>/               # recipe.yaml [+ skills/ commands/ Dockerfile]
 │   ├── services/<name>/              # service.yaml + Dockerfile + server (shared sidecars)
 │   └── stacks/<agent>_<recipe>…/stack.yaml
@@ -60,13 +61,15 @@ Generated profiles are **not** in the repo — they are emitted to `$XDG_DATA_HO
    catalog roots; fan each recipe's `skills/`+`commands/` into the profile's `.claude/`; merge MCP
    servers into one `hatago.config.json`; emit the harness `.mcp.json` (one entry → the hatago hub);
    emit `Dockerfile.harnessed-<stack>` (base agent image + concatenated recipe Dockerfile bodies).
-2. build the **hatago** image.
+2. build the shared **base** image, which bakes the **hatago** hub (and the time server) in-process
+   (hatago-consolidation) — there is no separate hatago image.
 3. if any recipe ships a Dockerfile, build the **derived** `harnessed-<stack>` image and **merge**
    its baked `~/.claude/{skills,commands,plugins,…}` back into the profile (so image-delivered and
    recipe-fanned extensions coexist — the profile mount would otherwise shadow the baked ones).
 
-`harnessed <stack>` then launches the pod (derived image if present, else the agent image) + hatago
-+ any referenced services (started host-published, idempotently).
+`harnessed <stack>` then launches the pod (derived image if present, else the agent image), starts
+**hatago** as a process *inside* that container (hatago-consolidation), and brings up any referenced
+services (started host-published, idempotently).
 
 ## The capability test is the oracle
 

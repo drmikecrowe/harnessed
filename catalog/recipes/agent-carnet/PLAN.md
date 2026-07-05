@@ -8,7 +8,7 @@ pure-JS bundled `.mjs`, no native binary). Node CLI (not an MCP server, not a da
 
 See `README.md` (this dir) for *why* each choice was made. This file is the *how*. Closest model:
 `catalog/recipes/beads/PLAN.md` — the shapes are near-identical (CLI + skill + per-project state
-dir + one-time init hook).
+dir + one-time `init:`).
 
 ## Host-vs-recipe distinction (resolve up front)
 
@@ -25,15 +25,14 @@ different `~/.claude` namespace a launched agent actually sees. No `agent-carnet
 
 ## Recipe shape
 
-Dockerfile recipe (bake the `agent-carnet` CLI **and** install its bundled upstream skill) + a `new-session` hook that inits
-`.carnet/`. **No MCP, no service** — agent-carnet is a CLI, not an MCP server.
+Dockerfile recipe (bake the `agent-carnet` CLI **and** install its bundled upstream skill) + an
+`init:` block that bootstraps `.carnet/` once per project. **No MCP, no service** — agent-carnet is
+a CLI, not an MCP server.
 
 ```
 catalog/recipes/agent-carnet/
   recipe.yaml
   Dockerfile            # bake the pinned agent-carnet CLI + install its bundled upstream skill
-  hooks/
-    new-session.sh      # agent-carnet init  (runs once, when .carnet/ is absent)
   PLAN.md  README.md
 ```
 
@@ -44,15 +43,24 @@ name: agent-carnet
 description: agent-carnet — shared, auto-expiring file-based markdown notebook (.carnet/) for AI agents.
 expect:
   skills: [agent-carnet]       # installed by the Dockerfile (upstream-bundled) — NOT recipe-authored
-hooks:
-  new_session:
-    script: hooks/new-session.sh
-    when_missing: .carnet      # fire only when the project has no .carnet/ yet
+init:
+  marker:
+    scope: workspace
+    location: in_repo
+    name: .carnet
+  run: agent-carnet init
 ```
 
-> `hooks.new_session` depends on the **startup-hooks** feature
-> (`docs/todos/2026-06-29-startup-hooks.md`). If that feature is not yet built, init must be
-> triggered out-of-band until it lands (see "Phasing").
+This used to be a `hooks: new_session: {script, when_missing}` block — the **startup-hooks**
+design (`docs/todos/2026-06-29-startup-hooks.md`), which was never implemented (no launcher code
+ever consumed `hooks.new_session`; it only round-tripped as a forward-parsed field). `init:`
+(marker + run, `src/harnessed/schema.py`/`launcher.py`) is the mechanism that actually runs —
+`_run_init_for_stack` executes `run` in a one-shot transient container whenever the marker path is
+absent, both from `harnessed init <stack>` and automatically on every `harnessed launch`. Beads
+made the identical migration first; this recipe follows the same shape. (`hooks:` is no longer a
+free-form forward field either — it's now typed for GAP 2, Claude-native `settings.json` hooks
+invoked by Claude Code itself every time an event fires, a different mechanism from this
+host-side, once-per-project `init:`.)
 
 ### Dockerfile (bake `agent-carnet`)
 
@@ -69,11 +77,16 @@ RUN pnpm add -g agent-carnet@${AGENT_CARNET_VERSION}
 # Verify the global bin resolves on PATH for the harnessed user before the layer is trusted.
 RUN agent-carnet --version
 # Install the skill agent-carnet BUNDLES in its npm tarball (skills/agent-carnet/: SKILL.md +
-# references/{cookbook,frontmatter}.md). Copy it verbatim from the just-pinned global package into the
-# container's ~/.claude/skills/agent-carnet — no second source, no floating ref. `pnpm root -g`
-# resolves the global node_modules the line above populated; $HOME is the unprivileged user's.
+# references/{cookbook,frontmatter}.md). Copy it verbatim from the just-pinned global package into
+# the container's ~/.claude/skills/agent-carnet — no second source, no floating ref.
+#
+# `pnpm root -g` does NOT contain a flat `agent-carnet/` subdir — pnpm's global store nests the
+# package under a hashed import-context dir plus its own `node_modules/` (a symlink into pnpm's
+# content-addressable store). Glob + take the first match rather than assume exactly one
+# import-context hash; `cp -rL` dereferences the symlink into a real copy.
 RUN mkdir -p "$HOME/.claude/skills" \
- && cp -r "$(pnpm root -g)/agent-carnet/skills/agent-carnet" "$HOME/.claude/skills/agent-carnet" \
+ && skill_src=$(printf '%s\n' "$(pnpm root -g)"/*/node_modules/agent-carnet/skills/agent-carnet | head -1) \
+ && cp -rL "$skill_src" "$HOME/.claude/skills/agent-carnet" \
  && test -f "$HOME/.claude/skills/agent-carnet/SKILL.md"
 ```
 
@@ -97,18 +110,14 @@ Supply-chain notes:
   Node meets this (see Risks). agent-carnet uses `--run`-style modern Node scripts upstream; an older
   Node will fail the global add or the runtime.
 
-### hooks/new-session.sh
+### Init: `agent-carnet init`, via `init:`
 
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-# Runs once, in the mounted project dir ($PWD = project root), the first time this project is opened
-# (when .carnet/ is absent). Git-free + non-touching: plain `agent-carnet init` creates .carnet/ and
-# writes NO .gitignore entry, no git hooks, no repo discovery — the --gitignore flag is intentionally
-# omitted (mirrors beads' --stealth posture). Idempotent — and additionally gated by when_missing, so
-# re-launches never reach here.
-agent-carnet init
-```
+The `run` command is just `agent-carnet init` — no wrapper script needed (unlike beads, which
+branches on `${HARNESS}` for its `bd setup <tool>` step). Git-free + non-touching: plain
+`agent-carnet init` creates `.carnet/` and writes NO `.gitignore` entry, no git hooks, no repo
+discovery — the `--gitignore` flag is intentionally omitted (mirrors beads' `--stealth` posture).
+Idempotent, and the `.carnet` marker means a second launch against the same project skips the step
+entirely.
 
 ### Skill (installed, not authored)
 
@@ -122,9 +131,9 @@ no floating `skills add yamadashy/agent-carnet` ref).
 
 A note on what the upstream skill contains (so the recipe's other sections stay honest about it): it
 is a Claude-Code-first skill — its hard rules and examples pass `--agent claude-code`, and it covers
-save/find/read/used usage but does **not** teach `agent-carnet init`. Init is therefore the
-new-session hook's job (see "Phasing" for the no-hooks case). `--agent` is free-form CLI metadata
-(not enum-validated), so non-Claude harnesses work functionally despite the Claude-centric skill text.
+save/find/read/used usage but does **not** teach `agent-carnet init`. Init is therefore `init:`'s
+job, not the skill's. `--agent` is free-form CLI metadata (not enum-validated), so non-Claude
+harnesses work functionally despite the Claude-centric skill text.
 
 ## Test stack
 
@@ -139,7 +148,9 @@ recipes: [agent-carnet]
 
 ```bash
 harnessed build claude_carnet   # assemble + build derived image (supply-chain pin gate runs here)
-harnessed claude_carnet         # launch; new-session hook runs `agent-carnet init` in the project
+harnessed init  claude_carnet   # one-time bootstrap: runs `agent-carnet init` in the project (also
+                                 # runs automatically on the first `harnessed launch`)
+harnessed claude_carnet         # launch
 harnessed test  claude_carnet   # capability report: ✓ agent-carnet (skill) present
 ```
 
@@ -147,20 +158,10 @@ Manual verification (the capability test only checks the skill is present — ve
 
 - After launch against a fresh project dir, `.carnet/` exists in that dir on the **host** (persists
   via the project bind-mount) and is empty aside from the prune sweep's lazily-created `.trash/`.
-- Re-launching the same project does NOT re-init (sentinel present) and does not touch git
-  (`git status` clean; no `.gitignore` mutation; no hooks installed).
+- Re-launching the same project does NOT re-init (the `.carnet` marker is present) and does not
+  touch git (`git status` clean; no `.gitignore` mutation; no hooks installed).
 - `agent-carnet save … ` / `agent-carnet find … ` / `agent-carnet list` work inside the instance with
   zero git calls; a saved note's file is visible on the host at `<project>/.carnet/<cat>/<slug>.md`.
-
-## Phasing
-
-1. **If startup-hooks is built:** ship recipe.yaml + Dockerfile + `hooks/new-session.sh`. Init is
-   automatic and deterministic; the Dockerfile installs the CLI and the verbatim upstream skill.
-2. **If not yet:** the recipe genuinely depends on startup-hooks for init — the upstream skill covers
-   save/find/read/used usage but does **not** teach `agent-carnet init`, and we install it verbatim
-   (so we cannot inject that instruction). Ship the Dockerfile + recipe.yaml and trigger init
-   out-of-band (a one-shot `agent-carnet init` in the project, or the harness's own first-run) until
-   the hook feature lands; add the hook the moment startup-hooks ships.
 
 ## Risks / checks
 
@@ -172,8 +173,9 @@ Manual verification (the capability test only checks the skill is present — ve
   on PATH for `harnessed`, a `pnpm setup` / `PNPM_HOME` step may be needed (same class of risk beads
   flags).
 - **`init` idempotency:** plain `agent-carnet init` must be a no-op when `.carnet/` already exists
-  (the `when_missing` gate makes this belt-and-braces, but confirm `init` doesn't error or rewrite on
-  a second run). Verified-safe behaviour, not assumed.
+  (the `init:` marker gate makes this belt-and-braces — a second launch skips the command entirely —
+  but confirm `init` itself doesn't error or rewrite if ever invoked directly on an existing
+  `.carnet/`). Verified-safe behaviour, not assumed.
 - **`--agent` is Claude-centric in the upstream skill text:** the verbatim upstream skill lists
   `--agent claude-code` as a hard rule and uses it in every example, and the recipe installs it
   unmodified (a recipe MUST NOT author/mirror the skill — upstream ships it). Functionally this is

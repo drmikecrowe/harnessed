@@ -156,66 +156,429 @@ def _parse_expect(raw_expect) -> Expect:
     )
 
 
-# A project-scoped persist entry is a single $HOME-relative folder name (e.g. `.context-mode`)
-# that the tool writes to inside the container. The strict charset keeps it ONE path component,
-# so the name can never traverse out of the per-project data dir harnessed maps it to. '.' and
-# '..' pass the charset but are path navigation, not names — rejected explicitly.
-_PERSIST_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+# Per-component charset for persist entry names. Each slash-separated component must match
+# this (no '..', no empty component). '.' is allowed as a leading char (e.g. '.beads') but not
+# alone (rejected explicitly during validation). Valid across all scopes.
+_PERSIST_NAME_COMPONENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 # A stack `ssh_keys` entry is a single private-key basename under ~/.ssh (e.g. `id_ed25519`). Same
 # one-path-component charset as persist names so a stack can never name `../foo` or an absolute path
 # and escape ~/.ssh; '.'/'..' pass the charset but are navigation, rejected explicitly at parse.
 _SSH_KEY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
+_PERSIST_VALID_SCOPES = {"workspace", "project", "global"}
+_PERSIST_RESERVED_SCOPES = {"repo"}
+_PERSIST_VALID_LOCATIONS = {"host", "in_repo"}
+_PERSIST_RESERVED_LOCATIONS = {"external"}
+_PERSIST_VALID_VCS = {"tracked", "ignored"}
+
+
+@dataclass
+class PersistEntry:
+    """One recipe persist entry — a single (scope, location, name/path, vcs) combination.
+
+    Axes:
+      scope    — what identity key is used (workspace|project|global).
+      location — where the bytes live (host|in_repo; omitted for scope: global).
+      name     — $HOME-relative path the tool writes to inside the container (scope: workspace|project).
+      path     — real host path to bind-mount as-is (scope: global only).
+      vcs      — git tracking intent (tracked|ignored; required for location: in_repo only).
+    """
+
+    scope: str
+    location: str | None
+    name: str | None
+    path: str | None
+    vcs: str | None
+
 
 @dataclass
 class PersistSpec:
-    """Folders a recipe declares must survive harnessed's `--fresh` (fresh-container) launches.
+    """All persist entries declared by a recipe.
 
-    Scope is an EXPLICIT key, never inferred from the string shape (a bare-name-vs-path
-    convention silently flips isolation semantics):
-      - `project`: bare `$HOME`-relative folder names. harnessed owns the host path and keys it
-        per (recipe, project) — isolated; project A's data never reaches project B.
-      - `global`:  the tool's real host dir (e.g. `~/.gbrain`), shared with host-native runs.
-        Parsed here so the schema is complete, but mounting is gated behind the user-owned
-        persist allowlist (T4b) — declaring one currently fails loudly at launch, never mounts.
+    Scope is ALWAYS explicit — never inferred from the name shape. Three scopes:
+      workspace — keyed by the resolved current launch path (per-worktree/per-branch).
+      project   — keyed by git-common-dir (shared across all worktrees of one checkout;
+                  falls back to workspace scope with a warning when not in a git repo).
+      global    — a real, allowlisted host dir shared with host-native tool runs (T4b).
+
+    Two locations (not applicable to scope: global):
+      host    — harnessed owns a dir under $XDG_DATA_HOME/harnessed/persist/ and mounts it rw.
+      in_repo — the folder lives inside the already-mounted project workspace (no extra mount).
     """
 
-    project: list[str] = field(default_factory=list)
-    global_dirs: list[str] = field(default_factory=list)
+    entries: list[PersistEntry] = field(default_factory=list)
+
+
+def _validate_persist_name(name: str, location: str, entry_idx: int) -> None:
+    """Validate a persist entry name: no absolute paths, no '..', correct nesting for scope."""
+    if not name or not isinstance(name, str):
+        raise SchemaError(f"persist entry [{entry_idx}]: 'name' must be a non-empty string")
+    if name.startswith("/"):
+        raise SchemaError(
+            f"persist entry [{entry_idx}]: 'name' must not be an absolute path: {name!r}"
+        )
+    if name.startswith("~"):
+        raise SchemaError(
+            f"persist entry [{entry_idx}]: 'name' must not start with '~': {name!r} — "
+            "use 'path' with scope: global for real host paths"
+        )
+    parts = name.split("/")
+    for part in parts:
+        if part in ("", ".", ".."):
+            raise SchemaError(
+                f"persist entry [{entry_idx}]: 'name' {name!r} contains invalid component "
+                f"{part!r} — no empty segments, '.', or '..' allowed"
+            )
+        if not _PERSIST_NAME_COMPONENT_RE.match(part):
+            raise SchemaError(
+                f"persist entry [{entry_idx}]: 'name' component {part!r} (in {name!r}) "
+                "must match [A-Za-z0-9._-]"
+            )
+    if location == "host" and "/" in name:
+        raise SchemaError(
+            f"persist entry [{entry_idx}]: 'name' {name!r} for location: host must be a single "
+            "path component with no slashes — it maps directly to $HOME/<name> inside the "
+            "container (e.g. '.beads', not '.beads/sub')"
+        )
 
 
 def _parse_persist(raw_persist) -> PersistSpec:
-    """Parse the `persist:` block: a mapping {project: [names], global: [paths]}."""
+    """Parse the `persist:` block: a list of {scope, location, name/path, vcs} entries."""
     if not raw_persist:
         return PersistSpec()
-    if not isinstance(raw_persist, dict):
+
+    # Detect old format (dict with project/global keys) and give a clear migration hint.
+    if isinstance(raw_persist, dict):
+        if set(raw_persist) & {"project", "global"}:
+            raise SchemaError(
+                "recipe 'persist' format has changed: it is now a list of entries, each with "
+                "explicit 'scope', 'location', and 'name'/'path' fields.\n"
+                "Old format (no longer valid):\n"
+                "  persist: {project: [.foo], global: [~/.bar]}\n"
+                "New format:\n"
+                "  persist:\n"
+                "    - name: .foo\n"
+                "      scope: workspace\n"
+                "      location: host\n"
+                "    - path: ~/.bar\n"
+                "      scope: global\n"
+                "See docs/guides/recipe-authoring.md for the full persist schema."
+            )
         raise SchemaError(
-            "recipe 'persist' must be a mapping with explicit scope keys "
-            "(e.g. persist: {project: [.context-mode], global: [~/.gbrain]}). "
-            "A bare list is rejected — scope must be named, not inferred from the path shape."
+            "recipe 'persist' must be a list of entries, not a mapping. "
+            "See docs/guides/recipe-authoring.md for the persist schema."
         )
-    unknown = sorted(set(raw_persist) - {"project", "global"})
+
+    if not isinstance(raw_persist, list):
+        raise SchemaError(
+            "recipe 'persist' must be a list of entries — "
+            "see docs/guides/recipe-authoring.md for the persist schema."
+        )
+
+    entries: list[PersistEntry] = []
+    for i, raw in enumerate(raw_persist):
+        if not isinstance(raw, dict):
+            raise SchemaError(
+                f"persist entry [{i}] must be a mapping, got {type(raw).__name__!r}"
+            )
+
+        scope = raw.get("scope")
+        if scope is None:
+            raise SchemaError(
+                f"persist entry [{i}]: missing required field 'scope' "
+                "(workspace | project | global)"
+            )
+        if scope in _PERSIST_RESERVED_SCOPES:
+            raise SchemaError(
+                f"persist entry [{i}]: scope: {scope!r} is reserved for a future release "
+                "and not yet implemented"
+            )
+        if scope not in _PERSIST_VALID_SCOPES:
+            raise SchemaError(
+                f"persist entry [{i}]: unknown scope {scope!r} — "
+                f"valid values: {', '.join(sorted(_PERSIST_VALID_SCOPES))}"
+            )
+
+        location = raw.get("location")
+        name = raw.get("name")
+        path = raw.get("path")
+        vcs = raw.get("vcs")
+
+        unknown = sorted(set(raw) - {"scope", "location", "name", "path", "vcs"})
+        if unknown:
+            raise SchemaError(
+                f"persist entry [{i}]: unknown field(s) {unknown} — "
+                "valid fields: scope, location, name, path, vcs"
+            )
+
+        if scope == "global":
+            if location is not None:
+                raise SchemaError(
+                    f"persist entry [{i}]: 'location' is not valid for scope: global "
+                    "(global entries bind-mount the real host path as-is)"
+                )
+            if vcs is not None:
+                raise SchemaError(
+                    f"persist entry [{i}]: 'vcs' is not valid for scope: global"
+                )
+            if name is not None:
+                raise SchemaError(
+                    f"persist entry [{i}]: use 'path' (not 'name') for scope: global — "
+                    "a real host path is required (e.g. path: ~/.gbrain)"
+                )
+            if not path or not isinstance(path, str) or not path.strip():
+                raise SchemaError(
+                    f"persist entry [{i}]: scope: global requires a non-empty 'path' field "
+                    "(e.g. path: ~/.gbrain)"
+                )
+            entries.append(PersistEntry(scope=scope, location=None, name=None, path=path, vcs=None))
+
+        else:
+            # workspace or project
+            if path is not None:
+                raise SchemaError(
+                    f"persist entry [{i}]: use 'name' (not 'path') for scope: {scope!r} — "
+                    "'path' is only for scope: global"
+                )
+            if location is None:
+                raise SchemaError(
+                    f"persist entry [{i}]: scope: {scope!r} requires an explicit 'location' "
+                    "field (host | in_repo)"
+                )
+            if location in _PERSIST_RESERVED_LOCATIONS:
+                raise SchemaError(
+                    f"persist entry [{i}]: location: {location!r} is reserved for a future "
+                    "release and not yet implemented"
+                )
+            if location not in _PERSIST_VALID_LOCATIONS:
+                raise SchemaError(
+                    f"persist entry [{i}]: unknown location {location!r} — "
+                    f"valid values: {', '.join(sorted(_PERSIST_VALID_LOCATIONS))}"
+                )
+            if name is None:
+                raise SchemaError(
+                    f"persist entry [{i}]: scope: {scope!r} requires a 'name' field "
+                    "(a $HOME-relative path, e.g. .beads)"
+                )
+            _validate_persist_name(name, location, i)
+
+            if location == "in_repo":
+                if vcs is None:
+                    raise SchemaError(
+                        f"persist entry [{i}]: location: in_repo requires a 'vcs' field "
+                        "(tracked | ignored)"
+                    )
+                if vcs not in _PERSIST_VALID_VCS:
+                    raise SchemaError(
+                        f"persist entry [{i}]: unknown vcs {vcs!r} — "
+                        "valid values: tracked, ignored"
+                    )
+            else:
+                if vcs is not None:
+                    raise SchemaError(
+                        f"persist entry [{i}]: 'vcs' is only valid for location: in_repo "
+                        f"(got location: {location!r})"
+                    )
+
+            entries.append(
+                PersistEntry(scope=scope, location=location, name=name, path=None, vcs=vcs)
+            )
+
+    return PersistSpec(entries=entries)
+
+
+@dataclass
+class InitMarker:
+    """Where to check (on the host) whether a recipe has been initialized.
+
+    Reuses the persist scope/location vocabulary — the same axes, same valid values:
+      scope    — workspace | project (NOT global — init is per-project or per-worktree, never global)
+      location — host | in_repo
+      name     — $HOME-relative path (location: host) or workspace-relative path (location: in_repo)
+      file     — optional: a specific file/dir UNDER name to check; if absent, check name itself
+    """
+
+    scope: str
+    location: str
+    name: str
+    file: str | None
+
+
+@dataclass
+class InitSpec:
+    """One-time init spec for a recipe: run `run` once, gated on `marker` being absent on the host.
+
+    `marker` resolves to a host-side path via the same path helpers as `persist:`. If that path
+    does not exist when the stack is launched (or `harnessed init` is run), `run` is executed
+    inside a transient one-shot container with the same project + persist mounts as a normal launch.
+    Once `run` succeeds, the marker path will exist (created by the init command itself) and future
+    launches skip the step — idempotent by construction.
+    """
+
+    marker: InitMarker
+    run: str
+
+
+_INIT_VALID_SCOPES = frozenset({"workspace", "project"})
+
+
+def _parse_init(raw_init) -> "InitSpec | None":
+    """Parse the `init:` block: marker (scope + location + name + optional file) + run string."""
+    if not raw_init:
+        return None
+    if not isinstance(raw_init, dict):
+        raise SchemaError("recipe 'init' must be a mapping with 'marker' and 'run' fields")
+
+    run = raw_init.get("run")
+    if not run or not isinstance(run, str) or not run.strip():
+        raise SchemaError("recipe 'init': 'run' is required and must be a non-empty string")
+
+    raw_marker = raw_init.get("marker")
+    if not raw_marker or not isinstance(raw_marker, dict):
+        raise SchemaError("recipe 'init': 'marker' is required and must be a mapping")
+
+    scope = raw_marker.get("scope")
+    if scope is None:
+        raise SchemaError(
+            "recipe 'init.marker': missing required field 'scope' (workspace | project)"
+        )
+    if scope == "global":
+        raise SchemaError(
+            "recipe 'init.marker': scope: global is not valid for an init marker — "
+            "global paths are shared across all projects and cannot mark per-project initialization. "
+            "Use scope: workspace or scope: project."
+        )
+    if scope not in _INIT_VALID_SCOPES:
+        raise SchemaError(
+            f"recipe 'init.marker': unknown scope {scope!r} — "
+            f"valid values: {', '.join(sorted(_INIT_VALID_SCOPES))}"
+        )
+
+    location = raw_marker.get("location")
+    if location is None:
+        raise SchemaError(
+            "recipe 'init.marker': missing required field 'location' (host | in_repo)"
+        )
+    if location not in _PERSIST_VALID_LOCATIONS:
+        raise SchemaError(
+            f"recipe 'init.marker': unknown location {location!r} — "
+            f"valid values: {', '.join(sorted(_PERSIST_VALID_LOCATIONS))}"
+        )
+
+    name = raw_marker.get("name")
+    if name is None:
+        raise SchemaError("recipe 'init.marker': missing required field 'name'")
+    _validate_persist_name(name, location, 0)
+
+    file_ = raw_marker.get("file")
+    if file_ is not None and (not isinstance(file_, str) or not file_.strip()):
+        raise SchemaError("recipe 'init.marker': 'file' must be a non-empty string if provided")
+
+    unknown = sorted(set(raw_marker) - {"scope", "location", "name", "file"})
     if unknown:
         raise SchemaError(
-            f"recipe 'persist' has unknown scope key(s) {unknown} — "
-            "only 'project' and 'global' are valid."
+            f"recipe 'init.marker': unknown field(s) {unknown} — "
+            "valid fields: scope, location, name, file"
         )
-    project = list(raw_persist.get("project") or [])
-    for entry in project:
-        if not isinstance(entry, str) or entry in (".", "..") or not _PERSIST_NAME_RE.match(entry):
+
+    return InitSpec(
+        marker=InitMarker(scope=scope, location=location, name=name, file=file_),
+        run=run.strip(),
+    )
+
+
+@dataclass
+class HookCommand:
+    """One command hook entry under a single event (recipe.yaml `hooks:` — GAP 2).
+
+    Maps directly to Claude Code's own settings.json hook shape: `matcher` is optional (ignored
+    by events that don't support tool-matching, e.g. Stop/UserPromptSubmit; used to filter by
+    tool name for PreToolUse/PostToolUse, or by source for SessionStart: "startup"|"resume"|"clear").
+    `command` is a shell command string, run by Claude Code's OWN hook runner inside the instance —
+    it must already exist in the image (baked by the recipe's Dockerfile). No launcher-side
+    execution wiring is needed; this is NOT the host-side `init:`/old startup-hooks mechanism.
+    """
+
+    command: str
+    matcher: str | None = None
+
+
+# Claude Code's documented hook event names (code.claude.com/docs/en/hooks). Validated so a typo
+# (e.g. `SessionStarts`) fails at parse time instead of silently installing a dead hook.
+_VALID_HOOK_EVENTS = frozenset({
+    "SessionStart", "Setup", "SessionEnd",
+    "UserPromptSubmit", "UserPromptExpansion", "Stop", "StopFailure",
+    "PreToolUse", "PostToolUse", "PostToolUseFailure", "PostToolBatch",
+    "PermissionRequest", "PermissionDenied",
+    "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "TeammateIdle",
+    "ConfigChange", "CwdChanged", "FileChanged", "InstructionsLoaded",
+    "WorktreeCreate", "WorktreeRemove",
+    "PreCompact", "PostCompact", "MessageDisplay", "Notification",
+    "Elicitation", "ElicitationResult",
+})
+
+
+def _parse_hooks(raw_hooks) -> dict[str, list[HookCommand]]:
+    """Parse the `hooks:` block: {EventName: [{command, matcher?}, ...]} (GAP 2).
+
+    Declarative — a recipe states exactly what belongs in settings.json's `hooks` object; the
+    assembler (emit.py) renders it into Claude Code's native shape. Distinct from `init:` (which
+    runs a command host-side, once, before the agent ever attaches): these commands run INSIDE
+    Claude Code's own hook runner, every time the event fires, so a recipe needing "only once
+    per project" behavior must gate that itself (e.g. check-and-touch a marker file in its script).
+    """
+    if not raw_hooks:
+        return {}
+    if not isinstance(raw_hooks, dict):
+        raise SchemaError(
+            "recipe 'hooks' must be a mapping of {EventName: [{command, matcher?}, ...]}"
+        )
+
+    parsed: dict[str, list[HookCommand]] = {}
+    for event, entries in raw_hooks.items():
+        if event not in _VALID_HOOK_EVENTS:
             raise SchemaError(
-                f"recipe persist project entry {entry!r} is not a valid name — use a bare name "
-                "matching [A-Za-z0-9._-] (no '/', '..', '~', or absolute path). Project-scoped data "
-                "is keyed per project by harnessed; you name the folder, not its host path."
+                f"recipe 'hooks': unknown event {event!r} — "
+                f"valid events: {', '.join(sorted(_VALID_HOOK_EVENTS))}"
             )
-    global_dirs = list(raw_persist.get("global") or [])
-    for entry in global_dirs:
+        if not isinstance(entries, list) or not entries:
+            raise SchemaError(f"recipe 'hooks.{event}' must be a non-empty list of hook entries")
+        commands: list[HookCommand] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise SchemaError(f"recipe 'hooks.{event}' entries must be mappings, got {entry!r}")
+            command = entry.get("command")
+            if not command or not isinstance(command, str) or not command.strip():
+                raise SchemaError(
+                    f"recipe 'hooks.{event}' entry missing required non-empty 'command': {entry!r}"
+                )
+            matcher = entry.get("matcher")
+            if matcher is not None and not isinstance(matcher, str):
+                raise SchemaError(f"recipe 'hooks.{event}' entry 'matcher' must be a string: {entry!r}")
+            unknown = sorted(set(entry) - {"command", "matcher"})
+            if unknown:
+                raise SchemaError(
+                    f"recipe 'hooks.{event}' entry: unknown field(s) {unknown} — "
+                    "valid fields: command, matcher"
+                )
+            commands.append(HookCommand(command=command.strip(), matcher=matcher))
+        parsed[event] = commands
+    return parsed
+
+
+def _parse_conflicts(raw_conflicts) -> list[str]:
+    """Parse the optional `conflicts:` list — recipe names this recipe must never be combined with."""
+    if not raw_conflicts:
+        return []
+    if not isinstance(raw_conflicts, list):
+        raise SchemaError("recipe 'conflicts' must be a list of recipe names")
+    conflicts: list[str] = []
+    for entry in raw_conflicts:
         if not isinstance(entry, str) or not entry.strip():
-            raise SchemaError(
-                f"recipe persist global entry must be a non-empty host path: {entry!r}"
-            )
-    return PersistSpec(project=project, global_dirs=global_dirs)
+            raise SchemaError(f"recipe 'conflicts' entries must be non-empty strings, got {entry!r}")
+        conflicts.append(entry.strip())
+    return conflicts
 
 
 @dataclass
@@ -228,6 +591,14 @@ class Recipe:
     rules: list[FileExt] = field(default_factory=list)
     expect: Expect = field(default_factory=Expect)
     persist: PersistSpec = field(default_factory=PersistSpec)
+    init: "InitSpec | None" = None
+    # GAP 2: declarative Claude Code hooks, merged into settings.json by emit.py. {EventName: [...]}.
+    hooks: dict[str, list[HookCommand]] = field(default_factory=dict)
+    # Other recipe names this recipe must never be combined with in the same stack (e.g. two
+    # recipes that both claim to be the agent's sole cross-session memory store). Checked
+    # symmetrically across a stack's whole recipe list (see _check_recipe_conflicts) — declaring
+    # it on either side is enough.
+    conflicts: list[str] = field(default_factory=list)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
     raw: dict = field(default_factory=dict)
 
@@ -333,13 +704,17 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 
 
 # Recipe fields the parser knows: the typed YAML keys PLUS the D-14 forward fields that
-# `_recipe_raw_strings` reads off `.raw` (scripts/deps/plugins/hooks). `--strict` rejects anything
+# `_recipe_raw_strings` reads off `.raw` (scripts/deps/plugins). `--strict` rejects anything
 # else as a likely typo (e.g. `skkills:`). This is a known-field ALLOWLIST, not strict-everything:
-# the D-14 forward fields stay legal so a recipe can still carry plugins/deps/hooks/scripts without a
+# the D-14 forward fields stay legal so a recipe can still carry plugins/deps/scripts without a
 # schema change here. A genuinely NEW forward field is added to this set (or built with --no-strict).
+# `hooks` is now TYPED (GAP 2, `_parse_hooks`) — it stays in this set as a typed key, not a forward
+# one; `_recipe_raw_strings` still scans its raw string values too (harmless double-duty, catches a
+# stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
-    "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist",  # typed
-    "plugins", "hooks", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
+    "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
+    "conflicts", "hooks",  # typed
+    "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
 
@@ -397,6 +772,9 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False) -> Recipe:
         rules=_parse_fileext(raw.get("rules")),
         expect=_parse_expect(raw.get("expect")),
         persist=_parse_persist(raw.get("persist")),
+        init=_parse_init(raw.get("init")),
+        hooks=_parse_hooks(raw.get("hooks")),
+        conflicts=_parse_conflicts(raw.get("conflicts")),
         root=recipe_dir,
         raw=raw,
     )
@@ -496,7 +874,25 @@ def load_stack_with_recipes(
     """
     stack = load_stack(_resolve_dir(root, "stacks", stack_name))
     recipes = [load_recipe(_resolve_dir(root, "recipes", name), strict=strict) for name in stack.recipes]
+    _check_recipe_conflicts(stack.name, recipes)
     return stack, recipes
+
+
+def _check_recipe_conflicts(stack_name: str, recipes: list[Recipe]) -> None:
+    """Fail loudly if two recipes in the same stack declare themselves incompatible.
+
+    Checked symmetrically: a recipe only needs to list the other side in its own `conflicts:` —
+    both recipes don't have to agree.
+    """
+    names = {r.name for r in recipes}
+    for r in recipes:
+        for other in r.conflicts:
+            if other != r.name and other in names:
+                raise SchemaError(
+                    f"stack {stack_name!r} combines recipes {r.name!r} and {other!r}, which "
+                    f"declare themselves incompatible (conflicts:) — remove one from the stack's "
+                    f"recipes list."
+                )
 
 
 @dataclass

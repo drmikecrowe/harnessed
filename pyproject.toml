@@ -22,6 +22,7 @@ harnessed = "harnessed.launcher:main"
 dev = [
     "pytest>=8",
     "pytest-cov",
+    "jsonschema>=4",
 ]
 
 [tool.setuptools.packages.find]

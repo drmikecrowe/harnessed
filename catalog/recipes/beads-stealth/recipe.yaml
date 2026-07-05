@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: beads-stealth — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary
+# that bundles embedded Dolt, run in FULLY INVISIBLE mode: `.beads/` never lives in the repo at all
+# (host-persisted, bind-mounted at a fixed container path) and `--stealth` is passed throughout, so
+# beads leaves zero git footprint. No MCP, no service, no skill: the agent shells out to `bd` directly.
+#
+# This is NOT beads' default operational mode — see the plain `beads` recipe for that (in-repo,
+# git-tracked, Dolt-native sync via the git origin, hooks installed — the upstream default). Use
+# beads-stealth for personal/dogfooding use where the tool must be completely invisible to
+# collaborators and the host repo (e.g. running this against harnessed's OWN repo — see
+# claude_review-harness).
+#
+# Persistence: `.beads/` is host-persisted under `scope: project` (git-common-dir keyed) so the
+# same beads DB is shared across all worktrees of a checkout but NOT leaked across clones.
+# The bind-mount target is the fixed container path $HOME/.beads, making BEADS_DIR a static Dockerfile
+# ENV — no per-project path arithmetic needed at runtime.
+#
+# Init: runs once per project via `harnessed init <stack>` (or automatically on every `harnessed
+# launch`). The marker is the `.beads/` dir itself; if it exists, the step is skipped.
+#   1. `bd init --quiet --stealth` — creates .beads/; `--stealth` only configures git-exclude (no
+#      hook install, no git ops, no AGENTS.md mutation).
+#   2. `bd-setup-agent` — a harness-aware wrapper baked in the Dockerfile (branches on the
+#      build-time ${HARNESS} ARG). For claude: `bd setup claude --project --stealth`, wiring the
+#      SessionStart hook (.claude/settings.local.json) + minimal CLAUDE.md section. Per beads'
+#      docs/SETUP.md, `bd init --stealth` does NOT do this on its own — it must be a separate
+#      `bd setup <tool> --stealth` call.
+name: beads-stealth
+description: bd (beads), fully invisible mode — .beads/ lives outside the repo entirely, zero git footprint.
+
+# agent-carnet is also a shared, cross-session notebook (see its own `rules:` entry instructing the
+# agent to treat carnet as the SOLE memory store). Combining both in one stack gives the agent two
+# competing persistent-memory systems and duplicate/contradictory workflow instructions. Also
+# conflicts with the plain `beads` recipe — same tool, two different .beads/ locations; don't
+# combine both variants in one stack.
+conflicts: [agent-carnet, beads]
+
+persist:
+  - name: .beads
+    scope: project
+    location: host
+
+init:
+  marker:
+    scope: project
+    location: host
+    name: .beads
+  run: bd init --quiet --stealth && bd-setup-agent

@@ -4,10 +4,10 @@
 # re-declares `ARG HARNESS` after it, so ${HARNESS} is available here and recipes stay
 # harness-independent.
 #
-# Phase 1 (ship now): bake the pinned rtk ("Rust Token Killer") release binary. rtk is a CLI the
-# agent shells out to (`rtk git status`, `rtk read file.rs`, …) — NOT an MCP server, NOT a service,
-# NOT a skill — so this layer installs the binary only. The agent learns the surface from
-# `rtk --help` (Phase 2's `rtk init -g` would additionally bake `RTK.md` + the PreToolUse hook).
+# Bake the pinned rtk ("Rust Token Killer") release binary. rtk is a CLI the agent shells out to
+# (`rtk git status`, `rtk read file.rs`, …) — NOT an MCP server, NOT a service, NOT a skill — so
+# this layer installs the binary, then runs `rtk init -g` to additionally bake `RTK.md` + the
+# PreToolUse hook so the agent doesn't have to discover the surface from `rtk --help` alone.
 #
 # Pin = the release binary (musl-static = zero runtime deps, runs on any base regardless of glibc).
 # The version in the URL is the reproducibility anchor: no @latest / :latest / floating ref would
@@ -33,3 +33,4 @@ RUN set -eu; \
     rm -rf /tmp/rtk*; \
     rtk --version
 USER harnessed
+RUN rtk init -g --auto-patch

@@ -14,10 +14,14 @@ from harnessed.emit import (
     write_hatago_config,
     write_derived_dockerfile,
 )
-from harnessed.schema import McpServer, Stack
+from harnessed.schema import HookCommand, McpServer, Recipe, Stack
 
 _GRANT = f"mcp__{HATAGO_MCP_KEY}"
 _REQUIRED = {"permissions": {"allow": [_GRANT]}}
+
+
+def _hook_recipe(name: str, hooks: dict) -> Recipe:
+    return Recipe(name=name, hooks=hooks)
 
 
 class TestWriteDerivedDockerfile:
@@ -75,6 +79,15 @@ class TestWriteSettingsJson:
         data = json.loads(out.read_text())
         assert f"mcp__{HATAGO_MCP_KEY}" in data["permissions"]["allow"]
 
+    def test_recipe_hooks_included_with_no_servers(self, tmp_path):
+        # A hooks-only recipe (no MCP servers) must still get its hooks into the floor stub.
+        recipe = _hook_recipe("caveman", {"SessionStart": [HookCommand(command="caveman-remind")]})
+        out = write_settings_json(tmp_path, [], [recipe])
+        data = json.loads(out.read_text())
+        assert data == {
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]}
+        }
+
 
 class TestWriteHatagoConfig:
     def test_stdio_server_gets_command_entry(self, tmp_path):
@@ -108,6 +121,41 @@ class TestRequiredSettings:
 
     def test_empty_when_no_servers(self):
         assert required_settings([]) == {}
+
+    def test_empty_when_recipes_have_no_hooks(self):
+        assert required_settings([], [_hook_recipe("r", {})]) == {}
+
+    def test_hooks_rendered_into_native_claude_shape(self):
+        recipe = _hook_recipe("caveman", {
+            "SessionStart": [HookCommand(command="caveman-remind", matcher=None)],
+        })
+        assert required_settings([], [recipe]) == {
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "caveman-remind"}]}]}
+        }
+
+    def test_matcher_included_when_present(self):
+        recipe = _hook_recipe("r", {"PreToolUse": [HookCommand(command="hook-a", matcher="Bash")]})
+        result = required_settings([], [recipe])
+        assert result["hooks"]["PreToolUse"] == [
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "hook-a"}]}
+        ]
+
+    def test_multiple_recipes_same_event_each_get_own_group(self):
+        recipes = [
+            _hook_recipe("a", {"SessionStart": [HookCommand(command="hook-a")]}),
+            _hook_recipe("b", {"SessionStart": [HookCommand(command="hook-b")]}),
+        ]
+        result = required_settings([], recipes)
+        assert result["hooks"]["SessionStart"] == [
+            {"hooks": [{"type": "command", "command": "hook-a"}]},
+            {"hooks": [{"type": "command", "command": "hook-b"}]},
+        ]
+
+    def test_combines_grant_and_hooks(self):
+        recipe = _hook_recipe("caveman", {"SessionStart": [HookCommand(command="caveman-remind")]})
+        result = required_settings([McpServer(name="time", command="pnpm")], [recipe])
+        assert result["permissions"]["allow"] == [_GRANT]
+        assert "SessionStart" in result["hooks"]
 
 
 class TestReadBakedSettings:
@@ -184,3 +232,42 @@ class TestMergeSettings:
         baked = {"permissions": {"allow": ["mcp__other"]}}
         merge_settings(baked, _REQUIRED)
         assert baked == {"permissions": {"allow": ["mcp__other"]}}  # deepcopy — caller's dict safe
+
+    # --- GAP 2: hooks union ---
+
+    def test_required_hooks_appended_to_new_event(self):
+        required = {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "remind"}]}]}}
+        merged = merge_settings({}, required)
+        assert merged == required
+
+    def test_required_hooks_appended_alongside_baked_same_event(self):
+        baked = {"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "base-hook"}]}]}}
+        required = {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "recipe-hook"}]}]}}
+        merged = merge_settings(baked, required)
+        assert merged["hooks"]["SessionStart"] == [
+            {"matcher": "startup", "hooks": [{"type": "command", "command": "base-hook"}]},
+            {"hooks": [{"type": "command", "command": "recipe-hook"}]},
+        ]
+
+    def test_required_hooks_for_different_event_added_separately(self):
+        baked = {"hooks": {"PreToolUse": [{"matcher": "Bash"}]}}
+        required = {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "remind"}]}]}}
+        merged = merge_settings(baked, required)
+        assert merged["hooks"]["PreToolUse"] == [{"matcher": "Bash"}]
+        assert merged["hooks"]["SessionStart"] == [{"hooks": [{"type": "command", "command": "remind"}]}]
+
+    def test_no_required_hooks_leaves_baked_hooks_untouched(self):
+        baked = {"hooks": {"PreToolUse": [{"matcher": "Bash"}]}}
+        merged = merge_settings(baked, _REQUIRED)
+        assert merged["hooks"] == {"PreToolUse": [{"matcher": "Bash"}]}
+
+    def test_hooks_and_permissions_merge_together(self):
+        baked = {"hooks": {"PreToolUse": [{"matcher": "Bash"}]}, "permissions": {"allow": ["mcp__other"]}}
+        required = {
+            "permissions": {"allow": [_GRANT]},
+            "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "remind"}]}]},
+        }
+        merged = merge_settings(baked, required)
+        assert merged["permissions"]["allow"] == ["mcp__other", _GRANT]
+        assert merged["hooks"]["PreToolUse"] == [{"matcher": "Bash"}]
+        assert merged["hooks"]["SessionStart"] == [{"hooks": [{"type": "command", "command": "remind"}]}]

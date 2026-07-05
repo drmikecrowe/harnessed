@@ -16,7 +16,8 @@ pin gate.
 > `UserPromptSubmit` **hooks** (`src/hooks/caveman-activate.js`, `caveman-mode-tracker.js`). The
 > skills themselves are hook-free and work on demand; the hooks only provide **auto-activation**
 > (write a `.caveman-active` flag so the agent grunts from turn 1) + stats/statusline. Those are
-> **Claude-tool-hooks = GAP 2** (settings.json/plugin hooks, currently unsupported) — see Phasing.
+> **Claude-tool-hooks = GAP 2** (settings.json/plugin hooks) — see Phasing for current status
+> (GAP 2 is now implemented; this recipe uses it for a first-run reminder, not full parity yet).
 
 ## Recipe shape
 
@@ -135,27 +136,36 @@ Manual verification (the capability test only checks presence — verify the *be
 - Attach and say "talk like caveman" or `/caveman` → the agent replies in terse fragments; code/
   error strings stay verbatim. `/caveman ultra` tightens further; "normal mode" reverts.
 - **Confirm what's *missing* by design:** the agent does **not** auto-grunt from turn 1 (no
-  SessionStart hook), and there is no `[CAVEMAN]` statusline badge. Both are GAP 2 — see Phasing.
+  `caveman-activate.js`-equivalent), and there is no `[CAVEMAN]` statusline badge or per-session
+  stats counter. GAP 2 (the mechanism) now exists, but this recipe only uses it for a lightweight
+  first-run reminder (below) — full upstream parity is a further step, see Phasing.
+- **First-run reminder (GAP 2, now shipped):** on a fresh project, the first `SessionStart` prints
+  a one-time nudge to run `/caveman-init`. Verify: launch against a brand-new project dir → the
+  reminder appears once; re-launch (or a `SessionStart: resume/clear`) → silent, because
+  `.claude/.caveman-notified` now exists in the project (check on the **host** — the project is
+  bind-mounted, so this file is visible/inspectable there too).
 
 ## Phasing
 
-1. **Now (no feature):** ship recipe.yaml + Dockerfile as above. caveman activates **on demand**
-   via `/caveman` or its trigger phrases. No auto-activation, no statusline, no per-session stats
-   counter. This is a fully usable compression skill — the auto-activation hook is a convenience,
-   not the capability.
-2. **When Claude-tool-hooks support lands (GAP 2):** the SessionStart hook
-   (`src/hooks/caveman-activate.js`, writes `.caveman-active`) + UserPromptSubmit hook
-   (`src/hooks/caveman-mode-tracker.js`) become declarable via the recipe's hook mechanism. The
-   Dockerfile then additionally copies `src/hooks/*.js` + `caveman-statusline.{sh,ps1}` into
-   `~/.claude/hooks/` (matching what `bin/install.js` wires into `$CLAUDE_CONFIG_DIR/hooks/` for
-   the standalone install path), and the recipe declares the two hooks. This needs **Node at
-   runtime** (the hooks are JS) — present in the `claude` base image; for other harnesses add it
-   via the recipe body (pnpm/mise). Then auto-activation from turn 1 + statusline + stats work.
+1. **Shipped:** recipe.yaml + Dockerfile as above, PLUS a declarative `hooks: SessionStart:` entry
+   (GAP 2 — `docs/todos/2026-06-27-recipe-stress-test.md`, implemented in `schema.py`/`emit.py`)
+   that prints a one-time "run /caveman-init" reminder, gated by a marker file in the project (not
+   the upstream JS hook — a plain `bash -lc` one-liner, no Dockerfile change, no Node dependency).
+   caveman otherwise still activates **on demand** via `/caveman` or its trigger phrases.
+2. **Future (full upstream parity, now unblocked but not done):** replicate the upstream
+   SessionStart hook (`src/hooks/caveman-activate.js`, writes `.caveman-active` to auto-grunt from
+   turn 1) + UserPromptSubmit hook (`src/hooks/caveman-mode-tracker.js`) + statusline
+   (`caveman-statusline.{sh,ps1}`) verbatim. This needs the Dockerfile to additionally copy
+   `src/hooks/*.js` into `~/.claude/hooks/` and declare both hooks in `recipe.yaml`, plus **Node at
+   runtime** (present in the `claude` base image; other harnesses would need it added via the
+   recipe body). Bigger lift than the reminder above for marginal behavioral gain — do this only if
+   the on-demand + reminder combination proves insufficient in practice.
 
-> Note: there is a **separate startup-hooks feature** (`docs/todos/2026-06-29-startup-hooks.md`)
-> — launcher lifecycle hooks (`new_session`/`pre_agent`/`pre_session`). It does **not** cover
-> this: caveman's hooks are *Claude Code's own* SessionStart/UserPromptSubmit tool-hooks, a
-> distinct mechanism (the GAP 2 case). Don't reach for startup-hooks here.
+> Note: there is a **separate, unrelated** startup-hooks design (`docs/todos/2026-06-29-startup-hooks.md`,
+> abandoned/never implemented — superseded by the working `init:` mechanism, see beads/agent-carnet).
+> Don't confuse it with GAP 2: `init:` runs a command once, host-side, before the agent ever
+> attaches; the `hooks:` field above is *Claude Code's own* hook runner, invoked from inside the
+> instance every time the event fires.
 
 ## Risks / checks
 

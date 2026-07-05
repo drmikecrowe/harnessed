@@ -1,23 +1,63 @@
 # yaml-language-server: $schema=../../../schemas/recipe.schema.json
 # Recipe: beads — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary that
-# bundles embedded Dolt for local-first, git-free persistent task memory. No MCP, no service, no
-# skill: the agent shells out to `bd` directly. `.beads/` is created at RUNTIME against the mounted
-# project (never at build time — the project isn't mounted during `harnessed build`), by the
-# new-session hook below once that feature lands, or by the agent on first use until then.
-name: beads
-description: bd (beads) — local-first, git-free graph issue tracker / persistent task memory for agents.
-
-# new-session startup hook (TARGET SHAPE). Requires the startup-hooks feature
-# (docs/todos/2026-06-29-startup-hooks.md — currently "design / not started"; beads is its first
-# consumer). When wired, the launcher runs hooks/new-session.sh once, the first time a project is
-# opened, gated on `.beads/` being absent in the project dir: it sets BEADS_DIR=$PWD/.beads and runs
-# `bd init --quiet --stealth`. `--stealth` disables git hook installation, git ops, and the default
-# AGENTS.md mutation, so the user's repo + agent config stay untouched.
+# bundles embedded Dolt, run in beads' own DEFAULT operational mode: `.beads/` lives INSIDE the
+# repo (git-tracked), `bd init` installs git hooks (agent-identity commit trailers) and auto-wires
+# the git origin as a Dolt remote for `bd dolt push`/`bd dolt pull` sync — beads data is stored
+# under `refs/dolt/data`, NOT a git branch, so this does not touch protected branches. No MCP, no
+# service, no skill: the agent shells out to `bd` directly.
 #
-# This block is parsed forward today (hooks is a known recipe field; the nested new_session dict is
-# skipped by the pin/npm lint) so it passes assemble without error even before the launcher consumes
-# it. Until the launcher runs it, the agent has `bd` on PATH and runs init itself on first use.
-hooks:
-  new_session:
-    script: hooks/new-session.sh
-    when_missing: .beads
+# For fully-invisible use (`.beads/` outside the repo entirely, zero git footprint — e.g. dogfooding
+# this tool against harnessed's OWN repo), see the sibling `beads-stealth` recipe instead.
+# `conflicts: [beads-stealth]` below prevents combining both in one stack.
+#
+# Persistence: `.beads/` is `location: in_repo` (already inside the project's own mount — no extra
+# bind-mount) with `vcs: tracked`, i.e. harnessed takes no .gitignore action: the item is meant to be
+# committed, matching upstream's own default expectations. (bd manages its own finer-grained
+# exclusions internally, e.g. `.beads/dolt/`.)
+#
+# Init: runs once per project via `harnessed init <stack>` (or automatically on every `harnessed
+# launch`). The marker is the `.beads/` dir itself; if it exists, the step is skipped.
+#   1. `bd init --quiet --non-interactive --role maintainer` — creates .beads/ in the project,
+#      installs git hooks, auto-wires the git origin as a Dolt remote if one exists.
+#      `--non-interactive` is required since this runs in a headless one-shot container (no TTY);
+#      `--role maintainer` is the sensible default for a project's home repo (the *contributor*
+#      role — for an OSS fork-based workflow — is a manual `bd init --role contributor` override,
+#      not something this recipe assumes).
+#   2. `bd-setup-agent` — a harness-aware wrapper baked in the Dockerfile (branches on the
+#      build-time ${HARNESS} ARG). For claude: `bd setup claude --project`, wiring the SessionStart
+#      hook (.claude/settings.local.json, running `bd prime --hook-json`) + minimal CLAUDE.md
+#      section. Per beads' docs/SETUP.md, `bd init` does NOT do this on its own — it must be a
+#      separate `bd setup <tool>` call.
+name: beads
+description: "bd (beads) — graph issue tracker / persistent task memory for agents (default mode: in-repo, git-tracked, Dolt-native sync)."
+
+# agent-carnet is also a shared, cross-session notebook (see its own `rules:` entry instructing the
+# agent to treat carnet as the SOLE memory store). Combining both in one stack gives the agent two
+# competing persistent-memory systems and duplicate/contradictory workflow instructions. Also
+# conflicts with `beads-stealth` — same tool, two different .beads/ locations; don't combine both
+# variants in one stack.
+conflicts: [agent-carnet, beads-stealth]
+
+persist:
+  - name: .beads
+    scope: workspace
+    location: in_repo
+    vcs: tracked
+
+init:
+  marker:
+    scope: workspace
+    location: in_repo
+    name: .beads
+    # Check for the actual Dolt DB dir, NOT just `.beads/` — `bd init` writes `.beads/.gitignore`
+    # very early, so a partial/failed init (e.g. git unavailable) leaves a `.beads/` with no DB.
+    # Keying the marker on `.beads/` alone would then report "already initialized" forever. Keying
+    # on `embeddeddolt/` re-runs init whenever the DB is missing; `bd init` recovers idempotently
+    # over a partial `.beads/`.
+    file: embeddeddolt
+  # `bd-resolve-beads-dir` is the gate: it exits non-zero (aborting init) for a bare repo with no
+  # work tree on its default branch — the one layout where default-mode beads can't place a
+  # committable `.beads/`. Otherwise BEADS_DIR is already exported by the baked profile.d script
+  # (the init container runs `bash -lc`, so it sources /etc/profile.d), pointing bd at the right
+  # work tree before `bd init` runs.
+  run: bd-resolve-beads-dir >/dev/null && bd init --quiet --non-interactive --role maintainer && bd-setup-agent
