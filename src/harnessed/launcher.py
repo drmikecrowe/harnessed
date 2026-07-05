@@ -1059,6 +1059,9 @@ def _credential_forward_args(
     - YubiKey USB device passthrough (`--device`, Linux only) — see `_yubikey_device_args`.
     - git config (`~/.config/git` dir, else legacy `~/.gitconfig`, ro): carries user.signingkey,
       gpg.format=ssh, gpg.ssh.program=op-ssh-sign, commit.gpgsign so commits actually sign.
+    - gh auth (`~/.config/gh/hosts.yml`, ro): the file that carries gh's oauth_token, so `gh pr
+      create` etc. authenticate as the host user — just the hosts file, no wider gh config, no token
+      baked into env or image.
     - ssh config + known_hosts + public keys (ro), plus stack `ssh_keys` opt-in privates — see
       `_ssh_dir_mounts`.
 
@@ -1079,6 +1082,10 @@ def _credential_forward_args(
         args += ["-v", f"{xdg_git}:{ctr}/.config/git:ro"]
     elif legacy_git.is_file():
         args += ["-v", f"{legacy_git}:{ctr}/.gitconfig:ro"]
+
+    gh_hosts = home / ".config" / "gh" / "hosts.yml"
+    if gh_hosts.is_file():
+        args += ["-v", f"{gh_hosts}:{ctr}/.config/gh/hosts.yml:ro"]
 
     args += _ssh_dir_mounts(home, ssh_keys)
 

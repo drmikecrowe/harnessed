@@ -415,6 +415,16 @@ class TestCredentialForwarding:
         assert f"{home / '.config' / 'git'}:{self.CTR}/.config/git:ro" in args
         assert not any(a.endswith(".gitconfig:ro") or "/.gitconfig:" in a for a in args)
 
+    def test_gh_hosts_yml_mounted_ro(self, tmp_path, monkeypatch):
+        # gh's oauth token lives in ~/.config/gh/hosts.yml — forward just that file, ro, so `gh` in
+        # the container authenticates as the host user. No wider gh config, no token in env.
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        (home / ".config" / "gh").mkdir(parents=True)
+        (home / ".config" / "gh" / "hosts.yml").write_text("github.com:\n  oauth_token: x\n")
+        args = launcher._credential_forward_args(home)
+        assert f"{home / '.config' / 'gh' / 'hosts.yml'}:{self.CTR}/.config/gh/hosts.yml:ro" in args
+
     def test_gnupg_nonsecret_files_mounted_but_not_keyring(self, tmp_path, monkeypatch):
         # Security regression guard (review Finding 2): the whole ~/.gnupg mount leaked
         # private-keys-v1.d/*.key. Only the non-secret files may be forwarded; the private keyring
