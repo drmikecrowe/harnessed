@@ -8,39 +8,23 @@
 # embedded Dolt — local-first persistent task memory for agents, run here in beads' DEFAULT
 # operational mode (in-repo, git-tracked, Dolt-native sync via the git origin — see recipe.yaml).
 # For the fully-invisible variant (`.beads/` outside the repo, zero git footprint), see the sibling
-# `beads-stealth` recipe. Primary install path = the pinned release binary, verified against the
-# release checksums.txt (deterministic; matches beads' own security guidance, and avoids pnpm
-# postinstall fragility).
-#
-# Alternative (npm path): `RUN pnpm add -g @beads/bd@${BEADS_VERSION}` as USER harnessed. pnpm may
-# skip the package's binary-fetch postinstall, so a build using that path MUST verify `bd` runs and
-# that pnpm's global bin is on PATH for the harnessed user. (The emit lint rejects raw npm/npx — use
-# pnpm.) Not used here; the release binary is the deterministic primary path.
-USER root
+# `beads-stealth` recipe. Installed via mise's `github:` backend — harnessed-base already ships
+# mise + shims on PATH (same pattern as catalog/base/Dockerfile.harnessed-omp's `omp` install):
+# mise resolves the release asset for the current arch, verifies GitHub artifact attestations, and
+# lands `bd` on the mise shim PATH. Replaces a hand-rolled curl + sha256sum + tar install with one
+# line and a stronger (attestation-based, not just checksum) supply-chain guarantee.
+USER harnessed
 # Pin to the exact release tag (no @latest / :latest / --branch — the assembler pin gate rejects
-# floating refs). Verify the downloaded tarball against the release's checksums.txt before install.
-# Asset naming verified against the real release (goreleaser-style `beads_<ver>_<os>_<arch>.tar.gz`,
-# not the musl-triple naming this Dockerfile originally assumed): v1.0.5 does not exist upstream
-# (404) — v1.0.4 is the actual latest tag as of this fix.
-ARG BEADS_VERSION=1.0.4
-RUN set -eu; \
-    case "$(uname -m)" in \
-      x86_64)  asset="beads_${BEADS_VERSION}_linux_amd64.tar.gz" ;; \
-      aarch64) asset="beads_${BEADS_VERSION}_linux_arm64.tar.gz" ;; \
-      *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;; \
-    esac; \
-    base="https://github.com/gastownhall/beads/releases/download/v${BEADS_VERSION}"; \
-    cd /tmp; \
-    curl -fsSL "${base}/${asset}" -o "${asset}"; \
-    curl -fsSL "${base}/checksums.txt" -o checksums.txt; \
-    grep -F "${asset}" checksums.txt > expected.sha256; \
-    sha256sum -c expected.sha256; \
-    tar -xzf "${asset}"; \
-    install -m 0755 bd /usr/local/bin/bd; \
-    rm -rf /tmp/*
-# Smoke test: a runnable binary also catches an arch/libc mismatch the checksum cannot (e.g. a glibc
-# build landing on a musl base, or the wrong arch). Fails the build loudly instead of at first run.
-RUN bd --version
+# floating refs). Also bakes the standalone `dolt` CLI (https://github.com/dolthub/dolt) alongside
+# `bd` — bd bundles Dolt as an embedded library for its own DB, but the standalone binary is useful
+# for ad-hoc inspection/repair of `.beads/`'s Dolt store directly.
+ARG BEADS_VERSION=1.1.0
+ARG DOLT_VERSION=2.1.10
+RUN mise use -g "github:gastownhall/beads@${BEADS_VERSION}" "github:dolthub/dolt@${DOLT_VERSION}" && mise install
+# Smoke test: a runnable binary also catches an arch mismatch mise's attestation check wouldn't.
+# Fails the build loudly instead of at first run.
+RUN bd --version && dolt version
+USER root
 # Bare + linked-worktree support (bd-resolve-beads-dir + profile.d).
 #
 # Default-mode `bd` anchors its shared `.beads` to the git "main repository" = the common dir. In a

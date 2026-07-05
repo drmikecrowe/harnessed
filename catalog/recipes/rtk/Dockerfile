@@ -12,25 +12,13 @@
 # Pin = the release binary (musl-static = zero runtime deps, runs on any base regardless of glibc).
 # The version in the URL is the reproducibility anchor: no @latest / :latest / floating ref would
 # pass the assembler pin gate. `cargo install rtk` is deliberately NOT used — another "rtk" ("Rust
-# Type Kit") on crates.io would fetch the wrong package. Verification = the version pin plus a
-# `rtk --version` post-install sanity check (this release publishes no checksums file; see PLAN.md
-# "Risks / checks" — checksum verification, if added upstream, is a build-time concern).
-USER root
-ARG RTK_VERSION=0.43.0
-# arch detection: x86_64 gets the musl-static asset (zero runtime deps); aarch64 falls back to the
-# gnu asset (no aarch64-musl is published). Any other arch aborts the build loudly.
-RUN set -eu; \
-    arch="$(uname -m)"; \
-    case "$arch" in \
-      x86_64)  asset="rtk-x86_64-unknown-linux-musl.tar.gz" ;; \
-      aarch64) asset="rtk-aarch64-unknown-linux-gnu.tar.gz" ;; \
-      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
-    esac; \
-    curl -fsSL -o /tmp/rtk.tgz \
-      "https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/${asset}"; \
-    tar xzf /tmp/rtk.tgz -C /tmp; \
-    install -m 0755 /tmp/rtk /usr/local/bin/rtk; \
-    rm -rf /tmp/rtk*; \
-    rtk --version
+# Type Kit") on crates.io would fetch the wrong package.
+#
+# Installed via mise's `github:` backend (harnessed-base already ships mise + shims on PATH — same
+# pattern as the beads recipe): mise resolves the arch-matched asset (musl-static on x86_64, gnu on
+# aarch64 — no aarch64-musl is published) and verifies GitHub artifact attestations + SLSA
+# provenance, a stronger guarantee than this recipe's prior version-pin-only verification.
 USER harnessed
+ARG RTK_VERSION=0.43.0
+RUN mise use -g "github:rtk-ai/rtk@${RTK_VERSION}" && mise install && rtk --version
 RUN rtk init -g --auto-patch

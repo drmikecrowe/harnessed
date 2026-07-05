@@ -60,4 +60,10 @@ init:
   # committable `.beads/`. Otherwise BEADS_DIR is already exported by the baked profile.d script
   # (the init container runs `bash -lc`, so it sources /etc/profile.d), pointing bd at the right
   # work tree before `bd init` runs.
-  run: bd-resolve-beads-dir >/dev/null && bd init --quiet --non-interactive --role maintainer && bd-setup-agent
+  # Idempotent init: `bd list` succeeds iff the workspace already has a DB (same discovery `bd init`
+  # uses), so an already-initialized repo skips `bd init` instead of aborting. This is required when
+  # the mounted project is ITSELF a beads workspace — e.g. harnessed's own repo, whose `.beads` DB is
+  # anchored to the bare *common dir* (`.bare/.beads`), a path the `location: in_repo` marker (which
+  # resolves to the *worktree*, `main/.beads`) can't see, so the marker mis-gates and init runs anyway.
+  # bd-setup-agent still (re)wires the agent hook; it is itself idempotent.
+  run: bd-resolve-beads-dir >/dev/null && (bd list >/dev/null 2>&1 || bd init --quiet --non-interactive --role maintainer) && bd-setup-agent
