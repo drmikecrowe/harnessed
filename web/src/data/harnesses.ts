@@ -31,11 +31,6 @@ export const harnesses: Harness[] = [
     tagline: "Via claude-hooks-bridge.",
   },
   {
-    name: "gemini",
-    variant: "purple",
-    tagline: "MCP wired to hatago.",
-  },
-  {
     name: "antigravity",
     variant: "cyan",
     tagline: "MCP wired to hatago.",

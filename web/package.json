@@ -5,8 +5,9 @@
   "type": "module",
   "packageManager": "pnpm@11.8.0",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
+    "sync-docs": "node scripts/sync-docs.mjs",
+    "dev": "pnpm run sync-docs && astro dev",
+    "build": "pnpm run sync-docs && astro build",
     "preview": "astro preview",
     "astro": "astro"
   },

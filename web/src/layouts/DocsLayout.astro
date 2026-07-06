@@ -1,0 +1,311 @@
+---
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import Layout from "./Layout.astro";
+
+interface DocEntry {
+  id: string;
+}
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+interface Props {
+  docs: DocEntry[];
+  currentId?: string;
+  headings?: Heading[];
+  title?: string;
+  description?: string;
+}
+
+const {
+  docs,
+  currentId,
+  headings = [],
+  title = "Documentation",
+  description = "harnessed user documentation, rendered from the project wiki.",
+} = Astro.props;
+
+const base = import.meta.env.BASE_URL; // "/harnessed/"
+
+// Sidebar groups mirror the sync-docs directory layout.
+const GROUPS = [
+  { label: "Overview", prefix: "" },
+  { label: "Guides", prefix: "guides/" },
+  { label: "Research", prefix: "research/" },
+  { label: "Codebase map", prefix: "codebase/" },
+];
+
+function pretty(id: string): string {
+  const last = id.split("/").pop() ?? id;
+  return last
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+const sorted = [...docs].sort((a, b) => a.id.localeCompare(b.id));
+const groups = GROUPS.map((g) => ({
+  label: g.label,
+  items: sorted.filter((d) =>
+    g.prefix === ""
+      ? !d.id.includes("/")
+      : d.id.startsWith(g.prefix),
+  ),
+})).filter((g) => g.items.length > 0);
+
+// On-page table of contents: h2/h3 only.
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+<Layout title={`${title} · harnessed`} description={description}>
+  <Nav />
+  <div class="docs-shell">
+    <aside class="docs-sidebar" aria-label="Documentation navigation">
+      <nav>
+        <a class="docs-home" href={`${base}docs`}>All docs</a>
+        {
+          groups.map((g) => (
+            <div class="docs-group">
+              <p class="docs-group-label">{g.label}</p>
+              <ul role="list">
+                {g.items.map((d) => (
+                  <li>
+                    <a
+                      href={`${base}docs/${d.id}`}
+                      aria-current={d.id === currentId ? "page" : undefined}
+                    >
+                      {pretty(d.id)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </nav>
+    </aside>
+
+    <main class="docs-main">
+      <article class="prose">
+        <slot />
+      </article>
+    </main>
+
+    {
+      toc.length > 0 && (
+        <aside class="docs-toc" aria-label="On this page">
+          <p class="docs-group-label">On this page</p>
+          <ul role="list">
+            {toc.map((h) => (
+              <li data-depth={h.depth}>
+                <a href={`#${h.slug}`}>{h.text}</a>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )
+    }
+  </div>
+  <Footer />
+</Layout>
+
+<style>
+  .docs-shell {
+    max-width: var(--container-max);
+    margin-inline: auto;
+    padding-inline: var(--container-gutter);
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr) 200px;
+    gap: var(--space-xxl);
+    align-items: start;
+    padding-block: var(--space-section);
+  }
+
+  .docs-sidebar,
+  .docs-toc {
+    position: sticky;
+    top: var(--space-xl);
+    align-self: start;
+    font-size: var(--text-body-sm);
+  }
+
+  .docs-home {
+    display: block;
+    font-weight: 600;
+    color: var(--color-ink);
+    margin-bottom: var(--space-lg);
+  }
+
+  .docs-group {
+    margin-bottom: var(--space-lg);
+  }
+  .docs-group-label {
+    font-size: var(--text-micro);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-stone);
+    margin-bottom: var(--space-xs);
+  }
+  .docs-group ul,
+  .docs-toc ul {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .docs-group a,
+  .docs-toc a {
+    display: block;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    color: var(--color-slate);
+    line-height: 1.4;
+  }
+  .docs-group a:hover,
+  .docs-toc a:hover {
+    background: var(--color-surface);
+    color: var(--color-ink);
+  }
+  .docs-group a[aria-current="page"] {
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+  .docs-toc li[data-depth="3"] a {
+    padding-left: 20px;
+    font-size: var(--text-micro);
+  }
+
+  .docs-main {
+    min-width: 0;
+  }
+
+  /* ---- responsive: collapse rails ---- */
+  @media (max-width: 1023px) {
+    .docs-shell {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .docs-toc {
+      display: none;
+    }
+    .docs-sidebar {
+      position: static;
+      border-bottom: 1px solid var(--color-hairline);
+      padding-bottom: var(--space-lg);
+      margin-bottom: var(--space-lg);
+    }
+  }
+
+  /* ============================================================
+     Prose — styles the rendered markdown (unscoped via :global)
+     ============================================================ */
+  .prose {
+    color: var(--color-charcoal);
+    font-size: var(--text-body-md);
+    line-height: 1.7;
+    max-width: 46rem;
+  }
+  .prose :global(h1) {
+    font-size: var(--text-heading-lg);
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.5px;
+    color: var(--color-ink);
+    margin-bottom: var(--space-lg);
+  }
+  .prose :global(h2) {
+    font-size: var(--text-heading-md);
+    font-weight: 600;
+    color: var(--color-ink);
+    margin-top: var(--space-xxl);
+    margin-bottom: var(--space-md);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--color-hairline-soft);
+  }
+  .prose :global(h3) {
+    font-size: var(--text-card-title);
+    font-weight: 600;
+    color: var(--color-ink);
+    margin-top: var(--space-xl);
+    margin-bottom: var(--space-sm);
+  }
+  .prose :global(h4) {
+    font-weight: 600;
+    color: var(--color-ink);
+    margin-top: var(--space-lg);
+    margin-bottom: var(--space-xs);
+  }
+  .prose :global(p),
+  .prose :global(ul),
+  .prose :global(ol),
+  .prose :global(blockquote),
+  .prose :global(table),
+  .prose :global(pre) {
+    margin-bottom: var(--space-md);
+  }
+  .prose :global(ul),
+  .prose :global(ol) {
+    padding-left: 1.4em;
+  }
+  .prose :global(li) {
+    margin-bottom: 4px;
+  }
+  .prose :global(a) {
+    color: var(--color-brand-blue);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose :global(a:hover) {
+    color: var(--color-brand-blue-deep);
+  }
+  .prose :global(code) {
+    font-size: 0.9em;
+    background: var(--color-surface);
+    padding: 0.1em 0.35em;
+    border-radius: var(--radius-sm);
+  }
+  .prose :global(pre) {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    padding: var(--space-md);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    font-size: var(--text-body-sm);
+    line-height: 1.5;
+  }
+  .prose :global(pre code) {
+    background: none;
+    padding: 0;
+  }
+  .prose :global(blockquote) {
+    border-left: 3px solid var(--color-hairline);
+    padding-left: var(--space-md);
+    color: var(--color-slate);
+  }
+  .prose :global(table) {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+    font-size: var(--text-body-sm);
+  }
+  .prose :global(th),
+  .prose :global(td) {
+    border: 1px solid var(--color-hairline);
+    padding: 6px 10px;
+    text-align: left;
+  }
+  .prose :global(th) {
+    background: var(--color-surface);
+    font-weight: 600;
+  }
+  .prose :global(hr) {
+    border: none;
+    border-top: 1px solid var(--color-hairline);
+    margin-block: var(--space-xl);
+  }
+  .prose :global(img) {
+    border-radius: var(--radius-md);
+  }
+</style>
