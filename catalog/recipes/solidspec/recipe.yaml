@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: solidspec — multi-methodology spec-driven development CLI (spec → plan → tasks →
+# implement → ship). Bakes the Rust binary at build time (see Dockerfile); bootstraps the
+# per-project `.solidspec/` scaffolding + agent slash commands once via `init:`.
+#
+# No MCP, no service, no skill shipped: upstream offers none (init writes slash commands +
+# an AGENT.md into agent dirs, not a ~/.claude/skills dir). Project-scoped slash commands
+# come from `solidspec init` at runtime, not from this recipe.
+name: solidspec
+description: solidspec — multi-methodology spec-driven development CLI (spec → plan → tasks → implement → ship).
+
+# --- Per-project bootstrap layer ---
+# One-time, per-project setup — the same shape as beads. Runs once in a transient container
+# (host-side, before the agent attaches), gated on the `.solidspec/` marker; auto-checked on
+# every `harnessed launch`. init is a runtime, per-project operation the build-time Dockerfile
+# cannot reach.
+#   `mkdir -p .claude` first so `solidspec init` registers its slash commands — init only
+#   registers into agent dirs that already exist (it warns + skips otherwise).
+#   `--here`: scaffold `.solidspec/` in the mounted project (PWD = project root).
+#   `--no-git`: never `git init` the user's project (init does so by default on non-repos);
+#   an existing git repo is untouched.
+init:
+  marker:
+    scope: workspace
+    location: in_repo
+    name: .solidspec     # `.solidspec/` present ⇒ already bootstrapped
+  run: mkdir -p .claude && solidspec init --here --no-git
