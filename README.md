@@ -2,7 +2,7 @@
   <img src=".github/README/banner.png" alt="Banner" />
 </p>
 
-#### harnessed — Composable harness stacks (Claude Code / omp / opencode / gemini / antigravity / codex + an MCP hub + optional shared services)
+#### harnessed — Composable harness stacks (Claude Code / omp / opencode / antigravity / codex + an MCP hub + optional shared services)
 
 > [!WARNING]
 > **⚠️ ALPHA SOFTWARE — not production-ready.** harnessed is under active development and the field

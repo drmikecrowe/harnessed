@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../../schemas/agent.schema.json
+type: agent
+harness: antigravity
+image: harnessed-antigravity
+dockerfile: catalog/base/Dockerfile.harnessed-antigravity
+# No build_args: the official installer exposes no version-pin flag (agy self-updates from
+# Google's signed manifest) — see Dockerfile.harnessed-antigravity for the detail.
+description: >
+  Antigravity (agy, Google) harness. FROM harnessed-base + the agy CLI via Google's official
+  installer (sha512-verified native binary). Reaches hatago via a baked global MCP config
+  (~/.gemini/config/mcp_config.json); does NOT natively consume Claude skills/commands.

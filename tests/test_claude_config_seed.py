@@ -68,7 +68,7 @@ class TestSeedStub:
 
     def test_non_claude_harness_gets_no_stub(self, monkeypatch, tmp_path):
         _host(monkeypatch, tmp_path, {"oauthAccount": {}, "userID": "u"})
-        assert launcher._claude_config_seed_mount("gemini", "inst-z") == []
+        assert launcher._claude_config_seed_mount("antigravity", "inst-z") == []
 
     def test_omp_also_seeded(self, monkeypatch, tmp_path):
         _host(monkeypatch, tmp_path, {"oauthAccount": {"x": 1}, "userID": "u"})

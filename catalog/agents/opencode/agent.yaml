@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../../../schemas/agent.schema.json
+type: agent
+harness: opencode
+image: harnessed-opencode
+dockerfile: catalog/base/Dockerfile.harnessed-opencode
+# No build_args: the Dockerfile's ARG OPENCODE_VERSION already carries a default (1.17.9);
+# bump it there directly to repin.
+description: >
+  opencode (sst/opencode) harness. FROM harnessed-base + a pinned opencode via the official
+  installer (real Bun binary, not the blocked npm postinstall wrapper). Reads .claude/skills/**
+  and ~/.claude/CLAUDE.md natively; MCP via a baked ~/.config/opencode/opencode.json pointing at
+  hatago (opencode ignores .mcp.json).
