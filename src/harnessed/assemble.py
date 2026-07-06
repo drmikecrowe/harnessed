@@ -24,6 +24,7 @@ from .schema import (
     Stack,
     load_service,
     load_stack_with_recipes,
+    validate_init_no_exit,
     validate_no_raw_npm,
     validate_pin,
 )
@@ -96,6 +97,7 @@ def assemble(
     # ${HARNESS}), so there is no harness-compat gate.
     for recipe in recipes:
         validate_no_raw_npm(recipe)
+        validate_init_no_exit(recipe)  # Model A: init.run is sourced — a bash `exit` kills the shell
         dockerfile = recipe.root / "Dockerfile"
         if dockerfile.is_file():
             validate_pin(recipe.name, dockerfile.read_text(encoding="utf-8"))  # ASM-02 (T-08-01)

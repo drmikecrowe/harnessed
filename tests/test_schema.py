@@ -12,6 +12,7 @@ from harnessed.schema import (
     Recipe,
     RecipeLintError,
     PinValidationError,
+    validate_init_no_exit,
     validate_no_raw_npm,
     validate_pin,
     load_recipe,
@@ -86,6 +87,41 @@ class TestValidatePin:
     def test_url_path_segment_does_not_trigger(self):
         # :latest inside a URL path is allowed (e.g. registry.io/img:path/latest/thing)
         validate_pin("r", "RUN curl https://example.com/releases/latest/download/bin")
+
+
+class TestValidateInitNoExit:
+    """Model A: init.run is SOURCED into the attach shell, so a bash `exit` kills the session."""
+
+    def _recipe_with_init(self, run: str) -> Recipe:
+        r = _make_recipe()
+        r.init = InitSpec(run=run)
+        return r
+
+    def test_exit_1_is_rejected_with_guidance(self):
+        r = self._recipe_with_init("bd list >/dev/null 2>&1 || exit 1")
+        with pytest.raises(RecipeLintError, match="SOURCED"):
+            validate_init_no_exit(r)
+
+    def test_bare_exit_is_rejected(self):
+        r = self._recipe_with_init("foo\nexit\nbar")
+        with pytest.raises(RecipeLintError, match="return"):
+            validate_init_no_exit(r)
+
+    def test_exit_code_var_is_accepted(self):
+        # `exit_code` is a variable name, not the `exit` command.
+        r = self._recipe_with_init("run-thing; exit_code=$?; echo $exit_code")
+        validate_init_no_exit(r)  # must not raise
+
+    def test_foo_exit_substring_is_accepted(self):
+        r = self._recipe_with_init("call foo_exit && echo done")
+        validate_init_no_exit(r)  # word-bounded — foo_exit is NOT exit
+
+    def test_return_is_accepted(self):
+        r = self._recipe_with_init("bd list >/dev/null 2>&1 || return 1")
+        validate_init_no_exit(r)  # must not raise
+
+    def test_no_init_is_accepted(self):
+        validate_init_no_exit(_make_recipe())  # init is None → must not raise
 
 
 class TestLoadStack:

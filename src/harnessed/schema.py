@@ -882,6 +882,10 @@ def load_agent(name: str, root: Path | None = None) -> Agent:
 # --- BLD-03: raw npm/npx recipe lint (RESEARCH Pattern 3 / Code §7) -----------------------------
 # Word-boundaried COMMAND tokens only — a package named like `npmlog` must NOT match (Pitfall 4).
 _RAW_NPM_RE = re.compile(r"\bnpx\b|\bnpm\s+(install|ci|run|exec|i)\b")
+# --- Model A: init.run is SOURCED — a bash `exit` kills the attach shell (main-liw) -----------------
+# Matches a real `exit` *command* token (bounded by shell separators/whitespace), never a substring
+# like `exit_code` or `foo_exit`. `exit` on its own line, `; exit`, `|| exit`, `(exit)`, etc. all hit.
+_INIT_EXIT_RE = re.compile(r"(^|[;&|(){}\s])exit(\s|$|[;&|)])")
 # --- ASM-02: floating Dockerfile ref gate (T-08-01) -----------------------------------------------
 # Detects --branch main/master/HEAD, :latest Docker image tags, and @latest npm refs.
 # `:latest` in URL path segments uses `/latest/` (no colon), so `:latest\b` matches only Docker
@@ -983,6 +987,25 @@ def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
         raise PinValidationError(
             f"recipe '{recipe_name}': Dockerfile contains a floating ref '{match.group(0).strip()}'. "
             "Pin to a tag (e.g. v1.2.3) or SHA (e.g. @sha256:...) instead of floating branches or :latest."
+        )
+
+
+def validate_init_no_exit(recipe: Recipe) -> None:
+    """Reject a recipe whose `init.run` contains a bash `exit` (Model A, main-liw).
+
+    Under Model A the launcher SOURCES `init.run` into the attach shell that then execs the harness,
+    so a bash `exit` terminates that shell — killing the session before the harness starts, silently.
+    Authors from standalone-script habits reach for `exit 0`/`exit 1`; this fail-fast lint steers them
+    to `return` (or a self-gating `… || { …; false; }`) instead. Called from assemble() alongside the
+    other build-time recipe lints, before any file is emitted.
+    """
+    if recipe.init is None:
+        return
+    if _INIT_EXIT_RE.search(recipe.init.run):
+        raise RecipeLintError(
+            f"recipe '{recipe.name}': 'init.run' contains a bash 'exit' — init is SOURCED into the "
+            "attach shell (Model A), so 'exit' would kill the session before the harness starts. "
+            "Use 'return' or a self-gating '|| { …; false; }' instead."
         )
 
 
