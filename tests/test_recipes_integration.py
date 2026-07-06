@@ -38,7 +38,7 @@ NEGATIVE_STACK = "claude_floating-recipe"
 
 # Illustrative templates that ASSEMBLE but point at a placeholder URL — covered by the fast
 # assembly/oracle sweep, but skipped by the live connect test (no real endpoint to reach).
-NO_LIVE_CONNECT = {"claude_openbrain-example"}
+NO_LIVE_CONNECT = {"claude_openbrain-example", "claude_hindsight"}
 
 # CLI-only recipes with no skill/command/mcp/plugin surface at all, by design — the agent shells
 # out to the binary directly and there is no `expect:` kind for "a binary is on PATH" (see e.g.

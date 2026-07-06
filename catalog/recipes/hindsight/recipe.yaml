@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: hindsight — TEMPLATE for reaching an already-running host hindsight deployment.
+#
+# Shape: a network-native MCP server referenced by DIRECT URL (no `command`, not a stdio child
+# hatago bakes; no `service`, not a local sidecar). hatago proxies it; the harness only sees
+# hatago's single endpoint. Same shape as openbrain-example (recipe-authoring "Worked example 4").
+#
+# hindsight runs ON THE HOST as a docker-compose stack (AlloyDB Omni + init + app). The pod reaches
+# it over the podman host-gateway: localhost:8888 from the host → host.containers.internal:8888
+# from the pod. Port 8888 is the API + MCP endpoint; 9999 is the control-plane UI (not MCP).
+#
+# The MCP endpoint is per-bank: /mcp/<bank_id>/. Replace BANK_ID and the Bearer key below with your
+# real values in a USER-OVERLAY copy — never commit a real key (see PLAN.md "Secrets").
+#
+# Transport: http (Streamable HTTP). SSE is deprecated and rejected by the build.
+name: hindsight
+description: Vectorize hindsight — AlloyDB-backed memory/recall as a host-running MCP server (retain/recall/reflect).
+
+mcp:
+  servers:
+    - name: hindsight
+      url: http://host.containers.internal:8888/mcp/BANK_ID/
+      transport: http
+      headers:
+        Authorization: "Bearer REPLACE_WITH_HINDSIGHT_API_TENANT_API_KEY"
