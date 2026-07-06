@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from harnessed import launcher
-from harnessed.schema import McpServer, Recipe
+from harnessed.schema import McpServer, Recipe, Stack
 
 
 def _recipe(name: str, *servers: McpServer) -> Recipe:
@@ -22,6 +22,11 @@ def _recipe(name: str, *servers: McpServer) -> Recipe:
 def _patch_recipes(monkeypatch, recipes: list[Recipe]) -> None:
     """Make _service_refs see exactly `recipes`, regardless of the stack name passed."""
     monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _root, _stack: (None, recipes))
+
+
+def _patch(monkeypatch, stack: Stack, recipes: list[Recipe]) -> None:
+    """Make _service_refs see exactly `stack` + `recipes`, regardless of the name passed."""
+    monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _root, _stack: (stack, recipes))
 
 
 def test_collects_referenced_service_names(monkeypatch):
@@ -64,3 +69,22 @@ def test_recipe_without_service_servers_contributes_nothing(monkeypatch):
 def test_no_services_returns_empty(monkeypatch):
     _patch_recipes(monkeypatch, [_recipe("cmd-only", McpServer(name="s1", command="pnpm"))])
     assert launcher._service_refs("any-stack") == []
+
+
+def test_stack_level_services_are_included(monkeypatch):
+    # A stack can attach a sidecar with NO MCP surface via its own `services:` list (e.g. a shared
+    # `dolt sql-server`, MySQL-wire not MCP). Those must be started even when no recipe references
+    # them through an MCP `service:` ref.
+    stack = Stack(name="claude_beads-shared", harness="claude", recipes=["beads-shared"],
+                  services=["beads-server"])
+    _patch(monkeypatch, stack, [_recipe("beads-shared")])
+    assert launcher._service_refs("any-stack") == ["beads-server"]
+
+
+def test_stack_and_recipe_services_dedupe_recipe_first(monkeypatch):
+    # Recipe MCP-ref services come first; a stack `services:` entry already covered by a recipe ref
+    # is not repeated, and a new stack-only entry is appended after.
+    stack = Stack(name="s", harness="claude", recipes=["a"], services=["gbrain", "beads-server"])
+    recipes = [_recipe("a", McpServer(name="s1", service="gbrain", transport="http"))]
+    _patch(monkeypatch, stack, recipes)
+    assert launcher._service_refs("any-stack") == ["gbrain", "beads-server"]

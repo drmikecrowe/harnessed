@@ -1385,13 +1385,23 @@ def _svc_container(name: str) -> str:
 
 
 def _service_refs(stack: str) -> list[str]:
-    """Distinct service names referenced by a stack's recipes (via `service:` MCP servers)."""
-    _, recipes = load_stack_with_recipes(None, stack)
+    """Distinct service names a stack requires as host-published sidecars.
+
+    Two sources, unioned (first-seen order, de-duped): (1) recipe `service:` MCP-server refs
+    (the assembler proxies these by URL), and (2) the stack's own `services:` list — sidecars a
+    stack attaches by reference that have NO MCP surface (e.g. a shared `dolt sql-server`, whose
+    wire protocol is MySQL, not MCP, so it cannot be a `service:` MCP ref). Both feed
+    `_ensure_services`, which starts each one idempotently at launch.
+    """
+    stk, recipes = load_stack_with_recipes(None, stack)
     names: list[str] = []
     for recipe in recipes:
         for server in recipe.servers:
             if server.service and server.service not in names:
                 names.append(server.service)
+    for name in (stk.services if stk else []):
+        if name not in names:
+            names.append(name)
     return names
 
 

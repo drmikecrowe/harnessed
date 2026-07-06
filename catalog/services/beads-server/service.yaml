@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=../../../schemas/service.schema.json
+# Service: beads-server — a single, long-lived standalone `dolt sql-server` that every project's
+# `bd` (beads) points at, instead of each container/host embedding its own Dolt engine (bead
+# main-8by). This is the fix for the 2026-07-05 lock-collision incident: Dolt takes an EXCLUSIVE
+# on-disk file lock on its data dir, so a host `bd` and a container `bd` can never both hold a live
+# server against the same `.beads/dolt`. Collapsing to ONE server everyone connects to removes the
+# contention entirely.
+#
+# Exactly the shipped single-container service shape (one image / one port / one volume, like
+# `ping`) — NO topology, NO init job, NO second port. The one thing beads needs that ping doesn't —
+# multi-DATABASE-per-server (one Dolt database per project on a single server, keyed by each
+# project's issue prefix) — is a property of how the `beads-shared` recipe CONFIGURES `bd`, not of
+# this container's shape. Zero new ServiceDef capability.
+#
+# Security: loopback-only, NO auth. The server publishes to the host loopback (127.0.0.1:3307) and
+# is reached by the host `bd` and every container's `bd` via `host.containers.internal:3307`. A
+# default Dolt root user with no password and no exposure beyond loopback is acceptable for the
+# single-user local-dev model (bead main-8by DESIGN "Auth / multi-tenancy stance"). Revisit only if
+# ever shared across machines/users (out of scope, YAGNI).
+#
+# Volume: a service-scoped NAMED volume (`beads-server-data`) is the crux. ONLY this one service
+# container mounts it (`_ensure_service` mounts the named volume at /data), so the exclusive Dolt
+# lock can never be contended. The in-repo `.beads/dolt` is NEVER bind-mounted here — doing so would
+# reproduce the incident the moment any other `bd` touched it. `.beads/issues.jsonl` stays the
+# passive in-repo export; the live data lives in this named volume.
+#
+# Port 3307 matches bd's own `--server-port` default for external-server mode, so the `beads-shared`
+# recipe's `bd init --server --external` lines up with zero surprise (design open-question #3: a
+# stable, config-set port — not a computed one).
+name: beads-server
+image: harnessed-beads-server:latest
+volume: beads-server-data
+port: 3307
+# TCP liveness on the MySQL-wire sql-server port (dolt speaks MySQL protocol, not HTTP — no curl).
+healthcheck: "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3307' || exit 1"
