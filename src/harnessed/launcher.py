@@ -19,7 +19,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional, TypeVar
 
 import typer
 from rich.console import Console
@@ -511,6 +511,25 @@ def _derived_image(stack: str) -> str:
 # Extension dirs an agent reads out of the Claude-canonical ~/.claude tree.
 _EXT_SUBDIRS = ("skills", "commands", "plugins", "agents", "hooks", "rules")
 
+_T = TypeVar("_T")
+
+
+def _with_image_container(rt: str, image: str, fn: Callable[[str], _T]) -> _T | None:
+    """Create ONE throwaway container from `image`, run `fn(cid)` (the `cp` extractions), and
+    always `rm -f` it in a `finally`. Returns `fn`'s result, or None when the create produced no
+    container id (defensive — mirrors the old per-site `if not cid: return`).
+
+    Unifies the three post-build passes (extensions / settings / scan-report) onto a single
+    create/rm instead of one apiece — same podman commands, one container.
+    """
+    cid = subprocess.run([rt, "create", image], capture_output=True, text=True).stdout.strip()
+    if not cid:
+        return None
+    try:
+        return fn(cid)
+    finally:
+        subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+
 
 def _merge_baked_extensions(rt: str, image: str, prof: Path) -> None:
     """Copy ~/.claude/{skills,commands,plugins,…} baked into `image` INTO the profile tree.
@@ -520,12 +539,7 @@ def _merge_baked_extensions(rt: str, image: str, prof: Path) -> None:
     hide those image-baked files — so we extract them into the profile here, unifying
     recipe-fanned (profile) and image-baked (Dockerfile) extensions before launch.
     """
-    cid = subprocess.run(
-        [rt, "create", image], capture_output=True, text=True,
-    ).stdout.strip()
-    if not cid:
-        return
-    try:
+    def _copy(cid: str) -> None:
         claude = prof / ".claude"
         for sub in _EXT_SUBDIRS:
             dest = claude / sub
@@ -536,8 +550,8 @@ def _merge_baked_extensions(rt: str, image: str, prof: Path) -> None:
                 [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.claude/{sub}/.", str(dest)],
                 capture_output=True,
             )
-    finally:
-        subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+
+    _with_image_container(rt, image, _copy)
 
 
 def _merge_baked_settings(rt: str, image: str, prof: Path) -> None:
@@ -569,22 +583,20 @@ def _merge_baked_settings(rt: str, image: str, prof: Path) -> None:
         except (json.JSONDecodeError, OSError):
             required = {}
 
-    cid = subprocess.run([rt, "create", image], capture_output=True, text=True).stdout.strip()
-    if not cid:
-        return
-    baked_text: str | None = None
-    try:
+    def _copy(cid: str) -> str | None:
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "settings.json"
             cp = subprocess.run(
                 [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.claude/settings.json", str(dest)],
                 capture_output=True,
             )
-            # cp of a missing file exits non-zero → baked_text stays None (distinct from malformed).
+            # cp of a missing file exits non-zero → return None (distinct from malformed).
             if cp.returncode == 0 and dest.is_file():
-                baked_text = dest.read_text(encoding="utf-8")
-    finally:
-        subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+                return dest.read_text(encoding="utf-8")
+        return None
+
+    # create-fail (None) routes the same as a missing baked file: floor kept, nothing written.
+    baked_text = _with_image_container(rt, image, _copy)
 
     def _warn(msg: str) -> None:
         _out.print(f"[yellow]⚠ settings:[/yellow] {msg}")
@@ -600,17 +612,18 @@ def _surface_scan_report(rt: str, image: str, prof: Path) -> None:
     """Copy the in-image supply-chain report (harnessed-scan, the derived image's final layer) to the
     profile dir and print a one-line advisory summary. The scan is advisory — this surfaces its posture
     host-side so the user sees it without digging into the image or scrolling the build log."""
-    cid = subprocess.run([rt, "create", image], capture_output=True, text=True).stdout.strip()
-    if not cid:
-        return
     dest = prof / "scan-report.json"
-    try:
+
+    def _copy(cid: str) -> bool:
         subprocess.run(
             [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.harnessed/scan-report.json", str(dest)],
             capture_output=True,
         )
-    finally:
-        subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+        return True
+
+    # create-fail (None) mirrors the old `if not cid: return` — leave any stale report untouched.
+    if not _with_image_container(rt, image, _copy):
+        return
     if not dest.is_file():
         return
     try:
