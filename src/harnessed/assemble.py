@@ -121,14 +121,21 @@ def assemble(
         syncer.add_recipe(recipe)
     syncer.fan(profile_dir / ".claude")
 
-    # Stack-level identity → the harness's native memory/context file (bd main-ylz, main-72j).
-    # Each harness reads its own file name: claude → .claude/CLAUDE.md; antigravity (agy, gemini-
-    # derived) → a .gemini context file named by settings.json context.fileName. Other harnesses
-    # have no identity emission path yet.
+    # Stack-level identity → the harness's own top-level memory file (bd main-ylz, main-72j, main-7rh).
+    #   - claude: `.claude/CLAUDE.md` (its memory file); recipe rules stay as `.claude/rules/*.md`.
+    #   - antigravity (agy, gemini-derived): a `.gemini` context file named by settings.json
+    #     context.fileName.
+    #   - codex:  `.codex/AGENTS.md` — codex has no directory-rules primitive, so identity AND the
+    #             fanned `.claude/rules/*.md` are concatenated into the ONE doc codex reads.
+    # Other harnesses have no identity emission path yet.
     if stack.harness == "claude":
         emit.write_claude_md(profile_dir, stack.instructions)
     elif stack.harness == "antigravity":
         emit.write_antigravity_identity(profile_dir, stack.instructions)
+    elif stack.harness == "codex":
+        rules_dir = profile_dir / ".claude" / "rules"
+        rule_files = sorted(rules_dir.rglob("*.md")) if rules_dir.is_dir() else []
+        emit.write_codex_agents_md(profile_dir, stack.instructions, rule_files)
 
     # stdio children are baked into the harness/stack image and spawned by the in-container hatago
     # (hatago-consolidation); kept for reporting. No separate baked-servers.json is written.

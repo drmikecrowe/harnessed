@@ -13,6 +13,8 @@ from harnessed.emit import (
     required_settings,
     write_antigravity_identity,
     write_claude_md,
+    write_codex_agents_md,
+    CODEX_AGENTS_MAX_BYTES,
     write_mcp_json,
     write_opencode_persona,
     write_settings_json,
@@ -138,6 +140,54 @@ class TestWriteAntigravityIdentity:
     def test_noop_when_instructions_unset(self, tmp_path):
         assert write_antigravity_identity(tmp_path, None) is None
         assert not (tmp_path / ".gemini").exists()
+
+
+class TestWriteCodexAgentsMd:
+    def _rule(self, profile_dir: Path, name: str, body: str) -> Path:
+        p = profile_dir / ".claude" / "rules" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body, encoding="utf-8")
+        return p
+
+    def test_emits_identity_then_rules_under_cap(self, tmp_path):
+        r1 = self._rule(tmp_path, "coding-principles/RULE.md", "Keep changes surgical.")
+        r2 = self._rule(tmp_path, "signed-commits/RULE.md", "All commits must be signed.")
+        out = write_codex_agents_md(tmp_path, "You are the codex release-bot.", [r1, r2])
+
+        assert out == tmp_path / ".codex" / "AGENTS.md"
+        text = out.read_text()
+        # identity comes first, then each rule under its header
+        i_identity = text.index("codex release-bot")
+        i_r1 = text.index("Keep changes surgical.")
+        i_r2 = text.index("All commits must be signed.")
+        assert i_identity < i_r1 < i_r2
+        assert "## Rule: coding-principles/RULE.md" in text
+        assert "## Rule: signed-commits/RULE.md" in text
+        assert len(text.encode("utf-8")) <= CODEX_AGENTS_MAX_BYTES
+
+    def test_noop_when_no_identity_and_no_rules(self, tmp_path):
+        assert write_codex_agents_md(tmp_path, None, []) is None
+        assert not (tmp_path / ".codex" / "AGENTS.md").exists()
+
+    def test_identity_only_when_no_rules(self, tmp_path):
+        out = write_codex_agents_md(tmp_path, "identity only", [])
+        assert out.read_text() == "identity only\n"
+
+    def test_rules_only_when_no_identity(self, tmp_path):
+        r1 = self._rule(tmp_path, "a/RULE.md", "rule body a")
+        out = write_codex_agents_md(tmp_path, None, [r1])
+        text = out.read_text()
+        assert "## Rule: a/RULE.md" in text
+        assert "rule body a" in text
+
+    def test_truncates_with_warning_over_cap(self, tmp_path):
+        warnings: list[str] = []
+        big = self._rule(tmp_path, "big/RULE.md", "x" * (CODEX_AGENTS_MAX_BYTES + 5000))
+        out = write_codex_agents_md(tmp_path, "identity", [big], warn=warnings.append)
+        data = out.read_bytes()
+        assert len(data) <= CODEX_AGENTS_MAX_BYTES
+        assert b"truncated" in data
+        assert warnings and "truncated" in warnings[0]
 
 
 class TestWriteMcpJson:
