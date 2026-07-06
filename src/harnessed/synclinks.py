@@ -38,7 +38,9 @@ class LinkSyncer:
     def add_recipe(self, recipe: Recipe) -> None:
         self._register(recipe, recipe.skills, self.skills, "skill")
         self._register(recipe, recipe.commands, self.commands, "command")
-        self._register(recipe, recipe.rules, self.rules, "rule")
+        # Rules are flat `.md` files in Claude's real shape (dirs allowed for organization),
+        # so a rule source may be either a single file or a directory.
+        self._register(recipe, recipe.rules, self.rules, "rule", allow_file=True)
 
     @staticmethod
     def _register(
@@ -46,13 +48,14 @@ class LinkSyncer:
         entries: list[FileExt],
         registry: dict[str, tuple[Path, str]],
         kind: str,
+        allow_file: bool = False,
     ) -> None:
         for entry in entries:
             src = (recipe.root / entry.path).resolve()
-            if not src.is_dir():
+            if not (src.is_dir() or (allow_file and src.is_file())):
                 raise CollisionError(
                     f"recipe '{recipe.name}' declares {kind} '{entry.path}' "
-                    f"but the source dir does not exist: {src}"
+                    f"but the source does not exist: {src}"
                 )
             name = entry.name
             if name in registry:
@@ -75,4 +78,8 @@ class LinkSyncer:
     def _fan_into(dest_root: Path, registry: dict[str, tuple[Path, str]]) -> None:
         dest_root.mkdir(parents=True, exist_ok=True)
         for name, (src, _recipe) in sorted(registry.items()):
-            shutil.copytree(src, dest_root / name, dirs_exist_ok=False)
+            dest = dest_root / name
+            if src.is_file():
+                shutil.copy2(src, dest)
+            else:
+                shutil.copytree(src, dest, dirs_exist_ok=False)
