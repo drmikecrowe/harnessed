@@ -28,7 +28,7 @@ from . import emit
 from . import paths
 from . import persist
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
-from .assemble import assemble
+from .assemble import assemble, _merge_servers, _resolve_service_servers
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
@@ -1547,7 +1547,17 @@ def launch(
             pod_cmd += ["--network", net]
         _run(pod_cmd, capture_output=True)
 
-    hatago_cfg_host = prof / "hatago.config.json"
+    # Regenerate hatago.config.json with each stdio child's cwd pinned to the mirrored project path
+    # (bd main-u5d). The committed profile config is project-agnostic (built before any project is
+    # known — path mirroring makes the container project path per-launch), so serena/repowise would
+    # otherwise resolve the container home instead of the project root. Written per-instance so two
+    # projects on the same stack never race on one shared cwd.
+    launch_servers = _resolve_service_servers(
+        _merge_servers(load_stack_with_recipes(None, stack)[1]), None
+    )
+    inst_cfg_dir = prof / ".instances" / inst
+    inst_cfg_dir.mkdir(parents=True, exist_ok=True)
+    hatago_cfg_host = emit.write_hatago_config(inst_cfg_dir, launch_servers, project_path)
     hatago_cfg_ctr = str(paths.hatago_config_container())
 
     # Filter out --userns=keep-id from member (pod-level property). Mount the hatago config (ro) into

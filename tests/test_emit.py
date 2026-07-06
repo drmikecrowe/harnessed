@@ -14,6 +14,7 @@ from harnessed.emit import (
     write_hatago_config,
     write_derived_dockerfile,
 )
+from harnessed.paths import container_project_path
 from harnessed.schema import HookCommand, McpServer, Recipe, Stack
 
 _GRANT = f"mcp__{HATAGO_MCP_KEY}"
@@ -101,6 +102,30 @@ class TestWriteHatagoConfig:
         entry = data["mcpServers"]["time"]
         assert entry["command"] == "pnpm"
         assert entry["args"] == ["dlx", "@time/server"]
+
+    def test_stdio_entry_has_no_cwd_without_project_path(self, tmp_path):
+        # The committed (assemble-time) config is project-agnostic — no cwd baked (bd main-u5d).
+        servers = [McpServer(name="serena", command="serena", args=["start-mcp-server"])]
+        write_hatago_config(tmp_path, servers)
+        entry = json.loads((tmp_path / "hatago.config.json").read_text())["mcpServers"]["serena"]
+        assert "cwd" not in entry
+
+    def test_stdio_entry_gets_project_cwd(self, tmp_path):
+        # bd main-u5d: a stdio child's cwd is pinned to the mirrored container-side project path so
+        # serena --project-from-cwd / repowise's default resolve the project, not the container home.
+        servers = [McpServer(name="serena", command="serena", args=["start-mcp-server"])]
+        project = "/home/dev/myproject"
+        write_hatago_config(tmp_path, servers, project)
+        entry = json.loads((tmp_path / "hatago.config.json").read_text())["mcpServers"]["serena"]
+        assert entry["cwd"] == str(container_project_path(project))
+        assert entry["cwd"] == "/home/dev/myproject"
+
+    def test_http_entry_unaffected_by_project_path(self, tmp_path):
+        # cwd is a stdio-only concern — a URL-proxied server never gets one.
+        servers = [McpServer(name="remote", transport="http", url="http://localhost:8080/mcp")]
+        write_hatago_config(tmp_path, servers, "/home/dev/myproject")
+        entry = json.loads((tmp_path / "hatago.config.json").read_text())["mcpServers"]["remote"]
+        assert "cwd" not in entry
 
     def test_http_server_gets_url_entry(self, tmp_path):
         servers = [McpServer(name="remote", transport="http", url="http://localhost:8080/mcp")]
