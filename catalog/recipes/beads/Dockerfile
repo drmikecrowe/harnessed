@@ -4,9 +4,9 @@
 # re-declares `ARG HARNESS` after it, so ${HARNESS} is available here and recipes stay
 # harness-independent.
 #
-# Bake the `bd` CLI (https://github.com/gastownhall/beads): a single native binary that bundles
-# embedded Dolt — local-first persistent task memory for agents, run here in beads' DEFAULT
-# operational mode (in-repo, git-tracked, Dolt-native sync via the git origin — see recipe.yaml).
+# Bake the `bd` CLI (https://github.com/gastownhall/beads): a single native binary — local-first
+# persistent task memory for agents, run here in-repo + git-tracked (Dolt-native sync via the git
+# origin) on bd's SERVER storage engine, a managed per-container dolt sql-server (see recipe.yaml).
 # For the fully-invisible variant (`.beads/` outside the repo, zero git footprint), see the sibling
 # `beads-stealth` recipe. Installed via mise's `github:` backend — harnessed-base already ships
 # mise + shims on PATH (same pattern as catalog/base/Dockerfile.harnessed-omp's `omp` install):
@@ -16,8 +16,10 @@
 USER harnessed
 # Pin to the exact release tag (no @latest / :latest / --branch — the assembler pin gate rejects
 # floating refs). Also bakes the standalone `dolt` CLI (https://github.com/dolthub/dolt) alongside
-# `bd` — bd bundles Dolt as an embedded library for its own DB, but the standalone binary is useful
-# for ad-hoc inspection/repair of `.beads/`'s Dolt store directly.
+# `bd` — REQUIRED for this recipe's server mode: `bd init --server` / `bd dolt start` shell out to a
+# `dolt` binary on PATH to run the managed per-container `dolt sql-server`; bd's bundled Dolt is an
+# embedded library only, not spawnable as a server. Pinned to 2.1.10, verified working with bd 1.1.0's
+# server engine (dep add/stats/close survive a server stop/restart with dolt.auto-commit on).
 ARG BEADS_VERSION=1.1.0
 ARG DOLT_VERSION=2.1.10
 RUN mise use -g "github:gastownhall/beads@${BEADS_VERSION}" "github:dolthub/dolt@${DOLT_VERSION}" && mise install

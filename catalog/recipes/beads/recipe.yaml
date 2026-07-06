@@ -1,7 +1,10 @@
 # yaml-language-server: $schema=../../../schemas/recipe.schema.json
-# Recipe: beads — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary that
-# bundles embedded Dolt, run in beads' own DEFAULT operational mode: `.beads/` lives INSIDE the
-# repo (git-tracked), `bd init` installs git hooks (agent-identity commit trailers) and auto-wires
+# Recipe: beads — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary, run in
+# beads' in-repo, git-tracked mode on bd's SERVER storage engine (a managed per-container `dolt
+# sql-server` on loopback, pidfile-managed, data under `.beads/dolt/`) — NOT the embedded engine,
+# whose dependency subsystem (`bd dep add`/`close`/`delete`/`stats`/`sql`/`doctor`) is a no-op in bd
+# 1.1.0 and whose shared-file lock contends under this bare+worktree layout. `.beads/` lives INSIDE
+# the repo (git-tracked), `bd init` installs git hooks (agent-identity commit trailers) and auto-wires
 # the git origin as a Dolt remote for `bd dolt push`/`bd dolt pull` sync — beads data is stored
 # under `refs/dolt/data`, NOT a git branch, so this does not touch protected branches. No MCP, no
 # service, no skill: the agent shells out to `bd` directly.
@@ -17,8 +20,12 @@
 #
 # Init: runs once per project via `harnessed init <stack>` (or automatically on every `harnessed
 # launch`). The marker is the `.beads/` dir itself; if it exists, the step is skipped.
-#   1. `bd init --quiet --non-interactive --role maintainer` — creates .beads/ in the project,
-#      installs git hooks, auto-wires the git origin as a Dolt remote if one exists.
+#   1. `bd init --server --quiet --non-interactive --role maintainer` — creates .beads/ in the
+#      project, installs git hooks, auto-wires the git origin as a Dolt remote if one exists, and
+#      (via `--server`) provisions bd's managed dolt sql-server with its DB under `.beads/dolt/`.
+#      `bd config set dolt.auto-commit on` then persists auto-commit to `.beads/config.yaml` so every
+#      write (including dependency edges) commits to the Dolt store on disk — edges are NOT in
+#      `.beads/issues.jsonl` (only counts are), so JSONL export alone would silently lose them.
 #      `--non-interactive` is required since this runs in a headless one-shot container (no TTY);
 #      `--role maintainer` is the sensible default for a project's home repo (the *contributor*
 #      role — for an OSS fork-based workflow — is a manual `bd init --role contributor` override,
@@ -52,9 +59,9 @@ init:
     # Check for the actual Dolt DB dir, NOT just `.beads/` — `bd init` writes `.beads/.gitignore`
     # very early, so a partial/failed init (e.g. git unavailable) leaves a `.beads/` with no DB.
     # Keying the marker on `.beads/` alone would then report "already initialized" forever. Keying
-    # on `embeddeddolt/` re-runs init whenever the DB is missing; `bd init` recovers idempotently
-    # over a partial `.beads/`.
-    file: embeddeddolt
+    # on `dolt/` (the server engine's data dir — `--server`'s default location) re-runs init whenever
+    # the DB is missing; `bd init` recovers idempotently over a partial `.beads/`.
+    file: dolt
   # `bd-resolve-beads-dir` is the gate: it exits non-zero (aborting init) for a bare repo with no
   # work tree on its default branch — the one layout where default-mode beads can't place a
   # committable `.beads/`. Otherwise BEADS_DIR is already exported by the baked profile.d script
@@ -66,4 +73,4 @@ init:
   # anchored to the bare *common dir* (`.bare/.beads`), a path the `location: in_repo` marker (which
   # resolves to the *worktree*, `main/.beads`) can't see, so the marker mis-gates and init runs anyway.
   # bd-setup-agent still (re)wires the agent hook; it is itself idempotent.
-  run: bd-resolve-beads-dir >/dev/null && (bd list >/dev/null 2>&1 || bd init --quiet --non-interactive --role maintainer) && bd-setup-agent
+  run: bd-resolve-beads-dir >/dev/null && (bd list >/dev/null 2>&1 || (bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on)) && bd-setup-agent
