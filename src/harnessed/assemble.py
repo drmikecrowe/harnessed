@@ -106,7 +106,7 @@ def assemble(
 
     emit.reset_profile(profile_dir)
     emit.write_mcp_json(profile_dir)
-    emit.write_settings_json(profile_dir, servers, recipes)
+    emit.write_settings_json(profile_dir, servers, recipes, stack.permissions)
     emit.write_hatago_config(profile_dir, servers)
     # ASM-03 — derived Dockerfile, with a final supply-chain scan layer (BLD-02) unless the build
     # opted out via --no-security-scans (HARNESSED_NO_SCANS).
