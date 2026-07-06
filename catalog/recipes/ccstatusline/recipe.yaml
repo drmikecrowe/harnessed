@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: ccstatusline — bake the ccstatusline status-line renderer into the agent image.
+#
+# ccstatusline is the program Claude Code invokes for its `statusLine` (a `type: command` entry in
+# ~/.claude/settings.json). This recipe (a) installs the pinned `ccstatusline` npm CLI via mise so a
+# shim resolves at ~/.local/share/mise/shims/ccstatusline, and (b) bakes the matching `statusLine`
+# block into the container's ~/.claude/settings.json at build time (Dockerfile, branched on ${HARNESS}
+# — statusLine is Claude-only). emit.merge_settings carries that baked key through verbatim while
+# re-applying harnessed's hatago grant.
+#
+# Metadata-only here (like rtk): no MCP server, no skill/command/plugin surface, so no `expect:` —
+# there is no expect kind for "a status line renders". The host's own ~/.config/ccstatusline/settings.json
+# is bind-mounted read-only if present (launcher `_ccstatusline_settings_mount`); absent → ccstatusline
+# built-in defaults apply.
+name: ccstatusline
+description: ccstatusline — bake the pinned status-line renderer + a Claude statusLine config into the agent image.

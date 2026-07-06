@@ -834,6 +834,25 @@ def _omp_agent_mount(harness: str) -> list[str]:
     return ["-v", f"{host_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
 
 
+def _ccstatusline_settings_mount(home: Path | None = None) -> list[str]:
+    """Forward the host's ccstatusline config read-only, if present.
+
+    The `ccstatusline` recipe bakes a Claude `statusLine` that runs the `ccstatusline` renderer;
+    that renderer reads ~/.config/ccstatusline/settings.json. Bind-mounting the host's file :ro
+    (same file-by-file, is_file()-guarded, read-only pattern as the gh-hosts credential forward)
+    lets the container's status line match the host's layout/segments. This is personalization, not
+    a credential, so it is NOT gated on `forward_git_credentials` — and it is guarded on host-file
+    existence, so a host with no ccstatusline config is a clean no-op (ccstatusline falls back to
+    its built-in defaults). Harness-agnostic: for a non-claude harness (no baked statusLine) the
+    mounted file simply goes unread.
+    """
+    home = home or Path.home()
+    cfg = home / ".config" / "ccstatusline" / "settings.json"
+    if not cfg.is_file():
+        return []
+    return ["-v", f"{cfg}:{_CONTAINER_HOME_STR}/.config/ccstatusline/settings.json:ro"]
+
+
 def _host_os() -> str:
     """'macos' | 'linux' | 'other'. Drives per-OS agent socket paths + YubiKey passthrough."""
     if sys.platform == "darwin":
@@ -1497,6 +1516,8 @@ def launch(
     mount_args += _claude_config_seed_mount(harness, inst)
     # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
     mount_args += _omp_agent_mount(harness)
+    # Forward the host's ccstatusline config (ro) so the baked statusLine matches the host layout.
+    mount_args += _ccstatusline_settings_mount()
     # Persist recipe-declared project-scoped folders (rw) so their state survives --fresh.
     mount_args += _persist_mounts(stack, project_path)
     # Forward the host's git signing + push credentials (1Password/GPG/YubiKey agent, git config,
