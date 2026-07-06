@@ -5,7 +5,6 @@ from pathlib import Path
 
 from harnessed.schema import (
     HookCommand,
-    InitMarker,
     InitSpec,
     McpServer,
     PersistEntry,
@@ -543,30 +542,20 @@ class TestStrictRecipeFields:
         body = (
             "name: r\n"
             "init:\n"
-            "  run: bd init --quiet --stealth\n"
-            "  marker:\n"
-            "    scope: project\n"
-            "    location: host\n"
-            "    name: .beads\n"
+            "  run: bd list >/dev/null 2>&1 || bd init --quiet --stealth\n"
         )
         r = self._load(tmp_path, body, strict=True)
         assert r.name == "r"
 
 
 class TestInitParse:
-    """init: field parsing — marker scope/location, run command, validation."""
+    """init: field parsing (Model A) — just the `run` command; no host-side marker."""
 
     def _load(self, tmp_path, body: str) -> Recipe:
         d = tmp_path / "rcp"
         d.mkdir(parents=True, exist_ok=True)
         (d / "recipe.yaml").write_text(body)
         return load_recipe(d)
-
-    def _body(self, *, run: str, marker: dict) -> str:
-        lines = ["name: r", "init:", f"  run: {run}", "  marker:"]
-        for k, v in marker.items():
-            lines.append(f"    {k}: {v}")
-        return "\n".join(lines) + "\n"
 
     # --- Absent / None ---
 
@@ -576,122 +565,39 @@ class TestInitParse:
 
     # --- Valid cases ---
 
-    def test_project_host_valid(self, tmp_path):
-        r = self._load(tmp_path, self._body(
-            run="bd init --quiet --stealth",
-            marker={"scope": "project", "location": "host", "name": ".beads"},
-        ))
+    def test_run_only_valid(self, tmp_path):
+        r = self._load(tmp_path, "name: r\ninit:\n  run: bd list || bd init\n")
         assert r.init is not None
-        assert r.init.marker.scope == "project"
-        assert r.init.marker.location == "host"
-        assert r.init.marker.name == ".beads"
-        assert r.init.marker.file is None
-        assert r.init.run == "bd init --quiet --stealth"
+        assert r.init.run == "bd list || bd init"
 
-    def test_workspace_host_valid(self, tmp_path):
-        r = self._load(tmp_path, self._body(
-            run="ctx init",
-            marker={"scope": "workspace", "location": "host", "name": ".ctx"},
-        ))
-        assert r.init.marker.scope == "workspace"
-
-    def test_with_optional_file(self, tmp_path):
-        r = self._load(tmp_path, self._body(
-            run="ctx init",
-            marker={"scope": "workspace", "location": "host", "name": ".ctx", "file": "config"},
-        ))
-        assert r.init.marker.file == "config"
-
-    def test_in_repo_location(self, tmp_path):
-        r = self._load(tmp_path, self._body(
-            run="init-cmd",
-            marker={"scope": "workspace", "location": "in_repo", "name": ".mydir"},
-        ))
-        assert r.init.marker.location == "in_repo"
+    def test_run_is_stripped(self, tmp_path):
+        r = self._load(tmp_path, "name: r\ninit:\n  run: '  ctx init  '\n")
+        assert r.init.run == "ctx init"
 
     # --- run validation ---
 
     def test_missing_run_rejected(self, tmp_path):
-        body = (
-            "name: r\ninit:\n"
-            "  marker:\n    scope: project\n    location: host\n    name: .beads\n"
-        )
+        # A non-empty init: mapping with no `run` key must fail (the run check runs first).
         with pytest.raises(SchemaError, match="'run' is required"):
-            self._load(tmp_path, body)
+            self._load(tmp_path, "name: r\ninit:\n  other: x\n")
 
     def test_empty_run_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="'run' is required"):
+            self._load(tmp_path, "name: r\ninit:\n  run: ''\n")
+
+    # --- unknown field (the old marker is now rejected) ---
+
+    def test_marker_field_now_rejected(self, tmp_path):
         body = (
-            "name: r\ninit:\n  run: ''\n"
+            "name: r\ninit:\n  run: bd init\n"
             "  marker:\n    scope: project\n    location: host\n    name: .beads\n"
         )
-        with pytest.raises(SchemaError, match="'run' is required"):
-            self._load(tmp_path, body)
-
-    # --- marker validation ---
-
-    def test_missing_marker_rejected(self, tmp_path):
-        body = "name: r\ninit:\n  run: bd init\n"
-        with pytest.raises(SchemaError, match="'marker' is required"):
-            self._load(tmp_path, body)
-
-    def test_marker_not_a_mapping_rejected(self, tmp_path):
-        body = "name: r\ninit:\n  run: bd init\n  marker: not-a-dict\n"
-        with pytest.raises(SchemaError, match="'marker' is required"):
-            self._load(tmp_path, body)
-
-    # --- scope validation ---
-
-    def test_global_scope_rejected(self, tmp_path):
-        with pytest.raises(SchemaError, match="scope: global is not valid"):
-            self._load(tmp_path, self._body(
-                run="cmd", marker={"scope": "global", "location": "host", "name": ".x"},
-            ))
-
-    def test_unknown_scope_rejected(self, tmp_path):
-        with pytest.raises(SchemaError, match="unknown scope"):
-            self._load(tmp_path, self._body(
-                run="cmd", marker={"scope": "shared", "location": "host", "name": ".x"},
-            ))
-
-    def test_missing_scope_rejected(self, tmp_path):
-        body = "name: r\ninit:\n  run: cmd\n  marker:\n    location: host\n    name: .x\n"
-        with pytest.raises(SchemaError, match="missing required field 'scope'"):
-            self._load(tmp_path, body)
-
-    # --- location validation ---
-
-    def test_missing_location_rejected(self, tmp_path):
-        body = "name: r\ninit:\n  run: cmd\n  marker:\n    scope: project\n    name: .x\n"
-        with pytest.raises(SchemaError, match="missing required field 'location'"):
-            self._load(tmp_path, body)
-
-    def test_unknown_location_rejected(self, tmp_path):
-        with pytest.raises(SchemaError, match="unknown location"):
-            self._load(tmp_path, self._body(
-                run="cmd", marker={"scope": "project", "location": "external", "name": ".x"},
-            ))
-
-    # --- name validation ---
-
-    def test_missing_name_rejected(self, tmp_path):
-        body = "name: r\ninit:\n  run: cmd\n  marker:\n    scope: project\n    location: host\n"
-        with pytest.raises(SchemaError):
-            self._load(tmp_path, body)
-
-    def test_absolute_name_rejected(self, tmp_path):
-        with pytest.raises(SchemaError):
-            self._load(tmp_path, self._body(
-                run="cmd", marker={"scope": "project", "location": "host", "name": "/etc/passwd"},
-            ))
-
-    # --- unknown marker field ---
-
-    def test_unknown_marker_field_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="unknown field"):
-            self._load(tmp_path, self._body(
-                run="cmd",
-                marker={"scope": "project", "location": "host", "name": ".x", "extra": "bad"},
-            ))
+            self._load(tmp_path, body)
+
+    def test_unknown_field_rejected(self, tmp_path):
+        with pytest.raises(SchemaError, match="unknown field"):
+            self._load(tmp_path, "name: r\ninit:\n  run: cmd\n  bogus: 1\n")
 
     # --- init not a mapping ---
 

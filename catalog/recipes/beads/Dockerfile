@@ -27,7 +27,7 @@ RUN mise use -g "github:gastownhall/beads@${BEADS_VERSION}" "github:dolthub/dolt
 # Fails the build loudly instead of at first run.
 RUN bd --version && dolt version
 USER root
-# Bare + linked-worktree support (bd-resolve-beads-dir + profile.d).
+# Bare + linked-worktree support (bd-resolve-beads-dir, sourced by init.run — see recipe.yaml).
 #
 # Default-mode `bd` anchors its shared `.beads` to the git "main repository" = the common dir. In a
 # bare + linked-worktree layout (a `.bare` repo with sibling worktrees) that common dir is the BARE
@@ -54,16 +54,10 @@ fi
 printf '%s/.beads\n' "$wt"
 SH
 RUN chmod +x /usr/local/bin/bd-resolve-beads-dir
-# Export BEADS_DIR for every login shell (the agent's `bash -l -c` attach AND the init container's
-# `bash -lc`), resolved from the current work tree so it's correct regardless of the mount path.
-# Respects an existing BEADS_DIR (user override) and stays silent for normal repos.
-COPY <<'SH' /etc/profile.d/beads-dir.sh
-if [ -z "${BEADS_DIR:-}" ] && command -v bd-resolve-beads-dir >/dev/null 2>&1; then
-  _bd_dir=$(bd-resolve-beads-dir 2>/dev/null) || _bd_dir=
-  [ -n "$_bd_dir" ] && export BEADS_DIR="$_bd_dir"
-  unset _bd_dir
-fi
-SH
+# No profile.d BEADS_DIR export (Model A): `init.run` (recipe.yaml) now runs `bd-resolve-beads-dir`
+# and exports BEADS_DIR in the attach shell itself, once, before `bd init` and the harness start —
+# so the value flows straight into the agent process. A profile.d script would just re-resolve it a
+# third time (the redundancy Model A removes).
 # Bake a harness-aware `bd setup` wrapper. `bd init` (default mode) already installs git hooks and
 # auto-wires the git origin as a Dolt remote — but per beads' own docs/SETUP.md, wiring the
 # SessionStart hook + minimal CLAUDE.md/AGENTS.md section is a SEPARATE step: `bd setup <tool>`.
@@ -84,6 +78,6 @@ RUN case "${HARNESS}" in \
 USER harnessed
 # No STATIC BEADS_DIR ENV here (unlike beads-stealth, whose mount target is a fixed path): `.beads/`
 # lives INSIDE a work tree (persist: location: in_repo — see recipe.yaml). For a normal repo bd's
-# own discovery finds it; for a bare + linked-worktree repo the profile.d script above computes
-# BEADS_DIR dynamically (→ the default-branch work tree's `.beads`). A static ENV would be wrong the
-# moment the project mount path changed, so the value is resolved at shell start, not baked.
+# own discovery finds it; for a bare + linked-worktree repo `init.run` resolves BEADS_DIR at attach
+# time (→ the default-branch work tree's `.beads`). A static ENV would be wrong the moment the
+# project mount path changed, so the value is resolved in the attach shell, not baked.

@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -32,7 +33,6 @@ from .assemble import assemble, _merge_servers, _resolve_service_servers
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
-    InitSpec,
     SchemaError,
     load_agent,
     load_service,
@@ -1176,93 +1176,40 @@ def _ensure_gitignore_entry(project_path: Path, name: str) -> None:
         pass  # non-fatal
 
 
-def _resolve_marker_host_path(recipe_name: str, init: InitSpec, project_path: Path) -> Path:
-    """Resolve an init marker to a host-side Path for existence checking.
+def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> str:
+    """Shell snippet run in the attach shell BEFORE the harness starts (Model A).
 
-    Reuses the same path helpers as `_persist_mounts` so the marker always points at the
-    same directory the persist entry mounts — no separate path logic.
-    """
-    marker = init.marker
-    if marker.location == "host":
-        if marker.scope == "workspace":
-            base = paths.persist_workspace_dir(recipe_name, project_path, marker.name)
-        else:  # project
-            base = paths.persist_project_dir(recipe_name, project_path, marker.name)
-    else:  # in_repo
-        # Anchor to the repo's primary work tree, not the raw launch path: in a bare +
-        # linked-worktree layout an in-repo item (e.g. beads' `.beads/`) lives in the default-branch
-        # work tree, so the host marker must look there to stay aligned with where the container
-        # writes. A normal repo resolves back to project_path unchanged.
-        base = paths.primary_worktree(project_path) / marker.name
+    Exports the generic path contract, then runs each recipe's `init.run` inline in this SAME shell
+    so init-derived env (e.g. beads' BEADS_DIR) flows straight into the agent process — no
+    profile.d, no transient container. A failing init aborts the attach with a clear message so the
+    harness never starts on a half-initialized tool. Init runs on EVERY attach; recipe `init.run`
+    strings self-gate cheaply (idempotent) now that the declarative host-side marker is gone.
 
-    return base / marker.file if marker.file else base
-
-
-def _init_mount_args(project_path: Path, mount_path: Optional[Path]) -> list[str]:
-    """Bind mounts for the transient init container so an init command's git operations work.
-
-    Mirrors the main container's mount: bind `mount_path` (the project by default; a parent dir when
-    launched with --mount-folder) path-preserving. Additionally bind the git *common dir* when it
-    lives outside that mount — in a linked-worktree layout (a bare repo + sibling worktrees), the
-    project's `.git` is a pointer FILE into the common dir, so a git command run during init (e.g.
-    default-mode `bd init`, which wires the origin remote and installs hooks) fails with "not a git
-    repository" unless the common dir is reachable at its real host path. The previous behavior —
-    binding only the project — left init blind to the common dir and silently produced a
-    half-initialized tool (e.g. a `.beads/` with no Dolt DB)."""
-    mount_root = mount_path or project_path
-    args = ["-v", f"{mount_root}:{mount_root}:rw"]
-    gcd = paths.git_common_dir(project_path)
-    if gcd is not None and not gcd.is_relative_to(mount_root):
-        args += ["-v", f"{gcd}:{gcd}:rw"]
-    return args
-
-
-def _run_init_for_stack(
-    rt: str, stack: str, project_path: Path, mount_path: Optional[Path] = None
-) -> None:
-    """Run one-time init for any recipe in `stack` whose init marker is absent on the host.
-
-    One-shot `podman run --rm` per missing init marker: transient container, no pod, no hatago,
-    NO secrets (same plain-build principle as `_build_derived_image`). The container sees the
-    same project + persist bind-mounts as a normal launch (including the wider --mount-folder root
-    and the git common dir, so git-dependent init commands work in a linked-worktree layout) so the
-    init command can write to the right locations. Idempotent: if the marker already exists, the
-    recipe is skipped.
-
-    A non-zero exit from the init command is a hard failure — a half-initialized recipe tool
-    is worse than an explicit error. The user must fix the issue and re-run `harnessed init`.
+    Paths are path-mirrored into the container (host path == container path, see _build_mount_args),
+    so these host-side values are also the correct container-side values. MAIN_REPO_DIR is the git
+    common dir — in a bare + linked-worktree layout that is the bare repo dir (deliberately NOT the
+    default-branch work tree: tool-specific resolution like beads' bd-resolve-beads-dir stays a baked
+    helper the init.run sources from). Returns just the exports when no recipe declares init.
     """
     _, recipes = load_stack_with_recipes(None, stack)
-    derived = _derived_image(stack)
-    persist_args = _persist_mounts(stack, project_path)
-    mount_args = _init_mount_args(project_path, mount_path)
-
+    main_repo = paths.git_common_dir(project_path) or project_path
+    parts = [
+        "export "
+        f"PROJECT_DIR={shlex.quote(str(project_path))} "
+        f"MAIN_REPO_DIR={shlex.quote(str(main_repo))} "
+        f"CONTAINER_WORKSPACE_DIR={shlex.quote(str(mount_path))} "
+        f"HOST_WORKSPACE_DIR={shlex.quote(str(mount_path))}"
+    ]
     for recipe in recipes:
         if recipe.init is None:
             continue
-        marker_path = _resolve_marker_host_path(recipe.name, recipe.init, project_path)
-        if marker_path.exists():
-            _out.print(f"[blue][INFO][/blue] init: '{recipe.name}' already initialized (marker: {marker_path})")
-            continue
-        _out.print(f"[blue][INFO][/blue] init: running '{recipe.name}' init: {recipe.init.run!r}")
-        run_cmd = [
-            rt, "run", "--rm",
-            "--userns=keep-id",
-            "-w", str(project_path),
-            *mount_args,
-            *persist_args,
-            derived, "bash", "-lc", recipe.init.run,
-        ]
-        try:
-            _run(run_cmd)
-        except subprocess.CalledProcessError:
-            _err.print(
-                f"[bold red]error:[/bold red] init for recipe '{recipe.name}' failed "
-                f"(command: {recipe.init.run!r}). "
-                f"Fix the error and re-run: harnessed init {stack}"
-            )
-            raise typer.Exit(1)
-        _out.print(f"[green][OK][/green] init: '{recipe.name}' initialized")
+        # `{ run; }` is a brace group (current shell — a subshell would discard exports); a non-zero
+        # run prints a clear error and `exit`s the attach shell before the harness is reached.
+        parts.append(
+            f"{{ {recipe.init.run}; }} || "
+            f"{{ echo 'harnessed: init failed for recipe {recipe.name} — fix and relaunch' >&2; exit 1; }}"
+        )
+    return " && ".join(parts)
 
 
 def _persist_mounts(stack: str, project_path: Path) -> list[str]:
@@ -1495,11 +1442,11 @@ def launch(
                     "[yellow]note:[/yellow] attaching to the existing (older-build) instance — "
                     "run with --fresh to update."
                 )
-                _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell)
+                _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell)
                 return
         else:
             _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
-            _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell)
+            _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell)
             return
     # Stopped leftover: a previous non-ephemeral session exited without tearing down its pod (only
     # --rm cleans up). A same-name `pod create` would fail "name already in use", so remove the
@@ -1508,12 +1455,8 @@ def launch(
         _out.print(f"[blue][INFO][/blue] Recreating stopped instance '{inst}' from a prior session …")
         _pod_teardown(rt, inst, pod)
 
-    # Auto-run one-time init for any recipe whose init marker is missing (Option B: explicit
-    # `harnessed init` + automatic check on every launch so a forgotten init never silently
-    # leaves a tool uninitialized). Idempotent — recipes already initialized are skipped. Pass
-    # mount_path so init sees the same (possibly --mount-folder-widened) tree as the real launch —
-    # a git-dependent init in a linked-worktree layout needs the git common dir reachable.
-    _run_init_for_stack(rt, stack, project_path, mount_path)
+    # Recipe init (Model A) now runs inside the attach shell (_attach → _init_shell_prologue), not a
+    # transient container — so init-derived env reaches the agent. Nothing to do here at pod-create.
 
     # Start any shared-service sidecars this stack's recipes reference (host-published; reached from
     # the pod via host.containers.internal:<port>). Idempotent — skips services already running.
@@ -1622,7 +1565,7 @@ def launch(
         _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago in-container)")
         return
 
-    _attach(rt, harness, inst, project_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell)
+    _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell)
 
 
 def _attach(
@@ -1631,6 +1574,8 @@ def _attach(
     inst: str,
     project_path: Path,
     *,
+    stack: str,
+    mount_path: Path,
     ephemeral: bool = False,
     pod: Optional[str] = None,
     start_dir: Optional[Path] = None,
@@ -1642,16 +1587,20 @@ def _attach(
     ephemeral (--rm): run the exec as a child so the pod can be torn down when the session exits.
     start_dir: working directory for the agent (defaults to project_path; --agent-start-folder).
     shell (--shell): drop into an interactive bash instead of starting the harness.
+
+    Recipe init (Model A): the attach shell exports the path contract and runs each recipe's
+    `init.run` inline (fail-fast) BEFORE exec-ing the harness, so init-derived env reaches the agent.
     """
     mise_init = "source ~/.bashrc && mise trust -a 2>/dev/null"
+    init_prologue = _init_shell_prologue(stack, project_path, mount_path)
 
     if shell:
-        shell_cmd = f"{mise_init} && exec bash -l"
+        tail = "exec bash -l"
     else:
         mcp_cfg = str(paths.container_mcp_config())
         harness_cmd_tpl = _HARNESS_ATTACH_CMD.get(harness, "claude")
-        harness_cmd = harness_cmd_tpl.format(mcp_cfg=mcp_cfg, instance=inst)
-        shell_cmd = f"{mise_init} && {harness_cmd}"
+        tail = harness_cmd_tpl.format(mcp_cfg=mcp_cfg, instance=inst)
+    shell_cmd = f"{mise_init} && {init_prologue} && {tail}"
 
     _touch_attach_marker(inst)
     exec_argv = [
@@ -1673,32 +1622,6 @@ def _attach(
         _out.print(f"[blue][INFO][/blue] --rm: tearing down pod {pod or inst}")
         _pod_teardown(rt, inst, pod or inst)
         _attach_marker(inst).unlink(missing_ok=True)
-
-
-@app.command("init")
-def init_stack(
-    stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
-    path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
-) -> None:
-    """Run one-time initialization for recipes in a stack that declare an `init:` block.
-
-    Idempotent: skips any recipe whose init marker already exists. Safe to re-run.
-    A recipe's init failing is a hard error — fix the issue and re-run this command.
-    `harnessed launch` also runs this automatically before starting the pod.
-    """
-    project_path = Path(path).resolve() if path else Path.cwd()
-    if not project_path.is_dir():
-        _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project_path}")
-        raise typer.Exit(1)
-    if not is_built(stack):
-        _err.print(
-            f"[bold red]error:[/bold red] stack '{stack}' has no assembled profile "
-            f"(run: harnessed build {stack})"
-        )
-        raise typer.Exit(1)
-    rt = _runtime()
-    _run_init_for_stack(rt, stack, project_path)
-    _out.print(f"[green][SUCCESS][/green] init complete for stack '{stack}'")
 
 
 @app.command("build")

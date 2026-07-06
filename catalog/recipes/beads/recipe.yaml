@@ -18,8 +18,8 @@
 # committed, matching upstream's own default expectations. (bd manages its own finer-grained
 # exclusions internally, e.g. `.beads/dolt/`.)
 #
-# Init: runs once per project via `harnessed init <stack>` (or automatically on every `harnessed
-# launch`). The marker is the `.beads/` dir itself; if it exists, the step is skipped.
+# Init (Model A): `init.run` is sourced in the attach shell on every launch; it self-gates (`bd
+# list`) so `bd init` runs only when the workspace has no DB yet. See the `init:` block below.
 #   1. `bd init --server --quiet --non-interactive --role maintainer` — creates .beads/ in the
 #      project, installs git hooks, auto-wires the git origin as a Dolt remote if one exists, and
 #      (via `--server`) provisions bd's managed dolt sql-server with its DB under `.beads/dolt/`.
@@ -52,25 +52,23 @@ persist:
     vcs: tracked
 
 init:
-  marker:
-    scope: workspace
-    location: in_repo
-    name: .beads
-    # Check for the actual Dolt DB dir, NOT just `.beads/` — `bd init` writes `.beads/.gitignore`
-    # very early, so a partial/failed init (e.g. git unavailable) leaves a `.beads/` with no DB.
-    # Keying the marker on `.beads/` alone would then report "already initialized" forever. Keying
-    # on `dolt/` (the server engine's data dir — `--server`'s default location) re-runs init whenever
-    # the DB is missing; `bd init` recovers idempotently over a partial `.beads/`.
-    file: dolt
-  # `bd-resolve-beads-dir` is the gate: it exits non-zero (aborting init) for a bare repo with no
-  # work tree on its default branch — the one layout where default-mode beads can't place a
-  # committable `.beads/`. Otherwise BEADS_DIR is already exported by the baked profile.d script
-  # (the init container runs `bash -lc`, so it sources /etc/profile.d), pointing bd at the right
-  # work tree before `bd init` runs.
-  # Idempotent init: `bd list` succeeds iff the workspace already has a DB (same discovery `bd init`
-  # uses), so an already-initialized repo skips `bd init` instead of aborting. This is required when
-  # the mounted project is ITSELF a beads workspace — e.g. harnessed's own repo, whose `.beads` DB is
-  # anchored to the bare *common dir* (`.bare/.beads`), a path the `location: in_repo` marker (which
-  # resolves to the *worktree*, `main/.beads`) can't see, so the marker mis-gates and init runs anyway.
-  # bd-setup-agent still (re)wires the agent hook; it is itself idempotent.
-  run: bd-resolve-beads-dir >/dev/null && (bd list >/dev/null 2>&1 || (bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on)) && bd-setup-agent
+  # Model A: `run` is sourced in the attach shell on EVERY launch (no host-side marker), so it must
+  # self-gate cheaply and export BEADS_DIR into the same shell the agent then runs in.
+  #
+  # 1. `bd-resolve-beads-dir` — a baked helper (Dockerfile) that points BEADS_DIR at the right work
+  #    tree in a bare + linked-worktree layout (the generic MAIN_REPO_DIR contract var is the *bare*
+  #    dir there — the wrong answer for `.beads` placement — so this tool-specific resolution stays).
+  #    It prints nothing for a normal repo (bd's own discovery is correct → BEADS_DIR stays unset),
+  #    and exits non-zero for a bare repo with NO work tree on its default branch — the one layout
+  #    where default-mode beads can't place a committable `.beads/`, so `run` fails and the attach
+  #    aborts with a clear error rather than misplacing the DB. `export` runs in the current shell
+  #    (a brace group, not a subshell), so BEADS_DIR reaches the agent process.
+  # 2. Idempotent init self-gate: `bd list` succeeds iff the workspace already has a DB (same
+  #    discovery `bd init` uses), so an already-initialized repo skips `bd init`. Required when the
+  #    mounted project is ITSELF a beads workspace (e.g. harnessed's own repo, whose `.beads` DB is
+  #    anchored to the bare common dir `.bare/.beads`).
+  # 3. `bd-setup-agent` — (re)wires the agent hook every attach; itself idempotent.
+  run: >-
+    _bd="$(bd-resolve-beads-dir)" && { [ -z "$_bd" ] || export BEADS_DIR="$_bd"; }
+    && (bd list >/dev/null 2>&1 || (bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on))
+    && bd-setup-agent

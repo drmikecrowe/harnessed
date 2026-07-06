@@ -105,24 +105,12 @@
       "items": { "$ref": "#/$defs/persistEntry" }
     },
     "init": {
-      "description": "One-time per-project setup, run once (in a transient container) and gated on a host-side marker. Runs via `harnessed init` and auto-checked on every launch. See docs/guides/recipe-authoring.md.",
+      "description": "Per-project setup sourced in the attach shell (Model A): `run` is executed inline in the shell that then starts the harness, so any env it exports (e.g. BEADS_DIR) reaches the agent. Runs on EVERY launch/attach, so `run` MUST self-gate (idempotent) — there is no host-side marker. Contract env vars available to `run`: PROJECT_DIR, MAIN_REPO_DIR, CONTAINER_WORKSPACE_DIR, HOST_WORKSPACE_DIR. See docs/guides/recipe-authoring.md.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["marker", "run"],
+      "required": ["run"],
       "properties": {
-        "run": { "description": "Shell command run once in a transient `podman run --rm` (no secrets) when the marker is absent.", "type": "string", "minLength": 1 },
-        "marker": {
-          "description": "Host-side path whose existence means 'already initialized'. Resolved with the same helpers as persist:.",
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["scope", "location", "name"],
-          "properties": {
-            "scope": { "description": "workspace | project (NOT global — a global path can't mark per-project init).", "enum": ["workspace", "project"] },
-            "location": { "description": "host | in_repo — same axes as persist:.", "enum": ["host", "in_repo"] },
-            "name": { "description": "For location: host, the persist dir name; for in_repo, a path relative to the repo's primary work tree.", "type": "string", "minLength": 1 },
-            "file": { "description": "OPTIONAL — a specific file/dir under `name` to check instead of `name` itself.", "type": "string", "minLength": 1 }
-          }
-        }
+        "run": { "description": "Shell command sourced in the attach shell on every launch. MUST self-gate cheaply (e.g. `bd list >/dev/null 2>&1 || bd init`); a non-zero exit aborts the attach before the harness starts. Use `return`/short-circuits, never a bare `exit`. No secrets are available.", "type": "string", "minLength": 1 }
       }
     }
   },

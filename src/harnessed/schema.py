@@ -387,103 +387,40 @@ def _parse_persist(raw_persist) -> PersistSpec:
 
 
 @dataclass
-class InitMarker:
-    """Where to check (on the host) whether a recipe has been initialized.
-
-    Reuses the persist scope/location vocabulary — the same axes, same valid values:
-      scope    — workspace | project (NOT global — init is per-project or per-worktree, never global)
-      location — host | in_repo
-      name     — $HOME-relative path (location: host) or workspace-relative path (location: in_repo)
-      file     — optional: a specific file/dir UNDER name to check; if absent, check name itself
-    """
-
-    scope: str
-    location: str
-    name: str
-    file: str | None
-
-
-@dataclass
 class InitSpec:
-    """One-time init spec for a recipe: run `run` once, gated on `marker` being absent on the host.
+    """One-time init spec for a recipe: a shell command sourced in the attach shell (Model A).
 
-    `marker` resolves to a host-side path via the same path helpers as `persist:`. If that path
-    does not exist when the stack is launched (or `harnessed init` is run), `run` is executed
-    inside a transient one-shot container with the same project + persist mounts as a normal launch.
-    Once `run` succeeds, the marker path will exist (created by the init command itself) and future
-    launches skip the step — idempotent by construction.
+    `run` is executed inline in the SAME shell process that then starts the harness, so any env it
+    exports (e.g. beads' BEADS_DIR) flows straight into the agent — no profile.d, no transient
+    container. Because init now runs on EVERY attach (re-attach, second terminal), `run` must
+    self-gate cheaply and be idempotent: the old declarative host-side `marker:` is gone, and
+    self-gating in the command is the convention that replaces it. A non-zero `run` aborts the
+    attach with a clear error — the harness never starts on a half-initialized tool.
     """
 
-    marker: InitMarker
     run: str
 
 
-_INIT_VALID_SCOPES = frozenset({"workspace", "project"})
-
-
 def _parse_init(raw_init) -> "InitSpec | None":
-    """Parse the `init:` block: marker (scope + location + name + optional file) + run string."""
+    """Parse the `init:` block: just the `run` command (Model A — no host-side marker)."""
     if not raw_init:
         return None
     if not isinstance(raw_init, dict):
-        raise SchemaError("recipe 'init' must be a mapping with 'marker' and 'run' fields")
+        raise SchemaError("recipe 'init' must be a mapping with a 'run' field")
 
     run = raw_init.get("run")
     if not run or not isinstance(run, str) or not run.strip():
         raise SchemaError("recipe 'init': 'run' is required and must be a non-empty string")
 
-    raw_marker = raw_init.get("marker")
-    if not raw_marker or not isinstance(raw_marker, dict):
-        raise SchemaError("recipe 'init': 'marker' is required and must be a mapping")
-
-    scope = raw_marker.get("scope")
-    if scope is None:
-        raise SchemaError(
-            "recipe 'init.marker': missing required field 'scope' (workspace | project)"
-        )
-    if scope == "global":
-        raise SchemaError(
-            "recipe 'init.marker': scope: global is not valid for an init marker — "
-            "global paths are shared across all projects and cannot mark per-project initialization. "
-            "Use scope: workspace or scope: project."
-        )
-    if scope not in _INIT_VALID_SCOPES:
-        raise SchemaError(
-            f"recipe 'init.marker': unknown scope {scope!r} — "
-            f"valid values: {', '.join(sorted(_INIT_VALID_SCOPES))}"
-        )
-
-    location = raw_marker.get("location")
-    if location is None:
-        raise SchemaError(
-            "recipe 'init.marker': missing required field 'location' (host | in_repo)"
-        )
-    if location not in _PERSIST_VALID_LOCATIONS:
-        raise SchemaError(
-            f"recipe 'init.marker': unknown location {location!r} — "
-            f"valid values: {', '.join(sorted(_PERSIST_VALID_LOCATIONS))}"
-        )
-
-    name = raw_marker.get("name")
-    if name is None:
-        raise SchemaError("recipe 'init.marker': missing required field 'name'")
-    _validate_persist_name(name, location, 0)
-
-    file_ = raw_marker.get("file")
-    if file_ is not None and (not isinstance(file_, str) or not file_.strip()):
-        raise SchemaError("recipe 'init.marker': 'file' must be a non-empty string if provided")
-
-    unknown = sorted(set(raw_marker) - {"scope", "location", "name", "file"})
+    unknown = sorted(set(raw_init) - {"run"})
     if unknown:
         raise SchemaError(
-            f"recipe 'init.marker': unknown field(s) {unknown} — "
-            "valid fields: scope, location, name, file"
+            f"recipe 'init': unknown field(s) {unknown} — the only valid field is 'run'. "
+            "The host-side 'marker' was removed (Model A): init runs in the attach shell on every "
+            "launch, so the run command must self-gate (e.g. `bd list >/dev/null 2>&1 || bd init`)."
         )
 
-    return InitSpec(
-        marker=InitMarker(scope=scope, location=location, name=name, file=file_),
-        run=run.strip(),
-    )
+    return InitSpec(run=run.strip())
 
 
 @dataclass

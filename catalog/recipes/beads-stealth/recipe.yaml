@@ -40,8 +40,9 @@ persist:
     location: host
 
 init:
-  marker:
-    scope: project
-    location: host
-    name: .beads
-  run: bd init --quiet --stealth && bd-setup-agent
+  # Model A: `run` is sourced in the attach shell on EVERY launch (no host-side marker), so it must
+  # self-gate. `bd list` succeeds iff the workspace already has a DB, so `bd init` runs only once per
+  # project; `bd-setup-agent` (re)wires the agent hook every attach (idempotent). BEADS_DIR is a
+  # static image ENV here (host-persisted mount at a fixed path — see Dockerfile), so nothing to
+  # export. Runs against the host-persisted `.beads` bind-mount (persist: location: host).
+  run: (bd list >/dev/null 2>&1 || bd init --quiet --stealth) && bd-setup-agent
