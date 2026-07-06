@@ -16,11 +16,14 @@ import json
 from rich.console import Console
 from rich.markdown import Markdown
 
-from .capability import MCP, CapabilityReport, CapabilityResult
+from .capability import MCP, TEST, CapabilityReport, CapabilityResult
 
 
 def _status_cell(result: CapabilityResult) -> str:
     """The status column for one capability — names + status only, no config values."""
+    if result.kind == TEST:
+        # A recipe-authored script: pass/fail on exit code; show the truncated reason on failure.
+        return "✓ passed" if result.present else f"✗ failed ({result.detail or 'nonzero exit'})"
     if result.present:
         return "✓ connected" if result.kind == MCP else "✓ present"
     reason = result.detail or "missing"

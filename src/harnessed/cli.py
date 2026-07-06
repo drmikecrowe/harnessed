@@ -76,6 +76,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="do not tear the instance down after the test (debugging)",
     )
     tst.add_argument(
+        "--no-tests",
+        action="store_true",
+        dest="no_tests",
+        help="skip recipe-authored tests/*.sh scripts (run only the expect: presence oracle)",
+    )
+    tst.add_argument(
         "--json",
         action="store_true",
         dest="as_json",
@@ -158,6 +164,7 @@ def _run_test(args: argparse.Namespace, out: Console, err: Console) -> int:
             project_path=args.project,
             harnessed_bin=args.harnessed_bin,
             keep=args.keep,
+            run_tests=not args.no_tests,
         )
     except (CapabilityError, SchemaError) as exc:
         err.print(f"[bold red]capability test failed:[/bold red] {exc}", highlight=False)
