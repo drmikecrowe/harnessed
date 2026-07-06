@@ -10,6 +10,7 @@ export const navLinks: NavLink[] = [
   { label: "How it works", href: "#how" },
   { label: "Security", href: "#security" },
   { label: "Quickstart", href: "#quickstart" },
+  { label: "Docs", href: "/harnessed/docs" },
 ];
 
 export const repoUrl = "https://github.com/drmikecrowe/harnessed";

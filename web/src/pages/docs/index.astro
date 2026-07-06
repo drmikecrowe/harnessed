@@ -1,0 +1,72 @@
+---
+import { getCollection } from "astro:content";
+import DocsLayout from "../../layouts/DocsLayout.astro";
+
+const docs = await getCollection("docs");
+const base = import.meta.env.BASE_URL;
+
+const GROUPS = [
+  {
+    label: "Overview",
+    prefix: "",
+    blurb: "Design rationale, architecture, and the project roadmap.",
+  },
+  {
+    label: "Guides",
+    prefix: "guides/",
+    blurb: "How to author recipes, services, and stacks; secrets and stacks.",
+  },
+  {
+    label: "Research",
+    prefix: "research/",
+    blurb: "First-hand technical findings that back the design decisions.",
+  },
+  {
+    label: "Codebase map",
+    prefix: "codebase/",
+    blurb: "Generated architecture, structure, conventions, and concerns maps.",
+  },
+];
+
+function pretty(id) {
+  const last = id.split("/").pop() ?? id;
+  return last
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+const sorted = [...docs].sort((a, b) => a.id.localeCompare(b.id));
+const groups = GROUPS.map((g) => ({
+  ...g,
+  items: sorted.filter((d) =>
+    g.prefix === "" ? !d.id.includes("/") : d.id.startsWith(g.prefix),
+  ),
+})).filter((g) => g.items.length > 0);
+---
+
+<DocsLayout docs={docs} title="Documentation">
+  <h1>Documentation</h1>
+  <p>
+    These pages are rendered directly from the project wiki (the <code
+      >docs/</code
+    > repository) at build time, so they always match what ships. For the
+    developer-facing source, browse the same files on GitHub.
+  </p>
+
+  {
+    groups.map((g) => (
+      <section>
+        <h2>{g.label}</h2>
+        <p>{g.blurb}</p>
+        <ul>
+          {g.items.map((d) => (
+            <li>
+              <a href={`${base}docs/${d.id}`}>{pretty(d.id)}</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))
+  }
+</DocsLayout>
