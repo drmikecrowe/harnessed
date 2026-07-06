@@ -24,12 +24,22 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     iptables
 
-# 1Password CLI + desktop app (for SSH signing with op-ssh-sign)
-RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
-    gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
-    tee /etc/apt/sources.list.d/1password.list && \
-    apt-get update && apt-get install -y 1password 1password-cli && \
+# 1Password CLI + desktop app (for SSH signing with op-ssh-sign). BEST-EFFORT: the install pulls
+# from downloads.1password.com, which some networks (e.g. locked-down work machines) block. It only
+# provides op-ssh-sign for 1Password-based SSH commit signing — the launcher already forwards the
+# host agent only when its socket exists (see _ssh_agent_args), so an image without it just can't
+# sign via 1Password; nothing else depends on it. A failed download therefore WARNs and continues
+# rather than failing the whole base build.
+RUN if curl -sSf https://downloads.1password.com/linux/keys/1password.asc | \
+        gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg && \
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
+        tee /etc/apt/sources.list.d/1password.list && \
+      apt-get update && apt-get install -y 1password 1password-cli; then \
+        echo "1Password CLI + desktop app installed"; \
+    else \
+        echo "WARNING: 1Password install failed (downloads.1password.com blocked/unreachable?); continuing without op-ssh-sign — 1Password-based SSH commit signing will be unavailable in this image" >&2; \
+        rm -f /etc/apt/sources.list.d/1password.list /usr/share/keyrings/1password-archive-keyring.gpg; \
+    fi; \
     rm -rf /var/lib/apt/lists/*
 
 # Fixed container user `harnessed` with home /home/harnessed (rename the stock ubuntu user,
