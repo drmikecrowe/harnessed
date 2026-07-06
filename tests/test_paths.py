@@ -231,6 +231,40 @@ class TestPrimaryWorktree:
         assert paths.primary_worktree(main_wt) == main_wt
 
 
+class TestBareWorktreeContainer:
+    """`bare_worktree_container` finds the dir containing a bare repo's git-common-dir."""
+
+    def test_non_git_returns_none(self):
+        assert paths.bare_worktree_container("/does/not/exist/ever") is None
+
+    def test_normal_repo_returns_none(self, tmp_path):
+        import subprocess
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "--allow-empty", "-m", "init"],
+                       check=True, capture_output=True)
+        assert paths.bare_worktree_container(tmp_path) is None
+
+    def test_bare_layout_returns_parent_of_bare_repo(self, tmp_path):
+        import subprocess
+
+        def git(*args, cwd=None):
+            subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+        seed = tmp_path / "seed"
+        git("init", "-q", str(seed))
+        git("commit", "--allow-empty", "-m", "init", cwd=seed)
+        default = subprocess.run(
+            ["git", "-C", str(seed), "symbolic-ref", "--short", "HEAD"],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        bare = tmp_path / "b.git"
+        git("clone", "-q", "--bare", str(seed), str(bare))
+        main_wt = tmp_path / "mainwt"
+        git("--git-dir", str(bare), "worktree", "add", "-q", str(main_wt), default)
+
+        assert paths.bare_worktree_container(main_wt) == tmp_path
+
+
 class TestProjectRelpath:
     def test_path_under_home(self, monkeypatch, tmp_path):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)

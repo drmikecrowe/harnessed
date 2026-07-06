@@ -85,7 +85,8 @@ RUN mise settings set experimental true && \
         rust@1.87 \
         go@1.24 \
         fd \
-        ripgrep && \
+        ripgrep \
+        gh@2.96.0 && \
     mise install && \
     mise trust ~/.config/mise/config.toml
 
@@ -95,10 +96,11 @@ RUN mise settings set experimental true && \
 # not @latest (the build rejects floating pins); bump deliberately when snyk flags this version.
 RUN npm install -g npm@11.6.4
 
-# Extra user-specified tools (edit extra-tools.txt to add more).
+# Extra user-specified tools. Edit ~/.config/harnessed/extra-tools.txt to add more (seeded from
+# catalog/base/extra-tools.default.txt); the base build stages that into catalog/base/extra-tools.txt.
 # Switch to root for COPY to avoid Podman overlay layer corrupting home dir ownership.
 USER root
-COPY extra-tools.txt /tmp/extra-tools.txt
+COPY catalog/base/extra-tools.txt /tmp/extra-tools.txt
 RUN chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 USER ${USERNAME}
 RUN grep -v '^\s*#' /tmp/extra-tools.txt | grep -v '^\s*$' | awk '{print $1}' | \
@@ -129,5 +131,13 @@ RUN mkdir -p "$PNPM_HOME/bin" && pnpm add -g "@himorishige/hatago-mcp-hub@${HATA
 RUN echo 'PS1="\[\033[01;32m\][harnessed]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/${USERNAME}/.bashrc && \
     echo 'eval "$(mise activate bash)"' >> /home/${USERNAME}/.bashrc && \
     echo 'mise trust -a 2>/dev/null' >> /home/${USERNAME}/.bashrc
+
+# profile.d runs for login shells too (bash -lc, as used by recipe init.run), unlike .bashrc which
+# only sources for interactive shells. Recipes whose tools resolve through mise shims (e.g. beads'
+# `bd`) need trust established before init.run executes, or mise aborts on the untrusted mise.toml.
+USER root
+RUN echo 'mise trust -a 2>/dev/null || true' > /etc/profile.d/mise-trust.sh && \
+    chmod 0644 /etc/profile.d/mise-trust.sh
+USER ${USERNAME}
 
 CMD ["/bin/bash"]

@@ -145,12 +145,23 @@ def _resolve_start_dir(project_path: Path, agent_start_folder: Optional[str]) ->
 def _resolve_mount_path(project_path: Path, mount_folder: Optional[str]) -> Path:
     """Resolve the folder path-mirrored into the container.
 
-    Default: the project itself (current behavior). With --mount-folder, the named folder — which
-    MUST contain the project — so a parent dir (e.g. a linked-worktree root) is exposed while the
-    agent still starts in the project. Mirror of `_resolve_start_dir`'s containment check, inverted:
-    there the start dir must be *under* the project; here the project must be *under* the mount.
+    Default: the project itself, UNLESS project_path sits in a bare + linked-worktree checkout
+    (e.g. `harnessed/.bare` + `harnessed/main`), in which case the default auto-widens to the
+    directory containing the bare repo — so sibling worktrees are visible without typing
+    --mount-folder by hand. With --mount-folder, the named folder — which MUST contain the project —
+    so any parent dir is exposed while the agent still starts in the project. Mirror of
+    `_resolve_start_dir`'s containment check, inverted: there the start dir must be *under* the
+    project; here the project must be *under* the mount.
     """
     if not mount_folder:
+        auto = paths.bare_worktree_container(project_path)
+        if auto is not None:
+            _out.print(
+                f"[blue][INFO][/blue] {project_path} is a linked worktree of a bare repo — "
+                f"auto-widening the mount to {auto} so sibling worktrees are visible "
+                "(pass --mount-folder to override)."
+            )
+            return auto
         return project_path
     mount_path = Path(mount_folder).resolve()
     if not mount_path.is_dir():
@@ -293,8 +304,32 @@ def _catalog_base(rt_path: str) -> Path:
     return _harnessed_dir() / "catalog" / "base" / rt_path
 
 
+def _ensure_extra_tools() -> None:
+    """Resolve the user's extra-tools list and stage it into the build context for the base build.
+
+    Source of truth is USER-owned: `~/.config/harnessed/extra-tools.txt` (paths.extra_tools_path).
+    Dockerfile.harnessed-base COPYs `catalog/base/extra-tools.txt` — a gitignored build artifact — so:
+
+      1. Seed the config file from `catalog/base/extra-tools.default.txt` when it is absent (migrating
+         a pre-move repo-root `extra-tools.txt` if one is still lying around), so a fresh clone or git
+         worktree builds without the user hand-copying anything.
+      2. Stage the resolved content into `catalog/base/extra-tools.txt` so the Dockerfile COPY finds it
+         in-context. Regenerated every build — the config file always wins over the staged mirror.
+    """
+    user_file = paths.extra_tools_path()
+    if not user_file.exists():
+        legacy = _harnessed_dir() / "extra-tools.txt"  # pre-move repo-root location
+        seed = legacy if legacy.exists() else _catalog_base("extra-tools.default.txt")
+        if seed.exists():
+            user_file.parent.mkdir(parents=True, exist_ok=True)
+            user_file.write_text(seed.read_text())
+    if user_file.exists():
+        _catalog_base("extra-tools.txt").write_text(user_file.read_text())
+
+
 def _build_images_cmd(rt: str, force: bool = False) -> None:
     """(Re)build the shared base + hatago images (agent images are built lazily per stack)."""
+    _ensure_extra_tools()
     hdir = _harnessed_dir()
     pairs = [
         (_BASE_IMAGE, _catalog_base("Dockerfile.harnessed-base")),
@@ -311,6 +346,7 @@ def _build_base_image(rt: str) -> None:
     """Force-(re)build the parameterised base so edits to Dockerfile.harnessed-base (the supply-chain
     scan script, extra-tools, scanner installs) propagate into every FROM-derived agent / hatago /
     stack image. Layer-cached: a no-op when the base Dockerfile is unchanged."""
+    _ensure_extra_tools()
     _out.print(f"[blue][INFO][/blue] Building {_BASE_IMAGE} ...")
     _run([rt, "build", "-t", _BASE_IMAGE, "-f", str(_catalog_base("Dockerfile.harnessed-base")),
           str(_harnessed_dir())])
@@ -1048,6 +1084,9 @@ def _credential_forward_args(
     - YubiKey USB device passthrough (`--device`, Linux only) — see `_yubikey_device_args`.
     - git config (`~/.config/git` dir, else legacy `~/.gitconfig`, ro): carries user.signingkey,
       gpg.format=ssh, gpg.ssh.program=op-ssh-sign, commit.gpgsign so commits actually sign.
+    - gh auth (`~/.config/gh/hosts.yml`, ro): the file that carries gh's oauth_token, so `gh pr
+      create` etc. authenticate as the host user — just the hosts file, no wider gh config, no token
+      baked into env or image.
     - ssh config + known_hosts + public keys (ro), plus stack `ssh_keys` opt-in privates — see
       `_ssh_dir_mounts`.
 
@@ -1068,6 +1107,10 @@ def _credential_forward_args(
         args += ["-v", f"{xdg_git}:{ctr}/.config/git:ro"]
     elif legacy_git.is_file():
         args += ["-v", f"{legacy_git}:{ctr}/.gitconfig:ro"]
+
+    gh_hosts = home / ".config" / "gh" / "hosts.yml"
+    if gh_hosts.is_file():
+        args += ["-v", f"{gh_hosts}:{ctr}/.config/gh/hosts.yml:ro"]
 
     args += _ssh_dir_mounts(home, ssh_keys)
 
@@ -1337,6 +1380,17 @@ def launch(
     if not anchor_path.is_dir():
         _err.print(f"[bold red]error:[/bold red] project directory does not exist: {anchor_path}")
         raise typer.Exit(1)
+
+    # Not inside any git worktree at all (e.g. launching from a bare-repo's parent dir instead of
+    # one of its worktrees) — confirm before mounting/persisting against a directory that has no
+    # git identity to key off of. Skipped outside a tty (headless/scripted), matching the
+    # stale-image confirm below.
+    if paths.git_common_dir(anchor_path) is None and sys.stdin.isatty():
+        if not typer.confirm(
+            f"{anchor_path} doesn't look like a git repository or worktree. Continue anyway?",
+            default=False,
+        ):
+            raise typer.Exit(1)
 
     # The "project" is wherever the agent starts, not wherever you invoked `launch` from — so
     # --agent-start-folder is resolved first, and everything downstream (instance identity, persist
@@ -1894,7 +1948,7 @@ def rescan() -> None:
 # to `launch` (the `harnessed <stack> [project] [--fresh]` shorthand the README documents and the
 # capability test relies on).
 _COMMANDS = {
-    "launch", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
+    "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
     "install", "uninstall", "rescan", "svc",
 }
 

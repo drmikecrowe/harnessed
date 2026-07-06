@@ -1,6 +1,7 @@
-# Extra mise-managed tools installed at image build time.
-# One tool per line. Rebuild with: container --build
-# Note: fd and ripgrep are already installed in the base image.
+# Extra mise-managed tools installed at image build time. TEMPLATE — do not edit for personal use.
+# To customize: edit ~/.config/harnessed/extra-tools.txt (seeded from this file on first build),
+# then rebuild with: container --build
+# One tool per line. Note: fd and ripgrep are already installed in the base image.
 
 # Modern CLI replacements
 bat           # cat replacement

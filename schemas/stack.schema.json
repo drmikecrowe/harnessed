@@ -32,6 +32,16 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "forward_git_credentials": {
+      "description": "Opt-in (default false): forward the host's git push/sign surface (SSH/GPG agent socket, git config, ssh config/known_hosts/pubkeys) into the container so the agent can push and sign as the user. Requires a host SSH agent (1Password or gpg-agent).",
+      "type": "boolean",
+      "default": false
+    },
+    "ssh_keys": {
+      "description": "Private-key basenames under ~/.ssh to mount read-only into the container, for hosts without an SSH agent. Each entry is a single path component (no '/' or '..'). Honored ONLY from the user overlay catalog, never a shared-catalog stack. Requires forward_git_credentials.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
     "state": {
       "description": "State and lifecycle options. Default persistent; `--fresh` overrides at runtime.",
       "type": "object",
