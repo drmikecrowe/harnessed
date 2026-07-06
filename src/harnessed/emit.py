@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import sys
 from copy import deepcopy
 from pathlib import Path
 
@@ -158,6 +159,85 @@ def write_antigravity_identity(profile_dir: Path, instructions: str | None) -> P
     container_identity = paths.CONTAINER_HOME / ".gemini" / "GEMINI.md"
     _write_json(gemini_dir / "settings.json", {"context": {"fileName": str(container_identity)}})
     return identity
+
+
+# codex's `project_doc_max_bytes` default (32 KiB): AGENTS.md above this is silently truncated by
+# codex itself. Identity + inlined rules SHARE this one file, so we keep the emitted doc under the
+# cap and truncate ourselves (with a visible marker) rather than let codex cut mid-rule.
+CODEX_AGENTS_MAX_BYTES = 32 * 1024
+
+_CODEX_TRUNC_MARKER = (
+    "\n\n<!-- harnessed: truncated — exceeded codex project_doc_max_bytes (32 KiB) -->\n"
+)
+
+
+def _stderr_warn(msg: str) -> None:
+    print(f"harnessed: {msg}", file=sys.stderr)
+
+
+def _rule_label(rule_path: Path, profile_dir: Path) -> str:
+    """Human-readable delimiter for a rule body — its path relative to `.claude/rules/`."""
+    rules_root = profile_dir / ".claude" / "rules"
+    try:
+        return str(rule_path.relative_to(rules_root))
+    except ValueError:
+        return rule_path.name
+
+
+def write_codex_agents_md(
+    profile_dir: Path,
+    instructions: str | None,
+    rules: list[Path] | None = None,
+    *,
+    warn=None,
+) -> Path | None:
+    """Emit the codex harness's top-level memory doc `.codex/AGENTS.md` = the stack's `instructions:`
+    identity followed by every recipe rule `.md` body, concatenated with per-rule headers.
+
+    Codex has no directory-rules primitive (unlike Claude's `.claude/rules/`), so the rules Claude
+    reads as separate files must be inlined into the ONE doc codex reads (AGENTS.md). Identity comes
+    first; each rule follows under a `## Rule: <name>` header (`<name>` is the rule's path relative
+    to `.claude/rules/`).
+
+    Identity + rules share this file and codex caps AGENTS.md at `project_doc_max_bytes` (32 KiB by
+    default), silently dropping the tail beyond that. We truncate to fit under the cap ourselves and
+    append a visible marker + WARN, rather than letting codex cut mid-rule. No-op (returns None) when
+    there is neither identity nor any non-empty rule.
+
+    Additive counterpart to codex's `model_instructions_file` (which REPLACES built-in instructions
+    entirely) — AGENTS.md is the default, additive target; the replace-everything file stays an
+    explicit opt-in escape hatch.
+    """
+    _warn = warn or _stderr_warn
+
+    parts: list[str] = []
+    if instructions:
+        parts.append(instructions.strip())
+    for rule_path in rules or []:
+        body = rule_path.read_text(encoding="utf-8").strip()
+        if not body:
+            continue
+        parts.append(f"## Rule: {_rule_label(rule_path, profile_dir)}\n\n{body}")
+
+    if not parts:
+        return None
+
+    text = "\n\n".join(parts) + "\n"
+    encoded = text.encode("utf-8")
+    if len(encoded) > CODEX_AGENTS_MAX_BYTES:
+        budget = CODEX_AGENTS_MAX_BYTES - len(_CODEX_TRUNC_MARKER.encode("utf-8"))
+        # errors="ignore" drops a partial multibyte char at the cut, so the re-encoded head is ≤ budget
+        # and head+marker stays ≤ CODEX_AGENTS_MAX_BYTES.
+        text = encoded[:budget].decode("utf-8", errors="ignore") + _CODEX_TRUNC_MARKER
+        _warn(
+            f".codex/AGENTS.md exceeded codex's {CODEX_AGENTS_MAX_BYTES}-byte "
+            "project_doc_max_bytes cap; truncated identity+rules to fit"
+        )
+
+    out = profile_dir / ".codex" / "AGENTS.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    return out
 
 
 def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
