@@ -30,14 +30,10 @@ expect:
 rules:
   - path: rules/agent-carnet
 
-# One-time bootstrap: runs once per project via `harnessed init <stack>` (or automatically on
-# every `harnessed launch`). The marker is `.carnet/` itself; if it exists, the step is skipped.
-# `agent-carnet init` is git-free + non-touching (no .gitignore entry, no git hooks, no repo
-# discovery) — mirrors beads' `--stealth` posture, just without a flag (agent-carnet has no
-# git-integration mode to opt out of in the first place).
+# One-time bootstrap (Model A): `run` is sourced in the attach shell on EVERY launch (no host-side
+# marker), so it self-gates on `.carnet/` already existing. `agent-carnet init` is git-free +
+# non-touching (no .gitignore entry, no git hooks, no repo discovery) — mirrors beads' `--stealth`
+# posture, just without a flag. PROJECT_DIR (the agent's cwd == container project path) is exported
+# by the launcher's init contract, so the gate is anchored to the right directory.
 init:
-  marker:
-    scope: workspace
-    location: in_repo
-    name: .carnet
-  run: agent-carnet init
+  run: '[ -d "$PROJECT_DIR/.carnet" ] || agent-carnet init'
