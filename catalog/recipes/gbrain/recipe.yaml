@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: gbrain — references the gbrain shared service as a network-native MCP server.
+#
+# This is the SERVICE-REFERENCE shape (the `ping` recipe pattern): no `command`, no `url` —
+# `service: gbrain` is resolved by the assembler into
+# `{url: http://host.containers.internal:3112/mcp, type: http}`, and hatago proxies it by URL.
+# The gbrain service runs host-published on port 3112 with a lifecycle independent of any instance;
+# `claude+gbrain` and `omp+gbrain` read and write ONE shared brain (design §3/§9, same value
+# proposition as `hindsight`).
+#
+# Transport: `http` (Streamable HTTP). SSE is deprecated and rejected by the build. The gbrain MCP
+# endpoint is at `/mcp` (README/DEPLOY: `gbrain connect https://host/mcp`) — exactly the path the
+# service resolver emits.
+#
+# Auth / secrets: `gbrain serve --http` REQUIRES auth (no auth-less HTTP mode; `missing_auth` is a
+# hard error). On a Postgres brain the legacy long-lived bearer (`gbrain auth create`) works and is
+# a static header hatago can inject — hatago cannot run an OAuth client-credentials flow, so a
+# long-lived bearer (not a short-lived OAuth token) is the only fit.
+#
+# The token is a SECRET. The assembler writes `headers:` VERBATIM into the generated
+# hatago.config.json under $XDG_DATA_HOME/harnessed/profiles/<stack>/ — host-local, never an image
+# layer, never committed, but on disk in plaintext. So this committed recipe carries a
+# `${GBRAIN_TOKEN}` PLACEHOLDER; the real recipe with the live token belongs ONLY in your private
+# user-overlay catalog (~/.config/harnessed/catalog/recipes/gbrain/) — same posture as
+# `openbrain-example`'s `?key=` URL. (headers/url_env env-substitution is not yet wired into
+# emission end-to-end per the recipe-authoring guide; if unwired at build, the literal token goes in
+# the user-overlay recipe.)
+#
+# v1 prerequisite: the gbrain service points at an OPERATOR-SUPPLIED external Postgres+pgvector
+# (`DATABASE_URL`). See catalog/services/gbrain/service.yaml + Dockerfile. PGLite cannot serve HTTP.
+name: gbrain
+description: Knowledge brain — synthesis, graph traversal, gap analysis (shared, long-lived brain service).
+
+mcp:
+  servers:
+    - name: gbrain
+      service: gbrain
+      transport: http
+      headers:
+        Authorization: "Bearer ${GBRAIN_TOKEN}"   # long-lived bearer minted by `gbrain auth create`
+
+expect:
+  mcp: [gbrain]   # capability test probes the connected server (NOT `tools:` — obsolete)
