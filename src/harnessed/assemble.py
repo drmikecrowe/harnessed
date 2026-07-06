@@ -121,6 +121,11 @@ def assemble(
         syncer.add_recipe(recipe)
     syncer.fan(profile_dir / ".claude")
 
+    # Stack-level identity → .claude/CLAUDE.md (bd main-ylz). Claude-only for now: CLAUDE.md is
+    # Claude's memory file; other harnesses use their own top-level memory file names.
+    if stack.harness == "claude":
+        emit.write_claude_md(profile_dir, stack.instructions)
+
     # stdio children are baked into the harness/stack image and spawned by the in-container hatago
     # (hatago-consolidation); kept for reporting. No separate baked-servers.json is written.
     baked = [s for s in servers if s.is_stdio_child]

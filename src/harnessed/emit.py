@@ -57,6 +57,23 @@ def write_mcp_json(profile_dir: Path) -> Path:
     return out
 
 
+def write_claude_md(profile_dir: Path, instructions: str | None) -> Path | None:
+    """Emit the stack's `instructions:` into the profile's `.claude/CLAUDE.md` — stack-level
+    identity ("what is this assembled agent").
+
+    This is the base/identity content of CLAUDE.md; any managed block a recipe appends later
+    (e.g. a beads block) sits below it. No-op (returns None) when the stack sets no `instructions:`.
+    Claude-only — the caller guards on the harness; CLAUDE.md is Claude's memory file.
+    """
+    if not instructions:
+        return None
+    out = profile_dir / ".claude" / "CLAUDE.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    text = instructions if instructions.endswith("\n") else instructions + "\n"
+    out.write_text(text, encoding="utf-8")
+    return out
+
+
 def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
     """Build the settings.json `hooks` block from each recipe's declared `hooks:` (GAP 2).
 

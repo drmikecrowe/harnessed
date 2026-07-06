@@ -610,6 +610,10 @@ class Stack:
     recipes: list[str] = field(default_factory=list)
     services: list[str] = field(default_factory=list)
     permissions: str | None = None
+    # Stack-level identity text emitted into the profile's `.claude/CLAUDE.md` at assemble time —
+    # "what is this assembled agent". Distinct from recipe-level `rules:` (per-recipe RULE.md files
+    # fanned into `.claude/rules/`). Claude-only for now (CLAUDE.md is Claude's memory file).
+    instructions: str | None = None
     # Opt-in (default OFF): forward the host's git signing + push credential surface (SSH/GPG agent
     # socket, git config, ssh config/known_hosts/pubkeys) into the container. OFF by default so a
     # container never gets standing authority to sign/auth as the user unless the stack asks for it.
@@ -801,6 +805,7 @@ def load_stack(stack_dir: Path) -> Stack:
         recipes=list(raw.get("recipes", []) or []),
         services=list(raw.get("services", []) or []),
         permissions=raw.get("permissions"),
+        instructions=raw.get("instructions"),
         forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
         ssh_keys=ssh_keys,
         state=dict(raw.get("state", {}) or {}),

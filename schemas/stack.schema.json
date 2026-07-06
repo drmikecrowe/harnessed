@@ -22,6 +22,10 @@
       "type": "string",
       "enum": ["prompt", "yolo"]
     },
+    "instructions": {
+      "description": "Stack-level identity text emitted into the profile's .claude/CLAUDE.md at assemble time — 'what is this assembled agent'. Distinct from recipe-level rules (per-recipe RULE.md files). Claude-only.",
+      "type": "string"
+    },
     "recipes": {
       "description": "Recipe names composed onto the harness, in declaration order. Each must resolve in the catalog (user overlay first, then repo).",
       "type": "array",
