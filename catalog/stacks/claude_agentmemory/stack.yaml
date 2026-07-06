@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# Stack: claude_agentmemory — one agent + the agentmemory recipe + the agentmemory service.
+# Naming: <agent>_<recipe>… (claude + agentmemory).
+#
+# The service is attached by reference here; the isolated launcher runs
+# ensure_service_up(agentmemory) on launch (starts the REST store host-published on :3111).
+# The recipe bakes the stdio shim into the harness image; the shim proxies the store over
+# AGENTMEMORY_URL. Contingent on the hatago consolidation — do not ship until it lands.
+name: claude_agentmemory
+harness: claude
+recipes: [agentmemory]
+services: [agentmemory]

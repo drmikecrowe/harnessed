@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: agentmemory — a shared persistent-memory store (service) + a per-instance stdio shim.
+#
+# Two pieces, cleanly split (plan agentmemory / design §9):
+#   - The SERVICE (catalog/services/agentmemory/) is the REST data store :3111 — shared,
+#     instance-independent, long-lived. No MCP surface.
+#   - This RECIPE is the MCP ADAPTER: agentmemory's stdio shim (agentmemory-mcp), a thin
+#     protocol adapter that proxies the store over REST (AGENTMEMORY_URL). hatago spawns it as
+#     a per-instance stdio child (stdio→HTTP); the agent reaches it through hatago's single
+#     endpoint. The shim is stateless and disposable — the shared-memory property lives in the
+#     store, which every instance's shim points at.
+#
+# The shim needs NO project access (it proxies to the store over the network), so this is a
+# build-mechanism dependency on the hatago consolidation (recipe-baked stdio child), not a
+# project-access one. Correct in shape; do not ship until the consolidation lands.
+#
+# 53 MCP tools (memory_save / memory_smart_search / sessions / governance / …); BM25+vector+graph
+# retrieval, session recall, 4-tier consolidation. Auto-capture hooks are NOT wired here (GAP 2 —
+# recipe model has no hooks: field merged into settings.json today); until GAP 2 lands the agent
+# must call the memory_* tools manually (no skill is shipped, no auto-capture).
+name: agentmemory
+description: >
+  Persistent shared memory for AI coding agents — 53 MCP tools (save / smart-search / sessions /
+  governance / …) over a shared memory service. BM25+vector+graph retrieval, session recall,
+  4-tier consolidation. One memory across all agents.
+
+# The stdio shim is a hatago child baked into the harness image. It proxies to the shared REST
+# store over the network (AGENTMEMORY_URL → host.containers.internal:3111, the service port).
+# `transport: stdio` is explicit: hatago wraps this child's stdio → HTTP for the agent.
+mcp:
+  servers:
+    - name: agentmemory
+      command: agentmemory-mcp
+      transport: stdio
+      env:
+        AGENTMEMORY_URL: http://host.containers.internal:3111
+
+# Capability test: the agentmemory MCP server connected through the hatago hub.
+expect:
+  mcp: [agentmemory]

@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../../../schemas/service.schema.json
+# Service: agentmemory — the shared persistent-memory STORE (plan agentmemory / design §9).
+#
+# Own image/container/volume, host-published on :3111, instance-independent — one memory
+# server read/written by every agent and every instance, surviving across sessions. REST-only
+# (the iii-sdk http triggers /agentmemory/* routes); NO MCP surface lives here. The recipe's
+# stdio shim (agentmemory-mcp) is the MCP adapter that proxies this store over REST via
+# AGENTMEMORY_URL. Self-manages its pinned iii-engine as a subprocess (embedded SQLite,
+# "0 external DBs"); the viewer (:3113) and engine ports stay internal to the container.
+#
+# Contingent on the hatago consolidation — the recipe-baked stdio shim needs hatago in the
+# harness image. This service file is correct in shape regardless.
+name: agentmemory
+image: harnessed-agentmemory:latest
+volume: agentmemory-data        # persists ~/.agentmemory (store) + iii-engine state across `svc down`
+port: 3111                      # the REST store; the recipe shim proxies this over MCP
+healthcheck: "curl -sf http://localhost:3111/agentmemory/livez || exit 1"
