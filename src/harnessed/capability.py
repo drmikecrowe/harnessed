@@ -17,10 +17,11 @@ One structured result (`CapabilityReport`) drives BOTH the rich report (report.p
 code (one mechanism, two audiences — design §18 / D-11). The report carries capability NAMES +
 STATUS only, never config values/secrets (threat T-02-07).
 
-The pure manifest→expected mapping (`expected_capabilities`) and the pure expected-vs-live diff
-(`build_report`) take no podman and are unit-testable; the live-introspection functions
-(`launch_headless`, `introspect`, `teardown`, `run_capability_test`) are the only podman-touching
-code and are guarded behind the launch.
+The pure manifest→expected mapping (`schema.expected_capabilities`), the pure expected-vs-live diff
+(`build_report`), and the pure recipe-test discovery + exit-code folding (`discover_recipe_tests`,
+`fold_test_result`) take no podman and are unit-testable; the live-introspection functions
+(`launch_headless`, `introspect`, `run_recipe_tests`, `teardown`, `run_capability_test`) are the
+only podman-touching code and are guarded behind the launch.
 """
 
 from __future__ import annotations
@@ -43,6 +44,18 @@ MCP = "mcp"
 SKILL = "skill"
 COMMAND = "command"
 PLUGIN = "plugin"
+# TEST — a recipe-authored bash script (catalog/recipes/<name>/tests/*.sh) run against the live
+# instance; present iff the script exits 0. Behavioral/arbitrary-kind supplement to expect: (main-c98).
+TEST = "test"
+
+# Where a recipe's tests/ dir is copied INSIDE the live instance (podman cp target), and the default
+# per-script wall-clock budget (mirrors _exec's default). Kept small + explicit so scripts get a
+# stable, documented location (HARNESSED_TEST_DIR points at their own recipe subdir).
+REMOTE_TESTS_ROOT = "/tmp/harnessed-tests"
+DEFAULT_TEST_TIMEOUT = 120
+# Cap on the failure detail folded into the report — never echo a full script transcript (a stray
+# secret could ride along, threat T-02-07); one truncated tail line is enough to see *why* it failed.
+_TEST_DETAIL_MAX = 120
 
 # hatago's single Streamable-HTTP endpoint inside the shared pod netns (design D-04). Single
 # source: `paths.hatago_endpoint()` (honors the `HATAGO_PORT` env override).
@@ -112,17 +125,10 @@ class LiveCapabilities:
     skills_source: str = ""
 
 
-# --- Pure: manifest -> expected capability set (oracle; no podman, unit-testable) ----------------
-
-
-def expected_capabilities(root: Path | str, stack_name: str) -> schema.Capabilities:
-    """Derive the EXPECTED capabilities from the manifest oracle (reuses 02-01's schema API).
-
-    Resolves the stack + recipes across the catalog roots (repo catalog/ + user overlay; `root`
-    selects the repo via HARNESSED_DIR). Touches no container runtime.
-    """
-    stack, recipes = schema.load_stack_with_recipes(None, stack_name)
-    return schema.expected_capabilities(stack, recipes)
+# --- Pure: expected-vs-live diff (oracle; no podman, unit-testable) ------------------------------
+#
+# The manifest→expected mapping itself lives in `schema.expected_capabilities` (reused directly by
+# `run_capability_test`); `build_report` is the pure expected-vs-live diff.
 
 
 def build_report(
@@ -162,6 +168,81 @@ def build_report(
     return CapabilityReport(stack=stack_name, results=results)
 
 
+# --- Pure: recipe-authored bash tests (discovery + exit-code folding; no podman) ------------------
+
+
+@dataclass
+class RecipeTest:
+    """One discovered recipe test script (host-side; podman only touches it at run time).
+
+    A recipe ships plain bash under `catalog/recipes/<recipe>/tests/*.sh`; exit 0 == pass. This is a
+    SUPPLEMENT to `expect:` — it covers arbitrary kinds (a baked binary, a hook firing) and behavior
+    (invoke + assert) that the presence-only oracle structurally cannot (main-c98).
+    """
+
+    recipe: str
+    tests_dir: Path  # host path to the recipe's tests/ dir (copied whole into the instance)
+    script: str  # script filename, e.g. "rtk-runs.sh"
+
+    @property
+    def name(self) -> str:
+        """Stable capability name folded into the report: `<recipe>/<script>`."""
+        return f"{self.recipe}/{self.script}"
+
+
+def discover_recipe_tests(recipes) -> list[RecipeTest]:
+    """Auto-discover every `*.sh` under each resolved recipe's `tests/` dir (pure; unit-testable).
+
+    Convention over schema (main-c98 MVP): no `tests:` field — any `*.sh` under the dir is a test.
+    `recipes` are the already-resolved `schema.Recipe`s (their `.root` points at the recipe dir
+    across the catalog roots), so discovery inherits the user-overlay precedence for free.
+    """
+    found: list[RecipeTest] = []
+    for recipe in recipes:
+        tests_dir = Path(recipe.root) / "tests"
+        if not tests_dir.is_dir():
+            continue
+        for script in sorted(tests_dir.glob("*.sh")):
+            if script.is_file():
+                found.append(RecipeTest(recipe=recipe.name, tests_dir=tests_dir, script=script.name))
+    return found
+
+
+def _test_failure_detail(exit_code: int, output: str) -> str:
+    """A short, secret-safe failure reason: `exit <n>` + the last non-empty output line, truncated.
+
+    Never echoes the full transcript (threat T-02-07) — one truncated tail line is enough to see why.
+    """
+    tail = ""
+    for line in reversed(output.splitlines()):
+        stripped = line.strip()
+        if stripped:
+            tail = stripped
+            break
+    detail = f"exit {exit_code}"
+    if tail:
+        detail = f"{detail}: {tail}"
+    if len(detail) > _TEST_DETAIL_MAX:
+        detail = detail[: _TEST_DETAIL_MAX - 1] + "…"
+    return detail
+
+
+def fold_test_result(
+    test: RecipeTest, exit_code: int, output: str = "", *, timed_out: bool = False
+) -> CapabilityResult:
+    """Fold one script run into a `CapabilityResult` (kind=TEST) — pure; unit-testable.
+
+    present iff the script exited 0 (and did not time out). A failing script therefore turns the
+    whole `CapabilityReport` red through the SAME `.ok`/`.exit_code` a missing skill does — no new
+    gating path. detail is a short, truncated reason (never a full transcript).
+    """
+    if timed_out:
+        return CapabilityResult(name=test.name, kind=TEST, present=False, detail="timeout")
+    present = exit_code == 0
+    detail = "exit 0" if present else _test_failure_detail(exit_code, output)
+    return CapabilityResult(name=test.name, kind=TEST, present=present, detail=detail)
+
+
 # --- Live introspection (podman-touching; guarded behind the headless launch) --------------------
 
 
@@ -199,6 +280,94 @@ def _exec(instance: str, script: str, *, timeout: int = 60) -> str:
     if proc.returncode != 0:
         return ""
     return proc.stdout
+
+
+def _cp(src: str, dest: str, *, timeout: int = 120) -> bool:
+    """`podman cp <src> <dest>` — the SAME runtime family the launcher already uses to move files in
+    and out of a live member (launcher.py `[rt, "cp", ...]`). Returns True on success."""
+    try:
+        proc = subprocess.run(
+            [_runtime(), "cp", src, dest], capture_output=True, text=True, timeout=timeout
+        )
+    except (subprocess.SubprocessError, OSError):
+        return False
+    return proc.returncode == 0
+
+
+def _exec_script(
+    instance: str,
+    remote_script: str,
+    env: dict[str, str],
+    *,
+    workdir: str | None = None,
+    timeout: int = DEFAULT_TEST_TIMEOUT,
+) -> tuple[int, str, bool]:
+    """Run one already-copied script via `podman exec` (thin shell) → (exit_code, output, timed_out).
+
+    Mirrors `_exec` but preserves the exit code (the whole gate) and combined stdout+stderr (for the
+    truncated failure detail). Env is passed with `-e NAME=value`; `-w` sets the working dir to the
+    project bind-mount when supplied.
+    """
+    argv = [_runtime(), "exec"]
+    for key, value in env.items():
+        argv += ["-e", f"{key}={value}"]
+    if workdir:
+        argv += ["-w", workdir]
+    argv += [instance, "bash", remote_script]
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return 124, "", True
+    except (subprocess.SubprocessError, OSError) as exc:
+        return 1, str(exc), False
+    return proc.returncode, (proc.stdout or "") + (proc.stderr or ""), False
+
+
+def run_recipe_tests(
+    instance: str,
+    tests: list[RecipeTest],
+    *,
+    stack: str,
+    harness: str = "claude",
+    workdir: str | None = None,
+    timeout: int = DEFAULT_TEST_TIMEOUT,
+) -> list[CapabilityResult]:
+    """podman cp each recipe's tests/ into the live instance, exec each script, fold the exit codes.
+
+    The ONLY podman-touching part of the tests feature — discovery (`discover_recipe_tests`) and the
+    exit-code→result folding (`fold_test_result`) are pure and unit-tested without a container. Each
+    script runs inside the real running instance (mounted profile, PATH, baked binaries, hatago hub),
+    with the documented env contract (main-c98): HARNESSED_STACK / HARNESSED_RECIPE / HARNESSED_TEST_DIR
+    / HARNESS + HATAGO_ENDPOINT / HATAGO_PORT. No credentials — the primary path stays auth-free.
+    """
+    results: list[CapabilityResult] = []
+    if not tests:
+        return results
+    _exec(instance, f"mkdir -p {shlex.quote(REMOTE_TESTS_ROOT)}")
+    copied: dict[str, bool] = {}
+    for test in tests:
+        remote_dir = f"{REMOTE_TESTS_ROOT}/{test.recipe}"
+        if test.recipe not in copied:
+            copied[test.recipe] = _cp(str(test.tests_dir), f"{instance}:{remote_dir}")
+        if not copied[test.recipe]:
+            results.append(
+                CapabilityResult(name=test.name, kind=TEST, present=False, detail="podman cp failed")
+            )
+            continue
+        env = {
+            "HARNESSED_STACK": stack,
+            "HARNESSED_RECIPE": test.recipe,
+            "HARNESSED_TEST_DIR": remote_dir,
+            "HARNESS": harness,
+            "CONTAINER_HOME": CONTAINER_HOME,
+            "HATAGO_ENDPOINT": HATAGO_ENDPOINT,
+            "HATAGO_PORT": str(HATAGO_PORT),
+        }
+        exit_code, output, timed_out = _exec_script(
+            instance, f"{remote_dir}/{test.script}", env, workdir=workdir, timeout=timeout
+        )
+        results.append(fold_test_result(test, exit_code, output, timed_out=timed_out))
+    return results
 
 
 def launch_headless(
@@ -295,20 +464,6 @@ def wait_ready(instance: str, *, port: int = HATAGO_PORT, timeout: int = 60) -> 
 # are harness-INDEPENDENT and unchanged. Only the LLM backstop command differs: an omp stack is
 # introspected via `omp -p --mode json` instead of `claude -p --output-format json`. The same
 # profile (Claude-canonical, design §8) backs both — omp consumes it via the bridge.
-
-
-def _harness_of(root: Path | str, stack_name: str) -> str:
-    """Read the stack's harness from its manifest (default 'claude' on any read failure).
-
-    The capability test branches the LLM backstop on this: omp stacks use omp -p --mode json.
-    A missing/malformed manifest falls back to claude (the historical default) so the harness-
-    independent primary checks still run.
-    """
-    try:
-        stack = schema.load_stack(paths.find_in_catalog("stacks", stack_name))
-    except schema.SchemaError:
-        return "claude"
-    return stack.harness or "claude"
 
 
 def _llm_cmd(harness: str, prompt: str) -> list[str]:
@@ -558,15 +713,20 @@ def run_capability_test(
     project_path: str | None = None,
     harnessed_bin: str | None = None,
     keep: bool = False,
+    run_tests: bool = True,
 ) -> CapabilityReport:
-    """Full test: manifest oracle → launch --fresh headless → introspect → diff → teardown.
+    """Full test: manifest oracle → launch --fresh headless → introspect → recipe tests → diff.
 
     Returns the single structured `CapabilityReport` that drives both the report and the exit code.
+    When `run_tests` (default), recipe-authored `tests/*.sh` are copied into the live instance and
+    executed after introspection; each exit code folds into the SAME report as a TEST result, so a
+    failing script goes red through the existing `.ok`/`.exit_code`. `--no-tests` sets it False.
     """
-    expected = expected_capabilities(root, stack_name)
+    stack, recipes = schema.load_stack_with_recipes(None, stack_name)
+    expected = schema.expected_capabilities(stack, recipes)
     # Harness-aware backstop (plan 04-03): route the LLM fallback on stack.harness. The primary
     # hatago/filesystem checks run unchanged regardless of harness.
-    harness = _harness_of(root, stack_name)
+    harness = stack.harness or "claude"
 
     # Own the scratch project dir for the WHOLE test: it is the pod's project bind-mount and must
     # outlive launch→introspect→teardown (deleting it mid-run breaks `podman exec`). A caller-
@@ -574,6 +734,7 @@ def run_capability_test(
     own_project = project_path is None
     if own_project:
         project_path = tempfile.mkdtemp(prefix=f"harnessed-test-{stack_name}-")
+    test_results: list[CapabilityResult] = []
     try:
         instance = launch_headless(
             root, stack_name, project_path=project_path, harnessed_bin=harnessed_bin
@@ -581,10 +742,20 @@ def run_capability_test(
         try:
             wait_ready(instance)
             live = introspect(instance, harness)
+            if run_tests:
+                test_results = run_recipe_tests(
+                    instance,
+                    discover_recipe_tests(recipes),
+                    stack=stack_name,
+                    harness=harness,
+                    workdir=project_path,
+                )
         finally:
             if not keep:
                 teardown(instance, harnessed_bin=harnessed_bin)
     finally:
         if own_project and not keep:
             shutil.rmtree(project_path, ignore_errors=True)
-    return build_report(stack_name, expected, live)
+    report = build_report(stack_name, expected, live)
+    report.results.extend(test_results)
+    return report
