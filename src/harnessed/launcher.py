@@ -1131,6 +1131,10 @@ def _credential_forward_args(
     if gh_hosts.is_file():
         args += ["-v", f"{gh_hosts}:{ctr}/.config/gh/hosts.yml:ro"]
 
+    gh_config = home / ".config" / "gh" / "config.yml"
+    if gh_config.is_file():
+        args += ["-v", f"{gh_config}:{ctr}/.config/gh/config.yml:ro"]
+
     args += _ssh_dir_mounts(home, ssh_keys)
 
     return args
