@@ -21,7 +21,7 @@ from .assemble import assemble
 from .capability import CapabilityError, run_capability_test
 from .emit import HATAGO_ENDPOINT
 from .persist_gc import _fmt_size, list_entries, prune_project
-from .scan import ScanError, run_image_scan, run_image_scan_online, run_snyk_container_scan, run_source_scan
+from .scan import ScanError, run_image_scan_online
 from .schema import RecipeLintError, SchemaError
 from .synclinks import CollisionError
 
@@ -82,41 +82,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="emit the structured result as JSON (for CI) instead of the rich table",
     )
 
-    scn = sub.add_parser(
-        "scan",
-        help="supply-chain source/Python scan of a stack's recipe dirs + emitted profile (BLD-02)",
-    )
-    scn.add_argument("stack", help="stack name (stacks/<stack>/stack.yaml)")
-    scn.add_argument(
-        "--root",
-        default=None,
-        help="directory holding stacks/ and recipes/ (default: current dir)",
-    )
-    scn.add_argument(
-        "--build-dir",
-        required=True,
-        help="directory the profile is emitted under (profiles/<stack>/) — scoped to this build",
-    )
-
-    sci = sub.add_parser(
-        "scan-image",
-        help="supply-chain image scan of a saved image archive via osv-scanner (BLD-02)",
-    )
-    sci.add_argument("archive", help="path to a podman/docker image archive tar (from `podman save`)")
     sci_online = sub.add_parser(
         "scan-image-online",
         help="ONLINE supply-chain image scan (fresh DB; nightly re-scan / SEC-04)",
     )
     sci_online.add_argument("archive", help="path to a podman/docker image archive tar (from `podman save`)")
-
-    snyk_ctr = sub.add_parser(
-        "scan-snyk-container",
-        help="snyk container test on a built image (SC-03; token-gated, warn-and-skip without SNYK_TOKEN)",
-    )
-    snyk_ctr.add_argument(
-        "image_name",
-        help="container image name to scan, e.g. harnessed-gstack-time:latest",
-    )
 
     sub.add_parser(
         "persist-list",
@@ -195,44 +165,11 @@ def _run_test(args: argparse.Namespace, out: Console, err: Console) -> int:
     return report.emit(report_result, as_json=args.as_json, console=out)
 
 
-def _run_scan(args: argparse.Namespace, out: Console, err: Console) -> int:
-    """Run the SCOPED source/Python supply-chain scan; exit 1 on any HIGH+ finding (BLD-02).
-
-    One structured result drives the rendered warnings AND the exit code: ScanError (CVSS >= HIGH)
-    → red; low/medium findings render as warnings and never red-line (the severity gate, not the
-    raw scanner exit code — Pitfall 3).
-    """
-    root = Path(args.root) if args.root else Path.cwd()
-    try:
-        result = run_source_scan(root, args.stack, Path(args.build_dir))
-    except ScanError as exc:
-        err.print(f"[bold red]supply-chain scan failed:[/bold red] {exc}", highlight=False)
-        return 1
-    out.print(f"[bold green]Supply-chain scan clean[/bold green] (HIGH < CVSS {7.0:.1f}) for "
-              f"[bold]{args.stack}[/bold]")
-    for warning in sorted(set(result.warnings)):
-        out.print(f"  [yellow]warning:[/yellow] {warning}")
-    return 0
-
-
-def _run_scan_image(args: argparse.Namespace, out: Console, err: Console) -> int:
-    """Run the image-archive supply-chain scan; exit 1 on any HIGH+ finding (BLD-02)."""
-    try:
-        result = run_image_scan(Path(args.archive))
-    except ScanError as exc:
-        err.print(f"[bold red]supply-chain image scan failed:[/bold red] {exc}", highlight=False)
-        return 1
-    out.print(f"[bold green]Supply-chain image scan clean[/bold green] (HIGH < CVSS {7.0:.1f})")
-    for warning in sorted(set(result.warnings)):
-        out.print(f"  [yellow]warning:[/yellow] {warning}")
-    return 0
-
-
 def _run_scan_image_online(args: argparse.Namespace, out: Console, err: Console) -> int:
     """Run the ONLINE image-archive scan (SEC-04 nightly re-scan); exit 1 on any HIGH+ finding.
 
-    Mirrors _run_scan_image but calls run_image_scan_online (fresh osv.dev DB — catches CVEs
-    disclosed after the image was built; the whole point of the nightly timer).
+    Calls run_image_scan_online (fresh osv.dev DB — catches CVEs disclosed after the image was
+    built; the whole point of the nightly timer).
     """
     try:
         result = run_image_scan_online(Path(args.archive))
@@ -278,22 +215,6 @@ def _run_persist_prune(args: argparse.Namespace, out: Console, err: Console) -> 
     return 0
 
 
-def _run_scan_snyk_container(args: argparse.Namespace, out: Console, err: Console) -> int:
-    """Run snyk container test on a built image; exit 1 on HIGH+ finding (SC-03).
-
-    Warns-and-skips without a SNYK_TOKEN so the build stays non-interactive.
-    """
-    try:
-        result = run_snyk_container_scan(args.image_name)
-    except ScanError as exc:
-        err.print(f"[bold red]snyk container scan failed:[/bold red] {exc}", highlight=False)
-        return 1
-    out.print(f"[bold green]snyk container scan clean[/bold green] for [bold]{args.image_name}[/bold]")
-    for warning in sorted(set(result.warnings)):
-        out.print(f"  [yellow]warning:[/yellow] {warning}")
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -303,14 +224,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_assemble(args, out, err)
     if args.command == "test":
         return _run_test(args, out, err)
-    if args.command == "scan":
-        return _run_scan(args, out, err)
-    if args.command == "scan-image":
-        return _run_scan_image(args, out, err)
     if args.command == "scan-image-online":
         return _run_scan_image_online(args, out, err)
-    if args.command == "scan-snyk-container":
-        return _run_scan_snyk_container(args, out, err)
     if args.command == "persist-list":
         return _run_persist_list(args, out, err)
     if args.command == "persist-prune":
