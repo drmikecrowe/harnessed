@@ -264,6 +264,18 @@ def persist_allowlist_path() -> Path:
     return xdg_config_home() / "harnessed" / "persist-allowlist"
 
 
+def extra_tools_path() -> Path:
+    """User-owned list of extra mise tools baked into the base image: $XDG_CONFIG_HOME/harnessed/extra-tools.txt.
+
+    One tool per line; blank lines and lines beginning with `#` are ignored. Seeded from the shipped
+    `catalog/base/extra-tools.default.txt` on first build. USER-owned (config dir, never the repo) so
+    a fresh clone or git worktree builds without carrying a user-local file, and edits never surface
+    as repo diffs — same rationale as `persist_allowlist_path`. The base build stages a copy into the
+    build context (`catalog/base/extra-tools.txt`, gitignored) for the Dockerfile COPY.
+    """
+    return xdg_config_home() / "harnessed" / "extra-tools.txt"
+
+
 def project_relpath(project_path: str | Path) -> str:
     """Legible project relpath under host $HOME → mounted at CONTAINER_HOME/<relpath>."""
     p = Path(project_path)

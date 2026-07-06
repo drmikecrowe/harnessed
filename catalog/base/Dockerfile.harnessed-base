@@ -96,10 +96,11 @@ RUN mise settings set experimental true && \
 # not @latest (the build rejects floating pins); bump deliberately when snyk flags this version.
 RUN npm install -g npm@11.6.4
 
-# Extra user-specified tools (edit extra-tools.txt to add more).
+# Extra user-specified tools. Edit ~/.config/harnessed/extra-tools.txt to add more (seeded from
+# catalog/base/extra-tools.default.txt); the base build stages that into catalog/base/extra-tools.txt.
 # Switch to root for COPY to avoid Podman overlay layer corrupting home dir ownership.
 USER root
-COPY extra-tools.txt /tmp/extra-tools.txt
+COPY catalog/base/extra-tools.txt /tmp/extra-tools.txt
 RUN chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 USER ${USERNAME}
 RUN grep -v '^\s*#' /tmp/extra-tools.txt | grep -v '^\s*$' | awk '{print $1}' | \

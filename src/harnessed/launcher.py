@@ -304,8 +304,32 @@ def _catalog_base(rt_path: str) -> Path:
     return _harnessed_dir() / "catalog" / "base" / rt_path
 
 
+def _ensure_extra_tools() -> None:
+    """Resolve the user's extra-tools list and stage it into the build context for the base build.
+
+    Source of truth is USER-owned: `~/.config/harnessed/extra-tools.txt` (paths.extra_tools_path).
+    Dockerfile.harnessed-base COPYs `catalog/base/extra-tools.txt` — a gitignored build artifact — so:
+
+      1. Seed the config file from `catalog/base/extra-tools.default.txt` when it is absent (migrating
+         a pre-move repo-root `extra-tools.txt` if one is still lying around), so a fresh clone or git
+         worktree builds without the user hand-copying anything.
+      2. Stage the resolved content into `catalog/base/extra-tools.txt` so the Dockerfile COPY finds it
+         in-context. Regenerated every build — the config file always wins over the staged mirror.
+    """
+    user_file = paths.extra_tools_path()
+    if not user_file.exists():
+        legacy = _harnessed_dir() / "extra-tools.txt"  # pre-move repo-root location
+        seed = legacy if legacy.exists() else _catalog_base("extra-tools.default.txt")
+        if seed.exists():
+            user_file.parent.mkdir(parents=True, exist_ok=True)
+            user_file.write_text(seed.read_text())
+    if user_file.exists():
+        _catalog_base("extra-tools.txt").write_text(user_file.read_text())
+
+
 def _build_images_cmd(rt: str, force: bool = False) -> None:
     """(Re)build the shared base + hatago images (agent images are built lazily per stack)."""
+    _ensure_extra_tools()
     hdir = _harnessed_dir()
     pairs = [
         (_BASE_IMAGE, _catalog_base("Dockerfile.harnessed-base")),
@@ -322,6 +346,7 @@ def _build_base_image(rt: str) -> None:
     """Force-(re)build the parameterised base so edits to Dockerfile.harnessed-base (the supply-chain
     scan script, extra-tools, scanner installs) propagate into every FROM-derived agent / hatago /
     stack image. Layer-cached: a no-op when the base Dockerfile is unchanged."""
+    _ensure_extra_tools()
     _out.print(f"[blue][INFO][/blue] Building {_BASE_IMAGE} ...")
     _run([rt, "build", "-t", _BASE_IMAGE, "-f", str(_catalog_base("Dockerfile.harnessed-base")),
           str(_harnessed_dir())])
