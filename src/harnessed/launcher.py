@@ -869,10 +869,9 @@ def _build_mount_args(
     # omp: the whole agent dir (auth + sessions) is a per-instance mount seeded by
     # _omp_auth_seed_mount (appended in launch()) — it supersedes the old per-slug session mount.
 
-    # Auth mounts (ro credentials)
-    creds = Path(home) / ".claude" / ".credentials.json"
-    if creds.is_file():
-        args += ["-v", f"{creds}:{ctr_home}/.claude/.credentials.json:ro"]
+    # Claude's OAuth credentials: seeded + mounted rw by _claude_creds_seed_mount (appended in
+    # launch()) — a ro mount here would block Claude Code's in-container token refresh, causing
+    # the "gets logged out" bug (see _claude_creds_seed_mount docstring).
 
     # egress-firewall.sh (run inside the container by _apply_firewall).
     fw = _catalog_base("egress-firewall.sh")
@@ -889,9 +888,9 @@ def _build_mount_args(
 def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
     """Mount a minimal, token-free ~/.claude.json stub so Claude Code skips first-run onboarding.
 
-    The real OAuth token is the read-only ~/.claude/.credentials.json mount (see
-    _build_mount_args). But Claude Code *also* gates its onboarding (the "Select login method"
-    screen) on ~/.claude.json — a credentialed container with no .claude.json still shows
+    The real OAuth token lives in the rw ~/.claude/.credentials.json mount (see
+    _claude_creds_seed_mount). But Claude Code *also* gates its onboarding (the "Select login
+    method" screen) on ~/.claude.json — a credentialed container with no .claude.json still shows
     onboarding. We seed ONLY onboarding + identity fields (never the token), copied from the host
     ~/.claude.json, written to a per-instance state dir and mounted rw so Claude's runtime writes
     never touch the host file. (design §4b; ports lib/harnessed-isolated-config.sh.)
@@ -925,6 +924,35 @@ def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
         encoding="utf-8",
     )
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
+
+
+def _claude_creds_seed_mount(harness: str, inst: str) -> list[str]:
+    """Seed a per-instance copy of ~/.claude/.credentials.json, mounted rw.
+
+    Claude Code periodically refreshes its OAuth access token by rewriting this file. A plain
+    ro bind-mount of the host file (the old behavior) blocks that write: the in-container token
+    goes stale once it expires mid-session, and the agent silently gets logged out with no way
+    to recover short of recreating the container.
+
+    Instead, copy the host's current credentials into a per-instance state file at launch time
+    (so the container always starts with the host's latest token) and mount THAT copy rw. The
+    container can then refresh its own copy freely without ever touching the host file — mirrors
+    _claude_config_seed_mount's per-instance state-dir pattern.
+    """
+    if harness not in ("claude", "omp"):
+        return []
+
+    host_creds = Path.home() / ".claude" / ".credentials.json"
+    if not host_creds.is_file():
+        return []
+
+    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
+    state_dir = state_root / "harnessed" / inst
+    state_dir.mkdir(parents=True, exist_ok=True)
+    stub = state_dir / "credentials.json"
+    stub.write_bytes(host_creds.read_bytes())
+    stub.chmod(0o600)
+    return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude/.credentials.json:rw"]
 
 
 def _keyring_state_mount(harness: str, inst: str) -> list[str]:
@@ -1643,8 +1671,11 @@ def launch(
 
     # Build mount args.
     mount_args = _build_mount_args(harness, prof, mount_path)
-    # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the ro credential).
+    # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the rw credential).
     mount_args += _claude_config_seed_mount(harness, inst)
+    # Seed + mount (rw) a per-instance copy of Claude's OAuth credentials so in-container token
+    # refresh doesn't get blocked by a ro mount (was the "gets logged out" bug).
+    mount_args += _claude_creds_seed_mount(harness, inst)
     # Persist agy's in-pod keyring store (rw) so its Google-OAuth token survives recreates (antigravity).
     mount_args += _keyring_state_mount(harness, inst)
     # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
