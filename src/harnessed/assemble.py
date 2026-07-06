@@ -121,10 +121,14 @@ def assemble(
         syncer.add_recipe(recipe)
     syncer.fan(profile_dir / ".claude")
 
-    # Stack-level identity → .claude/CLAUDE.md (bd main-ylz). Claude-only for now: CLAUDE.md is
-    # Claude's memory file; other harnesses use their own top-level memory file names.
+    # Stack-level identity → the harness's native memory/context file (bd main-ylz, main-72j).
+    # Each harness reads its own file name: claude → .claude/CLAUDE.md; antigravity (agy, gemini-
+    # derived) → a .gemini context file named by settings.json context.fileName. Other harnesses
+    # have no identity emission path yet.
     if stack.harness == "claude":
         emit.write_claude_md(profile_dir, stack.instructions)
+    elif stack.harness == "antigravity":
+        emit.write_antigravity_identity(profile_dir, stack.instructions)
 
     # stdio children are baked into the harness/stack image and spawned by the in-container hatago
     # (hatago-consolidation); kept for reporting. No separate baked-servers.json is written.

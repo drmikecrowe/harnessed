@@ -11,6 +11,7 @@ from harnessed.emit import (
     opencode_agent_name,
     read_baked_settings,
     required_settings,
+    write_antigravity_identity,
     write_claude_md,
     write_mcp_json,
     write_opencode_persona,
@@ -114,6 +115,29 @@ class TestMergeOpencodeConfig:
         # Idempotent — re-adding the same glob does not duplicate it.
         again = merge_opencode_config(merged, "rel", "./prompts/rel.md", "/g/*.md")
         assert again["instructions"] == ["AGENTS.md", "/g/*.md"]
+
+
+class TestWriteAntigravityIdentity:
+    def test_emits_identity_md_and_settings_context_filename(self, tmp_path):
+        from harnessed.paths import CONTAINER_HOME
+
+        out = write_antigravity_identity(tmp_path, "You are the release-bot for repo X.")
+        # Identity text lands in the profile's .gemini/GEMINI.md (agy's native memory tree).
+        assert out == tmp_path / ".gemini" / "GEMINI.md"
+        assert out.read_text() == "You are the release-bot for repo X.\n"
+        # A fresh settings.json points context.fileName at the ABSOLUTE in-container identity path.
+        settings = json.loads((tmp_path / ".gemini" / "settings.json").read_text())
+        assert settings == {
+            "context": {"fileName": str(CONTAINER_HOME / ".gemini" / "GEMINI.md")}
+        }
+
+    def test_preserves_trailing_newline(self, tmp_path):
+        out = write_antigravity_identity(tmp_path, "identity text\n")
+        assert out.read_text() == "identity text\n"
+
+    def test_noop_when_instructions_unset(self, tmp_path):
+        assert write_antigravity_identity(tmp_path, None) is None
+        assert not (tmp_path / ".gemini").exists()
 
 
 class TestWriteMcpJson:

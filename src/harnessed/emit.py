@@ -131,6 +131,35 @@ def merge_opencode_config(
     return result
 
 
+def write_antigravity_identity(profile_dir: Path, instructions: str | None) -> Path | None:
+    """Emit the stack's `instructions:` as antigravity's native identity — a context `.md` under
+    `.gemini/` plus a fresh `settings.json` whose `context.fileName` points at it (bd main-72j).
+
+    Antigravity (agy) is gemini-cli-derived: it reads a top-level memory/context file, and the file
+    it loads is declared by `context.fileName` in `~/.gemini/settings.json` — the same shared config
+    tree as the already-baked `~/.gemini/config/mcp_config.json`. agy does NOT read Claude's
+    `.claude/CLAUDE.md`, so the identity is baked here in agy's own shape instead.
+
+    The profile's `.gemini/` mirrors the container's `~/.gemini/` (= CONTAINER_HOME/.gemini), so
+    `context.fileName` is written as the ABSOLUTE in-container path of the identity file — unambiguous
+    regardless of the agent's cwd (mirroring the fully-qualified `serverUrl` in the baked mcp_config).
+
+    Unlike claude's `settings.json` FLOOR (a floor merged with the image-baked file post-build),
+    antigravity's settings.json is never host-mounted or merged, so this writes it FRESH. No-op
+    (returns None) when the stack sets no `instructions:`. Returns the identity `.md` path.
+    """
+    if not instructions:
+        return None
+    gemini_dir = profile_dir / ".gemini"
+    gemini_dir.mkdir(parents=True, exist_ok=True)
+    identity = gemini_dir / "GEMINI.md"
+    text = instructions if instructions.endswith("\n") else instructions + "\n"
+    identity.write_text(text, encoding="utf-8")
+    container_identity = paths.CONTAINER_HOME / ".gemini" / "GEMINI.md"
+    _write_json(gemini_dir / "settings.json", {"context": {"fileName": str(container_identity)}})
+    return identity
+
+
 def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
     """Build the settings.json `hooks` block from each recipe's declared `hooks:` (GAP 2).
 
