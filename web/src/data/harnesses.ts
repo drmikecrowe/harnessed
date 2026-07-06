@@ -21,23 +21,23 @@ export const harnesses: Harness[] = [
     hero: true,
   },
   {
-    name: "opencode",
-    variant: "blue",
-    tagline: "Reads .claude/skills natively.",
-  },
-  {
     name: "omp",
     variant: "magenta",
     tagline: "Via claude-hooks-bridge.",
   },
   {
+    name: "opencode",
+    variant: "blue",
+    tagline: "Planned — adapts the .claude profile.",
+  },
+  {
     name: "antigravity",
     variant: "cyan",
-    tagline: "MCP wired to hatago.",
+    tagline: "Planned — MCP via hatago.",
   },
   {
     name: "codex",
     variant: "blue-deep",
-    tagline: "MCP wired to hatago.",
+    tagline: "Planned — MCP via hatago.",
   },
 ];
