@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# Stack: claude_hindsight — claude agent reaching a host-running hindsight MCP server.
+# No services: hindsight is not a harnessed-managed sidecar; it is a host deployment the recipe
+# references by URL (contrast ping, which declares services: [ping] because harnessed owns its
+# lifecycle). See catalog/recipes/hindsight/PLAN.md.
+name: claude_hindsight
+harness: claude
+recipes: [hindsight]
+services: []
