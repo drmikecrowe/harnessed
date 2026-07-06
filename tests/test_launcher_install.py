@@ -302,6 +302,56 @@ class TestBuildMountArgs:
         args = launcher._build_mount_args("opencode", prof, tmp_path)
         assert not any(".config/opencode" in a for a in args)
 
+    def _prof_with_antigravity_identity(self, tmp_path):
+        prof = tmp_path / "prof"
+        (prof / ".gemini").mkdir(parents=True)
+        (prof / ".gemini" / "settings.json").write_text("{}")
+        (prof / ".gemini" / "GEMINI.md").write_text("identity")
+        return prof
+
+    def test_antigravity_identity_mounts_settings_and_gemini_md(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        prof = self._prof_with_antigravity_identity(tmp_path)
+        ctr = launcher._CONTAINER_HOME_STR
+        args = launcher._build_mount_args("antigravity", prof, tmp_path)
+        settings = prof / ".gemini" / "settings.json"
+        identity = prof / ".gemini" / "GEMINI.md"
+        assert f"{settings}:{ctr}/.gemini/settings.json:ro" in args
+        assert f"{identity}:{ctr}/.gemini/GEMINI.md:ro" in args
+
+    def test_antigravity_without_identity_no_gemini_mount(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        prof = tmp_path / "prof"
+        prof.mkdir()
+        args = launcher._build_mount_args("antigravity", prof, tmp_path)
+        assert not any(".gemini" in a for a in args)
+
+    def test_codex_identity_mounts_agents_md(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        prof = tmp_path / "prof"
+        (prof / ".codex").mkdir(parents=True)
+        (prof / ".codex" / "AGENTS.md").write_text("identity")
+        ctr = launcher._CONTAINER_HOME_STR
+        args = launcher._build_mount_args("codex", prof, tmp_path)
+        agents = prof / ".codex" / "AGENTS.md"
+        assert f"{agents}:{ctr}/.codex/AGENTS.md:ro" in args
+
+    def test_codex_without_identity_no_agents_mount(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        prof = tmp_path / "prof"
+        prof.mkdir()
+        args = launcher._build_mount_args("codex", prof, tmp_path)
+        assert not any(".codex" in a for a in args)
+
+    def test_claude_unaffected_by_identity_branches(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        prof = self._prof_with_antigravity_identity(tmp_path)
+        (prof / ".codex").mkdir(parents=True)
+        (prof / ".codex" / "AGENTS.md").write_text("identity")
+        args = launcher._build_mount_args("claude", prof, tmp_path)
+        assert not any(".gemini" in a for a in args)
+        assert not any(".codex" in a for a in args)
+
 
 class TestOpencodeAttachCmd:
     """`_opencode_attach_cmd` is stack-conditional (bd main-rlw): a baked persona → `opencode
