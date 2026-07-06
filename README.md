@@ -50,7 +50,28 @@ container. You need two host dependencies: **podman** (rootless; the reference r
 support is pending, see the runtime table above) and **[uv](https://docs.astral.sh/uv/)** (or pipx)
 to install the CLI.
 
-Install the CLI onto your PATH from a clone:
+**Recommended — the checked-in installer.** [`install.sh`](install.sh) detects podman + uv (it never
+installs podman for you — that's privileged and distro-specific), then installs the CLI from a
+**pinned git tag**:
+
+```bash
+git clone https://github.com/drmikecrowe/harnessed.git
+cd harnessed && ./install.sh          # --install-uv to also install uv; --uninstall to remove
+```
+
+No-clone path — download, **review**, then run (the script is auditable; read it before you trust it):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/drmikecrowe/harnessed/v0.1.0/install.sh -o install.sh
+less install.sh && sh install.sh
+# fast-and-loose one-liner (pinned to a tag, never a branch — we recommend reading it first):
+#   curl -fsSL https://raw.githubusercontent.com/drmikecrowe/harnessed/v0.1.0/install.sh | sh
+```
+
+> The `v0.1.0` tag above is a placeholder — **no release tag has been cut yet**. Until one exists,
+> use the manual step below or run `install.sh` against a local checkout.
+
+**Manual** (what the installer automates):
 
 ```bash
 git clone https://github.com/drmikecrowe/harnessed.git
@@ -58,7 +79,8 @@ uv tool install ./harnessed          # or: pipx install ./harnessed
 ```
 
 This puts `harnessed` in `~/.local/bin` (ensure it's on your PATH; `uv tool update-shell` sets it up).
-To uninstall: `uv tool uninstall harnessed` (or `pipx uninstall harnessed`).
+To uninstall: `./install.sh --uninstall` (or `uv tool uninstall harnessed` / `pipx uninstall harnessed`);
+your `~/.config/harnessed` and `$XDG_DATA_HOME/harnessed` data are preserved.
 
 > **Working on the CLI itself?** Use an editable dev env instead — see [CONTRIBUTING.md](CONTRIBUTING.md)
 > (`uv sync --extra dev` + `export PATH="$PWD/.venv/bin:$PATH"`).
