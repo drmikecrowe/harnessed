@@ -214,17 +214,25 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
     return result
 
 
-def _hatago_entry(server: McpServer) -> dict:
+def _hatago_entry(server: McpServer, project_path: str | Path | None = None) -> dict:
     """Map an MCP server to a hatago `mcpServers` entry (schema per hatago docs).
 
     When `url_env` is set, the URL is emitted as `${VAR_NAME}` so the profile file contains no
     secret value. The env var reaches the container at launch time (via --env-file) and hatago
     substitutes it at runtime. `url_env` takes precedence over `url` when both are set.
+
+    `project_path` (bd main-u5d): when set, a stdio child's `cwd` is pinned to the mirrored
+    container-side project path (`paths.container_project_path`). hatago otherwise spawns stdio
+    children with cwd = the container home, so a child that resolves its target from cwd (serena
+    `--project-from-cwd`, repowise's default) would index the wrong directory. Only known at LAUNCH
+    (path mirroring makes it per-project), so the assemble-time committed config passes None.
     """
     if server.is_stdio_child:
         entry: dict = {"command": server.command, "args": list(server.args)}
         if server.env:
             entry["env"] = dict(server.env)
+        if project_path is not None:
+            entry["cwd"] = str(paths.container_project_path(project_path))
         return entry
     # Network-native server: hatago proxies it by URL (transport http/sse).
     # url_env → emit placeholder; resolved at runtime from the container's env (never on disk).
@@ -235,15 +243,22 @@ def _hatago_entry(server: McpServer) -> dict:
     return entry
 
 
-def write_hatago_config(profile_dir: Path, servers: list[McpServer]) -> Path:
-    """Emit hatago.config.json declaring each server as a hatago child/proxy."""
+def write_hatago_config(
+    profile_dir: Path, servers: list[McpServer], project_path: str | Path | None = None
+) -> Path:
+    """Emit hatago.config.json declaring each server as a hatago child/proxy.
+
+    `project_path` (bd main-u5d) pins each stdio child's `cwd` to the mirrored project path — see
+    `_hatago_entry`. The assemble-time (committed) config is project-agnostic and passes None; the
+    launcher regenerates a per-instance config with the real project path at launch time.
+    """
     out = profile_dir / "hatago.config.json"
     _write_json(
         out,
         {
             "version": 1,
             "logLevel": "info",
-            "mcpServers": {s.name: _hatago_entry(s) for s in servers},
+            "mcpServers": {s.name: _hatago_entry(s, project_path) for s in servers},
         },
     )
     return out
