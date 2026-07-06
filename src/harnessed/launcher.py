@@ -927,6 +927,60 @@ def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
 
 
+def _keyring_state_mount(harness: str, inst: str) -> list[str]:
+    """Persist agy's Secret Service keyring store across recreates (bd main-ec5, antigravity only).
+
+    Mirrors _claude_config_seed_mount's per-instance state-dir pattern: a host dir under
+    XDG_STATE_HOME/harnessed/<inst>/keyrings is bind-mounted rw at the container's
+    ~/.local/share/keyrings (agy's keyring store). `inst` is deterministic (stack + project), and a
+    recreate only tears down the pod — host state dirs are never touched — so the same dir re-mounts
+    and the in-pod OAuth token persists automatically. Unlike the claude.json stub, the token is
+    generated in-pod and is NOT re-derivable from the host, so nothing is seeded; the dir is simply
+    preserved as-is. Empty for every non-antigravity harness (they are unaffected).
+    """
+    if harness != "antigravity":
+        return []
+    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
+    keyring_dir = state_root / "harnessed" / inst / "keyrings"
+    keyring_dir.mkdir(parents=True, exist_ok=True)
+    return ["-v", f"{keyring_dir}:{_CONTAINER_HOME_STR}/.local/share/keyrings:rw"]
+
+
+def _keyring_fresh_wipe(harness: str, inst: str) -> None:
+    """--fresh wipes the persisted agy keyring so the next launch re-prompts OAuth (bd main-ec5).
+
+    _keyring_state_mount's dir deliberately SURVIVES a normal recreate — that is the whole point of
+    persisting the token — and neither _persist_mounts nor the per-instance state dir is wiped on
+    --fresh (both are designed to survive it). So --fresh's "start clean" contract needs an explicit
+    removal here; routing this through _persist_mounts would carry the wrong (survives-fresh)
+    semantics. No-op for every non-antigravity harness.
+    """
+    if harness != "antigravity":
+        return
+    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
+    shutil.rmtree(state_root / "harnessed" / inst / "keyrings", ignore_errors=True)
+
+
+def _keyring_init(harness: str) -> str:
+    """Keyring-daemon init prefix for the antigravity attach shell (bd main-ec5).
+
+    agy persists its Google-OAuth token to the Secret Service keyring, but the isolated container has
+    no keyring daemon. Start a session D-Bus + gnome-keyring-daemon HERE — in the same shell that
+    execs agy — so agy inherits DBUS_SESSION_BUS_ADDRESS / GNOME_KEYRING_CONTROL / SSH_AUTH_SOCK. A
+    detached daemon (exec -d) would not export its env into this attach shell, so it MUST run inline.
+    The keyring is unlocked with an empty password (printf ''), auto-creating the login keyring empty
+    on first run; its store is a persistent host mount (_keyring_state_mount), so the token survives
+    recreates. Returns "" for every non-antigravity harness (their attach shell is unchanged).
+    """
+    if harness != "antigravity":
+        return ""
+    return (
+        "export $(dbus-launch) "
+        "&& printf '' | gnome-keyring-daemon --unlock --components=secrets "
+        '&& eval "$(printf \'\' | gnome-keyring-daemon --start --components=secrets)"'
+    )
+
+
 def _omp_agent_mount(harness: str) -> list[str]:
     """Bind-mount the host's omp agent dir so the pod shares one omp state with the host.
 
@@ -1539,6 +1593,9 @@ def launch(
     if fresh:
         _out.print(f"[blue][INFO][/blue] --fresh: tearing down existing pod/instance for {inst}")
         _pod_teardown(rt, inst, pod)
+        # Also wipe the persisted agy keyring (antigravity only) so --fresh forces a re-login — the
+        # keyring dir deliberately survives a normal recreate, so this is the one place it is cleared.
+        _keyring_fresh_wipe(harness, inst)
 
     # Re-attach to a running instance (interactive only) — but if it was built from an older image
     # (rebuilt since it started), a re-attach would silently run the stale build. Offer to recreate.
@@ -1588,6 +1645,8 @@ def launch(
     mount_args = _build_mount_args(harness, prof, mount_path)
     # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the ro credential).
     mount_args += _claude_config_seed_mount(harness, inst)
+    # Persist agy's in-pod keyring store (rw) so its Google-OAuth token survives recreates (antigravity).
+    mount_args += _keyring_state_mount(harness, inst)
     # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
     mount_args += _omp_agent_mount(harness)
     # Forward the host's ccstatusline config (ro) so the baked statusLine matches the host layout.
@@ -1719,7 +1778,14 @@ def _attach(
         mcp_cfg = str(paths.container_mcp_config())
         harness_cmd_tpl = _HARNESS_ATTACH_CMD.get(harness, "claude")
         tail = harness_cmd_tpl.format(mcp_cfg=mcp_cfg, instance=inst)
-    shell_cmd = f"{mise_init} && {init_prologue} && {tail}"
+    # Antigravity only: start dbus + gnome-keyring in THIS shell before exec-ing agy, so agy inherits
+    # the keyring env (bd main-ec5). Empty for every other harness → their shell_cmd is unchanged.
+    keyring_init = _keyring_init(harness)
+    parts = [mise_init, init_prologue]
+    if keyring_init:
+        parts.append(keyring_init)
+    parts.append(tail)
+    shell_cmd = " && ".join(parts)
 
     _touch_attach_marker(inst)
     exec_argv = [

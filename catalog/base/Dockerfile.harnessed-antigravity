@@ -18,9 +18,12 @@
 #
 # AUTH CAVEAT (isolated mode): agy authenticates via Google OAuth and persists tokens in the OS
 # system keyring (Secret Service); it has NO documented API-key env-var. A clean-room container has
-# no keyring daemon, so agy prompts for an interactive browser/printed-URL login on first launch and
-# does not persist across recreates. This is a known limitation of the antigravity harness in
-# isolated mode (the harness builds + launches + reaches hatago regardless); see docs.
+# no keyring daemon, so agy would prompt for an interactive login on every launch. This image ships
+# an in-pod keyring (dbus + gnome-keyring below) that the launcher starts in the attach shell and
+# backs with a persistent per-instance host mount (bd main-ec5), so a SINGLE interactive
+# browser/printed-URL OAuth on first launch now persists across recreates; `--fresh` wipes the
+# keyring and forces a fresh login. Mounting the host's real Secret Service/D-Bus was rejected on
+# threat-model grounds. The harness builds + launches + reaches hatago regardless; see docs.
 
 FROM harnessed-base:latest
 
@@ -43,5 +46,21 @@ RUN mkdir -p /home/harnessed/.gemini/config && \
   }
 }
 JSON
+
+# Keyring runtime for in-pod Google-OAuth persistence (bd main-ec5). agy persists its OAuth token to
+# the Secret Service keyring; the isolated container has no keyring daemon, so without these it would
+# re-prompt login every launch. At launch the harness starts a session D-Bus + gnome-keyring-daemon
+# in the attach shell and mounts a persistent keyring store, so one interactive OAuth survives
+# recreates. Unpinned apt to match the base image's convention (Dockerfile.harnessed-base) — the
+# build's floating-ref lint targets image/download refs, not apt versions. Keep the layer thin so it
+# stays easy to rip out if agy's keyring behavior shifts (it churns ~10 releases/month).
+#   dbus-x11       — dbus-launch (session bus for the Secret Service)
+#   gnome-keyring  — gnome-keyring-daemon (--unlock / --components=secrets)
+#   libsecret-1-0  — Secret Service client lib agy links against
+RUN apt-get update && apt-get install -y \
+    dbus-x11 \
+    gnome-keyring \
+    libsecret-1-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 CMD ["/bin/bash"]
