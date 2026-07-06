@@ -74,6 +74,63 @@ def write_claude_md(profile_dir: Path, instructions: str | None) -> Path | None:
     return out
 
 
+def opencode_agent_name(stack_name: str) -> str:
+    """Derive a stable opencode custom-agent name from the stack name (bd main-rlw).
+
+    The SAME name keys the `agent.<name>` entry in opencode.json, names the persona prompt file,
+    and forms the `opencode --agent <name>` attach command — all three must agree, so this is the
+    single source. Sanitized to opencode's identifier charset (lowercase alnum + dash); falls back
+    to 'persona' when the stack name has no usable characters.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", stack_name.lower()).strip("-")
+    return slug or "persona"
+
+
+def write_opencode_persona(
+    profile_dir: Path, instructions: str | None, agent_name: str
+) -> Path | None:
+    """Emit the stack's `instructions:` identity as an opencode persona prompt file (bd main-rlw).
+
+    Written to `<profile>/opencode/prompts/<agent_name>.md`; the launcher mounts the `opencode/`
+    dir over `~/.config/opencode/prompts/` so opencode.json's `{file:./prompts/<agent_name>.md}`
+    reference resolves. No-op (returns None) when the stack sets no `instructions:` — opencode's
+    identity analog of `write_claude_md` (opencode reads a custom-agent prompt, not CLAUDE.md, for
+    a per-stack persona).
+    """
+    if not instructions:
+        return None
+    out = profile_dir / "opencode" / "prompts" / f"{agent_name}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    text = instructions if instructions.endswith("\n") else instructions + "\n"
+    out.write_text(text, encoding="utf-8")
+    return out
+
+
+def merge_opencode_config(
+    baked: dict, agent_name: str, persona_rel: str, rules_glob: str
+) -> dict:
+    """Merge harnessed's stack identity into the image-baked opencode.json (bd main-rlw).
+
+    Mirrors `merge_settings`: the baked config is authoritative (it carries the `mcp.hatago` block
+    the base image wired) and is carried through VERBATIM; harnessed only ADDS two things:
+      - `agent.<agent_name>` = {"prompt": "{file:<persona_rel>}"} — the custom persona agent,
+        invoked via `opencode --agent <agent_name>`. Agent permissions inherit the global config.
+      - `rules_glob` appended to the top-level `instructions[]` array (opencode's native rules-file
+        glob), so the profile's `.claude/rules/*.md` load into the agent's context for free.
+    The baked `mcp.hatago` block is preserved untouched. Idempotent: an already-present glob is not
+    duplicated; the agent entry is (re)written to the current persona reference.
+    """
+    result = deepcopy(baked)
+    result.setdefault("agent", {})[agent_name] = {"prompt": f"{{file:{persona_rel}}}"}
+    instructions = result.get("instructions")
+    if not isinstance(instructions, list):
+        instructions = []
+        result["instructions"] = instructions
+    if rules_glob not in instructions:
+        instructions.append(rules_glob)
+    return result
+
+
 def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
     """Build the settings.json `hooks` block from each recipe's declared `hooks:` (GAP 2).
 

@@ -34,6 +34,7 @@ from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
     SchemaError,
+    Stack,
     load_agent,
     load_service,
     load_stack,
@@ -66,6 +67,19 @@ _HARNESS_ATTACH_CMD = {
     "antigravity": "agy",
     "codex": "codex",
 }
+
+
+def _opencode_attach_cmd(prof: Path, stack_name: str) -> str:
+    """opencode attach command, stack-conditional on a baked persona (bd main-rlw).
+
+    When the stack shipped `instructions:`, `_merge_baked_opencode` wrote a merged opencode.json
+    (defining a custom persona agent) into the profile — attach via `opencode --agent <name>` so
+    the persona + rules-glob load. Otherwise the fixed `opencode` command (image config, no
+    persona). The `<name>` must match `_merge_baked_opencode`'s, so both go through
+    `emit.opencode_agent_name`."""
+    if (prof / "opencode" / "opencode.json").is_file():
+        return f"opencode --agent {emit.opencode_agent_name(stack_name)}"
+    return _HARNESS_ATTACH_CMD["opencode"]
 
 
 def _runtime() -> str:
@@ -433,6 +447,13 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     # behind the recipe-bake gate above.
     _merge_baked_settings(rt, derived, prof)
 
+    # opencode identity (bd main-rlw): when the stack ships `instructions:`, read the image-baked
+    # opencode.json, add a custom persona agent + a rules-file glob, and write the merged config
+    # into the profile (mounted over the image path by _build_mount_args). Gated on the harness so
+    # non-opencode stacks skip the (opencode-only) image read entirely.
+    if result.stack.harness == "opencode":
+        _merge_baked_opencode(rt, derived, prof, result.stack)
+
     # Surface the advisory supply-chain report (baked by the derived image's final scan layer).
     _surface_scan_report(rt, derived, prof)
 
@@ -607,6 +628,60 @@ def _merge_baked_settings(rt: str, image: str, prof: Path) -> None:
     stub.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
 
 
+def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None:
+    """Wire the stack's identity into opencode's config POST-BUILD (bd main-rlw).
+
+    opencode reads its config from the image-baked ~/.config/opencode/opencode.json (the hatago
+    MCP block), NOT from .claude/.mcp.json, and there is no profile-side opencode.json at assemble
+    time — so, mirroring `_merge_baked_settings`, we read the baked config out of the built image,
+    ADD a custom persona agent (from the stack's `instructions:`) + a rules-file glob, and write the
+    merged config into the profile, where `_build_mount_args` mounts it over the image path.
+
+    No-op unless the stack set `instructions:` (nothing to add — the fixed `opencode` attach stands)
+    or the baked config is absent/malformed (leave the image config untouched, warn on malformed)."""
+    if not stack.instructions:
+        return
+    agent_name = emit.opencode_agent_name(stack.name)
+    if emit.write_opencode_persona(prof, stack.instructions, agent_name) is None:
+        return
+
+    def _copy(cid: str) -> str | None:
+        with tempfile.TemporaryDirectory() as td:
+            dest = Path(td) / "opencode.json"
+            cp = subprocess.run(
+                [rt, "cp",
+                 f"{cid}:{_CONTAINER_HOME_STR}/.config/opencode/opencode.json", str(dest)],
+                capture_output=True,
+            )
+            if cp.returncode == 0 and dest.is_file():
+                return dest.read_text(encoding="utf-8")
+        return None
+
+    baked_text = _with_image_container(rt, image, _copy)
+
+    def _warn(msg: str) -> None:
+        _out.print(f"[yellow]⚠ opencode:[/yellow] {msg}")
+
+    if baked_text is None:
+        _warn("no baked opencode.json in image — persona/rules not wired")
+        return
+    try:
+        baked = json.loads(baked_text)
+    except json.JSONDecodeError:
+        _warn("image opencode.json is not valid JSON — persona/rules not wired")
+        return
+    if not isinstance(baked, dict):
+        _warn("image opencode.json is not a JSON object — persona/rules not wired")
+        return
+
+    rules_glob = f"{_CONTAINER_HOME_STR}/.claude/rules/*.md"
+    persona_rel = f"./prompts/{agent_name}.md"
+    merged = emit.merge_opencode_config(baked, agent_name, persona_rel, rules_glob)
+    out = prof / "opencode" / "opencode.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+
+
 def _surface_scan_report(rt: str, image: str, prof: Path) -> None:
     """Copy the in-image supply-chain report (harnessed-scan, the derived image's final layer) to the
     profile dir and print a one-line advisory summary. The scan is advisory — this surfaces its posture
@@ -752,6 +827,18 @@ def _build_mount_args(
             d = claude_src / subdir
             if d.is_dir():
                 args += ["-v", f"{d}:{ctr_home}/.claude/{subdir}:ro"]
+
+    # opencode persona config (bd main-rlw): the merged opencode.json + persona prompt (written
+    # post-build by _merge_baked_opencode, only when the stack has `instructions:`) override the
+    # image-baked config, wiring the custom agent + rules-glob. Mounted only when present, so a
+    # no-instructions opencode stack falls back to the untouched image config.
+    if harness == "opencode":
+        oc_cfg = prof / "opencode" / "opencode.json"
+        if oc_cfg.is_file():
+            args += ["-v", f"{oc_cfg}:{ctr_home}/.config/opencode/opencode.json:ro"]
+        oc_prompts = prof / "opencode" / "prompts"
+        if oc_prompts.is_dir():
+            args += ["-v", f"{oc_prompts}:{ctr_home}/.config/opencode/prompts:ro"]
 
     # History dirs (rw) — sourced from host $HOME for session persistence.
     home = str(Path.home())
@@ -1596,6 +1683,10 @@ def _attach(
 
     if shell:
         tail = "exec bash -l"
+    elif harness == "opencode":
+        # Stack-conditional (bd main-rlw): `opencode --agent <name>` when a persona was baked,
+        # else the fixed `opencode` command.
+        tail = _opencode_attach_cmd(profile_dir(stack), stack)
     else:
         mcp_cfg = str(paths.container_mcp_config())
         harness_cmd_tpl = _HARNESS_ATTACH_CMD.get(harness, "claude")

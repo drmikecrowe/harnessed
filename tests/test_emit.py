@@ -6,11 +6,14 @@ from pathlib import Path
 from harnessed.emit import (
     HATAGO_ENDPOINT,
     HATAGO_MCP_KEY,
+    merge_opencode_config,
     merge_settings,
+    opencode_agent_name,
     read_baked_settings,
     required_settings,
     write_claude_md,
     write_mcp_json,
+    write_opencode_persona,
     write_settings_json,
     write_hatago_config,
     write_derived_dockerfile,
@@ -58,6 +61,59 @@ class TestWriteClaudeMd:
     def test_noop_when_instructions_unset(self, tmp_path):
         assert write_claude_md(tmp_path, None) is None
         assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
+
+
+class TestOpencodeAgentName:
+    def test_sanitizes_stack_name(self):
+        assert opencode_agent_name("opencode_Release Bot") == "opencode-release-bot"
+
+    def test_falls_back_when_no_usable_chars(self):
+        assert opencode_agent_name("___") == "persona"
+
+
+class TestWriteOpencodePersona:
+    def test_writes_prompt_file_under_opencode_prompts(self, tmp_path):
+        out = write_opencode_persona(tmp_path, "You are release-bot.", "rel")
+        assert out == tmp_path / "opencode" / "prompts" / "rel.md"
+        assert out.read_text() == "You are release-bot.\n"
+
+    def test_noop_when_instructions_unset(self, tmp_path):
+        assert write_opencode_persona(tmp_path, None, "rel") is None
+        assert not (tmp_path / "opencode").exists()
+
+
+class TestMergeOpencodeConfig:
+    # The image-baked config the launcher reads back: hatago MCP block that must survive the merge.
+    def _baked(self):
+        return {
+            "$schema": "https://opencode.ai/config.json",
+            "mcp": {"hatago": {"type": "remote", "url": "http://localhost:3535/mcp",
+                               "enabled": True}},
+        }
+
+    def test_adds_agent_and_rules_glob_preserving_hatago(self):
+        merged = merge_opencode_config(
+            self._baked(), "rel", "./prompts/rel.md", "/home/harnessed/.claude/rules/*.md"
+        )
+        # Custom persona agent points at the persona prompt file.
+        assert merged["agent"]["rel"] == {"prompt": "{file:./prompts/rel.md}"}
+        # Rules-file glob appended to the native instructions[] array.
+        assert merged["instructions"] == ["/home/harnessed/.claude/rules/*.md"]
+        # The baked hatago MCP block survives verbatim.
+        assert merged["mcp"]["hatago"]["url"] == "http://localhost:3535/mcp"
+
+    def test_does_not_mutate_input(self):
+        baked = self._baked()
+        merge_opencode_config(baked, "rel", "./prompts/rel.md", "/g/*.md")
+        assert "agent" not in baked and "instructions" not in baked
+
+    def test_appends_glob_to_existing_instructions_without_dupe(self):
+        baked = {**self._baked(), "instructions": ["AGENTS.md"]}
+        merged = merge_opencode_config(baked, "rel", "./prompts/rel.md", "/g/*.md")
+        assert merged["instructions"] == ["AGENTS.md", "/g/*.md"]
+        # Idempotent — re-adding the same glob does not duplicate it.
+        again = merge_opencode_config(merged, "rel", "./prompts/rel.md", "/g/*.md")
+        assert again["instructions"] == ["AGENTS.md", "/g/*.md"]
 
 
 class TestWriteMcpJson:

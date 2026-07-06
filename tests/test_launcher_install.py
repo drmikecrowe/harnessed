@@ -278,6 +278,46 @@ class TestBuildMountArgs:
         # The narrower project path is NOT mounted separately — it's covered by the parent mirror.
         assert not any(str(parent / "main") in a for a in args)
 
+    def _prof_with_opencode_persona(self, tmp_path):
+        prof = tmp_path / "prof"
+        (prof / "opencode" / "prompts").mkdir(parents=True)
+        (prof / "opencode" / "opencode.json").write_text("{}")
+        (prof / "opencode" / "prompts" / "rel.md").write_text("persona")
+        return prof
+
+    def test_opencode_persona_mounts_config_and_prompts(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        prof = self._prof_with_opencode_persona(tmp_path)
+        ctr = launcher._CONTAINER_HOME_STR
+        args = launcher._build_mount_args("opencode", prof, tmp_path)
+        cfg = prof / "opencode" / "opencode.json"
+        prompts = prof / "opencode" / "prompts"
+        assert f"{cfg}:{ctr}/.config/opencode/opencode.json:ro" in args
+        assert f"{prompts}:{ctr}/.config/opencode/prompts:ro" in args
+
+    def test_opencode_without_persona_no_config_mount(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        prof = tmp_path / "prof"
+        prof.mkdir()
+        args = launcher._build_mount_args("opencode", prof, tmp_path)
+        assert not any(".config/opencode" in a for a in args)
+
+
+class TestOpencodeAttachCmd:
+    """`_opencode_attach_cmd` is stack-conditional (bd main-rlw): a baked persona → `opencode
+    --agent <name>`; no persona → the fixed `opencode` command."""
+
+    def test_with_persona_uses_agent_flag(self, tmp_path):
+        prof = tmp_path / "prof"
+        (prof / "opencode").mkdir(parents=True)
+        (prof / "opencode" / "opencode.json").write_text("{}")
+        assert launcher._opencode_attach_cmd(prof, "opencode_bot") == "opencode --agent opencode-bot"
+
+    def test_without_persona_keeps_fixed_command(self, tmp_path):
+        prof = tmp_path / "prof"
+        prof.mkdir()
+        assert launcher._opencode_attach_cmd(prof, "opencode_bot") == "opencode"
+
 
 class TestCredentialForwarding:
     """`_credential_forward_args` / `_ssh_agent_args` / `_yubikey_device_args` forward the host's
