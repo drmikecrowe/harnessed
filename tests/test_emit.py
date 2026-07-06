@@ -9,6 +9,7 @@ from harnessed.emit import (
     merge_settings,
     read_baked_settings,
     required_settings,
+    write_claude_md,
     write_mcp_json,
     write_settings_json,
     write_hatago_config,
@@ -42,6 +43,21 @@ class TestWriteDerivedDockerfile:
     def test_no_scan_when_disabled(self, tmp_path):
         out = write_derived_dockerfile(tmp_path, self._stack(), [], with_scan=False)
         assert "harnessed-scan" not in out.read_text()
+
+
+class TestWriteClaudeMd:
+    def test_emits_instructions_into_claude_md(self, tmp_path):
+        out = write_claude_md(tmp_path, "You are the release-bot for repo X.")
+        assert out == tmp_path / ".claude" / "CLAUDE.md"
+        assert out.read_text() == "You are the release-bot for repo X.\n"
+
+    def test_preserves_trailing_newline(self, tmp_path):
+        out = write_claude_md(tmp_path, "identity text\n")
+        assert out.read_text() == "identity text\n"
+
+    def test_noop_when_instructions_unset(self, tmp_path):
+        assert write_claude_md(tmp_path, None) is None
+        assert not (tmp_path / ".claude" / "CLAUDE.md").exists()
 
 
 class TestWriteMcpJson:
