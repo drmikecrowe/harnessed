@@ -41,6 +41,24 @@ class TestRulesRoundTrip:
         assert dest.is_file()
         assert "Do the right thing." in dest.read_text()
 
+    def test_flat_rule_file_fanned_into_profile(self, tmp_path):
+        """A recipe declaring a flat rules/<name>.md file links to .claude/rules/<name>.md."""
+        recipe_root = tmp_path / "recipe"
+        rules_dir = recipe_root / "rules"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "foo.md").write_text("# flat rule\nStay flat.\n")
+
+        recipe = _recipe(recipe_root, ["rules/foo.md"])
+        syncer = LinkSyncer()
+        syncer.add_recipe(recipe)
+
+        claude_dir = tmp_path / "profile" / ".claude"
+        syncer.fan(claude_dir)
+
+        dest = claude_dir / "rules" / "foo.md"
+        assert dest.is_file()
+        assert "Stay flat." in dest.read_text()
+
     def test_rules_collision_raises(self, tmp_path):
         """Two recipes shipping a rule with the same name abort with CollisionError."""
         root_a = tmp_path / "recipe-a"
