@@ -5,9 +5,9 @@ invokers. The crux (RESEARCH Pattern 2 / Pitfall 3): osv-scanner `scan` exits 1 
 with no severity flag — so the HIGH threshold is pure Python over `--format json`, never the
 scanner exit code. Exit codes: 0 clean, 1 any-finding, 127 error, 128 no-packages.
 
-EMIT-COMPATIBLE: run_source_scan is pure file I/O over recipe dirs + the emitted profile, so it
-runs inside the emit-only tools image. run_image_scan is driven HOST-side in build_stack against
-a `podman save` archive (no daemon-in-container, no API socket — design §15 / D-12).
+ONLINE RE-SCAN: run_image_scan_online is driven HOST-side by `harnessed rescan` (the SEC-04
+nightly systemd timer) against a `podman save` archive — it contacts osv.dev for advisories
+disclosed after build time (no daemon-in-container, no API socket — design §15 / D-12).
 
 Severity gate (RESEARCH A3, verified against real findings 2026-06-15): osv-scanner's
 `severity[].score` is a CVSS *vector string* (e.g. "CVSS:3.1/AV:N/..."), not a number. We parse
@@ -20,12 +20,9 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-
-from . import schema
 
 # CVSS HIGH threshold (RESEARCH A2). The build ABORTS at >= HIGH; below is a warning.
 HIGH = 7.0
@@ -165,231 +162,10 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
         raise ScanError(f"scanner invocation failed ({' '.join(cmd)}): {exc}") from exc
 
 
-def _scan_source_osv(target: Path, highs: list[str], warnings: list[str]) -> None:
-    """osv-scanner offline source scan of one dir; HIGH ids -> highs, everything else -> warnings."""
-    proc = _run(["osv-scanner", "scan", "source", "--offline", "--offline-vulnerabilities", "-r", "--format", "json", str(target)])
-    data = _parse_json(proc.stdout)
-    if data is None:
-        if proc.returncode == 128:
-            # No packages found — investigate, do NOT treat as a vacuous pass (Pitfall 7).
-            warnings.append(f"osv-scanner found no packages in {target} (exit 128 — investigate)")
-        elif proc.returncode not in (0, 1):
-            # Scanner error (e.g. exit 127: missing offline DB during bring-up) — never a silent pass.
-            warnings.append(f"osv-scanner did not produce results for {target} (exit {proc.returncode}; offline DB present?) — investigate")
-        return
-    for finding in gate(data):
-        highs.append(finding)
-    for finding in _all_finding_ids(data):
-        if finding not in highs:
-            warnings.append(finding)
-
-
-def _audit_pip(requirement: Path, warnings: list[str]) -> None:
-    """pip-audit a requirements.txt; findings are warnings only (its JSON carries no CVSS)."""
-    proc = _run(["pip-audit", "-r", str(requirement), "--format", "json", "--vulnerability-service", "osv"])
-    data = _parse_json(proc.stdout)
-    if data is None:
-        # No usable JSON: exit 2 / network failure / not installed — warn and skip (Pitfall 6: never
-        # red-line the build for the wrong reason).
-        warnings.append(f"pip-audit could not produce results for {requirement.name} (exit {proc.returncode}; network?) — skipped")
-        return
-    for dep in data.get("dependencies", []):
-        for vuln in dep.get("vulns", []):
-            vid = vuln.get("id")
-            if vid:
-                warnings.append(f"pip-audit: {vid}")
-
-
-def _snyk_vuln_ids(snyk_json: dict) -> list[str]:
-    """Finding ids from `snyk test --severity-threshold=high --json` (exit 1 = HIGH+ at threshold)."""
-    vulns = snyk_json.get("vulnerabilities") or []
-    return [v.get("id") for v in vulns if isinstance(v, dict) and v.get("id")]
-
-
-def _socket_alerts(socket_json: dict) -> list[str]:
-    """Short strings for Socket.dev scan alerts (warnings only — Socket has no CVSS threshold)."""
-    out: list[str] = []
-    # `socket scan create --json` nests alerts under a top-level key; honor the common shapes.
-    candidates = socket_json.get("alerts") or socket_json.get("data") or []
-    if isinstance(candidates, dict):
-        candidates = candidates.get("alerts") or []
-    for entry in candidates:
-        if isinstance(entry, dict):
-            label = entry.get("id") or entry.get("type") or entry.get("key") or entry.get("title")
-            if label:
-                out.append(str(label))
-        elif isinstance(entry, str) and entry:
-            out.append(entry)
-    return out
-
-
-def _scan_snyk(target: Path, highs: list[str], warnings: list[str]) -> None:
-    """snyk test --severity-threshold=high, env-gated on SNYK_TOKEN (SEC-02).
-
-    The load-bearing difference from osv-scanner: with `--severity-threshold=high` snyk's EXIT CODE
-    IS the gate (docs.snyk.io/snyk-cli/exit-codes), not Python-over-JSON: 0 clean, 1 vulns at the
-    HIGH+ threshold found (ABORT), 2 failure, 3 no-supported-projects (warn). Do NOT treat snyk's
-    non-zero like osv-scanner's (osv 1 = any finding; snyk 1 = HIGH+ at threshold — exactly the gate).
-
-    Token-gated: no SNYK_TOKEN ⇒ warn-and-skip (the credential-free osv-scanner + pip-audit baseline
-    stays the gate); `harnessed build` never prompts (SEC-02 contract). snyk scans only when the
-    target has a package.json (manifest-less dirs are skipped — snyk cannot scan them).
-    """
-    if not os.environ.get("SNYK_TOKEN"):
-        warnings.append("snyk skipped (no SNYK_TOKEN) — credential-free baseline remains the gate")
-        return
-    manifest = target / "package.json"
-    if not manifest.is_file():
-        return
-    proc = _run(["snyk", "test", "--severity-threshold=high", "--json", "--file", str(manifest)])
-    if proc.returncode == 1:
-        # HIGH+ finding(s) at the threshold — parse ids and ABORT the build (the gate).
-        data = _parse_json(proc.stdout)
-        ids = _snyk_vuln_ids(data) if data is not None else []
-        if ids:
-            highs.extend(ids)
-        else:
-            # Exit 1 but no parseable ids — fail-closed: surface as a HIGH+ signal to investigate.
-            highs.append(f"snyk: HIGH+ finding in {target.name} (exit 1; parse JSON output)")
-    elif proc.returncode in (2, 3):
-        warnings.append(
-            f"snyk: exit {proc.returncode} for {target.name} (failure / no supported projects) — investigate"
-        )
-    # returncode 0 ⇒ clean (no action)
-
-
-def _scan_socket(target: Path, warnings: list[str]) -> None:
-    """socket scan create (server-side), env-gated on SOCKET_SECURITY_API_KEY|TOKEN (SEC-02).
-
-    Socket.dev's model is policy/alert-based — it surfaces NO CVSS severity threshold the way snyk
-    does — so findings render as WARNINGS only and NEVER abort the build. Server-side (uploads the
-    manifest to Socket.dev), so it adds a network dependency + quota cost: absence of the token OR a
-    network/quota failure warns-and-skips WITHOUT aborting (Pitfall 4). Both SOCKET_SECURITY_API_KEY
-    and SOCKET_SECURITY_API_TOKEN are accepted (verified live, RESEARCH §socket).
-    """
-    token = os.environ.get("SOCKET_SECURITY_API_KEY") or os.environ.get("SOCKET_SECURITY_API_TOKEN")
-    if not token:
-        warnings.append("socket skipped (no SOCKET_SECURITY_API_KEY) — optional scanner")
-        return
-    proc = _run(["socket", "scan", "create", "--json", str(target)])
-    if proc.returncode != 0:
-        warnings.append(f"socket: non-zero exit {proc.returncode} (network/quota?) — skipped")
-        return
-    data = _parse_json(proc.stdout)
-    if data is None:
-        return
-    for alert in _socket_alerts(data):
-        warnings.append(f"socket: {alert}")
-
-
-def run_source_scan(root: Path | str | None, stack_name: str, build_dir: Path | str) -> ScanResult:
-    """SCOPED source/Python scan of one stack (BLD-02a). Raises ScanError on any HIGH+ finding.
-
-    Scope = exactly what this build assembles: the stack's recipe dirs (resolved via
-    `schema.load_stack_with_recipes`) plus the emitted `build_dir/profiles/<stack>/` — never the
-    whole repo (a committed fixture under tools/test-fixtures/ cannot red-line another build).
-
-    `root` None → resolve the stack + recipes across the catalog roots (the normal `harnessed build`
-    path); a concrete root pins resolution to one tree (fixtures/tests).
-    """
-    root = Path(root) if root is not None else None
-    build_dir = Path(build_dir)
-    stack, recipes = schema.load_stack_with_recipes(root, stack_name)
-
-    scan_targets: list[Path] = [recipe.root for recipe in recipes]
-    profile_dir = build_dir / "profiles" / stack.name
-    if profile_dir.is_dir():
-        scan_targets.append(profile_dir)
-
-    highs: list[str] = []
-    warnings: list[str] = []
-    for target in scan_targets:
-        _scan_source_osv(target, highs, warnings)
-        for requirement in target.rglob("requirements.txt"):
-            _audit_pip(requirement, warnings)
-        _scan_snyk(target, highs, warnings)
-        _scan_socket(target, warnings)
-
-    if highs:
-        unique = sorted(set(highs))
-        raise ScanError(
-            f"supply-chain source scan found {len(unique)} HIGH+ finding(s) "
-            f"(CVSS >= {HIGH}): {', '.join(unique)}"
-        )
-    return ScanResult(scope=f"source:{stack.name}", highs=[], warnings=warnings)
-
-
-def run_image_scan(archive_tar: Path | str) -> ScanResult:
-    """Scan a saved image archive via osv-scanner (BLD-02b). Raises ScanError on any HIGH+ finding.
-
-    Driven HOST-side by build_stack (`podman save` → this scan), mirroring `harnessed test`: no
-    daemon-in-container, no API socket mounted.
-    """
-    archive_tar = Path(archive_tar)
-    proc = _run(["osv-scanner", "scan", "image", "--offline", "--offline-vulnerabilities", "--archive", str(archive_tar), "--format", "json"])
-    if proc.returncode == 128:
-        warnings = [f"osv-scanner found no packages in image archive (exit 128 — investigate)"]
-        return ScanResult(scope="image", highs=[], warnings=warnings)
-    data = _parse_json(proc.stdout) or {}
-    highs = gate(data)
-    if highs:
-        unique = sorted(set(highs))
-        raise ScanError(
-            f"supply-chain image scan found {len(unique)} HIGH+ finding(s) "
-            f"(CVSS >= {HIGH}): {', '.join(unique)}"
-        )
-    warnings = [vid for vid in _all_finding_ids(data)]
-    return ScanResult(scope="image", highs=[], warnings=warnings)
-
-
-def _scan_snyk_container_image(image_name: str, highs: list[str], warnings: list[str]) -> None:
-    """snyk container test <image> --severity-threshold=high (SC-03).
-
-    Env-gated on SNYK_TOKEN (same warn-and-skip contract as _scan_snyk). Never prompts.
-    Exit code 1 = HIGH+ vuln found → abort. 2/3 = failure/no-projects → warn.
-    Note: snyk running inside the tools container may fail with exit 2 if it cannot access
-    the local image (no daemon socket mounted) — the exit 2 path handles this gracefully.
-    """
-    if not os.environ.get("SNYK_TOKEN"):
-        warnings.append(
-            "snyk container test skipped (no SNYK_TOKEN) — credential-free osv-scanner baseline remains the gate"
-        )
-        return
-    proc = _run(["snyk", "container", "test", image_name, "--severity-threshold=high", "--json"])
-    if proc.returncode == 1:
-        data = _parse_json(proc.stdout)
-        ids = _snyk_vuln_ids(data) if data is not None else []
-        if ids:
-            highs.extend(ids)
-        else:
-            highs.append(f"snyk container test: HIGH+ finding in {image_name} (exit 1; parse JSON for details)")
-    elif proc.returncode in (2, 3):
-        warnings.append(
-            f"snyk container test: exit {proc.returncode} for {image_name} (failure / no supported projects) — investigate"
-        )
-    # returncode 0 ⇒ clean (no action)
-
-
-def run_snyk_container_scan(image_name: str) -> ScanResult:
-    """Top-level: snyk container test on a built image (SC-03). Raises ScanError on HIGH+.
-
-    Warn-and-skips when SNYK_TOKEN is absent so `harnessed build` stays non-interactive.
-    The credential-free osv-scanner baseline remains the primary gate.
-    """
-    highs: list[str] = []
-    warnings: list[str] = []
-    _scan_snyk_container_image(image_name, highs, warnings)
-    if highs:
-        raise ScanError(
-            f"snyk container test found {len(highs)} HIGH+ finding(s) in {image_name}: {', '.join(sorted(set(highs)))}"
-        )
-    return ScanResult(scope=f"snyk-container:{image_name}", highs=[], warnings=warnings)
-
-
 def run_image_scan_online(archive_tar: Path | str) -> ScanResult:
     """Scan a saved image archive ONLINE via osv-scanner (SEC-04 nightly re-scan).
 
-    Same as run_image_scan but drops the two build-time DB flags so osv-scanner contacts
+    Drops the offline build-time DB flags so osv-scanner contacts
     osv.dev for newly-disclosed advisories (RESEARCH Pitfall 6 — the whole point of the
     nightly: the build-time DB only knows about CVEs at build time, so a stale-DB nightly would
     see nothing new forever; that vacuous "0 findings" is the Pitfall 6 warning sign). Raises

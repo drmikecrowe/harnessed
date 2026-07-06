@@ -13,7 +13,7 @@ export const securityFeatures: SecurityFeature[] = [
   {
     icon: "shield-check",
     title: "Build-time scan gate",
-    desc: "osv-scanner and pip-audit run always; snyk and Socket.dev when a token is present. Builds fail on high severity.",
+    desc: "osv-scanner and pip-audit run always; snyk when a token is present. Builds fail on high severity.",
   },
   {
     icon: "shield-lock",
