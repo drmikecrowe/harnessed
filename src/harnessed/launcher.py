@@ -840,6 +840,24 @@ def _build_mount_args(
         if oc_prompts.is_dir():
             args += ["-v", f"{oc_prompts}:{ctr_home}/.config/opencode/prompts:ro"]
 
+    # antigravity identity (bd main-6he): the baked GEMINI.md + settings.json emitted by
+    # emit.write_antigravity_identity mirror the container's ~/.gemini/ tree. Mounted ro only when
+    # present, so a no-instructions antigravity stack leaves the image config untouched.
+    if harness == "antigravity":
+        agy_settings = prof / ".gemini" / "settings.json"
+        if agy_settings.is_file():
+            args += ["-v", f"{agy_settings}:{ctr_home}/.gemini/settings.json:ro"]
+        agy_identity = prof / ".gemini" / "GEMINI.md"
+        if agy_identity.is_file():
+            args += ["-v", f"{agy_identity}:{ctr_home}/.gemini/GEMINI.md:ro"]
+
+    # codex identity (bd main-6he): the baked AGENTS.md emitted by emit.write_codex_agents_md is
+    # codex's top-level memory doc (~/.codex/AGENTS.md). Mounted ro only when present.
+    if harness == "codex":
+        codex_agents = prof / ".codex" / "AGENTS.md"
+        if codex_agents.is_file():
+            args += ["-v", f"{codex_agents}:{ctr_home}/.codex/AGENTS.md:ro"]
+
     # History dirs (rw) — sourced from host $HOME for session persistence.
     home = str(Path.home())
     for rel in (".claude/projects", ".claude/file-history", ".claude/tasks",
