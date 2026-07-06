@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: headroom — context compression via the headroom MCP server (MCP-tools mode only).
+#
+# Exposes headroom_compress / headroom_retrieve / headroom_stats as stdio MCP tools the agent
+# calls on demand to shrink large tool outputs, logs, and JSON before reasoning over them.
+# No skill (upstream ships none), no hooks, no service, no recipe Dockerfile. MCP-tools mode
+# only — the proxy/wrap modes (transparent whole-traffic compression) are deferred (network
+# intermediary model harnessed lacks). See PLAN.md.
+name: headroom
+description: >
+  Context compression via the headroom MCP server — headroom_compress / headroom_retrieve /
+  headroom_stats. On-demand JSON/code/structured compression (60–95% fewer tokens); originals
+  retrievable via CCR. MCP-tools mode only (no proxy).
+
+# --- MCP layer ---
+# stdio child: hatago spawns `headroom mcp serve` and wraps its stdio → the single HTTP endpoint
+# the harness talks to. `transport: stdio` is explicit (RESEARCH Pitfall B), same shape as the
+# `time` tracer bullet. The `headroom` CLI must be available INSIDE the hatago image — recipes
+# cannot yet bake into hatago, so the binary is hand-baked into catalog/base/Dockerfile.harnessed-base
+# (mirroring mcp-server-time). See PLAN.md "Baking headroom into the hatago image".
+mcp:
+  servers:
+    - name: headroom
+      command: headroom
+      args: [mcp, serve]
+      transport: stdio

@@ -127,6 +127,16 @@ ARG MCP_SERVER_TIME_VERSION=2026.6.4
 RUN mkdir -p "$PNPM_HOME/bin" && pnpm add -g "@himorishige/hatago-mcp-hub@${HATAGO_VERSION}" \
     && uv tool install "mcp-server-time==${MCP_SERVER_TIME_VERSION}"
 
+# --- Bake headroom (pinned) so `headroom mcp serve` runs as a hatago stdio child -------------
+# headroom runs INSIDE this image as a hatago stdio child, so the CLI must live here (recipes
+# cannot yet bake into hatago; this mirrors the mcp-server-time pattern above). [mcp] extra only
+# (mcp + httpx + core: tiktoken/pydantic/ast-grep-cli) — deliberately NOT [all], which would pull
+# torch/transformers/onnxruntime + trigger blocked runtime fetches (cdn.pyke.io/huggingface.co).
+# HEADROOM_UPDATE_CHECK=off silences the once-daily PyPI probe the netns egress firewall blocks.
+ARG HEADROOM_VERSION=0.27.0
+RUN uv tool install "headroom-ai[mcp]==${HEADROOM_VERSION}"
+ENV HEADROOM_UPDATE_CHECK=off
+
 # Interactive shell config
 RUN echo 'PS1="\[\033[01;32m\][harnessed]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/${USERNAME}/.bashrc && \
     echo 'eval "$(mise activate bash)"' >> /home/${USERNAME}/.bashrc && \
