@@ -240,6 +240,129 @@ def write_codex_agents_md(
     return out
 
 
+# omp (Oh My Pi) shared-agent identity/rules delivery (bd main-w8k).
+#
+# omp reads two plain-markdown files from its agent dir: APPEND_SYSTEM.md (appended to the system
+# prompt) and RULES.md (rules). The omp harness runs the pre-installed omp-claude-hooks-bridge, a
+# PURE hook-execution bridge with no content-injection path (its session_start handler only posts a
+# UI notification — it never reads additionalContext), so a per-profile identity mount like the
+# other harnesses use is impossible without an upstream bridge change. Instead we deliver identity +
+# rules by writing GUARDED, IDEMPOTENT, delimiter-marked per-stack blocks into the SHARED host
+# ~/.omp/agent/{APPEND_SYSTEM.md,RULES.md} — the same dir the launcher bind-mounts rw into every omp
+# pod (_omp_agent_mount), so no new delivery path is invented. TRADE-OFF (accepted, documented): the
+# blocks are shared across ALL omp usage (host + every container), NOT profile-scoped. Real
+# per-profile bridge injection is a separate future upstream contribution.
+_OMP_APPEND_SYSTEM_FILE = "APPEND_SYSTEM.md"
+_OMP_RULES_FILE = "RULES.md"
+
+
+def _default_omp_agent_dir() -> Path:
+    """Host omp agent dir (~/.omp/agent) — the dir the launcher bind-mounts rw into every omp pod."""
+    return Path.home() / ".omp" / "agent"
+
+
+def _managed_block(stack_name: str, body: str) -> str:
+    """A delimiter-marked managed block for `stack_name` wrapping `body` (bd main-w8k)."""
+    return (
+        f"<!-- BEGIN harnessed:{stack_name} -->\n"
+        f"{body.strip(chr(10))}\n"
+        f"<!-- END harnessed:{stack_name} -->\n"
+    )
+
+
+def _managed_block_re(stack_name: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"<!-- BEGIN harnessed:{re.escape(stack_name)} -->.*?"
+        rf"<!-- END harnessed:{re.escape(stack_name)} -->\n?",
+        re.DOTALL,
+    )
+
+
+def upsert_managed_block(text: str, stack_name: str, body: str) -> str:
+    """Insert or REPLACE this stack's delimiter-marked block in `text` (bd main-w8k).
+
+    Idempotent: a re-run replaces the existing `<!-- BEGIN harnessed:<stack> -->…<!-- END … -->`
+    block in place (no duplication); a first run appends it after any existing content (separated by
+    a blank line). Other stacks' blocks and any surrounding content are left untouched.
+    """
+    block = _managed_block(stack_name, body)
+    pattern = _managed_block_re(stack_name)
+    if pattern.search(text):
+        return pattern.sub(lambda _m: block, text)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if text:
+        text += "\n"
+    return text + block
+
+
+def _upsert_block_file(path: Path, stack_name: str, body: str) -> None:
+    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    path.write_text(upsert_managed_block(existing, stack_name, body), encoding="utf-8")
+
+
+def _remove_block_file(path: Path, stack_name: str) -> None:
+    if not path.is_file():
+        return
+    existing = path.read_text(encoding="utf-8")
+    updated = _managed_block_re(stack_name).sub("", existing)
+    if updated != existing:
+        path.write_text(updated, encoding="utf-8")
+
+
+def write_omp_identity(
+    profile_dir: Path,
+    stack_name: str,
+    instructions: str | None,
+    rules: list[Path] | None = None,
+    *,
+    agent_dir: Path | None = None,
+) -> list[Path]:
+    """Deliver the omp stack's identity + rules as delimiter-marked blocks in ~/.omp/agent (bd main-w8k).
+
+    Identity (`instructions:`) → a `harnessed:<stack>` block in APPEND_SYSTEM.md; the recipe rules
+    (the fanned `.claude/rules/*.md`, concatenated under `## Rule: <label>` headers, mirroring codex)
+    → the same-keyed block in RULES.md. Both writes are idempotent per stack — a re-run REPLACES the
+    stack's block rather than duplicating it (see `upsert_managed_block`). When the stack switches a
+    source off, its now-stale block is removed from that file.
+
+    No-op (returns `[]`, and does NOT create the agent dir) when the stack has neither identity nor
+    any non-empty rule. `agent_dir` defaults to the shared host `~/.omp/agent` (test seam).
+    """
+    agent_dir = agent_dir or _default_omp_agent_dir()
+
+    rule_parts: list[str] = []
+    for rule_path in rules or []:
+        body = rule_path.read_text(encoding="utf-8").strip()
+        if not body:
+            continue
+        rule_parts.append(f"## Rule: {_rule_label(rule_path, profile_dir)}\n\n{body}")
+    rules_body = "\n\n".join(rule_parts)
+
+    identity = instructions.strip() if instructions else ""
+    if not identity and not rules_body:
+        return []
+
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+
+    append_system = agent_dir / _OMP_APPEND_SYSTEM_FILE
+    if identity:
+        _upsert_block_file(append_system, stack_name, identity)
+        written.append(append_system)
+    else:
+        _remove_block_file(append_system, stack_name)
+
+    rules_file = agent_dir / _OMP_RULES_FILE
+    if rules_body:
+        _upsert_block_file(rules_file, stack_name, rules_body)
+        written.append(rules_file)
+    else:
+        _remove_block_file(rules_file, stack_name)
+
+    return written
+
+
 def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
     """Build the settings.json `hooks` block from each recipe's declared `hooks:` (GAP 2).
 

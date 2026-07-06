@@ -16,6 +16,7 @@ from harnessed.emit import (
     write_codex_agents_md,
     CODEX_AGENTS_MAX_BYTES,
     write_mcp_json,
+    write_omp_identity,
     write_opencode_persona,
     write_settings_json,
     write_hatago_config,
@@ -188,6 +189,91 @@ class TestWriteCodexAgentsMd:
         assert len(data) <= CODEX_AGENTS_MAX_BYTES
         assert b"truncated" in data
         assert warnings and "truncated" in warnings[0]
+
+
+class TestWriteOmpIdentity:
+    def _rule(self, profile_dir: Path, name: str, body: str) -> Path:
+        p = profile_dir / ".claude" / "rules" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body, encoding="utf-8")
+        return p
+
+    def test_writes_delimiter_blocks_for_identity_and_rules(self, tmp_path):
+        agent = tmp_path / "agent"
+        r1 = self._rule(tmp_path, "coding-principles/RULE.md", "Keep changes surgical.")
+        r2 = self._rule(tmp_path, "signed-commits/RULE.md", "All commits must be signed.")
+
+        written = write_omp_identity(
+            tmp_path, "release-bot", "You are the omp release-bot.", [r1, r2], agent_dir=agent
+        )
+
+        append_system = agent / "APPEND_SYSTEM.md"
+        rules_file = agent / "RULES.md"
+        assert written == [append_system, rules_file]
+
+        sys_text = append_system.read_text()
+        assert "<!-- BEGIN harnessed:release-bot -->" in sys_text
+        assert "<!-- END harnessed:release-bot -->" in sys_text
+        assert "You are the omp release-bot." in sys_text
+
+        rules_text = rules_file.read_text()
+        assert "<!-- BEGIN harnessed:release-bot -->" in rules_text
+        assert "## Rule: coding-principles/RULE.md" in rules_text
+        assert "Keep changes surgical." in rules_text
+        assert "## Rule: signed-commits/RULE.md" in rules_text
+        assert "All commits must be signed." in rules_text
+
+    def test_second_run_replaces_block_not_duplicated(self, tmp_path):
+        agent = tmp_path / "agent"
+        r1 = self._rule(tmp_path, "a/RULE.md", "first rule body")
+        write_omp_identity(tmp_path, "s1", "identity v1", [r1], agent_dir=agent)
+
+        # Re-run with changed content for the SAME stack.
+        r1.write_text("second rule body", encoding="utf-8")
+        write_omp_identity(tmp_path, "s1", "identity v2", [r1], agent_dir=agent)
+
+        sys_text = (agent / "APPEND_SYSTEM.md").read_text()
+        assert sys_text.count("<!-- BEGIN harnessed:s1 -->") == 1
+        assert "identity v2" in sys_text
+        assert "identity v1" not in sys_text
+
+        rules_text = (agent / "RULES.md").read_text()
+        assert rules_text.count("<!-- BEGIN harnessed:s1 -->") == 1
+        assert "second rule body" in rules_text
+        assert "first rule body" not in rules_text
+
+    def test_preserves_other_stacks_block(self, tmp_path):
+        agent = tmp_path / "agent"
+        write_omp_identity(tmp_path, "alpha", "alpha identity", [], agent_dir=agent)
+        write_omp_identity(tmp_path, "beta", "beta identity", [], agent_dir=agent)
+
+        sys_text = (agent / "APPEND_SYSTEM.md").read_text()
+        assert "<!-- BEGIN harnessed:alpha -->" in sys_text
+        assert "<!-- BEGIN harnessed:beta -->" in sys_text
+        assert "alpha identity" in sys_text
+        assert "beta identity" in sys_text
+
+    def test_noop_when_no_identity_and_no_rules(self, tmp_path):
+        agent = tmp_path / "agent"
+        assert write_omp_identity(tmp_path, "s1", None, [], agent_dir=agent) == []
+        assert not agent.exists()
+
+    def test_empty_rules_are_skipped(self, tmp_path):
+        agent = tmp_path / "agent"
+        blank = self._rule(tmp_path, "blank/RULE.md", "   \n")
+        assert write_omp_identity(tmp_path, "s1", None, [blank], agent_dir=agent) == []
+        assert not agent.exists()
+
+    def test_switching_source_off_removes_stale_block(self, tmp_path):
+        agent = tmp_path / "agent"
+        r1 = self._rule(tmp_path, "a/RULE.md", "rule body")
+        write_omp_identity(tmp_path, "s1", "identity text", [r1], agent_dir=agent)
+
+        # Re-run with rules dropped: RULES.md block for s1 goes away; identity stays.
+        written = write_omp_identity(tmp_path, "s1", "identity text", [], agent_dir=agent)
+        assert written == [agent / "APPEND_SYSTEM.md"]
+        assert "<!-- BEGIN harnessed:s1 -->" not in (agent / "RULES.md").read_text()
+        assert "<!-- BEGIN harnessed:s1 -->" in (agent / "APPEND_SYSTEM.md").read_text()
 
 
 class TestWriteMcpJson:
