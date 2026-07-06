@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../../../schemas/service.schema.json
+# Service: gbrain — a shared, long-lived knowledge brain sidecar (plan 04-01 / GAP 5).
+#
+# GBrain is unambiguously a shared, instance-independent brain, not a per-project tool: its data
+# lives in a brain repo + `~/.gbrain/` config, never in a project dir, and multiple coding agents
+# connect to ONE running brain (`claude+gbrain` and `omp+gbrain` read and write the same memory).
+# That makes it a SERVICE: its own image/container/volume, host-published, with a lifecycle
+# independent of any instance — the same shape as `ping` and `hindsight`.
+#
+# v1 (this): ONE gbrain app container + an OPERATOR-SUPPLIED external Postgres+pgvector
+# (`DATABASE_URL` → Supabase / Neon / self-hosted pgvector). The DB is out-of-band; harnessed does
+# not manage it. PGLite is a dead end for a network service — `gbrain serve --http` is Postgres-only
+# (upstream SECURITY.md: `--http` fails fast on PGLite; the auth/audit tables don't exist there).
+# v2 (deferred, GAP 7) ships a managed Postgres+pgvector sidecar via a compose file.
+#
+# The brain repo (markdown, the system of record) + `~/.gbrain/` config persist in the service
+# volume; the Postgres retrieval index lives in the operator's external DB.
+#
+# Port 3112 is the stress-test allocation (agentmemory 3111, gbrain 3112). OAuth discovery
+# (`/.well-known/oauth-authorization-server`) is an unauthenticated 200 — it confirms the HTTP
+# server is up without needing the bearer token.
+name: gbrain
+image: harnessed-gbrain:latest      # service's own image lineage (built from its Dockerfile)
+volume: gbrain-data                 # brain repo (markdown) + ~/.gbrain config.
+port: 3112
+healthcheck: "curl -sf http://localhost:3112/.well-known/oauth-authorization-server || exit 1"
