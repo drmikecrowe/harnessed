@@ -77,16 +77,42 @@ def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
     return out
 
 
-def required_settings(servers: list[McpServer], recipes: list[Recipe] | None = None) -> dict:
+# Stack `permissions:` → Claude Code settings.json `permissions.defaultMode` (bd main-c5g). Unset
+# (or an unrecognized value) maps to the historical harnessed baseline `acceptEdits` so nothing
+# regresses; the three authored modes map explicitly.
+_PERMISSION_DEFAULT_MODE = {
+    "prompt": "default",
+    "auto": "acceptEdits",
+    "yolo": "bypassPermissions",
+}
+
+
+def _permission_default_mode(permissions: str | None) -> str:
+    """Map a stack's `permissions:` value to a Claude `permissions.defaultMode` (bd main-c5g).
+
+    None (unset) → `acceptEdits`, preserving the prior always-auto-accept behaviour in a disposable
+    container. prompt→default, auto→acceptEdits, yolo→bypassPermissions. An unrecognized value falls
+    back to `acceptEdits` rather than emitting an invalid mode.
+    """
+    if permissions is None:
+        return "acceptEdits"
+    return _PERMISSION_DEFAULT_MODE.get(permissions, "acceptEdits")
+
+
+def required_settings(
+    servers: list[McpServer],
+    recipes: list[Recipe] | None = None,
+    permissions: str | None = None,
+) -> dict:
     """harnessed's REQUIRED settings.json contribution — the *only* thing the harness must add on
     top of whatever a recipe/base installer baked.
 
     Contributions:
-      - `permissions.defaultMode: acceptEdits` — ALWAYS present. Every isolated container defaults
-        to auto-accept-edits mode; the instance is disposable, so per-edit approval prompts add
-        friction without protection. A recipe/base that baked its own defaultMode keeps it (this is
-        a floor, not an override — see `merge_settings`). Per-stack override (prompt/yolo) is future
-        work — see bd main-c5g.
+      - `permissions.defaultMode` — ALWAYS present, derived from the stack's `permissions:` via
+        `_permission_default_mode` (default `acceptEdits` when unset). Every isolated container is
+        disposable, so per-edit approval prompts add friction without protection; a stack may widen
+        (`yolo`) or narrow (`prompt`) this. A recipe/base that baked its own defaultMode keeps it
+        (this is a floor, not an override — see `merge_settings`).
       - the hatago hub permission grant, only when the stack actually has servers (no servers →
         hatago exposes nothing → no grant needed). The server-level wildcard `mcp__<hub>` allows
         every tool hatago exposes; the hub's child tool names are only known at runtime, so the
@@ -97,7 +123,7 @@ def required_settings(servers: list[McpServer], recipes: list[Recipe] | None = N
     use it.
     """
     out: dict = {}
-    perms: dict = {"defaultMode": "acceptEdits"}
+    perms: dict = {"defaultMode": _permission_default_mode(permissions)}
     if servers:
         perms["allow"] = [f"mcp__{HATAGO_MCP_KEY}"]
     out["permissions"] = perms
@@ -107,7 +133,12 @@ def required_settings(servers: list[McpServer], recipes: list[Recipe] | None = N
     return out
 
 
-def write_settings_json(profile_dir: Path, servers: list[McpServer], recipes: list[Recipe] | None = None) -> Path:
+def write_settings_json(
+    profile_dir: Path,
+    servers: list[McpServer],
+    recipes: list[Recipe] | None = None,
+    permissions: str | None = None,
+) -> Path:
     """Emit the assemble-time `settings.json` FLOOR — pre-approve the hatago hub's MCP tools and
     declare any recipe-contributed hooks (GAP 2).
 
@@ -120,7 +151,7 @@ def write_settings_json(profile_dir: Path, servers: list[McpServer], recipes: li
     if no recipe/base baked a `settings.json`, this floor stands unchanged.
     """
     out = profile_dir / "settings.json"
-    _write_json(out, required_settings(servers, recipes))
+    _write_json(out, required_settings(servers, recipes, permissions))
     return out
 
 

@@ -170,6 +170,54 @@ class TestRequiredSettings:
         assert required_settings([McpServer(name="time", command="pnpm")])["permissions"]["defaultMode"] == "acceptEdits"
 
 
+class TestStackPermissionMode:
+    """bd main-c5g: the stack's `permissions:` value drives permissions.defaultMode, and survives
+    the post-build merge as a floor."""
+
+    def test_unset_permissions_keeps_prior_acceptedits(self):
+        # Regression floor: no `permissions:` on the stack → the historical auto-accept default.
+        assert required_settings([], permissions=None)["permissions"]["defaultMode"] == "acceptEdits"
+
+    def test_prompt_maps_to_default(self):
+        assert required_settings([], permissions="prompt")["permissions"]["defaultMode"] == "default"
+
+    def test_auto_maps_to_acceptedits(self):
+        assert required_settings([], permissions="auto")["permissions"]["defaultMode"] == "acceptEdits"
+
+    def test_yolo_maps_to_bypass(self):
+        assert required_settings([], permissions="yolo")["permissions"]["defaultMode"] == "bypassPermissions"
+
+    def test_unknown_value_falls_back_to_acceptedits(self):
+        # An unrecognized mode never emits an invalid defaultMode — it degrades to the baseline.
+        assert required_settings([], permissions="wat")["permissions"]["defaultMode"] == "acceptEdits"
+
+    def test_write_settings_json_emits_stack_mode(self, tmp_path):
+        out = write_settings_json(tmp_path, [], None, "yolo")
+        data = json.loads(out.read_text())
+        assert data["permissions"]["defaultMode"] == "bypassPermissions"
+
+    def test_yolo_mode_survives_merge_against_recipe_baked_settings(self):
+        # A recipe baked its own settings.json (hooks + an allow grant) but NO defaultMode — the
+        # stack's yolo floor must land in the final merged file.
+        required = write_settings_json_dict(permissions="yolo")
+        baked = {"permissions": {"allow": ["mcp__other"]}, "hooks": {"PreToolUse": [{"matcher": "Bash"}]}}
+        merged = merge_settings(baked, required)
+        assert merged["permissions"]["defaultMode"] == "bypassPermissions"
+        # baked content is still carried through verbatim
+        assert merged["hooks"] == {"PreToolUse": [{"matcher": "Bash"}]}
+
+    def test_recipe_baked_defaultmode_still_wins_over_stack(self):
+        # Floor, not override: a recipe that explicitly baked a mode keeps it even under yolo.
+        required = write_settings_json_dict(permissions="yolo")
+        baked = {"permissions": {"defaultMode": "plan"}}
+        assert merge_settings(baked, required)["permissions"]["defaultMode"] == "plan"
+
+
+def write_settings_json_dict(**kwargs):
+    """The required-settings dict for a stack with the given `permissions:` (test helper)."""
+    return required_settings([], None, kwargs.get("permissions"))
+
+
 class TestReadBakedSettings:
     def test_none_text_returns_none_silently(self):
         warns: list[str] = []
