@@ -191,7 +191,7 @@ class TestLoadAgent:
             load_stack(d)
 
     def test_all_valid_harnesses_load(self, tmp_path):
-        for harness in ("claude", "omp", "opencode", "gemini", "antigravity", "codex"):
+        for harness in ("claude", "omp", "opencode", "antigravity", "codex"):
             d = tmp_path / harness
             d.mkdir()
             (d / "stack.yaml").write_text(f"name: {harness}-stack\nharness: {harness}\nrecipes: []\n")

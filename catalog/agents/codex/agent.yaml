@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../schemas/agent.schema.json
+type: agent
+harness: codex
+image: harnessed-codex
+dockerfile: catalog/base/Dockerfile.harnessed-codex
+description: >
+  OpenAI Codex CLI harness. FROM harnessed-base + the codex CLI via mise (npm:@openai/codex).
+  Reaches hatago via a baked ~/.codex/config.toml ([mcp_servers.hatago] url); does NOT natively
+  consume Claude skills/commands (reads AGENTS.md + its own ~/.codex/prompts format instead).

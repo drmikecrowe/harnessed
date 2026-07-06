@@ -45,10 +45,9 @@ def _resolve_dir(root: Path | None, kind: str, name: str) -> Path:
 #   - omp      — Claude hooks/skills via the pre-installed claude-hooks-bridge.
 #   - opencode — reads .claude/skills/**/SKILL.md + ~/.claude/CLAUDE.md natively; MCP via the
 #                image-baked ~/.config/opencode config (it ignores .mcp.json).
-#   - gemini   — MCP via the image-baked ~/.gemini/settings.json (mcpServers → hatago); Claude
-#                skills/commands are NOT natively consumed (its native assets differ).
 #   - antigravity (agy) — MCP via the image-baked ~/.gemini/config/mcp_config.json (serverUrl →
-#                hatago); Claude skills/commands are NOT natively consumed.
+#                hatago); Claude skills/commands are NOT natively consumed. Google's harness —
+#                supersedes the standalone gemini-cli harness (removed).
 #   - codex    — MCP via the image-baked ~/.codex/config.toml ([mcp_servers.hatago] url → hatago,
 #                native streamable-HTTP); reads AGENTS.md but NOT Claude skills/commands.
 # No separate profile dir, no re-authoring for any harness.
@@ -56,7 +55,6 @@ HARNESS_CONFIG_DIR = {
     "claude": ".claude",
     "omp": ".claude",
     "opencode": ".claude",
-    "gemini": ".claude",
     "antigravity": ".claude",
     "codex": ".claude",
 }

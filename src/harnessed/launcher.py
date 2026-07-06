@@ -42,7 +42,7 @@ from .schema import (
 
 app = typer.Typer(
     name="harnessed",
-    help="Launch composable harness stacks (claude/omp/opencode/gemini/antigravity/codex + hatago MCP hub).",
+    help="Launch composable harness stacks (claude/omp/opencode/antigravity/codex + hatago MCP hub).",
     add_completion=False,
 )
 
@@ -63,7 +63,6 @@ _HARNESS_ATTACH_CMD = {
     # the bind-mounted ~/.omp/agent. We share the host's default omp profile (auth + usage + sessions).
     "omp": "omp",
     "opencode": "opencode",
-    "gemini": "gemini",
     "antigravity": "agy",
     "codex": "codex",
 }
@@ -1873,7 +1872,7 @@ def test_stack(
 @app.command("new")
 def new_stack(
     stack: str = typer.Argument(..., help="Stack name"),
-    harness: str = typer.Option("claude", "--harness", help="Harness (claude|omp|opencode|gemini|antigravity|codex)"),
+    harness: str = typer.Option("claude", "--harness", help="Harness (claude|omp|opencode|antigravity|codex)"),
     recipes: str = typer.Option("", "--recipes", help="Comma-joined recipe names"),
 ) -> None:
     """Scaffold a stack manifest in stacks/<name>/stack.yaml."""

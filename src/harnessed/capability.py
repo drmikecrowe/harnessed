@@ -317,21 +317,18 @@ def _llm_cmd(harness: str, prompt: str) -> list[str]:
     claude      → claude -p <prompt> --output-format json
     omp         → omp    -p <prompt> --mode json
     opencode    → opencode run <prompt> --format json
-    gemini      → gemini -p <prompt> --output-format json
     antigravity → agy    -p <prompt>
     codex       → codex exec <prompt>
 
     The PRIMARY MCP/skill checks do not use this — only the fallback when the machine-readable
     sources are empty. Callers append harness-specific isolation flags (claude: --mcp-config +
-    --strict-mcp-config; omp: --profile; opencode/gemini/antigravity/codex: none — each reads its
+    --strict-mcp-config; omp: --profile; opencode/antigravity/codex: none — each reads its
     own image-baked MCP config) before rendering to a bash snippet for `_exec`.
     """
     if harness == "omp":
         return ["omp", "-p", prompt, "--mode", "json"]
     if harness == "opencode":
         return ["opencode", "run", prompt, "--format", "json"]
-    if harness == "gemini":
-        return ["gemini", "-p", prompt, "--output-format", "json"]
     if harness == "antigravity":
         return ["agy", "-p", prompt]
     if harness == "codex":
@@ -453,7 +450,7 @@ def _mcp_from_llm(instance: str, harness: str = "claude") -> dict[str, str]:
         argv += ["--profile", instance]
     elif harness == "claude":
         argv += ["--mcp-config", f"{CONTAINER_HOME}/.claude/.mcp.json", "--strict-mcp-config"]
-    # opencode/gemini/antigravity/codex: no isolation flags — each reads its own image-baked MCP config.
+    # opencode/antigravity/codex: no isolation flags — each reads its own image-baked MCP config.
     raw = _exec(instance, _llm_cmd_str(argv), timeout=180)
     names = _names_from_llm_json(raw)
     return {name: "connected (llm backstop)" for name in names}

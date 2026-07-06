@@ -37,7 +37,7 @@
   "$defs": {
     "harness": {
       "type": "string",
-      "enum": ["claude", "omp", "opencode", "gemini", "antigravity", "codex"]
+      "enum": ["claude", "omp", "opencode", "antigravity", "codex"]
     }
   }
 }

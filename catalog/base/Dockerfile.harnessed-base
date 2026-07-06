@@ -71,7 +71,7 @@ RUN mkdir -p /home/${USERNAME}/.config/pnpm && \
 USER ${USERNAME}
 
 # Core runtimes — no harness CLIs in base (IMG-01 complete). Harness CLIs (claude, omp, codex,
-# gemini) are each installed in their own harness image FROM this base.
+# opencode, antigravity) are each installed in their own harness image FROM this base.
 # Note: opencode-ai removed — non-functional in base. npm.package_manager=pnpm routes npm: tools
 # through pnpm so the managed policy governs them (RESEARCH Pitfall 5); set BEFORE `mise use -g`.
 # pnpm@11 (not @latest) so the v11 supply-chain defaults are in effect (Node ≥ 20 required; node@22 LTS).
