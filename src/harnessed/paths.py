@@ -214,7 +214,7 @@ def primary_worktree(project_path: str | Path) -> Path:
     current: str | None = None
     for line in porcelain.splitlines():
         if line.startswith("worktree "):
-            current = line[len("worktree "):]
+            current = line[len("worktree ") :]
         elif target and line == f"branch {target}" and current:
             return Path(current)
     return Path(project_path)
@@ -274,6 +274,17 @@ def extra_tools_path() -> Path:
     build context (`catalog/base/extra-tools.txt`, gitignored) for the Dockerfile COPY.
     """
     return xdg_config_home() / "harnessed" / "extra-tools.txt"
+
+
+def corp_proxy_ca_path() -> Path:
+    """User-owned corporate proxy CA bundle: $XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt.
+
+    When present, harnessed passes it as a build secret to Dockerfile.harnessed-base so the
+    base image can install it into the system trust store (update-ca-certificates). The file is
+    user-local (config dir, never the repo) and may be populated via the `--corp-proxy-ca-crt` flag
+    to `harnessed build`.
+    """
+    return xdg_config_home() / "harnessed" / "corp-proxy-ca.crt"
 
 
 def project_relpath(project_path: str | Path) -> str:

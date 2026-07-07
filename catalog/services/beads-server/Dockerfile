@@ -12,7 +12,9 @@
 # supply-chain guarantee than a hand-rolled curl + sha256sum, and the method already proven in this
 # repo. Pin the EXACT dolt release (no @latest / :latest) — 2.1.10, the version the beads recipe
 # pins and verifies working with bd 1.1.0's server engine. mise itself is pinned via MISE_VERSION.
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 ARG MISE_VERSION=v2026.7.0
 ARG DOLT_VERSION=2.1.10
@@ -39,12 +41,19 @@ RUN mkdir -p /data \
     && dolt config --global --add user.email "beads-server@harnessed.local"
 VOLUME /data
 
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # `--host 0.0.0.0` is mandatory: dolt sql-server defaults to 127.0.0.1 (in-container loopback) and
 # would be unreachable on the published port / via host.containers.internal otherwise. The port is
 # then published ONLY to the host loopback by the launcher (loopback-only, no auth — design). Default
 # Dolt root user, no password.
+#
+# HEALTHCHECK verifies MySQL-level auth (not just TCP): dolt sql-client connects through the MySQL
+# protocol with root/no-password. A stale named volume where root has a password will fail this check;
+# the entrypoint resets root auth before the server starts to prevent that state.
 EXPOSE 3307
-HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
-    CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/3307' || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=6 \
+    CMD dolt sql-client -H 127.0.0.1 -P 3307 -u root -q 'SELECT 1' 2>/dev/null || exit 1
 
-CMD ["dolt", "sql-server", "--host", "0.0.0.0", "--port", "3307", "--data-dir", "/data"]
+ENTRYPOINT ["/entrypoint.sh"]

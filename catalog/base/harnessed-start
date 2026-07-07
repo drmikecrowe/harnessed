@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Harness container entrypoint (hatago-consolidation).
+#
+# Start the hatago MCP hub in the background if a config was mounted (i.e., the stack has MCP
+# servers), then keep the container alive by exec-ing sleep infinity as PID 1.
+#
+# exec preserves the _session_active invariant: PID 1 is sleep, and only an interactive attach
+# (exec -it ... bash) gets a real pts. hatago and its stdio children have no tty, so they are
+# invisible to the "idle = no pts process" check and do not prevent prune.
+
+HATAGO_CFG="/home/harnessed/hatago.config.json"
+HATAGO_PORT="${HATAGO_PORT:-3535}"
+
+# Rootless podman on macOS maps host UIDs through the VM; git sees mounted project directories as
+# "dubious ownership". ~/.gitconfig is mounted :ro from the host, so we cannot write to it.
+# --system config (/etc/gitconfig) is set during image build (Dockerfile.harnessed-base). For
+# processes spawned here (hatago and its stdio children), also export the env-var config so they
+# inherit safe.directory without needing to read /etc/gitconfig explicitly.
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='safe.directory' GIT_CONFIG_VALUE_0='*'
+
+if [ -f "${HATAGO_CFG}" ]; then
+    # Login shell (-lc) activates mise so hatago (pnpm add -g into harnessed-base) is on PATH.
+    # nohup + & + redirect: hub survives detach; log at the path _wait_hatago's error message cites.
+    bash -lc "nohup hatago serve --http --port ${HATAGO_PORT} --config ${HATAGO_CFG} >/tmp/hatago.log 2>&1 &"
+fi
+
+exec sleep infinity

@@ -5,6 +5,7 @@ The shim must bake in an ABSOLUTE path to the `harnessed` binary so it works eve
 """
 
 import subprocess
+import json
 from pathlib import Path
 
 import pytest
@@ -353,6 +354,68 @@ class TestBuildMountArgs:
         assert not any(".codex" in a for a in args)
 
 
+class TestHostClaudeSettingsMerge:
+    def test_merges_host_settings_and_reapplies_required_grants(self, tmp_path, monkeypatch):
+        home = _home_in(monkeypatch, tmp_path)
+        prof = tmp_path / "prof"
+        prof.mkdir()
+
+        # Profile settings (image/profile defaults) include statusLine and a required hatago grant.
+        (prof / "settings.json").write_text(
+            json.dumps({
+                "statusLine": {"type": "command", "command": "ccstatusline"},
+                "permissions": {
+                    "defaultMode": "acceptEdits",
+                    "allow": ["mcp__hatago"],
+                },
+            })
+        )
+
+        # Host settings customize model + mode and deny hatago (which harnessed must re-enable).
+        host_claude = home / ".claude"
+        host_claude.mkdir(parents=True)
+        (host_claude / "settings.json").write_text(
+            json.dumps({
+                "model": "sonnet",
+                "permissions": {
+                    "defaultMode": "default",
+                    "allow": ["mcp__mytool"],
+                    "deny": ["mcp__hatago"],
+                },
+            })
+        )
+
+        required = {
+            "permissions": {
+                "defaultMode": "acceptEdits",
+                "allow": ["mcp__hatago"],
+            }
+        }
+        launcher._merge_host_claude_settings(prof, required)
+        out = json.loads((prof / "settings.json").read_text())
+
+        # Host customizations are honored.
+        assert out["model"] == "sonnet"
+        assert out["permissions"]["defaultMode"] == "default"
+        assert "mcp__mytool" in out["permissions"]["allow"]
+        # Harnessed-required grant is always present and removed from deny.
+        assert "mcp__hatago" in out["permissions"]["allow"]
+        assert "mcp__hatago" not in out["permissions"].get("deny", [])
+        # Profile-only keys survive when host does not override them.
+        assert out["statusLine"]["command"] == "ccstatusline"
+
+    def test_noop_when_host_settings_absent(self, tmp_path, monkeypatch):
+        _home_in(monkeypatch, tmp_path)
+        prof = tmp_path / "prof"
+        prof.mkdir()
+        baseline = {"permissions": {"defaultMode": "acceptEdits", "allow": ["mcp__hatago"]}}
+        (prof / "settings.json").write_text(json.dumps(baseline))
+
+        launcher._merge_host_claude_settings(prof, baseline)
+        out = json.loads((prof / "settings.json").read_text())
+        assert out == baseline
+
+
 class TestOpencodeAttachCmd:
     """`_opencode_attach_cmd` is stack-conditional (bd main-rlw): a baked persona → `opencode
     --agent <name>`; no persona → the fixed `opencode` command."""
@@ -405,16 +468,21 @@ class TestCredentialForwarding:
         home, _ = cred_home
         assert launcher._ssh_agent_args(home, home / "nope.sock") == []
 
-    def test_1password_socket_sets_auth_sock(self, cred_home):
+    def test_1password_socket_sets_auth_sock(self, cred_home, monkeypatch):
         home, socks = cred_home
+        # Force the host-os branch to linux so _op_agent_socket resolves ~/.1password/agent.sock,
+        # matching the test socket we create here. CI runs on Linux; this makes the test portable
+        # to macOS where the default path is the Group Containers dir.
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         self._mksock(home / ".1password" / "agent.sock", socks)
         args = launcher._ssh_agent_args(home, home / "nogpg.sock")
         ctr_sock = f"{self.CTR}/.1password/agent.sock"
         assert f"{home / '.1password' / 'agent.sock'}:{ctr_sock}" in args
         assert f"SSH_AUTH_SOCK={ctr_sock}" in args
 
-    def test_1password_wins_over_gpg(self, cred_home):
+    def test_1password_wins_over_gpg(self, cred_home, monkeypatch):
         home, socks = cred_home
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         self._mksock(home / ".1password" / "agent.sock", socks)
         gpg = home / "gpg.sock"
         self._mksock(gpg, socks)
@@ -424,8 +492,9 @@ class TestCredentialForwarding:
         assert f"SSH_AUTH_SOCK={self.CTR}/.gnupg-sockets/S.gpg-agent.ssh" not in args
         assert any("S.gpg-agent.ssh" in a for a in args)  # gpg socket still bind-mounted
 
-    def test_gpg_fallback_when_no_1password(self, cred_home):
+    def test_gpg_fallback_when_no_1password(self, cred_home, monkeypatch):
         home, socks = cred_home
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         gpg = home / "gpg.sock"
         self._mksock(gpg, socks)
         args = launcher._ssh_agent_args(home, gpg)
@@ -435,6 +504,7 @@ class TestCredentialForwarding:
 
     def test_yubikey_present_adds_device(self, monkeypatch):
         from types import SimpleNamespace
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 003 Device 004: ID 1050:0407 Yubico.com\n"),
@@ -448,6 +518,7 @@ class TestCredentialForwarding:
 
     def test_yubikey_absent_returns_empty(self, monkeypatch):
         from types import SimpleNamespace
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 001 Device 002: ID 8087:0029 Intel Corp.\n"),
@@ -457,6 +528,7 @@ class TestCredentialForwarding:
     def test_yubikey_no_lsusb_is_clean(self, monkeypatch):
         def boom(*a, **k):
             raise FileNotFoundError("lsusb")
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         monkeypatch.setattr(launcher.subprocess, "run", boom)
         assert launcher._yubikey_device_args() == []
 
@@ -465,6 +537,7 @@ class TestCredentialForwarding:
         # line like "Device 1050: ID 1234:5678 Acme" must NOT be selected for --device passthrough.
         from types import SimpleNamespace
         real_exists = Path.exists
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         monkeypatch.setattr(
             launcher.Path, "exists",
             lambda self: True if str(self) == "/dev/bus/usb/005/1050" else real_exists(self),
@@ -505,7 +578,7 @@ class TestCredentialForwarding:
         assert f"{home / '.config' / 'git'}:{self.CTR}/.config/git:ro" in args
         assert not any(a.endswith(".gitconfig:ro") or "/.gitconfig:" in a for a in args)
 
-    def test_gh_hosts_yml_mounted_ro(self, tmp_path, monkeypatch):
+    def test_gh_hosts_yml_mounted_ro(self, tmp_path, monkeypatch, capsys):
         # gh's oauth token lives in ~/.config/gh/hosts.yml — forward just that file, ro, so `gh` in
         # the container authenticates as the host user. No wider gh config, no token in env.
         self._isolate(monkeypatch)
@@ -514,6 +587,36 @@ class TestCredentialForwarding:
         (home / ".config" / "gh" / "hosts.yml").write_text("github.com:\n  oauth_token: x\n")
         args = launcher._credential_forward_args(home)
         assert f"{home / '.config' / 'gh' / 'hosts.yml'}:{self.CTR}/.config/gh/hosts.yml:ro" in args
+        # A real plaintext token is present — no keychain-storage warning should fire.
+        assert "insecure-storage" not in capsys.readouterr().err
+
+    def test_gh_hosts_keychain_backed_warns(self, tmp_path, monkeypatch, capsys):
+        # Modern `gh` stores the token in the OS credential store (macOS Keychain, etc.) by default,
+        # leaving hosts.yml with real entries but no `oauth_token` field. The container can't reach
+        # the host keychain, so `gh` inside it has no usable token — warn and point at the fix.
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        (home / ".config" / "gh").mkdir(parents=True)
+        (home / ".config" / "gh" / "hosts.yml").write_text(
+            "github.com:\n    git_protocol: https\n    users:\n        someuser:\n    user: someuser\n"
+        )
+        args = launcher._credential_forward_args(home)
+        # Still mounted — the file may become useful after the user fixes storage on the host.
+        assert f"{home / '.config' / 'gh' / 'hosts.yml'}:{self.CTR}/.config/gh/hosts.yml:ro" in args
+        assert "insecure-storage" in capsys.readouterr().err
+
+    def test_gh_hosts_missing_plaintext_token_helper(self, tmp_path):
+        keychain_backed = tmp_path / "keychain.yml"
+        keychain_backed.write_text("github.com:\n    users:\n        someuser:\n")
+        assert launcher._gh_hosts_missing_plaintext_token(keychain_backed) is True
+
+        plaintext = tmp_path / "plaintext.yml"
+        plaintext.write_text("github.com:\n    oauth_token: x\n")
+        assert launcher._gh_hosts_missing_plaintext_token(plaintext) is False
+
+        unparseable = tmp_path / "bad.yml"
+        unparseable.write_text("key: [1, 2\n")  # unclosed flow sequence -> ParserError
+        assert launcher._gh_hosts_missing_plaintext_token(unparseable) is False
 
     def test_gnupg_nonsecret_files_mounted_but_not_keyring(self, tmp_path, monkeypatch):
         # Security regression guard (review Finding 2): the whole ~/.gnupg mount leaked
