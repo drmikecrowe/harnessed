@@ -280,6 +280,23 @@ class TestLoadAgent:
             stk = load_stack(d)
             assert stk.harness == harness
 
+    def test_invalid_permissions_raises(self, tmp_path):
+        d = tmp_path / "bad-permissions"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: bad\nrecipes: []\npermissions: ask\n")
+        with pytest.raises(SchemaError, match="ask"):
+            load_stack(d)
+
+    def test_all_valid_permissions_load(self, tmp_path):
+        for permissions in ("prompt", "auto", "yolo"):
+            d = tmp_path / permissions
+            d.mkdir()
+            (d / "stack.yaml").write_text(
+                f"name: {permissions}-stack\nrecipes: []\npermissions: {permissions}\n"
+            )
+            stk = load_stack(d)
+            assert stk.permissions == permissions
+
 
 class TestParseServerTransportValidation:
     """_parse_servers rejects invalid transports (W2.2 schema gap C6)."""
