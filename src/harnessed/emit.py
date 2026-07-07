@@ -670,7 +670,13 @@ def write_derived_dockerfile(
             "    && cd /tmp/hatago-src \\",
             f"    && printf '{allow_builds}' >> pnpm-workspace.yaml \\",
             '    && pnpm install --no-frozen-lockfile --filter "@himorishige/hatago-mcp-hub..." \\',
-            "    && pnpm --filter @himorishige/hatago-mcp-hub run build \\",
+            # The trailing `...` here (unlike the install filter's own `...`, kept for clarity) is
+            # load-bearing: mcp-hub's devDependencies are its workspace:* siblings (hatago-core,
+            # -hub, -runtime, -server, -transport), each with its OWN `build` script producing the
+            # dist/ that mcp-hub's tsdown build resolves them against. Building mcp-hub alone left
+            # those imports unresolved (rollup silently treats them as external) — a CLI that
+            # crashes at runtime since the siblings are devDependencies, never installed downstream.
+            '    && pnpm --filter "@himorishige/hatago-mcp-hub..." run build \\',
             "    && pnpm add -g file:/tmp/hatago-src/packages/mcp-hub \\",
             "    && cd / && rm -rf /tmp/hatago-src",
             "",
