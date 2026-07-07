@@ -70,7 +70,13 @@ class TestWriteDerivedDockerfile:
         assert "allowBuilds:\\n  esbuild: true\\n  sharp: false\\n  workerd: false" in body
         assert 'pnpm install --filter "@himorishige/hatago-mcp-hub..."' in body
         assert "--no-frozen-lockfile" not in body
-        assert 'pnpm --filter "@himorishige/hatago-mcp-hub..." run build' in body
+        # --workspace-concurrency=1 forces one-package-at-a-time topological build order, so the
+        # dts-fixup can run between each package's build and its dependents' (tsdown emits
+        # content-hashed .d.ts filenames that break a dependent's `tsc` type resolution otherwise).
+        assert 'pnpm --filter "@himorishige/hatago-mcp-hub..." --workspace-concurrency=1 exec' in body
+        assert "pnpm run build &&" in body
+        assert "--if-present" not in body
+        assert 'find dist -type f -regextype posix-extended -regex' in body
         assert "pnpm add -g file:/tmp/hatago-src/packages/mcp-hub" in body
 
     def test_hatago_override_without_ref_clones_default_branch(self, tmp_path):
