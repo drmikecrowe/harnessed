@@ -650,22 +650,25 @@ def write_derived_dockerfile(
         #    packages/mcp-hub, and its build (tsdown) needs its workspace:* sibling packages
         #    resolved, which a bare git-spec install can't do.
         # So: shallow-clone the ref, install ONLY the target package + its workspace:* deps (`pnpm
-        # install --filter <pkg>...` — excludes the repo's examples/apps workspace members, whose
-        # own deps — sharp, workerd — would otherwise also need a build-script approval below),
-        # build the target package, then pnpm-link that built directory in globally.
+        # install --filter <pkg>...` — excludes the repo's examples/apps workspace members), build
+        # the target package, then pnpm-link that built directory in globally.
         #
         # pnpm v11 (pinned in the base image) denies dependency postinstall/build scripts by
-        # default (ERR_PNPM_IGNORED_BUILDS) unless explicitly allowed via pnpm-workspace.yaml's
-        # `allowBuilds` map. tsdown (the target package's build tool) needs esbuild's postinstall
-        # to fetch its platform binary, so approve it before installing.
+        # default (ERR_PNPM_IGNORED_BUILDS) unless explicitly reviewed via pnpm-workspace.yaml's
+        # `allowBuilds` map — and it evaluates this against the WHOLE workspace lockfile, not just
+        # the --filter-ed subset. tsdown (the target package's build tool) needs esbuild's
+        # postinstall to fetch its platform binary, so approve it. sharp/workerd belong to the
+        # repo's examples/apps members (unrelated to what we're building) — decline them explicitly
+        # rather than leave them "unreviewed" (which errors) or loosen the strict-builds gate.
         owner_repo = stack.hatago["repo"].removeprefix("github:")
         ref = stack.hatago.get("ref")
         branch_flag = f' --branch "{ref}"' if ref else ""
+        allow_builds = "allowBuilds:\\n  esbuild: true\\n  sharp: false\\n  workerd: false\\n"
         lines += [
             f"# --- stack override: hatago MCP hub ({stack.name} stack.yaml `hatago:`) ---",
             "RUN git clone --depth 1" + branch_flag + f' "https://github.com/{owner_repo}.git" /tmp/hatago-src \\',
             "    && cd /tmp/hatago-src \\",
-            "    && printf 'allowBuilds:\\n  esbuild: true\\n' >> pnpm-workspace.yaml \\",
+            f"    && printf '{allow_builds}' >> pnpm-workspace.yaml \\",
             '    && pnpm install --no-frozen-lockfile --filter "@himorishige/hatago-mcp-hub..." \\',
             "    && pnpm --filter @himorishige/hatago-mcp-hub run build \\",
             "    && pnpm add -g file:/tmp/hatago-src/packages/mcp-hub \\",
