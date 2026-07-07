@@ -52,7 +52,17 @@
       "additionalProperties": true,
       "properties": {
         "logLevel": { "type": "string" },
-        "mcpServers": { "type": "object", "additionalProperties": true }
+        "mcpServers": { "type": "object", "additionalProperties": true },
+        "repo": {
+          "description": "Override hatago's own package source (a pnpm git-dep shorthand, e.g. 'github:user/hatago-mcp-hub') for testing a personal fork — installed as an extra layer on top of the base image's pinned release, for this stack only. Requires `ref`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "description": "Pinned git ref for `repo` — a tag (e.g. v1.2.3) or commit SHA. Never a floating branch ('main'/'master'/'HEAD') or 'latest'; the build rejects those.",
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "state": {
