@@ -18,9 +18,9 @@
       "default": "claude"
     },
     "permissions": {
-      "description": "Permission mode written into the profile. 'prompt' (default) asks before tool use; 'yolo' writes per-harness skip-permission config — safe in an isolated instance.",
+      "description": "Permission mode written into the profile. 'prompt' (default) asks before tool use; 'auto' accepts edits without prompting; 'yolo' writes per-harness skip-permission config — safe in an isolated instance.",
       "type": "string",
-      "enum": ["prompt", "yolo"]
+      "enum": ["prompt", "auto", "yolo"]
     },
     "instructions": {
       "description": "Stack-level identity text emitted into the profile's .claude/CLAUDE.md at assemble time — 'what is this assembled agent'. Distinct from recipe-level rules (per-recipe RULE.md files). Claude-only.",
