@@ -46,6 +46,15 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "hatago": {
+      "description": "Raw passthrough merged into the assembled hatago.config.json — lets a stack add or override `mcpServers` entries hatago proxies/spawns, on top of whatever the stack's recipes declared (stack entries win on name collision). Shape mirrors hatago's own config file. Put secrets in `${VAR}` placeholders (resolved at launch from ~/.config/harnessed/.env.schema via varlock), never literal values — and keep creds-bearing stacks in the user overlay catalog, not a shared repo-catalog stack.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "logLevel": { "type": "string" },
+        "mcpServers": { "type": "object", "additionalProperties": true }
+      }
+    },
     "state": {
       "description": "State and lifecycle options. Default persistent; `--fresh` overrides at runtime.",
       "type": "object",

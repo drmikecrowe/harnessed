@@ -1717,7 +1717,9 @@ def launch(
     )
     inst_cfg_dir = prof / ".instances" / inst
     inst_cfg_dir.mkdir(parents=True, exist_ok=True)
-    hatago_cfg_host = emit.write_hatago_config(inst_cfg_dir, launch_servers, project_path)
+    hatago_cfg_host = emit.write_hatago_config(
+        inst_cfg_dir, launch_servers, project_path, stack_hatago=stk.hatago
+    )
     hatago_cfg_ctr = str(paths.hatago_config_container())
 
     # Filter out --userns=keep-id from member (pod-level property). Mount the hatago config (ro) into

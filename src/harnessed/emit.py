@@ -581,21 +581,31 @@ def _hatago_entry(server: McpServer, project_path: str | Path | None = None) -> 
 
 
 def write_hatago_config(
-    profile_dir: Path, servers: list[McpServer], project_path: str | Path | None = None
+    profile_dir: Path,
+    servers: list[McpServer],
+    project_path: str | Path | None = None,
+    stack_hatago: dict | None = None,
 ) -> Path:
     """Emit hatago.config.json declaring each server as a hatago child/proxy.
 
     `project_path` (bd main-u5d) pins each stdio child's `cwd` to the mirrored project path — see
     `_hatago_entry`. The assemble-time (committed) config is project-agnostic and passes None; the
     launcher regenerates a per-instance config with the real project path at launch time.
+
+    `stack_hatago` is the stack's raw `hatago:` block (already in hatago's native config shape) — it
+    is merged in LAST so a stack can add or override `mcpServers` entries on top of whatever the
+    stack's recipes declared (name collision → stack wins). `logLevel` is likewise overridable.
     """
+    stack_hatago = stack_hatago or {}
+    merged_servers = {s.name: _hatago_entry(s, project_path) for s in servers}
+    merged_servers.update(stack_hatago.get("mcpServers", {}) or {})
     out = profile_dir / "hatago.config.json"
     _write_json(
         out,
         {
             "version": 1,
-            "logLevel": "info",
-            "mcpServers": {s.name: _hatago_entry(s, project_path) for s in servers},
+            "logLevel": stack_hatago.get("logLevel", "info"),
+            "mcpServers": merged_servers,
         },
     )
     return out

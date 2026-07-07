@@ -560,6 +560,13 @@ class Stack:
     # honored ONLY from the user-overlay catalog, never a shared repo-catalog stack (see the launcher)
     # — the key owner, not a third-party stack author, must consent to mounting a private key.
     ssh_keys: list[str] = field(default_factory=list)
+    # Raw passthrough into the assembled hatago.config.json — lets a stack add or override
+    # `mcpServers` entries hatago proxies/spawns, on top of whatever the stack's recipes declared.
+    # Shape mirrors hatago's own config file (`mcpServers`, optionally `logLevel`). Stack entries win
+    # on name collision with a recipe-declared server (see emit.write_hatago_config). Secrets belong
+    # in `${VAR}` placeholders (same convention as McpServer.url_env), resolved at launch from
+    # ~/.config/harnessed/.env.schema via varlock → --env-file, never written literally here.
+    hatago: dict = field(default_factory=dict)
     state: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
 
@@ -743,6 +750,7 @@ def load_stack(stack_dir: Path) -> Stack:
         instructions=raw.get("instructions"),
         forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
         ssh_keys=ssh_keys,
+        hatago=dict(raw.get("hatago", {}) or {}),
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
     )

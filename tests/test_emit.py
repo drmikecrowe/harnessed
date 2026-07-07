@@ -372,6 +372,31 @@ class TestWriteHatagoConfig:
         data = json.loads((tmp_path / "hatago.config.json").read_text())
         assert data["version"] == 1
 
+    def test_stack_hatago_adds_extra_server(self, tmp_path):
+        servers = [McpServer(name="time", command="pnpm")]
+        stack_hatago = {"mcpServers": {"atlassian": {"command": "npx", "args": ["-y", "mcp-remote"]}}}
+        write_hatago_config(tmp_path, servers, stack_hatago=stack_hatago)
+        data = json.loads((tmp_path / "hatago.config.json").read_text())
+        assert data["mcpServers"]["time"]["command"] == "pnpm"
+        assert data["mcpServers"]["atlassian"]["command"] == "npx"
+
+    def test_stack_hatago_overrides_recipe_server_by_name(self, tmp_path):
+        servers = [McpServer(name="time", command="pnpm", args=["dlx", "@time/server"])]
+        stack_hatago = {"mcpServers": {"time": {"command": "custom-override"}}}
+        write_hatago_config(tmp_path, servers, stack_hatago=stack_hatago)
+        data = json.loads((tmp_path / "hatago.config.json").read_text())
+        assert data["mcpServers"]["time"] == {"command": "custom-override"}
+
+    def test_stack_hatago_can_override_log_level(self, tmp_path):
+        write_hatago_config(tmp_path, [], stack_hatago={"logLevel": "debug"})
+        data = json.loads((tmp_path / "hatago.config.json").read_text())
+        assert data["logLevel"] == "debug"
+
+    def test_no_stack_hatago_leaves_defaults(self, tmp_path):
+        write_hatago_config(tmp_path, [])
+        data = json.loads((tmp_path / "hatago.config.json").read_text())
+        assert data["logLevel"] == "info"
+
 
 class TestRequiredSettings:
     """harnessed's sole settings contribution — the single source of truth shared by the

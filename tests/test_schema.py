@@ -177,6 +177,26 @@ class TestLoadStack:
         with pytest.raises(SchemaError, match="ssh_keys"):
             load_stack(d)
 
+    def test_hatago_default_empty(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\n")
+        assert load_stack(d).hatago == {}
+
+    def test_hatago_parsed(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text(
+            "name: s\nharness: claude\n"
+            "hatago:\n"
+            "  mcpServers:\n"
+            "    atlassian-corp:\n"
+            "      command: npx\n"
+            "      args: ['-y', 'mcp-remote']\n"
+        )
+        stack = load_stack(d)
+        assert stack.hatago["mcpServers"]["atlassian-corp"]["command"] == "npx"
+
     def test_forward_git_credentials_defaults_false(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
