@@ -1599,18 +1599,21 @@ def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> st
         f"PROJECT_DIR={shlex.quote(str(project_path))} "
         f"MAIN_REPO_DIR={shlex.quote(str(main_repo))} "
         f"CONTAINER_WORKSPACE_DIR={shlex.quote(str(mount_path))} "
-        f"HOST_WORKSPACE_DIR={shlex.quote(str(mount_path))}"
+        f"HOST_WORKSPACE_DIR={shlex.quote(str(mount_path))}",
     ]
+    # Plain exports never fail, so they're joined with `;` — `&&` is reserved for the recipe-init
+    # fail-fast blocks below, keeping it absent entirely when no recipe declares init.
+    prologue = "; ".join(parts)
     for recipe in recipes:
         if recipe.init is None:
             continue
         # `{ run; }` is a brace group (current shell — a subshell would discard exports); a non-zero
         # run prints a clear error and `exit`s the attach shell before the harness is reached.
-        parts.append(
-            f"{{ {recipe.init.run}; }} || "
+        prologue += (
+            f" && {{ {recipe.init.run}; }} || "
             f"{{ echo 'harnessed: init failed for recipe {recipe.name} — fix and relaunch' >&2; exit 1; }}"
         )
-    return " && ".join(parts)
+    return prologue
 
 
 def _persist_mounts(stack: str, project_path: Path) -> list[str]:
