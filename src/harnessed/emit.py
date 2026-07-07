@@ -649,8 +649,15 @@ def write_derived_dockerfile(
         #    field (ERR_PNPM_MISSING_PACKAGE_NAME) — the publishable package lives at
         #    packages/mcp-hub, and its build (tsdown) needs its workspace:* sibling packages
         #    resolved, which a bare git-spec install can't do.
-        # So: shallow-clone the ref, install the FULL workspace (resolves the workspace:* deps),
-        # build only the target package, then pnpm-link that built directory in globally.
+        # So: shallow-clone the ref, install ONLY the target package + its workspace:* deps (`pnpm
+        # install --filter <pkg>...` — excludes the repo's examples/apps workspace members, whose
+        # own deps — sharp, workerd — would otherwise also need a build-script approval below),
+        # build the target package, then pnpm-link that built directory in globally.
+        #
+        # pnpm v11 (pinned in the base image) denies dependency postinstall/build scripts by
+        # default (ERR_PNPM_IGNORED_BUILDS) unless explicitly allowed via pnpm-workspace.yaml's
+        # `allowBuilds` map. tsdown (the target package's build tool) needs esbuild's postinstall
+        # to fetch its platform binary, so approve it before installing.
         owner_repo = stack.hatago["repo"].removeprefix("github:")
         ref = stack.hatago.get("ref")
         branch_flag = f' --branch "{ref}"' if ref else ""
@@ -658,7 +665,8 @@ def write_derived_dockerfile(
             f"# --- stack override: hatago MCP hub ({stack.name} stack.yaml `hatago:`) ---",
             "RUN git clone --depth 1" + branch_flag + f' "https://github.com/{owner_repo}.git" /tmp/hatago-src \\',
             "    && cd /tmp/hatago-src \\",
-            "    && pnpm install --no-frozen-lockfile \\",
+            "    && printf 'allowBuilds:\\n  esbuild: true\\n' >> pnpm-workspace.yaml \\",
+            '    && pnpm install --no-frozen-lockfile --filter "@himorishige/hatago-mcp-hub..." \\',
             "    && pnpm --filter @himorishige/hatago-mcp-hub run build \\",
             "    && pnpm add -g file:/tmp/hatago-src/packages/mcp-hub \\",
             "    && cd / && rm -rf /tmp/hatago-src",

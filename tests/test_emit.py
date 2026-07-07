@@ -67,7 +67,8 @@ class TestWriteDerivedDockerfile:
         body = out.read_text()
         assert 'git clone --depth 1 --branch "feat/per-server-tool-filtering"' in body
         assert '"https://github.com/drmikecrowe/hatago-mcp-hub.git" /tmp/hatago-src' in body
-        assert "pnpm install --no-frozen-lockfile" in body
+        assert "allowBuilds:\\n  esbuild: true" in body
+        assert 'pnpm install --no-frozen-lockfile --filter "@himorishige/hatago-mcp-hub..."' in body
         assert "pnpm --filter @himorishige/hatago-mcp-hub run build" in body
         assert "pnpm add -g file:/tmp/hatago-src/packages/mcp-hub" in body
 
