@@ -639,15 +639,29 @@ def write_derived_dockerfile(
 
     if stack.hatago:
         # Override the base image's pinned hatago release (catalog/base/Dockerfile.harnessed-base)
-        # with a stack-specified repo/ref. pnpm's git-spec install (not mise's `github:` backend —
-        # that resolves GitHub Release assets, and this is typically an unreleased branch) reinstalls
-        # the same global package name, overwriting the base's version.
+        # with a stack-specified repo/ref.
+        #
+        # NEITHER of the two existing install conventions applies here:
+        #  - mise's `github:` backend (used by rtk/beads/dolt) resolves GitHub *Release* assets —
+        #    there is no release for an unmerged feature branch.
+        #  - A plain `pnpm add -g github:<owner>/<repo>#<ref>` git-spec install fails outright:
+        #    hatago-mcp-hub is a pnpm workspace monorepo whose ROOT package.json has no `name`
+        #    field (ERR_PNPM_MISSING_PACKAGE_NAME) — the publishable package lives at
+        #    packages/mcp-hub, and its build (tsdown) needs its workspace:* sibling packages
+        #    resolved, which a bare git-spec install can't do.
+        # So: shallow-clone the ref, install the FULL workspace (resolves the workspace:* deps),
+        # build only the target package, then pnpm-link that built directory in globally.
         owner_repo = stack.hatago["repo"].removeprefix("github:")
         ref = stack.hatago.get("ref")
-        git_spec = f"github:{owner_repo}#{ref}" if ref else f"github:{owner_repo}"
+        branch_flag = f' --branch "{ref}"' if ref else ""
         lines += [
             f"# --- stack override: hatago MCP hub ({stack.name} stack.yaml `hatago:`) ---",
-            f'RUN pnpm add -g "{git_spec}"',
+            "RUN git clone --depth 1" + branch_flag + f' "https://github.com/{owner_repo}.git" /tmp/hatago-src \\',
+            "    && cd /tmp/hatago-src \\",
+            "    && pnpm install --no-frozen-lockfile \\",
+            "    && pnpm --filter @himorishige/hatago-mcp-hub run build \\",
+            "    && pnpm add -g file:/tmp/hatago-src/packages/mcp-hub \\",
+            "    && cd / && rm -rf /tmp/hatago-src",
             "",
         ]
 

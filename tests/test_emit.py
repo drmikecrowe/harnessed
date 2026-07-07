@@ -55,7 +55,7 @@ class TestWriteDerivedDockerfile:
         out = write_derived_dockerfile(tmp_path, self._stack(), [])
         assert "hatago-mcp-hub" not in out.read_text() and "hatago" not in out.read_text().lower()
 
-    def test_hatago_override_emits_pnpm_git_spec_layer(self, tmp_path):
+    def test_hatago_override_clones_builds_and_links_the_workspace_package(self, tmp_path):
         stack = Stack(
             name="claude_time",
             harness="claude",
@@ -65,15 +65,20 @@ class TestWriteDerivedDockerfile:
         )
         out = write_derived_dockerfile(tmp_path, stack, [])
         body = out.read_text()
-        assert 'RUN pnpm add -g "github:drmikecrowe/hatago-mcp-hub#feat/per-server-tool-filtering"' in body
+        assert 'git clone --depth 1 --branch "feat/per-server-tool-filtering"' in body
+        assert '"https://github.com/drmikecrowe/hatago-mcp-hub.git" /tmp/hatago-src' in body
+        assert "pnpm install --no-frozen-lockfile" in body
+        assert "pnpm --filter @himorishige/hatago-mcp-hub run build" in body
+        assert "pnpm add -g file:/tmp/hatago-src/packages/mcp-hub" in body
 
-    def test_hatago_override_without_ref_uses_default_branch(self, tmp_path):
+    def test_hatago_override_without_ref_clones_default_branch(self, tmp_path):
         stack = Stack(
             name="claude_time", harness="claude", recipes=["time"], services=[],
             hatago={"repo": "github:owner/repo", "ref": None},
         )
         out = write_derived_dockerfile(tmp_path, stack, [])
-        assert 'RUN pnpm add -g "github:owner/repo"' in out.read_text()
+        body = out.read_text()
+        assert 'git clone --depth 1 "https://github.com/owner/repo.git" /tmp/hatago-src' in body
 
 
 class TestWriteClaudeMd:
