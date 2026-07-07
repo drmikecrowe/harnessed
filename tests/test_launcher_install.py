@@ -578,7 +578,7 @@ class TestCredentialForwarding:
         assert f"{home / '.config' / 'git'}:{self.CTR}/.config/git:ro" in args
         assert not any(a.endswith(".gitconfig:ro") or "/.gitconfig:" in a for a in args)
 
-    def test_gh_hosts_yml_mounted_ro(self, tmp_path, monkeypatch):
+    def test_gh_hosts_yml_mounted_ro(self, tmp_path, monkeypatch, capsys):
         # gh's oauth token lives in ~/.config/gh/hosts.yml — forward just that file, ro, so `gh` in
         # the container authenticates as the host user. No wider gh config, no token in env.
         self._isolate(monkeypatch)
@@ -587,6 +587,36 @@ class TestCredentialForwarding:
         (home / ".config" / "gh" / "hosts.yml").write_text("github.com:\n  oauth_token: x\n")
         args = launcher._credential_forward_args(home)
         assert f"{home / '.config' / 'gh' / 'hosts.yml'}:{self.CTR}/.config/gh/hosts.yml:ro" in args
+        # A real plaintext token is present — no keychain-storage warning should fire.
+        assert "insecure-storage" not in capsys.readouterr().err
+
+    def test_gh_hosts_keychain_backed_warns(self, tmp_path, monkeypatch, capsys):
+        # Modern `gh` stores the token in the OS credential store (macOS Keychain, etc.) by default,
+        # leaving hosts.yml with real entries but no `oauth_token` field. The container can't reach
+        # the host keychain, so `gh` inside it has no usable token — warn and point at the fix.
+        self._isolate(monkeypatch)
+        home = tmp_path / "home"
+        (home / ".config" / "gh").mkdir(parents=True)
+        (home / ".config" / "gh" / "hosts.yml").write_text(
+            "github.com:\n    git_protocol: https\n    users:\n        someuser:\n    user: someuser\n"
+        )
+        args = launcher._credential_forward_args(home)
+        # Still mounted — the file may become useful after the user fixes storage on the host.
+        assert f"{home / '.config' / 'gh' / 'hosts.yml'}:{self.CTR}/.config/gh/hosts.yml:ro" in args
+        assert "insecure-storage" in capsys.readouterr().err
+
+    def test_gh_hosts_missing_plaintext_token_helper(self, tmp_path):
+        keychain_backed = tmp_path / "keychain.yml"
+        keychain_backed.write_text("github.com:\n    users:\n        someuser:\n")
+        assert launcher._gh_hosts_missing_plaintext_token(keychain_backed) is True
+
+        plaintext = tmp_path / "plaintext.yml"
+        plaintext.write_text("github.com:\n    oauth_token: x\n")
+        assert launcher._gh_hosts_missing_plaintext_token(plaintext) is False
+
+        unparseable = tmp_path / "bad.yml"
+        unparseable.write_text("key: [1, 2\n")  # unclosed flow sequence -> ParserError
+        assert launcher._gh_hosts_missing_plaintext_token(unparseable) is False
 
     def test_gnupg_nonsecret_files_mounted_but_not_keyring(self, tmp_path, monkeypatch):
         # Security regression guard (review Finding 2): the whole ~/.gnupg mount leaked

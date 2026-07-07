@@ -24,6 +24,7 @@ from typing import Callable, Optional, TypeVar
 
 import typer
 from rich.console import Console
+from ruamel.yaml import YAML
 
 from . import emit
 from . import paths
@@ -50,6 +51,7 @@ app = typer.Typer(
 
 _out = Console()
 _err = Console(stderr=True)
+_yaml = YAML(typ="safe", pure=True)
 
 # --- shared image names (base; agent images come from catalog/agents/<h>/agent.yaml) ---
 # hatago is no longer a separate image — it is baked into harnessed-base and runs in-container
@@ -1457,6 +1459,33 @@ def _trusted_ssh_keys(stk_ssh_keys: list[str], from_overlay: bool, stack: str) -
     return stk_ssh_keys
 
 
+def _gh_hosts_missing_plaintext_token(gh_hosts: Path) -> bool:
+    """True when hosts.yml has host/user entries but no plaintext `oauth_token` anywhere.
+
+    Modern `gh` defaults to storing the OAuth token in the OS credential store (macOS Keychain,
+    Secret Service, Credential Manager) instead of this file, falling back to plain text only when
+    no store is available or `--insecure-storage` is passed. The container only gets this file
+    bind-mounted in (read-only, see below) — it has no access to the host's keychain — so a
+    hosts.yml with real entries but no `oauth_token` field anywhere means `gh` inside the container
+    has no usable token, even though `gh auth status` succeeds on the host. Confirmed on macOS: a
+    keychain-backed entry looks like `users: {<name>: {}}` — the token is entirely absent, not
+    present-but-empty.
+    """
+    try:
+        data = _yaml.load(gh_hosts.read_text())
+    except Exception:
+        return False  # can't parse — don't warn on a guess
+
+    def has_token(node: object) -> bool:
+        if isinstance(node, dict):
+            if "oauth_token" in node:
+                return True
+            return any(has_token(v) for v in node.values())
+        return False
+
+    return bool(data) and not has_token(data)
+
+
 def _credential_forward_args(
     home: Path | None = None, ssh_keys: list[str] | None = None, rt: str = "podman"
 ) -> list[str]:
@@ -1499,6 +1528,14 @@ def _credential_forward_args(
     gh_hosts = home / ".config" / "gh" / "hosts.yml"
     if gh_hosts.is_file():
         args += ["-v", f"{gh_hosts}:{ctr}/.config/gh/hosts.yml:ro"]
+        if _gh_hosts_missing_plaintext_token(gh_hosts):
+            _err.print(
+                "[yellow]note:[/yellow] gh config found, but no plaintext token — it's likely "
+                "stored in the host's system credential store (e.g. macOS Keychain), which this "
+                "container cannot reach. `gh` will not authenticate inside the container. Run "
+                "[bold]gh auth login --insecure-storage[/bold] (or `gh auth refresh "
+                "--insecure-storage` if already logged in) on the host to store a plaintext token."
+            )
 
     gh_config = home / ".config" / "gh" / "config.yml"
     if gh_config.is_file():
