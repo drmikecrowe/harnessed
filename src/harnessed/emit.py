@@ -637,6 +637,20 @@ def write_derived_dockerfile(
         lines.extend(filtered)
         lines.append("")
 
+    if stack.hatago:
+        # Override the base image's pinned hatago release (catalog/base/Dockerfile.harnessed-base)
+        # with a stack-specified repo/ref. pnpm's git-spec install (not mise's `github:` backend —
+        # that resolves GitHub Release assets, and this is typically an unreleased branch) reinstalls
+        # the same global package name, overwriting the base's version.
+        owner_repo = stack.hatago["repo"].removeprefix("github:")
+        ref = stack.hatago.get("ref")
+        git_spec = f"github:{owner_repo}#{ref}" if ref else f"github:{owner_repo}"
+        lines += [
+            f"# --- stack override: hatago MCP hub ({stack.name} stack.yaml `hatago:`) ---",
+            f'RUN pnpm add -g "{git_spec}"',
+            "",
+        ]
+
     if with_scan:
         # Final layer: in-image supply-chain scan (BLD-02), ADVISORY — it reports a severity summary
         # and writes a report but never fails the build (harnessed installs third-party tooling whose

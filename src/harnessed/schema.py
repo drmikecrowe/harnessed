@@ -164,6 +164,13 @@ _PERSIST_NAME_COMPONENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 # and escape ~/.ssh; '.'/'..' pass the charset but are navigation, rejected explicitly at parse.
 _SSH_KEY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# A stack `hatago.repo` is `github:<owner>/<repo>` and `hatago.ref` is a branch/tag/SHA — both are
+# interpolated into a generated Dockerfile `RUN` line (emit.write_derived_dockerfile), so the
+# charset is restricted to what a git ref / GitHub path segment can legally contain — no shell
+# metacharacters, no quotes, no whitespace.
+_HATAGO_REPO_RE = re.compile(r"^github:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+_HATAGO_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+
 _PERSIST_VALID_SCOPES = {"workspace", "project", "global"}
 _PERSIST_RESERVED_SCOPES = {"repo"}
 _PERSIST_VALID_LOCATIONS = {"host", "in_repo"}
@@ -560,6 +567,12 @@ class Stack:
     # honored ONLY from the user-overlay catalog, never a shared repo-catalog stack (see the launcher)
     # — the key owner, not a third-party stack author, must consent to mounting a private key.
     ssh_keys: list[str] = field(default_factory=list)
+    # Per-stack override for the hatago MCP hub install (default: the base image's pinned npm
+    # release — catalog/base/Dockerfile.harnessed-base). {repo: "github:<owner>/<repo>", ref:
+    # "<branch|tag|sha>"} — installed via pnpm's git-spec `github:<owner>/<repo>#<ref>` (NOT mise's
+    # `github:` backend: that resolves GitHub Release assets, and an override is typically an
+    # unreleased branch of what is otherwise an npm package). None → no override layer emitted.
+    hatago: dict | None = None
     state: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
 
@@ -734,6 +747,7 @@ def load_stack(stack_dir: Path) -> Stack:
             f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
         )
     ssh_keys = _parse_ssh_keys(raw.get("ssh_keys"), manifest)
+    hatago = _parse_hatago(raw.get("hatago"), manifest)
     return Stack(
         name=raw["name"],
         harness=harness,
@@ -743,9 +757,38 @@ def load_stack(stack_dir: Path) -> Stack:
         instructions=raw.get("instructions"),
         forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
         ssh_keys=ssh_keys,
+        hatago=hatago,
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
     )
+
+
+def _parse_hatago(raw_hatago, manifest: Path) -> dict | None:
+    """Validate the stack `hatago:` override block — `{repo: "github:<owner>/<repo>", ref: "..."}`.
+
+    Both values are later interpolated into a generated Dockerfile RUN line
+    (emit.write_derived_dockerfile), so they're validated against a strict charset here rather than
+    at emit time — a bad value must fail loudly at load, not produce a malformed/injectable RUN line.
+    """
+    if not raw_hatago:
+        return None
+    if not isinstance(raw_hatago, dict) or "repo" not in raw_hatago:
+        raise SchemaError(
+            f"{manifest}: 'hatago' must be a mapping with at least 'repo' "
+            f"(e.g. hatago: {{repo: github:owner/repo, ref: some-branch}})"
+        )
+    repo = raw_hatago["repo"]
+    if not isinstance(repo, str) or not _HATAGO_REPO_RE.match(repo):
+        raise SchemaError(
+            f"{manifest}: hatago.repo {repo!r} must look like 'github:<owner>/<repo>'"
+        )
+    ref = raw_hatago.get("ref")
+    if ref is not None and (not isinstance(ref, str) or not _HATAGO_REF_RE.match(ref)):
+        raise SchemaError(
+            f"{manifest}: hatago.ref {ref!r} must be a valid git ref (branch/tag/SHA), "
+            f"no shell metacharacters"
+        )
+    return {"repo": repo, "ref": ref}
 
 
 def _parse_ssh_keys(raw_keys, manifest: Path) -> list[str]:
