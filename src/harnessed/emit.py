@@ -669,7 +669,12 @@ def write_derived_dockerfile(
             "RUN git clone --depth 1" + branch_flag + f' "https://github.com/{owner_repo}.git" /tmp/hatago-src \\',
             "    && cd /tmp/hatago-src \\",
             f"    && printf '{allow_builds}' >> pnpm-workspace.yaml \\",
-            '    && pnpm install --no-frozen-lockfile --filter "@himorishige/hatago-mcp-hub..." \\',
+            # NOT --no-frozen-lockfile: the clone ships its own pnpm-lock.yaml for this exact
+            # commit, already in sync with its package.json files. Forcing a re-resolve let pnpm
+            # pick different transitive tsdown/rolldown/esbuild versions per package than upstream
+            # tested with — surfaced as a rolldown "Invalid input options" warning and a missing
+            # generated .d.ts that broke a sibling package's `tsc` build.
+            '    && pnpm install --filter "@himorishige/hatago-mcp-hub..." \\',
             # The trailing `...` here (unlike the install filter's own `...`, kept for clarity) is
             # load-bearing: mcp-hub's devDependencies are its workspace:* siblings (hatago-core,
             # -hub, -runtime, -server, -transport), each with its OWN `build` script producing the
