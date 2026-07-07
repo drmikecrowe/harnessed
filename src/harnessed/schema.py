@@ -545,6 +545,11 @@ class Recipe:
     raw: dict = field(default_factory=dict)
 
 
+# Authored `permissions:` values a stack.yaml may set — kept in sync with
+# emit._PERMISSION_DEFAULT_MODE, the table that maps each to a Claude `permissions.defaultMode`.
+_STACK_PERMISSIONS_MODES = frozenset({"prompt", "auto", "yolo"})
+
+
 @dataclass
 class Stack:
     name: str
@@ -748,12 +753,18 @@ def load_stack(stack_dir: Path) -> Stack:
         )
     ssh_keys = _parse_ssh_keys(raw.get("ssh_keys"), manifest)
     hatago = _parse_hatago(raw.get("hatago"), manifest)
+    permissions = raw.get("permissions")
+    if permissions is not None and permissions not in _STACK_PERMISSIONS_MODES:
+        raise SchemaError(
+            f"{manifest}: unsupported permissions '{permissions}' "
+            f"(supported: {', '.join(sorted(_STACK_PERMISSIONS_MODES))})"
+        )
     return Stack(
         name=raw["name"],
         harness=harness,
         recipes=list(raw.get("recipes", []) or []),
         services=list(raw.get("services", []) or []),
-        permissions=raw.get("permissions"),
+        permissions=permissions,
         instructions=raw.get("instructions"),
         forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
         ssh_keys=ssh_keys,
