@@ -24,6 +24,7 @@ from .schema import (
     Stack,
     load_service,
     load_stack_with_recipes,
+    validate_hatago_repo_pin,
     validate_init_no_exit,
     validate_no_raw_npm,
     validate_pin,
@@ -101,6 +102,7 @@ def assemble(
         dockerfile = recipe.root / "Dockerfile"
         if dockerfile.is_file():
             validate_pin(recipe.name, dockerfile.read_text(encoding="utf-8"))  # ASM-02 (T-08-01)
+    validate_hatago_repo_pin(stack)  # ASM-02: a hatago.repo override must pin hatago.ref
 
     servers = _resolve_service_servers(_merge_servers(recipes), root)
 

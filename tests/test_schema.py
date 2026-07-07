@@ -12,6 +12,8 @@ from harnessed.schema import (
     Recipe,
     RecipeLintError,
     PinValidationError,
+    Stack,
+    validate_hatago_repo_pin,
     validate_init_no_exit,
     validate_no_raw_npm,
     validate_pin,
@@ -87,6 +89,32 @@ class TestValidatePin:
     def test_url_path_segment_does_not_trigger(self):
         # :latest inside a URL path is allowed (e.g. registry.io/img:path/latest/thing)
         validate_pin("r", "RUN curl https://example.com/releases/latest/download/bin")
+
+
+class TestValidateHatagoRepoPin:
+    def _stack(self, hatago: dict) -> Stack:
+        return Stack(name="s", harness="claude", hatago=hatago)
+
+    def test_no_repo_passes(self):
+        validate_hatago_repo_pin(self._stack({}))
+
+    def test_repo_with_tag_ref_passes(self):
+        validate_hatago_repo_pin(self._stack({"repo": "github:u/r", "ref": "v1.2.3"}))
+
+    def test_repo_with_sha_ref_passes(self):
+        validate_hatago_repo_pin(self._stack({"repo": "github:u/r", "ref": "a1b2c3d"}))
+
+    def test_repo_without_ref_raises(self):
+        with pytest.raises(PinValidationError, match="hatago.ref"):
+            validate_hatago_repo_pin(self._stack({"repo": "github:u/r"}))
+
+    def test_repo_with_main_ref_raises(self):
+        with pytest.raises(PinValidationError, match="hatago.ref"):
+            validate_hatago_repo_pin(self._stack({"repo": "github:u/r", "ref": "main"}))
+
+    def test_repo_with_latest_ref_raises(self):
+        with pytest.raises(PinValidationError, match="hatago.ref"):
+            validate_hatago_repo_pin(self._stack({"repo": "github:u/r", "ref": "latest"}))
 
 
 class TestValidateInitNoExit:

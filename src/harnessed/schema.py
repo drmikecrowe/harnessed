@@ -979,6 +979,29 @@ def validate_no_raw_npm(recipe: Recipe) -> None:
         )
 
 
+# Floating git refs a `hatago.ref` must never be (mirrors _FLOATING_REF_RE's branch list).
+_FLOATING_GIT_REFS = {"main", "master", "head", "latest"}
+
+
+def validate_hatago_repo_pin(stack: Stack) -> None:
+    """Raises PinValidationError if `stack.hatago.repo` is set without a pinned `hatago.ref`.
+
+    A stack overriding hatago's own package source (to test a personal fork) must pin to a tag
+    (e.g. v1.2.3) or a commit SHA — never a floating branch name. Mirrors validate_pin's ASM-02
+    gate for recipe Dockerfiles. Called from assemble() before any file is emitted.
+    """
+    repo = stack.hatago.get("repo")
+    if not repo:
+        return
+    ref = stack.hatago.get("ref")
+    if not ref or str(ref).strip().lower() in _FLOATING_GIT_REFS:
+        raise PinValidationError(
+            f"stack '{stack.name}': hatago.repo '{repo}' requires a pinned hatago.ref "
+            "(a tag e.g. v1.2.3, or a commit SHA) — never a floating branch like "
+            "'main'/'master'/'HEAD'/'latest'."
+        )
+
+
 def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
     """Raises PinValidationError if the Dockerfile body contains a floating ref (ASM-02).
 

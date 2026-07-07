@@ -51,6 +51,19 @@ class TestWriteDerivedDockerfile:
         out = write_derived_dockerfile(tmp_path, self._stack(), [], with_scan=False)
         assert "harnessed-scan" not in out.read_text()
 
+    def test_no_hatago_override_layer_by_default(self, tmp_path):
+        out = write_derived_dockerfile(tmp_path, self._stack(), [])
+        assert "pnpm add -g" not in out.read_text()
+
+    def test_hatago_repo_override_appends_pnpm_layer(self, tmp_path):
+        stack = self._stack()
+        stack.hatago = {"repo": "github:drmikecrowe/hatago-mcp-hub", "ref": "v1.2.3"}
+        out = write_derived_dockerfile(tmp_path, stack, [])
+        body = out.read_text()
+        assert "RUN pnpm add -g 'github:drmikecrowe/hatago-mcp-hub#v1.2.3'" in body
+        # Placed before the final scan layer so the scan covers the override.
+        assert body.index("pnpm add -g") < body.index("harnessed-scan")
+
 
 class TestWriteClaudeMd:
     def test_emits_instructions_into_claude_md(self, tmp_path):
