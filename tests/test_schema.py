@@ -189,6 +189,53 @@ class TestLoadStack:
         (d / "stack.yaml").write_text("name: s\nharness: claude\nforward_git_credentials: true\n")
         assert load_stack(d).forward_git_credentials is True
 
+    def test_hatago_default_none(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\n")
+        assert load_stack(d).hatago is None
+
+    def test_hatago_repo_and_ref_parsed(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text(
+            "name: s\nharness: claude\n"
+            "hatago:\n  repo: github:drmikecrowe/hatago-mcp-hub\n  ref: feat/per-server-tool-filtering\n"
+        )
+        assert load_stack(d).hatago == {
+            "repo": "github:drmikecrowe/hatago-mcp-hub",
+            "ref": "feat/per-server-tool-filtering",
+        }
+
+    def test_hatago_ref_optional(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\nhatago:\n  repo: github:owner/repo\n")
+        assert load_stack(d).hatago == {"repo": "github:owner/repo", "ref": None}
+
+    def test_hatago_missing_repo_rejected(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\nhatago:\n  ref: main\n")
+        with pytest.raises(SchemaError, match="hatago"):
+            load_stack(d)
+
+    def test_hatago_repo_bad_shape_rejected(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharness: claude\nhatago:\n  repo: not-a-github-spec\n")
+        with pytest.raises(SchemaError, match="hatago.repo"):
+            load_stack(d)
+
+    def test_hatago_ref_injection_rejected(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text(
+            'name: s\nharness: claude\nhatago:\n  repo: github:owner/repo\n  ref: "main\\" && rm -rf /"\n'
+        )
+        with pytest.raises(SchemaError, match="hatago.ref"):
+            load_stack(d)
+
 
 class TestLoadAgent:
     def _write(self, tmp_path, name, body):

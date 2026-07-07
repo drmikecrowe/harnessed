@@ -51,6 +51,30 @@ class TestWriteDerivedDockerfile:
         out = write_derived_dockerfile(tmp_path, self._stack(), [], with_scan=False)
         assert "harnessed-scan" not in out.read_text()
 
+    def test_no_hatago_override_layer_by_default(self, tmp_path):
+        out = write_derived_dockerfile(tmp_path, self._stack(), [])
+        assert "hatago-mcp-hub" not in out.read_text() and "hatago" not in out.read_text().lower()
+
+    def test_hatago_override_emits_pnpm_git_spec_layer(self, tmp_path):
+        stack = Stack(
+            name="claude_time",
+            harness="claude",
+            recipes=["time"],
+            services=[],
+            hatago={"repo": "github:drmikecrowe/hatago-mcp-hub", "ref": "feat/per-server-tool-filtering"},
+        )
+        out = write_derived_dockerfile(tmp_path, stack, [])
+        body = out.read_text()
+        assert 'RUN pnpm add -g "github:drmikecrowe/hatago-mcp-hub#feat/per-server-tool-filtering"' in body
+
+    def test_hatago_override_without_ref_uses_default_branch(self, tmp_path):
+        stack = Stack(
+            name="claude_time", harness="claude", recipes=["time"], services=[],
+            hatago={"repo": "github:owner/repo", "ref": None},
+        )
+        out = write_derived_dockerfile(tmp_path, stack, [])
+        assert 'RUN pnpm add -g "github:owner/repo"' in out.read_text()
+
 
 class TestWriteClaudeMd:
     def test_emits_instructions_into_claude_md(self, tmp_path):
