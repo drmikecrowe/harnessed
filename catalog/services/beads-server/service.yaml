@@ -31,5 +31,7 @@ name: beads-server
 image: harnessed-beads-server:latest
 volume: beads-server-data
 port: 3307
-# TCP liveness on the MySQL-wire sql-server port (dolt speaks MySQL protocol, not HTTP — no curl).
-healthcheck: "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3307' || exit 1"
+# MySQL-auth healthcheck: verifies port open AND that root/no-password can authenticate.
+# A plain TCP check passes the moment dolt's listener opens — before auth is fully initialized.
+# dolt sql-client speaks the MySQL wire protocol: if this succeeds, `bd` can connect.
+healthcheck: "dolt sql-client -H 127.0.0.1 -P 3307 -u root -q 'SELECT 1' 2>/dev/null || exit 1"

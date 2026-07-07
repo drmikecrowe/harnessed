@@ -5,6 +5,7 @@ The shim must bake in an ABSOLUTE path to the `harnessed` binary so it works eve
 """
 
 import subprocess
+import json
 from pathlib import Path
 
 import pytest
@@ -353,6 +354,68 @@ class TestBuildMountArgs:
         assert not any(".codex" in a for a in args)
 
 
+class TestHostClaudeSettingsMerge:
+    def test_merges_host_settings_and_reapplies_required_grants(self, tmp_path, monkeypatch):
+        home = _home_in(monkeypatch, tmp_path)
+        prof = tmp_path / "prof"
+        prof.mkdir()
+
+        # Profile settings (image/profile defaults) include statusLine and a required hatago grant.
+        (prof / "settings.json").write_text(
+            json.dumps({
+                "statusLine": {"type": "command", "command": "ccstatusline"},
+                "permissions": {
+                    "defaultMode": "acceptEdits",
+                    "allow": ["mcp__hatago"],
+                },
+            })
+        )
+
+        # Host settings customize model + mode and deny hatago (which harnessed must re-enable).
+        host_claude = home / ".claude"
+        host_claude.mkdir(parents=True)
+        (host_claude / "settings.json").write_text(
+            json.dumps({
+                "model": "sonnet",
+                "permissions": {
+                    "defaultMode": "default",
+                    "allow": ["mcp__mytool"],
+                    "deny": ["mcp__hatago"],
+                },
+            })
+        )
+
+        required = {
+            "permissions": {
+                "defaultMode": "acceptEdits",
+                "allow": ["mcp__hatago"],
+            }
+        }
+        launcher._merge_host_claude_settings(prof, required)
+        out = json.loads((prof / "settings.json").read_text())
+
+        # Host customizations are honored.
+        assert out["model"] == "sonnet"
+        assert out["permissions"]["defaultMode"] == "default"
+        assert "mcp__mytool" in out["permissions"]["allow"]
+        # Harnessed-required grant is always present and removed from deny.
+        assert "mcp__hatago" in out["permissions"]["allow"]
+        assert "mcp__hatago" not in out["permissions"].get("deny", [])
+        # Profile-only keys survive when host does not override them.
+        assert out["statusLine"]["command"] == "ccstatusline"
+
+    def test_noop_when_host_settings_absent(self, tmp_path, monkeypatch):
+        _home_in(monkeypatch, tmp_path)
+        prof = tmp_path / "prof"
+        prof.mkdir()
+        baseline = {"permissions": {"defaultMode": "acceptEdits", "allow": ["mcp__hatago"]}}
+        (prof / "settings.json").write_text(json.dumps(baseline))
+
+        launcher._merge_host_claude_settings(prof, baseline)
+        out = json.loads((prof / "settings.json").read_text())
+        assert out == baseline
+
+
 class TestOpencodeAttachCmd:
     """`_opencode_attach_cmd` is stack-conditional (bd main-rlw): a baked persona → `opencode
     --agent <name>`; no persona → the fixed `opencode` command."""
@@ -405,16 +468,21 @@ class TestCredentialForwarding:
         home, _ = cred_home
         assert launcher._ssh_agent_args(home, home / "nope.sock") == []
 
-    def test_1password_socket_sets_auth_sock(self, cred_home):
+    def test_1password_socket_sets_auth_sock(self, cred_home, monkeypatch):
         home, socks = cred_home
+        # Force the host-os branch to linux so _op_agent_socket resolves ~/.1password/agent.sock,
+        # matching the test socket we create here. CI runs on Linux; this makes the test portable
+        # to macOS where the default path is the Group Containers dir.
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         self._mksock(home / ".1password" / "agent.sock", socks)
         args = launcher._ssh_agent_args(home, home / "nogpg.sock")
         ctr_sock = f"{self.CTR}/.1password/agent.sock"
         assert f"{home / '.1password' / 'agent.sock'}:{ctr_sock}" in args
         assert f"SSH_AUTH_SOCK={ctr_sock}" in args
 
-    def test_1password_wins_over_gpg(self, cred_home):
+    def test_1password_wins_over_gpg(self, cred_home, monkeypatch):
         home, socks = cred_home
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         self._mksock(home / ".1password" / "agent.sock", socks)
         gpg = home / "gpg.sock"
         self._mksock(gpg, socks)
@@ -424,8 +492,9 @@ class TestCredentialForwarding:
         assert f"SSH_AUTH_SOCK={self.CTR}/.gnupg-sockets/S.gpg-agent.ssh" not in args
         assert any("S.gpg-agent.ssh" in a for a in args)  # gpg socket still bind-mounted
 
-    def test_gpg_fallback_when_no_1password(self, cred_home):
+    def test_gpg_fallback_when_no_1password(self, cred_home, monkeypatch):
         home, socks = cred_home
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         gpg = home / "gpg.sock"
         self._mksock(gpg, socks)
         args = launcher._ssh_agent_args(home, gpg)
@@ -435,6 +504,7 @@ class TestCredentialForwarding:
 
     def test_yubikey_present_adds_device(self, monkeypatch):
         from types import SimpleNamespace
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 003 Device 004: ID 1050:0407 Yubico.com\n"),
@@ -448,6 +518,7 @@ class TestCredentialForwarding:
 
     def test_yubikey_absent_returns_empty(self, monkeypatch):
         from types import SimpleNamespace
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 001 Device 002: ID 8087:0029 Intel Corp.\n"),
@@ -457,6 +528,7 @@ class TestCredentialForwarding:
     def test_yubikey_no_lsusb_is_clean(self, monkeypatch):
         def boom(*a, **k):
             raise FileNotFoundError("lsusb")
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         monkeypatch.setattr(launcher.subprocess, "run", boom)
         assert launcher._yubikey_device_args() == []
 
@@ -465,6 +537,7 @@ class TestCredentialForwarding:
         # line like "Device 1050: ID 1234:5678 Acme" must NOT be selected for --device passthrough.
         from types import SimpleNamespace
         real_exists = Path.exists
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
         monkeypatch.setattr(
             launcher.Path, "exists",
             lambda self: True if str(self) == "/dev/bus/usb/005/1050" else real_exists(self),

@@ -34,6 +34,7 @@ from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
     SchemaError,
+    ServiceDef,
     Stack,
     load_agent,
     load_service,
@@ -340,10 +341,137 @@ def _ensure_extra_tools() -> None:
         _catalog_base("extra-tools.txt").write_text(user_file.read_text())
 
 
+def _corp_proxy_ca_secret_args() -> list[str]:
+    """Return --secret args for the corporate proxy CA when present; empty list otherwise.
+
+    The cert lives at $XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt (user-owned, never in the repo).
+    Dockerfile.harnessed-base receives it via RUN --mount=type=secret so it is never baked into
+    image history and nothing needs to be staged into the build context.
+    """
+    from .paths import corp_proxy_ca_path
+
+    cert = corp_proxy_ca_path()
+    if not cert.is_file():
+        return []
+    return ["--secret", f"id=corp_proxy_ca,src={cert}"]
+
+
+def _corp_proxy_ca_mount_args() -> list[str]:
+    """Return bind-mount args for the corporate proxy CA when present; empty list otherwise.
+
+    Mounts the cert read-only at /run/corp-proxy-ca.crt inside the container. After the container
+    starts, call _install_corp_proxy_ca_in_container() to register it with the system trust store.
+    """
+    from .paths import corp_proxy_ca_path
+
+    cert = corp_proxy_ca_path()
+    if not cert.is_file():
+        return []
+    return ["-v", f"{cert}:/run/corp-proxy-ca.crt:ro"]
+
+
+def _install_corp_proxy_ca_in_container(rt: str, container: str, *, best_effort: bool = False) -> None:
+    """Install the mounted corp CA into the container's system trust store.
+
+    Requires _corp_proxy_ca_mount_args() to have mounted the cert at /run/corp-proxy-ca.crt.
+    Execs as root so update-ca-certificates can write to /usr/local/share/ca-certificates/.
+    best_effort=True swallows failures (use for service containers whose base image may not have
+    the ca-certificates package); False (default) raises on failure.
+    """
+    from .paths import corp_proxy_ca_path
+
+    if not corp_proxy_ca_path().is_file():
+        return
+    cmd = [
+        rt, "exec", "--user", "root", container, "bash", "-c",
+        "cp /run/corp-proxy-ca.crt /usr/local/share/ca-certificates/corp-proxy-ca.crt"
+        " && update-ca-certificates",
+    ]
+    if best_effort:
+        subprocess.run(cmd, capture_output=True)
+    else:
+        _run(cmd, capture_output=True)
+
+
+# CA block injected into service Dockerfiles that don't already declare the secret mount.
+_CORP_CA_DOCKERFILE_BLOCK = """\
+
+# Corporate proxy CA: injected as a build secret when present at
+# $XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt. required=false → no-op when absent.
+RUN --mount=type=secret,id=corp_proxy_ca,dst=/tmp/corp-proxy-ca.crt,required=false \\
+    if [ -s /tmp/corp-proxy-ca.crt ]; then \\
+        cp /tmp/corp-proxy-ca.crt /usr/local/share/ca-certificates/corp-proxy-ca.crt && \\
+        update-ca-certificates; \\
+    fi
+"""
+
+
+def _service_dockerfile_with_ca(dockerfile: Path) -> Path | None:
+    """Return a temp Dockerfile with the corp proxy CA trust block injected, or None if not needed.
+
+    Injection happens right after the first complete RUN block (typically the apt-get install step
+    that puts ca-certificates on PATH). This places the cert in the system trust store before any
+    subsequent HTTPS downloads (curl/pip/pnpm/etc.). Returns None when:
+    - No corp CA cert is configured (no-op path — standard builds unchanged).
+    - The Dockerfile already contains the corp_proxy_ca secret mount.
+    Caller must unlink the returned temp file.
+    """
+    import re
+    import tempfile
+
+    from .paths import corp_proxy_ca_path
+
+    if not corp_proxy_ca_path().is_file():
+        return None
+
+    content = dockerfile.read_text()
+    if "corp_proxy_ca" in content:
+        return None  # already has the injection
+
+    lines = content.splitlines(keepends=True)
+    inject_after: int | None = None
+    in_run = False
+
+    for i, line in enumerate(lines):
+        stripped = line.rstrip()
+        if not in_run and re.match(r"\s*RUN\b", line, re.IGNORECASE):
+            in_run = True
+        if in_run and not stripped.endswith("\\"):
+            inject_after = i
+            break
+
+    if inject_after is None:
+        # No RUN found; fall back to injecting after the first FROM line
+        for i, line in enumerate(lines):
+            if re.match(r"\s*FROM\b", line, re.IGNORECASE):
+                inject_after = i
+                break
+
+    if inject_after is None:
+        return None
+
+    modified = (
+        "".join(lines[: inject_after + 1])
+        + _CORP_CA_DOCKERFILE_BLOCK
+        + "".join(lines[inject_after + 1 :])
+    )
+
+    fd, tmp = tempfile.mkstemp(suffix=".Dockerfile")
+    try:
+        os.write(fd, modified.encode())
+    finally:
+        os.close(fd)
+    return Path(tmp)
+
+
 def _build_images_cmd(rt: str, force: bool = False) -> None:
-    """(Re)build the shared base + hatago images (agent images are built lazily per stack)."""
+    """(Re)build the shared base + agent images (stack images are built lazily per stack)."""
     _ensure_extra_tools()
     hdir = _harnessed_dir()
+    no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
+    cache_arg = ["--no-cache"] if no_cache else []
+    secret_args = _corp_proxy_ca_secret_args()
+
     pairs = [
         (_BASE_IMAGE, _catalog_base("Dockerfile.harnessed-base")),
         (_CLAUDE_IMAGE, _catalog_base("Dockerfile.harnessed-claude")),
@@ -351,7 +479,7 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
     for image, dockerfile in pairs:
         if force or not _image_exists(rt, image):
             _out.print(f"[blue][INFO][/blue] Building {image} ...")
-            _run([rt, "build", "-t", image, "-f", str(dockerfile), str(hdir)])
+            _run([rt, "build", "-t", image, "-f", str(dockerfile), *cache_arg, *secret_args, str(hdir)])
     _out.print("[green][SUCCESS][/green] harnessed images ready")
 
 
@@ -360,9 +488,21 @@ def _build_base_image(rt: str) -> None:
     scan script, extra-tools, scanner installs) propagate into every FROM-derived agent / hatago /
     stack image. Layer-cached: a no-op when the base Dockerfile is unchanged."""
     _ensure_extra_tools()
+    no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
+    cache_arg = ["--no-cache"] if no_cache else []
+    secret_args = _corp_proxy_ca_secret_args()
     _out.print(f"[blue][INFO][/blue] Building {_BASE_IMAGE} ...")
-    _run([rt, "build", "-t", _BASE_IMAGE, "-f", str(_catalog_base("Dockerfile.harnessed-base")),
-          str(_harnessed_dir())])
+    _run([
+        rt,
+        "build",
+        "-t",
+        _BASE_IMAGE,
+        "-f",
+        str(_catalog_base("Dockerfile.harnessed-base")),
+        *cache_arg,
+        *secret_args,
+        str(_harnessed_dir()),
+    ])
 
 
 def _build_agent_image(rt: str, harness: str) -> None:
@@ -456,6 +596,11 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
 
     # Surface the advisory supply-chain report (baked by the derived image's final scan layer).
     _surface_scan_report(rt, derived, prof)
+
+    # Build all service images referenced by this stack so they are ready before first run.
+    # Layer-cached: a no-op when each service Dockerfile is unchanged.
+    for svc_name in _service_refs(stack):
+        _build_service_image(rt, svc_name)
 
     _out.print(f"[green][SUCCESS][/green] Stack '{stack}' built — profile: {prof}")
 
@@ -628,6 +773,59 @@ def _merge_baked_settings(rt: str, image: str, prof: Path) -> None:
     stub.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
 
 
+def _deep_merge_json(base: object, overlay: object) -> object:
+    """Recursively merge two JSON-like trees, preferring values from `overlay`.
+
+    Dicts merge by key (recurse on matching keys). Non-dicts (including lists/scalars) are
+    replaced wholesale by `overlay` so host-authored arrays preserve order exactly.
+    """
+    if isinstance(base, dict) and isinstance(overlay, dict):
+        out = dict(base)
+        for key, val in overlay.items():
+            if key in out:
+                out[key] = _deep_merge_json(out[key], val)
+            else:
+                out[key] = val
+        return out
+    return overlay
+
+
+def _merge_host_claude_settings(prof: Path, required: dict) -> None:
+    """Apply host ~/.claude/settings.json into the profile settings for launch-time parity.
+
+    The profile's settings.json is the file mounted into the container. Merge host preferences into
+    that file at launch, then re-apply harnessed-required grants/hooks so host customizations do not
+    disable the MCP hub.
+    """
+    host = Path.home() / ".claude" / "settings.json"
+    target = prof / "settings.json"
+    if not (host.is_file() and target.is_file()):
+        return
+
+    def _warn(msg: str) -> None:
+        _out.print(f"[yellow]⚠ settings:[/yellow] {msg}")
+
+    try:
+        target_raw = json.loads(target.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        target_raw = {}
+    target_obj = target_raw if isinstance(target_raw, dict) else {}
+
+    try:
+        host_text = host.read_text(encoding="utf-8")
+    except OSError:
+        return
+    host_obj = emit.read_baked_settings(host_text, warn=_warn)
+    if host_obj is None:
+        return
+
+    merged = _deep_merge_json(target_obj, host_obj)
+    if not isinstance(merged, dict):
+        merged = host_obj
+    final = emit.merge_settings(merged, required, warn=_warn)
+    target.write_text(json.dumps(final, indent=2) + "\n", encoding="utf-8")
+
+
 def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None:
     """Wire the stack's identity into opencode's config POST-BUILD (bd main-rlw).
 
@@ -772,10 +970,10 @@ def _apply_firewall(rt: str, instance: str) -> None:
 def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> bool:
     """Poll until the in-container hatago hub accepts connections on `port`.
 
-    Returns True once the port is live, False on timeout. hatago is started with `exec -d …
-    nohup … &` (hatago-consolidation), so the launch never sees a non-zero exit when hatago fails
-    to bind — a missing-from-base binary, a bad config, or a crashed hub all look identical to a
-    slow start. The caller must surface a False so we don't report `[SUCCESS]` over a dead MCP hub.
+    Returns True once the port is live, False on timeout. hatago starts asynchronously via the
+    container entrypoint (harnessed-start), so the launch never sees a non-zero exit when hatago
+    fails to bind — a missing binary, a bad config, or a crashed hub all look identical to a slow
+    start. The caller must surface a False so we don't report `[SUCCESS]` over a dead MCP hub.
     """
     import time
     if port is None:
@@ -1028,7 +1226,7 @@ def _host_os() -> str:
     """'macos' | 'linux' | 'other'. Drives per-OS agent socket paths + YubiKey passthrough."""
     if sys.platform == "darwin":
         return "macos"
-    if sys.platform.startswith("linux"):
+    if sys.platform.startswith("linux"):  # pyright: ignore[reportUnreachable]
         return "linux"
     return "other"
 
@@ -1353,6 +1551,13 @@ def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> st
     _, recipes = load_stack_with_recipes(None, stack)
     main_repo = paths.git_common_dir(project_path) or project_path
     parts = [
+        # Rootless podman on macOS maps host UIDs through the VM; git refuses to operate in mounted
+        # dirs ("dubious ownership") — breaking mise templates that shell out to git. Use git's
+        # env-var config mechanism (git 2.32+, Ubuntu 24.04 ships 2.43) instead of writing to
+        # ~/.gitconfig: the launcher mounts the host's ~/.gitconfig :ro, so any write attempt
+        # fails with "Device or resource busy". These env vars are inherited by mise and all
+        # subprocesses it spawns, including the git invocations inside mise templates.
+        "export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='safe.directory' GIT_CONFIG_VALUE_0='*'",
         "export "
         f"PROJECT_DIR={shlex.quote(str(project_path))} "
         f"MAIN_REPO_DIR={shlex.quote(str(main_repo))} "
@@ -1398,11 +1603,13 @@ def _persist_mounts(stack: str, project_path: Path) -> list[str]:
     for recipe in recipes:
         for entry in recipe.persist.entries:
             if entry.scope == "global":
+                assert entry.path is not None, "global persist entry must have path"
                 host_dir = persist.resolve_global_persist(entry.path)
                 persist.guard_ownership(host_dir)
                 args += ["-v", f"{host_dir}:{host_dir}:rw"]
 
             elif entry.location == "host":
+                assert entry.name is not None, "non-global persist entry must have name"
                 if entry.scope == "workspace":
                     host_dir = paths.persist_workspace_dir(recipe.name, project_path, entry.name)
                 else:  # project
@@ -1420,6 +1627,7 @@ def _persist_mounts(stack: str, project_path: Path) -> list[str]:
                 args += ["-v", f"{host_dir}:{ctr_dir}:rw"]
 
             else:  # location: in_repo
+                assert entry.name is not None, "non-global persist entry must have name"
                 if entry.vcs == "ignored":
                     _ensure_gitignore_entry(project_path, entry.name)
                 # No mount — the workspace is already mounted read-write.
@@ -1459,37 +1667,108 @@ def _service_refs(stack: str) -> list[str]:
     return names
 
 
+def _build_service_image(rt: str, name: str) -> None:
+    """Build a service image (layer-cached: no-op when the Dockerfile is unchanged).
+
+    Always called from _build_stack so service images are ready before first run. Also called from
+    _ensure_service when the image is simply missing at run time.
+
+    When a corporate proxy CA cert is configured, a temp Dockerfile is generated with the CA trust
+    block injected after the first RUN (typically the apt-get install step), so subsequent HTTPS
+    downloads (curl/pip/pnpm/etc.) succeed through SSL-inspecting proxies.
+    """
+    svc = load_service(None, name)
+    svc_dir = paths.find_in_catalog("services", name)
+    orig_dockerfile = svc_dir / "Dockerfile"
+    _out.print(f"[blue][INFO][/blue] Building service image {svc.image} ...")
+    tmp = _service_dockerfile_with_ca(orig_dockerfile)
+    try:
+        effective = tmp if tmp else orig_dockerfile
+        # Use a temp dir as build context so podman's --secret temp files (podman-build-secret-*)
+        # land in /tmp rather than in svc_dir's parent, which may be repo-tracked.
+        with tempfile.TemporaryDirectory() as build_ctx:
+            shutil.copytree(svc_dir, build_ctx, dirs_exist_ok=True)
+            _run([rt, "build", "-t", svc.image, "-f", str(effective),
+                  *_corp_proxy_ca_secret_args(), build_ctx])
+    finally:
+        if tmp:
+            tmp.unlink(missing_ok=True)
+
+
 def _ensure_service(rt: str, name: str) -> None:
-    """Build (if missing) and start (if not running) one host-published service sidecar."""
+    """Build (if missing) and start (if not running) one host-published service sidecar.
+
+    If the running container is stale (image rebuilt since it started), prompts the user to
+    confirm recreation before the harness launches. Named-volume data is always preserved.
+    In headless mode the recreation proceeds automatically.
+    """
     svc = load_service(None, name)
     if not _image_exists(rt, svc.image):
-        svc_dir = paths.find_in_catalog("services", name)
-        _out.print(f"[blue][INFO][/blue] Building service image {svc.image} ...")
-        _run([rt, "build", "-t", svc.image, "-f", str(svc_dir / "Dockerfile"), str(svc_dir)])
+        _build_service_image(rt, name)
     cname = _svc_container(name)
     if _container_running(rt, cname):
-        return
+        if _container_stale(rt, cname, svc.image):
+            headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
+            _err.print(
+                f"[yellow]warning:[/yellow] service '{name}' is running on a stale build of "
+                f"{svc.image} — the image was rebuilt since this container started."
+            )
+            _err.print(f"  Will run: {rt} rm -f {cname}  (named-volume data is preserved)")
+            if not headless and sys.stdin.isatty():
+                if not typer.confirm("Recreate now to continue?", default=True):
+                    _err.print(
+                        f"[bold red]error:[/bold red] cannot launch with stale service '{name}'. "
+                        f"Fix manually: harnessed svc down {name} && harnessed svc up {name}"
+                    )
+                    raise typer.Exit(1)
+            subprocess.run([rt, "rm", "-f", cname], capture_output=True)
+            # fall through to start below
+        else:
+            return
     # Remove any stopped leftover with the same name before (re)starting.
     subprocess.run([rt, "rm", "-f", cname], capture_output=True)
     _out.print(f"[blue][INFO][/blue] Starting service '{name}' on :{svc.port} ({cname})")
-    run_cmd = [rt, "run", "-d", "--name", cname, "-p", f"{svc.port}:{svc.port}"]
+    run_cmd = [rt, "run", "-d", "--name", cname, "-p", f"{svc.port}:{svc.port}",
+               *_corp_proxy_ca_mount_args()]
     if svc.volume:
         run_cmd += ["-v", f"{svc.volume}:/data"]
     run_cmd.append(svc.image)
     _run(run_cmd, capture_output=True)
-    _wait_service(svc.port)
+    _install_corp_proxy_ca_in_container(rt, cname, best_effort=True)
+    _wait_service_healthy(rt, cname, svc)
 
 
-def _wait_service(port: int, timeout: int = 30) -> None:
-    """Poll the host-published service port until it accepts a TCP connection."""
+
+def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int = 60) -> None:
+    """Wait for TCP port open, then exec svc.healthcheck inside the container until it passes.
+
+    Two-phase: raw TCP first (fast, 30s), then the service's own healthcheck (full protocol,
+    60s). For dolt this means waiting for MySQL-level auth readiness, not just the listener.
+    Services without a healthcheck fall back to TCP only.
+    """
     import socket
     import time
-    for _ in range(timeout):
+
+    for _ in range(30):
         try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1):
-                return
+            with socket.create_connection(("127.0.0.1", svc.port), timeout=1):
+                break
         except OSError:
             time.sleep(1)
+
+    if not svc.healthcheck:
+        return
+
+    for _ in range(timeout):
+        result = subprocess.run(
+            [rt, "exec", cname, "bash", "-c", svc.healthcheck],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return
+        time.sleep(1)
+
+    _err.print(f"[yellow][WARNING][/yellow] service '{svc.name}' healthcheck did not pass within {timeout}s")
 
 
 def _ensure_services(rt: str, stack: str) -> None:
@@ -1641,6 +1920,12 @@ def launch(
     if anchor_path != project_path:
         _out.print(f"[blue][INFO][/blue] Agent start folder: {project_path} (launched from {anchor_path})")
 
+    _, launch_recipes = load_stack_with_recipes(None, stack)
+    launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
+    required = emit.required_settings(launch_servers, launch_recipes, stk.permissions)
+    if harness in ("claude", "omp", "opencode"):
+        _merge_host_claude_settings(prof, required)
+
     # Build mount args.
     mount_args = _build_mount_args(harness, prof, mount_path)
     # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the ro credential).
@@ -1651,6 +1936,8 @@ def launch(
     mount_args += _omp_agent_mount(harness)
     # Forward the host's ccstatusline config (ro) so the baked statusLine matches the host layout.
     mount_args += _ccstatusline_settings_mount()
+    # Bind-mount the corporate proxy CA (ro) so _install_corp_proxy_ca_in_container can register it.
+    mount_args += _corp_proxy_ca_mount_args()
     # Persist recipe-declared project-scoped folders (rw) so their state survives --fresh.
     mount_args += _persist_mounts(stack, project_path)
     # Forward the host's git signing + push credentials (1Password/GPG/YubiKey agent, git config,
@@ -1681,9 +1968,6 @@ def launch(
     # known — path mirroring makes the container project path per-launch), so serena/repowise would
     # otherwise resolve the container home instead of the project root. Written per-instance so two
     # projects on the same stack never race on one shared cwd.
-    launch_servers = _resolve_service_servers(
-        _merge_servers(load_stack_with_recipes(None, stack)[1]), None
-    )
     inst_cfg_dir = prof / ".instances" / inst
     inst_cfg_dir.mkdir(parents=True, exist_ok=True)
     hatago_cfg_host = emit.write_hatago_config(inst_cfg_dir, launch_servers, project_path)
@@ -1701,7 +1985,12 @@ def launch(
         "--name", inst,
         *(["--env-file", str(secrets_env_file)] if secrets_env_file else []),
         *member_mounts,
-        harness_image, "sleep", "infinity",
+        # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
+        # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
+        # hard-failing on a missing binary. Once the base image is rebuilt, the entrypoint runs
+        # hatago automatically and this shell one-liner is a no-op (exec replaces it immediately).
+        harness_image, "bash", "-c",
+        "exec /usr/local/bin/harnessed-start 2>/dev/null || exec sleep infinity",
     ]
     try:
         _run(harness_run, capture_output=True)
@@ -1715,18 +2004,15 @@ def launch(
                 pass
             secrets_env_file = None
 
+    # Install the corp proxy CA into the container's trust store (no-op when cert absent).
+    # Runs before the egress firewall: update-ca-certificates is local-only and needs no network,
+    # but placing it here keeps all post-start container setup before the firewall guard.
+    _install_corp_proxy_ca_in_container(rt, inst)
+
     _apply_firewall(rt, inst)
 
-    # Start hatago detached INSIDE the harness container (hatago-consolidation). `exec -d` runs it as
-    # a separate process group, so a harness crash does not take hatago with it and vice versa. Same
-    # endpoint (:3535) — but same container now, so .mcp.json's http://localhost:3535/mcp resolves
-    # without a shared netns. nohup + redirect so it survives detach and never blocks. The login
-    # shell (`-lc`) activates mise → hatago is on PATH (baked into harnessed-base).
-    _run([
-        rt, "exec", "-d", inst, "bash", "-lc",
-        f"nohup hatago serve --http --port {paths.hatago_port()} "
-        f"--config {hatago_cfg_ctr} >/tmp/hatago.log 2>&1 &",
-    ], capture_output=True)
+    # hatago starts automatically via /usr/local/bin/harnessed-start (the container entrypoint).
+    # No exec -d needed — the entrypoint script starts it in the background before exec-ing sleep.
     hatago_up = _wait_hatago(rt, inst)
 
     if headless:
@@ -1819,13 +2105,44 @@ def build(
         help="Allow unknown recipe-manifest fields (disables the typo guardrail)",
     ),
     force: bool = typer.Option(False, "--force", help="Force rebuild of base images"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Disable podman layer cache for image builds"),
+    corp_proxy_ca_crt: Optional[Path] = typer.Option(
+        None,
+        "--corp-proxy-ca-crt",
+        help=(
+            "Path to a corporate proxy CA bundle to persist at $XDG_CONFIG_HOME/harnessed/"
+            "corp-proxy-ca.crt and inject into the base image trust store. Optional; once set, "
+            "later builds auto-use the persisted file."
+        ),
+    ),
 ) -> None:
-    """Assemble a stack (emit + build hatago), or rebuild base/claude/hatago images."""
+    """Assemble a stack (emit + build hatago), or rebuild base/claude/hatago images.
+
+    The --corp-proxy-ca-crt flag is a one-time setup for SSL-inspecting corporate proxies: it
+    persists the CA bundle at $XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt and subsequent builds
+    automatically inject it into the base image trust store via a build secret.
+    """
+    from .paths import corp_proxy_ca_path
+
+    if corp_proxy_ca_crt is not None:
+        dest = corp_proxy_ca_path()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(corp_proxy_ca_crt.read_text())
+        _out.print(
+            f"[blue][INFO][/blue] Persisted corporate proxy CA bundle to {dest} "
+            "(will be used for future base-image builds)"
+        )
+
     if no_scans:
         os.environ["HARNESSED_NO_SCANS"] = "true"
     _ensure_local_catalog_links()
     _ensure_docs_wiki_clone()
     rt = _runtime()
+
+    # Optional cache disable: when --no-cache is set, bypass podman layer cache for image builds.
+    if no_cache:
+        os.environ["HARNESSED_PODMAN_NO_CACHE"] = "true"
+
     root_path = Path(root).resolve() if root else None
     if stack:
         _build_stack(rt, stack, root_path, strict=not no_strict)
