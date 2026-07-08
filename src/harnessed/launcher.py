@@ -1134,24 +1134,32 @@ def _claude_creds_seed_mount(harness: str, inst: str) -> list[str]:
     goes stale once it expires mid-session, and the agent silently gets logged out with no way
     to recover short of recreating the container.
 
-    Instead, copy the host's current credentials into a per-instance state file at launch time
-    (so the container always starts with the host's latest token) and mount THAT copy rw. The
-    container can then refresh its own copy freely without ever touching the host file — mirrors
-    _claude_config_seed_mount's per-instance state-dir pattern.
+    Instead, copy the host's current credentials into a per-instance state file the FIRST time
+    this instance launches (so the container starts with the host's latest token) and mount THAT
+    copy rw. The container can then refresh its own copy freely without ever touching the host
+    file — mirrors _claude_config_seed_mount's per-instance state-dir pattern.
+
+    Only seeds once: a stopped container gets recreated (e.g. next morning, or after --fresh —
+    neither tears down this state dir), and re-copying the host file on every launch would
+    clobber whatever refreshed token the container itself wrote, reintroducing the exact
+    "silently logged out" bug this mount exists to fix (the host copy only refreshes if Claude
+    Code is run directly on the host, so it goes stale independently of the container's copy).
     """
     if harness not in ("claude", "omp"):
-        return []
-
-    host_creds = Path.home() / ".claude" / ".credentials.json"
-    if not host_creds.is_file():
         return []
 
     state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
     state_dir = state_root / "harnessed" / inst
     state_dir.mkdir(parents=True, exist_ok=True)
     stub = state_dir / "credentials.json"
-    stub.write_bytes(host_creds.read_bytes())
-    stub.chmod(0o600)
+
+    if not stub.is_file():
+        host_creds = Path.home() / ".claude" / ".credentials.json"
+        if not host_creds.is_file():
+            return []
+        stub.write_bytes(host_creds.read_bytes())
+        stub.chmod(0o600)
+
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude/.credentials.json:rw"]
 
 
