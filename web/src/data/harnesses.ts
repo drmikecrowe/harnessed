@@ -28,7 +28,7 @@ export const harnesses: Harness[] = [
   {
     name: "opencode",
     variant: "blue",
-    tagline: "Planned — adapts the .claude profile.",
+    tagline: "Reads .claude/skills/** natively; MCP via hatago.",
   },
   {
     name: "antigravity",

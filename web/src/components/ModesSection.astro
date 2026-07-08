@@ -1,14 +1,7 @@
 ---
 import Section from "./Section.astro";
-import ComparisonTable from "./ComparisonTable.astro";
 
 const modes = [
-  {
-    name: "Transparent",
-    badge: "built-in",
-    desc: "Host config bind-mounted live: your skills, MCP, and auth, firewalled. My laptop, sandboxed.",
-    command: "harnessed transparent",
-  },
   {
     name: "Isolated",
     badge: "clean room",
@@ -20,10 +13,10 @@ const modes = [
 
 <Section id="modes" class="modes">
   <header class="section-head" data-reveal>
-    <h2 class="t-heading-lg">One engine, two config modes.</h2>
+    <h2 class="t-heading-lg">One engine, one clean-room mode.</h2>
     <p class="lead">
-      Every stack shares the same base image, host mounts, and auth. Stacks differ
-      on exactly one axis: where the config layer comes from.
+      Every stack shares the same base image, host mounts, and auth. The config
+      layer is always assembled and isolated — never a live host bind-mount.
     </p>
   </header>
 
@@ -41,10 +34,6 @@ const modes = [
       ))
     }
   </div>
-
-  <div class="table-wrap" data-reveal>
-    <ComparisonTable />
-  </div>
 </Section>
 
 <style>
@@ -53,7 +42,8 @@ const modes = [
   }
   .mode-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
+    max-width: 480px;
     gap: var(--space-xl);
     margin-bottom: var(--space-xxxl);
   }
