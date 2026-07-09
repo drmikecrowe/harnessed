@@ -2,11 +2,12 @@
 
 This recipe makes `bd` ([beads](https://github.com/gastownhall/beads)) available in a stack in
 **fully invisible mode** — persistent task memory for agents that leaves zero git footprint. This
-file records the decisions and *why*; `PLAN.md` is the implementation how-to.
+file records the decisions and *why*; the recipe.yaml + Dockerfile are the implementation.
 
-See the plain [`beads`](../beads/README.md) recipe for upstream's actual default operational mode
-(in-repo, git-tracked, Dolt-native sync via the git origin). The two recipes are siblings, not a
-hierarchy — `conflicts: [beads]` in both prevents combining them in one stack.
+See the [`beads-team`](../beads-team/README.md) recipe for upstream's actual default operational mode
+(in-repo, git-tracked, Dolt-native sync via the git origin). The four beads variants (beads-team,
+beads-team-server, beads-stealth, beads-stealth-server) are siblings, not a hierarchy — each
+`conflicts:` with the other three to prevent combining any two in one stack.
 
 ## What beads is
 
@@ -44,16 +45,14 @@ usage (`.git/info/exclude`), disabling git operations. The user's repo stays cle
 `--stealth` on `bd init` does **not** wire up any AI tool integration by itself — per beads' own
 docs/SETUP.md, that's a separate step (see "Harness setup" below).
 
-### Harness setup: `bd setup <tool> --stealth`
+### Harness setup: `bd setup <tool> --stealth` (one-time, manual)
 
 `bd init --stealth` only configures git-exclude — it does not install the SessionStart hook or the
 minimal `CLAUDE.md` section that lets the agent discover `bd prime`/`bd ready` on its own. Without
-this, the recipe bakes a working `bd` binary the agent never learns to use unprompted.
+it, the recipe bakes a working `bd` binary the agent never learns to use unprompted.
 
-The Dockerfile bakes `/usr/local/bin/bd-setup-agent`, resolved at build time from the `${HARNESS}`
-build ARG (recipe.yaml's `init.run` is one fixed string shared by every harness a stack might use,
-so it can't branch on `$HARNESS` at runtime — this is the one place harness-specific behavior may,
-per the harness-independent-recipes convention). For `claude` it runs:
+On first use, the `SessionStart` welcome notice (see "First-time init" below) prints the exact
+command to run, e.g. for Claude:
 
 ```
 bd setup claude --project --stealth
@@ -61,37 +60,36 @@ bd setup claude --project --stealth
 
 `--project` (not the global default) because `~/.claude/settings.json` inside the container is
 harnessed's own read-only profile mount (baked at `harnessed build` time) — `bd setup` can't write
-hooks there. `--project` writes `.claude/settings.local.json` into the bind-mounted project root
-instead, which is writable and persists on the host like any other project file, alongside a
-managed section in `CLAUDE.md`. `--stealth` here means the hook runs `bd prime --stealth` (flush
-only, no git operations) rather than `bd prime --hook-json`.
+hooks there. `--project` writes `.claude/settings.json` + `CLAUDE.md` into the bind-mounted project
+root. `--stealth` means the hook runs `bd prime --stealth` (flush only, no git operations) rather
+than `--hook-json`.
 
-`bd-setup-agent` no-ops for any `${HARNESS}` beads doesn't have a built-in recipe for yet (e.g.
-`omp`) — add a case to the Dockerfile's wrapper as that changes.
+**⚠️ Footprint caveat (bd 1.1.0):** `bd setup claude --project --stealth` writes `.claude/settings.json`
+and `CLAUDE.md` into the project. These files are NOT in bd's stealth git-exclude list, so they
+appear as untracked in `git status`. "Stealth" is not fully footprint-free on bd 1.1.0 — the user
+opts into that knowingly when choosing this recipe.
 
-### Init via `harnessed init` + auto-run on launch
+The exact command is baked into the image as `/etc/beads-setup-hint`, written by a
+`case "${HARNESS}"` block in the Dockerfile so recipe.yaml stays harness-independent. If beads
+doesn't yet have a built-in setup for a given harness, the hint falls back to
+`bd setup <your-agent>   # see: bd setup --list`.
 
-`bd init` must run **at runtime against the mounted project** (the project isn't mounted at build
-time, so a Dockerfile `RUN bd init` is impossible). The `init:` block in recipe.yaml wires this
-into the `harnessed init` lifecycle:
+### First-time init
 
-```yaml
-init:
-  marker:
-    scope: project
-    location: host
-    name: .beads
-  run: bd init --quiet --stealth && bd-setup-agent
+`bd init` must run at runtime against the mounted project (the project isn't mounted at build time).
+Rather than auto-running it on every attach (which can't be made footprint-free reliably), the
+recipe uses a `hooks: SessionStart` notice that is **self-gating** on `bd list`:
+
+```
+bash -lc 'bd list >/dev/null 2>&1 || printf "...notice + commands..."'
 ```
 
-The launcher checks whether `$XDG_DATA_HOME/harnessed/persist/beads/<project-hash>/.beads/` exists
-on the host before every launch. If it doesn't, it runs `bd init --quiet --stealth` in a transient
-one-shot container (`podman run --rm`) with the same project + persist mounts as a normal launch.
-Once `bd init` succeeds, the `.beads/` dir is created and future launches skip the step.
+Silent once `bd list` succeeds (the workspace is initialized). On a fresh project it prints the two
+commands the user must run once, then restart:
 
-This mechanism (Option B from the design):
-1. `harnessed init <stack>` — explicit, can be run standalone before first use.
-2. Auto-checked on every `harnessed launch` — silently skips if already initialized; runs if not.
+1. The `BEADS_INIT_HINT` ENV (baked in the Dockerfile) — the `bd init …` line for this cell:
+   `bd init --quiet --stealth`
+2. The `/etc/beads-setup-hint` file — the `bd setup <tool> --stealth` line for the active harness.
 
 ### No skill shipped
 
@@ -115,12 +113,13 @@ entry, no `service:` sidecar.
 ## Caveats
 
 - **Single-writer:** embedded Dolt locks the file; one instance per project dir.
-- **Idempotency:** `harnessed init` is idempotent (`bd init` no-ops if `.beads/` exists); `bd setup
-  claude` is separately idempotent (updates its marked section instead of duplicating it).
-- **Stealth scope confirmed:** `--stealth` on `bd init` only touches `.git/info/exclude` (no git
-  ops); `bd setup claude --stealth` only changes the *hook's* behavior (`bd prime --stealth`
-  instead of `--hook-json`) — neither one skips installing the hook/CLAUDE.md section, which is
-  why `bd-setup-agent` must run as its own explicit step.
+- **First-time init is manual:** `bd init` (and `bd setup`) must be run once by the user inside a
+  running instance, then the agent restarted. The `SessionStart` notice is silent after that.
+  `bd init` is idempotent (no-ops if `.beads/` already exists); `bd setup claude` is idempotent too.
+- **Stealth scope (bd 1.1.0):** `--stealth` on `bd init` only touches `.git/info/exclude`; `bd
+  setup claude --stealth` changes the hook's runtime behavior (`bd prime --stealth` instead of
+  `--hook-json`) — but it still writes `.claude/settings.json` + `CLAUDE.md` into the project, and
+  those files are NOT git-excluded by bd's stealth logic. Expect two untracked files after setup.
 
 ## References
 

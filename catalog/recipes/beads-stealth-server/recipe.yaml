@@ -55,8 +55,8 @@ persist:
 # /etc/beads-setup-hint. `bd list` checks the static BEADS_DIR (host-persisted mount — see Dockerfile).
 #
 # MVP scope is a FRESH server database: a NEW project's database is minted on the shared server.
-# Migrating an existing embedded `.beads/dolt` into the shared server is a deferred follow-up (see
-# PLAN.md); the printed command never includes `bd init --reinit-local`.
+# Migrating an existing embedded `.beads/dolt` into the shared server is a deferred follow-up; the
+# printed command never includes `bd init --reinit-local`.
 hooks:
   SessionStart:
     - command: >-

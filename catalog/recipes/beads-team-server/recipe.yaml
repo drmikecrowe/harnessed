@@ -42,9 +42,8 @@ persist:
 # line). See Dockerfile.
 #
 # MVP scope is a FRESH server database: a NEW project's database is minted on the shared server.
-# Migrating an EXISTING repo's `.beads/dolt` history into the shared server is a deferred follow-up
-# (see PLAN.md). The printed command never includes `bd init --reinit-local` (that would discard
-# history).
+# Migrating an EXISTING repo's `.beads/dolt` history into the shared server is a deferred follow-up.
+# The printed command never includes `bd init --reinit-local` (that would discard history).
 hooks:
   SessionStart:
     - command: >-

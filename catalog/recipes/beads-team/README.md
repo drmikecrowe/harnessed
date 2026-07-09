@@ -2,14 +2,15 @@
 
 This recipe makes `bd` ([beads](https://github.com/gastownhall/beads)) available in a stack in
 beads' own **default operational mode**: `.beads/` lives in the project (git-tracked), sync happens
-via Dolt-native push/pull over the git origin. This file records the decisions and *why*; `PLAN.md`
-is the implementation how-to.
+via Dolt-native push/pull over the git origin. This file records the decisions and *why*; the
+recipe.yaml + Dockerfile are the implementation.
 
 See the sibling [`beads-stealth`](../beads-stealth/README.md) recipe for the fully-invisible
 variant (`.beads/` outside the repo entirely, zero git footprint — used e.g. by
 `claude_review-harness`, which dogfoods against harnessed's own repo and must not leave a trace).
-The two recipes are siblings, not a hierarchy: `conflicts: [beads-stealth]` in both prevents
-combining them in one stack.
+The four beads variants (beads-team, beads-team-server, beads-stealth, beads-stealth-server) are
+siblings, not a hierarchy: each `conflicts:` with the other three to prevent combining any two in
+one stack.
 
 ## What beads is
 
@@ -45,14 +46,13 @@ This recipe intentionally does NOT replicate the invisible/host-persisted design
 - `AGENTS.md`/`CLAUDE.md`-equivalent guidance is generated via `bd setup <tool>` (see "Harness
   setup" below) unless `--skip-agents`/`--stealth` is passed.
 
-We run `bd init --quiet --non-interactive --role maintainer`: `--non-interactive` is required since
-`harnessed init` runs this in a headless one-shot container (no TTY) — bd's `--team`/`--contributor`
-flags are interactive-only wizards and are explicitly *rejected* in non-interactive mode, so they
-can't be scripted here at all. `--role maintainer` is the sensible default for a project's home
-repo; the OSS fork-based *contributor* role (private task tracking on a repo you don't maintain) is
-a manual `bd init --role contributor` override some users may want — this recipe doesn't assume it.
+The welcome notice prints `bd init --server --quiet --non-interactive --role maintainer`:
+`--non-interactive` is required because bd's `--team`/`--contributor` flags are interactive-only
+wizards and are explicitly *rejected* without a TTY, so they can't be scripted. `--role maintainer`
+is the sensible default for a project's home repo; the OSS fork-based *contributor* role is a
+manual `bd init --role contributor` override some users may want — this recipe doesn't assume it.
 
-### No static `BEADS_DIR` (resolved dynamically, bare-aware)
+### No static `BEADS_DIR`
 
 Unlike `beads-stealth` (whose `.beads/` lives at a fixed container path unrelated to the project
 mount), this recipe's `.beads/` lives INSIDE a work tree, at whatever path the project happens to
@@ -68,34 +68,25 @@ repo — a directory with **no work tree**. The result: `.beads` (and its tracke
 `config.yaml`) lands where nothing can `git add` it, and auto-export fails with "this operation must
 be run in a work tree." The DB works, but it's stranded outside every work tree.
 
-Two pieces fix this so the layout behaves like a normal in-repo install:
+**Known limitation:** the recipe no longer ships a `bd-resolve-beads-dir` helper. On a bare +
+linked-worktree layout, export `BEADS_DIR` manually in the shell to point at the primary worktree
+before running `bd init`:
 
-1. **`bd-resolve-beads-dir`** (baked helper) + **`/etc/profile.d/beads-dir.sh`**: at shell start,
-   detect a bare common dir and point `BEADS_DIR` at the work tree checked out to the bare repo's
-   **default branch** (the "real main repo worktree") instead. Normal repos → nothing set (bd's own
-   discovery is correct). A bare repo with **no** work tree on its default branch → the helper exits
-   non-zero, and the recipe's `init.run` gates on it, so init **aborts** loudly rather than silently
-   misplacing the DB. Both the agent's login shell and the init container's `bash -lc` source
-   profile.d, so `bd init` and every later `bd` call agree on the location.
-2. **Host-side marker alignment** (`paths.primary_worktree`): harnessed's init marker
-   (`<repo>/.beads/embeddeddolt`) is resolved against the same default-branch work tree, not the raw
-   launch path — so launching against `main` *or* a sibling feature worktree both find the one real
-   `.beads`, and init isn't needlessly re-run.
+```sh
+export BEADS_DIR=/path/to/main-worktree/.beads
+bd init --server --quiet --non-interactive --role maintainer
+```
 
-Net effect: launch against `main` → `.beads` in `main/` (committable, marker matches). Launch
-against a feature worktree → beads still uses `main/.beads` (its shared-DB model), and the marker
-follows. `beads-stealth` sidesteps all of this by keeping `.beads` on the host outside the repo.
+`beads-stealth` sidesteps all of this by keeping `.beads` on the host outside the repo.
 
-### Harness setup: `bd setup <tool>`
+### Harness setup: `bd setup <tool>` (one-time, manual)
 
 `bd init` does not install the SessionStart hook or the minimal `CLAUDE.md` section that lets the
 agent discover `bd prime`/`bd ready` on its own — that's a separate step. Without it, the recipe
 bakes a working `bd` binary the agent never learns to use unprompted.
 
-The Dockerfile bakes `/usr/local/bin/bd-setup-agent`, resolved at build time from the `${HARNESS}`
-build ARG (recipe.yaml's `init.run` is one fixed string shared by every harness a stack might use,
-so it can't branch on `$HARNESS` at runtime — this is the one place harness-specific behavior may,
-per the harness-independent-recipes convention). For `claude` it runs:
+On first use, the `SessionStart` welcome notice (see "First-time init" below) prints the exact
+command to run, e.g. for Claude:
 
 ```
 bd setup claude --project
@@ -103,38 +94,31 @@ bd setup claude --project
 
 `--project` (not the global default) because `~/.claude/settings.json` inside the container is
 harnessed's own read-only profile mount (baked at `harnessed build` time) — `bd setup` can't write
-hooks there. `--project` writes `.claude/settings.local.json` into the bind-mounted project root
-instead, which is writable and persists on the host — git-tracked, like the rest of `.beads/` in
-this recipe's default mode — alongside a managed section in `CLAUDE.md`. Without `--stealth`, the
-hook runs `bd prime --hook-json` (the full JSON-wrapped workflow context), not the flush-only
-`--stealth` variant.
+hooks there. `--project` writes `.claude/settings.json` + `CLAUDE.md` into the bind-mounted project
+root instead (both persisted on the host, git-tracked along with the rest of `.beads/`). Without
+`--stealth`, the hook runs `bd prime --hook-json` (the full JSON-wrapped workflow context).
 
-`bd-setup-agent` no-ops for any `${HARNESS}` beads doesn't have a built-in recipe for yet (e.g.
-`omp`) — add a case to the Dockerfile's wrapper as that changes.
+The exact command is baked into the image as `/etc/beads-setup-hint`, written by a
+`case "${HARNESS}"` block in the Dockerfile so recipe.yaml stays harness-independent. If beads
+doesn't yet have a built-in setup for a given harness, the hint falls back to
+`bd setup <your-agent>   # see: bd setup --list`.
 
-### Init via `harnessed init` + auto-run on launch
+### First-time init
 
-`bd init` must run **at runtime against the mounted project** (the project isn't mounted at build
-time, so a Dockerfile `RUN bd init` is impossible). The `init:` block in recipe.yaml wires this
-into the `harnessed init` lifecycle:
+`bd init` must run at runtime against the mounted project (the project isn't mounted at build time).
+Rather than auto-running it on every attach (which is not reliably idempotent across git layouts),
+the recipe uses a `hooks: SessionStart` notice that is **self-gating** on `bd list`:
 
-```yaml
-init:
-  marker:
-    scope: workspace
-    location: in_repo
-    name: .beads
-  run: bd init --quiet --non-interactive --role maintainer && bd-setup-agent
+```
+bash -lc 'bd list >/dev/null 2>&1 || printf "...notice + commands..."'
 ```
 
-The launcher checks whether `<project>/.beads/` exists on the host before every launch. If it
-doesn't, it runs the init command in a transient one-shot container (`podman run --rm`) with the
-same project + persist mounts as a normal launch. Once `bd init` succeeds, the `.beads/` dir is
-created (in the project itself) and future launches skip the step.
+Silent once `bd list` succeeds (the workspace is initialized). On a fresh project it prints the two
+commands the user must run once, then restart:
 
-This mechanism (Option B from the design):
-1. `harnessed init <stack>` — explicit, can be run standalone before first use.
-2. Auto-checked on every `harnessed launch` — silently skips if already initialized; runs if not.
+1. The `BEADS_INIT_HINT` ENV (baked in the Dockerfile) — the `bd init …` line for this cell:
+   `bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on`
+2. The `/etc/beads-setup-hint` file — the `bd setup <tool>` line for the active harness.
 
 ### No skill shipped
 
@@ -158,15 +142,16 @@ entry, no `service:` sidecar.
 ## Caveats
 
 - **Single-writer:** embedded Dolt locks the file; one instance per project dir.
-- **Idempotency:** `harnessed init` is idempotent (`bd init` no-ops if `.beads/` exists); `bd setup
-  claude` is separately idempotent (updates its marked section instead of duplicating it).
+- **First-time init is manual:** `bd init` (and `bd setup`) must be run once by the user inside a
+  running instance, then the agent restarted. The `SessionStart` notice is silent after that.
+  `bd init` is idempotent (no-ops if `.beads/` already exists); `bd setup claude` is idempotent too
+  (updates its marked section rather than duplicating it).
 - **Real git footprint, by design:** this recipe installs git hooks and commits `.beads/` to the
-  project — unlike `beads-stealth`, which never touches git at all. That's the whole point of using
-  the plain `beads` recipe instead of `beads-stealth`; pick the one that matches the project.
+  project — unlike `beads-stealth`, which keeps `.beads/` outside the repo. Pick the variant that
+  matches the project's collaboration model.
 - **No `--team`/`--contributor` wizard:** those flags require an interactive TTY and are rejected
-  in bd's non-interactive mode, so they can't be scripted into `init.run`. If a project genuinely
-  needs the OSS fork-based contributor workflow, run `bd init --role contributor` manually inside
-  the instance instead of relying on the automated init step.
+  in bd's non-interactive mode. If a project genuinely needs the OSS fork-based contributor
+  workflow, run `bd init --role contributor` manually inside the instance.
 
 ## References
 
