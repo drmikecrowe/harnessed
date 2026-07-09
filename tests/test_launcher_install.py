@@ -832,7 +832,7 @@ class TestBuildDerivedImageNeverTouchesSecrets:
             return subprocess.CompletedProcess(cmd, 0)
 
         monkeypatch.setattr(launcher.subprocess, "run", fake_run)
-        launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path)
+        launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef")
 
         assert len(calls) == 1, "build must issue exactly one command: the plain podman build"
         assert calls[0][:2] == ["podman", "build"]

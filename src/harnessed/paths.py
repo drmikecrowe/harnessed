@@ -93,6 +93,24 @@ def find_in_catalog(kind: str, name: str) -> Path:
     return roots[0] / kind / name
 
 
+def list_catalog_stacks() -> list[str]:
+    """Every stack name visible across the catalog roots (user overlay wins, deduped by name).
+
+    Used by `harnessed build`'s no-arg reconciliation pass to enumerate what to check.
+    """
+    seen: set[str] = set()
+    names: list[str] = []
+    for root in catalog_roots():
+        stacks_dir = root / "stacks"
+        if not stacks_dir.is_dir():
+            continue
+        for entry in sorted(stacks_dir.iterdir()):
+            if entry.name not in seen and (entry / "stack.yaml").is_file():
+                seen.add(entry.name)
+                names.append(entry.name)
+    return sorted(names)
+
+
 def profiles_root() -> Path:
     """Root directory for all emitted stack profiles (XDG DATA)."""
     return xdg_data_home() / "harnessed" / "profiles"
