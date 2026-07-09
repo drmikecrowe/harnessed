@@ -29,6 +29,7 @@ from ruamel.yaml import YAML
 from . import emit
 from . import paths
 from . import persist
+from . import staleness
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
 from .assemble import assemble, compute_recipe_hash, _merge_servers, _resolve_service_servers
 from .synclinks import CollisionError
@@ -1985,6 +1986,21 @@ def launch(
         _err.print(f"[bold red]error:[/bold red] stack '{stack}' has no assembled profile (run: harnessed build {stack})")
         raise typer.Exit(1)
 
+    # Guard against a stale profile: a recipe referenced by this stack may have been renamed/removed
+    # (SchemaError) or edited (StaleProfileError) since the profile was built. is_built() only checks
+    # presence, so without this a launch would silently run an orphaned/outdated image.
+    try:
+        staleness.check_profile_fresh(None, stack)
+    except SchemaError as exc:
+        _err.print(
+            f"[bold red]error:[/bold red] stack '{stack}' references a recipe that no longer "
+            f"resolves ({exc}) — run: harnessed build {stack}"
+        )
+        raise typer.Exit(1)
+    except staleness.StaleProfileError as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack}")
+        raise typer.Exit(1)
+
     try:
         stk = load_stack(stack_dir)
     except SchemaError as exc:
@@ -2425,8 +2441,16 @@ def test_stack(
     rt = _runtime()
     root = _harnessed_dir()
 
+    reason = None
     if not is_built(stack):
-        _out.print(f"[blue][INFO][/blue] Stack '{stack}' not built — assembling first")
+        reason = "not built"
+    else:
+        try:
+            staleness.check_profile_fresh(None, stack)
+        except (SchemaError, staleness.StaleProfileError) as exc:
+            reason = f"stale ({exc})"
+    if reason:
+        _out.print(f"[blue][INFO][/blue] Stack '{stack}' {reason} — assembling first")
         _build_stack(rt, stack)
 
     # Delegate to the capability test (the harnessed.cli `test` entrypoint).
