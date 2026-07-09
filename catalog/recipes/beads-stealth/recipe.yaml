@@ -15,13 +15,11 @@
 # The bind-mount target is the fixed container path $HOME/.beads, making BEADS_DIR a static Dockerfile
 # ENV — no per-project path arithmetic needed at runtime.
 #
-# Init: NOT automatic (see the `hooks:` block below). On SessionStart, a self-gating notice (`bd
-# list`) tells the user to run, once, and then restart:
-#   1. `bd init --quiet --stealth` — creates .beads/; `--stealth` configures git-exclude only.
-#   2. `bd setup claude --project --stealth` — wires the SessionStart `bd prime` hook + CLAUDE.md
-#      section (a separate step from `bd init`, per beads' docs/SETUP.md). NOTE: on bd 1.1.0 this
-#      still writes an UNTRACKED `.claude/settings.json` + `CLAUDE.md` (NOT in bd's stealth
-#      git-exclude list), so "stealth" is not fully footprint-free — the user opts into it knowingly.
+# Init: NOT automatic (see `setup:` below). `condition` (`! bd list`) makes it self-gating: the
+# assembler synthesizes a Claude SessionStart hook from it that prints the summary once, then
+# stays silent once `bd list` succeeds. NOTE: `bd setup <tool> --stealth` still writes an
+# UNTRACKED `.claude/settings.json` + `CLAUDE.md` on bd 1.1.0 (not in bd's stealth git-exclude
+# list), so "stealth" is not fully footprint-free — the user opts into it knowingly.
 name: beads-stealth
 description: bd (beads), fully invisible mode — .beads/ lives outside the repo entirely, zero git footprint.
 setup:
@@ -30,6 +28,7 @@ setup:
     workspace, then restart the agent; these two steps initialize the host-persisted .beads/ store
     and wire the bd prime workflow into the harness before bd can track issues.
   reference: https://github.com/gastownhall/beads
+  condition: '! bd list >/dev/null 2>&1'
 
 # agent-carnet is also a shared, cross-session notebook (see its own `rules:` entry instructing the
 # agent to treat carnet as the SOLE memory store). Combining both in one stack gives the agent two
@@ -45,11 +44,6 @@ persist:
 
 # No `init:` — beads is NOT auto-initialized (same rationale as `beads-team`; `bd setup --stealth`
 # still leaves an untracked `.claude/settings.json` + `CLAUDE.md` footprint on bd 1.1.0, so it can't
-# be made invisible automatically). A SessionStart hook prints a one-time notice (gated on `bd list`,
-# silent once initialized) with the exact commands + restart, from the baked hints BEADS_INIT_HINT
-# and /etc/beads-setup-hint. `bd list` here checks the static BEADS_DIR (host-persisted mount — see
-# Dockerfile). See Dockerfile for the hints.
-hooks:
-  SessionStart:
-    - command: >-
-        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'
+# be made invisible automatically). `setup.condition` (above) checks the static BEADS_DIR
+# (host-persisted mount — see Dockerfile); the assembler turns it into a self-gating Claude
+# SessionStart hook — see emit._recipe_hooks_settings.

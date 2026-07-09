@@ -30,22 +30,12 @@ USER root
 # Welcome-message init (NO auto-init). This recipe deliberately does NOT run `bd init`/`bd setup`
 # automatically — bd's setup writes into the project (`.claude/settings.json` + `CLAUDE.md` on bd
 # 1.1.0) and can't be made reliably idempotent/footprint-free across every git layout, so first-time
-# initialization is left to the user. recipe.yaml's SessionStart hook prints a one-time notice (gated
-# on `bd list`, silent once initialized) with the exact commands to run + restart. The notice reads
-# two baked hints:
-#   • BEADS_INIT_HINT       — the `bd init …` line for THIS cell (static ENV, below).
-#   • /etc/beads-setup-hint — the `bd setup <tool> …` line: the one harness-specific token, branched
-#     on the build-time ${HARNESS} ARG so recipe.yaml never names a harness. `--project` targets the
-#     writable project root (the ~/.claude profile mount is read-only).
-RUN case "${HARNESS}" in \
-      claude) printf 'bd setup claude --project\n' > /etc/beads-setup-hint ;; \
-      *) printf 'bd setup <your-agent>   # see: bd setup --list\n' > /etc/beads-setup-hint ;; \
-    esac
+# initialization is left to the user via recipe.yaml's harness-agnostic `setup:` note (self-gated on
+# Claude by `setup.condition`; `! bd list`). `--project` (in the summary) targets the writable
+# project root (the ~/.claude profile mount is read-only).
 USER harnessed
-# The `bd init …` line for the TEAM cell (in-repo, git-tracked, managed per-container dolt server).
 # `bd init --server` installs git hooks + auto-wires the git origin as a Dolt remote; auto-commit on
 # persists every write (incl. dependency edges, which are NOT in issues.jsonl) to the Dolt store.
-ENV BEADS_INIT_HINT="bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on"
 # No static BEADS_DIR ENV: `.beads/` lives inside the work tree (persist: location: in_repo); bd's
 # own discovery finds it for a normal repo. In a bare + linked-worktree layout, run `bd` from the
 # default-branch work tree (or set BEADS_DIR to that work tree's `.beads`).

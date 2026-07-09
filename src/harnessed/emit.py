@@ -58,31 +58,41 @@ def write_mcp_json(profile_dir: Path) -> Path:
     return out
 
 
-def setup_notes_block(recipes: list[Recipe]) -> str | None:
+def setup_notes_block(recipes: list[Recipe], *, skip_conditioned: bool = False) -> str | None:
     """Render a harness-agnostic `## Setup` section from recipes' `setup:` field.
 
     One bullet per recipe that declares `setup:` (summary + upstream reference URL); recipes
     without it are self-contained and contribute nothing. Returns None when no recipe in the
     stack declares `setup:`, so callers can no-op exactly like the existing `instructions:` gate.
+
+    `skip_conditioned`: when True, recipes whose `setup:` carries a `condition` are excluded —
+    those get a self-gating Claude SessionStart hook instead (see `_recipe_hooks_settings`),
+    which is strictly better there (silent once configured), so Claude's static bullet would just
+    be a permanent duplicate. The other harnesses have no live per-session check, so they pass
+    `skip_conditioned=False` and keep the static bullet unconditionally.
     """
     lines = [
         f"- **{recipe.name}**: {recipe.setup.summary} (see: {recipe.setup.reference})"
         for recipe in recipes
-        if recipe.setup is not None
+        if recipe.setup is not None and not (skip_conditioned and recipe.setup.condition)
     ]
     if not lines:
         return None
     return "## Setup\n" + "\n".join(lines)
 
 
-def combine_instructions(instructions: str | None, recipes: list[Recipe]) -> str | None:
+def combine_instructions(
+    instructions: str | None, recipes: list[Recipe], *, skip_conditioned: bool = False
+) -> str | None:
     """Append the recipes' `## Setup` notes (see `setup_notes_block`) to the stack's
     `instructions:` text — the single combine point every harness's identity writer goes
     through, so a recipe's `setup:` note reaches CLAUDE.md, .codex/AGENTS.md, the opencode
     persona, omp's APPEND_SYSTEM.md, and antigravity's GEMINI.md alike, with no per-harness
     plumbing. Returns None only when there is neither `instructions:` nor any `setup:` note.
+
+    `skip_conditioned`: forwarded to `setup_notes_block` — pass True for the claude writer only.
     """
-    notes = setup_notes_block(recipes)
+    notes = setup_notes_block(recipes, skip_conditioned=skip_conditioned)
     if not notes:
         return instructions
     if not instructions:
@@ -396,12 +406,42 @@ def write_omp_identity(
     return written
 
 
+def _setup_hint_container_path(recipe_name: str) -> str:
+    """In-container path of a recipe's baked setup-note text file — see `write_setup_hint_files`."""
+    return f"$HOME/.claude/hooks/setup-notes/{recipe_name}.txt"
+
+
+def write_setup_hint_files(profile_dir: Path, recipes: list[Recipe]) -> list[Path]:
+    """Write the plain-text setup notice for each recipe with `setup.condition` — the synthesized
+    Claude SessionStart hook (see `_recipe_hooks_settings`) `cat`s this file rather than having the
+    free-form `summary` text (which may contain backticks/quotes) interpolated into its shell
+    command, where it could be reinterpreted by the shell.
+    """
+    out_dir = profile_dir / ".claude" / "hooks" / "setup-notes"
+    written: list[Path] = []
+    for recipe in recipes:
+        if recipe.setup is None or not recipe.setup.condition:
+            continue
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out = out_dir / f"{recipe.name}.txt"
+        out.write_text(
+            f"\n=== {recipe.name} setup needed ===\n"
+            f"{recipe.setup.summary}\n"
+            f"(see: {recipe.setup.reference})\n\n",
+            encoding="utf-8",
+        )
+        written.append(out)
+    return written
+
+
 def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
-    """Build the settings.json `hooks` block from each recipe's declared `hooks:` (GAP 2).
+    """Build the settings.json `hooks` block from each recipe's declared `hooks:` (GAP 2), plus a
+    synthesized self-gating SessionStart notice for any recipe whose `setup:` carries a
+    `condition` (see `SetupSpec`) — the declarative alternative to hand-writing a `hooks:` block.
 
     Renders straight into Claude Code's native hooks shape: {EventName: [{matcher?, hooks:
-    [{type: "command", command}]}]}. Each recipe-declared entry becomes its OWN group (in recipe
-    order) rather than being merged by matcher across recipes — simpler, and matches how multiple
+    [{type: "command", command}]}]}. Each entry becomes its OWN group (in recipe order) rather
+    than being merged by matcher across recipes — simpler, and matches how multiple
     plugins/installers each contribute independent groups for the same event in practice.
     """
     out: dict[str, list[dict]] = {}
@@ -413,6 +453,12 @@ def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
                 if entry.matcher is not None:
                     block["matcher"] = entry.matcher
                 group.append(block)
+        if recipe.setup is not None and recipe.setup.condition:
+            path = _setup_hint_container_path(recipe.name)
+            command = f'bash -lc \'{recipe.setup.condition} && cat "{path}"\''
+            out.setdefault("SessionStart", []).append(
+                {"hooks": [{"type": "command", "command": command}]}
+            )
     return out
 
 

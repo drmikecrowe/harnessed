@@ -85,40 +85,26 @@ bd init --server --quiet --non-interactive --role maintainer
 agent discover `bd prime`/`bd ready` on its own — that's a separate step. Without it, the recipe
 bakes a working `bd` binary the agent never learns to use unprompted.
 
-On first use, the `SessionStart` welcome notice (see "First-time init" below) prints the exact
-command to run, e.g. for Claude:
+`bd setup claude --project` writes `.claude/settings.json` + `CLAUDE.md` into the bind-mounted
+project root (both persisted on the host, git-tracked along with the rest of `.beads/`) — not the
+global default, because `~/.claude/settings.json` inside the container is harnessed's own
+read-only profile mount (baked at `harnessed build` time) and `bd setup` can't write hooks there.
+Without `--stealth`, the hook runs `bd prime --hook-json` (the full JSON-wrapped workflow context).
 
-```
-bd setup claude --project
-```
-
-`--project` (not the global default) because `~/.claude/settings.json` inside the container is
-harnessed's own read-only profile mount (baked at `harnessed build` time) — `bd setup` can't write
-hooks there. `--project` writes `.claude/settings.json` + `CLAUDE.md` into the bind-mounted project
-root instead (both persisted on the host, git-tracked along with the rest of `.beads/`). Without
-`--stealth`, the hook runs `bd prime --hook-json` (the full JSON-wrapped workflow context).
-
-The exact command is baked into the image as `/etc/beads-setup-hint`, written by a
-`case "${HARNESS}"` block in the Dockerfile so recipe.yaml stays harness-independent. If beads
-doesn't yet have a built-in setup for a given harness, the hint falls back to
-`bd setup <your-agent>   # see: bd setup --list`.
+The exact command is per-harness, but recipe.yaml's `setup:` note is deliberately harness-agnostic
+— it points the user at beads' own docs (`bd setup --list`) rather than baking one command per
+harness into the Dockerfile.
 
 ### First-time init
 
 `bd init` must run at runtime against the mounted project (the project isn't mounted at build time).
 Rather than auto-running it on every attach (which is not reliably idempotent across git layouts),
-the recipe uses a `hooks: SessionStart` notice that is **self-gating** on `bd list`:
-
-```
-bash -lc 'bd list >/dev/null 2>&1 || printf "...notice + commands..."'
-```
-
-Silent once `bd list` succeeds (the workspace is initialized). On a fresh project it prints the two
-commands the user must run once, then restart:
-
-1. The `BEADS_INIT_HINT` ENV (baked in the Dockerfile) — the `bd init …` line for this cell:
-   `bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on`
-2. The `/etc/beads-setup-hint` file — the `bd setup <tool>` line for the active harness.
+recipe.yaml declares `setup: {summary, reference, condition: '! bd list >/dev/null 2>&1'}`. The
+assembler turns `condition` into a self-gating Claude SessionStart hook (`emit._recipe_hooks_settings`)
+that `cat`s the baked notice file (`emit.write_setup_hint_files`) only when `bd list` still fails —
+silent once the workspace is initialized. Other harnesses (codex/opencode/omp/antigravity), which
+have no live per-session check, get the same summary as a permanent static note in their identity
+file instead.
 
 ### No skill shipped
 

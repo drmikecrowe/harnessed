@@ -23,16 +23,12 @@
 # committed, matching upstream's own default expectations. (bd manages its own finer-grained
 # exclusions internally, e.g. `.beads/dolt/`.)
 #
-# Init: NOT automatic (see the `hooks:` block below). On SessionStart, a self-gating notice (`bd
-# list`) tells the user to run, once, and then restart:
-#   1. `bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on`
-#      — creates .beads/ in the project, installs git hooks, auto-wires the git origin as a Dolt
-#      remote, provisions bd's managed dolt sql-server, and persists auto-commit so every write
-#      (including dependency edges, which are NOT in `.beads/issues.jsonl`) commits to the Dolt store.
-#   2. `bd setup claude --project` — wires the SessionStart `bd prime` hook + CLAUDE.md section (per
-#      beads' docs/SETUP.md, `bd init` does NOT do this; it is a separate `bd setup <tool>` call, and
-#      on bd 1.1.0 it writes `.claude/settings.json` + `CLAUDE.md` into the project — a real footprint,
-#      which is why this is a deliberate user action, not an every-attach auto-run).
+# Init: NOT automatic (see `setup:` below). `condition` (`! bd list`) makes it self-gating: the
+# assembler synthesizes a Claude SessionStart hook from it that prints the summary once, then
+# stays silent once `bd list` succeeds. `bd setup <tool> --project` (a separate step from `bd
+# init`, per beads' docs/SETUP.md) writes `.claude/settings.json` + `CLAUDE.md` into the project on
+# bd 1.1.0 — a real footprint, which is why this is a deliberate user action, not an every-attach
+# auto-run.
 name: beads-team
 description: "bd (beads) — graph issue tracker / task memory, TEAM mode: in-repo, git-tracked, Dolt-native sync via the git origin (per-container managed dolt server)."
 setup:
@@ -42,6 +38,7 @@ setup:
     the agent; these steps create the in-repo .beads/ store, install git hooks, and wire the
     bd prime workflow into the harness.
   reference: https://github.com/gastownhall/beads
+  condition: '! bd list >/dev/null 2>&1'
 
 # agent-carnet is also a shared, cross-session notebook (see its own `rules:` entry instructing the
 # agent to treat carnet as the SOLE memory store). Combining both in one stack gives the agent two
@@ -58,12 +55,5 @@ persist:
 
 # No `init:` — beads is NOT auto-initialized. bd's setup writes into the project
 # (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and cannot be made reliably
-# idempotent/footprint-free across every git layout, so first-time init is left to the user. Instead
-# a SessionStart hook prints a one-time notice (gated on `bd list`, silent once the workspace has a
-# DB) with the exact commands for THIS cell + a restart reminder. The two `%s` are baked image hints:
-# BEADS_INIT_HINT (the `bd init …` line, static) and /etc/beads-setup-hint (the `bd setup <tool> …`
-# line, branched on ${HARNESS} at build time so this recipe stays harness-independent). See Dockerfile.
-hooks:
-  SessionStart:
-    - command: >-
-        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'
+# idempotent/footprint-free across every git layout, so first-time init is left to the user via
+# `setup:` above (self-gated on Claude by `setup.condition` — see emit._recipe_hooks_settings).

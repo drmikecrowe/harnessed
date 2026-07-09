@@ -128,6 +128,9 @@ def assemble(
     emit.reset_profile(profile_dir)
     emit.write_mcp_json(profile_dir)
     emit.write_settings_json(profile_dir, servers, recipes, stack.permissions)
+    # Text backing the self-gating Claude SessionStart hooks settings.json just synthesized from
+    # any recipe's `setup.condition` — see emit._recipe_hooks_settings / write_setup_hint_files.
+    emit.write_setup_hint_files(profile_dir, recipes)
     emit.write_hatago_config(profile_dir, servers)
     # ASM-03 — derived Dockerfile, with a final supply-chain scan layer (BLD-02) unless the build
     # opted out via --no-security-scans (HARNESSED_NO_SCANS).
@@ -155,8 +158,13 @@ def assemble(
     # opencode's identity is wired post-build in the launcher (it merges the image-baked config).
     # Recipes' `setup:` notes (harness-agnostic summary + reference URL) ride along with
     # `instructions:` through the same combine point (emit.combine_instructions), so they land
-    # in every harness's identity/rules file without per-harness plumbing.
-    instructions = emit.combine_instructions(stack.instructions, recipes)
+    # in every harness's identity/rules file without per-harness plumbing. Claude excludes any
+    # `setup:` with a `condition` — that recipe already gets a self-gating SessionStart hook
+    # (synthesized above into settings.json), which is strictly better there than a permanent
+    # static bullet; the other harnesses have no live per-session check, so they keep it.
+    instructions = emit.combine_instructions(
+        stack.instructions, recipes, skip_conditioned=(stack.harness == "claude")
+    )
     if stack.harness == "claude":
         emit.write_claude_md(profile_dir, instructions)
     elif stack.harness == "antigravity":

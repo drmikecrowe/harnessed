@@ -25,18 +25,11 @@ RUN mise use -g "github:gastownhall/beads@${BEADS_VERSION}" "github:dolthub/dolt
 # Smoke test: a runnable binary also catches an arch mismatch mise's attestation check wouldn't.
 RUN bd --version && dolt version
 USER root
-# Welcome-message init (NO auto-init) — same rationale as `beads-stealth`. recipe.yaml's SessionStart
-# hook prints a one-time notice (gated on `bd list`) with the exact first-init commands + restart.
-# /etc/beads-setup-hint = the `bd setup <tool> --stealth` line, branched on the build-time ${HARNESS}
-# ARG so recipe.yaml stays harness-independent. (`bd setup --stealth` still writes an untracked
-# `.claude/settings.json` + `CLAUDE.md` on bd 1.1.0, so it can't be auto-run footprint-free.)
-RUN case "${HARNESS}" in \
-      claude) printf 'bd setup claude --project --stealth\n' > /etc/beads-setup-hint ;; \
-      *) printf 'bd setup <your-agent> --stealth   # see: bd setup --list\n' > /etc/beads-setup-hint ;; \
-    esac
+# Welcome-message init (NO auto-init) — same rationale as `beads-stealth`. recipe.yaml's harness-
+# agnostic `setup:` note is self-gated on Claude by `setup.condition` (`! bd list`); `bd setup
+# --stealth` still writes an untracked `.claude/settings.json` + `CLAUDE.md` on bd 1.1.0, so it
+# can't be auto-run footprint-free.
 USER harnessed
-# The `bd init …` line for the STEALTH-SERVER cell (`.beads/` outside the repo; SHARED beads-server).
-ENV BEADS_INIT_HINT="bd init --stealth --server --external --server-host host.containers.internal --server-port 3307 --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on"
 # BEADS_DIR is a static ENV pointing at the host-persisted project-scoped bind-mount
 # ($HOME/.beads → $XDG_DATA_HOME/harnessed/persist/beads/<git-common-dir-hash>/.beads/) — same fixed
 # container path as `beads-stealth`, so no per-project path arithmetic and no bd-resolve-beads-dir

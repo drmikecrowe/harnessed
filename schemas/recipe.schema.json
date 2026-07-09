@@ -82,7 +82,8 @@
       "required": ["summary", "reference"],
       "properties": {
         "summary": { "description": "One-line, harness-agnostic setup note (what the user needs to do).", "type": "string", "minLength": 1 },
-        "reference": { "description": "Upstream docs/GitHub URL the user can consult for details.", "type": "string", "format": "uri", "minLength": 1 }
+        "reference": { "description": "Upstream docs/GitHub URL the user can consult for details.", "type": "string", "format": "uri", "minLength": 1 },
+        "condition": { "description": "Optional shell command, already present in the built image, that exits 0 when the manual step is STILL needed (e.g. `! bd list`). When set, the assembler synthesizes a self-gating Claude SessionStart hook from it instead of the recipe hand-writing its own `hooks:` block, and suppresses this recipe's static bullet on Claude (the hook is strictly better there). Other harnesses keep the static bullet unconditionally.", "type": "string", "minLength": 1 }
       }
     },
     "deps": {

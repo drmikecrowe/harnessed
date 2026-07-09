@@ -38,6 +38,7 @@ setup:
     `bd setup <harness> --project --stealth` once per workspace, then restart the agent; these
     steps register the project database on the shared Dolt server and wire bd into the harness.
   reference: https://github.com/gastownhall/beads
+  condition: '! bd list >/dev/null 2>&1'
 
 # agent-carnet is a competing persistent-memory system (see `beads-stealth`). Also conflicts with
 # every other beads variant — same tool, different placement + storage wiring; don't combine two
@@ -54,16 +55,12 @@ persist:
     scope: project
     location: host
 
-# No `init:` — beads is NOT auto-initialized (same rationale as `beads-stealth`). A SessionStart hook
-# prints a one-time notice (gated on `bd list`, silent once the workspace has a DB configured — its
-# metadata.json already points at the shared server) with the exact commands + restart, from the
-# baked hints BEADS_INIT_HINT (the `bd init --stealth --server --external …` line) and
-# /etc/beads-setup-hint. `bd list` checks the static BEADS_DIR (host-persisted mount — see Dockerfile).
+# No `init:` — beads is NOT auto-initialized (same rationale as `beads-stealth`). `setup.condition`
+# (above) is gated on `bd list`, silent once the workspace has a DB configured — its metadata.json
+# already points at the shared server; the assembler turns it into a self-gating Claude SessionStart
+# hook — see emit._recipe_hooks_settings. `bd list` checks the static BEADS_DIR (host-persisted mount
+# — see Dockerfile).
 #
 # MVP scope is a FRESH server database: a NEW project's database is minted on the shared server.
 # Migrating an existing embedded `.beads/dolt` into the shared server is a deferred follow-up; the
-# printed command never includes `bd init --reinit-local`.
-hooks:
-  SessionStart:
-    - command: >-
-        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'
+# summary above never includes `bd init --reinit-local`.
