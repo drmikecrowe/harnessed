@@ -1,4 +1,4 @@
-# Recipe Dockerfile for: beads
+# Recipe Dockerfile for: beads-team
 #
 # No FROM and no `ARG HARNESS` — the assembler prepends `FROM harnessed-${HARNESS}:latest` and
 # re-declares `ARG HARNESS` after it, so ${HARNESS} is available here and recipes stay

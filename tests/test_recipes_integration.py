@@ -42,9 +42,16 @@ NO_LIVE_CONNECT = {"claude_openbrain-example", "claude_hindsight"}
 
 # CLI-only recipes with no skill/command/mcp/plugin surface at all, by design — the agent shells
 # out to the binary directly and there is no `expect:` kind for "a binary is on PATH" (see e.g.
-# catalog/recipes/{beads,rtk}/PLAN.md "Risks / checks"). The assembler-driven oracle is
+# catalog/recipes/{beads-team,rtk}/PLAN.md "Risks / checks"). The assembler-driven oracle is
 # structurally empty for these; verified manually, not by this fast sweep.
-NO_CAPABILITY_ORACLE = {"claude_beads", "claude_beads-shared", "claude_rtk", "claude_solidspec"}
+NO_CAPABILITY_ORACLE = {
+    "claude_beads-team",
+    "claude_beads-team-server",
+    "claude_beads-stealth",
+    "claude_beads-stealth-server",
+    "claude_rtk",
+    "claude_solidspec",
+}
 
 
 def _catalog_stacks() -> list[str]:

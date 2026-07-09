@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../../../schemas/recipe.schema.json
-# Recipe: beads-shared — bake the `bd` CLI and point it at the SHARED `beads-server` service (a
+# Recipe: beads-team-server — bake the `bd` CLI and point it at the SHARED `beads-server` service (a
 # single standalone `dolt sql-server`) instead of provisioning a per-container Dolt engine (bead
-# main-8by). This is the shared-service counterpart to the `beads` recipe: same `bd` binary, same
+# main-8by). This is the shared-service counterpart to the `beads-team` recipe: same `bd` binary, same
 # in-repo git-tracked `.beads/` (config + JSONL export), but the live Dolt data lives on ONE server
 # everyone connects to — removing the exclusive-file-lock contention behind the 2026-07-05 incident.
 #
@@ -17,17 +17,17 @@
 # own Dolt database on the one server (design "multi-database-per-server"). Auth is loopback-only /
 # none, so no BEADS_DOLT_PASSWORD is set.
 #
-# The service itself is attached at the STACK level (`claude_beads-shared`'s `services:` list), not
+# The service itself is attached at the STACK level (`claude_beads-team-server`'s `services:` list), not
 # via an MCP `service:` ref — a `dolt sql-server` speaks the MySQL wire protocol, not MCP, so it is
 # NOT a hatago-proxied MCP server. The launcher starts it host-published on launch (see the stack).
 #
 # No MCP, no skill, no service ref here: the agent shells out to `bd` directly (same as `beads`).
-name: beads-shared
-description: "bd (beads) pointed at the shared beads-server dolt sql-server sidecar (external server; one Dolt database per project on a single server)."
+name: beads-team-server
+description: "bd (beads) — TEAM mode on the SHARED beads-server dolt sql-server (in-repo git-tracked config; external server; one Dolt database per project on a single server)."
 
-# Same tool, different storage wiring — never combine with the embedded-engine `beads`/`beads-stealth`
-# variants in one stack. `agent-carnet` is a competing persistent-memory system (see `beads`).
-conflicts: [beads, beads-stealth, agent-carnet]
+# Same tool, different storage wiring — never combine with any other beads variant in one stack.
+# `agent-carnet` is a competing persistent-memory system (see `beads-team`).
+conflicts: [beads-team, beads-stealth, beads-stealth-server, agent-carnet]
 
 persist:
   - name: .beads

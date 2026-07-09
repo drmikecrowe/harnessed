@@ -1,4 +1,4 @@
-# beads recipe — implementation plan
+# beads-team recipe — implementation plan
 
 Goal: make `bd` (beads) available in a stack in beads' own **default operational mode**: `.beads/`
 lives inside the project (git-tracked), `bd init` installs git hooks and auto-wires the git origin
@@ -20,7 +20,7 @@ Dockerfile recipe (bake the `bd` CLI) + a `persist:` entry (`.beads/` in-repo, g
 `harnessed init`). **No MCP, no service.**
 
 ```
-catalog/recipes/beads/
+catalog/recipes/beads-team/
   recipe.yaml        # persist + init declarations
   Dockerfile         # bake the pinned bd binary + the bd-setup-agent wrapper
   PLAN.md  README.md
@@ -29,10 +29,10 @@ catalog/recipes/beads/
 ### recipe.yaml
 
 ```yaml
-name: beads
+name: beads-team
 description: "bd (beads) — graph issue tracker / persistent task memory for agents (default mode: in-repo, git-tracked, Dolt-native sync)."
 
-conflicts: [agent-carnet, beads-stealth]
+conflicts: [agent-carnet, beads-stealth, beads-stealth-server, beads-team-server]
 
 persist:
   - name: .beads
@@ -99,10 +99,10 @@ USER harnessed
 ## Build / init / test lifecycle
 
 ```bash
-harnessed build claude_beads   # assemble + build derived image (pin gate)
-harnessed init  claude_beads   # one-time per project: bd init --quiet --non-interactive --role maintainer && bd-setup-agent
-harnessed claude_beads         # launch; init is auto-checked and skipped (marker already exists)
-harnessed test  claude_beads   # capability report: ✓ bd (CLI) available
+harnessed build claude_beads-team   # assemble + build derived image (pin gate)
+harnessed init  claude_beads-team   # one-time per project: bd init --quiet --non-interactive --role maintainer && bd-setup-agent
+harnessed claude_beads-team         # launch; init is auto-checked and skipped (marker already exists)
+harnessed test  claude_beads-team   # capability report: ✓ bd (CLI) available
 ```
 
 Manual verification:

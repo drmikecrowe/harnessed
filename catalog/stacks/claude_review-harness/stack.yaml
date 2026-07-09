@@ -1,13 +1,13 @@
 # yaml-language-server: $schema=../../../schemas/stack.schema.json
 # Stack: claude_review-harness — dogfood stack for the ultra-detailed design review
-# (docs/prompts/ultra-detailed-design-review.md). Combines task tracking (beads — in-repo,
+# (docs/prompts/ultra-detailed-design-review.md). Combines task tracking (beads-team — in-repo,
 # git-tracked, so the review's bd issue graph persists in the repo it audits, not just this session),
 # compressed dev-command output (rtk), terse working-mode output (caveman), and a structural code
 # graph (codebase-memory-mcp) — chosen over serena for this task since it's a read/audit exercise,
 # not precise LSP-grade editing.
 name: claude_review-harness
 harness: claude
-recipes: [beads, caveman, rtk, codebase-memory-mcp, mikes-universal-setup]
+recipes: [beads-team, caveman, rtk, codebase-memory-mcp, mikes-universal-setup]
 services: []
 # This is a review-and-file-a-PR stack, so forward the host's git push/sign surface (SSH/GPG agent
 # socket, git config, ssh config/known_hosts/pubkeys) so the agent can push branches and open PRs.

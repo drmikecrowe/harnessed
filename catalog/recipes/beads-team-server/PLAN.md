@@ -1,4 +1,4 @@
-# beads-shared recipe — implementation plan
+# beads-team-server recipe — implementation plan
 
 Goal: run `bd` (beads) against a **single shared `dolt sql-server`** — the `beads-server` service
 (bead **main-8by**) — instead of each container/host embedding its own Dolt engine. This removes the
@@ -20,7 +20,7 @@ Upstream: <https://github.com/gastownhall/beads> (bd 1.1.0) · <https://github.c
   one **named** volume (`beads-server-data`, mounted at `/data`). Loopback-only, no auth.
 - **Recipe** (this dir): bakes `bd` + `dolt` + the `bd-resolve-beads-dir` / `bd-setup-agent` helpers;
   `init.run` points `bd` at the shared server. No MCP, no skill, no `service:` ref.
-- **Stack** (`catalog/stacks/claude_beads-shared/`): `recipes: [beads-shared]` +
+- **Stack** (`catalog/stacks/claude_beads-team-team-server/`): `recipes: [beads-team-server]` +
   `services: [beads-server]`.
 
 ## How `bd` connects to the external server (the crux — a first-class bd feature)
@@ -57,7 +57,7 @@ stack already depends on.
 
 **FRESH server (empty DB).** A new project's database is minted on the shared server on first
 `bd init`. Verified via: `harnessed svc up beads-server` (or auto-start on `harnessed launch
-claude_beads-shared`), then `bd list` / create an issue and confirm it round-trips.
+claude_beads-team-team-server`), then `bd list` / create an issue and confirm it round-trips.
 
 ## Deferred follow-ups
 
@@ -81,8 +81,8 @@ claude_beads-shared`), then `bd list` / create an issue and confirm it round-tri
 ## Verification
 
 - Hermetic: `mise exec -- uv run --extra dev pytest -q` — new service/recipe/stack pass strict-load +
-  JSON-schema + `_service_refs` unit tests. `claude_beads-shared` is CLI-only (no MCP/skill/command
-  surface), so it is listed in the test's `NO_CAPABILITY_ORACLE` set alongside `claude_beads`.
-- Live (manual, `HARNESSED_PODMAN=1`): build the service image, `harnessed launch claude_beads-shared`
+  JSON-schema + `_service_refs` unit tests. `claude_beads-team-team-server` is CLI-only (no MCP/skill/command
+  surface), so it is listed in the test's `NO_CAPABILITY_ORACLE` set alongside `claude_beads-team`.
+- Live (manual, `HARNESSED_PODMAN=1`): build the service image, `harnessed launch claude_beads-team-team-server`
   against a scratch repo, confirm `beads-server` container is up on :3307 and `bd init`/`bd list`
   round-trip against it.

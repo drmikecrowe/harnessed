@@ -1,4 +1,4 @@
-# Recipe Dockerfile for: beads-shared
+# Recipe Dockerfile for: beads-team-server
 #
 # No FROM and no `ARG HARNESS` — the assembler prepends `FROM harnessed-${HARNESS}:latest` and
 # re-declares `ARG HARNESS` after it, so ${HARNESS} is available here and recipes stay
@@ -7,10 +7,10 @@
 # Bake the `bd` CLI (https://github.com/gastownhall/beads), configured by this recipe's init to talk
 # to the SHARED `beads-server` service (an external, externally-managed `dolt sql-server`) rather
 # than a per-container Dolt engine (bead main-8by). Installed via mise's `github:` backend — the same
-# attestation-verified, pinned install the `beads` recipe uses. `dolt` is baked alongside `bd`: bd's
+# attestation-verified, pinned install the `beads-team` recipe uses. `dolt` is baked alongside `bd`: bd's
 # external-server mode connects to the remote server as a client, and `bd dolt push`/`pull`
 # (refs/dolt/data git sync) shell out to a `dolt` binary on PATH. Pinned to the SAME versions the
-# `beads` recipe verifies (bd 1.1.0 + dolt 2.1.10) so both variants share one proven toolchain.
+# `beads-team` recipe verifies (bd 1.1.0 + dolt 2.1.10) so both variants share one proven toolchain.
 USER harnessed
 ARG BEADS_VERSION=1.1.0
 ARG DOLT_VERSION=2.1.10
@@ -20,7 +20,7 @@ RUN bd --version && dolt version
 USER root
 
 # Bare + linked-worktree support (bd-resolve-beads-dir, sourced by init.run — see recipe.yaml).
-# Identical to the `beads` recipe: default-mode `bd` anchors `.beads` to the git common dir, which is
+# Identical to the `beads-team` recipe: default-mode `bd` anchors `.beads` to the git common dir, which is
 # the BARE repo (no work tree) in a bare + linked-worktree layout; this helper points BEADS_DIR at
 # the real default-branch work tree instead, or exits non-zero so init.run aborts rather than
 # misplacing the DB. A normal repo prints nothing (bd's own discovery is correct).
@@ -43,7 +43,7 @@ printf '%s/.beads\n' "$wt"
 SH
 RUN chmod +x /usr/local/bin/bd-resolve-beads-dir
 
-# Harness-aware `bd setup` wrapper (${HARNESS} is a build-time ARG) — same as the `beads` recipe.
+# Harness-aware `bd setup` wrapper (${HARNESS} is a build-time ARG) — same as the `beads-team` recipe.
 # `bd init` installs git hooks + wires the Dolt remote, but wiring the SessionStart hook + minimal
 # CLAUDE.md/AGENTS.md section is a SEPARATE `bd setup <tool>` step (beads docs/SETUP.md). `--project`
 # writes .claude/settings.local.json into the bind-mounted project root (writable), not the

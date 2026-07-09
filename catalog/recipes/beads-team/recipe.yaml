@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=../../../schemas/recipe.schema.json
-# Recipe: beads — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary, run in
-# beads' in-repo, git-tracked mode on bd's SERVER storage engine (a managed per-container `dolt
+# Recipe: beads-team — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary, run
+# in beads' in-repo, git-tracked mode on bd's SERVER storage engine (a managed per-container `dolt
 # sql-server` on loopback, pidfile-managed, data under `.beads/dolt/`) — NOT the embedded engine,
 # whose dependency subsystem (`bd dep add`/`close`/`delete`/`stats`/`sql`/`doctor`) is a no-op in bd
 # 1.1.0 and whose shared-file lock contends under this bare+worktree layout. `.beads/` lives INSIDE
@@ -9,9 +9,14 @@
 # under `refs/dolt/data`, NOT a git branch, so this does not touch protected branches. No MCP, no
 # service, no skill: the agent shells out to `bd` directly.
 #
-# For fully-invisible use (`.beads/` outside the repo entirely, zero git footprint — e.g. dogfooding
-# this tool against harnessed's OWN repo), see the sibling `beads-stealth` recipe instead.
-# `conflicts: [beads-stealth]` below prevents combining both in one stack.
+# This is the TEAM / no-shared-server cell of the beads 2×2 (placement × storage):
+#   • beads-team          — this recipe: in-repo, git-tracked, per-container managed dolt server.
+#   • beads-team-server   — in-repo, git-tracked, but points at the SHARED `beads-server` service.
+#   • beads-stealth       — `.beads/` outside the repo, zero git footprint, embedded engine.
+#   • beads-stealth-server — `.beads/` outside the repo, but live data on the SHARED `beads-server`.
+# For fully-invisible use (`.beads/` outside the repo entirely — e.g. dogfooding this tool against
+# harnessed's OWN repo), use `beads-stealth` instead. All four are the same tool with different
+# storage/placement wiring, so `conflicts:` below prevents combining any two in one stack.
 #
 # Persistence: `.beads/` is `location: in_repo` (already inside the project's own mount — no extra
 # bind-mount) with `vcs: tracked`, i.e. harnessed takes no .gitignore action: the item is meant to be
@@ -35,15 +40,15 @@
 #      hook (.claude/settings.local.json, running `bd prime --hook-json`) + minimal CLAUDE.md
 #      section. Per beads' docs/SETUP.md, `bd init` does NOT do this on its own — it must be a
 #      separate `bd setup <tool>` call.
-name: beads
-description: "bd (beads) — graph issue tracker / persistent task memory for agents (default mode: in-repo, git-tracked, Dolt-native sync)."
+name: beads-team
+description: "bd (beads) — graph issue tracker / task memory, TEAM mode: in-repo, git-tracked, Dolt-native sync via the git origin (per-container managed dolt server)."
 
 # agent-carnet is also a shared, cross-session notebook (see its own `rules:` entry instructing the
 # agent to treat carnet as the SOLE memory store). Combining both in one stack gives the agent two
 # competing persistent-memory systems and duplicate/contradictory workflow instructions. Also
-# conflicts with `beads-stealth` — same tool, two different .beads/ locations; don't combine both
-# variants in one stack.
-conflicts: [agent-carnet, beads-stealth]
+# conflicts with every other beads variant — same tool, different .beads/ location + storage wiring;
+# don't combine two variants in one stack.
+conflicts: [agent-carnet, beads-stealth, beads-stealth-server, beads-team-server]
 
 persist:
   - name: .beads
