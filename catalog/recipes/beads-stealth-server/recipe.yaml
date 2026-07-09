@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: beads-stealth-server — bake the `bd` CLI (https://github.com/gastownhall/beads) in the
+# STEALTH-SERVER cell of the beads 2×2 (placement × storage): STEALTH placement (`.beads/` lives
+# OUTSIDE the repo, host-persisted bind-mount, zero git footprint) combined with the SHARED
+# `beads-server` service for storage (external, externally-managed `dolt sql-server`) instead of a
+# per-container embedded engine. No MCP, no skill: the agent shells out to `bd` directly.
+#
+# Why this cell exists: `beads-stealth` (embedded engine) takes an EXCLUSIVE on-disk Dolt file lock
+# on its host-persisted `.beads/dolt`, so a host `bd` and a container `bd` can never both hold a live
+# engine against it — the same 2026-07-05 lock-collision the `beads-server` service was built to fix,
+# but for the invisible/host-persisted placement rather than the in-repo one. Pointing stealth `bd`
+# at the shared server removes that contention while keeping the zero-git-footprint placement.
+#
+# The beads 2×2 (all four are the same tool, different placement/storage — mutually exclusive):
+#   • beads-team           — in-repo, git-tracked, per-container managed dolt server.
+#   • beads-team-server    — in-repo, git-tracked, SHARED beads-server service.
+#   • beads-stealth        — `.beads/` outside the repo, zero git footprint, embedded engine.
+#   • beads-stealth-server — this recipe: `.beads/` outside the repo, SHARED beads-server service.
+#
+# How bd connects (documented bd feature, same as `beads-team-server`):
+#   `bd init --stealth --server --external --server-host <h> --server-port <p>`.
+#   • --stealth   → invisible mode: git-exclude only, no repo hook install, no AGENTS.md mutation.
+#   • --server    → use an external dolt sql-server instead of bd's embedded engine.
+#   • --external  → the server is externally managed; bd connects but NEVER starts/stops it (that's
+#                   the `beads-server` container's job).
+#   • host.containers.internal:3307 → the pod's host-gateway reaches the loopback-published service
+#     (3307 = bd's own external-server default). Loopback-only / no auth, so no password is set.
+# Per-project isolation is multi-DATABASE-per-server: `bd init` (no --database) derives the database
+# name from the project's issue prefix and creates it on the shared server.
+#
+# The `beads-server` sidecar is attached at the STACK level (`claude_beads-stealth-server`'s
+# `services:` list), not via an MCP `service:` ref — a dolt sql-server speaks MySQL, not MCP.
+name: beads-stealth-server
+description: "bd (beads) — STEALTH mode on the SHARED beads-server dolt sql-server (`.beads/` outside the repo, zero git footprint; external server; one Dolt database per project)."
+
+# agent-carnet is a competing persistent-memory system (see `beads-stealth`). Also conflicts with
+# every other beads variant — same tool, different placement + storage wiring; don't combine two
+# variants in one stack.
+conflicts: [agent-carnet, beads-team, beads-team-server, beads-stealth]
+
+persist:
+  # Stealth placement: host-persisted OUTSIDE the repo (same as `beads-stealth`). `scope: project`
+  # (git-common-dir keyed) shares the same `.beads/` across all worktrees of a checkout but NOT
+  # across clones. The bind-mount target is the fixed container path $HOME/.beads (see Dockerfile
+  # ENV). Here `.beads/` holds only config + the server pointer; the issue data is on the shared
+  # server's named volume.
+  - name: .beads
+    scope: project
+    location: host
+
+# No `init:` — beads is NOT auto-initialized (same rationale as `beads-stealth`). A SessionStart hook
+# prints a one-time notice (gated on `bd list`, silent once the workspace has a DB configured — its
+# metadata.json already points at the shared server) with the exact commands + restart, from the
+# baked hints BEADS_INIT_HINT (the `bd init --stealth --server --external …` line) and
+# /etc/beads-setup-hint. `bd list` checks the static BEADS_DIR (host-persisted mount — see Dockerfile).
+#
+# MVP scope is a FRESH server database: a NEW project's database is minted on the shared server.
+# Migrating an existing embedded `.beads/dolt` into the shared server is a deferred follow-up; the
+# printed command never includes `bd init --reinit-local`.
+hooks:
+  SessionStart:
+    - command: >-
+        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'

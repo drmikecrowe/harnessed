@@ -9,7 +9,8 @@
 # Exactly the shipped single-container service shape (one image / one port / one volume, like
 # `ping`) — NO topology, NO init job, NO second port. The one thing beads needs that ping doesn't —
 # multi-DATABASE-per-server (one Dolt database per project on a single server, keyed by each
-# project's issue prefix) — is a property of how the `beads-shared` recipe CONFIGURES `bd`, not of
+# project's issue prefix) — is a property of how the `beads-team-server`/`beads-stealth-server`
+# recipes CONFIGURE `bd`, not of
 # this container's shape. Zero new ServiceDef capability.
 #
 # Security: loopback-only, NO auth. The server publishes to the host loopback (127.0.0.1:3307) and
@@ -24,7 +25,7 @@
 # reproduce the incident the moment any other `bd` touched it. `.beads/issues.jsonl` stays the
 # passive in-repo export; the live data lives in this named volume.
 #
-# Port 3307 matches bd's own `--server-port` default for external-server mode, so the `beads-shared`
+# Port 3307 matches bd's own `--server-port` default for external-server mode, so the `beads-team-server`
 # recipe's `bd init --server --external` lines up with zero surprise (design open-question #3: a
 # stable, config-set port — not a computed one).
 name: beads-server

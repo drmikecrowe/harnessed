@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: beads-team-server — bake the `bd` CLI and point it at the SHARED `beads-server` service (a
+# single standalone `dolt sql-server`) instead of provisioning a per-container Dolt engine (bead
+# main-8by). This is the shared-service counterpart to the `beads-team` recipe: same `bd` binary, same
+# in-repo git-tracked `.beads/` (config + JSONL export), but the live Dolt data lives on ONE server
+# everyone connects to — removing the exclusive-file-lock contention behind the 2026-07-05 incident.
+#
+# How bd connects to the external server (the crux — this is a first-class, documented bd feature,
+# NOT a workaround): `bd init --server --external --server-host <h> --server-port <p>`.
+#   • --server    → use an external dolt sql-server instead of bd's embedded engine.
+#   • --external  → the server is externally managed; bd connects but NEVER starts/stops it (that's
+#                   the `beads-server` container's job). bd persists host/port to .beads/metadata.json.
+#   • host.containers.internal:3307 → the pod's host-gateway reaches the loopback-published service
+#     (the same address ping/gbrain/agentmemory peers use; 3307 = bd's own external-server default).
+# Per-project isolation is multi-DATABASE-per-server: `bd init` (no --database) derives the database
+# name from this project's issue prefix and creates it on the shared server, so each project gets its
+# own Dolt database on the one server (design "multi-database-per-server"). Auth is loopback-only /
+# none, so no BEADS_DOLT_PASSWORD is set.
+#
+# The service itself is attached at the STACK level (`claude_beads-team-server`'s `services:` list), not
+# via an MCP `service:` ref — a `dolt sql-server` speaks the MySQL wire protocol, not MCP, so it is
+# NOT a hatago-proxied MCP server. The launcher starts it host-published on launch (see the stack).
+#
+# No MCP, no skill, no service ref here: the agent shells out to `bd` directly (same as `beads`).
+name: beads-team-server
+description: "bd (beads) — TEAM mode on the SHARED beads-server dolt sql-server (in-repo git-tracked config; external server; one Dolt database per project on a single server)."
+
+# Same tool, different storage wiring — never combine with any other beads variant in one stack.
+# `agent-carnet` is a competing persistent-memory system (see `beads-team`).
+conflicts: [beads-team, beads-stealth, beads-stealth-server, agent-carnet]
+
+persist:
+  - name: .beads
+    scope: workspace
+    location: in_repo
+    vcs: tracked
+
+# No `init:` — beads is NOT auto-initialized (same rationale as `beads-team`). A SessionStart hook
+# prints a one-time notice (gated on `bd list`, silent once the workspace has a DB) with the exact
+# commands for THIS cell + a restart reminder, from two baked image hints: BEADS_INIT_HINT (the
+# `bd init --server --external …` line) and /etc/beads-setup-hint (the harness-specific `bd setup`
+# line). See Dockerfile.
+#
+# MVP scope is a FRESH server database: a NEW project's database is minted on the shared server.
+# Migrating an EXISTING repo's `.beads/dolt` history into the shared server is a deferred follow-up.
+# The printed command never includes `bd init --reinit-local` (that would discard history).
+hooks:
+  SessionStart:
+    - command: >-
+        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'

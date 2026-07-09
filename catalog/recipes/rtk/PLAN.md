@@ -249,4 +249,4 @@ Manual verification (no skill is asserted — verify the *behaviour* directly):
 - harnessed settings.json handling: `src/harnessed/emit.py` (`merge_settings`/`write_settings_json`),
   `src/harnessed/launcher.py` (`_merge_baked_settings`, `_build_mount_args` `.claude` mount)
 - Closest analogue + GAP 2: `docs/todos/2026-06-27-recipe-stress-test.md` (headroom #3, GAP 2)
-- Recipe model: `docs/guides/recipe-authoring.md`; quality-bar plan: `catalog/recipes/beads/PLAN.md`
+- Recipe model: `docs/guides/recipe-authoring.md`; quality-bar reference: `catalog/recipes/beads-team/README.md`

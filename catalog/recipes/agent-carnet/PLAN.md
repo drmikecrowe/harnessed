@@ -7,8 +7,8 @@ Upstream: <https://github.com/yamadashy/agent-carnet> · npm `agent-carnet` (lat
 pure-JS bundled `.mjs`, no native binary). Node CLI (not an MCP server, not a daemon).
 
 See `README.md` (this dir) for *why* each choice was made. This file is the *how*. Closest model:
-`catalog/recipes/beads/PLAN.md` — the shapes are near-identical (CLI + skill + per-project state
-dir + one-time `init:`).
+the `beads-team` recipe (`catalog/recipes/beads-team/` — recipe.yaml header + README.md) — the
+shapes are near-identical (CLI + skill + per-project state dir).
 
 ## Host-vs-recipe distinction (resolve up front)
 
