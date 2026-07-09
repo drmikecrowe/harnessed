@@ -17,7 +17,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import emit
+from . import emit, staleness
 from .schema import (
     McpServer,
     Recipe,
@@ -149,6 +149,11 @@ def assemble(
     # stdio children are baked into the harness/stack image and spawned by the in-container hatago
     # (hatago-consolidation); kept for reporting. No separate baked-servers.json is written.
     baked = [s for s in servers if s.is_stdio_child]
+
+    # Stamp the profile with a hash of its catalog inputs (stack.yaml + recipe dirs) so a later
+    # `harnessed launch`/`test` can detect that a recipe was renamed/removed/edited out from under a
+    # previously-built stack (staleness.check_profile_fresh). Written last: the profile is complete.
+    staleness.write_stamp(profile_dir, staleness.compute_stamp(root, stack, recipes))
 
     return AssembleResult(
         stack=stack,
