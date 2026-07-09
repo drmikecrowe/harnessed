@@ -662,8 +662,14 @@ def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
 
 
 def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
-    """Run `varlock load --format env` in schema_dir, capturing stdout into a mode-0600 temp
-    env-file and returning its path. The caller MUST unlink the file after launch.
+    """Run `varlock load --format json` in schema_dir, writing a mode-0600 temp env-file of clean
+    `KEY=VALUE` lines and returning its path. The caller MUST unlink the file after launch.
+
+    Uses `--format json` (not `--format env`): varlock's `env` format double-quotes every value
+    (`KEY="val"`), but podman `--env-file` does NOT strip quotes — it takes everything after `=`
+    literally, so the quoted format lands `KEY='"val"'` in the container. JSON gives the raw
+    unquoted values, which we write verbatim (podman reads the value to end-of-line, so no quoting
+    or escaping is needed for single-line values like API keys/tokens).
 
     Assumes a `.env.schema` in schema_dir and `varlock` on PATH (checked by the caller).
     `OP_SERVICE_ACCOUNT_TOKEN` is appended when already set in the host env (headless / CI
@@ -671,7 +677,7 @@ def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
     failure so the launch degrades gracefully rather than hard-failing.
     """
     result = subprocess.run(
-        ["varlock", "load", "--format", "env"],
+        ["varlock", "load", "--format", "json"],
         capture_output=True,
         text=True,
         cwd=str(schema_dir),
@@ -683,16 +689,67 @@ def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
         )
         return None
 
-    lines = result.stdout
+    try:
+        resolved = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        _err.print(f"[bold red]error:[/bold red] varlock load returned invalid JSON: {e}")
+        return None
+
+    def _fmt(v: object) -> str:
+        # podman env-file is KEY=VALUE with the value literal to end-of-line — no quoting needed.
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        return str(v)
+
+    lines = "".join(
+        f"{k}={_fmt(v)}\n" for k, v in resolved.items() if v is not None
+    )
     op_token = os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")
     if op_token:
-        lines += f"\nOP_SERVICE_ACCOUNT_TOKEN={op_token}\n"
+        lines += f"OP_SERVICE_ACCOUNT_TOKEN={op_token}\n"
 
     fd, tmp = tempfile.mkstemp(prefix="harnessed-env.", suffix=".env")
     try:
         os.chmod(fd, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(lines)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return Path(tmp)
+
+
+def _normalize_plain_env_file(src: Path) -> Path:
+    """Copy a plain `.env` into a mode-0600 temp env-file, stripping one pair of surrounding quotes
+    from each value and any `export ` prefix. The caller MUST unlink the returned file after launch.
+
+    podman `--env-file` keeps quotes literal (`KEY="v"` → the container sees `"v"`), so a user's
+    dotenv-style `.env` — where quoting values is idiomatic — would otherwise land quoted inside the
+    container. We rewrite `KEY="v"` / `KEY='v'` → `KEY=v`. Comment/blank lines pass through (podman
+    ignores them); lines without `=` pass through unchanged.
+    """
+    out: list[str] = []
+    for raw in src.read_text().splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            out.append(raw)
+            continue
+        if stripped.startswith("export "):
+            stripped = stripped[len("export "):]
+        key, _, val = stripped.partition("=")
+        key, val = key.strip(), val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+            val = val[1:-1]
+        out.append(f"{key}={val}")
+
+    fd, tmp = tempfile.mkstemp(prefix="harnessed-env.", suffix=".env")
+    try:
+        os.chmod(fd, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write("\n".join(out) + "\n")
     except Exception:
         try:
             os.unlink(tmp)
@@ -712,13 +769,13 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
       2. Per-project env from project_path:
          - <project>/.env.schema present → `varlock load` in the project dir (varlock already
            cascades .env / .env.local overlays on top of the schema).
-         - else <project>/.env present → the plain file is passed through directly (podman
-           parses KEY=VALUE natively; no varlock, no resolution).
+         - else <project>/.env present → normalized into a temp env-file (surrounding quotes /
+           `export ` stripped so podman doesn't ingest them literally); no varlock, no resolution.
 
     Returns (env_files, temp_files): env_files is the ordered list to hand to --env-file;
     temp_files is the subset the caller MUST unlink after launch (resolved secrets must not
-    linger on disk). A plain project .env is in env_files but NOT temp_files — it is the
-    user's own file and must never be unlinked.
+    linger on disk). Every env-file here is a generated temp — the user's own `.env` is copied,
+    never handed to podman directly, so it is never modified or unlinked.
     """
     env_files: list[Path] = []
     temp_files: list[Path] = []
@@ -740,7 +797,9 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
                 env_files.append(p)
                 temp_files.append(p)
         elif proj_env.is_file():
-            env_files.append(proj_env)  # passthrough — user's own file, do NOT unlink
+            p = _normalize_plain_env_file(proj_env)
+            env_files.append(p)
+            temp_files.append(p)
 
     return env_files, temp_files
 
@@ -2236,7 +2295,7 @@ def launch(
     finally:
         # Unlink the temp env-files as soon as podman has ingested them into the container's env —
         # resolved secret values must not linger on disk (T-05-06). Always runs (success or failure).
-        # Only varlock-resolved temps are unlinked; a passthrough project .env is the user's own file.
+        # Every env-file is a generated temp (the user's own .env is copied, never handed to podman).
         for f in secrets_temp_files:
             try:
                 f.unlink()
