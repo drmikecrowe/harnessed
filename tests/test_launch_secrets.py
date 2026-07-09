@@ -43,18 +43,19 @@ def _fake_varlock_stdout(content: str):
 # ---------------------------------------------------------------------------
 
 class TestResolveSecretsNoOp:
-    """When the schema is absent or varlock is not installed → None, no subprocess."""
+    """When no source is present → ([], []), no subprocess."""
 
-    def test_no_schema_returns_none(self, monkeypatch, tmp_path):
+    def test_no_schema_no_project_returns_empty(self, monkeypatch, tmp_path):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        # No .env.schema created — must return None without touching varlock.
+        # No global .env.schema, no project_path — must return empty without touching varlock.
         called = []
         monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **kw: called.append(1))
-        result = launcher._resolve_launch_secrets()
-        assert result is None
+        env_files, temp_files = launcher._resolve_launch_secrets()
+        assert env_files == []
+        assert temp_files == []
         assert called == []
 
-    def test_no_varlock_returns_none(self, monkeypatch, tmp_path):
+    def test_no_varlock_skips_global_schema(self, monkeypatch, tmp_path):
         home = tmp_path / "home"
         home.mkdir()
         schema = home / ".config" / "harnessed" / ".env.schema"
@@ -64,13 +65,14 @@ class TestResolveSecretsNoOp:
         monkeypatch.setattr(launcher.shutil, "which", lambda _: None)
         called = []
         monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **kw: called.append(1))
-        result = launcher._resolve_launch_secrets()
-        assert result is None
+        env_files, temp_files = launcher._resolve_launch_secrets()
+        assert env_files == []
+        assert temp_files == []
         assert called == []
 
 
-class TestResolveSecretsHappyPath:
-    """When schema + varlock both present, runs varlock and returns a temp file."""
+class TestResolveSecretsGlobalSchema:
+    """When global schema + varlock both present, runs varlock and returns a temp file."""
 
     def _setup(self, monkeypatch, tmp_path, env_content: str, *, op_token: str | None = None):
         home = tmp_path / "home"
@@ -92,48 +94,126 @@ class TestResolveSecretsHappyPath:
 
     def test_returns_temp_file(self, monkeypatch, tmp_path):
         self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\n")
-        result = launcher._resolve_launch_secrets()
-        assert result is not None
-        assert result.is_file()
-        result.unlink()
+        env_files, temp_files = launcher._resolve_launch_secrets()
+        assert len(env_files) == 1
+        assert env_files == temp_files  # global schema temp is both an env-file and a cleanup target
+        assert env_files[0].is_file()
+        env_files[0].unlink()
 
     def test_temp_file_is_mode_600(self, monkeypatch, tmp_path):
         self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\n")
-        result = launcher._resolve_launch_secrets()
-        assert result is not None
-        mode = result.stat().st_mode & 0o777
+        env_files, _ = launcher._resolve_launch_secrets()
+        mode = env_files[0].stat().st_mode & 0o777
         assert mode == 0o600, f"expected 0600, got {mode:o}"
-        result.unlink()
+        env_files[0].unlink()
 
     def test_temp_file_contains_resolved_env(self, monkeypatch, tmp_path):
         self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\nOTHER=value\n")
-        result = launcher._resolve_launch_secrets()
-        assert result is not None
-        content = result.read_text()
+        env_files, _ = launcher._resolve_launch_secrets()
+        content = env_files[0].read_text()
         assert "SNYK_TOKEN=abc123" in content
-        result.unlink()
+        env_files[0].unlink()
 
     def test_op_service_account_token_appended_when_set(self, monkeypatch, tmp_path):
         self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\n", op_token="secret-ci-token")
-        result = launcher._resolve_launch_secrets()
-        assert result is not None
-        content = result.read_text()
+        env_files, _ = launcher._resolve_launch_secrets()
+        content = env_files[0].read_text()
         assert "OP_SERVICE_ACCOUNT_TOKEN=secret-ci-token" in content
-        result.unlink()
+        env_files[0].unlink()
 
     def test_op_service_account_token_not_added_when_absent(self, monkeypatch, tmp_path):
         self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\n")
-        result = launcher._resolve_launch_secrets()
-        assert result is not None
-        content = result.read_text()
+        env_files, _ = launcher._resolve_launch_secrets()
+        content = env_files[0].read_text()
         assert "OP_SERVICE_ACCOUNT_TOKEN" not in content
-        result.unlink()
+        env_files[0].unlink()
+
+
+class TestResolveSecretsProject:
+    """Per-project env discovery, layered after (and thus overriding) the global schema."""
+
+    def _no_global(self, monkeypatch, tmp_path):
+        """Point home at an empty dir so no global schema exists."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: home)
+
+    def test_plain_env_passthrough_not_a_temp(self, monkeypatch, tmp_path):
+        self._no_global(monkeypatch, tmp_path)
+        monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text("FOO=bar\n")
+        called = []
+        monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **kw: called.append(1))
+        env_files, temp_files = launcher._resolve_launch_secrets(proj)
+        # Plain .env is passed through directly — no varlock invocation, not a cleanup target.
+        assert env_files == [proj / ".env"]
+        assert temp_files == []
+        assert called == []
+
+    def test_project_schema_resolved_via_varlock(self, monkeypatch, tmp_path):
+        self._no_global(monkeypatch, tmp_path)
+        monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
+        monkeypatch.delenv("OP_SERVICE_ACCOUNT_TOKEN", raising=False)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env.schema").write_text("FOO=op(op://Private/Foo/credential)\n")
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **kw: _fake_varlock_stdout("FOO=resolved\n"),
+        )
+        env_files, temp_files = launcher._resolve_launch_secrets(proj)
+        assert env_files == temp_files and len(env_files) == 1  # resolved → temp, cleaned up
+        assert "FOO=resolved" in env_files[0].read_text()
+        env_files[0].unlink()
+
+    def test_project_schema_wins_over_plain_env(self, monkeypatch, tmp_path):
+        """When both .env.schema and .env exist, the schema path is used (varlock cascades .env)."""
+        self._no_global(monkeypatch, tmp_path)
+        monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
+        monkeypatch.delenv("OP_SERVICE_ACCOUNT_TOKEN", raising=False)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env.schema").write_text("FOO=op(op://Private/Foo/credential)\n")
+        (proj / ".env").write_text("FOO=plain\n")
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **kw: _fake_varlock_stdout("FOO=resolved\n"),
+        )
+        env_files, temp_files = launcher._resolve_launch_secrets(proj)
+        assert len(env_files) == 1 and env_files == temp_files
+        assert (proj / ".env") not in env_files
+        env_files[0].unlink()
+
+    def test_global_then_project_order(self, monkeypatch, tmp_path):
+        """Global schema first, project .env second — podman applies last-wins, so project wins."""
+        home = tmp_path / "home"
+        home.mkdir()
+        gschema = home / ".config" / "harnessed" / ".env.schema"
+        gschema.parent.mkdir(parents=True)
+        gschema.write_text("FOO=op(op://Private/Foo/credential)\n")
+        monkeypatch.setattr(Path, "home", lambda: home)
+        monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
+        monkeypatch.delenv("OP_SERVICE_ACCOUNT_TOKEN", raising=False)
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **kw: _fake_varlock_stdout("FOO=global\n"),
+        )
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text("FOO=project\n")
+        env_files, temp_files = launcher._resolve_launch_secrets(proj)
+        assert len(env_files) == 2
+        assert env_files[1] == proj / ".env"          # project last → overrides
+        assert temp_files == [env_files[0]]            # only the global temp is cleaned up
+        env_files[0].unlink()
 
 
 class TestResolveSecretsVarlockFailure:
-    """varlock returns non-zero → _resolve_launch_secrets returns None."""
+    """varlock returns non-zero → that source is dropped (returns empty when it's the only one)."""
 
-    def test_varlock_error_returns_none(self, monkeypatch, tmp_path):
+    def test_varlock_error_drops_global(self, monkeypatch, tmp_path):
         home = tmp_path / "home"
         home.mkdir()
         schema = home / ".config" / "harnessed" / ".env.schema"
@@ -147,8 +227,9 @@ class TestResolveSecretsVarlockFailure:
                 args=[], returncode=1, stdout="", stderr="failed to connect to 1Password"
             ),
         )
-        result = launcher._resolve_launch_secrets()
-        assert result is None
+        env_files, temp_files = launcher._resolve_launch_secrets()
+        assert env_files == []
+        assert temp_files == []
 
 
 # ---------------------------------------------------------------------------
