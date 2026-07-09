@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: claude_caveman — one recipe (the caveman skill suite), no services.
-# Naming: <agent>_<recipe>… (claude + caveman).
-name: claude_caveman
-harness: claude
-recipes: [caveman]
-services: []

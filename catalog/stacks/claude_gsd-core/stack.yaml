@@ -1,6 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: claude_gsd-core — claude harness + the gsd-core recipe alone.
-name: claude_gsd-core
-harness: claude
-recipes: [gsd-core]
-services: []

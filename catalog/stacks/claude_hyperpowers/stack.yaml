@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: claude_hyperpowers — the hyperpowers skill suite (skills + commands + agents).
-# Naming: <agent>_<recipe>… (claude + hyperpowers).
-name: claude_hyperpowers
-harness: claude
-recipes: [hyperpowers]
-services: []
