@@ -514,10 +514,18 @@ class SetupSpec:
     """Harness-agnostic manual-setup note (recipe.yaml `setup:`) — a short summary + upstream
     reference URL, rendered into the `## Setup` section every harness's identity/rules file
     already carries (CLAUDE.md, .codex/AGENTS.md, opencode persona, omp APPEND_SYSTEM.md,
-    GEMINI.md). Deliberately NOT per-harness — one plain-English note, not a bespoke command."""
+    GEMINI.md). Deliberately NOT per-harness — one plain-English note, not a bespoke command.
+
+    `condition` (optional): a shell command, already present in the built image, that exits 0
+    when the manual step is STILL needed (e.g. `! bd list`). When set, the assembler synthesizes
+    a self-gating Claude SessionStart hook from it (see emit._recipe_hooks_settings) instead of a
+    recipe hand-writing its own `hooks:` block, and Claude's static `## Setup` bullet for this
+    recipe is suppressed (the hook is strictly better there — silent once configured). The other
+    harnesses have no live per-session check, so they keep the static bullet unconditionally."""
 
     summary: str
     reference: str
+    condition: str | None = None
 
 
 def _parse_setup(raw_setup) -> "SetupSpec | None":
@@ -528,14 +536,23 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
         raise SchemaError("recipe 'setup' must be an object with 'summary' and 'reference'")
     summary = raw_setup.get("summary")
     reference = raw_setup.get("reference")
+    condition = raw_setup.get("condition")
     if not isinstance(summary, str) or not summary.strip():
         raise SchemaError("recipe 'setup.summary' must be a non-empty string")
     if not isinstance(reference, str) or not reference.strip():
         raise SchemaError("recipe 'setup.reference' must be a non-empty string")
-    unknown = sorted(set(raw_setup) - {"summary", "reference"})
+    if condition is not None and (not isinstance(condition, str) or not condition.strip()):
+        raise SchemaError("recipe 'setup.condition', if set, must be a non-empty string")
+    unknown = sorted(set(raw_setup) - {"summary", "reference", "condition"})
     if unknown:
-        raise SchemaError(f"recipe 'setup': unknown field(s) {unknown} — valid fields: summary, reference")
-    return SetupSpec(summary=summary.strip(), reference=reference.strip())
+        raise SchemaError(
+            f"recipe 'setup': unknown field(s) {unknown} — valid fields: summary, reference, condition"
+        )
+    return SetupSpec(
+        summary=summary.strip(),
+        reference=reference.strip(),
+        condition=condition.strip() if condition else None,
+    )
 
 
 def _parse_conflicts(raw_conflicts) -> list[str]:

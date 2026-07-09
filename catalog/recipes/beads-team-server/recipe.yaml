@@ -30,6 +30,7 @@ setup:
     <harness> --project` once per workspace, then restart the agent; these steps create the
     project database on the shared Dolt server and wire bd into the harness.
   reference: https://github.com/gastownhall/beads
+  condition: '! bd list >/dev/null 2>&1'
 
 # Same tool, different storage wiring — never combine with any other beads variant in one stack.
 # `agent-carnet` is a competing persistent-memory system (see `beads-team`).
@@ -41,16 +42,10 @@ persist:
     location: in_repo
     vcs: tracked
 
-# No `init:` — beads is NOT auto-initialized (same rationale as `beads-team`). A SessionStart hook
-# prints a one-time notice (gated on `bd list`, silent once the workspace has a DB) with the exact
-# commands for THIS cell + a restart reminder, from two baked image hints: BEADS_INIT_HINT (the
-# `bd init --server --external …` line) and /etc/beads-setup-hint (the harness-specific `bd setup`
-# line). See Dockerfile.
+# No `init:` — beads is NOT auto-initialized (same rationale as `beads-team`). `setup.condition`
+# (above) is gated on `bd list`, silent once the workspace has a DB; the assembler turns it into a
+# self-gating Claude SessionStart hook — see emit._recipe_hooks_settings.
 #
 # MVP scope is a FRESH server database: a NEW project's database is minted on the shared server.
 # Migrating an EXISTING repo's `.beads/dolt` history into the shared server is a deferred follow-up.
-# The printed command never includes `bd init --reinit-local` (that would discard history).
-hooks:
-  SessionStart:
-    - command: >-
-        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'
+# The summary above never includes `bd init --reinit-local` (that would discard history).

@@ -21,17 +21,9 @@ USER root
 # Welcome-message init (NO auto-init). This recipe does NOT run `bd init`/`bd setup` automatically —
 # `bd setup --stealth` still writes `.claude/settings.json` + `CLAUDE.md` into the project (untracked,
 # so NOT actually git-excluded on bd 1.1.0 — it can't be made footprint-free here), so first-init is
-# left to the user. recipe.yaml's SessionStart hook prints a one-time notice (gated on `bd list`,
-# silent once initialized) with the exact commands + restart, from two baked hints: BEADS_INIT_HINT
-# (below) and /etc/beads-setup-hint — the `bd setup <tool> --stealth` line, branched on the
-# build-time ${HARNESS} ARG so recipe.yaml stays harness-independent.
-RUN case "${HARNESS}" in \
-      claude) printf 'bd setup claude --project --stealth\n' > /etc/beads-setup-hint ;; \
-      *) printf 'bd setup <your-agent> --stealth   # see: bd setup --list\n' > /etc/beads-setup-hint ;; \
-    esac
+# left to the user, via recipe.yaml's harness-agnostic `setup:` note (self-gated on Claude by
+# `setup.condition`; `! bd list`).
 USER harnessed
-# The `bd init …` line for the STEALTH cell (embedded engine; `.beads/` outside the repo).
-ENV BEADS_INIT_HINT="bd init --quiet --stealth"
 # BEADS_DIR is now a static ENV pointing at the host-persisted project-scoped bind-mount
 # ($HOME/.beads → $XDG_DATA_HOME/harnessed/persist/beads/<git-common-dir-hash>/.beads/).
 # Because the mount target is a fixed container path (not $PWD-relative), the ENV is safe
