@@ -25,18 +25,18 @@ RUN mise use -g "github:gastownhall/beads@${BEADS_VERSION}" "github:dolthub/dolt
 # Smoke test: a runnable binary also catches an arch mismatch mise's attestation check wouldn't.
 RUN bd --version && dolt version
 USER root
-# Harness-aware `bd setup` wrapper (${HARNESS} is a build-time ARG) — same `--stealth` setup as the
-# `beads-stealth` recipe (git-exclude only; no hook install into the repo's git, no AGENTS.md
-# mutation). `bd init --stealth` (run once per project, see recipe.yaml) does NOT wire the agent hook
-# — that is a SEPARATE `bd setup <tool> --stealth` step (beads docs/SETUP.md). `--project` writes
-# .claude/settings.local.json into the bind-mounted project root (writable), not the read-only
-# ~/.claude profile mount.
+# Welcome-message init (NO auto-init) — same rationale as `beads-stealth`. recipe.yaml's SessionStart
+# hook prints a one-time notice (gated on `bd list`) with the exact first-init commands + restart.
+# /etc/beads-setup-hint = the `bd setup <tool> --stealth` line, branched on the build-time ${HARNESS}
+# ARG so recipe.yaml stays harness-independent. (`bd setup --stealth` still writes an untracked
+# `.claude/settings.json` + `CLAUDE.md` on bd 1.1.0, so it can't be auto-run footprint-free.)
 RUN case "${HARNESS}" in \
-      claude) printf '#!/bin/sh\nexec bd setup claude --project --stealth\n' > /usr/local/bin/bd-setup-agent ;; \
-      *) printf '#!/bin/sh\n# no bd setup recipe for harness "%s" yet (see beads docs/SETUP.md)\n' "${HARNESS}" > /usr/local/bin/bd-setup-agent ;; \
-    esac; \
-    chmod +x /usr/local/bin/bd-setup-agent
+      claude) printf 'bd setup claude --project --stealth\n' > /etc/beads-setup-hint ;; \
+      *) printf 'bd setup <your-agent> --stealth   # see: bd setup --list\n' > /etc/beads-setup-hint ;; \
+    esac
 USER harnessed
+# The `bd init …` line for the STEALTH-SERVER cell (`.beads/` outside the repo; SHARED beads-server).
+ENV BEADS_INIT_HINT="bd init --stealth --server --external --server-host host.containers.internal --server-port 3307 --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on"
 # BEADS_DIR is a static ENV pointing at the host-persisted project-scoped bind-mount
 # ($HOME/.beads → $XDG_DATA_HOME/harnessed/persist/beads/<git-common-dir-hash>/.beads/) — same fixed
 # container path as `beads-stealth`, so no per-project path arithmetic and no bd-resolve-beads-dir

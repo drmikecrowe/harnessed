@@ -18,23 +18,20 @@ RUN mise use -g "github:gastownhall/beads@${BEADS_VERSION}" && mise install
 # Fails the build loudly instead of at first run.
 RUN bd --version
 USER root
-# Bake a harness-aware `bd setup` wrapper. `bd init --stealth` (run once per project, see recipe.yaml)
-# only configures git-exclude — per beads' own docs/SETUP.md, wiring the SessionStart hook + minimal
-# CLAUDE.md/AGENTS.md section is a SEPARATE step: `bd setup <tool> --stealth`. recipe.yaml's
-# `init.run` is one fixed string shared by every harness a stack might use, so it can't branch on
-# $HARNESS at runtime — this is the one place that may (per the harness-independent-recipes
-# convention): ${HARNESS} is a build-time ARG, resolved once here into a tiny wrapper on PATH.
-#
-# --project (not global): ~/.claude/settings.json inside the container is harnessed's own read-only
-# profile mount (see launcher.py's settings.json bind-mount) — bd can't write hooks there. `--project`
-# writes .claude/settings.local.json into the bind-mounted project root instead, which is writable
-# and persists on the host like any other project file.
+# Welcome-message init (NO auto-init). This recipe does NOT run `bd init`/`bd setup` automatically —
+# `bd setup --stealth` still writes `.claude/settings.json` + `CLAUDE.md` into the project (untracked,
+# so NOT actually git-excluded on bd 1.1.0 — it can't be made footprint-free here), so first-init is
+# left to the user. recipe.yaml's SessionStart hook prints a one-time notice (gated on `bd list`,
+# silent once initialized) with the exact commands + restart, from two baked hints: BEADS_INIT_HINT
+# (below) and /etc/beads-setup-hint — the `bd setup <tool> --stealth` line, branched on the
+# build-time ${HARNESS} ARG so recipe.yaml stays harness-independent.
 RUN case "${HARNESS}" in \
-      claude) printf '#!/bin/sh\nexec bd setup claude --project --stealth\n' > /usr/local/bin/bd-setup-agent ;; \
-      *) printf '#!/bin/sh\n# no bd setup recipe for harness "%s" yet (see beads docs/SETUP.md)\n' "${HARNESS}" > /usr/local/bin/bd-setup-agent ;; \
-    esac; \
-    chmod +x /usr/local/bin/bd-setup-agent
+      claude) printf 'bd setup claude --project --stealth\n' > /etc/beads-setup-hint ;; \
+      *) printf 'bd setup <your-agent> --stealth   # see: bd setup --list\n' > /etc/beads-setup-hint ;; \
+    esac
 USER harnessed
+# The `bd init …` line for the STEALTH cell (embedded engine; `.beads/` outside the repo).
+ENV BEADS_INIT_HINT="bd init --quiet --stealth"
 # BEADS_DIR is now a static ENV pointing at the host-persisted project-scoped bind-mount
 # ($HOME/.beads → $XDG_DATA_HOME/harnessed/persist/beads/<git-common-dir-hash>/.beads/).
 # Because the mount target is a fixed container path (not $PWD-relative), the ENV is safe

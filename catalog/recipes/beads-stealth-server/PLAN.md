@@ -26,9 +26,13 @@ that contention while keeping the invisible, zero-git-footprint placement.
 - `persist:` — `.beads/` `scope: project`, `location: host` (identical to `beads-stealth`).
   `BEADS_DIR` is a static image ENV at the fixed mount path; no `bd-resolve-beads-dir` helper (that
   only matters for the in-repo variants).
-- `init.run` (Model A, self-gating): `bd init --stealth --server --external --server-host
-  host.containers.internal --server-port 3307 --quiet --non-interactive --role maintainer`, then
-  `bd config set dolt.auto-commit on`, then `bd-setup-agent` (`bd setup claude --project --stealth`).
+- **No auto-init.** A `hooks: SessionStart` notice (self-gated on `bd list`) tells the user to run,
+  once, then restart: `bd init --stealth --server --external --server-host host.containers.internal
+  --server-port 3307 --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on`,
+  then `bd setup claude --project --stealth`. Baked as `BEADS_INIT_HINT` + `/etc/beads-setup-hint`
+  (the setup line branches on `${HARNESS}`). Rationale: `bd setup` writes `.claude/settings.json` +
+  `CLAUDE.md` into the project and can't be made reliably idempotent/footprint-free, so it's a
+  deliberate user action, not an every-attach auto-run.
 - Stack `claude_beads-stealth-server` attaches the `beads-server` sidecar via its `services:` list.
 
 ## What lives where

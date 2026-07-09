@@ -27,57 +27,25 @@ RUN mise use -g "github:gastownhall/beads@${BEADS_VERSION}" "github:dolthub/dolt
 # Fails the build loudly instead of at first run.
 RUN bd --version && dolt version
 USER root
-# Bare + linked-worktree support (bd-resolve-beads-dir, sourced by init.run — see recipe.yaml).
-#
-# Default-mode `bd` anchors its shared `.beads` to the git "main repository" = the common dir. In a
-# bare + linked-worktree layout (a `.bare` repo with sibling worktrees) that common dir is the BARE
-# repo, which has NO work tree — so `.beads` lands where it can't be committed and auto-export's
-# `git add` fails ("must be run in a work tree"). This helper detects that case and points BEADS_DIR
-# at the real work tree checked out to the bare repo's default branch instead. A normal repo prints
-# nothing (bd's own discovery is correct). A bare repo with no work tree on its default branch exits
-# non-zero so `init.run` aborts (see recipe.yaml) rather than silently misplacing the DB.
-COPY <<'SH' /usr/local/bin/bd-resolve-beads-dir
-#!/bin/sh
-set -eu
-common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 0
-[ "$(git --git-dir="$common" rev-parse --is-bare-repository 2>/dev/null)" = "true" ] || exit 0
-head=$(git --git-dir="$common" symbolic-ref --short HEAD 2>/dev/null) || head=
-wt=
-if [ -n "$head" ]; then
-  wt=$(git --git-dir="$common" worktree list --porcelain 2>/dev/null \
-    | grep -B2 "^branch refs/heads/$head$" | sed -n 's/^worktree //p' | head -n1)
-fi
-if [ -z "$wt" ]; then
-  echo "bd-resolve-beads-dir: bare repo $common has no work tree on '${head:-detached}'; set BEADS_DIR manually" >&2
-  exit 1
-fi
-printf '%s/.beads\n' "$wt"
-SH
-RUN chmod +x /usr/local/bin/bd-resolve-beads-dir
-# No profile.d BEADS_DIR export (Model A): `init.run` (recipe.yaml) now runs `bd-resolve-beads-dir`
-# and exports BEADS_DIR in the attach shell itself, once, before `bd init` and the harness start —
-# so the value flows straight into the agent process. A profile.d script would just re-resolve it a
-# third time (the redundancy Model A removes).
-# Bake a harness-aware `bd setup` wrapper. `bd init` (default mode) already installs git hooks and
-# auto-wires the git origin as a Dolt remote — but per beads' own docs/SETUP.md, wiring the
-# SessionStart hook + minimal CLAUDE.md/AGENTS.md section is a SEPARATE step: `bd setup <tool>`.
-# recipe.yaml's `init.run` is one fixed string shared by every harness a stack might use, so it
-# can't branch on $HARNESS at runtime — this is the one place that may (per the
-# harness-independent-recipes convention): ${HARNESS} is a build-time ARG, resolved once here into
-# a tiny wrapper on PATH.
-#
-# --project (not global): ~/.claude/settings.json inside the container is harnessed's own read-only
-# profile mount (see launcher.py's settings.json bind-mount) — bd can't write hooks there. `--project`
-# writes .claude/settings.local.json into the bind-mounted project root instead, which is writable
-# and persists on the host (git-tracked, like the rest of `.beads/` in this recipe's default mode).
+# Welcome-message init (NO auto-init). This recipe deliberately does NOT run `bd init`/`bd setup`
+# automatically — bd's setup writes into the project (`.claude/settings.json` + `CLAUDE.md` on bd
+# 1.1.0) and can't be made reliably idempotent/footprint-free across every git layout, so first-time
+# initialization is left to the user. recipe.yaml's SessionStart hook prints a one-time notice (gated
+# on `bd list`, silent once initialized) with the exact commands to run + restart. The notice reads
+# two baked hints:
+#   • BEADS_INIT_HINT       — the `bd init …` line for THIS cell (static ENV, below).
+#   • /etc/beads-setup-hint — the `bd setup <tool> …` line: the one harness-specific token, branched
+#     on the build-time ${HARNESS} ARG so recipe.yaml never names a harness. `--project` targets the
+#     writable project root (the ~/.claude profile mount is read-only).
 RUN case "${HARNESS}" in \
-      claude) printf '#!/bin/sh\nexec bd setup claude --project\n' > /usr/local/bin/bd-setup-agent ;; \
-      *) printf '#!/bin/sh\n# no bd setup recipe for harness "%s" yet (see beads docs/SETUP.md)\n' "${HARNESS}" > /usr/local/bin/bd-setup-agent ;; \
-    esac; \
-    chmod +x /usr/local/bin/bd-setup-agent
+      claude) printf 'bd setup claude --project\n' > /etc/beads-setup-hint ;; \
+      *) printf 'bd setup <your-agent>   # see: bd setup --list\n' > /etc/beads-setup-hint ;; \
+    esac
 USER harnessed
-# No STATIC BEADS_DIR ENV here (unlike beads-stealth, whose mount target is a fixed path): `.beads/`
-# lives INSIDE a work tree (persist: location: in_repo — see recipe.yaml). For a normal repo bd's
-# own discovery finds it; for a bare + linked-worktree repo `init.run` resolves BEADS_DIR at attach
-# time (→ the default-branch work tree's `.beads`). A static ENV would be wrong the moment the
-# project mount path changed, so the value is resolved in the attach shell, not baked.
+# The `bd init …` line for the TEAM cell (in-repo, git-tracked, managed per-container dolt server).
+# `bd init --server` installs git hooks + auto-wires the git origin as a Dolt remote; auto-commit on
+# persists every write (incl. dependency edges, which are NOT in issues.jsonl) to the Dolt store.
+ENV BEADS_INIT_HINT="bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on"
+# No static BEADS_DIR ENV: `.beads/` lives inside the work tree (persist: location: in_repo); bd's
+# own discovery finds it for a normal repo. In a bare + linked-worktree layout, run `bd` from the
+# default-branch work tree (or set BEADS_DIR to that work tree's `.beads`).

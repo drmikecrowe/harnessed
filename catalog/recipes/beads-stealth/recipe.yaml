@@ -15,15 +15,13 @@
 # The bind-mount target is the fixed container path $HOME/.beads, making BEADS_DIR a static Dockerfile
 # ENV — no per-project path arithmetic needed at runtime.
 #
-# Init: runs once per project via `harnessed init <stack>` (or automatically on every `harnessed
-# launch`). The marker is the `.beads/` dir itself; if it exists, the step is skipped.
-#   1. `bd init --quiet --stealth` — creates .beads/; `--stealth` only configures git-exclude (no
-#      hook install, no git ops, no AGENTS.md mutation).
-#   2. `bd-setup-agent` — a harness-aware wrapper baked in the Dockerfile (branches on the
-#      build-time ${HARNESS} ARG). For claude: `bd setup claude --project --stealth`, wiring the
-#      SessionStart hook (.claude/settings.local.json) + minimal CLAUDE.md section. Per beads'
-#      docs/SETUP.md, `bd init --stealth` does NOT do this on its own — it must be a separate
-#      `bd setup <tool> --stealth` call.
+# Init: NOT automatic (see the `hooks:` block below). On SessionStart, a self-gating notice (`bd
+# list`) tells the user to run, once, and then restart:
+#   1. `bd init --quiet --stealth` — creates .beads/; `--stealth` configures git-exclude only.
+#   2. `bd setup claude --project --stealth` — wires the SessionStart `bd prime` hook + CLAUDE.md
+#      section (a separate step from `bd init`, per beads' docs/SETUP.md). NOTE: on bd 1.1.0 this
+#      still writes an UNTRACKED `.claude/settings.json` + `CLAUDE.md` (NOT in bd's stealth
+#      git-exclude list), so "stealth" is not fully footprint-free — the user opts into it knowingly.
 name: beads-stealth
 description: bd (beads), fully invisible mode — .beads/ lives outside the repo entirely, zero git footprint.
 
@@ -39,10 +37,13 @@ persist:
     scope: project
     location: host
 
-init:
-  # Model A: `run` is sourced in the attach shell on EVERY launch (no host-side marker), so it must
-  # self-gate. `bd list` succeeds iff the workspace already has a DB, so `bd init` runs only once per
-  # project; `bd-setup-agent` (re)wires the agent hook every attach (idempotent). BEADS_DIR is a
-  # static image ENV here (host-persisted mount at a fixed path — see Dockerfile), so nothing to
-  # export. Runs against the host-persisted `.beads` bind-mount (persist: location: host).
-  run: (bd list >/dev/null 2>&1 || bd init --quiet --stealth) && bd-setup-agent
+# No `init:` — beads is NOT auto-initialized (same rationale as `beads-team`; `bd setup --stealth`
+# still leaves an untracked `.claude/settings.json` + `CLAUDE.md` footprint on bd 1.1.0, so it can't
+# be made invisible automatically). A SessionStart hook prints a one-time notice (gated on `bd list`,
+# silent once initialized) with the exact commands + restart, from the baked hints BEADS_INIT_HINT
+# and /etc/beads-setup-hint. `bd list` here checks the static BEADS_DIR (host-persisted mount — see
+# Dockerfile). See Dockerfile for the hints.
+hooks:
+  SessionStart:
+    - command: >-
+        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'

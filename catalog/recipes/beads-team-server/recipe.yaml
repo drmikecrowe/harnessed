@@ -35,24 +35,17 @@ persist:
     location: in_repo
     vcs: tracked
 
-init:
-  # Model A (same as `beads`): `run` is sourced in the attach shell on EVERY launch; it self-gates
-  # cheaply and exports BEADS_DIR into the same shell the agent then runs in.
-  #
-  # 1. `bd-resolve-beads-dir` — baked helper (Dockerfile) that points BEADS_DIR at the right work
-  #    tree in a bare + linked-worktree layout; prints nothing for a normal repo, exits non-zero for
-  #    a bare repo with no work tree on its default branch (so a misplaced `.beads` aborts the attach).
-  # 2. Idempotent init self-gate: `bd list` succeeds iff the workspace already has a DB configured
-  #    (its metadata.json already points at the shared server) → skip init. On a fresh workspace it
-  #    fails → run `bd init --server --external …` to connect to the shared beads-server.
-  #    `bd config set dolt.auto-commit on` then commits every write (including dependency edges,
-  #    which are NOT in issues.jsonl) into the server's Dolt store.
-  # 3. `bd-setup-agent` — (re)wires the agent hook every attach; itself idempotent.
-  #
-  # MVP scope is a FRESH server (empty DB): a NEW project's database is minted on the shared server.
-  # Migrating an EXISTING repo's `.beads/dolt` history into the shared server is a deferred follow-up
-  # (see PLAN.md). This recipe NEVER runs `bd init --reinit-local` (that would discard history).
-  run: >-
-    _bd="$(bd-resolve-beads-dir)" && { [ -z "$_bd" ] || export BEADS_DIR="$_bd"; }
-    && (bd list >/dev/null 2>&1 || (bd init --server --external --server-host host.containers.internal --server-port 3307 --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on))
-    && bd-setup-agent
+# No `init:` — beads is NOT auto-initialized (same rationale as `beads-team`). A SessionStart hook
+# prints a one-time notice (gated on `bd list`, silent once the workspace has a DB) with the exact
+# commands for THIS cell + a restart reminder, from two baked image hints: BEADS_INIT_HINT (the
+# `bd init --server --external …` line) and /etc/beads-setup-hint (the harness-specific `bd setup`
+# line). See Dockerfile.
+#
+# MVP scope is a FRESH server database: a NEW project's database is minted on the shared server.
+# Migrating an EXISTING repo's `.beads/dolt` history into the shared server is a deferred follow-up
+# (see PLAN.md). The printed command never includes `bd init --reinit-local` (that would discard
+# history).
+hooks:
+  SessionStart:
+    - command: >-
+        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'

@@ -48,19 +48,16 @@ persist:
     scope: project
     location: host
 
-init:
-  # Model A (same shape as `beads-stealth`): `run` is sourced in the attach shell on EVERY launch and
-  # self-gates. `bd list` succeeds iff the workspace already has a DB configured (its metadata.json
-  # already points at the shared server) → skip init. On a fresh workspace it fails → run
-  # `bd init --stealth --server --external …` to mint this project's database on the shared
-  # beads-server and record the pointer. `bd config set dolt.auto-commit on` then commits every write
-  # (including dependency edges, which are NOT in issues.jsonl) into the server's Dolt store.
-  # `bd-setup-agent` (re)wires the agent hook every attach (idempotent). BEADS_DIR is a static image
-  # ENV (host-persisted mount at a fixed path — see Dockerfile), so nothing to export or resolve.
-  #
-  # MVP scope is a FRESH server database (empty): a NEW project's database is minted on the shared
-  # server. Migrating an existing embedded `.beads/dolt` into the shared server is a deferred
-  # follow-up (see PLAN.md). This recipe NEVER runs `bd init --reinit-local`.
-  run: >-
-    (bd list >/dev/null 2>&1 || (bd init --stealth --server --external --server-host host.containers.internal --server-port 3307 --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on))
-    && bd-setup-agent
+# No `init:` — beads is NOT auto-initialized (same rationale as `beads-stealth`). A SessionStart hook
+# prints a one-time notice (gated on `bd list`, silent once the workspace has a DB configured — its
+# metadata.json already points at the shared server) with the exact commands + restart, from the
+# baked hints BEADS_INIT_HINT (the `bd init --stealth --server --external …` line) and
+# /etc/beads-setup-hint. `bd list` checks the static BEADS_DIR (host-persisted mount — see Dockerfile).
+#
+# MVP scope is a FRESH server database: a NEW project's database is minted on the shared server.
+# Migrating an existing embedded `.beads/dolt` into the shared server is a deferred follow-up (see
+# PLAN.md); the printed command never includes `bd init --reinit-local`.
+hooks:
+  SessionStart:
+    - command: >-
+        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'

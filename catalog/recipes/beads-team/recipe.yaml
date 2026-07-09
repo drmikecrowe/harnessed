@@ -23,23 +23,16 @@
 # committed, matching upstream's own default expectations. (bd manages its own finer-grained
 # exclusions internally, e.g. `.beads/dolt/`.)
 #
-# Init (Model A): `init.run` is sourced in the attach shell on every launch; it self-gates (`bd
-# list`) so `bd init` runs only when the workspace has no DB yet. See the `init:` block below.
-#   1. `bd init --server --quiet --non-interactive --role maintainer` — creates .beads/ in the
-#      project, installs git hooks, auto-wires the git origin as a Dolt remote if one exists, and
-#      (via `--server`) provisions bd's managed dolt sql-server with its DB under `.beads/dolt/`.
-#      `bd config set dolt.auto-commit on` then persists auto-commit to `.beads/config.yaml` so every
-#      write (including dependency edges) commits to the Dolt store on disk — edges are NOT in
-#      `.beads/issues.jsonl` (only counts are), so JSONL export alone would silently lose them.
-#      `--non-interactive` is required since this runs in a headless one-shot container (no TTY);
-#      `--role maintainer` is the sensible default for a project's home repo (the *contributor*
-#      role — for an OSS fork-based workflow — is a manual `bd init --role contributor` override,
-#      not something this recipe assumes).
-#   2. `bd-setup-agent` — a harness-aware wrapper baked in the Dockerfile (branches on the
-#      build-time ${HARNESS} ARG). For claude: `bd setup claude --project`, wiring the SessionStart
-#      hook (.claude/settings.local.json, running `bd prime --hook-json`) + minimal CLAUDE.md
-#      section. Per beads' docs/SETUP.md, `bd init` does NOT do this on its own — it must be a
-#      separate `bd setup <tool>` call.
+# Init: NOT automatic (see the `hooks:` block below). On SessionStart, a self-gating notice (`bd
+# list`) tells the user to run, once, and then restart:
+#   1. `bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on`
+#      — creates .beads/ in the project, installs git hooks, auto-wires the git origin as a Dolt
+#      remote, provisions bd's managed dolt sql-server, and persists auto-commit so every write
+#      (including dependency edges, which are NOT in `.beads/issues.jsonl`) commits to the Dolt store.
+#   2. `bd setup claude --project` — wires the SessionStart `bd prime` hook + CLAUDE.md section (per
+#      beads' docs/SETUP.md, `bd init` does NOT do this; it is a separate `bd setup <tool>` call, and
+#      on bd 1.1.0 it writes `.claude/settings.json` + `CLAUDE.md` into the project — a real footprint,
+#      which is why this is a deliberate user action, not an every-attach auto-run).
 name: beads-team
 description: "bd (beads) — graph issue tracker / task memory, TEAM mode: in-repo, git-tracked, Dolt-native sync via the git origin (per-container managed dolt server)."
 
@@ -56,24 +49,14 @@ persist:
     location: in_repo
     vcs: tracked
 
-init:
-  # Model A: `run` is sourced in the attach shell on EVERY launch (no host-side marker), so it must
-  # self-gate cheaply and export BEADS_DIR into the same shell the agent then runs in.
-  #
-  # 1. `bd-resolve-beads-dir` — a baked helper (Dockerfile) that points BEADS_DIR at the right work
-  #    tree in a bare + linked-worktree layout (the generic MAIN_REPO_DIR contract var is the *bare*
-  #    dir there — the wrong answer for `.beads` placement — so this tool-specific resolution stays).
-  #    It prints nothing for a normal repo (bd's own discovery is correct → BEADS_DIR stays unset),
-  #    and exits non-zero for a bare repo with NO work tree on its default branch — the one layout
-  #    where default-mode beads can't place a committable `.beads/`, so `run` fails and the attach
-  #    aborts with a clear error rather than misplacing the DB. `export` runs in the current shell
-  #    (a brace group, not a subshell), so BEADS_DIR reaches the agent process.
-  # 2. Idempotent init self-gate: `bd list` succeeds iff the workspace already has a DB (same
-  #    discovery `bd init` uses), so an already-initialized repo skips `bd init`. Required when the
-  #    mounted project is ITSELF a beads workspace (e.g. harnessed's own repo, whose `.beads` DB is
-  #    anchored to the bare common dir `.bare/.beads`).
-  # 3. `bd-setup-agent` — (re)wires the agent hook every attach; itself idempotent.
-  run: >-
-    _bd="$(bd-resolve-beads-dir)" && { [ -z "$_bd" ] || export BEADS_DIR="$_bd"; }
-    && (bd list >/dev/null 2>&1 || (bd init --server --quiet --non-interactive --role maintainer && bd config set dolt.auto-commit on))
-    && bd-setup-agent
+# No `init:` — beads is NOT auto-initialized. bd's setup writes into the project
+# (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and cannot be made reliably
+# idempotent/footprint-free across every git layout, so first-time init is left to the user. Instead
+# a SessionStart hook prints a one-time notice (gated on `bd list`, silent once the workspace has a
+# DB) with the exact commands for THIS cell + a restart reminder. The two `%s` are baked image hints:
+# BEADS_INIT_HINT (the `bd init …` line, static) and /etc/beads-setup-hint (the `bd setup <tool> …`
+# line, branched on ${HARNESS} at build time so this recipe stays harness-independent). See Dockerfile.
+hooks:
+  SessionStart:
+    - command: >-
+        bash -lc 'bd list >/dev/null 2>&1 || printf "\n=== beads is not initialized in this workspace ===\nRun once, then RESTART your agent:\n\n    %s\n    %s\n\n" "$BEADS_INIT_HINT" "$(cat /etc/beads-setup-hint)"'
