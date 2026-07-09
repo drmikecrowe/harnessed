@@ -35,6 +35,13 @@
 #      which is why this is a deliberate user action, not an every-attach auto-run).
 name: beads-team
 description: "bd (beads) — graph issue tracker / task memory, TEAM mode: in-repo, git-tracked, Dolt-native sync via the git origin (per-container managed dolt server)."
+setup:
+  summary: >-
+    Run `bd init --server --quiet --non-interactive --role maintainer && bd config set
+    dolt.auto-commit on` then `bd setup <harness> --project` once per workspace, then restart
+    the agent; these steps create the in-repo .beads/ store, install git hooks, and wire the
+    bd prime workflow into the harness.
+  reference: https://github.com/gastownhall/beads
 
 # agent-carnet is also a shared, cross-session notebook (see its own `rules:` entry instructing the
 # agent to treat carnet as the SOLE memory store). Combining both in one stack gives the agent two

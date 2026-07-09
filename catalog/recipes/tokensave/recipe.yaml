@@ -13,6 +13,12 @@
 name: tokensave
 description: tokensave — pre-indexed semantic code knowledge graph (80+ tools, 50+ languages, 100% local).
 
+setup:
+  summary: >-
+    Run `tokensave init` once per project to create the `.tokensave/` knowledge graph database
+    (the server only syncs already-initialised projects), then restart your agent.
+  reference: https://github.com/aovestdipaperino/tokensave
+
 # What the capability test must find after building: the tokensave MCP server connected through hatago.
 expect:
   mcp: [tokensave]

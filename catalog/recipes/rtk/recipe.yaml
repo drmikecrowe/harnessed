@@ -9,3 +9,4 @@
 # kind for "a binary runs", so the capability is verified manually (`rtk --version`) per PLAN.md.
 name: rtk
 description: rtk (Rust Token Killer) — compress dev-command output 60-90% before it reaches the LLM.
+# setup: none needed — rtk init -g baked into image by Dockerfile

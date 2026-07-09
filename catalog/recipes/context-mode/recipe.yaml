@@ -8,6 +8,7 @@
 # smallest real capability.
 name: context-mode
 description: Project-scoped context-notes spike — a skill that persists notes under ~/.context-mode.
+# setup: none needed — internal tracer-bullet recipe
 
 # --- File-extension layer (Claude-canonical) ---
 # A STANDALONE skill dir. The assembler fans it into .claude/skills/context-mode and the capability

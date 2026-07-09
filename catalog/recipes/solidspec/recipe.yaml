@@ -1,7 +1,6 @@
 # yaml-language-server: $schema=../../../schemas/recipe.schema.json
 # Recipe: solidspec — multi-methodology spec-driven development CLI (spec → plan → tasks →
-# implement → ship). Bakes the Rust binary at build time (see Dockerfile); bootstraps the
-# per-project `.solidspec/` scaffolding + agent slash commands once via `init:`.
+# implement → ship). Bakes the Rust binary at build time (see Dockerfile).
 #
 # No MCP, no service, no skill shipped: upstream offers none (init writes slash commands +
 # an AGENT.md into agent dirs, not a ~/.claude/skills dir). Project-scoped slash commands
@@ -9,15 +8,12 @@
 name: solidspec
 description: solidspec — multi-methodology spec-driven development CLI (spec → plan → tasks → implement → ship).
 
-# --- Per-project bootstrap layer ---
-# One-time, per-project setup — the same shape as beads. Model A: `run` is sourced in the attach
-# shell on EVERY launch (no host-side marker), so it must self-gate cheaply on the `.solidspec/`
-# scaffold it creates. init is a runtime, per-project operation the build-time Dockerfile can't reach.
-#   `[ -d .solidspec ]` self-gate: skip when already bootstrapped (marker replaced by Model A).
-#   `mkdir -p .claude` first so `solidspec init` registers its slash commands — init only
-#   registers into agent dirs that already exist (it warns + skips otherwise).
-#   `--here`: scaffold `.solidspec/` in the mounted project (PWD = project root).
-#   `--no-git`: never `git init` the user's project (init does so by default on non-repos);
-#   an existing git repo is untouched.
-init:
-  run: '[ -d .solidspec ] || { mkdir -p .claude && solidspec init --here --no-git; }'
+# Per-project scaffolding (`.solidspec/` + agent slash commands) is a runtime, per-project
+# operation the build-time Dockerfile can't reach, so it is NOT auto-run (see
+# docs/guides/recipe-authoring.md — recipes hint setup, they don't auto-init every agent).
+# Surfaced instead via the harness-agnostic `setup:` note below.
+setup:
+  summary: >-
+    Run `solidspec init --here --no-git` once per project to scaffold `.solidspec/` and register
+    slash commands, then restart your agent.
+  reference: https://github.com/jyjeanne/solidspec

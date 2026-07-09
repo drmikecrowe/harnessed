@@ -35,6 +35,7 @@ from .assemble import assemble, compute_recipe_hash, _merge_servers, _resolve_se
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
+    Recipe,
     SchemaError,
     ServiceDef,
     Stack,
@@ -596,7 +597,7 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     # into the profile (mounted over the image path by _build_mount_args). Gated on the harness so
     # non-opencode stacks skip the (opencode-only) image read entirely.
     if result.stack.harness == "opencode":
-        _merge_baked_opencode(rt, derived, prof, result.stack)
+        _merge_baked_opencode(rt, derived, prof, result.stack, result.recipes)
 
     # Surface the advisory supply-chain report (baked by the derived image's final scan layer).
     _surface_scan_report(rt, derived, prof)
@@ -891,21 +892,26 @@ def _merge_host_claude_settings(prof: Path, required: dict) -> None:
     target.write_text(json.dumps(final, indent=2) + "\n", encoding="utf-8")
 
 
-def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None:
+def _merge_baked_opencode(
+    rt: str, image: str, prof: Path, stack: Stack, recipes: list[Recipe]
+) -> None:
     """Wire the stack's identity into opencode's config POST-BUILD (bd main-rlw).
 
     opencode reads its config from the image-baked ~/.config/opencode/opencode.json (the hatago
     MCP block), NOT from .claude/.mcp.json, and there is no profile-side opencode.json at assemble
     time — so, mirroring `_merge_baked_settings`, we read the baked config out of the built image,
-    ADD a custom persona agent (from the stack's `instructions:`) + a rules-file glob, and write the
-    merged config into the profile, where `_build_mount_args` mounts it over the image path.
+    ADD a custom persona agent (from the stack's `instructions:`, combined with recipes' `setup:`
+    notes — see `emit.combine_instructions`) + a rules-file glob, and write the merged config into
+    the profile, where `_build_mount_args` mounts it over the image path.
 
-    No-op unless the stack set `instructions:` (nothing to add — the fixed `opencode` attach stands)
-    or the baked config is absent/malformed (leave the image config untouched, warn on malformed)."""
-    if not stack.instructions:
+    No-op unless there is combined identity text to add (nothing to add — the fixed `opencode`
+    attach stands) or the baked config is absent/malformed (leave the image config untouched, warn
+    on malformed)."""
+    instructions = emit.combine_instructions(stack.instructions, recipes)
+    if not instructions:
         return
     agent_name = emit.opencode_agent_name(stack.name)
-    if emit.write_opencode_persona(prof, stack.instructions, agent_name) is None:
+    if emit.write_opencode_persona(prof, instructions, agent_name) is None:
         return
 
     def _copy(cid: str) -> str | None:

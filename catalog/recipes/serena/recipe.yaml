@@ -18,6 +18,12 @@
 name: serena
 description: Serena — LSP-backed semantic code intelligence (symbol retrieval, editing, refactoring, references) over the project via a stdio MCP server.
 
+setup:
+  summary: >-
+    Run `serena init` once to initialise the language-server backend (without it the MCP server
+    has no LSP support configured), then restart your agent.
+  reference: https://github.com/oraios/serena
+
 # What the capability test probes after a successful build: the serena server connected through
 # the hatago hub. (The capability test only confirms the connection — verify behavior manually.)
 expect:

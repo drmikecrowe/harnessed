@@ -6,6 +6,7 @@
 # step installs, so `expect:` lists a representative few for the capability test to probe.
 name: gstack
 description: Garry Tan's gstack skill suite (browser automation, design, PDF, …) installed via its upstream ./setup.
+# setup: none needed — Dockerfile runs full upstream ./setup, no external account required
 
 # What the capability test must find in the running container after a successful build. gstack
 # installs many skills into ~/.claude/skills (and no ~/.claude/commands); declare a stable few.

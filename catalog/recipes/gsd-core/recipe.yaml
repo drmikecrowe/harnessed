@@ -3,6 +3,7 @@ description: >-
   GSD Core (opengsd.net) — a spec-driven-development skill/agent/workflow suite
   installed via its own upstream installer (npx @opengsd/gsd-core), pinned and run
   as pnpm dlx.
+# setup: none needed — Dockerfile installs non-interactively, no external account required
 expect:
   # Claude Code 2.1.88+ installs GSD's commands as skills (~/.claude/skills/gsd-*), not
   # ~/.claude/commands/ — verified against the built image. Agents (~/.claude/agents/gsd-*)

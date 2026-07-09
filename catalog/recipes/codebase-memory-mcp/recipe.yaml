@@ -15,6 +15,7 @@
 # correct in shape but cannot run end-to-end. See PLAN.md.
 name: codebase-memory-mcp
 description: 158-language codebase knowledge graph (tree-sitter) via a stdio MCP server.
+# setup: none needed — self-contained binary; MCP fully wired by recipe
 
 # What the capability test must find after a successful build: the cbm MCP server connected through
 # the hatago hub. (The binary itself is installed by the Dockerfile; `expect:` is the only way the

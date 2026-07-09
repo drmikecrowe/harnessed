@@ -15,6 +15,11 @@
 # change needed, since the whole hook body fits in the `command` string.
 name: caveman
 description: caveman — output-compression skill; agent speaks terse "caveman", ~75% fewer output tokens, full technical accuracy. Levels lite/full/ultra/wenyan.
+setup:
+  summary: >-
+    Run `/caveman-init` once per project to configure output-compression preferences (intensity
+    level and auto-activation); a one-time notice is printed on the first session start.
+  reference: https://github.com/JuliusBrussee/caveman
 
 # What the capability test must find in the running container after a successful build. caveman
 # lands 7 skills into ~/.claude/skills and 4 slash-commands into ~/.claude/commands; declare a

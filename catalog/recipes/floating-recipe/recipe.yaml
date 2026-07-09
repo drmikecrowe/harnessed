@@ -5,3 +5,4 @@
 # ref, so assembling any stack that uses it fails before any image layer is written.
 name: floating-recipe
 description: Test fixture — contains a floating Dockerfile ref to trigger pin-validation rejection.
+# setup: none needed — internal test fixture only

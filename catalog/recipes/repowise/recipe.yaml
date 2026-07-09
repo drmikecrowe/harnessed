@@ -18,6 +18,7 @@
 # its own Claude plugin marketplace install path, not a portable skill).
 name: repowise
 description: repowise — code health, change-risk, and dependency-graph intelligence over the project via a stdio MCP server.
+# setup: none needed — baked via pip install, no account or API key required
 
 # What the capability test probes after a successful build: the repowise server connected through
 # the hatago hub. (The capability test only confirms the connection — verify behavior manually;

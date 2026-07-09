@@ -75,6 +75,16 @@
         }
       }
     },
+    "setup": {
+      "description": "Harness-agnostic manual-setup note, shown to the user via the assembled '## Setup' section baked into every harness's identity/rules file (CLAUDE.md, .codex/AGENTS.md, opencode persona, omp APPEND_SYSTEM.md, GEMINI.md). Use when the recipe's tool needs a one-time manual step (account, API key, CLI init) that harnessed can't or shouldn't automate. Omit entirely when the recipe is self-contained.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "reference"],
+      "properties": {
+        "summary": { "description": "One-line, harness-agnostic setup note (what the user needs to do).", "type": "string", "minLength": 1 },
+        "reference": { "description": "Upstream docs/GitHub URL the user can consult for details.", "type": "string", "format": "uri", "minLength": 1 }
+      }
+    },
     "deps": {
       "description": "Dependency declarations (forward field, design §11). Usually auto-detected from a vendored plugin; declare here for standalone recipes/overrides. uv for Python, pnpm for Node (never npm/npx).",
       "type": "object",

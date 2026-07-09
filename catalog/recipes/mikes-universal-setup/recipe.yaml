@@ -8,6 +8,7 @@
 # out — they assume tools not everyone uses, so they don't fit a "universal" example.
 name: mikes-universal-setup
 description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills — an example personal always-on setup."
+# setup: none needed — pure skill/rule bundle, nothing to install
 
 rules:
   - path: rules/coding-principles

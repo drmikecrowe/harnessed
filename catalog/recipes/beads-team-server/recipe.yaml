@@ -24,6 +24,12 @@
 # No MCP, no skill, no service ref here: the agent shells out to `bd` directly (same as `beads`).
 name: beads-team-server
 description: "bd (beads) — TEAM mode on the SHARED beads-server dolt sql-server (in-repo git-tracked config; external server; one Dolt database per project on a single server)."
+setup:
+  summary: >-
+    Run `bd init --server --external --server-host <host> --server-port <port>` then `bd setup
+    <harness> --project` once per workspace, then restart the agent; these steps create the
+    project database on the shared Dolt server and wire bd into the harness.
+  reference: https://github.com/gastownhall/beads
 
 # Same tool, different storage wiring — never combine with any other beads variant in one stack.
 # `agent-carnet` is a competing persistent-memory system (see `beads-team`).

@@ -1,12 +1,9 @@
 # yaml-language-server: $schema=../../../schemas/recipe.schema.json
 # Recipe: agent-carnet — bake the agent-carnet CLI (pure-JS Node) and install its upstream-bundled
 # Claude skill into ~/.claude/skills/agent-carnet. No MCP, no service: agent-carnet is a CLI, not a
-# server. The .carnet/ notebook is one-time-initialized via the `init:` mechanism (marker + run —
-# see beads' recipe.yaml for the same pattern). This recipe used to declare a `hooks: new_session:`
-# block instead (the abandoned startup-hooks design, docs/todos/2026-06-29-startup-hooks.md, never
-# implemented) — migrated to `init:` for the same reason beads was: it's the mechanism that
-# actually runs, and `hooks:` is now a typed field for GAP 2 (Claude-native settings.json hooks),
-# a different mechanism (per-session, Claude-invoked) from this one-time host-side init.
+# server. The .carnet/ notebook is a runtime, per-project operation the build-time Dockerfile can't
+# reach, so it is NOT auto-run (recipes hint setup, they don't auto-init every agent — see
+# docs/guides/recipe-authoring.md) — surfaced instead via the harness-agnostic `setup:` note below.
 #
 # The skill is installed VERBATIM from the pinned agent-carnet@<VERSION> npm tarball by the Dockerfile
 # (skills/agent-carnet/: SKILL.md + references/{cookbook,frontmatter}.md ship inside the package) —
@@ -30,10 +27,8 @@ expect:
 rules:
   - path: rules/agent-carnet
 
-# One-time bootstrap (Model A): `run` is sourced in the attach shell on EVERY launch (no host-side
-# marker), so it self-gates on `.carnet/` already existing. `agent-carnet init` is git-free +
-# non-touching (no .gitignore entry, no git hooks, no repo discovery) — mirrors beads' `--stealth`
-# posture, just without a flag. PROJECT_DIR (the agent's cwd == container project path) is exported
-# by the launcher's init contract, so the gate is anchored to the right directory.
-init:
-  run: '[ -d "$PROJECT_DIR/.carnet" ] || agent-carnet init'
+setup:
+  summary: >-
+    Run `agent-carnet init` once per project to create `.carnet/` (git-free, no .gitignore entry,
+    no repo discovery), then restart your agent.
+  reference: https://github.com/yamadashy/agent-carnet

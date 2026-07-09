@@ -23,6 +23,7 @@ description: >
   Persistent shared memory for AI coding agents — 53 MCP tools (save / smart-search / sessions /
   governance / …) over a shared memory service. BM25+vector+graph retrieval, session recall,
   4-tier consolidation. One memory across all agents.
+# setup: none needed — shim to already-running harnessed service
 
 # The stdio shim is a hatago child baked into the harness image. It proxies to the shared REST
 # store over the network (AGENTMEMORY_URL → host.containers.internal:3111, the service port).

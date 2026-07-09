@@ -14,3 +14,4 @@
 # built-in defaults apply.
 name: ccstatusline
 description: ccstatusline — bake the pinned status-line renderer + a Claude statusLine config into the agent image.
+# setup: none needed — self-contained; optional host config auto-mounted

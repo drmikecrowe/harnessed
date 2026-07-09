@@ -10,6 +10,7 @@
 # forward (D-14), so future recipes may add `plugins`, `deps`, `hooks`, etc.
 name: time
 description: Time and timezone queries via the network-free uvx mcp-server-time stdio MCP server.
+# setup: none needed — network-free, credential-free, no init required
 
 # --- MCP layer ---
 # `transport: stdio` is explicit (RESEARCH Pitfall B): a stdio server is wrapped by hatago as a

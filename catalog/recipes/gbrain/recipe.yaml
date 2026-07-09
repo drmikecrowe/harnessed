@@ -30,6 +30,12 @@
 # (`DATABASE_URL`). See catalog/services/gbrain/service.yaml + Dockerfile. PGLite cannot serve HTTP.
 name: gbrain
 description: Knowledge brain — synthesis, graph traversal, gap analysis (shared, long-lived brain service).
+setup:
+  summary: >-
+    Run `gbrain auth create` on your running gbrain service to mint a long-lived bearer token, then
+    place this recipe in your user-overlay catalog (~/.config/harnessed/catalog/recipes/gbrain/)
+    with the real token substituted for ${GBRAIN_TOKEN}; restart your agent.
+  reference: https://github.com/garrytan/gbrain/blob/master/docs/mcp/DEPLOY.md
 
 mcp:
   servers:

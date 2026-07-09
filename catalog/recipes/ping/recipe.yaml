@@ -8,6 +8,7 @@
 # `http://ping:8080/mcp` over the `HARNESSED_NET` bridge on bridge-capable hosts — design §3/§9).
 name: ping
 description: Tracer shared service — a network-native ping MCP server.
+# setup: none needed — internal tracer recipe, service runs with harnessed
 
 mcp:
   servers:
