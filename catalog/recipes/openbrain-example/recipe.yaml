@@ -27,6 +27,11 @@
 # To use a literal URL without secrets management, replace `url_env` with `url:` instead.
 name: openbrain-example
 description: Template — a remote, url-based Streamable-HTTP MCP server (modelled on OB1/OpenBrain).
+setup:
+  summary: >-
+    Copy this recipe to your user-overlay catalog and set OB1_URL (in ~/.config/harnessed/.env.schema)
+    to your MCP endpoint URL (including any auth query param) before building.
+  reference: https://github.com/drmikecrowe/harnessed/blob/main/catalog/recipes/openbrain-example/recipe.yaml
 
 mcp:
   servers:

@@ -509,6 +509,35 @@ def _parse_hooks(raw_hooks) -> dict[str, list[HookCommand]]:
     return parsed
 
 
+@dataclass
+class SetupSpec:
+    """Harness-agnostic manual-setup note (recipe.yaml `setup:`) — a short summary + upstream
+    reference URL, rendered into the `## Setup` section every harness's identity/rules file
+    already carries (CLAUDE.md, .codex/AGENTS.md, opencode persona, omp APPEND_SYSTEM.md,
+    GEMINI.md). Deliberately NOT per-harness — one plain-English note, not a bespoke command."""
+
+    summary: str
+    reference: str
+
+
+def _parse_setup(raw_setup) -> "SetupSpec | None":
+    """Parse the optional `setup:` object — omitted entirely when a recipe is self-contained."""
+    if not raw_setup:
+        return None
+    if not isinstance(raw_setup, dict):
+        raise SchemaError("recipe 'setup' must be an object with 'summary' and 'reference'")
+    summary = raw_setup.get("summary")
+    reference = raw_setup.get("reference")
+    if not isinstance(summary, str) or not summary.strip():
+        raise SchemaError("recipe 'setup.summary' must be a non-empty string")
+    if not isinstance(reference, str) or not reference.strip():
+        raise SchemaError("recipe 'setup.reference' must be a non-empty string")
+    unknown = sorted(set(raw_setup) - {"summary", "reference"})
+    if unknown:
+        raise SchemaError(f"recipe 'setup': unknown field(s) {unknown} — valid fields: summary, reference")
+    return SetupSpec(summary=summary.strip(), reference=reference.strip())
+
+
 def _parse_conflicts(raw_conflicts) -> list[str]:
     """Parse the optional `conflicts:` list — recipe names this recipe must never be combined with."""
     if not raw_conflicts:
@@ -541,6 +570,7 @@ class Recipe:
     # symmetrically across a stack's whole recipe list (see _check_recipe_conflicts) — declaring
     # it on either side is enough.
     conflicts: list[str] = field(default_factory=list)
+    setup: "SetupSpec | None" = None
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
     raw: dict = field(default_factory=dict)
 
@@ -670,7 +700,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
     "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks",  # typed
+    "conflicts", "hooks", "setup",  # typed
     "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -732,6 +762,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False) -> Recipe:
         init=_parse_init(raw.get("init")),
         hooks=_parse_hooks(raw.get("hooks")),
         conflicts=_parse_conflicts(raw.get("conflicts")),
+        setup=_parse_setup(raw.get("setup")),
         root=recipe_dir,
         raw=raw,
     )

@@ -58,6 +58,39 @@ def write_mcp_json(profile_dir: Path) -> Path:
     return out
 
 
+def setup_notes_block(recipes: list[Recipe]) -> str | None:
+    """Render a harness-agnostic `## Setup` section from recipes' `setup:` field.
+
+    One bullet per recipe that declares `setup:` (summary + upstream reference URL); recipes
+    without it are self-contained and contribute nothing. Returns None when no recipe in the
+    stack declares `setup:`, so callers can no-op exactly like the existing `instructions:` gate.
+    """
+    lines = [
+        f"- **{recipe.name}**: {recipe.setup.summary} (see: {recipe.setup.reference})"
+        for recipe in recipes
+        if recipe.setup is not None
+    ]
+    if not lines:
+        return None
+    return "## Setup\n" + "\n".join(lines)
+
+
+def combine_instructions(instructions: str | None, recipes: list[Recipe]) -> str | None:
+    """Append the recipes' `## Setup` notes (see `setup_notes_block`) to the stack's
+    `instructions:` text — the single combine point every harness's identity writer goes
+    through, so a recipe's `setup:` note reaches CLAUDE.md, .codex/AGENTS.md, the opencode
+    persona, omp's APPEND_SYSTEM.md, and antigravity's GEMINI.md alike, with no per-harness
+    plumbing. Returns None only when there is neither `instructions:` nor any `setup:` note.
+    """
+    notes = setup_notes_block(recipes)
+    if not notes:
+        return instructions
+    if not instructions:
+        return notes
+    base = instructions if instructions.endswith("\n") else instructions + "\n"
+    return f"{base}\n{notes}"
+
+
 def write_claude_md(profile_dir: Path, instructions: str | None) -> Path | None:
     """Emit the stack's `instructions:` into the profile's `.claude/CLAUDE.md` — stack-level
     identity ("what is this assembled agent").

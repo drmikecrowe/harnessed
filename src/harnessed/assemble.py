@@ -153,17 +153,21 @@ def assemble(
     #             pod). The omp-claude-hooks-bridge cannot inject per-profile context, so this reuses
     #             the existing agent-dir mount instead (bd main-w8k; shared, not profile-scoped).
     # opencode's identity is wired post-build in the launcher (it merges the image-baked config).
+    # Recipes' `setup:` notes (harness-agnostic summary + reference URL) ride along with
+    # `instructions:` through the same combine point (emit.combine_instructions), so they land
+    # in every harness's identity/rules file without per-harness plumbing.
+    instructions = emit.combine_instructions(stack.instructions, recipes)
     if stack.harness == "claude":
-        emit.write_claude_md(profile_dir, stack.instructions)
+        emit.write_claude_md(profile_dir, instructions)
     elif stack.harness == "antigravity":
-        emit.write_antigravity_identity(profile_dir, stack.instructions)
+        emit.write_antigravity_identity(profile_dir, instructions)
     elif stack.harness in ("codex", "omp"):
         rules_dir = profile_dir / ".claude" / "rules"
         rule_files = sorted(rules_dir.rglob("*.md")) if rules_dir.is_dir() else []
         if stack.harness == "codex":
-            emit.write_codex_agents_md(profile_dir, stack.instructions, rule_files)
+            emit.write_codex_agents_md(profile_dir, instructions, rule_files)
         else:
-            emit.write_omp_identity(profile_dir, stack.name, stack.instructions, rule_files)
+            emit.write_omp_identity(profile_dir, stack.name, instructions, rule_files)
 
     # stdio children are baked into the harness/stack image and spawned by the in-container hatago
     # (hatago-consolidation); kept for reporting. No separate baked-servers.json is written.

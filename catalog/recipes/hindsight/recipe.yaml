@@ -15,6 +15,11 @@
 # Transport: http (Streamable HTTP). SSE is deprecated and rejected by the build.
 name: hindsight
 description: Vectorize hindsight — AlloyDB-backed memory/recall as a host-running MCP server (retain/recall/reflect).
+setup:
+  summary: >-
+    Copy this recipe to your user-overlay catalog (~/.config/harnessed/catalog/recipes/hindsight/)
+    and replace BANK_ID and the Bearer key with your hindsight deployment's real values before building.
+  reference: https://github.com/drmikecrowe/harnessed/blob/main/catalog/recipes/hindsight/recipe.yaml
 
 mcp:
   servers:

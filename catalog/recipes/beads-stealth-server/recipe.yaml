@@ -32,6 +32,12 @@
 # `services:` list), not via an MCP `service:` ref — a dolt sql-server speaks MySQL, not MCP.
 name: beads-stealth-server
 description: "bd (beads) — STEALTH mode on the SHARED beads-server dolt sql-server (`.beads/` outside the repo, zero git footprint; external server; one Dolt database per project)."
+setup:
+  summary: >-
+    Run `bd init --stealth --server --external --server-host <host> --server-port <port>` then
+    `bd setup <harness> --project --stealth` once per workspace, then restart the agent; these
+    steps register the project database on the shared Dolt server and wire bd into the harness.
+  reference: https://github.com/gastownhall/beads
 
 # agent-carnet is a competing persistent-memory system (see `beads-stealth`). Also conflicts with
 # every other beads variant — same tool, different placement + storage wiring; don't combine two

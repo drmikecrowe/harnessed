@@ -10,6 +10,7 @@
 # test to probe (the gstack pattern).
 name: superpowers
 description: superpowers — composable software-development methodology skill suite (TDD, systematic debugging, brainstorming, planning, subagent-driven development, code review, git worktrees). 14 Claude-canonical skills (upstream Superpowers, Jesse Vincent / Prime Radiant).
+# setup: none needed — pure skill bundle, credentials-free, no per-project init
 
 # What the capability test must find in the running container after a successful build. The
 # Dockerfile copies all 14 upstream skills/<name>/SKILL.md trees into ~/.claude/skills; list

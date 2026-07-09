@@ -11,6 +11,7 @@ description: >
   Context compression via the headroom MCP server — headroom_compress / headroom_retrieve /
   headroom_stats. On-demand JSON/code/structured compression (60–95% fewer tokens); originals
   retrievable via CCR. MCP-tools mode only (no proxy).
+# setup: none needed — local compression, no account or key, binary baked into hatago base image
 
 # --- MCP layer ---
 # stdio child: hatago spawns `headroom mcp serve` and wraps its stdio → the single HTTP endpoint

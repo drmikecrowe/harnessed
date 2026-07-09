@@ -10,6 +10,7 @@
 # No `plugins:` vendoring and no `deps:` (no install, no supply-chain scan this phase).
 name: greet
 description: A greeting skill (recipe-breadth tracer — second recipe in a stack).
+# setup: none needed — internal tracer recipe, standalone skill only
 
 # --- File-extension layer (Claude-canonical) ---
 # A STANDALONE skill dir shipped by this recipe (not a vendored plugin). The assembler fans it

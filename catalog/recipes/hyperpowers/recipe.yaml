@@ -13,6 +13,12 @@
 # the `hooks` key of ~/.claude/settings.json — and is deferred. The skills load fully on demand.
 name: hyperpowers
 description: hyperpowers — markdown-first dev-workflow skill suite (brainstorming, planning, TDD, execution, review, verification) with repo-local task-doc tracking. Claude Code plugin skills/commands/agents baked in; Claude-tool hooks deferred (GAP 2).
+setup:
+  summary: >-
+    Skills, commands, and agents from the upstream plugin are baked into the container image at
+    build time; no runtime initialization is required — slash commands and skills are available
+    immediately in every session.
+  reference: https://github.com/withzombies/hyperpowers
 
 # What the capability test must find in the running container after a successful build. The full
 # install lands 22 skills + 10 commands + 5 agents; declare a stable few (the README's core
