@@ -13,12 +13,9 @@ Coverage:
 
 from __future__ import annotations
 
-import os
-import stat
+import json
 import subprocess
 from pathlib import Path
-
-import pytest
 
 from harnessed import emit, launcher
 from harnessed.schema import McpServer
@@ -28,12 +25,12 @@ from harnessed.schema import McpServer
 # helpers
 # ---------------------------------------------------------------------------
 
-def _fake_varlock_stdout(content: str):
-    """Return a fake subprocess.run result with the given stdout."""
+def _fake_varlock_json(values: dict):
+    """Fake subprocess.run result mimicking `varlock load --format json` stdout."""
     return subprocess.CompletedProcess(
-        args=["varlock", "load", "--format", "env"],
+        args=["varlock", "load", "--format", "json"],
         returncode=0,
-        stdout=content,
+        stdout=json.dumps(values),
         stderr="",
     )
 
@@ -74,7 +71,7 @@ class TestResolveSecretsNoOp:
 class TestResolveSecretsGlobalSchema:
     """When global schema + varlock both present, runs varlock and returns a temp file."""
 
-    def _setup(self, monkeypatch, tmp_path, env_content: str, *, op_token: str | None = None):
+    def _setup(self, monkeypatch, tmp_path, values: dict, *, op_token: str | None = None):
         home = tmp_path / "home"
         home.mkdir()
         schema = home / ".config" / "harnessed" / ".env.schema"
@@ -84,7 +81,7 @@ class TestResolveSecretsGlobalSchema:
         monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
         monkeypatch.setattr(
             launcher.subprocess, "run",
-            lambda *a, **kw: _fake_varlock_stdout(env_content),
+            lambda *a, **kw: _fake_varlock_json(values),
         )
         if op_token is not None:
             monkeypatch.setenv("OP_SERVICE_ACCOUNT_TOKEN", op_token)
@@ -93,7 +90,7 @@ class TestResolveSecretsGlobalSchema:
         return schema
 
     def test_returns_temp_file(self, monkeypatch, tmp_path):
-        self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\n")
+        self._setup(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"})
         env_files, temp_files = launcher._resolve_launch_secrets()
         assert len(env_files) == 1
         assert env_files == temp_files  # global schema temp is both an env-file and a cleanup target
@@ -101,28 +98,57 @@ class TestResolveSecretsGlobalSchema:
         env_files[0].unlink()
 
     def test_temp_file_is_mode_600(self, monkeypatch, tmp_path):
-        self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\n")
+        self._setup(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"})
         env_files, _ = launcher._resolve_launch_secrets()
         mode = env_files[0].stat().st_mode & 0o777
         assert mode == 0o600, f"expected 0600, got {mode:o}"
         env_files[0].unlink()
 
     def test_temp_file_contains_resolved_env(self, monkeypatch, tmp_path):
-        self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\nOTHER=value\n")
+        self._setup(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123", "OTHER": "value"})
         env_files, _ = launcher._resolve_launch_secrets()
         content = env_files[0].read_text()
         assert "SNYK_TOKEN=abc123" in content
         env_files[0].unlink()
 
+    def test_values_are_not_quoted(self, monkeypatch, tmp_path):
+        """Regression: podman --env-file keeps quotes literal, so values must be written raw
+        (KEY=value), never varlock's quoted `env` format (KEY="value")."""
+        self._setup(monkeypatch, tmp_path, {"GEMINI_API_KEY": "xxxxxx"})
+        env_files, _ = launcher._resolve_launch_secrets()
+        content = env_files[0].read_text()
+        assert "GEMINI_API_KEY=xxxxxx\n" in content
+        assert '"' not in content  # no double quotes anywhere
+        env_files[0].unlink()
+
+    def test_typed_values_coerced_to_strings(self, monkeypatch, tmp_path):
+        """JSON may carry non-string typed values (port=number, flag=boolean); coerce cleanly."""
+        self._setup(monkeypatch, tmp_path, {"PORT": 3000, "FLAG": True, "OFF": False})
+        env_files, _ = launcher._resolve_launch_secrets()
+        content = env_files[0].read_text()
+        assert "PORT=3000\n" in content
+        assert "FLAG=true\n" in content
+        assert "OFF=false\n" in content
+        env_files[0].unlink()
+
+    def test_null_values_skipped(self, monkeypatch, tmp_path):
+        """A null (undefined @optional) value must not emit an empty KEY= line."""
+        self._setup(monkeypatch, tmp_path, {"SET": "yes", "UNSET": None})
+        env_files, _ = launcher._resolve_launch_secrets()
+        content = env_files[0].read_text()
+        assert "SET=yes\n" in content
+        assert "UNSET" not in content
+        env_files[0].unlink()
+
     def test_op_service_account_token_appended_when_set(self, monkeypatch, tmp_path):
-        self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\n", op_token="secret-ci-token")
+        self._setup(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"}, op_token="secret-ci-token")
         env_files, _ = launcher._resolve_launch_secrets()
         content = env_files[0].read_text()
         assert "OP_SERVICE_ACCOUNT_TOKEN=secret-ci-token" in content
         env_files[0].unlink()
 
     def test_op_service_account_token_not_added_when_absent(self, monkeypatch, tmp_path):
-        self._setup(monkeypatch, tmp_path, "SNYK_TOKEN=abc123\n")
+        self._setup(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"})
         env_files, _ = launcher._resolve_launch_secrets()
         content = env_files[0].read_text()
         assert "OP_SERVICE_ACCOUNT_TOKEN" not in content
@@ -138,7 +164,7 @@ class TestResolveSecretsProject:
         home.mkdir()
         monkeypatch.setattr(Path, "home", lambda: home)
 
-    def test_plain_env_passthrough_not_a_temp(self, monkeypatch, tmp_path):
+    def test_plain_env_normalized_into_temp(self, monkeypatch, tmp_path):
         self._no_global(monkeypatch, tmp_path)
         monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
         proj = tmp_path / "proj"
@@ -147,10 +173,37 @@ class TestResolveSecretsProject:
         called = []
         monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **kw: called.append(1))
         env_files, temp_files = launcher._resolve_launch_secrets(proj)
-        # Plain .env is passed through directly — no varlock invocation, not a cleanup target.
-        assert env_files == [proj / ".env"]
-        assert temp_files == []
+        # Plain .env is copied into a temp (normalized) — no varlock invocation, and the user's
+        # own file is never handed to podman directly, so it's a cleanup target but the source is not.
         assert called == []
+        assert env_files == temp_files and len(env_files) == 1
+        assert env_files[0] != proj / ".env"          # a generated temp, not the user's file
+        assert (proj / ".env").read_text() == "FOO=bar\n"  # source untouched
+        assert env_files[0].read_text() == "FOO=bar\n"
+        env_files[0].unlink()
+
+    def test_plain_env_quotes_stripped(self, monkeypatch, tmp_path):
+        """Regression: quoted values in a plain .env must not reach podman quoted."""
+        self._no_global(monkeypatch, tmp_path)
+        monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text(
+            '# a comment\n'
+            'GEMINI_API_KEY="xxxxxx"\n'
+            "SINGLE='yyy'\n"
+            "export EXPORTED=zzz\n"
+            "PLAIN=raw\n"
+        )
+        env_files, _ = launcher._resolve_launch_secrets(proj)
+        content = env_files[0].read_text()
+        assert "GEMINI_API_KEY=xxxxxx\n" in content
+        assert "SINGLE=yyy\n" in content
+        assert "EXPORTED=zzz\n" in content        # export prefix dropped
+        assert "PLAIN=raw\n" in content
+        assert '"' not in content and "'" not in content
+        assert "# a comment" in content           # comments pass through
+        env_files[0].unlink()
 
     def test_project_schema_resolved_via_varlock(self, monkeypatch, tmp_path):
         self._no_global(monkeypatch, tmp_path)
@@ -161,7 +214,7 @@ class TestResolveSecretsProject:
         (proj / ".env.schema").write_text("FOO=op(op://Private/Foo/credential)\n")
         monkeypatch.setattr(
             launcher.subprocess, "run",
-            lambda *a, **kw: _fake_varlock_stdout("FOO=resolved\n"),
+            lambda *a, **kw: _fake_varlock_json({"FOO": "resolved"}),
         )
         env_files, temp_files = launcher._resolve_launch_secrets(proj)
         assert env_files == temp_files and len(env_files) == 1  # resolved → temp, cleaned up
@@ -179,7 +232,7 @@ class TestResolveSecretsProject:
         (proj / ".env").write_text("FOO=plain\n")
         monkeypatch.setattr(
             launcher.subprocess, "run",
-            lambda *a, **kw: _fake_varlock_stdout("FOO=resolved\n"),
+            lambda *a, **kw: _fake_varlock_json({"FOO": "resolved"}),
         )
         env_files, temp_files = launcher._resolve_launch_secrets(proj)
         assert len(env_files) == 1 and env_files == temp_files
@@ -198,16 +251,19 @@ class TestResolveSecretsProject:
         monkeypatch.delenv("OP_SERVICE_ACCOUNT_TOKEN", raising=False)
         monkeypatch.setattr(
             launcher.subprocess, "run",
-            lambda *a, **kw: _fake_varlock_stdout("FOO=global\n"),
+            lambda *a, **kw: _fake_varlock_json({"FOO": "global"}),
         )
         proj = tmp_path / "proj"
         proj.mkdir()
         (proj / ".env").write_text("FOO=project\n")
         env_files, temp_files = launcher._resolve_launch_secrets(proj)
         assert len(env_files) == 2
-        assert env_files[1] == proj / ".env"          # project last → overrides
-        assert temp_files == [env_files[0]]            # only the global temp is cleaned up
-        env_files[0].unlink()
+        # Global schema resolved first, project .env (normalized) second → podman last-wins.
+        assert env_files[0].read_text() == "FOO=global\n"
+        assert env_files[1].read_text() == "FOO=project\n"
+        assert temp_files == env_files                 # both are generated temps, both cleaned up
+        for f in env_files:
+            f.unlink()
 
 
 class TestResolveSecretsVarlockFailure:
