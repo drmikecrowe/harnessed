@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: claude_superpowers — single-recipe tracer for the superpowers skill suite (upstream: Superpowers).
-# Naming: <agent>_<recipe> (claude + superpowers).
-name: claude_superpowers
-harness: claude
-recipes: [superpowers]
-services: []

@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: claude_headroom — minimal tracer (one agent + one recipe).
-# Naming: <agent>_<recipe>… (claude + headroom).
-name: claude_headroom
-harness: claude
-recipes: [headroom]
-services: []

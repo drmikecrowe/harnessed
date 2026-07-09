@@ -3,8 +3,8 @@
 Two layers:
 
 1. **Assembly oracle (fast, no podman):** every catalog stack resolves + assembles, and its
-   `expected_capabilities` (the test oracle) matches what its recipes ship + declare. The negative
-   fixture stack is rejected by the pin gate.
+   `expected_capabilities` (the test oracle) matches what its recipes ship + declare. A floating
+   Dockerfile ref is rejected by the pin gate.
 
 2. **Live container check (podman-gated):** for each real stack, `harnessed build` + `harnessed test`
    and assert every declared capability is present *in the right place in the running container* —
@@ -29,12 +29,14 @@ from harnessed.schema import (
     expected_capabilities,
     load_recipe,
     load_stack_with_recipes,
+    validate_pin,
 )
 
 ROOT = Path(__file__).resolve().parents[1]  # repo root (HARNESSED_DIR for catalog resolution)
 
-# Negative fixture handled separately; everything else is built + launched + probed by the live layer.
-NEGATIVE_STACK = "claude_floating-recipe"
+# The floating-pin negative case is driven off the `floating-recipe` recipe's Dockerfile directly
+# (no catalog stack) — see test_floating_pin_is_rejected.
+FLOATING_RECIPE_DOCKERFILE = ROOT / "catalog" / "recipes" / "floating-recipe" / "Dockerfile"
 
 # Illustrative templates that ASSEMBLE but point at a placeholder URL — covered by the fast
 # assembly/oracle sweep, but skipped by the live connect test (no real endpoint to reach).
@@ -59,7 +61,7 @@ def _catalog_stacks() -> list[str]:
     stacks_dir = ROOT / "catalog" / "stacks"
     return sorted(
         p.name for p in stacks_dir.iterdir()
-        if (p / "stack.yaml").is_file() and p.name != NEGATIVE_STACK
+        if (p / "stack.yaml").is_file()
     )
 
 
@@ -84,21 +86,21 @@ def test_stack_assembles_and_oracle_is_nonempty(stack, tmp_path):
     assert total > 0, f"{stack}: oracle declares no capabilities"
 
 
-def test_big_stacks_declare_all_four_recipes():
-    """The two target stacks expose the full capability set across gstack/ping/time/greet."""
-    for stack in ("claude_gstack_ping_time_greet", "omp_gstack_ping_time_greet"):
-        _stk, caps = _oracle(stack)
-        assert {"time", "ping"} <= set(caps.mcp_servers), f"{stack}: missing MCP servers"
-        # time-helper/greet-helper are fanned skill dirs; `gstack` is the anchor skill the gstack
-        # Dockerfile bakes (declared via its expect: block). The rest of gstack's expect: list is a
-        # tunable representative set, so we don't pin it here.
-        assert {"time-helper", "greet-helper", "gstack"} <= set(caps.skills), f"{stack}: skills"
+def test_multi_recipe_stack_composes_capabilities():
+    """A multi-recipe stack exposes the union of its recipes' capabilities — here the repowise
+    MCP server and the gsd-core skills both surface on omp_gsd-core_repowise."""
+    _stk, caps = _oracle("omp_gsd-core_repowise")
+    assert "repowise" in set(caps.mcp_servers), "missing repowise MCP server"
+    assert {"gsd-new-project", "gsd-plan-phase", "gsd-execute-phase"} <= set(caps.skills), (
+        "missing gsd-core skills"
+    )
 
 
-def test_floating_pin_is_rejected(tmp_path):
-    """The negative fixture stack trips the pin gate before any image layer is written."""
+def test_floating_pin_is_rejected():
+    """The pin gate rejects a floating Dockerfile ref (ASM-02) before any image layer is written.
+    Driven off the floating-recipe fixture Dockerfile directly (its `--branch main` clone)."""
     with pytest.raises(PinValidationError):
-        assemble(None, NEGATIVE_STACK, tmp_path)
+        validate_pin("floating-recipe", FLOATING_RECIPE_DOCKERFILE.read_text())
 
 
 def test_all_catalog_recipes_pass_strict():
@@ -149,14 +151,6 @@ def test_live_capabilities_present_in_container(stack):
     )
     missing = expected - present
     assert not missing, f"{stack}: capabilities missing from the container: {missing}"
-
-
-@podman
-def test_live_negative_stack_is_rejected():
-    """The pin-gate fixture must fail `harnessed build` cleanly (non-zero, no traceback)."""
-    result = _run_cli("build", NEGATIVE_STACK)
-    assert result.returncode != 0, "expected the floating-pin build to be rejected"
-    assert "Traceback" not in result.stderr, "build crashed instead of rejecting cleanly"
 
 
 # --- Layer 2b: settings.json post-build merge (podman-gated) ---------------------------------------

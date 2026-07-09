@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: claude_solidspec — minimal tracer (one agent + one recipe).
-# Naming: <agent>_<recipe>… (claude + solidspec).
-name: claude_solidspec
-harness: claude
-recipes: [solidspec]
-services: []

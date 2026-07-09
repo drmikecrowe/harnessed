@@ -1,9 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: claude_beads-stealth — claude + the beads-stealth (bd) recipe.
-# Naming: <agent>_<recipe> (claude + beads-stealth).
-#
-# Stealth cell of the beads 2×2: `.beads/` lives OUTSIDE the repo (host-persisted, zero git
-# footprint), embedded Dolt engine, no shared service — invisible/dogfooding use.
-name: claude_beads-stealth
-harness: claude
-recipes: [beads-stealth]

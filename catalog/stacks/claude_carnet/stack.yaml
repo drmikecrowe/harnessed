@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: claude_carnet — minimal tracer (one agent + one recipe).
-# Naming: <agent>_<recipe>… (claude + agent-carnet).
-name: claude_carnet
-harness: claude
-recipes: [agent-carnet]
-services: []

@@ -1,7 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: claude_rtk — minimal tracer (claude harness + the rtk CLI recipe).
-#   rtk → Dockerfile recipe (bakes the pinned rtk binary into the agent image; no MCP/service/skill)
-name: claude_rtk
-harness: claude
-recipes: [rtk]
-services: []
