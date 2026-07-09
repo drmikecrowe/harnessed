@@ -13,6 +13,7 @@ EMIT ONLY: nothing here invokes podman/docker or mounts a daemon socket.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,24 @@ class AssembleResult:
     profile_dir: Path
     servers: list[McpServer]
     baked: list[McpServer]
+
+
+def compute_recipe_hash(stack_yaml: Path, recipes: list[Recipe]) -> str:
+    """Content hash of a stack's full recipe closure: the stack's own `stack.yaml` plus every
+    file under each recipe's directory (Dockerfile, recipe.yaml, skills/commands/rules trees).
+
+    Stamped as the `harnessed.recipe-hash` label on the derived stack image (see
+    `_build_derived_image`) rather than kept in a side-file manifest, so the hash can never drift
+    from the image it describes — `harnessed build`'s reconciliation pass compares this against
+    `podman inspect`'s label directly.
+    """
+    digest = hashlib.sha256()
+    digest.update(stack_yaml.read_bytes())
+    for recipe in sorted(recipes, key=lambda r: r.name):
+        for path in sorted(p for p in recipe.root.rglob("*") if p.is_file()):
+            digest.update(str(path.relative_to(recipe.root)).encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 def _merge_servers(recipes: list[Recipe]) -> list[McpServer]:

@@ -30,7 +30,7 @@ from . import emit
 from . import paths
 from . import persist
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
-from .assemble import assemble, _merge_servers, _resolve_service_servers
+from .assemble import assemble, compute_recipe_hash, _merge_servers, _resolve_service_servers
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
@@ -577,8 +577,9 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     # gets scanned. The scan runs over the agent's mise globals + recipe installs under ~/.claude.
     derived = _derived_image(stack)
     dockerfile = prof / f"Dockerfile.harnessed-{stack}"
+    recipe_hash = compute_recipe_hash(stack_dir / "stack.yaml", result.recipes)
     _out.print(f"[blue][INFO][/blue] Building derived image {derived} (incl. supply-chain scan) ...")
-    _build_derived_image(rt, derived, dockerfile, hdir)
+    _build_derived_image(rt, derived, dockerfile, hdir, recipe_hash)
     # Merge image-baked ~/.claude extensions into the profile only when a recipe actually baked some.
     if any((r.root / "Dockerfile").is_file() for r in result.recipes):
         _merge_baked_extensions(rt, derived, prof)
@@ -605,6 +606,57 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
         _build_service_image(rt, svc_name)
 
     _out.print(f"[green][SUCCESS][/green] Stack '{stack}' built — profile: {prof}")
+
+
+def _built_image_hash(rt: str, stack: str) -> str | None:
+    """The `harnessed.recipe-hash` label baked into stack's derived image, or None if the image
+    doesn't exist yet or was built before this label existed."""
+    result = subprocess.run(
+        [
+            rt, "inspect", "--format",
+            '{{if .Config.Labels}}{{index .Config.Labels "harnessed.recipe-hash"}}{{end}}',
+            _derived_image(stack),
+        ],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return None
+    value = result.stdout.strip()
+    return value or None
+
+
+def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
+    """Rebuild every catalog stack whose recipe-closure hash no longer matches its built image's
+    `harnessed.recipe-hash` label (see `compute_recipe_hash`) — the reconciliation half of a bare
+    `harnessed build`, so editing a shared recipe rebuilds every stack that uses it without the
+    caller having to know or name them."""
+    if root is not None:
+        stacks_dir = root / "stacks"
+        names = (
+            sorted(p.name for p in stacks_dir.iterdir() if (p / "stack.yaml").is_file())
+            if stacks_dir.is_dir() else []
+        )
+    else:
+        names = paths.list_catalog_stacks()
+    if not names:
+        return
+
+    _out.print(f"[blue][INFO][/blue] Reconciling {len(names)} stack(s) against their recipe hash ...")
+    for name in names:
+        stack_dir = (root / "stacks" / name) if root else paths.find_in_catalog("stacks", name)
+        try:
+            _, recipes = load_stack_with_recipes(root, name, strict=strict)
+            expected = compute_recipe_hash(stack_dir / "stack.yaml", recipes)
+        except (SchemaError, CollisionError) as exc:
+            _err.print(f"[yellow]warn:[/yellow] skipping '{name}' (failed to resolve recipes: {exc})")
+            continue
+
+        current = _built_image_hash(rt, name)
+        if current == expected:
+            continue
+        reason = "no built image" if current is None else "recipe hash changed"
+        _out.print(f"[blue][INFO][/blue] Rebuilding stale stack '{name}' ({reason}) ...")
+        _build_stack(rt, name, root, strict=strict)
 
 
 def _resolve_launch_secrets() -> Path | None:
@@ -655,7 +707,7 @@ def _resolve_launch_secrets() -> Path | None:
     return Path(tmp)
 
 
-def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path) -> None:
+def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path, recipe_hash: str) -> None:
     """Build the derived image. NEVER touches secrets or varlock — building must always succeed
     without credentials, so recipe install / skill / command / rule verification never depends on
     a secret resolving.
@@ -667,8 +719,18 @@ def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path) ->
     -built images online — not something `harnessed build` does on your behalf. If you want
     SNYK_TOKEN available for that separate step, resolve it yourself (e.g. `varlock run -- harnessed
     rescan`) — this function does not, and should not, do that resolution implicitly.
+
+    Labels the image with `harnessed=true` (so `rescan` can find it via `podman images --filter`)
+    and `harnessed.recipe-hash=<recipe_hash>` (`compute_recipe_hash` — the stack's recipe-closure
+    content hash, read back by `_built_image_hash`/`_reconcile_stacks` so a bare `harnessed build`
+    knows which stacks are stale without a separate manifest file that could drift from the image).
     """
-    _run([rt, "build", "-t", derived, "-f", str(dockerfile), str(hdir)])
+    _run([
+        rt, "build", "-t", derived, "-f", str(dockerfile),
+        "--label", "harnessed=true",
+        "--label", f"harnessed.recipe-hash={recipe_hash}",
+        str(hdir),
+    ])
 
 
 def _derived_image(stack: str) -> str:
@@ -2176,7 +2238,9 @@ def _attach(
 
 @app.command("build")
 def build(
-    stack: Optional[str] = typer.Argument(None, help="Stack to assemble; omit to rebuild base images"),
+    stack: Optional[str] = typer.Argument(
+        None, help="Stack to assemble; omit to rebuild base images and reconcile all catalog stacks"
+    ),
     root: Optional[str] = typer.Option(None, "--root", help="Alternate stacks/recipes root"),
     no_scans: bool = typer.Option(False, "--no-security-scans", help="Skip credentialed scans"),
     no_strict: bool = typer.Option(
@@ -2196,6 +2260,12 @@ def build(
     ),
 ) -> None:
     """Assemble a stack (emit + build hatago), or rebuild base/claude/hatago images.
+
+    With no `stack` argument: rebuilds the base/claude/hatago images, then reconciles every stack
+    across the catalog (repo + user overlay) — comparing each stack's recipe-closure content hash
+    (`compute_recipe_hash`) against the `harnessed.recipe-hash` label baked into its built image,
+    and rebuilding any that are missing or stale. This is how editing a shared recipe propagates to
+    every stack that uses it without having to name them one by one.
 
     The --corp-proxy-ca-crt flag is a one-time setup for SSL-inspecting corporate proxies: it
     persists the CA bundle at $XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt and subsequent builds
@@ -2227,6 +2297,7 @@ def build(
         _build_stack(rt, stack, root_path, strict=not no_strict)
     else:
         _build_images_cmd(rt, force=force)
+        _reconcile_stacks(rt, root_path, strict=not no_strict)
 
 
 @app.command("list")
