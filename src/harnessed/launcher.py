@@ -661,36 +661,29 @@ def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
         _build_stack(rt, name, root, strict=strict)
 
 
-def _resolve_launch_secrets() -> Path | None:
-    """Resolve launch-time secrets from ~/.config/harnessed/.env.schema via varlock.
+def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
+    """Run `varlock load --format env` in schema_dir, capturing stdout into a mode-0600 temp
+    env-file and returning its path. The caller MUST unlink the file after launch.
 
-    If the schema exists and `varlock` is on PATH, runs `varlock load --format env` in the
-    schema's directory, captures stdout into a mode-0600 temp file, and returns its path.
-    The caller MUST unlink the file after the launch command (use try/finally).
-
-    No schema / no varlock → returns None (byte-for-bit fallback, no varlock invocation).
-    `OP_SERVICE_ACCOUNT_TOKEN` is forwarded to the temp file when already set in the host
-    env (headless/CI path — service-account bearer auth, no desktop app required).
+    Assumes a `.env.schema` in schema_dir and `varlock` on PATH (checked by the caller).
+    `OP_SERVICE_ACCOUNT_TOKEN` is appended when already set in the host env (headless / CI
+    path — service-account bearer auth, no desktop app required). Returns None on varlock
+    failure so the launch degrades gracefully rather than hard-failing.
     """
-    schema = Path.home() / ".config" / "harnessed" / ".env.schema"
-    if not (schema.is_file() and shutil.which("varlock")):
-        return None
-
     result = subprocess.run(
         ["varlock", "load", "--format", "env"],
         capture_output=True,
         text=True,
-        cwd=str(schema.parent),
+        cwd=str(schema_dir),
     )
     if result.returncode != 0:
         _err.print(
-            f"[bold red]error:[/bold red] varlock load failed (exit {result.returncode}): "
-            f"{result.stderr.strip()}"
+            f"[bold red]error:[/bold red] varlock load failed in {schema_dir} "
+            f"(exit {result.returncode}): {result.stderr.strip()}"
         )
         return None
 
     lines = result.stdout
-    # Forward OP_SERVICE_ACCOUNT_TOKEN when already set in the host env (headless / CI fallback).
     op_token = os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")
     if op_token:
         lines += f"\nOP_SERVICE_ACCOUNT_TOKEN={op_token}\n"
@@ -707,6 +700,49 @@ def _resolve_launch_secrets() -> Path | None:
             pass
         raise
     return Path(tmp)
+
+
+def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path], list[Path]]:
+    """Resolve launch-time env-files, layered global → project (podman --env-file is last-wins,
+    so project values override the global schema).
+
+    Sources, in --env-file order:
+      1. ~/.config/harnessed/.env.schema — user-global, resolved via varlock (opt-in: needs
+         the schema present and `varlock` on PATH).
+      2. Per-project env from project_path:
+         - <project>/.env.schema present → `varlock load` in the project dir (varlock already
+           cascades .env / .env.local overlays on top of the schema).
+         - else <project>/.env present → the plain file is passed through directly (podman
+           parses KEY=VALUE natively; no varlock, no resolution).
+
+    Returns (env_files, temp_files): env_files is the ordered list to hand to --env-file;
+    temp_files is the subset the caller MUST unlink after launch (resolved secrets must not
+    linger on disk). A plain project .env is in env_files but NOT temp_files — it is the
+    user's own file and must never be unlinked.
+    """
+    env_files: list[Path] = []
+    temp_files: list[Path] = []
+    have_varlock = bool(shutil.which("varlock"))
+
+    global_schema = Path.home() / ".config" / "harnessed" / ".env.schema"
+    if global_schema.is_file() and have_varlock:
+        p = _varlock_resolve_env_file(global_schema.parent)
+        if p:
+            env_files.append(p)
+            temp_files.append(p)
+
+    if project_path is not None:
+        proj_schema = project_path / ".env.schema"
+        proj_env = project_path / ".env"
+        if proj_schema.is_file() and have_varlock:
+            p = _varlock_resolve_env_file(project_path)
+            if p:
+                env_files.append(p)
+                temp_files.append(p)
+        elif proj_env.is_file():
+            env_files.append(proj_env)  # passthrough — user's own file, do NOT unlink
+
+    return env_files, temp_files
 
 
 def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path, recipe_hash: str) -> None:
@@ -2152,9 +2188,9 @@ def launch(
         trusted_keys = _trusted_ssh_keys(stk.ssh_keys, stack_from_overlay, stack)
         mount_args += _credential_forward_args(ssh_keys=trusted_keys, rt=rt)
 
-    # Resolve launch-time secrets (opt-in: only when ~/.config/harnessed/.env.schema exists and
-    # varlock is installed). Returns a mode-0600 temp env-file path, or None for the no-op path.
-    secrets_env_file = _resolve_launch_secrets()
+    # Resolve launch-time secrets, layered global → project (project wins on conflict). Returns the
+    # ordered --env-file list and the subset of temp files to unlink after launch.
+    secrets_env_files, secrets_temp_files = _resolve_launch_secrets(project_path)
 
     # Pod network.
     net = os.environ.get("HARNESSED_NET", "")
@@ -2186,7 +2222,7 @@ def launch(
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
         "--name", inst,
-        *(["--env-file", str(secrets_env_file)] if secrets_env_file else []),
+        *[arg for f in secrets_env_files for arg in ("--env-file", str(f))],
         *member_mounts,
         # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
         # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
@@ -2198,14 +2234,15 @@ def launch(
     try:
         _run(harness_run, capture_output=True)
     finally:
-        # Unlink the temp env-file as soon as podman has ingested it into the container's env —
+        # Unlink the temp env-files as soon as podman has ingested them into the container's env —
         # resolved secret values must not linger on disk (T-05-06). Always runs (success or failure).
-        if secrets_env_file:
+        # Only varlock-resolved temps are unlinked; a passthrough project .env is the user's own file.
+        for f in secrets_temp_files:
             try:
-                secrets_env_file.unlink()
+                f.unlink()
             except OSError:
                 pass
-            secrets_env_file = None
+        secrets_temp_files = []
 
     # Install the corp proxy CA into the container's trust store (no-op when cert absent).
     # Runs before the egress firewall: update-ca-certificates is local-only and needs no network,
