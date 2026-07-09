@@ -1135,8 +1135,9 @@ def _build_mount_args(
         host_d.mkdir(parents=True, exist_ok=True)
         args += ["-v", f"{host_d}:{ctr_home}/{rel}:rw"]
 
-    # omp: the whole agent dir (auth + sessions) is a per-instance mount seeded by
-    # _omp_auth_seed_mount (appended in launch()) — it supersedes the old per-slug session mount.
+    # omp: the whole agent dir (auth + sessions) is bind-mounted rw from the host by
+    # _omp_agent_mount (appended in launch()); _omp_mcp_seed_mount then shadows just its mcp.json
+    # with a per-instance copy that adds the hatago endpoint.
 
     # Claude's OAuth credentials: seeded + mounted rw by _claude_creds_seed_mount (appended in
     # launch()) — a ro mount here would block Claude Code's in-container token refresh, causing
@@ -1308,6 +1309,42 @@ def _omp_agent_mount(harness: str) -> list[str]:
         )
         return []
     return ["-v", f"{host_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
+
+
+def _omp_mcp_seed_mount(harness: str, inst: str) -> list[str]:
+    """Point omp at the in-container hatago hub by seeding a per-instance ~/.omp/agent/mcp.json.
+
+    harnessed wires the MCP layer for claude via `claude --mcp-config <profile .mcp.json>` — the
+    single hatago endpoint that fronts every assembled server (stdio children hatago spawns, http
+    servers it proxies). omp has no such flag: it reads MCP servers only from ~/.omp/agent/mcp.json,
+    which `_omp_agent_mount` bind-mounts rw from the host (shared state). So a stack's MCP servers,
+    which live behind hatago, are invisible to omp — the exact gap behind "repowise didn't install".
+
+    Fix: generate a per-instance mcp.json = the host file's contents (preserving whatever the user
+    manages there) plus a `hatago` HTTP entry, and bind-mount it ro OVER ~/.omp/agent/mcp.json. This
+    nested file mount shadows the dir mount's own mcp.json (podman applies the more-specific
+    destination), so omp connects to hatago — WITHOUT mutating the shared host file. Regenerated
+    every launch (a pure function of the host file + the hatago endpoint), so host edits propagate on
+    the next launch and nothing in-container writes back (ro)."""
+    if harness != "omp":
+        return []
+
+    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
+    state_dir = state_root / "harnessed" / inst
+    state_dir.mkdir(parents=True, exist_ok=True)
+    seed = state_dir / "omp-mcp.json"
+
+    cfg: dict = {}
+    host_mcp = Path.home() / ".omp" / "agent" / "mcp.json"
+    if host_mcp.is_file():
+        try:
+            cfg = json.loads(host_mcp.read_text(encoding="utf-8")) or {}
+        except (ValueError, OSError):
+            cfg = {}
+    cfg.setdefault("mcpServers", {})["hatago"] = {"type": "http", "url": paths.hatago_endpoint()}
+    seed.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+
+    return ["-v", f"{seed}:{_CONTAINER_HOME_STR}/.omp/agent/mcp.json:ro"]
 
 
 def _ccstatusline_settings_mount(home: Path | None = None) -> list[str]:
@@ -2097,6 +2134,9 @@ def launch(
     mount_args += _keyring_state_mount(harness, inst)
     # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
     mount_args += _omp_agent_mount(harness)
+    # Point omp at the in-container hatago hub (nested ro mount shadowing the agent dir's mcp.json),
+    # so a stack's assembled MCP servers reach omp — mirrors claude's --mcp-config wiring.
+    mount_args += _omp_mcp_seed_mount(harness, inst)
     # Forward the host's ccstatusline config (ro) so the baked statusLine matches the host layout.
     mount_args += _ccstatusline_settings_mount()
     # Bind-mount the corporate proxy CA (ro) so _install_corp_proxy_ca_in_container can register it.
