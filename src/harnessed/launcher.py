@@ -980,6 +980,13 @@ def _merge_host_claude_settings(prof: Path, required: dict) -> None:
     if host_obj is None:
         return
 
+    # `statusLine.command` is a host-absolute path (e.g. /home/<hostuser>/.local/share/mise/shims/…)
+    # that can never resolve inside the container (home is /home/harnessed). The ccstatusline recipe
+    # bakes a container-correct statusLine into the profile; letting the host's version win here would
+    # point Claude Code's status line at a nonexistent binary → it silently renders nothing. Drop the
+    # host statusLine so the baked (or absent) profile value survives the merge.
+    host_obj.pop("statusLine", None)
+
     merged = _deep_merge_json(target_obj, host_obj)
     if not isinstance(merged, dict):
         merged = host_obj
