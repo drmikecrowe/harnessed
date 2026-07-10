@@ -6,6 +6,11 @@ on:
     paths:
       - "web/**"
       - ".github/workflows/deploy-web.yml"
+  # The docs live in the GitHub wiki (a separate repo), not here, so a wiki edit can't trigger this
+  # workflow on push. Rebuild daily so wiki changes reach the site within a day; workflow_dispatch
+  # for on-demand.
+  schedule:
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
@@ -27,6 +32,16 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+
+      # web/scripts/sync-docs.mjs reads ../docs (the wiki) at build time. The wiki is a SEPARATE repo
+      # (harnessed.wiki), gitignored here and not checked out by the step above — without this, the
+      # sync no-ops in CI and the site's /docs/* pages are never built (they 404). Clone it to
+      # <root>/docs so ../docs resolves from web/.
+      - name: Checkout wiki (docs source)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: docs
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
