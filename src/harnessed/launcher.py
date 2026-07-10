@@ -1723,6 +1723,42 @@ def _gh_hosts_missing_plaintext_token(gh_hosts: Path) -> bool:
     return bool(data) and not has_token(data)
 
 
+def _git_identity_config_mount(home: Path) -> list[str]:
+    """Mount the host's git identity config (`~/.config/git` dir, else legacy `~/.gitconfig`) ro.
+
+    Carries user.signingkey, gpg.format=ssh, gpg.ssh.program=op-ssh-sign, commit.gpgsign — the
+    settings op-ssh-sign needs to actually sign commits. It's a public-key reference, not a secret.
+    """
+    ctr = _CONTAINER_HOME_STR
+    xdg_git = home / ".config" / "git"
+    legacy_git = home / ".gitconfig"
+    if xdg_git.is_dir():
+        return ["-v", f"{xdg_git}:{ctr}/.config/git:ro"]
+    if legacy_git.is_file():
+        return ["-v", f"{legacy_git}:{ctr}/.gitconfig:ro"]
+    return []
+
+
+def _ssh_agent_auto_forward_args(home: Path | None = None, rt: str = "podman") -> list[str]:
+    """Auto-forward the host SSH signing/auth agent (1Password primary, gpg-agent fallback) plus the
+    ro git identity config WHENEVER the agent socket is live on the host — independent of the stack's
+    `forward_git_credentials` opt-in.
+
+    Rationale (why this is safe to make the default, unlike the full credential bundle): the agent
+    socket exposes no key material and gates every sign/auth behind a host-side 1Password approval or
+    YubiKey touch, and the git config it needs to drive op-ssh-sign is a public signing-key reference,
+    not a secret. So "1Password available → wired up" holds. The genuinely-secret surface — the gh
+    oauth token in hosts.yml and opt-in private SSH keys — stays behind `forward_git_credentials` in
+    `_credential_forward_args`. No-op when no agent socket is present.
+    """
+    home = home or Path.home()
+    args = _ssh_agent_args(home, _gpg_ssh_socket(), rt=rt)
+    if not args:
+        return []
+    args += _git_identity_config_mount(home)
+    return args
+
+
 def _credential_forward_args(
     home: Path | None = None, ssh_keys: list[str] | None = None, rt: str = "podman"
 ) -> list[str]:
@@ -1755,12 +1791,7 @@ def _credential_forward_args(
 
     args += _yubikey_device_args()
 
-    xdg_git = home / ".config" / "git"
-    legacy_git = home / ".gitconfig"
-    if xdg_git.is_dir():
-        args += ["-v", f"{xdg_git}:{ctr}/.config/git:ro"]
-    elif legacy_git.is_file():
-        args += ["-v", f"{legacy_git}:{ctr}/.gitconfig:ro"]
+    args += _git_identity_config_mount(home)
 
     gh_hosts = home / ".config" / "gh" / "hosts.yml"
     if gh_hosts.is_file():
@@ -2240,12 +2271,18 @@ def launch(
     mount_args += _persist_mounts(stack, project_path)
     # Forward the host's git signing + push credentials (1Password/GPG/YubiKey agent, git config,
     # ssh config/known_hosts/pubkeys + opt-in private keys) so the agent can push and sign — no
-    # secret baked into an image. OPT-IN per stack (default off): a container gets standing authority
-    # to sign/auth as the user only when the stack asks. Private keys (ssh_keys) are honored ONLY from
-    # the user's own overlay catalog — a shared repo-catalog stack must not mount your private key.
+    # secret baked into an image. Private keys (ssh_keys) are honored ONLY from the user's own overlay
+    # catalog — a shared repo-catalog stack must not mount your private key.
     if stk.forward_git_credentials:
         trusted_keys = _trusted_ssh_keys(stk.ssh_keys, stack_from_overlay, stack)
         mount_args += _credential_forward_args(ssh_keys=trusted_keys, rt=rt)
+    else:
+        # Even without the full opt-in, auto-forward the SSH signing/auth agent (1Password/gpg) +
+        # ro git config whenever the agent socket is live on the host: "1Password available → wired
+        # up". The agent gates every use behind a host approval/touch and exposes no key material, so
+        # this is safe as a default; the secret-bearing surface (gh oauth token, private keys) still
+        # requires forward_git_credentials.
+        mount_args += _ssh_agent_auto_forward_args(rt=rt)
 
     # Resolve launch-time secrets, layered global → project (project wins on conflict). Returns the
     # ordered --env-file list and the subset of temp files to unlink after launch.

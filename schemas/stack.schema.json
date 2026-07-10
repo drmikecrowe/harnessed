@@ -37,7 +37,7 @@
       "items": { "type": "string", "minLength": 1 }
     },
     "forward_git_credentials": {
-      "description": "Opt-in (default false): forward the host's git push/sign surface (SSH/GPG agent socket, git config, ssh config/known_hosts/pubkeys) into the container so the agent can push and sign as the user. Requires a host SSH agent (1Password or gpg-agent).",
+      "description": "Opt-in (default false): forward the SECRET-BEARING slice of the host's git push surface — the gh oauth token (~/.config/gh/hosts.yml), opt-in private SSH keys, ssh config/known_hosts/pubkeys, and non-secret gnupg files. The SSH signing/auth agent socket (1Password/gpg-agent) plus the ro git identity config are forwarded AUTOMATICALLY whenever the host agent is live, independent of this flag — set this only to also mount the gh token / private keys.",
       "type": "boolean",
       "default": false
     },

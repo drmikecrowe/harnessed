@@ -500,6 +500,42 @@ class TestCredentialForwarding:
         args = launcher._ssh_agent_args(home, gpg)
         assert f"SSH_AUTH_SOCK={self.CTR}/.gnupg-sockets/S.gpg-agent.ssh" in args
 
+    # --- _ssh_agent_auto_forward_args: presence-driven, no forward_git_credentials opt-in ---
+
+    def test_auto_forward_noop_without_agent(self, cred_home, monkeypatch):
+        # No agent socket on the host → nothing forwarded, even though a git config exists.
+        home, _ = cred_home
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(launcher, "_gpg_ssh_socket", lambda: None)
+        (home / ".gitconfig").write_text("[user]\n  name = t\n")
+        assert launcher._ssh_agent_auto_forward_args(home) == []
+
+    def test_auto_forward_mounts_agent_and_gitconfig(self, cred_home, monkeypatch):
+        # 1Password socket live → agent + ro git identity config forwarded with no opt-in flag.
+        home, socks = cred_home
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(launcher, "_gpg_ssh_socket", lambda: None)
+        self._mksock(home / ".1password" / "agent.sock", socks)
+        (home / ".gitconfig").write_text("[commit]\n  gpgsign = true\n")
+        args = launcher._ssh_agent_auto_forward_args(home)
+        assert f"SSH_AUTH_SOCK={self.CTR}/.1password/agent.sock" in args
+        assert f"{home / '.gitconfig'}:{self.CTR}/.gitconfig:ro" in args
+
+    def test_auto_forward_omits_gh_token_and_private_keys(self, cred_home, monkeypatch):
+        # The secret-bearing surface (gh oauth token, ~/.ssh) stays behind forward_git_credentials.
+        home, socks = cred_home
+        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(launcher, "_gpg_ssh_socket", lambda: None)
+        self._mksock(home / ".1password" / "agent.sock", socks)
+        gh_hosts = home / ".config" / "gh" / "hosts.yml"
+        gh_hosts.parent.mkdir(parents=True)
+        gh_hosts.write_text("github.com:\n  oauth_token: SECRET\n")
+        (home / ".ssh").mkdir()
+        (home / ".ssh" / "id_ed25519").write_text("PRIVATE")
+        args = launcher._ssh_agent_auto_forward_args(home)
+        assert not any("hosts.yml" in a for a in args)
+        assert not any(".ssh" in a for a in args)
+
     # --- _yubikey_device_args: USB passthrough via lsusb ---
 
     def test_yubikey_present_adds_device(self, monkeypatch):
