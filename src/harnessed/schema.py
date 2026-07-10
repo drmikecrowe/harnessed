@@ -608,9 +608,13 @@ class Stack:
     # "what is this assembled agent". Distinct from recipe-level `rules:` (per-recipe RULE.md files
     # fanned into `.claude/rules/`). Claude-only for now (CLAUDE.md is Claude's memory file).
     instructions: str | None = None
-    # Opt-in (default OFF): forward the host's git signing + push credential surface (SSH/GPG agent
-    # socket, git config, ssh config/known_hosts/pubkeys) into the container. OFF by default so a
-    # container never gets standing authority to sign/auth as the user unless the stack asks for it.
+    # Opt-in (default OFF): forward the SECRET-BEARING slice of the host's git push surface — the gh
+    # oauth token (~/.config/gh/hosts.yml) and opt-in private SSH keys — plus ssh config/known_hosts/
+    # pubkeys and non-secret gnupg files. OFF by default so a reusable token/private key is never
+    # mounted unless the stack asks. NOTE: the SSH signing/auth agent socket (1Password/gpg) + ro git
+    # identity config are forwarded automatically whenever the host agent is live, INDEPENDENT of this
+    # flag (see _ssh_agent_auto_forward_args) — the agent gates each use behind a host approval/touch
+    # and exposes no key material, so "1Password available → wired up" is the default.
     forward_git_credentials: bool = False
     # Private SSH key basenames (under ~/.ssh) the user opts into mounting read-only into the
     # container, for hosts WITHOUT an SSH agent (1Password/gpg). Public keys + config + known_hosts
