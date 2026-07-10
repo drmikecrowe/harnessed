@@ -29,12 +29,11 @@ const {
 
 const base = import.meta.env.BASE_URL; // "/harnessed/"
 
-// Sidebar groups mirror the sync-docs directory layout.
+// Sidebar groups. Overview is an explicit allowlist (Home + Roadmap only); Guides mirrors the
+// synced guides/ dir. research/ and codebase/ are not published (see web/scripts/sync-docs.mjs).
 const GROUPS = [
-  { label: "Overview", prefix: "" },
+  { label: "Overview", ids: ["home", "roadmap"] },
   { label: "Guides", prefix: "guides/" },
-  { label: "Research", prefix: "research/" },
-  { label: "Codebase map", prefix: "codebase/" },
 ];
 
 function pretty(id: string): string {
@@ -49,9 +48,7 @@ const sorted = [...docs].sort((a, b) => a.id.localeCompare(b.id));
 const groups = GROUPS.map((g) => ({
   label: g.label,
   items: sorted.filter((d) =>
-    g.prefix === ""
-      ? !d.id.includes("/")
-      : d.id.startsWith(g.prefix),
+    g.ids ? g.ids.includes(d.id) : d.id.startsWith(g.prefix),
   ),
 })).filter((g) => g.items.length > 0);
 
@@ -64,7 +61,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
   <div class="docs-shell">
     <aside class="docs-sidebar" aria-label="Documentation navigation">
       <nav>
-        <a class="docs-home" href={`${base}docs`}>All docs</a>
+        <a class="docs-home" href={`${base}docs`}>Home</a>
         {
           groups.map((g) => (
             <div class="docs-group">
