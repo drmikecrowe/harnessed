@@ -404,6 +404,36 @@ class TestHostClaudeSettingsMerge:
         # Profile-only keys survive when host does not override them.
         assert out["statusLine"]["command"] == "ccstatusline"
 
+    def test_host_statusline_never_overrides_baked_container_path(self, tmp_path, monkeypatch):
+        # The ccstatusline recipe bakes a container-absolute statusLine command
+        # (/home/harnessed/...). The host's statusLine points at a host-absolute path that can never
+        # resolve inside the container, so the host value must be dropped and the baked one kept.
+        home = _home_in(monkeypatch, tmp_path)
+        prof = tmp_path / "prof"
+        prof.mkdir()
+        (prof / "settings.json").write_text(
+            json.dumps({
+                "statusLine": {
+                    "type": "command",
+                    "command": "/home/harnessed/.local/share/mise/shims/ccstatusline",
+                },
+            })
+        )
+        host_claude = home / ".claude"
+        host_claude.mkdir(parents=True)
+        (host_claude / "settings.json").write_text(
+            json.dumps({
+                "statusLine": {
+                    "type": "command",
+                    "command": "/home/mcrowe/.local/share/mise/shims/ccstatusline",
+                },
+            })
+        )
+
+        launcher._merge_host_claude_settings(prof, {})
+        out = json.loads((prof / "settings.json").read_text())
+        assert out["statusLine"]["command"] == "/home/harnessed/.local/share/mise/shims/ccstatusline"
+
     def test_noop_when_host_settings_absent(self, tmp_path, monkeypatch):
         _home_in(monkeypatch, tmp_path)
         prof = tmp_path / "prof"
