@@ -68,6 +68,8 @@ class TestWriteDerivedDockerfile:
         assert 'git clone --depth 1 --branch "feat/per-server-tool-filtering"' in body
         assert '"https://github.com/drmikecrowe/hatago-mcp-hub.git" /tmp/hatago-src' in body
         assert "allowBuilds:\\n  esbuild: true\\n  sharp: false\\n  workerd: false" in body
+        # Append is guarded so an upstream-provided allowBuilds: doesn't duplicate the mapping key.
+        assert "grep -q '^allowBuilds:' pnpm-workspace.yaml ||" in body
         assert 'pnpm install --filter "@himorishige/hatago-mcp-hub..."' in body
         assert "--no-frozen-lockfile" not in body
         # --workspace-concurrency=1 forces one-package-at-a-time topological build order, so the

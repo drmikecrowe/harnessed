@@ -768,7 +768,10 @@ def write_derived_dockerfile(
             f"# --- stack override: hatago MCP hub ({stack.name} stack.yaml `hatago:`) ---",
             "RUN git clone --depth 1" + branch_flag + f' "https://github.com/{owner_repo}.git" /tmp/hatago-src \\',
             "    && cd /tmp/hatago-src \\",
-            f"    && printf '{allow_builds}' >> pnpm-workspace.yaml \\",
+            # Guard the append: upstream may already ship an `allowBuilds:` key in
+            # pnpm-workspace.yaml (its own block already approves esbuild). Appending a second
+            # `allowBuilds:` makes a duplicate mapping key, which pnpm's YAML parser rejects.
+            f"    && (grep -q '^allowBuilds:' pnpm-workspace.yaml || printf '{allow_builds}' >> pnpm-workspace.yaml) \\",
             # NOT --no-frozen-lockfile: the clone ships its own pnpm-lock.yaml for this exact
             # commit, already in sync with its package.json files. Forcing a re-resolve let pnpm
             # pick different transitive tsdown/rolldown/esbuild versions per package than upstream
