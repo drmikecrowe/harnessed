@@ -16,9 +16,16 @@ const webRoot = path.resolve(__dirname, "..");
 const docsSrc = path.resolve(webRoot, "..", "docs");
 const target = path.join(webRoot, "src", "content", "docs");
 
-// Subdirectories to mirror (matches the DocsLayout sidebar groups).
-const INCLUDE_DIRS = ["guides", "research", "codebase"];
-const EXCLUDE_FILES = new Set(["_Sidebar.md"]);
+// Subdirectories to mirror (matches the DocsLayout sidebar groups). research/ and codebase/ are
+// intentionally excluded — the site publishes Guides only (plus the top-level Home + Roadmap).
+const INCLUDE_DIRS = ["guides"];
+// _Sidebar.md is GitHub-wiki nav, not a page. harnessed-design.md / recipe-build-findings.md stay
+// on the wiki (footer links point there) but are not published to the site — Overview is Home + Roadmap.
+const EXCLUDE_FILES = new Set([
+  "_Sidebar.md",
+  "harnessed-design.md",
+  "recipe-build-findings.md",
+]);
 
 async function copyMarkdown(fromDir, toDir) {
   await mkdir(toDir, { recursive: true });
