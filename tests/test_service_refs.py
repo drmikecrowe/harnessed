@@ -75,7 +75,7 @@ def test_stack_level_services_are_included(monkeypatch):
     # A stack can attach a sidecar with NO MCP surface via its own `services:` list (e.g. a shared
     # `dolt sql-server`, MySQL-wire not MCP). Those must be started even when no recipe references
     # them through an MCP `service:` ref.
-    stack = Stack(name="claude_beads-team-server", harness="claude", recipes=["beads-team-server"],
+    stack = Stack(name="beads-team-server", recipes=["beads-team-server"],
                   services=["beads-server"])
     _patch(monkeypatch, stack, [_recipe("beads-team-server")])
     assert launcher._service_refs("any-stack") == ["beads-server"]
@@ -84,7 +84,7 @@ def test_stack_level_services_are_included(monkeypatch):
 def test_stack_and_recipe_services_dedupe_recipe_first(monkeypatch):
     # Recipe MCP-ref services come first; a stack `services:` entry already covered by a recipe ref
     # is not repeated, and a new stack-only entry is appended after.
-    stack = Stack(name="s", harness="claude", recipes=["a"], services=["gbrain", "beads-server"])
+    stack = Stack(name="s", recipes=["a"], services=["gbrain", "beads-server"])
     recipes = [_recipe("a", McpServer(name="s1", service="gbrain", transport="http"))]
     _patch(monkeypatch, stack, recipes)
     assert launcher._service_refs("any-stack") == ["gbrain", "beads-server"]

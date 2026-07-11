@@ -11,62 +11,62 @@ from harnessed import paths
 class TestProfileDir:
     def test_uses_xdg_data_home(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        assert paths.profile_dir("my-stack") == tmp_path / "harnessed" / "profiles" / "my-stack"
+        assert paths.profile_dir("my-stack", "claude") == tmp_path / "harnessed" / "profiles" / "my-stack" / "claude"
 
     def test_falls_back_to_local_share(self, monkeypatch):
         monkeypatch.delenv("XDG_DATA_HOME", raising=False)
         home = Path.home()
-        assert paths.profile_dir("my-stack") == home / ".local" / "share" / "harnessed" / "profiles" / "my-stack"
+        assert paths.profile_dir("my-stack", "claude") == home / ".local" / "share" / "harnessed" / "profiles" / "my-stack" / "claude"
 
     def test_different_stacks_different_dirs(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        assert paths.profile_dir("a") != paths.profile_dir("b")
+        assert paths.profile_dir("a", "claude") != paths.profile_dir("b", "claude")
 
 
 class TestIsBuilt:
     def test_missing_profile_not_built(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        assert not paths.is_built("nonexistent")
+        assert not paths.is_built("nonexistent", "claude")
 
     def test_profile_with_mcp_json_is_built(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        prof = paths.profile_dir("my-stack")
+        prof = paths.profile_dir("my-stack", "claude")
         prof.mkdir(parents=True)
         (prof / ".mcp.json").write_text('{"mcpServers":{}}')
-        assert paths.is_built("my-stack")
+        assert paths.is_built("my-stack", "claude")
 
     def test_profile_without_mcp_json_not_built(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        prof = paths.profile_dir("my-stack")
+        prof = paths.profile_dir("my-stack", "claude")
         prof.mkdir(parents=True)
         # No .mcp.json — profile dir exists but not "built"
-        assert not paths.is_built("my-stack")
+        assert not paths.is_built("my-stack", "claude")
 
 
 class TestInstanceName:
     def test_stable_for_same_inputs(self):
-        a = paths.instance_name("my-stack", "/home/user/project")
-        b = paths.instance_name("my-stack", "/home/user/project")
+        a = paths.instance_name("my-stack", "claude", "/home/user/project")
+        b = paths.instance_name("my-stack", "claude", "/home/user/project")
         assert a == b
 
     def test_format_matches_pattern(self):
-        name = paths.instance_name("tracer-time", "/home/user/myproject")
-        assert name.startswith("harnessed-tracer-time-")
+        name = paths.instance_name("tracer-time", "claude", "/home/user/myproject")
+        assert name.startswith("harnessed-claude-tracer-time-")
         assert len(name.split("-")[-1]) == 8
 
     def test_different_projects_different_names(self):
-        a = paths.instance_name("stack", "/home/user/proj-a")
-        b = paths.instance_name("stack", "/home/user/proj-b")
+        a = paths.instance_name("stack", "claude", "/home/user/proj-a")
+        b = paths.instance_name("stack", "claude", "/home/user/proj-b")
         assert a != b
 
     def test_different_stacks_different_names(self):
-        a = paths.instance_name("stack-a", "/home/user/proj")
-        b = paths.instance_name("stack-b", "/home/user/proj")
+        a = paths.instance_name("stack-a", "claude", "/home/user/proj")
+        b = paths.instance_name("stack-b", "claude", "/home/user/proj")
         assert a != b
 
     def test_trailing_slash_stripped(self):
-        a = paths.instance_name("stack", "/home/user/project")
-        b = paths.instance_name("stack", "/home/user/project/")
+        a = paths.instance_name("stack", "claude", "/home/user/project")
+        b = paths.instance_name("stack", "claude", "/home/user/project/")
         assert a == b
 
 
@@ -85,7 +85,7 @@ class TestProjectHash:
     def test_is_the_key_inside_instance_name(self):
         # Single source: instance_name must embed exactly project_hash (no independent digest).
         h = paths.project_hash("/home/user/project")
-        assert paths.instance_name("my-stack", "/home/user/project") == f"harnessed-my-stack-{h}"
+        assert paths.instance_name("my-stack", "claude", "/home/user/project") == f"harnessed-claude-my-stack-{h}"
 
     def test_different_projects_differ(self):
         assert paths.project_hash("/home/user/a") != paths.project_hash("/home/user/b")

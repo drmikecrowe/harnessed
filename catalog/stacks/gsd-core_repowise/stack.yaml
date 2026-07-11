@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# Stack: gsd-core_repowise — harness-agnostic composition of repowise + gsd-core recipes.
+# Run with e.g. `harnessed gsd-core_repowise claude` or `harnessed gsd-core_repowise omp`.
+name: gsd-core_repowise
+recipes: [repowise, gsd-core]
+services: []

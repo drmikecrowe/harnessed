@@ -53,13 +53,14 @@ download** (no `@latest` / `--branch main` — the build rejects floating refs).
 
 ## Compose + test a stack
 
-Stacks are named **`<agent>_<recipe>[_<recipe>…]`** (underscores between fields, hyphens within a
-name). Scaffold + run the loop:
+Stacks are **harness-free**, named after their recipes **`<recipe>[_<recipe>…]`** (underscores
+between fields, hyphens within a name; not after a harness). The harness is a run-time positional.
+Scaffold + run the loop:
 
 ```bash
-harnessed new <agent>_<recipes>… --harness <agent> --recipes a,b,c
-harnessed build <stack>            # assemble + build images (host-native)
-harnessed test  <stack>            # capability report — every declared capability present?  (auth-free)
+harnessed new <recipes>… --recipes a,b,c
+harnessed build <stack> <harness>  # assemble + build images for that harness (host-native)
+harnessed test  <stack> <harness>  # capability report — every declared capability present?  (auth-free)
 ```
 
 Personal/experimental catalog entries can live in `~/.config/harnessed/catalog/` instead of the repo

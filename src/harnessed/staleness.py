@@ -85,20 +85,20 @@ def read_stamp(profile_dir: Path) -> str | None:
         return None
 
 
-def check_profile_fresh(root: Path | None, stack_name: str, *, strict: bool = False) -> None:
-    """Raise if the built profile for `stack_name` no longer matches the current catalog.
+def check_profile_fresh(root: Path | None, stack_name: str, harness: str, *, strict: bool = False) -> None:
+    """Raise if the built profile for `stack_name`/`harness` no longer matches the current catalog.
 
     Raises `SchemaError` when a referenced recipe/stack no longer resolves (existence check), or
     `StaleProfileError` when the inputs changed since assembly (stamp missing or mismatched). Returns
     None when the profile is fresh. Assumes a profile already exists (call after `paths.is_built`).
     """
     stack, recipes = load_stack_with_recipes(root, stack_name, strict=strict)  # existence check
-    stored = read_stamp(paths.profile_dir(stack_name))
+    stored = read_stamp(paths.profile_dir(stack_name, harness))
     if stored is None:
         raise StaleProfileError(
-            f"profile for '{stack_name}' predates staleness tracking (no {STAMP_FILE}) — rebuild to verify it"
+            f"profile for '{stack_name}' ({harness}) predates staleness tracking (no {STAMP_FILE}) — rebuild to verify it"
         )
     if stored != compute_stamp(root, stack, recipes):
         raise StaleProfileError(
-            f"profile for '{stack_name}' is stale: its stack/recipe sources changed since it was built"
+            f"profile for '{stack_name}' ({harness}) is stale: its stack/recipe sources changed since it was built"
         )

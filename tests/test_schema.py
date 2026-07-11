@@ -132,10 +132,9 @@ class TestLoadStack:
     def test_minimal_stack_loads(self, tmp_path):
         d = tmp_path / "my-stack"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: my-stack\nharness: claude\nrecipes: []\n")
+        (d / "stack.yaml").write_text("name: my-stack\nrecipes: []\n")
         stk = load_stack(d)
         assert stk.name == "my-stack"
-        assert stk.harness == "claude"
 
     def test_invalid_yaml_raises(self, tmp_path):
         d = tmp_path / "bad"
@@ -147,59 +146,59 @@ class TestLoadStack:
     def test_ssh_keys_default_empty(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\n")
+        (d / "stack.yaml").write_text("name: s\n")
         assert load_stack(d).ssh_keys == []
 
     def test_ssh_keys_valid_list_parsed(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\nssh_keys: [id_ed25519, id_work]\n")
+        (d / "stack.yaml").write_text("name: s\nssh_keys: [id_ed25519, id_work]\n")
         assert load_stack(d).ssh_keys == ["id_ed25519", "id_work"]
 
     def test_ssh_keys_traversal_rejected(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\nssh_keys: ['../id_rsa']\n")
+        (d / "stack.yaml").write_text("name: s\nssh_keys: ['../id_rsa']\n")
         with pytest.raises(SchemaError, match="ssh_keys"):
             load_stack(d)
 
     def test_ssh_keys_absolute_path_rejected(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\nssh_keys: ['/etc/shadow']\n")
+        (d / "stack.yaml").write_text("name: s\nssh_keys: ['/etc/shadow']\n")
         with pytest.raises(SchemaError, match="ssh_keys"):
             load_stack(d)
 
     def test_ssh_keys_non_list_rejected(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\nssh_keys: id_ed25519\n")
+        (d / "stack.yaml").write_text("name: s\nssh_keys: id_ed25519\n")
         with pytest.raises(SchemaError, match="ssh_keys"):
             load_stack(d)
 
     def test_forward_git_credentials_defaults_false(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\n")
+        (d / "stack.yaml").write_text("name: s\n")
         assert load_stack(d).forward_git_credentials is False
 
     def test_forward_git_credentials_parsed_true(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\nforward_git_credentials: true\n")
+        (d / "stack.yaml").write_text("name: s\nforward_git_credentials: true\n")
         assert load_stack(d).forward_git_credentials is True
 
     def test_hatago_default_none(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\n")
+        (d / "stack.yaml").write_text("name: s\n")
         assert load_stack(d).hatago is None
 
     def test_hatago_repo_and_ref_parsed(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
         (d / "stack.yaml").write_text(
-            "name: s\nharness: claude\n"
+            "name: s\n"
             "hatago:\n  repo: github:drmikecrowe/hatago-mcp-hub\n  ref: feat/per-server-tool-filtering\n"
         )
         assert load_stack(d).hatago == {
@@ -210,20 +209,20 @@ class TestLoadStack:
     def test_hatago_ref_optional(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\nhatago:\n  repo: github:owner/repo\n")
+        (d / "stack.yaml").write_text("name: s\nhatago:\n  repo: github:owner/repo\n")
         assert load_stack(d).hatago == {"repo": "github:owner/repo", "ref": None}
 
     def test_hatago_missing_repo_rejected(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\nhatago:\n  ref: main\n")
+        (d / "stack.yaml").write_text("name: s\nhatago:\n  ref: main\n")
         with pytest.raises(SchemaError, match="hatago"):
             load_stack(d)
 
     def test_hatago_repo_bad_shape_rejected(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: s\nharness: claude\nhatago:\n  repo: not-a-github-spec\n")
+        (d / "stack.yaml").write_text("name: s\nhatago:\n  repo: not-a-github-spec\n")
         with pytest.raises(SchemaError, match="hatago.repo"):
             load_stack(d)
 
@@ -231,7 +230,7 @@ class TestLoadStack:
         d = tmp_path / "s"
         d.mkdir()
         (d / "stack.yaml").write_text(
-            'name: s\nharness: claude\nhatago:\n  repo: github:owner/repo\n  ref: "main\\" && rm -rf /"\n'
+            'name: s\nhatago:\n  repo: github:owner/repo\n  ref: "main\\" && rm -rf /"\n'
         )
         with pytest.raises(SchemaError, match="hatago.ref"):
             load_stack(d)
@@ -261,24 +260,18 @@ class TestLoadAgent:
     def test_missing_name_raises(self, tmp_path):
         d = tmp_path / "no-name"
         d.mkdir()
-        (d / "stack.yaml").write_text("harness: claude\nrecipes: []\n")
+        (d / "stack.yaml").write_text("recipes: []\n")
         with pytest.raises(SchemaError, match="name"):
             load_stack(d)
 
-    def test_invalid_harness_raises(self, tmp_path):
-        d = tmp_path / "bad-harness"
-        d.mkdir()
-        (d / "stack.yaml").write_text("name: bad\nharness: vim\nrecipes: []\n")
-        with pytest.raises(SchemaError, match="vim"):
-            load_stack(d)
-
-    def test_all_valid_harnesses_load(self, tmp_path):
+    def test_stack_name_equal_to_harness_raises(self, tmp_path):
+        """Stack name must not equal a harness name (guard added with harness-agnostic stacks)."""
         for harness in ("claude", "omp", "opencode", "antigravity", "codex"):
             d = tmp_path / harness
             d.mkdir()
-            (d / "stack.yaml").write_text(f"name: {harness}-stack\nharness: {harness}\nrecipes: []\n")
-            stk = load_stack(d)
-            assert stk.harness == harness
+            (d / "stack.yaml").write_text(f"name: {harness}\nrecipes: []\n")
+            with pytest.raises(SchemaError, match="conflicts with a harness name"):
+                load_stack(d)
 
     def test_invalid_permissions_raises(self, tmp_path):
         d = tmp_path / "bad-permissions"

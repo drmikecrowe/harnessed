@@ -93,7 +93,7 @@ Images are built on the host with `podman build` the first time they're needed. 
 
 - **Layer 1 — `harnessed-base`**: fat toolchain image (mise, node@24, python, pnpm; no harness CLI).
 - **Layer 2 — `harnessed-<agent>`**: FROM `harnessed-base` + the agent CLI installed (one image per agent: `harnessed-claude`, `harnessed-omp`).
-- **Layer 3 — `harnessed-<stack>`**: derived stack image built by `harnessed build <stack>` — FROM `harnessed-<agent>` + the stack's recipe Dockerfiles concatenated (e.g. `harnessed-claude_gstack_ping_time_greet` FROM `harnessed-claude`).
+- **Layer 3 — `harnessed-<harness>-<stack>`**: derived stack image built by `harnessed build <stack> <harness>` — FROM `harnessed-<harness>` + the stack's recipe Dockerfiles concatenated (e.g. `harnessed-claude-gstack_ping_time_greet` FROM `harnessed-claude`). The same harness-free stack yields one derived image per harness.
 
 Supporting image (not part of the base→agent→stack lineage):
 
@@ -103,51 +103,53 @@ Assembly runs **host-native in-process** (no tool container) — the host CLI em
 the `Dockerfile.harnessed-<stack>`, then drives `podman build`.
 
 ```bash
-harnessed build          # (re)build the shared base/agent/hatago images
-harnessed build <stack>  # assemble one stack: emit profile + build images (+ supply-chain scan)
+harnessed build                    # (re)build the shared base/agent/hatago images
+harnessed build <stack> <harness>  # assemble one stack for a harness: emit profile + build images (+ supply-chain scan)
 ```
 
-Bare `harnessed build` rebuilds the shared base/agent/hatago images. `harnessed build <stack>`
-rebuilds the base (so base-image changes propagate), assembles in-process, then builds the hatago,
-agent, and derived `harnessed-<stack>` images. The derived image's final layer runs an **in-image,
+Bare `harnessed build` rebuilds the shared base/agent/hatago images (and reconciles every
+already-built `<stack> <harness>` pair). `harnessed build <stack> <harness>` rebuilds the base (so
+base-image changes propagate), assembles in-process, then builds the hatago, agent, and derived
+`harnessed-<harness>-<stack>` images. The derived image's final layer runs an **in-image,
 advisory** supply-chain scan over what actually landed — emitting the profile to
-`$XDG_DATA_HOME/harnessed/profiles/<stack>/` (the clone stays immutable source) plus an advisory
+`$XDG_DATA_HOME/harnessed/profiles/<stack>/<harness>/` (the clone stays immutable source) plus an advisory
 `scan-report.json` alongside it. Expect first-run latency (images build via host `podman build`);
 later runs are cache hits.
 
 ## Quickstart
 
-Build and launch the `claude_time` sample stack — the `claude` agent + the `time` recipe (one light stdio MCP server + one standalone skill):
+Build and launch the `time` sample stack — the `time` recipe (one light stdio MCP server + one standalone skill) — on the `claude` harness:
 
 ```bash
 cd /path/to/project
-harnessed build claude_time && harnessed claude_time
+harnessed build time claude && harnessed time claude
 ```
 
-`claude_time` is the smallest end-to-end stack slice: the `claude` agent + the `time` recipe
-(one light stdio MCP server + one standalone skill), composed into a profile and run as a
-pod (agent + hatago). Running an unbuilt stack errors and tells you to `harnessed build` it first.
+`time` is the smallest end-to-end stack slice: the `time` recipe (one light stdio MCP server + one
+standalone skill), composed into a profile and run as a pod (agent + hatago). The harness is chosen
+at run time (`harnessed time omp` runs the same stack on omp). Running an unbuilt stack errors and
+tells you to `harnessed build` it first.
 
 After building, verify the stack's declared capabilities with the capability test:
 
 ```bash
-harnessed test claude_time
+harnessed test time claude
 ```
 
-`harnessed test` launches the stack headless, runs the two-oracle capability check, and writes a per-capability report to `$XDG_DATA_HOME/harnessed/profiles/claude_time/capability-report.md` (✓ connected / ✗ missing).
+`harnessed test` launches the stack headless, runs the two-oracle capability check, and writes a per-capability report to `$XDG_DATA_HOME/harnessed/profiles/time/claude/capability-report.md` (✓ connected / ✗ missing).
 
 ## Command surface
 
 | Command | What it does |
 | --- | --- |
-| `harnessed <stack> [path] [--fresh]` | Isolated stack: assembled profile + pod (harness + hatago) |
-| `harnessed build [<stack>]` | Build the base/harness/hatago images, or assemble + build one stack |
-| `harnessed test <stack>` | Capability test: launch `--fresh` headless + assert declared capabilities (markdown report) |
+| `harnessed <stack> <harness> [path] [--fresh]` | Isolated stack on a harness: assembled profile + pod (harness + hatago) |
+| `harnessed build [<stack> <harness>]` | Build the base/harness/hatago images (+ reconcile built pairs), or assemble + build one stack for a harness |
+| `harnessed test <stack> <harness>` | Capability test: launch `--fresh` headless + assert declared capabilities (markdown report) |
 | `harnessed svc up \| down \| list <service>` | Manage shared service sidecars (own image + volume) |
-| `harnessed list` | List authored stacks + running instances |
-| `harnessed stop \| rm <stack>` | Stop / remove every instance of a stack |
-| `harnessed new <stack> [--harness claude\|omp] [--recipes a,b,c]` | Scaffold a stack manifest |
-| `harnessed install \| uninstall <stack>` | Write / remove a `~/.local/bin/<stack>` launcher shim |
+| `harnessed list` | List authored stacks (with which harnesses are built) + running instances |
+| `harnessed stop \| rm <stack> [<harness>]` | Stop / remove instances of a stack (optionally one harness) |
+| `harnessed new <stack> [--recipes a,b,c]` | Scaffold a harness-free stack manifest |
+| `harnessed install \| uninstall <stack>` | Write / remove a `~/.local/bin/<stack>` launcher shim (forwards the harness arg) |
 | `harnessed rescan` | Re-scan installed harnessed images online (the nightly timer's trigger) |
 | `harnessed --fresh ...` | Tear down any existing pod/instance first (isolated) |
 | `harnessed --no-firewall ...` | Skip the egress firewall for this run |
@@ -214,7 +216,7 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 
 - **A/B two memory systems.** Run `claude+hindsight` and `claude+openbrain` as separate stacks side by side; neither touches your host config or the other's state.
 - **Compare harnesses on equal footing.** Point `claude+hindsight` and `omp+hindsight` at the **same** service-scoped memory volume and judge which harness drives it better — same data, different engine.
-- **Clean-room a flaky plugin.** `harnessed <stack> --fresh` reproduces from zero state, then tears down leaving no residue in `~`.
+- **Clean-room a flaky plugin.** `harnessed <stack> <harness> --fresh` reproduces from zero state, then tears down leaving no residue in `~`.
 - **Proof it built right.** Each stack ships a capability test: bring the instance up headless and assert it exposes exactly the MCP servers/skills/commands its manifest declares — rendered as a per-capability markdown report (✓ connected / ✗ missing).
 
 ---

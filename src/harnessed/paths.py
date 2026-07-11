@@ -137,14 +137,14 @@ def profiles_root() -> Path:
     return xdg_data_home() / "harnessed" / "profiles"
 
 
-def profile_dir(stack: str) -> Path:
-    """Absolute host path to the assembled profile for `stack`."""
-    return profiles_root() / stack
+def profile_dir(stack: str, harness: str) -> Path:
+    """Absolute host path to the assembled profile for `stack` + `harness`."""
+    return profiles_root() / stack / harness
 
 
-def is_built(stack: str) -> bool:
-    """Return True if `stack` has an assembled profile (.mcp.json at root)."""
-    return (profile_dir(stack) / ".mcp.json").is_file()
+def is_built(stack: str, harness: str) -> bool:
+    """Return True if `stack`/`harness` has an assembled profile (.mcp.json at root)."""
+    return (profile_dir(stack, harness) / ".mcp.json").is_file()
 
 
 def project_hash(project_path: str | Path) -> str:
@@ -159,19 +159,19 @@ def project_hash(project_path: str | Path) -> str:
     return hashlib.sha1(p.encode()).hexdigest()[:8]
 
 
-def instance_name(stack: str, project_path: str | Path) -> str:
-    """Stable instance name: harnessed-<stack>-<project_hash>."""
-    return f"harnessed-{stack}-{project_hash(project_path)}"
+def instance_name(stack: str, harness: str, project_path: str | Path) -> str:
+    """Stable instance name: harnessed-<harness>-<stack>-<project_hash>."""
+    return f"harnessed-{harness}-{stack}-{project_hash(project_path)}"
 
 
-def setup_dismissed_flag(stack: str, project_path: str | Path) -> Path:
+def setup_dismissed_flag(stack: str, harness: str, project_path: str | Path) -> Path:
     """Marker recording that the user dismissed a stack's unconditional `setup:` notices for this
-    project (XDG STATE). Keyed per (stack, project) via `instance_name`, so worktrees and other
-    stacks stay independent. Its mere existence means "dismissed" — see
+    project (XDG STATE). Keyed per (stack, harness, project) via `instance_name`, so worktrees and
+    other stacks/harnesses stay independent. Its mere existence means "dismissed" — see
     launcher._prompt_setup_notices. Conditional notices are NOT gated by this flag; they follow
     their own `setup.condition` every launch.
     """
-    return xdg_state_home() / "harnessed" / "setup-dismissed" / instance_name(stack, project_path)
+    return xdg_state_home() / "harnessed" / "setup-dismissed" / instance_name(stack, harness, project_path)
 
 
 def persist_root() -> Path:

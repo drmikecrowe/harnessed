@@ -241,9 +241,9 @@ def _agent_image(harness: str) -> str:
     return img if ":" in img else f"{img}:latest"
 
 
-def _ensure_profile_dir(stack: str) -> Path:
+def _ensure_profile_dir(stack: str, harness: str) -> Path:
     """Ensure the XDG profile directory exists and return it."""
-    p = profile_dir(stack)
+    p = profile_dir(stack, harness)
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -536,7 +536,7 @@ def _ensure_harness_image(rt: str, harness: str) -> None:
         _build_agent_image(rt, harness)
 
 
-def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool = True) -> None:
+def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *, strict: bool = True) -> None:
     """Assemble a stack IN-PROCESS (host-native, emit-only — no tool container) + build hatago.
 
     `root` is an optional single catalog root (tests); None resolves across the catalog roots
@@ -550,14 +550,14 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir}/stack.yaml)")
         raise typer.Exit(1)
 
-    prof = _ensure_profile_dir(stack)
-    # assemble emits to <build-dir>/profiles/<stack>; pass the dir that *contains* profiles/.
+    prof = _ensure_profile_dir(stack, harness)
+    # assemble emits to <build-dir>/profiles/<stack>/<harness>; pass the dir that *contains* profiles/.
     build_root = paths.profiles_root().parent
     hdir = _harnessed_dir()
 
-    _out.print(f"[blue][INFO][/blue] Assembling stack '{stack}' ...")
+    _out.print(f"[blue][INFO][/blue] Assembling stack '{stack}' for harness '{harness}' ...")
     try:
-        result = assemble(root, stack, build_root, strict=strict)
+        result = assemble(root, stack, build_root, harness, strict=strict)
     except (SchemaError, CollisionError) as exc:
         # Clean rejection (raw npm/npx, floating pin, name collision, missing recipe/agent) — a
         # build that is *meant* to fail should read as a one-line error, not a Python traceback.
@@ -573,12 +573,12 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     # (Re)build the agent base image so a changed agent Dockerfile / build_args (e.g. OMP_VERSION)
     # actually propagates — the derived image is `FROM` it. Cache-backed: a no-op when unchanged,
     # but a changed pin cache-busts the version layer and, in turn, the derived image's FROM.
-    _build_agent_image(rt, load_stack(stack_dir).harness)
+    _build_agent_image(rt, harness)
 
     # Always build the derived per-stack image: its FINAL layer is the supply-chain scan (BLD-02,
     # emit.write_derived_dockerfile), so every stack — not just ones shipping a recipe Dockerfile —
     # gets scanned. The scan runs over the agent's mise globals + recipe installs under ~/.claude.
-    derived = _derived_image(stack)
+    derived = _derived_image(stack, harness)
     dockerfile = prof / f"Dockerfile.harnessed-{stack}"
     recipe_hash = compute_recipe_hash(stack_dir / "stack.yaml", result.recipes)
     _out.print(f"[blue][INFO][/blue] Building derived image {derived} (incl. supply-chain scan) ...")
@@ -597,7 +597,7 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     # opencode.json, add a custom persona agent + a rules-file glob, and write the merged config
     # into the profile (mounted over the image path by _build_mount_args). Gated on the harness so
     # non-opencode stacks skip the (opencode-only) image read entirely.
-    if result.stack.harness == "opencode":
+    if harness == "opencode":
         _merge_baked_opencode(rt, derived, prof, result.stack)
 
     # Surface the advisory supply-chain report (baked by the derived image's final scan layer).
@@ -608,17 +608,17 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     for svc_name in _service_refs(stack):
         _build_service_image(rt, svc_name)
 
-    _out.print(f"[green][SUCCESS][/green] Stack '{stack}' built — profile: {prof}")
+    _out.print(f"[green][SUCCESS][/green] Stack '{stack}' ({harness}) built — profile: {prof}")
 
 
-def _built_image_hash(rt: str, stack: str) -> str | None:
+def _built_image_hash(rt: str, stack: str, harness: str) -> str | None:
     """The `harnessed.recipe-hash` label baked into stack's derived image, or None if the image
     doesn't exist yet or was built before this label existed."""
     result = subprocess.run(
         [
             rt, "inspect", "--format",
             '{{if .Config.Labels}}{{index .Config.Labels "harnessed.recipe-hash"}}{{end}}',
-            _derived_image(stack),
+            _derived_image(stack, harness),
         ],
         capture_output=True, text=True,
     )
@@ -629,24 +629,42 @@ def _built_image_hash(rt: str, stack: str) -> str | None:
 
 
 def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
-    """Rebuild every catalog stack whose recipe-closure hash no longer matches its built image's
-    `harnessed.recipe-hash` label (see `compute_recipe_hash`) — the reconciliation half of a bare
-    `harnessed build`, so editing a shared recipe rebuilds every stack that uses it without the
-    caller having to know or name them."""
-    if root is not None:
-        stacks_dir = root / "stacks"
-        names = (
-            sorted(p.name for p in stacks_dir.iterdir() if (p / "stack.yaml").is_file())
-            if stacks_dir.is_dir() else []
-        )
-    else:
-        names = paths.list_catalog_stacks()
-    if not names:
+    """Rebuild every previously-built (stack, harness) pair whose recipe-closure hash no longer
+    matches its built image's `harnessed.recipe-hash` label — the reconciliation half of a bare
+    `harnessed build`. Scans built images (via `podman images --filter label=harnessed=true`)
+    rather than the catalog, so only pairs that have been explicitly built are reconciled."""
+    result = subprocess.run(
+        [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return
+    # Parse image names of the form harnessed-<harness>-<stack>.
+    # harness = the first hyphen-delimited segment after "harnessed-" that is a known harness name;
+    # stack = the remainder after removing "harnessed-<harness>-".
+    pairs: list[tuple[str, str]] = []  # (stack, harness)
+    for repo in result.stdout.splitlines():
+        repo = repo.strip()
+        if not repo.startswith("harnessed-"):
+            continue
+        tail = repo[len("harnessed-"):]  # <harness>-<stack>
+        for harness_candidate in HARNESS_CONFIG_DIR:
+            prefix = harness_candidate + "-"
+            if tail.startswith(prefix):
+                stack_name = tail[len(prefix):]
+                if stack_name:
+                    pairs.append((stack_name, harness_candidate))
+                break
+    if not pairs:
+        _out.print("[blue][INFO][/blue] No previously-built stacks found to reconcile.")
         return
 
-    _out.print(f"[blue][INFO][/blue] Reconciling {len(names)} stack(s) against their recipe hash ...")
-    for name in names:
+    _out.print(f"[blue][INFO][/blue] Reconciling {len(pairs)} built stack(s) against their recipe hash ...")
+    for name, harness in pairs:
         stack_dir = (root / "stacks" / name) if root else paths.find_in_catalog("stacks", name)
+        if not (stack_dir / "stack.yaml").is_file():
+            _err.print(f"[yellow]warn:[/yellow] skipping '{name}' (stack.yaml not found in catalog)")
+            continue
         try:
             _, recipes = load_stack_with_recipes(root, name, strict=strict)
             expected = compute_recipe_hash(stack_dir / "stack.yaml", recipes)
@@ -654,12 +672,12 @@ def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
             _err.print(f"[yellow]warn:[/yellow] skipping '{name}' (failed to resolve recipes: {exc})")
             continue
 
-        current = _built_image_hash(rt, name)
+        current = _built_image_hash(rt, name, harness)
         if current == expected:
             continue
         reason = "no built image" if current is None else "recipe hash changed"
-        _out.print(f"[blue][INFO][/blue] Rebuilding stale stack '{name}' ({reason}) ...")
-        _build_stack(rt, name, root, strict=strict)
+        _out.print(f"[blue][INFO][/blue] Rebuilding stale stack '{name}' ({harness}) ({reason}) ...")
+        _build_stack(rt, name, harness, root, strict=strict)
 
 
 def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
@@ -831,8 +849,8 @@ def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path, re
     ])
 
 
-def _derived_image(stack: str) -> str:
-    return f"harnessed-{stack}:latest"
+def _derived_image(stack: str, harness: str) -> str:
+    return f"harnessed-{harness}-{stack}:latest"
 
 
 # Extension dirs an agent reads out of the Claude-canonical ~/.claude tree.
@@ -2126,7 +2144,7 @@ def _ensure_services(rt: str, stack: str) -> None:
 
 
 def _collect_setup_notices(
-    recipes: list[Recipe], project_path: Path, stack: str
+    recipes: list[Recipe], project_path: Path, stack: str, harness: str
 ) -> list[Recipe]:
     """Recipes whose user-facing `setup:` notice should be shown at this launch, in recipe order.
 
@@ -2142,7 +2160,7 @@ def _collect_setup_notices(
     the container), in the project directory, so project-scoped checks like `bd list` see the
     right state.
     """
-    dismissed = paths.setup_dismissed_flag(stack, project_path).exists()
+    dismissed = paths.setup_dismissed_flag(stack, harness, project_path).exists()
     out: list[Recipe] = []
     for recipe in recipes:
         if recipe.setup is None:
@@ -2162,7 +2180,7 @@ def _collect_setup_notices(
     return out
 
 
-def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str) -> None:
+def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str, harness: str) -> None:
     """Show aggregated user-facing `setup:` notices host-side at launch and act on the choice.
 
     No-op when nothing qualifies (`_collect_setup_notices`) or stdin is not a TTY (headless/CI
@@ -2172,7 +2190,7 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str)
     aborts. Conditional notices keep reappearing until their condition is satisfied regardless of
     a prior dismiss.
     """
-    notices = _collect_setup_notices(recipes, project_path, stack)
+    notices = _collect_setup_notices(recipes, project_path, stack, harness)
     if not notices or not sys.stdin.isatty():
         return
     _out.print("\n[bold]Setup needed for this stack:[/bold]")
@@ -2185,7 +2203,7 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str)
     if choice.startswith("q"):
         raise typer.Exit(0)
     if choice.startswith("d"):
-        flag = paths.setup_dismissed_flag(stack, project_path)
+        flag = paths.setup_dismissed_flag(stack, harness, project_path)
         flag.parent.mkdir(parents=True, exist_ok=True)
         flag.write_text("", encoding="utf-8")
 
@@ -2195,6 +2213,7 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str)
 @app.command()
 def launch(
     stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
+    harness: str = typer.Argument(..., help="Harness to use (claude|omp|opencode|antigravity|codex)"),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
     fresh: bool = typer.Option(False, "--fresh", help="Tear down any existing pod/instance first"),
     rm: bool = typer.Option(False, "--rm", help="Ephemeral: tear the pod down when the interactive session exits"),
@@ -2215,6 +2234,12 @@ def launch(
     ),
 ) -> None:
     """Launch an isolated harness stack against a project directory."""
+    if harness not in HARNESS_CONFIG_DIR:
+        _err.print(
+            f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+            f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+        )
+        raise typer.Exit(1)
     if no_firewall:
         os.environ["NO_FIREWALL"] = "true"
 
@@ -2257,23 +2282,23 @@ def launch(
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_yaml})")
         raise typer.Exit(1)
 
-    if not is_built(stack):
-        _err.print(f"[bold red]error:[/bold red] stack '{stack}' has no assembled profile (run: harnessed build {stack})")
+    if not is_built(stack, harness):
+        _err.print(f"[bold red]error:[/bold red] stack '{stack}' ({harness}) has no assembled profile (run: harnessed build {stack} {harness})")
         raise typer.Exit(1)
 
     # Guard against a stale profile: a recipe referenced by this stack may have been renamed/removed
     # (SchemaError) or edited (StaleProfileError) since the profile was built. is_built() only checks
     # presence, so without this a launch would silently run an orphaned/outdated image.
     try:
-        staleness.check_profile_fresh(None, stack)
+        staleness.check_profile_fresh(None, stack, harness)
     except SchemaError as exc:
         _err.print(
-            f"[bold red]error:[/bold red] stack '{stack}' references a recipe that no longer "
-            f"resolves ({exc}) — run: harnessed build {stack}"
+            f"[bold red]error:[/bold red] stack '{stack}' ({harness}) references a recipe that no longer "
+            f"resolves ({exc}) — run: harnessed build {stack} {harness}"
         )
         raise typer.Exit(1)
     except staleness.StaleProfileError as exc:
-        _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack}")
+        _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack} {harness}")
         raise typer.Exit(1)
 
     try:
@@ -2284,13 +2309,12 @@ def launch(
 
     stack_from_overlay = stack_dir.resolve().is_relative_to(paths.user_catalog().resolve())
 
-    harness = stk.harness
     # Prefer the derived per-stack image (recipe Dockerfile layers); fall back to the plain agent.
-    derived = _derived_image(stack)
+    derived = _derived_image(stack, harness)
     harness_image = derived if _image_exists(rt, derived) else _agent_image(harness)
-    prof = profile_dir(stack)
+    prof = profile_dir(stack, harness)
     relpath = project_relpath(project_path)
-    inst = instance_name(stack, project_path)
+    inst = instance_name(stack, harness, project_path)
     pod = inst
 
     # Ensure harness image exists (lazy-build for non-claude harnesses). hatago is baked into it now
@@ -2301,7 +2325,7 @@ def launch(
     # file), before ANY attach path (reuse/reattach/create) so they surface on every launch. Gating
     # and the [O]k/[D]ismiss/[Q]uit prompt live in _prompt_setup_notices; reuse launch_recipes below.
     _, launch_recipes = load_stack_with_recipes(None, stack)
-    _prompt_setup_notices(launch_recipes, project_path, stack)
+    _prompt_setup_notices(launch_recipes, project_path, stack, harness)
 
     # --fresh: tear down existing pod.
     if fresh:
@@ -2515,7 +2539,7 @@ def _attach(
     elif harness == "opencode":
         # Stack-conditional (bd main-rlw): `opencode --agent <name>` when a persona was baked,
         # else the fixed `opencode` command.
-        tail = _opencode_attach_cmd(profile_dir(stack), stack)
+        tail = _opencode_attach_cmd(profile_dir(stack, harness), stack)
     else:
         mcp_cfg = str(paths.container_mcp_config())
         harness_cmd_tpl = _HARNESS_ATTACH_CMD.get(harness, "claude")
@@ -2554,7 +2578,10 @@ def _attach(
 @app.command("build")
 def build(
     stack: Optional[str] = typer.Argument(
-        None, help="Stack to assemble; omit to rebuild base images and reconcile all catalog stacks"
+        None, help="Stack to assemble; omit to rebuild base images and reconcile all previously-built stacks"
+    ),
+    harness: Optional[str] = typer.Argument(
+        None, help="Harness to build for (required when stack is given)"
     ),
     root: Optional[str] = typer.Option(None, "--root", help="Alternate stacks/recipes root"),
     no_scans: bool = typer.Option(False, "--no-security-scans", help="Skip credentialed scans"),
@@ -2609,7 +2636,16 @@ def build(
 
     root_path = Path(root).resolve() if root else None
     if stack:
-        _build_stack(rt, stack, root_path, strict=not no_strict)
+        if not harness:
+            _err.print("[bold red]error:[/bold red] harness is required when a stack is specified (e.g.: harnessed build my-stack claude)")
+            raise typer.Exit(1)
+        if harness not in HARNESS_CONFIG_DIR:
+            _err.print(
+                f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+                f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+            )
+            raise typer.Exit(1)
+        _build_stack(rt, stack, harness, root_path, strict=not no_strict)
     else:
         _build_images_cmd(rt, force=force)
         _reconcile_stacks(rt, root_path, strict=not no_strict)
@@ -2621,8 +2657,12 @@ def list_stacks() -> None:
     rt = _runtime()
     _out.print("[bold]Authored stacks:[/bold]")
     for name in paths.list_catalog_stacks():
-        built = "[green]built[/green]" if is_built(name) else "[yellow]not built[/yellow]"
-        _out.print(f"  {name}  ({built})")
+        built_harnesses = [h for h in HARNESS_CONFIG_DIR if is_built(name, h)]
+        if built_harnesses:
+            status = "[green]built[/green] (" + ", ".join(built_harnesses) + ")"
+        else:
+            status = "[yellow]not built[/yellow]"
+        _out.print(f"  {name}  ({status})")
     _out.print("[bold]Running instances:[/bold]")
     subprocess.run([
         rt, "ps", "-a", "--filter", "name=harnessed-",
@@ -2632,13 +2672,15 @@ def list_stacks() -> None:
 
 @app.command("stop")
 def stop(stack: str = typer.Argument(..., help="Stack name")) -> None:
-    """Stop every running instance of a stack."""
+    """Stop every running instance of a stack (all harnesses)."""
     rt = _runtime()
     result = subprocess.run(
-        [rt, "ps", "-a", "--filter", f"name=harnessed-{stack}-", "--format", "{{.Names}}"],
+        [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
         capture_output=True, text=True,
     )
-    names = [n.strip() for n in result.stdout.splitlines() if n.strip()]
+    # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
+    all_names = [n.strip() for n in result.stdout.splitlines() if n.strip()]
+    names = [n for n in all_names if re.search(rf"-{re.escape(stack)}-[0-9a-f]{{8}}$", n)]
     for name in names:
         _out.print(f"[blue][INFO][/blue] Stopping {name}")
         subprocess.run([rt, "stop", name], capture_output=True)
@@ -2648,13 +2690,15 @@ def stop(stack: str = typer.Argument(..., help="Stack name")) -> None:
 
 @app.command("rm")
 def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
-    """Remove every instance (stopped or running) of a stack."""
+    """Remove every instance (stopped or running) of a stack (all harnesses)."""
     rt = _runtime()
     result = subprocess.run(
-        [rt, "ps", "-a", "--filter", f"name=harnessed-{stack}-", "--format", "{{.Names}}"],
+        [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
         capture_output=True, text=True,
     )
-    names = [n.strip() for n in result.stdout.splitlines() if n.strip()]
+    # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
+    all_names = [n.strip() for n in result.stdout.splitlines() if n.strip()]
+    names = [n for n in all_names if re.search(rf"-{re.escape(stack)}-[0-9a-f]{{8}}$", n)]
     for name in names:
         _out.print(f"[blue][INFO][/blue] Removing {name}")
         subprocess.run([rt, "rm", "-f", name], capture_output=True)
@@ -2729,25 +2773,33 @@ def clean_profiles() -> None:
 @app.command("test")
 def test_stack(
     stack: str = typer.Argument(..., help="Stack name"),
+    harness: str = typer.Argument(..., help="Harness to test against (claude|omp|opencode|antigravity|codex)"),
     project: Optional[str] = typer.Option(None, "--project", help="Scratch project path"),
     keep: bool = typer.Option(False, "--keep", help="Keep instance after test"),
     as_json: bool = typer.Option(False, "--json", help="Emit JSON result"),
 ) -> None:
     """Capability test: launch --fresh headless + assert declared capabilities."""
+    if harness not in HARNESS_CONFIG_DIR:
+        _err.print(
+            f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+            f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+        )
+        raise typer.Exit(1)
+
     rt = _runtime()
     root = _harnessed_dir()
 
     reason = None
-    if not is_built(stack):
+    if not is_built(stack, harness):
         reason = "not built"
     else:
         try:
-            staleness.check_profile_fresh(None, stack)
+            staleness.check_profile_fresh(None, stack, harness)
         except (SchemaError, staleness.StaleProfileError) as exc:
             reason = f"stale ({exc})"
     if reason:
-        _out.print(f"[blue][INFO][/blue] Stack '{stack}' {reason} — assembling first")
-        _build_stack(rt, stack)
+        _out.print(f"[blue][INFO][/blue] Stack '{stack}' ({harness}) {reason} — assembling first")
+        _build_stack(rt, stack, harness)
 
     # Delegate to the capability test (the harnessed.cli `test` entrypoint).
     run_env = {
@@ -2759,9 +2811,9 @@ def test_stack(
     cmd: list[str] = []
     if shutil.which("uv"):
         cmd = ["uv", "run", "--no-project", "--quiet", "--with", "ruamel.yaml", "--with", "rich",
-               "python", "-m", "harnessed.cli", "test", stack, "--root", str(root)]
+               "python", "-m", "harnessed.cli", "test", stack, harness, "--root", str(root)]
     elif shutil.which("python3"):
-        cmd = ["python3", "-m", "harnessed.cli", "test", stack, "--root", str(root)]
+        cmd = ["python3", "-m", "harnessed.cli", "test", stack, harness, "--root", str(root)]
     else:
         _err.print("[bold red]error:[/bold red] 'uv' or 'python3' required for capability test")
         raise typer.Exit(1)
@@ -2780,12 +2832,11 @@ def test_stack(
 @app.command("new")
 def new_stack(
     stack: str = typer.Argument(..., help="Stack name"),
-    harness: str = typer.Option("claude", "--harness", help="Harness (claude|omp|opencode|antigravity|codex)"),
     recipes: str = typer.Option("", "--recipes", help="Comma-joined recipe names"),
 ) -> None:
     """Scaffold a stack manifest in stacks/<name>/stack.yaml."""
-    if harness not in HARNESS_CONFIG_DIR:
-        _err.print(f"[bold red]error:[/bold red] unsupported harness '{harness}' (supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})")
+    if stack in HARNESS_CONFIG_DIR:
+        _err.print(f"[bold red]error:[/bold red] stack name '{stack}' conflicts with a harness name — choose a different name")
         raise typer.Exit(1)
 
     stacks_d = _stacks_dir()
@@ -2798,7 +2849,6 @@ def new_stack(
     recipe_list = [r.strip() for r in recipes.split(",") if r.strip()] if recipes else []
     lines = [
         f"name: {stack}",
-        f"harness: {harness}",
         "recipes:",
     ]
     for r in recipe_list:

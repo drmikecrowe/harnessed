@@ -23,7 +23,7 @@ from harnessed.emit import (
     write_derived_dockerfile,
 )
 from harnessed.paths import container_project_path
-from harnessed.schema import HookCommand, McpServer, Recipe, Stack
+from harnessed.schema import HookCommand, McpServer, Recipe
 
 _GRANT = f"mcp__{HATAGO_MCP_KEY}"
 # Every container defaults to auto-accept-edits; the grant rides alongside it when a stack has servers.
@@ -36,11 +36,8 @@ def _hook_recipe(name: str, hooks: dict) -> Recipe:
 
 
 class TestWriteDerivedDockerfile:
-    def _stack(self):
-        return Stack(name="claude_time", harness="claude", recipes=["time"], services=[])
-
     def test_appends_supply_chain_scan_run_by_default(self, tmp_path):
-        out = write_derived_dockerfile(tmp_path, self._stack(), [])
+        out = write_derived_dockerfile(tmp_path, "time", "claude", [])
         body = out.read_text()
         assert "FROM harnessed-${HARNESS}:latest" in body
         # The final supply-chain layer (BLD-02) runs even when no recipe ships a Dockerfile.
@@ -48,22 +45,16 @@ class TestWriteDerivedDockerfile:
         assert "--mount=type=secret,id=snyk_token" in body
 
     def test_no_scan_when_disabled(self, tmp_path):
-        out = write_derived_dockerfile(tmp_path, self._stack(), [], with_scan=False)
+        out = write_derived_dockerfile(tmp_path, "time", "claude", [], with_scan=False)
         assert "harnessed-scan" not in out.read_text()
 
     def test_no_hatago_override_layer_by_default(self, tmp_path):
-        out = write_derived_dockerfile(tmp_path, self._stack(), [])
+        out = write_derived_dockerfile(tmp_path, "time", "claude", [])
         assert "hatago-mcp-hub" not in out.read_text() and "hatago" not in out.read_text().lower()
 
     def test_hatago_override_clones_builds_and_links_the_workspace_package(self, tmp_path):
-        stack = Stack(
-            name="claude_time",
-            harness="claude",
-            recipes=["time"],
-            services=[],
-            hatago={"repo": "github:drmikecrowe/hatago-mcp-hub", "ref": "feat/per-server-tool-filtering"},
-        )
-        out = write_derived_dockerfile(tmp_path, stack, [])
+        hatago = {"repo": "github:drmikecrowe/hatago-mcp-hub", "ref": "feat/per-server-tool-filtering"}
+        out = write_derived_dockerfile(tmp_path, "time", "claude", [], hatago=hatago)
         body = out.read_text()
         assert 'git clone --depth 1 --branch "feat/per-server-tool-filtering"' in body
         assert '"https://github.com/drmikecrowe/hatago-mcp-hub.git" /tmp/hatago-src' in body
@@ -82,11 +73,8 @@ class TestWriteDerivedDockerfile:
         assert "pnpm add -g file:/tmp/hatago-src/packages/mcp-hub" in body
 
     def test_hatago_override_without_ref_clones_default_branch(self, tmp_path):
-        stack = Stack(
-            name="claude_time", harness="claude", recipes=["time"], services=[],
-            hatago={"repo": "github:owner/repo", "ref": None},
-        )
-        out = write_derived_dockerfile(tmp_path, stack, [])
+        hatago = {"repo": "github:owner/repo", "ref": None}
+        out = write_derived_dockerfile(tmp_path, "time", "claude", [], hatago=hatago)
         body = out.read_text()
         assert 'git clone --depth 1 "https://github.com/owner/repo.git" /tmp/hatago-src' in body
 
@@ -95,13 +83,13 @@ class TestWriteDerivedDockerfile:
         # the harnessed user. No Dockerfile needed on the recipe.
         r1 = Recipe(name="pulumi", tools=["pulumi@3.140.0"], root=tmp_path / "pulumi")
         r2 = Recipe(name="tf", tools=["terraform@1.9.0"], root=tmp_path / "tf")
-        out = write_derived_dockerfile(tmp_path, self._stack(), [r1, r2], with_scan=False)
+        out = write_derived_dockerfile(tmp_path, "time", "claude", [r1, r2], with_scan=False)
         body = out.read_text()
         assert 'RUN mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in body
         assert "# --- recipe tools (mise) ---" in body
 
     def test_no_mise_layer_without_tools(self, tmp_path):
-        out = write_derived_dockerfile(tmp_path, self._stack(), [Recipe(name="x", root=tmp_path)], with_scan=False)
+        out = write_derived_dockerfile(tmp_path, "time", "claude", [Recipe(name="x", root=tmp_path)], with_scan=False)
         assert "recipe tools (mise)" not in out.read_text()
 
 

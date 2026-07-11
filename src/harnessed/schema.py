@@ -38,7 +38,8 @@ def _resolve_dir(root: Path | None, kind: str, name: str) -> Path:
         return paths.find_in_catalog(kind, name)
     return Path(root) / kind / name
 
-# Harness → config directory name (Claude Code canonical, design §8). One harness per stack.
+# Harness → config directory name (Claude Code canonical, design §8). The harness is a run-time
+# positional (`harnessed <stack> <harness>`), not a stack field; a stack may not be named after one.
 # All harnesses consume the SAME committed Claude-canonical profile (.claude/) — single source of
 # truth (plan 04-03 / HRN-01..HRN-04). They differ only in HOW they read it + reach hatago:
 #   - claude   — native (.mcp.json + skills/commands/agents).
@@ -608,7 +609,6 @@ _STACK_PERMISSIONS_MODES = frozenset({"prompt", "auto", "yolo"})
 @dataclass
 class Stack:
     name: str
-    harness: str = "claude"
     recipes: list[str] = field(default_factory=list)
     services: list[str] = field(default_factory=list)
     permissions: str | None = None
@@ -648,15 +648,6 @@ class Stack:
     hatago: dict | None = None
     state: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
-
-    @property
-    def harness_config_dir(self) -> str:
-        if self.harness not in HARNESS_CONFIG_DIR:
-            raise SchemaError(
-                f"stack '{self.name}': unsupported harness '{self.harness}' "
-                f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
-            )
-        return HARNESS_CONFIG_DIR[self.harness]
 
 
 @dataclass
@@ -854,11 +845,10 @@ def load_stack(stack_dir: Path) -> Stack:
     raw = _load_yaml(manifest)
     if "name" not in raw:
         raise SchemaError(f"{manifest}: required field 'name' is missing")
-    harness = raw.get("harness", "claude")
-    if harness not in HARNESS_CONFIG_DIR:
+    if raw["name"] in HARNESS_CONFIG_DIR:
         raise SchemaError(
-            f"{manifest}: unsupported harness '{harness}' "
-            f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+            f"{manifest}: stack name '{raw['name']}' conflicts with a harness name — "
+            f"choose a different name (harness names: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
         )
     ssh_keys = _parse_ssh_keys(raw.get("ssh_keys"), manifest)
     hatago = _parse_hatago(raw.get("hatago"), manifest)
@@ -870,7 +860,6 @@ def load_stack(stack_dir: Path) -> Stack:
         )
     return Stack(
         name=raw["name"],
-        harness=harness,
         recipes=list(raw.get("recipes", []) or []),
         services=list(raw.get("services", []) or []),
         permissions=permissions,

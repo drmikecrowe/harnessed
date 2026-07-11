@@ -19,7 +19,7 @@ def _make_catalog(root: Path) -> None:
     """A minimal single-recipe stack on disk."""
     sd = root / "stacks" / "claude_x"
     sd.mkdir(parents=True)
-    (sd / "stack.yaml").write_text("name: claude_x\nharness: claude\nrecipes: [foo]\n", encoding="utf-8")
+    (sd / "stack.yaml").write_text("name: claude_x\nrecipes: [foo]\n", encoding="utf-8")
     rd = root / "recipes" / "foo"
     rd.mkdir(parents=True)
     (rd / "recipe.yaml").write_text("name: foo\ndescription: test recipe\n", encoding="utf-8")
@@ -32,20 +32,20 @@ def built(tmp_path, monkeypatch):
     _make_catalog(catalog)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     # assemble emits into <build-dir>/profiles/<stack>; profiles_root() = XDG/harnessed/profiles.
-    assemble(catalog, "claude_x", paths.profiles_root().parent)
-    assert paths.is_built("claude_x")
+    assemble(catalog, "claude_x", paths.profiles_root().parent, "claude")
+    assert paths.is_built("claude_x", "claude")
     return catalog, catalog / "recipes" / "foo"
 
 
 def test_fresh_profile_passes(built):
     catalog, _ = built
     # No exception → fresh.
-    staleness.check_profile_fresh(catalog, "claude_x")
+    staleness.check_profile_fresh(catalog, "claude_x", "claude")
 
 
 def test_stamp_is_written_and_readable(built):
     _, _ = built
-    prof = paths.profile_dir("claude_x")
+    prof = paths.profile_dir("claude_x", "claude")
     assert (prof / staleness.STAMP_FILE).is_file()
     assert staleness.read_stamp(prof)  # non-empty
 
@@ -56,14 +56,14 @@ def test_edited_recipe_is_stale(built):
         "name: foo\ndescription: EDITED\n", encoding="utf-8"
     )
     with pytest.raises(staleness.StaleProfileError):
-        staleness.check_profile_fresh(catalog, "claude_x")
+        staleness.check_profile_fresh(catalog, "claude_x", "claude")
 
 
 def test_new_file_in_recipe_is_stale(built):
     catalog, recipe_dir = built
     (recipe_dir / "extra.md").write_text("new file", encoding="utf-8")
     with pytest.raises(staleness.StaleProfileError):
-        staleness.check_profile_fresh(catalog, "claude_x")
+        staleness.check_profile_fresh(catalog, "claude_x", "claude")
 
 
 def test_removed_recipe_raises_schema_error(built):
@@ -71,14 +71,14 @@ def test_removed_recipe_raises_schema_error(built):
     # Rename the recipe out from under the stack (the exact bug this feature guards).
     recipe_dir.rename(recipe_dir.parent / "foo-renamed")
     with pytest.raises(SchemaError):
-        staleness.check_profile_fresh(catalog, "claude_x")
+        staleness.check_profile_fresh(catalog, "claude_x", "claude")
 
 
 def test_missing_stamp_is_stale(built):
     catalog, _ = built
-    (paths.profile_dir("claude_x") / staleness.STAMP_FILE).unlink()
+    (paths.profile_dir("claude_x", "claude") / staleness.STAMP_FILE).unlink()
     with pytest.raises(staleness.StaleProfileError):
-        staleness.check_profile_fresh(catalog, "claude_x")
+        staleness.check_profile_fresh(catalog, "claude_x", "claude")
 
 
 def test_stamp_deterministic(built):

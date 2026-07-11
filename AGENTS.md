@@ -10,8 +10,8 @@ layout, conventions, integrations, testing — see [docs/codebase/](docs/codebas
 `/map-codebase`; ARCHITECTURE/STRUCTURE/CONVENTIONS/INTEGRATIONS/STACK/TESTING/CONCERNS).
 
 > [!IMPORTANT]
-> **Do not run `harnessed <stack>` yourself.** Launching attaches an interactive shell inside a pod —
-> it is for the user. To reason about behavior use `harnessed build`, `harnessed test`,
+> **Do not run `harnessed <stack> <harness>` yourself.** Launching attaches an interactive shell
+> inside a pod — it is for the user. To reason about behavior use `harnessed build`, `harnessed test`,
 > `harnessed list`, or read the source.
 
 ## Dev workflow (for working ON harnessed)
@@ -24,8 +24,8 @@ uv run pytest -q                                    # fast unit + assembly tests
 HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py   # live container tests
 ```
 
-The CLI runs on the host (edits under `src/harnessed/` are live). `harnessed build <stack>` assembles
-in-process and builds images; `harnessed test <stack>` is the capability oracle.
+The CLI runs on the host (edits under `src/harnessed/` are live). `harnessed build <stack> <harness>`
+assembles in-process and builds images; `harnessed test <stack> <harness>` is the capability oracle.
 
 ## Customizing (catalog content)
 
@@ -34,8 +34,8 @@ Everything authorable is under `catalog/` (and the user overlay `~/.config/harne
 - **Recipe** → `catalog/recipes/<name>/recipe.yaml` — see
   [docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md) (examples: `catalog/recipes/time`,
   `catalog/recipes/ping`, `catalog/recipes/gstack`). Recipes are harness-independent (no `harnesses:`).
-- **Stack** → `catalog/stacks/<agent>_<recipe>…/stack.yaml`, or `harnessed new <name> --harness <agent>
-  --recipes a,b,c`. See [docs/guides/stacks.md](docs/guides/stacks.md).
+- **Stack** → `catalog/stacks/<recipe>…/stack.yaml` (harness-free), or `harnessed new <name>
+  --recipes a,b,c`. The harness is a run-time positional. See [docs/guides/stacks.md](docs/guides/stacks.md).
 - **Agent** → `catalog/agents/<name>/agent.yaml` + its Dockerfile. Agents are not recipes.
 - **Service** → `catalog/services/<name>/` — see
   [docs/guides/service-authoring.md](docs/guides/service-authoring.md) (example: `catalog/services/ping`).
