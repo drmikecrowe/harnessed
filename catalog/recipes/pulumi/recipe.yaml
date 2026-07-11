@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: pulumi — install the Pulumi CLI (https://www.pulumi.com/docs/cli/) and open the container
+# egress firewall to Pulumi Cloud. Pure YAML, no Dockerfile: `tools:` bakes the pinned CLI as a
+# `mise use -g` layer and `egress:` appends the Pulumi hosts to the default-DROP allowlist ONLY when
+# this recipe is in the stack. See docs/guides/egress.md.
+#
+# NOTE: egress ≠ auth. Reaching Pulumi Cloud still needs a PULUMI_ACCESS_TOKEN — that is a SECRET,
+# wired via the varlock/1Password path (docs/guides/secrets.md), NEVER baked here. See `setup:`.
+name: pulumi
+description: "Pulumi CLI (pinned via mise) + egress to Pulumi Cloud. Auth via PULUMI_ACCESS_TOKEN (secrets, not baked)."
+
+tools:
+  # Pinned per the repo pin policy (no @latest). Bump this to update. mise resolves via aqua:pulumi/pulumi.
+  - pulumi@3.251.0
+
+egress:
+  - api.pulumi.com   # Pulumi Cloud state backend + REST API
+  - get.pulumi.com   # resource-plugin downloads at `pulumi up` (providers not already on GitHub)
+
+setup:
+  summary: >-
+    Set PULUMI_ACCESS_TOKEN so the CLI can reach Pulumi Cloud — add it as an op(op://…) ref in your
+    ~/.config/harnessed/.env.schema (see the secrets guide); it is injected as env at launch, never
+    baked. Or run `pulumi login` interactively for a local/file backend that needs no token.
+  reference: https://www.pulumi.com/docs/pulumi-cloud/access-management/access-tokens/

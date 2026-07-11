@@ -1132,12 +1132,15 @@ def _session_active(rt: str, inst: str) -> bool | None:
     return any(t not in ("?", "-", "") for t in ttys)
 
 
-def _apply_firewall(rt: str, instance: str) -> None:
+def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None) -> None:
     if os.environ.get("NO_FIREWALL", "false").lower() == "true":
         return
-    # egress-firewall.sh is mounted at /usr/local/sbin/egress-firewall by _build_mount_args.
+    # egress-firewall.sh is mounted at /usr/local/sbin/egress-firewall by _build_mount_args. Extra
+    # domains (recipe-declared `egress:`) are appended to the script's allowlist — it takes them as
+    # positional args and resolves each to its current IPs.
     subprocess.run([
         rt, "exec", instance, "bash", "/usr/local/sbin/egress-firewall",
+        *(domains or []),
     ], capture_output=True)
 
 
@@ -1767,6 +1770,39 @@ def _ssh_agent_auto_forward_args(home: Path | None = None, rt: str = "podman") -
     return args
 
 
+# Default port the aws-sso ECS server listens on (aws-sso-cli default). Kept in sync with the
+# `--port` default of `harnessed aws-sso serve`.
+AWS_SSO_ECS_PORT = 4144
+
+
+def _aws_sso_ecs_forward_args(port: int = AWS_SSO_ECS_PORT, token_file: Path | None = None) -> list[str]:
+    """Wire the container to the host's aws-sso ECS server (default slot) for stacks that opt in with
+    `forward_aws_sso: true`.
+
+    Emits AWS_CONTAINER_CREDENTIALS_FULL_URI (the AWS SDK's ECS-task-role endpoint, pointed at the
+    host's `aws-sso ecs server` via host.containers.internal) + AWS_CONTAINER_AUTHORIZATION_TOKEN
+    (the bearer token gating that server). The in-container AWS SDK then pulls short-lived STS creds
+    over HTTP — no aws-sso binary, ~/.aws-sso store, or SSO token ever enters the container.
+
+    The bearer token is read from the user-owned token file that `harnessed aws-sso serve` writes
+    (single source of truth). No-op when that file is absent/empty — so a `forward_aws_sso` stack
+    launches fine on a host that hasn't set up the server (the SDK just finds no AWS creds), and the
+    token never lands in an image layer (it arrives as a per-launch `-e`).
+    """
+    tf = token_file or paths.aws_sso_ecs_token_file()
+    try:
+        token = tf.read_text(encoding="utf-8").strip()
+    except OSError:
+        return []
+    if not token:
+        return []
+    uri = f"http://host.containers.internal:{port}/"
+    return [
+        "-e", f"AWS_CONTAINER_CREDENTIALS_FULL_URI={uri}",
+        "-e", f"AWS_CONTAINER_AUTHORIZATION_TOKEN=Bearer {token}",
+    ]
+
+
 def _credential_forward_args(
     home: Path | None = None, ssh_keys: list[str] | None = None, rt: str = "podman"
 ) -> list[str]:
@@ -2292,6 +2328,12 @@ def launch(
         # requires forward_git_credentials.
         mount_args += _ssh_agent_auto_forward_args(rt=rt)
 
+    # Forward host AWS credentials via the aws-sso ECS server (opt-in per stack). Injects the AWS SDK's
+    # ECS-task-role endpoint + bearer token as env only — no aws-sso binary/store/token enters the
+    # container. No-op unless the host token file exists (written by `harnessed aws-sso serve`).
+    if stk.forward_aws_sso:
+        mount_args += _aws_sso_ecs_forward_args()
+
     # Resolve launch-time secrets, layered global → project (project wins on conflict). Returns the
     # ordered --env-file list and the subset of temp files to unlink after launch.
     secrets_env_files, secrets_temp_files = _resolve_launch_secrets(project_path)
@@ -2353,7 +2395,10 @@ def launch(
     # but placing it here keeps all post-start container setup before the firewall guard.
     _install_corp_proxy_ca_in_container(rt, inst)
 
-    _apply_firewall(rt, inst)
+    # Recipe-declared egress: union the extra allowlist hosts across this stack's recipes so the
+    # firewall opens them ONLY when a recipe that needs them is present (default-DROP otherwise).
+    egress_domains = sorted({d for r in launch_recipes for d in r.egress})
+    _apply_firewall(rt, inst, egress_domains)
 
     # hatago starts automatically via /usr/local/bin/harnessed-start (the container entrypoint).
     # No exec -d needed — the entrypoint script starts it in the background before exec-ing sleep.
@@ -2779,7 +2824,7 @@ def rescan() -> None:
 # capability test relies on).
 _COMMANDS = {
     "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
-    "install", "uninstall", "rescan", "svc",
+    "install", "uninstall", "rescan", "svc", "aws-sso",
 }
 
 
@@ -2800,6 +2845,83 @@ def svc(
     else:
         _err.print(f"[bold red]error:[/bold red] unknown svc action '{action}' (use: up | down)")
         raise typer.Exit(1)
+
+
+@app.command("aws-sso")
+def aws_sso(
+    action: str = typer.Argument("serve", help="serve — run the aws-sso ECS credential server for containers"),
+    port: int = typer.Option(AWS_SSO_ECS_PORT, "--port", help="port the ECS server listens on"),
+    bind_ip: str = typer.Option(
+        "0.0.0.0",
+        "--bind-ip",
+        help="host IP to bind. 0.0.0.0 (default) is reachable from containers via "
+        "host.containers.internal and gated by the bearer token; use 127.0.0.1 to keep it host-only "
+        "(then containers can't reach it).",
+    ),
+) -> None:
+    """Run the host aws-sso ECS credential server that stacks with `forward_aws_sso: true` consume.
+
+    Walks host setup: verifies aws-sso is installed, ensures a bearer token exists (generating one on
+    first run, loading it into the aws-sso secure store, and recording it for the launcher), then
+    starts `aws-sso ecs server` in the foreground. In another terminal, load a role for containers to
+    use with `aws-sso ecs load`. See docs/guides/aws-sso.md.
+    """
+    import secrets as _secrets
+    import stat
+
+    if action != "serve":
+        _err.print(f"[bold red]error:[/bold red] unknown aws-sso action '{action}' (use: serve)")
+        raise typer.Exit(1)
+
+    if not shutil.which("aws-sso"):
+        _err.print(
+            "[bold red]error:[/bold red] `aws-sso` not found on PATH. Install aws-sso-cli first: "
+            "https://synfinatic.github.io/aws-sso-cli/latest/"
+        )
+        raise typer.Exit(1)
+
+    # Bearer token: single source of truth shared with the launcher. Generate + store on first run.
+    token_file = paths.aws_sso_ecs_token_file()
+    existing = ""
+    try:
+        existing = token_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+
+    if existing:
+        _out.print(f"[dim]Reusing bearer token from {token_file}.[/dim]")
+    else:
+        token = _secrets.token_hex(32)
+        _out.print("Generating a new ECS-server bearer token and loading it into the aws-sso secure store…")
+        res = subprocess.run(["aws-sso", "setup", "ecs", "auth", "--bearer-token", token])
+        if res.returncode != 0:
+            _err.print("[bold red]error:[/bold red] `aws-sso setup ecs auth` failed — see output above.")
+            raise typer.Exit(1)
+        token_file.parent.mkdir(parents=True, exist_ok=True)
+        token_file.write_text(token, encoding="utf-8")
+        token_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
+        _out.print(f"[green][SUCCESS][/green] Stored bearer token at {token_file} (0600).")
+
+    if bind_ip not in ("127.0.0.1", "localhost"):
+        _out.print(
+            f"[yellow]note:[/yellow] binding {bind_ip}:{port} — reachable from containers "
+            "(and any host on the network); access is gated by the bearer token above."
+        )
+
+    _out.print(
+        "\n[bold]Container wiring[/bold] (injected automatically for stacks with "
+        "[bold]forward_aws_sso: true[/bold]):\n"
+        f"  AWS_CONTAINER_CREDENTIALS_FULL_URI = http://host.containers.internal:{port}/\n"
+        "  AWS_CONTAINER_AUTHORIZATION_TOKEN  = Bearer <token>\n\n"
+        "[bold]Next[/bold] — in another terminal, load the role containers should use:\n"
+        "  [cyan]aws-sso ecs load[/cyan]   (interactive; fills the default slot)\n\n"
+        f"Starting `aws-sso ecs server` on {bind_ip}:{port} — leave this running. Ctrl-C to stop.\n"
+    )
+
+    try:
+        subprocess.run(["aws-sso", "ecs", "server", "--bind-ip", bind_ip, "--port", str(port)])
+    except KeyboardInterrupt:
+        _out.print("\n[dim]aws-sso ecs server stopped.[/dim]")
 
 
 def main() -> None:

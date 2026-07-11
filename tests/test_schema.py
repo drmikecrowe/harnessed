@@ -356,6 +356,44 @@ class TestParseServerTransportValidation:
         assert r.servers[0].transport == "sse"
 
 
+class TestRecipeEgressAndTools:
+    """Recipe-declared `egress:` hosts + pinned `tools:` (conditional service exposure)."""
+
+    def _recipe(self, tmp_path, body: str):
+        d = tmp_path / "recipe"
+        d.mkdir(exist_ok=True)
+        (d / "recipe.yaml").write_text(body)
+        return d
+
+    def test_egress_and_tools_parse(self, tmp_path):
+        from harnessed.schema import load_recipe
+        r = load_recipe(self._recipe(
+            tmp_path, "name: pulumi\negress: [api.pulumi.com, get.pulumi.com]\ntools: [pulumi@3.140.0]\n"
+        ))
+        assert r.egress == ["api.pulumi.com", "get.pulumi.com"]
+        assert r.tools == ["pulumi@3.140.0"]
+
+    def test_absent_defaults_empty(self, tmp_path):
+        from harnessed.schema import load_recipe
+        r = load_recipe(self._recipe(tmp_path, "name: bare\n"))
+        assert r.egress == [] and r.tools == []
+
+    def test_egress_rejects_url(self, tmp_path):
+        from harnessed.schema import load_recipe
+        with pytest.raises(SchemaError, match="bare hostname"):
+            load_recipe(self._recipe(tmp_path, "name: x\negress: ['https://api.pulumi.com/x']\n"))
+
+    def test_tools_rejects_latest(self, tmp_path):
+        from harnessed.schema import load_recipe
+        with pytest.raises(SchemaError, match="pinned"):
+            load_recipe(self._recipe(tmp_path, "name: x\ntools: [pulumi@latest]\n"))
+
+    def test_tools_rejects_bare_name(self, tmp_path):
+        from harnessed.schema import load_recipe
+        with pytest.raises(SchemaError, match="pinned"):
+            load_recipe(self._recipe(tmp_path, "name: x\ntools: [pulumi]\n"))
+
+
 class TestParseServerServiceCommandExclusion:
     """service + command together is rejected (W2.2 schema gap C6)."""
 

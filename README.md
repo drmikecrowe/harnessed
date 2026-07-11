@@ -162,6 +162,8 @@ environment — there is no `harnessed auth` command (see [Supply chain & securi
 - **[Stacks](docs/guides/stacks.md)** — composing recipes into `stacks/<name>/stack.yaml`, scaffolding, and the build/run/test lifecycle.
 - **[Service authoring](docs/guides/service-authoring.md)** — adding a shared sidecar under `services/` (image + manifest + server).
 - **[Secrets setup](docs/guides/secrets.md)** — opt-in varlock + 1Password (env-only, never baked).
+- **[AWS SSO](docs/guides/aws-sso.md)** — opt-in AWS credentials via the aws-sso ECS server (short-lived STS, env-only, never baked).
+- **[Egress & exposing services](docs/guides/egress.md)** — the container egress firewall; recipe-declared `egress:` hosts + pinned `tools:` to conditionally open a service (e.g. Pulumi Cloud).
 - **[Troubleshooting](docs/guides/troubleshooting.md)** — podman setup, first-run build, `--fresh`, host-persisted sessions, the nightly re-scan timer.
 - **[Architecture & design](docs/harnessed-design.md)** — the *why* behind every decision (§1–§18).
 

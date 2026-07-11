@@ -24,6 +24,10 @@ export const docsUrls = {
     "https://github.com/drmikecrowe/harnessed/blob/main/docs/guides/stacks.md",
   secrets:
     "https://github.com/drmikecrowe/harnessed/blob/main/docs/guides/secrets.md",
+  awsSso:
+    "https://github.com/drmikecrowe/harnessed/blob/main/docs/guides/aws-sso.md",
+  egress:
+    "https://github.com/drmikecrowe/harnessed/blob/main/docs/guides/egress.md",
   troubleshooting:
     "https://github.com/drmikecrowe/harnessed/blob/main/docs/guides/troubleshooting.md",
 };

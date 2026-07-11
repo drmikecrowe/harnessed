@@ -53,6 +53,16 @@
         "mcp":      { "type": "array", "items": { "type": "string" }, "description": "MCP server names expected connected through the hatago hub." }
       }
     },
+    "egress": {
+      "description": "Extra outbound hosts this recipe's tools need, appended to the container egress firewall allowlist (catalog/base/egress-firewall.sh) at launch — ONLY when this recipe is in the stack (default-DROP otherwise). Bare hostnames: no scheme, path, or port (e.g. 'api.pulumi.com'). See docs/guides/egress.md.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "tools": {
+      "description": "Pinned mise tools installed into the derived image as a `mise use -g` layer, letting a recipe add a CLI with no Dockerfile (e.g. 'pulumi@3.140.0'). MUST be pinned — a floating '@latest' or bare tool name is rejected. Accepts any mise spec: registered tool, github:owner/repo@tag, or npm:pkg@version. See docs/guides/egress.md.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
     "plugins": {
       "description": "Vendored Claude plugins (forward field, design §11). Either a marketplace+plugin reference or a url+sha[+subdir] reference.",
       "type": "array",

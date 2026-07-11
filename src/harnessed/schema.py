@@ -588,6 +588,15 @@ class Recipe:
     # it on either side is enough.
     conflicts: list[str] = field(default_factory=list)
     setup: "SetupSpec | None" = None
+    # Extra outbound hosts this recipe's tools need — appended to the container egress firewall
+    # allowlist (catalog/base/egress-firewall.sh) at launch, ONLY when this recipe is in the stack
+    # (the firewall stays default-DROP otherwise). Bare hostnames, no scheme/path/port (e.g.
+    # `api.pulumi.com`). See docs/guides/egress.md.
+    egress: list[str] = field(default_factory=list)
+    # Extra mise-managed tools installed into the derived image as a `mise use -g` layer (e.g.
+    # `pulumi@3.140.0`). MUST be pinned — a floating `@latest`/bare name is rejected, same as a
+    # Dockerfile pin. Lets a recipe add a CLI + open its egress with NO Dockerfile. See egress.md.
+    tools: list[str] = field(default_factory=list)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
     raw: dict = field(default_factory=dict)
 
@@ -623,6 +632,15 @@ class Stack:
     # honored ONLY from the user-overlay catalog, never a shared repo-catalog stack (see the launcher)
     # — the key owner, not a third-party stack author, must consent to mounting a private key.
     ssh_keys: list[str] = field(default_factory=list)
+    # Opt-in (default OFF): forward host AWS credentials via the aws-sso ECS server (aws-sso-cli
+    # `aws-sso ecs server`, default slot). When ON and the host has a bearer token configured (via
+    # `harnessed aws-sso serve`), the launcher injects AWS_CONTAINER_CREDENTIALS_FULL_URI (pointing at
+    # host.containers.internal:<port>) + AWS_CONTAINER_AUTHORIZATION_TOKEN so the in-container AWS SDK
+    # pulls short-lived STS creds over HTTP — no aws-sso binary, ~/.aws-sso store, or SSO token ever
+    # enters the container. SECRET-BEARING (STS creds are NOT touch-gated like the SSH agent) → opt-in,
+    # unlike the agent auto-forward. No-op when the host token file is absent. See
+    # _aws_sso_ecs_forward_args and docs/guides/aws-sso.md.
+    forward_aws_sso: bool = False
     # Per-stack override for the hatago MCP hub install (default: the base image's pinned npm
     # release — catalog/base/Dockerfile.harnessed-base). {repo: "github:<owner>/<repo>", ref:
     # "<branch|tag|sha>"} — installed via pnpm's git-spec `github:<owner>/<repo>#<ref>` (NOT mise's
@@ -721,7 +739,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
     "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks", "setup",  # typed
+    "conflicts", "hooks", "setup", "egress", "tools",  # typed
     "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -761,6 +779,44 @@ def _validate_recipe_fields(raw: dict, manifest: Path) -> None:
     )
 
 
+def _parse_egress(raw_egress, manifest: Path) -> list[str]:
+    """Parse a recipe's `egress:` list into validated bare hostnames (no scheme/path/port)."""
+    if not raw_egress:
+        return []
+    if not isinstance(raw_egress, list):
+        raise SchemaError(f"{manifest}: 'egress' must be a list of hostnames")
+    out: list[str] = []
+    for entry in raw_egress:
+        host = entry.strip() if isinstance(entry, str) else entry
+        if not isinstance(host, str) or not _HOSTNAME_RE.match(host):
+            raise SchemaError(
+                f"{manifest}: egress entry {entry!r} is not a bare hostname "
+                "(no scheme, path, or port — e.g. 'api.pulumi.com')"
+            )
+        out.append(host)
+    return out
+
+
+def _parse_tools(raw_tools, manifest: Path) -> list[str]:
+    """Parse a recipe's `tools:` list into pinned mise tool specs (e.g. 'pulumi@3.140.0')."""
+    if not raw_tools:
+        return []
+    if not isinstance(raw_tools, list):
+        raise SchemaError(f"{manifest}: 'tools' must be a list of pinned mise tools")
+    out: list[str] = []
+    for entry in raw_tools:
+        spec = entry.strip() if isinstance(entry, str) else entry
+        if not isinstance(spec, str) or not spec:
+            raise SchemaError(f"{manifest}: tools entry {entry!r} must be a non-empty string")
+        if _FLOATING_REF_RE.search(spec) or "@" not in spec:
+            raise SchemaError(
+                f"{manifest}: tools entry {spec!r} must be pinned to an explicit version "
+                "(e.g. 'pulumi@3.140.0' — no '@latest' and no bare tool name)"
+            )
+        out.append(spec)
+    return out
+
+
 def load_recipe(recipe_dir: Path, *, strict: bool = False) -> Recipe:
     recipe_dir = Path(recipe_dir)
     manifest = recipe_dir / "recipe.yaml"
@@ -784,6 +840,8 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False) -> Recipe:
         hooks=_parse_hooks(raw.get("hooks")),
         conflicts=_parse_conflicts(raw.get("conflicts")),
         setup=_parse_setup(raw.get("setup")),
+        egress=_parse_egress(raw.get("egress"), manifest),
+        tools=_parse_tools(raw.get("tools"), manifest),
         root=recipe_dir,
         raw=raw,
     )
@@ -820,6 +878,7 @@ def load_stack(stack_dir: Path) -> Stack:
         instructions=raw.get("instructions"),
         forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
         ssh_keys=ssh_keys,
+        forward_aws_sso=bool(raw.get("forward_aws_sso", False)),
         hatago=hatago,
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
@@ -1001,6 +1060,11 @@ _FLOATING_REF_RE = re.compile(
     r'|:latest\b'
     r'|@latest\b',
     re.IGNORECASE,
+)
+# A bare DNS hostname: labels of alnum/hyphen joined by dots, a 2+ char alpha TLD, ≤253 chars.
+# No scheme, path, port, or wildcard — the egress firewall resolves each to IPs via getent.
+_HOSTNAME_RE = re.compile(
+    r'^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
 )
 # Offending token → the pnpm equivalent the author must use (BLD-03 "points at the pnpm equivalent").
 _NPM_TO_PNPM = {

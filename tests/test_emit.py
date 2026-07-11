@@ -90,6 +90,20 @@ class TestWriteDerivedDockerfile:
         body = out.read_text()
         assert 'git clone --depth 1 "https://github.com/owner/repo.git" /tmp/hatago-src' in body
 
+    def test_recipe_tools_emit_mise_layer(self, tmp_path):
+        # Declarative `tools:` → one pinned `mise use -g` layer (aggregated across recipes), run as
+        # the harnessed user. No Dockerfile needed on the recipe.
+        r1 = Recipe(name="pulumi", tools=["pulumi@3.140.0"], root=tmp_path / "pulumi")
+        r2 = Recipe(name="tf", tools=["terraform@1.9.0"], root=tmp_path / "tf")
+        out = write_derived_dockerfile(tmp_path, self._stack(), [r1, r2], with_scan=False)
+        body = out.read_text()
+        assert 'RUN mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in body
+        assert "# --- recipe tools (mise) ---" in body
+
+    def test_no_mise_layer_without_tools(self, tmp_path):
+        out = write_derived_dockerfile(tmp_path, self._stack(), [Recipe(name="x", root=tmp_path)], with_scan=False)
+        assert "recipe tools (mise)" not in out.read_text()
+
 
 class TestWriteClaudeMd:
     def test_emits_instructions_into_claude_md(self, tmp_path):
