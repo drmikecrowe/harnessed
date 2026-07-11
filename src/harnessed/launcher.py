@@ -230,7 +230,8 @@ def _harnessed_dir() -> Path:
 
 
 def _stacks_dir() -> Path:
-    """Repo catalog stacks dir (where `new` writes; `list` also scans the user catalog)."""
+    """Repo catalog stacks dir — where `new` scaffolds. Enumeration goes through
+    `paths.list_catalog_stacks` (unifies the user overlay), not this repo-only dir."""
     return _harnessed_dir() / "catalog" / "stacks"
 
 
@@ -2507,12 +2508,9 @@ def list_stacks() -> None:
     """List authored stacks and running harnessed instances."""
     rt = _runtime()
     _out.print("[bold]Authored stacks:[/bold]")
-    stacks_d = _stacks_dir()
-    if stacks_d.is_dir():
-        for s in sorted(stacks_d.iterdir()):
-            if (s / "stack.yaml").is_file():
-                built = "[green]built[/green]" if is_built(s.name) else "[yellow]not built[/yellow]"
-                _out.print(f"  {s.name}  ({built})")
+    for name in paths.list_catalog_stacks():
+        built = "[green]built[/green]" if is_built(name) else "[yellow]not built[/yellow]"
+        _out.print(f"  {name}  ({built})")
     _out.print("[bold]Running instances:[/bold]")
     subprocess.run([
         rt, "ps", "-a", "--filter", "name=harnessed-",

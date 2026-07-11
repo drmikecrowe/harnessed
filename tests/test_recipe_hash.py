@@ -80,6 +80,20 @@ class TestListCatalogStacks:
         monkeypatch.setattr(paths, "catalog_roots", lambda: [tmp_path / "nope"])
         assert paths.list_catalog_stacks() == []
 
+    def test_generic_list_catalog_unifies_non_stack_kind(self, tmp_path, monkeypatch):
+        # The user overlay (a.k.a. catalog/recipes.local) and the repo catalog are one namespace:
+        # a name in both appears once, and overlay-only names are included.
+        user_root = tmp_path / "user"
+        repo_root = tmp_path / "repo"
+        _write_recipe(user_root, "shared")
+        _write_recipe(user_root, "overlay-only")
+        _write_recipe(repo_root, "shared")
+        _write_recipe(repo_root, "repo-only")
+
+        monkeypatch.setattr(paths, "catalog_roots", lambda: [user_root, repo_root])
+
+        assert paths.list_catalog("recipes") == ["overlay-only", "repo-only", "shared"]
+
 
 class TestReconcileStacks:
     def test_rebuilds_only_stale_or_missing_stacks(self, monkeypatch, tmp_path):
