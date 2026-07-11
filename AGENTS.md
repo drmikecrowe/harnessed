@@ -45,6 +45,18 @@ Everything authorable is under `catalog/` (and the user overlay `~/.config/harne
 > You may only modify files **in this repository**. Do not modify the user's home directory (`~/`)
 > unless they explicitly ask.
 
+## Git workflow (non-negotiable)
+
+**No commits to `main`. Every change flows through a worktree → passing tests → PR.**
+
+1. Start work in a **new git worktree** — never edit or commit on `main` directly.
+2. Get the **full test suite passing** in that worktree before proposing to merge.
+3. Open a **PR** to `main`; merges happen via PR review, not direct pushes.
+
+Applies to code, catalog content, docs, and config alike. Commits are signed
+(see `.claude/rules/signed-commits`). This overrides the "PUSH TO REMOTE" step in the Beads
+Session Completion block below: push the **worktree branch** and open a PR — never push to `main`.
+
 ## Conventions
 
 See [CLAUDE.md](CLAUDE.md) for the non-negotiable constraints (host-native CLI; Claude format
