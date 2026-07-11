@@ -93,22 +93,43 @@ def find_in_catalog(kind: str, name: str) -> Path:
     return roots[0] / kind / name
 
 
-def list_catalog_stacks() -> list[str]:
-    """Every stack name visible across the catalog roots (user overlay wins, deduped by name).
+# The manifest file that marks a real entry of each catalog kind (its plural dir → marker file).
+_KIND_MARKER = {
+    "agents": "agent.yaml",
+    "recipes": "recipe.yaml",
+    "services": "service.yaml",
+    "stacks": "stack.yaml",
+}
 
-    Used by `harnessed build`'s no-arg reconciliation pass to enumerate what to check.
+
+def list_catalog(kind: str) -> list[str]:
+    """Every <kind> name visible across the catalog roots, deduped by name (user overlay wins).
+
+    Origin-blind: an entry present in the user overlay (a.k.a. catalog/<kind>.local) and in the repo
+    catalog is a single name in the unified list — callers must not care where it came from. `kind` is
+    the plural dir: agents | recipes | services | stacks. Route ALL enumeration through here so a new
+    lister can't accidentally see only the repo catalog.
     """
+    marker = _KIND_MARKER[kind]
     seen: set[str] = set()
     names: list[str] = []
     for root in catalog_roots():
-        stacks_dir = root / "stacks"
-        if not stacks_dir.is_dir():
+        kind_dir = root / kind
+        if not kind_dir.is_dir():
             continue
-        for entry in sorted(stacks_dir.iterdir()):
-            if entry.name not in seen and (entry / "stack.yaml").is_file():
+        for entry in sorted(kind_dir.iterdir()):
+            if entry.name not in seen and (entry / marker).is_file():
                 seen.add(entry.name)
                 names.append(entry.name)
     return sorted(names)
+
+
+def list_catalog_stacks() -> list[str]:
+    """Every stack name visible across the catalog roots (see `list_catalog`).
+
+    Used by `harnessed build`'s no-arg reconciliation pass and `harnessed list`.
+    """
+    return list_catalog("stacks")
 
 
 def profiles_root() -> Path:
