@@ -2653,7 +2653,7 @@ def build(
 
 @app.command("list")
 def list_stacks() -> None:
-    """List authored stacks and running harnessed instances."""
+    """List authored stacks and harnessed instances (running and stopped)."""
     rt = _runtime()
     _out.print("[bold]Authored stacks:[/bold]")
     for name in paths.list_catalog_stacks():
@@ -2663,7 +2663,10 @@ def list_stacks() -> None:
         else:
             status = "[yellow]not built[/yellow]"
         _out.print(f"  {name}  ({status})")
-    _out.print("[bold]Running instances:[/bold]")
+    # `-a` lists all harnessed containers, not just running ones, so stopped/exited instances stay
+    # visible (they linger until `prune` reaps them). The Status column shows the real state — do not
+    # label this "Running", or exited containers read as live.
+    _out.print("[bold]Instances (Status column shows running vs stopped):[/bold]")
     subprocess.run([
         rt, "ps", "-a", "--filter", "name=harnessed-",
         "--format", "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}",
@@ -2717,28 +2720,39 @@ def prune(
     minutes ago. After hatago-consolidation an idle instance is not just its PID-1 `sleep infinity`:
     it also runs the in-container hatago hub and the stdio MCP children it spawned, so attachment is
     detected positively by a controlling terminal (see `_session_active`), not by process count.
+
+    `-a` also surfaces non-running containers (exited/crashed, e.g. after a host reboot). Those have
+    no session by definition, so they skip the tty check and are reaped once idle for --idle minutes
+    too — otherwise they accumulate forever, since a plain `podman ps` never lists them.
     Instances never interactively attached (headless / externally driven) are left untouched.
     """
     import time
 
     rt = _runtime()
     result = subprocess.run(
-        [rt, "ps", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
+        [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}\t{{.State}}"],
         capture_output=True, text=True,
     )
     # hatago no longer runs as a separate `{inst}-hatago` member (hatago-consolidation), so every
-    # `harnessed-` container listed here is a prunable instance.
-    members = [n.strip() for n in result.stdout.splitlines() if n.strip()]
+    # `harnessed-` container listed here is a prunable instance. Carry each container's State so
+    # non-running ones can be reaped without the (running-only) tty probe.
+    members = []
+    for line in result.stdout.splitlines():
+        name, _, state = line.strip().partition("\t")
+        if name.strip():
+            members.append((name.strip(), state.strip()))
 
     pruned = 0
-    for inst in members:
+    for inst, state in members:
         marker = _attach_marker(inst)
         if not marker.exists():
             continue  # never interactively attached — leave it alone
-        # Prune ONLY on a confirmed-idle reading. `_session_active` returns None when `top` failed
-        # (transient runtime hiccup): treat unknown as "leave it alone" so a momentary error never
-        # tears down a live attached session. The next prune run retries.
-        if _session_active(rt, inst) is not False:
+        # A running container may still own a live attached session: prune ONLY on a confirmed-idle
+        # reading. `_session_active` returns None when `top` failed (transient runtime hiccup); treat
+        # unknown as "leave it alone" so a momentary error never tears down a live session — the next
+        # prune run retries. A non-running container (exited/crashed) has no session, so skip the
+        # probe entirely and fall straight through to the idle check.
+        if state == "running" and _session_active(rt, inst) is not False:
             continue
         idle_min = (time.time() - marker.stat().st_mtime) / 60
         if idle_min < idle:
