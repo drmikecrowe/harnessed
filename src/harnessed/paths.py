@@ -143,6 +143,16 @@ def instance_name(stack: str, project_path: str | Path) -> str:
     return f"harnessed-{stack}-{project_hash(project_path)}"
 
 
+def setup_dismissed_flag(stack: str, project_path: str | Path) -> Path:
+    """Marker recording that the user dismissed a stack's unconditional `setup:` notices for this
+    project (XDG STATE). Keyed per (stack, project) via `instance_name`, so worktrees and other
+    stacks stay independent. Its mere existence means "dismissed" — see
+    launcher._prompt_setup_notices. Conditional notices are NOT gated by this flag; they follow
+    their own `setup.condition` every launch.
+    """
+    return xdg_state_home() / "harnessed" / "setup-dismissed" / instance_name(stack, project_path)
+
+
 def persist_root() -> Path:
     """Root for recipe-declared persistent data (XDG DATA).
 

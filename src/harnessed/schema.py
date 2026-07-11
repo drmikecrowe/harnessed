@@ -512,16 +512,15 @@ def _parse_hooks(raw_hooks) -> dict[str, list[HookCommand]]:
 @dataclass
 class SetupSpec:
     """Harness-agnostic manual-setup note (recipe.yaml `setup:`) — a short summary + upstream
-    reference URL, rendered into the `## Setup` section every harness's identity/rules file
-    already carries (CLAUDE.md, .codex/AGENTS.md, opencode persona, omp APPEND_SYSTEM.md,
-    GEMINI.md). Deliberately NOT per-harness — one plain-English note, not a bespoke command.
+    reference URL. USER-FACING: shown host-side by the launcher at attach time
+    (launcher._prompt_setup_notices), NEVER baked into any agent identity/rules file. Deliberately
+    not per-harness — one plain-English note, not a bespoke command.
 
-    `condition` (optional): a shell command, already present in the built image, that exits 0
-    when the manual step is STILL needed (e.g. `! bd list`). When set, the assembler synthesizes
-    a self-gating Claude SessionStart hook from it (see emit._recipe_hooks_settings) instead of a
-    recipe hand-writing its own `hooks:` block, and Claude's static `## Setup` bullet for this
-    recipe is suppressed (the hook is strictly better there — silent once configured). The other
-    harnesses have no live per-session check, so they keep the static bullet unconditionally."""
+    `condition` (optional): a shell command that exits 0 when the manual step is STILL needed
+    (e.g. `! bd list`). Evaluated HOST-side in the project directory on every launch; exit 0 shows
+    the notice, non-zero (satisfied) suppresses it. A recipe with no `condition` shows once per
+    project until the user dismisses it (see paths.setup_dismissed_flag) — the dismiss flag gates
+    only unconditional notices; conditional ones always follow their condition."""
 
     summary: str
     reference: str

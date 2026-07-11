@@ -76,14 +76,14 @@
       }
     },
     "setup": {
-      "description": "Harness-agnostic manual-setup note, shown to the user via the assembled '## Setup' section baked into every harness's identity/rules file (CLAUDE.md, .codex/AGENTS.md, opencode persona, omp APPEND_SYSTEM.md, GEMINI.md). Use when the recipe's tool needs a one-time manual step (account, API key, CLI init) that harnessed can't or shouldn't automate. Omit entirely when the recipe is self-contained.",
+      "description": "Harness-agnostic manual-setup note. USER-FACING: shown host-side by the launcher at attach time (an interactive [O]k/[D]ismiss/[Q]uit prompt), NEVER baked into any agent identity/rules file. Use when the recipe's tool needs a one-time manual step (account, API key, CLI init) that harnessed can't or shouldn't automate. Omit entirely when the recipe is self-contained.",
       "type": "object",
       "additionalProperties": false,
       "required": ["summary", "reference"],
       "properties": {
         "summary": { "description": "One-line, harness-agnostic setup note (what the user needs to do).", "type": "string", "minLength": 1 },
         "reference": { "description": "Upstream docs/GitHub URL the user can consult for details.", "type": "string", "format": "uri", "minLength": 1 },
-        "condition": { "description": "Optional shell command, already present in the built image, that exits 0 when the manual step is STILL needed (e.g. `! bd list`). When set, the assembler synthesizes a self-gating Claude SessionStart hook from it instead of the recipe hand-writing its own `hooks:` block, and suppresses this recipe's static bullet on Claude (the hook is strictly better there). Other harnesses keep the static bullet unconditionally.", "type": "string", "minLength": 1 }
+        "condition": { "description": "Optional shell command that exits 0 when the manual step is STILL needed (e.g. `! bd list`). Evaluated host-side in the project directory on every launch: exit 0 shows the notice, non-zero (satisfied) suppresses it. A recipe with no condition shows once per project until the user dismisses it; the dismiss flag gates only unconditional notices, conditional ones always follow their condition.", "type": "string", "minLength": 1 }
       }
     },
     "deps": {
