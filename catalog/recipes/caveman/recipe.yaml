@@ -18,7 +18,7 @@ description: caveman — output-compression skill; agent speaks terse "caveman",
 setup:
   summary: >-
     Run `/caveman-init` once per project to configure output-compression preferences (intensity
-    level and auto-activation); a one-time notice is printed on the first session start.
+    level and auto-activation).
   reference: https://github.com/JuliusBrussee/caveman
 
 # What the capability test must find in the running container after a successful build. caveman

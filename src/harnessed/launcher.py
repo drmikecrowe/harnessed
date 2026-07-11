@@ -598,7 +598,7 @@ def _build_stack(rt: str, stack: str, root: Path | None = None, *, strict: bool 
     # into the profile (mounted over the image path by _build_mount_args). Gated on the harness so
     # non-opencode stacks skip the (opencode-only) image read entirely.
     if result.stack.harness == "opencode":
-        _merge_baked_opencode(rt, derived, prof, result.stack, result.recipes)
+        _merge_baked_opencode(rt, derived, prof, result.stack)
 
     # Surface the advisory supply-chain report (baked by the derived image's final scan layer).
     _surface_scan_report(rt, derived, prof)
@@ -995,22 +995,19 @@ def _merge_host_claude_settings(prof: Path, required: dict) -> None:
     target.write_text(json.dumps(final, indent=2) + "\n", encoding="utf-8")
 
 
-def _merge_baked_opencode(
-    rt: str, image: str, prof: Path, stack: Stack, recipes: list[Recipe]
-) -> None:
+def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None:
     """Wire the stack's identity into opencode's config POST-BUILD (bd main-rlw).
 
     opencode reads its config from the image-baked ~/.config/opencode/opencode.json (the hatago
     MCP block), NOT from .claude/.mcp.json, and there is no profile-side opencode.json at assemble
     time — so, mirroring `_merge_baked_settings`, we read the baked config out of the built image,
-    ADD a custom persona agent (from the stack's `instructions:`, combined with recipes' `setup:`
-    notes — see `emit.combine_instructions`) + a rules-file glob, and write the merged config into
-    the profile, where `_build_mount_args` mounts it over the image path.
+    ADD a custom persona agent (from the stack's `instructions:`) + a rules-file glob, and write the
+    merged config into the profile, where `_build_mount_args` mounts it over the image path.
 
-    No-op unless there is combined identity text to add (nothing to add — the fixed `opencode`
-    attach stands) or the baked config is absent/malformed (leave the image config untouched, warn
-    on malformed)."""
-    instructions = emit.combine_instructions(stack.instructions, recipes)
+    No-op unless there is identity text to add (nothing to add — the fixed `opencode` attach
+    stands) or the baked config is absent/malformed (leave the image config untouched, warn on
+    malformed)."""
+    instructions = stack.instructions
     if not instructions:
         return
     agent_name = emit.opencode_agent_name(stack.name)
@@ -2128,6 +2125,71 @@ def _ensure_services(rt: str, stack: str) -> None:
         _ensure_service(rt, name)
 
 
+def _collect_setup_notices(
+    recipes: list[Recipe], project_path: Path, stack: str
+) -> list[Recipe]:
+    """Recipes whose user-facing `setup:` notice should be shown at this launch, in recipe order.
+
+    A recipe qualifies when:
+      - it declares a `setup.condition` that, run host-side in the project dir, exits 0 — i.e. the
+        manual step is STILL needed (unchanged polarity; e.g. `! bd list` is 0 until beads is set
+        up). A non-zero exit means "already satisfied → suppress"; OR
+      - it declares `setup:` with no `condition` and the user has not dismissed this stack's
+        notices for this project (`paths.setup_dismissed_flag`).
+
+    The dismiss flag gates ONLY unconditional notices — conditional ones always follow their
+    condition. Conditions are catalog-authored shell strings; they run on the host here (not in
+    the container), in the project directory, so project-scoped checks like `bd list` see the
+    right state.
+    """
+    dismissed = paths.setup_dismissed_flag(stack, project_path).exists()
+    out: list[Recipe] = []
+    for recipe in recipes:
+        if recipe.setup is None:
+            continue
+        if recipe.setup.condition:
+            proc = subprocess.run(
+                ["bash", "-lc", recipe.setup.condition],
+                cwd=str(project_path),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if proc.returncode != 0:
+                continue  # condition satisfied → suppress
+        elif dismissed:
+            continue
+        out.append(recipe)
+    return out
+
+
+def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str) -> None:
+    """Show aggregated user-facing `setup:` notices host-side at launch and act on the choice.
+
+    No-op when nothing qualifies (`_collect_setup_notices`) or stdin is not a TTY (headless/CI
+    cannot answer — never block a scripted launch). Otherwise prints one bullet per recipe and
+    prompts: [O]k (default, just launch), [D]ismiss (silence this stack's unconditional notices
+    for this project, then launch), [Q]uit (abort the launch, exit 0). Case-insensitive; ^C also
+    aborts. Conditional notices keep reappearing until their condition is satisfied regardless of
+    a prior dismiss.
+    """
+    notices = _collect_setup_notices(recipes, project_path, stack)
+    if not notices or not sys.stdin.isatty():
+        return
+    _out.print("\n[bold]Setup needed for this stack:[/bold]")
+    for recipe in notices:
+        assert recipe.setup is not None  # guaranteed by _collect_setup_notices
+        _out.print(f"  • [bold]{recipe.name}[/bold]: {recipe.setup.summary}")
+        _out.print(f"    see: {recipe.setup.reference}")
+    choice = typer.prompt("[O]k / [D]ismiss (don't show again) / [Q]uit", default="O")
+    choice = choice.strip().lower()
+    if choice.startswith("q"):
+        raise typer.Exit(0)
+    if choice.startswith("d"):
+        flag = paths.setup_dismissed_flag(stack, project_path)
+        flag.parent.mkdir(parents=True, exist_ok=True)
+        flag.write_text("", encoding="utf-8")
+
+
 # --- Typer commands ------------------------------------------------------------
 
 @app.command()
@@ -2235,6 +2297,12 @@ def launch(
     # (hatago-consolidation), so there is no separate hatago image to check for.
     _ensure_harness_image(rt, harness)
 
+    # User-facing recipe `setup:` notices — shown host-side here (never baked into an agent identity
+    # file), before ANY attach path (reuse/reattach/create) so they surface on every launch. Gating
+    # and the [O]k/[D]ismiss/[Q]uit prompt live in _prompt_setup_notices; reuse launch_recipes below.
+    _, launch_recipes = load_stack_with_recipes(None, stack)
+    _prompt_setup_notices(launch_recipes, project_path, stack)
+
     # --fresh: tear down existing pod.
     if fresh:
         _out.print(f"[blue][INFO][/blue] --fresh: tearing down existing pod/instance for {inst}")
@@ -2287,7 +2355,6 @@ def launch(
     if anchor_path != project_path:
         _out.print(f"[blue][INFO][/blue] Agent start folder: {project_path} (launched from {anchor_path})")
 
-    _, launch_recipes = load_stack_with_recipes(None, stack)
     launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
     required = emit.required_settings(launch_servers, launch_recipes, stk.permissions)
     if harness in ("claude", "omp", "opencode"):

@@ -29,6 +29,17 @@ Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can
 - Authorable content lives under **`catalog/`** (repo) and **`~/.config/harnessed/catalog`** (user
   overlay, wins on clash). Generated profiles go to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
 
+## Git workflow (non-negotiable)
+
+**No commits to `main`. Every change flows through a worktree → passing tests → PR.**
+
+1. Start work in a **new git worktree** (never edit/commit on `main` directly).
+2. Get the **full test suite passing** in that worktree before proposing to merge.
+3. Open a **PR** to `main` — merges happen via PR review, not direct pushes.
+
+This applies to code, catalog content, docs, and config alike. Commits are signed
+(see `.claude/rules/signed-commits`).
+
 ## Project skills
 
 Skills live under `.agents/skills/`. See that directory for the current set.
