@@ -591,6 +591,45 @@ class TestCredentialForwarding:
         )
         assert launcher._yubikey_device_args() == []
 
+    # --- _aws_sso_ecs_forward_args: opt-in AWS creds via the host aws-sso ECS server ---
+
+    def test_aws_sso_noop_without_token_file(self, tmp_path):
+        # No bearer token file on the host → nothing injected (server never set up).
+        assert launcher._aws_sso_ecs_forward_args(token_file=tmp_path / "absent.token") == []
+
+    def test_aws_sso_noop_with_empty_token(self, tmp_path):
+        # Present-but-empty token file is treated as unconfigured.
+        tf = tmp_path / "aws-sso-ecs.token"
+        tf.write_text("   \n")
+        assert launcher._aws_sso_ecs_forward_args(token_file=tf) == []
+
+    def test_aws_sso_injects_uri_and_bearer_token(self, tmp_path):
+        # Token present → the ECS endpoint URI (host.containers.internal) + Bearer token env are
+        # injected, honoring a custom port. Token is stripped of surrounding whitespace.
+        tf = tmp_path / "aws-sso-ecs.token"
+        tf.write_text("deadbeef\n")
+        args = launcher._aws_sso_ecs_forward_args(port=9999, token_file=tf)
+        assert "AWS_CONTAINER_CREDENTIALS_FULL_URI=http://host.containers.internal:9999/" in args
+        assert "AWS_CONTAINER_AUTHORIZATION_TOKEN=Bearer deadbeef" in args
+
+    # --- _apply_firewall: recipe-declared egress domains appended to the allowlist ---
+
+    def test_firewall_appends_egress_domains(self, monkeypatch):
+        # Extra domains are passed to the egress-firewall script as positional args.
+        captured = {}
+        monkeypatch.setattr(launcher.os.environ, "get", lambda k, d=None: "false" if k == "NO_FIREWALL" else d)
+        monkeypatch.setattr(launcher.subprocess, "run", lambda cmd, **k: captured.setdefault("cmd", cmd))
+        launcher._apply_firewall("podman", "inst", ["api.pulumi.com", "get.pulumi.com"])
+        assert captured["cmd"][-2:] == ["api.pulumi.com", "get.pulumi.com"]
+        assert captured["cmd"][:5] == ["podman", "exec", "inst", "bash", "/usr/local/sbin/egress-firewall"]
+
+    def test_firewall_skipped_when_disabled(self, monkeypatch):
+        called = {"ran": False}
+        monkeypatch.setattr(launcher.os.environ, "get", lambda k, d=None: "true" if k == "NO_FIREWALL" else d)
+        monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **k: called.__setitem__("ran", True))
+        launcher._apply_firewall("podman", "inst", ["api.pulumi.com"])
+        assert called["ran"] is False
+
     def test_yubikey_no_lsusb_is_clean(self, monkeypatch):
         def boom(*a, **k):
             raise FileNotFoundError("lsusb")

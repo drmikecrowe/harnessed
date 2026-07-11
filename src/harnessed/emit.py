@@ -716,6 +716,17 @@ def write_derived_dockerfile(
         lines.extend(filtered)
         lines.append("")
 
+    # Declarative recipe `tools:` — install pinned mise tools as one global layer, so a recipe can add
+    # a CLI (e.g. pulumi) with no Dockerfile. Runs as `harnessed` (mise's globals live under that
+    # user's home) after all recipe layers. Pins are validated at load (_parse_tools).
+    tool_specs = [t for recipe in recipes for t in recipe.tools]
+    if tool_specs:
+        joined = " ".join(f'"{t}"' for t in tool_specs)
+        lines.append("# --- recipe tools (mise) ---")
+        lines.append("USER harnessed")
+        lines.append(f"RUN mise use -g {joined} && mise install")
+        lines.append("")
+
     if stack.hatago:
         # Override the base image's pinned hatago release (catalog/base/Dockerfile.harnessed-base)
         # with a stack-specified repo/ref.

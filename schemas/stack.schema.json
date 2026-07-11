@@ -46,6 +46,11 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "forward_aws_sso": {
+      "description": "Opt-in (default false): forward host AWS credentials via the aws-sso ECS server (aws-sso-cli, default slot). When true and the host has run `harnessed aws-sso serve`, the launcher injects AWS_CONTAINER_CREDENTIALS_FULL_URI + AWS_CONTAINER_AUTHORIZATION_TOKEN as env so the in-container AWS SDK pulls short-lived STS creds over HTTP — no aws-sso binary, ~/.aws-sso store, or SSO token enters the container. SECRET-BEARING (STS creds are not touch-gated), hence opt-in. No-op when the host token file is absent. See docs/guides/aws-sso.md.",
+      "type": "boolean",
+      "default": false
+    },
     "hatago": {
       "description": "Override the hatago MCP hub install baked into the base image (default: the pinned npm release in catalog/base/Dockerfile.harnessed-base). Installed via pnpm's git-spec (github:<owner>/<repo>#<ref>) as an extra layer in the stack's derived Dockerfile — use for testing an unreleased fork/branch.",
       "type": "object",

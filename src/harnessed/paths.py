@@ -326,6 +326,17 @@ def corp_proxy_ca_path() -> Path:
     return xdg_config_home() / "harnessed" / "corp-proxy-ca.crt"
 
 
+def aws_sso_ecs_token_file() -> Path:
+    """User-owned aws-sso ECS-server bearer token: $XDG_CONFIG_HOME/harnessed/aws-sso-ecs.token.
+
+    Single source of truth shared between `harnessed aws-sso serve` (which generates it, loads it into
+    the aws-sso secure store, and writes this file mode 0600) and the launcher's
+    `_aws_sso_ecs_forward_args` (which reads it to build AWS_CONTAINER_AUTHORIZATION_TOKEN for a stack
+    with `forward_aws_sso: true`). USER-owned (config dir, never the repo). See docs/guides/aws-sso.md.
+    """
+    return xdg_config_home() / "harnessed" / "aws-sso-ecs.token"
+
+
 def project_relpath(project_path: str | Path) -> str:
     """Legible project relpath under host $HOME → mounted at CONTAINER_HOME/<relpath>."""
     p = Path(project_path)

@@ -40,6 +40,8 @@ Everything authorable is under `catalog/` (and the user overlay `~/.config/harne
 - **Service** → `catalog/services/<name>/` — see
   [docs/guides/service-authoring.md](docs/guides/service-authoring.md) (example: `catalog/services/ping`).
 - **Secrets** (opt-in varlock + 1Password): [docs/guides/secrets.md](docs/guides/secrets.md).
+- **AWS SSO** (opt-in creds via the aws-sso ECS server): [docs/guides/aws-sso.md](docs/guides/aws-sso.md).
+- **Egress** (firewall allowlist; recipe `egress:` + `tools:` to expose a service): [docs/guides/egress.md](docs/guides/egress.md).
 - **Troubleshooting**: [docs/guides/troubleshooting.md](docs/guides/troubleshooting.md).
 
 > You may only modify files **in this repository**. Do not modify the user's home directory (`~/`)
