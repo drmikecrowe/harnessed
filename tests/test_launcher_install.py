@@ -20,7 +20,7 @@ def _stub_catalog(monkeypatch, tmp_path, *, exists: bool):
     if exists:
         stack_dir.mkdir(parents=True)
         (stack_dir / "stack.yaml").write_text(
-            "name: claude_time\nharness: claude\nrecipes: [time]\nservices: []\n"
+            "name: claude_time\nrecipes: [time]\nservices: []\n"
         )
     monkeypatch.setattr(paths, "find_in_catalog", lambda kind, name: stack_dir)
 

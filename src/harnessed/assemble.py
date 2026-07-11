@@ -35,6 +35,7 @@ from .synclinks import CollisionError, LinkSyncer
 @dataclass
 class AssembleResult:
     stack: Stack
+    harness: str
     recipes: list[Recipe]
     profile_dir: Path
     servers: list[McpServer]
@@ -98,7 +99,7 @@ def _resolve_service_servers(servers: list[McpServer], root: Path | None) -> lis
 
 
 def assemble(
-    root: Path | None, stack_name: str, build_dir: Path, *, strict: bool = False
+    root: Path | None, stack_name: str, build_dir: Path, harness: str, *, strict: bool = False
 ) -> AssembleResult:
     """Assemble a stack into a profile. `root` None → resolve recipes/stacks/services across the
     catalog roots (user overlay first); a Path restricts resolution to that single root.
@@ -123,7 +124,7 @@ def assemble(
 
     servers = _resolve_service_servers(_merge_servers(recipes), root)
 
-    profile_dir = build_dir / "profiles" / stack.name
+    profile_dir = build_dir / "profiles" / stack.name / harness
 
     emit.reset_profile(profile_dir)
     emit.write_mcp_json(profile_dir)
@@ -132,7 +133,7 @@ def assemble(
     # ASM-03 — derived Dockerfile, with a final supply-chain scan layer (BLD-02) unless the build
     # opted out via --no-security-scans (HARNESSED_NO_SCANS).
     with_scan = os.environ.get("HARNESSED_NO_SCANS") != "true"
-    emit.write_derived_dockerfile(profile_dir, stack, recipes, with_scan=with_scan)
+    emit.write_derived_dockerfile(profile_dir, stack.name, harness, recipes, hatago=stack.hatago, with_scan=with_scan)
 
     # Fan each recipe's standalone skills/commands into the harness-native profile tree
     # (<profile>/.claude/{skills,commands}). The launcher mounts these dirs into the instance and
@@ -156,14 +157,14 @@ def assemble(
     # A recipe's `setup:` note is deliberately NOT combined into any identity file — setup notices
     # are user-facing and shown host-side by the launcher at attach time (launcher._prompt_setup_notices).
     instructions = stack.instructions
-    if stack.harness == "claude":
+    if harness == "claude":
         emit.write_claude_md(profile_dir, instructions)
-    elif stack.harness == "antigravity":
+    elif harness == "antigravity":
         emit.write_antigravity_identity(profile_dir, instructions)
-    elif stack.harness in ("codex", "omp"):
+    elif harness in ("codex", "omp"):
         rules_dir = profile_dir / ".claude" / "rules"
         rule_files = sorted(rules_dir.rglob("*.md")) if rules_dir.is_dir() else []
-        if stack.harness == "codex":
+        if harness == "codex":
             emit.write_codex_agents_md(profile_dir, instructions, rule_files)
         else:
             emit.write_omp_identity(profile_dir, stack.name, instructions, rule_files)
@@ -179,6 +180,7 @@ def assemble(
 
     return AssembleResult(
         stack=stack,
+        harness=harness,
         recipes=recipes,
         profile_dir=profile_dir,
         servers=servers,

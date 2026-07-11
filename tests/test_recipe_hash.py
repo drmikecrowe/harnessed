@@ -97,30 +97,46 @@ class TestListCatalogStacks:
 
 class TestReconcileStacks:
     def test_rebuilds_only_stale_or_missing_stacks(self, monkeypatch, tmp_path):
+        import subprocess as _subprocess
+
         r1 = _write_recipe(tmp_path, "r1")
         _write_stack(tmp_path, "up-to-date", recipes=["r1"])
         _write_stack(tmp_path, "stale", recipes=["r1"])
         _write_stack(tmp_path, "missing-image", recipes=["r1"])
 
-        monkeypatch.setattr(paths, "list_catalog_stacks", lambda: ["missing-image", "stale", "up-to-date"])
+        # Mock podman images to return three previously-built images.
+        image_list = "harnessed-claude-up-to-date\nharnessed-claude-stale\nharnessed-claude-missing-image\n"
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: _subprocess.CompletedProcess(a, 0, stdout=image_list),
+        )
         monkeypatch.setattr(
             launcher, "load_stack_with_recipes",
-            lambda root, name, strict: (None, [r1]),
+            lambda root, name, strict=False: (None, [r1]),
         )
 
         current_hash = compute_recipe_hash(tmp_path / "stacks" / "up-to-date" / "stack.yaml", [r1])
-        image_hashes = {"up-to-date": current_hash, "stale": "old-hash", "missing-image": None}
-        monkeypatch.setattr(launcher, "_built_image_hash", lambda rt, name: image_hashes[name])
+        image_hashes = {
+            ("up-to-date", "claude"): current_hash,
+            ("stale", "claude"): "old-hash",
+            ("missing-image", "claude"): None,
+        }
+        monkeypatch.setattr(launcher, "_built_image_hash", lambda rt, name, harness: image_hashes.get((name, harness)))
 
         built = []
-        monkeypatch.setattr(launcher, "_build_stack", lambda rt, name, root, strict: built.append(name))
+        monkeypatch.setattr(launcher, "_build_stack", lambda rt, name, harness, root, strict: built.append(name))
 
         launcher._reconcile_stacks("podman", tmp_path, strict=True)
 
         assert sorted(built) == ["missing-image", "stale"]
 
     def test_no_stacks_is_a_noop(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(paths, "list_catalog_stacks", lambda: [])
+        import subprocess as _subprocess
+
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: _subprocess.CompletedProcess(a, 0, stdout=""),
+        )
         built = []
         monkeypatch.setattr(launcher, "_build_stack", lambda *a, **k: built.append(a))
 
@@ -135,18 +151,18 @@ class TestBuiltImageHash:
             launcher.subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="abc123\n"),
         )
-        assert launcher._built_image_hash("podman", "some-stack") == "abc123"
+        assert launcher._built_image_hash("podman", "some-stack", "claude") == "abc123"
 
     def test_returns_none_when_image_missing(self, monkeypatch):
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(a, 1, stdout=""),
         )
-        assert launcher._built_image_hash("podman", "some-stack") is None
+        assert launcher._built_image_hash("podman", "some-stack", "claude") is None
 
     def test_returns_none_when_label_absent(self, monkeypatch):
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="\n"),
         )
-        assert launcher._built_image_hash("podman", "some-stack") is None
+        assert launcher._built_image_hash("podman", "some-stack", "claude") is None

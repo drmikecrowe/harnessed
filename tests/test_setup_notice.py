@@ -35,7 +35,7 @@ def state(monkeypatch, tmp_path):
 
 
 def _dismiss(stack, proj):
-    flag = paths.setup_dismissed_flag(stack, proj)
+    flag = paths.setup_dismissed_flag(stack, "claude", proj)
     flag.parent.mkdir(parents=True, exist_ok=True)
     flag.write_text("", encoding="utf-8")
 
@@ -43,14 +43,14 @@ def _dismiss(stack, proj):
 class TestCollectSetupNotices:
     def test_unconditional_shown_then_gated_by_flag(self, state):
         recipes = [_r("caveman")]
-        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s")] == ["caveman"]
+        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == ["caveman"]
         _dismiss("s", state)
-        assert launcher._collect_setup_notices(recipes, state, "s") == []
+        assert launcher._collect_setup_notices(recipes, state, "s", "claude") == []
 
     def test_conditional_polarity(self, state):
         # exit 0 = manual step STILL needed = show; non-zero = satisfied = suppress.
-        show = launcher._collect_setup_notices([_r("needs", condition="true")], state, "s")
-        hide = launcher._collect_setup_notices([_r("done", condition="false")], state, "s")
+        show = launcher._collect_setup_notices([_r("needs", condition="true")], state, "s", "claude")
+        hide = launcher._collect_setup_notices([_r("done", condition="false")], state, "s", "claude")
         assert [r.name for r in show] == ["needs"]
         assert hide == []
 
@@ -58,20 +58,20 @@ class TestCollectSetupNotices:
         _dismiss("s", state)
         recipes = [_r("cond", condition="true"), _r("uncond")]
         # dismiss silences only the unconditional notice; the conditional still shows.
-        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s")] == ["cond"]
+        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == ["cond"]
 
     def test_no_setup_skipped_order_preserved(self, state):
         recipes = [Recipe(name="plain"), _r("b"), _r("a")]
-        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s")] == ["b", "a"]
+        assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == ["b", "a"]
 
     def test_flag_is_per_stack_and_project(self, state, tmp_path):
         _dismiss("s1", state)
         # a different stack (same project) is not dismissed
-        assert [r.name for r in launcher._collect_setup_notices([_r("x")], state, "s2")] == ["x"]
+        assert [r.name for r in launcher._collect_setup_notices([_r("x")], state, "s2", "claude")] == ["x"]
         # a different project (same stack) is not dismissed
         other = tmp_path / "other"
         other.mkdir()
-        assert [r.name for r in launcher._collect_setup_notices([_r("x")], other, "s1")] == ["x"]
+        assert [r.name for r in launcher._collect_setup_notices([_r("x")], other, "s1", "claude")] == ["x"]
 
 
 class TestPromptSetupNotices:
@@ -88,28 +88,28 @@ class TestPromptSetupNotices:
 
     def test_noop_when_no_notices(self, state, monkeypatch):
         calls = self._prompt(monkeypatch, "O")
-        launcher._prompt_setup_notices([Recipe(name="plain")], state, "s")
+        launcher._prompt_setup_notices([Recipe(name="plain")], state, "s", "claude")
         assert calls == []  # never prompted
 
     def test_noop_when_not_tty(self, state, monkeypatch):
         calls = self._prompt(monkeypatch, "O", tty=False)
-        launcher._prompt_setup_notices([_r("caveman")], state, "s")
+        launcher._prompt_setup_notices([_r("caveman")], state, "s", "claude")
         assert calls == []
-        assert not paths.setup_dismissed_flag("s", state).exists()
+        assert not paths.setup_dismissed_flag("s", "claude", state).exists()
 
     def test_ok_default_proceeds_without_flag(self, state, monkeypatch):
         self._prompt(monkeypatch, "O")
-        launcher._prompt_setup_notices([_r("caveman")], state, "s")
-        assert not paths.setup_dismissed_flag("s", state).exists()
+        launcher._prompt_setup_notices([_r("caveman")], state, "s", "claude")
+        assert not paths.setup_dismissed_flag("s", "claude", state).exists()
 
     def test_dismiss_writes_flag(self, state, monkeypatch):
         self._prompt(monkeypatch, "d")  # case-insensitive
-        launcher._prompt_setup_notices([_r("caveman")], state, "s")
-        assert paths.setup_dismissed_flag("s", state).exists()
+        launcher._prompt_setup_notices([_r("caveman")], state, "s", "claude")
+        assert paths.setup_dismissed_flag("s", "claude", state).exists()
 
     def test_quit_aborts_exit_zero(self, state, monkeypatch):
         self._prompt(monkeypatch, "Q")
         with pytest.raises(typer.Exit) as exc:
-            launcher._prompt_setup_notices([_r("caveman")], state, "s")
+            launcher._prompt_setup_notices([_r("caveman")], state, "s", "claude")
         assert exc.value.exit_code == 0
-        assert not paths.setup_dismissed_flag("s", state).exists()
+        assert not paths.setup_dismissed_flag("s", "claude", state).exists()

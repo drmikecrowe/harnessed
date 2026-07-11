@@ -80,7 +80,7 @@ def _oracle(stack: str):
 @pytest.mark.parametrize("stack", [s for s in REAL_STACKS if s not in NO_CAPABILITY_ORACLE])
 def test_stack_assembles_and_oracle_is_nonempty(stack, tmp_path):
     """Every real stack resolves + assembles, and declares at least one capability to probe."""
-    assemble(None, stack, tmp_path)  # emits into tmp; raises on any resolution/validation error
+    assemble(None, stack, tmp_path, "claude")  # emits into tmp; raises on any resolution/validation error
     _stk, caps = _oracle(stack)
     total = len(caps.mcp_servers) + len(caps.skills) + len(caps.commands) + len(caps.plugins)
     assert total > 0, f"{stack}: oracle declares no capabilities"
@@ -88,8 +88,8 @@ def test_stack_assembles_and_oracle_is_nonempty(stack, tmp_path):
 
 def test_multi_recipe_stack_composes_capabilities():
     """A multi-recipe stack exposes the union of its recipes' capabilities — here the repowise
-    MCP server and the gsd-core skills both surface on omp_gsd-core_repowise."""
-    _stk, caps = _oracle("omp_gsd-core_repowise")
+    MCP server and the gsd-core skills both surface on gsd-core_repowise."""
+    _stk, caps = _oracle("gsd-core_repowise")
     assert "repowise" in set(caps.mcp_servers), "missing repowise MCP server"
     assert {"gsd-new-project", "gsd-plan-phase", "gsd-execute-phase"} <= set(caps.skills), (
         "missing gsd-core skills"

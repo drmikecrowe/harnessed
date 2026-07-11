@@ -31,7 +31,7 @@ harnessed/
 │   ├── base/                         # shared base + per-agent Dockerfiles (hatago baked into base), pnpm policy, egress script
 │   ├── recipes/<name>/               # recipe.yaml [+ skills/ commands/ Dockerfile]
 │   ├── services/<name>/              # service.yaml + Dockerfile + server (shared sidecars)
-│   └── stacks/<agent>_<recipe>…/stack.yaml
+│   └── stacks/<recipe>…/stack.yaml       # harness-free; harness chosen at run time
 └── docs/
 ```
 
@@ -49,25 +49,31 @@ Generated profiles are **not** in the repo — they are emitted to `$XDG_DATA_HO
   *inside* the recipe's Dockerfile.
 - **service** — a shared sidecar (its own image + `service.yaml`) that a recipe references via
   `service:`. Host-published; outlives any instance.
-- **stack** — one agent + a chosen set of recipes, named **`<agent>_<recipe>[_<recipe>…]`**
-  (underscores between fields; hyphens allowed within a name).
+- **stack** — a **harness-free** chosen set of recipes, named after the recipes (e.g.
+  `review-harness`, `gsd-core_repowise`; underscores between fields, hyphens within a name; a stack
+  may **not** be named after a harness). The harness is **not** a stack property — it is a required
+  positional chosen at run/build time: `harnessed <stack> <harness>`. The same stack runs on any
+  harness; claude+it and omp+it are the same stack, materialized into per-harness images/pods.
 - **catalog** — the collection of agents/recipes/services/stacks. Two roots, searched in order:
   the user overlay **`~/.config/harnessed/catalog`** (wins on a name clash) then the repo `catalog/`.
 
 ## How a build works (host-native)
 
-`harnessed build <stack>`:
+`harnessed build <stack> <harness>`:
 1. **assemble** (in-process, emit-only — no container): resolve the stack + its recipes across the
    catalog roots; fan each recipe's `skills/`+`commands/` into the profile's `.claude/`; merge MCP
    servers into one `hatago.config.json`; emit the harness `.mcp.json` (one entry → the hatago hub);
    emit `Dockerfile.harnessed-<stack>` (base agent image + concatenated recipe Dockerfile bodies).
+   The profile is written under the **per-harness** dir `profiles/<stack>/<harness>/`, so the same
+   stack's claude and omp builds never clobber each other.
 2. build the shared **base** image, which bakes the **hatago** hub (and the time server) in-process
    (hatago-consolidation) — there is no separate hatago image.
-3. if any recipe ships a Dockerfile, build the **derived** `harnessed-<stack>` image and **merge**
-   its baked `~/.claude/{skills,commands,plugins,…}` back into the profile (so image-delivered and
-   recipe-fanned extensions coexist — the profile mount would otherwise shadow the baked ones).
+3. if any recipe ships a Dockerfile, build the **derived** `harnessed-<harness>-<stack>` image and
+   **merge** its baked `~/.claude/{skills,commands,plugins,…}` back into the profile (so
+   image-delivered and recipe-fanned extensions coexist — the profile mount would otherwise shadow
+   the baked ones).
 
-`harnessed <stack>` then launches the pod (derived image if present, else the agent image), starts
+`harnessed <stack> <harness>` then launches the pod (derived image if present, else the agent image), starts
 **hatago** as a process *inside* that container (hatago-consolidation), and brings up any referenced
 services (started host-published, idempotently).
 

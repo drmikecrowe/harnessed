@@ -28,7 +28,7 @@ class TestKeyringInitPrefix:
     """The attach shell that execs the harness carries the keyring-init prefix for antigravity only."""
 
     def _shell_cmd(self, monkeypatch, tmp_path, harness: str) -> str:
-        stk = Stack(name="s", harness=harness, recipes=[])
+        stk = Stack(name="s", recipes=[])
         monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, stack: (stk, []))
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
 

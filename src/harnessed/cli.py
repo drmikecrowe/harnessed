@@ -38,10 +38,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="assemble a stack into a committed profile + hatago config",
     )
     asm.add_argument("stack", help="stack name (stacks/<stack>/stack.yaml)")
+    asm.add_argument("harness", help="harness to assemble for (claude|omp|opencode|antigravity|codex)")
     asm.add_argument(
         "--build-dir",
         required=True,
-        help="directory the profile is emitted under (profiles/<stack>/)",
+        help="directory the profile is emitted under (profiles/<stack>/<harness>/)",
     )
     asm.add_argument(
         "--root",
@@ -54,6 +55,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="capability test: launch <stack> --fresh headless, assert declared capabilities",
     )
     tst.add_argument("stack", help="stack name (stacks/<stack>/stack.yaml)")
+    tst.add_argument("harness", help="harness to test against (claude|omp|opencode|antigravity|codex)")
     tst.add_argument(
         "--root",
         default=None,
@@ -137,13 +139,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
     root = Path(args.root) if args.root else Path.cwd()
     try:
-        result = assemble(root, args.stack, Path(args.build_dir))
+        result = assemble(root, args.stack, Path(args.build_dir), args.harness)
     except (CollisionError, SchemaError, RecipeLintError) as exc:
         err.print(f"[bold red]assemble failed:[/bold red] {exc}", highlight=False)
         return 1
     out.print(f"[bold green]Assembled[/bold green] stack [bold]{result.stack.name}[/bold]")
     out.print(f"  profile:  {result.profile_dir}")
-    out.print(f"  harness:  {result.stack.harness}")
+    out.print(f"  harness:  {result.harness}")
     out.print(f"  mcp:      {', '.join(s.name for s in result.servers) or '(none)'} "
               f"→ {HATAGO_ENDPOINT}")
     out.print(f"  baked:    {', '.join(s.name for s in result.baked) or '(none)'} (stdio children, in-container hatago)")
@@ -161,6 +163,7 @@ def _run_test(args: argparse.Namespace, out: Console, err: Console) -> int:
         report_result = run_capability_test(
             root,
             args.stack,
+            args.harness,
             project_path=args.project,
             harnessed_bin=args.harnessed_bin,
             keep=args.keep,

@@ -373,6 +373,7 @@ def run_recipe_tests(
 def launch_headless(
     root: Path | str,
     stack_name: str,
+    harness: str,
     *,
     project_path: str | None = None,
     harnessed_bin: str | None = None,
@@ -395,7 +396,7 @@ def launch_headless(
     env = {**os.environ, "HARNESSED_HEADLESS": "true"}
     try:
         proc = subprocess.run(
-            [bin_path, stack_name, project_path, "--fresh"],
+            [bin_path, stack_name, harness, project_path, "--fresh"],
             capture_output=True,
             text=True,
             env=env,
@@ -411,8 +412,8 @@ def launch_headless(
             f"(exit {proc.returncode}); output:\n{combined}"
         )
     # Host-derive the pod name instead of scraping stdout: instance_name is a pure function of the
-    # stack + resolved project path, the SAME inputs the launcher hashes — so the two can't drift.
-    return paths.instance_name(stack_name, Path(project_path).resolve())
+    # stack + harness + resolved project path, the SAME inputs the launcher hashes — so the two can't drift.
+    return paths.instance_name(stack_name, harness, Path(project_path).resolve())
 
 
 def teardown(instance: str, *, harnessed_bin: str | None = None) -> None:
@@ -709,6 +710,7 @@ def introspect(instance: str, harness: str = "claude") -> LiveCapabilities:
 def run_capability_test(
     root: Path | str,
     stack_name: str,
+    harness: str,
     *,
     project_path: str | None = None,
     harnessed_bin: str | None = None,
@@ -724,9 +726,6 @@ def run_capability_test(
     """
     stack, recipes = schema.load_stack_with_recipes(None, stack_name)
     expected = schema.expected_capabilities(stack, recipes)
-    # Harness-aware backstop (plan 04-03): route the LLM fallback on stack.harness. The primary
-    # hatago/filesystem checks run unchanged regardless of harness.
-    harness = stack.harness or "claude"
 
     # Own the scratch project dir for the WHOLE test: it is the pod's project bind-mount and must
     # outlive launch→introspect→teardown (deleting it mid-run breaks `podman exec`). A caller-
@@ -737,7 +736,7 @@ def run_capability_test(
     test_results: list[CapabilityResult] = []
     try:
         instance = launch_headless(
-            root, stack_name, project_path=project_path, harnessed_bin=harnessed_bin
+            root, stack_name, harness, project_path=project_path, harnessed_bin=harnessed_bin
         )
         try:
             wait_ready(instance)

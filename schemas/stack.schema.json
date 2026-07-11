@@ -2,20 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://harnessed.dev/schemas/stack.schema.json",
   "title": "harnessed stack",
-  "description": "A composition of one harness + a chosen set of recipes (catalog/stacks/<agent>_<recipe>…/stack.yaml). Nothing is resolved at runtime; recipes are assembled ahead of time. See docs/harnessed-design.md §5/§12.",
+  "description": "A harness-free composition of recipes (catalog/stacks/<name>/stack.yaml). The harness is chosen at run time as a required CLI argument. Nothing is resolved at runtime; recipes are assembled ahead of time. See docs/harnessed-design.md §5/§12.",
   "type": "object",
   "additionalProperties": true,
   "required": ["name"],
   "properties": {
     "name": {
-      "description": "Stack identity. Convention: <agent>_<recipe>[_<recipe>…] (underscores between fields; hyphens allowed within a name).",
+      "description": "Stack identity. Convention: <recipe>[_<recipe>…] (hyphens allowed within a name). Must not equal a harness name.",
       "type": "string",
       "minLength": 1
-    },
-    "harness": {
-      "description": "The single harness this stack targets. Exactly one per stack (never two at once). Defaults to claude.",
-      "$ref": "#/$defs/harness",
-      "default": "claude"
     },
     "permissions": {
       "description": "Permission mode written into the profile. 'prompt' (default) asks before tool use; 'auto' accepts edits without prompting; 'yolo' writes per-harness skip-permission config — safe in an isolated instance.",
