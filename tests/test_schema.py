@@ -914,3 +914,52 @@ class TestRecipeConflicts:
         self._write_stack(tmp_path, "s", ["a"])
         _, recipes = load_stack_with_recipes(tmp_path, "s")
         assert [r.name for r in recipes] == ["a"]
+
+
+class TestRecipeVarieties:
+    """A ref (`beads/stealth`) loads catalog/recipes/beads/stealth/ — see paths.catalog_relpath."""
+
+    def _write_variety(self, root: Path, family: str, variety: str, name: str) -> None:
+        d = root / "recipes" / family / variety
+        d.mkdir(parents=True)
+        (d / "recipe.yaml").write_text(f"name: {name}\n")
+
+    def _write_stack(self, root: Path, name: str, recipes: list[str]) -> None:
+        d = root / "stacks" / name
+        d.mkdir(parents=True)
+        (d / "stack.yaml").write_text(f"name: {name}\nrecipes: {recipes}\n")
+
+    def test_variety_ref_loads_the_variety_dir(self, tmp_path):
+        from harnessed.schema import load_stack_with_recipes
+
+        self._write_variety(tmp_path, "beads", "stealth", "beads-stealth")
+        self._write_stack(tmp_path, "s", ["beads/stealth"])
+        _, recipes = load_stack_with_recipes(tmp_path, "s")
+        assert [r.name for r in recipes] == ["beads-stealth"]
+        assert recipes[0].root == tmp_path / "recipes" / "beads" / "stealth"
+        assert recipes[0].ref == "beads/stealth"
+
+    def test_ref_defaults_to_name_when_loaded_directly(self, tmp_path):
+        from harnessed.schema import load_recipe
+
+        self._write_variety(tmp_path, "beads", "team", "beads-team")
+        assert load_recipe(tmp_path / "recipes" / "beads" / "team").ref == "beads-team"
+
+    def test_two_varieties_of_one_family_are_implicitly_exclusive(self, tmp_path):
+        """No `conflicts:` entry on either side — the shared family is enough."""
+        from harnessed.schema import load_stack_with_recipes
+
+        self._write_variety(tmp_path, "beads", "stealth", "beads-stealth")
+        self._write_variety(tmp_path, "beads", "team", "beads-team")
+        self._write_stack(tmp_path, "s", ["beads/stealth", "beads/team"])
+        with pytest.raises(SchemaError, match="varieties of the same recipe"):
+            load_stack_with_recipes(tmp_path, "s")
+
+    def test_varieties_of_different_families_coexist(self, tmp_path):
+        from harnessed.schema import load_stack_with_recipes
+
+        self._write_variety(tmp_path, "beads", "team", "beads-team")
+        self._write_variety(tmp_path, "other", "team", "other-team")
+        self._write_stack(tmp_path, "s", ["beads/team", "other/team"])
+        _, recipes = load_stack_with_recipes(tmp_path, "s")
+        assert [r.ref for r in recipes] == ["beads/team", "other/team"]

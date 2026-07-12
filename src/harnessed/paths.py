@@ -79,18 +79,39 @@ def catalog_roots() -> list[Path]:
     return roots
 
 
+def catalog_relpath(name: str) -> Path:
+    """Map a catalog ref to its on-disk path under catalog/<kind>/.
+
+    A ref may name a VARIETY of a recipe family: `beads/stealth` is the `stealth` variety of the
+    `beads` family, living at catalog/recipes/beads/stealth/. The ref IS the relative path — a
+    family is exactly one dir deep, and each variety is a complete, self-contained recipe (its own
+    recipe.yaml + Dockerfile + tests/).
+
+    Refs without a slash (every agent/service/stack, and an unfamilied recipe) map to themselves.
+    Validated, not merely joined: an empty or traversing component would escape the catalog root.
+    """
+    parts = name.split("/")
+    if len(parts) > 2:
+        raise ValueError(f"invalid catalog ref {name!r}: a family is one level deep (<family>/<variety>)")
+    if any(not p or p in (".", "..") for p in parts):
+        raise ValueError(f"invalid catalog ref {name!r}: empty or traversing path component")
+    return Path(*parts)
+
+
 def find_in_catalog(kind: str, name: str) -> Path:
     """Resolve catalog/<kind>/<name> across the catalog roots (user first); first existing wins.
 
-    `kind` is the plural dir: agents | recipes | services | stacks. Returns the resolved directory
-    even if absent (so the loader raises a clear not-found pointing at the highest-precedence root).
+    `kind` is the plural dir: agents | recipes | services | stacks. `name` may be a variety
+    ref (see `catalog_relpath`). Returns the resolved directory even if absent (so the loader raises
+    a clear not-found pointing at the highest-precedence root).
     """
+    rel = catalog_relpath(name)
     roots = catalog_roots()
     for r in roots:
-        cand = r / kind / name
+        cand = r / kind / rel
         if cand.exists():
             return cand
-    return roots[0] / kind / name
+    return roots[0] / kind / rel
 
 
 # The manifest file that marks a real entry of each catalog kind (its plural dir → marker file).
@@ -109,6 +130,10 @@ def list_catalog(kind: str) -> list[str]:
     catalog is a single name in the unified list — callers must not care where it came from. `kind` is
     the plural dir: agents | recipes | services | stacks. Route ALL enumeration through here so a new
     lister can't accidentally see only the repo catalog.
+
+    A dir with no marker file is treated as a recipe FAMILY: its immediate children that DO carry a
+    marker are listed as variety refs (`beads/stealth/recipe.yaml` → `beads/stealth`). See
+    `catalog_relpath` — the family itself is never a usable ref.
     """
     marker = _KIND_MARKER[kind]
     seen: set[str] = set()
@@ -118,9 +143,20 @@ def list_catalog(kind: str) -> list[str]:
         if not kind_dir.is_dir():
             continue
         for entry in sorted(kind_dir.iterdir()):
-            if entry.name not in seen and (entry / marker).is_file():
-                seen.add(entry.name)
-                names.append(entry.name)
+            if not entry.is_dir():
+                continue
+            if (entry / marker).is_file():
+                found = [entry.name]
+            else:
+                found = [
+                    f"{entry.name}/{sub.name}"
+                    for sub in sorted(entry.iterdir())
+                    if sub.is_dir() and (sub / marker).is_file()
+                ]
+            for name in found:
+                if name not in seen:
+                    seen.add(name)
+                    names.append(name)
     return sorted(names)
 
 

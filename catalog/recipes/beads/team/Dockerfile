@@ -1,4 +1,4 @@
-# Recipe Dockerfile for: beads-team
+# Recipe Dockerfile for: beads/team
 #
 # No FROM and no `ARG HARNESS` — the assembler prepends `FROM harnessed-${HARNESS}:latest` and
 # re-declares `ARG HARNESS` after it, so ${HARNESS} is available here and recipes stay
@@ -8,7 +8,7 @@
 # persistent task memory for agents, run here in-repo + git-tracked (Dolt-native sync via the git
 # origin) on bd's SERVER storage engine, a managed per-container dolt sql-server (see recipe.yaml).
 # For the fully-invisible variant (`.beads/` outside the repo, zero git footprint), see the sibling
-# `beads-stealth` recipe. Installed via mise's `github:` backend — harnessed-base already ships
+# `beads/stealth` recipe. Installed via mise's `github:` backend — harnessed-base already ships
 # mise + shims on PATH (same pattern as catalog/base/Dockerfile.harnessed-omp's `omp` install):
 # mise resolves the release asset for the current arch, verifies GitHub artifact attestations, and
 # lands `bd` on the mise shim PATH. Replaces a hand-rolled curl + sha256sum + tar install with one

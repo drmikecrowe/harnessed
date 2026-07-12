@@ -33,11 +33,16 @@ _KINDS = {
 
 
 def _manifests(kind: str):
+    """Every manifest of `kind`, INCLUDING recipe varieties one level deeper.
+
+    A recipe family (catalog/recipes/beads/) has no manifest of its own; its children do
+    (beads/stealth/recipe.yaml → the `beads/stealth` ref). A one-level glob alone would skip them.
+    """
     _, subdir, fn = _KINDS[kind]
     base = _ROOT / subdir
     if not base.is_dir():
         return []
-    return sorted(d / fn for d in base.iterdir() if (d / fn).is_file())
+    return sorted({*base.glob(f"*/{fn}"), *base.glob(f"*/*/{fn}")})
 
 
 def _schema(kind: str) -> dict:

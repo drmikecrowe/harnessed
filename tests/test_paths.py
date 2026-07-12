@@ -303,3 +303,57 @@ class TestContainerPaths:
     def test_hatago_config_at_container_home(self):
         p = paths.hatago_config_container()
         assert p == Path("/home/harnessed/hatago.config.json")
+
+
+class TestCatalogRelpath:
+    """A variety ref IS its path under catalog/<kind>/: `beads/stealth` → beads/stealth."""
+
+    def test_plain_name_maps_to_itself(self):
+        assert paths.catalog_relpath("serena") == Path("serena")
+
+    def test_variety_ref_maps_to_family_dir(self):
+        assert paths.catalog_relpath("beads/stealth-server") == Path("beads/stealth-server")
+
+    @pytest.mark.parametrize("bad", ["..", "beads/..", "../beads", "beads//stealth", "/beads", "beads/", ""])
+    def test_traversing_or_empty_component_rejected(self, bad):
+        with pytest.raises(ValueError, match="invalid catalog ref"):
+            paths.catalog_relpath(bad)
+
+    def test_more_than_one_level_rejected(self):
+        with pytest.raises(ValueError, match="one level deep"):
+            paths.catalog_relpath("a/b/c")
+
+    def test_dot_in_a_name_is_not_a_separator(self):
+        """The dot carries no meaning now — it is an ordinary filename character."""
+        assert paths.catalog_relpath("my.recipe") == Path("my.recipe")
+
+
+class TestListCatalogVarieties:
+    """A dir with no marker file is a FAMILY — its marked children list as variety refs."""
+
+    def _catalog(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HARNESSED_DIR", str(tmp_path))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "no-user-catalog"))
+        return tmp_path / "catalog" / "recipes"
+
+    def _recipe(self, d: Path) -> None:
+        d.mkdir(parents=True)
+        (d / "recipe.yaml").write_text("name: x\n")
+
+    def test_family_children_listed_as_variety_refs(self, monkeypatch, tmp_path):
+        recipes = self._catalog(monkeypatch, tmp_path)
+        self._recipe(recipes / "beads" / "stealth")
+        self._recipe(recipes / "beads" / "team")
+        self._recipe(recipes / "serena")
+        assert paths.list_catalog("recipes") == ["beads/stealth", "beads/team", "serena"]
+
+    def test_family_itself_is_not_a_ref(self, monkeypatch, tmp_path):
+        recipes = self._catalog(monkeypatch, tmp_path)
+        self._recipe(recipes / "beads" / "team")
+        assert "beads" not in paths.list_catalog("recipes")
+
+    def test_only_one_level_deep(self, monkeypatch, tmp_path):
+        """A marker two levels down is NOT a recipe — the family is exactly one dir deep."""
+        recipes = self._catalog(monkeypatch, tmp_path)
+        self._recipe(recipes / "a" / "b" / "c")
+        assert paths.list_catalog("recipes") == []
