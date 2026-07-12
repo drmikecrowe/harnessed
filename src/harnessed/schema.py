@@ -664,22 +664,43 @@ class Stack:
 
 @dataclass
 class ServiceDef:
-    """A shared service sidecar definition (design §3/§9, plan 04-01 SVC-01).
+    """A service sidecar definition (design §3/§9, plan 04-01 SVC-01).
 
-    A service is its OWN image/container/volume on a host-published port
-    (reachable via `host.containers.internal:<port>`; or by DNS name over the `HARNESSED_NET`
-    bridge on bridge-capable hosts), with a lifecycle independent of any instance. A recipe
-    references it via `mcp.servers[].service`; the assembler resolves the service name →
+    Two scopes:
+
+    `scope: global` (default) — the original shape. ONE image/container/volume on a
+    host-published port (reachable via `host.containers.internal:<port>`; or by DNS name over the
+    `HARNESSED_NET` bridge on bridge-capable hosts), with a lifecycle independent of any instance.
+    A recipe references it via `mcp.servers[].service`; the assembler resolves the service name →
     a hatago URL-proxy entry pointing at `http://host.containers.internal:<port>/mcp`
     (the `HARNESSED_NET` opt-in bridge form is `http://<name>:<port>/mcp`; plan 04-01 Task 4).
+
+    `scope: project` — one container PER PROJECT (git-common-dir keyed), for a service that holds
+    an EXCLUSIVE on-disk lock over per-project data and therefore cannot be shared: a
+    `dolt sql-server` is the motivating case. Two things follow from that:
+
+      * `data.persist` replaces `volume`. The launcher bind-mounts the host dir behind a persist
+        entry declared by a recipe in the stack, so the SERVICE inherits the RECIPE's placement
+        choice (`location: in_repo` vs `host`) rather than owning a named volume of its own.
+      * `socket` replaces `port`. A unix socket inside that same bind-mounted dir is a FILESYSTEM
+        object, so every container mounting the dir reaches the server with no network namespace
+        and no port allocation — the launcher has no dynamic-port machinery, and needs none.
     """
 
     name: str
     image: str
-    port: int
+    port: int = 0
+    scope: str = "global"
+    socket: str = ""
+    data_persist: str = ""
     volume: str = ""
     healthcheck: str = ""
     raw: dict = field(default_factory=dict)
+
+    @property
+    def is_socket_only(self) -> bool:
+        """True when peers reach this service through a unix socket, not a published port."""
+        return bool(self.socket)
 
 
 _VALID_TRANSPORTS = frozenset({"stdio", "http", "sse"})
@@ -982,23 +1003,62 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
     """Load services/<name>/service.yaml (mirrors load_recipe/load_stack).
 
     `root` given → single root; `root` None → resolve across catalog roots (user overlay first).
-    Requires `name`, `image`, and `port`; defaults `volume` to `<name>-data`.
+    Requires `name` and `image`, plus EITHER `port` (reached at host.containers.internal:<port>)
+    OR `socket` (reached through a unix socket in the service's own data dir — no published port).
+
+    `scope: global` (default) defaults `volume` to `<name>-data`. `scope: project` instead requires
+    `data.persist`: the persist entry whose host dir becomes the service's data dir, so the service
+    follows the owning recipe's placement (in_repo vs host) instead of a named volume.
     """
     manifest = _resolve_dir(root, "services", name) / "service.yaml"
     if not manifest.is_file():
         raise SchemaError(f"service manifest not found: {manifest}")
     raw = _load_yaml(manifest)
-    for field_name in ("name", "image", "port"):
+    for field_name in ("name", "image"):
         if field_name not in raw:
             raise SchemaError(f"{manifest}: required field '{field_name}' is missing")
-    port = int(raw["port"])
-    if not (1 <= port <= 65535):
-        raise SchemaError(f"{manifest}: 'port' must be 1–65535, got {port}")
+
+    scope = raw.get("scope", "global")
+    if scope not in ("global", "project"):
+        raise SchemaError(f"{manifest}: 'scope' must be 'global' or 'project', got {scope!r}")
+
+    socket = raw.get("socket", "")
+    if socket:
+        if scope != "project":
+            raise SchemaError(f"{manifest}: 'socket' requires scope: project (got {scope!r})")
+        if Path(socket).is_absolute():
+            raise SchemaError(
+                f"{manifest}: 'socket' must be RELATIVE to the service data dir, got {socket!r}"
+            )
+    elif "port" not in raw:
+        raise SchemaError(f"{manifest}: required field 'port' is missing (or set 'socket')")
+
+    # A DECLARED port must still be valid (0 is not a "no port" spelling — omit the key, or set
+    # `socket`). Only an omitted port yields 0, and only a socket-backed service may omit it.
+    port = 0
+    if "port" in raw:
+        port = int(raw["port"])
+        if not (1 <= port <= 65535):
+            raise SchemaError(f"{manifest}: 'port' must be 1–65535, got {port}")
+
+    data_persist = ((raw.get("data") or {}).get("persist") or "").strip()
+    if scope == "project" and not data_persist:
+        raise SchemaError(
+            f"{manifest}: scope: project requires 'data.persist' — the persist entry whose host "
+            "dir becomes this service's data dir"
+        )
+    if scope == "global" and data_persist:
+        raise SchemaError(f"{manifest}: 'data.persist' requires scope: project")
+
     return ServiceDef(
         name=raw["name"],
         image=raw["image"],
         port=port,
-        volume=raw.get("volume") or f"{name}-data",
+        scope=scope,
+        socket=socket,
+        data_persist=data_persist,
+        # A project-scoped service takes its data dir from `data.persist`, never a named volume.
+        volume="" if scope == "project" else (raw.get("volume") or f"{name}-data"),
         healthcheck=raw.get("healthcheck", ""),
         raw=raw,
     )

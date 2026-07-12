@@ -1,38 +1,46 @@
 # yaml-language-server: $schema=../../../schemas/service.schema.json
-# Service: beads-server — a single, long-lived standalone `dolt sql-server` that every project's
-# `bd` (beads) points at, instead of each container/host embedding its own Dolt engine (bead
-# main-8by). This is the fix for the 2026-07-05 lock-collision incident: Dolt takes an EXCLUSIVE
-# on-disk file lock on its data dir, so a host `bd` and a container `bd` can never both hold a live
-# server against the same `.beads/dolt`. Collapsing to ONE server everyone connects to removes the
-# contention entirely.
+# Service: beads-server — the ONE `dolt sql-server` for a project. Every `bd` in every agent
+# container is a client of it; nothing else ever opens the Dolt data dir.
 #
-# Exactly the shipped single-container service shape (one image / one port / one volume, like
-# `ping`) — NO topology, NO init job, NO second port. The one thing beads needs that ping doesn't —
-# multi-DATABASE-per-server (one Dolt database per project on a single server, keyed by each
-# project's issue prefix) — is a property of how the `beads-team-server`/`beads-stealth-server`
-# recipes CONFIGURE `bd`, not of
-# this container's shape. Zero new ServiceDef capability.
+# Why (the 2026-07-05 lock incident, root-caused 2026-07-12): Dolt takes an EXCLUSIVE flock on its
+# data dir. `bd` in server mode spawns its OWN dolt sql-server per container, and every container in
+# a bare+worktree checkout resolves to the SAME `.beads` (bd keys it off the git common dir —
+# verified with `bd where`). The first container to start won; every other one looped forever on
+# `database "dolt" is locked by another dolt process`. Embedded mode is not a fix either: same
+# engine, same flock, just held per-command — a race instead of a hard failure. ONE server per
+# project with N clients is the only shape that removes the contention by construction.
 #
-# Security: loopback-only, NO auth. The server publishes to the host loopback (127.0.0.1:3307) and
-# is reached by the host `bd` and every container's `bd` via `host.containers.internal:3307`. A
-# default Dolt root user with no password and no exposure beyond loopback is acceptable for the
-# single-user local-dev model (bead main-8by DESIGN "Auth / multi-tenancy stance"). Revisit only if
-# ever shared across machines/users (out of scope, YAGNI).
+# scope: project — one container per project (git-common-dir keyed), NOT a global singleton. The
+# server holds an exclusive lock on per-project data, so it is inherently unshareable; a singleton
+# would only relocate the collision.
 #
-# Volume: a service-scoped NAMED volume (`beads-server-data`) is the crux. ONLY this one service
-# container mounts it (`_ensure_service` mounts the named volume at /data), so the exclusive Dolt
-# lock can never be contended. The in-repo `.beads/dolt` is NEVER bind-mounted here — doing so would
-# reproduce the incident the moment any other `bd` touched it. `.beads/issues.jsonl` stays the
-# passive in-repo export; the live data lives in this named volume.
+# socket, not port — the crux. Peers reach the server through a unix socket INSIDE the data dir,
+# which every container already bind-mounts. A socket is a filesystem object: no network namespace,
+# no host publishing, no port allocation (the launcher has no dynamic-port machinery, and this
+# design means it needs none). It also closes the loopback trap: bd records the server's port in
+# shared state, but 127.0.0.1 means something DIFFERENT in each container's netns, so a client could
+# never have reached another container's server over TCP anyway.
 #
-# Port 3307 matches bd's own `--server-port` default for external-server mode, so the `beads-team-server`
-# recipe's `bd init --server --external` lines up with zero surprise (design open-question #3: a
-# stable, config-set port — not a computed one).
+# data.persist: .beads — the service does NOT choose where its bytes live; the RECIPE does.
+# `beads/team` declares `.beads` as `location: in_repo` (git-tracked, shared with the team);
+# `beads/stealth` declares it `location: host` (outside the repo, zero git footprint). The launcher
+# bind-mounts whichever the stack's beads recipe declared at /data. That is the single knob.
 name: beads-server
 image: harnessed-beads-server:latest
-volume: beads-server-data
-port: 3307
-# MySQL-auth healthcheck: verifies port open AND that root/no-password can authenticate.
-# A plain TCP check passes the moment dolt's listener opens — before auth is fully initialized.
-# dolt sql-client speaks the MySQL wire protocol: if this succeeds, `bd` can connect.
-healthcheck: "dolt sql-client -H 127.0.0.1 -P 3307 -u root -q 'SELECT 1' 2>/dev/null || exit 1"
+scope: project
+socket: run/mysql.sock
+data:
+  persist: .beads
+
+# MySQL-auth healthcheck over the socket: the server is up AND root can authenticate.
+# NOTE: dolt 2.1.10 has NO `sql-client` subcommand (`Unknown Command sql-client` — the healthcheck
+# that used to live here therefore could never pass). The global --host/--port/--user flags on
+# `dolt sql` are the supported client form, and --no-tls is required (the server speaks no TLS).
+healthcheck: "dolt --host 127.0.0.1 --port 3307 --user root --password '' --no-tls sql -q 'SELECT 1' >/dev/null 2>&1 || exit 1"
+
+# Git sync (in-repo placement only): `bd dolt push` writes the Dolt history to refs/dolt/data on the
+# project's git origin. It MUST run HERE — bd's push shells out to the dolt CLI, which routes only to
+# a server on its OWN loopback; the identical command from a client container dies with
+# `dial tcp [::1]:3307: connect: connection refused` (verified). Invoke with
+# `harnessed svc sync beads-server --stack <stack>`. Explicit, never automatic: it writes to a remote.
+sync: "cd \"${HARNESSED_PROJECT_DIR:?git sync requires in-repo placement (beads/team)}\" && bd dolt push"

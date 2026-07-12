@@ -1976,6 +1976,10 @@ def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> st
         f"CONTAINER_WORKSPACE_DIR={shlex.quote(str(mount_path))} "
         f"HOST_WORKSPACE_DIR={shlex.quote(str(mount_path))}",
     ]
+    # Socket-backed project-scoped services (e.g. beads-server): export the container-side socket
+    # path so a recipe's `setup:` can reference it verbatim instead of recomputing path arithmetic.
+    for var, sock in svc_socket_env(stack, project_path).items():
+        parts.append(f"export {var}={shlex.quote(sock)}")
     # Plain exports never fail, so they're joined with `;` — `&&` is reserved for the recipe-init
     # fail-fast blocks below, keeping it absent entirely when no recipe declares init.
     prologue = "; ".join(parts)
@@ -2057,8 +2061,77 @@ def _persist_mounts(stack: str, project_path: Path) -> list[str]:
 # container. Services are host-published and outlive any instance, so they are started idempotently
 # (skip if already running) and are NOT torn down by `--fresh` (only the pod is).
 
-def _svc_container(name: str) -> str:
+def _svc_container(name: str, project_key: str = "") -> str:
+    """Container name for a service. Project-scoped services are keyed so one runs PER project."""
+    if project_key:
+        return f"harnessed-svc-{name}-{project_key}"
     return f"harnessed-svc-{name}"
+
+
+def _svc_project_key(svc: "ServiceDef", project_path: Path | None) -> str:
+    """Per-project key for a project-scoped service — git-common-dir keyed (cross-worktree).
+
+    Every worktree of one checkout resolves to the SAME key, so they share ONE server container
+    (which is the whole point: a dolt sql-server holds an exclusive lock on its data dir, and the
+    worktrees all resolve to the same in-repo `.beads`). Global services get no key.
+    """
+    if svc.scope != "project" or project_path is None:
+        return ""
+    gcd = paths.git_common_dir(project_path)
+    return paths.project_hash(gcd if gcd is not None else project_path)
+
+
+def _service_data_dir(svc: "ServiceDef", stack: str, project_path: Path) -> tuple[Path, str, str]:
+    """Resolve a project-scoped service's data dir → (host_dir, agent_container_path, location).
+
+    The service does NOT choose where its bytes live — the RECIPE does. The service names a persist
+    entry (`data.persist`), the launcher finds the recipe in this stack that declares it, and
+    follows that entry's placement:
+
+      * location: in_repo → host dir is the checkout-root-anchored dir (paths.persist_in_repo_dir),
+        and agents see it at the SAME path (the workspace is mounted path-preserving).
+      * location: host    → host dir is the persist dir keyed per that entry's scope, and agents
+        see it at $HOME/<name> (exactly where _persist_mounts puts it).
+
+    That is the single knob: `beads/team` declares `.beads` in_repo, `beads/stealth` declares it
+    host, and the same service manifest follows either one.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    for recipe in recipes:
+        for entry in recipe.persist.entries:
+            if entry.name is None or entry.name != svc.data_persist:
+                continue
+            if entry.location == "in_repo":
+                host_dir = paths.persist_in_repo_dir(project_path, entry.name)
+                return host_dir, str(host_dir), "in_repo"
+            if entry.scope == "project":
+                host_dir = paths.persist_project_dir(recipe.name, project_path, entry.name)
+            else:
+                host_dir = paths.persist_workspace_dir(recipe.name, project_path, entry.name)
+            return host_dir, f"{_CONTAINER_HOME_STR}/{entry.name}", "host"
+
+    raise SchemaError(
+        f"service '{svc.name}' declares data.persist: '{svc.data_persist}', but no recipe in stack "
+        f"'{stack}' declares a persist entry with that name"
+    )
+
+
+def svc_socket_env(stack: str, project_path: Path) -> dict[str, str]:
+    """Container-side socket path for each socket-backed project-scoped service in the stack.
+
+    Exported into the attach shell (see _init_shell_prologue) as HARNESSED_<NAME>_SOCKET so a
+    recipe's `setup:` can reference the socket without recomputing the launcher's path arithmetic —
+    e.g. `bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"`.
+    """
+    env: dict[str, str] = {}
+    for name in _service_refs(stack):
+        svc = load_service(None, name)
+        if not (svc.scope == "project" and svc.is_socket_only):
+            continue
+        _, agent_dir, _ = _service_data_dir(svc, stack, project_path)
+        var = "HARNESSED_" + svc.name.upper().replace("-", "_") + "_SOCKET"
+        env[var] = f"{agent_dir}/{svc.socket}"
+    return env
 
 
 def _service_refs(stack: str) -> list[str]:
@@ -2110,17 +2183,38 @@ def _build_service_image(rt: str, name: str) -> None:
             tmp.unlink(missing_ok=True)
 
 
-def _ensure_service(rt: str, name: str) -> None:
-    """Build (if missing) and start (if not running) one host-published service sidecar.
+def _ensure_service(
+    rt: str,
+    name: str,
+    stack: str = "",
+    project_path: Path | None = None,
+    mount_path: Path | None = None,
+) -> None:
+    """Build (if missing) and start (if not running) one service sidecar.
+
+    `scope: global` → the original shape: one container, `-p <port>:<port>`, named volume at /data.
+
+    `scope: project` → one container per project (git-common-dir keyed), whose /data is a BIND MOUNT
+    of the persist dir the owning recipe declared (see _service_data_dir), and which publishes no
+    port when socket-backed. For an `in_repo` data dir the workspace is also mounted
+    path-preserving, because the service needs the git repo itself: bd's `dolt push` (the
+    refs/dolt/data sync) shells out to the dolt CLI, which only routes to a server on ITS OWN
+    loopback — so the sync can only ever run inside this container, not in an agent container.
 
     If the running container is stale (image rebuilt since it started), prompts the user to
-    confirm recreation before the harness launches. Named-volume data is always preserved.
-    In headless mode the recreation proceeds automatically.
+    confirm recreation before the harness launches. Data (named volume or bind mount) is always
+    preserved. In headless mode the recreation proceeds automatically.
     """
     svc = load_service(None, name)
+    if svc.scope == "project" and project_path is None:
+        _err.print(
+            f"[bold red]error:[/bold red] service '{name}' is scope: project and needs a project "
+            "context. Run it via a stack launch, not `harnessed svc up`."
+        )
+        raise typer.Exit(1)
     if not _image_exists(rt, svc.image):
         _build_service_image(rt, name)
-    cname = _svc_container(name)
+    cname = _svc_container(name, _svc_project_key(svc, project_path))
     if _container_running(rt, cname):
         if _container_stale(rt, cname, svc.image):
             headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
@@ -2142,11 +2236,39 @@ def _ensure_service(rt: str, name: str) -> None:
             return
     # Remove any stopped leftover with the same name before (re)starting.
     subprocess.run([rt, "rm", "-f", cname], capture_output=True)
-    _out.print(f"[blue][INFO][/blue] Starting service '{name}' on :{svc.port} ({cname})")
-    run_cmd = [rt, "run", "-d", "--name", cname, "-p", f"{svc.port}:{svc.port}",
-               *_corp_proxy_ca_mount_args()]
-    if svc.volume:
+    where = f"socket {svc.socket}" if svc.is_socket_only else f":{svc.port}"
+    _out.print(f"[blue][INFO][/blue] Starting service '{name}' on {where} ({cname})")
+    run_cmd = [rt, "run", "-d", "--name", cname, *_corp_proxy_ca_mount_args()]
+    if not svc.is_socket_only:
+        run_cmd += ["-p", f"{svc.port}:{svc.port}"]
+
+    if svc.scope == "project":
+        assert project_path is not None  # guarded above
+        host_dir, _, location = _service_data_dir(svc, stack, project_path)
+        persist.guard_ownership(host_dir)
+        host_dir.mkdir(parents=True, exist_ok=True)
+        # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
+        # (a dolt data dir written by a foreign uid would EACCES for every agent container).
+        run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
+        if location == "in_repo" and mount_path is not None:
+            # The git repo itself — the sync (`bd dolt push` → refs/dolt/data) runs HERE, because
+            # bd's push shells out to a dolt CLI that only routes to a server on its own loopback.
+            # That means the PUSH happens in this container, so it needs what any push needs: the
+            # repo, the host's git identity, and the SSH agent. Without the agent, `harnessed svc
+            # sync` dies on the remote's auth ("run `ssh-add <key>` to pre-load your key").
+            run_cmd += ["-v", f"{mount_path}:{mount_path}:rw",
+                        "-e", f"HARNESSED_PROJECT_DIR={project_path}"]
+            home = Path.home()
+            run_cmd += _ssh_agent_args(home, _gpg_ssh_socket(), rt=rt)
+            gitconfig = home / ".gitconfig"
+            if gitconfig.is_file():
+                run_cmd += ["-v", f"{gitconfig}:{_CONTAINER_HOME_STR}/.gitconfig:ro"]
+            known_hosts = home / ".ssh" / "known_hosts"
+            if known_hosts.is_file():
+                run_cmd += ["-v", f"{known_hosts}:{_CONTAINER_HOME_STR}/.ssh/known_hosts:ro"]
+    elif svc.volume:
         run_cmd += ["-v", f"{svc.volume}:/data"]
+
     run_cmd.append(svc.image)
     _run(run_cmd, capture_output=True)
     _install_corp_proxy_ca_in_container(rt, cname, best_effort=True)
@@ -2155,21 +2277,25 @@ def _ensure_service(rt: str, name: str) -> None:
 
 
 def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int = 60) -> None:
-    """Wait for TCP port open, then exec svc.healthcheck inside the container until it passes.
+    """Wait for the service to accept traffic, then exec svc.healthcheck until it passes.
 
-    Two-phase: raw TCP first (fast, 30s), then the service's own healthcheck (full protocol,
-    60s). For dolt this means waiting for MySQL-level auth readiness, not just the listener.
-    Services without a healthcheck fall back to TCP only.
+    Two-phase for a published service: raw TCP first (fast, 30s), then the service's own
+    healthcheck (full protocol, 60s). For dolt this means waiting for MySQL-level auth readiness,
+    not just the listener. Services without a healthcheck fall back to TCP only.
+
+    A socket-backed service publishes no port, so there is nothing to TCP-probe: its healthcheck
+    (exec'd in the container, where the socket lives) IS the readiness signal.
     """
     import socket
     import time
 
-    for _ in range(30):
-        try:
-            with socket.create_connection(("127.0.0.1", svc.port), timeout=1):
-                break
-        except OSError:
-            time.sleep(1)
+    if not svc.is_socket_only:
+        for _ in range(30):
+            try:
+                with socket.create_connection(("127.0.0.1", svc.port), timeout=1):
+                    break
+            except OSError:
+                time.sleep(1)
 
     if not svc.healthcheck:
         return
@@ -2186,9 +2312,11 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
     _err.print(f"[yellow][WARNING][/yellow] service '{svc.name}' healthcheck did not pass within {timeout}s")
 
 
-def _ensure_services(rt: str, stack: str) -> None:
+def _ensure_services(
+    rt: str, stack: str, project_path: Path | None = None, mount_path: Path | None = None
+) -> None:
     for name in _service_refs(stack):
-        _ensure_service(rt, name)
+        _ensure_service(rt, name, stack=stack, project_path=project_path, mount_path=mount_path)
 
 
 def _collect_setup_notices(
@@ -2416,9 +2544,11 @@ def launch(
     # Recipe init (Model A) now runs inside the attach shell (_attach → _init_shell_prologue), not a
     # transient container — so init-derived env reaches the agent. Nothing to do here at pod-create.
 
-    # Start any shared-service sidecars this stack's recipes reference (host-published; reached from
-    # the pod via host.containers.internal:<port>). Idempotent — skips services already running.
-    _ensure_services(rt, stack)
+    # Start any service sidecars this stack's recipes reference. Idempotent — skips services already
+    # running. Global services are host-published (reached from the pod via
+    # host.containers.internal:<port>); project-scoped ones bind-mount this project's persist dir and
+    # are reached through a unix socket inside it, so they need the project/mount context.
+    _ensure_services(rt, stack, project_path=project_path, mount_path=mount_path)
 
     _out.print(f"[blue][INFO][/blue] Creating isolated pod: {pod} (harness + hatago)")
     _out.print(f"[blue][INFO][/blue] Project: {project_path} -> {CONTAINER_HOME / relpath}")
@@ -3031,20 +3161,53 @@ _COMMANDS = {
 
 @app.command("svc")
 def svc(
-    action: str = typer.Argument(..., help="up | down"),
+    action: str = typer.Argument(..., help="up | down | sync"),
     name: str = typer.Argument(..., help="Service name (services/<name>/service.yaml)"),
+    stack: str = typer.Option("", "--stack", help="Stack context (required for scope: project)"),
 ) -> None:
-    """Manage a shared-service sidecar (build+start, or stop+remove). Services outlive instances."""
+    """Manage a service sidecar (build+start, stop+remove, or sync).
+
+    `up`/`down` on a `scope: project` service act on THIS project's container (git-common-dir keyed),
+    so they need `--stack` to resolve which persist entry holds the data.
+
+    `sync` execs the service's own sync command in its container. It exists because a `dolt
+    sql-server`'s git sync (`bd dolt push` → refs/dolt/data) shells out to the dolt CLI, which only
+    routes to a server on its OWN loopback — so the push can only run inside the service container,
+    never in an agent container. Sync pushes to your git remote, so it is explicit, never automatic.
+    """
     rt = _runtime()
+    project_path = Path.cwd().resolve()
+    svc_def = load_service(None, name)
+    if svc_def.scope == "project" and not stack:
+        _err.print(
+            f"[bold red]error:[/bold red] service '{name}' is scope: project — pass --stack so its "
+            "data dir can be resolved (e.g. harnessed svc up beads-server --stack my-stack)"
+        )
+        raise typer.Exit(1)
+    key = _svc_project_key(svc_def, project_path)
+    cname = _svc_container(name, key)
+
     if action == "up":
-        _ensure_service(rt, name)
-        _out.print(f"[green][SUCCESS][/green] Service '{name}' is up")
+        _ensure_service(rt, name, stack=stack, project_path=project_path, mount_path=project_path)
+        _out.print(f"[green][SUCCESS][/green] Service '{name}' is up ({cname})")
     elif action == "down":
-        cname = _svc_container(name)
         subprocess.run([rt, "rm", "-f", cname], capture_output=True)
-        _out.print(f"[green][SUCCESS][/green] Service '{name}' is down")
+        _out.print(f"[green][SUCCESS][/green] Service '{name}' is down ({cname})")
+    elif action == "sync":
+        sync_cmd = (svc_def.raw.get("sync") or "").strip()
+        if not sync_cmd:
+            _err.print(f"[bold red]error:[/bold red] service '{name}' declares no `sync:` command")
+            raise typer.Exit(1)
+        if not _container_running(rt, cname):
+            _err.print(f"[bold red]error:[/bold red] service '{name}' is not running ({cname})")
+            raise typer.Exit(1)
+        result = subprocess.run([rt, "exec", cname, "bash", "-lc", sync_cmd])
+        if result.returncode != 0:
+            _err.print(f"[bold red]error:[/bold red] sync failed for service '{name}'")
+            raise typer.Exit(result.returncode)
+        _out.print(f"[green][SUCCESS][/green] Service '{name}' synced")
     else:
-        _err.print(f"[bold red]error:[/bold red] unknown svc action '{action}' (use: up | down)")
+        _err.print(f"[bold red]error:[/bold red] unknown svc action '{action}' (use: up | down | sync)")
         raise typer.Exit(1)
 
 

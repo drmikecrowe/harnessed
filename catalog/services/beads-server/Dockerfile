@@ -1,59 +1,70 @@
-# Service image: beads-server — a standalone `dolt sql-server` that every project's `bd` points at
-# (bead main-8by). Built by `harnessed svc up beads-server` on first use (or
-# `podman build -t harnessed-beads-server:latest`). Scanned by the BLD-02 image-scan gate when built
+# Service image: beads-server — the ONE `dolt sql-server` for a project; every `bd` in every agent
+# container is a client of it (see service.yaml for the why). Built on first use by the launcher, or
+# `podman build -t harnessed-beads-server:latest .`. Scanned by the BLD-02 image-scan gate when built
 # via the launcher.
 #
-# This is a SERVICE Dockerfile, so it carries its OWN full lineage (FROM, CMD) — unlike a recipe
-# Dockerfile, which omits FROM/ARG HARNESS (see gbrain's service Dockerfile for the same note).
+# This is a SERVICE Dockerfile, so it carries its OWN full lineage (FROM, ENTRYPOINT) — unlike a
+# recipe Dockerfile, which omits FROM/ARG HARNESS (see gbrain's service Dockerfile for the same note).
 #
-# ── dolt via mise `github:` backend (same as the beads recipe) ────────────────────────────────
-# The `beads` recipe installs dolt with `mise use -g github:dolthub/dolt@2.1.10`; mise resolves the
-# release asset for the current arch and verifies GitHub artifact attestations — a stronger
-# supply-chain guarantee than a hand-rolled curl + sha256sum, and the method already proven in this
-# repo. Pin the EXACT dolt release (no @latest / :latest) — 2.1.10, the version the beads recipe
-# pins and verifies working with bd 1.1.0's server engine. mise itself is pinned via MISE_VERSION.
+# ── dolt AND bd, via mise's `github:` backend (same install path as the beads recipes) ───────────
+# mise resolves the release asset for the current arch and verifies GitHub artifact attestations — a
+# stronger supply-chain guarantee than a hand-rolled curl + sha256sum, and the method already proven
+# in this repo. Every release is pinned EXACTLY (no @latest / :latest — the build rejects them).
+#
+# `bd` is baked here, not just `dolt`, because the git sync runs INSIDE this container:
+# `bd dolt push` (refs/dolt/data) shells out to the dolt CLI, which only ever routes to a server on
+# its own loopback — so it cannot run from an agent container (verified: `dial tcp [::1]:3307:
+# connect: connection refused`). `harnessed svc sync beads-server` execs it here. Versions match the
+# beads recipes' pins so client and server share one proven toolchain.
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 ARG MISE_VERSION=v2026.7.0
 ARG DOLT_VERSION=2.1.10
+ARG BEADS_VERSION=1.1.0
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git bash \
+    && apt-get install -y --no-install-recommends ca-certificates curl git bash openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Pinned mise install (the run script honors MISE_VERSION), then the pinned dolt release via the
-# github: backend. Copy the resolved binary to /usr/local/bin so the CMD needs no shim/PATH setup.
-ENV PATH="/root/.local/bin:${PATH}"
-RUN curl -fsSL https://mise.run | MISE_VERSION="${MISE_VERSION}" sh \
-    && mise use -g "github:dolthub/dolt@${DOLT_VERSION}" \
-    && mise install \
-    && cp "$(mise which dolt)" /usr/local/bin/dolt \
-    && dolt version
-
-# The named service volume (`beads-server-data`) is mounted at /data by `_ensure_service`; dolt
-# serves and creates databases under its --data-dir there. dolt needs a global identity for the
-# commits it writes; bd supplies the per-write actor, but set a service-level default so the engine
-# never blocks on a missing identity.
-RUN mkdir -p /data \
-    && dolt config --global --add user.name "beads-server" \
-    && dolt config --global --add user.email "beads-server@harnessed.local"
-VOLUME /data
+# Same uid-1000 user as harnessed-base (ubuntu:24.04 ships `ubuntu` at 1000), so `--userns=keep-id`
+# maps the host user cleanly and every byte this server writes into the bind-mounted data dir stays
+# host-owned — a Dolt data dir written by a foreign uid would EACCES for every agent container.
+ARG USERNAME=harnessed
+RUN usermod -l ${USERNAME} ubuntu \
+    && groupmod -n ${USERNAME} ubuntu \
+    && usermod -d /home/${USERNAME} ${USERNAME} \
+    && mkdir -p /home/${USERNAME} /data \
+    && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME} /data
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# `--host 0.0.0.0` is mandatory: dolt sql-server defaults to 127.0.0.1 (in-container loopback) and
-# would be unreachable on the published port / via host.containers.internal otherwise. The port is
-# then published ONLY to the host loopback by the launcher (loopback-only, no auth — design). Default
-# Dolt root user, no password.
+USER ${USERNAME}
+ENV PATH="/home/${USERNAME}/.local/bin:/home/${USERNAME}/.local/share/mise/shims:${PATH}"
+RUN curl -fsSL https://mise.run | MISE_VERSION="${MISE_VERSION}" sh \
+    && mise use -g "github:dolthub/dolt@${DOLT_VERSION}" "github:gastownhall/beads@${BEADS_VERSION}" \
+    && mise install \
+    && dolt version && bd --version
+
+# Dolt needs a global identity for the commits it writes. bd supplies the per-write actor; this is
+# only the fallback so the engine never blocks on a missing identity.
+RUN dolt config --global --add user.name "beads-server" \
+    && dolt config --global --add user.email "beads-server@harnessed.local"
+
+# /data is a BIND MOUNT of this project's .beads (the launcher wires it from the owning recipe's
+# persist entry) — deliberately NOT a VOLUME: a named volume would put the bytes somewhere no agent
+# container can see, and the whole point is that agents reach the socket inside this dir.
 #
-# HEALTHCHECK verifies MySQL-level auth (not just TCP): dolt sql-client connects through the MySQL
-# protocol with root/no-password. A stale named volume where root has a password will fail this check;
-# the entrypoint resets root auth before the server starts to prevent that state.
-EXPOSE 3307
+# No EXPOSE: this service publishes NO host port. Peers connect over the unix socket at
+# /data/run/mysql.sock. The in-container TCP listener on 3307 exists only for the healthcheck and for
+# the dolt CLI `bd dolt push` shells out to.
+#
+# HEALTHCHECK verifies MySQL-level AUTH, not just a listener. dolt 2.1.10 has no `sql-client`
+# subcommand (the previous healthcheck used it, so it could never pass); the global --host/--port/
+# --user flags on `dolt sql` are the supported client form, and --no-tls is required.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=6 \
-    CMD dolt sql-client -H 127.0.0.1 -P 3307 -u root -q 'SELECT 1' 2>/dev/null || exit 1
+    CMD dolt --host 127.0.0.1 --port 3307 --user root --password '' --no-tls sql -q 'SELECT 1' >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

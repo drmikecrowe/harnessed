@@ -1,60 +1,66 @@
 # yaml-language-server: $schema=../../../../schemas/recipe.schema.json
-# Recipe: beads/team — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary, run
-# in beads' in-repo, git-tracked mode on bd's SERVER storage engine (a managed per-container `dolt
-# sql-server` on loopback, pidfile-managed, data under `.beads/dolt/`) — NOT the embedded engine,
-# whose dependency subsystem (`bd dep add`/`close`/`delete`/`stats`/`sql`/`doctor`) is a no-op in bd
-# 1.1.0 and whose shared-file lock contends under this bare+worktree layout. `.beads/` lives INSIDE
-# the repo (git-tracked), `bd init` installs git hooks (agent-identity commit trailers) and auto-wires
-# the git origin as a Dolt remote for `bd dolt push`/`bd dolt pull` sync — beads data is stored
-# under `refs/dolt/data`, NOT a git branch, so this does not touch protected branches. No MCP, no
-# service, no skill: the agent shells out to `bd` directly.
+# Recipe: beads/team — bake the `bd` CLI (https://github.com/gastownhall/beads) as a pure CLIENT of
+# the project's `beads-server` service, with `.beads/` IN THE REPO and git-tracked.
 #
-# This is the TEAM / no-shared-server cell of the beads 2×2 (placement × storage):
-#   • beads/team          — this recipe: in-repo, git-tracked, per-container managed dolt server.
-#   • beads/team-server   — in-repo, git-tracked, but points at the SHARED `beads-server` service.
-#   • beads/stealth       — `.beads/` outside the repo, zero git footprint, embedded engine.
-#   • beads/stealth-server — `.beads/` outside the repo, but live data on the SHARED `beads-server`.
-# For fully-invisible use (`.beads/` outside the repo entirely — e.g. dogfooding this tool against
-# harnessed's OWN repo), use `beads/stealth` instead. All four are the same tool with different
-# storage/placement wiring — as sibling varieties of the `beads` family they are IMPLICITLY mutually
-# exclusive (schema._check_recipe_conflicts), so no `conflicts:` entry pairs them.
+# The beads family is now TWO recipes, and the only difference between them is PLACEMENT:
+#   • beads/team    — this recipe: `.beads/` in the repo, git-tracked, shared with the team.
+#   • beads/stealth — `.beads/` outside the repo entirely, zero git footprint.
+# Storage is no longer an axis: both run the SAME engine, the `beads-server` service (one
+# `dolt sql-server` per project). The old `-server` variants (`beads/team-server`,
+# `beads/stealth-server`) are gone — every cell is a server cell now.
 #
-# Persistence: `.beads/` is `location: in_repo` (already inside the project's own mount — no extra
-# bind-mount) with `vcs: tracked`, i.e. harnessed takes no .gitignore action: the item is meant to be
-# committed, matching upstream's own default expectations. (bd manages its own finer-grained
-# exclusions internally, e.g. `.beads/dolt/`.)
+# Why embedded is gone, and why bd no longer runs its own server (2026-07-12 root cause):
+# Dolt takes an EXCLUSIVE flock on its data dir. `bd init --server` spawned a dolt sql-server PER
+# CONTAINER, and every container in a bare+worktree checkout resolves to the SAME `.beads` (bd keys
+# it off the git common dir — verified with `bd where`), so the first container won and every other
+# one looped forever on `database "dolt" is locked by another dolt process`. Embedded is no escape:
+# same engine, same flock, merely held per-command — a race instead of a hard failure. ONE server per
+# project with N clients removes the contention by construction.
 #
-# Init: NOT automatic (see `setup:` below). `condition` (`! bd list`) makes it self-gating: the
-# assembler synthesizes a Claude SessionStart hook from it that prints the summary once, then
-# stays silent once `bd list` succeeds. `bd setup <tool> --project` (a separate step from `bd
-# init`, per beads' docs/SETUP.md) writes `.claude/settings.json` + `CLAUDE.md` into the project on
-# bd 1.1.0 — a real footprint, which is why this is a deliberate user action, not an every-attach
-# auto-run.
+# How bd connects: `bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"`.
+#   • --server   → use a dolt sql-server, not the embedded engine.
+#   • --external → the server is externally managed; bd connects but NEVER starts or stops it
+#                  (that is the `beads-server` container's job).
+#   • --server-socket → a UNIX SOCKET inside the bind-mounted `.beads/`, not host:port. A socket is a
+#     filesystem object, so it needs no network namespace and no published port. This matters: bd
+#     records the server's port in shared state, but 127.0.0.1 means something DIFFERENT in every
+#     container's netns, so TCP could never have worked across containers anyway.
+# The launcher exports $HARNESSED_BEADS_SERVER_SOCKET into the attach shell (launcher.svc_socket_env),
+# so the path never has to be hand-computed.
+#
+# The service is attached at the STACK level (its `services:` list), not via an MCP `service:` ref —
+# a dolt sql-server speaks the MySQL wire protocol, not MCP, so it is not hatago-proxied. No MCP, no
+# skill: the agent shells out to `bd` directly.
 name: beads-team
-description: "bd (beads) — graph issue tracker / task memory, TEAM mode: in-repo, git-tracked, Dolt-native sync via the git origin (per-container managed dolt server)."
+description: "bd (beads) — graph issue tracker / task memory, TEAM placement: .beads/ in the repo, git-tracked, on the project's beads-server (one dolt sql-server per project, reached over a unix socket)."
 setup:
   summary: >-
-    Run `bd init --server --quiet --non-interactive --role maintainer && bd config set
-    dolt.auto-commit on` then `bd setup <harness> --project` once per workspace, then restart
-    the agent; these steps create the in-repo .beads/ store, install git hooks, and wire the
-    bd prime workflow into the harness.
+    Run `bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"` then `bd
+    setup <harness> --project` once per workspace, then restart the agent; these steps create this
+    project's database on its beads-server and wire the bd prime workflow into the harness. Git sync
+    is a HOST command — `harnessed svc sync beads-server --stack <stack>` (see the recipe README).
   reference: https://github.com/gastownhall/beads
   condition: '! bd list >/dev/null 2>&1'
 
-# agent-carnet is also a shared, cross-session notebook (see its own `rules:` entry instructing the
-# agent to treat carnet as the SOLE memory store). Combining both in one stack gives the agent two
-# competing persistent-memory systems and duplicate/contradictory workflow instructions.
-# The other beads varieties need no entry here: sibling varieties of one family are IMPLICITLY
-# exclusive (see schema._check_recipe_conflicts).
+# `agent-carnet` is also a shared, cross-session notebook (its own `rules:` entry tells the agent to
+# treat carnet as the SOLE memory store). Combining both gives the agent two competing persistent-
+# memory systems and contradictory workflow instructions. Sibling varieties of one family are
+# IMPLICITLY exclusive (schema._check_recipe_conflicts), so `beads/stealth` needs no entry here.
 conflicts: [agent-carnet]
 
+# THE knob. `location: in_repo` + `vcs: tracked` is what makes this the TEAM recipe: `.beads/` is
+# committed and shared. The `beads-server` service names this entry (`data.persist: .beads`) and
+# bind-mounts whatever host dir it resolves to as its data dir — so the SERVICE follows the RECIPE's
+# placement. Swapping to `beads/stealth` moves the server's storage with it; nothing else changes.
 persist:
   - name: .beads
-    scope: workspace
+    scope: project
     location: in_repo
     vcs: tracked
 
 # No `init:` — beads is NOT auto-initialized. bd's setup writes into the project
 # (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and cannot be made reliably
-# idempotent/footprint-free across every git layout, so first-time init is left to the user via
-# `setup:` above (self-gated on Claude by `setup.condition` — see emit._recipe_hooks_settings).
+# idempotent/footprint-free across every git layout, so first-time init stays a deliberate user
+# action via `setup:` above. `setup.condition` (`! bd list`) makes it self-gating: the assembler
+# synthesizes a Claude SessionStart hook that prints the summary once, then stays silent once the
+# workspace has a database (see emit._recipe_hooks_settings).

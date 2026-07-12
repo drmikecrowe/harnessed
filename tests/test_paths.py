@@ -312,7 +312,7 @@ class TestCatalogRelpath:
         assert paths.catalog_relpath("serena") == Path("serena")
 
     def test_variety_ref_maps_to_family_dir(self):
-        assert paths.catalog_relpath("beads/stealth-server") == Path("beads/stealth-server")
+        assert paths.catalog_relpath("beads/stealth") == Path("beads/stealth")
 
     @pytest.mark.parametrize("bad", ["..", "beads/..", "../beads", "beads//stealth", "/beads", "beads/", ""])
     def test_traversing_or_empty_component_rejected(self, bad):
