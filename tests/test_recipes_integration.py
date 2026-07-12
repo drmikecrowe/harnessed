@@ -50,9 +50,7 @@ NO_LIVE_CONNECT = {"claude_openbrain-example", "claude_hindsight"}
 # structurally empty for these; verified manually, not by this fast sweep.
 NO_CAPABILITY_ORACLE = {
     "claude_beads-team",
-    "claude_beads-team-server",
     "claude_beads-stealth",
-    "claude_beads-stealth-server",
     "claude_rtk",
     "claude_solidspec",
 }

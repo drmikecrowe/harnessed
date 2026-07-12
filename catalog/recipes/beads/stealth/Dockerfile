@@ -4,11 +4,15 @@
 # re-declares `ARG HARNESS` after it, so ${HARNESS} is available here and recipes stay
 # harness-independent.
 #
-# Bake the `bd` CLI (https://github.com/gastownhall/beads): a single native binary that bundles
-# embedded Dolt — local-first, git-free persistent task memory for agents. Installed via mise's
-# `github:` backend (harnessed-base already ships mise + shims on PATH — same pattern as the
-# sibling `beads` recipe and catalog/base/Dockerfile.harnessed-omp's `omp` install): mise resolves
-# the release asset for the current arch and verifies GitHub artifact attestations.
+# Bake ONLY the `bd` CLI (https://github.com/gastownhall/beads) — local-first, git-free persistent
+# task memory for agents. Deliberately NOT `dolt`: bd runs here as a pure CLIENT of the project's
+# `beads-server` service, over a unix socket. It never starts an engine (bd's bundled Dolt is an
+# embedded library, and embedded is exactly what this design removes — see recipe.yaml), so it needs
+# no `dolt` binary on PATH, and not shipping one makes that structural.
+#
+# Installed via mise's `github:` backend (harnessed-base already ships mise + shims on PATH — same
+# pattern as catalog/base/Dockerfile.harnessed-omp's `omp` install): mise resolves the release asset
+# for the current arch and verifies GitHub artifact attestations.
 USER harnessed
 # Pin to the exact release tag (no @latest / :latest / --branch — the assembler pin gate rejects
 # floating refs).
@@ -24,9 +28,10 @@ USER root
 # left to the user, via recipe.yaml's harness-agnostic `setup:` note (self-gated on Claude by
 # `setup.condition`; `! bd list`).
 USER harnessed
-# BEADS_DIR is now a static ENV pointing at the host-persisted project-scoped bind-mount
-# ($HOME/.beads → $XDG_DATA_HOME/harnessed/persist/beads/<git-common-dir-hash>/.beads/).
-# Because the mount target is a fixed container path (not $PWD-relative), the ENV is safe
-# to bake here — it won't vary across projects. The bd binary writes its embedded Dolt DB
-# to this path; `bd init --quiet --stealth` (run once via `harnessed init`) creates it.
+# BEADS_DIR is a static ENV pointing at the host-persisted project-scoped bind-mount
+# ($HOME/.beads → $XDG_DATA_HOME/harnessed/persist/beads-stealth/<git-common-dir-hash>/.beads/).
+# The mount target is a fixed container path (not $PWD-relative), so the ENV is safe to bake — it
+# won't vary across projects. The beads-server service bind-mounts that SAME host dir as its data
+# dir, and serves the socket from inside it at $BEADS_DIR/run/mysql.sock (exported into the attach
+# shell as $HARNESSED_BEADS_SERVER_SOCKET), so client and server agree by construction.
 ENV BEADS_DIR=/home/harnessed/.beads

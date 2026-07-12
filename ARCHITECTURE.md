@@ -47,8 +47,20 @@ Generated profiles are **not** in the repo — they are emitted to `$XDG_DATA_HO
   optional Dockerfile) that is added **onto** an agent. Recipes are **harness-independent**: they
   carry no `harnesses:` field. Any harness-specific step branches on the `${HARNESS}` build arg
   *inside* the recipe's Dockerfile.
-- **service** — a shared sidecar (its own image + `service.yaml`) that a recipe references via
-  `service:`. Host-published; outlives any instance.
+- **service** — a sidecar with its own image + `service.yaml`, referenced by a recipe via `service:`
+  (an MCP server) or attached by a stack via `services:` (no MCP surface). Two scopes:
+  - `scope: global` (default) — ONE shared container, host-published on a static port, reached at
+    `host.containers.internal:<port>`; outlives any instance.
+  - `scope: project` — ONE container **per project** (git-common-dir keyed), for a service that holds
+    an **exclusive lock over per-project data** and so cannot be shared (a `dolt sql-server` is the
+    motivating case — see `catalog/services/beads-server/`). Its data dir is a bind mount of a
+    persist entry declared by a recipe in the stack (`data.persist`), so the **service follows the
+    recipe's placement** (`in_repo` vs `host`) instead of owning a named volume. It is reached
+    through a **unix socket** inside that same dir (`socket:`), which publishes no port at all: a
+    socket is a filesystem object, so it crosses containers via the bind mount with no network
+    namespace and no port allocation. (`127.0.0.1` differs per netns, so TCP cannot reach another
+    container's server regardless of port.) The launcher exports the container-side path as
+    `$HARNESSED_<NAME>_SOCKET`.
 - **stack** — a **harness-free** chosen set of recipes, named after the recipes (e.g.
   `review-harness`, `gsd-core_repowise`; underscores between fields, hyphens within a name; a stack
   may **not** be named after a harness). The harness is **not** a stack property — it is a required

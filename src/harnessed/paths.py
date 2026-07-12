@@ -315,6 +315,27 @@ def persist_workspace_dir(recipe: str, project_path: str | Path, name: str) -> P
     return persist_root() / recipe / project_hash(project_path) / name
 
 
+def persist_in_repo_dir(project_path: str | Path, name: str) -> Path:
+    """Host dir for an `location: in_repo` persist entry, anchored at the CHECKOUT ROOT.
+
+    A worktree-aware anchor, so every worktree of one checkout resolves to the SAME dir — matching
+    how tools that key their in-repo state off the git common dir already behave (verified: `bd
+    where` in a bare + linked-worktree layout resolves to `<bare>/.beads`, not `<worktree>/.beads`).
+
+      * normal checkout — common dir is `<root>/.git`  → `<root>/<name>`
+      * bare + linked worktrees — common dir is `<...>/.bare` → `<...>/.bare/<name>`
+      * not a git repo — falls back to `<project_path>/<name>`
+
+    This is the dir a project-scoped service bind-mounts as its data dir when the owning recipe
+    declares `location: in_repo` (see launcher._service_data_dir).
+    """
+    gcd = git_common_dir(project_path)
+    if gcd is None:
+        return Path(project_path) / name
+    root = gcd.parent if gcd.name == ".git" else gcd
+    return root / name
+
+
 def persist_project_dir(recipe: str, project_path: str | Path, name: str) -> Path:
     """Host dir for a project-scoped persist entry: keyed by git-common-dir (cross-worktree).
 

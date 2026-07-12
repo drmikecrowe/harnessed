@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://harnessed.dev/schemas/service.schema.json",
   "title": "harnessed service",
-  "description": "A shared sidecar service definition (catalog/services/<name>/service.yaml). Its own image/container/volume on a host-published port, with a lifecycle independent of any instance. A recipe references it via mcp.servers[].service. See docs/harnessed-design.md §3/§9.",
+  "description": "A sidecar service definition (catalog/services/<name>/service.yaml). Its own image and container, with a lifecycle independent of any instance. A recipe references it via mcp.servers[].service; a stack attaches a non-MCP sidecar via its services: list. See docs/harnessed-design.md §3/§9.",
   "type": "object",
   "additionalProperties": true,
-  "required": ["name", "image", "port"],
+  "required": ["name", "image"],
   "properties": {
     "name": {
-      "description": "Service identity. Global by name (e.g. hindsight) — reached via host.containers.internal:<port>, or by DNS name over the HARNESSED_NET bridge.",
+      "description": "Service identity. For scope: global, unique by name (e.g. hindsight) — reached via host.containers.internal:<port>. For scope: project, one container per project (git-common-dir keyed).",
       "type": "string",
       "minLength": 1
     },
@@ -17,18 +17,46 @@
       "type": "string",
       "minLength": 1
     },
+    "scope": {
+      "description": "global (default): ONE shared container, host-published, reached at host.containers.internal:<port>. project: one container PER PROJECT (keyed by git-common-dir), whose data dir is the project's own persist entry — used when a service holds an exclusive on-disk lock over per-project data (e.g. a dolt sql-server).",
+      "type": "string",
+      "enum": ["global", "project"],
+      "default": "global"
+    },
     "port": {
-      "description": "The host-published port the service listens on (1–65535). Peers reach it at host.containers.internal:<port>.",
+      "description": "The host-published port the service listens on (1–65535). Peers reach it at host.containers.internal:<port>. Required unless `socket` is set (socket-only services publish no port).",
       "type": "integer",
       "minimum": 1,
       "maximum": 65535
     },
+    "socket": {
+      "description": "Unix socket path RELATIVE to the service's data dir (e.g. run/mysql.sock). When set, the service publishes NO host port: peers reach it through the socket, which rides the shared bind-mount as a filesystem object — no network namespace, no port allocation. Requires scope: project.",
+      "type": "string",
+      "minLength": 1
+    },
+    "data": {
+      "description": "For scope: project — where this service's data dir comes from. Instead of a named volume, the launcher bind-mounts the host dir behind a persist entry declared by whichever recipe in the stack owns it, so the SERVICE follows the RECIPE's placement choice (in_repo vs host).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["persist"],
+      "properties": {
+        "persist": {
+          "description": "Name of the persist entry (declared by a recipe in the stack) whose host dir is bind-mounted as this service's data dir at /data (e.g. .beads).",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "volume": {
-      "description": "Service-scoped, harness-independent named volume (defaults to <name>-data). Persists across `svc down`.",
+      "description": "Service-scoped, harness-independent named volume (defaults to <name>-data), mounted at /data. Only for scope: global — a project-scoped service uses `data:` instead.",
       "type": "string"
     },
     "healthcheck": {
       "description": "Shell command used as the container healthcheck (e.g. curl -sf http://localhost:8080/health || exit 1).",
+      "type": "string"
+    },
+    "sync": {
+      "description": "Shell command run INSIDE the service container by `harnessed svc sync <name>`. For a dolt sql-server this is `bd dolt push`: bd's git sync shells out to the dolt CLI, which only routes to a server on its own loopback, so the push cannot run from an agent container. Never automatic — it writes to your git remote.",
       "type": "string"
     }
   }
