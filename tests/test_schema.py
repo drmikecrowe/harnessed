@@ -143,6 +143,38 @@ class TestLoadStack:
         with pytest.raises(SchemaError, match="expected a YAML mapping"):
             load_stack(d)
 
+    def test_harnesses_default_empty(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\n")
+        assert load_stack(d).harnesses == []
+
+    def test_harnesses_valid_list_parsed(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharnesses: [claude, omp]\n")
+        assert load_stack(d).harnesses == ["claude", "omp"]
+
+    def test_harnesses_dedupes_preserving_order(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharnesses: [omp, claude, omp]\n")
+        assert load_stack(d).harnesses == ["omp", "claude"]
+
+    def test_harnesses_unknown_name_rejected(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharnesses: [claude, opencodee]\n")
+        with pytest.raises(SchemaError, match="unsupported harness 'opencodee'"):
+            load_stack(d)
+
+    def test_harnesses_non_list_rejected(self, tmp_path):
+        d = tmp_path / "s"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: s\nharnesses: claude\n")
+        with pytest.raises(SchemaError, match="'harnesses' must be a list"):
+            load_stack(d)
+
     def test_ssh_keys_default_empty(self, tmp_path):
         d = tmp_path / "s"
         d.mkdir()

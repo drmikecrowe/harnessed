@@ -628,38 +628,86 @@ def _built_image_hash(rt: str, stack: str, harness: str) -> str | None:
     return value or None
 
 
+def _declared_harnesses(stack: str, root: Path | None) -> list[str]:
+    """The stack's `harnesses:` list, or [] when it declares none (or cannot be loaded)."""
+    stack_dir = (root / "stacks" / stack) if root else paths.find_in_catalog("stacks", stack)
+    if not (stack_dir / "stack.yaml").is_file():
+        _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir}/stack.yaml)")
+        raise typer.Exit(1)
+    try:
+        return load_stack(stack_dir).harnesses
+    except SchemaError as exc:
+        _err.print(f"[bold red]error:[/bold red] loading stack '{stack}' failed: {exc}")
+        raise typer.Exit(1)
+
+
+def _declared_pairs(root: Path | None) -> list[tuple[str, str]]:
+    """Every (stack, harness) pair declared via a catalog stack's `harnesses:` list.
+
+    A stack that declares no harnesses contributes nothing — bare `harnessed build` then treats it
+    exactly as before (reconcile-only, driven by what has already been built). Declaring the key is
+    the opt-in that makes a stack build from scratch on a bare `build`.
+    """
+    if root:
+        stacks_dir = root / "stacks"
+        names = sorted(
+            d.name for d in stacks_dir.iterdir()
+            if d.is_dir() and (d / "stack.yaml").is_file()
+        ) if stacks_dir.is_dir() else []
+    else:
+        names = paths.list_catalog_stacks()
+
+    pairs: list[tuple[str, str]] = []
+    for name in names:
+        stack_dir = (root / "stacks" / name) if root else paths.find_in_catalog("stacks", name)
+        try:
+            stack = load_stack(stack_dir)
+        except SchemaError as exc:
+            _err.print(f"[yellow]warn:[/yellow] skipping '{name}' ({exc})")
+            continue
+        pairs.extend((name, harness) for harness in stack.harnesses)
+    return pairs
+
+
 def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
-    """Rebuild every previously-built (stack, harness) pair whose recipe-closure hash no longer
-    matches its built image's `harnessed.recipe-hash` label — the reconciliation half of a bare
-    `harnessed build`. Scans built images (via `podman images --filter label=harnessed=true`)
-    rather than the catalog, so only pairs that have been explicitly built are reconciled."""
+    """Rebuild every stale (stack, harness) pair — the reconciliation half of a bare
+    `harnessed build`. A pair is in scope when it is either:
+
+    * DECLARED — the stack's `harnesses:` list names it. These build even if no image exists yet,
+      which is how a bare `build` provisions a freshly-authored stack from nothing.
+    * PREVIOUSLY BUILT — a `harnessed=true`-labelled image exists for it. Scanning built images
+      (rather than the whole catalog) keeps stacks that declare no `harnesses:` opt-in: they are
+      only ever rebuilt once someone has named them explicitly at least once.
+
+    A pair is rebuilt when its recipe-closure hash no longer matches the `harnessed.recipe-hash`
+    label baked into its image (or the image is absent). Fresh/unchanged pairs are skipped."""
+    pairs: list[tuple[str, str]] = _declared_pairs(root)  # (stack, harness)
+
     result = subprocess.run(
         [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}"],
         capture_output=True, text=True,
     )
-    if result.returncode != 0:
-        return
-    # Parse image names of the form harnessed-<harness>-<stack>.
-    # harness = the first hyphen-delimited segment after "harnessed-" that is a known harness name;
-    # stack = the remainder after removing "harnessed-<harness>-".
-    pairs: list[tuple[str, str]] = []  # (stack, harness)
-    for repo in result.stdout.splitlines():
-        repo = repo.strip()
-        if not repo.startswith("harnessed-"):
-            continue
-        tail = repo[len("harnessed-"):]  # <harness>-<stack>
-        for harness_candidate in HARNESS_CONFIG_DIR:
-            prefix = harness_candidate + "-"
-            if tail.startswith(prefix):
-                stack_name = tail[len(prefix):]
-                if stack_name:
-                    pairs.append((stack_name, harness_candidate))
-                break
+    if result.returncode == 0:
+        # Parse image names of the form harnessed-<harness>-<stack>.
+        # harness = the first hyphen-delimited segment after "harnessed-" that is a known harness
+        # name; stack = the remainder after removing "harnessed-<harness>-".
+        for repo in result.stdout.splitlines():
+            repo = repo.strip()
+            if not repo.startswith("harnessed-"):
+                continue
+            tail = repo[len("harnessed-"):]  # <harness>-<stack>
+            for harness_candidate in HARNESS_CONFIG_DIR:
+                prefix = harness_candidate + "-"
+                if tail.startswith(prefix):
+                    stack_name = tail[len(prefix):]
+                    if stack_name and (stack_name, harness_candidate) not in pairs:
+                        pairs.append((stack_name, harness_candidate))
+                    break
     if not pairs:
-        _out.print("[blue][INFO][/blue] No previously-built stacks found to reconcile.")
+        _out.print("[blue][INFO][/blue] No declared or previously-built stacks found to reconcile.")
         return
 
-    _out.print(f"[blue][INFO][/blue] Reconciling {len(pairs)} built stack(s) against their recipe hash ...")
+    _out.print(f"[blue][INFO][/blue] Reconciling {len(pairs)} stack(s) against their recipe hash ...")
     for name, harness in pairs:
         stack_dir = (root / "stacks" / name) if root else paths.find_in_catalog("stacks", name)
         if not (stack_dir / "stack.yaml").is_file():
@@ -2578,10 +2626,11 @@ def _attach(
 @app.command("build")
 def build(
     stack: Optional[str] = typer.Argument(
-        None, help="Stack to assemble; omit to rebuild base images and reconcile all previously-built stacks"
+        None, help="Stack to assemble; omit to rebuild base images and reconcile every declared/previously-built stack"
     ),
     harness: Optional[str] = typer.Argument(
-        None, help="Harness to build for (required when stack is given)"
+        None,
+        help="Harness to build for; omit to build every harness in the stack's `harnesses:` list",
     ),
     root: Optional[str] = typer.Option(None, "--root", help="Alternate stacks/recipes root"),
     no_scans: bool = typer.Option(False, "--no-security-scans", help="Skip credentialed scans"),
@@ -2603,11 +2652,19 @@ def build(
 ) -> None:
     """Assemble a stack (emit + build hatago), or rebuild base/claude/hatago images.
 
-    With no `stack` argument: rebuilds the base/claude/hatago images, then reconciles every stack
-    across the catalog (repo + user overlay) — comparing each stack's recipe-closure content hash
-    (`compute_recipe_hash`) against the `harnessed.recipe-hash` label baked into its built image,
-    and rebuilding any that are missing or stale. This is how editing a shared recipe propagates to
-    every stack that uses it without having to name them one by one.
+    Three forms, driven by the stack's optional `harnesses:` list:
+
+    * `build <stack> <harness>` — build that one pair.
+    * `build <stack>`           — build every harness in the stack's `harnesses:` list (errors when
+                                  the stack declares none: the harness is then still required).
+    * `build`                   — rebuild the base/claude/hatago images, then reconcile every
+                                  DECLARED (stack, harness) pair across the catalog plus every pair
+                                  that has been built before — comparing each stack's recipe-closure
+                                  content hash (`compute_recipe_hash`) against the
+                                  `harnessed.recipe-hash` label baked into its built image, and
+                                  rebuilding any that are missing or stale. This is how editing a
+                                  shared recipe propagates to every stack that uses it without
+                                  having to name them one by one.
 
     The --corp-proxy-ca-crt flag is a one-time setup for SSL-inspecting corporate proxies: it
     persists the CA bundle at $XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt and subsequent builds
@@ -2636,16 +2693,29 @@ def build(
 
     root_path = Path(root).resolve() if root else None
     if stack:
-        if not harness:
-            _err.print("[bold red]error:[/bold red] harness is required when a stack is specified (e.g.: harnessed build my-stack claude)")
-            raise typer.Exit(1)
-        if harness not in HARNESS_CONFIG_DIR:
-            _err.print(
-                f"[bold red]error:[/bold red] unsupported harness '{harness}' "
-                f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+        if harness:
+            if harness not in HARNESS_CONFIG_DIR:
+                _err.print(
+                    f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+                    f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+                )
+                raise typer.Exit(1)
+            targets = [harness]
+        else:
+            # No harness argument: fan out to the stack's declared `harnesses:` list.
+            targets = _declared_harnesses(stack, root_path)
+            if not targets:
+                _err.print(
+                    "[bold red]error:[/bold red] harness is required when a stack is specified "
+                    "(e.g.: harnessed build my-stack claude) — or declare `harnesses: [claude, omp]` "
+                    f"in the '{stack}' stack.yaml to build several at once"
+                )
+                raise typer.Exit(1)
+            _out.print(
+                f"[blue][INFO][/blue] Stack '{stack}' declares harnesses: {', '.join(targets)}"
             )
-            raise typer.Exit(1)
-        _build_stack(rt, stack, harness, root_path, strict=not no_strict)
+        for target in targets:
+            _build_stack(rt, stack, target, root_path, strict=not no_strict)
     else:
         _build_images_cmd(rt, force=force)
         _reconcile_stacks(rt, root_path, strict=not no_strict)

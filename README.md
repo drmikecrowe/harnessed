@@ -104,11 +104,26 @@ the `Dockerfile.harnessed-<stack>`, then drives `podman build`.
 
 ```bash
 harnessed build                    # (re)build the shared base/agent/hatago images
+harnessed build <stack>            # build every harness in the stack's `harnesses:` list
 harnessed build <stack> <harness>  # assemble one stack for a harness: emit profile + build images (+ supply-chain scan)
 ```
 
-Bare `harnessed build` rebuilds the shared base/agent/hatago images (and reconciles every
-already-built `<stack> <harness>` pair). `harnessed build <stack> <harness>` rebuilds the base (so
+A stack may declare which harnesses it is built for:
+
+```yaml
+name: my-stack
+recipes: [beads, serena]
+harnesses: [claude, omp]   # build-time only — the harness is still a run-time argument
+```
+
+`harnessed build <stack>` then fans out to every name in that list, and bare `harnessed build`
+includes those `<stack> <harness>` pairs in its sweep — so a freshly-authored stack is provisioned
+without naming it. A stack that declares no `harnesses:` is unchanged: `build <stack>` still
+requires an explicit harness, and a bare `build` only reconciles it once it has been built at
+least once.
+
+Bare `harnessed build` rebuilds the shared base/agent/hatago images (and reconciles every declared
+or already-built `<stack> <harness>` pair). `harnessed build <stack> <harness>` rebuilds the base (so
 base-image changes propagate), assembles in-process, then builds the hatago, agent, and derived
 `harnessed-<harness>-<stack>` images. The derived image's final layer runs an **in-image,
 advisory** supply-chain scan over what actually landed — emitting the profile to
@@ -143,7 +158,7 @@ harnessed test time claude
 | Command | What it does |
 | --- | --- |
 | `harnessed <stack> <harness> [path] [--fresh]` | Isolated stack on a harness: assembled profile + pod (harness + hatago) |
-| `harnessed build [<stack> <harness>]` | Build the base/harness/hatago images (+ reconcile built pairs), or assemble + build one stack for a harness |
+| `harnessed build [<stack> [<harness>]]` | Build the base/harness/hatago images (+ reconcile declared/built pairs), or assemble + build a stack — for one harness, or for every harness in its `harnesses:` list |
 | `harnessed test <stack> <harness>` | Capability test: launch `--fresh` headless + assert declared capabilities (markdown report) |
 | `harnessed svc up \| down \| list <service>` | Manage shared service sidecars (own image + volume) |
 | `harnessed list` | List authored stacks (with which harnesses are built) + running instances |
