@@ -27,9 +27,18 @@ README).
 | **Git** | `bd init` installs git hooks (agent-identity commit trailers) and auto-wires the git `origin` as a Dolt remote. Issue history lives under `refs/dolt/data` — **not** a git branch, so protected-`main` workflows are untouched. |
 | **Baked** | `bd` 1.1.0 only. No `dolt` binary: bd never runs an engine here, and the sync that needs the dolt CLI runs in the server container. |
 
+## Stack wiring
+
+```yaml
+recipes:  [beads/team]
+services: [beads-server]     # REQUIRED — without it there is no server and no socket to connect to
+```
+
 ## Setup — step 1
 
 Then follow steps 2 and 3 from [the family README](../README.md#setup--the-same-shape-for-both).
+Migrating a project that predates the server? Same command — see
+[Migrating](../README.md#migrating-a-project-that-predates-the-server).
 
 ```sh
 bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET" \

@@ -96,3 +96,31 @@ bd setup <harness> --project
 
 # 3. Restart the agent so the hook/instructions load.
 ```
+
+## Migrating a project that predates the server
+
+A project initialized under the old per-container-server (or embedded) beads has a
+`.beads/metadata.json` that still points at bd's own engine — `dolt_mode: server` with a
+`dolt_server_host`/`dolt_server_port`, and no `dolt_server_socket`. Under the new recipes bd is a
+client with **no `dolt` binary in its image**, so it cannot start that engine: `bd list` fails, which
+means `setup.condition` (`! bd list`) goes true and the setup notice re-appears on its own. Re-running
+step 1 above repoints `metadata.json` at the socket.
+
+**Your existing issue data is not moved and not re-imported.** The server's data dir is the same
+`.beads/` bd already resolved (`bd where` — in a bare+worktree checkout that is `<bare>/.beads`, and
+`paths.persist_in_repo_dir` anchors the mount to the same place), so the server simply opens the
+Dolt databases already sitting there.
+
+Two things to clear out from the old topology, if present:
+
+```sh
+rm -f .beads/dolt-server.lock .beads/dolt/.dolt/noms/LOCK   # stale locks from bd's own server
+```
+
+Stacks that referenced the deleted `beads/team-server` or `beads/stealth-server` must move to
+`beads/team` / `beads/stealth` and attach the service:
+
+```yaml
+recipes:  [beads/team]
+services: [beads-server]     # a dolt sql-server is MySQL-wire, not MCP — attached at stack level
+```

@@ -35,10 +35,15 @@ name: beads-team
 description: "bd (beads) — graph issue tracker / task memory, TEAM placement: .beads/ in the repo, git-tracked, on the project's beads-server (one dolt sql-server per project, reached over a unix socket)."
 setup:
   summary: >-
-    Run `bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"` then `bd
-    setup <harness> --project` once per workspace, then restart the agent; these steps create this
-    project's database on its beads-server and wire the bd prime workflow into the harness. Git sync
-    is a HOST command — `harnessed svc sync beads-server --stack <stack>` (see the recipe README).
+    Run `bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"` then `bd setup
+    <harness> --project` once per workspace, then restart the agent; these steps point bd at this
+    project's beads-server (creating its database there) and wire the bd prime workflow into the
+    harness. Requires `services: [beads-server]` in the stack — bd is a pure CLIENT and never starts
+    an engine. Re-run the same `bd init` line to MIGRATE a project initialized before the server
+    (its metadata.json still names bd's own engine, so `bd list` fails until repointed); your
+    existing issue data stays where it is and is opened in place. Git sync is a HOST command:
+    `harnessed svc sync beads-server --stack <stack>` — `bd dolt push` cannot work from inside an
+    agent (see the recipe README).
   reference: https://github.com/gastownhall/beads
   condition: '! bd list >/dev/null 2>&1'
 

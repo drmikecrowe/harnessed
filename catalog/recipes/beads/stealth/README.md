@@ -35,9 +35,18 @@ A shell `export BEADS_DIR=…` in a hook script only affects that script's own p
 before `bd` ever runs. A Dockerfile `ENV` reaches every process in the container unconditionally. The
 fixed mount target is what makes the static ENV safe.
 
+## Stack wiring
+
+```yaml
+recipes:  [beads/stealth]
+services: [beads-server]     # REQUIRED — without it there is no server and no socket to connect to
+```
+
 ## Setup — step 1
 
 Then follow steps 2 and 3 from [the family README](../README.md#setup--the-same-shape-for-both).
+Migrating a project that predates the server? Same command — see
+[Migrating](../README.md#migrating-a-project-that-predates-the-server).
 
 ```sh
 bd init --stealth --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET" \
