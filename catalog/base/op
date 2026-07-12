@@ -1,0 +1,21 @@
+#!/bin/sh
+# PATH shim in front of the real 1Password CLI at /usr/bin/op.
+#
+# op authorizes against the 1Password desktop app by *calling application*, which cannot reach a
+# container (docs/guides/secrets.md) — so in here it always finds zero accounts and falls back to
+# its interactive setup prompt ("Do you want to add an account manually now? [Y/n]"). op writes
+# that prompt to /dev/tty and reads the answer from /dev/tty, so redirecting stdin does NOT
+# suppress it: op opens the agent's controlling terminal directly, then sits in a read() on the
+# same pty as the agent TUI. The kernel hands each keystroke to whichever reader it wakes, so the
+# agent silently loses characters ("are you ready" arrives as "ady"), and op itself hangs forever.
+# Any project whose mise `_.source` hook shells out to op re-triggers this on every activation.
+#
+# setsid drops the controlling terminal, so op's /dev/tty open fails, the prompt is skipped, and op
+# exits non-zero with its own "No accounts configured" message — a clean failure a caller can
+# branch on. Service-account and Connect auth (OP_SERVICE_ACCOUNT_TOKEN / OP_CONNECT_HOST) need no
+# terminal and run unchanged, as does op-ssh-sign (a separate binary, not shimmed).
+#
+# --wait: setsid execs directly when the caller is not already a process-group leader, but forks
+# when it is. Without --wait that fork detaches and the parent returns 0 immediately, discarding
+# op's exit status and racing anything reading its stdout (e.g. `op read … | ssh-add -`).
+exec setsid --wait /usr/bin/op "$@"
