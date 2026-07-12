@@ -10,6 +10,7 @@ Two bugs fixed here, covered separately:
   when omitted (mirrors `build`'s `<stack> [harness]` shape) — covered by `TestScanCommand`.
 """
 
+import re
 import sys
 
 import pytest
@@ -18,6 +19,14 @@ from typer.testing import CliRunner
 from harnessed import launcher
 
 runner = CliRunner()
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def plain(output: str) -> str:
+    """Strip ANSI color codes and collapse whitespace so usage-text assertions are stable across
+    TTY vs. non-interactive (CI) rendering."""
+    return " ".join(_ANSI.sub("", output).split())
 
 
 class TestMainDispatch:
@@ -82,9 +91,10 @@ class TestScanCommand:
     def test_bare_scan_shows_its_own_usage_not_launchs(self):
         result = runner.invoke(launcher.app, ["scan"])
         assert result.exit_code != 0
-        assert "Usage: harnessed scan " in result.output
-        assert "STACK" in result.output
-        assert "harnessed launch" not in result.output
+        output = plain(result.output)
+        assert "Usage: harnessed scan " in output
+        assert "STACK" in output
+        assert "harnessed launch" not in output
 
     def test_explicit_harness_scans_only_that_pair(self, stack, scanned, monkeypatch):
         _mark_built(monkeypatch, {(stack, "claude")})
