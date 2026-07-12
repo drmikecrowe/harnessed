@@ -469,6 +469,14 @@ def _service_dockerfile_with_ca(dockerfile: Path) -> Path | None:
     return Path(tmp)
 
 
+# Shared images (base + per-harness agent) are FROM-parents of every derived stack image, so a
+# multi-pair build (`harnessed build` reconcile, or a stack declaring several harnesses) would
+# otherwise re-issue the same `podman build` once per pair. Cache-backed, but each invocation still
+# tars up the whole build context. Building each once per PROCESS is enough: nothing between two
+# pairs in the same run can change the base/agent Dockerfile under us.
+_SHARED_IMAGES_BUILT: set[str] = set()
+
+
 def _build_images_cmd(rt: str, force: bool = False) -> None:
     """(Re)build the shared base + agent images (stack images are built lazily per stack)."""
     _ensure_extra_tools()
@@ -485,13 +493,17 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
         if force or not _image_exists(rt, image):
             _out.print(f"[blue][INFO][/blue] Building {image} ...")
             _run([rt, "build", "-t", image, "-f", str(dockerfile), *cache_arg, *secret_args, str(hdir)])
+            _SHARED_IMAGES_BUILT.add(image)
     _out.print("[green][SUCCESS][/green] harnessed images ready")
 
 
 def _build_base_image(rt: str) -> None:
     """Force-(re)build the parameterised base so edits to Dockerfile.harnessed-base (the supply-chain
     scan script, extra-tools, scanner installs) propagate into every FROM-derived agent / hatago /
-    stack image. Layer-cached: a no-op when the base Dockerfile is unchanged."""
+    stack image. Layer-cached: a no-op when the base Dockerfile is unchanged, and skipped outright
+    once this process has already built it (see _SHARED_IMAGES_BUILT)."""
+    if _BASE_IMAGE in _SHARED_IMAGES_BUILT:
+        return
     _ensure_extra_tools()
     no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
     cache_arg = ["--no-cache"] if no_cache else []
@@ -508,15 +520,20 @@ def _build_base_image(rt: str) -> None:
         *secret_args,
         str(_harnessed_dir()),
     ])
+    _SHARED_IMAGES_BUILT.add(_BASE_IMAGE)
 
 
 def _build_agent_image(rt: str, harness: str) -> None:
     """(Re)build the agent image from its agent.yaml Dockerfile (podman layer cache decides whether
     anything actually rebuilds). Build args from agent.yaml are the single source of truth for pinned
     tool versions (e.g. OMP_VERSION) — the agent Dockerfile's ARG carries no default and is supplied
-    here, so changing the pin here cache-busts exactly the version layer and onward."""
+    here, so changing the pin here cache-busts exactly the version layer and onward.
+
+    Built at most once per process: N stacks sharing a harness share one agent image."""
     agent = load_agent(harness)
     image = _agent_image(harness)
+    if image in _SHARED_IMAGES_BUILT:
+        return
     if not _image_exists(rt, _BASE_IMAGE):
         _out.print("[yellow][WARNING][/yellow] harnessed-base not found. Building base first…")
         _build_images_cmd(rt, force=False)
@@ -528,6 +545,7 @@ def _build_agent_image(rt: str, harness: str) -> None:
         build_args += ["--build-arg", f"{key}={val}"]
     _out.print(f"[blue][INFO][/blue] Building {image} ...")
     _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, str(hdir)])
+    _SHARED_IMAGES_BUILT.add(image)
 
 
 def _ensure_harness_image(rt: str, harness: str) -> None:
