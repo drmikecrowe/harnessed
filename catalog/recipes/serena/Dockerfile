@@ -13,4 +13,11 @@ USER harnessed
 # fetches Python 3.13 + serena's deps (anthropic, pydantic, flask, starlette, tiktoken, …) — not
 # firewalled at build time. Bump SERENA_VERSION to update.
 ARG SERENA_VERSION=1.5.3
-RUN uv tool install -p 3.13 "serena-agent==${SERENA_VERSION}"
+# `serena init` writes the global config (~/.serena/serena_config.yml) that selects the code-
+# intelligence backend. Without it `start-mcp-server` comes up with no LSP backend configured, so
+# it is baked here rather than left to the user — a container is rebuilt, not hand-initialised, and
+# an interactive one-time step has nowhere to persist to. It is non-interactive (writes the config
+# and exits) and `-b LSP` is the default backend, stated explicitly so a future upstream default
+# flip cannot silently change the image.
+RUN uv tool install -p 3.13 "serena-agent==${SERENA_VERSION}" \
+    && serena init -b LSP

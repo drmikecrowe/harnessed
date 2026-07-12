@@ -15,9 +15,11 @@
 #
 # pnpm — never npm/npx. Pin the exact version (no @latest).
 USER harnessed
-# The stdio MCP shim (proxies to the store over AGENTMEMORY_URL). CONFIRM AT BUILD whether the
-# `agentmemory-mcp` bin ships from `@agentmemory/agentmemory` or a separate `@agentmemory/mcp`
-# package, and pin the exact source — the shim is the single integration risk (plan §Risks).
-# If the bin lives in a separate package, switch the spec below to that package name verbatim.
+# The stdio MCP shim (proxies to the store over AGENTMEMORY_URL) is `@agentmemory/mcp`, NOT
+# `@agentmemory/agentmemory`. Verified against the npm registry at 0.9.27:
+#   @agentmemory/mcp         bin: { "agentmemory-mcp": "bin.mjs" }   <- the shim recipe.yaml runs
+#   @agentmemory/agentmemory bin: { "agentmemory":     "dist/cli.mjs" }  <- the store CLI/daemon
+# Only `@agentmemory/mcp` ships the `agentmemory-mcp` binary. The store CLI belongs in the SERVICE
+# image (catalog/services/agentmemory/), not here — this image needs the adapter and nothing else.
 ARG AGENTMEMORY_VERSION=0.9.27
-RUN pnpm add -g "@agentmemory/agentmemory@${AGENTMEMORY_VERSION}"
+RUN pnpm add -g "@agentmemory/mcp@${AGENTMEMORY_VERSION}"
