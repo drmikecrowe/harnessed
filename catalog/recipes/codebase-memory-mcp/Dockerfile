@@ -14,5 +14,7 @@
 # pattern as the beads recipe): mise resolves the standard (non-`-portable`) asset for the current
 # arch and verifies GitHub artifact attestations.
 USER harnessed
-ARG CBM_VERSION=0.8.1
+# The release tags carry a `v` prefix (v0.9.0); mise's github: backend resolves the bare version
+# against them. Linux amd64/arm64 assets both ship at this tag.
+ARG CBM_VERSION=0.9.0
 RUN mise use -g "github:DeusData/codebase-memory-mcp@${CBM_VERSION}" && mise install

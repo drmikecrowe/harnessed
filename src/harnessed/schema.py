@@ -845,6 +845,17 @@ def load_stack(stack_dir: Path) -> Stack:
     raw = _load_yaml(manifest)
     if "name" not in raw:
         raise SchemaError(f"{manifest}: required field 'name' is missing")
+    # A stack is resolved by DIRECTORY name (`_resolve_dir(root, "stacks", stack_name)`), so the
+    # directory is the identity and `name:` is a restatement of it. Nothing used to enforce that
+    # they agree — and `staleness.compute_stamp` re-resolves the manifest from `stack.name`, so a
+    # mismatch surfaced far downstream as a FileNotFoundError against a directory that never
+    # existed. Fail here instead, where the fix is obvious.
+    if raw["name"] != stack_dir.name:
+        raise SchemaError(
+            f"{manifest}: stack name '{raw['name']}' does not match its directory "
+            f"'{stack_dir.name}' — a stack is resolved by directory name, so the two must agree "
+            f"(rename the directory, or set name: {stack_dir.name})"
+        )
     if raw["name"] in HARNESS_CONFIG_DIR:
         raise SchemaError(
             f"{manifest}: stack name '{raw['name']}' conflicts with a harness name — "

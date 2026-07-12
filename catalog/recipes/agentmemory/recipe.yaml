@@ -28,6 +28,15 @@ description: >
 # The stdio shim is a hatago child baked into the harness image. It proxies to the shared REST
 # store over the network (AGENTMEMORY_URL → host.containers.internal:3111, the service port).
 # `transport: stdio` is explicit: hatago wraps this child's stdio → HTTP for the agent.
+#
+# !! THE STACK MUST DECLARE `services: [agentmemory]` !!
+# The store is NOT started automatically by this recipe. `_service_refs` (launcher.py) collects
+# services from two places only: `mcp.servers[].service` refs, and the stack's own `services:` list.
+# The schema makes `service:` and `command:` mutually exclusive, and this entry needs `command:`
+# (it is a stdio child, not a URL proxy) — so it can never carry a `service:` ref, and the store
+# is invisible to `_service_refs` through this recipe. Without `services: [agentmemory]` in the
+# stack, the shim starts, finds nothing at :3111, and silently degrades to its 7-tool local-only
+# fallback instead of the 53-tool shared store. This is the recipe's one sharp edge.
 mcp:
   servers:
     - name: agentmemory

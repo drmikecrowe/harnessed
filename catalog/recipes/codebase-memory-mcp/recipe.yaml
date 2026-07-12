@@ -25,7 +25,9 @@ expect:
 
 # --- MCP layer ---
 # `transport: stdio` (default): hatago runs `codebase-memory-mcp` as a child, wrapping stdio→HTTP.
-# The command is the absolute-binary name installed into /usr/local/bin by the recipe Dockerfile.
+# The command resolves through the mise shims on PATH (the Dockerfile installs via mise's github:
+# backend — NOT into /usr/local/bin). No args: upstream's own stdio config is `"args": []`; cbm
+# detects the repo from the child's cwd and auto-indexes, so `--project-root` is not needed here.
 mcp:
   servers:
     - name: codebase-memory-mcp

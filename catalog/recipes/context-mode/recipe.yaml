@@ -1,28 +1,85 @@
 # yaml-language-server: $schema=../../../schemas/recipe.schema.json
-# Recipe: context-mode — the project-scoped persist spike (T3).
+# Recipe: context-mode — per-session token discipline (mksglu/context-mode).
 #
-# The MINIMAL real recipe that exercises the just-landed persist feature (T4a). It is NOT a full
-# indexing engine: it ships one standalone skill that writes a per-project context log under
-# ~/.context-mode, and declares that folder as project-scoped persist so the notes survive a
-# `harnessed --fresh` (fresh-container) launch. The point is to prove persist end-to-end with the
-# smallest real capability.
+# context-mode sandboxes large tool output ("think in code": a command runs in a sandbox and only
+# the DERIVED answer enters the conversation, not the raw dump), routes raw Bash/Read/Grep/WebFetch
+# through its own `ctx_*` tools, and carries session state across compaction in a local SQLite DB.
+#
+# Two halves, and BOTH are required — the MCP server alone does nothing:
+#   - the MCP server (`ctx_execute`, `ctx_batch_execute`, `ctx_fetch_and_index`, …) is what the
+#     agent calls instead of dumping output into context;
+#   - the HOOKS are what make it actually fire. PreToolUse injects the routing nudge (use `ctx_*`,
+#     not raw Read/Bash); SessionStart re-injects session context. Upstream marks exactly these two
+#     REQUIRED (build/adapters/claude-code/hooks.js: REQUIRED_HOOKS). PostToolUse and PreCompact are
+#     upstream-OPTIONAL but are what give session continuity across a compaction, so both are wired.
+#
+# The prior in-repo version of this recipe was a persist tracer-bullet: a hand-written skill that
+# appended notes to ~/.context-mode. It shared a name with the real tool and nothing else — no MCP
+# server, no hooks, no sandbox. This is the real thing.
 name: context-mode
-description: Project-scoped context-notes spike — a skill that persists notes under ~/.context-mode.
-# setup: none needed — internal tracer-bullet recipe
+description: >
+  Per-session token discipline — sandboxes tool output so only the derived answer enters context,
+  routes raw commands through ctx_* tools, and survives compaction via a local SQLite session store.
+# setup: none needed — CLI, MCP server, and hooks are all wired by this recipe.
 
-# --- File-extension layer (Claude-canonical) ---
-# A STANDALONE skill dir. The assembler fans it into .claude/skills/context-mode and the capability
-# oracle picks it up by leaf name (no expect: block needed — it's not Dockerfile-delivered). The
-# skill is what actually writes to ~/.context-mode, giving persist something to carry across launches.
-skills:
-  - path: skills/context-mode
+# --- Tool layer ---
+# Installed via mise's `npm:` backend (pinned; no Dockerfile needed) → a `context-mode` shim lands
+# on PATH. Both the MCP server and every hook command below invoke that same one binary.
+tools:
+  - npm:context-mode@1.0.169
 
-# --- Persist layer (T4a) ---
-# scope: workspace — keyed by the exact launch path (per-worktree). Notes in project A never
-# reach project B.  location: host — harnessed owns the dir at
-# $XDG_DATA_HOME/harnessed/persist/context-mode/<workspace_hash>/.context-mode/ and mounts it
-# rw at ~/.context-mode inside the pod so the skill's writes survive `--fresh` relaunches.
+# --- MCP layer ---
+# stdio (the schema default): hatago spawns `context-mode` as a child and wraps stdio→HTTP. Bare
+# `context-mode` with no args IS the MCP server — that is upstream's own `.mcp.json` entry.
+mcp:
+  servers:
+    - name: context-mode
+      command: context-mode
+      transport: stdio
+
+# --- Hook layer (GAP 2) ---
+# The `context-mode hook <platform> <event>` CLI dispatcher is upstream's current wiring form (the
+# older `node .../hooks/<event>.mjs` path form is legacy). Platform is `claude-code` because the
+# Claude profile is canonical in harnessed — the omp-claude-hooks-bridge replays these for omp, and
+# the other harnesses adapt out of the same .claude/ profile (see emit._recipe_hooks_settings).
+#
+# Matchers are taken from upstream's own matcher lists, minus the plugin-marketplace tool names
+# (`mcp__plugin_context-mode_context-mode__ctx_*`): those only exist on a plugin install, and here
+# context-mode is a standalone MCP server behind hatago, so its tools carry hatago's names instead.
+# The trailing `mcp__` catch-all subsumes them regardless — and per upstream's own note, the hook
+# body (`isExternalMcpTool()` in hooks/core/routing.mjs) filters context-mode's own tools out, so
+# dropping the plugin-specific entries preserves the semantics exactly.
+hooks:
+  # REQUIRED upstream. Injects the routing instruction steering the model to `ctx_*` over raw tools.
+  PreToolUse:
+    - command: context-mode hook claude-code pretooluse
+      matcher: Bash|WebFetch|Read|Grep|Agent|mcp__
+  # REQUIRED upstream. Injects active session context + routing enforcement at session open.
+  SessionStart:
+    - command: context-mode hook claude-code sessionstart
+  # Optional upstream. Captures edits / git ops / tasks / errors into SQLite for continuity.
+  PostToolUse:
+    - command: context-mode hook claude-code posttooluse
+      matcher: Bash|Read|Write|Edit|NotebookEdit|Glob|Grep|TodoWrite|TaskCreate|TaskUpdate|EnterPlanMode|ExitPlanMode|Skill|Agent|AskUserQuestion|EnterWorktree|mcp__
+  # Optional upstream. Snapshots session state before compaction so the model can resume via BM25.
+  PreCompact:
+    - command: context-mode hook claude-code precompact
+
+# --- Persist layer ---
+# context-mode's sessions/content store. The default root is ~/.context-mode (overridable via
+# CONTEXT_MODE_DIR, which must be absolute) — that is the SQLite DB the PostToolUse/PreCompact hooks
+# write and the post-compaction resume reads back. Without persist it dies with the container, and
+# `--fresh` would silently cost every prior session.
+#
+# scope: workspace — keyed by the exact launch path, so one project's session log never surfaces in
+# another's. location: host — harnessed owns the dir under $XDG_DATA_HOME/harnessed/persist/ and
+# mounts it rw at ~/.context-mode in the pod.
 persist:
   - name: .context-mode
     scope: workspace
     location: host
+
+# Capability test: the context-mode MCP server connected through the hatago hub. (The hooks are
+# merged into settings.json by the assembler; the oracle only probes the MCP connection.)
+expect:
+  mcp: [context-mode]
