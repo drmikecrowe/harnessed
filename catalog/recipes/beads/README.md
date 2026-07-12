@@ -99,23 +99,35 @@ bd setup <harness> --project
 
 ## Migrating a project that predates the server
 
-A project initialized under the old per-container-server (or embedded) beads has a
-`.beads/metadata.json` that still points at bd's own engine — `dolt_mode: server` with a
-`dolt_server_host`/`dolt_server_port`, and no `dolt_server_socket`. Under the new recipes bd is a
-client with **no `dolt` binary in its image**, so it cannot start that engine: `bd list` fails, which
-means `setup.condition` (`! bd list`) goes true and the setup notice re-appears on its own. Re-running
-step 1 above repoints `metadata.json` at the socket.
+**It is automatic.** Start the stack and the beads-server repoints the workspace for you; there is no
+migration command to run.
 
-**Your existing issue data is not moved and not re-imported.** The server's data dir is the same
-`.beads/` bd already resolved (`bd where` — in a bare+worktree checkout that is `<bare>/.beads`, and
-`paths.persist_in_repo_dir` anchors the mount to the same place), so the server simply opens the
-Dolt databases already sitting there.
+A project initialized under the old per-container (or embedded) beads has a `.beads/metadata.json`
+still naming bd's own engine — `dolt_mode: server` with a `dolt_server_host`/`dolt_server_port` and no
+`dolt_server_socket`. bd then tries to auto-start a local dolt, and the recipe images no longer ship
+the `dolt` binary, so every command dies:
 
-Two things to clear out from the old topology, if present:
-
-```sh
-rm -f .beads/dolt-server.lock .beads/dolt/.dolt/noms/LOCK   # stale locks from bd's own server
 ```
+Error: failed to open database: Dolt server unreachable at 127.0.0.1:0 and auto-start failed:
+dolt is not installed (not found in PATH)
+```
+
+**Re-running `bd init` does NOT fix this** — bd refuses to touch an initialized workspace:
+
+```
+⚠ Found existing Dolt database: dolt server at 127.0.0.1:0
+This workspace is already initialized. … Aborting.
+```
+
+So the *server* does the repoint instead, on startup: it is the one component that knows both the data
+dir and the client-visible socket path. It backs `metadata.json` up to `metadata.json.pre-socket.bak`,
+sets `dolt_server_socket`, drops the stale TCP pointers (127.0.0.1 means something different in every
+container's network namespace — that is why the socket exists), and removes bd's stale
+`dolt-server.port` / `dolt-server.lock`.
+
+**Your existing issue data is not moved and not re-imported.** The server's data dir *is* the `.beads/`
+bd already resolved (`bd where` — in a bare+worktree checkout, `<bare>/.beads`; `paths.persist_in_repo_dir`
+anchors the mount to the same place), so it opens the Dolt databases already sitting there.
 
 Stacks that referenced the deleted `beads/team-server` or `beads/stealth-server` must move to
 `beads/team` / `beads/stealth` and attach the service:

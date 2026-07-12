@@ -34,14 +34,15 @@ name: beads-stealth
 description: bd (beads), fully invisible placement — .beads/ lives outside the repo entirely, zero git footprint, on the project's beads-server (one dolt sql-server per project, over a unix socket).
 setup:
   summary: >-
-    Run `bd init --stealth --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"` then
-    `bd setup <harness> --project --stealth` once per workspace, then restart the agent; these steps
-    point bd at this project's beads-server (creating its database there) and wire the bd prime
-    workflow into the harness. Requires `services: [beads-server]` in the stack — bd is a pure CLIENT
-    and never starts an engine. Re-run the same `bd init` line to MIGRATE a project initialized before
-    the server (its metadata.json still names bd's own engine, so `bd list` fails until repointed);
-    your existing issue data stays where it is and is opened in place. No git sync in this placement —
-    `.beads/` is outside the repo and there is no remote to push to.
+    Run `bd init --stealth --server --external --server-socket "${HARNESSED_BEADS_SERVER_SOCKET:?beads-server
+    not attached — add `services: [beads-server]` to the stack}"` then `bd setup <harness> --project
+    --stealth` once per workspace, then restart the agent; these steps point bd at this project's
+    beads-server (creating its database there) and wire the bd prime workflow into the harness. The
+    `:?` guard matters — bd accepts an EMPTY --server-socket and silently keeps its old TCP config. A
+    workspace initialized BEFORE the server needs no migration step: the beads-server repoints its
+    metadata.json at the socket on startup (bd itself refuses to re-init an initialized workspace),
+    and your existing issue data is opened in place. No git sync in this placement — `.beads/` is
+    outside the repo and there is no remote to push to.
   reference: https://github.com/gastownhall/beads
   condition: '! bd list >/dev/null 2>&1'
 

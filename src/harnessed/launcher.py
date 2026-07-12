@@ -2244,12 +2244,18 @@ def _ensure_service(
 
     if svc.scope == "project":
         assert project_path is not None  # guarded above
-        host_dir, _, location = _service_data_dir(svc, stack, project_path)
+        host_dir, agent_dir, location = _service_data_dir(svc, stack, project_path)
         persist.guard_ownership(host_dir)
         host_dir.mkdir(parents=True, exist_ok=True)
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
         # (a dolt data dir written by a foreign uid would EACCES for every agent container).
         run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
+        if svc.is_socket_only:
+            # The CLIENT-visible socket path — NOT this container's /data/run/... view of it. A
+            # service that records a socket path for its clients (beads writes it into
+            # .beads/metadata.json) must record the path THEY use, or every client dials a path that
+            # does not exist in its mount namespace.
+            run_cmd += ["-e", f"HARNESSED_SOCKET_PATH={agent_dir}/{svc.socket}"]
         if location == "in_repo" and mount_path is not None:
             # The git repo itself — the sync (`bd dolt push` → refs/dolt/data) runs HERE, because
             # bd's push shells out to a dolt CLI that only routes to a server on its own loopback.
@@ -2633,11 +2639,19 @@ def launch(
     # and see the project bind-mount.
     member_mounts = [a for a in mount_args if a != "--userns=keep-id"]
     member_mounts += ["-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro"]
+    # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
+    # export: `_init_shell_prologue` reaches the interactive shell and nothing else, so a `podman
+    # exec`, a hook, or any subprocess saw $HARNESSED_BEADS_SERVER_SOCKET unset — and bd silently
+    # accepts an EMPTY --server-socket, falling back to its old TCP config instead of failing. Set it
+    # on the container so every process in it agrees.
+    socket_env = [arg for var, sock in svc_socket_env(stack, project_path).items()
+                  for arg in ("-e", f"{var}={sock}")]
     harness_run = [
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
         "--name", inst,
         *[arg for f in secrets_env_files for arg in ("--env-file", str(f))],
+        *socket_env,
         *member_mounts,
         # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
         # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
