@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 
+from harnessed import paths
 from harnessed.assemble import assemble
 from harnessed.schema import (
     PinValidationError,
@@ -108,12 +109,27 @@ def test_all_catalog_recipes_pass_strict():
 
     `harnessed build`/`test` run strict by default, so a stray field in the catalog would break the
     authoring path. This guards it in CI (the strict mechanism itself is unit-tested in test_schema).
+
+    Enumerated via `paths.catalog_relpath` so VARIETY refs (`beads/stealth` →
+    catalog/recipes/beads/stealth/) are covered too — a plain `iterdir()` would silently skip them.
     """
     recipes_dir = ROOT / "catalog" / "recipes"
-    names = sorted(p.name for p in recipes_dir.iterdir() if (p / "recipe.yaml").is_file())
+    names: list[str] = []
+    for entry in sorted(recipes_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        if (entry / "recipe.yaml").is_file():
+            names.append(entry.name)
+            continue
+        names += [
+            f"{entry.name}/{sub.name}"
+            for sub in sorted(entry.iterdir())
+            if (sub / "recipe.yaml").is_file()
+        ]
     assert names, "no catalog recipes found"
+    assert "beads/stealth" in names, "variety refs must be enumerated, not skipped"
     for name in names:
-        load_recipe(recipes_dir / name, strict=True)  # raises SchemaError on any unknown field
+        load_recipe(recipes_dir / paths.catalog_relpath(name), strict=True)  # raises on unknown field
 
 
 # --- Layer 2: live container check (podman-gated) -------------------------------------------------

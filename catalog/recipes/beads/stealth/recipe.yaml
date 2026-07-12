@@ -1,12 +1,12 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
-# Recipe: beads-stealth — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary
+# yaml-language-server: $schema=../../../../schemas/recipe.schema.json
+# Recipe: beads/stealth — bake the `bd` CLI (https://github.com/gastownhall/beads), a native binary
 # that bundles embedded Dolt, run in FULLY INVISIBLE mode: `.beads/` never lives in the repo at all
 # (host-persisted, bind-mounted at a fixed container path) and `--stealth` is passed throughout, so
 # beads leaves zero git footprint. No MCP, no service, no skill: the agent shells out to `bd` directly.
 #
-# This is NOT beads' in-repo team mode — see the `beads-team` recipe for that (in-repo,
+# This is NOT beads' in-repo team mode — see the `beads/team` recipe for that (in-repo,
 # git-tracked, Dolt-native sync via the git origin, hooks installed — the upstream default). Use
-# beads-stealth for personal/dogfooding use where the tool must be completely invisible to
+# beads/stealth for personal/dogfooding use where the tool must be completely invisible to
 # collaborators and the host repo (e.g. running this against harnessed's OWN repo — see
 # claude_review-harness).
 #
@@ -32,17 +32,17 @@ setup:
 
 # agent-carnet is also a shared, cross-session notebook (see its own `rules:` entry instructing the
 # agent to treat carnet as the SOLE memory store). Combining both in one stack gives the agent two
-# competing persistent-memory systems and duplicate/contradictory workflow instructions. Also
-# conflicts with every other beads variant — same tool, different .beads/ location + storage wiring;
-# don't combine two variants in one stack.
-conflicts: [agent-carnet, beads-team, beads-team-server, beads-stealth-server]
+# competing persistent-memory systems and duplicate/contradictory workflow instructions.
+# The other beads varieties need no entry here: sibling varieties of one family are IMPLICITLY
+# exclusive (see schema._check_recipe_conflicts).
+conflicts: [agent-carnet]
 
 persist:
   - name: .beads
     scope: project
     location: host
 
-# No `init:` — beads is NOT auto-initialized (same rationale as `beads-team`; `bd setup --stealth`
+# No `init:` — beads is NOT auto-initialized (same rationale as `beads/team`; `bd setup --stealth`
 # still leaves an untracked `.claude/settings.json` + `CLAUDE.md` footprint on bd 1.1.0, so it can't
 # be made invisible automatically). `setup.condition` (above) checks the static BEADS_DIR
 # (host-persisted mount — see Dockerfile); the assembler turns it into a self-gating Claude

@@ -1,7 +1,7 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
-# Recipe: beads-team-server — bake the `bd` CLI and point it at the SHARED `beads-server` service (a
+# yaml-language-server: $schema=../../../../schemas/recipe.schema.json
+# Recipe: beads/team-server — bake the `bd` CLI and point it at the SHARED `beads-server` service (a
 # single standalone `dolt sql-server`) instead of provisioning a per-container Dolt engine (bead
-# main-8by). This is the shared-service counterpart to the `beads-team` recipe: same `bd` binary, same
+# main-8by). This is the shared-service counterpart to the `beads/team` recipe: same `bd` binary, same
 # in-repo git-tracked `.beads/` (config + JSONL export), but the live Dolt data lives on ONE server
 # everyone connects to — removing the exclusive-file-lock contention behind the 2026-07-05 incident.
 #
@@ -32,9 +32,10 @@ setup:
   reference: https://github.com/gastownhall/beads
   condition: '! bd list >/dev/null 2>&1'
 
-# Same tool, different storage wiring — never combine with any other beads variant in one stack.
-# `agent-carnet` is a competing persistent-memory system (see `beads-team`).
-conflicts: [beads-team, beads-stealth, beads-stealth-server, agent-carnet]
+# `agent-carnet` is a competing persistent-memory system (see `beads/team`). The other beads
+# varieties need no entry: sibling varieties of one family are IMPLICITLY exclusive (see
+# schema._check_recipe_conflicts).
+conflicts: [agent-carnet]
 
 persist:
   - name: .beads
@@ -42,7 +43,7 @@ persist:
     location: in_repo
     vcs: tracked
 
-# No `init:` — beads is NOT auto-initialized (same rationale as `beads-team`). `setup.condition`
+# No `init:` — beads is NOT auto-initialized (same rationale as `beads/team`). `setup.condition`
 # (above) is gated on `bd list`, silent once the workspace has a DB; the assembler turns it into a
 # self-gating Claude SessionStart hook — see emit._recipe_hooks_settings.
 #

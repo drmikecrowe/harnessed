@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://harnessed.dev/schemas/recipe.schema.json",
   "title": "harnessed recipe",
-  "description": "A composable capability bundle added ONTO an agent (catalog/recipes/<name>/recipe.yaml). Harness-independent — no `harnesses:` field; harness-specific build steps branch on ${HARNESS} inside the recipe's Dockerfile. Carries metadata only; build steps live in the Dockerfile. See docs/harnessed-design.md §7/§11.",
+  "description": "A composable capability bundle added ONTO an agent (catalog/recipes/<name>/recipe.yaml, or catalog/recipes/<family>/<variety>/recipe.yaml for one variety of a recipe family — referenced from a stack as `<family>/<variety>`). Harness-independent — no `harnesses:` field; harness-specific build steps branch on ${HARNESS} inside the recipe's Dockerfile. Carries metadata only; build steps live in the Dockerfile. See docs/harnessed-design.md §7/§11.",
   "type": "object",
   "additionalProperties": false,
   "required": ["name"],
@@ -116,7 +116,7 @@
       "type": ["array", "object"]
     },
     "conflicts": {
-      "description": "Names of other recipes this recipe must never be combined with in the same stack (e.g. two recipes that both claim to be the agent's sole cross-session memory store). Checked symmetrically across a stack's recipe list — declaring it on either side is enough.",
+      "description": "Names of other recipes this recipe must never be combined with in the same stack (e.g. two recipes that both claim to be the agent's sole cross-session memory store). Checked symmetrically across a stack's recipe list — declaring it on either side is enough. Do NOT list sibling varieties of the same family here: two varieties of one recipe (beads/stealth + beads/team) are ALREADY implicitly exclusive.",
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },

@@ -44,6 +44,29 @@ download** (no `@latest` / `--branch main` — the build rejects floating refs).
 [docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md); worked examples: `catalog/recipes/time`
 (stdio MCP + skill), `catalog/recipes/ping` (service ref), `catalog/recipes/gstack` (Dockerfile).
 
+### Recipe varieties (one tool, several wirings)
+
+When the same tool needs several mutually-exclusive wirings, ship them as a recipe **family**: a dir
+whose children are each a complete recipe. A stack names one with a ref.
+
+```
+catalog/recipes/beads/          # family — no recipe.yaml of its own, NOT a usable ref
+  README.md                     # shared docs: how to choose, shared setup
+  stealth/{recipe.yaml,Dockerfile,README.md}        # → `beads/stealth`
+  team/{recipe.yaml,Dockerfile,README.md}           # → `beads/team`
+```
+
+```yaml
+# catalog/stacks/<stack>/stack.yaml
+recipes: [beads/team]
+```
+
+The ref is simply the variety's path under `catalog/recipes/`; a family is exactly one dir deep. Each variety is
+self-contained (own `recipe.yaml`, `Dockerfile`, `tests/`) and is hashed independently — editing one
+variety does not rebuild stacks using another. Sibling varieties are **implicitly mutually
+exclusive**: a stack listing two of them fails at assemble time, so do not list them in each other's
+`conflicts:`. Worked example: `catalog/recipes/beads/`.
+
 ## Add an agent or a service
 
 - **agent** → `catalog/agents/<name>/agent.yaml` (`harness`, `image`, `dockerfile`) + the Dockerfile

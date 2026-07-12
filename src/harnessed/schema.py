@@ -33,10 +33,12 @@ def _resolve_dir(root: Path | None, kind: str, name: str) -> Path:
     `root` given → search only that single root (root/<kind>/<name>) — explicit, used by tests with
     fixture trees. `root` None → resolve across the catalog roots (user overlay first), the
     production path.
+
+    `name` may be a variety ref (`beads/stealth`) — see paths.catalog_relpath.
     """
     if root is None:
         return paths.find_in_catalog(kind, name)
-    return Path(root) / kind / name
+    return Path(root) / kind / paths.catalog_relpath(name)
 
 # Harness → config directory name (Claude Code canonical, design §8). The harness is a run-time
 # positional (`harnessed <stack> <harness>`), not a stack field; a stack may not be named after one.
@@ -598,6 +600,10 @@ class Recipe:
     # Dockerfile pin. Lets a recipe add a CLI + open its egress with NO Dockerfile. See egress.md.
     tools: list[str] = field(default_factory=list)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
+    # The catalog ref a stack used to load this recipe — `beads/stealth` for a variety, else the
+    # plain name. Carries the FAMILY (the part before the slash), which _check_recipe_conflicts uses
+    # to make sibling varieties implicitly exclusive. Defaults to `name` when loaded directly.
+    ref: str = ""
     raw: dict = field(default_factory=dict)
 
 
@@ -807,7 +813,7 @@ def _parse_tools(raw_tools, manifest: Path) -> list[str]:
     return out
 
 
-def load_recipe(recipe_dir: Path, *, strict: bool = False) -> Recipe:
+def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Recipe:
     recipe_dir = Path(recipe_dir)
     manifest = recipe_dir / "recipe.yaml"
     if not manifest.is_file():
@@ -833,6 +839,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False) -> Recipe:
         egress=_parse_egress(raw.get("egress"), manifest),
         tools=_parse_tools(raw.get("tools"), manifest),
         root=recipe_dir,
+        ref=ref or raw["name"],
         raw=raw,
     )
 
@@ -977,17 +984,36 @@ def load_stack_with_recipes(
     authoring guardrail; `harnessed build`/`test` pass it, `--no-strict` opts out).
     """
     stack = load_stack(_resolve_dir(root, "stacks", stack_name))
-    recipes = [load_recipe(_resolve_dir(root, "recipes", name), strict=strict) for name in stack.recipes]
+    recipes = [
+        load_recipe(_resolve_dir(root, "recipes", ref), strict=strict, ref=ref) for ref in stack.recipes
+    ]
     _check_recipe_conflicts(stack.name, recipes)
     return stack, recipes
 
 
 def _check_recipe_conflicts(stack_name: str, recipes: list[Recipe]) -> None:
-    """Fail loudly if two recipes in the same stack declare themselves incompatible.
+    """Fail loudly if two recipes in the same stack are incompatible.
 
-    Checked symmetrically: a recipe only needs to list the other side in its own `conflicts:` —
-    both recipes don't have to agree.
+    Two sources of incompatibility:
+
+    * DECLARED — a recipe lists the other in its `conflicts:`. Checked symmetrically: only one side
+      needs to declare it.
+    * IMPLICIT — two varieties of the same recipe family (`beads/stealth` + `beads/team`). They are
+      the same tool wired differently, so they are always mutually exclusive; no `conflicts:` entry
+      needed (and none should be written — the family is the source of truth).
     """
+    seen_family: dict[str, str] = {}
+    for r in recipes:
+        family, _, variety = r.ref.partition("/")
+        if not variety:
+            continue
+        if family in seen_family:
+            raise SchemaError(
+                f"stack {stack_name!r} combines {seen_family[family]!r} and {r.ref!r}, which are two "
+                f"varieties of the same recipe ({family!r}) — pick one for the stack's recipes list."
+            )
+        seen_family[family] = r.ref
+
     names = {r.name for r in recipes}
     for r in recipes:
         for other in r.conflicts:
