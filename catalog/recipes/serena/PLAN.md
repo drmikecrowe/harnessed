@@ -10,13 +10,30 @@ run-from-source `uvx -p 3.13 --from git+https://github.com/oraios/serena@<tag> s
 MCP server; **stdio is the default transport** (`start-mcp-server`; Streamable HTTP is also supported via
 `--transport streamable-http`).
 
-> [!IMPORTANT]
-> **Contingent on the hatago consolidation**
-> ([docs/todos/2026-06-29-hatago-consolidation.md](../../todos/2026-06-29-hatago-consolidation.md)).
-> Serena is a stdio MCP server that reads/edits the **project**. hatago is the MCP interface — it wraps
-> stdio→HTTP ([emit.py:160-171](../../src/harnessed/emit.py)) — so serena is a plain stdio child. The only
-> dependency is landing hatago in the harness container so the stdio child sees the project mount. Until
-> that lands, this recipe is correct in shape but cannot reach the project — do not ship it.
+> [!NOTE]
+> **Both prerequisites have landed.** hatago runs in the harness container (the consolidation), and
+> `emit.py` pins each stdio child's `cwd` to the mirrored container project path (bd main-u5d,
+> [emit.py:558-586](../../src/harnessed/emit.py); passed in at
+> [launcher.py:2449](../../src/harnessed/launcher.py)). So `--project-from-cwd` resolves the project
+> mount, and the recipe is shippable.
+
+## The project workflow (what serena needs per project)
+
+Upstream's [project workflow](https://oraios.github.io/serena/02-usage/040_workflow.html) is: create →
+index → activate → onboard. Only the index is a manual step here.
+
+- **Project creation is implicit.** `--project-from-cwd` walks up from cwd to the nearest
+  `.serena/project.yml` *or* git root (`cli.py::find_project_root`); activating a path with no project
+  file auto-generates one (`SerenaConfig.add_project_from_path` → `ProjectConfig.load(autogenerate=True)`).
+  No `serena project create` step. (Upstream's older `serena init-project` no longer exists — the command
+  group is `serena project create|index`.)
+- **Indexing is manual and one-time.** `serena project index` pre-caches language-server symbols under
+  `.serena/`; upstream recommends it for larger projects, and without it the first symbol call pays the
+  full scan. Serena updates the index on file changes afterwards. Shipped as a `setup:` note
+  (`condition: test ! -d .serena`), not automated: it is per-project state, and it can take minutes.
+- **Onboarding/memories are automatic** on first activation.
+- **`serena init -b LSP`** (global `~/.serena/serena_config.yml`, backend selection) is baked into the
+  image — a container is rebuilt, not hand-initialised.
 
 ## Recipe shape
 
@@ -96,8 +113,7 @@ harnessed claude_serena <proj>   # launch; hatago spawns serena as a stdio child
 harnessed test  claude_serena    # capability: ✓ serena (mcp) connected via hatago://servers
 ```
 
-Gated on the consolidation. Manual verification (the capability test only confirms the server connected —
-verify behavior):
+Manual verification (the capability test only confirms the server connected — verify behavior):
 
 - In a real project, `find_symbol` / `find_referencing_symbols` return symbol-level results; a
   `rename_symbol` updates all references across files in one call.
@@ -106,9 +122,9 @@ verify behavior):
 
 ## Risks / checks
 
-- **cwd / project access:** confirm hatago spawns the stdio child with cwd = project root so
-  `--project-from-cwd` resolves the project (resolve as part of the consolidation). If cwd is not the
-  project, pass an explicit project path instead.
+- **cwd / project access — RESOLVED (bd main-u5d).** `emit.py` sets `cwd` on stdio MCP entries to
+  `paths.container_project_path(project)`, so hatago spawns the child in the project root and
+  `--project-from-cwd` resolves it. (Fallback if that ever regresses: pass `--project <path>` explicitly.)
 - **Lazy language-server install vs the egress firewall.** serena auto-installs an LSP per language on
   first use; the default egress firewall (`launcher._apply_firewall`, `launcher.py:491-497`;
   `NO_FIREWALL=true` / `--no-firewall` to skip) blocks that, so LSP-backed features silently fail for any
