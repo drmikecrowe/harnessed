@@ -316,6 +316,44 @@ class TestWriteOmpIdentity:
         assert "<!-- BEGIN harnessed:s1 -->" not in (agent / "RULES.md").read_text()
         assert "<!-- BEGIN harnessed:s1 -->" in (agent / "APPEND_SYSTEM.md").read_text()
 
+    def test_rule_shared_by_two_stacks_not_duplicated(self, tmp_path):
+        # RULES.md is shared across every omp stack. A rule contributed by a recipe two stacks
+        # both include must appear once, not once-per-stack block (the cross-stack triplication).
+        agent = tmp_path / "agent"
+        r1 = self._rule(tmp_path, "coding-principles/RULE.md", "Keep changes surgical.")
+
+        write_omp_identity(tmp_path, "alpha", "alpha identity", [r1], agent_dir=agent)
+        write_omp_identity(tmp_path, "beta", "beta identity", [r1], agent_dir=agent)
+
+        rules_text = (agent / "RULES.md").read_text()
+        assert rules_text.count("## Rule: coding-principles/RULE.md") == 1
+        assert rules_text.count("Keep changes surgical.") == 1
+
+    def test_rule_not_triplicated_across_three_stacks(self, tmp_path):
+        # The exact reported bug: three stacks sharing a recipe tripled the same rules.
+        agent = tmp_path / "agent"
+        r1 = self._rule(tmp_path, "coding-principles/RULE.md", "Keep changes surgical.")
+        for stack in ("alpha", "beta", "gamma"):
+            write_omp_identity(tmp_path, stack, f"{stack} identity", [r1], agent_dir=agent)
+
+        rules_text = (agent / "RULES.md").read_text()
+        assert rules_text.count("Keep changes surgical.") == 1
+
+    def test_unique_rule_still_emitted_alongside_shared_rule(self, tmp_path):
+        # Dedup is per-rule: a stack sharing one rule with another stack but also carrying a
+        # rule of its own still lands the unique rule in its own block.
+        agent = tmp_path / "agent"
+        shared = self._rule(tmp_path, "coding-principles/RULE.md", "Keep changes surgical.")
+        unique = self._rule(tmp_path, "signed-commits/RULE.md", "All commits must be signed.")
+
+        write_omp_identity(tmp_path, "alpha", "alpha identity", [shared], agent_dir=agent)
+        write_omp_identity(tmp_path, "beta", "beta identity", [shared, unique], agent_dir=agent)
+
+        rules_text = (agent / "RULES.md").read_text()
+        assert rules_text.count("Keep changes surgical.") == 1
+        assert rules_text.count("All commits must be signed.") == 1
+        assert "## Rule: signed-commits/RULE.md" in rules_text
+
 
 class TestWriteMcpJson:
     def test_creates_mcp_json_at_profile_root(self, tmp_path):
