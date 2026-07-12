@@ -54,6 +54,13 @@ Generated profiles are **not** in the repo — they are emitted to `$XDG_DATA_HO
   may **not** be named after a harness). The harness is **not** a stack property — it is a required
   positional chosen at run/build time: `harnessed <stack> <harness>`. The same stack runs on any
   harness; claude+it and omp+it are the same stack, materialized into per-harness images/pods.
+  A stack may **inherit** from another with `extends: <stack>` (resolved in its own catalog root
+  first, then the catalog search path — so an overlay stack can extend one shipped in the repo):
+  `recipes` / `services` / `harnesses` / `ssh_keys` **union** with the parent's (parent's entries
+  first, then the child's, de-duped), every other field the child declares **overrides**, and any it
+  omits is **inherited**. Chains are allowed; cycles are an error. Unknown stack fields are
+  **rejected** — a stack manifest has no forward-field case, and silently-ignored keys are how an
+  `extends:` written before the feature existed went unnoticed while inheriting nothing.
 - **catalog** — the collection of agents/recipes/services/stacks. Two roots, searched in order:
   the user overlay **`~/.config/harnessed/catalog`** (wins on a name clash) then the repo `catalog/`.
 

@@ -759,9 +759,9 @@ def _levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
-def _suggest_field(unknown: str) -> str | None:
+def _suggest_field(unknown: str, known: frozenset[str] = KNOWN_RECIPE_FIELDS) -> str | None:
     """The closest known field within edit distance 2 (so `skkills` → `skills`), else None."""
-    best = min(KNOWN_RECIPE_FIELDS, key=lambda k: _levenshtein(unknown, k))
+    best = min(known, key=lambda k: _levenshtein(unknown, k))
     return best if _levenshtein(unknown, best) <= 2 else None
 
 
@@ -850,14 +850,118 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
     )
 
 
-def load_stack(stack_dir: Path) -> Stack:
-    stack_dir = Path(stack_dir)
+KNOWN_STACK_FIELDS = frozenset({
+    "name", "extends", "recipes", "services", "harnesses", "permissions", "instructions",
+    "forward_git_credentials", "ssh_keys", "forward_aws_sso", "hatago", "state",
+})
+
+# Fields a child UNIONS with its parent's (parent order first, then the child's additions, de-duped).
+# Everything else is an override: a key the child declares wins outright; a key it omits is
+# inherited. `name` is never inherited (a stack is identified by its own directory), and `extends`
+# itself is consumed here rather than carried into the merged manifest.
+_STACK_UNION_FIELDS = ("recipes", "services", "harnesses", "ssh_keys")
+
+
+def _validate_stack_fields(raw: dict, manifest: Path) -> None:
+    """Reject unknown top-level stack fields.
+
+    Stack parsing used to be tolerant (`additionalProperties: true`), which meant an unsupported or
+    misspelled key did NOTHING, silently: an `extends:` written before the feature existed looked
+    accepted and inherited nothing for months. A stack manifest is small and fully specified, so
+    there is no forward-field case to protect (unlike recipes' D-14 fields) — an unknown key here is
+    always a bug, and it should be loud.
+    """
+    unknown = sorted(set(raw) - KNOWN_STACK_FIELDS)
+    if not unknown:
+        return
+    described = [
+        f"{f!r}" + (f" (did you mean {s!r}?)" if (s := _suggest_field(f, KNOWN_STACK_FIELDS)) else "")
+        for f in unknown
+    ]
+    raise SchemaError(
+        f"{manifest}: unknown stack field(s): {', '.join(described)}. "
+        f"Known fields: {', '.join(sorted(KNOWN_STACK_FIELDS))}."
+    )
+
+
+def _resolve_parent_stack_dir(parent: str, stack_dir: Path, manifest: Path) -> Path:
+    """Locate the stack named by `extends:`.
+
+    Same catalog root as the child first (so a fixture tree, or a self-contained overlay, resolves
+    within itself), then the normal catalog search (user overlay first, then the repo) — which is
+    what lets a stack in the user overlay extend one shipped in the repo catalog.
+    """
+    sibling = stack_dir.parent / parent
+    if (sibling / "stack.yaml").is_file():
+        return sibling
+    try:
+        return _resolve_dir(None, "stacks", parent)
+    except SchemaError as exc:
+        raise SchemaError(
+            f"{manifest}: extends: '{parent}' — no such stack in this catalog root or the "
+            f"catalog search path ({exc})"
+        ) from exc
+
+
+def _resolve_stack_extends(raw: dict, stack_dir: Path, manifest: Path, chain: tuple[Path, ...]) -> dict:
+    """Merge a stack manifest onto the one it `extends:`, returning a single flat manifest.
+
+    Merging happens on the RAW dict, before any field parsing, so inheritance needs no per-field
+    knowledge and every validator downstream sees one fully-resolved manifest.
+
+    Semantics:
+      * `recipes` / `services` / `harnesses` / `ssh_keys` — UNION, parent's entries first, then the
+        child's, de-duped. A base stack therefore carries a baseline recipe set that children extend
+        rather than restate.
+      * every other field — the child's value wins if it declares the key, else the parent's is
+        inherited (`state` and `hatago` included: a declared value replaces, it does not deep-merge).
+      * `name` is always the child's own; `extends` is consumed and never appears in the result.
+
+    Chains are allowed (a stack may extend a stack that extends another); a cycle is an error.
+    """
+    parent_name = raw.get("extends")
+    if not parent_name:
+        return raw
+    if not isinstance(parent_name, str):
+        raise SchemaError(f"{manifest}: 'extends' must be a stack name (a string)")
+
+    parent_dir = _resolve_parent_stack_dir(parent_name, stack_dir, manifest).resolve()
+    if parent_dir in chain:
+        cycle = " -> ".join(p.name for p in (*chain, parent_dir))
+        raise SchemaError(f"{manifest}: 'extends' cycle: {cycle}")
+
+    parent_raw = _load_stack_raw(parent_dir, chain=(*chain, parent_dir))
+
+    merged = dict(parent_raw)
+    for key, value in raw.items():
+        if key == "extends":
+            continue
+        if key in _STACK_UNION_FIELDS:
+            inherited = list(parent_raw.get(key, []) or [])
+            merged[key] = list(dict.fromkeys([*inherited, *(value or [])]))
+        else:
+            merged[key] = value
+    merged["name"] = raw["name"]  # identity is never inherited
+    merged.pop("extends", None)
+    return merged
+
+
+def _load_stack_raw(stack_dir: Path, chain: tuple[Path, ...] = ()) -> dict:
+    """Read + validate one stack manifest and fold in whatever it `extends:`."""
     manifest = stack_dir / "stack.yaml"
     if not manifest.is_file():
         raise SchemaError(f"stack manifest not found: {manifest}")
     raw = _load_yaml(manifest)
     if "name" not in raw:
         raise SchemaError(f"{manifest}: required field 'name' is missing")
+    _validate_stack_fields(raw, manifest)
+    return _resolve_stack_extends(raw, stack_dir, manifest, chain)
+
+
+def load_stack(stack_dir: Path) -> Stack:
+    stack_dir = Path(stack_dir)
+    manifest = stack_dir / "stack.yaml"
+    raw = _load_stack_raw(stack_dir, chain=(stack_dir.resolve(),))
     # A stack is resolved by DIRECTORY name (`_resolve_dir(root, "stacks", stack_name)`), so the
     # directory is the identity and `name:` is a restatement of it. Nothing used to enforce that
     # they agree — and `staleness.compute_stamp` re-resolves the manifest from `stack.name`, so a

@@ -4,11 +4,16 @@
   "title": "harnessed stack",
   "description": "A harness-free composition of recipes (catalog/stacks/<name>/stack.yaml). The harness is chosen at run time as a required CLI argument. Nothing is resolved at runtime; recipes are assembled ahead of time. See docs/harnessed-design.md §5/§12.",
   "type": "object",
-  "additionalProperties": true,
+  "additionalProperties": false,
   "required": ["name"],
   "properties": {
     "name": {
       "description": "Stack identity. Convention: <recipe>[_<recipe>…] (hyphens allowed within a name). Must not equal a harness name.",
+      "type": "string",
+      "minLength": 1
+    },
+    "extends": {
+      "description": "Inherit from another stack (by name; resolved in this catalog root first, then the catalog search path — so an overlay stack may extend one shipped in the repo). recipes/services/harnesses/ssh_keys UNION with the parent's (parent's first, then this stack's, de-duped); every other field this stack declares overrides the parent's, and any it omits is inherited. Chains are allowed; cycles are an error.",
       "type": "string",
       "minLength": 1
     },

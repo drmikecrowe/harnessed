@@ -923,7 +923,9 @@ class TestRecipeConflicts:
     def _write_stack(self, root: Path, name: str, recipes: list[str]) -> None:
         d = root / "stacks" / name
         d.mkdir(parents=True)
-        (d / "stack.yaml").write_text(f"name: {name}\nharness: claude\nrecipes: {recipes}\n")
+        # `harnesses:` (plural) — the singular `harness:` this fixture used for years is not a stack
+        # field at all, and the tolerant parser silently ignored it. Strict stack fields caught it.
+        (d / "stack.yaml").write_text(f"name: {name}\nharnesses: [claude]\nrecipes: {recipes}\n")
 
     def test_no_conflict_loads_cleanly(self, tmp_path):
         from harnessed.schema import load_stack_with_recipes
