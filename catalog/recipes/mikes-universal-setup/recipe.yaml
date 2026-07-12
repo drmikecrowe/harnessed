@@ -12,6 +12,7 @@ description: "Mike's baseline rules (coding stance, tool preferences, confirmati
 
 rules:
   - path: rules/coding-principles
+  - path: rules/denied-commands
   - path: rules/fd
   - path: rules/rg
   - path: rules/stop-and-ask
