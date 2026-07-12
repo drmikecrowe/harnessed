@@ -42,7 +42,8 @@ upstream's quick start makes indexing step 2, before wiring any agent:
 
 ```bash
 REPOWISE_SKIP_EDITOR_SETUP=1 repowise init --index-only -y \
-  --no-claude-md --no-agents --no-codex --no-distill-hook
+  --no-claude-md --no-agents --no-codex --no-distill-hook && \
+  rm -f .repowise/mcp.json .mcp.json .vscode/mcp.json .vscode/extensions.json
 ```
 
 Shipped as a `setup:` note (schema `setup`, gated on `condition: test ! -d .repowise`) — the same shape
@@ -50,19 +51,24 @@ tokensave uses for its own `tokensave init`. It is deliberately *not* automated 
 per-project state that can take minutes on a large repo, and `init.run` executes in the attach shell on
 every launch, where a non-zero exit aborts the attach.
 
-A default `repowise init` does register MCP servers, install a Claude Code hook into
-`~/.claude/settings.json`, and generate `.mcp.json`/`AGENTS.md`/`CLAUDE.md` — harnessed owns all of that,
-so the setup command disables each of those explicitly (`REPOWISE_SKIP_EDITOR_SETUP=1` + the `--no-*`
-flags) rather than avoiding `init` altogether.
+**Correction (verified against repowise 0.31.0 source):** the `--no-*` flags do NOT stop `repowise init`
+from writing its own `.mcp.json` / `.repowise/mcp.json` / `.vscode/mcp.json` — no upstream flag gates
+those three writes; `REPOWISE_SKIP_EDITOR_SETUP=1` only skips *global* client registration
+(`~/.claude/settings.json`), and `--no-claude-md`/`--no-agents`/`--no-codex`/`--no-distill-hook` each
+gate exactly one other file, none of them the MCP configs. harnessed owns MCP registration via hatago,
+so the setup command's trailing `rm -f` is a required cleanup step, not optional belt-and-suspenders.
 
 ## What this recipe does NOT do
 
 - Does not pre-build the index at image-build time — `.repowise/wiki.db` is per-project state, not an
   image artifact.
 - Does not wire the documentation-generation LLM step (`repowise init`'s Generation phase) to any
-  particular model/key — that is a per-project/user decision, not a recipe concern. Index-only mode
-  covers `get_overview` / `get_context` / `get_risk` / `get_health`; `search_codebase` / `get_answer` /
-  `get_why` need the generated wiki (`repowise init --provider …` with a key).
+  particular model/key by default — that is a per-project/user decision, not a recipe concern.
+  Index-only mode covers `get_overview` / `get_context` / `get_risk` / `get_health`;
+  `search_codebase` / `get_answer` / `get_why` need real embeddings, which index-only mode never
+  provides (always mock). README.md documents the opt-in full-LLM `init` invocation (drop
+  `--index-only`, add `--provider … --embedder …`, route the key through harnessed's own
+  `.env.schema`/`.env` secrets mechanism so it reaches the container) for users who want it.
 
 ## Open questions / follow-ups
 
