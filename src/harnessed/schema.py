@@ -617,6 +617,12 @@ class Stack:
     name: str
     recipes: list[str] = field(default_factory=list)
     services: list[str] = field(default_factory=list)
+    # Harnesses this stack is meant to be built for. A stack stays harness-INDEPENDENT (the harness
+    # is still a run-time argument); this is purely a build-time convenience: `harnessed build
+    # <stack>` with no harness builds every name listed here, and a bare `harnessed build` includes
+    # these (stack, harness) pairs in its reconciliation sweep. Empty → no declaration; `build
+    # <stack>` then still requires an explicit harness argument.
+    harnesses: list[str] = field(default_factory=list)
     permissions: str | None = None
     # Stack-level identity text emitted into the profile's `.claude/CLAUDE.md` at assemble time —
     # "what is this assembled agent". Distinct from recipe-level `rules:` (per-recipe RULE.md files
@@ -868,6 +874,7 @@ def load_stack(stack_dir: Path) -> Stack:
             f"{manifest}: stack name '{raw['name']}' conflicts with a harness name — "
             f"choose a different name (harness names: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
         )
+    harnesses = _parse_harnesses(raw.get("harnesses"), manifest)
     ssh_keys = _parse_ssh_keys(raw.get("ssh_keys"), manifest)
     hatago = _parse_hatago(raw.get("hatago"), manifest)
     permissions = raw.get("permissions")
@@ -880,6 +887,7 @@ def load_stack(stack_dir: Path) -> Stack:
         name=raw["name"],
         recipes=list(raw.get("recipes", []) or []),
         services=list(raw.get("services", []) or []),
+        harnesses=harnesses,
         permissions=permissions,
         instructions=raw.get("instructions"),
         forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
@@ -889,6 +897,31 @@ def load_stack(stack_dir: Path) -> Stack:
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
     )
+
+
+def _parse_harnesses(raw_harnesses, manifest: Path) -> list[str]:
+    """Validate the stack `harnesses:` list — the harnesses `harnessed build <stack>` fans out to.
+
+    Names are validated against HARNESS_CONFIG_DIR at LOAD time (not build time) so a typo like
+    `opencodee` fails on the manifest that contains it, rather than midway through a fan-out that
+    already built two other images.
+    """
+    if raw_harnesses is None:
+        return []
+    if not isinstance(raw_harnesses, list):
+        raise SchemaError(f"{manifest}: 'harnesses' must be a list of harness names")
+    names: list[str] = []
+    for entry in raw_harnesses:
+        if not isinstance(entry, str) or not entry:
+            raise SchemaError(f"{manifest}: 'harnesses' entries must be non-empty strings")
+        if entry not in HARNESS_CONFIG_DIR:
+            raise SchemaError(
+                f"{manifest}: unsupported harness '{entry}' in 'harnesses' "
+                f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+            )
+        if entry not in names:
+            names.append(entry)
+    return names
 
 
 def _parse_hatago(raw_hatago, manifest: Path) -> dict | None:

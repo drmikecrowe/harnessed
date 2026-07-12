@@ -31,6 +31,12 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "harnesses": {
+      "description": "Harnesses this stack is built for. Build-time only — the harness is still a run-time CLI argument, so the stack stays harness-independent. `harnessed build <stack>` (no harness) fans out to every name listed here, and a bare `harnessed build` includes these (stack, harness) pairs in its reconciliation sweep. Omit to require an explicit harness argument.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/harness" },
+      "minItems": 1
+    },
     "forward_git_credentials": {
       "description": "Opt-in (default false): forward the SECRET-BEARING slice of the host's git push surface — the gh oauth token (~/.config/gh/hosts.yml), opt-in private SSH keys, ssh config/known_hosts/pubkeys, and non-secret gnupg files. The SSH signing/auth agent socket (1Password/gpg-agent) plus the ro git identity config are forwarded AUTOMATICALLY whenever the host agent is live, independent of this flag — set this only to also mount the gh token / private keys.",
       "type": "boolean",
