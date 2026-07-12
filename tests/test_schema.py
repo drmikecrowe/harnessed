@@ -273,16 +273,29 @@ class TestLoadAgent:
             with pytest.raises(SchemaError, match="conflicts with a harness name"):
                 load_stack(d)
 
+    def test_stack_name_must_match_its_directory(self, tmp_path):
+        """A stack is resolved by directory name, so `name:` must restate it.
+
+        Regression: nothing enforced this, and `staleness.compute_stamp` re-resolves the manifest
+        from `stack.name` — so a mismatch blew up far downstream as a FileNotFoundError against a
+        directory that never existed, instead of an authoring error at load.
+        """
+        d = tmp_path / "gsd-core_repowise"
+        d.mkdir()
+        (d / "stack.yaml").write_text("name: gsd-core_rtk_serena_pulumi\nrecipes: []\n")
+        with pytest.raises(SchemaError, match="does not match its directory"):
+            load_stack(d)
+
     def test_invalid_permissions_raises(self, tmp_path):
         d = tmp_path / "bad-permissions"
         d.mkdir()
-        (d / "stack.yaml").write_text("name: bad\nrecipes: []\npermissions: ask\n")
+        (d / "stack.yaml").write_text("name: bad-permissions\nrecipes: []\npermissions: ask\n")
         with pytest.raises(SchemaError, match="ask"):
             load_stack(d)
 
     def test_all_valid_permissions_load(self, tmp_path):
         for permissions in ("prompt", "auto", "yolo"):
-            d = tmp_path / permissions
+            d = tmp_path / f"{permissions}-stack"
             d.mkdir()
             (d / "stack.yaml").write_text(
                 f"name: {permissions}-stack\nrecipes: []\npermissions: {permissions}\n"
