@@ -74,6 +74,29 @@ _HARNESS_ATTACH_CMD = {
 }
 
 
+def _omp_attach_cmd(start_dir: Path) -> str:
+    """omp attach command, with the per-folder session dir pinned to the HOST's key.
+
+    omp names a folder's session dir from the cwd *relative to $HOME* (host: `/home/u/Prog/x` under
+    `$HOME=/home/u` → `~/.omp/agent/sessions/-Prog-x`). In the pod `$HOME` is /home/harnessed while
+    the agent's cwd is the mirrored HOST path (/home/u/…) — outside the pod's home, so omp escapes
+    the key (`--home-u-Prog-x--`) and writes to a folder the host never reads. `~/.omp/agent` is
+    bind-mounted (see `_omp_agent_mount`), so the store is already shared; only the key diverged, and
+    `/resume` in the pod reported "No sessions in current folder". Recompute the key against the HOST
+    home and pin it with `--session-dir`, so host and pod resume each other's sessions.
+
+    The dir is fixed at attach time: `cd`-ing elsewhere in the pod does not re-key omp's picker.
+    """
+    home = Path.home()
+    if start_dir == home:
+        return _HARNESS_ATTACH_CMD["omp"]  # omp auto-switches out of ~ anyway
+    try:
+        key = "-" + str(start_dir.relative_to(home)).replace("/", "-")
+    except ValueError:
+        key = str(start_dir).replace("/", "-")  # outside the host home: omp keeps the full path
+    return f"omp --session-dir '{_CONTAINER_HOME_STR}/.omp/agent/sessions/{key}'"
+
+
 def _opencode_attach_cmd(prof: Path, stack_name: str) -> str:
     """opencode attach command, stack-conditional on a baked persona (bd main-rlw).
 
@@ -2755,6 +2778,9 @@ def _attach(
         # Stack-conditional (bd main-rlw): `opencode --agent <name>` when a persona was baked,
         # else the fixed `opencode` command.
         tail = _opencode_attach_cmd(profile_dir(stack, harness), stack)
+    elif harness == "omp":
+        # Pin omp's session dir to the host's key so host/pod share one per-folder history.
+        tail = _omp_attach_cmd(start_dir or project_path)
     else:
         mcp_cfg = str(paths.container_mcp_config())
         harness_cmd_tpl = _HARNESS_ATTACH_CMD.get(harness, "claude")
