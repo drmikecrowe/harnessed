@@ -9,16 +9,30 @@
 # no port, no `hooks:` (a stdio child has no daemon lifecycle — hatago owns the spawn).
 #
 # `--context ide` is serena's harness-agnostic generic context for terminal clients (it disables
-# serena's basic file/search tools to avoid overlap with the harness's own). `--project-from-cwd`
-# resolves the project from the child's cwd (= the project root hatago spawns it in). The CLI is
-# baked by the Dockerfile; no skill is shipped (upstream offers none).
-#
-# GATED on the hatago consolidation (see PLAN.md): until hatago lands in the harness container, the
-# stdio child cannot reach the project. The recipe is correct in shape regardless.
+# serena's basic file/search tools to avoid overlap with the harness's own, and is single-project:
+# with a project given at startup, `activate_project` is dropped). `--project-from-cwd` resolves the
+# project by walking up from the child's cwd to the nearest `.serena/project.yml` or git root;
+# emit.py pins that cwd to the mirrored container project path (bd main-u5d), so the child lands in
+# the project root. Activating a directory that has no `.serena/project.yml` auto-generates one
+# (serena_config.py `add_project_from_path` → `ProjectConfig.load(autogenerate=True)`), so project
+# *creation* needs no manual step — only indexing does (see `setup:` below). The CLI is baked by the
+# Dockerfile; no skill is shipped (upstream offers none).
 name: serena
 description: Serena — LSP-backed semantic code intelligence (symbol retrieval, editing, refactoring, references) over the project via a stdio MCP server.
 
-# setup: none needed — `serena init` (the language-server backend config) is baked by the Dockerfile.
+# `serena init` (the global language-server backend config) is baked by the Dockerfile. What is NOT
+# baked — and cannot be, it is per-project state — is the symbol index.
+setup:
+  summary: >-
+    Optional but recommended on a large project: run `serena project index` once inside the agent
+    container to pre-cache language-server symbols into `.serena/` (without it, the first symbol
+    tool call pays the full language-server scan). Serena creates and activates the project by
+    itself; only the index is manual. Note the language server for each language is downloaded on
+    first use, so index (or first-activate) with egress allowed — `harnessed <stack> <proj>
+    --no-firewall` — or that download is blocked.
+  reference: https://oraios.github.io/serena/02-usage/040_workflow.html
+  # Still worth showing while the project carries no serena state at all.
+  condition: test ! -d .serena
 
 # What the capability test probes after a successful build: the serena server connected through
 # the hatago hub. (The capability test only confirms the connection — verify behavior manually.)

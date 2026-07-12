@@ -5,7 +5,7 @@ dependency-graph intelligence layer** — defect-risk scoring, graph-aware refac
 hotspots, and architectural-decision mining — over the project, with its index living in the user's
 project folder (`.repowise/wiki.db`).
 
-Upstream: <https://github.com/repowise-dev/repowise> · PyPI `repowise` (latest **0.27.0**, AGPL-3.0,
+Upstream: <https://github.com/repowise-dev/repowise> · PyPI `repowise` (pinned **0.31.0**, AGPL-3.0,
 requires Python ≥3.11). Canonical install `pip install repowise` / `uv tool install repowise`. repowise
 runs as an MCP server; stdio is the default transport (`repowise mcp --transport stdio`; streamable-http
 and legacy SSE are also supported via `--transport`).
@@ -20,9 +20,9 @@ and legacy SSE are also supported via `--transport`).
 
 repowise's default transport is stdio, so it is a plain hatago stdio child — same shape as the serena
 and codebase-memory-mcp recipes, unblocked by the hatago consolidation
-(docs/done/2026-06-29-hatago-consolidation.md) for process placement, but **not** for project
-resolution — see "Open questions" below. Once resolved, it runs in the harness container, resolves the
-project, and writes `.repowise/` into it on first use. **No skill shipped** — upstream's slash
+(docs/done/2026-06-29-hatago-consolidation.md) for process placement, and by bd main-u5d for project
+resolution: emit.py now pins each stdio child's `cwd` to the mirrored container project path, and
+`repowise mcp` (no PATH) walks up from cwd to the nearest initialised `.repowise` repo. **No skill shipped** — upstream's slash
 commands (`/repowise:init`, `/repowise:health`, …) ship only through its own Claude plugin marketplace
 install (`/plugin marketplace add repowise-dev/repowise`), which is a separate distribution channel from
 a portable harnessed skill; the recipe declares only the MCP server.
@@ -34,32 +34,44 @@ catalog/recipes/repowise/
   PLAN.md
 ```
 
+## Indexing is a required, user-run setup step
+
+The MCP server **serves** an index; it does not build one. `repowise mcp` with no PATH walks up from its
+cwd to the nearest *initialised* `.repowise` repo — with no index there is nothing to answer from. So
+upstream's quick start makes indexing step 2, before wiring any agent:
+
+```bash
+REPOWISE_SKIP_EDITOR_SETUP=1 repowise init --index-only -y \
+  --no-claude-md --no-agents --no-codex --no-distill-hook
+```
+
+Shipped as a `setup:` note (schema `setup`, gated on `condition: test ! -d .repowise`) — the same shape
+tokensave uses for its own `tokensave init`. It is deliberately *not* automated via `init:`: the index is
+per-project state that can take minutes on a large repo, and `init.run` executes in the attach shell on
+every launch, where a non-zero exit aborts the attach.
+
+A default `repowise init` does register MCP servers, install a Claude Code hook into
+`~/.claude/settings.json`, and generate `.mcp.json`/`AGENTS.md`/`CLAUDE.md` — harnessed owns all of that,
+so the setup command disables each of those explicitly (`REPOWISE_SKIP_EDITOR_SETUP=1` + the `--no-*`
+flags) rather than avoiding `init` altogether.
+
 ## What this recipe does NOT do
 
-- Does not run `repowise init` at build or run time — that command auto-registers MCP servers, installs
-  a PostToolUse hook into `~/.claude/settings.json`, and generates `.mcp.json`/`AGENTS.md`/`CLAUDE.md`.
-  harnessed owns all of that; running it would fight the assembler's own config.
-- Does not pre-build the index at image-build time — `.repowise/wiki.db` is per-project state and the
-  full index (graph + git + docs + health) can take minutes; it is built lazily via the MCP tools (or an
-  explicit `repowise init --index-only` the user runs themselves) on first real use, not baked into the
-  image.
+- Does not pre-build the index at image-build time — `.repowise/wiki.db` is per-project state, not an
+  image artifact.
 - Does not wire the documentation-generation LLM step (`repowise init`'s Generation phase) to any
-  particular model/key — that is a per-project/user decision, not a recipe concern.
+  particular model/key — that is a per-project/user decision, not a recipe concern. Index-only mode
+  covers `get_overview` / `get_context` / `get_risk` / `get_health`; `search_codebase` / `get_answer` /
+  `get_why` need the generated wiki (`repowise init --provider …` with a key).
 
 ## Open questions / follow-ups
 
-- **BLOCKING — project resolution:** confirmed by inspecting `launcher.py` (hatago is `exec -d`'d with
-  no `-w`, so it inherits the container's default dir) and `emit.py` (the emitted stdio MCP entry has no
-  `cwd` field) that hatago spawns stdio children with cwd = `/home/harnessed`, not the project root. The
-  project is instead bind-mounted at its exact host path via `paths.container_project_path()` (path
-  mirroring, MNT2-02) — i.e. `/home/mcrowe/myproject` on the host is `/home/mcrowe/myproject` in the
-  container, unrelated to cwd. `repowise mcp --transport stdio` with no path argument resolves its
-  target from cwd, so as shipped it would index `/home/harnessed`, not the project. This is the exact
-  same open gap serena's PLAN.md flags for `--project-from-cwd` — not new to this recipe, but not
-  resolved by the hatago consolidation either. Two ways to unblock, either fixed once for both recipes:
-  (a) have emit.py set `cwd` on stdio MCP entries to the mirrored project path, or (b) have the
-  assembler template the project path into each recipe's `args` (repowise then takes it as a positional
-  argument: `[mcp, --transport, stdio, <project_path>]`). Until one lands, do not ship this recipe.
+- **RESOLVED — project resolution (bd main-u5d):** `emit.py` now sets `cwd` on stdio MCP entries to the
+  mirrored container project path (`paths.container_project_path()`), and `launcher.py` passes the project
+  into `write_hatago_config`. hatago therefore spawns `repowise mcp` with cwd = the project root, and
+  `repowise mcp` (no PATH) walks up from there to the project's `.repowise/`. Same fix unblocked serena's
+  `--project-from-cwd`. `repowise mcp [PATH]` also accepts an explicit positional path if the recipe ever
+  needs to be independent of cwd.
 - **AGPL-3.0**: repowise is copyleft. Fine for personal/dogfood use in this stack; flag before any
   distribution scenario that would trigger AGPL's network-use clause.
 - **Overlap with existing recipes**: repowise's Graph layer overlaps `codebase-memory-mcp`, and
