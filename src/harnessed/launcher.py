@@ -3154,6 +3154,80 @@ def uninstall_stack(
         _out.print(f"No shim found at {shim}")
 
 
+def _scan_image(rt: str, run_env: dict, image: str) -> bool:
+    """Save `image` to a temp tarball and re-scan it online via the harnessed-tools CLI
+    (`scan-image-online` — SEC-04 nightly re-scan semantics). Returns True on a clean run
+    (0 = no HIGH+ finding), False otherwise."""
+    with tempfile.NamedTemporaryFile(suffix=".tar", delete=False) as tf:
+        tar_path = tf.name
+    try:
+        _run([rt, "save", image, "-o", tar_path])
+        res = subprocess.run(
+            ["uv", "run", "--no-project", "--quiet", "--with", "ruamel.yaml",
+             "python", "-m", "harnessed.cli", "scan-image-online", tar_path],
+            env=run_env,
+        )
+        return res.returncode == 0
+    finally:
+        Path(tar_path).unlink(missing_ok=True)
+
+
+@app.command("scan")
+def scan(
+    stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
+    harness: Optional[str] = typer.Argument(
+        None,
+        help="Harness to scan; omit to scan every built harness for the stack "
+        "(claude|omp|opencode|antigravity|codex)",
+    ),
+) -> None:
+    """Re-scan a stack's already-built image(s) online (post-build CVE catch — see `rescan`),
+    scoped to a single stack.
+
+    * `scan <stack> <harness>` — re-scan that one (stack, harness) image; errors if it isn't
+                                 built yet.
+    * `scan <stack>`           — re-scan every supported harness's image for the stack
+                                 (antigravity, claude, codex, omp, opencode), skipping any that
+                                 haven't been built.
+    """
+    if not (paths.find_in_catalog("stacks", stack) / "stack.yaml").is_file():
+        _err.print(f"[bold red]error:[/bold red] no such stack '{stack}' (see `harnessed list`)")
+        raise typer.Exit(1)
+
+    if harness is not None and harness not in HARNESS_CONFIG_DIR:
+        _err.print(
+            f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+            f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+        )
+        raise typer.Exit(1)
+
+    targets = [harness] if harness else sorted(HARNESS_CONFIG_DIR)
+    to_scan = []
+    for target in targets:
+        if is_built(stack, target):
+            to_scan.append(target)
+        elif harness:
+            _err.print(
+                f"[bold red]error:[/bold red] stack '{stack}' ({target}) has no assembled profile "
+                f"(run: harnessed build {stack} {target})"
+            )
+            raise typer.Exit(1)
+    if not to_scan:
+        _out.print(f"[yellow]note:[/yellow] stack '{stack}' has no built harnesses — nothing to scan.")
+        return
+
+    rt = _runtime()
+    root = _harnessed_dir()
+    run_env = {**os.environ, "PYTHONPATH": str(root / "src"), "CONTAINER_RUNTIME": rt}
+    _out.print(f"[blue][INFO][/blue] Scanning stack '{stack}' — harness(es): {', '.join(to_scan)}")
+    has_errors = False
+    for target in to_scan:
+        if not _scan_image(rt, run_env, _derived_image(stack, target)):
+            has_errors = True
+    if has_errors:
+        raise typer.Exit(1)
+
+
 @app.command("rescan")
 def rescan() -> None:
     """Re-scan installed harnessed images online (post-build CVE catch)."""
@@ -3170,19 +3244,8 @@ def rescan() -> None:
     run_env = {**os.environ, "PYTHONPATH": str(root / "src"), "CONTAINER_RUNTIME": rt}
     has_errors = False
     for image in images:
-        with tempfile.NamedTemporaryFile(suffix=".tar", delete=False) as tf:
-            tar_path = tf.name
-        try:
-            _run([rt, "save", image, "-o", tar_path])
-            res = subprocess.run(
-                ["uv", "run", "--no-project", "--quiet", "--with", "ruamel.yaml",
-                 "python", "-m", "harnessed.cli", "scan-image-online", tar_path],
-                env=run_env,
-            )
-            if res.returncode != 0:
-                has_errors = True
-        finally:
-            Path(tar_path).unlink(missing_ok=True)
+        if not _scan_image(rt, run_env, image):
+            has_errors = True
     if has_errors:
         raise typer.Exit(1)
 
@@ -3192,7 +3255,7 @@ def rescan() -> None:
 # capability test relies on).
 _COMMANDS = {
     "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
-    "install", "uninstall", "rescan", "svc", "aws-sso",
+    "install", "uninstall", "scan", "rescan", "svc", "aws-sso",
 }
 
 
