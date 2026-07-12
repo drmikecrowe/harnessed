@@ -40,33 +40,6 @@ Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can
 This applies to code, catalog content, docs, and config alike. Commits are signed
 (see `.claude/rules/signed-commits`).
 
-## Denied commands (permission layer — will hard-fail)
-
-These are blocked by the permission layer, not by taste. A denied call wastes a full round-trip, and
-**the deny matcher inspects every segment of a compound command** — one bad word kills the whole
-chain, including the good parts.
-
-| Never run | Use instead |
-| --- | --- |
-| `grep` — including `\| grep`, `\| grep -v`, `git grep` | `rg` (`rg -v` for inverse) |
-| `find` | `fd` (`fd -e py`, `fd -H` for hidden) |
-| `rm -rf` | `rm -r` on a specific path, or `git clean`; for temp dirs use `$CLAUDE_JOB_DIR/tmp` |
-| `git push --force` | `git push --force-with-lease`, and only when asked |
-| `sudo`, `su`, `chmod 777`, `dd`, `mkfs`, `fdisk`, `ssh`, `scp`, `rsync` | ask the user to run it |
-
-### Rules that follow from the above
-
-- **Never bury a denied binary in a pipe or `&&` chain.** `rg foo \| grep -v test` is denied even
-  though `rg` is fine. Do the filtering in `rg` itself.
-- **Split destructive+benign compounds.** `rm -rf docs/x && mkdir -p docs/x` is denied as a unit;
-  run the (allowed) `mkdir` separately and let the user clear the directory, or use `rm -r`.
-- **Never bundle a git write with anything else.** Commit, push, and PR-create are *three* calls, not
-  one `&&` chain — a single denial on the push segment throws away the commit too. Push and
-  `gh pr create` are outward-facing: get explicit confirmation first (see the git workflow above).
-- **Tell subagents this too.** Subagents do not inherit the user's global rules — over half of all
-  historical denials in this repo came from subagents reaching for `grep`/`find`. Every `Agent`/
-  `Explore` prompt that will search the tree must state: *use `rg`/`fd`, never `grep`/`find`.*
-
 ## Project skills
 
 Skills live under `.agents/skills/`. See that directory for the current set.
