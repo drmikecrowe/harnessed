@@ -25,6 +25,7 @@ import pytest
 
 from harnessed import paths
 from harnessed.assemble import assemble
+from harnessed.emit import required_settings
 from harnessed.schema import (
     PinValidationError,
     expected_capabilities,
@@ -128,6 +129,23 @@ def test_all_catalog_recipes_pass_strict():
     assert "beads/stealth" in names, "variety refs must be enumerated, not skipped"
     for name in names:
         load_recipe(recipes_dir / paths.catalog_relpath(name), strict=True)  # raises on unknown field
+
+
+def test_context_mode_hooks_are_skipped_on_omp_only():
+    """The real catalog recipe, not a fixture (bd main-4fx / main-wyh).
+
+    context-mode's capability is delivered NATIVELY on omp (its own omp extension, installed by the
+    recipe's Dockerfile: session_start / tool_call / tool_result / session_before_compact). Replaying
+    the same hook bodies through omp-claude-hooks-bridge would double-write the session DB and spawn
+    a node CLI per tool call whose output the bridge discards. Every other harness must be unchanged.
+    """
+    recipe = load_recipe(ROOT / "catalog" / "recipes" / "context-mode", strict=True)
+    assert recipe.hooks_skip_harnesses == ["omp"]
+
+    assert "hooks" not in required_settings([], [recipe], harness="omp")
+    for harness in ("claude", "opencode", "codex", "antigravity"):
+        hooks = required_settings([], [recipe], harness=harness).get("hooks", {})
+        assert set(hooks) == {"PreToolUse", "SessionStart", "PostToolUse", "PreCompact"}, harness
 
 
 # --- Layer 2: live container check (podman-gated) -------------------------------------------------

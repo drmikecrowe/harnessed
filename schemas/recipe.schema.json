@@ -69,8 +69,16 @@
       "items": { "$ref": "#/$defs/plugin" }
     },
     "hooks": {
-      "description": "Declarative Claude Code hooks (GAP 2), merged by the assembler into the profile's settings.json. Maps event name to a list of {command, matcher?} entries. `command` must already exist in the image (baked by this recipe's Dockerfile) — Claude Code's own hook runner invokes it inside the instance; this is NOT the host-side `init:` mechanism (which runs once, before the agent attaches). See docs/todos/2026-06-27-recipe-stress-test.md GAP 2.",
+      "description": "Declarative Claude Code hooks (GAP 2), merged by the assembler into the profile's settings.json. Maps event name to a list of {command, matcher?} entries, plus the optional non-event key `skip_harnesses`. `command` must already exist in the image (baked by this recipe's Dockerfile) — Claude Code's own hook runner invokes it inside the instance; this is NOT the host-side `init:` mechanism (which runs once, before the agent attaches). See docs/todos/2026-06-27-recipe-stress-test.md GAP 2.",
       "type": "object",
+      "properties": {
+        "skip_harnesses": {
+          "description": "Harnesses on which THIS recipe's hooks are NOT emitted. For a capability delivered NATIVELY on that harness, where replaying the same hooks would double-fire (e.g. context-mode installs upstream's own omp plugin, so its hooks must not also be replayed through omp-claude-hooks-bridge). Drops only the declaring recipe's entries, only on the listed harnesses — other recipes' hooks in the same stack are untouched. Recipes stay harness-independent otherwise: harness-specific BUILD steps branch on ${HARNESS} in the Dockerfile, but hooks are not a build step and so cannot use that escape hatch.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["claude", "omp", "opencode", "antigravity", "codex"] }
+        }
+      },
       "additionalProperties": {
         "type": "array",
         "minItems": 1,

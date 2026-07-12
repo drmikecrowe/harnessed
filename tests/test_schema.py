@@ -839,6 +839,32 @@ class TestHooksParse:
         with pytest.raises(SchemaError, match="unknown event 'SessionStarts'"):
             self._load(tmp_path, body)
 
+    def test_skip_harnesses_parsed_and_not_treated_as_an_event(self, tmp_path):
+        body = (
+            "name: r\nhooks:\n"
+            "  skip_harnesses: [omp]\n"
+            "  SessionStart:\n    - command: hook-a\n"
+        )
+        r = self._load(tmp_path, body)
+        assert r.hooks_skip_harnesses == ["omp"]
+        assert set(r.hooks) == {"SessionStart"}
+
+    def test_skip_harnesses_absent_is_empty_list(self, tmp_path):
+        r = self._load(tmp_path, "name: r\nhooks:\n  SessionStart:\n    - command: hook-a\n")
+        assert r.hooks_skip_harnesses == []
+
+    def test_skip_harnesses_unknown_harness_rejected(self, tmp_path):
+        # A typo must fail at parse time — silently emitting the hooks it was meant to suppress
+        # is exactly the double-fire this gate exists to prevent.
+        body = "name: r\nhooks:\n  skip_harnesses: [ompp]\n  SessionStart:\n    - command: h\n"
+        with pytest.raises(SchemaError, match="unknown harness"):
+            self._load(tmp_path, body)
+
+    def test_skip_harnesses_not_a_list_rejected(self, tmp_path):
+        body = "name: r\nhooks:\n  skip_harnesses: omp\n  SessionStart:\n    - command: h\n"
+        with pytest.raises(SchemaError, match="must be a list of harness names"):
+            self._load(tmp_path, body)
+
     def test_hooks_not_a_mapping_rejected(self, tmp_path):
         with pytest.raises(SchemaError, match="must be a mapping"):
             self._load(tmp_path, "name: r\nhooks: not-a-dict\n")

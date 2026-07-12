@@ -31,8 +31,8 @@ _MODE = {"defaultMode": "acceptEdits"}
 _REQUIRED = {"permissions": {**_MODE, "allow": [_GRANT]}}
 
 
-def _hook_recipe(name: str, hooks: dict) -> Recipe:
-    return Recipe(name=name, hooks=hooks)
+def _hook_recipe(name: str, hooks: dict, skip_harnesses: list[str] | None = None) -> Recipe:
+    return Recipe(name=name, hooks=hooks, hooks_skip_harnesses=skip_harnesses or [])
 
 
 class TestWriteDerivedDockerfile:
@@ -493,6 +493,45 @@ class TestRequiredSettings:
             {"hooks": [{"type": "command", "command": "hook-a"}]},
             {"hooks": [{"type": "command", "command": "hook-b"}]},
         ]
+
+    def test_skip_harnesses_drops_only_that_recipe_on_that_harness(self):
+        # bd main-4fx. context-mode's capability is native on omp (its own omp plugin), so its
+        # hooks must not ALSO be replayed through the bridge — but every other recipe's hooks
+        # in the same stack still ride the bridge as before.
+        recipes = [
+            _hook_recipe("context-mode", {
+                "SessionStart": [HookCommand(command="context-mode hook claude-code sessionstart")],
+                "PostToolUse": [HookCommand(command="context-mode hook claude-code posttooluse")],
+            }, skip_harnesses=["omp"]),
+            _hook_recipe("gsd", {"SessionStart": [HookCommand(command="gsd-hook")]}),
+        ]
+        assert required_settings([], recipes, harness="omp")["hooks"] == {
+            "SessionStart": [{"hooks": [{"type": "command", "command": "gsd-hook"}]}],
+        }
+
+    def test_skip_harnesses_is_inert_on_every_other_harness(self):
+        recipes = [_hook_recipe("cm", {"SessionStart": [HookCommand(command="cm-hook")]},
+                                skip_harnesses=["omp"])]
+        for harness in ("claude", "opencode", "codex", "antigravity"):
+            result = required_settings([], recipes, harness=harness)
+            assert result["hooks"]["SessionStart"] == [
+                {"hooks": [{"type": "command", "command": "cm-hook"}]}
+            ], harness
+
+    def test_no_harness_skips_nothing(self):
+        # The default (harness=None) predates the gate and must stay byte-identical: an
+        # assemble-time caller that does not know the harness emits every recipe's hooks.
+        recipes = [_hook_recipe("cm", {"SessionStart": [HookCommand(command="cm-hook")]},
+                                skip_harnesses=["omp"])]
+        assert required_settings([], recipes) == required_settings([], [_hook_recipe(
+            "cm", {"SessionStart": [HookCommand(command="cm-hook")]})])
+
+    def test_skipping_the_only_hook_recipe_omits_the_hooks_key(self):
+        recipes = [_hook_recipe("cm", {"SessionStart": [HookCommand(command="cm-hook")]},
+                                skip_harnesses=["omp"])]
+        assert required_settings([], recipes, harness="omp") == {
+            "permissions": {"defaultMode": "acceptEdits"}
+        }
 
     def test_combines_grant_and_hooks(self):
         recipe = _hook_recipe("caveman", {"SessionStart": [HookCommand(command="caveman-remind")]})

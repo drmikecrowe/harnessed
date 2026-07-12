@@ -375,7 +375,7 @@ def write_omp_identity(
     return written
 
 
-def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
+def _recipe_hooks_settings(recipes: list[Recipe], harness: str | None = None) -> dict:
     """Build the settings.json `hooks` block from each recipe's declared `hooks:` (GAP 2).
 
     Renders straight into Claude Code's native hooks shape: {EventName: [{matcher?, hooks:
@@ -383,12 +383,19 @@ def _recipe_hooks_settings(recipes: list[Recipe]) -> dict:
     than being merged by matcher across recipes — simpler, and matches how multiple
     plugins/installers each contribute independent groups for the same event in practice.
 
+    A recipe naming `harness` in its `hooks.skip_harnesses` contributes nothing (bd main-4fx): its
+    capability is delivered natively there, and replaying the same hooks would double-fire. Only
+    THAT recipe is skipped — every other recipe's hooks are emitted as usual. `harness=None` (the
+    assemble-time default before a harness is known) skips nothing.
+
     A recipe's `setup:` note is NOT emitted here: setup notices are user-facing and shown
     host-side by the launcher at attach time (see launcher._prompt_setup_notices), never baked
     into settings.json or an agent identity file.
     """
     out: dict[str, list[dict]] = {}
     for recipe in recipes:
+        if harness is not None and harness in recipe.hooks_skip_harnesses:
+            continue
         for event, entries in recipe.hooks.items():
             group = out.setdefault(event, [])
             for entry in entries:
@@ -425,6 +432,7 @@ def required_settings(
     servers: list[McpServer],
     recipes: list[Recipe] | None = None,
     permissions: str | None = None,
+    harness: str | None = None,
 ) -> dict:
     """harnessed's REQUIRED settings.json contribution — the *only* thing the harness must add on
     top of whatever a recipe/base installer baked.
@@ -439,17 +447,19 @@ def required_settings(
         hatago exposes nothing → no grant needed). The server-level wildcard `mcp__<hub>` allows
         every tool hatago exposes; the hub's child tool names are only known at runtime, so the
         hub-level grant is the static, assembler-knowable permission.
-      - each recipe's declared `hooks:` (GAP 2), rendered by `_recipe_hooks_settings`.
+      - each recipe's declared `hooks:` (GAP 2), rendered by `_recipe_hooks_settings` — minus any
+        recipe that names `harness` in its `hooks.skip_harnesses` (bd main-4fx).
     This is the single source of truth for "what the harness requires" — both the assemble-time
     floor (`write_settings_json`) and the post-build merge (`merge_settings`, via the launcher)
-    use it.
+    use it. Both pass the harness, so the floor and the merge agree on which hooks exist; without
+    that agreement the merge would re-append hooks the floor deliberately dropped.
     """
     out: dict = {}
     perms: dict = {"defaultMode": _permission_default_mode(permissions)}
     if servers:
         perms["allow"] = [f"mcp__{HATAGO_MCP_KEY}"]
     out["permissions"] = perms
-    hooks = _recipe_hooks_settings(recipes or [])
+    hooks = _recipe_hooks_settings(recipes or [], harness)
     if hooks:
         out["hooks"] = hooks
     return out
@@ -460,6 +470,7 @@ def write_settings_json(
     servers: list[McpServer],
     recipes: list[Recipe] | None = None,
     permissions: str | None = None,
+    harness: str | None = None,
 ) -> Path:
     """Emit the assemble-time `settings.json` FLOOR — pre-approve the hatago hub's MCP tools and
     declare any recipe-contributed hooks (GAP 2).
@@ -473,7 +484,7 @@ def write_settings_json(
     if no recipe/base baked a `settings.json`, this floor stands unchanged.
     """
     out = profile_dir / "settings.json"
-    _write_json(out, required_settings(servers, recipes, permissions))
+    _write_json(out, required_settings(servers, recipes, permissions, harness))
     return out
 
 
