@@ -166,6 +166,92 @@ class TestSessionActive:
         assert launcher._session_active("docker", "inst") is False
 
 
+class TestPrune:
+    """`harnessed prune` reaps idle instances. A running container is gated by `_session_active`
+    (tty probe) so a live attached session is never torn down. A non-running container
+    (exited/crashed) has no session, so it skips the probe and is reaped straight off the idle
+    check — otherwise it lingers forever, since a plain `podman ps` never lists it."""
+
+    def _setup(self, monkeypatch, tmp_path, ps_rows, *, session=None):
+        # ps_rows: list of (name, state) the `podman ps -a` call reports. `session` is what the
+        # (mocked) `_session_active` returns for any running container.
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        monkeypatch.setattr(launcher, "_attach_marker", lambda inst: tmp_path / inst)
+
+        ps_stdout = "".join(f"{n}\t{s}\n" for n, s in ps_rows)
+
+        def fake_run(cmd, *a, **k):
+            assert "ps" in cmd and "-a" in cmd  # prune must list ALL containers, not running-only
+            return SimpleNamespace(returncode=0, stdout=ps_stdout, stderr="")
+
+        monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+
+        active_calls = []
+
+        def fake_active(rt, inst):
+            active_calls.append(inst)
+            return session
+
+        monkeypatch.setattr(launcher, "_session_active", fake_active)
+
+        torn = []
+        monkeypatch.setattr(launcher, "_pod_teardown", lambda rt, inst, pod: torn.append(inst))
+        return torn, active_calls
+
+    def _marker(self, tmp_path, name, *, age_min):
+        import os
+        import time
+
+        m = tmp_path / name
+        m.write_text("")
+        t = time.time() - age_min * 60
+        os.utime(m, (t, t))
+
+    def test_exited_idle_is_reaped_without_session_probe(self, monkeypatch, tmp_path):
+        torn, active_calls = self._setup(monkeypatch, tmp_path, [("harnessed-x-11111111", "exited")])
+        self._marker(tmp_path, "harnessed-x-11111111", age_min=180)
+        launcher.prune(idle=120, dry_run=False)
+        assert torn == ["harnessed-x-11111111"]
+        assert active_calls == []  # non-running: the running-only tty probe is skipped
+
+    def test_exited_but_recently_attached_is_not_reaped(self, monkeypatch, tmp_path):
+        torn, _ = self._setup(monkeypatch, tmp_path, [("harnessed-x-22222222", "exited")])
+        self._marker(tmp_path, "harnessed-x-22222222", age_min=5)
+        launcher.prune(idle=120, dry_run=False)
+        assert torn == []
+
+    def test_exited_never_attached_is_left_alone(self, monkeypatch, tmp_path):
+        torn, _ = self._setup(monkeypatch, tmp_path, [("harnessed-x-33333333", "exited")])
+        # no marker on disk → never interactively attached (headless / externally driven)
+        launcher.prune(idle=120, dry_run=False)
+        assert torn == []
+
+    def test_running_idle_session_is_reaped(self, monkeypatch, tmp_path):
+        torn, active_calls = self._setup(
+            monkeypatch, tmp_path, [("harnessed-x-44444444", "running")], session=False)
+        self._marker(tmp_path, "harnessed-x-44444444", age_min=180)
+        launcher.prune(idle=120, dry_run=False)
+        assert torn == ["harnessed-x-44444444"]
+        assert active_calls == ["harnessed-x-44444444"]  # running: probed before reaping
+
+    def test_running_attached_session_is_kept(self, monkeypatch, tmp_path):
+        torn, _ = self._setup(
+            monkeypatch, tmp_path, [("harnessed-x-55555555", "running")], session=True)
+        self._marker(tmp_path, "harnessed-x-55555555", age_min=180)
+        launcher.prune(idle=120, dry_run=False)
+        assert torn == []
+
+    def test_running_undetermined_session_is_kept(self, monkeypatch, tmp_path):
+        # `_session_active` returns None on a transient `top` failure → must NOT be read as idle.
+        torn, _ = self._setup(
+            monkeypatch, tmp_path, [("harnessed-x-66666666", "running")], session=None)
+        self._marker(tmp_path, "harnessed-x-66666666", age_min=180)
+        launcher.prune(idle=120, dry_run=False)
+        assert torn == []
+
+
 class TestResolveStartDir:
     """`_resolve_start_dir` resolves the agent's working directory for --agent-start-folder."""
 
