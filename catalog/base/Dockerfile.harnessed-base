@@ -136,7 +136,12 @@ RUN mise use -g uv osv-scanner && mise install \
 USER root
 COPY catalog/base/harnessed-scan /usr/local/bin/harnessed-scan
 COPY catalog/base/harnessed-start /usr/local/bin/harnessed-start
-RUN chmod 0755 /usr/local/bin/harnessed-scan /usr/local/bin/harnessed-start
+COPY catalog/base/op /usr/local/bin/op
+RUN chmod 0755 /usr/local/bin/harnessed-scan /usr/local/bin/harnessed-start /usr/local/bin/op
+# /usr/local/bin precedes /usr/bin on PATH, so the shim wins. Drop it when the best-effort
+# 1Password install above did not land — otherwise the shim would turn "op is not installed"
+# (a case callers already handle via `command -v op`) into an op that exists but always fails.
+RUN [ -x /usr/bin/op ] || rm -f /usr/local/bin/op
 USER ${USERNAME}
 
 # hatago MCP hub (in-container MCP bus, hatago-consolidation.md) + time server, baked once.
