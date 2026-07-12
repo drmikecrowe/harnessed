@@ -1974,7 +1974,12 @@ def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> st
         f"PROJECT_DIR={shlex.quote(str(project_path))} "
         f"MAIN_REPO_DIR={shlex.quote(str(main_repo))} "
         f"CONTAINER_WORKSPACE_DIR={shlex.quote(str(mount_path))} "
-        f"HOST_WORKSPACE_DIR={shlex.quote(str(mount_path))}",
+        f"HOST_WORKSPACE_DIR={shlex.quote(str(mount_path))} "
+        # The host $HOME, which is NOT the container's ($HOME is /home/harnessed in the pod). A
+        # `scope: global` persist entry is mounted path-preserving, so a recipe whose tool reads a
+        # dotdir under the host home (e.g. pulumi's ~/.pulumi) must point the tool at the mirrored
+        # path — `$HOST_HOME/.pulumi`, not `~/.pulumi`. This export is that handle.
+        f"HOST_HOME={shlex.quote(str(Path.home()))}",
     ]
     # Socket-backed project-scoped services (e.g. beads-server): export the container-side socket
     # path so a recipe's `setup:` can reference it verbatim instead of recomputing path arithmetic.
