@@ -56,6 +56,15 @@ class TestInitShellPrologue:
         assert f"CONTAINER_WORKSPACE_DIR={shlex.quote(str(tmp_path))}" in out
         assert f"HOST_WORKSPACE_DIR={shlex.quote(str(tmp_path))}" in out
 
+    def test_exports_host_home(self, tmp_path, monkeypatch):
+        """HOST_HOME is the host's $HOME — the pod's is /home/harnessed, so a recipe whose tool
+        reads a path-mirrored `scope: global` persist dir (e.g. pulumi's ~/.pulumi) needs it."""
+        _stub_recipes(monkeypatch, [_recipe("ping")])
+        monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
+        monkeypatch.setattr(launcher.Path, "home", staticmethod(lambda: tmp_path / "hosthome"))
+        out = launcher._init_shell_prologue("s", tmp_path / "proj", tmp_path)
+        assert f"HOST_HOME={shlex.quote(str(tmp_path / 'hosthome'))}" in out
+
     def test_main_repo_dir_uses_git_common_dir(self, tmp_path, monkeypatch):
         _stub_recipes(monkeypatch, [_recipe("ping")])
         common = tmp_path / "bare"

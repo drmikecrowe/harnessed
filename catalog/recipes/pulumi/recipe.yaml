@@ -4,10 +4,15 @@
 # `mise use -g` layer and `egress:` appends the Pulumi hosts to the default-DROP allowlist ONLY when
 # this recipe is in the stack. See docs/guides/egress.md.
 #
-# NOTE: egress ≠ auth. Reaching Pulumi Cloud still needs a PULUMI_ACCESS_TOKEN — that is a SECRET,
-# wired via the varlock/1Password path (docs/guides/secrets.md), NEVER baked here. See `setup:`.
+# AUTH — the host's `pulumi login` is FORWARDED, not redone in the pod. `persist: scope: global`
+# bind-mounts the real host ~/.pulumi rw (path-preserving), so the pod reuses the host's
+# credentials.json and its plugin cache. That dir holds a long-lived Pulumi token, so the mount is
+# gated by the user-owned persist allowlist (default-deny — see `setup:` and docs/guides/pulumi.md).
+# Nothing is baked into the image. PULUMI_ACCESS_TOKEN as a varlock/1Password secret
+# (docs/guides/secrets.md) still works, wins over credentials.json, and is the right call for CI or
+# a scoped short-lived token.
 name: pulumi
-description: "Pulumi CLI (pinned via mise) + egress to Pulumi Cloud. Auth via PULUMI_ACCESS_TOKEN (secrets, not baked)."
+description: "Pulumi CLI (pinned via mise) + egress to Pulumi Cloud. Auth by forwarding the host ~/.pulumi login (allowlisted), or PULUMI_ACCESS_TOKEN as a secret."
 
 tools:
   # Pinned per the repo pin policy (no @latest). Bump this to update. mise resolves via aqua:pulumi/pulumi.
@@ -17,9 +22,24 @@ egress:
   - api.pulumi.com   # Pulumi Cloud state backend + REST API
   - get.pulumi.com   # resource-plugin downloads at `pulumi up` (providers not already on GitHub)
 
+# The REAL host ~/.pulumi, mounted rw path-preserving (host path == container path). Requires that
+# path in ~/.config/harnessed/persist-allowlist; without it the launch fails and names the exact
+# line to add (default-deny, by design — this dir is credential-bearing).
+persist:
+  - scope: global
+    path: ~/.pulumi
+
+# The pod's $HOME is /home/harnessed, so the mirrored mount is NOT at ~/.pulumi inside the pod.
+# Point the CLI at the mirrored host path. Idempotent by construction (a plain export).
+init:
+  run: export PULUMI_HOME="$HOST_HOME/.pulumi"
+
 setup:
   summary: >-
-    Set PULUMI_ACCESS_TOKEN so the CLI can reach Pulumi Cloud — add it as an op(op://…) ref in your
-    ~/.config/harnessed/.env.schema (see the secrets guide); it is injected as env at launch, never
-    baked. Or run `pulumi login` interactively for a local/file backend that needs no token.
+    Auth is forwarded from your host, not baked. Run `pulumi login` ON THE HOST once, then permit the
+    mount: add your expanded home path plus /.pulumi (e.g. /home/you/.pulumi) as a line in
+    ~/.config/harnessed/persist-allowlist. The pod then reuses the host credentials.json and plugin
+    cache. The mount is rw and the token is long-lived, so the agent CAN read it — for CI, or to keep
+    the agent off your host token, set a scoped PULUMI_ACCESS_TOKEN as an op(op://…) secret instead
+    (see the secrets guide); it takes precedence.
   reference: https://www.pulumi.com/docs/pulumi-cloud/access-management/access-tokens/
