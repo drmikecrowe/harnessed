@@ -173,6 +173,28 @@ class TestServiceDataDir:
             launcher._service_data_dir(svc, "no-beads-stack", tmp_path)
 
 
+class TestClientVisibleSocketPath:
+    """The path a service advertises to clients is THEIR path, never the service's own /data view.
+
+    beads writes this into .beads/metadata.json, which bd (in a different container, with a different
+    mount namespace) then reads. Advertise /data/run/mysql.sock and every client dials a path that
+    does not exist for it.
+    """
+
+    def test_socket_env_is_the_agent_path_not_the_service_data_path(self, tmp_path, monkeypatch):
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        project = tmp_path / "repo"
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
+        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        )
+        sock = launcher.svc_socket_env("any", project)["HARNESSED_BEADS_SERVER_SOCKET"]
+        assert sock == f"{project}/.beads/run/mysql.sock"
+        assert not sock.startswith("/data"), "clients must never be handed the service's own mount path"
+
+
 class TestSocketEnvExport:
     def test_socket_path_is_exported_for_the_attach_shell(self, tmp_path, monkeypatch):
         # Recipes reference $HARNESSED_BEADS_SERVER_SOCKET in their `setup:` rather than recomputing

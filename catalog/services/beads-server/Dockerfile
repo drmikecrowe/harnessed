@@ -24,8 +24,12 @@ ARG MISE_VERSION=v2026.7.0
 ARG DOLT_VERSION=2.1.10
 ARG BEADS_VERSION=1.1.0
 
+# python3 (NOT python3-minimal — it omits the stdlib `json` module, which the entrypoint's
+# legacy-metadata migration needs: `ModuleNotFoundError: No module named 'json'`). ubuntu:24.04 ships
+# no interpreter at all, and the migration must not depend on what the recipe images happen to have.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl git bash openssh-client \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates curl git bash openssh-client python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Same uid-1000 user as harnessed-base (ubuntu:24.04 ships `ubuntu` at 1000), so `--userns=keep-id`
