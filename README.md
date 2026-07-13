@@ -89,11 +89,15 @@ your `~/.config/harnessed` and `$XDG_DATA_HOME/harnessed` data are preserved.
 
 ## First-run build
 
-Images are built on the host with `podman build` the first time they're needed. The image lineage is three layers:
+Images are built on the host with `podman build` the first time they're needed:
 
-- **Layer 1 — `harnessed-base`**: fat toolchain image (mise, node@24, python, pnpm; no harness CLI).
-- **Layer 2 — `harnessed-<agent>`**: FROM `harnessed-base` + the agent CLI installed (one image per agent: `harnessed-claude`, `harnessed-omp`).
-- **Layer 3 — `harnessed-<harness>-<stack>`**: derived stack image built by `harnessed build <stack> <harness>` — FROM `harnessed-<harness>` + the stack's recipe Dockerfiles concatenated (e.g. `harnessed-claude-gstack_ping_time_greet` FROM `harnessed-claude`). The same harness-free stack yields one derived image per harness.
+- **`harnessed-base`**: fat toolchain image (mise, node@24, python, pnpm; no harness CLI).
+- **`harnessed-<harness>-<stack>`**: the derived stack image, built by `harnessed build <stack> <harness>` — FROM `harnessed-base`, then the stack's recipe Dockerfiles concatenated, then **the agent CLI installed last**, then the supply-chain scan.
+- **`harnessed-<agent>`**: FROM `harnessed-base` + the agent CLI (`harnessed-claude`, `harnessed-omp`, …). No longer the derived image's parent — it's the fallback image `harnessed run` uses for a stack with no derived image yet.
+
+**Why the agent installs last.** Agent CLI pins churn far faster than recipes. When the agent image was the derived image's `FROM` parent, every agent bump changed the parent's id and so invalidated *every recipe layer of every stack* on that harness. With the agent on top, an agent bump rebuilds only the agent layer and the scan — the expensive recipe layers stay cached. It also makes the recipe layers harness-independent (they hang off `harnessed-base` with identical instructions), so a stack declaring `harnesses: [claude, omp]` builds its recipe layers once and both harnesses share them.
+
+A recipe that branches on `${HARNESS}` in a `RUN` necessarily splits that cache from its own layer onward, so keep such recipes late in a stack's `recipes:` list.
 
 Supporting image (not part of the base→agent→stack lineage):
 
@@ -103,10 +107,16 @@ Assembly runs **host-native in-process** (no tool container) — the host CLI em
 the `Dockerfile.harnessed-<stack>`, then drives `podman build`.
 
 ```bash
-harnessed build                    # (re)build the shared base/agent/hatago images
+harnessed build                    # rebuild the shared images, then reconcile every stale stack
+harnessed build -j1                # ... one stack at a time (default: half the cores, capped at 4)
 harnessed build <stack>            # build every harness in the stack's `harnesses:` list
 harnessed build <stack> <harness>  # assemble one stack for a harness: emit profile + build images (+ supply-chain scan)
 ```
+
+A bare `harnessed build` rebuilds the shared images once, then builds every stale stack
+**concurrently** (`--jobs`/`-j`). Each build's output is prefixed with its own coloured
+`stack(harness)` tag so the interleaved podman logs stay readable, and one stack failing doesn't
+cancel the others — the failures are reported together at the end.
 
 A stack may declare which harnesses it is built for:
 
