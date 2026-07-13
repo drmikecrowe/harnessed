@@ -18,12 +18,17 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
 from datetime import datetime, timezone
+from itertools import cycle
 from pathlib import Path
 from typing import Callable, Optional, TypeVar
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from ruamel.yaml import YAML
 
 from . import emit
@@ -329,7 +334,51 @@ def _ensure_docs_wiki_clone() -> None:
         _err.print(f"[yellow]warning:[/yellow] could not clone docs wiki ({wiki_url}); docs/ left missing")
 
 
+# --- parallel build logging -----------------------------------------------------------------
+# When several stacks build concurrently their podman output interleaves into mush, so each build
+# runs under a TAG — a (label, colour) pair set by the worker thread. `_run` and `_say` prefix every
+# line with it, which is what makes N concurrent build logs readable in one terminal. Unset (the
+# default) means a serial build: output streams through untouched, exactly as before.
+_BUILD_TAG: ContextVar[tuple[str, str] | None] = ContextVar("_BUILD_TAG", default=None)
+
+# Distinct, readable on both light and dark terminals. Cycled, so >8 concurrent builds reuse colours
+# (the label still disambiguates).
+_TAG_COLORS = (
+    "cyan", "magenta", "green", "yellow",
+    "bright_blue", "bright_magenta", "bright_cyan", "bright_green",
+)
+
+# Concurrent stack builds on a bare `harnessed build`. Deliberately NOT cpu_count: a stack build is
+# mostly a podman build, and podman serializes chunks of its image store (layer commit / metadata),
+# so the curve flattens fast — and each derived image is multi-GB, so N concurrent builds means N
+# concurrent multi-GB writes. Half the cores, capped at 4, keeps the machine usable and still lands
+# most of the win. Override with -j.
+_DEFAULT_JOBS = max(1, min(4, (os.cpu_count() or 2) // 2))
+
+
+def _say(msg: str) -> None:
+    """Print a build message, prefixed with the current build's tag when one is set.
+
+    highlight=False on the tagged path: rich's auto-highlighter styles things that merely LOOK like
+    code, and it reads a tag like `mystack(omp)` as a function call — splitting it into differently
+    styled fragments mid-word. It does the same to podman's build output (paths, numbers, brackets).
+    A build log should come out the way podman wrote it.
+    """
+    tag = _BUILD_TAG.get()
+    if tag is None:
+        _out.print(msg)
+        return
+    label, color = tag
+    _out.print(f"[{color}]{label:>34}[/{color}] [dim]│[/dim] {msg}", highlight=False)
+
+
 def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
+    tag = _BUILD_TAG.get()
+    # Only the plain streaming case can be tagged: a caller that captures output (capture_output /
+    # explicit stdout=) wants the bytes back, not printed, so leave those exactly as they were.
+    streamable = tag is not None and not kwargs.get("capture_output") and "stdout" not in kwargs
+    if streamable:
+        return _run_tagged(cmd, check=check, **kwargs)
     try:
         return subprocess.run(cmd, check=check, **kwargs)
     except subprocess.CalledProcessError as exc:
@@ -340,6 +389,27 @@ def _run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedPr
             if text.strip():
                 _err.print(f"[bold red]{label}:[/bold red] {text.strip()}")
         raise
+
+
+def _run_tagged(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
+    """Run `cmd`, printing each output line prefixed with the current build tag.
+
+    stderr is folded into stdout so a build's diagnostics stay in ITS lane rather than racing to the
+    terminal unprefixed. rich's Console holds an internal lock, so concurrent workers never tear a
+    line. Output is `escape`d: podman prints things like `[1/2] STEP` that rich would otherwise eat
+    as markup.
+    """
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, errors="replace", bufsize=1, **kwargs,
+    )
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        _say(escape(line.rstrip()))
+    returncode = proc.wait()
+    if check and returncode != 0:
+        raise subprocess.CalledProcessError(returncode, cmd)
+    return subprocess.CompletedProcess(cmd, returncode)
 
 
 def _catalog_base(rt_path: str) -> Path:
@@ -492,12 +562,29 @@ def _service_dockerfile_with_ca(dockerfile: Path) -> Path | None:
     return Path(tmp)
 
 
-# Shared images (base + per-harness agent) are FROM-parents of every derived stack image, so a
-# multi-pair build (`harnessed build` reconcile, or a stack declaring several harnesses) would
-# otherwise re-issue the same `podman build` once per pair. Cache-backed, but each invocation still
-# tars up the whole build context. Building each once per PROCESS is enough: nothing between two
-# pairs in the same run can change the base/agent Dockerfile under us.
+# Images shared by several (stack, harness) pairs in one run — harnessed-base, the per-harness agent
+# images, and any service image two stacks both reference. Without a guard a multi-pair build would
+# re-issue the same `podman build` once per pair: cache-backed, but each invocation still tars up the
+# whole build context, and under `--jobs > 1` two workers would race to build the same tag.
+# Building each once per PROCESS is enough — nothing between two pairs in the same run can change
+# the base/agent/service Dockerfile under us. The lock makes the check-then-build atomic.
 _SHARED_IMAGES_BUILT: set[str] = set()
+_SHARED_IMAGES_LOCK = threading.Lock()
+
+
+def _build_shared_once(image: str, build: Callable[[], None]) -> None:
+    """Build `image` exactly once per process, serializing concurrent callers.
+
+    The lock is held across the BUILD, not just the set check. A claim-then-release would let a
+    second worker sail past the guard while the first is still building — and go on to build its
+    derived image FROM a base that does not exist yet. Shared images are prerequisites of everything
+    else, so serializing them costs nothing worth having.
+    """
+    with _SHARED_IMAGES_LOCK:
+        if image in _SHARED_IMAGES_BUILT:
+            return
+        build()
+        _SHARED_IMAGES_BUILT.add(image)
 
 
 def _build_images_cmd(rt: str, force: bool = False) -> None:
@@ -516,34 +603,35 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
         if force or not _image_exists(rt, image):
             _out.print(f"[blue][INFO][/blue] Building {image} ...")
             _run([rt, "build", "-t", image, "-f", str(dockerfile), *cache_arg, *secret_args, str(hdir)])
-            _SHARED_IMAGES_BUILT.add(image)
+            with _SHARED_IMAGES_LOCK:
+                _SHARED_IMAGES_BUILT.add(image)
     _out.print("[green][SUCCESS][/green] harnessed images ready")
 
 
 def _build_base_image(rt: str) -> None:
     """Force-(re)build the parameterised base so edits to Dockerfile.harnessed-base (the supply-chain
-    scan script, extra-tools, scanner installs) propagate into every FROM-derived agent / hatago /
-    stack image. Layer-cached: a no-op when the base Dockerfile is unchanged, and skipped outright
-    once this process has already built it (see _SHARED_IMAGES_BUILT)."""
-    if _BASE_IMAGE in _SHARED_IMAGES_BUILT:
-        return
-    _ensure_extra_tools()
-    no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
-    cache_arg = ["--no-cache"] if no_cache else []
-    secret_args = _corp_proxy_ca_secret_args()
-    _out.print(f"[blue][INFO][/blue] Building {_BASE_IMAGE} ...")
-    _run([
-        rt,
-        "build",
-        "-t",
-        _BASE_IMAGE,
-        "-f",
-        str(_catalog_base("Dockerfile.harnessed-base")),
-        *cache_arg,
-        *secret_args,
-        str(_harnessed_dir()),
-    ])
-    _SHARED_IMAGES_BUILT.add(_BASE_IMAGE)
+    scan script, extra-tools, scanner installs) propagate into every derived stack image (which is
+    `FROM harnessed-base` — agent-last lineage). Layer-cached: a no-op when the base Dockerfile is
+    unchanged, and skipped outright once this process has already built it."""
+    def build() -> None:
+        _ensure_extra_tools()
+        no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
+        cache_arg = ["--no-cache"] if no_cache else []
+        secret_args = _corp_proxy_ca_secret_args()
+        _say(f"[blue][INFO][/blue] Building {_BASE_IMAGE} ...")
+        _run([
+            rt,
+            "build",
+            "-t",
+            _BASE_IMAGE,
+            "-f",
+            str(_catalog_base("Dockerfile.harnessed-base")),
+            *cache_arg,
+            *secret_args,
+            str(_harnessed_dir()),
+        ])
+
+    _build_shared_once(_BASE_IMAGE, build)
 
 
 def _build_agent_image(rt: str, harness: str) -> None:
@@ -552,23 +640,29 @@ def _build_agent_image(rt: str, harness: str) -> None:
     tool versions (e.g. OMP_VERSION) — the agent Dockerfile's ARG carries no default and is supplied
     here, so changing the pin here cache-busts exactly the version layer and onward.
 
-    Built at most once per process: N stacks sharing a harness share one agent image."""
+    Built at most once per process: N stacks sharing a harness share one agent image.
+
+    NOTE (agent-last): this standalone image is no longer the FROM parent of the derived stack
+    images — emit inlines the agent's Dockerfile body as their LAST layers instead. It is still
+    built because `harnessed run` falls back to it for a stack that has no derived image yet.
+    """
     agent = load_agent(harness)
     image = _agent_image(harness)
-    if image in _SHARED_IMAGES_BUILT:
-        return
-    if not _image_exists(rt, _BASE_IMAGE):
-        _out.print("[yellow][WARNING][/yellow] harnessed-base not found. Building base first…")
-        _build_images_cmd(rt, force=False)
-    hdir = _harnessed_dir()
-    dockerfile = hdir / agent.dockerfile if agent.dockerfile else _catalog_base(
-        f"Dockerfile.harnessed-{harness}")
-    build_args: list[str] = []
-    for key, val in agent.build_args.items():
-        build_args += ["--build-arg", f"{key}={val}"]
-    _out.print(f"[blue][INFO][/blue] Building {image} ...")
-    _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, str(hdir)])
-    _SHARED_IMAGES_BUILT.add(image)
+
+    def build() -> None:
+        if not _image_exists(rt, _BASE_IMAGE):
+            _say("[yellow][WARNING][/yellow] harnessed-base not found. Building base first…")
+            _build_images_cmd(rt, force=False)
+        hdir = _harnessed_dir()
+        dockerfile = hdir / agent.dockerfile if agent.dockerfile else _catalog_base(
+            f"Dockerfile.harnessed-{harness}")
+        build_args: list[str] = []
+        for key, val in agent.build_args.items():
+            build_args += ["--build-arg", f"{key}={val}"]
+        _say(f"[blue][INFO][/blue] Building {image} ...")
+        _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, str(hdir)])
+
+    _build_shared_once(image, build)
 
 
 def _ensure_harness_image(rt: str, harness: str) -> None:
@@ -596,7 +690,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     build_root = paths.profiles_root().parent
     hdir = _harnessed_dir()
 
-    _out.print(f"[blue][INFO][/blue] Assembling stack '{stack}' for harness '{harness}' ...")
+    _say(f"[blue][INFO][/blue] Assembling stack '{stack}' for harness '{harness}' ...")
     try:
         result = assemble(root, stack, build_root, harness, strict=strict)
     except (SchemaError, CollisionError) as exc:
@@ -605,15 +699,16 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
-    # Always rebuild the parameterised base first: the agent image below is `FROM harnessed-base`
-    # (which now also bakes hatago + the time server — hatago-consolidation), so a stale base (e.g.
-    # after editing Dockerfile.harnessed-base) would silently propagate into every derived image.
+    # Always rebuild the parameterised base first: the derived image is `FROM harnessed-base` (which
+    # also bakes hatago + the time server — hatago-consolidation), so a stale base (e.g. after
+    # editing Dockerfile.harnessed-base) would silently propagate into every derived image.
     # Cache-backed — a no-op when the base Dockerfile is unchanged.
     _build_base_image(rt)
 
-    # (Re)build the agent base image so a changed agent Dockerfile / build_args (e.g. OMP_VERSION)
-    # actually propagates — the derived image is `FROM` it. Cache-backed: a no-op when unchanged,
-    # but a changed pin cache-busts the version layer and, in turn, the derived image's FROM.
+    # The standalone agent image is NO LONGER the derived image's FROM parent (agent-last lineage —
+    # the agent's Dockerfile body is inlined as the derived image's last layers by
+    # emit.write_derived_dockerfile). It is still built because `harnessed run` falls back to it for
+    # a stack with no derived image yet. Once per process, cache-backed.
     _build_agent_image(rt, harness)
 
     # Always build the derived per-stack image: its FINAL layer is the supply-chain scan (BLD-02,
@@ -622,7 +717,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     derived = _derived_image(stack, harness)
     dockerfile = prof / f"Dockerfile.harnessed-{stack}"
     recipe_hash = compute_recipe_hash(stack_dir / "stack.yaml", result.recipes)
-    _out.print(f"[blue][INFO][/blue] Building derived image {derived} (incl. supply-chain scan) ...")
+    _say(f"[blue][INFO][/blue] Building derived image {derived} (incl. supply-chain scan) ...")
     _build_derived_image(rt, derived, dockerfile, hdir, recipe_hash)
 
     # The build's own scan layer is credential-free by design, so snyk + socket sit it out. Re-run the
@@ -630,7 +725,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     # thing `harnessed rescan <image>` does. Advisory: it reports posture and never fails the build.
     # Skipped by `--no-security-scans`.
     if os.environ.get("HARNESSED_NO_SCANS") != "true":
-        _out.print(f"[blue][INFO][/blue] Credentialed re-scan of {derived} (snyk + socket) ...")
+        _say(f"[blue][INFO][/blue] Credentialed re-scan of {derived} (snyk + socket) ...")
         _scan_image_in_container(rt, derived)
     # Merge image-baked ~/.claude extensions into the profile only when a recipe actually baked some.
     if any((r.root / "Dockerfile").is_file() for r in result.recipes):
@@ -657,7 +752,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     for svc_name in _service_refs(stack):
         _build_service_image(rt, svc_name)
 
-    _out.print(f"[green][SUCCESS][/green] Stack '{stack}' ({harness}) built — profile: {prof}")
+    _say(f"[green][SUCCESS][/green] Stack '{stack}' ({harness}) built — profile: {prof}")
 
 
 def _built_image_hash(rt: str, stack: str, harness: str) -> str | None:
@@ -718,9 +813,9 @@ def _declared_pairs(root: Path | None) -> list[tuple[str, str]]:
     return pairs
 
 
-def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
-    """Rebuild every stale (stack, harness) pair — the reconciliation half of a bare
-    `harnessed build`. A pair is in scope when it is either:
+def _stale_pairs(rt: str, root: Path | None, *, strict: bool) -> list[tuple[str, str, str]]:
+    """The (stack, harness, reason) triples a bare `harnessed build` must rebuild. A pair is in
+    scope when it is either:
 
     * DECLARED — the stack's `harnesses:` list names it. These build even if no image exists yet,
       which is how a bare `build` provisions a freshly-authored stack from nothing.
@@ -728,8 +823,8 @@ def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
       (rather than the whole catalog) keeps stacks that declare no `harnesses:` opt-in: they are
       only ever rebuilt once someone has named them explicitly at least once.
 
-    A pair is rebuilt when its recipe-closure hash no longer matches the `harnessed.recipe-hash`
-    label baked into its image (or the image is absent). Fresh/unchanged pairs are skipped."""
+    It is stale when its recipe-closure hash no longer matches the `harnessed.recipe-hash` label
+    baked into its image (or the image is absent). Fresh/unchanged pairs are dropped."""
     pairs: list[tuple[str, str]] = _declared_pairs(root)  # (stack, harness)
 
     result = subprocess.run(
@@ -754,9 +849,10 @@ def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
                     break
     if not pairs:
         _out.print("[blue][INFO][/blue] No declared or previously-built stacks found to reconcile.")
-        return
+        return []
 
     _out.print(f"[blue][INFO][/blue] Reconciling {len(pairs)} stack(s) against their recipe hash ...")
+    stale: list[tuple[str, str, str]] = []
     for name, harness in pairs:
         stack_dir = (root / "stacks" / name) if root else paths.find_in_catalog("stacks", name)
         if not (stack_dir / "stack.yaml").is_file():
@@ -772,9 +868,87 @@ def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool) -> None:
         current = _built_image_hash(rt, name, harness)
         if current == expected:
             continue
-        reason = "no built image" if current is None else "recipe hash changed"
+        stale.append((name, harness, "no built image" if current is None else "recipe hash changed"))
+    return stale
+
+
+def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool, jobs: int = 1) -> None:
+    """Rebuild every stale (stack, harness) pair — the reconciliation half of a bare
+    `harnessed build`. With `jobs > 1` the stale pairs build CONCURRENTLY.
+
+    The shared images (harnessed-base, and one agent image per harness in scope) are built FIRST,
+    serially, before any worker starts. They are prerequisites of every derived build, so racing on
+    them would either duplicate the work or have a worker build FROM a base that isn't there yet.
+
+    Each worker runs under a colour+label tag (_BUILD_TAG) so N interleaved podman logs stay
+    readable. Failures do NOT cancel their siblings: every pair gets its shot, and the failures are
+    reported together at the end — one broken stack shouldn't cost you the whole build.
+    """
+    stale = _stale_pairs(rt, root, strict=strict)
+    if not stale:
+        _out.print("[green][SUCCESS][/green] All stacks up to date.")
+        return
+
+    # Prerequisites, once, before the fan-out (see docstring).
+    _build_base_image(rt)
+    for harness in dict.fromkeys(h for _, h, _ in stale):
+        _build_agent_image(rt, harness)
+
+    jobs = max(1, min(jobs, len(stale)))
+    for name, harness, reason in stale:
         _out.print(f"[blue][INFO][/blue] Rebuilding stale stack '{name}' ({harness}) ({reason}) ...")
-        _build_stack(rt, name, harness, root, strict=strict)
+
+    if jobs == 1:
+        failures = [
+            (name, harness, exc)
+            for name, harness, _ in stale
+            for exc in _build_stack_guarded(rt, name, harness, root, strict=strict, tag=None)
+        ]
+    else:
+        _out.print(f"[blue][INFO][/blue] Building {len(stale)} stack(s) with {jobs} parallel job(s) ...")
+        tags = {
+            (name, harness): (f"{name}({harness})", color)
+            for (name, harness, _), color in zip(stale, cycle(_TAG_COLORS))
+        }
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            results = list(pool.map(
+                lambda triple: (
+                    triple[0], triple[1],
+                    _build_stack_guarded(
+                        rt, triple[0], triple[1], root,
+                        strict=strict, tag=tags[(triple[0], triple[1])],
+                    ),
+                ),
+                stale,
+            ))
+        failures = [(name, harness, exc) for name, harness, excs in results for exc in excs]
+
+    if failures:
+        _err.print(f"\n[bold red]error:[/bold red] {len(failures)} stack(s) failed to build:")
+        for name, harness, exc in failures:
+            _err.print(f"  [bold red]✗[/bold red] {name} ({harness}): {exc}")
+        raise typer.Exit(1)
+    _out.print(f"[green][SUCCESS][/green] {len(stale)} stack(s) rebuilt.")
+
+
+def _build_stack_guarded(
+    rt: str, stack: str, harness: str, root: Path | None, *, strict: bool,
+    tag: tuple[str, str] | None,
+) -> list[Exception]:
+    """Run _build_stack under `tag`, returning [] on success or [exc] on failure.
+
+    Returning rather than raising is what lets one stack fail without killing the siblings that are
+    already mid-build in other workers.
+    """
+    token = _BUILD_TAG.set(tag)
+    try:
+        _build_stack(rt, stack, harness, root, strict=strict)
+        return []
+    except Exception as exc:  # noqa: BLE001 — the failure is reported, not swallowed
+        _say(f"[bold red]✗ build failed:[/bold red] {exc}")
+        return [exc]
+    finally:
+        _BUILD_TAG.reset(token)
 
 
 def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
@@ -2227,23 +2401,30 @@ def _build_service_image(rt: str, name: str) -> None:
     When a corporate proxy CA cert is configured, a temp Dockerfile is generated with the CA trust
     block injected after the first RUN (typically the apt-get install step), so subsequent HTTPS
     downloads (curl/pip/pnpm/etc.) succeed through SSL-inspecting proxies.
+
+    Built once per process (_build_shared_once): two stacks in the same `harnessed build` may
+    reference the same service, and under `--jobs > 1` they would otherwise race to build one tag.
     """
     svc = load_service(None, name)
     svc_dir = paths.find_in_catalog("services", name)
     orig_dockerfile = svc_dir / "Dockerfile"
-    _out.print(f"[blue][INFO][/blue] Building service image {svc.image} ...")
-    tmp = _service_dockerfile_with_ca(orig_dockerfile)
-    try:
-        effective = tmp if tmp else orig_dockerfile
-        # Use a temp dir as build context so podman's --secret temp files (podman-build-secret-*)
-        # land in /tmp rather than in svc_dir's parent, which may be repo-tracked.
-        with tempfile.TemporaryDirectory() as build_ctx:
-            shutil.copytree(svc_dir, build_ctx, dirs_exist_ok=True)
-            _run([rt, "build", "-t", svc.image, "-f", str(effective),
-                  *_corp_proxy_ca_secret_args(), build_ctx])
-    finally:
-        if tmp:
-            tmp.unlink(missing_ok=True)
+
+    def build() -> None:
+        _say(f"[blue][INFO][/blue] Building service image {svc.image} ...")
+        tmp = _service_dockerfile_with_ca(orig_dockerfile)
+        try:
+            effective = tmp if tmp else orig_dockerfile
+            # Use a temp dir as build context so podman's --secret temp files (podman-build-secret-*)
+            # land in /tmp rather than in svc_dir's parent, which may be repo-tracked.
+            with tempfile.TemporaryDirectory() as build_ctx:
+                shutil.copytree(svc_dir, build_ctx, dirs_exist_ok=True)
+                _run([rt, "build", "-t", svc.image, "-f", str(effective),
+                      *_corp_proxy_ca_secret_args(), build_ctx])
+        finally:
+            if tmp:
+                tmp.unlink(missing_ok=True)
+
+    _build_shared_once(svc.image, build)
 
 
 def _ensure_service(
@@ -2858,6 +3039,14 @@ def build(
     ),
     force: bool = typer.Option(False, "--force", help="Force rebuild of base images"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Disable podman layer cache for image builds"),
+    jobs: int = typer.Option(
+        _DEFAULT_JOBS, "--jobs", "-j", min=1,
+        help=(
+            "Stacks to build concurrently on a bare `harnessed build` (default: "
+            f"{_DEFAULT_JOBS} on this machine). Each build's log is prefixed with its own "
+            "coloured stack(harness) tag. Use -j1 for one build at a time with plain output."
+        ),
+    ),
     corp_proxy_ca_crt: Optional[Path] = typer.Option(
         None,
         "--corp-proxy-ca-crt",
@@ -2882,7 +3071,9 @@ def build(
                                   `harnessed.recipe-hash` label baked into its built image, and
                                   rebuilding any that are missing or stale. This is how editing a
                                   shared recipe propagates to every stack that uses it without
-                                  having to name them one by one.
+                                  having to name them one by one. Stale stacks build CONCURRENTLY
+                                  (`--jobs`, default half the cores capped at 4); each build's log
+                                  is prefixed with its own coloured stack(harness) tag.
 
     The --corp-proxy-ca-crt flag is a one-time setup for SSL-inspecting corporate proxies: it
     persists the CA bundle at $XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt and subsequent builds
@@ -2936,7 +3127,7 @@ def build(
             _build_stack(rt, stack, target, root_path, strict=not no_strict)
     else:
         _build_images_cmd(rt, force=force)
-        _reconcile_stacks(rt, root_path, strict=not no_strict)
+        _reconcile_stacks(rt, root_path, strict=not no_strict, jobs=jobs)
 
 
 @app.command("list")

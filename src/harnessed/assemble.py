@@ -18,11 +18,13 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import emit, staleness
+from . import emit, paths, staleness
 from .schema import (
     McpServer,
     Recipe,
+    SchemaError,
     Stack,
+    load_agent,
     load_service,
     load_stack_with_recipes,
     validate_init_no_exit,
@@ -98,6 +100,24 @@ def _resolve_service_servers(servers: list[McpServer], root: Path | None) -> lis
     return servers
 
 
+def _resolve_agent_layer(harness: str) -> tuple[Path | None, dict[str, str]]:
+    """The agent's Dockerfile + its pinned build_args, for the agent-last layer of the derived image.
+
+    Returns (None, {}) when the harness has no agent.yaml or its Dockerfile is missing — the derived
+    image then carries no harness CLI, which is what the emit-only unit tests exercise.
+    """
+    try:
+        agent = load_agent(harness)
+    except SchemaError:
+        return None, {}
+    repo = paths.repo_root()
+    dockerfile = (
+        repo / agent.dockerfile if agent.dockerfile
+        else repo / "catalog" / "base" / f"Dockerfile.harnessed-{harness}"
+    )
+    return (dockerfile if dockerfile.is_file() else None), dict(agent.build_args)
+
+
 def assemble(
     root: Path | None, stack_name: str, build_dir: Path, harness: str, *, strict: bool = False
 ) -> AssembleResult:
@@ -133,7 +153,15 @@ def assemble(
     # ASM-03 — derived Dockerfile, with a final supply-chain scan layer (BLD-02) unless the build
     # opted out via --no-security-scans (HARNESSED_NO_SCANS).
     with_scan = os.environ.get("HARNESSED_NO_SCANS") != "true"
-    emit.write_derived_dockerfile(profile_dir, stack.name, harness, recipes, hatago=stack.hatago, with_scan=with_scan)
+    # agent-last lineage: the derived image is FROM harnessed-base, and the harness CLI is installed
+    # as the last layers (see emit.write_derived_dockerfile). Resolve the agent's own Dockerfile +
+    # its pinned build_args here — agent.yaml stays the single source of truth for both.
+    agent_dockerfile, agent_build_args = _resolve_agent_layer(harness)
+    emit.write_derived_dockerfile(
+        profile_dir, stack.name, harness, recipes,
+        hatago=stack.hatago, with_scan=with_scan,
+        agent_dockerfile=agent_dockerfile, agent_build_args=agent_build_args,
+    )
 
     # Fan each recipe's standalone skills/commands into the harness-native profile tree
     # (<profile>/.claude/{skills,commands}). The launcher mounts these dirs into the instance and

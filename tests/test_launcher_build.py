@@ -93,6 +93,11 @@ class TestBareBuildReconcile:
     @pytest.fixture(autouse=True)
     def _no_image_builds(self, monkeypatch):
         monkeypatch.setattr(launcher, "_build_images_cmd", lambda rt, force=False: None)
+        # _reconcile_stacks builds the shared prerequisites (base + one agent image per harness in
+        # scope) BEFORE fanning out to the workers. Stub them: this suite is about WHICH pairs get
+        # dispatched, and the podman stub below only knows `images` and `inspect`.
+        monkeypatch.setattr(launcher, "_build_base_image", lambda rt: None)
+        monkeypatch.setattr(launcher, "_build_agent_image", lambda rt, harness: None)
 
     def _fake_podman(self, monkeypatch, *, images: str, hashes: dict[str, str]):
         """Stub `podman images` (built-image inventory) and `podman inspect` (recipe-hash label)."""
