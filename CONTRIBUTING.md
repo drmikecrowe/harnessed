@@ -22,22 +22,27 @@ This repo refuses to commit or push a secret, via [pre-commit](https://pre-commi
 [gitleaks](https://github.com/gitleaks/gitleaks). Enable it once per clone:
 
 ```bash
-mise use -g gitleaks@8.30.1                                   # or: brew install gitleaks
-git config --global --unset-all core.hooksPath                # see below — pre-commit requires this
-bd hooks install                                              # beads hooks, per-repo (bd's default)
-pre-commit install --hook-type pre-commit --hook-type pre-push
+mise use -g gitleaks@8.30.1                                    # or: brew install gitleaks
+pre-commit install --hook-type pre-commit --hook-type pre-push --allow-missing-config
 ```
 
-Bump the pinned gitleaks with `pre-commit autoupdate`.
+Bump the pinned gitleaks with `pre-commit autoupdate`. For the full picture — how git resolves
+hooks, why worktrees share one hooks dir, and the traps below — see the
+[Git hooks guide](https://github.com/drmikecrowe/harnessed/wiki/guides/git-hooks).
 
-**`core.hooksPath` must not be set globally.** pre-commit hard-refuses to install while it is
-(*"Cowardly refusing to install hooks with `core.hooksPath` set"*), because a global hooks dir
-silently overrides every repo's own `.git/hooks`. `bd hooks install` defaults to per-repo
-`.git/hooks`, so beads never needed the global setting — unset it and install beads per repo.
+**`--allow-missing-config` is not optional here.** A repo's hooks dir is shared by every worktree
+(`$(git rev-parse --git-common-dir)/hooks`, *not* `.git/hooks`), but `.pre-commit-config.yaml` is a
+tracked file that only exists on branches that carry it. Without the flag, checking out any branch
+or commit predating the config makes **every commit fail** with `No .pre-commit-config.yaml file was
+found`. With it, the hook simply no-ops where there is no config.
 
-**Existing hooks survive.** pre-commit renames any hook already in place to `<name>.legacy` and
-chains to it, so the beads `pre-commit` / `pre-push` keep running. (In a git worktree these live in
-the shared common dir — `$(git rev-parse --git-common-dir)/hooks` — not `.git/hooks`.)
+**`core.hooksPath` must not be set.** pre-commit hard-refuses to install while it is (*"Cowardly
+refusing to install hooks with `core.hooksPath` set"*) — and it is right to, because a hooks dir set
+that way silently overrides the repo's own hooks. Note `bd init` (beads) sets a **local**
+`core.hooksPath=.beads/hooks`, so a repo where beads was initialized on the host will hit this. In
+harnessed, beads is **container-only** — the pod has `bd`, the host does not, and the beads recipes
+carry no `init:`, so nothing should be setting this on your host. If something did, unset it:
+`git config --unset core.hooksPath` (add `--global` if it is set globally).
 
 **Two stages, because they catch different things.** The gitleaks hook scans the **staged tree** —
 the earliest point, before a secret exists in history. `.githooks/gitleaks-push` (a `repo: local`
