@@ -7,13 +7,45 @@
 # Tool-specific personal-workflow skills (obsidian-*, playwriter, ghostty) were deliberately left
 # out — they assume tools not everyone uses, so they don't fit a "universal" example.
 name: mikes-universal-setup
-description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills — an example personal always-on setup."
-# setup: none needed — pure skill/rule bundle, nothing to install
+description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills, and a gitleaks secret gate on commit/push — an example personal always-on setup."
+
+# --- Secret gate ---
+# Three layers, because each covers what the others cannot:
+#
+#   1. rules/pre-publish-review — the SEMANTIC pass. A scanner matches key-shaped strings; it cannot
+#      see a real vault name, an internal hostname, or an unreleased plan. Model-adherence only.
+#   2. hooks.PreToolUse (below) — the TRUE GATE on the agent. Not a git hook: `--no-verify` skips
+#      git's hooks, not the harness's. The Bash tool call itself is refused. Also the one hook shape
+#      that survives omp — omp-claude-hooks-bridge drops a hook's additionalContext but DOES honor
+#      permissionDecision, so a `deny` gate works on claude and omp alike.
+#   3. setup (below) — the HOST half, a REMINDER not a gate. harnessed cannot install onto the host,
+#      so the user's own `git commit` in a terminal is outside every gate above.
+#
+# gitleaks 8.30.1 CLI: `protect`/`detect` are GONE — the commands are `git`, `dir`, `stdin`.
+# `gitleaks git --staged` is the pre-commit scan (upstream's own flag help says "good for
+# pre-commit"). Pinned; mise's aqua backend supplies it, so no Dockerfile step for the binary.
+tools:
+  - gitleaks@8.30.1
+
+hooks:
+  PreToolUse:
+    - command: gitleaks-guard
+      matcher: Bash
+
+setup:
+  summary: "Install gitleaks on the host (`mise use -g gitleaks@8.30.1`) and wire a pre-commit hook — harnessed gates the AGENT's commits, not yours."
+  reference: https://github.com/gitleaks/gitleaks#pre-commit
+  # Evaluated host-side in the project dir on every launch: exit 0 → still needed → show the notice.
+  condition: "! command -v gitleaks"
 
 rules:
   - path: rules/coding-principles
   - path: rules/denied-commands
   - path: rules/fd
+  # Gates WHAT gets published (read what you didn't author; provenance; no private content).
+  # stop-and-ask gates WHETHER. A secret scanner only catches key-shaped strings — this is the
+  # semantic pass it can't do.
+  - path: rules/pre-publish-review
   - path: rules/rg
   - path: rules/stop-and-ask
   - path: rules/token-efficient
@@ -26,6 +58,11 @@ skills:
   - path: skills/defuddle
   - path: skills/frontend-design
   - path: skills/handoff
+  # Vendored third-party (MIT), not authored here: github.com/blader/humanizer @
+  # 1b48564898e999219882660237fde01bf4843a0f. Upstream ships no tags/releases and is a single
+  # SKILL.md, so it is committed here (with its LICENSE) rather than cloned by a Dockerfile the
+  # way superpowers' 14-skill tree is. To update: re-copy SKILL.md from upstream and bump the SHA.
+  - path: skills/humanizer
   - path: skills/map-codebase
   - path: skills/mermaid-diagrams
   - path: skills/mise
@@ -33,3 +70,5 @@ skills:
   - path: skills/security-review
   - path: skills/skill-management
   - path: skills/tdd
+  - path: skills/varlock
+  - path: skills/wrangler
