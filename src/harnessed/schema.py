@@ -464,7 +464,7 @@ _VALID_HOOK_EVENTS = frozenset({
 })
 
 
-def _parse_hooks(raw_hooks) -> dict[str, list[HookCommand]]:
+def _parse_hooks(raw_hooks) -> tuple[dict[str, list[HookCommand]], list[str]]:
     """Parse the `hooks:` block: {EventName: [{command, matcher?}, ...]} (GAP 2).
 
     Declarative — a recipe states exactly what belongs in settings.json's `hooks` object; the
@@ -472,16 +472,30 @@ def _parse_hooks(raw_hooks) -> dict[str, list[HookCommand]]:
     runs a command host-side, once, before the agent ever attaches): these commands run INSIDE
     Claude Code's own hook runner, every time the event fires, so a recipe needing "only once
     per project" behavior must gate that itself (e.g. check-and-touch a marker file in its script).
+
+    `skip_harnesses:` (bd main-4fx) is the one non-event key: a list of harnesses on which THIS
+    recipe's hooks are not emitted. Returned alongside the events. For when a recipe's capability
+    is delivered NATIVELY on a harness and replaying the same hooks there would double-fire — see
+    context-mode + omp, where the recipe installs upstream's own omp plugin (session_start /
+    tool_call / tool_result / session_before_compact) and the same hook bodies replayed through
+    omp-claude-hooks-bridge would write the session DB twice. Deliberately narrow: it drops only
+    the declaring recipe's entries, only on the listed harnesses. Recipes stay harness-independent
+    everywhere else — harness-specific BUILD steps still branch on ${HARNESS} in the Dockerfile;
+    hooks are not a build step, so they cannot use that escape hatch.
     """
     if not raw_hooks:
-        return {}
+        return {}, []
     if not isinstance(raw_hooks, dict):
         raise SchemaError(
             "recipe 'hooks' must be a mapping of {EventName: [{command, matcher?}, ...]}"
         )
 
+    skip = _parse_hooks_skip_harnesses(raw_hooks.get("skip_harnesses"))
+
     parsed: dict[str, list[HookCommand]] = {}
     for event, entries in raw_hooks.items():
+        if event == "skip_harnesses":
+            continue
         if event not in _VALID_HOOK_EVENTS:
             raise SchemaError(
                 f"recipe 'hooks': unknown event {event!r} — "
@@ -509,7 +523,27 @@ def _parse_hooks(raw_hooks) -> dict[str, list[HookCommand]]:
                 )
             commands.append(HookCommand(command=command.strip(), matcher=matcher))
         parsed[event] = commands
-    return parsed
+    return parsed, skip
+
+
+def _parse_hooks_skip_harnesses(raw) -> list[str]:
+    """Parse `hooks.skip_harnesses:` — harnesses on which this recipe's hooks are NOT emitted.
+
+    Validated against HARNESS_CONFIG_DIR so a typo (`ompp`) fails at parse time rather than
+    silently emitting the hooks it was meant to suppress.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not all(isinstance(h, str) for h in raw):
+        raise SchemaError("recipe 'hooks.skip_harnesses' must be a list of harness names")
+    skip = [h.strip() for h in raw if h.strip()]
+    unknown = sorted(set(skip) - set(HARNESS_CONFIG_DIR))
+    if unknown:
+        raise SchemaError(
+            f"recipe 'hooks.skip_harnesses': unknown harness(es) {unknown} — "
+            f"valid harnesses: {', '.join(sorted(HARNESS_CONFIG_DIR))}"
+        )
+    return skip
 
 
 @dataclass
@@ -584,6 +618,10 @@ class Recipe:
     init: "InitSpec | None" = None
     # GAP 2: declarative Claude Code hooks, merged into settings.json by emit.py. {EventName: [...]}.
     hooks: dict[str, list[HookCommand]] = field(default_factory=dict)
+    # Harnesses on which THIS recipe's `hooks` are not emitted (recipe.yaml `hooks.skip_harnesses`,
+    # bd main-4fx) — for a capability delivered natively on that harness, where replaying the same
+    # hooks would double-fire. Other recipes' hooks in the same stack are unaffected.
+    hooks_skip_harnesses: list[str] = field(default_factory=list)
     # Other recipe names this recipe must never be combined with in the same stack (e.g. two
     # recipes that both claim to be the agent's sole cross-session memory store). Checked
     # symmetrically across a stack's whole recipe list (see _check_recipe_conflicts) — declaring
@@ -850,6 +888,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         raise SchemaError(f"{manifest}: required field 'name' is missing")
     if strict:
         _validate_recipe_fields(raw, manifest)
+    hooks, hooks_skip_harnesses = _parse_hooks(raw.get("hooks"))
     return Recipe(
         name=raw["name"],
         description=raw.get("description", ""),
@@ -860,7 +899,8 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         expect=_parse_expect(raw.get("expect")),
         persist=_parse_persist(raw.get("persist")),
         init=_parse_init(raw.get("init")),
-        hooks=_parse_hooks(raw.get("hooks")),
+        hooks=hooks,
+        hooks_skip_harnesses=hooks_skip_harnesses,
         conflicts=_parse_conflicts(raw.get("conflicts")),
         setup=_parse_setup(raw.get("setup")),
         egress=_parse_egress(raw.get("egress"), manifest),

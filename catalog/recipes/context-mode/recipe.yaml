@@ -23,8 +23,12 @@ description: >
 # setup: none needed — CLI, MCP server, and hooks are all wired by this recipe.
 
 # --- Tool layer ---
-# Installed via mise's `npm:` backend (pinned; no Dockerfile needed) → a `context-mode` shim lands
-# on PATH. Both the MCP server and every hook command below invoke that same one binary.
+# Installed via mise's `npm:` backend (pinned) → a `context-mode` shim lands on PATH. Both the MCP
+# server and every hook command below invoke that same one binary.
+#
+# Keep this version in lockstep with Dockerfile's CONTEXT_MODE_VERSION (the omp plugin install).
+# Two pins because they are two different install channels for the same upstream package — mise's
+# npm backend for the CLI/MCP binary, `omp plugin install` for the omp extension.
 tools:
   - npm:context-mode@1.0.169
 
@@ -40,8 +44,16 @@ mcp:
 # --- Hook layer (GAP 2) ---
 # The `context-mode hook <platform> <event>` CLI dispatcher is upstream's current wiring form (the
 # older `node .../hooks/<event>.mjs` path form is legacy). Platform is `claude-code` because the
-# Claude profile is canonical in harnessed — the omp-claude-hooks-bridge replays these for omp, and
-# the other harnesses adapt out of the same .claude/ profile (see emit._recipe_hooks_settings).
+# Claude profile is canonical in harnessed — the other harnesses adapt out of the same .claude/
+# profile (see emit._recipe_hooks_settings).
+#
+# EXCEPT omp (skip_harnesses below). omp's bridge (omp-claude-hooks-bridge) does replay these, but
+# it is a pure decision+side-effect bridge: it drops hookSpecificOutput.additionalContext, so the
+# PreToolUse routing nudge and the SessionStart context re-injection — the two halves upstream marks
+# REQUIRED — reach nothing, and it maps no omp event to PreCompact at all. omp instead gets
+# upstream's own omp extension, installed by this recipe's Dockerfile: it covers all four events
+# natively (and hard-blocks curl/wget in bash rather than merely nudging). Leaving these hooks on
+# for omp would double-write the session DB and spawn a node CLI per tool call for discarded output.
 #
 # Matchers are taken from upstream's own matcher lists, minus the plugin-marketplace tool names
 # (`mcp__plugin_context-mode_context-mode__ctx_*`): those only exist on a plugin install, and here
@@ -50,6 +62,7 @@ mcp:
 # body (`isExternalMcpTool()` in hooks/core/routing.mjs) filters context-mode's own tools out, so
 # dropping the plugin-specific entries preserves the semantics exactly.
 hooks:
+  skip_harnesses: [omp]
   # REQUIRED upstream. Injects the routing instruction steering the model to `ctx_*` over raw tools.
   PreToolUse:
     - command: context-mode hook claude-code pretooluse
@@ -66,10 +79,14 @@ hooks:
     - command: context-mode hook claude-code precompact
 
 # --- Persist layer ---
-# context-mode's sessions/content store. The default root is ~/.context-mode (overridable via
-# CONTEXT_MODE_DIR, which must be absolute) — that is the SQLite DB the PostToolUse/PreCompact hooks
-# write and the post-compaction resume reads back. Without persist it dies with the container, and
-# `--fresh` would silently cost every prior session.
+# context-mode's sessions/content store — the SQLite DB the PostToolUse/PreCompact hooks (and, on
+# omp, the native plugin's tool_result/session_before_compact handlers) write, and the
+# post-compaction resume reads back. Without persist it dies with the container, and `--fresh` would
+# silently cost every prior session.
+#
+# The Dockerfile pins CONTEXT_MODE_DIR to ~/.context-mode so BOTH paths land here: it is already the
+# default for the hook/CLI path, but the omp plugin would otherwise root at ~/.omp/context-mode/
+# (its OMPAdapter), which nothing mounts.
 #
 # scope: workspace — keyed by the exact launch path, so one project's session log never surfaces in
 # another's. location: host — harnessed owns the dir under $XDG_DATA_HOME/harnessed/persist/ and

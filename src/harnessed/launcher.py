@@ -2610,7 +2610,7 @@ def launch(
         _out.print(f"[blue][INFO][/blue] Agent start folder: {project_path} (launched from {anchor_path})")
 
     launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
-    required = emit.required_settings(launch_servers, launch_recipes, stk.permissions)
+    required = emit.required_settings(launch_servers, launch_recipes, stk.permissions, harness)
     if harness in ("claude", "omp", "opencode"):
         _merge_host_claude_settings(prof, required)
 
