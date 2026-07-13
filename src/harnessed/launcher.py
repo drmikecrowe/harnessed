@@ -2408,25 +2408,31 @@ def _collect_setup_notices(
     return out
 
 
-def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str, harness: str) -> None:
+def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str, harness: str) -> bool:
     """Show aggregated user-facing `setup:` notices host-side at launch and act on the choice.
 
     No-op when nothing qualifies (`_collect_setup_notices`) or stdin is not a TTY (headless/CI
     cannot answer — never block a scripted launch). Otherwise prints one bullet per recipe and
-    prompts: [O]k (default, just launch), [D]ismiss (silence this stack's unconditional notices
-    for this project, then launch), [Q]uit (abort the launch, exit 0). Case-insensitive; ^C also
-    aborts. Conditional notices keep reappearing until their condition is satisfied regardless of
-    a prior dismiss.
+    prompts: [O]k (default, just launch), [T]erminal (launch into an interactive shell instead of
+    the agent, as if `--shell` were passed, so the setup step can be done in the container),
+    [D]ismiss (silence this stack's unconditional notices for this project, then launch), [Q]uit
+    (abort the launch, exit 0). Case-insensitive; ^C also aborts. Conditional notices keep
+    reappearing until their condition is satisfied regardless of a prior dismiss.
+
+    Returns True when the user chose [T]erminal — the caller ORs it into its `--shell` flag.
     """
     notices = _collect_setup_notices(recipes, project_path, stack, harness)
     if not notices or not sys.stdin.isatty():
-        return
+        return False
     _out.print("\n[bold]Setup needed for this stack:[/bold]")
     for recipe in notices:
         assert recipe.setup is not None  # guaranteed by _collect_setup_notices
         _out.print(f"  • [bold]{recipe.name}[/bold]: {recipe.setup.summary}")
         _out.print(f"    see: {recipe.setup.reference}")
-    choice = typer.prompt("[O]k / [D]ismiss (don't show again) / [Q]uit", default="O")
+    choice = typer.prompt(
+        "[O]k / [T]erminal (shell in the container) / [D]ismiss (don't show again) / [Q]uit",
+        default="O",
+    )
     choice = choice.strip().lower()
     if choice.startswith("q"):
         raise typer.Exit(0)
@@ -2434,6 +2440,7 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
         flag = paths.setup_dismissed_flag(stack, harness, project_path)
         flag.parent.mkdir(parents=True, exist_ok=True)
         flag.write_text("", encoding="utf-8")
+    return choice.startswith("t")
 
 
 # --- Typer commands ------------------------------------------------------------
@@ -2551,9 +2558,10 @@ def launch(
 
     # User-facing recipe `setup:` notices — shown host-side here (never baked into an agent identity
     # file), before ANY attach path (reuse/reattach/create) so they surface on every launch. Gating
-    # and the [O]k/[D]ismiss/[Q]uit prompt live in _prompt_setup_notices; reuse launch_recipes below.
+    # and the [O]k/[T]erminal/[D]ismiss/[Q]uit prompt live in _prompt_setup_notices; reuse
+    # launch_recipes below. [T]erminal is equivalent to having passed --shell on this launch.
     _, launch_recipes = load_stack_with_recipes(None, stack)
-    _prompt_setup_notices(launch_recipes, project_path, stack, harness)
+    shell = _prompt_setup_notices(launch_recipes, project_path, stack, harness) or shell
 
     # --fresh: tear down existing pod.
     if fresh:

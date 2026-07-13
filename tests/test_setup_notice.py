@@ -107,6 +107,16 @@ class TestPromptSetupNotices:
         launcher._prompt_setup_notices([_r("caveman")], state, "s", "claude")
         assert paths.setup_dismissed_flag("s", "claude", state).exists()
 
+    def test_terminal_requests_shell(self, state, monkeypatch):
+        self._prompt(monkeypatch, "t")
+        assert launcher._prompt_setup_notices([_r("caveman")], state, "s", "claude") is True
+        assert not paths.setup_dismissed_flag("s", "claude", state).exists()
+
+    def test_non_terminal_choices_do_not_request_shell(self, state, monkeypatch):
+        for answer in ("O", "d"):
+            self._prompt(monkeypatch, answer)
+            assert launcher._prompt_setup_notices([_r("caveman")], state, "s", "claude") is False
+
     def test_quit_aborts_exit_zero(self, state, monkeypatch):
         self._prompt(monkeypatch, "Q")
         with pytest.raises(typer.Exit) as exc:
