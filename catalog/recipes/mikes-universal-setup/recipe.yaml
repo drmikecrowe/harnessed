@@ -32,10 +32,16 @@ hooks:
     - command: gitleaks-guard
       matcher: Bash
 
+# The HOST half. harnessed gates the AGENT's commits (the PreToolUse hook above); your own `git
+# commit` in a terminal is outside that, and harnessed cannot install onto your host. So: a notice.
+# Per-repo via pre-commit (gitleaks' own recommended wiring), never a global core.hooksPath — a
+# global one applies to every repo on the machine, silently overrides each one's .git/hooks, and
+# makes pre-commit refuse to install at all. See CONTRIBUTING.md "Secret gate".
 setup:
-  summary: "Install gitleaks on the host (`mise use -g gitleaks@8.30.1`) and wire a pre-commit hook — harnessed gates the AGENT's commits, not yours."
-  reference: https://github.com/gitleaks/gitleaks#pre-commit
+  summary: "Secret gate for YOUR OWN commits (harnessed gates the agent's, not yours): `mise use -g gitleaks@8.30.1`, then wire .githooks/gitleaks-{precommit,push} into your git hooks — plain shim, pre-commit, lefthook, whatever you already use."
+  reference: https://github.com/drmikecrowe/harnessed/wiki/guides/git-hooks
   # Evaluated host-side in the project dir on every launch: exit 0 → still needed → show the notice.
+  # Fires only while gitleaks is absent from the host — installing it satisfies the condition.
   condition: "! command -v gitleaks"
 
 rules:
