@@ -18,48 +18,51 @@ The CLI runs on the host; edits under `src/harnessed/` take effect immediately (
 
 ### Secret gate (recommended)
 
-This repo refuses to commit or push a secret, via [pre-commit](https://pre-commit.com) +
-[gitleaks](https://github.com/gitleaks/gitleaks). Enable it once per clone:
+Two scripts refuse to commit or push a secret: `.githooks/gitleaks-precommit` (scans the staged
+tree) and `.githooks/gitleaks-push` (scans the commits a push would publish). They need
+[gitleaks](https://github.com/gitleaks/gitleaks) and nothing else.
+
+**harnessed ships hook logic, never hook wiring.** A git hook is one executable per event with no
+chaining, so any tool that claims `.git/hooks/pre-commit` is at war with every other tool that wants
+it. These are plain scripts — wire them however you already work:
 
 ```bash
-mise use -g gitleaks@8.30.1                                    # or: brew install gitleaks
-pre-commit install --hook-type pre-commit --hook-type pre-push --allow-missing-config
+mise use -g gitleaks@8.30.1      # or: brew install gitleaks
+
+# Plain git hooks (no framework). The guard makes the hook a no-op on branches that
+# don't carry the script — otherwise an older checkout would fail EVERY commit.
+H=$(git rev-parse --git-common-dir)/hooks
+printf '#!/bin/sh\n[ -x .githooks/gitleaks-precommit ] || exit 0\nexec .githooks/gitleaks-precommit\n' > "$H/pre-commit"
+printf '#!/bin/sh\n[ -x .githooks/gitleaks-push ] || exit 0\nexec .githooks/gitleaks-push "$@"\n'     > "$H/pre-push"
+chmod +x "$H/pre-commit" "$H/pre-push"
 ```
 
-Bump the pinned gitleaks with `pre-commit autoupdate`. For the full picture — how git resolves
-hooks, why worktrees share one hooks dir, and the traps below — see the
+Already use [pre-commit](https://pre-commit.com), lefthook, or husky? Point it at the same two
+scripts instead (`language: script` + `stages: [pre-commit]` / `[pre-push]` for pre-commit). The
+push script takes its range from `PRE_COMMIT_FROM_REF`/`PRE_COMMIT_TO_REF`, git's stdin ref list, or
+the branch's upstream — whichever the wiring provides.
+
+For the whole picture — how git resolves hooks, why worktrees share one hooks dir, and the traps
+that make a secret gate worse than useless — see the
 [Git hooks guide](https://github.com/drmikecrowe/harnessed/wiki/guides/git-hooks).
 
-**`--allow-missing-config` is not optional here.** A repo's hooks dir is shared by every worktree
-(`$(git rev-parse --git-common-dir)/hooks`, *not* `.git/hooks`), but `.pre-commit-config.yaml` is a
-tracked file that only exists on branches that carry it. Without the flag, checking out any branch
-or commit predating the config makes **every commit fail** with `No .pre-commit-config.yaml file was
-found`. With it, the hook simply no-ops where there is no config.
+**Both scans exist because they catch different things.** The staged scan is the earliest point,
+before a secret is in history at all. It is also blind to anything that got there another way —
+`git commit --no-verify`, a rebase or cherry-pick, or commits pulled from a clone with no hooks — so
+the push, which is the irreversible step, gets its own scan of the commits actually being sent.
 
-**`core.hooksPath` must not be set.** pre-commit hard-refuses to install while it is (*"Cowardly
-refusing to install hooks with `core.hooksPath` set"*) — and it is right to, because a hooks dir set
-that way silently overrides the repo's own hooks. Note `bd init` (beads) sets a **local**
-`core.hooksPath=.beads/hooks`, so a repo where beads was initialized on the host will hit this. In
-harnessed, beads is **container-only** — the pod has `bd`, the host does not, and the beads recipes
-carry no `init:`, so nothing should be setting this on your host. If something did, unset it:
-`git config --unset core.hooksPath` (add `--global` if it is set globally).
+Both **fail closed**: a missing or erroring gitleaks refuses the operation rather than leaving it
+silently unscanned. Override deliberately with `GITLEAKS_SKIP=1 git commit …` / `… git push …`.
 
-**Two stages, because they catch different things.** The gitleaks hook scans the **staged tree** —
-the earliest point, before a secret exists in history. `.githooks/gitleaks-push` (a `repo: local`
-pre-push hook) scans the **commits being pushed**, which is the only way to catch a secret that
-entered history some other way: `git commit --no-verify`, a rebase or cherry-pick, or a clone from a
-machine with no hooks. Push is the irreversible step. Both fail closed; override deliberately with
-`SKIP=gitleaks-push git push …` (or `SKIP=gitleaks git commit …`).
+**Do not set `core.hooksPath`.** Set locally *or* globally, it makes the repo's own `.git/hooks` be
+ignored entirely — which is how tools silently disable each other. (`bd init` sets a local one; in
+harnessed beads is **container-only**, so nothing should be setting it on your host. If something
+did: `git config --unset core.hooksPath`, adding `--global` if needed.)
 
-**Use `id: gitleaks`, never `id: gitleaks-system`.** gitleaks' `.pre-commit-hooks.yaml` omits
-`pass_filenames: false` on the `-system` id, so pre-commit appends the staged filenames, `gitleaks
-git … FILE` reads `FILE` as its *repo path* argument, scans it as a repo, finds "0 commits", and
-exits 0 — reporting **Passed** on a live secret. It fails open. (Verified; it is tempting because it
-reuses a system binary rather than building its own.)
-
-The container side is gated separately and needs no setup: the `mikes-universal-setup` recipe wires
-a `PreToolUse` hook that denies the agent's `git commit` / `git push` tool call outright — not a git
-hook, so `--no-verify` cannot reach it.
+The container side is gated separately and needs no setup at all: the `mikes-universal-setup` recipe
+wires a `PreToolUse` hook that denies the agent's `git commit` / `git push` **tool call**. That one
+is not a git hook, so `--no-verify` cannot reach it — which is why it, and not this, is the gate
+harnessed actually relies on.
 
 ## Add a recipe (the common case)
 

@@ -1,0 +1,53 @@
+#!/usr/bin/env sh
+# Refuse to commit staged changes that contain a secret.
+#
+# A plain script with no framework dependency — harnessed ships hook LOGIC, never hook WIRING.
+# A git hook is one executable per event with no chaining, so any tool that claims
+# `.git/hooks/pre-commit` is at war with every other tool that wants it. This script runs under
+# whatever you already use. Wire it whichever way suits you (see the Git hooks guide):
+#
+#   plain git hook:   printf '#!/bin/sh\nexec .githooks/gitleaks-precommit\n' > .git/hooks/pre-commit
+#   pre-commit:       a `repo: local` hook with `language: script`, `stages: [pre-commit]`
+#   lefthook/husky:   point the pre-commit step at this path
+#
+# Requires `gitleaks` on PATH (`mise use -g gitleaks@8.30.1`). Fails CLOSED — a missing or broken
+# scanner refuses the commit rather than leaving it silently unscanned.
+#
+# Override deliberately:  GITLEAKS_SKIP=1 git commit …
+#
+# NOTE this is defence for YOU, and like every git hook it is bypassable with `--no-verify`. The
+# agent is gated separately and unbypassably: the mikes-universal-setup recipe wires a PreToolUse
+# hook that denies the agent's `git commit` tool call outright — not a git hook, so --no-verify
+# cannot reach it.
+set -u
+
+[ "${GITLEAKS_SKIP:-0}" = "1" ] && exit 0
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo >&2 "gitleaks: not on PATH — refusing to commit unscanned."
+  echo >&2 "  install:  mise use -g gitleaks@8.30.1"
+  echo >&2 "  override: GITLEAKS_SKIP=1 git commit …"
+  exit 1
+fi
+
+# --exit-code 2 so a real LEAK (2) is distinguishable from gitleaks itself failing (any other
+# non-zero: bad flag, unreadable config). Both block, but they must say WHICH — a gate whose failure
+# mode is unreadable is a gate that gets ripped out.
+gitleaks git --staged --no-banner --redact --verbose --exit-code 2
+rc=$?
+
+if [ $rc -eq 2 ]; then
+  echo >&2 ""
+  echo >&2 "gitleaks: SECRET DETECTED — commit blocked."
+  echo >&2 "  If it already reached history, deleting the line is NOT enough: ROTATE the credential."
+  echo >&2 "  False positive? Add a 'gitleaks:allow' comment, or list it in .gitleaksignore."
+  echo >&2 "  Override: GITLEAKS_SKIP=1 git commit …"
+  exit 1
+elif [ $rc -ne 0 ]; then
+  echo >&2 ""
+  echo >&2 "gitleaks: scan FAILED (exit $rc — not a leak result). Refusing to commit unscanned."
+  echo >&2 "  Override: GITLEAKS_SKIP=1 git commit …"
+  exit 1
+fi
+
+exit 0

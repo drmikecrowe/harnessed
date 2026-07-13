@@ -1,64 +1,91 @@
 #!/usr/bin/env sh
-# Scan the commits a push would publish. Wired as a `repo: local` pre-push hook — see
-# .pre-commit-config.yaml, and CONTRIBUTING.md "Secret gate".
+# Refuse to push commits that contain a secret.
 #
-# Why this exists at all: gitleaks' own pre-commit hook scans only the STAGED tree, so it cannot see
-# a secret that entered history another way — `git commit --no-verify`, a rebase or cherry-pick, or
-# a clone from a machine with no hooks. Push is the irreversible step; once a secret lands on a
-# remote it is cached, forked and mirrored beyond recall.
+# A plain script with no framework dependency (see .githooks/gitleaks-precommit for why). Wire it
+# whichever way suits you:
 #
-# pre-commit hands a pre-push hook the exact range: PRE_COMMIT_FROM_REF (what the remote has) and
-# PRE_COMMIT_TO_REF (what we are sending). It also consumes git's stdin ref list itself, so this
-# script never has to — which matters, because the beads pre-push hook (chained by pre-commit as
-# pre-push.legacy) reads that same stdin, and stdin can only be consumed once.
+#   plain git hook:   printf '#!/bin/sh\nexec .githooks/gitleaks-push "$@"\n' > .git/hooks/pre-push
+#   pre-commit:       a `repo: local` hook with `language: script`, `stages: [pre-push]`
+#   lefthook/husky:   point the pre-push step at this path
 #
-# Fails CLOSED: a missing or erroring gitleaks refuses the push rather than leaving it unscanned.
-# Deliberate override:  SKIP=gitleaks-push git push …   (pre-commit's own skip mechanism)
+# Why a push scan at all, when the pre-commit scan already covers the staged tree: the staged scan
+# cannot see a secret that entered history some OTHER way — `git commit --no-verify`, a rebase, a
+# cherry-pick, or commits pulled from a clone that never installed hooks. Push is the irreversible
+# step: once a secret lands on a remote it is cached, forked and mirrored beyond recall.
+#
+# Requires `gitleaks` on PATH. Fails CLOSED. Override:  GITLEAKS_SKIP=1 git push …
 set -u
+
+[ "${GITLEAKS_SKIP:-0}" = "1" ] && exit 0
 
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo >&2 "gitleaks: not on PATH — refusing to push unscanned."
   echo >&2 "  install:  mise use -g gitleaks@8.30.1"
-  echo >&2 "  override: SKIP=gitleaks-push git push …"
+  echo >&2 "  override: GITLEAKS_SKIP=1 git push …"
   exit 1
 fi
 
-from=${PRE_COMMIT_FROM_REF:-}
-to=${PRE_COMMIT_TO_REF:-HEAD}
+# Work out WHAT is being pushed. It arrives differently depending on the wiring, so try each source
+# in turn rather than assuming one:
+#
+#   1. pre-commit sets PRE_COMMIT_FROM_REF / PRE_COMMIT_TO_REF (and consumes git's stdin itself).
+#   2. A plain git pre-push hook is handed the ref list on STDIN, one line per ref:
+#        <local ref> <local sha> <remote ref> <remote sha>
+#      stdin can only be consumed once, so if a dispatcher already drained it we fall through.
+#   3. Neither: fall back to the branch's upstream.
+ranges=""
+zero=0000000000000000000000000000000000000000
 
-# A brand-new branch has no remote counterpart: FROM_REF is the all-zero sha (or empty). Nothing to
-# diff against, so scan every commit on this branch that is not already on the default branch.
-case "$from" in
-  ''|0000000000000000000000000000000000000000)
-    if git rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
-      range="origin/HEAD..${to}"
+if [ -n "${PRE_COMMIT_FROM_REF:-}" ] && [ -n "${PRE_COMMIT_TO_REF:-}" ]; then
+  ranges="${PRE_COMMIT_FROM_REF}..${PRE_COMMIT_TO_REF}"
+elif [ ! -t 0 ]; then
+  while read -r _lref lsha _rref rsha; do
+    [ -z "${lsha:-}" ] && continue
+    [ "$lsha" = "$zero" ] && continue          # branch deletion — nothing to scan
+    if [ -z "${rsha:-}" ] || [ "$rsha" = "$zero" ]; then
+      # New branch on the remote: scan everything not already on the default branch.
+      if git rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
+        ranges="$ranges origin/HEAD..$lsha"
+      else
+        ranges="$ranges $lsha"
+      fi
     else
-      exit 0   # no remote to compare against — nothing meaningful to scan
+      ranges="$ranges ${rsha}..${lsha}"
     fi
-    ;;
-  *) range="${from}..${to}" ;;
-esac
-
-git rev-list --quiet -1 "$range" 2>/dev/null || exit 0   # empty range — nothing being pushed
-
-# --exit-code 2 so a real LEAK (2) is distinguishable from gitleaks itself failing (any other
-# non-zero: bad flag, unreadable config). Both block, but they must say WHICH — a gate whose failure
-# mode is unreadable gets disabled.
-gitleaks git --log-opts="$range" --no-banner --redact --verbose --exit-code 2
-rc=$?
-
-if [ $rc -eq 2 ]; then
-  echo >&2 ""
-  echo >&2 "gitleaks: SECRET DETECTED in the commits this push would publish ($range)."
-  echo >&2 "  ROTATE the credential and rewrite the history — deleting the line in a follow-up"
-  echo >&2 "  commit does NOT remove it from history."
-  echo >&2 "  Override: SKIP=gitleaks-push git push …"
-  exit 1
-elif [ $rc -ne 0 ]; then
-  echo >&2 ""
-  echo >&2 "gitleaks: scan FAILED (exit $rc — not a leak result). Refusing to push unscanned."
-  echo >&2 "  Override: SKIP=gitleaks-push git push …"
-  exit 1
+  done
 fi
+
+if [ -z "$ranges" ]; then
+  if up=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
+    ranges="${up}..HEAD"
+  elif git rev-parse --verify --quiet origin/HEAD >/dev/null 2>&1; then
+    ranges="origin/HEAD..HEAD"
+  else
+    exit 0   # no remote to compare against — nothing meaningful to scan
+  fi
+fi
+
+for range in $ranges; do
+  git rev-list --quiet -1 "$range" 2>/dev/null || continue   # empty range — nothing being pushed
+
+  # --exit-code 2: a real LEAK exits 2, so any OTHER non-zero means gitleaks itself failed. Both
+  # block, but they must say which — see gitleaks-precommit.
+  gitleaks git --log-opts="$range" --no-banner --redact --verbose --exit-code 2
+  rc=$?
+
+  if [ $rc -eq 2 ]; then
+    echo >&2 ""
+    echo >&2 "gitleaks: SECRET DETECTED in the commits this push would publish ($range)."
+    echo >&2 "  ROTATE the credential and rewrite the history — deleting the line in a follow-up"
+    echo >&2 "  commit does NOT remove it from history."
+    echo >&2 "  Override: GITLEAKS_SKIP=1 git push …"
+    exit 1
+  elif [ $rc -ne 0 ]; then
+    echo >&2 ""
+    echo >&2 "gitleaks: scan FAILED (exit $rc — not a leak result). Refusing to push unscanned."
+    echo >&2 "  Override: GITLEAKS_SKIP=1 git push …"
+    exit 1
+  fi
+done
 
 exit 0
