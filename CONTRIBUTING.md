@@ -16,6 +16,46 @@ uv run pytest -q                     # fast unit + assembly tests (no containers
 
 The CLI runs on the host; edits under `src/harnessed/` take effect immediately (no image rebuild).
 
+### Secret gate (recommended)
+
+This repo refuses to commit or push a secret, via [pre-commit](https://pre-commit.com) +
+[gitleaks](https://github.com/gitleaks/gitleaks). Enable it once per clone:
+
+```bash
+mise use -g gitleaks@8.30.1                                   # or: brew install gitleaks
+git config --global --unset-all core.hooksPath                # see below — pre-commit requires this
+bd hooks install                                              # beads hooks, per-repo (bd's default)
+pre-commit install --hook-type pre-commit --hook-type pre-push
+```
+
+Bump the pinned gitleaks with `pre-commit autoupdate`.
+
+**`core.hooksPath` must not be set globally.** pre-commit hard-refuses to install while it is
+(*"Cowardly refusing to install hooks with `core.hooksPath` set"*), because a global hooks dir
+silently overrides every repo's own `.git/hooks`. `bd hooks install` defaults to per-repo
+`.git/hooks`, so beads never needed the global setting — unset it and install beads per repo.
+
+**Existing hooks survive.** pre-commit renames any hook already in place to `<name>.legacy` and
+chains to it, so the beads `pre-commit` / `pre-push` keep running. (In a git worktree these live in
+the shared common dir — `$(git rev-parse --git-common-dir)/hooks` — not `.git/hooks`.)
+
+**Two stages, because they catch different things.** The gitleaks hook scans the **staged tree** —
+the earliest point, before a secret exists in history. `.githooks/gitleaks-push` (a `repo: local`
+pre-push hook) scans the **commits being pushed**, which is the only way to catch a secret that
+entered history some other way: `git commit --no-verify`, a rebase or cherry-pick, or a clone from a
+machine with no hooks. Push is the irreversible step. Both fail closed; override deliberately with
+`SKIP=gitleaks-push git push …` (or `SKIP=gitleaks git commit …`).
+
+**Use `id: gitleaks`, never `id: gitleaks-system`.** gitleaks' `.pre-commit-hooks.yaml` omits
+`pass_filenames: false` on the `-system` id, so pre-commit appends the staged filenames, `gitleaks
+git … FILE` reads `FILE` as its *repo path* argument, scans it as a repo, finds "0 commits", and
+exits 0 — reporting **Passed** on a live secret. It fails open. (Verified; it is tempting because it
+reuses a system binary rather than building its own.)
+
+The container side is gated separately and needs no setup: the `mikes-universal-setup` recipe wires
+a `PreToolUse` hook that denies the agent's `git commit` / `git push` tool call outright — not a git
+hook, so `--no-verify` cannot reach it.
+
 ## Add a recipe (the common case)
 
 A recipe lives at `catalog/recipes/<name>/recipe.yaml`. Recipes are **harness-independent** — never

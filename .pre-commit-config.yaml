@@ -1,0 +1,40 @@
+# Secret gate. Enable once per clone:
+#
+#     git config --global --unset-all core.hooksPath   # pre-commit refuses to install if this is set
+#     bd hooks install                                  # beads hooks, per-repo (its default)
+#     pre-commit install --hook-type pre-commit --hook-type pre-push
+#
+# pre-commit preserves any existing .git/hooks/<name> as <name>.legacy and chains to it, so the
+# beads hooks keep running. See CONTRIBUTING.md "Secret gate".
+#
+# Keep `rev` current with: pre-commit autoupdate
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      # `gitleaks` (not `gitleaks-system`). gitleaks' own .pre-commit-hooks.yaml sets
+      # `pass_filenames: false` for this id and for `gitleaks-docker`, but NOT for `gitleaks-system`
+      # — so that id has pre-commit append the staged filenames to the command, `gitleaks git … FILE`
+      # reads FILE as the *repo path* argument, scans it as a repo, finds "0 commits", and exits 0.
+      # It reports **Passed** on a live secret. Verified. Do not switch to it to reuse a system
+      # binary; the silent fail-open is not worth the saved download.
+      #
+      # Pinned to the commit stage: with no `stages`, pre-commit also runs it at pre-push, where
+      # there is nothing staged — so it "scans" 0 bytes and prints a reassuring `Passed` that means
+      # nothing. The push stage is covered by gitleaks-push below, which scans the actual commits.
+      - id: gitleaks
+        stages: [pre-commit]
+
+  # Push-range scan. gitleaks' pre-commit hook only scans STAGED content, so it cannot see a secret
+  # that reached history some other way: `git commit --no-verify`, a rebase or cherry-pick, or a
+  # clone from a machine with no hooks. Push is the irreversible step — once it lands on a remote it
+  # is cached, forked and mirrored beyond recall — so it gets its own scan of the commits being sent.
+  - repo: local
+    hooks:
+      - id: gitleaks-push
+        name: Detect hardcoded secrets in commits being pushed
+        entry: .githooks/gitleaks-push
+        language: script
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
