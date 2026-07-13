@@ -115,7 +115,7 @@ RUN mise settings set experimental true && \
 # (brace-expansion, pacote) carry HIGH-severity CVEs the supply-chain scan flags. A self-upgrade is
 # the only way to move what the scan sees under lib/node_modules — pnpm has no equivalent. Pinned,
 # not @latest (the build rejects floating pins); bump deliberately when snyk flags this version.
-RUN npm install -g npm@11.6.4
+RUN npm install -g npm@11.18.0
 
 # Extra user-specified tools. Edit ~/.config/harnessed/extra-tools.txt to add more (seeded from
 # catalog/base/extra-tools.default.txt); the base build stages that into catalog/base/extra-tools.txt.
