@@ -1,7 +1,10 @@
 """Tests for emit.py — profile artifact emission (C1)."""
 
 import json
+import re
 from pathlib import Path
+
+import pytest
 
 from harnessed.emit import (
     HATAGO_ENDPOINT,
@@ -39,7 +42,9 @@ class TestWriteDerivedDockerfile:
     def test_appends_supply_chain_scan_run_by_default(self, tmp_path):
         out = write_derived_dockerfile(tmp_path, "time", "claude", [])
         body = out.read_text()
-        assert "FROM harnessed-${HARNESS}:latest" in body
+        # agent-last: FROM the BASE, not the agent image (the agent installs on top — see below).
+        assert "FROM harnessed-base:latest" in body
+        assert "FROM harnessed-${HARNESS}:latest" not in body
         # The final supply-chain layer (BLD-02) runs even when no recipe ships a Dockerfile.
         assert "harnessed-scan" in body
         assert "--mount=type=secret,id=snyk_token" in body
@@ -91,6 +96,84 @@ class TestWriteDerivedDockerfile:
     def test_no_mise_layer_without_tools(self, tmp_path):
         out = write_derived_dockerfile(tmp_path, "time", "claude", [Recipe(name="x", root=tmp_path)], with_scan=False)
         assert "recipe tools (mise)" not in out.read_text()
+
+
+class TestAgentLastLayer:
+    """The agent CLI installs AFTER the recipe layers.
+
+    Agent pins (OMP_VERSION et al) churn far faster than recipes. With the agent image as the FROM
+    parent, every agent bump changed the parent id and invalidated every recipe layer of every stack
+    on that harness. Agent-last confines an agent bump to the agent layer + the scan.
+    """
+
+    @pytest.fixture
+    def agent_df(self, tmp_path):
+        """An agent Dockerfile shaped like catalog/base/Dockerfile.harnessed-omp."""
+        df = tmp_path / "Dockerfile.harnessed-omp"
+        df.write_text(
+            "FROM harnessed-base:latest\n"
+            "ARG HARNESS\n"
+            "ARG OMP_VERSION\n"
+            'RUN mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" bun && mise install\n'
+        )
+        return df
+
+    def _recipe_with_dockerfile(self, tmp_path):
+        root = tmp_path / "superpowers"
+        root.mkdir()
+        (root / "Dockerfile").write_text("RUN echo install-superpowers\n")
+        return Recipe(name="superpowers", root=root)
+
+    def test_agent_body_lands_after_recipes_and_before_the_scan(self, tmp_path, agent_df):
+        recipe = self._recipe_with_dockerfile(tmp_path)
+        out = write_derived_dockerfile(
+            tmp_path, "time", "omp", [recipe],
+            agent_dockerfile=agent_df, agent_build_args={"OMP_VERSION": "16.4.6"},
+        )
+        body = out.read_text()
+        recipe_at = body.index("install-superpowers")
+        agent_at = body.index("oh-my-pi")
+        scan_at = body.index("harnessed-scan")
+        assert recipe_at < agent_at < scan_at
+
+    def test_agent_pins_are_inlined_as_arg_defaults(self, tmp_path, agent_df):
+        out = write_derived_dockerfile(
+            tmp_path, "time", "omp", [],
+            agent_dockerfile=agent_df, agent_build_args={"OMP_VERSION": "16.4.6"},
+        )
+        body = out.read_text()
+        assert "ARG OMP_VERSION=16.4.6" in body
+        # The agent Dockerfile's own DEFAULTLESS `ARG OMP_VERSION` must be dropped: re-declaring it
+        # after `ARG OMP_VERSION=16.4.6` resets the value to empty and the pin silently vanishes.
+        assert not re.search(r"^ARG OMP_VERSION\s*$", body, re.MULTILINE)
+
+    def test_agent_from_line_is_stripped(self, tmp_path, agent_df):
+        out = write_derived_dockerfile(
+            tmp_path, "time", "omp", [], agent_dockerfile=agent_df, agent_build_args={},
+        )
+        body = out.read_text()
+        # Exactly one FROM — the derived stage's own. The agent's is inlined, not a second stage.
+        assert body.count("FROM ") == 1
+        assert "FROM harnessed-base:latest" in body
+
+    def test_no_agent_layer_when_agent_dockerfile_absent(self, tmp_path):
+        out = write_derived_dockerfile(tmp_path, "time", "claude", [], with_scan=False)
+        assert "# --- agent:" not in out.read_text()
+
+    def test_agent_block_resets_user_to_harnessed(self, tmp_path, agent_df):
+        """The agent Dockerfiles declare no USER: as `FROM harnessed-base` they inherited `harnessed`.
+        Recipe layers now sit in between, so a recipe ending as root would install the CLI into /root.
+        """
+        root = tmp_path / "rooty"
+        root.mkdir()
+        (root / "Dockerfile").write_text("USER root\nRUN echo needs-root\n")
+        out = write_derived_dockerfile(
+            tmp_path, "time", "omp", [Recipe(name="rooty", root=root)],
+            with_scan=False, agent_dockerfile=agent_df, agent_build_args={"OMP_VERSION": "16.4.6"},
+        )
+        body = out.read_text()
+        agent_at = body.index("# --- agent: omp")
+        assert "USER harnessed" in body[agent_at:body.index("oh-my-pi")]
 
 
 class TestWriteClaudeMd:
