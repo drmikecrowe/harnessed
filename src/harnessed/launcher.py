@@ -624,6 +624,14 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     recipe_hash = compute_recipe_hash(stack_dir / "stack.yaml", result.recipes)
     _out.print(f"[blue][INFO][/blue] Building derived image {derived} (incl. supply-chain scan) ...")
     _build_derived_image(rt, derived, dockerfile, hdir, recipe_hash)
+
+    # The build's own scan layer is credential-free by design, so snyk + socket sit it out. Re-run the
+    # scan here against the image we just built, this time with tokens resolved on the host — same
+    # thing `harnessed rescan <image>` does. Advisory: it reports posture and never fails the build.
+    # Skipped by `--no-security-scans`.
+    if os.environ.get("HARNESSED_NO_SCANS") != "true":
+        _out.print(f"[blue][INFO][/blue] Credentialed re-scan of {derived} (snyk + socket) ...")
+        _scan_image_in_container(rt, derived)
     # Merge image-baked ~/.claude extensions into the profile only when a recipe actually baked some.
     if any((r.root / "Dockerfile").is_file() for r in result.recipes):
         _merge_baked_extensions(rt, derived, prof)
@@ -872,8 +880,9 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
     so project values override the global schema).
 
     Sources, in --env-file order:
-      1. ~/.config/harnessed/.env.schema — user-global, resolved via varlock (opt-in: needs
-         the schema present and `varlock` on PATH).
+      1. User-global ~/.config/harnessed/: `.env.schema` resolved via varlock (opt-in: needs the
+         schema present and `varlock` on PATH), else a bare `.env` read literally. This is also the
+         sole source of scanner tokens for `harnessed rescan` (_scan_image_in_container).
       2. Per-project env from project_path:
          - <project>/.env.schema present → `varlock load` in the project dir (varlock already
            cascades .env / .env.local overlays on top of the schema).
@@ -889,12 +898,20 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
     temp_files: list[Path] = []
     have_varlock = bool(shutil.which("varlock"))
 
-    global_schema = Path.home() / ".config" / "harnessed" / ".env.schema"
+    global_dir = Path.home() / ".config" / "harnessed"
+    global_schema = global_dir / ".env.schema"
+    global_env = global_dir / ".env"
     if global_schema.is_file() and have_varlock:
-        p = _varlock_resolve_env_file(global_schema.parent)
+        p = _varlock_resolve_env_file(global_dir)
         if p:
             env_files.append(p)
             temp_files.append(p)
+    elif global_env.is_file():
+        # Same precedence as the per-project pair below: a schema wins (varlock already cascades a
+        # sibling .env), and a bare .env is read literally — no varlock, no op:// resolution.
+        p = _normalize_plain_env_file(global_env)
+        env_files.append(p)
+        temp_files.append(p)
 
     if project_path is not None:
         proj_schema = project_path / ".env.schema"
@@ -3188,10 +3205,53 @@ def uninstall_stack(
         _out.print(f"No shim found at {shim}")
 
 
+def _scan_image_in_container(rt: str, image: str) -> bool:
+    """Run the image's own baked `harnessed-scan` inside a throwaway container, with scanner tokens
+    injected as env.
+
+    THIS IS THE ONLY PATH ON WHICH snyk AND socket ACTUALLY RUN. The build-time scan layer is
+    deliberately credential-free (`_build_derived_image` never passes a secret), so both token-gated
+    scanners sit out every build and only osv-scanner + pip-audit contribute there.
+
+    Tokens are resolved on the HOST (`_resolve_launch_secrets(None)` → user-global
+    ~/.config/harnessed/.env.schema via varlock, else a bare .env) and handed to podman as a
+    mode-0600 temp --env-file, which is unlinked afterwards. varlock never runs in-container: 1Password
+    app-auth binds the grant to the calling host application and cannot work from inside a container
+    (docs/guides/secrets.md). Project env is deliberately NOT layered in — a rescan is about the
+    image, not about whichever directory you happen to be standing in.
+
+    Advisory: `harnessed-scan` always exits 0, so this reports posture and never gates.
+    """
+    env_files, temp_files = _resolve_launch_secrets(project_path=None)
+    if not env_files:
+        _out.print(
+            "[yellow]note:[/yellow] no ~/.config/harnessed/.env.schema or .env — snyk and socket "
+            "have no tokens and will be skipped (osv-scanner + pip-audit still run)"
+        )
+    try:
+        res = subprocess.run([
+            rt, "run", "--rm",
+            *[arg for f in env_files for arg in ("--env-file", str(f))],
+            image, "harnessed-scan",
+        ])
+        return res.returncode == 0
+    finally:
+        for f in temp_files:
+            Path(f).unlink(missing_ok=True)
+
+
 def _scan_image(rt: str, run_env: dict, image: str) -> bool:
-    """Save `image` to a temp tarball and re-scan it online via the harnessed-tools CLI
-    (`scan-image-online` — SEC-04 nightly re-scan semantics). Returns True on a clean run
-    (0 = no HIGH+ finding), False otherwise."""
+    """Full re-scan of an already-built image — the two passes are complementary:
+
+    1. Credentialed in-image scan (`_scan_image_in_container`): snyk + socket + osv-scanner +
+       pip-audit over what the build actually installed. ADVISORY.
+    2. Online archive scan (`scan-image-online`): osv-scanner against a `podman save` tarball with
+       the offline DB flags dropped, so it sees advisories disclosed SINCE the build. GATES on HIGH+.
+
+    Returns True on a clean run (no HIGH+ finding), False otherwise.
+    """
+    scanned = _scan_image_in_container(rt, image)
+
     with tempfile.NamedTemporaryFile(suffix=".tar", delete=False) as tf:
         tar_path = tf.name
     try:
@@ -3201,7 +3261,7 @@ def _scan_image(rt: str, run_env: dict, image: str) -> bool:
              "python", "-m", "harnessed.cli", "scan-image-online", tar_path],
             env=run_env,
         )
-        return res.returncode == 0
+        return scanned and res.returncode == 0
     finally:
         Path(tar_path).unlink(missing_ok=True)
 
@@ -3263,17 +3323,42 @@ def scan(
 
 
 @app.command("rescan")
-def rescan() -> None:
-    """Re-scan installed harnessed images online (post-build CVE catch)."""
+def rescan(
+    image: Optional[str] = typer.Argument(
+        None,
+        help="Image to re-scan (repo:tag); omit to re-scan every harnessed-labelled image",
+    ),
+) -> None:
+    """Re-scan built harnessed image(s) WITH credentials — the credentialed counterpart to `build`.
+
+    Resolves scanner tokens from the user-global ~/.config/harnessed/.env.schema (via varlock) or
+    .env, injects them into a throwaway container from the image, and runs the baked `harnessed-scan`
+    there. This is where snyk and socket actually run: `harnessed build` is deliberately
+    credential-free, so a build only ever gets osv-scanner + pip-audit. Also runs the online archive
+    scan, which catches CVEs disclosed since the image was built.
+
+    * `rescan <image>` — re-scan that one image (errors if it isn't built).
+    * `rescan`         — re-scan every harnessed-labelled image.
+    """
     rt = _runtime()
-    result = subprocess.run(
-        [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}:{{.Tag}}"],
-        capture_output=True, text=True,
-    )
-    images = [i.strip() for i in result.stdout.splitlines() if i.strip()]
-    if not images:
-        _out.print("No harnessed-labelled images found to rescan")
-        return
+    if image:
+        exists = subprocess.run([rt, "image", "exists", image], capture_output=True)
+        if exists.returncode != 0:
+            _err.print(
+                f"[bold red]error:[/bold red] no such image '{image}' "
+                "(build it first, or run `harnessed rescan` to scan every built image)"
+            )
+            raise typer.Exit(1)
+        images = [image]
+    else:
+        result = subprocess.run(
+            [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}:{{.Tag}}"],
+            capture_output=True, text=True,
+        )
+        images = [i.strip() for i in result.stdout.splitlines() if i.strip()]
+        if not images:
+            _out.print("No harnessed-labelled images found to rescan")
+            return
     root = _harnessed_dir()
     run_env = {**os.environ, "PYTHONPATH": str(root / "src"), "CONTAINER_RUNTIME": rt}
     has_errors = False

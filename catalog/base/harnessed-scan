@@ -9,9 +9,14 @@
 # would make the recipe system unusable. So the scan REPORTS posture and always exits 0. Each scanner
 # runs in JSON mode; a single compact severity summary is printed (raw JSON only with
 # HARNESSED_SCAN_VERBOSE=1) and a consolidated report is written to ~/.harnessed/scan-report.json,
-# which the launcher copies into the stack profile dir. snyk is token-gated via a build SECRET
-# (--mount=type=secret,id=snyk_token); without a token snyk is skipped and only the credential-free
-# osv-scanner / pip-audit contribute.
+# which the launcher copies into the stack profile dir.
+#
+# TOKEN-GATED SCANNERS. osv-scanner + pip-audit are credential-free and always run. snyk and socket
+# need tokens, which NEVER exist at build time (`harnessed build` is deliberately credential-free —
+# recipe verification must never depend on 1Password being authorized). They run under
+# `harnessed rescan <image>`, which resolves ~/.config/harnessed/.env{,.schema} on the HOST (varlock)
+# and injects the tokens into a throwaway container as env. So a build prints "skipped (no token)"
+# for both and that is correct, expected behavior — not a degraded state.
 set -uo pipefail
 
 HOME_DIR="${HOME:-/home/harnessed}"
@@ -22,21 +27,28 @@ MANIFEST="$WORK/manifest"
 : >"$MANIFEST"
 mkdir -p "$REPORT_DIR"
 
-# SNYK_TOKEN arrives as a build secret (never a build-arg → never baked into image history).
-if [[ -r /run/secrets/snyk_token ]]; then
+# Scanner tokens. Two arrival paths, both env-only — never a build-arg, so never baked into image
+# history. Env wins over the build secret (an explicit `rescan` token beats a stale build secret):
+#   * build : --mount=type=secret,id=snyk_token — normally ABSENT (build is credential-free).
+#   * rescan: `harnessed rescan <image>` injects SNYK_TOKEN / SOCKET_CLI_API_TOKEN as container env.
+if [[ -z "${SNYK_TOKEN:-}" && -r /run/secrets/snyk_token ]]; then
     SNYK_TOKEN="$(cat /run/secrets/snyk_token)"
     export SNYK_TOKEN
 fi
+# The Socket CLI reads SOCKET_CLI_API_TOKEN / SOCKET_CLI_ORG_SLUG. Accept the SOCKET_SECURITY_API_KEY
+# name too (what Socket's GitHub Action uses, and what older harnessed docs told operators to declare)
+# so an existing .env.schema keeps working; the canonical name wins when both are set.
+if [[ -z "${SOCKET_CLI_API_TOKEN:-}" && -n "${SOCKET_SECURITY_API_KEY:-}" ]]; then
+    SOCKET_CLI_API_TOKEN="$SOCKET_SECURITY_API_KEY"
+    export SOCKET_CLI_API_TOKEN
+fi
 
-# snyk-scan a node_modules tree that has no top-level manifest: synthesize a package.json from the
-# on-disk packages, symlink the real node_modules, capture JSON, and record it in $MANIFEST.
-snyk_scan() {
-    local nm="$1" label="$2" tmp out
-    [[ -d "$nm" ]] || return 0
-    command -v snyk >/dev/null 2>&1 || return 0
-    [[ -n "${SNYK_TOKEN:-}" ]] || return 0
-    echo "  · snyk: ${label}"
-    tmp="$(mktemp -d)" || return 0
+# A node_modules tree installed by an upstream installer vendors no top-level manifest, so neither
+# snyk nor socket can see it. Synthesize one: write a package.json naming every on-disk package at
+# its installed version, and symlink the real tree in beside it. Echoes the temp dir (caller rm -rf's).
+synth_manifest_dir() {
+    local nm="$1" tmp
+    tmp="$(mktemp -d)" || return 1
     ln -s "$nm" "$tmp/node_modules"
     python3 - "$nm" >"$tmp/package.json" <<'PY'
 import sys, os, json
@@ -60,13 +72,82 @@ for entry in sorted(os.listdir(nm)):
         add(path)
 json.dump({"name": "harnessed-globals-audit", "version": "0.0.0", "dependencies": deps}, sys.stdout)
 PY
-    out="$WORK/snyk-$(printf '%s' "$label" | tr -c 'A-Za-z0-9' '_').json"
+    printf '%s' "$tmp"
+}
+
+# Stable, filesystem-safe slug for a scanner label ("recipe: foo" -> "recipe__foo").
+slug() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '_'; }
+
+snyk_scan() {
+    local nm="$1" label="$2" tmp out
+    [[ -d "$nm" ]] || return 0
+    command -v snyk >/dev/null 2>&1 || return 0
+    [[ -n "${SNYK_TOKEN:-}" ]] || return 0
+    echo "  · snyk: ${label}"
+    tmp="$(synth_manifest_dir "$nm")" || return 0
+    out="$WORK/snyk-$(slug "$label").json"
     ( cd "$tmp" && snyk test --json ) >"$out" 2>/dev/null
     rm -rf "$tmp"
     [[ -s "$out" ]] && printf 'snyk|%s|%s\n' "$label" "$out" >>"$MANIFEST"
 }
 
+# Every socket API call needs an org slug. Interactively, socket reads one from ~/.config/socket —
+# which does not exist in a container, so a token alone would fail with "org slug is required".
+# Derive it from the token instead (one API call, memoized): a rescan then needs nothing but a token.
+# SOCKET_CLI_ORG_SLUG still wins if the operator set one explicitly.
+SOCKET_ORG_CACHED=""
+socket_org() {
+    [[ -n "${SOCKET_CLI_ORG_SLUG:-}" ]] && { printf '%s' "$SOCKET_CLI_ORG_SLUG"; return 0; }
+    [[ -n "$SOCKET_ORG_CACHED" ]] && { printf '%s' "$SOCKET_ORG_CACHED"; return 0; }
+    SOCKET_ORG_CACHED="$(socket organization list --json --no-banner --no-spinner 2>/dev/null \
+        | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    orgs = ((d.get("data") or {}).get("organizations") or []) if d.get("ok") else []
+    print(orgs[0].get("slug", "") if orgs else "")
+except Exception:
+    print("")')"
+    printf '%s' "$SOCKET_ORG_CACHED"
+}
+
+# socket has no offline mode: `scan create` uploads the synthesized manifest and returns a scan id
+# (1 quota unit), then `scan view <id>` returns the per-package alerts. --tmp keeps the scan off the
+# org's alerts page — this is an advisory posture check, not the org's system of record.
+socket_scan() {
+    local nm="$1" label="$2" tmp out id org
+    [[ -d "$nm" ]] || return 0
+    command -v socket >/dev/null 2>&1 || return 0
+    [[ -n "${SOCKET_CLI_API_TOKEN:-}" ]] || return 0
+    echo "  · socket: ${label}"
+    org="$(socket_org)"
+    [[ -n "$org" ]] || { echo "    (socket: no org for this token — skipped)"; return 0; }
+    tmp="$(synth_manifest_dir "$nm")" || return 0
+    id="$(cd "$tmp" && socket scan create --json --tmp --no-interactive --no-banner --no-spinner \
+            --org "$org" . 2>/dev/null \
+          | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    print((d.get("data") or {}).get("id", "") if d.get("ok") else "")
+except Exception:
+    print("")')"
+    rm -rf "$tmp"
+    [[ -n "$id" ]] || { echo "    (socket scan create failed — skipped)"; return 0; }
+    out="$WORK/socket-$(slug "$label").json"
+    # --org here too: `scan view` is an org-scoped endpoint. Interactively it falls back to the
+    # default org in ~/.config/socket, which a container does not have — omit it and the call fails
+    # silently, leaving socket contributing nothing while still LOOKING like it ran.
+    socket scan view "$id" --json --no-banner --no-spinner --org "$org" >"$out" 2>/dev/null
+    [[ -s "$out" ]] && printf 'socket|%s|%s\n' "$label" "$out" >>"$MANIFEST"
+}
+
 echo "== harnessed supply-chain scan (advisory) =="
+
+# Say out loud which token-gated scanners are sitting out, and why. Silence here reads as "snyk ran
+# and found nothing", which is the opposite of the truth.
+[[ -n "${SNYK_TOKEN:-}" ]] \
+    || echo "  · snyk: skipped (no SNYK_TOKEN — credentialed scan runs in \`harnessed rescan\`)"
+[[ -n "${SOCKET_CLI_API_TOKEN:-}" ]] \
+    || echo "  · socket: skipped (no SOCKET_CLI_API_TOKEN — credentialed scan runs in \`harnessed rescan\`)"
 
 # 1. mise-installed node globals (node-release-bundled npm/corepack), deduped via realpath.
 declare -A seen=()
@@ -76,13 +157,17 @@ for nm in "$HOME_DIR"/.local/share/mise/installs/node/*/lib/node_modules; do
     [[ -n "${seen[$real]:-}" ]] && continue
     seen[$real]=1
     snyk_scan "$real" "node globals"
+    socket_scan "$real" "node globals"
 done
 unset seen
 
 # 2. recipe-installed node trees under the Claude-canonical profile.
 for nm in "$HOME_DIR"/.claude/skills/*/node_modules "$HOME_DIR"/.claude/commands/*/node_modules; do
     [[ -d "$nm" ]] || continue
-    snyk_scan "$(realpath "$nm")" "recipe: $(basename "$(dirname "$nm")")"
+    real="$(realpath "$nm")"
+    label="recipe: $(basename "$(dirname "$nm")")"
+    snyk_scan "$real" "$label"
+    socket_scan "$real" "$label"
 done
 
 # 3. osv-scanner over recipe trees that ship a real lockfile (sees bun.lock/package-lock that snyk's
@@ -161,7 +246,28 @@ def parse_pip_audit(doc):
             items.append(("unknown", dep.get("name", "?")))
     return items
 
-PARSERS = {"snyk": parse_snyk, "osv": parse_osv, "pip-audit": parse_pip_audit}
+def parse_socket(doc):
+    # `socket scan view --json`: {"ok":true,"data":[{name, version, alerts:[{severity, ...}]}]}.
+    # Socket's severity vocabulary is critical/high/middle/low — "middle", NOT "medium".
+    if not (isinstance(doc, dict) and doc.get("ok")):
+        return []
+    sev_map = {"critical": "critical", "high": "high", "middle": "medium", "low": "low"}
+    items = []
+    for pkg in doc.get("data") or []:
+        name = pkg.get("name") or "?"
+        for alert in pkg.get("alerts") or []:
+            # `missingLockfile` is an artifact of OUR synthesized manifest (synth_manifest_dir writes
+            # a package.json with no lockfile beside it), not a property of the installed tree. Report
+            # it and every scan carries a phantom HIGH forever.
+            if alert.get("type") == "missingLockfile":
+                continue
+            sev = sev_map.get((alert.get("severity") or "").lower())
+            if sev:
+                items.append((sev, name))
+    return items
+
+PARSERS = {"snyk": parse_snyk, "osv": parse_osv, "pip-audit": parse_pip_audit,
+           "socket": parse_socket}
 
 with open(sys.argv[1]) as f:
     for line in f:
@@ -199,7 +305,7 @@ flagged = [r for r in rows if r["critical"] or r["high"]]
 print("")
 print("  supply-chain summary — advisory (build not gated)")
 if not rows:
-    print("  (no scanner output — snyk token absent and/or scanners missing)")
+    print("  (no scanner output — scanner tokens absent and/or scanners missing)")
 elif not flagged:
     print("  no high/critical advisories across %d source(s)." % len(rows))
 else:

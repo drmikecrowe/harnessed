@@ -129,10 +129,13 @@ RUN grep -v '^\s*#' /tmp/extra-tools.txt | grep -v '^\s*$' | awk '{print $1}' | 
 
 # Supply-chain scanners (BLD-02) + the in-image scan script, baked once and invoked as the final
 # layer of every assembled stack image (emit.write_derived_dockerfile). osv-scanner + pip-audit are
-# credential-free; snyk is token-gated at build via a build secret. uv backs pip-audit (uvx policy).
+# credential-free and run on every build. snyk + socket are token-gated: they stay silent during the
+# (deliberately credential-free) build and only run under `harnessed rescan`, which resolves the
+# tokens on the HOST from ~/.config/harnessed/.env{,.schema} and injects them as container env.
+# All four are baked here so rescan needs no network install. uv backs pip-audit (uvx policy).
 RUN mise use -g uv osv-scanner && mise install \
     && uv tool install pip-audit \
-    && mkdir -p "$PNPM_HOME/bin" && pnpm add -g snyk
+    && mkdir -p "$PNPM_HOME/bin" && pnpm add -g snyk socket@1.1.143
 USER root
 COPY catalog/base/harnessed-scan /usr/local/bin/harnessed-scan
 COPY catalog/base/harnessed-start /usr/local/bin/harnessed-start
