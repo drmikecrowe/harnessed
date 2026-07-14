@@ -2069,6 +2069,17 @@ def _trusted_ssh_keys(stk_ssh_keys: list[str], from_overlay: bool, stack: str) -
     return stk_ssh_keys
 
 
+def _stack_from_overlay(stack: str) -> bool:
+    """True when this stack resolves to the user's own overlay catalog — the gate _trusted_ssh_keys
+    applies before mounting any private key. False if the stack can't be resolved at all (fail
+    closed: an unresolvable stack is not "yours")."""
+    try:
+        stack_dir = paths.find_in_catalog("stacks", stack)
+    except Exception:
+        return False
+    return stack_dir.resolve().is_relative_to(paths.user_catalog().resolve())
+
+
 def _gh_hosts_missing_plaintext_token(gh_hosts: Path) -> bool:
     """True when hosts.yml has host/user entries but no plaintext `oauth_token` anywhere.
 
@@ -2568,21 +2579,37 @@ def _ensure_service(
             # does not exist in its mount namespace.
             run_cmd += ["-e", f"HARNESSED_SOCKET_PATH={agent_dir}/{svc.socket}"]
         if location == "in_repo" and mount_path is not None:
-            # The git repo itself — the sync (`bd dolt push` → refs/dolt/data) runs HERE, because
-            # bd's push shells out to a dolt CLI that only routes to a server on its own loopback.
-            # That means the PUSH happens in this container, so it needs what any push needs: the
-            # repo, the host's git identity, and the SSH agent. Without the agent, `harnessed svc
-            # sync` dies on the remote's auth ("run `ssh-add <key>` to pre-load your key").
+            # The git repo itself — remote git traffic (bd's `dolt clone` of refs/dolt/data at init,
+            # and `bd dolt push` at sync) runs HERE, because bd shells out to a dolt CLI that only
+            # routes to a server on its own loopback. That means the CLONE and the PUSH happen in
+            # this container, so it needs exactly what an agent container needs to reach the remote:
+            # the repo, the host's git identity, the SSH agent, AND the rest of the ssh surface.
+            #
+            # The last one is the whole point of using the shared helpers rather than an ad-hoc pair
+            # of mounts (which is what this used to be, and it broke):
+            #   * `~/.ssh/config` + `*.pub` — a repo whose git config pins an identity
+            #     (`core.sshCommand = ssh -o IdentityAgent=... -i ~/.ssh/<key>.pub`, the 1Password
+            #     multi-account pattern) resolves that `-i` path INSIDE this container. Absent, ssh
+            #     warns "Identity file ... not accessible" and falls back to the agent's FIRST key —
+            #     a different GitHub account — and the remote answers `ERROR: Repository not found.`
+            #     even though the very same clone works from an agent container.
+            #   * git identity via `_git_identity_config_mount`, which honours `~/.config/git/`
+            #     (XDG) as well as legacy `~/.gitconfig`. The old code mounted only the latter, so a
+            #     host that uses the XDG path gave this container NO git config at all — no
+            #     user.email, no `includeIf` per-org identity, no signing key.
             run_cmd += ["-v", f"{mount_path}:{mount_path}:rw",
                         "-e", f"HARNESSED_PROJECT_DIR={project_path}"]
             home = Path.home()
             run_cmd += _ssh_agent_args(home, _gpg_ssh_socket(), rt=rt)
-            gitconfig = home / ".gitconfig"
-            if gitconfig.is_file():
-                run_cmd += ["-v", f"{gitconfig}:{_CONTAINER_HOME_STR}/.gitconfig:ro"]
-            known_hosts = home / ".ssh" / "known_hosts"
-            if known_hosts.is_file():
-                run_cmd += ["-v", f"{known_hosts}:{_CONTAINER_HOME_STR}/.ssh/known_hosts:ro"]
+            run_cmd += _git_identity_config_mount(home)
+            # Non-secret surface (config/known_hosts/*.pub) always; private keys only when the stack
+            # opted in AND the stack came from the user's own overlay — same gate as the agent
+            # container (_trusted_ssh_keys), so a shared-catalog stack can never mount your key.
+            stk, _ = load_stack_with_recipes(None, stack)
+            keys: list[str] = []
+            if stk is not None and stk.forward_git_credentials:
+                keys = _trusted_ssh_keys(stk.ssh_keys, _stack_from_overlay(stack), stack)
+            run_cmd += _ssh_dir_mounts(home, keys)
     elif svc.volume:
         run_cmd += ["-v", f"{svc.volume}:/data"]
 
