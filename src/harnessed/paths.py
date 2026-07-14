@@ -14,6 +14,10 @@ import os
 import subprocess
 from pathlib import Path
 
+class HomeNotFoundError(RuntimeError):
+    """harnessed's catalog could not be located — see `harnessed_home`."""
+
+
 # Container home — the legible session-slug root (design §15 / D-06).
 CONTAINER_HOME = Path("/home/harnessed")
 
@@ -49,20 +53,68 @@ def xdg_state_home() -> Path:
     return Path(xdg) if xdg else Path.home() / ".local" / "state"
 
 
-def repo_root() -> Path:
-    """The installed source root (HARNESSED_DIR override, else the package's repo).
+def harnessed_home() -> Path:
+    """harnessed's home: the directory that CONTAINS `catalog/`. Never derived from the CWD.
 
-    src/harnessed/paths.py → parent(harnessed) → parent(src) → repo root.
+    This is the single anchor for BOTH catalog lookup and the podman build context, so
+    `harnessed build <stack>` behaves identically from any working directory.
+
+    Resolution:
+      1. `$HARNESSED_DIR` — explicit override (unchanged; still wins).
+      2. The catalog shipped WITH the package, at `<pkg>/catalog`. In an installed wheel that is a
+         real directory (packaged via `[tool.setuptools.package-data]`). In a source checkout it is
+         a symlink to the repo-root `catalog/`, which is the authoring surface.
+
+    `.resolve()` collapses either form to a REAL directory, so home is the repo root in a checkout
+    and `site-packages/harnessed` in a wheel — and the build context never contains a symlink that
+    escapes it (podman rejects those). The Dockerfiles' context-relative `COPY catalog/base/...`
+    paths are therefore correct in both cases, unchanged.
+
+    Raises when no catalog can be found, rather than returning a plausible-looking directory that
+    has none — that used to surface as a baffling "unknown stack '<x>'" for every stack.
     """
     env = os.environ.get("HARNESSED_DIR")
     if env:
         return Path(env)
-    return Path(__file__).resolve().parent.parent.parent
+    catalog = Path(__file__).resolve().parent / "catalog"
+    if not catalog.exists():
+        raise HomeNotFoundError(
+            "cannot locate harnessed's catalog: expected it alongside the installed package at "
+            f"{catalog} (a real directory in a wheel; a symlink to the repo-root catalog/ in a "
+            "source checkout). Reinstall harnessed, or set HARNESSED_DIR to the directory that "
+            "contains catalog/."
+        )
+    return catalog.resolve().parent
+
+
+def source_checkout() -> Path | None:
+    """`harnessed_home()` when it is a harnessed SOURCE CHECKOUT, else None.
+
+    Dev-only conveniences (the `catalog/<kind>.local` overlay symlinks, the `docs/` wiki clone)
+    are meaningful only in a checkout. Gating them here keeps them from firing against whatever
+    directory the user happened to `cd` into — and, in an installed wheel, from writing into
+    `site-packages`.
+    """
+    home = harnessed_home()
+    if (home / "pyproject.toml").is_file() and (home / "src" / "harnessed").is_dir():
+        return home
+    return None
 
 
 def user_catalog() -> Path:
     """The user's overlay catalog: $XDG_CONFIG_HOME/harnessed/catalog."""
     return xdg_config_home() / "harnessed" / "catalog"
+
+
+def local_links_dir(checkout: Path) -> Path:
+    """Where the DX overlay symlinks live in a source checkout: `<checkout>/catalog-local/`.
+
+    DELIBERATELY OUTSIDE `catalog/`. `catalog/` is shipped inside the wheel, and setuptools follows
+    symlinks — so a `<kind>.local` symlink parked inside it would package the user's PRIVATE overlay
+    (~/.config/harnessed/catalog/...) into a distributable artifact. Keeping the host-local symlinks
+    in a sibling directory makes that structurally impossible rather than merely excluded.
+    """
+    return checkout / "catalog-local"
 
 
 def catalog_roots() -> list[Path]:
@@ -75,7 +127,7 @@ def catalog_roots() -> list[Path]:
     uc = user_catalog()
     if uc.is_dir():
         roots.append(uc)
-    roots.append(repo_root() / "catalog")
+    roots.append(harnessed_home() / "catalog")
     return roots
 
 

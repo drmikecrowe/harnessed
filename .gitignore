@@ -15,7 +15,13 @@ extra-tools.txt
 # stacks/<name>/stack.yaml is the authored source of truth; profiles/ is the mount artifact.
 /profiles/
 
-# DX symlinks: catalog/<kind>.local → ~/.config/harnessed/catalog/<kind> (created by `harnessed build`).
+# DX symlinks: catalog-local/<kind> → ~/.config/harnessed/catalog/<kind> (created by `harnessed build`).
+# Deliberately OUTSIDE catalog/: catalog/ is shipped inside the wheel and setuptools follows symlinks,
+# so a link to the user's private overlay parked in there would be published. See paths.local_links_dir.
+/catalog-local/
+
+# Stale pre-move location (catalog/<kind>.local). `harnessed build` unlinks these on first run; the
+# pattern stays so an un-migrated checkout doesn't show them as untracked in the meantime.
 catalog/*.local
 
 # docs/ is an unpinned live clone of the project's GitHub wiki (bootstrapped by
@@ -34,6 +40,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+/build/
+/dist/
 
 # Beads / Dolt files (added by bd init)
 .dolt/

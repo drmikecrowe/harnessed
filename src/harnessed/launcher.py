@@ -20,6 +20,8 @@ import sys
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Generator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from itertools import cycle
@@ -252,8 +254,12 @@ def _rt_uses_pods(rt: str) -> bool:
 
 
 def _harnessed_dir() -> Path:
-    """The installed source root (honors HARNESSED_DIR). Build context + catalog live under it."""
-    return paths.repo_root()
+    """harnessed's home (honors HARNESSED_DIR). Build context + catalog live under it.
+
+    Never the CWD — see `paths.harnessed_home`. Resolves to the repo root in a source checkout and
+    to the installed package dir in a wheel; both really contain `catalog/`.
+    """
+    return paths.harnessed_home()
 
 
 def _stacks_dir() -> Path:
@@ -276,17 +282,41 @@ def _ensure_profile_dir(stack: str, harness: str) -> Path:
 
 
 def _ensure_local_catalog_links() -> None:
-    """Ensure user overlay catalog dirs exist; create catalog/<kind>.local symlinks when in a repo checkout."""
+    """Ensure the user's overlay dirs exist; symlink them into `catalog-local/` in a source checkout.
+
+    The overlay dirs are created unconditionally (they are how `find_in_catalog` sees user content).
+
+    The symlinks are a DEV convenience — browsing/editing your overlay from inside the checkout — and
+    they are deliberately parked in `catalog-local/`, NOT inside `catalog/` (paths.local_links_dir):
+
+      * `catalog/` is shipped inside the wheel, and setuptools FOLLOWS symlinks, so a `<kind>.local`
+        link inside it would package the user's private overlay into a distributable artifact.
+      * They are keyed to harnessed's own checkout, never the CWD — running `harnessed build` from an
+        unrelated project that happens to have a `catalog/` must not scribble symlinks into it, and a
+        wheel install must not scribble them into site-packages.
+    """
     user_catalog_root = paths.user_catalog()
     for kind in ("agents", "recipes", "services", "stacks"):
         (user_catalog_root / kind).mkdir(parents=True, exist_ok=True)
 
-    cwd_catalog = Path.cwd() / "catalog"
-    if not cwd_catalog.is_dir():
+    checkout = paths.source_checkout()
+    if checkout is None:
         return
 
+    # MIGRATION: drop the pre-move `catalog/<kind>.local` links. Every checkout that has ever run
+    # `harnessed build` has them, and they point into the user's private overlay from INSIDE the dir
+    # we now ship — leave them and a `uv build` would package that overlay. Only ever unlink a
+    # symlink, never real content.
     for kind in ("agents", "recipes", "services", "stacks"):
-        target = cwd_catalog / f"{kind}.local"
+        stale = checkout / "catalog" / f"{kind}.local"
+        if stale.is_symlink():
+            stale.unlink()
+
+    links_dir = paths.local_links_dir(checkout)
+    links_dir.mkdir(parents=True, exist_ok=True)
+
+    for kind in ("agents", "recipes", "services", "stacks"):
+        target = links_dir / kind
         dest = user_catalog_root / kind
         if target.is_symlink():
             if target.resolve() == dest.resolve():
@@ -311,18 +341,22 @@ def _ensure_docs_wiki_clone() -> None:
 
     docs/ is a plain git clone (not a submodule) of <origin>.wiki.git -- no pinned
     commit, no pointer-bump PRs; pull it yourself with `git -C docs pull`. Only runs
-    inside a harnessed repo checkout (catalog/ present); leaves an existing docs/ alone.
+    inside the harnessed SOURCE CHECKOUT; leaves an existing docs/ alone.
+
+    Keyed to harnessed's own checkout, never the CWD: keyed to the CWD this would read an unrelated
+    project's `origin` and clone THAT repo's wiki into ITS docs/ merely because it happened to have
+    a `catalog/` dir — and would be meaningless in a wheel install.
     """
-    cwd = Path.cwd()
-    if not (cwd / "catalog").is_dir():
+    checkout = paths.source_checkout()
+    if checkout is None:
         return
-    docs_dir = cwd / "docs"
+    docs_dir = checkout / "docs"
     if docs_dir.exists():
         return
     try:
         origin_url = subprocess.run(
             ["git", "remote", "get-url", "origin"],
-            cwd=cwd, capture_output=True, text=True, check=True,
+            cwd=checkout, capture_output=True, text=True, check=True,
         ).stdout.strip()
     except subprocess.CalledProcessError:
         return
@@ -416,26 +450,56 @@ def _catalog_base(rt_path: str) -> Path:
 
 
 def _ensure_extra_tools() -> None:
-    """Resolve the user's extra-tools list and stage it into the build context for the base build.
+    """Seed the USER-owned extra-tools list from the shipped default when it is absent.
 
-    Source of truth is USER-owned: `~/.config/harnessed/extra-tools.txt` (paths.extra_tools_path).
-    Dockerfile.harnessed-base COPYs `catalog/base/extra-tools.txt` — a gitignored build artifact — so:
+    Source of truth is `~/.config/harnessed/extra-tools.txt` (paths.extra_tools_path). Seeding it from
+    `catalog/base/extra-tools.default.txt` (migrating a pre-move repo-root `extra-tools.txt` if one is
+    still lying around) means a fresh clone, git worktree, or wheel install builds with no hand-copying.
 
-      1. Seed the config file from `catalog/base/extra-tools.default.txt` when it is absent (migrating
-         a pre-move repo-root `extra-tools.txt` if one is still lying around), so a fresh clone or git
-         worktree builds without the user hand-copying anything.
-      2. Stage the resolved content into `catalog/base/extra-tools.txt` so the Dockerfile COPY finds it
-         in-context. Regenerated every build — the config file always wins over the staged mirror.
+    It is STAGED INTO THE BUILD CONTEXT — never back into `catalog/` — by `_staged_build_context`.
     """
     user_file = paths.extra_tools_path()
-    if not user_file.exists():
-        legacy = _harnessed_dir() / "extra-tools.txt"  # pre-move repo-root location
-        seed = legacy if legacy.exists() else _catalog_base("extra-tools.default.txt")
-        if seed.exists():
-            user_file.parent.mkdir(parents=True, exist_ok=True)
-            user_file.write_text(seed.read_text())
     if user_file.exists():
-        _catalog_base("extra-tools.txt").write_text(user_file.read_text())
+        return
+    legacy = _harnessed_dir() / "extra-tools.txt"  # pre-move repo-root location
+    seed = legacy if legacy.exists() else _catalog_base("extra-tools.default.txt")
+    if seed.exists():
+        user_file.parent.mkdir(parents=True, exist_ok=True)
+        user_file.write_text(seed.read_text())
+
+
+@contextmanager
+def _staged_build_context() -> Generator[str]:
+    """A throwaway podman build context: a copy of harnessed's `catalog/` + the resolved extra-tools.
+
+    Every harnessed image build (base, agent, derived stack) uses this instead of building straight
+    from `harnessed_home()`, because home is not a scratch dir:
+
+      * In a WHEEL install home is `site-packages/harnessed` — staging `catalog/base/extra-tools.txt`
+        there would write the user's host config INTO the installed package, and would fail outright
+        on a read-only install.
+      * In a CHECKOUT home is the repo root, so podman's context would be the ENTIRE repo — `.git`,
+        `.venv`, `web/`, `node_modules` — shipped to the daemon on every build.
+
+    `catalog/` sits at the context root either way, so the Dockerfiles' context-relative
+    `COPY catalog/base/...` and `COPY catalog/recipes/<name>/...` paths are unchanged. Same pattern
+    the service build already uses (see `_build_service_image`). Layer cache is unaffected: podman
+    keys COPY layers on file CONTENT, not on the context's path.
+    """
+    home = _harnessed_dir()
+    _ensure_extra_tools()
+    with tempfile.TemporaryDirectory(prefix="harnessed-build-ctx-") as ctx:
+        ctx_path = Path(ctx)
+        shutil.copytree(
+            home / "catalog",
+            ctx_path / "catalog",
+            symlinks=True,  # never FOLLOW a stray symlink out of the catalog into host content
+            ignore=shutil.ignore_patterns("*.local"),
+        )
+        user_file = paths.extra_tools_path()
+        if user_file.exists():
+            (ctx_path / "catalog" / "base" / "extra-tools.txt").write_text(user_file.read_text())
+        yield str(ctx_path)
 
 
 def _corp_proxy_ca_secret_args() -> list[str]:
@@ -588,22 +652,22 @@ def _build_shared_once(image: str, build: Callable[[], None]) -> None:
 
 def _build_images_cmd(rt: str, force: bool = False) -> None:
     """(Re)build the shared base + agent images (stack images are built lazily per stack)."""
-    _ensure_extra_tools()
-    hdir = _harnessed_dir()
     no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
     cache_arg = ["--no-cache"] if no_cache else []
     secret_args = _corp_proxy_ca_secret_args()
 
-    pairs = [
-        (_BASE_IMAGE, _catalog_base("Dockerfile.harnessed-base")),
-        (_CLAUDE_IMAGE, _catalog_base("Dockerfile.harnessed-claude")),
-    ]
-    for image, dockerfile in pairs:
-        if force or not _image_exists(rt, image):
-            _out.print(f"[blue][INFO][/blue] Building {image} ...")
-            _run([rt, "build", "-t", image, "-f", str(dockerfile), *cache_arg, *secret_args, str(hdir)])
-            with _SHARED_IMAGES_LOCK:
-                _SHARED_IMAGES_BUILT.add(image)
+    with _staged_build_context() as ctx:
+        base = Path(ctx) / "catalog" / "base"
+        pairs = [
+            (_BASE_IMAGE, base / "Dockerfile.harnessed-base"),
+            (_CLAUDE_IMAGE, base / "Dockerfile.harnessed-claude"),
+        ]
+        for image, dockerfile in pairs:
+            if force or not _image_exists(rt, image):
+                _out.print(f"[blue][INFO][/blue] Building {image} ...")
+                _run([rt, "build", "-t", image, "-f", str(dockerfile), *cache_arg, *secret_args, ctx])
+                with _SHARED_IMAGES_LOCK:
+                    _SHARED_IMAGES_BUILT.add(image)
     _out.print("[green][SUCCESS][/green] harnessed images ready")
 
 
@@ -613,22 +677,22 @@ def _build_base_image(rt: str) -> None:
     `FROM harnessed-base` — agent-last lineage). Layer-cached: a no-op when the base Dockerfile is
     unchanged, and skipped outright once this process has already built it."""
     def build() -> None:
-        _ensure_extra_tools()
         no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
         cache_arg = ["--no-cache"] if no_cache else []
         secret_args = _corp_proxy_ca_secret_args()
         _say(f"[blue][INFO][/blue] Building {_BASE_IMAGE} ...")
-        _run([
-            rt,
-            "build",
-            "-t",
-            _BASE_IMAGE,
-            "-f",
-            str(_catalog_base("Dockerfile.harnessed-base")),
-            *cache_arg,
-            *secret_args,
-            str(_harnessed_dir()),
-        ])
+        with _staged_build_context() as ctx:
+            _run([
+                rt,
+                "build",
+                "-t",
+                _BASE_IMAGE,
+                "-f",
+                str(Path(ctx) / "catalog" / "base" / "Dockerfile.harnessed-base"),
+                *cache_arg,
+                *secret_args,
+                ctx,
+            ])
 
     _build_shared_once(_BASE_IMAGE, build)
 
@@ -652,14 +716,18 @@ def _build_agent_image(rt: str, harness: str) -> None:
         if not _image_exists(rt, _BASE_IMAGE):
             _say("[yellow][WARNING][/yellow] harnessed-base not found. Building base first…")
             _build_images_cmd(rt, force=False)
-        hdir = _harnessed_dir()
-        dockerfile = hdir / agent.dockerfile if agent.dockerfile else _catalog_base(
-            f"Dockerfile.harnessed-{harness}")
         build_args: list[str] = []
         for key, val in agent.build_args.items():
             build_args += ["--build-arg", f"{key}={val}"]
         _say(f"[blue][INFO][/blue] Building {image} ...")
-        _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, str(hdir)])
+        with _staged_build_context() as ctx:
+            # agent.dockerfile is home-relative (e.g. catalog/agents/omp/Dockerfile) — and the staged
+            # context mirrors catalog/ at its root, so the same relative path resolves inside it.
+            dockerfile = (
+                Path(ctx) / agent.dockerfile if agent.dockerfile
+                else Path(ctx) / "catalog" / "base" / f"Dockerfile.harnessed-{harness}"
+            )
+            _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, ctx])
 
     _build_shared_once(image, build)
 
@@ -687,7 +755,6 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     prof = _ensure_profile_dir(stack, harness)
     # assemble emits to <build-dir>/profiles/<stack>/<harness>; pass the dir that *contains* profiles/.
     build_root = paths.profiles_root().parent
-    hdir = _harnessed_dir()
 
     _say(f"[blue][INFO][/blue] Assembling stack '{stack}' for harness '{harness}' ...")
     try:
@@ -717,7 +784,8 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     dockerfile = prof / f"Dockerfile.harnessed-{stack}"
     recipe_hash = compute_recipe_hash(stack_dir / "stack.yaml", result.recipes)
     _say(f"[blue][INFO][/blue] Building derived image {derived} (incl. supply-chain scan) ...")
-    _build_derived_image(rt, derived, dockerfile, hdir, recipe_hash)
+    with _staged_build_context() as ctx:
+        _build_derived_image(rt, derived, dockerfile, ctx, recipe_hash)
 
     # The build's own scan layer is credential-free by design, so snyk + socket sit it out. Re-run the
     # scan here against the image we just built, this time with tokens resolved on the host — same
@@ -1102,7 +1170,7 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
     return env_files, temp_files
 
 
-def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path, recipe_hash: str) -> None:
+def _build_derived_image(rt: str, derived: str, dockerfile: Path, ctx: str, recipe_hash: str) -> None:
     """Build the derived image. NEVER touches secrets or varlock — building must always succeed
     without credentials, so recipe install / skill / command / rule verification never depends on
     a secret resolving.
@@ -1124,7 +1192,7 @@ def _build_derived_image(rt: str, derived: str, dockerfile: Path, hdir: Path, re
         rt, "build", "-t", derived, "-f", str(dockerfile),
         "--label", "harnessed=true",
         "--label", f"harnessed.recipe-hash={recipe_hash}",
-        str(hdir),
+        ctx,
     ])
 
 

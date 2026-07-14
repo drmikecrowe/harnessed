@@ -28,6 +28,12 @@ Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can
 - **Streamable-HTTP MCP** only (SSE is deprecated).
 - Authorable content lives under **`catalog/`** (repo) and **`~/.config/harnessed/catalog`** (user
   overlay, wins on clash). Generated profiles go to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
+- **`catalog/` is shipped inside the wheel** (via the `src/harnessed/catalog` symlink + package-data),
+  so an installed `harnessed` needs no repo on disk. Two rules follow — see ARCHITECTURE.md §harnessed home:
+  1. **Nothing host-local inside `catalog/`.** It is a published artifact and setuptools follows
+     symlinks; the overlay symlinks therefore live in `catalog-local/`, never `catalog/<kind>.local`.
+  2. **Never key build/assembly off the CWD.** Anchor to `paths.harnessed_home()` (the dir containing
+     `catalog/`), so `harnessed build <stack>` behaves the same from any directory.
 
 ## Git workflow (non-negotiable)
 

@@ -29,5 +29,30 @@ dev = [
 where = ["src"]
 include = ["harnessed*"]
 
+[tool.setuptools.package-data]
+# Ship the catalog INSIDE the wheel, so an installed harnessed (uv tool / pipx / PyPI) carries its
+# own recipes, agents, services, stacks and base Dockerfiles and needs no repo on disk.
+# `src/harnessed/catalog` is a symlink to the repo-root `catalog/` — the authoring surface stays
+# where it has always been, and setuptools materializes it here as real files. See
+# `paths.harnessed_home`, which resolves through the symlink so the podman build context is always
+# a REAL directory containing a REAL catalog/ (podman rejects symlinks escaping the context).
+harnessed = ["catalog/**/*"]
+
+[tool.setuptools.exclude-package-data]
+# Keep HOST-LOCAL, gitignored artifacts out of a distributed wheel. Both of these live inside
+# catalog/ and would otherwise be swept up by the glob above:
+#   *.local          — symlinks into the user's PRIVATE overlay (~/.config/harnessed/catalog/...)
+#                      created by _ensure_local_catalog_links. setuptools follows symlinks, so
+#                      without this a `uv build` in a dev checkout would publish the user's own
+#                      recipes inside the wheel.
+#   extra-tools.txt  — the user's resolved mise tool list, staged into the build context by
+#                      _ensure_extra_tools. The committed seed (extra-tools.default.txt) SHIPS;
+#                      the resolved per-user file must not.
+harnessed = [
+    "catalog/*.local",
+    "catalog/*.local/**/*",
+    "catalog/base/extra-tools.txt",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
