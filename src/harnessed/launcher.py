@@ -58,7 +58,6 @@ app = typer.Typer(
 
 _out = Console()
 _err = Console(stderr=True)
-_yaml = YAML(typ="safe", pure=True)
 
 # --- shared image names (base; agent images come from catalog/agents/<h>/agent.yaml) ---
 # hatago is no longer a separate image — it is baked into harnessed-base and runs in-container
@@ -2015,7 +2014,7 @@ def _gh_hosts_missing_plaintext_token(gh_hosts: Path) -> bool:
     present-but-empty.
     """
     try:
-        data = _yaml.load(gh_hosts.read_text())
+        data = YAML(typ="safe", pure=True).load(gh_hosts.read_text())
     except Exception:
         return False  # can't parse — don't warn on a guess
 

@@ -24,9 +24,6 @@ from ruamel.yaml import YAML
 
 from . import paths
 
-_yaml = YAML(typ="safe", pure=True)
-
-
 def _resolve_dir(root: Path | None, kind: str, name: str) -> Path:
     """Resolve catalog/<kind>/<name>.
 
@@ -76,8 +73,13 @@ class PinValidationError(SchemaError):
 
 
 def _load_yaml(path: Path) -> dict:
+    # A ruamel YAML instance carries scanner/parser/constructor state across load() calls and is not
+    # thread-safe. `harnessed build -j` assembles stacks on several threads, all loading recipes at
+    # once; a shared instance interleaves and yields nonsense (marks from one file reported against
+    # another, or a half-built mapping that "loads" with fields missing). One instance per load.
+    yaml = YAML(typ="safe", pure=True)
     with path.open("r", encoding="utf-8") as fh:
-        data = _yaml.load(fh)
+        data = yaml.load(fh)
     if data is None:
         return {}
     if not isinstance(data, dict):
