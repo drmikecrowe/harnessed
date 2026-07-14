@@ -802,7 +802,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     # settings.json (merged with harnessed's required grant). UNCONDITIONAL — a settings.json can
     # be baked by the agent BASE image, not only by a recipe Dockerfile, so this must NOT hide
     # behind the recipe-bake gate above.
-    _merge_baked_settings(rt, derived, prof)
+    _merge_baked_settings(rt, derived, prof, harness)
 
     # opencode identity (bd main-rlw): when the stack ships `instructions:`, read the image-baked
     # opencode.json, add a custom persona agent + a rules-file glob, and write the merged config
@@ -1246,7 +1246,7 @@ def _merge_baked_extensions(rt: str, image: str, prof: Path) -> None:
     _with_image_container(rt, image, _copy)
 
 
-def _merge_baked_settings(rt: str, image: str, prof: Path) -> None:
+def _merge_baked_settings(rt: str, image: str, prof: Path, harness: str = "") -> None:
     """Replace the assemble-time settings.json FLOOR with the image's installer-written
     settings.json, surgically re-applying harnessed's required grant (emit.merge_settings).
 
@@ -1298,6 +1298,8 @@ def _merge_baked_settings(rt: str, image: str, prof: Path) -> None:
         return  # nothing usable baked; the floor stub already on disk is correct.
     merged = emit.merge_settings(baked, required, warn=_warn)
     stub.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    if harness:
+        emit.warn_duplicate_hooks(merged, harness, warn=_warn)
 
 
 def _deep_merge_json(base: object, overlay: object) -> object:
@@ -1317,7 +1319,7 @@ def _deep_merge_json(base: object, overlay: object) -> object:
     return overlay
 
 
-def _merge_host_claude_settings(prof: Path, required: dict) -> None:
+def _merge_host_claude_settings(prof: Path, required: dict, harness: str = "") -> None:
     """Apply host ~/.claude/settings.json into the profile settings for launch-time parity.
 
     The profile's settings.json is the file mounted into the container. Merge host preferences into
@@ -1358,6 +1360,8 @@ def _merge_host_claude_settings(prof: Path, required: dict) -> None:
         merged = host_obj
     final = emit.merge_settings(merged, required, warn=_warn)
     target.write_text(json.dumps(final, indent=2) + "\n", encoding="utf-8")
+    if harness:
+        emit.warn_duplicate_hooks(final, harness, warn=_warn)
 
 
 def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None:
@@ -2885,7 +2889,7 @@ def launch(
     launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
     required = emit.required_settings(launch_servers, launch_recipes, stk.permissions, harness)
     if harness in ("claude", "omp", "opencode"):
-        _merge_host_claude_settings(prof, required)
+        _merge_host_claude_settings(prof, required, harness)
 
     # Build mount args.
     mount_args = _build_mount_args(harness, prof, mount_path)
