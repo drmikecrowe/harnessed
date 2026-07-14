@@ -59,6 +59,22 @@ Applies to code, catalog content, docs, and config alike. Commits are signed
 (see `.claude/rules/signed-commits`). This overrides the "PUSH TO REMOTE" step in the Beads
 Session Completion block below: push the **worktree branch** and open a PR — never push to `main`.
 
+### Where to stand: start and finish in `main/`
+
+This checkout is **bare + worktrees**: `.bare/` is the git dir, `<repo>/main/` is the canonical `main`
+checkout, and task worktrees live under `.claude/worktrees/<name>/` (a few older ones sit directly at
+the repo root). Run `git worktree list` if you are unsure where you are.
+
+- **Begin each session in `main/`, and return to `main/` when a task is done.** Do the *work* in a
+  task worktree per the rules above — but read, verify, and come to rest in `main/`. Never carry an
+  unrelated change into whatever worktree you happen to have inherited; it belongs to another task.
+- **Never conclude "file X doesn't exist" from inside a worktree.** Git does not populate a worktree
+  with **gitignored** content. Most consequentially `docs/`, which is an unpinned live clone of the
+  GitHub wiki (see `.gitignore`) — so `docs/guides/*`, `docs/codebase/*`, and `docs/harnessed-design.md`
+  exist **only in `main/`**, even though this file and CLAUDE.md link to them freely. An empty
+  `ls`/`fd` inside a worktree means "ignored or untracked *here*", never "missing from the project".
+  Confirm against `main/`, `git ls-tree`, and `.gitignore` before claiming anything is absent or dead.
+
 ## Conventions
 
 See [CLAUDE.md](CLAUDE.md) for the non-negotiable constraints (host-native CLI; Claude format
