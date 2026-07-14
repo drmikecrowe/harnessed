@@ -578,6 +578,60 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
     return result
 
 
+def warn_duplicate_hooks(
+    settings: dict,
+    harness: str,
+    *,
+    warn=None,
+) -> list[tuple[str, str | None, str]]:
+    """Scan a FINAL settings.json for duplicate (event, matcher, command) triples.
+
+    A duplicate means the SAME hook body fires twice for the SAME event/filter — the failure mode
+    the `hooks.skip_harnesses` gate (bd main-4fx) prevents: if a recipe's hooks land in
+    settings.json while the harness ALSO fires them natively, the same SQLite write / node CLI
+    spawn happens twice per event. The merge in `merge_settings` APPENDS entries (never dedupes),
+    so an image-baked file that already carries a hook PLUS a required floor that re-adds it is a
+    real duplicate source independent of the skip gate.
+
+    Warns once per extra copy, naming the harness, event, and command (and matcher when present).
+    Never hard-fails — a stack legitimately composing two recipes that both want the same hook is
+    conceivable; a duplicate of the SAME recipe's entry is not.
+
+    Returns the list of duplicate triples (for testing). Each triple appears at most once in the
+    return value regardless of how many extra copies exist.
+    """
+    _warn = warn or _stderr_warn
+    hooks = settings.get("hooks") or {}
+    seen: set[tuple[str, str | None, str]] = set()
+    dupes: list[tuple[str, str | None, str]] = []
+    for event, entries in hooks.items():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            matcher: str | None = entry.get("matcher")
+            for hook in entry.get("hooks") or []:
+                if not isinstance(hook, dict):
+                    continue
+                command = hook.get("command")
+                if not isinstance(command, str):
+                    continue
+                triple: tuple[str, str | None, str] = (event, matcher, command)
+                if triple in seen:
+                    if triple not in dupes:
+                        dupes.append(triple)
+                        detail = (
+                            f"duplicate hook entry in [{harness}] settings.json: "
+                            f"event={event!r} command={command!r}"
+                            + (f" matcher={matcher!r}" if matcher is not None else "")
+                        )
+                        _warn(detail)
+                else:
+                    seen.add(triple)
+    return dupes
+
+
 def _hatago_entry(server: McpServer, project_path: str | Path | None = None) -> dict:
     """Map an MCP server to a hatago `mcpServers` entry (schema per hatago docs).
 

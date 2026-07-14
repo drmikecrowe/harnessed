@@ -11,6 +11,7 @@ from harnessed.emit import (
     opencode_agent_name,
     read_baked_settings,
     required_settings,
+    warn_duplicate_hooks,
     write_antigravity_identity,
     write_claude_md,
     write_codex_agents_md,
@@ -717,3 +718,146 @@ class TestMergeSettings:
         assert merged["permissions"]["allow"] == ["mcp__other", _GRANT]
         assert merged["hooks"]["PreToolUse"] == [{"matcher": "Bash"}]
         assert merged["hooks"]["SessionStart"] == [{"hooks": [{"type": "command", "command": "remind"}]}]
+
+
+# ---------------------------------------------------------------------------
+# Duplicate-hook check (bd main-7sp)
+# ---------------------------------------------------------------------------
+# Helper: build a minimal settings.json hooks block from a list of
+# (event, matcher_or_None, command) triples — mirrors the shape _recipe_hooks_settings emits.
+def _hooks_settings(*triples: tuple[str, str | None, str]) -> dict:
+    out: dict[str, list] = {}
+    for event, matcher, command in triples:
+        block: dict = {"hooks": [{"type": "command", "command": command}]}
+        if matcher is not None:
+            block["matcher"] = matcher
+        out.setdefault(event, []).append(block)
+    return {"hooks": out}
+
+
+class TestWarnDuplicateHooks:
+    """Post-build sanity check: no duplicate (event, matcher, command) triple in settings.json."""
+
+    def test_no_hooks_returns_empty(self):
+        assert warn_duplicate_hooks({}, "claude") == []
+        assert warn_duplicate_hooks({"hooks": {}}, "claude") == []
+
+    def test_clean_settings_no_duplicates(self):
+        settings = _hooks_settings(
+            ("SessionStart", None, "foo-hook sessionstart"),
+            ("PreToolUse", "Bash|Read", "foo-hook pretooluse"),
+        )
+        warns: list[str] = []
+        dupes = warn_duplicate_hooks(settings, "claude", warn=warns.append)
+        assert dupes == []
+        assert warns == []
+
+    def test_single_duplicate_triple_is_flagged(self):
+        """Acceptance criterion 1: duplicate triple → warn naming harness, event, command."""
+        settings = _hooks_settings(
+            ("SessionStart", None, "ctx-hook sessionstart"),
+            ("SessionStart", None, "ctx-hook sessionstart"),  # exact duplicate
+        )
+        warns: list[str] = []
+        dupes = warn_duplicate_hooks(settings, "omp", warn=warns.append)
+        assert len(dupes) == 1
+        assert dupes[0] == ("SessionStart", None, "ctx-hook sessionstart")
+        assert len(warns) == 1
+        assert "omp" in warns[0]
+        assert "SessionStart" in warns[0]
+        assert "ctx-hook sessionstart" in warns[0]
+
+    def test_duplicate_with_matcher_is_flagged_and_matcher_included_in_warning(self):
+        cmd = "ctx-hook pretooluse"
+        matcher = "Bash|Read"
+        settings = _hooks_settings(
+            ("PreToolUse", matcher, cmd),
+            ("PreToolUse", matcher, cmd),
+        )
+        warns: list[str] = []
+        dupes = warn_duplicate_hooks(settings, "claude", warn=warns.append)
+        assert len(dupes) == 1
+        assert dupes[0] == ("PreToolUse", matcher, cmd)
+        assert matcher in warns[0]
+
+    def test_same_command_different_matchers_are_not_duplicates(self):
+        """Different matchers → different triples → not a duplicate."""
+        settings = _hooks_settings(
+            ("PreToolUse", "Bash", "hook cmd"),
+            ("PreToolUse", "Read", "hook cmd"),
+        )
+        assert warn_duplicate_hooks(settings, "claude") == []
+
+    def test_same_command_different_events_are_not_duplicates(self):
+        settings = _hooks_settings(
+            ("SessionStart", None, "hook cmd"),
+            ("PostToolUse", None, "hook cmd"),
+        )
+        assert warn_duplicate_hooks(settings, "claude") == []
+
+    def test_duplicate_reported_once_even_when_tripled(self):
+        """Each distinct triple is reported at most once in the return list."""
+        settings = _hooks_settings(
+            ("SessionStart", None, "hook"),
+            ("SessionStart", None, "hook"),
+            ("SessionStart", None, "hook"),
+        )
+        warns: list[str] = []
+        dupes = warn_duplicate_hooks(settings, "claude", warn=warns.append)
+        # The triple appears as 1 duplicate in the returned list; warn fires once.
+        assert len(dupes) == 1
+        assert len(warns) == 1
+
+    def test_gate_applied_omp_no_false_positive(self):
+        """Acceptance criterion 2: skip gate correctly applied → clean for omp."""
+        # context-mode with skip_harnesses=[omp]: no hooks emitted for omp
+        context_mode_no_gate = _hook_recipe(
+            "context-mode",
+            hooks={
+                "SessionStart": [HookCommand(command="context-mode hook claude-code sessionstart")],
+                "PreToolUse": [HookCommand(command="context-mode hook claude-code pretooluse", matcher="Bash|Read")],
+            },
+            skip_harnesses=["omp"],
+        )
+        required = required_settings([], [context_mode_no_gate], None, "omp")
+        # Gate applied: omp gets NO context-mode hooks
+        assert "hooks" not in required or not required.get("hooks")
+        # Even after a merge against a baked file with some other hooks, no dupes
+        baked = {"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "bd-hook"}]}]}}
+        final = merge_settings(baked, required)
+        warns: list[str] = []
+        dupes = warn_duplicate_hooks(final, "omp", warn=warns.append)
+        assert dupes == []
+        assert warns == []
+
+    def test_gate_removed_omp_context_mode_regression(self):
+        """Acceptance criterion 3: context-mode on omp with gate REMOVED trips the check.
+
+        This is the regression the gate prevents. Without skip_harnesses=[omp], the context-mode
+        hooks land in the required settings for omp. If an image-baked settings.json already
+        carries those same hooks (e.g. because a prior floor was merged in), merge_settings
+        appends them again and warn_duplicate_hooks must fire.
+        """
+        context_mode_hooks = {
+            "SessionStart": [HookCommand(command="context-mode hook claude-code sessionstart")],
+            "PreToolUse": [HookCommand(command="context-mode hook claude-code pretooluse", matcher="Bash|Read")],
+            "PostToolUse": [HookCommand(command="context-mode hook claude-code posttooluse", matcher="Bash|Read|Write")],
+            "PreCompact": [HookCommand(command="context-mode hook claude-code precompact")],
+        }
+        # Gate REMOVED: no skip_harnesses
+        context_mode_no_gate = _hook_recipe("context-mode", hooks=context_mode_hooks)
+        required = required_settings([], [context_mode_no_gate], None, "omp")
+        # required now carries all four context-mode hooks for omp
+        assert "hooks" in required
+        # Simulate: the profile settings.json already has those hooks (from the floor or prior merge).
+        # merge_settings APPENDS required hooks → duplicates.
+        baked_with_same_hooks = required  # baked = required is the worst-case duplicate scenario
+        final = merge_settings(baked_with_same_hooks, required)
+        warns: list[str] = []
+        dupes = warn_duplicate_hooks(final, "omp", warn=warns.append)
+        # Every hook that required contributed appears twice → all are flagged
+        assert len(dupes) > 0
+        # Check harness, event, command all named in at least one warning
+        assert any("omp" in w for w in warns)
+        assert any("SessionStart" in w for w in warns)
+        assert any("context-mode hook claude-code sessionstart" in w for w in warns)
