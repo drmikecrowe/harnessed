@@ -26,7 +26,7 @@ def _recipe_names(root):
 def catalog_root():
     from harnessed import paths
 
-    return paths.repo_root() / "catalog"
+    return paths.harnessed_home() / "catalog"
 
 
 class TestConcurrentManifestLoads:

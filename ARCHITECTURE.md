@@ -26,17 +26,48 @@ harnessed/
 │   ├── paths.py              #   single source of truth for host/container paths + catalog roots
 │   ├── scan.py  synclinks.py
 ├── tests/                    # pytest (unit + podman-gated integration); tests/fixtures/
-├── catalog/                  # everything contributors author (see Vocabulary)
+├── catalog/                  # everything contributors author (see Vocabulary) — SHIPPED IN THE WHEEL
 │   ├── agents/<name>/agent.yaml      # an AI harness (claude, omp, …) + its image/Dockerfile
 │   ├── base/                         # shared base + per-agent Dockerfiles (hatago baked into base), pnpm policy, egress script
 │   ├── recipes/<name>/               # recipe.yaml [+ skills/ commands/ Dockerfile]
 │   ├── services/<name>/              # service.yaml + Dockerfile + server (shared sidecars)
 │   └── stacks/<recipe>…/stack.yaml       # harness-free; harness chosen at run time
+├── catalog-local/            # gitignored DX symlinks → your ~/.config/harnessed/catalog overlay
 └── docs/
 ```
 
 Generated profiles are **not** in the repo — they are emitted to `$XDG_DATA_HOME/harnessed/profiles/`
 (the clone stays immutable source).
+
+## harnessed home (why `build` works from any directory)
+
+`harnessed build <stack>` never looks at your CWD. Everything — catalog lookup and the podman build
+context — is anchored to **harnessed's home**: the directory that contains `catalog/`
+(`paths.harnessed_home`). It resolves to:
+
+| | home | `catalog/` |
+|---|---|---|
+| source checkout | the repo root | the authored dir |
+| installed wheel | `site-packages/harnessed/` | shipped inside the wheel |
+
+`src/harnessed/catalog` is a **symlink** to the repo-root `catalog/`. setuptools follows it and
+materializes the catalog as real files inside the wheel, so an installed `harnessed` (uv tool / pipx /
+PyPI) carries its own recipes, agents, services, stacks and base Dockerfiles and needs **no repo on
+disk**. `harnessed_home()` resolves *through* that symlink, so home is always a real directory holding
+a real `catalog/` — podman rejects a context symlink that escapes the context. `HARNESSED_DIR`
+overrides it. **Do not delete the `src/harnessed/catalog` symlink** — without it an installed
+harnessed has no catalog and every stack reads as "unknown".
+
+Two consequences worth knowing:
+
+- **Nothing host-local may live inside `catalog/`.** It is a published artifact, and setuptools
+  follows symlinks. That is why the overlay symlinks sit in `catalog-local/` (not
+  `catalog/<kind>.local`, their pre-move home) — a link to your private
+  `~/.config/harnessed/catalog` parked inside `catalog/` would be packaged into the wheel.
+- **Builds run from a staged context** (`launcher._staged_build_context`): a temp copy of `catalog/`
+  plus your resolved `extra-tools.txt`. Building straight from home would write into site-packages on
+  an installed harnessed, and would ship the entire repo (`.git`, `.venv`, `node_modules`) to podman
+  in a checkout. The Dockerfiles' context-relative `COPY catalog/…` paths are identical either way.
 
 ## Vocabulary (precise — these are not interchangeable)
 

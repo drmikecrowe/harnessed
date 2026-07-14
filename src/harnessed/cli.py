@@ -16,7 +16,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from . import report
+from . import paths, report
 from .assemble import assemble
 from .capability import CapabilityError, run_capability_test
 from .emit import HATAGO_ENDPOINT
@@ -137,7 +137,10 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 def _run_assemble(args: argparse.Namespace, out: Console, err: Console) -> int:
-    root = Path(args.root) if args.root else Path.cwd()
+    # No --root → None, which resolves across the catalog roots (user overlay, then harnessed's
+    # own catalog) exactly as `harnessed build` does. NOT the CWD: `root` here is a single CATALOG
+    # root (`root/stacks/<stack>`), so a CWD default silently demanded you be standing in catalog/.
+    root = Path(args.root) if args.root else None
     try:
         result = assemble(root, args.stack, Path(args.build_dir), args.harness)
     except (CollisionError, SchemaError, RecipeLintError) as exc:
@@ -158,7 +161,7 @@ def _run_test(args: argparse.Namespace, out: Console, err: Console) -> int:
     The SAME structured result drives the report and the exit code (design §18 / D-11): non-zero
     propagates so `harnessed test` (and CI) goes red when a declared capability is missing.
     """
-    root = Path(args.root) if args.root else Path.cwd()
+    root = Path(args.root) if args.root else paths.harnessed_home()
     try:
         report_result = run_capability_test(
             root,

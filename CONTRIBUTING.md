@@ -64,6 +64,22 @@ wires a `PreToolUse` hook that denies the agent's `git commit` / `git push` **to
 is not a git hook, so `--no-verify` cannot reach it — which is why it, and not this, is the gate
 harnessed actually relies on.
 
+## `catalog/` is a published artifact
+
+`catalog/` is **shipped inside the wheel** (via the `src/harnessed/catalog` symlink + package-data), so
+an installed `harnessed` needs no repo on disk — see [ARCHITECTURE.md](ARCHITECTURE.md) §harnessed home.
+Two things follow when you touch it:
+
+- **Never put host-local content in `catalog/`**, and never point a symlink out of it. setuptools
+  follows symlinks, so anything you park there can be published. Your overlay symlinks live in
+  `catalog-local/` (created by `harnessed build`, gitignored); build artifacts go in a staged temp
+  context, not back into `catalog/`. `tests/test_wheel_packaging.py` builds a real wheel and fails if
+  host-local content shows up in it.
+- **Never key build/assembly off the CWD.** Anchor to `paths.harnessed_home()` — the directory that
+  contains `catalog/` — so `harnessed build <stack>` works from any directory.
+
+Don't delete the `src/harnessed/catalog` symlink: without it an installed harnessed has no catalog.
+
 ## Add a recipe (the common case)
 
 A recipe lives at `catalog/recipes/<name>/recipe.yaml`. Recipes are **harness-independent** — never
