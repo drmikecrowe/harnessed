@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import typer
 
-from harnessed import hostsvc, launcher, paths
+from harnessed import hostsvc, launcher
 
 
 @pytest.fixture(autouse=True)
@@ -157,33 +157,22 @@ class TestGenericSupervisor:
             hostsvc.stop("demo2", proj)
 
 
-@pytest.mark.skipif(shutil.which("hatago") is None, reason="needs hatago on PATH (host MCP hub)")
-class TestHatago:
-    def test_no_mcp_stack_returns_none(self, monkeypatch, tmp_path):
-        from harnessed.assemble import assemble
+class TestNativeMcp:
+    """Default host MCP path (hatago deferred): the stack's servers are emitted directly into the
+    native .mcp.json — no hub."""
 
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        assemble(None, "hostspike", paths.profiles_root().parent, "claude", strict=True)
-        assert launcher._host_ensure_hatago("hostspike", "claude", tmp_path) is None
+    def test_no_mcp_stack_returns_none(self):
+        assert launcher._host_native_mcp("hostspike") is None  # greet: no MCP servers
 
-    def test_ensure_hatago_starts_hub_for_mcp_stack(self, monkeypatch, tmp_path):
-        from harnessed.assemble import assemble
-
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
-        # hostmcp = [time]: an env-free stdio MCP server, so the hub loads + binds with no placeholders.
-        assemble(None, "hostmcp", paths.profiles_root().parent, "claude", strict=True)
-        proj = tmp_path / "proj"
-        proj.mkdir()
-        res = launcher._host_ensure_hatago("hostmcp", "claude", proj)
-        assert res is not None
-        endpoint, started = res
-        try:
-            assert started is True
-            assert endpoint.startswith("http://localhost:")
-            port = int(endpoint.rsplit(":", 1)[1].split("/")[0])
-            assert hostsvc.tcp_open(port)
-        finally:
-            hostsvc.stop("hatago", proj)
+    def test_stdio_server_emitted_natively(self):
+        # hostmcp = [time]: an stdio MCP server (uvx mcp-server-time) → native {command,args} entry.
+        servers = launcher._host_native_mcp("hostmcp")
+        assert servers is not None
+        assert "time" in servers
+        entry = servers["time"]
+        assert entry["command"] == "uvx"
+        assert "mcp-server-time" in entry["args"]
+        assert "url" not in entry  # stdio, not a hub pointer
 
 
 @pytest.mark.skipif(shutil.which("dolt") is None, reason="needs dolt on PATH (host-native beads daemon)")

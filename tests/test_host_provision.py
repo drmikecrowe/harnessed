@@ -28,6 +28,11 @@ class TestProvisionSchema:
         r = load_recipe(CATALOG / "recipes" / "repowise", strict=True)
         assert r.provision[0].command == "repowise"
 
+    def test_context_mode_declares_npm_provision(self):
+        r = load_recipe(CATALOG / "recipes" / "context-mode", strict=True)
+        p = r.provision[0]
+        assert (p.via, p.package, p.version, p.command) == ("npm", "context-mode", "1.0.169", "context-mode")
+
     def test_recipe_without_provision_is_empty(self):
         r = load_recipe(CATALOG / "recipes" / "greet", strict=True)
         assert r.provision == []
@@ -51,7 +56,10 @@ class TestProvisionSchema:
             load_recipe(d, strict=True)
 
 
-@pytest.mark.skipif(shutil.which("uv") is None, reason="needs uv on PATH (host provisioner)")
+@pytest.mark.skipif(
+    shutil.which("uv") is None or shutil.which("npm") is None,
+    reason="needs uv + npm on PATH (host provisioner backends)",
+)
 class TestProvisionInstall:
     def test_provisions_tool_into_stack_bin_and_is_idempotent(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
@@ -59,7 +67,8 @@ class TestProvisionInstall:
         assert bins, "expected a stack bin dir"
         bin_dir = Path(bins[0])
         assert bin_dir == paths.xdg_data_home() / "harnessed" / "tools" / "hostprov" / "bin"
-        assert (bin_dir / "pycowsay").exists(), "pycowsay not installed onto the stack bin dir"
+        assert (bin_dir / "pycowsay").exists(), "pycowsay (uv-tool) not installed onto the stack bin"
+        assert (bin_dir / "cowsay").exists(), "cowsay (npm) not installed onto the stack bin"
 
         # Second call: already present → no reinstall, same bin dir returned.
         assert launcher._host_provision("hostprov") == bins

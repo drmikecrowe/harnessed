@@ -41,6 +41,14 @@ mcp:
       command: context-mode
       transport: stdio
 
+# Host-native install (`launch --host`) — the npm backend, mirroring the `tools:` npm pin above.
+# Container-independent: the image still installs via its `tools:` mise layer / Dockerfile.
+provision:
+  - via: npm
+    package: context-mode
+    version: "1.0.169"
+    command: context-mode
+
 # --- Hook layer (GAP 2) ---
 # The `context-mode hook <platform> <event>` CLI dispatcher is upstream's current wiring form (the
 # older `node .../hooks/<event>.mjs` path form is legacy). Platform is `claude-code` because the

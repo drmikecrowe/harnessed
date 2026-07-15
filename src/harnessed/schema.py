@@ -875,7 +875,7 @@ def _parse_egress(raw_egress, manifest: Path) -> list[str]:
     return out
 
 
-_PROVISION_BACKENDS = frozenset({"uv-tool"})
+_PROVISION_BACKENDS = frozenset({"uv-tool", "npm"})
 
 
 def _parse_provision(raw_provision, manifest: Path) -> list["Provision"]:

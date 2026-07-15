@@ -2932,69 +2932,71 @@ def _host_provision(stack: str) -> list[str]:
     uv_tool_dir = tools_root / "uv-tools"
     bin_dir.mkdir(parents=True, exist_ok=True)
     for p in entries:
-        if p.via != "uv-tool":
-            continue
         if (bin_dir / p.command).exists():
             continue  # already provisioned
-        if shutil.which("uv") is None:
+        env = dict(os.environ)
+        if p.via == "uv-tool":
+            tool = "uv"
+            cmd = ["uv", "tool", "install", *(["-p", p.python] if p.python else []),
+                   f"{p.package}=={p.version}"]
+            env["UV_TOOL_DIR"] = str(uv_tool_dir)
+            env["UV_TOOL_BIN_DIR"] = str(bin_dir)
+        elif p.via == "npm":
+            tool = "npm"
+            cmd = ["npm", "install", "-g", f"{p.package}@{p.version}"]
+            env["npm_config_prefix"] = str(tools_root)  # → executables land in <tools_root>/bin
+        else:
+            continue
+        if shutil.which(tool) is None:
             _err.print(
-                "[bold red]error:[/bold red] host provisioning needs 'uv' on PATH "
-                f"(to install {p.package}=={p.version})"
+                f"[bold red]error:[/bold red] host provisioning needs '{tool}' on PATH "
+                f"(to install {p.package} {p.version})"
             )
             raise typer.Exit(1)
-        _err.print(f"[blue][INFO][/blue] provisioning {p.package}=={p.version} (host, stack-scoped) ...")
-        cmd = ["uv", "tool", "install"]
-        if p.python:
-            cmd += ["-p", p.python]
-        cmd += [f"{p.package}=={p.version}"]
-        env = dict(os.environ)
-        env["UV_TOOL_DIR"] = str(uv_tool_dir)
-        env["UV_TOOL_BIN_DIR"] = str(bin_dir)
+        _err.print(f"[blue][INFO][/blue] provisioning {p.package} {p.version} via {p.via} (host, stack-scoped) ...")
         if subprocess.run(cmd, env=env).returncode != 0:
             _err.print(f"[bold red]error:[/bold red] provisioning {p.package} failed")
             raise typer.Exit(1)
     return [str(bin_dir)]
 
 
-def _host_ensure_hatago(stack: str, harness: str, project_path: Path) -> Optional[tuple[str, bool]]:
-    """Start (or reuse) a host hatago MCP hub for this stack's MCP servers. Returns (endpoint,
-    started) or None when the stack declares no MCP servers.
+def _host_native_mcp(stack: str) -> Optional[dict]:
+    """Resolve the stack's MCP servers into a NATIVE claude `.mcp.json` `mcpServers` dict — no hatago
+    hub. claude spawns the stdio servers itself (cwd=project, so `--project-from-cwd` resolves) and
+    connects url servers directly. Returns None when the stack declares no MCP servers.
 
-    Host-native the hub is a plain process on a PER-PROJECT port (the container's fixed 3535 would
-    clash across projects). hatago runs with cwd=project so its stdio children (serena, repowise,
-    context-mode) inherit the project dir; those commands must be on PATH, while url children
-    (openbrain) are proxied as-is. Same supervisor as beads — start / reuse / reap.
+    hatago is DEFERRED: it returns later as an opt-in curation layer (per-server tool filtering via
+    @drmikecrowe/hatago-mcp-hub), fronted by a `harnessed mcp curate` utility — not a required bus.
     """
-    cfg = profile_dir(stack, harness) / "hatago.config.json"
-    if not cfg.is_file():
-        return None
-    servers = json.loads(cfg.read_text(encoding="utf-8")).get("mcpServers", {})
+    _, recipes = load_stack_with_recipes(None, stack)
+    servers = _merge_servers(recipes)
     if not servers:
         return None
-    if shutil.which("hatago") is None:
-        _err.print(
-            "[bold red]error:[/bold red] this stack declares MCP servers but 'hatago' is not on "
-            "PATH — install the hub (match your stack's `hatago:` pin, e.g. "
-            "mise use -g github:drmikecrowe/hatago-mcp-hub@<ref>)"
-        )
-        raise typer.Exit(1)
-    # A stdio child whose command is absent simply won't connect — warn, don't fail: the hub still
-    # serves, and the other (url / present) children work.
-    for sname, s in servers.items():
-        cmd = s.get("command")
-        if cmd and shutil.which(cmd) is None:
+    out: dict = {}
+    for s in servers:
+        if s.is_stdio_child:
+            cmd = s.command
+            if cmd and shutil.which(cmd) is None:
+                _err.print(
+                    f"[yellow]warn:[/yellow] MCP server '{s.name}' needs '{cmd}' on PATH — "
+                    "claude will fail to start it until it's installed (add a recipe `provision:`)"
+                )
+            entry: dict = {"command": cmd, "args": list(s.args)}
+            if s.env:
+                entry["env"] = dict(s.env)
+            out[s.name] = entry
+        elif s.url or s.url_env:
+            # ${VAR} — claude expands env vars in .mcp.json; the value stays off disk.
+            entry = {"type": s.transport, "url": f"${{{s.url_env}}}" if s.url_env else s.url}
+            if s.headers:
+                entry["headers"] = dict(s.headers)
+            out[s.name] = entry
+        else:
             _err.print(
-                f"[yellow]warn:[/yellow] MCP server '{sname}' needs '{cmd}' on PATH — "
-                "it will not connect until installed"
+                f"[yellow]warn:[/yellow] MCP server '{s.name}' is service-backed — not supported "
+                "host-native yet (skipped)"
             )
-    entry, started = hostsvc.ensure(
-        "hatago", project_path,
-        argv=lambda p, cfg=cfg: ["hatago", "serve", "--http", "--port", str(p), "--config", str(cfg)],
-        ready=lambda p: hostsvc.tcp_open(p),
-        cwd=project_path,
-        meta=lambda p: {"endpoint": f"http://localhost:{p}/mcp"},
-    )
-    return entry["endpoint"], started
+    return out or None
 
 
 def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = False) -> None:
@@ -3036,27 +3038,23 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # Start (or reuse) any host daemons the stack needs BEFORE handing off, so their env/endpoints are
     # set when the agent's SessionStart hooks (e.g. bd prime) and MCP client fire.
     svc_env, started = _host_ensure_services(stack, project_path)
-    # Provision host stdio-MCP tools onto PATH BEFORE hatago so it spawns them (and its child-command
-    # presence check passes). Mutating this process's PATH is fine — it's dedicated to this launch,
-    # and hatago (spawned next) + claude (env built from os.environ) both inherit it.
+    # Provision host stdio-MCP tools onto PATH BEFORE resolving native MCP, so claude can spawn them
+    # (and the child-command presence check passes). Mutating this process's PATH is fine — it's
+    # dedicated to this launch, and claude (env built from os.environ) inherits it.
     prov_bins = _host_provision(stack)
     if prov_bins:
         os.environ["PATH"] = os.pathsep.join([*prov_bins, os.environ.get("PATH", "")])
-    hatago = _host_ensure_hatago(stack, harness, project_path)
+    # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
+    # sees just-provisioned tools.
+    mcp_servers = _host_native_mcp(stack)
 
     home, argv, cwd = _host_launch_plan(stack, harness, project_path)
 
-    if hatago is not None:
-        endpoint, hatago_started = hatago
-        if hatago_started:
-            started.append("hatago")
-        # Rewrite the host .mcp.json (content-only stripped it) to point at THIS project's hub port,
-        # and tell claude to use only it — the host analog of the container's --mcp-config.
+    if mcp_servers:
+        # Write the stack's servers directly into the host .mcp.json (content-only stripped it) and
+        # tell claude to use only it — per-stack MCP isolation via the config dir, no hub.
         mcp_path = home / ".mcp.json"
-        mcp_path.write_text(
-            json.dumps({"mcpServers": {emit.HATAGO_MCP_KEY: {"type": "http", "url": endpoint}}}, indent=2),
-            encoding="utf-8",
-        )
+        mcp_path.write_text(json.dumps({"mcpServers": mcp_servers}, indent=2), encoding="utf-8")
         argv = ["claude", "--mcp-config", str(mcp_path), "--strict-mcp-config"]
 
     _err.print(
