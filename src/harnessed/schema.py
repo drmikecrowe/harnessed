@@ -608,6 +608,18 @@ def _parse_conflicts(raw_conflicts) -> list[str]:
 
 
 @dataclass
+class Provision:
+    """One host-native install step (recipe `provision:`). HOST-ONLY — the container image keeps its
+    Dockerfile; this is the parallel `launch --host` install so a recipe's stdio MCP child lands on
+    PATH without a container. `via` is the backend (only `uv-tool` today: `uv tool install`)."""
+    via: str
+    package: str
+    version: str
+    command: str       # the executable the install yields — used to skip when already present
+    python: str = ""   # optional: uv tool install -p <python>
+
+
+@dataclass
 class Recipe:
     name: str
     description: str = ""
@@ -639,6 +651,9 @@ class Recipe:
     # `pulumi@3.140.0`). MUST be pinned — a floating `@latest`/bare name is rejected, same as a
     # Dockerfile pin. Lets a recipe add a CLI + open its egress with NO Dockerfile. See egress.md.
     tools: list[str] = field(default_factory=list)
+    # Host-native install steps (recipe.yaml `provision:`) — see Provision. Container-independent:
+    # the derived image still installs via its Dockerfile; this is only for `launch --host`.
+    provision: list[Provision] = field(default_factory=list)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
     # The catalog ref a stack used to load this recipe — `beads/stealth` for a variety, else the
     # plain name. Carries the FAMILY (the part before the slash), which _check_recipe_conflicts uses
@@ -802,7 +817,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
     "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks", "setup", "egress", "tools",  # typed
+    "conflicts", "hooks", "setup", "egress", "tools", "provision",  # typed
     "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -860,6 +875,41 @@ def _parse_egress(raw_egress, manifest: Path) -> list[str]:
     return out
 
 
+_PROVISION_BACKENDS = frozenset({"uv-tool"})
+
+
+def _parse_provision(raw_provision, manifest: Path) -> list["Provision"]:
+    """Parse a recipe's `provision:` list into pinned host-install steps."""
+    if not raw_provision:
+        return []
+    if not isinstance(raw_provision, list):
+        raise SchemaError(f"{manifest}: 'provision' must be a list of install steps")
+    out: list[Provision] = []
+    for entry in raw_provision:
+        if not isinstance(entry, dict):
+            raise SchemaError(f"{manifest}: provision entry {entry!r} must be a mapping")
+        via = str(entry.get("via", "")).strip()
+        if via not in _PROVISION_BACKENDS:
+            raise SchemaError(
+                f"{manifest}: provision entry has via={via!r}; supported: "
+                f"{', '.join(sorted(_PROVISION_BACKENDS))}"
+            )
+        package = str(entry.get("package", "")).strip()
+        version = str(entry.get("version", "")).strip()
+        command = str(entry.get("command", "")).strip()
+        if not (package and version and command):
+            raise SchemaError(
+                f"{manifest}: provision entry {entry!r} needs package, version, and command"
+            )
+        if _FLOATING_REF_RE.search(version) or version in {"latest", "*"}:
+            raise SchemaError(
+                f"{manifest}: provision version {version!r} must be an explicit pin (no @latest/*)"
+            )
+        out.append(Provision(via=via, package=package, version=version, command=command,
+                             python=str(entry.get("python", "")).strip()))
+    return out
+
+
 def _parse_tools(raw_tools, manifest: Path) -> list[str]:
     """Parse a recipe's `tools:` list into pinned mise tool specs (e.g. 'pulumi@3.140.0')."""
     if not raw_tools:
@@ -907,6 +957,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         setup=_parse_setup(raw.get("setup")),
         egress=_parse_egress(raw.get("egress"), manifest),
         tools=_parse_tools(raw.get("tools"), manifest),
+        provision=_parse_provision(raw.get("provision"), manifest),
         root=recipe_dir,
         ref=ref or raw["name"],
         raw=raw,

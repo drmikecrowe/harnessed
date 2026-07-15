@@ -45,4 +45,13 @@ mcp:
     - name: serena
       command: serena
       args: [start-mcp-server, --context, ide, --project-from-cwd]
+
+# Host-native install (`launch --host`) — mirrors the Dockerfile's `uv tool install serena-agent`.
+# Container-independent: the derived image still installs via its Dockerfile.
+provision:
+  - via: uv-tool
+    package: serena-agent
+    version: "1.5.3"
+    python: "3.13"
+    command: serena
       # transport: stdio (schema default). hatago spawns this in-container → it sees the project.

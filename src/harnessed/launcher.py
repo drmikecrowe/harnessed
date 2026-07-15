@@ -2916,6 +2916,46 @@ def _host_ensure_services(stack: str, project_path: Path) -> tuple[dict[str, str
     return env, started
 
 
+def _host_provision(stack: str) -> list[str]:
+    """Install each recipe's host `provision:` tools into a STACK-SCOPED location and return the bin
+    dir(s) to prepend to PATH — so hatago's stdio children (serena, repowise, …) resolve host-native.
+
+    Idempotent: skips a tool whose command already exists in the stack bin dir (installs are slow).
+    Stack-scoped (not global) so two stacks can pin different versions without clobbering each other.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    entries = [p for r in recipes for p in r.provision]
+    if not entries:
+        return []
+    tools_root = paths.xdg_data_home() / "harnessed" / "tools" / stack
+    bin_dir = tools_root / "bin"
+    uv_tool_dir = tools_root / "uv-tools"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    for p in entries:
+        if p.via != "uv-tool":
+            continue
+        if (bin_dir / p.command).exists():
+            continue  # already provisioned
+        if shutil.which("uv") is None:
+            _err.print(
+                "[bold red]error:[/bold red] host provisioning needs 'uv' on PATH "
+                f"(to install {p.package}=={p.version})"
+            )
+            raise typer.Exit(1)
+        _err.print(f"[blue][INFO][/blue] provisioning {p.package}=={p.version} (host, stack-scoped) ...")
+        cmd = ["uv", "tool", "install"]
+        if p.python:
+            cmd += ["-p", p.python]
+        cmd += [f"{p.package}=={p.version}"]
+        env = dict(os.environ)
+        env["UV_TOOL_DIR"] = str(uv_tool_dir)
+        env["UV_TOOL_BIN_DIR"] = str(bin_dir)
+        if subprocess.run(cmd, env=env).returncode != 0:
+            _err.print(f"[bold red]error:[/bold red] provisioning {p.package} failed")
+            raise typer.Exit(1)
+    return [str(bin_dir)]
+
+
 def _host_ensure_hatago(stack: str, harness: str, project_path: Path) -> Optional[tuple[str, bool]]:
     """Start (or reuse) a host hatago MCP hub for this stack's MCP servers. Returns (endpoint,
     started) or None when the stack declares no MCP servers.
@@ -2996,6 +3036,12 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # Start (or reuse) any host daemons the stack needs BEFORE handing off, so their env/endpoints are
     # set when the agent's SessionStart hooks (e.g. bd prime) and MCP client fire.
     svc_env, started = _host_ensure_services(stack, project_path)
+    # Provision host stdio-MCP tools onto PATH BEFORE hatago so it spawns them (and its child-command
+    # presence check passes). Mutating this process's PATH is fine — it's dedicated to this launch,
+    # and hatago (spawned next) + claude (env built from os.environ) both inherit it.
+    prov_bins = _host_provision(stack)
+    if prov_bins:
+        os.environ["PATH"] = os.pathsep.join([*prov_bins, os.environ.get("PATH", "")])
     hatago = _host_ensure_hatago(stack, harness, project_path)
 
     home, argv, cwd = _host_launch_plan(stack, harness, project_path)
