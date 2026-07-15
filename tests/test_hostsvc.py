@@ -6,6 +6,7 @@ dolt being on PATH (skipped in CI, runs locally with mise-provided dolt).
 """
 
 import shutil
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -47,6 +48,27 @@ class TestPidAlive:
             assert hostsvc._pid_alive(p.pid) is False
         finally:
             p.wait()
+
+
+class TestUnixSockOpen:
+    def test_live_socket_detected(self, tmp_path):
+        sock_path = str(tmp_path / "live.sock")
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(sock_path)
+        srv.listen(1)
+        try:
+            assert hostsvc.unix_sock_open(sock_path) is True
+        finally:
+            srv.close()
+
+    def test_missing_socket_is_false(self, tmp_path):
+        assert hostsvc.unix_sock_open(str(tmp_path / "nope.sock")) is False
+
+    def test_stale_socket_file_is_false(self, tmp_path):
+        # A leftover file at the path with no listener (crashed server) → not reusable.
+        p = tmp_path / "stale.sock"
+        p.touch()
+        assert hostsvc.unix_sock_open(str(p)) is False
 
 
 class TestPrimitives:

@@ -102,6 +102,22 @@ def tcp_open(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
+def unix_sock_open(path: str) -> bool:
+    """True if a live server is accepting on the unix socket at `path`. Detects a beads-server
+    already serving this project — whether started host-native OR by a container that bind-mounts the
+    same .beads out to the host — so we reuse it instead of starting a rival that would collide on
+    Dolt's exclusive flock. A stale socket file (no listener) connects-refused → False."""
+    if not os.path.exists(path):
+        return False
+    with _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        try:
+            s.connect(path)
+            return True
+        except OSError:
+            return False
+
+
 def _spawn(argv: list[str], cwd: Path, log: Path) -> subprocess.Popen:
     lf = open(log, "ab")  # noqa: SIM115 — handed to the child; closed when it exits
     # start_new_session: own process group, so it SURVIVES harnessed's exit (persist default).

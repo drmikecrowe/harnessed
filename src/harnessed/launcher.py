@@ -2883,25 +2883,45 @@ def _host_ensure_services(stack: str, project_path: Path) -> tuple[dict[str, str
                 raise typer.Exit(1)
             do_init = True
 
-        doltdir = data_dir / "dolt"
+        if hostsvc.unix_sock_open(str(sock)):
+            # A beads-server is ALREADY serving this project's .beads on this socket — host-native
+            # from a prior launch, or a container that bind-mounts the same .beads out to the host.
+            # Reuse it: starting a second dolt would collide on Dolt's exclusive flock. (We didn't
+            # start it, so it's not added to `started` and --rm won't tear it down.)
+            _err.print(f"[blue][INFO][/blue] reusing beads-server already serving {sock}")
+            env[env_var] = str(sock)
+        else:
+            doltdir = data_dir / "dolt"
 
-        def _prestart(sock=sock, doltdir=doltdir):
-            doltdir.mkdir(parents=True, exist_ok=True)
-            sock.parent.mkdir(parents=True, exist_ok=True)
-            hostsvc._cleanup_socket(str(sock))  # a stale socket makes dolt refuse to bind
+            def _prestart(sock=sock, doltdir=doltdir):
+                doltdir.mkdir(parents=True, exist_ok=True)
+                sock.parent.mkdir(parents=True, exist_ok=True)
+                hostsvc._cleanup_socket(str(sock))  # a stale socket makes dolt refuse to bind
 
-        entry, started_now = hostsvc.ensure(
-            name, project_path,
-            argv=lambda p, sock=sock, doltdir=doltdir: [
-                "dolt", "sql-server", "--host", "127.0.0.1", "--port", str(p),
-                "--socket", str(sock), "--data-dir", str(doltdir)],
-            ready=lambda p, sock=sock: sock.exists() and _dolt_reachable(p),
-            cwd=data_dir, prestart=_prestart,
-            meta=lambda p, sock=sock: {"socket": str(sock)},
-        )
-        env[env_var] = entry["socket"]
-        if started_now:
-            started.append(name)
+            try:
+                entry, started_now = hostsvc.ensure(
+                    name, project_path,
+                    argv=lambda p, sock=sock, doltdir=doltdir: [
+                        "dolt", "sql-server", "--host", "127.0.0.1", "--port", str(p),
+                        "--socket", str(sock), "--data-dir", str(doltdir)],
+                    ready=lambda p, sock=sock: sock.exists() and _dolt_reachable(p),
+                    cwd=data_dir, prestart=_prestart,
+                    meta=lambda p, sock=sock: {"socket": str(sock)},
+                )
+            except RuntimeError as exc:
+                if "locked by another dolt" in str(exc):
+                    _err.print(
+                        f"[bold red]error:[/bold red] beads data dir [cyan]{doltdir}[/cyan] is locked "
+                        "by another dolt process — most likely a CONTAINER beads-server already serving "
+                        "this project. Stop it (`harnessed stop`/`svc`), or run once its socket is up so "
+                        "host-native reuses it. Two servers on one .beads is Dolt's exclusive-flock error."
+                    )
+                    raise typer.Exit(1)
+                _err.print(f"[bold red]error:[/bold red] starting beads-server failed: {exc}")
+                raise typer.Exit(1)
+            env[env_var] = entry["socket"]
+            if started_now:
+                started.append(name)
 
         if do_init:
             _err.print(f"[blue][INFO][/blue] Initializing beads workspace at {data_dir} ...")
