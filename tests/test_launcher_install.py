@@ -698,6 +698,48 @@ class TestCredentialForwarding:
         assert "AWS_CONTAINER_CREDENTIALS_FULL_URI=http://host.containers.internal:9999/" in args
         assert "AWS_CONTAINER_AUTHORIZATION_TOKEN=Bearer deadbeef" in args
 
+    # --- _aws_sso_server_reachable: launch-time probe of the host ECS server's /healthcheck ---
+
+    def test_aws_sso_server_reachable_true_on_200(self, monkeypatch):
+        # /healthcheck returns 200 only when the server is up AND a role is loaded → reachable.
+        class _Resp:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def fake_urlopen(url, timeout=None):
+            assert url == "http://127.0.0.1:4144/healthcheck"
+            return _Resp()
+
+        monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+        assert launcher._aws_sso_server_reachable() is True
+
+    def test_aws_sso_server_reachable_false_on_non_200(self, monkeypatch):
+        # Server up but no role loaded → /healthcheck is non-200 → not reachable.
+        class _Resp:
+            status = 503
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout=None: _Resp())
+        assert launcher._aws_sso_server_reachable() is False
+
+    def test_aws_sso_server_reachable_false_when_down(self, monkeypatch):
+        # Connection refused (server not running) is swallowed → not reachable.
+        def boom(url, timeout=None):
+            raise OSError("connection refused")
+
+        monkeypatch.setattr("urllib.request.urlopen", boom)
+        assert launcher._aws_sso_server_reachable(port=9999) is False
+
     # --- _apply_firewall: recipe-declared egress domains appended to the allowlist ---
 
     def test_firewall_appends_egress_domains(self, monkeypatch):
