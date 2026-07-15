@@ -2180,6 +2180,26 @@ def _aws_sso_ecs_forward_args(port: int = AWS_SSO_ECS_PORT, token_file: Path | N
     ]
 
 
+def _aws_sso_server_reachable(port: int = AWS_SSO_ECS_PORT, timeout: float = 1.5) -> bool:
+    """True iff the host aws-sso ECS server is up AND has a role loaded.
+
+    Probes the server's unauthenticated `GET /healthcheck`, which returns 200 only when the default
+    slot holds valid credentials — so a single check covers both "server not running" and "no role
+    loaded". Any failure (connection refused, timeout, non-200) is treated as unreachable. The probe
+    hits 127.0.0.1 (host loopback), not host.containers.internal — this runs on the host, at launch.
+    """
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(  # noqa: S310 (fixed host-local http URL)
+            f"http://127.0.0.1:{port}/healthcheck", timeout=timeout
+        ) as resp:
+            return resp.status == 200
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 def _credential_forward_args(
     home: Path | None = None, ssh_keys: list[str] | None = None, rt: str = "podman"
 ) -> list[str]:
@@ -2957,7 +2977,26 @@ def launch(
     # ECS-task-role endpoint + bearer token as env only — no aws-sso binary/store/token enters the
     # container. No-op unless the host token file exists (written by `harnessed aws-sso serve`).
     if stk.forward_aws_sso:
-        mount_args += _aws_sso_ecs_forward_args()
+        aws_args = _aws_sso_ecs_forward_args()
+        if aws_args and not _aws_sso_server_reachable():
+            # This host has a bearer token, so the operator uses AWS SSO — but the server isn't live
+            # (never started this session, or no role loaded). Wiring the dead endpoint would fail
+            # only when the SDK first calls AWS, a silent trap. Surface it now, and don't inject the
+            # dead endpoint if they choose to proceed. (Token ABSENT → this host never set AWS SSO
+            # up; stay a silent no-op so `forward_aws_sso` is safe to commit in a shared catalog.)
+            _err.print(
+                "[bold yellow]warning:[/bold yellow] this stack sets [bold]forward_aws_sso[/bold] but "
+                "the aws-sso ECS server isn't reachable (not running, or no role loaded).\n"
+                "  Start it:   [cyan]harnessed aws-sso serve[/cyan]   (leave running)\n"
+                "  Load role:  [cyan]aws-sso ecs load[/cyan]\n"
+                "Without it, AWS calls inside the container will fail to find credentials."
+            )
+            if headless or not sys.stdin.isatty() or not typer.confirm(
+                "Continue launching without AWS credentials?", default=False
+            ):
+                raise typer.Exit(1)
+        elif aws_args:
+            mount_args += aws_args
 
     # Resolve launch-time secrets, layered global → project (project wins on conflict). Returns the
     # ordered --env-file list and the subset of temp files to unlink after launch.
