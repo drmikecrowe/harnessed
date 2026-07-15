@@ -235,6 +235,16 @@ def is_built(stack: str, harness: str) -> bool:
     return (profile_dir(stack, harness) / ".mcp.json").is_file()
 
 
+def host_homes_root() -> Path:
+    """Root for host-native stack homes — the CLAUDE_CONFIG_DIR trees `launch --host` materializes."""
+    return xdg_data_home() / "harnessed" / "home"
+
+
+def host_home(stack: str, harness: str) -> Path:
+    """Absolute host CLAUDE_CONFIG_DIR for `stack` + `harness` (host-native launch backend)."""
+    return host_homes_root() / stack / harness
+
+
 def project_hash(project_path: str | Path) -> str:
     """Stable 8-hex project key: sha1[:8] of the normalized project path.
 

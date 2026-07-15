@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# Stack: hostspike — content-only tracer for the host-native launch backend.
+#
+# Pure config-content: the `greet` recipe ships a standalone skill and NO MCP server, so this stack
+# assembles to a profile whose entire payload is `.claude/` files + a CLAUDE.md identity — nothing
+# that needs hatago, a service, or a container. It is the guinea pig for `harnessed launch --host`:
+# proves recipe content materializes into a host CLAUDE_CONFIG_DIR with zero podman/MCP surface.
+name: hostspike
+instructions: >-
+  You are the hostspike tracer agent. If asked to prove host-native config, state that the greet
+  skill is available and that you are running against a host CLAUDE_CONFIG_DIR.
+recipes: [greet]
+services: []

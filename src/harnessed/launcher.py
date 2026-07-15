@@ -2761,6 +2761,110 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
 
 # --- Typer commands ------------------------------------------------------------
 
+# Host-native content-only backend subdirs to materialize from the assembled profile's .claude tree.
+_HOST_HARNESS = "claude"  # spike scope: only claude consumes CLAUDE_CONFIG_DIR directly here.
+
+
+def _materialize_host_home(prof: Path, home: Path) -> None:
+    """Copy the assembled profile's CONTENT layer into a host CLAUDE_CONFIG_DIR (`home`).
+
+    Content-only: the `.claude/*` tree (skills/commands/rules/agents + CLAUDE.md) plus the
+    settings.json floor — exactly what the container bind-mounts onto ~/.claude, minus the
+    container-only artifacts (.mcp.json, hatago.config.json, the derived Dockerfile) which wire the
+    MCP hub that does not exist host-side. The home is rebuilt from scratch each launch so a removed
+    recipe's files never linger.
+    """
+    if home.exists():
+        shutil.rmtree(home)
+    home.mkdir(parents=True)
+    src_claude = prof / ".claude"
+    if src_claude.is_dir():
+        # Contents of .claude/ become the config-dir root: .claude/skills -> <home>/skills, etc.
+        shutil.copytree(src_claude, home, dirs_exist_ok=True)
+    settings = prof / "settings.json"
+    if settings.is_file():
+        shutil.copy2(settings, home / "settings.json")
+
+
+def _host_claude_source() -> Path:
+    """The host's live claude config dir — source for auth seeding. Honors a CLAUDE_CONFIG_DIR the
+    host may already run under; else the ~/.claude default."""
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
+
+
+def _seed_host_credentials(home: Path) -> None:
+    """Copy claude's OWN auth from the host config dir into the stack home so the host-native launch
+    reuses the host login instead of forcing a re-auth. Only claude's credentials live in the config
+    dir; gh/git/ssh/cloud auth is untouched (those read their own host dirs). Best-effort: a missing
+    source is fine (user just logs in once in this stack home)."""
+    src = _host_claude_source()
+    if src.resolve() == home.resolve():
+        return
+    for name in (".credentials.json", ".claude.json"):
+        s = src / name
+        if s.is_file():
+            shutil.copy2(s, home / name)
+
+
+def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Path, list[str], Path]:
+    """Materialize the host home (+ seed auth) and return (home, argv, cwd) WITHOUT exec'ing.
+
+    Split out from _launch_host so the plan is verifiable in tests without handing over the TTY.
+    """
+    prof = profile_dir(stack, harness)
+    home = paths.host_home(stack, harness)
+    _materialize_host_home(prof, home)
+    _seed_host_credentials(home)
+    # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
+    argv = ["claude"]
+    return home, argv, project_path
+
+
+def _launch_host(stack: str, harness: str, path: Optional[str]) -> None:
+    """Content-only host-native launch: no podman, no MCP. Materialize the assembled profile into a
+    host CLAUDE_CONFIG_DIR and exec the harness on the host so it sees the host's own auth."""
+    if harness != _HOST_HARNESS:
+        _err.print(
+            f"[bold red]error:[/bold red] --host currently supports only '{_HOST_HARNESS}' "
+            f"(got '{harness}') — content-only spike"
+        )
+        raise typer.Exit(1)
+
+    project_path = Path(path).resolve() if path else Path.cwd()
+    if not project_path.is_dir():
+        _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project_path}")
+        raise typer.Exit(1)
+
+    stack_dir = paths.find_in_catalog("stacks", stack)
+    if not (stack_dir / "stack.yaml").is_file():
+        _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir / 'stack.yaml'})")
+        raise typer.Exit(1)
+
+    if not is_built(stack, harness):
+        _err.print(
+            f"[bold red]error:[/bold red] stack '{stack}' ({harness}) has no assembled profile "
+            f"(run: harnessed build {stack} {harness})"
+        )
+        raise typer.Exit(1)
+
+    try:
+        staleness.check_profile_fresh(None, stack, harness)
+    except (SchemaError, staleness.StaleProfileError) as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack} {harness}")
+        raise typer.Exit(1)
+
+    home, argv, cwd = _host_launch_plan(stack, harness, project_path)
+    _err.print(
+        f"[green]host-native[/green] (content-only): CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] "
+        f"cwd=[cyan]{cwd}[/cyan] — no container, no MCP"
+    )
+    env = dict(os.environ)
+    env["CLAUDE_CONFIG_DIR"] = str(home)
+    os.chdir(cwd)
+    # execvpe replaces this process — hands the TTY to claude natively, on the host, as the host user.
+    os.execvpe(argv[0], argv, env)
+
+
 @app.command()
 def launch(
     stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
@@ -2783,6 +2887,11 @@ def launch(
         False, "--shell",
         help="Open an interactive bash shell in the container instead of starting the agent",
     ),
+    host: bool = typer.Option(
+        False, "--host",
+        help="Content-only host-native run: materialize the profile into a host CLAUDE_CONFIG_DIR "
+             "and exec the harness on the host (no podman, no MCP). Spike — claude only.",
+    ),
 ) -> None:
     """Launch an isolated harness stack against a project directory."""
     if harness not in HARNESS_CONFIG_DIR:
@@ -2791,6 +2900,13 @@ def launch(
             f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
         )
         raise typer.Exit(1)
+
+    # Host-native content-only backend: fully self-contained and podman-free (never touches
+    # _runtime()/images/mounts). Diverts before any container logic — the whole point is to run
+    # without a container. See _launch_host.
+    if host:
+        _launch_host(stack, harness, path)
+        return
     if no_firewall:
         os.environ["NO_FIREWALL"] = "true"
 
