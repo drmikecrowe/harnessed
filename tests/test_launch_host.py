@@ -7,7 +7,12 @@ seeds claude's own auth from the host, and deliberately drops the container-only
 
 from pathlib import Path
 
+from typer.testing import CliRunner
+
 from harnessed import launcher, paths
+from harnessed.assemble import assemble
+
+runner = CliRunner()
 
 
 def _fake_profile(prof: Path) -> None:
@@ -91,3 +96,51 @@ class TestLaunchPlan:
         assert argv == ["claude"]  # content-only: no --mcp-config
         assert cwd == tmp_path
         assert (home / "skills" / "greet-helper" / "SKILL.md").is_file()
+
+
+class TestHostAssembleIntegration:
+    """The bug that shipped in the first spike: `--host` required `harnessed build` (a full container
+    image build). Host mode must assemble the real catalog stack IN-PROCESS with no pre-build and no
+    podman — this guards that the greet skill lands from a cold start."""
+
+    def test_hostspike_assembles_and_plans_without_prebuild(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        assert not paths.is_built("hostspike", "claude")  # cold: nothing pre-built
+
+        assemble(None, "hostspike", paths.profiles_root().parent, "claude", strict=True)
+        home, argv, cwd = launcher._host_launch_plan("hostspike", "claude", tmp_path)
+
+        assert cwd == tmp_path
+        assert (home / "skills" / "greet-helper" / "SKILL.md").is_file()
+        assert (home / "CLAUDE.md").is_file()
+        assert argv == ["claude"]
+        # No container/MCP artifacts leak from a real assemble either.
+        assert not (home / ".mcp.json").exists()
+
+
+class TestHostCliRouting:
+    def test_launch_host_flag_assembles_and_execs_claude(self, monkeypatch, tmp_path):
+        """End-to-end CLI path: `launch <stack> claude --host` must assemble in-process (no
+        pre-build, no podman) and hand off to claude with CLAUDE_CONFIG_DIR — captured here instead
+        of actually exec'ing."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        captured: dict = {}
+
+        def fake_execvpe(file, argv, env):
+            captured.update(file=file, argv=argv, ccd=env.get("CLAUDE_CONFIG_DIR"))
+            raise SystemExit(0)  # execvpe would replace the process; halt cleanly instead
+
+        monkeypatch.setattr(launcher.os, "execvpe", fake_execvpe)
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app, ["launch", "hostspike", "claude", str(tmp_path), "--host"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert captured["file"] == "claude"
+        assert captured["argv"] == ["claude"]
+        assert captured["ccd"] == str(paths.host_home("hostspike", "claude"))
+        assert paths.is_built("hostspike", "claude")  # profile assembled during the launch itself

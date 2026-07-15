@@ -2840,17 +2840,16 @@ def _launch_host(stack: str, harness: str, path: Optional[str]) -> None:
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir / 'stack.yaml'})")
         raise typer.Exit(1)
 
-    if not is_built(stack, harness):
-        _err.print(
-            f"[bold red]error:[/bold red] stack '{stack}' ({harness}) has no assembled profile "
-            f"(run: harnessed build {stack} {harness})"
-        )
-        raise typer.Exit(1)
-
+    # Assemble IN-PROCESS every launch — host-native, emit-only, NO podman and NO image build. This is
+    # what keeps --host container-free end to end: unlike `harnessed build` (which also builds a
+    # multi-GB image), we only need the profile's content layer. Assembly is sub-second, so a
+    # rebuild-per-launch also sidesteps staleness bookkeeping entirely. `build_root` is the dir that
+    # CONTAINS profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
+    _err.print(f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ...")
     try:
-        staleness.check_profile_fresh(None, stack, harness)
-    except (SchemaError, staleness.StaleProfileError) as exc:
-        _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack} {harness}")
+        assemble(None, stack, paths.profiles_root().parent, harness, strict=True)
+    except (SchemaError, CollisionError) as exc:
+        _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
     home, argv, cwd = _host_launch_plan(stack, harness, project_path)
