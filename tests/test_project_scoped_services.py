@@ -13,6 +13,7 @@ socket clients removes the contention by construction.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -215,3 +216,74 @@ class TestSocketEnvExport:
         monkeypatch.setattr(launcher, "load_service", lambda _r, _n: load_service(root, "ping"))
         monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["ping"])
         assert launcher.svc_socket_env("any", tmp_path) == {}
+
+
+class TestInRepoServiceGetsTheRemoteGitSurface:
+    """An `in_repo` service does the project's REMOTE git traffic (bd's `dolt clone` at init, `bd
+    dolt push` at sync), because bd shells out to a dolt CLI that only talks to a server on its own
+    loopback. So the service container needs the same surface an agent container needs to reach the
+    remote — not a hand-picked subset of it.
+
+    Regression: it used to mount only `known_hosts` + legacy `~/.gitconfig`, which broke two ways.
+    (1) No `~/.ssh/config` and no `*.pub`: a repo pinning its identity with
+    `core.sshCommand = ssh -o IdentityAgent=... -i ~/.ssh/<key>.pub` (the 1Password multi-account
+    pattern) hit "Identity file ... not accessible", silently fell back to the agent's first key —
+    the wrong GitHub account — and GitHub answered `ERROR: Repository not found.` while the same
+    clone worked fine from an agent container. (2) A host whose git config lives at the XDG path
+    (`~/.config/git/config`) got NO git config at all in the service.
+    """
+
+    def _capture_run_cmd(self, tmp_path, monkeypatch, home: Path):
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        project = tmp_path / "repo"
+        project.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        )
+        monkeypatch.setattr(launcher, "_image_exists", lambda _rt, _img: True)
+        monkeypatch.setattr(launcher, "_container_running", lambda _rt, _c: False)
+        monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
+        monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
+        monkeypatch.setattr(
+            launcher.subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+        )
+        captured: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, **k: captured.append(cmd))
+        launcher._ensure_service(
+            "podman", "beads-server", stack="any", project_path=project, mount_path=project
+        )
+        return " ".join(captured[0])
+
+    def test_ssh_config_pubkeys_and_xdg_git_config_are_mounted(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        (home / ".ssh").mkdir(parents=True)
+        (home / ".ssh" / "config").write_text("Host *\n")
+        (home / ".ssh" / "known_hosts").write_text("")
+        (home / ".ssh" / "id_rsa_work.pub").write_text("ssh-rsa AAAA")
+        (home / ".config" / "git").mkdir(parents=True)
+        (home / ".config" / "git" / "config").write_text("[user]\n\temail = a@b.c\n")
+
+        cmd = self._capture_run_cmd(tmp_path, monkeypatch, home)
+
+        # The identity `core.sshCommand -i` points at — without it ssh picks the wrong agent key.
+        assert f"{home}/.ssh/id_rsa_work.pub" in cmd
+        assert f"{home}/.ssh/config" in cmd
+        assert f"{home}/.ssh/known_hosts" in cmd
+        # XDG git config, not just the legacy ~/.gitconfig.
+        assert f"{home}/.config/git" in cmd
+
+    def test_private_keys_are_not_mounted_without_stack_opt_in(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        (home / ".ssh").mkdir(parents=True)
+        (home / ".ssh" / "id_rsa_work").write_text("PRIVATE")
+        (home / ".ssh" / "id_rsa_work.pub").write_text("ssh-rsa AAAA")
+
+        cmd = self._capture_run_cmd(tmp_path, monkeypatch, home)
+
+        assert f"{home}/.ssh/id_rsa_work.pub" in cmd
+        assert f"{home}/.ssh/id_rsa_work:" not in cmd, "private key mounted without ssh_keys opt-in"
