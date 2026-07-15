@@ -2821,6 +2821,15 @@ def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Pat
     return home, argv, project_path
 
 
+def _dolt_reachable(port: int) -> bool:
+    """MySQL-auth readiness for beads-server's dolt (mirrors the container healthcheck)."""
+    return subprocess.run(
+        ["dolt", "--host", "127.0.0.1", "--port", str(port), "--user", "root",
+         "--password", "", "--no-tls", "sql", "-q", "SELECT 1"],
+        capture_output=True,
+    ).returncode == 0
+
+
 def _host_ensure_services(stack: str, project_path: Path) -> tuple[dict[str, str], list[str]]:
     """Start (or reuse) each project-scoped socket daemon a stack needs, host-native. Returns
     (env additions, names of services THIS call started) — the latter drives --rm teardown.
@@ -2874,15 +2883,30 @@ def _host_ensure_services(stack: str, project_path: Path) -> tuple[dict[str, str
                 raise typer.Exit(1)
             do_init = True
 
-        sock_path, started_now = hostsvc.ensure(name, project_path, data_dir, sock)
-        env[env_var] = sock_path
+        doltdir = data_dir / "dolt"
+
+        def _prestart(sock=sock, doltdir=doltdir):
+            doltdir.mkdir(parents=True, exist_ok=True)
+            sock.parent.mkdir(parents=True, exist_ok=True)
+            hostsvc._cleanup_socket(str(sock))  # a stale socket makes dolt refuse to bind
+
+        entry, started_now = hostsvc.ensure(
+            name, project_path,
+            argv=lambda p, sock=sock, doltdir=doltdir: [
+                "dolt", "sql-server", "--host", "127.0.0.1", "--port", str(p),
+                "--socket", str(sock), "--data-dir", str(doltdir)],
+            ready=lambda p, sock=sock: sock.exists() and _dolt_reachable(p),
+            cwd=data_dir, prestart=_prestart,
+            meta=lambda p, sock=sock: {"socket": str(sock)},
+        )
+        env[env_var] = entry["socket"]
         if started_now:
             started.append(name)
 
         if do_init:
             _err.print(f"[blue][INFO][/blue] Initializing beads workspace at {data_dir} ...")
             init = subprocess.run(
-                ["bd", "init", "--server", "--external", "--server-socket", sock_path],
+                ["bd", "init", "--server", "--external", "--server-socket", env[env_var]],
                 cwd=str(project_path),
             )
             if init.returncode != 0:
@@ -2892,9 +2916,51 @@ def _host_ensure_services(stack: str, project_path: Path) -> tuple[dict[str, str
     return env, started
 
 
+def _host_ensure_hatago(stack: str, harness: str, project_path: Path) -> Optional[tuple[str, bool]]:
+    """Start (or reuse) a host hatago MCP hub for this stack's MCP servers. Returns (endpoint,
+    started) or None when the stack declares no MCP servers.
+
+    Host-native the hub is a plain process on a PER-PROJECT port (the container's fixed 3535 would
+    clash across projects). hatago runs with cwd=project so its stdio children (serena, repowise,
+    context-mode) inherit the project dir; those commands must be on PATH, while url children
+    (openbrain) are proxied as-is. Same supervisor as beads — start / reuse / reap.
+    """
+    cfg = profile_dir(stack, harness) / "hatago.config.json"
+    if not cfg.is_file():
+        return None
+    servers = json.loads(cfg.read_text(encoding="utf-8")).get("mcpServers", {})
+    if not servers:
+        return None
+    if shutil.which("hatago") is None:
+        _err.print(
+            "[bold red]error:[/bold red] this stack declares MCP servers but 'hatago' is not on "
+            "PATH — install the hub (match your stack's `hatago:` pin, e.g. "
+            "mise use -g github:drmikecrowe/hatago-mcp-hub@<ref>)"
+        )
+        raise typer.Exit(1)
+    # A stdio child whose command is absent simply won't connect — warn, don't fail: the hub still
+    # serves, and the other (url / present) children work.
+    for sname, s in servers.items():
+        cmd = s.get("command")
+        if cmd and shutil.which(cmd) is None:
+            _err.print(
+                f"[yellow]warn:[/yellow] MCP server '{sname}' needs '{cmd}' on PATH — "
+                "it will not connect until installed"
+            )
+    entry, started = hostsvc.ensure(
+        "hatago", project_path,
+        argv=lambda p, cfg=cfg: ["hatago", "serve", "--http", "--port", str(p), "--config", str(cfg)],
+        ready=lambda p: hostsvc.tcp_open(p),
+        cwd=project_path,
+        meta=lambda p: {"endpoint": f"http://localhost:{p}/mcp"},
+    )
+    return entry["endpoint"], started
+
+
 def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = False) -> None:
-    """Content-only host-native launch: no podman, no MCP. Materialize the assembled profile into a
-    host CLAUDE_CONFIG_DIR and exec the harness on the host so it sees the host's own auth.
+    """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
+    start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
+    the host's own auth.
 
     `rm` switches from exec (persist the daemons, clean TTY handoff) to supervise (fork claude, wait,
     then stop the daemons THIS launch started)."""
@@ -2927,14 +2993,29 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
-    # Start (or reuse) any host daemons the stack needs (beads-server) BEFORE handing off, so the
-    # socket env is set when the agent's SessionStart hooks (e.g. bd prime) fire.
+    # Start (or reuse) any host daemons the stack needs BEFORE handing off, so their env/endpoints are
+    # set when the agent's SessionStart hooks (e.g. bd prime) and MCP client fire.
     svc_env, started = _host_ensure_services(stack, project_path)
+    hatago = _host_ensure_hatago(stack, harness, project_path)
 
     home, argv, cwd = _host_launch_plan(stack, harness, project_path)
+
+    if hatago is not None:
+        endpoint, hatago_started = hatago
+        if hatago_started:
+            started.append("hatago")
+        # Rewrite the host .mcp.json (content-only stripped it) to point at THIS project's hub port,
+        # and tell claude to use only it — the host analog of the container's --mcp-config.
+        mcp_path = home / ".mcp.json"
+        mcp_path.write_text(
+            json.dumps({"mcpServers": {emit.HATAGO_MCP_KEY: {"type": "http", "url": endpoint}}}, indent=2),
+            encoding="utf-8",
+        )
+        argv = ["claude", "--mcp-config", str(mcp_path), "--strict-mcp-config"]
+
     _err.print(
         f"[green]host-native[/green]: CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
-        f"— no container" + (f", services: {', '.join(started)}" if started else "")
+        f"— no container" + (f", daemons: {', '.join(started)}" if started else "")
     )
     env = dict(os.environ)
     env["CLAUDE_CONFIG_DIR"] = str(home)

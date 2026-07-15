@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import typer
 
-from harnessed import hostsvc, launcher
+from harnessed import hostsvc, launcher, paths
 
 
 @pytest.fixture(autouse=True)
@@ -111,28 +111,83 @@ class TestStealthPolicy:
             launcher._host_ensure_services("hostbeads_stealth", tmp_path)
 
 
-@pytest.mark.skipif(shutil.which("dolt") is None, reason="needs dolt on PATH (host-native beads daemon)")
-class TestDoltDaemonIntegration:
-    def test_start_reuse_stop_cycle(self, tmp_path):
+class TestGenericSupervisor:
+    """The generic ensure() start/reuse/stop cycle with a trivial HTTP daemon — no dolt/hatago needed,
+    so it runs everywhere and proves the supervisor core both beads and hatago sit on."""
+
+    def test_start_reuse_stop_with_http_daemon(self, tmp_path):
+        import sys
+
         proj = tmp_path / "proj"
         proj.mkdir()
-        data = tmp_path / "beads" / ".beads"
-        sock = data / "run" / "mysql.sock"
+        argv = lambda p: [sys.executable, "-m", "http.server", str(p), "--bind", "127.0.0.1"]
+        ready = lambda p: hostsvc.tcp_open(p)
 
-        s1, started1 = hostsvc.ensure("beads-server", proj, data, sock, timeout=40)
+        e1, started1 = hostsvc.ensure("demo", proj, argv=argv, ready=ready, cwd=proj, timeout=20)
         assert started1 is True
-        assert Path(s1).exists()
-        pid = hostsvc._read()[hostsvc._key("beads-server", proj)]["pid"]
+        assert hostsvc.tcp_open(e1["port"])
+        pid = e1["pid"]
 
-        _s2, started2 = hostsvc.ensure("beads-server", proj, data, sock, timeout=40)
-        assert started2 is False  # reused
-        assert hostsvc._read()[hostsvc._key("beads-server", proj)]["pid"] == pid
+        e2, started2 = hostsvc.ensure("demo", proj, argv=argv, ready=ready, cwd=proj, timeout=20)
+        assert started2 is False  # reused warm daemon
+        assert e2["pid"] == pid
 
-        assert hostsvc.stop("beads-server", proj) is True
+        assert hostsvc.stop("demo", proj) is True
         time.sleep(0.3)
         assert hostsvc._pid_alive(pid) is False
-        assert not Path(s1).exists()
+        assert hostsvc._read() == {}
 
+    def test_prestart_and_meta_are_applied(self, tmp_path):
+        import sys
+
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        marker = tmp_path / "prestart-ran"
+        e, _ = hostsvc.ensure(
+            "demo2", proj,
+            argv=lambda p: [sys.executable, "-m", "http.server", str(p), "--bind", "127.0.0.1"],
+            ready=lambda p: hostsvc.tcp_open(p),
+            cwd=proj, prestart=lambda: marker.write_text("x"),
+            meta=lambda p: {"endpoint": f"http://localhost:{p}/mcp"}, timeout=20,
+        )
+        try:
+            assert marker.exists()
+            assert e["endpoint"].endswith("/mcp")
+        finally:
+            hostsvc.stop("demo2", proj)
+
+
+@pytest.mark.skipif(shutil.which("hatago") is None, reason="needs hatago on PATH (host MCP hub)")
+class TestHatago:
+    def test_no_mcp_stack_returns_none(self, monkeypatch, tmp_path):
+        from harnessed.assemble import assemble
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        assemble(None, "hostspike", paths.profiles_root().parent, "claude", strict=True)
+        assert launcher._host_ensure_hatago("hostspike", "claude", tmp_path) is None
+
+    def test_ensure_hatago_starts_hub_for_mcp_stack(self, monkeypatch, tmp_path):
+        from harnessed.assemble import assemble
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        # hostmcp = [time]: an env-free stdio MCP server, so the hub loads + binds with no placeholders.
+        assemble(None, "hostmcp", paths.profiles_root().parent, "claude", strict=True)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        res = launcher._host_ensure_hatago("hostmcp", "claude", proj)
+        assert res is not None
+        endpoint, started = res
+        try:
+            assert started is True
+            assert endpoint.startswith("http://localhost:")
+            port = int(endpoint.rsplit(":", 1)[1].split("/")[0])
+            assert hostsvc.tcp_open(port)
+        finally:
+            hostsvc.stop("hatago", proj)
+
+
+@pytest.mark.skipif(shutil.which("dolt") is None, reason="needs dolt on PATH (host-native beads daemon)")
+class TestDoltDaemonIntegration:
     def test_launcher_team_present_ensures_server_and_exports_socket(self, tmp_path):
         # Full launcher service path (minus the claude exec): team workspace present → no prompt,
         # daemon started, socket env exported for the agent's bd prime hook.

@@ -20,6 +20,7 @@ import signal
 import socket as _socket
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from . import paths
@@ -93,78 +94,68 @@ def _log_path(key: str) -> Path:
     return d / (key.replace("|", "_") + ".log")
 
 
-def _start_dolt(data_dir: Path, sock: Path, port: int, log: Path) -> subprocess.Popen:
-    """Launch `dolt sql-server` as a detached host process against the project's data dir."""
-    doltdir = data_dir / "dolt"
-    doltdir.mkdir(parents=True, exist_ok=True)
-    sock.parent.mkdir(parents=True, exist_ok=True)
-    _cleanup_socket(str(sock))  # a stale socket makes dolt refuse to bind
+def tcp_open(port: int) -> bool:
+    """True if something is accepting on 127.0.0.1:port — the generic readiness signal for an
+    HTTP daemon (e.g. hatago: a bound hub means its children are wired, per the capability oracle)."""
+    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _spawn(argv: list[str], cwd: Path, log: Path) -> subprocess.Popen:
     lf = open(log, "ab")  # noqa: SIM115 — handed to the child; closed when it exits
     # start_new_session: own process group, so it SURVIVES harnessed's exit (persist default).
     # --rm mode still holds the pid and kills it explicitly.
-    return subprocess.Popen(
-        [
-            "dolt", "sql-server",
-            "--host", "127.0.0.1", "--port", str(port),
-            "--socket", str(sock),
-            "--data-dir", str(doltdir),
-        ],
-        stdout=lf, stderr=lf, start_new_session=True, cwd=str(data_dir),
-    )
+    return subprocess.Popen(argv, stdout=lf, stderr=lf, start_new_session=True, cwd=str(cwd))
 
 
-def _reachable(port: int) -> bool:
-    r = subprocess.run(
-        ["dolt", "--host", "127.0.0.1", "--port", str(port), "--user", "root",
-         "--password", "", "--no-tls", "sql", "-q", "SELECT 1"],
-        capture_output=True,
-    )
-    return r.returncode == 0
-
-
-def _await_ready(proc: subprocess.Popen, sock: Path, port: int, timeout: float, log: Path) -> None:
+def _await_ready(proc: subprocess.Popen, ready: Callable[[], bool], timeout: float, log: Path) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             tail = log.read_text(encoding="utf-8", errors="replace")[-800:] if log.is_file() else ""
-            raise RuntimeError(f"dolt sql-server exited (code {proc.returncode}). Log tail:\n{tail}")
-        if sock.exists() and _reachable(port):
+            raise RuntimeError(f"daemon exited (code {proc.returncode}). Log tail:\n{tail}")
+        if ready():
             return
         time.sleep(0.3)
-    raise RuntimeError(f"dolt sql-server not ready within {timeout:.0f}s (see {log})")
+    raise RuntimeError(f"daemon not ready within {timeout:.0f}s (see {log})")
 
 
-def ensure(service: str, project_path: Path, data_dir: Path, sock: Path,
-           *, timeout: float = 30.0) -> tuple[str, bool]:
-    """Ensure a host daemon for (service, project). Returns (socket_path, started_now).
+def ensure(service: str, project_path: Path, *, argv, ready, cwd: Path,
+           prestart=None, meta=None, timeout: float = 30.0) -> tuple[dict, bool]:
+    """Generic host-daemon supervisor: ensure ONE (service, project) daemon. Returns (entry, started).
 
-    Reuses a live registered server; reaps a dead entry (stale pid → drop it + its socket) before
-    starting a fresh one. The single-server-per-project invariant lives here.
+    `argv(port)` builds the command, `ready(port)` is the readiness/liveness probe (used for both the
+    startup wait AND the reuse check), `prestart()` runs once right before spawn (dir/socket setup),
+    `meta(port)` adds extra registry fields (socket, endpoint, ...). The single-daemon-per-project
+    invariant + reap-before-start live here — this is the layer every host service reuses.
     """
     key = _key(service, project_path)
     reg = _read()
     entry = reg.get(key)
-    if entry and _pid_alive(int(entry["pid"])) and Path(entry["socket"]).exists():
-        return entry["socket"], False  # reuse — warm server, instant reconnect
-    if entry:  # stale: server died without deregistering
+    if entry and _pid_alive(int(entry["pid"])) and ready(int(entry["port"])):
+        return entry, False  # reuse — warm daemon, instant reconnect
+    if entry:  # stale: daemon died without deregistering
         _cleanup_socket(entry.get("socket"))
         reg.pop(key, None)
         _write(reg)
 
     port = _free_port()
     log = _log_path(key)
-    proc = _start_dolt(data_dir, sock, port, log)
+    if prestart is not None:
+        prestart()
+    proc = _spawn(argv(port), cwd, log)
     try:
-        _await_ready(proc, sock, port, timeout, log)
+        _await_ready(proc, lambda: ready(port), timeout, log)
     except Exception:
         if proc.poll() is None:
             proc.terminate()
         raise
     reg = _read()
-    reg[key] = {"pid": proc.pid, "socket": str(sock), "port": port,
-                "data_dir": str(data_dir), "log": str(log)}
+    entry = {"pid": proc.pid, "port": port, "log": str(log), **(meta(port) if meta else {})}
+    reg[key] = entry
     _write(reg)
-    return str(sock), True
+    return entry, True
 
 
 def stop(service: str, project_path: Path) -> bool:
