@@ -54,6 +54,9 @@ NO_CAPABILITY_ORACLE = {
     "claude_beads-stealth",
     "claude_rtk",
     "claude_solidspec",
+    # host-native beads-daemon tracer stacks (spike): beads is CLI+hook+service only, no oracle surface.
+    "hostbeads",
+    "hostbeads_stealth",
 }
 
 

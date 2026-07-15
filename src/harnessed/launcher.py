@@ -34,6 +34,7 @@ from rich.markup import escape
 from ruamel.yaml import YAML
 
 from . import emit
+from . import hostsvc
 from . import paths
 from . import persist
 from . import staleness
@@ -2820,9 +2821,83 @@ def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Pat
     return home, argv, project_path
 
 
-def _launch_host(stack: str, harness: str, path: Optional[str]) -> None:
+def _host_ensure_services(stack: str, project_path: Path) -> tuple[dict[str, str], list[str]]:
+    """Start (or reuse) each project-scoped socket daemon a stack needs, host-native. Returns
+    (env additions, names of services THIS call started) — the latter drives --rm teardown.
+
+    Presence policy (beads is the driver): the stack declaring the service says the *stack* uses it,
+    not that *this project* does. The project signal is the workspace (`<data>/metadata.json`):
+      * stealth (location: host)   + absent → HARD FAIL. The store is deliberate; we never fabricate
+        one, and the recipe's `bd prime` SessionStart hook would misfire loudly against a non-workspace.
+      * team    (location: in_repo) + absent → PROMPT to init (creating a tracked `.beads` is normal).
+    Server is ensured BEFORE `bd init`, which connects to it over the socket.
+    """
+    env: dict[str, str] = {}
+    started: list[str] = []
+    for name in _service_refs(stack):
+        svc = load_service(None, name)
+        if not (svc.scope == "project" and svc.is_socket_only):
+            continue  # only host-daemon, socket-backed, project-scoped services (e.g. beads-server)
+
+        if shutil.which("dolt") is None or shutil.which("bd") is None:
+            _err.print(
+                "[bold red]error:[/bold red] host service "
+                f"'{name}' needs 'dolt' and 'bd' on PATH "
+                "(install: mise use -g github:dolthub/dolt@2.1.10 github:gastownhall/beads@1.1.0)"
+            )
+            raise typer.Exit(1)
+
+        data_dir, _, location = _service_data_dir(svc, stack, project_path)
+        sock = data_dir / svc.socket
+        env_var = "HARNESSED_" + svc.name.upper().replace("-", "_") + "_SOCKET"
+        present = (data_dir / "metadata.json").is_file()
+        do_init = False
+
+        if not present:
+            if location != "in_repo":  # stealth / host-persisted
+                _err.print(
+                    f"[bold red]error:[/bold red] beads/stealth: no workspace for this project "
+                    f"(expected at [cyan]{data_dir}[/cyan]). Initialize it deliberately first:\n"
+                    f"  bd init --stealth --server --external --server-socket <socket>\n"
+                    f"or drop beads from this stack — its bd prime hook would fail loudly otherwise."
+                )
+                raise typer.Exit(1)
+            # team / in_repo: creating a tracked .beads is a normal, visible onboarding step.
+            if not typer.confirm(
+                f"Project has no beads workspace ({data_dir}). Initialize it (bd init)?",
+                default=False,
+            ):
+                _err.print(
+                    "[bold red]error:[/bold red] beads is in this stack but the workspace is not "
+                    "initialized — its bd prime hook would fail. Aborting."
+                )
+                raise typer.Exit(1)
+            do_init = True
+
+        sock_path, started_now = hostsvc.ensure(name, project_path, data_dir, sock)
+        env[env_var] = sock_path
+        if started_now:
+            started.append(name)
+
+        if do_init:
+            _err.print(f"[blue][INFO][/blue] Initializing beads workspace at {data_dir} ...")
+            init = subprocess.run(
+                ["bd", "init", "--server", "--external", "--server-socket", sock_path],
+                cwd=str(project_path),
+            )
+            if init.returncode != 0:
+                _err.print("[bold red]error:[/bold red] bd init failed")
+                raise typer.Exit(1)
+
+    return env, started
+
+
+def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = False) -> None:
     """Content-only host-native launch: no podman, no MCP. Materialize the assembled profile into a
-    host CLAUDE_CONFIG_DIR and exec the harness on the host so it sees the host's own auth."""
+    host CLAUDE_CONFIG_DIR and exec the harness on the host so it sees the host's own auth.
+
+    `rm` switches from exec (persist the daemons, clean TTY handoff) to supervise (fork claude, wait,
+    then stop the daemons THIS launch started)."""
     if harness != _HOST_HARNESS:
         _err.print(
             f"[bold red]error:[/bold red] --host currently supports only '{_HOST_HARNESS}' "
@@ -2852,16 +2927,33 @@ def _launch_host(stack: str, harness: str, path: Optional[str]) -> None:
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
+    # Start (or reuse) any host daemons the stack needs (beads-server) BEFORE handing off, so the
+    # socket env is set when the agent's SessionStart hooks (e.g. bd prime) fire.
+    svc_env, started = _host_ensure_services(stack, project_path)
+
     home, argv, cwd = _host_launch_plan(stack, harness, project_path)
     _err.print(
-        f"[green]host-native[/green] (content-only): CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] "
-        f"cwd=[cyan]{cwd}[/cyan] — no container, no MCP"
+        f"[green]host-native[/green]: CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
+        f"— no container" + (f", services: {', '.join(started)}" if started else "")
     )
     env = dict(os.environ)
     env["CLAUDE_CONFIG_DIR"] = str(home)
+    env.update(svc_env)
     os.chdir(cwd)
-    # execvpe replaces this process — hands the TTY to claude natively, on the host, as the host user.
-    os.execvpe(argv[0], argv, env)
+
+    if not rm:
+        # Persist: execvpe REPLACES this process — clean TTY handoff; daemons outlive the session and
+        # the next launch reuses them. Reap explicitly with `harnessed svc stop/prune`.
+        os.execvpe(argv[0], argv, env)  # never returns
+
+    # --rm: supervise. Stay resident as claude's parent, wait, then stop the daemons WE started.
+    # try/finally so teardown runs even on Ctrl-C (SIGINT → KeyboardInterrupt in this parent).
+    try:
+        subprocess.run(argv, env=env)
+    finally:
+        for name in started:
+            if hostsvc.stop(name, project_path):
+                _err.print(f"[blue][INFO][/blue] stopped host service '{name}'")
 
 
 @app.command()
@@ -2902,9 +2994,9 @@ def launch(
 
     # Host-native content-only backend: fully self-contained and podman-free (never touches
     # _runtime()/images/mounts). Diverts before any container logic — the whole point is to run
-    # without a container. See _launch_host.
+    # without a container. See _launch_host. --rm → supervise + stop host daemons on exit.
     if host:
-        _launch_host(stack, harness, path)
+        _launch_host(stack, harness, path, rm=rm)
         return
     if no_firewall:
         os.environ["NO_FIREWALL"] = "true"

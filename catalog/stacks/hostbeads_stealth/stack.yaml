@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# Stack: hostbeads_stealth — beads STEALTH placement (.beads host-persisted). Absent workspace must
+# HARD FAIL host-native (never fabricate a deliberate store; the bd prime hook would misfire).
+name: hostbeads_stealth
+instructions: hostbeads stealth tracer.
+recipes: [beads/stealth]
+services: [beads-server]
