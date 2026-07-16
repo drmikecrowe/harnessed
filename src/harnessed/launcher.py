@@ -2923,7 +2923,12 @@ def _host_ensure_services(stack: str, project_path: Path) -> tuple[dict[str, str
             def _prestart(sock=sock, doltdir=doltdir):
                 doltdir.mkdir(parents=True, exist_ok=True)
                 sock.parent.mkdir(parents=True, exist_ok=True)
-                hostsvc._cleanup_socket(str(sock))  # a stale socket makes dolt refuse to bind
+                # Do NOT delete the socket here: at this point unix_sock_open said no LIVE server is
+                # reachable, but a foreign server (a container bind-mounting this .beads) can hold the
+                # flock while its socket is momentarily unreachable — deleting it would break that
+                # server's other clients. Our OWN stale socket is cleaned by ensure()'s reap path
+                # (a dead registry entry → _cleanup_socket). If a truly-orphaned socket blocks dolt's
+                # bind, dolt surfaces it; that's recoverable, destroying a live foreign socket is not.
 
             try:
                 entry, started_now = hostsvc.ensure(
