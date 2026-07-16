@@ -549,6 +549,20 @@ def _parse_hooks_skip_harnesses(raw) -> list[str]:
 
 
 @dataclass
+class SetupConfigItem:
+    """One config value a recipe's executable setup needs (recipe.yaml `setup.config[]`).
+
+    Exactly one of `derive` / `prompt` drives it:
+      * derive — a template over repo-identity primitives ({repo}, {gcd_db}, …), resolved silently.
+      * prompt — asked on first launch (default is a template too); non-interactive → uses default.
+    The resolved value is referenced in `setup.run` as {config.<key>}."""
+    key: str
+    derive: str | None = None
+    prompt: str | None = None
+    default: str | None = None
+
+
+@dataclass
 class SetupSpec:
     """Harness-agnostic manual-setup note (recipe.yaml `setup:`) — a short summary + upstream
     reference URL. USER-FACING: shown host-side by the launcher at attach time
@@ -564,6 +578,11 @@ class SetupSpec:
     summary: str
     reference: str
     condition: str | None = None
+    # Executable, config-driven first-run setup (host-native). `config` items are resolved on first
+    # launch (derived from repo-identity primitives, or prompted), then substituted into `run`, which
+    # is executed once (gated by `condition`). See launcher._host_run_setups.
+    config: list["SetupConfigItem"] = field(default_factory=list)
+    run: str | None = None
 
 
 def _parse_setup(raw_setup) -> "SetupSpec | None":
@@ -581,16 +600,54 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
         raise SchemaError("recipe 'setup.reference' must be a non-empty string")
     if condition is not None and (not isinstance(condition, str) or not condition.strip()):
         raise SchemaError("recipe 'setup.condition', if set, must be a non-empty string")
-    unknown = sorted(set(raw_setup) - {"summary", "reference", "condition"})
+
+    run = raw_setup.get("run")
+    if run is not None and (not isinstance(run, str) or not run.strip()):
+        raise SchemaError("recipe 'setup.run', if set, must be a non-empty string")
+    config = _parse_setup_config(raw_setup.get("config"))
+
+    unknown = sorted(set(raw_setup) - {"summary", "reference", "condition", "run", "config"})
     if unknown:
         raise SchemaError(
-            f"recipe 'setup': unknown field(s) {unknown} — valid fields: summary, reference, condition"
+            f"recipe 'setup': unknown field(s) {unknown} — valid fields: "
+            "summary, reference, condition, run, config"
         )
     return SetupSpec(
         summary=summary.strip(),
         reference=reference.strip(),
         condition=condition.strip() if condition else None,
+        run=run.strip() if run else None,
+        config=config,
     )
+
+
+def _parse_setup_config(raw_config) -> list["SetupConfigItem"]:
+    if not raw_config:
+        return []
+    if not isinstance(raw_config, list):
+        raise SchemaError("recipe 'setup.config' must be a list of {key, derive|prompt} items")
+    out: list[SetupConfigItem] = []
+    for entry in raw_config:
+        if not isinstance(entry, dict):
+            raise SchemaError(f"recipe 'setup.config' entry {entry!r} must be a mapping")
+        key = str(entry.get("key", "")).strip()
+        derive = entry.get("derive")
+        prompt = entry.get("prompt")
+        default = entry.get("default")
+        if not key:
+            raise SchemaError(f"recipe 'setup.config' entry {entry!r} needs a non-empty 'key'")
+        if not (derive or prompt):
+            raise SchemaError(f"recipe 'setup.config' '{key}' needs 'derive' or 'prompt'")
+        unknown = sorted(set(entry) - {"key", "derive", "prompt", "default"})
+        if unknown:
+            raise SchemaError(f"recipe 'setup.config' '{key}': unknown field(s) {unknown}")
+        out.append(SetupConfigItem(
+            key=key,
+            derive=str(derive).strip() if derive else None,
+            prompt=str(prompt).strip() if prompt else None,
+            default=str(default) if default is not None else None,
+        ))
+    return out
 
 
 def _parse_conflicts(raw_conflicts) -> list[str]:

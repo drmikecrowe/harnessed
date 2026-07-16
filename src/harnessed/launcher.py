@@ -11,6 +11,7 @@ Replaces the bash launcher (harnessed + lib/*.sh) with a Typer CLI that:
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shlex
@@ -34,7 +35,6 @@ from rich.markup import escape
 from ruamel.yaml import YAML
 
 from . import emit
-from . import hostsvc
 from . import paths
 from . import persist
 from . import staleness
@@ -2848,124 +2848,84 @@ def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Pat
     return home, argv, project_path
 
 
-def _dolt_reachable(port: int) -> bool:
-    """MySQL-auth readiness for beads-server's dolt (mirrors the container healthcheck)."""
-    return subprocess.run(
-        ["dolt", "--host", "127.0.0.1", "--port", str(port), "--user", "root",
-         "--password", "", "--no-tls", "sql", "-q", "SELECT 1"],
-        capture_output=True,
-    ).returncode == 0
+def _gcd_db_name(project_path: Path) -> str:
+    """Derive a unique, worktree-stable beads database name from the repo's git-common-dir:
+    dirname(git-common-dir), relative-to-$HOME, lowercase, separators → '_', dropping LEADING
+    components until ≤64 chars (deepest/most-specific kept); hash-suffix if even the tail overflows.
+    Every worktree of a repo → the same name; different repos never collide."""
+    gcd = paths.git_common_dir(project_path) or Path(project_path)
+    root = gcd.parent  # dirname(git-common-dir) = the dir containing .bare/.git
+    home = Path.home()
+    try:
+        parts = list(root.relative_to(home).parts)
+    except ValueError:
+        parts = [p for p in root.parts if p not in ("/", "")]
+    parts = [re.sub(r"[^a-z0-9]+", "_", p.lower()).strip("_") for p in parts]
+    parts = [p for p in parts if p]
+    while len(parts) > 1 and len("_".join(parts)) > 64:
+        parts.pop(0)  # drop leading (shallowest) first, keep the specific tail
+    name = "_".join(parts) or "beads"
+    if len(name) > 64:
+        name = name[:55].rstrip("_") + "_" + hashlib.sha1(str(root).encode()).hexdigest()[:8]
+    return name
 
 
-def _host_ensure_services(stack: str, project_path: Path) -> tuple[dict[str, str], list[str]]:
-    """Start (or reuse) each project-scoped socket daemon a stack needs, host-native. Returns
-    (env additions, names of services THIS call started) — the latter drives --rm teardown.
+def _repo_primitives(project_path: Path) -> dict[str, str]:
+    """Repo-identity substitution values for a recipe's `setup.config` derive/prompt templates."""
+    gcd = paths.git_common_dir(project_path) or Path(project_path)
+    repo = gcd.parent.name if (gcd.name in (".bare", ".git") or gcd.name.endswith(".git")) else gcd.name
+    return {
+        "repo": re.sub(r"[^A-Za-z0-9_-]+", "-", repo).strip("-") or "repo",
+        "gcd_db": _gcd_db_name(project_path),
+        "gcd_hash": hashlib.sha1(str(gcd).encode()).hexdigest()[:8],
+        "project_hash": paths.project_hash(project_path),
+    }
 
-    Presence policy (beads is the driver): the stack declaring the service says the *stack* uses it,
-    not that *this project* does. The project signal is the workspace (`<data>/metadata.json`):
-      * stealth (location: host)   + absent → HARD FAIL. The store is deliberate; we never fabricate
-        one, and the recipe's `bd prime` SessionStart hook would misfire loudly against a non-workspace.
-      * team    (location: in_repo) + absent → PROMPT to init (creating a tracked `.beads` is normal).
-    Server is ensured BEFORE `bd init`, which connects to it over the socket.
-    """
-    env: dict[str, str] = {}
-    started: list[str] = []
-    for name in _service_refs(stack):
-        svc = load_service(None, name)
-        if not (svc.scope == "project" and svc.is_socket_only):
-            continue  # only host-daemon, socket-backed, project-scoped services (e.g. beads-server)
 
-        if shutil.which("dolt") is None or shutil.which("bd") is None:
-            _err.print(
-                "[bold red]error:[/bold red] host service "
-                f"'{name}' needs 'dolt' and 'bd' on PATH "
-                "(install: mise use -g github:dolthub/dolt@2.1.10 github:gastownhall/beads@1.1.0)"
-            )
-            raise typer.Exit(1)
+def _subst(template: str, values: dict[str, str]) -> str:
+    """Substitute {key} placeholders from `values`; leave unknown {…} intact."""
+    return re.sub(r"\{([a-zA-Z0-9_.]+)\}", lambda m: values.get(m.group(1), m.group(0)), template)
 
-        data_dir, _, location = _service_data_dir(svc, stack, project_path)
-        sock = data_dir / svc.socket
-        env_var = "HARNESSED_" + svc.name.upper().replace("-", "_") + "_SOCKET"
-        present = (data_dir / "metadata.json").is_file()
-        do_init = False
 
-        if not present:
-            if location != "in_repo":  # stealth / host-persisted
-                _err.print(
-                    f"[bold red]error:[/bold red] beads/stealth: no workspace for this project "
-                    f"(expected at [cyan]{data_dir}[/cyan]). Initialize it deliberately first:\n"
-                    f"  bd init --stealth --server --external --server-socket <socket>\n"
-                    f"or drop beads from this stack — its bd prime hook would fail loudly otherwise."
-                )
-                raise typer.Exit(1)
-            # team / in_repo: creating a tracked .beads is a normal, visible onboarding step.
-            if not typer.confirm(
-                f"Project has no beads workspace ({data_dir}). Initialize it (bd init)?",
-                default=False,
-            ):
-                _err.print(
-                    "[bold red]error:[/bold red] beads is in this stack but the workspace is not "
-                    "initialized — its bd prime hook would fail. Aborting."
-                )
-                raise typer.Exit(1)
-            do_init = True
-
-        if hostsvc.unix_sock_open(str(sock)):
-            # A beads-server is ALREADY serving this project's .beads on this socket — host-native
-            # from a prior launch, or a container that bind-mounts the same .beads out to the host.
-            # Reuse it: starting a second dolt would collide on Dolt's exclusive flock. (We didn't
-            # start it, so it's not added to `started` and --rm won't tear it down.)
-            _err.print(f"[blue][INFO][/blue] reusing beads-server already serving {sock}")
-            env[env_var] = str(sock)
+def _resolve_setup_config(setup, primitives: dict[str, str], *, interactive: bool) -> dict[str, str]:
+    """Resolve each `setup.config` item → value: derive (silent) or prompt (asked; default when
+    non-interactive). Returns primitives + {config.<key>: value}, ready for _subst into `run`."""
+    values = dict(primitives)
+    for item in setup.config:
+        if item.derive is not None:
+            val = _subst(item.derive, values)
         else:
-            doltdir = data_dir / "dolt"
+            default = _subst(item.default or "", values)
+            val = typer.prompt(_subst(item.prompt, values), default=default) \
+                if (interactive and item.prompt) else default
+        values[f"config.{item.key}"] = val
+    return values
 
-            def _prestart(sock=sock, doltdir=doltdir):
-                doltdir.mkdir(parents=True, exist_ok=True)
-                sock.parent.mkdir(parents=True, exist_ok=True)
-                # Do NOT delete the socket here: at this point unix_sock_open said no LIVE server is
-                # reachable, but a foreign server (a container bind-mounting this .beads) can hold the
-                # flock while its socket is momentarily unreachable — deleting it would break that
-                # server's other clients. Our OWN stale socket is cleaned by ensure()'s reap path
-                # (a dead registry entry → _cleanup_socket). If a truly-orphaned socket blocks dolt's
-                # bind, dolt surfaces it; that's recoverable, destroying a live foreign socket is not.
 
-            try:
-                entry, started_now = hostsvc.ensure(
-                    name, project_path,
-                    argv=lambda p, sock=sock, doltdir=doltdir: [
-                        "dolt", "sql-server", "--host", "127.0.0.1", "--port", str(p),
-                        "--socket", str(sock), "--data-dir", str(doltdir)],
-                    ready=lambda p, sock=sock: sock.exists() and _dolt_reachable(p),
-                    cwd=data_dir, prestart=_prestart,
-                    meta=lambda p, sock=sock: {"socket": str(sock)},
-                )
-            except RuntimeError as exc:
-                if "locked by another dolt" in str(exc):
-                    _err.print(
-                        f"[bold red]error:[/bold red] beads data dir [cyan]{doltdir}[/cyan] is locked "
-                        "by another dolt process — most likely a CONTAINER beads-server already serving "
-                        "this project. Stop it (`harnessed stop`/`svc`), or run once its socket is up so "
-                        "host-native reuses it. Two servers on one .beads is Dolt's exclusive-flock error."
-                    )
-                    raise typer.Exit(1)
-                _err.print(f"[bold red]error:[/bold red] starting beads-server failed: {exc}")
-                raise typer.Exit(1)
-            env[env_var] = entry["socket"]
-            if started_now:
-                started.append(name)
-
-        if do_init:
-            _err.print(f"[blue][INFO][/blue] Initializing beads workspace at {data_dir} ...")
-            init = subprocess.run(
-                ["bd", "init", "--server", "--external", "--server-socket", env[env_var]],
-                cwd=str(project_path),
-            )
-            if init.returncode != 0:
-                _err.print("[bold red]error:[/bold red] bd init failed")
-                raise typer.Exit(1)
-
-    return env, started
+def _host_run_setups(stack: str, project_path: Path) -> None:
+    """Run each recipe's executable `setup.run` (host-native first-run setup) whose `condition` is
+    satisfied. This REPLACES per-launch daemon management: for beads, `run` is
+    `bd init --shared-server …` and bd itself auto-manages the shared dolt server — harnessed only
+    supplies the project identity (unique database, chosen prefix)."""
+    _, recipes = load_stack_with_recipes(None, stack)
+    primitives: dict[str, str] | None = None
+    for recipe in recipes:
+        setup = recipe.setup
+        if not (setup and setup.run):
+            continue
+        # condition gates first-run: exit 0 == still needed (run it); non-zero == already done (skip).
+        if setup.condition and subprocess.run(
+            ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True
+        ).returncode != 0:
+            continue
+        if primitives is None:
+            primitives = _repo_primitives(project_path)
+        values = _resolve_setup_config(setup, primitives, interactive=sys.stdin.isatty())
+        cmd = _subst(setup.run, values)
+        _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {cmd}")
+        if subprocess.run(["bash", "-lc", cmd], cwd=str(project_path)).returncode != 0:
+            _err.print(f"[bold red]error:[/bold red] setup for '{recipe.name}' failed")
+            raise typer.Exit(1)
 
 
 def _host_provision(stack: str) -> list[str]:
@@ -3087,15 +3047,15 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
-    # Start (or reuse) any host daemons the stack needs BEFORE handing off, so their env/endpoints are
-    # set when the agent's SessionStart hooks (e.g. bd prime) and MCP client fire.
-    svc_env, started = _host_ensure_services(stack, project_path)
-    # Provision host stdio-MCP tools onto PATH BEFORE resolving native MCP, so claude can spawn them
-    # (and the child-command presence check passes). Mutating this process's PATH is fine — it's
+    # Provision host stdio-MCP tools onto PATH BEFORE recipe setups + native MCP, so claude can spawn
+    # them (and the child-command presence check passes). Mutating this process's PATH is fine — it's
     # dedicated to this launch, and claude (env built from os.environ) inherits it.
     prov_bins = _host_provision(stack)
     if prov_bins:
         os.environ["PATH"] = os.pathsep.join([*prov_bins, os.environ.get("PATH", "")])
+    # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
+    # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
+    _host_run_setups(stack, project_path)
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
     # sees just-provisioned tools.
     mcp_servers = _host_native_mcp(stack)
@@ -3111,26 +3071,17 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
 
     _err.print(
         f"[green]host-native[/green]: CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
-        f"— no container" + (f", daemons: {', '.join(started)}" if started else "")
+        "— no container"
     )
     env = dict(os.environ)
     env["CLAUDE_CONFIG_DIR"] = str(home)
-    env.update(svc_env)
     os.chdir(cwd)
 
     if not rm:
-        # Persist: execvpe REPLACES this process — clean TTY handoff; daemons outlive the session and
-        # the next launch reuses them. Reap explicitly with `harnessed svc stop/prune`.
+        # execvpe REPLACES this process — clean TTY handoff to claude on the host.
         os.execvpe(argv[0], argv, env)  # never returns
-
-    # --rm: supervise. Stay resident as claude's parent, wait, then stop the daemons WE started.
-    # try/finally so teardown runs even on Ctrl-C (SIGINT → KeyboardInterrupt in this parent).
-    try:
-        subprocess.run(argv, env=env)
-    finally:
-        for name in started:
-            if hostsvc.stop(name, project_path):
-                _err.print(f"[blue][INFO][/blue] stopped host service '{name}'")
+    # --rm: supervise (fork claude, wait). No host daemons to tear down — bd owns its shared server.
+    subprocess.run(argv, env=env)
 
 
 @app.command()
