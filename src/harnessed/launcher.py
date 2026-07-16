@@ -2829,9 +2829,12 @@ def _share_host_claude_state(home: Path) -> None:
     cred = real / ".credentials.json"
     if cred.exists():
         _relink(home / ".credentials.json", cred)  # live token, shared
-    acct = real / ".claude.json"
+    # .claude.json (account/onboarding) lives NEXT TO the config dir, not inside it: at
+    # $CLAUDE_CONFIG_DIR/.claude.json when that's set, else $HOME/.claude.json — NOT ~/.claude/.claude.json.
+    env_ccd = os.environ.get("CLAUDE_CONFIG_DIR")
+    acct = (Path(env_ccd) if env_ccd else Path.home()) / ".claude.json"
     if acct.is_file():
-        shutil.copy2(acct, home / ".claude.json")  # snapshot, isolated writes
+        shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
 
 
 def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Path, list[str], Path]:

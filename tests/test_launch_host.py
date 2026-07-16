@@ -89,6 +89,20 @@ class TestShareClaudeState:
         assert (home / ".claude.json").is_file()
         assert not (home / ".claude.json").is_symlink()
 
+    def test_claude_json_seeded_from_home_level_not_config_dir(self, monkeypatch, tmp_path):
+        # The account file is $HOME/.claude.json — NOT ~/.claude/.claude.json. Seed from the right one.
+        fake_home = tmp_path / "home"
+        (fake_home / ".claude").mkdir(parents=True)
+        (fake_home / ".claude.json").write_text('{"account":"real"}')            # HOME-level (correct)
+        (fake_home / ".claude" / ".claude.json").write_text('{"account":"WRONG"}')  # decoy inside dir
+        (fake_home / ".claude" / ".credentials.json").write_text('{"t":"x"}')
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        monkeypatch.setenv("HOME", str(fake_home))
+        home = tmp_path / "stackhome"
+        home.mkdir()
+        launcher._share_host_claude_state(home)
+        assert (home / ".claude.json").read_text() == '{"account":"real"}'
+
     def test_missing_source_creates_dirs_no_crash(self, monkeypatch, tmp_path):
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "fresh"))
         home = tmp_path / "home"
