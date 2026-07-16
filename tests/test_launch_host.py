@@ -63,23 +63,39 @@ class TestMaterialize:
         assert not (home / "stale-skill.md").exists()
 
 
-class TestSeedCredentials:
-    def test_seeds_claude_auth_from_host(self, monkeypatch, tmp_path):
-        host_src = tmp_path / "host-claude"
-        host_src.mkdir()
-        (host_src / ".credentials.json").write_text('{"token":"x"}')
-        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(host_src))
+class TestShareClaudeState:
+    def test_symlinks_session_state_and_live_auth(self, monkeypatch, tmp_path):
+        real = tmp_path / "host-claude"
+        real.mkdir()
+        (real / ".credentials.json").write_text('{"token":"x"}')
+        (real / ".claude.json").write_text('{"account":"a"}')
+        (real / "projects").mkdir()
+        (real / "projects" / "p.jsonl").write_text("transcript")
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
         home = tmp_path / "home"
         home.mkdir()
-        launcher._seed_host_credentials(home)
-        assert (home / ".credentials.json").read_text() == '{"token":"x"}'
 
-    def test_missing_source_is_noop(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "does-not-exist"))
+        launcher._share_host_claude_state(home)
+
+        # session state: symlinked to the real ~/.claude (shared, resumable)
+        assert (home / "projects").is_symlink()
+        assert (home / "projects" / "p.jsonl").read_text() == "transcript"
+        for name in ("file-history", "todos", "tasks", "session-env", "shell-snapshots"):
+            assert (home / name).is_symlink()
+        # auth token: symlinked (live refresh propagates)
+        assert (home / ".credentials.json").is_symlink()
+        assert (home / ".credentials.json").read_text() == '{"token":"x"}'
+        # account: COPIED (isolated writes), not a symlink
+        assert (home / ".claude.json").is_file()
+        assert not (home / ".claude.json").is_symlink()
+
+    def test_missing_source_creates_dirs_no_crash(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "fresh"))
         home = tmp_path / "home"
         home.mkdir()
-        launcher._seed_host_credentials(home)  # must not raise
-        assert not (home / ".credentials.json").exists()
+        launcher._share_host_claude_state(home)  # must not raise
+        assert (home / "projects").is_symlink()          # created + linked
+        assert not (home / ".credentials.json").exists()  # no token to share
 
 
 class TestLaunchPlan:
@@ -141,6 +157,8 @@ class TestHostCliRouting:
 
         assert result.exit_code == 0, result.output
         assert captured["file"] == "claude"
-        assert captured["argv"] == ["claude"]
+        # Always --strict-mcp-config (even content-only) so global .claude.json servers never leak.
+        assert captured["argv"][0] == "claude"
+        assert "--strict-mcp-config" in captured["argv"]
         assert captured["ccd"] == str(paths.host_home("hostspike", "claude"))
         assert paths.is_built("hostspike", "claude")  # profile assembled during the launch itself

@@ -2793,18 +2793,45 @@ def _host_claude_source() -> Path:
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
 
 
-def _seed_host_credentials(home: Path) -> None:
-    """Copy claude's OWN auth from the host config dir into the stack home so the host-native launch
-    reuses the host login instead of forcing a re-auth. Only claude's credentials live in the config
-    dir; gh/git/ssh/cloud auth is untouched (those read their own host dirs). Best-effort: a missing
-    source is fine (user just logs in once in this stack home)."""
-    src = _host_claude_source()
-    if src.resolve() == home.resolve():
+# Session-state subdirs SHARED with the real ~/.claude — the host analog of the container's
+# bind-mounts (projects/file-history/tasks/session-env/todos), plus shell-snapshots.
+_HOST_SHARED_STATE = ("projects", "file-history", "todos", "tasks", "session-env", "shell-snapshots")
+
+
+def _relink(link: Path, target: Path) -> None:
+    """Point `link` at `target`, replacing whatever is there (a prior symlink, file, or dir)."""
+    if link.is_symlink() or link.exists():
+        if link.is_dir() and not link.is_symlink():
+            shutil.rmtree(link)
+        else:
+            link.unlink()
+    link.symlink_to(target)
+
+
+def _share_host_claude_state(home: Path) -> None:
+    """Wire the stack home to the real ~/.claude for the pieces that should be SHARED — the host
+    analog of the container's bind-mounts:
+      * session state (projects/file-history/todos/tasks/session-env/shell-snapshots) → SYMLINKED, so
+        transcripts, todos, and resumable sessions persist and also show up in your normal claude;
+      * the auth token (.credentials.json) → SYMLINKED, so a refresh in either place propagates —
+        one login everywhere, no stale copy.
+    The account snapshot (.claude.json) is COPIED (skips onboarding) so the stack's own writes don't
+    leak back into your global claude state. Config (skills/commands/rules/agents/CLAUDE.md/settings/
+    .mcp.json) stays isolated per-stack (copied from the profile by _materialize_host_home)."""
+    real = _host_claude_source()
+    if real.resolve() == home.resolve():
         return
-    for name in (".credentials.json", ".claude.json"):
-        s = src / name
-        if s.is_file():
-            shutil.copy2(s, home / name)
+    real.mkdir(parents=True, exist_ok=True)
+    for name in _HOST_SHARED_STATE:
+        src = real / name
+        src.mkdir(parents=True, exist_ok=True)  # ensure it exists so the symlink resolves
+        _relink(home / name, src)
+    cred = real / ".credentials.json"
+    if cred.exists():
+        _relink(home / ".credentials.json", cred)  # live token, shared
+    acct = real / ".claude.json"
+    if acct.is_file():
+        shutil.copy2(acct, home / ".claude.json")  # snapshot, isolated writes
 
 
 def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Path, list[str], Path]:
@@ -2815,7 +2842,7 @@ def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Pat
     prof = profile_dir(stack, harness)
     home = paths.host_home(stack, harness)
     _materialize_host_home(prof, home)
-    _seed_host_credentials(home)
+    _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
     argv = ["claude"]
     return home, argv, project_path
@@ -3070,12 +3097,12 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
 
     home, argv, cwd = _host_launch_plan(stack, harness, project_path)
 
-    if mcp_servers:
-        # Write the stack's servers directly into the host .mcp.json (content-only stripped it) and
-        # tell claude to use only it — per-stack MCP isolation via the config dir, no hub.
-        mcp_path = home / ".mcp.json"
-        mcp_path.write_text(json.dumps({"mcpServers": mcp_servers}, indent=2), encoding="utf-8")
-        argv = ["claude", "--mcp-config", str(mcp_path), "--strict-mcp-config"]
+    # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude load
+    # ONLY this file, so the copied .claude.json's global mcpServers never leak into an isolated
+    # stack (content-only included). With servers → the stack's set; without → an empty set.
+    mcp_path = home / ".mcp.json"
+    mcp_path.write_text(json.dumps({"mcpServers": mcp_servers or {}}, indent=2), encoding="utf-8")
+    argv = ["claude", "--mcp-config", str(mcp_path), "--strict-mcp-config"]
 
     _err.print(
         f"[green]host-native[/green]: CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
