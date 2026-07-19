@@ -46,6 +46,19 @@ setup:
     beads-server --stack <stack>` — `bd dolt push` cannot work from inside an agent (see the README).
   reference: https://github.com/gastownhall/beads
   condition: '! bd list >/dev/null 2>&1'
+  # Host-native (`launch --host`): harnessed auto-runs the init below. bd owns the shared-server
+  # daemon (auto-started, one server for all projects at ~/.beads/shared-server/); harnessed supplies
+  # the project IDENTITY — a unique, worktree-stable database (git-common-dir derived) and a
+  # representative issue prefix (asked once, defaulting to the repo name — NOT the folder, which bd's
+  # own default would use and collide on across bare+worktree repos).
+  config:
+    - key: database
+      derive: "{gcd_db}"                    # e.g. programming_personal_harnessed — unique + stable
+    - key: prefix
+      prompt: "Issue prefix for {repo}?"    # asked once, first launch
+      default: "{repo}"                     # e.g. harnessed — short, human-facing (on every issue ID)
+  run: >-
+    bd init --shared-server --database {config.database} --prefix {config.prefix} --init-if-missing
 
 # `agent-carnet` is also a shared, cross-session notebook (its own `rules:` entry tells the agent to
 # treat carnet as the SOLE memory store). Combining both gives the agent two competing persistent-

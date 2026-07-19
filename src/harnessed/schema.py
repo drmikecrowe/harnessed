@@ -549,6 +549,20 @@ def _parse_hooks_skip_harnesses(raw) -> list[str]:
 
 
 @dataclass
+class SetupConfigItem:
+    """One config value a recipe's executable setup needs (recipe.yaml `setup.config[]`).
+
+    Exactly one of `derive` / `prompt` drives it:
+      * derive — a template over repo-identity primitives ({repo}, {gcd_db}, …), resolved silently.
+      * prompt — asked on first launch (default is a template too); non-interactive → uses default.
+    The resolved value is referenced in `setup.run` as {config.<key>}."""
+    key: str
+    derive: str | None = None
+    prompt: str | None = None
+    default: str | None = None
+
+
+@dataclass
 class SetupSpec:
     """Harness-agnostic manual-setup note (recipe.yaml `setup:`) — a short summary + upstream
     reference URL. USER-FACING: shown host-side by the launcher at attach time
@@ -564,6 +578,11 @@ class SetupSpec:
     summary: str
     reference: str
     condition: str | None = None
+    # Executable, config-driven first-run setup (host-native). `config` items are resolved on first
+    # launch (derived from repo-identity primitives, or prompted), then substituted into `run`, which
+    # is executed once (gated by `condition`). See launcher._host_run_setups.
+    config: list["SetupConfigItem"] = field(default_factory=list)
+    run: str | None = None
 
 
 def _parse_setup(raw_setup) -> "SetupSpec | None":
@@ -581,16 +600,54 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
         raise SchemaError("recipe 'setup.reference' must be a non-empty string")
     if condition is not None and (not isinstance(condition, str) or not condition.strip()):
         raise SchemaError("recipe 'setup.condition', if set, must be a non-empty string")
-    unknown = sorted(set(raw_setup) - {"summary", "reference", "condition"})
+
+    run = raw_setup.get("run")
+    if run is not None and (not isinstance(run, str) or not run.strip()):
+        raise SchemaError("recipe 'setup.run', if set, must be a non-empty string")
+    config = _parse_setup_config(raw_setup.get("config"))
+
+    unknown = sorted(set(raw_setup) - {"summary", "reference", "condition", "run", "config"})
     if unknown:
         raise SchemaError(
-            f"recipe 'setup': unknown field(s) {unknown} — valid fields: summary, reference, condition"
+            f"recipe 'setup': unknown field(s) {unknown} — valid fields: "
+            "summary, reference, condition, run, config"
         )
     return SetupSpec(
         summary=summary.strip(),
         reference=reference.strip(),
         condition=condition.strip() if condition else None,
+        run=run.strip() if run else None,
+        config=config,
     )
+
+
+def _parse_setup_config(raw_config) -> list["SetupConfigItem"]:
+    if not raw_config:
+        return []
+    if not isinstance(raw_config, list):
+        raise SchemaError("recipe 'setup.config' must be a list of {key, derive|prompt} items")
+    out: list[SetupConfigItem] = []
+    for entry in raw_config:
+        if not isinstance(entry, dict):
+            raise SchemaError(f"recipe 'setup.config' entry {entry!r} must be a mapping")
+        key = str(entry.get("key", "")).strip()
+        derive = entry.get("derive")
+        prompt = entry.get("prompt")
+        default = entry.get("default")
+        if not key:
+            raise SchemaError(f"recipe 'setup.config' entry {entry!r} needs a non-empty 'key'")
+        if not (derive or prompt):
+            raise SchemaError(f"recipe 'setup.config' '{key}' needs 'derive' or 'prompt'")
+        unknown = sorted(set(entry) - {"key", "derive", "prompt", "default"})
+        if unknown:
+            raise SchemaError(f"recipe 'setup.config' '{key}': unknown field(s) {unknown}")
+        out.append(SetupConfigItem(
+            key=key,
+            derive=str(derive).strip() if derive else None,
+            prompt=str(prompt).strip() if prompt else None,
+            default=str(default) if default is not None else None,
+        ))
+    return out
 
 
 def _parse_conflicts(raw_conflicts) -> list[str]:
@@ -605,6 +662,18 @@ def _parse_conflicts(raw_conflicts) -> list[str]:
             raise SchemaError(f"recipe 'conflicts' entries must be non-empty strings, got {entry!r}")
         conflicts.append(entry.strip())
     return conflicts
+
+
+@dataclass
+class Provision:
+    """One host-native install step (recipe `provision:`). HOST-ONLY — the container image keeps its
+    Dockerfile; this is the parallel `launch --host` install so a recipe's stdio MCP child lands on
+    PATH without a container. `via` is the backend (only `uv-tool` today: `uv tool install`)."""
+    via: str
+    package: str
+    version: str
+    command: str       # the executable the install yields — used to skip when already present
+    python: str = ""   # optional: uv tool install -p <python>
 
 
 @dataclass
@@ -639,6 +708,9 @@ class Recipe:
     # `pulumi@3.140.0`). MUST be pinned — a floating `@latest`/bare name is rejected, same as a
     # Dockerfile pin. Lets a recipe add a CLI + open its egress with NO Dockerfile. See egress.md.
     tools: list[str] = field(default_factory=list)
+    # Host-native install steps (recipe.yaml `provision:`) — see Provision. Container-independent:
+    # the derived image still installs via its Dockerfile; this is only for `launch --host`.
+    provision: list[Provision] = field(default_factory=list)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
     # The catalog ref a stack used to load this recipe — `beads/stealth` for a variety, else the
     # plain name. Carries the FAMILY (the part before the slash), which _check_recipe_conflicts uses
@@ -802,7 +874,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
     "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks", "setup", "egress", "tools",  # typed
+    "conflicts", "hooks", "setup", "egress", "tools", "provision",  # typed
     "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -860,6 +932,41 @@ def _parse_egress(raw_egress, manifest: Path) -> list[str]:
     return out
 
 
+_PROVISION_BACKENDS = frozenset({"uv-tool", "npm"})
+
+
+def _parse_provision(raw_provision, manifest: Path) -> list["Provision"]:
+    """Parse a recipe's `provision:` list into pinned host-install steps."""
+    if not raw_provision:
+        return []
+    if not isinstance(raw_provision, list):
+        raise SchemaError(f"{manifest}: 'provision' must be a list of install steps")
+    out: list[Provision] = []
+    for entry in raw_provision:
+        if not isinstance(entry, dict):
+            raise SchemaError(f"{manifest}: provision entry {entry!r} must be a mapping")
+        via = str(entry.get("via", "")).strip()
+        if via not in _PROVISION_BACKENDS:
+            raise SchemaError(
+                f"{manifest}: provision entry has via={via!r}; supported: "
+                f"{', '.join(sorted(_PROVISION_BACKENDS))}"
+            )
+        package = str(entry.get("package", "")).strip()
+        version = str(entry.get("version", "")).strip()
+        command = str(entry.get("command", "")).strip()
+        if not (package and version and command):
+            raise SchemaError(
+                f"{manifest}: provision entry {entry!r} needs package, version, and command"
+            )
+        if _FLOATING_REF_RE.search(version) or version in {"latest", "*"}:
+            raise SchemaError(
+                f"{manifest}: provision version {version!r} must be an explicit pin (no @latest/*)"
+            )
+        out.append(Provision(via=via, package=package, version=version, command=command,
+                             python=str(entry.get("python", "")).strip()))
+    return out
+
+
 def _parse_tools(raw_tools, manifest: Path) -> list[str]:
     """Parse a recipe's `tools:` list into pinned mise tool specs (e.g. 'pulumi@3.140.0')."""
     if not raw_tools:
@@ -907,6 +1014,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         setup=_parse_setup(raw.get("setup")),
         egress=_parse_egress(raw.get("egress"), manifest),
         tools=_parse_tools(raw.get("tools"), manifest),
+        provision=_parse_provision(raw.get("provision"), manifest),
         root=recipe_dir,
         ref=ref or raw["name"],
         raw=raw,

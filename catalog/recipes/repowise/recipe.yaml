@@ -57,5 +57,12 @@ mcp:
     - name: repowise
       command: repowise
       args: [mcp, --transport, stdio]
+
+# Host-native install (`launch --host`) — mirrors the Dockerfile's `uv tool install repowise`.
+provision:
+  - via: uv-tool
+    package: repowise
+    version: "0.31.0"
+    command: repowise
       # transport: stdio (schema default). hatago spawns this in-container with cwd = the project, so
       # `repowise mcp` finds the project's `.repowise/` by walking up from there.

@@ -63,6 +63,22 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "provision": {
+      "description": "Host-native install steps for `launch --host` (container-independent — the derived image still installs via its Dockerfile). Puts a recipe's stdio-MCP tool on PATH so the harness can spawn it without a container. Backend `uv-tool` runs `uv tool install`; `npm` runs `npm install -g`.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["via", "package", "version", "command"],
+        "properties": {
+          "via": { "type": "string", "enum": ["uv-tool", "npm"] },
+          "package": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "command": { "type": "string", "minLength": 1 },
+          "python": { "type": "string" }
+        }
+      }
+    },
     "plugins": {
       "description": "Vendored Claude plugins (forward field, design §11). Either a marketplace+plugin reference or a url+sha[+subdir] reference.",
       "type": "array",
@@ -101,7 +117,23 @@
       "properties": {
         "summary": { "description": "One-line, harness-agnostic setup note (what the user needs to do).", "type": "string", "minLength": 1 },
         "reference": { "description": "Upstream docs/GitHub URL the user can consult for details.", "type": "string", "format": "uri", "minLength": 1 },
-        "condition": { "description": "Optional shell command that exits 0 when the manual step is STILL needed (e.g. `! bd list`). Evaluated host-side in the project directory on every launch: exit 0 shows the notice, non-zero (satisfied) suppresses it. A recipe with no condition shows once per project until the user dismisses it; the dismiss flag gates only unconditional notices, conditional ones always follow their condition.", "type": "string", "minLength": 1 }
+        "condition": { "description": "Optional shell command that exits 0 when the manual step is STILL needed (e.g. `! bd list`). Evaluated host-side in the project directory on every launch: exit 0 shows the notice, non-zero (satisfied) suppresses it. A recipe with no condition shows once per project until the user dismisses it; the dismiss flag gates only unconditional notices, conditional ones always follow their condition.", "type": "string", "minLength": 1 },
+        "run": { "description": "Executable first-run setup command (host-native `launch --host`). Resolved with repo-identity primitives ({repo}, {gcd_db}, …) and {config.<key>} values, then run once when `condition` is satisfied. Use for setup harnessed CAN automate (e.g. `bd init --shared-server --database {config.database} --prefix {config.prefix}`).", "type": "string", "minLength": 1 },
+        "config": {
+          "description": "Config values `run` needs, resolved on first launch. Each is either derived (silent, from repo-identity primitives) or prompted (asked once; non-interactive uses the default). Referenced in `run` as {config.<key>}.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "derive": { "description": "Template over repo-identity primitives ({repo}, {gcd_db}, {gcd_hash}). Resolved silently.", "type": "string", "minLength": 1 },
+              "prompt": { "description": "Question asked on first launch (templated). Non-interactive → uses default.", "type": "string", "minLength": 1 },
+              "default": { "description": "Default answer for the prompt (templated).", "type": "string" }
+            }
+          }
+        }
       }
     },
     "deps": {

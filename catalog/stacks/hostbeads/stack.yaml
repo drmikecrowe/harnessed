@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# Stack: hostbeads — host-native beads DAEMON tracer (team placement, .beads in-repo).
+# Guinea pig for `launch --host` service supervision: one dolt sql-server per project, tracked.
+name: hostbeads
+instructions: hostbeads tracer — beads-server runs on the host as a per-project dolt sql-server.
+recipes: [beads/team]
+services: [beads-server]

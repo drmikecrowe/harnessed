@@ -11,6 +11,7 @@ Replaces the bash launcher (harnessed + lib/*.sh) with a Typer CLI that:
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shlex
@@ -2761,6 +2762,331 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
 
 # --- Typer commands ------------------------------------------------------------
 
+# Host-native content-only backend subdirs to materialize from the assembled profile's .claude tree.
+_HOST_HARNESS = "claude"  # spike scope: only claude consumes CLAUDE_CONFIG_DIR directly here.
+
+
+def _materialize_host_home(prof: Path, home: Path) -> None:
+    """Copy the assembled profile's CONTENT layer into a host CLAUDE_CONFIG_DIR (`home`).
+
+    Content-only: the `.claude/*` tree (skills/commands/rules/agents + CLAUDE.md) plus the
+    settings.json floor — exactly what the container bind-mounts onto ~/.claude, minus the
+    container-only artifacts (.mcp.json, hatago.config.json, the derived Dockerfile) which wire the
+    MCP hub that does not exist host-side. The home is rebuilt from scratch each launch so a removed
+    recipe's files never linger.
+    """
+    if home.exists():
+        shutil.rmtree(home)
+    home.mkdir(parents=True)
+    src_claude = prof / ".claude"
+    if src_claude.is_dir():
+        # Contents of .claude/ become the config-dir root: .claude/skills -> <home>/skills, etc.
+        shutil.copytree(src_claude, home, dirs_exist_ok=True)
+    settings = prof / "settings.json"
+    if settings.is_file():
+        shutil.copy2(settings, home / "settings.json")
+
+
+def _host_claude_source() -> Path:
+    """The host's live claude config dir — source for auth seeding. Honors a CLAUDE_CONFIG_DIR the
+    host may already run under; else the ~/.claude default."""
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
+
+
+# Session-state subdirs SHARED with the real ~/.claude — the host analog of the container's
+# bind-mounts (projects/file-history/tasks/session-env/todos), plus shell-snapshots.
+_HOST_SHARED_STATE = ("projects", "file-history", "todos", "tasks", "session-env", "shell-snapshots")
+
+
+def _relink(link: Path, target: Path) -> None:
+    """Point `link` at `target`, replacing whatever is there (a prior symlink, file, or dir)."""
+    if link.is_symlink() or link.exists():
+        if link.is_dir() and not link.is_symlink():
+            shutil.rmtree(link)
+        else:
+            link.unlink()
+    link.symlink_to(target)
+
+
+def _share_host_claude_state(home: Path) -> None:
+    """Wire the stack home to the real ~/.claude for the pieces that should be SHARED — the host
+    analog of the container's bind-mounts:
+      * session state (projects/file-history/todos/tasks/session-env/shell-snapshots) → SYMLINKED, so
+        transcripts, todos, and resumable sessions persist and also show up in your normal claude;
+      * the auth token (.credentials.json) → SYMLINKED, so a refresh in either place propagates —
+        one login everywhere, no stale copy.
+    The account snapshot (.claude.json) is COPIED (skips onboarding) so the stack's own writes don't
+    leak back into your global claude state. Config (skills/commands/rules/agents/CLAUDE.md/settings/
+    .mcp.json) stays isolated per-stack (copied from the profile by _materialize_host_home)."""
+    real = _host_claude_source()
+    if real.resolve() == home.resolve():
+        return
+    real.mkdir(parents=True, exist_ok=True)
+    for name in _HOST_SHARED_STATE:
+        src = real / name
+        src.mkdir(parents=True, exist_ok=True)  # ensure it exists so the symlink resolves
+        _relink(home / name, src)
+    cred = real / ".credentials.json"
+    if cred.exists():
+        _relink(home / ".credentials.json", cred)  # live token, shared
+    # .claude.json (account/onboarding) lives NEXT TO the config dir, not inside it: at
+    # $CLAUDE_CONFIG_DIR/.claude.json when that's set, else $HOME/.claude.json — NOT ~/.claude/.claude.json.
+    env_ccd = os.environ.get("CLAUDE_CONFIG_DIR")
+    acct = (Path(env_ccd) if env_ccd else Path.home()) / ".claude.json"
+    if acct.is_file():
+        shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
+
+
+def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Path, list[str], Path]:
+    """Materialize the host home (+ seed auth) and return (home, argv, cwd) WITHOUT exec'ing.
+
+    Split out from _launch_host so the plan is verifiable in tests without handing over the TTY.
+    """
+    prof = profile_dir(stack, harness)
+    home = paths.host_home(stack, harness, project_path)
+    _materialize_host_home(prof, home)
+    _share_host_claude_state(home)
+    # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
+    argv = ["claude"]
+    return home, argv, project_path
+
+
+def _gcd_db_name(project_path: Path) -> str:
+    """Derive a unique, worktree-stable beads database name from the repo's git-common-dir:
+    dirname(git-common-dir), relative-to-$HOME, lowercase, separators → '_', dropping LEADING
+    components until ≤64 chars (deepest/most-specific kept); hash-suffix if even the tail overflows.
+    Every worktree of a repo → the same name; different repos never collide."""
+    gcd = paths.git_common_dir(project_path) or Path(project_path)
+    root = gcd.parent  # dirname(git-common-dir) = the dir containing .bare/.git
+    home = Path.home()
+    try:
+        parts = list(root.relative_to(home).parts)
+    except ValueError:
+        parts = [p for p in root.parts if p not in ("/", "")]
+    parts = [re.sub(r"[^a-z0-9]+", "_", p.lower()).strip("_") for p in parts]
+    parts = [p for p in parts if p]
+    while len(parts) > 1 and len("_".join(parts)) > 64:
+        parts.pop(0)  # drop leading (shallowest) first, keep the specific tail
+    name = "_".join(parts) or "beads"
+    if len(name) > 64:
+        name = name[:55].rstrip("_") + "_" + hashlib.sha1(str(root).encode()).hexdigest()[:8]
+    return name
+
+
+def _repo_primitives(project_path: Path) -> dict[str, str]:
+    """Repo-identity substitution values for a recipe's `setup.config` derive/prompt templates."""
+    gcd = paths.git_common_dir(project_path) or Path(project_path)
+    repo = gcd.parent.name if (gcd.name in (".bare", ".git") or gcd.name.endswith(".git")) else gcd.name
+    return {
+        "repo": re.sub(r"[^A-Za-z0-9_-]+", "-", repo).strip("-") or "repo",
+        "gcd_db": _gcd_db_name(project_path),
+        "gcd_hash": hashlib.sha1(str(gcd).encode()).hexdigest()[:8],
+        "project_hash": paths.project_hash(project_path),
+    }
+
+
+def _subst(template: str, values: dict[str, str]) -> str:
+    """Substitute {key} placeholders from `values`; leave unknown {…} intact."""
+    return re.sub(r"\{([a-zA-Z0-9_.]+)\}", lambda m: values.get(m.group(1), m.group(0)), template)
+
+
+def _resolve_setup_config(setup, primitives: dict[str, str], *, interactive: bool) -> dict[str, str]:
+    """Resolve each `setup.config` item → value: derive (silent) or prompt (asked; default when
+    non-interactive). Returns primitives + {config.<key>: value}, ready for _subst into `run`."""
+    values = dict(primitives)
+    for item in setup.config:
+        if item.derive is not None:
+            val = _subst(item.derive, values)
+        else:
+            default = _subst(item.default or "", values)
+            val = typer.prompt(_subst(item.prompt, values), default=default) \
+                if (interactive and item.prompt) else default
+        values[f"config.{item.key}"] = val
+    return values
+
+
+def _host_run_setups(stack: str, project_path: Path) -> None:
+    """Run each recipe's executable `setup.run` (host-native first-run setup) whose `condition` is
+    satisfied. This REPLACES per-launch daemon management: for beads, `run` is
+    `bd init --shared-server …` and bd itself auto-manages the shared dolt server — harnessed only
+    supplies the project identity (unique database, chosen prefix)."""
+    _, recipes = load_stack_with_recipes(None, stack)
+    primitives: dict[str, str] | None = None
+    for recipe in recipes:
+        setup = recipe.setup
+        if not (setup and setup.run):
+            continue
+        # condition gates first-run: exit 0 == still needed (run it); non-zero == already done (skip).
+        if setup.condition and subprocess.run(
+            ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True
+        ).returncode != 0:
+            continue
+        if primitives is None:
+            primitives = _repo_primitives(project_path)
+        values = _resolve_setup_config(setup, primitives, interactive=sys.stdin.isatty())
+        cmd = _subst(setup.run, values)
+        _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {cmd}")
+        if subprocess.run(["bash", "-lc", cmd], cwd=str(project_path)).returncode != 0:
+            _err.print(f"[bold red]error:[/bold red] setup for '{recipe.name}' failed")
+            raise typer.Exit(1)
+
+
+def _host_provision(stack: str) -> list[str]:
+    """Install each recipe's host `provision:` tools into a STACK-SCOPED location and return the bin
+    dir(s) to prepend to PATH — so hatago's stdio children (serena, repowise, …) resolve host-native.
+
+    Idempotent: skips a tool whose command already exists in the stack bin dir (installs are slow).
+    Stack-scoped (not global) so two stacks can pin different versions without clobbering each other.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    entries = [p for r in recipes for p in r.provision]
+    if not entries:
+        return []
+    tools_root = paths.xdg_data_home() / "harnessed" / "tools" / stack
+    bin_dir = tools_root / "bin"
+    uv_tool_dir = tools_root / "uv-tools"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    for p in entries:
+        if (bin_dir / p.command).exists():
+            continue  # already provisioned
+        env = dict(os.environ)
+        if p.via == "uv-tool":
+            tool = "uv"
+            cmd = ["uv", "tool", "install", *(["-p", p.python] if p.python else []),
+                   f"{p.package}=={p.version}"]
+            env["UV_TOOL_DIR"] = str(uv_tool_dir)
+            env["UV_TOOL_BIN_DIR"] = str(bin_dir)
+        elif p.via == "npm":
+            tool = "npm"
+            cmd = ["npm", "install", "-g", f"{p.package}@{p.version}"]
+            env["npm_config_prefix"] = str(tools_root)  # → executables land in <tools_root>/bin
+        else:
+            continue
+        if shutil.which(tool) is None:
+            _err.print(
+                f"[bold red]error:[/bold red] host provisioning needs '{tool}' on PATH "
+                f"(to install {p.package} {p.version})"
+            )
+            raise typer.Exit(1)
+        _err.print(f"[blue][INFO][/blue] provisioning {p.package} {p.version} via {p.via} (host, stack-scoped) ...")
+        if subprocess.run(cmd, env=env).returncode != 0:
+            _err.print(f"[bold red]error:[/bold red] provisioning {p.package} failed")
+            raise typer.Exit(1)
+    return [str(bin_dir)]
+
+
+def _host_native_mcp(stack: str) -> Optional[dict]:
+    """Resolve the stack's MCP servers into a NATIVE claude `.mcp.json` `mcpServers` dict — no hatago
+    hub. claude spawns the stdio servers itself (cwd=project, so `--project-from-cwd` resolves) and
+    connects url servers directly. Returns None when the stack declares no MCP servers.
+
+    hatago is DEFERRED: it returns later as an opt-in curation layer (per-server tool filtering via
+    @drmikecrowe/hatago-mcp-hub), fronted by a `harnessed mcp curate` utility — not a required bus.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    servers = _merge_servers(recipes)
+    if not servers:
+        return None
+    out: dict = {}
+    for s in servers:
+        if s.is_stdio_child:
+            cmd = s.command
+            if cmd and shutil.which(cmd) is None:
+                _err.print(
+                    f"[yellow]warn:[/yellow] MCP server '{s.name}' needs '{cmd}' on PATH — "
+                    "claude will fail to start it until it's installed (add a recipe `provision:`)"
+                )
+            entry: dict = {"command": cmd, "args": list(s.args)}
+            if s.env:
+                entry["env"] = dict(s.env)
+            out[s.name] = entry
+        elif s.url or s.url_env:
+            # ${VAR} — claude expands env vars in .mcp.json; the value stays off disk.
+            entry = {"type": s.transport, "url": f"${{{s.url_env}}}" if s.url_env else s.url}
+            if s.headers:
+                entry["headers"] = dict(s.headers)
+            out[s.name] = entry
+        else:
+            _err.print(
+                f"[yellow]warn:[/yellow] MCP server '{s.name}' is service-backed — not supported "
+                "host-native yet (skipped)"
+            )
+    return out or None
+
+
+def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = False) -> None:
+    """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
+    start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
+    the host's own auth.
+
+    `rm` switches from exec (persist the daemons, clean TTY handoff) to supervise (fork claude, wait,
+    then stop the daemons THIS launch started)."""
+    if harness != _HOST_HARNESS:
+        _err.print(
+            f"[bold red]error:[/bold red] --host currently supports only '{_HOST_HARNESS}' "
+            f"(got '{harness}') — content-only spike"
+        )
+        raise typer.Exit(1)
+
+    project_path = Path(path).resolve() if path else Path.cwd()
+    if not project_path.is_dir():
+        _err.print(f"[bold red]error:[/bold red] project directory does not exist: {project_path}")
+        raise typer.Exit(1)
+
+    stack_dir = paths.find_in_catalog("stacks", stack)
+    if not (stack_dir / "stack.yaml").is_file():
+        _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir / 'stack.yaml'})")
+        raise typer.Exit(1)
+
+    # Assemble IN-PROCESS every launch — host-native, emit-only, NO podman and NO image build. This is
+    # what keeps --host container-free end to end: unlike `harnessed build` (which also builds a
+    # multi-GB image), we only need the profile's content layer. Assembly is sub-second, so a
+    # rebuild-per-launch also sidesteps staleness bookkeeping entirely. `build_root` is the dir that
+    # CONTAINS profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
+    _err.print(f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ...")
+    try:
+        assemble(None, stack, paths.profiles_root().parent, harness, strict=True)
+    except (SchemaError, CollisionError) as exc:
+        _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
+        raise typer.Exit(1)
+
+    # Provision host stdio-MCP tools onto PATH BEFORE recipe setups + native MCP, so claude can spawn
+    # them (and the child-command presence check passes). Mutating this process's PATH is fine — it's
+    # dedicated to this launch, and claude (env built from os.environ) inherits it.
+    prov_bins = _host_provision(stack)
+    if prov_bins:
+        os.environ["PATH"] = os.pathsep.join([*prov_bins, os.environ.get("PATH", "")])
+    # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
+    # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
+    _host_run_setups(stack, project_path)
+    # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
+    # sees just-provisioned tools.
+    mcp_servers = _host_native_mcp(stack)
+
+    home, argv, cwd = _host_launch_plan(stack, harness, project_path)
+
+    # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude load
+    # ONLY this file, so the copied .claude.json's global mcpServers never leak into an isolated
+    # stack (content-only included). With servers → the stack's set; without → an empty set.
+    mcp_path = home / ".mcp.json"
+    mcp_path.write_text(json.dumps({"mcpServers": mcp_servers or {}}, indent=2), encoding="utf-8")
+    argv = ["claude", "--mcp-config", str(mcp_path), "--strict-mcp-config"]
+
+    _err.print(
+        f"[green]host-native[/green]: CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
+        "— no container"
+    )
+    env = dict(os.environ)
+    env["CLAUDE_CONFIG_DIR"] = str(home)
+    os.chdir(cwd)
+
+    if not rm:
+        # execvpe REPLACES this process — clean TTY handoff to claude on the host.
+        os.execvpe(argv[0], argv, env)  # never returns
+    # --rm: supervise (fork claude, wait). No host daemons to tear down — bd owns its shared server.
+    subprocess.run(argv, env=env)
+
+
 @app.command()
 def launch(
     stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
@@ -2783,6 +3109,11 @@ def launch(
         False, "--shell",
         help="Open an interactive bash shell in the container instead of starting the agent",
     ),
+    host: bool = typer.Option(
+        False, "--host",
+        help="Content-only host-native run: materialize the profile into a host CLAUDE_CONFIG_DIR "
+             "and exec the harness on the host (no podman, no MCP). Spike — claude only.",
+    ),
 ) -> None:
     """Launch an isolated harness stack against a project directory."""
     if harness not in HARNESS_CONFIG_DIR:
@@ -2791,6 +3122,13 @@ def launch(
             f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
         )
         raise typer.Exit(1)
+
+    # Host-native content-only backend: fully self-contained and podman-free (never touches
+    # _runtime()/images/mounts). Diverts before any container logic — the whole point is to run
+    # without a container. See _launch_host. --rm → supervise + stop host daemons on exit.
+    if host:
+        _launch_host(stack, harness, path, rm=rm)
+        return
     if no_firewall:
         os.environ["NO_FIREWALL"] = "true"
 
