@@ -2843,7 +2843,7 @@ def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Pat
     Split out from _launch_host so the plan is verifiable in tests without handing over the TTY.
     """
     prof = profile_dir(stack, harness)
-    home = paths.host_home(stack, harness)
+    home = paths.host_home(stack, harness, project_path)
     _materialize_host_home(prof, home)
     _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.

@@ -240,9 +240,15 @@ def host_homes_root() -> Path:
     return xdg_data_home() / "harnessed" / "home"
 
 
-def host_home(stack: str, harness: str) -> Path:
-    """Absolute host CLAUDE_CONFIG_DIR for `stack` + `harness` (host-native launch backend)."""
-    return host_homes_root() / stack / harness
+def host_home(stack: str, harness: str, project_path: str | Path) -> Path:
+    """Absolute host CLAUDE_CONFIG_DIR for `stack` + `harness` + project (host-native launch backend).
+
+    Keyed by project (via `project_hash`, matching the container `instance_name`) so concurrent
+    launches of the SAME stack in DIFFERENT projects get their own config dir — a second launch's
+    materialize/rmtree can't yank the config dir out from under the first, and each project keeps its
+    own `.claude.json` (MCP approvals, folder trust) instead of sharing one clobbered copy.
+    """
+    return host_homes_root() / stack / harness / project_hash(project_path)
 
 
 def project_hash(project_path: str | Path) -> str:

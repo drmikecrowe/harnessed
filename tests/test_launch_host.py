@@ -29,13 +29,21 @@ def _fake_profile(prof: Path) -> None:
 
 
 class TestHostHomePaths:
-    def test_host_home_uses_xdg_data_home(self, monkeypatch, tmp_path):
+    def test_host_home_uses_xdg_data_home_and_is_project_keyed(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        assert paths.host_home("s", "claude") == tmp_path / "harnessed" / "home" / "s" / "claude"
+        proj = tmp_path / "proj"
+        assert paths.host_home("s", "claude", proj) == (
+            tmp_path / "harnessed" / "home" / "s" / "claude" / paths.project_hash(proj)
+        )
+
+    def test_host_home_differs_per_project(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        # Same stack, different projects → different config dirs (no cross-project clobber).
+        assert paths.host_home("s", "claude", tmp_path / "a") != paths.host_home("s", "claude", tmp_path / "b")
 
     def test_host_home_distinct_from_profile(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        assert paths.host_home("s", "claude") != paths.profile_dir("s", "claude")
+        assert paths.host_home("s", "claude", tmp_path) != paths.profile_dir("s", "claude")
 
 
 class TestMaterialize:
@@ -122,7 +130,7 @@ class TestLaunchPlan:
 
         home, argv, cwd = launcher._host_launch_plan("s", "claude", tmp_path)
 
-        assert home == paths.host_home("s", "claude")
+        assert home == paths.host_home("s", "claude", tmp_path)
         assert argv == ["claude"]  # content-only: no --mcp-config
         assert cwd == tmp_path
         assert (home / "skills" / "greet-helper" / "SKILL.md").is_file()
@@ -174,5 +182,5 @@ class TestHostCliRouting:
         # Always --strict-mcp-config (even content-only) so global .claude.json servers never leak.
         assert captured["argv"][0] == "claude"
         assert "--strict-mcp-config" in captured["argv"]
-        assert captured["ccd"] == str(paths.host_home("hostspike", "claude"))
+        assert captured["ccd"] == str(paths.host_home("hostspike", "claude", tmp_path.resolve()))
         assert paths.is_built("hostspike", "claude")  # profile assembled during the launch itself
