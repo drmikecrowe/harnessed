@@ -2843,11 +2843,18 @@ def _relink(link: Path, target: Path) -> None:
     link.symlink_to(target)
 
 
-def _rescue_host_credentials(home: Path) -> None:
-    """Promote a token the LAST session refreshed back into the shared `~/.claude` copy.
+def _rescue_host_credentials() -> None:
+    """Promote the newest refreshed token found in ANY host home into the shared `~/.claude` copy.
 
-    Must run BEFORE `_materialize_host_home`, which `shutil.rmtree`s `home` — otherwise the only
-    fresh copy of the token is deleted.
+    Must run BEFORE `_materialize_host_home`, which `shutil.rmtree`s the home being launched —
+    otherwise that home's copy of the token is deleted before it can be rescued.
+
+    Scans EVERY home, not just the one being launched, because a config dir is keyed
+    `<stack>/<harness>/<project>`: one stack open in three projects has three of them. Rescuing only
+    the launching home would converge lazily — a token refreshed in project A would not reach the
+    shared copy until project A itself relaunched, so launching project B first would still restore
+    a stale token and force a login. Scanning all of them is what makes "one login everywhere" true
+    across stacks and projects rather than only within one.
 
     `_share_host_claude_state` symlinks `home/.credentials.json` at the real `~/.claude` one so a
     refresh propagates and one login serves everywhere. That holds only while the symlink survives.
@@ -2863,15 +2870,27 @@ def _rescue_host_credentials(home: Path) -> None:
     before the wipe. Self-healing — no exit hook, which matters because `_launch_host` hands the
     process to `os.execvpe` and never regains control.
     """
-    cred = home / ".credentials.json"
-    # A surviving symlink means the refresh propagated live; nothing to rescue.
-    if cred.is_symlink() or not cred.is_file():
+    root = paths.host_homes_root()
+    if not root.is_dir():
+        return
+    # Explicit depths, never `**`: a config dir contains SYMLINKED state dirs (projects/, tasks/, …)
+    # pointing back into ~/.claude, and a recursive walk risks following them out of the tree.
+    # `*/*/*` is the current <stack>/<harness>/<project> layout; `*/*` catches pre-project-keying
+    # homes still on disk.
+    newest: Path | None = None
+    for cand in (*root.glob("*/*/*/.credentials.json"), *root.glob("*/*/.credentials.json")):
+        # A surviving symlink means that home's refresh propagated live — it IS the shared copy.
+        if cand.is_symlink() or not cand.is_file():
+            continue
+        if newest is None or cand.stat().st_mtime > newest.stat().st_mtime:
+            newest = cand
+    if newest is None:
         return
     real = _host_claude_source() / ".credentials.json"
-    if real.is_file() and real.stat().st_mtime >= cred.stat().st_mtime:
+    if real.is_file() and real.stat().st_mtime >= newest.stat().st_mtime:
         return  # shared copy already at least as fresh — never move a token backwards
     real.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(cred, real)
+    shutil.copy2(newest, real)
     real.chmod(0o600)
 
 
@@ -2913,7 +2932,7 @@ def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Pat
     home = paths.host_home(stack, harness, project_path)
     # BEFORE the materialize: it rmtree's `home`, and a token the last session refreshed lives in
     # there as a regular file that replaced our symlink (bd harnessed-8px.10).
-    _rescue_host_credentials(home)
+    _rescue_host_credentials()
     _materialize_host_home(prof, home)
     _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.

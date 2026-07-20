@@ -114,67 +114,76 @@ class TestShareClaudeState:
         launcher._share_host_claude_state(home)
         assert (home / ".claude.json").read_text() == '{"account":"real"}'
 
-    def _creds_setup(self, monkeypatch, tmp_path, *, real_body, stack_body, stack_newer):
-        """A stack home whose .credentials.json is a REGULAR file — i.e. a token refresh already
-        replaced the symlink `_share_host_claude_state` had put there."""
+    def _shared(self, monkeypatch, tmp_path, body=None, mtime=None):
+        """Point HOME at a fake home and optionally seed the SHARED ~/.claude credential."""
         fake_home = tmp_path / "home"
-        (fake_home / ".claude").mkdir(parents=True)
-        real = fake_home / ".claude" / ".credentials.json"
-        real.write_text(real_body)
+        (fake_home / ".claude").mkdir(parents=True, exist_ok=True)
         monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
         monkeypatch.setenv("HOME", str(fake_home))
-        home = tmp_path / "stackhome"
-        home.mkdir()
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        real = fake_home / ".claude" / ".credentials.json"
+        if body is not None:
+            real.write_text(body)
+            os.utime(real, (mtime, mtime))
+        return real
+
+    def _stack_cred(self, stack, project, body, mtime, *, symlink_to=None):
+        """A per-(stack, harness, project) config dir holding a credential file. A REGULAR file is
+        what a token refresh leaves behind, having replaced the symlink we created."""
+        home = paths.host_homes_root() / stack / "claude" / project
+        home.mkdir(parents=True, exist_ok=True)
         cred = home / ".credentials.json"
-        cred.write_text(stack_body)
-        old, new = (100_000, 200_000) if stack_newer else (200_000, 100_000)
-        os.utime(real, (old, old))
-        os.utime(cred, (new, new))
-        return home, real
+        if symlink_to is not None:
+            cred.symlink_to(symlink_to)
+            return home
+        cred.write_text(body)
+        os.utime(cred, (mtime, mtime))
+        return home
 
     def test_refreshed_token_is_promoted_before_the_wipe(self, monkeypatch, tmp_path):
         """bd harnessed-8px.10: Claude rewrites .credentials.json on refresh, and the rewrite
         REPLACES our symlink with a regular file — so the fresh token sits in the stack config dir
         while the shared ~/.claude copy goes stale. _materialize_host_home then rmtree's the config
         dir and we re-link to the stale copy, logging the user out every token lifetime."""
-        home, real = self._creds_setup(
-            monkeypatch, tmp_path,
-            real_body='{"token":"stale"}', stack_body='{"token":"fresh"}', stack_newer=True,
-        )
-        launcher._rescue_host_credentials(home)
+        real = self._shared(monkeypatch, tmp_path, '{"token":"stale"}', 100_000)
+        self._stack_cred("s", "proj1", '{"token":"fresh"}', 200_000)
+        launcher._rescue_host_credentials()
         assert real.read_text() == '{"token":"fresh"}'
         assert oct(real.stat().st_mode)[-3:] == "600"  # never widen a credential file
 
+    def test_rescues_across_stacks_and_projects_not_just_the_launching_one(
+        self, monkeypatch, tmp_path
+    ):
+        """A config dir is keyed <stack>/<harness>/<project>, so one stack open in three projects has
+        three. Rescuing only the launching home would converge lazily: a token refreshed in project A
+        would not reach the shared copy until project A relaunched, so launching project B first
+        would still restore a stale token and force a login."""
+        real = self._shared(monkeypatch, tmp_path, '{"token":"stale"}', 100_000)
+        self._stack_cred("stack-a", "proj1", '{"token":"older"}', 150_000)
+        self._stack_cred("stack-b", "proj2", '{"token":"newest"}', 300_000)
+        self._stack_cred("stack-b", "proj3", '{"token":"middle"}', 200_000)
+        launcher._rescue_host_credentials()
+        assert real.read_text() == '{"token":"newest"}'
+
     def test_older_stack_token_never_overwrites_a_newer_shared_one(self, monkeypatch, tmp_path):
         """A stack home left over from days ago must not drag the shared token backwards."""
-        home, real = self._creds_setup(
-            monkeypatch, tmp_path,
-            real_body='{"token":"current"}', stack_body='{"token":"ancient"}', stack_newer=False,
-        )
-        launcher._rescue_host_credentials(home)
+        real = self._shared(monkeypatch, tmp_path, '{"token":"current"}', 200_000)
+        self._stack_cred("s", "proj1", '{"token":"ancient"}', 100_000)
+        launcher._rescue_host_credentials()
         assert real.read_text() == '{"token":"current"}'
 
-    def test_intact_symlink_is_left_alone(self, monkeypatch, tmp_path):
-        """The symlink surviving means the refresh propagated live — copying would be a no-op at
-        best and, since the link resolves TO the target, a self-copy at worst."""
-        fake_home = tmp_path / "home"
-        (fake_home / ".claude").mkdir(parents=True)
-        real = fake_home / ".claude" / ".credentials.json"
-        real.write_text('{"token":"shared"}')
-        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-        monkeypatch.setenv("HOME", str(fake_home))
-        home = tmp_path / "stackhome"
-        home.mkdir()
-        (home / ".credentials.json").symlink_to(real)
-        launcher._rescue_host_credentials(home)  # must not raise
+    def test_intact_symlink_is_not_a_rescue_candidate(self, monkeypatch, tmp_path):
+        """A surviving symlink means that home's refresh propagated live — it already IS the shared
+        copy, so treating it as a candidate would be a self-copy."""
+        real = self._shared(monkeypatch, tmp_path, '{"token":"shared"}', 100_000)
+        self._stack_cred("s", "proj1", None, None, symlink_to=real)
+        launcher._rescue_host_credentials()  # must not raise
         assert real.read_text() == '{"token":"shared"}'
 
     def test_first_ever_launch_has_nothing_to_rescue(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "fresh"))
-        home = tmp_path / "stackhome"
-        home.mkdir()
-        launcher._rescue_host_credentials(home)  # must not raise
-        assert not (tmp_path / "fresh" / ".credentials.json").exists()
+        real = self._shared(monkeypatch, tmp_path)
+        launcher._rescue_host_credentials()  # no homes on disk at all — must not raise
+        assert not real.exists()
 
     def test_plan_rescues_before_materialize_wipes_the_home(self, monkeypatch, tmp_path):
         """The ordering IS the fix: run the rescue after the rmtree and the fresh token is gone."""
