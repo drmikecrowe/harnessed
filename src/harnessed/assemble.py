@@ -25,6 +25,7 @@ from .schema import (
     Stack,
     load_service,
     load_stack_with_recipes,
+    validate_container_only_declared,
     validate_init_no_exit,
     validate_no_raw_npm,
     validate_install_script,
@@ -124,7 +125,10 @@ def assemble(
         validate_install_script(recipe)  # ditto, and it is where Dockerfile RUN bodies now live
         dockerfile = recipe.root / "Dockerfile"
         if dockerfile.is_file():
-            validate_pin(recipe.name, dockerfile.read_text(encoding="utf-8"))  # ASM-02 (T-08-01)
+            body = dockerfile.read_text(encoding="utf-8")
+            validate_pin(recipe.name, body)  # ASM-02 (T-08-01)
+            # A migrated recipe that kept a RUN must SAY what a host launch loses (harnessed-8px.1).
+            validate_container_only_declared(recipe, body)
 
     servers = _resolve_service_servers(_merge_servers(recipes), root)
 

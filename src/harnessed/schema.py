@@ -1713,6 +1713,9 @@ _FLOATING_REF_RE = re.compile(
     r'|@latest\b',
     re.IGNORECASE,
 )
+# A Dockerfile RUN instruction. Used by `validate_container_only_declared` to detect the half of a
+# partially migrated recipe that a host launch cannot execute.
+_DOCKERFILE_RUN_RE = re.compile(r'^\s*RUN\s', re.MULTILINE)
 # A bare DNS hostname: labels of alnum/hyphen joined by dots, a 2+ char alpha TLD, ≤253 chars.
 # No scheme, path, port, or wildcard — the egress firewall resolves each to IPs via getent.
 _HOSTNAME_RE = re.compile(
@@ -1867,6 +1870,36 @@ def validate_install_script(recipe: Recipe) -> None:
     if not (recipe.install and recipe.install.script):
         return
     _lint_script_file(recipe, "install.script", recipe.install.script)
+
+
+def validate_container_only_declared(recipe: Recipe, dockerfile_body: str) -> None:
+    """Reject a PARTIALLY migrated recipe that leaves a container-only `RUN` undeclared.
+
+    `install:` moves a Dockerfile RUN body into a script BOTH modes run. A recipe may legitimately
+    keep some RUNs behind — a root step, a global package install — but that means a host launch
+    delivers LESS than the recipe promises. `install.system` is the reason string the launcher prints
+    when it skips that half; without it the shortfall reaches the user as nothing at all, which is
+    precisely how harnessed-8px.1 (14 missing skills, no error) happened. A comment in the recipe
+    explaining the gap does not count: comments are invisible at runtime.
+
+    Only recipes that HAVE an `install:` are gated. A recipe with no `install:` has not been migrated
+    and is container-only by construction — there is no half-delivered state to mis-report.
+    """
+    if not recipe.install or recipe.install.system:
+        return
+    body = "\n".join(
+        line for line in dockerfile_body.splitlines() if not line.lstrip().startswith("#")
+    )
+    match = _DOCKERFILE_RUN_RE.search(body)
+    if not match:
+        return
+    raise RecipeLintError(
+        f"recipe '{recipe.name}': Dockerfile still has a RUN step but 'install.system' is not set. "
+        "A recipe with an 'install:' runs its script in both modes, so any RUN left in the "
+        "Dockerfile is container-only and a host launch silently delivers less than the recipe "
+        "promises. Set 'install.system' to a reason naming what a host launch does NOT get (it is "
+        "printed verbatim at launch), or move the step into install.script so both modes get it."
+    )
 
 
 def validate_init_no_exit(recipe: Recipe) -> None:

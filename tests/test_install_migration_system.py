@@ -30,7 +30,13 @@ from pathlib import Path
 import pytest
 
 from harnessed import emit, launcher, paths
-from harnessed.schema import SchemaError, load_recipe, validate_install_script
+from harnessed.schema import (
+    RecipeLintError,
+    SchemaError,
+    load_recipe,
+    validate_container_only_declared,
+    validate_install_script,
+)
 
 CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 RECIPES = CATALOG / "recipes"
@@ -159,6 +165,53 @@ class TestTheRootStepStaysInTheDockerfile:
         r = _catalog_recipe(ref)
         assert not (r.root / "Dockerfile").exists(), (
             f"{ref}: install.sh replaced the Dockerfile entirely — a leftover one would run twice"
+        )
+
+
+class TestPartialMigrationMustDeclareWhatAHostLoses:
+    """bd harnessed-8px.1, criterion 2. A recipe with an `install:` runs its script in BOTH modes, so
+    any RUN left in its Dockerfile is container-only and a host launch delivers less than the recipe
+    promises. `install.system` is the reason the launcher prints; without it the shortfall reaches
+    the user as nothing at all — the original 14-missing-skills failure, in miniature.
+
+    agent-carnet is why this lint exists: it kept `pnpm add -g` in its Dockerfile, documented the gap
+    in a YAML comment, and shipped a host launch that silently lacked the binary. Comments are
+    invisible at runtime.
+    """
+
+    def test_undeclared_run_is_rejected(self, tmp_path):
+        r = _tmp_recipe(tmp_path, install="install:\n  script: install.sh\n")
+        with pytest.raises(RecipeLintError, match="install.system"):
+            validate_container_only_declared(r, "FROM x\nRUN pnpm add -g foo@1.0.0\n")
+
+    def test_declared_reason_passes(self, tmp_path):
+        r = _tmp_recipe(tmp_path, install="install:\n  script: install.sh\n  system: 'no binary'\n")
+        validate_container_only_declared(r, "RUN apt-get install -y thing")  # must not raise
+
+    def test_recipe_without_install_is_not_gated(self, tmp_path):
+        """Never migrated → container-only by construction, with no half-delivered state to misreport."""
+        r = _tmp_recipe(tmp_path, install="", with_script=False)
+        validate_container_only_declared(r, "RUN anything")  # must not raise
+
+    def test_commented_out_run_does_not_trigger(self, tmp_path):
+        r = _tmp_recipe(tmp_path, install="install:\n  script: install.sh\n")
+        validate_container_only_declared(r, "# RUN this is prose\nFROM x")  # must not raise
+
+    def test_every_catalog_recipe_declares_its_container_only_half(self):
+        """The real net: run the lint over the whole shipped catalog, exactly as assemble() does."""
+        offenders = []
+        for recipe_yaml in sorted(RECIPES.glob("*/recipe.yaml")):
+            r = load_recipe(recipe_yaml.parent, strict=True)
+            dockerfile = r.root / "Dockerfile"
+            if not dockerfile.is_file():
+                continue
+            try:
+                validate_container_only_declared(r, dockerfile.read_text(encoding="utf-8"))
+            except RecipeLintError:
+                offenders.append(r.name)
+        assert offenders == [], (
+            f"recipes with an undeclared container-only RUN: {offenders}. "
+            "Set install.system to what a host launch does not get, or move the step into install.script."
         )
 
 

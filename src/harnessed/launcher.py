@@ -3141,9 +3141,9 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
         inst = recipe.install
         if inst.system:
             _err.print(
-                f"[bold yellow]WARNING[/bold yellow] install ({recipe.name}): system-level step "
-                f"SKIPPED on a host launch — {inst.system}. harnessed will not sudo or modify your "
-                "system; run this stack in a container to get it."
+                f"[bold yellow]WARNING[/bold yellow] install ({recipe.name}): container-only step "
+                f"SKIPPED on a host launch — {inst.system}. harnessed will not sudo or otherwise "
+                "write outside its own directories; run this stack in a container to get it."
             )
         if inst.script is None:
             # ROOT-ONLY install (`system:` with no script): the warning above IS the whole host-side

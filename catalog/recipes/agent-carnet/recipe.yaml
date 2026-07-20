@@ -19,8 +19,10 @@ conflicts: [beads]
 # PARTIAL migration (bd harnessed-8px.4). Only the CONTENT half moves here: install.sh fetches the
 # pinned npm tarball and copies its bundled skill into $HARNESSED_CONFIG_DIR/skills/agent-carnet, in
 # BOTH modes. The CLI half (`pnpm add -g`) stays in the Dockerfile — see the WHY there; it is not a
-# `system:` step (no root involved), it is simply container-only, so a host launch gets the skill
-# without the binary until `provision:` (bd harnessed-zi6.1) covers it.
+# root `system:` step, but it IS container-only, so a host launch gets the skill without the binary
+# until `provision:` (bd harnessed-zi6.1) covers it. That gap is declared in `system:` below so the
+# launcher ANNOUNCES it: a comment here is invisible at runtime, and a host user silently missing
+# half a recipe is the exact failure bd harnessed-8px.1 is about.
 #
 # `cache:` MUST equal AGENT_CARNET_VERSION in install.sh (and the Dockerfile ARG). It keys the host
 # content cache ($XDG_CACHE_HOME/harnessed/install/agent-carnet/0.1.5) so the per-launch re-run —
@@ -28,6 +30,10 @@ conflicts: [beads]
 install:
   script: install.sh
   cache: "0.1.5"
+  system: >-
+    the `agent-carnet` CLI is installed with `pnpm add -g`, which on a host launch would write into
+    your global pnpm store — outside every harnessed-owned directory. The bundled SKILL is installed
+    in both modes; only the binary is container-only, so `agent-carnet` will not be on PATH.
 
 # What the capability test must find in the running container after a successful build: the skill
 # install.sh copies verbatim from the pinned tarball into ~/.claude/skills/agent-carnet. The
