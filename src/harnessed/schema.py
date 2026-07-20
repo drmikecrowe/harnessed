@@ -583,6 +583,12 @@ class SetupSpec:
     # is executed once (gated by `condition`). See launcher._host_run_setups.
     config: list["SetupConfigItem"] = field(default_factory=list)
     run: str | None = None
+    # BOTH-MODE replacement for `run` (and for `provision:`): a bash script in the recipe dir, run
+    # host-side by the launcher AND inside the container before attach. Unlike `run` it receives the
+    # resolved config as HARNESSED_CFG_<KEY> env vars rather than {config.<key>} substitution, so the
+    # same file works in both modes with no templating. Mutually exclusive with `run`.
+    # The script is expected to be idempotent — it runs on every launch, and self-gates.
+    script: str | None = None
 
 
 def _parse_setup(raw_setup) -> "SetupSpec | None":
@@ -604,19 +610,32 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
     run = raw_setup.get("run")
     if run is not None and (not isinstance(run, str) or not run.strip()):
         raise SchemaError("recipe 'setup.run', if set, must be a non-empty string")
+    script = raw_setup.get("script")
+    if script is not None and (not isinstance(script, str) or not script.strip()):
+        raise SchemaError("recipe 'setup.script', if set, must be a non-empty string")
+    if script and run:
+        raise SchemaError(
+            "recipe 'setup': 'script' and 'run' are mutually exclusive — 'script' is the "
+            "both-mode replacement for 'run'"
+        )
+    if script and (Path(script).is_absolute() or ".." in Path(script).parts):
+        raise SchemaError(
+            f"recipe 'setup.script' {script!r} must be a relative path inside the recipe dir"
+        )
     config = _parse_setup_config(raw_setup.get("config"))
 
-    unknown = sorted(set(raw_setup) - {"summary", "reference", "condition", "run", "config"})
+    unknown = sorted(set(raw_setup) - {"summary", "reference", "condition", "run", "script", "config"})
     if unknown:
         raise SchemaError(
             f"recipe 'setup': unknown field(s) {unknown} — valid fields: "
-            "summary, reference, condition, run, config"
+            "summary, reference, condition, run, script, config"
         )
     return SetupSpec(
         summary=summary.strip(),
         reference=reference.strip(),
         condition=condition.strip() if condition else None,
         run=run.strip() if run else None,
+        script=script.strip() if script else None,
         config=config,
     )
 
@@ -1529,6 +1548,40 @@ def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
         raise PinValidationError(
             f"recipe '{recipe_name}': Dockerfile contains a floating ref '{match.group(0).strip()}'. "
             "Pin to a tag (e.g. v1.2.3) or SHA (e.g. @sha256:...) instead of floating branches or :latest."
+        )
+
+
+def validate_setup_script(recipe: Recipe) -> None:
+    """Lint a recipe's `setup.script` FILE body (existence + npm/npx + floating refs).
+
+    Without this the script is a hole in both existing gates: `validate_no_raw_npm` only ever sees
+    strings (`_recipe_raw_strings` reads a fixed key list, so a script PATH tells it nothing) and
+    `validate_pin` only ever sees Dockerfile bodies. A `curl … | bash` of an unpinned ref, or a raw
+    `npm install`, would otherwise pass every check purely by living in a .sh file.
+    """
+    if not (recipe.setup and recipe.setup.script):
+        return
+    path = recipe.root / recipe.setup.script
+    if not path.is_file():
+        raise RecipeLintError(
+            f"recipe '{recipe.name}': setup.script '{recipe.setup.script}' not found at {path}"
+        )
+    body = "\n".join(
+        line for line in path.read_text(encoding="utf-8").splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    match = _RAW_NPM_RE.search(body)
+    if match:
+        token = match.group(0)
+        raise RecipeLintError(
+            f"recipe '{recipe.name}': setup.script '{recipe.setup.script}' uses raw npm/npx token "
+            f"'{token}'. Replace it with the pnpm equivalent '{_NPM_TO_PNPM.get(token, 'pnpm')}'."
+        )
+    match = _FLOATING_REF_RE.search(body)
+    if match:
+        raise PinValidationError(
+            f"recipe '{recipe.name}': setup.script '{recipe.setup.script}' contains a floating ref "
+            f"'{match.group(0).strip()}'. Pin to an explicit tag, version, or SHA."
         )
 
 

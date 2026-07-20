@@ -24,15 +24,26 @@ description: Serena — LSP-backed semantic code intelligence (symbol retrieval,
 # baked — and cannot be, it is per-project state — is the symbol index.
 setup:
   summary: >-
-    Optional but recommended on a large project: run `serena project index` once inside the agent
-    container to pre-cache language-server symbols into `.serena/` (without it, the first symbol
-    tool call pays the full language-server scan). Serena creates and activates the project by
-    itself; only the index is manual. Note the language server for each language is downloaded on
-    first use, so index (or first-activate) with egress allowed — `harnessed <stack> <proj>
-    --no-firewall` — or that download is blocked.
+    First launch runs `setup.sh` automatically: it installs serena (host mode only — the container
+    image bakes it), configures the LSP backend, and creates the project with a repo-derived name,
+    pre-caching language-server symbols into `.serena/` so the first symbol tool call does not pay
+    the full scan. Note the language server for each language is downloaded on first use, so the
+    first launch needs egress — inside a container the setup runs BEFORE the firewall closes, but a
+    later manual `serena project index` would need `--no-firewall`.
   reference: https://oraios.github.io/serena/02-usage/040_workflow.html
   # Still worth showing while the project carries no serena state at all.
   condition: test ! -d .serena
+  # The project NAME serena would otherwise take from the DIRECTORY — which in a bare+worktree
+  # checkout is the worktree folder ("main"), never the repo. `{repo}` and NOT `{gcd_db}`: serena's
+  # registry is keyed by PATH, and its cache/memories are per-checkout by design, so unlike beads a
+  # worktree-STABLE identity is explicitly not wanted. See setup.sh.
+  config:
+    - key: name
+      derive: "{repo}"
+  # Both-mode replacement for `provision:` + `setup.run` — install (host) AND configure (both) in
+  # ONE file. That is the seam `provision:` structurally could not express, which is why
+  # `serena init -b LSP` was stranded in the Dockerfile and absent from host launches entirely.
+  script: setup.sh
 
 # What the capability test probes after a successful build: the serena server connected through
 # the hatago hub. (The capability test only confirms the connection — verify behavior manually.)
@@ -45,13 +56,8 @@ mcp:
     - name: serena
       command: serena
       args: [start-mcp-server, --context, ide, --project-from-cwd]
-
-# Host-native install (`launch --host`) — mirrors the Dockerfile's `uv tool install serena-agent`.
-# Container-independent: the derived image still installs via its Dockerfile.
-provision:
-  - via: uv-tool
-    package: serena-agent
-    version: "1.5.3"
-    python: "3.13"
-    command: serena
       # transport: stdio (schema default). hatago spawns this in-container → it sees the project.
+
+# No `provision:` — `setup.script` above subsumes it. `provision:` could only INSTALL, so the
+# matching `serena init -b LSP` had to live in the Dockerfile, which never runs on a host launch;
+# setup.sh does both, in both modes, from one file.

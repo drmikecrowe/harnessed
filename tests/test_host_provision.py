@@ -17,12 +17,13 @@ CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 
 
 class TestProvisionSchema:
-    def test_serena_declares_uv_tool_provision(self):
+    def test_serena_migrated_from_provision_to_setup_script(self):
+        """serena is the first recipe off `provision:` — its install AND its `serena init -b LSP`
+        configure step now live in one both-mode setup.sh (bd harnessed-zi6)."""
         r = load_recipe(CATALOG / "recipes" / "serena", strict=True)
-        assert len(r.provision) == 1
-        p = r.provision[0]
-        assert (p.via, p.package, p.version, p.python, p.command) == (
-            "uv-tool", "serena-agent", "1.5.3", "3.13", "serena")
+        assert r.provision == []
+        assert r.setup.script == "setup.sh"
+        assert (r.root / r.setup.script).is_file()
 
     def test_repowise_declares_provision(self):
         r = load_recipe(CATALOG / "recipes" / "repowise", strict=True)

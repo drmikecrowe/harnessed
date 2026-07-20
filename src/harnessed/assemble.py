@@ -28,6 +28,7 @@ from .schema import (
     validate_init_no_exit,
     validate_no_raw_npm,
     validate_pin,
+    validate_setup_script,
 )
 from .synclinks import CollisionError, LinkSyncer
 
@@ -118,6 +119,7 @@ def assemble(
     for recipe in recipes:
         validate_no_raw_npm(recipe)
         validate_init_no_exit(recipe)  # Model A: init.run is sourced — a bash `exit` kills the shell
+        validate_setup_script(recipe)  # setup.script is a FILE — neither gate below would read it
         dockerfile = recipe.root / "Dockerfile"
         if dockerfile.is_file():
             validate_pin(recipe.name, dockerfile.read_text(encoding="utf-8"))  # ASM-02 (T-08-01)
