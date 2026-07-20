@@ -747,7 +747,10 @@ def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
     recipe's Dockerfile and is declared via `install.system` so a host launch warns about it.
     """
     inst = recipe.install
-    if inst is None:
+    if inst is None or inst.script is None:
+        # `install: {system: …}` with no script is a ROOT-ONLY install: the whole step lives in the
+        # recipe's own Dockerfile and the declaration exists solely so the HOST executor can warn.
+        # Nothing to COPY and nothing to RUN here.
         return []
     ctr_recipe = f"{CTR_RECIPE_DIR}/{recipe.name}"
     cache = f"{_CTR_INSTALL_CACHE}/{recipe.name}/{inst.cache}" if inst.cache else ""
