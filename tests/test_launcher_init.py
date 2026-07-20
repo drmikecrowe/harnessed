@@ -40,7 +40,7 @@ class TestInitShellPrologue:
         _stub_recipes(monkeypatch, [_recipe("ping")])
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
         proj = tmp_path / "proj"
-        out = launcher._init_shell_prologue("s", proj, tmp_path)
+        out = launcher._init_shell_prologue("s", proj, tmp_path, harness="claude")
         assert out.startswith("export ")
         # No init recipe → no run wrappers appended, so no `&&` join.
         assert "&&" not in out
@@ -50,7 +50,7 @@ class TestInitShellPrologue:
         _stub_recipes(monkeypatch, [_recipe("ping")])
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
         proj = tmp_path / "proj"
-        out = launcher._init_shell_prologue("s", proj, tmp_path)
+        out = launcher._init_shell_prologue("s", proj, tmp_path, harness="claude")
         assert f"PROJECT_DIR={shlex.quote(str(proj))}" in out
         assert f"MAIN_REPO_DIR={shlex.quote(str(proj))}" in out  # falls back to project
         assert f"CONTAINER_WORKSPACE_DIR={shlex.quote(str(tmp_path))}" in out
@@ -62,7 +62,7 @@ class TestInitShellPrologue:
         _stub_recipes(monkeypatch, [_recipe("ping")])
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
         monkeypatch.setattr(launcher.Path, "home", staticmethod(lambda: tmp_path / "hosthome"))
-        out = launcher._init_shell_prologue("s", tmp_path / "proj", tmp_path)
+        out = launcher._init_shell_prologue("s", tmp_path / "proj", tmp_path, harness="claude")
         assert f"HOST_HOME={shlex.quote(str(tmp_path / 'hosthome'))}" in out
 
     def test_main_repo_dir_uses_git_common_dir(self, tmp_path, monkeypatch):
@@ -70,14 +70,14 @@ class TestInitShellPrologue:
         common = tmp_path / "bare"
         monkeypatch.setattr(paths, "git_common_dir", lambda p: common)
         proj = tmp_path / "main"
-        out = launcher._init_shell_prologue("s", proj, tmp_path)
+        out = launcher._init_shell_prologue("s", proj, tmp_path, harness="claude")
         assert f"MAIN_REPO_DIR={shlex.quote(str(common))}" in out
         assert f"PROJECT_DIR={shlex.quote(str(proj))}" in out
 
     def test_single_init_recipe_wrapped_fail_fast(self, tmp_path, monkeypatch):
         _stub_recipes(monkeypatch, [_recipe("beads", run="bd list || bd init")])
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
-        out = launcher._init_shell_prologue("s", tmp_path / "proj", tmp_path)
+        out = launcher._init_shell_prologue("s", tmp_path / "proj", tmp_path, harness="claude")
         assert "{ bd list || bd init; } ||" in out
         assert "init failed for recipe beads" in out
         assert "exit 1" in out
@@ -89,7 +89,7 @@ class TestInitShellPrologue:
         recipes = [_recipe("a", "cmd-a"), _recipe("noinit"), _recipe("b", "cmd-b")]
         _stub_recipes(monkeypatch, recipes)
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
-        out = launcher._init_shell_prologue("s", tmp_path / "proj", tmp_path)
+        out = launcher._init_shell_prologue("s", tmp_path / "proj", tmp_path, harness="claude")
         assert "{ cmd-a; }" in out
         assert "{ cmd-b; }" in out
         assert "init failed for recipe a" in out
@@ -147,8 +147,11 @@ class TestAttachRunsInit:
         shell_cmd = captured["argv"][-1]
         assert "export PROJECT_DIR=" in shell_cmd
         assert "claude" in shell_cmd
-        assert shell_cmd.index("export PROJECT_DIR=") < shell_cmd.index("claude")
-        assert shell_cmd.index("bd init") < shell_cmd.index("claude")
+        # The literal "claude" also appears as the HARNESS export value, so anchor on the tail
+        # command (`&& claude …`) rather than the bare word.
+        harness_at = shell_cmd.index("&& claude ")
+        assert shell_cmd.index("export PROJECT_DIR=") < harness_at
+        assert shell_cmd.index("bd init") < harness_at
 
     def test_no_secrets_in_shell_cmd(self, tmp_path, monkeypatch):
         _stub_recipes(monkeypatch, [_recipe("beads", "bd init")])

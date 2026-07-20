@@ -127,6 +127,33 @@ Two consequences worth knowing:
 **hatago** as a process *inside* that container (hatago-consolidation), and brings up any referenced
 services (started host-published, idempotently).
 
+## Folder-env contract
+
+The **one** set of environment variables a recipe may rely on. Same names, same meanings, on every
+surface — container and `--host` alike. Single definition: `launcher.harnessed_env()`.
+
+| Variable | Value |
+| --- | --- |
+| `HARNESS` | The harness being launched (`claude`, `omp`, …). Unprefixed on purpose: it is already the token a recipe Dockerfile branches on (`ARG HARNESS`), so `$HARNESS` in a setup script means the same thing. |
+| `PROJECT_DIR` | The project directory the agent starts in. |
+| `MAIN_REPO_DIR` | The git **common dir** — in a bare + linked-worktree layout that is the bare repo dir, not the default-branch work tree. Falls back to `PROJECT_DIR` outside a repo. |
+| `HARNESSED_GIT_COMMON_DIR` | Same value as `MAIN_REPO_DIR`, under an explicit name. A bare `GIT_COMMON_DIR` is **never** exported: git itself consumes that variable and it would hijack common-dir resolution the moment the agent `cd`s into another repo. |
+| `HOST_WORKSPACE_DIR` / `CONTAINER_WORKSPACE_DIR` | The mounted workspace root (auto-widened to the bare-repo container so sibling worktrees are visible). Identical strings — the project is bind-mounted at its own host path. |
+| `HOST_HOME` | The **host** `$HOME`, which is not the container's (`/home/harnessed`). A `scope: global` persist entry is mounted path-preserving, so a recipe pointing a tool at e.g. `~/.pulumi` must write `$HOST_HOME/.pulumi`. |
+| `HARNESSED_RECIPE_DIR` | *(recipe-scoped surfaces only)* The recipe's own source dir — a setup script does `cp` where a Dockerfile did `COPY`. Host: the catalog dir. Container: `/opt/harnessed/recipes/<recipe>` (bind-mounted `:ro`). |
+| `HARNESSED_<SERVICE>_SOCKET` | *(container only)* Container-side socket path for each socket-backed project-scoped service (e.g. `HARNESSED_BEADS_SERVER_SOCKET`). Omitted host-side: `--host` runs no service sidecars, so the path would not exist. |
+
+Injected at every place catalog-authored content runs: the container attach shell
+(`_init_shell_prologue`), the container itself (`podman run -e`, so hooks and later `podman exec`s
+agree), **both** `setup.condition` eval sites (`_collect_setup_notices`, `_host_run_setups`),
+`setup.run` / `setup.script` (`_script_env`, which additionally carries the `HARNESSED_MODE` /
+`HARNESSED_CFG_*` / repo-identity vars), and the **host agent process** (`os.environ` in
+`_launch_host` — on the host there is no container to set env on, so `os.environ` is the box).
+
+This is why a condition may be written against a real path — `[ ! -f
+"${MAIN_REPO_DIR}/.beads/metadata.json" ]`. Under an env-less eval that expanded to the empty string
+and the test passed falsely.
+
 ## The capability test is the oracle
 
 `harnessed test <stack>` launches the stack `--fresh` headless and diffs the **manifest oracle**

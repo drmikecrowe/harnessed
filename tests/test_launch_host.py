@@ -184,3 +184,32 @@ class TestHostCliRouting:
         assert "--strict-mcp-config" in captured["argv"]
         assert captured["ccd"] == str(paths.host_home("hostspike", "claude", tmp_path.resolve()))
         assert paths.is_built("hostspike", "claude")  # profile assembled during the launch itself
+
+    def test_agent_process_inherits_the_folder_env_contract(self, monkeypatch, tmp_path):
+        """bd harnessed-0tk.7: a container launch sets the contract box-wide (`podman run -e`), so
+        every process in it agrees. The host has no box — os.environ IS the box. Before the fix
+        _host_run_setups built a private env copy and the exec'd agent saw none of it."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        captured: dict = {}
+
+        def fake_execvpe(file, argv, env):
+            captured.update(env=env)
+            raise SystemExit(0)
+
+        monkeypatch.setattr(launcher.os, "execvpe", fake_execvpe)
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app, ["launch", "hostspike", "claude", str(tmp_path), "--host"]
+        )
+
+        assert result.exit_code == 0, result.output
+        env = captured["env"]
+        assert env["HARNESS"] == "claude"
+        assert env["PROJECT_DIR"] == str(tmp_path.resolve())
+        for var in ("MAIN_REPO_DIR", "HARNESSED_GIT_COMMON_DIR", "HOST_WORKSPACE_DIR",
+                    "CONTAINER_WORKSPACE_DIR", "HOST_HOME"):
+            assert env[var]
+        # git consumes GIT_COMMON_DIR itself — exporting it would hijack common-dir resolution.
+        assert "GIT_COMMON_DIR" not in env

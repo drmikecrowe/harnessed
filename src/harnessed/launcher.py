@@ -2280,7 +2280,67 @@ def _ensure_gitignore_entry(project_path: Path, name: str) -> None:
         pass  # non-fatal
 
 
-def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> str:
+def harnessed_env(
+    stack: str,
+    project_path: Path,
+    *,
+    harness: str,
+    mode: str,
+    mount_path: Path | None = None,
+    recipe=None,
+    sockets: bool = True,
+) -> dict[str, str]:
+    """THE folder-env contract — the same var names, with the same meanings, on every surface.
+
+    One definition, injected everywhere a catalog-authored string or file can run: the container
+    attach shell (`_init_shell_prologue`), both `setup.condition` eval sites
+    (`_collect_setup_notices` host-side, `_host_run_setups`), `setup.script`/`setup.run`, the
+    container itself (`podman run -e`), and the host agent process (`os.environ` in `_launch_host`).
+    A recipe author writes `${MAIN_REPO_DIR}` once and it resolves the same in all of them.
+
+    See ARCHITECTURE.md §"Folder-env contract" for the authoritative table. Notes on two entries:
+
+    * `HARNESSED_GIT_COMMON_DIR` is the explicitly-named handle for the git common dir (same value
+      as MAIN_REPO_DIR). A bare `GIT_COMMON_DIR` is deliberately NEVER exported: git itself consumes
+      that variable, so it would hijack common-dir resolution the moment the agent cd's into a
+      different repository.
+    * `HARNESS` is unprefixed on purpose — it is already the token a recipe Dockerfile branches on
+      (`ARG HARNESS`), so a setup script branching on `$HARNESS` means exactly the same thing.
+
+    `mode` is "host" or "container". Socket-backed service vars (HARNESSED_<NAME>_SOCKET) are
+    container-only: their value is a container-side path, and `--host` runs no service sidecars, so
+    exporting them host-side would hand a recipe a path that does not exist. `sockets=False`
+    suppresses them entirely — `_script_env` needs a key set that is IDENTICAL in both modes, and
+    the container gets the socket vars box-wide anyway.
+    """
+    main_repo = paths.git_common_dir(project_path) or project_path
+    workspace = mount_path or paths.bare_worktree_container(project_path) or project_path
+    env = {
+        "HARNESS": harness,
+        "PROJECT_DIR": str(project_path),
+        "MAIN_REPO_DIR": str(main_repo),
+        "HARNESSED_GIT_COMMON_DIR": str(main_repo),
+        "CONTAINER_WORKSPACE_DIR": str(workspace),
+        "HOST_WORKSPACE_DIR": str(workspace),
+        # The host $HOME, which is NOT the container's ($HOME is /home/harnessed in the pod). A
+        # `scope: global` persist entry is mounted path-preserving, so a recipe whose tool reads a
+        # dotdir under the host home (e.g. pulumi's ~/.pulumi) must point the tool at the mirrored
+        # path — `$HOST_HOME/.pulumi`, not `~/.pulumi`. This export is that handle.
+        "HOST_HOME": str(Path.home()),
+    }
+    if mode == "container" and sockets:
+        env.update(svc_socket_env(stack, project_path))
+    if recipe is not None:
+        # A setup script does `cp` where a recipe Dockerfile did `COPY`, so it needs its own source
+        # dir. Container-side that is the ro mount from `_setup_script_mounts`; host-side it is the
+        # catalog dir itself.
+        env["HARNESSED_RECIPE_DIR"] = (
+            f"{_CTR_RECIPE_DIR}/{recipe.name}" if mode == "container" else str(recipe.root)
+        )
+    return env
+
+
+def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path, *, harness: str) -> str:
     """Shell snippet run in the attach shell BEFORE the harness starts (Model A).
 
     Exports the generic path contract, then runs each recipe's `init.run` inline in this SAME shell
@@ -2296,7 +2356,6 @@ def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> st
     helper the init.run sources from). Returns just the exports when no recipe declares init.
     """
     _, recipes = load_stack_with_recipes(None, stack)
-    main_repo = paths.git_common_dir(project_path) or project_path
     parts = [
         # Rootless podman on macOS maps host UIDs through the VM; git refuses to operate in mounted
         # dirs ("dubious ownership") — breaking mise templates that shell out to git. Use git's
@@ -2305,21 +2364,14 @@ def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> st
         # fails with "Device or resource busy". These env vars are inherited by mise and all
         # subprocesses it spawns, including the git invocations inside mise templates.
         "export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='safe.directory' GIT_CONFIG_VALUE_0='*'",
-        "export "
-        f"PROJECT_DIR={shlex.quote(str(project_path))} "
-        f"MAIN_REPO_DIR={shlex.quote(str(main_repo))} "
-        f"CONTAINER_WORKSPACE_DIR={shlex.quote(str(mount_path))} "
-        f"HOST_WORKSPACE_DIR={shlex.quote(str(mount_path))} "
-        # The host $HOME, which is NOT the container's ($HOME is /home/harnessed in the pod). A
-        # `scope: global` persist entry is mounted path-preserving, so a recipe whose tool reads a
-        # dotdir under the host home (e.g. pulumi's ~/.pulumi) must point the tool at the mirrored
-        # path — `$HOST_HOME/.pulumi`, not `~/.pulumi`. This export is that handle.
-        f"HOST_HOME={shlex.quote(str(Path.home()))}",
     ]
-    # Socket-backed project-scoped services (e.g. beads-server): export the container-side socket
-    # path so a recipe's `setup:` can reference it verbatim instead of recomputing path arithmetic.
-    for var, sock in svc_socket_env(stack, project_path).items():
-        parts.append(f"export {var}={shlex.quote(sock)}")
+    # The folder-env contract (incl. socket-backed project-scoped services, e.g. beads-server, so a
+    # recipe's `setup:` can reference the socket verbatim instead of recomputing path arithmetic).
+    contract = harnessed_env(
+        stack, project_path, harness=harness, mode="container", mount_path=mount_path
+    )
+    for var, val in contract.items():
+        parts.append(f"export {var}={shlex.quote(val)}")
     # Plain exports never fail, so they're joined with `;` — `&&` is reserved for the recipe-init
     # fail-fast blocks below, keeping it absent entirely when no recipe declares init.
     prologue = "; ".join(parts)
@@ -2703,7 +2755,9 @@ def _collect_setup_notices(
     The dismiss flag gates ONLY unconditional notices — conditional ones always follow their
     condition. Conditions are catalog-authored shell strings; they run on the host here (not in
     the container), in the project directory, so project-scoped checks like `bd list` see the
-    right state.
+    right state — and with the folder-env contract in env (`harnessed_env`), so a condition can
+    test a real path (`[ ! -f "${MAIN_REPO_DIR}/.beads/metadata.json" ]`) instead of expanding an
+    unset var to the empty string and passing falsely.
     """
     dismissed = paths.setup_dismissed_flag(stack, harness, project_path).exists()
     out: list[Recipe] = []
@@ -2714,6 +2768,9 @@ def _collect_setup_notices(
             proc = subprocess.run(
                 ["bash", "-lc", recipe.setup.condition],
                 cwd=str(project_path),
+                env={**os.environ, **harnessed_env(
+                    stack, project_path, harness=harness, mode="host", recipe=recipe
+                )},
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -2922,6 +2979,8 @@ def _script_env(
     values: dict[str, str],
     *,
     mode: str,
+    harness: str,
+    recipe=None,
     bin_dir: Path | None = None,
 ) -> dict[str, str]:
     """The env a recipe's `setup.script` sees — IDENTICAL keys in host and container mode.
@@ -2937,6 +2996,8 @@ def _script_env(
     common dir — `.bare/` — is outside the mount), so they are computed host-side and injected.
     """
     env: dict[str, str] = {
+        **harnessed_env(stack, project_path, harness=harness, mode=mode, recipe=recipe,
+                        sockets=False),
         "HARNESSED_MODE": mode,
         "HARNESSED_STACK": stack,
         "HARNESSED_PROJECT_DIR": str(project_path),
@@ -2957,19 +3018,24 @@ def _script_env(
 
 
 _CTR_SETUP_DIR = "/opt/harnessed/setup"
+_CTR_RECIPE_DIR = "/opt/harnessed/recipes"
 
 
 def _setup_script_mounts(recipes) -> list[str]:
-    """`-v …:ro` args placing each recipe's `setup.script` inside the container.
+    """`-v …:ro` args placing each recipe's `setup.script` — and the recipe dir it came from —
+    inside the container.
 
     A MOUNT, not a Dockerfile COPY, on purpose: the script is authorable catalog content, so editing
     it must not require an image rebuild — and the image stays untouched by this whole mechanism.
+    The recipe dir rides along because a script does `cp` where a Dockerfile did `COPY`; it is the
+    container-side value of $HARNESSED_RECIPE_DIR (see `harnessed_env`).
     """
     args: list[str] = []
     for recipe in recipes:
         if recipe.setup and recipe.setup.script:
             src = recipe.root / recipe.setup.script
             args += ["-v", f"{src}:{_CTR_SETUP_DIR}/{recipe.name}.sh:ro"]
+            args += ["-v", f"{recipe.root}:{_CTR_RECIPE_DIR}/{recipe.name}:ro"]
     return args
 
 
@@ -2992,7 +3058,7 @@ def _pending_setup_scripts(project_path: Path, recipes) -> list:
     return pending
 
 
-def _container_setup_env(stack: str, project_path: Path, pending) -> dict[str, str]:
+def _container_setup_env(stack: str, project_path: Path, pending, *, harness: str) -> dict[str, str]:
     """The setup env for a container launch, resolved HOST-side (a `setup.config` item may PROMPT,
     which has to happen before the container starts) and set as REAL CONTAINER ENV.
 
@@ -3007,7 +3073,9 @@ def _container_setup_env(stack: str, project_path: Path, pending) -> dict[str, s
     env: dict[str, str] = {}
     for recipe in pending:
         values = _resolve_setup_config(recipe.setup, primitives, interactive=sys.stdin.isatty())
-        env.update(_script_env(stack, project_path, values, mode="container"))
+        env.update(_script_env(
+            stack, project_path, values, mode="container", harness=harness, recipe=recipe
+        ))
     return env
 
 
@@ -3026,7 +3094,7 @@ def _run_container_setups(rt: str, inst: str, pending) -> None:
             raise typer.Exit(1)
 
 
-def _host_run_setups(stack: str, project_path: Path) -> None:
+def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
     """Run each recipe's executable setup (host-native) whose `condition` is satisfied — either the
     both-mode `setup.script` (preferred) or the legacy host-only `setup.run`.
 
@@ -3044,7 +3112,10 @@ def _host_run_setups(stack: str, project_path: Path) -> None:
         # A `setup.script` ignores it and runs every launch — see _pending_setup_scripts for why
         # (a first-run gate can never correct state that exists but is wrong).
         if setup.run and setup.condition and subprocess.run(
-            ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True
+            ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True,
+            env={**os.environ, **harnessed_env(
+                stack, project_path, harness=harness, mode="host", recipe=recipe
+            )},
         ).returncode != 0:
             continue
         if primitives is None:
@@ -3054,7 +3125,8 @@ def _host_run_setups(stack: str, project_path: Path) -> None:
             script = recipe.root / setup.script
             bin_dir.mkdir(parents=True, exist_ok=True)
             env = dict(os.environ)
-            env.update(_script_env(stack, project_path, values, mode="host", bin_dir=bin_dir))
+            env.update(_script_env(stack, project_path, values, mode="host",
+                                   harness=harness, recipe=recipe, bin_dir=bin_dir))
             # Host-only: point uv/npm at the stack-scoped tree so a script's install lands in
             # bin_dir rather than the user's global tool dir. In-container these stay unset — the
             # image already baked the tool via its Dockerfile.
@@ -3064,7 +3136,10 @@ def _host_run_setups(stack: str, project_path: Path) -> None:
             argv, label = ["bash", str(script)], f"{setup.script} (host)"
         else:
             cmd = _subst(setup.run, values)
-            env, argv, label = dict(os.environ), ["bash", "-lc", cmd], cmd
+            env = {**os.environ, **harnessed_env(
+                stack, project_path, harness=harness, mode="host", recipe=recipe
+            )}
+            argv, label = ["bash", "-lc", cmd], cmd
         _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {label}")
         if subprocess.run(argv, cwd=str(project_path), env=env).returncode != 0:
             _err.print(f"[bold red]error:[/bold red] setup for '{recipe.name}' failed")
@@ -3199,9 +3274,15 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
         [*prov_bins, *([str(stack_bin)] if str(stack_bin) not in prov_bins else []),
          os.environ.get("PATH", "")]
     )
+    # Folder-env contract into THIS process's env, for the same reason (and with the same precedent)
+    # as the PATH mutation above: a container launch sets the contract box-wide (`podman run -e`) so
+    # every process agrees, and the host has no box — os.environ IS the box. Without this the agent
+    # exec'd below inherits nothing, because subprocess.run(env=…) in _host_run_setups is a private
+    # copy that dies with the setup. Set BEFORE the setups so they see it too.
+    os.environ.update(harnessed_env(stack, project_path, harness=harness, mode="host"))
     # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
     # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
-    _host_run_setups(stack, project_path)
+    _host_run_setups(stack, project_path, harness=harness)
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
     # sees just-provisioned tools.
     mcp_servers = _host_native_mcp(stack)
@@ -3515,13 +3596,17 @@ def launch(
     # exec`, a hook, or any subprocess saw $HARNESSED_BEADS_SERVER_SOCKET unset — and bd silently
     # accepts an EMPTY --server-socket, falling back to its old TCP config instead of failing. Set it
     # on the container so every process in it agrees.
-    socket_env = [arg for var, sock in svc_socket_env(stack, project_path).items()
-                  for arg in ("-e", f"{var}={sock}")]
+    # (Now the whole folder-env contract, not just the sockets — `_init_shell_prologue` still
+    # exports it for the attach shell, but a hook or a `podman exec` never sees that shell.)
+    socket_env = [arg for var, val in harnessed_env(
+        stack, project_path, harness=harness, mode="container", mount_path=mount_path
+    ).items() for arg in ("-e", f"{var}={val}")]
     # Same rationale as socket_env: a recipe's setup env belongs to the CONTAINER, not to one exec,
     # so hooks and later execs see what the setup script saw. Resolved here because a `setup.config`
     # item may prompt, which must happen before the container starts.
     pending_setups = _pending_setup_scripts(project_path, launch_recipes)
-    setup_env = [arg for var, val in _container_setup_env(stack, project_path, pending_setups).items()
+    setup_env = [arg for var, val in _container_setup_env(
+                     stack, project_path, pending_setups, harness=harness).items()
                  for arg in ("-e", f"{var}={val}")]
     harness_run = [
         rt, "run", "-d",
@@ -3606,7 +3691,7 @@ def _attach(
     `init.run` inline (fail-fast) BEFORE exec-ing the harness, so init-derived env reaches the agent.
     """
     mise_init = "source ~/.bashrc && mise trust -a 2>/dev/null"
-    init_prologue = _init_shell_prologue(stack, project_path, mount_path)
+    init_prologue = _init_shell_prologue(stack, project_path, mount_path, harness=harness)
 
     if shell:
         tail = "exec bash -l"
