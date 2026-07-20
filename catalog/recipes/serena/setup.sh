@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Recipe setup script for: serena — runs in BOTH host (`launch --host`) and container mode.
 #
+# PROJECT-shaped work ONLY. The CLI install and `serena init -b LSP` (the global language-server
+# backend config) used to be split across a `HARNESSED_MODE = host` branch here and the recipe
+# Dockerfile — one half per mode, neither complete on its own. Both now live in install.sh, which
+# runs in BOTH modes and BEFORE this script. What is left is what install.sh structurally cannot do:
+# the install env carries no HARNESSED_PROJECT_DIR, because a build has no project mounted.
+#
 # Env supplied by the launcher, identical in both modes (launcher._script_env):
 #   HARNESSED_MODE=host|container   HARNESSED_PROJECT_DIR   HARNESSED_CFG_NAME
 #   HARNESSED_BIN_DIR (host only, already leading PATH)
@@ -10,23 +16,7 @@ set -euo pipefail
 
 cd "$HARNESSED_PROJECT_DIR"
 
-# 1. INSTALL (host only). In container mode the Dockerfile already baked serena into the image, so
-#    there is nothing to install. This is the step `provision:` used to own — but `provision:` could
-#    only install, never configure, which is why step 2 had to live in the Dockerfile and was
-#    therefore missing from host mode entirely.
-if [ "$HARNESSED_MODE" = host ] && ! command -v serena >/dev/null 2>&1; then
-    echo "serena: installing serena-agent==${SERENA_VERSION:=1.5.3} (host, stack-scoped)"
-    uv tool install -p 3.13 "serena-agent==${SERENA_VERSION}"
-fi
-
-# 2. CONFIGURE the language-server backend. `serena init` writes the global config selecting the
-#    code-intelligence backend; `-b LSP` is stated explicitly so a future upstream default flip
-#    cannot silently change it. Skipped once the config exists.
-if [ ! -f "${HOME}/.serena/serena_config.yml" ]; then
-    serena init -b LSP
-fi
-
-# 3. CONVERGE the project name on HARNESSED_CFG_NAME. Left alone, serena names the project after the
+# CONVERGE the project name on HARNESSED_CFG_NAME. Left alone, serena names the project after the
 #    DIRECTORY — which in a bare+worktree checkout is the worktree folder ("main",
 #    "recipe-setup-script", …), never the repo. HARNESSED_CFG_NAME derives from {repo} instead.
 #

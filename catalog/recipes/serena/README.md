@@ -14,7 +14,8 @@ path — so it resolves the bind-mounted project and writes `.serena/` into the 
 
 ## What is automatic, what isn't
 
-- **Global config** (`serena init -b LSP`, the language-server backend) — baked at build time.
+- **CLI + global config** (`uv tool install serena-agent`, then `serena init -b LSP`, the
+  language-server backend) — `install.sh`, run by both the container build and a `--host` launch.
 - **Project creation** (`.serena/project.yml`) — automatic: activating a directory that has no
   project file auto-generates one. No `serena project create` step needed.
 - **Onboarding / memories** — automatic on first activation.
@@ -30,6 +31,20 @@ path — so it resolves the bind-mounted project and writes `.serena/` into the 
   blocks that, so do the first index/activation with `harnessed <stack> <project> --no-firewall`
   (or `NO_FIREWALL=true`); otherwise LSP-backed features fail for any language whose server was
   never fetched.
+
+## Host footprint — what it writes outside harnessed, and how to remove it
+
+On a **container** launch everything below lives inside the image and dies with it. On a `--host`
+launch these land in your real home and your project, *outside* the harnessed config dir, the
+install cache, and the stack bin dir — so they are yours to remove:
+
+| Path | Written by | Remove with |
+| --- | --- | --- |
+| `~/.serena/serena_config.yml` (and the rest of `~/.serena/`) | `serena init -b LSP` in `install.sh` — the global language-server backend config, plus serena's project registry, which is keyed by path | `rm -r ~/.serena` |
+| `<project>/.serena/` | `serena project create --index` in `setup.sh` — `project.yml`, the symbol index cache, and onboarding memories | `rm -r .serena` |
+
+The CLI itself is stack-scoped, not global: it goes with the stack's tool tree —
+`rm -r "${XDG_DATA_HOME:-$HOME/.local/share}/harnessed/tools/<stack>"`.
 
 Upstream: <https://github.com/oraios/serena> ·
 [project workflow](https://oraios.github.io/serena/02-usage/040_workflow.html)

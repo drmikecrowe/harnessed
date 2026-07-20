@@ -15,19 +15,34 @@
 # emit.py pins that cwd to the mirrored container project path (bd main-u5d), so the child lands in
 # the project root. Activating a directory that has no `.serena/project.yml` auto-generates one
 # (serena_config.py `add_project_from_path` → `ProjectConfig.load(autogenerate=True)`), so project
-# *creation* needs no manual step — only indexing does (see `setup:` below). The CLI is baked by the
-# Dockerfile; no skill is shipped (upstream offers none).
+# *creation* needs no manual step — only indexing does (see `setup:` below). The CLI is installed by
+# `install.sh` (both modes); no skill is shipped (upstream offers none).
 name: serena
 description: Serena — LSP-backed semantic code intelligence (symbol retrieval, editing, refactoring, references) over the project via a stdio MCP server.
 
-# `serena init` (the global language-server backend config) is baked by the Dockerfile. What is NOT
-# baked — and cannot be, it is per-project state — is the symbol index.
+# The install half — the CLI plus `serena init -b LSP`, the global language-server backend config —
+# as ONE bash file run by BOTH executors: `RUN bash install.sh` in the derived image, and by the
+# launcher after the host home is materialized on `launch --host`. It replaces the recipe Dockerfile
+# (container-only) AND setup.sh's old host-only install branch, which between them meant a host
+# launch installed serena but never configured its backend.
+#
+# No `cache:` — `install.cache` keys a pinned CONTENT clone; uv caches wheels itself. No `system:` —
+# `uv tool install` needs no root (host mode redirects it into the stack tools tree via UV_TOOL_DIR).
+#
+# FOOTPRINT (bd harnessed-8px.6): `serena init` writes `~/.serena/serena_config.yml`, and setup.sh
+# writes a project-local `.serena/`. Both are OUTSIDE HARNESSED_CONFIG_DIR; README.md documents the
+# removal commands.
+install:
+  script: install.sh
+
+# What `install.sh` CANNOT do — and never could, it is per-project state — is the project identity
+# and the symbol index. That is what remains in setup.sh, whose phase has HARNESSED_PROJECT_DIR.
 setup:
   summary: >-
-    First launch runs `setup.sh` automatically: it installs serena (host mode only — the container
-    image bakes it), configures the LSP backend, and creates the project with a repo-derived name,
-    pre-caching language-server symbols into `.serena/` so the first symbol tool call does not pay
-    the full scan. Note the language server for each language is downloaded on first use, so the
+    First launch runs `setup.sh` automatically: it creates the serena project with a repo-derived
+    name (the CLI itself and the LSP backend config are handled earlier, by `install.sh`, in both
+    modes), pre-caching language-server symbols into `.serena/` so the first symbol tool call does
+    not pay the full scan. Note the language server for each language is downloaded on first use, so the
     first launch needs egress — inside a container the setup runs BEFORE the firewall closes, but a
     later manual `serena project index` would need `--no-firewall`.
   reference: https://oraios.github.io/serena/02-usage/040_workflow.html
@@ -40,9 +55,8 @@ setup:
   config:
     - key: name
       derive: "{repo}"
-  # Both-mode replacement for `provision:` + `setup.run` — install (host) AND configure (both) in
-  # ONE file. That is the seam `provision:` structurally could not express, which is why
-  # `serena init -b LSP` was stranded in the Dockerfile and absent from host launches entirely.
+  # PROJECT-shaped work only. The install half moved to `install.sh` above; what is left here needs
+  # HARNESSED_PROJECT_DIR + HARNESSED_CFG_NAME, which the install env deliberately does not carry.
   script: setup.sh
 
 # What the capability test probes after a successful build: the serena server connected through
@@ -58,6 +72,6 @@ mcp:
       args: [start-mcp-server, --context, ide, --project-from-cwd]
       # transport: stdio (schema default). hatago spawns this in-container → it sees the project.
 
-# No `provision:` — `setup.script` above subsumes it. `provision:` could only INSTALL, so the
-# matching `serena init -b LSP` had to live in the Dockerfile, which never runs on a host launch;
-# setup.sh does both, in both modes, from one file.
+# No `provision:` — `install.script` above subsumes it. `provision:` could only INSTALL, and only
+# host-side, so the matching `serena init -b LSP` had to live in the Dockerfile, which never runs on
+# a host launch; install.sh does both, in both modes, from one file.

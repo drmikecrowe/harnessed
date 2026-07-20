@@ -67,4 +67,18 @@ front-matter field). A record missing recognizable headings is silently skipped 
 provider is configured (see above) to catch it via prose-mining instead. If `get_why`/`get_context`
 aren't surfacing your ADRs, check the file headings first before assuming indexing is broken.
 
+## Host footprint — what it writes outside harnessed, and how to remove it
+
+The CLI itself is stack-scoped in both modes (`install.sh` → `uv tool install`, redirected into the
+stack tool tree on a `--host` launch), so *installing* repowise leaves nothing in your home. The
+per-project index step above is what writes outside harnessed's dirs:
+
+| Path | Written by | Remove with |
+| --- | --- | --- |
+| `<project>/.repowise/` | `repowise init --index-only` — `wiki.db`, `config.yaml`, and `mcp.json` | `rm -r .repowise` |
+| `<project>/.mcp.json`, `<project>/.vscode/mcp.json`, `<project>/.vscode/extensions.json` | `repowise init` unconditionally, with no flag to suppress it (see above) — these are the stray duplicate MCP registrations | `rm -f .mcp.json .vscode/mcp.json .vscode/extensions.json` |
+
+Remove the CLI with the stack's tool tree:
+`rm -r "${XDG_DATA_HOME:-$HOME/.local/share}/harnessed/tools/<stack>"`.
+
 Upstream: <https://github.com/repowise-dev/repowise> (AGPL-3.0)
