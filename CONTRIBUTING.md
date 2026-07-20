@@ -16,53 +16,19 @@ uv run pytest -q                     # fast unit + assembly tests (no containers
 
 The CLI runs on the host; edits under `src/harnessed/` take effect immediately (no image rebuild).
 
-### Secret gate (recommended)
-
-Two scripts refuse to commit or push a secret: `.githooks/gitleaks-precommit` (scans the staged
-tree) and `.githooks/gitleaks-push` (scans the commits a push would publish). They need
-[gitleaks](https://github.com/gitleaks/gitleaks) and nothing else.
+### Git hooks
 
 **harnessed ships hook logic, never hook wiring.** A git hook is one executable per event with no
 chaining, so any tool that claims `.git/hooks/pre-commit` is at war with every other tool that wants
-it. These are plain scripts — wire them however you already work:
+it. A recipe needing a host git hook ships a plain script and leaves the wiring to you.
 
-```bash
-mise use -g gitleaks@8.30.1      # or: brew install gitleaks
-
-# Plain git hooks (no framework). The guard makes the hook a no-op on branches that
-# don't carry the script — otherwise an older checkout would fail EVERY commit.
-H=$(git rev-parse --git-common-dir)/hooks
-printf '#!/bin/sh\n[ -x .githooks/gitleaks-precommit ] || exit 0\nexec .githooks/gitleaks-precommit\n' > "$H/pre-commit"
-printf '#!/bin/sh\n[ -x .githooks/gitleaks-push ] || exit 0\nexec .githooks/gitleaks-push "$@"\n'     > "$H/pre-push"
-chmod +x "$H/pre-commit" "$H/pre-push"
-```
-
-Already use [pre-commit](https://pre-commit.com), lefthook, or husky? Point it at the same two
-scripts instead (`language: script` + `stages: [pre-commit]` / `[pre-push]` for pre-commit). The
-push script takes its range from `PRE_COMMIT_FROM_REF`/`PRE_COMMIT_TO_REF`, git's stdin ref list, or
-the branch's upstream — whichever the wiring provides.
-
-For the whole picture — how git resolves hooks, why worktrees share one hooks dir, and the traps
-that make a secret gate worse than useless — see the
+For the whole picture — how git resolves hooks, and why worktrees share one hooks dir — see the
 [Git hooks guide](https://github.com/drmikecrowe/harnessed/wiki/guides/git-hooks).
-
-**Both scans exist because they catch different things.** The staged scan is the earliest point,
-before a secret is in history at all. It is also blind to anything that got there another way —
-`git commit --no-verify`, a rebase or cherry-pick, or commits pulled from a clone with no hooks — so
-the push, which is the irreversible step, gets its own scan of the commits actually being sent.
-
-Both **fail closed**: a missing or erroring gitleaks refuses the operation rather than leaving it
-silently unscanned. Override deliberately with `GITLEAKS_SKIP=1 git commit …` / `… git push …`.
 
 **Do not set `core.hooksPath`.** Set locally *or* globally, it makes the repo's own `.git/hooks` be
 ignored entirely — which is how tools silently disable each other. (`bd init` sets a local one; in
 harnessed beads is **container-only**, so nothing should be setting it on your host. If something
 did: `git config --unset core.hooksPath`, adding `--global` if needed.)
-
-The container side is gated separately and needs no setup at all: the `mikes-universal-setup` recipe
-wires a `PreToolUse` hook that denies the agent's `git commit` / `git push` **tool call**. That one
-is not a git hook, so `--no-verify` cannot reach it — which is why it, and not this, is the gate
-harnessed actually relies on.
 
 ## `catalog/` is a published artifact
 
