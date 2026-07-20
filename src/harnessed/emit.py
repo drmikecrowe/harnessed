@@ -715,7 +715,8 @@ _CTR_INSTALL_CACHE = "/tmp/harnessed-install-cache"
 
 
 def install_env(
-    recipe: Recipe, *, mode: str, harness: str, config_dir: str, cache_dir: str
+    recipe: Recipe, *, mode: str, harness: str, config_dir: str, cache_dir: str,
+    bin_dir: str, home_shim: str,
 ) -> dict[str, str]:
     """THE `install.script` env contract — identical KEYS in host and container mode.
 
@@ -745,6 +746,19 @@ def install_env(
         "HARNESSED_CONFIG_DIR": config_dir,
         # Populate-if-empty content cache (empty string when the recipe declares no `install.cache`).
         "HARNESSED_INSTALL_CACHE": cache_dir,
+        # Where an install lands an EXECUTABLE. Container: a user-writable dir already on the base
+        # image's PATH. Host: the stack's own bin dir, which `_host_run_installs` also puts first on
+        # PATH. Without this an install script cannot LEARN a portable destination for a binary —
+        # the gap that kept tokensave root-only and forced codebase-memory-mcp onto
+        # ${UV_TOOL_BIN_DIR:?} (bd harnessed-8px.7).
+        "HARNESSED_BIN_DIR": bin_dir,
+        # A dir whose `.claude` IS $HARNESSED_CONFIG_DIR, for upstream installers that only know how
+        # to write "globally" into $HOME/.claude: run them as `HOME="$HARNESSED_HOME_SHIM" installer`.
+        # Container: the image home, where $HOME/.claude already is the config dir, so this is a
+        # no-op. Host: a STABLE per-project dir harnessed creates and symlinks. Stability is the
+        # whole point — recipes previously improvised this with `mktemp -d` and a trap, so any
+        # absolute path the installer recorded died with the temp dir (bd harnessed-8px.9).
+        "HARNESSED_HOME_SHIM": home_shim,
     }
 
 
@@ -767,6 +781,11 @@ def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
     env = install_env(
         recipe, mode="container", harness=harness,
         config_dir="/home/harnessed/.claude", cache_dir=cache,
+        # Already on PATH via the base image's `ENV PATH=…/.local/bin:…`, and writable by the
+        # `harnessed` user this RUN executes as.
+        bin_dir="/home/harnessed/.local/bin",
+        # $HOME/.claude IS the config dir in the image, so the shim is just the home itself.
+        home_shim="/home/harnessed",
     )
     # Inline assignments on the RUN, NOT `ENV`: these are build-phase inputs, and an `ENV` would
     # persist them into the shipped image (leaking HARNESSED_MODE=container et al into the agent's

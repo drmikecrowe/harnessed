@@ -796,12 +796,12 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     if os.environ.get("HARNESSED_NO_SCANS") != "true":
         _say(f"[blue][INFO][/blue] Credentialed re-scan of {derived} (snyk + socket) ...")
         _scan_image_in_container(rt, derived)
-    # Merge image-baked ~/.claude extensions into the profile only when a recipe actually baked some.
-    # `install:` counts too: it is a Dockerfile RUN by another name, and an install-only recipe (no
-    # Dockerfile at all) bakes into ~/.claude exactly like the RUN it replaced. Without `r.install`
-    # here, migrating a recipe off its Dockerfile would silently drop its content from the profile.
-    if any((r.root / "Dockerfile").is_file() or r.install for r in result.recipes):
-        _merge_baked_extensions(rt, derived, prof)
+    # NOTE: the image-baked ~/.claude extraction that used to run here is GONE (bd harnessed-8px.7).
+    # It existed because a Dockerfile RUN could deliver skills/commands into the image's ~/.claude,
+    # which the profile bind-mount would then hide. Content delivery now goes through `install:`,
+    # which writes into $HARNESSED_CONFIG_DIR in both modes, so there is nothing to extract — every
+    # recipe Dockerfile was audited and none references ~/.claude at all. `validate_no_claude_writes`
+    # keeps it that way LOUDLY, rather than this pass silently papering over a regression.
 
     # Replace the assemble-time settings.json FLOOR with the image's installer-written
     # settings.json (merged with harnessed's required grant). UNCONDITIONAL — a settings.json can
@@ -1205,9 +1205,6 @@ def _derived_image(stack: str, harness: str) -> str:
     return f"harnessed-{harness}-{stack}:latest"
 
 
-# Extension dirs an agent reads out of the Claude-canonical ~/.claude tree.
-_EXT_SUBDIRS = ("skills", "commands", "plugins", "agents", "hooks", "rules")
-
 _T = TypeVar("_T")
 
 
@@ -1226,29 +1223,6 @@ def _with_image_container(rt: str, image: str, fn: Callable[[str], _T]) -> _T | 
         return fn(cid)
     finally:
         subprocess.run([rt, "rm", "-f", cid], capture_output=True)
-
-
-def _merge_baked_extensions(rt: str, image: str, prof: Path) -> None:
-    """Copy ~/.claude/{skills,commands,plugins,…} baked into `image` INTO the profile tree.
-
-    A Dockerfile recipe delivers skills/commands/plugins by writing them into the image's
-    ~/.claude. The launcher bind-mounts the profile's .claude over the container's, which would
-    hide those image-baked files — so we extract them into the profile here, unifying
-    recipe-fanned (profile) and image-baked (Dockerfile) extensions before launch.
-    """
-    def _copy(cid: str) -> None:
-        claude = prof / ".claude"
-        for sub in _EXT_SUBDIRS:
-            dest = claude / sub
-            dest.mkdir(parents=True, exist_ok=True)
-            # `.` suffix copies directory CONTENTS (merge), not the dir itself. Missing source in
-            # the image is fine (not every agent bakes every subdir).
-            subprocess.run(
-                [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.claude/{sub}/.", str(dest)],
-                capture_output=True,
-            )
-
-    _with_image_container(rt, image, _copy)
 
 
 def _merge_baked_settings(rt: str, image: str, prof: Path, harness: str = "") -> None:
@@ -3136,6 +3110,12 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
     if not installs:
         return
     _, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
+    # The `$HOME` shim an installer that only writes "globally" runs under. Created once and RELINKED
+    # each launch: `home` is rmtree'd and rebuilt every time, so the symlink must be re-pointed at the
+    # new inode even though the path string is unchanged.
+    home_shim = paths.host_home_shim(home)
+    home_shim.mkdir(parents=True, exist_ok=True)
+    _relink(home_shim / ".claude", home)
     recipe_env = _recipe_env(installs, project_path, mode="host")
     for recipe in installs:
         inst = recipe.install
@@ -3162,6 +3142,8 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
             recipe, mode="host", harness=harness,  # winner as container mode, where the inline
             config_dir=str(home),                  # RUN assignments beat the preceding ENV lines.
             cache_dir=str(cache) if cache else "",
+            bin_dir=str(bin_dir),
+            home_shim=str(home_shim),
         ))
         # Host-only, mirroring _host_run_setups: keep any tool an install lands in the stack tree
         # rather than the user's global one.

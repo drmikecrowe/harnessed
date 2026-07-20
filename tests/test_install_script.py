@@ -30,6 +30,7 @@ from harnessed.schema import (
     SchemaError,
     load_recipe,
     validate_install_script,
+    validate_no_claude_writes,
 )
 
 CATALOG = Path(__file__).resolve().parents[1] / "catalog"
@@ -112,18 +113,20 @@ class TestEnvContract:
         "HARNESSED_RECIPE_DIR",
         "HARNESSED_CONFIG_DIR",
         "HARNESSED_INSTALL_CACHE",
+        "HARNESSED_BIN_DIR",   # portable destination for an executable (bd harnessed-8px.7)
+        "HARNESSED_HOME_SHIM",  # stable $HOME whose .claude is the config dir (bd harnessed-8px.9)
     }
 
     def test_identical_keys_in_both_modes(self, tmp_path):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
-        host = emit.install_env(r, mode="host", harness="claude", config_dir="/h", cache_dir="")
-        ctr = emit.install_env(r, mode="container", harness="claude", config_dir="/c", cache_dir="")
+        host = emit.install_env(r, mode="host", harness="claude", config_dir="/h", cache_dir="", bin_dir="/hbin", home_shim="/hshim")
+        ctr = emit.install_env(r, mode="container", harness="claude", config_dir="/c", cache_dir="", bin_dir="/cbin", home_shim="/cshim")
         assert set(host) == set(ctr) == self.KEYS
 
     def test_recipe_dir_is_the_catalog_dir_on_host_and_the_copy_target_in_container(self, tmp_path):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
-        host = emit.install_env(r, mode="host", harness="claude", config_dir="/h", cache_dir="")
-        ctr = emit.install_env(r, mode="container", harness="claude", config_dir="/c", cache_dir="")
+        host = emit.install_env(r, mode="host", harness="claude", config_dir="/h", cache_dir="", bin_dir="/hbin", home_shim="/hshim")
+        ctr = emit.install_env(r, mode="container", harness="claude", config_dir="/c", cache_dir="", bin_dir="/cbin", home_shim="/cshim")
         assert host["HARNESSED_RECIPE_DIR"] == str(r.root)
         assert ctr["HARNESSED_RECIPE_DIR"] == f"{emit.CTR_RECIPE_DIR}/r"
 
@@ -133,7 +136,7 @@ class TestEnvContract:
         silently expands to empty in a build: the exact mode-asymmetry this epic removes. A script
         needing project context belongs in `setup.script`, whose phase has one."""
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
-        env = emit.install_env(r, mode="host", harness="claude", config_dir="/h", cache_dir="")
+        env = emit.install_env(r, mode="host", harness="claude", config_dir="/h", cache_dir="", bin_dir="/hbin", home_shim="/hshim")
         for absent in ("PROJECT_DIR", "MAIN_REPO_DIR", "HOST_WORKSPACE_DIR",
                        "HARNESSED_PROJECT_DIR"):
             assert absent not in env
@@ -511,8 +514,26 @@ class TestSuperpowersMigrated:
     def test_passes_the_install_lint(self):
         validate_install_script(load_recipe(CATALOG / "recipes" / "superpowers", strict=True))
 
-    def test_baked_extension_merge_still_covers_it_without_a_dockerfile(self):
-        """`_merge_baked_extensions` was gated on a recipe HAVING a Dockerfile. Migrating off one
-        would otherwise silently drop the baked content from the container profile."""
-        src = inspect.getsource(launcher._build_stack)
-        assert 'or r.install for r in result.recipes' in src
+    def test_no_recipe_dockerfile_delivers_content_via_claude_dir(self):
+        """Replaces the old `_merge_baked_extensions` gate assertion (bd harnessed-8px.7).
+
+        That pass copied image-baked ~/.claude content back out into the profile, because the
+        profile bind-mount would hide it. It is deleted: content goes through `install:`, which
+        writes $HARNESSED_CONFIG_DIR in both modes. Deleting a safety net silently would just move
+        the failure, so the invariant it protected is asserted directly instead — no recipe
+        Dockerfile may reference ~/.claude at all.
+        """
+        offenders = []
+        for recipe_yaml in sorted((CATALOG / "recipes").glob("*/recipe.yaml")):
+            r = load_recipe(recipe_yaml.parent, strict=True)
+            dockerfile = r.root / "Dockerfile"
+            if not dockerfile.is_file():
+                continue
+            try:
+                validate_no_claude_writes(r, dockerfile.read_text(encoding="utf-8"))
+            except RecipeLintError:
+                offenders.append(r.name)
+        assert offenders == [], (
+            f"recipe Dockerfiles referencing ~/.claude: {offenders}. That content is invisible to a "
+            "host launch and hidden by the bind-mount in a container — deliver it from install.script."
+        )

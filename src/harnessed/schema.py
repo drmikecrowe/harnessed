@@ -1872,6 +1872,30 @@ def validate_install_script(recipe: Recipe) -> None:
     _lint_script_file(recipe, "install.script", recipe.install.script)
 
 
+def validate_no_claude_writes(recipe: Recipe, dockerfile_body: str) -> None:
+    """Reject a recipe Dockerfile that touches `~/.claude` — content belongs in `install.script`.
+
+    The launcher used to extract image-baked `~/.claude` content back out into the profile, because
+    the profile bind-mount would otherwise hide it. That pass is gone (bd harnessed-8px.7): every
+    content recipe now writes into `$HARNESSED_CONFIG_DIR` via `install:`, which lands in BOTH modes.
+
+    Without this lint, deleting the extraction turns a Dockerfile `~/.claude` write into a SILENT
+    content loss in container mode — the same shape as harnessed-8px.1, just with the modes swapped.
+    A recipe that needs to deliver content has `install.script`; one that genuinely needs a
+    container-only step declares `install.system`.
+    """
+    body = "\n".join(
+        line for line in dockerfile_body.splitlines() if not line.lstrip().startswith("#")
+    )
+    if ".claude" not in body:
+        return
+    raise RecipeLintError(
+        f"recipe '{recipe.name}': Dockerfile references '~/.claude'. Content delivered that way is "
+        "invisible to a host launch AND hidden by the profile bind-mount in a container. Write it "
+        "into \"$HARNESSED_CONFIG_DIR\" from install.script instead, which lands in both modes."
+    )
+
+
 def validate_container_only_declared(recipe: Recipe, dockerfile_body: str) -> None:
     """Reject a PARTIALLY migrated recipe that leaves a container-only `RUN` undeclared.
 

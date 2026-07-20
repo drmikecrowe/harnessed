@@ -27,6 +27,7 @@ from .schema import (
     load_stack_with_recipes,
     validate_container_only_declared,
     validate_init_no_exit,
+    validate_no_claude_writes,
     validate_no_raw_npm,
     validate_install_script,
     validate_pin,
@@ -129,6 +130,8 @@ def assemble(
             validate_pin(recipe.name, body)  # ASM-02 (T-08-01)
             # A migrated recipe that kept a RUN must SAY what a host launch loses (harnessed-8px.1).
             validate_container_only_declared(recipe, body)
+            # Content in ~/.claude is invisible host-side and hidden container-side (harnessed-8px.7).
+            validate_no_claude_writes(recipe, body)
 
     servers = _resolve_service_servers(_merge_servers(recipes), root)
 

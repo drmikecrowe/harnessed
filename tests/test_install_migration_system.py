@@ -224,18 +224,19 @@ class TestHomeShimRecipesRewriteRecordedPaths:
     Any recipe adopting the shim must therefore rewrite recorded paths before the shim goes away.
     """
 
-    def test_every_shim_using_install_script_rewrites_recorded_paths(self):
+    def test_no_install_script_improvises_its_own_home_shim(self):
+        """harnessed supplies $HARNESSED_HOME_SHIM — a STABLE dir whose .claude is the config dir.
+        A recipe rolling its own with `mktemp -d` gets a shim that is deleted on exit, which is the
+        whole bug: paths the installer recorded outlive the dir they point into."""
         offenders = []
         for script in sorted(RECIPES.glob("*/install.sh")):
             body = script.read_text(encoding="utf-8")
-            if "shim_home=" not in body:
-                continue  # not using the pattern; nothing to rewrite
-            if "_rewrite_shim_paths" not in body:
+            if "shim_home" in body or 'ln -s "$HARNESSED_CONFIG_DIR"' in body:
                 offenders.append(script.parent.name)
         assert offenders == [], (
-            f"install.sh uses a $HOME shim but never rewrites recorded paths: {offenders}. "
-            "The shim is deleted on exit, so any absolute path the installer baked into "
-            "settings.json dies with it — call _rewrite_shim_paths \"$shim_home\" after the installer."
+            f"install.sh builds its own $HOME shim: {offenders}. Use HOME=\"$HARNESSED_HOME_SHIM\" "
+            "instead — harnessed creates it, keeps it stable across launches, and points its .claude "
+            "at $HARNESSED_CONFIG_DIR, so recorded absolute paths stay valid."
         )
 
 

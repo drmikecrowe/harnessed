@@ -271,6 +271,25 @@ def host_home(stack: str, harness: str, project_path: str | Path) -> Path:
     return host_homes_root() / stack / harness / project_hash(project_path)
 
 
+def host_home_shim(home: Path) -> Path:
+    """A stable dir whose `.claude` symlinks to `home` — the host value of `$HARNESSED_HOME_SHIM`.
+
+    Upstream installers commonly only know how to install "globally" into `$HOME/.claude`. Host-side
+    that would mean the USER'S real `~/.claude`, so a recipe runs them under a fake `$HOME` whose
+    `.claude` points at the stack's config dir instead.
+
+    A SIBLING of `home`, not a child: `_materialize_host_home` rmtree's `home` on every launch, so a
+    shim inside it would not survive. Sibling-per-project rather than one per stack, because the
+    `.claude` symlink can only point at one config dir and two projects must not alias onto each
+    other's.
+
+    Stability is the entire point. Recipes previously improvised this with `mktemp -d` plus a trap,
+    so every absolute path the installer recorded (gsd-core baked 12 hook paths into settings.json)
+    pointed into a dir that was deleted seconds later — bd harnessed-8px.9.
+    """
+    return home.parent / f"{home.name}.home"
+
+
 def project_hash(project_path: str | Path) -> str:
     """Stable 8-hex project key: sha1[:8] of the normalized project path.
 

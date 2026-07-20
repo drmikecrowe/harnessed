@@ -55,6 +55,20 @@ def _run(recipe: str, tmp_path: Path, *, mode: str, harness: str, cache: Path | 
     config_dir.mkdir(parents=True, exist_ok=True)
     home = home or (tmp_path / "userhome")
     home.mkdir(parents=True, exist_ok=True)
+    # $HARNESSED_HOME_SHIM is a dir whose .claude IS the config dir, so an installer that only knows
+    # how to write "globally" into $HOME/.claude lands in the stack's config dir. Container-side that
+    # is already true of the real home, so the shim IS the home; host-side harnessed makes a stable
+    # sibling and symlinks it (paths.host_home_shim). Mirrored here so the scripts see the real shape.
+    if config_dir == home / ".claude":
+        home_shim = home
+    else:
+        home_shim = tmp_path / "homeshim"
+        home_shim.mkdir(parents=True, exist_ok=True)
+        link = home_shim / ".claude"
+        if not link.is_symlink():
+            link.symlink_to(config_dir)
+    bin_dir = tmp_path / "stackbin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
     env = {
         "PATH": os.pathsep.join([str(stub_path or (tmp_path / "bin")), "/usr/bin", "/bin"]),
         "HOME": str(home),
@@ -64,6 +78,8 @@ def _run(recipe: str, tmp_path: Path, *, mode: str, harness: str, cache: Path | 
         "HARNESSED_RECIPE_DIR": str(CATALOG / "recipes" / recipe),
         "HARNESSED_CONFIG_DIR": str(config_dir),
         "HARNESSED_INSTALL_CACHE": str(cache) if cache else "",
+        "HARNESSED_BIN_DIR": str(bin_dir),
+        "HARNESSED_HOME_SHIM": str(home_shim),
     }
     return subprocess.run(
         ["bash", str(_script(recipe))], env=env, capture_output=True, text=True
@@ -217,7 +233,12 @@ class TestGsdCoreInstall:
         r = _run("gsd-core", tmp_path, mode="container", harness="claude",
                  home=home, config_dir=home / ".claude")
         assert r.returncode == 0
+        # `store path` precedes the install in BOTH modes now: $HARNESSED_HOME_SHIM removed the
+        # host/container branch, so the store pin runs unconditionally. Container-side it is a no-op
+        # (the shim IS the real home, so it pins the store to where pnpm would have put it anyway) —
+        # one cheap extra call, in exchange for the two modes running byte-identical script.
         assert log.read_text().splitlines() == [
+            "store path",
             "dlx @opengsd/gsd-core@1.6.1 --claude --global",
         ]
 
