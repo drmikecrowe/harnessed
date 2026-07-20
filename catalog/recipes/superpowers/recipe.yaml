@@ -5,9 +5,10 @@
 #
 # The whole recipe is: clone the pinned release tag and copy the upstream's already-
 # Claude-canonical skills/ tree into ~/.claude/skills/ — the exact layout every harness
-# plugin install surfaces, minus the plugin-registry wrapping. The 14 skills install via a
-# Dockerfile RUN step the assembler can't see, so `expect:` lists all 14 for the capability
-# test to probe (the gstack pattern).
+# plugin install surfaces, minus the plugin-registry wrapping. The 14 skills install via
+# `install.sh` (see `install:` below) rather than the declarative `skills:` field, so the assembler
+# still cannot see them — `expect:` lists all 14 for the capability test to probe (the gstack
+# pattern). They ARE now delivered on a host launch, which the previous Dockerfile RUN never did.
 name: superpowers
 description: superpowers — composable software-development methodology skill suite (TDD, systematic debugging, brainstorming, planning, subagent-driven development, code review, git worktrees). 14 Claude-canonical skills (upstream Superpowers, Jesse Vincent / Prime Radiant).
 # setup: none needed — pure skill bundle, credentials-free, no per-project init
@@ -21,8 +22,23 @@ description: superpowers — composable software-development methodology skill s
 env:
   SUPERPOWERS_DISABLE_TELEMETRY: "1"
 
-# What the capability test must find in the running container after a successful build. The
-# Dockerfile copies all 14 upstream skills/<name>/SKILL.md trees into ~/.claude/skills; list
+# The clone-and-copy, as ONE bash file run by BOTH executors: `RUN bash install.sh` in the derived
+# image, and by the launcher after the host home is materialized on `launch --host`. This recipe
+# was the reproducer for bd harnessed-8px.1 (host launch → 0 of 14 skills, no error).
+#
+# `cache:` MUST equal the SUPERPOWERS_REF pinned inside install.sh. It keys the host content cache
+# ($XDG_CACHE_HOME/harnessed/install/superpowers/v6.0.3) so the per-launch re-run — mandatory,
+# because the host home is rebuilt from scratch every launch — clones once, not every time. The
+# schema rejects a floating key; bump both together to upgrade, which yields a fresh cache dir.
+#
+# No `system:` — nothing here needs root (pure Markdown written under the agent config dir), so the
+# host launch is fully equivalent to the container build.
+install:
+  script: install.sh
+  cache: v6.0.3
+
+# What the capability test must find in the running container after a successful build. install.sh
+# copies all 14 upstream skills/<name>/SKILL.md trees into ~/.claude/skills; list
 # the full stable set so the probe asserts a complete install. These names are stable across
 # upstream v3–v6.
 expect:

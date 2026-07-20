@@ -154,6 +154,54 @@ This is why a condition may be written against a real path — `[ ! -f
 "${MAIN_REPO_DIR}/.beads/metadata.json" ]`. Under an env-less eval that expanded to the empty string
 and the test passed falsely.
 
+## Recipe scripts: `install:` vs `setup.script`
+
+Both are one bash file in the recipe dir, run by **both** executors (container and `--host`), linted
+identically (raw `npm`/`npx` and floating refs rejected inside the `.sh` — `validate_install_script`
+/ `validate_setup_script`, because `validate_pin` only ever reads Dockerfile *text*). They differ in
+exactly one thing: **the phase**.
+
+| | container | host |
+| --- | --- | --- |
+| `install:` | **build** — `RUN bash <script>` in the derived Dockerfile, with the recipe dir `COPY`'d to `/opt/harnessed/recipes/<recipe>` | immediately **after** `_materialize_host_home` |
+| `setup.script` | **runtime** — `podman exec` after start, before the egress firewall closes | after `install` |
+
+The split is forced, not stylistic. `setup` cannot run at build: no project is bind-mounted, so
+`HARNESSED_PROJECT_DIR` is unresolvable. `install` must not run at container runtime: it is baking
+the image, and re-running it per container start re-pays the clone every launch.
+
+Host installs run **after** the materialize because `_materialize_host_home` does
+`shutil.rmtree(home)` on **every** launch (so a removed recipe's files never linger). Run before it,
+the install's output is deleted milliseconds later, silently — which is exactly the shape of the bug
+this mechanism fixes. That same wipe makes "run once on first launch" structurally impossible, so
+the install runs every launch; `install.cache` is what makes that affordable (the *output* cannot
+persist, but the pinned *source* can).
+
+**Install env** — deliberately a *subset* of the folder-env contract above, not a superset:
+
+| Variable | Value |
+| --- | --- |
+| `HARNESS` | as above |
+| `HARNESSED_MODE` | `host` \| `container` |
+| `HARNESSED_RECIPE_DIR` | the recipe's own dir — `cp` where a Dockerfile did `COPY` |
+| `HARNESSED_CONFIG_DIR` | the agent config dir to install **into**: image `~/.claude` at build, the materialized host home on a host launch |
+| `HARNESSED_INSTALL_CACHE` | `$XDG_CACHE_HOME/harnessed/install/<recipe>/<install.cache>`, or empty when no `cache:` is declared. Cache **miss** is "the directory does not exist" — harnessed creates only its parent. Build-side this is `/tmp` scratch, removed in the same layer. |
+
+`PROJECT_DIR` and friends are **absent on purpose**. A build cannot know them; exporting them
+host-side only would hand authors a variable that works on host and silently expands to empty in a
+build. Anything needing project context belongs in `setup.script`, whose phase has a project.
+
+**Precedence, identical in both modes**: inherited environment → recipe `env:` → harnessed-owned
+install contract. The contract wins. Container gets that from inline `VAR=… bash install.sh`
+assignments beating the preceding `ENV` lines; host from `env.update(install_env(...))` running last.
+Asserted as *order*, not values, in `tests/test_install_script.py::TestPrecedence`.
+
+**System-level steps** (`USER root`, `apt-get`, `COPY` into `/usr/local/bin`) stay in the recipe
+Dockerfile — harnessed never sudos or mutates the user's system. A recipe with such a step declares
+`install.system: "<reason>"`; a host launch then **skips it and says so**, naming the recipe and
+printing the reason verbatim. Documented skip, not hard failure (a hard failure would make `--host`
+unusable for stacks in the default set) — and never a *silent* skip.
+
 ## The capability test is the oracle
 
 `harnessed test <stack>` launches the stack `--fresh` headless and diffs the **manifest oracle**
