@@ -5,11 +5,14 @@ Code runs for its `statusLine` — into the agent image, and wires Claude Code t
 
 ## What it does
 
-- **Installs the pinned `ccstatusline` CLI** via mise's `npm:` backend, so a shim resolves at
-  `/home/harnessed/.local/share/mise/shims/ccstatusline`.
-- **Bakes a `statusLine` block** into the container's `~/.claude/settings.json` at build time
-  (branched on `${HARNESS}` — `statusLine` is a Claude Code concept, so only the `claude` harness
-  gets it):
+Both steps live in `install.sh`, which runs on a **container build and a host launch alike**.
+
+- **Installs the pinned `ccstatusline` CLI.** In a container, via mise's `npm:` backend, so a shim
+  resolves at `/home/harnessed/.local/share/mise/shims/ccstatusline`. On a host launch, via `pnpm`
+  into the recipe's install cache (`$XDG_CACHE_HOME/harnessed/install/ccstatusline/<version>`) —
+  `mise use -g` is not used host-side because it would write *your* global mise config.
+- **Writes a `statusLine` block** into the config dir's `settings.json` (branched on `${HARNESS}` —
+  `statusLine` is a Claude Code concept, so only the `claude` harness gets it):
 
   ```json
   "statusLine": {
@@ -20,8 +23,15 @@ Code runs for its `statusLine` — into the agent image, and wires Claude Code t
   }
   ```
 
+  That `command` is **computed per mode**, not hard-coded: the container gets the mise shim path
+  above, a host launch gets the cached binary's absolute path. (The old Dockerfile baked the
+  container path unconditionally, which is why a host launch got a `statusLine` pointing at a
+  directory that does not exist on the host.)
+
   harnessed's `emit.merge_settings` preserves this baked key while re-applying its own required
   settings (the hatago MCP grant), so the status line survives the post-build settings merge.
+
+Requires `pnpm` on PATH for the host path; a missing `pnpm` fails the install loudly.
 
 ## Host config forward
 
@@ -30,6 +40,21 @@ the same path inside the container, so the agent's status line matches your host
 When the host file is absent the mount is skipped and **ccstatusline's built-in defaults** apply — a
 missing host config never breaks launch.
 
+## Footprint / removal
+
+A host launch installs the package into the recipe's install cache, which is the one thing it leaves
+behind on purpose — the stack's config dir is rebuilt from scratch on every launch, but `statusLine`
+is an absolute path the agent execs for the whole session, so the binary has to outlive it.
+
+```bash
+rm -r "${XDG_CACHE_HOME:-$HOME/.cache}/harnessed/install/ccstatusline"   # drop the cached CLI
+pnpm store prune                                                        # and its shared-store copy
+```
+
+Nothing else is written outside the stack's config dir; your own
+`~/.config/ccstatusline/settings.json` is only ever read.
+
 ## Version
 
-Pinned via the `CCSTATUSLINE_VERSION` build arg in the recipe `Dockerfile`. Bump it deliberately.
+Pinned by `CCSTATUSLINE_VERSION` in `install.sh`, which must stay equal to `install.cache` in
+`recipe.yaml` (the cache key). Bump both together, deliberately.

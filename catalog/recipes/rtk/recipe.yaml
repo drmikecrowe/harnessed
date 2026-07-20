@@ -4,9 +4,19 @@
 # rtk is a proxy CLI the agent invokes explicitly (`rtk git status`, `rtk read file.rs`, …) that runs
 # the underlying command and re-emits a filtered/compacted form (60–90% smaller output). It is NOT an
 # MCP server (no `rtk mcp`/`rtk serve`) and writes nothing into the project dir, so this recipe is
-# metadata-only here: the build lives in the Dockerfile, and there is no `mcp:`/`service:`/skill
+# metadata-only here: the build lives in `install.sh`, and there is no `mcp:`/`service:`/skill
 # surface. There is also no `expect:` — rtk ships no skill/command/plugin, and there is no `expect`
 # kind for "a binary runs", so the capability is verified manually (`rtk --version`) per PLAN.md.
 name: rtk
 description: rtk (Rust Token Killer) — compress dev-command output 60-90% before it reaches the LLM.
-# setup: none needed — rtk init -g baked into image by Dockerfile
+# setup: none needed — rtk init -g runs in install.sh
+
+# Both former Dockerfile RUN layers, as one bash file run by BOTH executors (bd harnessed-8px.5):
+# the mise `github:` binary install and `rtk init -g --auto-patch`.
+#
+# No `cache:` — mise owns its own download cache container-side, and the host branch installs no
+# binary at all (see install.sh: an install.sh cannot put an executable on the host agent's PATH;
+# that is `provision:`, bd harnessed-zi6.1). The host skip is a WARNING from the script, not
+# `system:`: nothing here needs root, so a `system:` reason string would be a lie about why.
+install:
+  script: install.sh

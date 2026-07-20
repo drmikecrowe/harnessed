@@ -3,7 +3,18 @@ description: >-
   GSD Core (opengsd.net) — a spec-driven-development skill/agent/workflow suite
   installed via its own upstream installer (npx @opengsd/gsd-core), pinned and run
   as pnpm dlx.
-# setup: none needed — Dockerfile installs non-interactively, no external account required
+# setup: none needed — install.sh runs the installer non-interactively, no external account required
+
+# The former Dockerfile's single RUN, as one bash file run by BOTH executors (bd harnessed-8px.5) —
+# so the skills/agents below now land on a host launch too, not just in the image.
+#
+# No `cache:` — `pnpm dlx` fetches and executes in one step, with nowhere to point a
+# populate-if-empty content cache; pnpm's own store is what keeps the repeat cost down (install.sh
+# pins it back at the real store when it moves $HOME to redirect the installer's `--global`).
+# No `system:` — pure content under the agent config dir, nothing needs root, nothing is skipped.
+install:
+  script: install.sh
+
 expect:
   # Claude Code 2.1.88+ installs GSD's commands as skills (~/.claude/skills/gsd-*), not
   # ~/.claude/commands/ — verified against the built image. Agents (~/.claude/agents/gsd-*)

@@ -2,11 +2,16 @@
 # Recipe: ccstatusline — bake the ccstatusline status-line renderer into the agent image.
 #
 # ccstatusline is the program Claude Code invokes for its `statusLine` (a `type: command` entry in
-# ~/.claude/settings.json). This recipe (a) installs the pinned `ccstatusline` npm CLI via mise so a
-# shim resolves at ~/.local/share/mise/shims/ccstatusline, and (b) bakes the matching `statusLine`
-# block into the container's ~/.claude/settings.json at build time (Dockerfile, branched on ${HARNESS}
-# — statusLine is Claude-only). emit.merge_settings carries that baked key through verbatim while
+# ~/.claude/settings.json). This recipe (a) installs the pinned `ccstatusline` CLI and (b) writes the
+# matching `statusLine` block into the config dir's settings.json, branched on ${HARNESS} —
+# statusLine is Claude-only. emit.merge_settings carries that baked key through verbatim while
 # re-applying harnessed's hatago grant.
+#
+# Both halves now live in `install.sh` (bd harnessed-8px.5), so both happen on a host launch too. The
+# statusLine command is COMPUTED, not hard-coded: the old Dockerfile baked the container-absolute
+# `/home/harnessed/.local/share/mise/shims/ccstatusline` into settings.json, which no host can
+# resolve. Container-side that mise shim is still exactly what gets written; host-side it is the
+# binary in the install cache.
 #
 # Metadata-only here (like rtk): no MCP server, no skill/command/plugin surface, so no `expect:` —
 # there is no expect kind for "a status line renders". The host's own ~/.config/ccstatusline/settings.json
@@ -15,3 +20,14 @@
 name: ccstatusline
 description: ccstatusline — bake the pinned status-line renderer + a Claude statusLine config into the agent image.
 # setup: none needed — self-contained; optional host config auto-mounted
+
+# `cache:` MUST equal the CCSTATUSLINE_VERSION pinned inside install.sh — it keys the host content
+# cache ($XDG_CACHE_HOME/harnessed/install/ccstatusline/2.2.22), which on a host launch holds the
+# installed package itself, not just a source clone. That is deliberate: $HARNESSED_CONFIG_DIR is
+# rmtree'd on every host launch, but the statusLine command is an absolute path the agent execs for
+# the whole session, so the tree has to outlive the config dir. Bump both together.
+#
+# No `system:` — nothing here needs root, and neither half is skipped on a host launch.
+install:
+  script: install.sh
+  cache: 2.2.22
