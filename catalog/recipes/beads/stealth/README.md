@@ -26,14 +26,20 @@ Any number of agent containers may run against the project at once: they are all
 | **Placement** | Outside the repo. `persist: {name: .beads, scope: project, location: host}` — host-persisted at `$XDG_DATA_HOME/harnessed/persist/beads-stealth/<git-common-dir-hash>/.beads/`, bind-mounted at `/home/harnessed/.beads`. `scope: project` (git-common-dir keyed) shares one DB across every worktree of a checkout but **not** across clones — the right behavior for a tracker that spans branches. |
 | **Storage** | The `beads-server` service — one `dolt sql-server` per project — which bind-mounts *that host dir* as its data dir, because this recipe declared `.beads` `location: host`. bd is a pure client over a unix socket; it never starts an engine. |
 | **Git** | None. `--stealth` is passed throughout: `bd init --stealth` configures `.git/info/exclude` and disables git operations. No hooks, no Dolt remote, no `AGENTS.md` mutation — and so **no sync**: `harnessed svc sync beads-server` is a [`beads/team`](../team/README.md) affordance. The data lives on the host and stays there. |
-| **`BEADS_DIR`** | Baked as a static `ENV BEADS_DIR=/home/harnessed/.beads`. The mount target is a **fixed** container path, not `$PWD`-relative, so the ENV never varies per project — and the server serves its socket from inside that same dir. |
+| **`BEADS_DIR`** | Declared as recipe `env: {BEADS_DIR: "{persist:.beads}"}`. harnessed resolves the `{persist:…}` reference per mode — the bind-mount target in a container, the host persist dir on a `--host` launch — and delivers it to every process in both. |
 | **Baked** | `bd` 1.1.0 only. No `dolt` binary — bd never runs an engine here. |
 
-### Why a Dockerfile `ENV`, not a shell export
+### Why recipe `env:`, not a shell export or a Dockerfile `ENV`
 
 A shell `export BEADS_DIR=…` in a hook script only affects that script's own process tree and is lost
-before `bd` ever runs. A Dockerfile `ENV` reaches every process in the container unconditionally. The
-fixed mount target is what makes the static ENV safe.
+before `bd` ever runs, so the value has to come from the environment itself.
+
+It used to be a static `ENV BEADS_DIR=/home/harnessed/.beads` in this recipe's Dockerfile, which was
+safe only because the container mount target is a fixed path. That stopped working once the recipe
+had to run host-side too, where there is no image and no fixed mount: a baked absolute container path
+is simply wrong on the host. Recipe `env:` is the mode-portable replacement — one declaration, and
+harnessed resolves `{persist:.beads}` to whatever that mode's real path is (`podman run -e`
+container-side, `os.environ` on the host).
 
 ## Stack wiring
 

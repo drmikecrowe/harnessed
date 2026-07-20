@@ -56,8 +56,16 @@ the recipe's Dockerfile. Three ways a recipe delivers capability:
 - **Skill / command** — ship a `skills/<leaf>/` or `commands/<leaf>/` dir; the assembler fans it into
   the profile's `.claude/`.
 - **Rules** — ship a `rules/<leaf>/` dir; the assembler fans it into the profile's `.claude/rules/` (system-prompt-equivalent guidance for Claude Code).
-- **Dockerfile** — install into the agent image's `~/.claude/…` (or install a CLI). Because the
-  assembler can't see what a Dockerfile installs, **declare it** so the capability test can probe it:
+- **`install:` script** — one bash file run by **both** executors, so it delivers identically in a
+  container build and a `--host` launch. Write content into `"$HARNESSED_CONFIG_DIR"`, executables
+  into `"$HARNESSED_BIN_DIR"`, and run an installer that only understands "global" as
+  `HOME="$HARNESSED_HOME_SHIM" <installer>`. A recipe Dockerfile must **not** write into `~/.claude`:
+  that content is invisible to a host launch and hidden by the profile bind-mount in a container.
+  Anything genuinely container-only (root, `apt-get`) stays in the Dockerfile and is declared in
+  `install.system`, whose prose reason is printed at host launch so the shortfall is never silent.
+
+Because the assembler can't see what a script or Dockerfile installs, **declare it** so the
+capability test can probe it:
 
 ```yaml
 name: my-recipe
@@ -70,7 +78,14 @@ expect:                       # only what your Dockerfile delivers (not skills:/
 ```
 
 Recipe Dockerfiles: **no `FROM`**, **no `ARG HARNESS`** (the assembler supplies both); **pin every
-download** (no `@latest` / `--branch main` — the build rejects floating refs). See
+download** (no `@latest` / `--branch main` — the build rejects floating refs).
+
+**Write outside harnessed-owned dirs → document removal in the recipe's README.** A recipe that
+touches anything beyond `$HARNESSED_CONFIG_DIR`, `$HARNESSED_BIN_DIR`, and its own persist dirs —
+a global package, a file in the user's home, a system service — must say in its README exactly what
+it leaves behind and how to remove it. A host launch runs against the user's real machine, where
+there is no image to throw away, so "uninstall the stack" cannot mean anything unless the recipe
+spells it out. See
 [docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md); worked examples: `catalog/recipes/time`
 (stdio MCP + skill), `catalog/recipes/ping` (service ref), `catalog/recipes/gstack` (Dockerfile).
 

@@ -156,7 +156,8 @@ and the test passed falsely.
 
 ## Recipe scripts: `install:` vs `setup.script`
 
-Both are one bash file in the recipe dir, run by **both** executors (container and `--host`), linted
+Both are a bash file in the recipe dir (an `install:` may instead be a bare `system:` reason with no
+script at all — see **Shape** below), run by **both** executors (container and `--host`), linted
 identically (raw `npm`/`npx` and floating refs rejected inside the `.sh` — `validate_install_script`
 / `validate_setup_script`, because `validate_pin` only ever reads Dockerfile *text*). They differ in
 exactly one thing: **the phase**.
@@ -186,10 +187,42 @@ persist, but the pinned *source* can).
 | `HARNESSED_RECIPE_DIR` | the recipe's own dir — `cp` where a Dockerfile did `COPY` |
 | `HARNESSED_CONFIG_DIR` | the agent config dir to install **into**: image `~/.claude` at build, the materialized host home on a host launch |
 | `HARNESSED_INSTALL_CACHE` | `$XDG_CACHE_HOME/harnessed/install/<recipe>/<install.cache>`, or empty when no `cache:` is declared. Cache **miss** is "the directory does not exist" — harnessed creates only its parent. Build-side this is `/tmp` scratch, removed in the same layer. |
+| `HARNESSED_BIN_DIR` | where to land an **executable**: the base image's `~/.local/bin` (already on `PATH`) at build, the stack's own bin dir on a host launch. Without it a script has no portable destination for a binary and must either go root-only or guess at `$UV_TOOL_BIN_DIR`. |
+| `HARNESSED_HOME_SHIM` | a dir whose `.claude` **is** `$HARNESSED_CONFIG_DIR`, for upstream installers that only know how to install "globally" into `$HOME/.claude`: run them as `HOME="$HARNESSED_HOME_SHIM" <installer>`. The image home at build (where that is already true); a **stable** per-project sibling of the config dir on a host launch. Stability is the point — a recipe rolling its own with `mktemp -d` gets a shim deleted on exit, so any absolute path the installer *recorded* dies with it. `install.sh` must not build its own shim; a catalog test enforces this. |
 
 `PROJECT_DIR` and friends are **absent on purpose**. A build cannot know them; exporting them
 host-side only would hand authors a variable that works on host and silently expands to empty in a
 build. Anything needing project context belongs in `setup.script`, whose phase has a project.
+
+**Host-only extras.** Alongside the contract above, `_host_run_installs` also redirects the package
+managers so a tool installed by an install script lands in the *stack's* tree rather than the user's
+global one — there is no image to contain it host-side:
+
+| Variable | Value |
+| --- | --- |
+| `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` | the stack's uv tool dir and bin dir, so `uv tool install` stays inside the stack |
+| `npm_config_prefix` | the stack tools dir, so `pnpm add -g` does not write the user's global prefix |
+| `PATH` | `$HARNESSED_BIN_DIR` **first**, so a tool an install just landed is resolvable by the next line of the same script |
+
+These are host-only *by design*: container-side the image already provides the containment they
+recreate. They are NOT part of the both-modes contract, so a script must not depend on their values
+— use `$HARNESSED_BIN_DIR` for a path you need to name.
+
+**Shape.** `install:` is usually one bash file, but not always:
+
+- `script:` only — the common case; runs in both modes.
+- `script:` **and** `system:` — a partial migration. The script runs in both modes; the recipe's
+  Dockerfile keeps a container-only step (root, or a write outside harnessed-owned dirs). `system:`
+  is a prose reason, printed verbatim at host launch to say what that launch does *not* get.
+- `system:` only, **no script** — a root-only install. The whole step lives in the recipe's
+  Dockerfile; nothing is emitted at build and the host behaviour is the warning and nothing else.
+
+`validate_container_only_declared` rejects the fourth combination — a recipe with an `install:` whose
+Dockerfile still has a `RUN` but which declares no `system:`. That shape delivers less on a host
+launch than the recipe promises, silently. Relatedly, a recipe Dockerfile may not reference
+`~/.claude` at all (`validate_no_claude_writes`): content written there is invisible to a host launch
+and hidden by the profile bind-mount in a container, so it belongs in `install.script` writing to
+`$HARNESSED_CONFIG_DIR`.
 
 **Precedence, identical in both modes**: inherited environment → recipe `env:` → harnessed-owned
 install contract. The contract wins. Container gets that from inline `VAR=… bash install.sh`
