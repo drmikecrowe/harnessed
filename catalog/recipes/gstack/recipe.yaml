@@ -1,12 +1,31 @@
 # yaml-language-server: $schema=../../../schemas/recipe.schema.json
 # Recipe: gstack — install a third-party skill suite by running its own upstream installer.
 #
-# The whole recipe is: do what gstack's install docs say (git clone + ./setup), in a Dockerfile.
-# ./setup bakes ~50 skills into ~/.claude/skills. The assembler can't see what a Dockerfile RUN
-# step installs, so `expect:` lists a representative few for the capability test to probe.
+# The whole recipe is: do what gstack's install docs say (git clone + ./setup). ./setup bakes ~50
+# skills into the agent config dir. The assembler can't see what an install script installs, so
+# `expect:` lists a representative few for the capability test to probe.
 name: gstack
 description: Garry Tan's gstack skill suite (browser automation, design, PDF, …) installed via its upstream ./setup.
-# setup: none needed — Dockerfile runs full upstream ./setup, no external account required
+# setup: none needed — install.sh runs full upstream ./setup, no external account required
+
+# gstack STRADDLES the install/system line, which is why this recipe keeps a Dockerfile:
+#   * script:  the content half — fetch the pinned commit and run upstream's own ./setup. Runs in
+#     BOTH modes, which is the fix for bd harnessed-8px.1 (a host launch used to get 0 gstack skills
+#     and no warning). ./setup needs bun; install.sh checks for it and fails loudly if absent.
+#   * system:  `bunx playwright install-deps chromium` needs USER root + apt. It STAYS in the
+#     Dockerfile; declaring it here makes a host launch print the reason and skip it BY NAME.
+#     harnessed never sudos and never mutates the user's system.
+#   * cache:   MUST equal the GSTACK_REF pinned inside install.sh. It keys the host content cache
+#     ($XDG_CACHE_HOME/harnessed/install/gstack/<sha>) and holds the pinned SOURCE only — ./setup's
+#     output must be built against the live config dir, so it is not cached.
+install:
+  script: install.sh
+  cache: 11de390be1be6849eb9a15f91ff4922dd16c589a
+  system: >-
+    gstack drives a headless Chromium and needs Playwright's OS shared libraries
+    (`bunx playwright install-deps chromium`), which is an apt install requiring root. Without it
+    the browser binary downloads but chromium.launch() fails, so gstack's browser-automation skills
+    will not work on a host launch. Run this stack in a container to get them.
 
 # What the capability test must find in the running container after a successful build. gstack
 # installs many skills into ~/.claude/skills (and no ~/.claude/commands); declare a stable few.

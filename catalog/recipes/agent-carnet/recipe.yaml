@@ -5,7 +5,7 @@
 # reach, so it is NOT auto-run (recipes hint setup, they don't auto-init every agent — see
 # docs/guides/recipe-authoring.md) — surfaced instead via the harness-agnostic `setup:` note below.
 #
-# The skill is installed VERBATIM from the pinned agent-carnet@<VERSION> npm tarball by the Dockerfile
+# The skill is installed VERBATIM from the pinned agent-carnet@<VERSION> npm tarball by `install.sh`
 # (skills/agent-carnet/: SKILL.md + references/{cookbook,frontmatter}.md ship inside the package) —
 # the recipe authors NO skill itself. One immutable npm artifact is both the CLI pin and the skill pin.
 name: agent-carnet
@@ -16,9 +16,22 @@ description: agent-carnet — shared, auto-expiring file-based markdown notebook
 # `rules:` entry below) and duplicate/contradictory workflow guidance.
 conflicts: [beads]
 
-# What the capability test must find in the running container after a successful build: the skill the
-# Dockerfile copies verbatim from the pinned tarball into ~/.claude/skills/agent-carnet. The assembler
-# cannot see what a Dockerfile RUN step installs, so we declare it here.
+# PARTIAL migration (bd harnessed-8px.4). Only the CONTENT half moves here: install.sh fetches the
+# pinned npm tarball and copies its bundled skill into $HARNESSED_CONFIG_DIR/skills/agent-carnet, in
+# BOTH modes. The CLI half (`pnpm add -g`) stays in the Dockerfile — see the WHY there; it is not a
+# `system:` step (no root involved), it is simply container-only, so a host launch gets the skill
+# without the binary until `provision:` (bd harnessed-zi6.1) covers it.
+#
+# `cache:` MUST equal AGENT_CARNET_VERSION in install.sh (and the Dockerfile ARG). It keys the host
+# content cache ($XDG_CACHE_HOME/harnessed/install/agent-carnet/0.1.5) so the per-launch re-run —
+# mandatory, because the host home is rebuilt from scratch every launch — downloads once.
+install:
+  script: install.sh
+  cache: "0.1.5"
+
+# What the capability test must find in the running container after a successful build: the skill
+# install.sh copies verbatim from the pinned tarball into ~/.claude/skills/agent-carnet. The
+# assembler cannot see what an install script installs, so we declare it here.
 expect:
   skills: [agent-carnet]
 
