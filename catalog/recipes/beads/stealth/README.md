@@ -59,6 +59,26 @@ bd setup <harness> --project --stealth
 (`launcher.svc_socket_env`). `--stealth` on `bd setup` changes the hook's runtime behavior
 (`bd prime --stealth` instead of `--hook-json`).
 
+## Footprint and removal
+
+"Stealth" means *invisible to git*, not *zero footprint*. What this recipe writes **outside** the
+dirs harnessed owns (`$HARNESSED_CONFIG_DIR`, the install cache, the stack tool dir) is listed here
+with the command that undoes it, per bd harnessed-8px.6. None of it is undone by dropping the recipe
+from your stack.
+
+| What writes it | Where | Remove with |
+| --- | --- | --- |
+| `bd init --stealth` (setup step 1) | `.beads/` on the **host**, outside the repo: `$XDG_DATA_HOME/harnessed/persist/beads-stealth/<git-common-dir-hash>/.beads/` — this is your issue database, deleting it destroys the data | `rm -r "$(dirname "$BEADS_DIR")"` from inside the agent, or delete that host path |
+| `bd init --stealth` | an exclude entry in `.git/info/exclude` | delete that line |
+| `bd setup <harness> --project --stealth` | `CLAUDE.md` — a managed beads block appended to the **project's** file, **not** git-excluded on bd 1.1.0 | delete that block |
+| `bd setup <harness> --project --stealth` | `.claude/settings.json` — a bd SessionStart hook entry, in the **project**, **not** git-excluded on bd 1.1.0 | delete that hook entry |
+| `install.sh`, on **`launch --host` only** | the user's global mise config + mise tool store | `mise unuse -g "github:gastownhall/beads@1.1.0"` |
+
+The last row is host-only: in a container the same command writes inside the image and disappears
+with it. And on a host `install.sh` installs `bd` **only when it is absent** — if some other `bd` is
+already on your `PATH` it warns about the version mismatch and leaves your installation untouched,
+so there is nothing to undo.
+
 ## Caveats
 
 - **⚠️ "Stealth" is not fully footprint-free on bd 1.1.0.** `bd setup <tool> --project --stealth` still

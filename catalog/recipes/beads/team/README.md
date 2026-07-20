@@ -69,6 +69,26 @@ data dir, a local server, and the git repo.
 
 It is explicit, never automatic: it writes to your git remote.
 
+## Footprint and removal
+
+This recipe writes **outside** the dirs harnessed owns (`$HARNESSED_CONFIG_DIR`, the install cache,
+the stack tool dir), so per bd harnessed-8px.6 each of those writes is listed here with the command
+that undoes it. None of them is undone by dropping the recipe from your stack.
+
+| What writes it | Where | Remove with |
+| --- | --- | --- |
+| `bd init` (setup step 1) | `.beads/` **in the repo, committed** | `git rm -r .beads && git commit` |
+| `bd init` | git hooks in `.git/hooks/` (agent-identity commit trailers) | delete the bd-installed hook files |
+| `bd init` | a Dolt remote wired to your git `origin`; issue history under `refs/dolt/data` | `git push origin --delete refs/dolt/data`, if you want it off the remote too |
+| `bd setup <harness> --project` | `CLAUDE.md` — a managed beads block appended to the **project's** file | delete that block |
+| `bd setup <harness> --project` | `.claude/settings.json` — a bd SessionStart hook entry, in the **project** | delete that hook entry |
+| `install.sh`, on **`launch --host` only** | the user's global mise config + mise tool store | `mise unuse -g "github:gastownhall/beads@1.1.0"` |
+
+The last row is host-only: in a container the same command writes inside the image and disappears
+with it. And on a host `install.sh` installs `bd` **only when it is absent** — if some other `bd` is
+already on your `PATH` it warns about the version mismatch and leaves your installation untouched,
+so there is nothing to undo.
+
 ## Caveats
 
 - **Real git footprint, by design.** This recipe installs git hooks and commits `.beads/`. That is the

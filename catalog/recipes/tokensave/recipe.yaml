@@ -13,6 +13,18 @@
 name: tokensave
 description: tokensave — pre-indexed semantic code knowledge graph (80+ tools, 50+ languages, 100% local).
 
+# ROOT-ONLY install: `system:` with NO `script:`. The Dockerfile's download + sha256 verify half
+# would run fine unprivileged, but its DESTINATION is what needs root — `install -m 0755 …
+# /usr/local/bin/tokensave` under `USER root`. Splitting it would leave a script that fetches a
+# 24 MB binary and has nowhere on a host to put it: the install env contract (emit.install_env)
+# exposes HARNESSED_CONFIG_DIR and HARNESSED_INSTALL_CACHE, neither of which is on PATH, and no
+# bin dir. So the step stays whole in the Dockerfile, and this declaration is what makes the host
+# skip AUDIBLE — the launcher prints the reason below verbatim, naming the recipe.
+install:
+  system: >-
+    the tokensave release binary is verified and installed into /usr/local/bin under USER root, and
+    the install contract exposes no host-side PATH directory to install it into instead
+
 setup:
   summary: >-
     Run `tokensave init` once per project to create the `.tokensave/` knowledge graph database

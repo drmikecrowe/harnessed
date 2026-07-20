@@ -32,6 +32,15 @@
 # per checkout, and stays there.
 name: beads-stealth
 description: bd (beads), fully invisible placement — .beads/ lives outside the repo entirely, zero git footprint, on the project's beads-server (one dolt sql-server per project, over a unix socket).
+
+# The entire build is now `install.sh` — `mise use -g github:gastownhall/beads@1.1.0` — run by BOTH
+# the container build and `launch --host`; the Dockerfile is deleted. NO `system:`: the old
+# Dockerfile's `USER root` section contained nothing but comments, so there is no root-level half to
+# skip and a host launch is fully equivalent. This mattered: `setup:` below shells out to `bd`, and
+# on `--host` nothing had ever installed it.
+install:
+  script: install.sh
+
 setup:
   summary: >-
     Run `bd init --stealth --server --external --server-socket "${HARNESSED_BEADS_SERVER_SOCKET:?beads-server
