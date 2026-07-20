@@ -26,7 +26,7 @@
 # directly through the stray `.mcp.json`/`.vscode/mcp.json` it wrote, the latter using whatever env
 # the editor/host process happened to have (a common source of one server working and its duplicate
 # silently degrading to mock embeddings, since they run with different environments).
-# The CLI is baked by the Dockerfile; no skill is shipped (upstream's slash commands ship only via
+# The CLI is installed by `install.sh` (both modes); no skill is shipped (upstream's slash commands ship only via
 # its own Claude plugin marketplace install path, not a portable skill).
 name: repowise
 description: repowise — code health, change-risk, and dependency-graph intelligence over the project via a stdio MCP server.
@@ -45,6 +45,16 @@ setup:
   # Still needed while the project carries no repowise index.
   condition: test ! -d .repowise
 
+# The CLI, as ONE bash file run by BOTH executors: `RUN bash install.sh` in the derived image, and
+# by the launcher after the host home is materialized on `launch --host`. Replaces the recipe
+# Dockerfile (container-only) AND subsumes the `provision:` block below, which is left in place only
+# because retiring `provision:` is bd harnessed-zi6.1's job, not this migration's.
+#
+# No `cache:` — `install.cache` keys a pinned CONTENT clone; uv caches wheels itself. No `system:` —
+# `uv tool install` needs no root (host mode redirects it into the stack tools tree via UV_TOOL_DIR).
+install:
+  script: install.sh
+
 # What the capability test probes after a successful build: the repowise server connected through
 # the hatago hub. (The capability test only confirms the connection — the index is per-project state
 # created by the `setup:` step above, never at image-build time.)
@@ -58,7 +68,9 @@ mcp:
       command: repowise
       args: [mcp, --transport, stdio]
 
-# Host-native install (`launch --host`) — mirrors the Dockerfile's `uv tool install repowise`.
+# Host-native install (`launch --host`) — SUPERSEDED by `install:` above, which now covers both
+# modes from one file. Kept until `provision:` is retired wholesale (bd harnessed-zi6.1); the two
+# install the same pin, so the duplicate is a no-op, not a conflict. Bump both together until then.
 provision:
   - via: uv-tool
     package: repowise

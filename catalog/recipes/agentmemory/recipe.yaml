@@ -25,6 +25,16 @@ description: >
   4-tier consolidation. One memory across all agents.
 # setup: none needed — shim to already-running harnessed service
 
+# The shim, as ONE bash file run by BOTH executors: `RUN bash install.sh` in the derived image, and
+# by the launcher after the host home is materialized on `launch --host`. The Dockerfile it replaces
+# was container-only, so `launch --host` had no `agentmemory-mcp` on PATH and the entry below
+# resolved to nothing, silently.
+#
+# No `cache:` — `install.cache` keys a pinned CONTENT clone; pnpm has its own store. No `system:` —
+# `pnpm add -g` needs no root (host mode redirects it into the stack tools tree via npm_config_prefix).
+install:
+  script: install.sh
+
 # The stdio shim is a hatago child baked into the harness image. It proxies to the shared REST
 # store over the network (AGENTMEMORY_URL → host.containers.internal:3111, the service port).
 # `transport: stdio` is explicit: hatago wraps this child's stdio → HTTP for the agent.
