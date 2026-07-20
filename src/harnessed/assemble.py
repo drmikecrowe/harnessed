@@ -27,6 +27,7 @@ from .schema import (
     load_stack_with_recipes,
     validate_init_no_exit,
     validate_no_raw_npm,
+    validate_install_script,
     validate_pin,
     validate_setup_script,
 )
@@ -120,6 +121,7 @@ def assemble(
         validate_no_raw_npm(recipe)
         validate_init_no_exit(recipe)  # Model A: init.run is sourced — a bash `exit` kills the shell
         validate_setup_script(recipe)  # setup.script is a FILE — neither gate below would read it
+        validate_install_script(recipe)  # ditto, and it is where Dockerfile RUN bodies now live
         dockerfile = recipe.root / "Dockerfile"
         if dockerfile.is_file():
             validate_pin(recipe.name, dockerfile.read_text(encoding="utf-8"))  # ASM-02 (T-08-01)

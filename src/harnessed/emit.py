@@ -693,6 +693,85 @@ def _dockerfile_env_quote(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
 
 
+# --- install: (bd harnessed-8px.3) ----------------------------------------------------------------
+# Where a recipe's own directory lands container-side. The SAME path in both the build (COPY'd by
+# _install_dockerfile_lines) and at runtime (bind-mounted ro by launcher._setup_script_mounts), so
+# $HARNESSED_RECIPE_DIR means one thing container-side no matter which phase reads it.
+CTR_RECIPE_DIR = "/opt/harnessed/recipes"
+# Build-time scratch for $HARNESSED_INSTALL_CACHE. The host cache persists (that is its whole point
+# — see InstallSpec.cache); the container's cannot and must not: a build layer that kept the clone
+# would bake it into the image. It is removed in the same RUN layer that creates it.
+_CTR_INSTALL_CACHE = "/tmp/harnessed-install-cache"
+
+
+def install_env(
+    recipe: Recipe, *, mode: str, harness: str, config_dir: str, cache_dir: str
+) -> dict[str, str]:
+    """THE `install.script` env contract — identical KEYS in host and container mode.
+
+    Deliberately a SUBSET of the folder-env contract (`launcher.harnessed_env`), not a superset of
+    it: install runs at container BUILD time, where there is no project bind-mount, so PROJECT_DIR /
+    MAIN_REPO_DIR / HOST_WORKSPACE_DIR are unknowable. Exporting them host-side only would hand
+    authors a variable that works on host and silently expands to empty in a build — the exact
+    class of mode-asymmetric failure this epic exists to remove. A script needing project context
+    belongs in `setup.script`, whose phase HAS a project.
+
+    PRECEDENCE (asserted by test_install_env_precedence, in BOTH modes): these harnessed-owned keys
+    are applied LAST and therefore WIN over both the inherited environment and the recipe's own
+    `env:`. Container mode gets that from inline `VAR=… bash install.sh` assignments beating the
+    preceding `ENV` lines; host mode from `env.update(install_env(...))` running after
+    `env.update(_recipe_env(...))`. Same winner both ways — the defect the 8px.2 merge exposed.
+    """
+    return {
+        "HARNESS": harness,
+        "HARNESSED_MODE": mode,
+        # Source dir for the `cp` a script does where a Dockerfile did `COPY`.
+        "HARNESSED_RECIPE_DIR": (
+            f"{CTR_RECIPE_DIR}/{recipe.name}" if mode == "container" else str(recipe.root)
+        ),
+        # The agent config dir the install writes its deliverables INTO — image ~/.claude at build,
+        # the materialized host home on a host launch. One name, so `cp … "$HARNESSED_CONFIG_DIR"/skills/`
+        # is the whole mode-portability story for a content recipe.
+        "HARNESSED_CONFIG_DIR": config_dir,
+        # Populate-if-empty content cache (empty string when the recipe declares no `install.cache`).
+        "HARNESSED_INSTALL_CACHE": cache_dir,
+    }
+
+
+def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
+    """The derived-Dockerfile block for one recipe's `install:` — COPY the recipe dir, then run it.
+
+    A COPY (not the runtime bind-mount `setup.script` uses) because a build has no bind-mounts, and
+    because baking the deliverables is the entire point of the install phase. Runs as `harnessed`:
+    an install writes to ~/.claude and needs no root — anything that DOES need root stays in the
+    recipe's Dockerfile and is declared via `install.system` so a host launch warns about it.
+    """
+    inst = recipe.install
+    if inst is None:
+        return []
+    ctr_recipe = f"{CTR_RECIPE_DIR}/{recipe.name}"
+    cache = f"{_CTR_INSTALL_CACHE}/{recipe.name}/{inst.cache}" if inst.cache else ""
+    env = install_env(
+        recipe, mode="container", harness=harness,
+        config_dir="/home/harnessed/.claude", cache_dir=cache,
+    )
+    # Inline assignments on the RUN, NOT `ENV`: these are build-phase inputs, and an `ENV` would
+    # persist them into the shipped image (leaking HARNESSED_MODE=container et al into the agent's
+    # environment). Inline also gives the precedence documented in install_env for free.
+    assigns = " ".join(f'{k}="{_dockerfile_env_quote(v)}"' for k, v in env.items())
+    lines = [
+        f"# --- recipe install: {recipe.name} ---",
+        "USER harnessed",
+        f"COPY catalog/recipes/{recipe.ref or recipe.name} {ctr_recipe}",
+    ]
+    run = f"RUN {assigns} bash {ctr_recipe}/{inst.script}"
+    if cache:
+        # Same layer, or the clone ships in the image.
+        run += f" && rm -rf {_CTR_INSTALL_CACHE}"
+    lines += [run, ""]
+    return lines
+
+
 def write_derived_dockerfile(
     profile_dir: Path, stack_name: str, harness: str, recipes: list[Recipe],
     *, hatago: dict | None = None, with_scan: bool = True
@@ -727,6 +806,11 @@ def write_derived_dockerfile(
             lines.append(f"# --- recipe env: {recipe.name} ---")
             lines += [f'ENV {var}="{_dockerfile_env_quote(val)}"' for var, val in env.items()]
             lines.append("")
+
+        # `install:` — emitted AFTER this recipe's `env:` (so the script sees it) and BEFORE its
+        # Dockerfile body (so a body that still carries system-level steps layers on top of the
+        # install rather than under it).
+        lines += _install_dockerfile_lines(recipe, harness)
 
         dockerfile = recipe.root / "Dockerfile"
         if not dockerfile.is_file():

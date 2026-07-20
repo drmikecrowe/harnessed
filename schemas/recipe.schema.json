@@ -143,6 +143,17 @@
         }
       }
     },
+    "install": {
+      "description": "Build-phase install script — ONE bash file executed by BOTH the container build (`RUN bash <script>` in the derived Dockerfile) and a host launch, replacing a container-only Dockerfile RUN. Differs from `setup.script` ONLY in phase: install runs at BUILD time container-side and immediately after the host home is materialized host-side; setup runs at container RUNTIME and after install host-side. Because a build has no project bind-mount, the install env is deliberately a SUBSET of the folder-env contract: HARNESS, HARNESSED_MODE, HARNESSED_RECIPE_DIR, HARNESSED_CONFIG_DIR (the agent config dir to install into), HARNESSED_INSTALL_CACHE — and no PROJECT_DIR. Anything needing project context belongs in `setup.script`. These harnessed-owned vars win over the recipe's own `env:` in both modes. The script runs on EVERY host launch (the host home is rebuilt from scratch each time) so it must be idempotent.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["script"],
+      "properties": {
+        "script": { "description": "Path (relative to the recipe dir) of the bash install script. Linted like a Dockerfile body: raw npm/npx and floating refs are rejected.", "type": "string", "minLength": 1 },
+        "cache": { "description": "PINNED content ref (tag/version/SHA) keying the host content cache at $XDG_CACHE_HOME/harnessed/install/<recipe>/<cache>, handed to the script as $HARNESSED_INSTALL_CACHE (empty when omitted). Cache MISS is 'the directory does not exist' — harnessed creates only its parent; the script populates it and copies out of it. This is what makes the mandatory per-launch re-run affordable. Floating values (latest/main/master/HEAD/...) are rejected: a moving key never refreshes. Keep it equal to the ref pinned inside the script.", "type": "string", "minLength": 1 },
+        "system": { "description": "Set to a non-empty reason string when this recipe's install has a SYSTEM-LEVEL component (USER root, apt-get, COPY into /usr/local/bin) that only a container build can perform — that part stays in the recipe Dockerfile. harnessed never sudos or mutates the user's system, so on a host launch the component is skipped and this string is printed verbatim as a loud warning naming the recipe. Declaring it is what keeps the skip from being SILENT.", "type": "string", "minLength": 1 }
+      }
+    },
     "deps": {
       "description": "Dependency declarations (forward field, design §11). Usually auto-detected from a vendored plugin; declare here for standalone recipes/overrides. uv for Python, pnpm for Node (never npm/npx).",
       "type": "object",

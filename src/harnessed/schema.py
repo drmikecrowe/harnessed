@@ -640,6 +640,91 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
     )
 
 
+@dataclass
+class InstallSpec:
+    """A recipe's `install:` — the BUILD-phase sibling of `setup.script` (bd harnessed-8px.3).
+
+    Same language (bash), same file-in-the-recipe-dir shape, same lint. The ONLY difference is the
+    PHASE, and that difference is forced, not preferential:
+
+      install  container: BUILD TIME  (`RUN bash install.sh` in the derived Dockerfile)
+               host:      after `_materialize_host_home`, before setup
+      setup    container: RUNTIME     (`podman exec` into the started container)
+               host:      after install
+
+    `setup` cannot run at build (no project bind-mount, so HARNESSED_PROJECT_DIR is unresolvable);
+    `install` must not run at container runtime (it is baking the image — running it per container
+    start would re-pay the clone every launch). The consequence for the env contract is that
+    `install` sees a strictly PROJECT-INDEPENDENT env (see launcher._install_env): the folder-env
+    vars a build cannot know are deliberately absent rather than present-but-wrong.
+    """
+    # Relative path to the bash script inside the recipe dir. Required — `install:` with no script
+    # has nothing to execute.
+    script: str
+    # A PINNED content ref (tag/SHA/version). Its presence turns on the host content cache at
+    # $XDG_CACHE_HOME/harnessed/install/<recipe>/<cache>, handed to the script as
+    # $HARNESSED_INSTALL_CACHE. The cache is what makes "run on EVERY host launch" affordable:
+    # `_materialize_host_home` rmtree's the home each launch (so the output cannot persist and
+    # "first launch only" is structurally wrong), but the SOURCE content can persist, keyed by a
+    # ref that by policy never moves. Floating values are rejected — a moving key is a stale cache.
+    cache: str | None = None
+    # Non-empty reason string ⇒ this recipe's install has a SYSTEM-LEVEL component (USER root,
+    # apt-get, COPY into /usr/local/bin) that only a container build can perform. harnessed must
+    # never sudo or mutate the user's system, so on a host launch that component is SKIPPED — but
+    # LOUDLY, naming the recipe and this reason. A silent skip is exactly how harnessed-8px.1
+    # (14 missing skills, no error) happened; the reason string is what makes it un-silent.
+    system: str | None = None
+
+
+# Bare refs that MOVE. `_FLOATING_REF_RE` only catches the decorated forms (`--branch main`,
+# `@latest`), so a bare `cache: main` would sail through it — hence this second list.
+_FLOATING_CACHE_KEYS = frozenset({"latest", "main", "master", "head", "trunk", "dev", "edge"})
+
+
+def _parse_install(raw_install) -> "InstallSpec | None":
+    """Parse the optional `install:` object — omitted by recipes that install nothing."""
+    if not raw_install:
+        return None
+    if not isinstance(raw_install, dict):
+        raise SchemaError("recipe 'install' must be an object with a 'script' field")
+    script = raw_install.get("script")
+    if not isinstance(script, str) or not script.strip():
+        raise SchemaError("recipe 'install.script' must be a non-empty string")
+    script = script.strip()
+    if Path(script).is_absolute() or ".." in Path(script).parts:
+        raise SchemaError(
+            f"recipe 'install.script' {script!r} must be a relative path inside the recipe dir"
+        )
+    cache = raw_install.get("cache")
+    if cache is not None:
+        if not isinstance(cache, str) or not cache.strip():
+            raise SchemaError("recipe 'install.cache', if set, must be a non-empty string")
+        cache = cache.strip()
+        if cache.lower() in _FLOATING_CACHE_KEYS or _FLOATING_REF_RE.search(cache):
+            raise SchemaError(
+                f"recipe 'install.cache' {cache!r} is a floating ref — the cache key must be a "
+                "pinned tag, version, or SHA, or the cache goes stale and never refreshes."
+            )
+        if "/" in cache or cache.startswith("."):
+            raise SchemaError(
+                f"recipe 'install.cache' {cache!r} must be a bare ref (no '/' or leading '.') — "
+                "it becomes a single directory name under the harnessed install cache."
+            )
+    system = raw_install.get("system")
+    if system is not None and (not isinstance(system, str) or not system.strip()):
+        raise SchemaError(
+            "recipe 'install.system', if set, must be a non-empty string explaining WHICH "
+            "system-level step only a container build can perform (it is printed verbatim as the "
+            "host-skip warning)"
+        )
+    unknown = sorted(set(raw_install) - {"script", "cache", "system"})
+    if unknown:
+        raise SchemaError(
+            f"recipe 'install': unknown field(s) {unknown} — valid fields: script, cache, system"
+        )
+    return InstallSpec(script=script, cache=cache, system=system.strip() if system else None)
+
+
 def _parse_setup_config(raw_config) -> list["SetupConfigItem"]:
     if not raw_config:
         return []
@@ -718,6 +803,10 @@ class Recipe:
     # it on either side is enough.
     conflicts: list[str] = field(default_factory=list)
     setup: "SetupSpec | None" = None
+    # Build-phase install script (recipe.yaml `install:`) — ONE bash file executed by BOTH the
+    # container build (`RUN bash install.sh`) and a host launch. The mechanism that makes a
+    # Dockerfile RUN's deliverables exist on `launch --host` too. See InstallSpec.
+    install: "InstallSpec | None" = None
     # Extra outbound hosts this recipe's tools need — appended to the container egress firewall
     # allowlist (catalog/base/egress-firewall.sh) at launch, ONLY when this recipe is in the stack
     # (the firewall stays default-DROP otherwise). Bare hostnames, no scheme/path/port (e.g.
@@ -898,7 +987,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
     "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks", "setup", "egress", "tools", "provision", "env",  # typed
+    "conflicts", "hooks", "setup", "install", "egress", "tools", "provision", "env",  # typed
     "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -1179,6 +1268,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         hooks_skip_harnesses=hooks_skip_harnesses,
         conflicts=_parse_conflicts(raw.get("conflicts")),
         setup=_parse_setup(raw.get("setup")),
+        install=_parse_install(raw.get("install")),
         egress=_parse_egress(raw.get("egress"), manifest),
         tools=_parse_tools(raw.get("tools"), manifest),
         provision=_parse_provision(raw.get("provision"), manifest),
@@ -1710,10 +1800,21 @@ def validate_setup_script(recipe: Recipe) -> None:
     """
     if not (recipe.setup and recipe.setup.script):
         return
-    path = recipe.root / recipe.setup.script
+    _lint_script_file(recipe, "setup.script", recipe.setup.script)
+
+
+def _lint_script_file(recipe: Recipe, field_name: str, rel_path: str) -> None:
+    """Existence + npm/npx + floating-ref gate over one catalog-authored .sh FILE body.
+
+    Shared by `validate_setup_script` and `validate_install_script`: BOTH fields move shell commands
+    out of strings/Dockerfiles and into a file, and a file is invisible to the two text-reading
+    gates (`validate_no_raw_npm` reads a fixed key list; `validate_pin` reads Dockerfile bodies).
+    Every new script-bearing field must route through here or pin enforcement silently stops for it.
+    """
+    path = recipe.root / rel_path
     if not path.is_file():
         raise RecipeLintError(
-            f"recipe '{recipe.name}': setup.script '{recipe.setup.script}' not found at {path}"
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' not found at {path}"
         )
     body = "\n".join(
         line for line in path.read_text(encoding="utf-8").splitlines()
@@ -1723,15 +1824,27 @@ def validate_setup_script(recipe: Recipe) -> None:
     if match:
         token = match.group(0)
         raise RecipeLintError(
-            f"recipe '{recipe.name}': setup.script '{recipe.setup.script}' uses raw npm/npx token "
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' uses raw npm/npx token "
             f"'{token}'. Replace it with the pnpm equivalent '{_NPM_TO_PNPM.get(token, 'pnpm')}'."
         )
     match = _FLOATING_REF_RE.search(body)
     if match:
         raise PinValidationError(
-            f"recipe '{recipe.name}': setup.script '{recipe.setup.script}' contains a floating ref "
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' contains a floating ref "
             f"'{match.group(0).strip()}'. Pin to an explicit tag, version, or SHA."
         )
+
+
+def validate_install_script(recipe: Recipe) -> None:
+    """Lint a recipe's `install.script` FILE body — the same gate as `setup.script`.
+
+    `install:` is the field that empties recipe Dockerfiles, so without this it would be the LARGEST
+    hole in `validate_pin`: every `git clone --branch`, every version-pinned download that the pin
+    gate exists to police moves out of the Dockerfile text and into a .sh the gate never reads.
+    """
+    if not (recipe.install and recipe.install.script):
+        return
+    _lint_script_file(recipe, "install.script", recipe.install.script)
 
 
 def validate_init_no_exit(recipe: Recipe) -> None:

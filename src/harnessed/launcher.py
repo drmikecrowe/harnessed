@@ -797,7 +797,10 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
         _say(f"[blue][INFO][/blue] Credentialed re-scan of {derived} (snyk + socket) ...")
         _scan_image_in_container(rt, derived)
     # Merge image-baked ~/.claude extensions into the profile only when a recipe actually baked some.
-    if any((r.root / "Dockerfile").is_file() for r in result.recipes):
+    # `install:` counts too: it is a Dockerfile RUN by another name, and an install-only recipe (no
+    # Dockerfile at all) bakes into ~/.claude exactly like the RUN it replaced. Without `r.install`
+    # here, migrating a recipe off its Dockerfile would silently drop its content from the profile.
+    if any((r.root / "Dockerfile").is_file() or r.install for r in result.recipes):
         _merge_baked_extensions(rt, derived, prof)
 
     # Replace the assemble-time settings.json FLOOR with the image's installer-written
@@ -3019,7 +3022,10 @@ def _script_env(
 
 
 _CTR_SETUP_DIR = "/opt/harnessed/setup"
-_CTR_RECIPE_DIR = "/opt/harnessed/recipes"
+# Single-sourced with the build-phase COPY target (emit._install_dockerfile_lines) so
+# $HARNESSED_RECIPE_DIR names the same container path whether the recipe dir arrived there by
+# `install:`'s COPY or `setup.script`'s runtime bind-mount.
+_CTR_RECIPE_DIR = emit.CTR_RECIPE_DIR
 
 
 def _setup_script_mounts(recipes) -> list[str]:
@@ -3105,6 +3111,64 @@ def _run_container_setups(rt: str, inst: str, pending) -> None:
         proc = _run([rt, "exec", inst, "bash", f"{_CTR_SETUP_DIR}/{recipe.name}.sh"], check=False)
         if proc.returncode != 0:
             _err.print(f"[bold red]error:[/bold red] setup for '{recipe.name}' failed in container")
+            raise typer.Exit(1)
+
+
+def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Path) -> None:
+    """Run each recipe's `install.script` HOST-side — the host half of `RUN bash install.sh`.
+
+    ORDERING IS LOAD-BEARING and the caller must not move it: this runs AFTER
+    `_materialize_host_home`, which `shutil.rmtree`s `home` on EVERY launch so a removed recipe's
+    files never linger. Run installs before that and their output is deleted milliseconds later —
+    silently, which is precisely the failure mode of harnessed-8px.1. It also runs BEFORE
+    `_host_run_setups`: install bakes content, setup configures against it.
+
+    That per-launch wipe also rules out a "first launch only" gate: the home is new every time, so
+    the install is needed every time. `install.cache` is what makes that affordable — the OUTPUT
+    cannot persist but the pinned SOURCE can (see paths.install_cache_dir).
+
+    A recipe declaring `install.system` has a component only a container build can perform (root /
+    apt-get). harnessed does not sudo and does not mutate the user's system, so that component is
+    skipped here — but announced, verbatim, with the recipe named. Never silently.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    installs = [r for r in recipes if r.install]
+    if not installs:
+        return
+    _, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
+    recipe_env = _recipe_env(installs, project_path, mode="host")
+    for recipe in installs:
+        inst = recipe.install
+        if inst.system:
+            _err.print(
+                f"[bold yellow]WARNING[/bold yellow] install ({recipe.name}): system-level step "
+                f"SKIPPED on a host launch — {inst.system}. harnessed will not sudo or modify your "
+                "system; run this stack in a container to get it."
+            )
+        cache = paths.install_cache_dir(recipe.name, inst.cache) if inst.cache else None
+        if cache is not None:
+            # Create the PARENT only. The cache dir's own existence is the script's hit/miss test.
+            cache.parent.mkdir(parents=True, exist_ok=True)
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        home.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ)
+        env.update(recipe_env)   # recipe `env:` beats the inherited environment …
+        env.update(emit.install_env(  # … and the harnessed-owned contract beats BOTH. Same
+            recipe, mode="host", harness=harness,  # winner as container mode, where the inline
+            config_dir=str(home),                  # RUN assignments beat the preceding ENV lines.
+            cache_dir=str(cache) if cache else "",
+        ))
+        # Host-only, mirroring _host_run_setups: keep any tool an install lands in the stack tree
+        # rather than the user's global one.
+        env["UV_TOOL_DIR"] = str(uv_tool_dir)
+        env["UV_TOOL_BIN_DIR"] = str(bin_dir)
+        env["npm_config_prefix"] = str(bin_dir.parent)
+        env["PATH"] = os.pathsep.join([str(bin_dir), os.environ.get("PATH", "")])
+        _err.print(f"[blue][INFO][/blue] install ({recipe.name}): {inst.script} (host)")
+        if subprocess.run(
+            ["bash", str(recipe.root / inst.script)], cwd=str(project_path), env=env
+        ).returncode != 0:
+            _err.print(f"[bold red]error:[/bold red] install for '{recipe.name}' failed")
             raise typer.Exit(1)
 
 
@@ -3303,14 +3367,23 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # exec'd below inherits nothing, because subprocess.run(env=…) in _host_run_setups is a private
     # copy that dies with the setup. Set BEFORE the setups so they see it too.
     os.environ.update(harnessed_env(stack, project_path, harness=harness, mode="host"))
+
+    # Materialize the host home FIRST, then install, then setup. This order is required, not
+    # stylistic: _materialize_host_home rmtree's the home on every launch, so an install that ran
+    # before it would have its output deleted — silently (harnessed-8px.1). Setup follows install
+    # because install bakes the content setup then configures. _host_launch_plan is pure
+    # materialization (its returned argv is rebuilt below), so hoisting it above the scripts costs
+    # nothing and is what lets a script write into the home at all.
+    home, argv, cwd = _host_launch_plan(stack, harness, project_path)
+    # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content a
+    # Dockerfile RUN used to deliver to containers only.
+    _host_run_installs(stack, project_path, harness=harness, home=home)
     # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
     # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
     _host_run_setups(stack, project_path, harness=harness)
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
-    # sees just-provisioned tools.
+    # sees just-provisioned tools AND anything an install/setup script put in the stack bin dir.
     mcp_servers = _host_native_mcp(stack)
-
-    home, argv, cwd = _host_launch_plan(stack, harness, project_path)
 
     # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude load
     # ONLY this file, so the copied .claude.json's global mcpServers never leak into an isolated

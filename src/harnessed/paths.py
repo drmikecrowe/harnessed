@@ -53,6 +53,26 @@ def xdg_state_home() -> Path:
     return Path(xdg) if xdg else Path.home() / ".local" / "state"
 
 
+def xdg_cache_home() -> Path:
+    """Return $XDG_CACHE_HOME, defaulting to ~/.cache."""
+    xdg = os.environ.get("XDG_CACHE_HOME", "")
+    return Path(xdg) if xdg else Path.home() / ".cache"
+
+
+def install_cache_dir(recipe_name: str, cache_key: str) -> Path:
+    """Content cache for one recipe's `install.script`, keyed by its PINNED ref.
+
+    Host installs re-run on EVERY launch — `_materialize_host_home` rmtree's the home each time, so
+    their output cannot survive and a first-launch-only gate would leave the home permanently empty.
+    Re-cloning per launch is the price unless the SOURCE is cached, and caching is only safe with a
+    key that never moves — which the repo's pin policy already guarantees (`_parse_install` rejects
+    floating keys). Cache MISS = this directory does not exist; the script populates it and copies
+    out of it. Bumping the recipe's pin yields a new directory, so an upgrade can never read stale
+    content.
+    """
+    return xdg_cache_home() / "harnessed" / "install" / recipe_name / cache_key
+
+
 def harnessed_home() -> Path:
     """harnessed's home: the directory that CONTAINS `catalog/`. Never derived from the CWD.
 
