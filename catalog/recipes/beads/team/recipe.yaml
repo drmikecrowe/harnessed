@@ -45,7 +45,7 @@ setup:
     and your existing issue data is opened in place. Git sync is a HOST command: `harnessed svc sync
     beads-server --stack <stack>` — `bd dolt push` cannot work from inside an agent (see the README).
   reference: https://github.com/gastownhall/beads
-  condition: '! bd list >/dev/null 2>&1'
+  condition: '[ ! -f "$(git rev-parse --git-common-dir)/.beads/metadata.json" ]'
   # Host-native (`launch --host`): harnessed auto-runs the init below. bd owns the shared-server
   # daemon (auto-started, one server for all projects at ~/.beads/shared-server/); harnessed supplies
   # the project IDENTITY — a unique, worktree-stable database (git-common-dir derived) and a
@@ -53,10 +53,10 @@ setup:
   # own default would use and collide on across bare+worktree repos).
   config:
     - key: database
-      derive: "{gcd_db}"                    # e.g. programming_personal_harnessed — unique + stable
+      derive: "{gcd_db}" # e.g. programming_personal_harnessed — unique + stable
     - key: prefix
-      prompt: "Issue prefix for {repo}?"    # asked once, first launch
-      default: "{repo}"                     # e.g. harnessed — short, human-facing (on every issue ID)
+      prompt: "Issue prefix for {repo}?" # asked once, first launch
+      default: "{repo}" # e.g. harnessed — short, human-facing (on every issue ID)
   run: >-
     bd init --shared-server --database {config.database} --prefix {config.prefix} --init-if-missing
 
@@ -75,7 +75,6 @@ persist:
     scope: project
     location: in_repo
     vcs: tracked
-
 # No `init:` — beads is NOT auto-initialized. bd's setup writes into the project
 # (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and cannot be made reliably
 # idempotent/footprint-free across every git layout, so first-time init stays a deliberate user
