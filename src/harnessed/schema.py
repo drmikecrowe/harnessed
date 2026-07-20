@@ -658,9 +658,12 @@ class InstallSpec:
     `install` sees a strictly PROJECT-INDEPENDENT env (see launcher._install_env): the folder-env
     vars a build cannot know are deliberately absent rather than present-but-wrong.
     """
-    # Relative path to the bash script inside the recipe dir. Required — `install:` with no script
-    # has nothing to execute.
-    script: str
+    # Relative path to the bash script inside the recipe dir. OPTIONAL, but only because a
+    # ROOT-ONLY install exists: a recipe whose install is ENTIRELY system-level (apt-get, a binary
+    # landing in /usr/local/bin) has no user-level half to put in a script, yet still must be able
+    # to declare `system:` so a host launch WARNS rather than silently shipping a stack that is
+    # missing the tool. At least one of `script` / `system`, or `install:` says and does nothing.
+    script: str | None = None
     # A PINNED content ref (tag/SHA/version). Its presence turns on the host content cache at
     # $XDG_CACHE_HOME/harnessed/install/<recipe>/<cache>, handed to the script as
     # $HARNESSED_INSTALL_CACHE. The cache is what makes "run on EVERY host launch" affordable:
@@ -686,15 +689,16 @@ def _parse_install(raw_install) -> "InstallSpec | None":
     if not raw_install:
         return None
     if not isinstance(raw_install, dict):
-        raise SchemaError("recipe 'install' must be an object with a 'script' field")
+        raise SchemaError("recipe 'install' must be an object with a 'script' or 'system' field")
     script = raw_install.get("script")
-    if not isinstance(script, str) or not script.strip():
-        raise SchemaError("recipe 'install.script' must be a non-empty string")
-    script = script.strip()
-    if Path(script).is_absolute() or ".." in Path(script).parts:
-        raise SchemaError(
-            f"recipe 'install.script' {script!r} must be a relative path inside the recipe dir"
-        )
+    if script is not None:
+        if not isinstance(script, str) or not script.strip():
+            raise SchemaError("recipe 'install.script' must be a non-empty string")
+        script = script.strip()
+        if Path(script).is_absolute() or ".." in Path(script).parts:
+            raise SchemaError(
+                f"recipe 'install.script' {script!r} must be a relative path inside the recipe dir"
+            )
     cache = raw_install.get("cache")
     if cache is not None:
         if not isinstance(cache, str) or not cache.strip():
@@ -721,6 +725,17 @@ def _parse_install(raw_install) -> "InstallSpec | None":
     if unknown:
         raise SchemaError(
             f"recipe 'install': unknown field(s) {unknown} — valid fields: script, cache, system"
+        )
+    if cache and script is None:
+        raise SchemaError(
+            "recipe 'install.cache' without 'install.script' — the cache exists only to be "
+            "populated and read BY the script; a root-only install has nothing to hand it to."
+        )
+    if script is None and not system:
+        raise SchemaError(
+            "recipe 'install' needs at least one of 'install.script' (the user-level half, run in "
+            "BOTH modes) or 'install.system' (the reason a root-only step is container-only). With "
+            "neither it declares nothing and executes nothing."
         )
     return InstallSpec(script=script, cache=cache, system=system.strip() if system else None)
 

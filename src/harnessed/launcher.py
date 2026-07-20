@@ -3145,6 +3145,11 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
                 f"SKIPPED on a host launch — {inst.system}. harnessed will not sudo or modify your "
                 "system; run this stack in a container to get it."
             )
+        if inst.script is None:
+            # ROOT-ONLY install (`system:` with no script): the warning above IS the whole host-side
+            # behaviour. Schema guarantees a script-less install carries a reason, so this is never
+            # a silent skip.
+            continue
         cache = paths.install_cache_dir(recipe.name, inst.cache) if inst.cache else None
         if cache is not None:
             # Create the PARENT only. The cache dir's own existence is the script's hit/miss test.
