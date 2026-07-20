@@ -92,7 +92,7 @@ hooks:
 # post-compaction resume reads back. Without persist it dies with the container, and `--fresh` would
 # silently cost every prior session.
 #
-# The Dockerfile pins CONTEXT_MODE_DIR to ~/.context-mode so BOTH paths land here: it is already the
+# `env:` below pins CONTEXT_MODE_DIR at this entry so BOTH paths land here: it is already the
 # default for the hook/CLI path, but the omp plugin would otherwise root at ~/.omp/context-mode/
 # (its OMPAdapter), which nothing mounts.
 #
@@ -103,6 +103,18 @@ persist:
   - name: .context-mode
     scope: workspace
     location: host
+
+# --- Env layer ---
+# The store root, read at RUN time by the CLI, every hook invocation, and the omp plugin alike — so
+# it must be live in the AGENT's environment, which is why it is `env:` and not a setup script (an
+# `export` dies with the script that ran it).
+#
+# `{persist:.context-mode}` — NOT a literal path. The dir this entry resolves to differs per mode:
+# in the pod it is the bind-mount target ~/.context-mode; on `launch --host` there is no mount and
+# the bytes live at their real $XDG_DATA_HOME/harnessed/persist/... location. One declaration, the
+# correct absolute path in both.
+env:
+  CONTEXT_MODE_DIR: "{persist:.context-mode}"
 
 # Capability test: the context-mode MCP server connected through the hatago hub. (The hooks are
 # merged into settings.json by the assembler; the oracle only probes the MCP connection.)

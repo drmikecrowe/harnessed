@@ -79,6 +79,12 @@
         }
       }
     },
+    "env": {
+      "description": "Environment variables set for the RUNNING agent (and its hooks and child processes) — the one recipe deliverable a script cannot provide, since a script's `export` dies with the script. Delivered as image ENV at build, as `podman run -e` on the container, and into the launcher's own environment on `launch --host`. Values are mode-portable TEMPLATES, not literals: `{persist:<name>}` resolves to wherever this recipe's persist entry <name> actually lives in the current mode (the container bind-mount target vs. the real host persist dir), `{project_dir}` to the workspace root, `{host_home}` to the real host $HOME. Do NOT hardcode a container-absolute path like /home/harnessed/... — it does not exist on a host launch. Distinct from mcp.servers[].env, which is per-MCP-server.",
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number"] },
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+    },
     "plugins": {
       "description": "Vendored Claude plugins (forward field, design §11). Either a marketplace+plugin reference or a url+sha[+subdir] reference.",
       "type": "array",

@@ -51,6 +51,7 @@ from .schema import (
     load_service,
     load_stack,
     load_stack_with_recipes,
+    resolve_recipe_env,
 )
 
 app = typer.Typer(
@@ -3058,6 +3059,19 @@ def _pending_setup_scripts(project_path: Path, recipes) -> list:
     return pending
 
 
+def _recipe_env(recipes, project_path: Path, *, mode: str) -> dict[str, str]:
+    """Every recipe's `env:` resolved for one mode — the SINGLE declaration behind all three
+    consumers (build-time install step, setup script, and the agent process itself).
+
+    Later recipes win on a clash, matching the Dockerfile layering this replaces (a later `ENV` for
+    the same name overrides an earlier one), so stack recipe order stays the tie-breaker.
+    """
+    env: dict[str, str] = {}
+    for recipe in recipes:
+        env.update(resolve_recipe_env(recipe, mode=mode, project_path=project_path))
+    return env
+
+
 def _container_setup_env(stack: str, project_path: Path, pending, *, harness: str) -> dict[str, str]:
     """The setup env for a container launch, resolved HOST-side (a `setup.config` item may PROMPT,
     which has to happen before the container starts) and set as REAL CONTAINER ENV.
@@ -3262,6 +3276,15 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     except (SchemaError, CollisionError) as exc:
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
+
+    # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
+    # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
+    # this launch), so all three consumers get it from one place: any install/setup script spawned
+    # from here inherits it, and so does claude itself — `env = dict(os.environ)` at the exec below
+    # is what actually delivers it to the running agent, the row that was broken before.
+    # Recipe declarations win over an inherited value, mirroring `podman run -e` in container mode.
+    _, host_recipes = load_stack_with_recipes(None, stack)
+    os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
 
     # Provision host stdio-MCP tools onto PATH BEFORE recipe setups + native MCP, so claude can spawn
     # them (and the child-command presence check passes). Mutating this process's PATH is fine — it's
@@ -3608,11 +3631,24 @@ def launch(
     setup_env = [arg for var, val in _container_setup_env(
                      stack, project_path, pending_setups, harness=harness).items()
                  for arg in ("-e", f"{var}={val}")]
+    # Recipe `env:` — set on the CONTAINER for the third time and the same reason. The image already
+    # carries the build-resolvable subset as real ENV (emit.write_derived_dockerfile), but that is
+    # not sufficient: a value templated on the PROJECT (`{project_dir}`, an in_repo persist dir) is
+    # unknowable at build. Setting the resolved values here makes the running agent's env complete
+    # and identical to what the host mode gives it.
+    recipe_env = [arg for var, val in _recipe_env(launch_recipes, project_path, mode="container").items()
+                  for arg in ("-e", f"{var}={val}")]
     harness_run = [
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
         "--name", inst,
         *[arg for f in secrets_env_files for arg in ("--env-file", str(f))],
+        # ORDER IS PRECEDENCE: podman applies `-e` left-to-right, so the LAST wins. Recipe `env:` goes
+        # FIRST — it is catalog-authored and must not be able to clobber harnessed-owned values. That
+        # matches host mode, where _launch_host applies _recipe_env to os.environ and THEN overwrites
+        # with harnessed_env. Reversing these two silently inverts precedence between modes (caught
+        # merging harnessed-0tk.7 and harnessed-8px.2, each of which was self-consistent alone).
+        *recipe_env,
         *socket_env,
         *setup_env,
         *member_mounts,

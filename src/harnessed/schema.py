@@ -730,6 +730,11 @@ class Recipe:
     # Host-native install steps (recipe.yaml `provision:`) — see Provision. Container-independent:
     # the derived image still installs via its Dockerfile; this is only for `launch --host`.
     provision: list[Provision] = field(default_factory=list)
+    # Environment for the RUNNING agent (recipe.yaml `env:`) — NAME → value template. The one
+    # recipe deliverable a bash script cannot express (an `export` dies with the script). Values are
+    # mode-portable templates; see _parse_env / resolve_recipe_env for the placeholder contract.
+    # Distinct from McpServer.env, which is per-MCP-server.
+    env: dict[str, str] = field(default_factory=dict)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
     # The catalog ref a stack used to load this recipe — `beads/stealth` for a variety, else the
     # plain name. Carries the FAMILY (the part before the slash), which _check_recipe_conflicts uses
@@ -893,7 +898,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
     "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks", "setup", "egress", "tools", "provision",  # typed
+    "conflicts", "hooks", "setup", "egress", "tools", "provision", "env",  # typed
     "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -1006,6 +1011,146 @@ def _parse_tools(raw_tools, manifest: Path) -> list[str]:
     return out
 
 
+# --- Recipe `env:` — environment for the RUNNING agent (bd harnessed-8px.2) --------------------
+#
+# The one recipe deliverable that cannot become a bash script: a script's `export` dies with the
+# script's process, but this env must be live for the agent (and its hooks and child processes).
+# Hence a declarative field rather than another executable step.
+#
+# THE TRAP the templates exist to solve: a value like `/home/harnessed/.beads` is CONTAINER-absolute
+# (`/home/harnessed` is the POD's $HOME). Copied literally into a `launch --host` it names a
+# directory that does not exist on the host. So values are TEMPLATES over the launcher's existing
+# path contract, resolved per mode, and ONE declaration yields the right absolute path in each:
+#
+#   {persist:<name>}  the dir this recipe's `persist:` entry <name> actually resolves to.
+#                     container → $CONTAINER_HOME/<name> (where _persist_mounts bind-mounts it);
+#                     host      → the real $XDG_DATA_HOME/harnessed/persist/... dir, keyed by the
+#                                 entry's own scope (workspace vs project) — i.e. the same
+#                                 arithmetic _persist_mounts / _service_data_dir already do.
+#                     A `location: in_repo` entry resolves to the in-repo dir, which is identical in
+#                     both modes (the workspace is mounted path-preserving).
+#   {project_dir}     the project workspace root — mode-invariant for the same reason
+#                     HARNESSED_PROJECT_DIR is (_build_mount_args mounts it at its own host path).
+#   {host_home}       the REAL host $HOME, which in the pod is NOT $HOME (precedent: the HOST_HOME
+#                     export in _init_shell_prologue).
+#
+# A `scope: global` persist entry is deliberately NOT referenceable: it is mounted path-preserving
+# (host path == container path), so a recipe needing it writes the literal path and it is already
+# correct in both modes.
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_ENV_PLACEHOLDER_RE = re.compile(r"\{([^{}]*)\}")
+_ENV_BARE_PLACEHOLDERS = frozenset({"project_dir", "host_home"})
+
+
+def _parse_env(raw_env, manifest: Path) -> dict[str, str]:
+    """Parse a recipe's `env:` mapping of NAME → value template. NOT McpServer.env (that one is
+    per-MCP-server and passed to that one server process; this one is the agent's own env)."""
+    if not raw_env:
+        return {}
+    if not isinstance(raw_env, dict):
+        raise SchemaError(f"{manifest}: 'env' must be a mapping of NAME: value")
+    out: dict[str, str] = {}
+    for name, val in raw_env.items():
+        if not isinstance(name, str) or not _ENV_NAME_RE.match(name):
+            raise SchemaError(
+                f"{manifest}: env key {name!r} is not a valid environment variable name "
+                "(letters, digits, underscore; not starting with a digit)"
+            )
+        if isinstance(val, bool) or val is None:
+            raise SchemaError(
+                f"{manifest}: env value for {name!r} must be a string or number, got {val!r} — "
+                "quote it (e.g. \"1\") so the value is unambiguous"
+            )
+        out[name] = str(val)
+    return out
+
+
+def _validate_env_templates(env: dict[str, str], persist: PersistSpec, manifest: Path) -> None:
+    """Reject unknown placeholders and dangling `{persist:<name>}` refs AT LOAD, not at launch —
+    otherwise a typo surfaces as a literal `{persist:.bead}` in the agent's env, silently."""
+    names = {e.name for e in persist.entries if e.name is not None}
+    for var, template in env.items():
+        for ph in _ENV_PLACEHOLDER_RE.findall(template):
+            if ph in _ENV_BARE_PLACEHOLDERS:
+                continue
+            if not ph.startswith("persist:"):
+                raise SchemaError(
+                    f"{manifest}: env {var}: unknown placeholder '{{{ph}}}'. Known: "
+                    "{persist:<name>}, {project_dir}, {host_home}"
+                )
+            ref = ph[len("persist:"):]
+            if ref not in names:
+                known = ", ".join(sorted(names)) or "(none declared)"
+                raise SchemaError(
+                    f"{manifest}: env {var}: '{{{ph}}}' references a persist entry this recipe does "
+                    f"not declare. Declared persist names: {known}"
+                )
+
+
+def _persist_entry_dir(
+    recipe: Recipe, entry: PersistEntry, *, mode: str, project_path: Path | None
+) -> str | None:
+    """Absolute path an `env:` template's `{persist:<name>}` resolves to, or None when it cannot be
+    known yet (build time has no project). Mirrors _persist_mounts / _service_data_dir placement."""
+    assert entry.name is not None
+    if entry.location == "in_repo":
+        # Path-preserving in both modes — but anchored at the checkout, so it needs the project.
+        return None if project_path is None else str(paths.persist_in_repo_dir(project_path, entry.name))
+    if mode == "container":
+        # Where _persist_mounts bind-mounts it — a fixed container path, project-independent, which
+        # is exactly why this case survives being baked into the image at build time.
+        return f"{paths.CONTAINER_HOME}/{entry.name}"
+    if project_path is None:
+        return None
+    if entry.scope == "project":
+        return str(paths.persist_project_dir(recipe.name, project_path, entry.name))
+    return str(paths.persist_workspace_dir(recipe.name, project_path, entry.name))
+
+
+def resolve_recipe_env(
+    recipe: Recipe, *, mode: str, project_path: Path | None
+) -> dict[str, str]:
+    """Resolve a recipe's `env:` templates for one mode ('container' or 'host').
+
+    `project_path=None` means BUILD time (no project exists yet): any var whose value needs the
+    project is OMITTED rather than half-substituted. Those still reach the agent at launch, where
+    the project is known — build-time `ENV` is only the extra guarantee that an image-build step
+    (a Dockerfile RUN / install script) sees what it can.
+    """
+    by_name = {e.name: e for e in recipe.persist.entries if e.name is not None}
+    resolved: dict[str, str] = {}
+    for var, template in recipe.env.items():
+        deferred = False
+
+        def _sub(m: re.Match) -> str:
+            nonlocal deferred
+            ph = m.group(1)
+            if ph == "host_home":
+                return str(Path.home())
+            if ph == "project_dir":
+                if project_path is None:
+                    deferred = True
+                    return ""
+                return str(project_path)
+            if ph.startswith("persist:"):
+                entry = by_name.get(ph[len("persist:"):])
+                if entry is None:  # unreachable: _validate_env_templates rejects this at load
+                    raise SchemaError(
+                        f"recipe '{recipe.name}': env {var}: no persist entry '{ph[len('persist:'):]}'"
+                    )
+                val = _persist_entry_dir(recipe, entry, mode=mode, project_path=project_path)
+                if val is None:
+                    deferred = True
+                    return ""
+                return val
+            raise SchemaError(f"recipe '{recipe.name}': env {var}: unknown placeholder '{{{ph}}}'")
+
+        value = _ENV_PLACEHOLDER_RE.sub(_sub, template)
+        if not deferred:
+            resolved[var] = value
+    return resolved
+
+
 def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Recipe:
     recipe_dir = Path(recipe_dir)
     manifest = recipe_dir / "recipe.yaml"
@@ -1017,6 +1162,9 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
     if strict:
         _validate_recipe_fields(raw, manifest)
     hooks, hooks_skip_harnesses = _parse_hooks(raw.get("hooks"))
+    persist = _parse_persist(raw.get("persist"))
+    env = _parse_env(raw.get("env"), manifest)
+    _validate_env_templates(env, persist, manifest)
     return Recipe(
         name=raw["name"],
         description=raw.get("description", ""),
@@ -1025,7 +1173,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         commands=_parse_fileext(raw.get("commands")),
         rules=_parse_fileext(raw.get("rules")),
         expect=_parse_expect(raw.get("expect")),
-        persist=_parse_persist(raw.get("persist")),
+        persist=persist,
         init=_parse_init(raw.get("init")),
         hooks=hooks,
         hooks_skip_harnesses=hooks_skip_harnesses,
@@ -1034,6 +1182,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         egress=_parse_egress(raw.get("egress"), manifest),
         tools=_parse_tools(raw.get("tools"), manifest),
         provision=_parse_provision(raw.get("provision"), manifest),
+        env=env,
         root=recipe_dir,
         ref=ref or raw["name"],
         raw=raw,
