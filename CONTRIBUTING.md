@@ -59,11 +59,6 @@ ignored entirely — which is how tools silently disable each other. (`bd init` 
 harnessed beads is **container-only**, so nothing should be setting it on your host. If something
 did: `git config --unset core.hooksPath`, adding `--global` if needed.)
 
-The container side is gated separately and needs no setup at all: the `mikes-universal-setup` recipe
-wires a `PreToolUse` hook that denies the agent's `git commit` / `git push` **tool call**. That one
-is not a git hook, so `--no-verify` cannot reach it — which is why it, and not this, is the gate
-harnessed actually relies on.
-
 ## `catalog/` is a published artifact
 
 `catalog/` is **shipped inside the wheel** (via the `src/harnessed/catalog` symlink + package-data), so

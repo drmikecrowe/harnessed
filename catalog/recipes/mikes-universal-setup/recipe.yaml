@@ -7,42 +7,7 @@
 # Tool-specific personal-workflow skills (obsidian-*, playwriter, ghostty) were deliberately left
 # out — they assume tools not everyone uses, so they don't fit a "universal" example.
 name: mikes-universal-setup
-description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills, and a gitleaks secret gate on commit/push — an example personal always-on setup."
-
-# --- Secret gate ---
-# Three layers, because each covers what the others cannot:
-#
-#   1. rules/pre-publish-review — the SEMANTIC pass. A scanner matches key-shaped strings; it cannot
-#      see a real vault name, an internal hostname, or an unreleased plan. Model-adherence only.
-#   2. hooks.PreToolUse (below) — the TRUE GATE on the agent. Not a git hook: `--no-verify` skips
-#      git's hooks, not the harness's. The Bash tool call itself is refused. Also the one hook shape
-#      that survives omp — omp-claude-hooks-bridge drops a hook's additionalContext but DOES honor
-#      permissionDecision, so a `deny` gate works on claude and omp alike.
-#   3. setup (below) — the HOST half, a REMINDER not a gate. harnessed cannot install onto the host,
-#      so the user's own `git commit` in a terminal is outside every gate above.
-#
-# gitleaks 8.30.1 CLI: `protect`/`detect` are GONE — the commands are `git`, `dir`, `stdin`.
-# `gitleaks git --staged` is the pre-commit scan (upstream's own flag help says "good for
-# pre-commit"). Pinned; mise's aqua backend supplies it, so no Dockerfile step for the binary.
-tools:
-  - gitleaks@8.30.1
-
-hooks:
-  PreToolUse:
-    - command: gitleaks-guard
-      matcher: Bash
-
-# The HOST half. harnessed gates the AGENT's commits (the PreToolUse hook above); your own `git
-# commit` in a terminal is outside that, and harnessed cannot install onto your host. So: a notice.
-# Per-repo via pre-commit (gitleaks' own recommended wiring), never a global core.hooksPath — a
-# global one applies to every repo on the machine, silently overrides each one's .git/hooks, and
-# makes pre-commit refuse to install at all. See CONTRIBUTING.md "Secret gate".
-setup:
-  summary: "Secret gate for YOUR OWN commits (harnessed gates the agent's, not yours): `mise use -g gitleaks@8.30.1`, then wire .githooks/gitleaks-{precommit,push} into your git hooks — plain shim, pre-commit, lefthook, whatever you already use."
-  reference: https://github.com/drmikecrowe/harnessed/wiki/guides/git-hooks
-  # Evaluated host-side in the project dir on every launch: exit 0 → still needed → show the notice.
-  # Fires only while gitleaks is absent from the host — installing it satisfies the condition.
-  condition: "! command -v gitleaks"
+description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills — an example personal always-on setup."
 
 rules:
   - path: rules/coding-principles
