@@ -5,7 +5,9 @@ assembled profile's `.claude/*` content layer + settings floor into a host CLAUD
 seeds claude's own auth from the host, and deliberately drops the container-only MCP artifacts.
 """
 
+import inspect
 import json
+import os
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -111,6 +113,73 @@ class TestShareClaudeState:
         home.mkdir()
         launcher._share_host_claude_state(home)
         assert (home / ".claude.json").read_text() == '{"account":"real"}'
+
+    def _creds_setup(self, monkeypatch, tmp_path, *, real_body, stack_body, stack_newer):
+        """A stack home whose .credentials.json is a REGULAR file — i.e. a token refresh already
+        replaced the symlink `_share_host_claude_state` had put there."""
+        fake_home = tmp_path / "home"
+        (fake_home / ".claude").mkdir(parents=True)
+        real = fake_home / ".claude" / ".credentials.json"
+        real.write_text(real_body)
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        monkeypatch.setenv("HOME", str(fake_home))
+        home = tmp_path / "stackhome"
+        home.mkdir()
+        cred = home / ".credentials.json"
+        cred.write_text(stack_body)
+        old, new = (100_000, 200_000) if stack_newer else (200_000, 100_000)
+        os.utime(real, (old, old))
+        os.utime(cred, (new, new))
+        return home, real
+
+    def test_refreshed_token_is_promoted_before_the_wipe(self, monkeypatch, tmp_path):
+        """bd harnessed-8px.10: Claude rewrites .credentials.json on refresh, and the rewrite
+        REPLACES our symlink with a regular file — so the fresh token sits in the stack config dir
+        while the shared ~/.claude copy goes stale. _materialize_host_home then rmtree's the config
+        dir and we re-link to the stale copy, logging the user out every token lifetime."""
+        home, real = self._creds_setup(
+            monkeypatch, tmp_path,
+            real_body='{"token":"stale"}', stack_body='{"token":"fresh"}', stack_newer=True,
+        )
+        launcher._rescue_host_credentials(home)
+        assert real.read_text() == '{"token":"fresh"}'
+        assert oct(real.stat().st_mode)[-3:] == "600"  # never widen a credential file
+
+    def test_older_stack_token_never_overwrites_a_newer_shared_one(self, monkeypatch, tmp_path):
+        """A stack home left over from days ago must not drag the shared token backwards."""
+        home, real = self._creds_setup(
+            monkeypatch, tmp_path,
+            real_body='{"token":"current"}', stack_body='{"token":"ancient"}', stack_newer=False,
+        )
+        launcher._rescue_host_credentials(home)
+        assert real.read_text() == '{"token":"current"}'
+
+    def test_intact_symlink_is_left_alone(self, monkeypatch, tmp_path):
+        """The symlink surviving means the refresh propagated live — copying would be a no-op at
+        best and, since the link resolves TO the target, a self-copy at worst."""
+        fake_home = tmp_path / "home"
+        (fake_home / ".claude").mkdir(parents=True)
+        real = fake_home / ".claude" / ".credentials.json"
+        real.write_text('{"token":"shared"}')
+        monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        monkeypatch.setenv("HOME", str(fake_home))
+        home = tmp_path / "stackhome"
+        home.mkdir()
+        (home / ".credentials.json").symlink_to(real)
+        launcher._rescue_host_credentials(home)  # must not raise
+        assert real.read_text() == '{"token":"shared"}'
+
+    def test_first_ever_launch_has_nothing_to_rescue(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "fresh"))
+        home = tmp_path / "stackhome"
+        home.mkdir()
+        launcher._rescue_host_credentials(home)  # must not raise
+        assert not (tmp_path / "fresh" / ".credentials.json").exists()
+
+    def test_plan_rescues_before_materialize_wipes_the_home(self, monkeypatch, tmp_path):
+        """The ordering IS the fix: run the rescue after the rmtree and the fresh token is gone."""
+        src = inspect.getsource(launcher._host_launch_plan)
+        assert src.index("_rescue_host_credentials") < src.index("_materialize_host_home")
 
     def test_missing_source_creates_dirs_no_crash(self, monkeypatch, tmp_path):
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "fresh"))

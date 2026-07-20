@@ -2843,6 +2843,38 @@ def _relink(link: Path, target: Path) -> None:
     link.symlink_to(target)
 
 
+def _rescue_host_credentials(home: Path) -> None:
+    """Promote a token the LAST session refreshed back into the shared `~/.claude` copy.
+
+    Must run BEFORE `_materialize_host_home`, which `shutil.rmtree`s `home` — otherwise the only
+    fresh copy of the token is deleted.
+
+    `_share_host_claude_state` symlinks `home/.credentials.json` at the real `~/.claude` one so a
+    refresh propagates and one login serves everywhere. That holds only while the symlink survives.
+    Claude Code rewrites this file on token refresh, and the rewrite REPLACES the symlink with a
+    regular file: the refreshed token lands in the stack's config dir and the shared copy never sees
+    it. The next launch then wipes the config dir and re-links to the now-stale shared copy — so the
+    user is logged out roughly every time the token would have refreshed (bd harnessed-8px.10).
+
+    Evidence it is a replace and not a write-through: the shared file's mtime stayed hours behind the
+    per-stack regular files that had superseded it.
+
+    So: if the symlink is gone and what replaced it is NEWER than the shared copy, copy it back
+    before the wipe. Self-healing — no exit hook, which matters because `_launch_host` hands the
+    process to `os.execvpe` and never regains control.
+    """
+    cred = home / ".credentials.json"
+    # A surviving symlink means the refresh propagated live; nothing to rescue.
+    if cred.is_symlink() or not cred.is_file():
+        return
+    real = _host_claude_source() / ".credentials.json"
+    if real.is_file() and real.stat().st_mtime >= cred.stat().st_mtime:
+        return  # shared copy already at least as fresh — never move a token backwards
+    real.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(cred, real)
+    real.chmod(0o600)
+
+
 def _share_host_claude_state(home: Path) -> None:
     """Wire the stack home to the real ~/.claude for the pieces that should be SHARED — the host
     analog of the container's bind-mounts:
@@ -2879,6 +2911,9 @@ def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Pat
     """
     prof = profile_dir(stack, harness)
     home = paths.host_home(stack, harness, project_path)
+    # BEFORE the materialize: it rmtree's `home`, and a token the last session refreshed lives in
+    # there as a regular file that replaced our symlink (bd harnessed-8px.10).
+    _rescue_host_credentials(home)
     _materialize_host_home(prof, home)
     _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
