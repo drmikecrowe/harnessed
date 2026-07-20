@@ -63,9 +63,22 @@ persist:
     scope: project
     location: host
 
+# `bd` reads BEADS_DIR from its own environment on every invocation — the agent's, a hook's, a
+# subshell's — so this is `env:`, the one recipe deliverable no script can provide.
+#
+# `{persist:.beads}` resolves against the entry above rather than hardcoding a path, because the two
+# modes genuinely disagree: in the pod the dir is the bind-mount target ~/.beads, while on
+# `launch --host` there is no mount and bd must be pointed at the real
+# $XDG_DATA_HOME/harnessed/persist/beads-stealth/<git-common-dir-hash>/.beads. The beads-server
+# service resolves the SAME entry for its data dir and serves the socket from inside it at
+# $BEADS_DIR/run/mysql.sock (exported as $HARNESSED_BEADS_SERVER_SOCKET), so client and server still
+# agree by construction — now in both modes.
+env:
+  BEADS_DIR: "{persist:.beads}"
+
 # No `init:` — beads is NOT auto-initialized (same rationale as beads/team; `bd setup --stealth`
 # still leaves an untracked `.claude/settings.json` + `CLAUDE.md` footprint on bd 1.1.0, so it cannot
 # be made invisible automatically). `setup.condition` (`! bd list`) is self-gating: the assembler
 # turns it into a Claude SessionStart hook that prints once, then stays silent once the workspace has
-# a database (see emit._recipe_hooks_settings). It checks the static BEADS_DIR (the host-persisted
-# mount — see Dockerfile).
+# a database (see emit._recipe_hooks_settings). It checks BEADS_DIR (the host-persisted store — see
+# `env:` above).

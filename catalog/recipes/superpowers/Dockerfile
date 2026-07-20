@@ -19,11 +19,8 @@ USER harnessed
 # SUPERPOWERS_REF to update. For maximum reproducibility the SHA form
 # (896224c4b1879920ab573417e68fd51d2ccc9072) may also be used.
 ARG SUPERPOWERS_REF=v6.0.3
-# Privacy + egress: Superpowers' brainstorming visual companion pings primeradiant.com for a
-# versioned logo by default. Disable that non-essential telemetry for the baked image. Drop
-# this ENV if a stack wants the visual companion telemetry (the egress firewall governs actual
-# outbound either way).
-ENV SUPERPOWERS_DISABLE_TELEMETRY=1
+# SUPERPOWERS_DISABLE_TELEMETRY now lives in recipe.yaml `env:` — one declaration that reaches the
+# image ENV, a host launch, and the agent process alike (a Dockerfile ENV reached only the image).
 # Clone the pinned tag and copy the contents of skills/ (trailing-slash `…/.` form) into
 # ~/.claude/skills/, so each skill lands at ~/.claude/skills/<name>/ with its sibling
 # references/ and scripts/ subtrees intact. Then drop the clone.

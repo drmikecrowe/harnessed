@@ -25,7 +25,7 @@ from pathlib import Path
 _ARG_HARNESS_RE = re.compile(r'^ARG\s+HARNESS\s*$', re.IGNORECASE)
 
 from . import paths
-from .schema import McpServer, Recipe, Stack
+from .schema import McpServer, Recipe, Stack, resolve_recipe_env
 
 # hatago's single Streamable-HTTP endpoint (design D-04; default port 3535, `HATAGO_PORT`
 # overridable). Single source: `paths.hatago_endpoint()`. The harness `.mcp.json` points ONLY
@@ -682,6 +682,17 @@ def write_hatago_config(
     return out
 
 
+def _dockerfile_env_quote(value: str) -> str:
+    r"""Escape a recipe `env:` value for the double-quoted form of Dockerfile ENV.
+
+    Backslash and `"` are the two characters the quoted form itself consumes; `$` is escaped so a
+    value that happens to contain `$FOO` is not expanded against the build's ARGs (recipe env values
+    are literals, not build-time templates — their only templating is the `{…}` placeholders, which
+    resolve_recipe_env has already substituted by this point).
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
+
+
 def write_derived_dockerfile(
     profile_dir: Path, stack_name: str, harness: str, recipes: list[Recipe],
     *, hatago: dict | None = None, with_scan: bool = True
@@ -706,6 +717,17 @@ def write_derived_dockerfile(
         "",
     ]
     for recipe in recipes:
+        # Recipe `env:` → real image ENV, emitted BEFORE this recipe's own body so a RUN in that
+        # body sees it (the build-time consumer). Only vars whose value is knowable without a
+        # project are baked — resolve_recipe_env omits the rest, which still reach the agent at
+        # launch via `podman run -e` (launcher._recipe_env_args). Emitted whether or not the recipe
+        # has a Dockerfile: `env:` is a standalone deliverable.
+        env = resolve_recipe_env(recipe, mode="container", project_path=None)
+        if env:
+            lines.append(f"# --- recipe env: {recipe.name} ---")
+            lines += [f'ENV {var}="{_dockerfile_env_quote(val)}"' for var, val in env.items()]
+            lines.append("")
+
         dockerfile = recipe.root / "Dockerfile"
         if not dockerfile.is_file():
             continue  # backward-compat: recipes without Dockerfiles contribute no layer

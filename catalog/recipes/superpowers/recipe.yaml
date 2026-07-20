@@ -12,6 +12,15 @@ name: superpowers
 description: superpowers — composable software-development methodology skill suite (TDD, systematic debugging, brainstorming, planning, subagent-driven development, code review, git worktrees). 14 Claude-canonical skills (upstream Superpowers, Jesse Vincent / Prime Radiant).
 # setup: none needed — pure skill bundle, credentials-free, no per-project init
 
+# Privacy + egress: Superpowers' brainstorming visual companion pings primeradiant.com for a
+# versioned logo by default. Disable that non-essential telemetry. It has to be `env:` rather than
+# anything scripted — the setting is read at RUN time, in the agent's own process, and a script's
+# `export` dies with the script. No placeholders needed: a literal is already correct in both modes.
+# Drop this to re-enable the visual companion telemetry (the egress firewall governs actual outbound
+# either way).
+env:
+  SUPERPOWERS_DISABLE_TELEMETRY: "1"
+
 # What the capability test must find in the running container after a successful build. The
 # Dockerfile copies all 14 upstream skills/<name>/SKILL.md trees into ~/.claude/skills; list
 # the full stable set so the probe asserts a complete install. These names are stable across

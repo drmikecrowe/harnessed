@@ -28,10 +28,6 @@ USER root
 # left to the user, via recipe.yaml's harness-agnostic `setup:` note (self-gated on Claude by
 # `setup.condition`; `! bd list`).
 USER harnessed
-# BEADS_DIR is a static ENV pointing at the host-persisted project-scoped bind-mount
-# ($HOME/.beads → $XDG_DATA_HOME/harnessed/persist/beads-stealth/<git-common-dir-hash>/.beads/).
-# The mount target is a fixed container path (not $PWD-relative), so the ENV is safe to bake — it
-# won't vary across projects. The beads-server service bind-mounts that SAME host dir as its data
-# dir, and serves the socket from inside it at $BEADS_DIR/run/mysql.sock (exported into the attach
-# shell as $HARNESSED_BEADS_SERVER_SOCKET), so client and server agree by construction.
-ENV BEADS_DIR=/home/harnessed/.beads
+# BEADS_DIR moved to recipe.yaml `env:`. Baked here it was the container mount target spelled out
+# literally, which is only half the truth — a host launch has no mount and needs the real persist
+# dir. The `{persist:.beads}` template yields both.
