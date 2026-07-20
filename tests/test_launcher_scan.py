@@ -114,8 +114,8 @@ class TestScanCommand:
         _mark_built(monkeypatch, {(stack, "claude")})
         result = runner.invoke(launcher.app, ["scan", stack, "bogus-harness"])
         assert result.exit_code == 1
-        assert "unsupported harness 'bogus-harness'" in result.output
-        assert f"unsupported harness '{stack}'" not in result.output
+        assert "unsupported harness 'bogus-harness'" in plain(result.output)
+        assert f"unsupported harness '{stack}'" not in plain(result.output)
         assert scanned == []
 
     def test_omitted_harness_scans_every_built_harness(self, stack, scanned, monkeypatch):
@@ -135,7 +135,7 @@ class TestScanCommand:
         _mark_built(monkeypatch, set())
         result = runner.invoke(launcher.app, ["scan", "no-such-stack"])
         assert result.exit_code == 1
-        assert "no such stack 'no-such-stack'" in result.output
+        assert "no such stack 'no-such-stack'" in plain(result.output)
         assert scanned == []
 
     def test_scan_failure_exits_nonzero(self, stack, monkeypatch):
