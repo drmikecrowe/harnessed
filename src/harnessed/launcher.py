@@ -2905,28 +2905,168 @@ def _resolve_setup_config(setup, primitives: dict[str, str], *, interactive: boo
     return values
 
 
+def _stack_tools_dirs(stack: str) -> tuple[Path, Path, Path]:
+    """(tools_root, bin_dir, uv_tool_dir) for a stack's host-native tool installs.
+
+    Stack-scoped, not global, so two stacks can pin different versions without clobbering each
+    other. Shared by `provision:` (_host_provision) and `setup.script` (_script_env) so both land
+    executables in ONE dir that _launch_host puts on PATH exactly once.
+    """
+    tools_root = paths.xdg_data_home() / "harnessed" / "tools" / stack
+    return tools_root, tools_root / "bin", tools_root / "uv-tools"
+
+
+def _script_env(
+    stack: str,
+    project_path: Path,
+    values: dict[str, str],
+    *,
+    mode: str,
+    bin_dir: Path | None = None,
+) -> dict[str, str]:
+    """The env a recipe's `setup.script` sees — IDENTICAL keys in host and container mode.
+
+    This is the whole point of `setup.script` over `setup.run`: `run` received its inputs by
+    `{config.<key>}` string substitution, which only works host-side where the launcher can template
+    the command. A script file cannot be templated, so every input arrives as an env var instead,
+    and the same file is then runnable in both modes.
+
+    `HARNESSED_PROJECT_DIR` is mode-invariant for free: _build_mount_args bind-mounts the project at
+    its own host path (`-v {mount_path}:{mount_path}`, MNT2-02), so the absolute path is the same
+    string on both sides. The repo-identity values are NOT recomputable in the container (the git
+    common dir — `.bare/` — is outside the mount), so they are computed host-side and injected.
+    """
+    env: dict[str, str] = {
+        "HARNESSED_MODE": mode,
+        "HARNESSED_STACK": stack,
+        "HARNESSED_PROJECT_DIR": str(project_path),
+        "HARNESSED_HOST_HOME": str(Path.home()),
+    }
+    for key, val in values.items():
+        if key.startswith("config."):
+            env[f"HARNESSED_CFG_{key[len('config.'):].upper()}"] = val
+        else:  # repo-identity primitives: repo, gcd_db, gcd_hash, project_hash
+            env[f"HARNESSED_{key.upper()}"] = val
+    if bin_dir is not None:
+        # A script installs a tool and then immediately CONFIGURES it (the seam `provision:` cannot
+        # express, e.g. serena's `uv tool install` + `serena init`). That only works if the freshly
+        # installed executable is already resolvable, so bin_dir leads the script's own PATH.
+        env["HARNESSED_BIN_DIR"] = str(bin_dir)
+        env["PATH"] = os.pathsep.join([str(bin_dir), os.environ.get("PATH", "")])
+    return env
+
+
+_CTR_SETUP_DIR = "/opt/harnessed/setup"
+
+
+def _setup_script_mounts(recipes) -> list[str]:
+    """`-v …:ro` args placing each recipe's `setup.script` inside the container.
+
+    A MOUNT, not a Dockerfile COPY, on purpose: the script is authorable catalog content, so editing
+    it must not require an image rebuild — and the image stays untouched by this whole mechanism.
+    """
+    args: list[str] = []
+    for recipe in recipes:
+        if recipe.setup and recipe.setup.script:
+            src = recipe.root / recipe.setup.script
+            args += ["-v", f"{src}:{_CTR_SETUP_DIR}/{recipe.name}.sh:ro"]
+    return args
+
+
+def _pending_setup_scripts(project_path: Path, recipes) -> list:
+    """Recipes carrying a `setup.script`.
+
+    `setup.condition` is deliberately NOT consulted here. A condition is a FIRST-RUN gate written
+    against the state a fresh project lacks (serena's `test ! -d .serena`), so gating a script on it
+    makes the script fresh-project-only: an existing project whose state is present but WRONG can
+    never be corrected, because the gate that would trigger the correction is already satisfied.
+    Scripts are idempotent and self-gating by contract, so they run every launch and converge.
+    `condition` keeps its original job — gating the user-facing notice (_prompt_setup_notices).
+    """
+    pending = []
+    for recipe in recipes:
+        setup = recipe.setup
+        if not (setup and setup.script):
+            continue
+        pending.append(recipe)
+    return pending
+
+
+def _container_setup_env(stack: str, project_path: Path, pending) -> dict[str, str]:
+    """The setup env for a container launch, resolved HOST-side (a `setup.config` item may PROMPT,
+    which has to happen before the container starts) and set as REAL CONTAINER ENV.
+
+    Deliberately not `podman exec -e`: same reasoning as `socket_env` above — a var that exists only
+    on one exec is invisible to hooks and to every other process in the container. Setting it on the
+    container makes the whole box agree, so a hook or a later `podman exec` sees the same values the
+    setup script did.
+    """
+    if not pending:
+        return {}
+    primitives = _repo_primitives(project_path)
+    env: dict[str, str] = {}
+    for recipe in pending:
+        values = _resolve_setup_config(recipe.setup, primitives, interactive=sys.stdin.isatty())
+        env.update(_script_env(stack, project_path, values, mode="container"))
+    return env
+
+
+def _run_container_setups(rt: str, inst: str, pending) -> None:
+    """Execute each pending `setup.script` inside the running container.
+
+    The env it needs is already ON the container (_container_setup_env → `podman run -e`), so this
+    exec passes none. Runs BEFORE the egress firewall closes, since a first-run setup is exactly the
+    step that downloads things (serena's language servers, etc.).
+    """
+    for recipe in pending:
+        _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {recipe.setup.script} (container)")
+        proc = _run([rt, "exec", inst, "bash", f"{_CTR_SETUP_DIR}/{recipe.name}.sh"], check=False)
+        if proc.returncode != 0:
+            _err.print(f"[bold red]error:[/bold red] setup for '{recipe.name}' failed in container")
+            raise typer.Exit(1)
+
+
 def _host_run_setups(stack: str, project_path: Path) -> None:
-    """Run each recipe's executable `setup.run` (host-native first-run setup) whose `condition` is
-    satisfied. This REPLACES per-launch daemon management: for beads, `run` is
-    `bd init --shared-server …` and bd itself auto-manages the shared dolt server — harnessed only
-    supplies the project identity (unique database, chosen prefix)."""
+    """Run each recipe's executable setup (host-native) whose `condition` is satisfied — either the
+    both-mode `setup.script` (preferred) or the legacy host-only `setup.run`.
+
+    This REPLACES per-launch daemon management: for beads, `run` is `bd init --shared-server …` and
+    bd itself auto-manages the shared dolt server — harnessed only supplies the project identity
+    (unique database, chosen prefix)."""
     _, recipes = load_stack_with_recipes(None, stack)
+    _, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
     primitives: dict[str, str] | None = None
     for recipe in recipes:
         setup = recipe.setup
-        if not (setup and setup.run):
+        if not (setup and (setup.run or setup.script)):
             continue
-        # condition gates first-run: exit 0 == still needed (run it); non-zero == already done (skip).
-        if setup.condition and subprocess.run(
+        # condition gates first-run for `run` ONLY: exit 0 == still needed; non-zero == already done.
+        # A `setup.script` ignores it and runs every launch — see _pending_setup_scripts for why
+        # (a first-run gate can never correct state that exists but is wrong).
+        if setup.run and setup.condition and subprocess.run(
             ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True
         ).returncode != 0:
             continue
         if primitives is None:
             primitives = _repo_primitives(project_path)
         values = _resolve_setup_config(setup, primitives, interactive=sys.stdin.isatty())
-        cmd = _subst(setup.run, values)
-        _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {cmd}")
-        if subprocess.run(["bash", "-lc", cmd], cwd=str(project_path)).returncode != 0:
+        if setup.script:
+            script = recipe.root / setup.script
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            env = dict(os.environ)
+            env.update(_script_env(stack, project_path, values, mode="host", bin_dir=bin_dir))
+            # Host-only: point uv/npm at the stack-scoped tree so a script's install lands in
+            # bin_dir rather than the user's global tool dir. In-container these stay unset — the
+            # image already baked the tool via its Dockerfile.
+            env["UV_TOOL_DIR"] = str(uv_tool_dir)
+            env["UV_TOOL_BIN_DIR"] = str(bin_dir)
+            env["npm_config_prefix"] = str(bin_dir.parent)
+            argv, label = ["bash", str(script)], f"{setup.script} (host)"
+        else:
+            cmd = _subst(setup.run, values)
+            env, argv, label = dict(os.environ), ["bash", "-lc", cmd], cmd
+        _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {label}")
+        if subprocess.run(argv, cwd=str(project_path), env=env).returncode != 0:
             _err.print(f"[bold red]error:[/bold red] setup for '{recipe.name}' failed")
             raise typer.Exit(1)
 
@@ -2942,9 +3082,7 @@ def _host_provision(stack: str) -> list[str]:
     entries = [p for r in recipes for p in r.provision]
     if not entries:
         return []
-    tools_root = paths.xdg_data_home() / "harnessed" / "tools" / stack
-    bin_dir = tools_root / "bin"
-    uv_tool_dir = tools_root / "uv-tools"
+    tools_root, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
     bin_dir.mkdir(parents=True, exist_ok=True)
     for p in entries:
         if (bin_dir / p.command).exists():
@@ -3054,8 +3192,13 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # them (and the child-command presence check passes). Mutating this process's PATH is fine — it's
     # dedicated to this launch, and claude (env built from os.environ) inherits it.
     prov_bins = _host_provision(stack)
-    if prov_bins:
-        os.environ["PATH"] = os.pathsep.join([*prov_bins, os.environ.get("PATH", "")])
+    # The stack bin dir goes on PATH whether or not `provision:` populated it: a `setup.script` may
+    # install into it below (after this point), and _host_native_mcp's presence check runs after that.
+    _, stack_bin, _ = _stack_tools_dirs(stack)
+    os.environ["PATH"] = os.pathsep.join(
+        [*prov_bins, *([str(stack_bin)] if str(stack_bin) not in prov_bins else []),
+         os.environ.get("PATH", "")]
+    )
     # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
     # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
     _host_run_setups(stack, project_path)
@@ -3366,6 +3509,7 @@ def launch(
     # and see the project bind-mount.
     member_mounts = [a for a in mount_args if a != "--userns=keep-id"]
     member_mounts += ["-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro"]
+    member_mounts += _setup_script_mounts(launch_recipes)
     # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
     # export: `_init_shell_prologue` reaches the interactive shell and nothing else, so a `podman
     # exec`, a hook, or any subprocess saw $HARNESSED_BEADS_SERVER_SOCKET unset — and bd silently
@@ -3373,12 +3517,19 @@ def launch(
     # on the container so every process in it agrees.
     socket_env = [arg for var, sock in svc_socket_env(stack, project_path).items()
                   for arg in ("-e", f"{var}={sock}")]
+    # Same rationale as socket_env: a recipe's setup env belongs to the CONTAINER, not to one exec,
+    # so hooks and later execs see what the setup script saw. Resolved here because a `setup.config`
+    # item may prompt, which must happen before the container starts.
+    pending_setups = _pending_setup_scripts(project_path, launch_recipes)
+    setup_env = [arg for var, val in _container_setup_env(stack, project_path, pending_setups).items()
+                 for arg in ("-e", f"{var}={val}")]
     harness_run = [
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
         "--name", inst,
         *[arg for f in secrets_env_files for arg in ("--env-file", str(f))],
         *socket_env,
+        *setup_env,
         *member_mounts,
         # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
         # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
@@ -3406,6 +3557,10 @@ def launch(
     _install_corp_proxy_ca_in_container(rt, inst)
 
     # Recipe-declared egress: union the extra allowlist hosts across this stack's recipes so the
+    # Recipe setup scripts run here: after the CA is trusted, before the firewall closes egress —
+    # a first-run setup is the step most likely to need the network.
+    _run_container_setups(rt, inst, pending_setups)
+
     # firewall opens them ONLY when a recipe that needs them is present (default-DROP otherwise).
     egress_domains = sorted({d for r in launch_recipes for d in r.egress})
     _apply_firewall(rt, inst, egress_domains)
