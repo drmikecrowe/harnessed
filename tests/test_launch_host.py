@@ -5,6 +5,7 @@ assembled profile's `.claude/*` content layer + settings floor into a host CLAUD
 seeds claude's own auth from the host, and deliberately drops the container-only MCP artifacts.
 """
 
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -184,6 +185,37 @@ class TestHostCliRouting:
         assert "--strict-mcp-config" in captured["argv"]
         assert captured["ccd"] == str(paths.host_home("hostspike", "claude", tmp_path.resolve()))
         assert paths.is_built("hostspike", "claude")  # profile assembled during the launch itself
+
+    def test_host_settings_inherit_the_host_claude_default_mode(self, monkeypatch, tmp_path):
+        """bd harnessed-8px.8, found by a REAL --host launch: the session came up in acceptEdits
+        even though the host ~/.claude declared `auto`.
+
+        `launch` diverted to _launch_host and returned BEFORE the container path's
+        _merge_host_claude_settings call, so _materialize_host_home copied the bare assemble-time
+        FLOOR into the config dir and the host's own mode never crossed over. Container mode was
+        unaffected, which is why unit tests on the container path stayed green.
+        """
+        fake_home = tmp_path / "fakehome"
+        (fake_home / ".claude").mkdir(parents=True)
+        (fake_home / ".claude" / "settings.json").write_text(
+            json.dumps({"permissions": {"defaultMode": "auto", "mode": "auto"}})
+        )
+        monkeypatch.setenv("HOME", str(fake_home))  # _merge_host_claude_settings reads Path.home()
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app, ["launch", "hostspike", "claude", str(tmp_path), "--host"]
+        )
+
+        assert result.exit_code == 0, result.output
+        home = paths.host_home("hostspike", "claude", tmp_path.resolve())
+        settings = json.loads((home / "settings.json").read_text())
+        # The host's mode wins: merge_settings applies required.defaultMode with setdefault, so the
+        # harnessed floor is a floor, not an override.
+        assert settings["permissions"]["defaultMode"] == "auto"
 
     def test_agent_process_inherits_the_folder_env_contract(self, monkeypatch, tmp_path):
         """bd harnessed-0tk.7: a container launch sets the contract box-wide (`podman run -e`), so

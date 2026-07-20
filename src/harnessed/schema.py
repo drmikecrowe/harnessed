@@ -849,7 +849,14 @@ class Recipe:
 
 # Authored `permissions:` values a stack.yaml may set — kept in sync with
 # emit._PERMISSION_DEFAULT_MODE, the table that maps each to a Claude `permissions.defaultMode`.
-_STACK_PERMISSIONS_MODES = frozenset({"prompt", "auto", "yolo"})
+# Claude's own mode names pass through verbatim; `prompt`/`yolo` are aliases (bd harnessed-8px.8).
+# Restated rather than imported because emit imports schema — the dependency cannot be reversed.
+# tests/test_schema.py asserts this set equals emit._PERMISSION_DEFAULT_MODE's keys, so the two
+# cannot drift silently.
+_STACK_PERMISSIONS_MODES = frozenset({
+    "acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan",
+    "prompt", "yolo",
+})
 
 
 @dataclass

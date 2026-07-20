@@ -557,8 +557,20 @@ class TestStackPermissionMode:
     def test_prompt_maps_to_default(self):
         assert required_settings([], permissions="prompt")["permissions"]["defaultMode"] == "default"
 
-    def test_auto_maps_to_acceptedits(self):
-        assert required_settings([], permissions="auto")["permissions"]["defaultMode"] == "acceptEdits"
+    def test_auto_maps_to_claudes_real_auto_mode(self):
+        # bd harnessed-8px.8: `auto` USED to be rewritten to `acceptEdits`. That was wrong — `auto`
+        # is a real and DISTINCT Claude mode (the CLI enum is acceptEdits/auto/bypassPermissions/
+        # default/dontAsk/plan), so a stack author writing `auto` was silently handed a different
+        # mode than the one they named. It now means what it says.
+        assert required_settings([], permissions="auto")["permissions"]["defaultMode"] == "auto"
+
+    def test_claude_mode_names_pass_through_verbatim(self):
+        for mode in ("acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan"):
+            assert required_settings([], permissions=mode)["permissions"]["defaultMode"] == mode
+
+    def test_acceptedits_is_how_you_ask_for_the_old_auto(self):
+        # The behaviour `auto` used to give is still reachable — under its true name.
+        assert required_settings([], permissions="acceptEdits")["permissions"]["defaultMode"] == "acceptEdits"
 
     def test_yolo_maps_to_bypass(self):
         assert required_settings([], permissions="yolo")["permissions"]["defaultMode"] == "bypassPermissions"

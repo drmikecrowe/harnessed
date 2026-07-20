@@ -22,6 +22,7 @@ from harnessed.schema import (
     PersistSpec,
     Recipe,
     SchemaError,
+    Stack,
     load_recipe,
     resolve_recipe_env,
 )
@@ -279,7 +280,11 @@ class TestHostLaunchDelivery:
             env={"BEADS_DIR": "{persist:.beads}", "SUPERPOWERS_DISABLE_TELEMETRY": "1"},
             persist=PersistSpec(entries=[_entry(".beads", scope="project")]),
         )
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, stack: (None, [r]))
+        # A real Stack, not None: _launch_host reads stk.permissions to resolve settings.json.
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes",
+            lambda root, stack: (Stack(name="hostspike"), [r]),
+        )
 
         captured: dict = {}
 

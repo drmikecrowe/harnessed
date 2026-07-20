@@ -326,7 +326,8 @@ class TestLoadAgent:
             load_stack(d)
 
     def test_all_valid_permissions_load(self, tmp_path):
-        for permissions in ("prompt", "auto", "yolo"):
+        for permissions in ("prompt", "auto", "yolo", "acceptEdits", "default",
+                            "bypassPermissions", "dontAsk", "plan"):
             d = tmp_path / f"{permissions}-stack"
             d.mkdir()
             (d / "stack.yaml").write_text(
@@ -334,6 +335,14 @@ class TestLoadAgent:
             )
             stk = load_stack(d)
             assert stk.permissions == permissions
+
+    def test_accepted_modes_match_the_emit_mapping(self):
+        """schema restates the mode set because emit imports schema (the dependency cannot be
+        reversed) — this is what stops the two copies drifting (bd harnessed-8px.8)."""
+        from harnessed import emit
+        from harnessed.schema import _STACK_PERMISSIONS_MODES
+
+        assert _STACK_PERMISSIONS_MODES == frozenset(emit._PERMISSION_DEFAULT_MODE)
 
 
 class TestParseServerTransportValidation:

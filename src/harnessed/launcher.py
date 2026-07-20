@@ -3352,7 +3352,7 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # from here inherits it, and so does claude itself — `env = dict(os.environ)` at the exec below
     # is what actually delivers it to the running agent, the row that was broken before.
     # Recipe declarations win over an inherited value, mirroring `podman run -e` in container mode.
-    _, host_recipes = load_stack_with_recipes(None, stack)
+    host_stk, host_recipes = load_stack_with_recipes(None, stack)
     os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
 
     # Provision host stdio-MCP tools onto PATH BEFORE recipe setups + native MCP, so claude can spawn
@@ -3379,6 +3379,23 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # because install bakes the content setup then configures. _host_launch_plan is pure
     # materialization (its returned argv is rebuilt below), so hoisting it above the scripts costs
     # nothing and is what lets a script write into the home at all.
+    #
+    # Resolve settings into the PROFILE first: _materialize_host_home (inside the plan) copies
+    # prof/settings.json into the host config dir verbatim, so anything not applied here never
+    # reaches the agent. This is the host half of the container path's merge (see the
+    # _merge_host_claude_settings call in `launch`) — without it a host session ran on the bare
+    # assemble-time FLOOR, so the host's own ~/.claude defaultMode never crossed over and a user
+    # running `auto` silently got `acceptEdits` (bd harnessed-8px.8). merge_settings applies
+    # required.defaultMode with setdefault — a floor, not an override — so the host's mode wins.
+    if harness in ("claude", "omp", "opencode"):
+        _merge_host_claude_settings(
+            profile_dir(stack, harness),
+            emit.required_settings(
+                _resolve_service_servers(_merge_servers(host_recipes), None),
+                host_recipes, host_stk.permissions, harness,
+            ),
+            harness,
+        )
     home, argv, cwd = _host_launch_plan(stack, harness, project_path)
     # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content a
     # Dockerfile RUN used to deliver to containers only.

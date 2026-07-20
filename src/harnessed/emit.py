@@ -406,12 +406,21 @@ def _recipe_hooks_settings(recipes: list[Recipe], harness: str | None = None) ->
     return out
 
 
-# Stack `permissions:` → Claude Code settings.json `permissions.defaultMode` (bd main-c5g). Unset
-# (or an unrecognized value) maps to the historical harnessed baseline `acceptEdits` so nothing
-# regresses; the three authored modes map explicitly.
+# Stack `permissions:` → Claude Code settings.json `permissions.defaultMode` (bd main-c5g,
+# retargeted in bd harnessed-8px.8). Unset (or an unrecognized value) maps to the historical
+# harnessed baseline `acceptEdits` so nothing regresses.
+#
+# Claude's own mode names PASS THROUGH verbatim. `prompt`/`yolo` remain as friendly aliases.
+# `auto` used to map to `acceptEdits`, which was wrong: `auto` is a REAL and DISTINCT Claude mode
+# (the CLI's enum is acceptEdits/auto/bypassPermissions/default/dontAsk/plan), so a stack author
+# writing `permissions: auto` was silently given a different mode than the one they named. It now
+# means what it says — pass through to Claude's `auto`. Use `acceptEdits` for the old behaviour.
+_CLAUDE_PERMISSION_MODES = (
+    "acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan",
+)
 _PERMISSION_DEFAULT_MODE = {
+    **{mode: mode for mode in _CLAUDE_PERMISSION_MODES},
     "prompt": "default",
-    "auto": "acceptEdits",
     "yolo": "bypassPermissions",
 }
 
@@ -420,8 +429,9 @@ def _permission_default_mode(permissions: str | None) -> str:
     """Map a stack's `permissions:` value to a Claude `permissions.defaultMode` (bd main-c5g).
 
     None (unset) → `acceptEdits`, preserving the prior always-auto-accept behaviour in a disposable
-    container. prompt→default, auto→acceptEdits, yolo→bypassPermissions. An unrecognized value falls
-    back to `acceptEdits` rather than emitting an invalid mode.
+    container. Claude's own mode names pass through verbatim; `prompt`→default and
+    `yolo`→bypassPermissions are aliases. An unrecognized value falls back to `acceptEdits` rather
+    than emitting an invalid mode.
     """
     if permissions is None:
         return "acceptEdits"
