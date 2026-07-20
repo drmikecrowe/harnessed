@@ -51,6 +51,21 @@ rtk --version
 # .claude symlinks to it makes "global" mean the stack's config dir. Without this a host launch would
 # patch the user's real ~/.claude/settings.json — a write outside $HARNESSED_CONFIG_DIR, which a host
 # launch must not do.
+#
+# `--auto-patch` writes a hook into settings.json. If it records that hook's path ABSOLUTELY it will
+# use the shim $HOME, which the trap deletes on exit — leaving a hook pointing at a dead /tmp path
+# on the next launch. That is exactly what gsd-core did (bd harnessed-8px.9, 12 broken hooks), so
+# the same rewrite runs here. It is a no-op when rtk records a relative path, which is why it is
+# applied defensively rather than after waiting for the failure.
+_rewrite_shim_paths() {
+    settings="$HARNESSED_CONFIG_DIR/settings.json"
+    [ -f "$settings" ] || return 0
+    esc=$(printf '%s' "$HARNESSED_CONFIG_DIR" | sed -e 's/[&|\\]/\\&/g')
+    rewritten="${settings}.rewritten.$$"
+    sed "s|$1/\.claude|$esc|g" "$settings" > "$rewritten"
+    mv "$rewritten" "$settings"
+}
+
 if [ "$HARNESSED_CONFIG_DIR" = "${HOME:-}/.claude" ]; then
     rtk init -g --auto-patch
 else
@@ -58,4 +73,5 @@ else
     trap 'rm -rf "$shim_home"' EXIT
     ln -s "$HARNESSED_CONFIG_DIR" "$shim_home/.claude"
     HOME="$shim_home" rtk init -g --auto-patch
+    _rewrite_shim_paths "$shim_home"
 fi

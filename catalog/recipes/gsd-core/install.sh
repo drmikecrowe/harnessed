@@ -31,6 +31,18 @@ fi
 # would survive the stack. A throwaway $HOME whose .claude symlinks to the stack's materialized
 # config dir makes the installer's own notion of "global" land exactly where it belongs, with no
 # upstream flag required.
+# Replace every "<shim>/.claude" prefix the installer baked into settings.json with the real config
+# dir. $1 = the shim home. Only the REPLACEMENT needs escaping (& and \ are special in a sed RHS, |
+# is the delimiter); the pattern is a mktemp path, which is alnum-safe by construction.
+_rewrite_shim_paths() {
+    settings="$HARNESSED_CONFIG_DIR/settings.json"
+    [ -f "$settings" ] || return 0
+    esc=$(printf '%s' "$HARNESSED_CONFIG_DIR" | sed -e 's/[&|\\]/\\&/g')
+    rewritten="${settings}.rewritten.$$"
+    sed "s|$1/\.claude|$esc|g" "$settings" > "$rewritten"
+    mv "$rewritten" "$settings"
+}
+
 if [ "$HARNESSED_CONFIG_DIR" = "${HOME:-}/.claude" ]; then
     pnpm dlx "@opengsd/gsd-core@${GSD_CORE_VERSION}" --claude --global
 else
@@ -50,4 +62,11 @@ else
         fi
         pnpm dlx "@opengsd/gsd-core@${GSD_CORE_VERSION}" --claude --global
     )
+    # The shim makes the installer's FILE writes land correctly (through the .claude symlink), but it
+    # also records ABSOLUTE hook paths using the $HOME it ran under — so every hook command in
+    # settings.json points into $shim_home, which the trap above deletes on exit. Next launch, all 12
+    # hooks fail with "No such file or directory" / a node loader error (bd harnessed-8px.9).
+    # Rewrite them to the real config dir while $shim_home is still known. A no-op if the installer
+    # ever stops baking absolute paths.
+    _rewrite_shim_paths "$shim_home"
 fi

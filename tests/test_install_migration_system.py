@@ -215,6 +215,30 @@ class TestPartialMigrationMustDeclareWhatAHostLoses:
         )
 
 
+class TestHomeShimRecipesRewriteRecordedPaths:
+    """bd harnessed-8px.9. The $HOME-shim pattern (mktemp -d + .claude symlink) makes an upstream
+    installer's FILE writes land in the stack config dir, but any path it RECORDS is written with the
+    shim $HOME — which the trap deletes on exit. gsd-core shipped 12 hooks pointing at a dead /tmp
+    path this way, failing every launch after the one that installed them.
+
+    Any recipe adopting the shim must therefore rewrite recorded paths before the shim goes away.
+    """
+
+    def test_every_shim_using_install_script_rewrites_recorded_paths(self):
+        offenders = []
+        for script in sorted(RECIPES.glob("*/install.sh")):
+            body = script.read_text(encoding="utf-8")
+            if "shim_home=" not in body:
+                continue  # not using the pattern; nothing to rewrite
+            if "_rewrite_shim_paths" not in body:
+                offenders.append(script.parent.name)
+        assert offenders == [], (
+            f"install.sh uses a $HOME shim but never rewrites recorded paths: {offenders}. "
+            "The shim is deleted on exit, so any absolute path the installer baked into "
+            "settings.json dies with it — call _rewrite_shim_paths \"$shim_home\" after the installer."
+        )
+
+
 class TestMigratedBeadsRecipes:
     @pytest.mark.parametrize("ref", USER_LEVEL)
     def test_install_script_exists_and_lints(self, ref):
