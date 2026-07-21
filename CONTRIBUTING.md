@@ -80,6 +80,14 @@ expect:                       # only what your Dockerfile delivers (not skills:/
 Recipe Dockerfiles: **no `FROM`**, **no `ARG HARNESS`** (the assembler supplies both); **pin every
 download** (no `@latest` / `--branch main` — the build rejects floating refs).
 
+**A `setup.config` item with a `prompt:` must refuse to run without a TTY.** Today every config
+item in the catalog is `derive:`-only, which resolves fine headlessly — so no guard exists yet. If
+you add a *prompted* item, add the refusal with it: a headless launch (`CI`, a script) takes the
+default silently, and some defaults are forever-values. The beads issue prefix is the motivating
+case — it appears in every issue ID and is expensive to change, so it must never be set by silence.
+Abort with the recipe name and the interactive command to run once; a `setup.condition` then keeps
+later headless launches unaffected.
+
 **Write outside harnessed-owned dirs → document removal in the recipe's README.** A recipe that
 touches anything beyond `$HARNESSED_CONFIG_DIR`, `$HARNESSED_BIN_DIR`, and its own persist dirs —
 a global package, a file in the user's home, a system service — must say in its README exactly what

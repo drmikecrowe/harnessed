@@ -22,7 +22,14 @@ set -euo pipefail
 # no `@latest` — the pin gate reads this file, not just the Dockerfile it replaces.
 AGENTMEMORY_VERSION="0.9.27"
 
-# Host mode: _host_run_installs sets npm_config_prefix to the STACK-scoped tools root and puts its
-# bin/ first on PATH, so `-g` lands in the stack tree rather than the user's global pnpm store.
+# PNPM_HOME is what contains a global install; npm_config_prefix does NOT (bd harnessed-8px.14).
+# _host_run_installs sets npm_config_prefix to the stack tools root, and this comment used to claim
+# that was enough — it is not. pnpm ignores npm_config_prefix for the global bin dir and falls back
+# to ~/.local/share/pnpm, so a host launch was installing into the USER'S real store, outside every
+# harnessed-owned directory. Verified with `pnpm bin -g`.
+#
+# The PARENT, not $HARNESSED_BIN_DIR itself: pnpm's global bin dir is "$PNPM_HOME/bin", so pointing
+# PNPM_HOME at the bin dir resolves one level too deep and off PATH, where pnpm hard-errors.
+# Container-side this is a no-op — the base image already sets PNPM_HOME inside the image.
 # No `install.cache` in recipe.yaml — the cache keys a CONTENT clone; pnpm has its own store.
-pnpm add -g "@agentmemory/mcp@${AGENTMEMORY_VERSION}"
+PNPM_HOME="$(dirname "$HARNESSED_BIN_DIR")" pnpm add -g "@agentmemory/mcp@${AGENTMEMORY_VERSION}"

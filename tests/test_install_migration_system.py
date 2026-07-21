@@ -299,3 +299,33 @@ def test_every_recipe_with_a_root_dockerfile_step_declares_it():
         f"recipes with a root Dockerfile step and an `install:` but no `install.system` reason: "
         f"{offenders} — a host launch skips their root step silently"
     )
+
+
+class TestGlobalPnpmInstallsStayInsideHarnessedDirs:
+    """bd harnessed-8px.14. `_host_run_installs` sets `npm_config_prefix`, but pnpm IGNORES it for
+    the global bin dir and falls back to ~/.local/share/pnpm — so a bare `pnpm add -g` on a host
+    launch writes the USER'S real store, outside every harnessed-owned directory.
+
+    Verified against real pnpm with `pnpm bin -g`:
+        npm_config_prefix=<tmp>      -> ~/.local/share/pnpm/bin   (ignored)
+        PNPM_HOME=<tmp>/tools/bin    -> ERROR, "<tmp>/tools/bin/bin" not in PATH
+        PNPM_HOME=<tmp>/tools        -> <tmp>/tools/bin           (correct)
+
+    So the redirect must be PNPM_HOME set to the PARENT of $HARNESSED_BIN_DIR. This caught
+    agentmemory, whose own comment asserted npm_config_prefix was sufficient.
+    """
+
+    def test_every_global_pnpm_install_carries_a_pnpm_home_redirect(self):
+        offenders = []
+        for script in sorted(RECIPES.glob("*/install.sh")):
+            for line in script.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if stripped.startswith("#") or "pnpm add -g" not in stripped:
+                    continue
+                if "PNPM_HOME=" not in stripped:
+                    offenders.append(f"{script.parent.name}: {stripped[:70]}")
+        assert offenders == [], (
+            "`pnpm add -g` without a PNPM_HOME redirect installs into the user's real global store "
+            f"on a host launch: {offenders}. Use PNPM_HOME=\"$(dirname \"$HARNESSED_BIN_DIR\")\" — "
+            "the parent, because pnpm's global bin dir is $PNPM_HOME/bin."
+        )
