@@ -353,6 +353,7 @@ class TestStackFingerprintGate:
     def test_unchanged_fingerprint_leaves_the_home_untouched(self, tmp_path):
         prof, home = self._prof(tmp_path), tmp_path / "home"
         assert launcher._materialize_host_home(prof, home, fingerprint="fp-1") is True
+        launcher._stamp_host_home(home, "fp-1")  # the caller stamps, AFTER installs succeed
         # Something the AGENT wrote after the build — it must survive an unchanged relaunch.
         (home / "runtime-state.json").write_text("session data")
         assert launcher._materialize_host_home(prof, home, fingerprint="fp-1") is False
@@ -361,6 +362,7 @@ class TestStackFingerprintGate:
     def test_changed_fingerprint_rebuilds_wholesale(self, tmp_path):
         prof, home = self._prof(tmp_path), tmp_path / "home"
         launcher._materialize_host_home(prof, home, fingerprint="fp-1")
+        launcher._stamp_host_home(home, "fp-1")
         (home / "stale-recipe-leftover.md").write_text("from a recipe no longer in the stack")
         assert launcher._materialize_host_home(prof, home, fingerprint="fp-2") is True
         # The whole point of keeping a wholesale wipe: a departed recipe leaves nothing behind.
@@ -371,13 +373,14 @@ class TestStackFingerprintGate:
         """A hand-deleted or half-written dir must not be trusted."""
         prof, home = self._prof(tmp_path), tmp_path / "home"
         launcher._materialize_host_home(prof, home, fingerprint="fp-1")
+        launcher._stamp_host_home(home, "fp-1")
         (home / launcher._HOST_STACK_FINGERPRINT).unlink()
         assert launcher._materialize_host_home(prof, home, fingerprint="fp-1") is True
 
-    def test_stamp_is_written_last(self, tmp_path):
-        """A stamp present alongside half-copied content would be a lie the next launch trusts."""
-        src = inspect.getsource(launcher._materialize_host_home)
-        assert src.index("copytree") < src.index("_HOST_STACK_FINGERPRINT).write_text")
+    def test_stamp_is_written_after_the_installs(self, tmp_path):
+        """The stamp certifies content that is not complete until every install.script has run."""
+        src = inspect.getsource(launcher._launch_host)
+        assert src.index("_host_run_installs(") < src.index("_stamp_host_home(")
 
     def test_no_fingerprint_keeps_unconditional_rebuild(self, tmp_path):
         prof, home = self._prof(tmp_path), tmp_path / "home"
@@ -583,3 +586,44 @@ class TestHostHomeLock:
         lock_at = src.index("with _host_home_lock(")
         assert lock_at < src.index("_host_launch_plan(")
         assert lock_at < src.index("_host_run_installs(")
+
+
+class TestFailedInstallDoesNotStamp:
+    """bd harnessed-8px.15, found by a REAL host launch. The stamp was written at the end of the
+    content copy, but installs run AFTER that — so an install that failed left a matching stamp on
+    disk. The next launch then saw "unchanged", skipped the rebuild AND the installs, and started
+    the agent against a permanently half-installed stack. Silently: the exact failure mode this
+    whole epic exists to remove, reintroduced by its own optimisation."""
+
+    def _launch(self, tmp_path, monkeypatch, *, install_fails):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+
+        def _installs(stack, project_path, *, harness, home):
+            if install_fails:
+                raise SystemExit(1)  # what _host_run_installs does on a failed script
+
+        monkeypatch.setattr(launcher, "_host_run_installs", _installs)
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+        return runner.invoke(launcher.app, ["launch", "hostspike", "claude", str(tmp_path), "--host"])
+
+    def test_a_failed_install_leaves_no_stamp(self, monkeypatch, tmp_path):
+        self._launch(tmp_path, monkeypatch, install_fails=True)
+        home = paths.host_home("hostspike", "claude")
+        assert not (home / launcher._HOST_STACK_FINGERPRINT).exists(), (
+            "a stamp after a failed install makes the next launch skip the retry"
+        )
+
+    def test_the_next_launch_retries_after_a_failure(self, monkeypatch, tmp_path):
+        self._launch(tmp_path, monkeypatch, install_fails=True)
+        calls: list[str] = []
+        monkeypatch.setattr(
+            launcher, "_host_run_installs",
+            lambda stack, project_path, *, harness, home: calls.append(stack),
+        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+        r = runner.invoke(launcher.app, ["launch", "hostspike", "claude", str(tmp_path), "--host"])
+        assert r.exit_code == 0, r.output
+        assert calls == ["hostspike"], "the retry must actually re-run the installs"

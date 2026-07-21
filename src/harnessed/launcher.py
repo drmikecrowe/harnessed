@@ -2915,10 +2915,20 @@ def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = 
     settings = prof / "settings.json"
     if settings.is_file():
         shutil.copy2(settings, home / "settings.json")
-    if fingerprint is not None:
-        # LAST — a fingerprint present but content half-copied would be a lie the next launch trusts.
-        (home / _HOST_STACK_FINGERPRINT).write_text(fingerprint + "\n", encoding="utf-8")
     return True
+
+
+def _stamp_host_home(home: Path, fingerprint: str) -> None:
+    """Record the fingerprint — the LAST step of a successful build, after the installs.
+
+    Deliberately NOT written by `_materialize_host_home`: the content it certifies is not complete
+    until every `install.script` has run. Stamping at the end of the copy instead meant a FAILED
+    install left a matching stamp behind, so the next launch saw "unchanged", skipped both the
+    rebuild and the installs, and started the agent against a permanently half-installed stack —
+    silently. Seen for real: a host launch died on context-mode's install with the stamp already on
+    disk (bd harnessed-8px.15).
+    """
+    (home / _HOST_STACK_FINGERPRINT).write_text(fingerprint + "\n", encoding="utf-8")
 
 
 def _host_claude_source() -> Path:
@@ -3526,10 +3536,14 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # STACK, not once per launch: it only ever ran every time because the materialize wiped its
     # output every time. With the wipe gated on the stack fingerprint, the output is still there, so
     # re-running would re-download and re-extract to produce the bytes already on disk.
-    if rebuilt:
-        _host_run_installs(stack, project_path, harness=harness, home=home)
-    else:
-        _say(f"[blue][INFO][/blue] Stack unchanged — reusing {home} (installs skipped)")
+        if rebuilt:
+            _host_run_installs(stack, project_path, harness=harness, home=home)
+            # ONLY now is the build complete. _host_run_installs exits non-zero on failure, so a
+            # failed install never reaches this line and the next launch rebuilds and retries
+            # instead of trusting a stamp that certifies content which was never finished.
+            _stamp_host_home(home, _host_stack_fingerprint(stack, host_recipes))
+        else:
+            _say(f"[blue][INFO][/blue] Stack unchanged — reusing {home} (installs skipped)")
     # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
     # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
     _host_run_setups(stack, project_path, harness=harness)

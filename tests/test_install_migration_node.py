@@ -48,6 +48,21 @@ def _stub(bin_dir: Path, name: str, body: str) -> Path:
     return p
 
 
+# A pnpm stub that enforces the ONE rule real pnpm enforces about global installs: its global bin dir
+# is "$PNPM_HOME/bin", and that dir must be on PATH or the install hard-errors. A no-op stub cannot
+# catch PNPM_HOME="$HARNESSED_BIN_DIR" (one level too deep), which is exactly what shipped and broke
+# a real host launch — bd harnessed-8px.15.
+_PNPM_STUB = """
+if [ "$1" = "add" ] && [ "$2" = "-g" ]; then
+  gbin="${PNPM_HOME:?pnpm add -g needs PNPM_HOME}/bin"
+  case ":$PATH:" in
+    *":$gbin:"*) ;;
+    *) echo "ERROR  The configured global bin directory \"$gbin\" is not in PATH" >&2; exit 1 ;;
+  esac
+fi
+"""
+
+
 def _run(recipe: str, tmp_path: Path, *, mode: str, harness: str, cache: Path | None = None,
          stub_path: Path | None = None, config_dir: Path | None = None, home: Path | None = None):
     """Execute a recipe's install.sh under the emit.install_env contract, with a controlled PATH."""
@@ -70,7 +85,10 @@ def _run(recipe: str, tmp_path: Path, *, mode: str, harness: str, cache: Path | 
     bin_dir = tmp_path / "stackbin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     env = {
-        "PATH": os.pathsep.join([str(stub_path or (tmp_path / "bin")), "/usr/bin", "/bin"]),
+        # bin_dir FIRST, mirroring _host_run_installs — a script may install a tool and then use it.
+        "PATH": os.pathsep.join(
+            [str(bin_dir), str(stub_path or (tmp_path / "bin")), "/usr/bin", "/bin"]
+        ),
         "HOME": str(home),
         # The contract — identical keys in both modes (emit.install_env).
         "HARNESS": harness,
@@ -135,7 +153,7 @@ class TestContextModeOmpBranch:
     def test_never_touches_the_config_dir(self, tmp_path, harness):
         # install.sh installs the CLI (via pnpm) and the omp plugin; neither writes the config dir.
         # Every other layer of this recipe is declarative (tools/mcp/hooks/env/persist).
-        _stub(tmp_path / "bin", "pnpm", "")  # CLI install runs first in host mode; must succeed
+        _stub(tmp_path / "bin", "pnpm", _PNPM_STUB)  # faithful stub: enforces $PNPM_HOME/bin on PATH
         r = _run("context-mode", tmp_path, mode="host", harness=harness)
         assert r.returncode == 0
         assert list((tmp_path / "config").iterdir()) == []
@@ -160,7 +178,7 @@ class TestContextModeOmpBranch:
         # write there, so the step is skipped — named, with a reason, on stderr, exit 0.
         log = tmp_path / "omp.log"
         _stub(tmp_path / "bin", "omp", f'printf "%s\\n" "$*" >> {log}\n')
-        _stub(tmp_path / "bin", "pnpm", "")  # CLI install runs first; must succeed silently
+        _stub(tmp_path / "bin", "pnpm", _PNPM_STUB)  # faithful stub: enforces $PNPM_HOME/bin on PATH
         r = _run("context-mode", tmp_path, mode="host", harness="omp")
         assert r.returncode == 0
         assert not log.exists()  # omp was never invoked, even though it was on PATH
