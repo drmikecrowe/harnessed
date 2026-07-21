@@ -38,6 +38,15 @@ data:
 # `dolt sql` are the supported client form, and --no-tls is required (the server speaks no TLS).
 healthcheck: "dolt --host 127.0.0.1 --port 3307 --user root --password '' --no-tls sql -q 'SELECT 1' >/dev/null 2>&1 || exit 1"
 
+# exclusive_lock — makes the invariant above ("nothing else ever opens the Dolt data dir") an
+# enforced precondition instead of a documented hope. The sidecar removes contention BETWEEN
+# CONTAINERS by construction, but a HOST dolt sql-server on the same data dir still wins the flock
+# and leaves this container dead on arrival (observed 2026-07-21, harnessed-9rw: a host server
+# started 20min before the launch; the sidecar exited 1 with `database "dolt" is locked by another
+# dolt process`, and every in-container `bd` then failed against a socket that was never created).
+# A host dolt server is routine here — `--host` launches and stray host `bd` calls both start one.
+exclusive_lock: dolt
+
 # Git sync (in-repo placement only): `bd dolt push` writes the Dolt history to refs/dolt/data on the
 # project's git origin. It MUST run HERE — bd's push shells out to the dolt CLI, which routes only to
 # a server on its OWN loopback; the identical command from a client container dies with

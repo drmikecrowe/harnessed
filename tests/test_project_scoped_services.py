@@ -17,6 +17,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import typer
 
 from harnessed import launcher, paths
 from harnessed.schema import PersistEntry, PersistSpec, Recipe, SchemaError, load_service
@@ -247,6 +248,8 @@ class TestInRepoServiceGetsTheRemoteGitSurface:
         monkeypatch.setattr(launcher, "_container_running", lambda _rt, _c: False)
         monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
+        # `_run` is stubbed, so no container is ever created — liveness is not what this asserts.
+        monkeypatch.setattr(launcher, "_assert_service_running", lambda *a, **k: None)
         monkeypatch.setattr(
             launcher.subprocess,
             "run",
@@ -287,3 +290,179 @@ class TestInRepoServiceGetsTheRemoteGitSurface:
 
         assert f"{home}/.ssh/id_rsa_work.pub" in cmd
         assert f"{home}/.ssh/id_rsa_work:" not in cmd, "private key mounted without ssh_keys opt-in"
+
+
+class TestExclusiveLockPreflight:
+    """A host process on the data dir must abort the launch BEFORE the sidecar is started.
+
+    The sidecar shape removes lock contention between CONTAINERS by construction, but a HOST
+    `dolt sql-server` on the same data dir still wins the flock. The sidecar then exits at startup
+    and every client fails against a socket that was never created — a symptom that lands nowhere
+    near its cause (observed 2026-07-21, harnessed-9rw).
+    """
+
+    def test_exclusive_lock_is_parsed(self, tmp_path):
+        root = _svc_yaml(
+            tmp_path,
+            "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+            "data:\n  persist: .beads\nexclusive_lock: dolt\n",
+        )
+        assert load_service(root, "beads-server").exclusive_lock == "dolt"
+
+    def test_exclusive_lock_requires_project_scope(self, tmp_path):
+        root = _svc_yaml(
+            tmp_path,
+            "name: pinger\nimage: x:latest\nport: 8080\nexclusive_lock: dolt\n",
+            name="pinger",
+        )
+        with pytest.raises(SchemaError, match="requires scope: project"):
+            load_service(root, "pinger")
+
+    def test_finds_a_real_host_process_running_in_the_data_dir(self, tmp_path):
+        """Matches on cwd, which is what identifies the contended resource."""
+        proc = subprocess.Popen(["sleep", "30"], cwd=tmp_path)
+        try:
+            found = launcher._host_process_in_dir("sleep", tmp_path.resolve())
+            assert found is not None, "host process in the data dir was not detected"
+            assert found[0] == proc.pid
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_ignores_a_process_of_another_name(self, tmp_path):
+        proc = subprocess.Popen(["sleep", "30"], cwd=tmp_path)
+        try:
+            assert launcher._host_process_in_dir("dolt", tmp_path.resolve()) is None
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_ignores_a_process_outside_the_data_dir(self, tmp_path):
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        proc = subprocess.Popen(["sleep", "30"], cwd=elsewhere)
+        try:
+            assert launcher._host_process_in_dir("sleep", data_dir.resolve()) is None
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_launch_aborts_and_names_the_offending_pid(self, tmp_path):
+        svc = load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                "data:\n  persist: .beads\nexclusive_lock: sleep\n",
+            ),
+            "beads-server",
+        )
+        proc = subprocess.Popen(["sleep", "30"], cwd=tmp_path)
+        try:
+            with pytest.raises(typer.Exit):
+                launcher._assert_data_dir_unlocked(svc, tmp_path)
+        finally:
+            proc.kill()
+            proc.wait()
+
+    def test_a_service_without_exclusive_lock_is_never_blocked(self, tmp_path):
+        svc = load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                "data:\n  persist: .beads\n",
+            ),
+            "beads-server",
+        )
+        proc = subprocess.Popen(["sleep", "30"], cwd=tmp_path)
+        try:
+            launcher._assert_data_dir_unlocked(svc, tmp_path)  # must not raise
+        finally:
+            proc.kill()
+            proc.wait()
+
+
+class TestDeadServiceFailsFast:
+    """`podman run -d` returns 0 once the container is CREATED.
+
+    A service whose process dies a moment later therefore leaves the launch believing it succeeded,
+    and the user gets an agent wired to a backend that is not there (harnessed-709).
+    """
+
+    def _svc(self, tmp_path):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                "data:\n  persist: .beads\n",
+            ),
+            "beads-server",
+        )
+
+    def test_running_container_passes(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            launcher.subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(a[0], 0, "running\n", ""),
+        )
+        launcher._assert_service_running("podman", "svc-x", self._svc(tmp_path))  # must not raise
+
+    def test_exited_container_aborts_the_launch(self, tmp_path, monkeypatch):
+        def fake_run(cmd, *a, **k):
+            if "inspect" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, "exited\n", "")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+        with pytest.raises(typer.Exit):
+            launcher._assert_service_running("podman", "svc-x", self._svc(tmp_path))
+
+    def test_the_container_log_is_surfaced(self, tmp_path, monkeypatch, capsys):
+        """The reason is already in the log — the user must not have to go find it."""
+        reason = 'database "dolt" is locked by another dolt process'
+
+        def fake_run(cmd, *a, **k):
+            if "inspect" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, "exited\n", "")
+            return subprocess.CompletedProcess(cmd, 0, reason + "\n", "")
+
+        monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+        with pytest.raises(typer.Exit):
+            launcher._assert_service_running("podman", "svc-x", self._svc(tmp_path))
+        assert "locked by another dolt process" in capsys.readouterr().err
+
+
+class TestServicesAreEnsuredOnEveryLaunchPath:
+    """Sidecars must be revived on RE-ATTACH, not only when a pod is created (harnessed-aio).
+
+    An agent container is long-lived; its sidecars are not. `_ensure_services` used to sit after the
+    re-attach branch returned, so once an instance was running, every later launch attached and never
+    looked at services again — a sidecar that died stayed dead for the life of the container, long
+    after whatever killed it was gone. Observed 2026-07-21: a beads-server dead for 3h while every
+    session's `bd` failed against a socket nothing was left to create.
+
+    This is a STRUCTURAL guard, not a behavioural one: `launch()` takes an interactive path that
+    ends in `os.execvp`, so the ordering cannot be exercised without a live runtime. Asserting the
+    order in the source is the honest way to pin the invariant that actually regressed.
+    """
+
+    def _launch_source(self) -> str:
+        import inspect
+
+        return inspect.getsource(launcher.launch)
+
+    def test_services_are_ensured_before_any_attach_returns(self):
+        src = self._launch_source()
+        ensure_at = src.find("_ensure_services(")
+        attach_at = src.find("_attach(")
+        assert ensure_at != -1, "launch() no longer calls _ensure_services at all"
+        assert attach_at != -1, "launch() no longer has an attach path — revisit this guard"
+        assert ensure_at < attach_at, (
+            "_ensure_services must run BEFORE the re-attach branch, or a dead sidecar is never "
+            "revived for an already-running instance"
+        )
+
+    def test_services_are_ensured_exactly_once(self):
+        """Hoisting it above the attach branch must not leave the create-path call behind."""
+        assert self._launch_source().count("_ensure_services(") == 1

@@ -927,6 +927,7 @@ class ServiceDef:
     data_persist: str = ""
     volume: str = ""
     healthcheck: str = ""
+    exclusive_lock: str = ""
     raw: dict = field(default_factory=dict)
 
     @property
@@ -1534,6 +1535,10 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
     if scope == "global" and data_persist:
         raise SchemaError(f"{manifest}: 'data.persist' requires scope: project")
 
+    exclusive_lock = (raw.get("exclusive_lock") or "").strip()
+    if exclusive_lock and scope != "project":
+        raise SchemaError(f"{manifest}: 'exclusive_lock' requires scope: project")
+
     return ServiceDef(
         name=raw["name"],
         image=raw["image"],
@@ -1544,6 +1549,7 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
         # A project-scoped service takes its data dir from `data.persist`, never a named volume.
         volume="" if scope == "project" else (raw.get("volume") or f"{name}-data"),
         healthcheck=raw.get("healthcheck", ""),
+        exclusive_lock=exclusive_lock,
         raw=raw,
     )
 
