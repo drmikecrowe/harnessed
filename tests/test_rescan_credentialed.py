@@ -94,7 +94,8 @@ class TestCredentialedContainerScan:
         assert launcher._scan_image_in_container("podman", "img:latest") is True
 
         cmd = seen[0]
-        assert cmd[:3] == ["podman", "run", "--rm"]
+        # NOT --rm: the credentialed report must survive long enough to be copied out (bd de7).
+        assert cmd[:3] == ["podman", "run", "--cidfile"]
         assert "--env-file" in cmd and str(envf) in cmd
         assert cmd[-2:] == ["img:latest", "harnessed-scan"]
 

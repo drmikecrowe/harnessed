@@ -795,9 +795,17 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     # scan here against the image we just built, this time with tokens resolved on the host — same
     # thing `harnessed rescan <image>` does. Advisory: it reports posture and never fails the build.
     # Skipped by `--no-security-scans`.
+    rescan_report = False
     if os.environ.get("HARNESSED_NO_SCANS") != "true":
         _say(f"[blue][INFO][/blue] Credentialed re-scan of {derived} (snyk + socket) ...")
-        _scan_image_in_container(rt, derived)
+        # Write ITS report to the profile: this is the only scan that runs snyk/socket, so its
+        # findings must be the ones surfaced (bd harnessed-de7).
+        scan_report = prof / "scan-report.json"
+        # Remove any report from a PREVIOUS build first: an existing file would otherwise be taken
+        # for this scan's output and treated as authoritative.
+        scan_report.unlink(missing_ok=True)
+        _scan_image_in_container(rt, derived, report_dest=scan_report)
+        rescan_report = scan_report.is_file()
     # NOTE: the image-baked ~/.claude extraction that used to run here is GONE (bd harnessed-8px.7).
     # It existed because a Dockerfile RUN could deliver skills/commands into the image's ~/.claude,
     # which the profile bind-mount would then hide. Content delivery now goes through `install:`,
@@ -818,8 +826,9 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     if harness == "opencode":
         _merge_baked_opencode(rt, derived, prof, result.stack)
 
-    # Surface the advisory supply-chain report (baked by the derived image's final scan layer).
-    _surface_scan_report(rt, derived, prof)
+    # Surface the advisory supply-chain report. When the credentialed re-scan already wrote one,
+    # that is authoritative — the image-baked report is credential-free and cannot see snyk/socket.
+    _surface_scan_report(rt, derived, prof, keep_existing=rescan_report)
 
     # Build all service images referenced by this stack so they are ready before first run.
     # Layer-cached: a no-op when each service Dockerfile is unchanged.
@@ -1401,7 +1410,9 @@ def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None
     out.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
 
 
-def _surface_scan_report(rt: str, image: str, prof: Path) -> None:
+def _surface_scan_report(
+    rt: str, image: str, prof: Path, *, keep_existing: bool = False
+) -> None:
     """Copy the in-image supply-chain report (harnessed-scan, the derived image's final layer) to the
     profile dir and print a one-line advisory summary. The scan is advisory — this surfaces its posture
     host-side so the user sees it without digging into the image or scrolling the build log."""
@@ -1414,8 +1425,14 @@ def _surface_scan_report(rt: str, image: str, prof: Path) -> None:
         )
         return True
 
+    # `keep_existing` means the credentialed re-scan already wrote the authoritative report here.
+    # Copying the image-baked one over it would REPLACE snyk/socket findings with a report that
+    # structurally cannot contain them, which is what produced a green "no high/critical" verdict on
+    # a build that had just reported 4 high (bd harnessed-de7).
+    if keep_existing and dest.is_file():
+        pass
     # create-fail (None) mirrors the old `if not cid: return` — leave any stale report untouched.
-    if not _with_image_container(rt, image, _copy):
+    elif not _with_image_container(rt, image, _copy):
         return
     if not dest.is_file():
         return
@@ -4416,7 +4433,9 @@ def uninstall_stack(
         _out.print(f"No shim found at {shim}")
 
 
-def _scan_image_in_container(rt: str, image: str) -> bool:
+def _scan_image_in_container(
+    rt: str, image: str, *, report_dest: "Path | None" = None
+) -> bool:
     """Run the image's own baked `harnessed-scan` inside a throwaway container, with scanner tokens
     injected as env.
 
@@ -4439,14 +4458,39 @@ def _scan_image_in_container(rt: str, image: str) -> bool:
             "[yellow]note:[/yellow] no ~/.config/harnessed/.env.schema or .env — snyk and socket "
             "have no tokens and will be skipped (osv-scanner + pip-audit still run)"
         )
+    # NOT `--rm`: this scan's report is the only one that ever contains snyk/socket findings, and a
+    # removed container takes it with it. That is exactly how bd harnessed-de7 happened — the
+    # credentialed findings were printed, discarded, and then the weaker build-time report was
+    # surfaced in their place under a green "no high/critical" verdict. Keep the container just long
+    # enough to `cp` the report out, then remove it in the `finally`.
+    #
+    # `cp` rather than a bind-mount on purpose: the image runs as the unprivileged `harnessed` user,
+    # and writing to a host dir from a rootless container needs userns mapping that this call site
+    # does not otherwise require. Copying out has no such dependency.
+    cid = ""
     try:
-        res = subprocess.run([
-            rt, "run", "--rm",
-            *[arg for f in env_files for arg in ("--env-file", str(f))],
-            image, "harnessed-scan",
-        ])
+        with tempfile.TemporaryDirectory() as td:
+            cidfile = Path(td) / "cid"  # must NOT pre-exist — podman refuses to overwrite it
+            res = subprocess.run([
+                rt, "run", "--cidfile", str(cidfile),
+                *[arg for f in env_files for arg in ("--env-file", str(f))],
+                image, "harnessed-scan",
+            ])
+            cid = cidfile.read_text().strip() if cidfile.is_file() else ""
+        if report_dest is not None and cid:
+            report_dest.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.harnessed/scan-report.json",
+                 str(report_dest)],
+                capture_output=True,
+            )
+        # Return means "the scan ran cleanly" — NOT "a report was persisted". `_scan_image` calls
+        # this without a report_dest and needs that original meaning; whether a report landed is a
+        # separate question the caller answers by looking for the file.
         return res.returncode == 0
     finally:
+        if cid:
+            subprocess.run([rt, "rm", "-f", cid], capture_output=True)
         for f in temp_files:
             Path(f).unlink(missing_ok=True)
 
