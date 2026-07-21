@@ -136,6 +136,88 @@ class TestMaterialize:
         assert (outside / "transcript.jsonl").read_text() == "precious", "followed a symlink out"
         assert not (home / "projects").exists()
 
+    @pytest.mark.parametrize("marker", launcher._DAEMON_STATE_MARKERS)
+    def test_any_single_daemon_marker_spares_the_dir(self, tmp_path, marker):
+        """bd harnessed-8px.20 AC4. The observed gutting ran through `daemon-auth-status.json` — the
+        daemon lost its state, wrote `{"status":"auth_required"}` there, and the credential file was
+        emptied ~200ms later. Only `daemon.json`/`daemon.log` were ever covered by a test, so
+        trimming the marker tuple to those two would silently reopen the exact path that bit us.
+        Each marker must be sufficient ON ITS OWN."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        state = home / "51ba83b8"
+        state.mkdir(parents=True)
+        (state / marker).write_text("{}")
+
+        launcher._materialize_host_home(prof, home)
+
+        assert (state / marker).is_file(), f"{marker} alone did not identify the dir as daemon state"
+
+    def test_every_projects_daemon_state_survives_not_just_one(self, tmp_path):
+        """bd harnessed-8px.20 AC3. One config dir holds a state dir PER PROJECT, so a user with
+        several projects open has several live daemons behind one rebuild. Sparing only the first
+        would still wedge the rest."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        keys = ("51ba83b8", "d8551d86", "0a1b2c3d")
+        for key in keys:
+            (home / key).mkdir(parents=True)
+            (home / key / "daemon.json").write_text(f'{{"key":"{key}"}}')
+
+        launcher._materialize_host_home(prof, home)
+
+        for key in keys:
+            assert (home / key / "daemon.json").read_text() == f'{{"key":"{key}"}}', (
+                f"daemon state for {key} was deleted"
+            )
+
+    def test_rebuilding_one_stacks_config_dir_leaves_another_stacks_alone(self, tmp_path):
+        """bd harnessed-8px.20 AC3. Config dirs are keyed per stack (8px.12) and sit as SIBLINGS, so
+        launching stack A must not reach into stack B's dir and de-auth a daemon serving it. Nothing
+        in the current code walks the parent — this pins that, because the blast radius of getting it
+        wrong is another stack's live session."""
+        prof = tmp_path / "prof"
+        prof.mkdir()
+        _fake_profile(prof)
+        home_a, home_b = tmp_path / "homes" / "stack-a", tmp_path / "homes" / "stack-b"
+        (home_b / "51ba83b8").mkdir(parents=True)
+        (home_b / "51ba83b8" / "daemon.json").write_text('{"stack":"b"}')
+        (home_b / "settings.json").write_text('{"stack":"b"}')
+
+        launcher._materialize_host_home(prof, home_a)
+
+        assert (home_b / "51ba83b8" / "daemon.json").read_text() == '{"stack":"b"}'
+        assert (home_b / "settings.json").read_text() == '{"stack":"b"}', (
+            "rebuilding stack A's config dir reached into stack B's"
+        )
+
+    def test_the_real_credentials_file_survives_a_rebuild(self, tmp_path):
+        """bd harnessed-8px.20 AC4. The credential file is the thing that actually got gutted, and it
+        lives OUTSIDE the config dir — reached through a symlink `_share_host_claude_state` plants.
+        The generic 'do not follow a symlink' test uses projects/; this names the vector that caused
+        the P0, so a regression reads as what it is rather than as an unrelated symlink bug.
+
+        Scope: this covers the REBUILD half of the chain only. Whether a daemon that keeps its state
+        also refrains from writing auth_required is the daemon's behaviour, not ours, and is not
+        asserted here."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        real_claude = tmp_path / "real-claude"
+        real_claude.mkdir()
+        creds = real_claude / ".credentials.json"
+        creds.write_text('{"accessToken":"live-token","refreshToken":"r","expiresAt":9999}')
+        home.mkdir()
+        (home / ".credentials.json").symlink_to(creds)
+
+        launcher._materialize_host_home(prof, home)
+
+        assert json.loads(creds.read_text())["accessToken"] == "live-token", (
+            "the rebuild gutted the live credential file through the symlink"
+        )
+
     def test_rebuilds_home_from_scratch(self, tmp_path):
         prof, home = tmp_path / "prof", tmp_path / "home"
         prof.mkdir()
