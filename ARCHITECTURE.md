@@ -127,6 +127,24 @@ Two consequences worth knowing:
 **hatago** as a process *inside* that container (hatago-consolidation), and brings up any referenced
 services (started host-published, idempotently).
 
+## Two launch verbs, one per backend
+
+| verb | backend | what it isolates |
+| --- | --- | --- |
+| `harnessed launch <stack> <harness>` | container (podman pod + hatago + services) | the filesystem, the network, **and** the configuration |
+| `harnessed host-run <stack> [harness]` | host-native — no podman, no MCP hub | the **configuration only** |
+
+`host-run` materializes the stack's assembled profile into a per-stack `CLAUDE_CONFIG_DIR`
+(`<stack>/<harness>`, see `paths.host_home`) and execs the harness against your real machine, real
+project, and real credentials. Configuration isolation *is* the host backend's boundary — which
+skills, rules, commands and hooks are live — so a stack's hooks fire only in that stack rather than
+in every session, the way a global `~/.claude` would.
+
+The two verbs share no flags but `--rm` (host-side: stop daemons this launch started). That is the
+reason they are separate commands rather than one command with a mode switch — `--fresh`,
+`--no-firewall`, `--shell`, `--mount-folder` and `--agent-start-folder` all describe a pod, and a
+host launch has none, so a combined verb could only accept them and do nothing.
+
 ## Folder-env contract
 
 The **one** set of environment variables a recipe may rely on. Same names, same meanings, on every

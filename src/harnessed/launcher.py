@@ -3584,6 +3584,42 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     subprocess.run(argv, env=env)
 
 
+def _require_supported_harness(harness: str) -> None:
+    """Shared by `launch` and `host-run` so the two entry points cannot drift apart."""
+    if harness not in HARNESS_CONFIG_DIR:
+        _err.print(
+            f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+            f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+        )
+        raise typer.Exit(1)
+
+
+@app.command("host-run")
+def host_run(
+    stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
+    harness: str = typer.Argument("claude", help="Harness to use (host-native: claude)"),
+    path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+    rm: bool = typer.Option(
+        False, "--rm", help="Stop host daemons this launch started when the session exits"
+    ),
+) -> None:
+    """Run a stack HOST-NATIVELY — no podman, no container.
+
+    The first-class verb for the host backend (bd harnessed-ltj). `launch --host` still works and
+    delegates here, but it is deprecated: `--host` was scaffolding bolted onto the container verb,
+    and MOST OF THAT VERB'S FLAGS ARE MEANINGLESS HERE. `--fresh`, `--no-firewall`, `--mount-folder`,
+    `--agent-start-folder` and `--shell` all describe a pod that does not exist on a host launch, so
+    offering them was an invitation to pass a flag that silently did nothing.
+
+    What host mode isolates is CONFIGURATION, not the filesystem: the stack's assembled profile is
+    materialized into a per-stack CLAUDE_CONFIG_DIR and the harness is exec'd against your real
+    machine, in your real project, with your real credentials. Use `launch` when you want the
+    container boundary too.
+    """
+    _require_supported_harness(harness)
+    _launch_host(stack, harness, path, rm=rm)
+
+
 @app.command()
 def launch(
     stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
@@ -3606,26 +3642,10 @@ def launch(
         False, "--shell",
         help="Open an interactive bash shell in the container instead of starting the agent",
     ),
-    host: bool = typer.Option(
-        False, "--host",
-        help="Content-only host-native run: materialize the profile into a host CLAUDE_CONFIG_DIR "
-             "and exec the harness on the host (no podman, no MCP). Spike — claude only.",
-    ),
 ) -> None:
-    """Launch an isolated harness stack against a project directory."""
-    if harness not in HARNESS_CONFIG_DIR:
-        _err.print(
-            f"[bold red]error:[/bold red] unsupported harness '{harness}' "
-            f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
-        )
-        raise typer.Exit(1)
+    """Launch an isolated harness stack against a project directory (container backend)."""
+    _require_supported_harness(harness)
 
-    # Host-native content-only backend: fully self-contained and podman-free (never touches
-    # _runtime()/images/mounts). Diverts before any container logic — the whole point is to run
-    # without a container. See _launch_host. --rm → supervise + stop host daemons on exit.
-    if host:
-        _launch_host(stack, harness, path, rm=rm)
-        return
     if no_firewall:
         os.environ["NO_FIREWALL"] = "true"
 
@@ -4673,7 +4693,7 @@ def host_gc(
 
 _COMMANDS = {
     "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
-    "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc",
+    "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc", "host-run",
 }
 
 
