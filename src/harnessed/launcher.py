@@ -3655,6 +3655,19 @@ def launch(
         # keyring dir deliberately survives a normal recreate, so this is the one place it is cleared.
         _keyring_fresh_wipe(harness, inst)
 
+    # Start any service sidecars this stack's recipes reference. Idempotent — skips services already
+    # running. Global services are host-published (reached from the pod via
+    # host.containers.internal:<port>); project-scoped ones bind-mount this project's persist dir and
+    # are reached through a unix socket inside it, so they need the project/mount context.
+    #
+    # BEFORE the re-attach branch below, deliberately: a long-lived agent container outlives its
+    # sidecars. This used to sit after the create path only, so once an instance was running, every
+    # subsequent launch took the attach branch and never looked at services again — a sidecar that
+    # died stayed dead for the life of the container, long after whatever killed it was gone
+    # (observed 2026-07-21: a sidecar dead for 3h, revived by nothing, while `bd` failed every
+    # session). Reviving it is exactly what "idempotent" already promised.
+    _ensure_services(rt, stack, project_path=project_path, mount_path=mount_path)
+
     # Re-attach to a running instance (interactive only) — but if it was built from an older image
     # (rebuilt since it started), a re-attach would silently run the stale build. Offer to recreate.
     headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
@@ -3687,12 +3700,6 @@ def launch(
 
     # Recipe init (Model A) now runs inside the attach shell (_attach → _init_shell_prologue), not a
     # transient container — so init-derived env reaches the agent. Nothing to do here at pod-create.
-
-    # Start any service sidecars this stack's recipes reference. Idempotent — skips services already
-    # running. Global services are host-published (reached from the pod via
-    # host.containers.internal:<port>); project-scoped ones bind-mount this project's persist dir and
-    # are reached through a unix socket inside it, so they need the project/mount context.
-    _ensure_services(rt, stack, project_path=project_path, mount_path=mount_path)
 
     _out.print(f"[blue][INFO][/blue] Creating isolated pod: {pod} (harness + hatago)")
     _out.print(f"[blue][INFO][/blue] Project: {project_path} -> {CONTAINER_HOME / relpath}")

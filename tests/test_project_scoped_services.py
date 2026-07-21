@@ -431,3 +431,38 @@ class TestDeadServiceFailsFast:
         with pytest.raises(typer.Exit):
             launcher._assert_service_running("podman", "svc-x", self._svc(tmp_path))
         assert "locked by another dolt process" in capsys.readouterr().err
+
+
+class TestServicesAreEnsuredOnEveryLaunchPath:
+    """Sidecars must be revived on RE-ATTACH, not only when a pod is created (harnessed-aio).
+
+    An agent container is long-lived; its sidecars are not. `_ensure_services` used to sit after the
+    re-attach branch returned, so once an instance was running, every later launch attached and never
+    looked at services again — a sidecar that died stayed dead for the life of the container, long
+    after whatever killed it was gone. Observed 2026-07-21: a beads-server dead for 3h while every
+    session's `bd` failed against a socket nothing was left to create.
+
+    This is a STRUCTURAL guard, not a behavioural one: `launch()` takes an interactive path that
+    ends in `os.execvp`, so the ordering cannot be exercised without a live runtime. Asserting the
+    order in the source is the honest way to pin the invariant that actually regressed.
+    """
+
+    def _launch_source(self) -> str:
+        import inspect
+
+        return inspect.getsource(launcher.launch)
+
+    def test_services_are_ensured_before_any_attach_returns(self):
+        src = self._launch_source()
+        ensure_at = src.find("_ensure_services(")
+        attach_at = src.find("_attach(")
+        assert ensure_at != -1, "launch() no longer calls _ensure_services at all"
+        assert attach_at != -1, "launch() no longer has an attach path — revisit this guard"
+        assert ensure_at < attach_at, (
+            "_ensure_services must run BEFORE the re-attach branch, or a dead sidecar is never "
+            "revived for an already-running instance"
+        )
+
+    def test_services_are_ensured_exactly_once(self):
+        """Hoisting it above the attach branch must not leave the create-path call behind."""
+        assert self._launch_source().count("_ensure_services(") == 1
