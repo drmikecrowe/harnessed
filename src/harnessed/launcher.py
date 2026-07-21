@@ -3069,6 +3069,41 @@ def _share_host_claude_state(home: Path) -> None:
         shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
 
 
+def _propagate_host_settings(profile_settings: Path, live: Path) -> None:
+    """Write the freshly-computed profile settings.json over the live one WITHOUT dropping keys an
+    install script wrote into it.
+
+    Resolves a collision between two gates. `install:` scripts write into $HARNESSED_CONFIG_DIR —
+    the LIVE home, not the profile — e.g. ccstatusline's `statusLine` block. Those installs are
+    skipped when the stack fingerprint matches (bd harnessed-8px.12), while settings.json is
+    re-propagated on every launch (bd harnessed-8px.18). A plain copy therefore deleted the
+    installer's output with nothing left to put it back: the status line survived the first launch
+    after a stack change and vanished on every restart after it.
+
+    Profile keys always WIN — that is 8px.18's whole point (the host's live ~/.claude preferences
+    and harnessed's required grants are recomputed each launch). ONLY keys the profile does not
+    define at all are carried over. This is the host-side analogue of `emit.merge_settings` carrying
+    every non-required baked key through verbatim container-side.
+    """
+    try:
+        fresh = json.loads(profile_settings.read_text() or "{}")
+        prior = json.loads(live.read_text() or "{}") if live.is_file() else {}
+    except (OSError, ValueError):
+        # Unparseable/unreadable on either side → fall back to the plain copy. A settings file the
+        # user hand-edited into invalid JSON must not take the whole launch down with it.
+        shutil.copy2(profile_settings, live)
+        return
+    carried = (
+        {k: v for k, v in prior.items() if k not in fresh}
+        if isinstance(fresh, dict) and isinstance(prior, dict)
+        else {}
+    )
+    if not carried:
+        shutil.copy2(profile_settings, live)  # nothing to preserve → byte-identical propagation
+        return
+    live.write_text(json.dumps({**fresh, **carried}, indent=2) + "\n")
+
+
 def _host_launch_plan(
     stack: str, harness: str, project_path: Path, *, recipes: list | None = None
 ) -> tuple[Path, list[str], Path, bool]:
@@ -3097,7 +3132,7 @@ def _host_launch_plan(
     # Everything else in here (skills/rules/commands/CLAUDE.md) IS a function of that closure.
     settings = prof / "settings.json"
     if settings.is_file():
-        shutil.copy2(settings, home / "settings.json")
+        _propagate_host_settings(settings, home / "settings.json")
     _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
     argv = ["claude"]

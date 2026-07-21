@@ -660,6 +660,59 @@ class TestSettingsPropagateWithoutARebuild:
         assert rebuilt is False, "unchanged stack must not rebuild"
         assert json.loads((home / "settings.json").read_text())["permissions"]["defaultMode"] == "auto"
 
+    def test_install_written_keys_survive_the_propagation(self, tmp_path, monkeypatch):
+        """The 8px.18 propagation must not delete what an `install:` script wrote into the LIVE home.
+
+        install scripts write into $HARNESSED_CONFIG_DIR — the home, not the profile (ccstatusline's
+        `statusLine` block). 8px.12 skips those installs when the fingerprint matches, so a plain
+        copy of the profile over the home destroyed the only copy and nothing put it back: the
+        status line survived the first launch after a stack change and vanished on every restart.
+        """
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        prof = paths.profile_dir("s-ccsl", "claude")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+        monkeypatch.setattr(launcher, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
+
+        home, _a, _c, rebuilt = launcher._host_launch_plan("s-ccsl", "claude", tmp_path, recipes=[])
+        assert rebuilt is True
+        launcher._stamp_host_home(home, "fp-1")
+
+        # What ccstatusline's install.sh does, into the home the installs actually target.
+        live = home / "settings.json"
+        data = json.loads(live.read_text())
+        data["statusLine"] = {"type": "command", "command": "/cache/ccstatusline", "padding": 0}
+        live.write_text(json.dumps(data))
+
+        # Restart on an unchanged stack: installs are skipped, settings still propagate.
+        home, _a, _c, rebuilt = launcher._host_launch_plan("s-ccsl", "claude", tmp_path, recipes=[])
+        assert rebuilt is False, "unchanged stack must not rebuild"
+        final = json.loads((home / "settings.json").read_text())
+        assert final.get("statusLine", {}).get("command") == "/cache/ccstatusline", (
+            "the install-written statusLine was wiped by the profile copy — ccstatusline is dead "
+            "on every launch after the first"
+        )
+
+    def test_the_profile_still_wins_on_keys_it_defines(self, tmp_path, monkeypatch):
+        """Carrying install-written keys over must not resurrect STALE values for keys the profile
+        does define — that would defeat 8px.18 (live host prefs stop reaching the config dir)."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        prof = paths.profile_dir("s-win", "claude")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+        monkeypatch.setattr(launcher, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
+
+        home, _a, _c, _r = launcher._host_launch_plan("s-win", "claude", tmp_path, recipes=[])
+        launcher._stamp_host_home(home, "fp-1")
+        (home / "settings.json").write_text('{"permissions":{"defaultMode":"stale"}}')
+        (prof / "settings.json").write_text('{"permissions":{"defaultMode":"auto"}}')
+
+        home, _a, _c, _r = launcher._host_launch_plan("s-win", "claude", tmp_path, recipes=[])
+        got = json.loads((home / "settings.json").read_text())["permissions"]["defaultMode"]
+        assert got == "auto", "profile must win for keys it defines"
+
     def test_content_is_still_gated(self, tmp_path, monkeypatch):
         """Only settings.json is exempt — skills/rules ARE a function of the recipe closure, so a
         skipped rebuild must not resurrect them (that would defeat the gate entirely)."""
