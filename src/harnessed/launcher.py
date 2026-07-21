@@ -34,6 +34,7 @@ from rich.console import Console
 from rich.markup import escape
 from ruamel.yaml import YAML
 
+from . import __version__
 from . import emit
 from . import paths
 from . import persist
@@ -2801,21 +2802,81 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
 _HOST_HARNESS = "claude"  # spike scope: only claude consumes CLAUDE_CONFIG_DIR directly here.
 
 # Breadcrumb written into every host config dir so orphan detection can reverse the project_hash.
-_HOST_PROJECT_BREADCRUMB = ".harnessed-project"
 
 
-def _materialize_host_home(prof: Path, home: Path, project_path: "str | Path | None" = None) -> None:
+def _host_stack_fingerprint(stack: str, recipes: list) -> str:
+    """What the host config dir's content is a function of: the stack's recipe closure, plus
+    harnessed's own version.
+
+    The version is in there because a host launch has no image build to force a refresh. Change what
+    `emit` writes into settings.json and the recipe closure is byte-identical, so without the version
+    every existing config dir would keep serving the old output forever.
+    """
+    stack_dir = paths.find_in_catalog("stacks", stack)
+    return f"{__version__}:{compute_recipe_hash(stack_dir / 'stack.yaml', recipes)}"
+
+
+# Written INSIDE the config dir, deliberately: the stamp must die with the content it describes, so
+# a hand-deleted or half-written dir reads as "no fingerprint" and rebuilds rather than being trusted.
+_HOST_STACK_FINGERPRINT = ".harnessed-stack"
+# `<project_hash>` dirs from the pre-8px.12 layout, now nested inside the config dir itself.
+_LEGACY_PROJECT_DIR_RE = re.compile(r"^[0-9a-f]{8}$")
+
+
+def _migrate_legacy_host_homes(home: Path) -> None:
+    """Scrub pre-8px.12 per-project config dirs that are now nested INSIDE the config dir.
+
+    The old key was `<stack>/<harness>/<project_hash>`; the new config dir IS `<stack>/<harness>`, so
+    every old per-project dir became a child of it. They must be SCRUBBED rather than swept away by
+    the rmtree below: after bd harnessed-8px.10 any of them that saw a token refresh holds a real
+    `.credentials.json`, and a bare rmtree would leave that token recoverable on disk.
+
+    Matched narrowly — an 8-hex name AND something that actually looks like a config dir — so a
+    recipe that ever ships an 8-hex-named directory is not silently deleted.
+    """
+    if not home.is_dir():
+        return
+    for child in sorted(home.iterdir()):
+        if not (child.is_dir() and not child.is_symlink()):
+            continue
+        if not _LEGACY_PROJECT_DIR_RE.match(child.name):
+            continue
+        if not ((child / "settings.json").is_file() or (child / ".credentials.json").exists()):
+            continue  # 8-hex name but not a config dir — leave it alone
+        _err.print(
+            f"[blue][INFO][/blue] Migrating away a pre-8px.12 per-project config dir "
+            f"({child.name}); its credential file is scrubbed, not just unlinked."
+        )
+        _scrub_host_home(child)
+
+
+def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = None) -> bool:
     """Copy the assembled profile's CONTENT layer into a host CLAUDE_CONFIG_DIR (`home`).
 
     Content-only: the `.claude/*` tree (skills/commands/rules/agents + CLAUDE.md) plus the
     settings.json floor — exactly what the container bind-mounts onto ~/.claude, minus the
     container-only artifacts (.mcp.json, hatago.config.json, the derived Dockerfile) which wire the
-    MCP hub that does not exist host-side. The home is rebuilt from scratch each launch so a removed
-    recipe's files never linger.
+    MCP hub that does not exist host-side.
 
-    When `project_path` is provided, a `.harnessed-project` breadcrumb is written after rebuilding
-    so that `host-gc` can identify which project each config dir belongs to.
+    Returns True if it (re)built, False if an up-to-date home was left untouched.
+
+    GATED on `fingerprint` (bd harnessed-8px.12). The rebuild is still WHOLESALE — the dir stays a
+    pure function of (profile + installs), so a recipe removed from the stack still cannot leave
+    files behind — but it now happens only when the stack actually changed, instead of on every
+    launch. That wipe-every-time was the root of three separate problems: it forced the project into
+    the config-dir key (to stop one launch wiping another's live dir), it made install scripts re-run
+    per project per launch (with `install.cache` existing purely to make that affordable), and it
+    reset `.claude.json` — so MCP approvals and folder trust never persisted.
+
+    Passing `fingerprint=None` keeps the old unconditional-rebuild behaviour, which is what the
+    materialize-only tests want.
     """
+    if fingerprint is not None:
+        stamp = home / _HOST_STACK_FINGERPRINT
+        if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == fingerprint:
+            return False
+    # BEFORE the rmtree: it would delete a legacy per-project dir without scrubbing its credential.
+    _migrate_legacy_host_homes(home)
     if home.exists():
         shutil.rmtree(home)
     home.mkdir(parents=True)
@@ -2826,9 +2887,10 @@ def _materialize_host_home(prof: Path, home: Path, project_path: "str | Path | N
     settings = prof / "settings.json"
     if settings.is_file():
         shutil.copy2(settings, home / "settings.json")
-    if project_path is not None:
-        # Written AFTER the rmtree above so it survives each launch cycle.
-        (home / _HOST_PROJECT_BREADCRUMB).write_text(str(project_path), encoding="utf-8")
+    if fingerprint is not None:
+        # LAST — a fingerprint present but content half-copied would be a lie the next launch trusts.
+        (home / _HOST_STACK_FINGERPRINT).write_text(fingerprint + "\n", encoding="utf-8")
+    return True
 
 
 def _host_claude_source() -> Path:
@@ -2952,21 +3014,28 @@ def _share_host_claude_state(home: Path) -> None:
         shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
 
 
-def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Path, list[str], Path]:
-    """Materialize the host home (+ seed auth) and return (home, argv, cwd) WITHOUT exec'ing.
+def _host_launch_plan(
+    stack: str, harness: str, project_path: Path, *, recipes: list | None = None
+) -> tuple[Path, list[str], Path, bool]:
+    """Materialize the host home (+ seed auth) and return (home, argv, cwd, rebuilt) WITHOUT exec'ing.
 
     Split out from _launch_host so the plan is verifiable in tests without handing over the TTY.
+
+    `rebuilt` is False when the stack fingerprint matched and the existing home was left alone; the
+    caller uses it to skip the install scripts, which have nothing to do (bd harnessed-8px.12).
+    Passing `recipes=None` disables the gate and rebuilds unconditionally.
     """
     prof = profile_dir(stack, harness)
-    home = paths.host_home(stack, harness, project_path)
-    # BEFORE the materialize: it rmtree's `home`, and a token the last session refreshed lives in
-    # there as a regular file that replaced our symlink (bd harnessed-8px.10).
+    home = paths.host_home(stack, harness)
+    # BEFORE the materialize: if it rebuilds, it rmtree's `home`, and a token the last session
+    # refreshed lives in there as a regular file that replaced our symlink (bd harnessed-8px.10).
     _rescue_host_credentials()
-    _materialize_host_home(prof, home, project_path=project_path)
+    fingerprint = _host_stack_fingerprint(stack, recipes) if recipes is not None else None
+    rebuilt = _materialize_host_home(prof, home, fingerprint=fingerprint)
     _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
     argv = ["claude"]
-    return home, argv, project_path
+    return home, argv, project_path, rebuilt
 
 
 def _gcd_db_name(project_path: Path) -> str:
@@ -3416,10 +3485,20 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
             ),
             harness,
         )
-    home, argv, cwd = _host_launch_plan(stack, harness, project_path)
+    home, argv, cwd, rebuilt = _host_launch_plan(
+        stack, harness, project_path, recipes=host_recipes
+    )
     # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content a
     # Dockerfile RUN used to deliver to containers only.
-    _host_run_installs(stack, project_path, harness=harness, home=home)
+    #
+    # SKIPPED when the home was not rebuilt (bd harnessed-8px.12). An install is logically once per
+    # STACK, not once per launch: it only ever ran every time because the materialize wiped its
+    # output every time. With the wipe gated on the stack fingerprint, the output is still there, so
+    # re-running would re-download and re-extract to produce the bytes already on disk.
+    if rebuilt:
+        _host_run_installs(stack, project_path, harness=harness, home=home)
+    else:
+        _say(f"[blue][INFO][/blue] Stack unchanged — reusing {home} (installs skipped)")
     # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
     # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
     _host_run_setups(stack, project_path, harness=harness)
@@ -4463,70 +4542,65 @@ def host_gc(
         _out.print("No host config dirs found.")
         return
 
-    # Enumerate root/<stack>/<harness>/<project_hash>
-    entries: list[tuple[str, str, str, str, float, float, bool, str, Path]] = []
+    # Enumerate root/<stack>/<harness> — the config dir IS the stack identity (bd harnessed-8px.12),
+    # so a dir is an orphan when its STACK no longer resolves in the catalog. That is a far better
+    # signal than the old per-project breadcrumb: a stack name is right there in the path, where a
+    # project_hash was a one-way sha1 that could not be resolved back to anything.
+    entries: list[tuple[str, str, bool, float, float, str, list[str], Path]] = []
     for stack_dir in sorted(root.iterdir()):
         if not stack_dir.is_dir():
             continue
-        for harness_dir in sorted(stack_dir.iterdir()):
-            if not harness_dir.is_dir():
+        stack_gone = not (paths.find_in_catalog("stacks", stack_dir.name) / "stack.yaml").is_file()
+        for home in sorted(stack_dir.iterdir()):
+            # `<harness>.home` is the $HOME shim (paths.host_home_shim), a sibling of the config dir
+            # — not a config dir itself, and removing it out from under a stack would break installs.
+            if not home.is_dir() or home.name.endswith(".home"):
                 continue
-            for proj_dir in sorted(harness_dir.iterdir()):
-                if not proj_dir.is_dir():
-                    continue
-
-                breadcrumb = proj_dir / _HOST_PROJECT_BREADCRUMB
-                if breadcrumb.is_file():
-                    project_path_str = breadcrumb.read_text(encoding="utf-8").strip()
-                    is_orphan = not Path(project_path_str).exists()
-                else:
-                    project_path_str = "(no breadcrumb — pre-migration dir)"
-                    is_orphan = True
-
-                age_days = (_time.time() - proj_dir.stat().st_mtime) / 86400
-                size_kb = sum(
-                    f.stat().st_size for f in proj_dir.rglob("*") if f.is_file()
-                ) / 1024
-
-                cred = proj_dir / ".credentials.json"
-                if cred.is_symlink():
-                    cred_status = "symlink"
-                elif cred.is_file():
-                    cred_status = "REAL-FILE"
-                else:
-                    cred_status = "none"
-
-                entries.append((
-                    stack_dir.name, harness_dir.name, proj_dir.name,
-                    project_path_str, age_days, size_kb, is_orphan, cred_status, proj_dir,
-                ))
+            age_days = (_time.time() - home.stat().st_mtime) / 86400
+            size_kb = sum(f.stat().st_size for f in home.rglob("*") if f.is_file()) / 1024
+            cred = home / ".credentials.json"
+            cred_status = "symlink" if cred.is_symlink() else ("REAL-FILE" if cred.is_file() else "none")
+            # Pre-8px.12 per-project dirs, now nested inside. The next launch scrubs them; surfacing
+            # them here means a user who never relaunches that stack can still see they exist.
+            legacy = [
+                c.name for c in sorted(home.iterdir())
+                if c.is_dir() and not c.is_symlink() and _LEGACY_PROJECT_DIR_RE.match(c.name)
+            ]
+            entries.append(
+                (stack_dir.name, home.name, stack_gone, age_days, size_kb, cred_status, legacy, home)
+            )
 
     if not entries:
         _out.print("No host config dirs found.")
         return
 
-    for stack, harness, proj_hash, project_path_str, age_days, size_kb, is_orphan, cred_status, proj_dir in entries:
+    for stack, harness, is_orphan, age_days, size_kb, cred_status, legacy, home in entries:
         status = "[red]ORPHAN[/red]" if is_orphan else "[green]ok[/green]"
         cred_tag = f"  cred:[yellow]{cred_status}[/yellow]" if cred_status != "none" else ""
+        legacy_tag = (
+            f"  [yellow]{len(legacy)} legacy per-project dir(s)[/yellow]" if legacy else ""
+        )
+        reason = " (stack no longer in catalog)" if is_orphan else ""
         _out.print(
-            f"{status}  {stack}/{harness}/{proj_hash}  "
-            f"age={age_days:.0f}d  {size_kb:.0f}KB  {project_path_str}{cred_tag}"
+            f"{status}  {stack}/{harness}  "
+            f"age={age_days:.0f}d  {size_kb:.0f}KB{cred_tag}{legacy_tag}{reason}"
         )
 
     if not prune:
-        orphan_count = sum(1 for e in entries if e[6])
+        orphan_count = sum(1 for e in entries if e[2])
         if orphan_count:
             _out.print(f"\n[dim]{orphan_count} orphan(s). Run with --prune to remove.[/dim]")
         return
 
-    orphans = [e for e in entries if e[6]]
+    orphans = [e for e in entries if e[2]]  # stack no longer in the catalog
     if not orphans:
         _out.print("\nNo orphans to remove.")
         return
 
     removed = 0
-    for stack, harness, proj_hash, project_path_str, age_days, size_kb, is_orphan, cred_status, proj_dir in orphans:
-        label = f"{stack}/{harness}/{proj_hash} ({project_path_str})"
+    for stack, harness, _is_orphan, _age, _size, _cred, _legacy, home in orphans:
+        label = f"{stack}/{harness} (stack no longer in catalog)"
+        proj_dir = home
         if dry_run:
             _out.print(f"[yellow]would remove[/yellow] {label}")
             removed += 1

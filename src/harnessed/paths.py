@@ -260,15 +260,23 @@ def host_homes_root() -> Path:
     return xdg_data_home() / "harnessed" / "home"
 
 
-def host_home(stack: str, harness: str, project_path: str | Path) -> Path:
-    """Absolute host CLAUDE_CONFIG_DIR for `stack` + `harness` + project (host-native launch backend).
+def host_home(stack: str, harness: str) -> Path:
+    """Absolute host CLAUDE_CONFIG_DIR for `stack` + `harness` (host-native launch backend).
 
-    Keyed by project (via `project_hash`, matching the container `instance_name`) so concurrent
-    launches of the SAME stack in DIFFERENT projects get their own config dir — a second launch's
-    materialize/rmtree can't yank the config dir out from under the first, and each project keeps its
-    own `.claude.json` (MCP approvals, folder trust) instead of sharing one clobbered copy.
+    NOT keyed by project (bd harnessed-8px.12). `--host` isolates CONFIGURATION, and the STACK is
+    what defines the configuration — so the config dir is the stack's identity and nothing else
+    belongs in the key. Nothing project-specific lives in here: `.mcp.json` is built from the stack's
+    recipes alone, no `setup.script` writes to the config dir, and `.claude.json` is internally a
+    path-keyed map that has served every project from one file since `~/.claude` existed.
+
+    It USED to carry a `project_hash`, but only to dodge a self-inflicted hazard: the materialize
+    wiped the dir on every launch, so two projects sharing one would let a second launch yank the dir
+    out from under a running session. That wipe is now gated on the stack fingerprint
+    (`_materialize_host_home`), so an unchanged stack never wipes and the hazard is gone — along with
+    the per-project duplication of identical stack content, the orphan sprawl, and re-running every
+    install script on every launch of every project.
     """
-    return host_homes_root() / stack / harness / project_hash(project_path)
+    return host_homes_root() / stack / harness
 
 
 def host_home_shim(home: Path) -> Path:

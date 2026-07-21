@@ -32,21 +32,26 @@ def _fake_profile(prof: Path) -> None:
 
 
 class TestHostHomePaths:
-    def test_host_home_uses_xdg_data_home_and_is_project_keyed(self, monkeypatch, tmp_path):
+    def test_host_home_is_keyed_by_stack_and_harness_only(self, monkeypatch, tmp_path):
+        """bd harnessed-8px.12: --host isolates CONFIGURATION and the STACK defines it, so the
+        config dir is the stack identity. Nothing project-specific lives in there."""
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        proj = tmp_path / "proj"
-        assert paths.host_home("s", "claude", proj) == (
-            tmp_path / "harnessed" / "home" / "s" / "claude" / paths.project_hash(proj)
-        )
+        assert paths.host_home("s", "claude") == tmp_path / "harnessed" / "home" / "s" / "claude"
 
-    def test_host_home_differs_per_project(self, monkeypatch, tmp_path):
+    def test_host_home_differs_per_harness(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        # Same stack, different projects → different config dirs (no cross-project clobber).
-        assert paths.host_home("s", "claude", tmp_path / "a") != paths.host_home("s", "claude", tmp_path / "b")
+        assert paths.host_home("s", "claude") != paths.host_home("s", "omp")
 
     def test_host_home_distinct_from_profile(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        assert paths.host_home("s", "claude", tmp_path) != paths.profile_dir("s", "claude")
+        assert paths.host_home("s", "claude") != paths.profile_dir("s", "claude")
+
+    def test_shim_is_a_sibling_not_a_child(self, monkeypatch, tmp_path):
+        """The shim must survive the rebuild that rmtree's the config dir, so it cannot live inside
+        it — and host-gc must not mistake it for a config dir."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        home = paths.host_home("s", "claude")
+        assert paths.host_home_shim(home).parent == home.parent
 
 
 class TestMaterialize:
@@ -207,9 +212,9 @@ class TestLaunchPlan:
         prof.mkdir(parents=True)
         _fake_profile(prof)
 
-        home, argv, cwd = launcher._host_launch_plan("s", "claude", tmp_path)
+        home, argv, cwd, _rebuilt = launcher._host_launch_plan("s", "claude", tmp_path)
 
-        assert home == paths.host_home("s", "claude", tmp_path)
+        assert home == paths.host_home("s", "claude")
         assert argv == ["claude"]  # content-only: no --mcp-config
         assert cwd == tmp_path
         assert (home / "skills" / "greet-helper" / "SKILL.md").is_file()
@@ -226,7 +231,7 @@ class TestHostAssembleIntegration:
         assert not paths.is_built("hostspike", "claude")  # cold: nothing pre-built
 
         assemble(None, "hostspike", paths.profiles_root().parent, "claude", strict=True)
-        home, argv, cwd = launcher._host_launch_plan("hostspike", "claude", tmp_path)
+        home, argv, cwd, _rebuilt = launcher._host_launch_plan("hostspike", "claude", tmp_path)
 
         assert cwd == tmp_path
         assert (home / "skills" / "greet-helper" / "SKILL.md").is_file()
@@ -261,7 +266,7 @@ class TestHostCliRouting:
         # Always --strict-mcp-config (even content-only) so global .claude.json servers never leak.
         assert captured["argv"][0] == "claude"
         assert "--strict-mcp-config" in captured["argv"]
-        assert captured["ccd"] == str(paths.host_home("hostspike", "claude", tmp_path.resolve()))
+        assert captured["ccd"] == str(paths.host_home("hostspike", "claude"))
         assert paths.is_built("hostspike", "claude")  # profile assembled during the launch itself
 
     def test_host_settings_inherit_the_host_claude_default_mode(self, monkeypatch, tmp_path):
@@ -289,7 +294,7 @@ class TestHostCliRouting:
         )
 
         assert result.exit_code == 0, result.output
-        home = paths.host_home("hostspike", "claude", tmp_path.resolve())
+        home = paths.host_home("hostspike", "claude")
         settings = json.loads((home / "settings.json").read_text())
         # The host's mode wins: merge_settings applies required.defaultMode with setdefault, so the
         # harnessed floor is a floor, not an override.
@@ -325,180 +330,212 @@ class TestHostCliRouting:
         assert "GIT_COMMON_DIR" not in env
 
 
-class TestBreadcrumb:
-    """_materialize_host_home writes a .harnessed-project breadcrumb so host-gc can identify dirs."""
 
-    def test_breadcrumb_written_when_project_path_supplied(self, tmp_path):
+
+class TestStackFingerprintGate:
+    """bd harnessed-8px.12. The materialize used to rmtree the config dir on EVERY launch. That one
+    behaviour caused three separate problems: it forced the project into the config-dir key (so a
+    second launch could not wipe a live one), it made every install script re-run per project per
+    launch, and it reset `.claude.json` so approvals never persisted.
+
+    The rebuild is still WHOLESALE — the dir stays a pure function of (profile + installs), so a
+    recipe dropped from the stack still cannot leave files behind — it just happens only when the
+    stack actually changed.
+    """
+
+    def _prof(self, tmp_path):
+        prof = tmp_path / "prof"
+        prof.mkdir()
+        _fake_profile(prof)
+        return prof
+
+    def test_unchanged_fingerprint_leaves_the_home_untouched(self, tmp_path):
+        prof, home = self._prof(tmp_path), tmp_path / "home"
+        assert launcher._materialize_host_home(prof, home, fingerprint="fp-1") is True
+        # Something the AGENT wrote after the build — it must survive an unchanged relaunch.
+        (home / "runtime-state.json").write_text("session data")
+        assert launcher._materialize_host_home(prof, home, fingerprint="fp-1") is False
+        assert (home / "runtime-state.json").is_file()
+
+    def test_changed_fingerprint_rebuilds_wholesale(self, tmp_path):
+        prof, home = self._prof(tmp_path), tmp_path / "home"
+        launcher._materialize_host_home(prof, home, fingerprint="fp-1")
+        (home / "stale-recipe-leftover.md").write_text("from a recipe no longer in the stack")
+        assert launcher._materialize_host_home(prof, home, fingerprint="fp-2") is True
+        # The whole point of keeping a wholesale wipe: a departed recipe leaves nothing behind.
+        assert not (home / "stale-recipe-leftover.md").exists()
+        assert (home / "skills" / "greet-helper" / "SKILL.md").is_file()
+
+    def test_missing_stamp_rebuilds(self, tmp_path):
+        """A hand-deleted or half-written dir must not be trusted."""
+        prof, home = self._prof(tmp_path), tmp_path / "home"
+        launcher._materialize_host_home(prof, home, fingerprint="fp-1")
+        (home / launcher._HOST_STACK_FINGERPRINT).unlink()
+        assert launcher._materialize_host_home(prof, home, fingerprint="fp-1") is True
+
+    def test_stamp_is_written_last(self, tmp_path):
+        """A stamp present alongside half-copied content would be a lie the next launch trusts."""
+        src = inspect.getsource(launcher._materialize_host_home)
+        assert src.index("copytree") < src.index("_HOST_STACK_FINGERPRINT).write_text")
+
+    def test_no_fingerprint_keeps_unconditional_rebuild(self, tmp_path):
+        prof, home = self._prof(tmp_path), tmp_path / "home"
+        assert launcher._materialize_host_home(prof, home) is True
+        assert launcher._materialize_host_home(prof, home) is True
+
+    def test_fingerprint_includes_the_harnessed_version(self):
+        """A host launch has no image build to force a refresh, so a change to what emit writes —
+        with a byte-identical recipe closure — would otherwise serve stale content forever."""
+        from harnessed import __version__
+        src = inspect.getsource(launcher._host_stack_fingerprint)
+        assert "__version__" in src and __version__
+
+
+class TestLegacyPerProjectMigration:
+    """The old key was <stack>/<harness>/<project_hash>; the new config dir IS <stack>/<harness>, so
+    every old per-project dir is now a child of it. They hold real tokens (bd harnessed-8px.10), so
+    the rmtree must not be what removes them."""
+
+    def _legacy(self, home, name, cred_body="tok"):
+        d = home / name
+        d.mkdir(parents=True)
+        (d / "settings.json").write_text("{}")
+        (d / ".credentials.json").write_text(cred_body)
+        return d
+
+    def test_legacy_dir_is_scrubbed_not_just_wiped(self, tmp_path, monkeypatch):
         prof, home = tmp_path / "prof", tmp_path / "home"
         prof.mkdir()
         _fake_profile(prof)
-        project = tmp_path / "myproject"
-        launcher._materialize_host_home(prof, home, project_path=project)
-        bc = home / launcher._HOST_PROJECT_BREADCRUMB
-        assert bc.is_file()
-        assert bc.read_text(encoding="utf-8").strip() == str(project)
+        legacy = self._legacy(home, "a1b2c3d4")
+        scrubbed = []
+        real_scrub = launcher._scrub_host_home
+        monkeypatch.setattr(
+            launcher, "_scrub_host_home",
+            lambda p: (scrubbed.append(p.name), real_scrub(p))[1],
+        )
+        launcher._materialize_host_home(prof, home, fingerprint="fp-1")
+        assert scrubbed == ["a1b2c3d4"], "legacy dir must go through the scrub path, not the rmtree"
+        assert not legacy.exists()
 
-    def test_breadcrumb_overwritten_on_each_launch(self, tmp_path):
-        """Every launch wipes and rebuilds home; the breadcrumb must survive the wipe."""
-        prof, home = tmp_path / "prof", tmp_path / "home"
-        prof.mkdir()
-        _fake_profile(prof)
-        first = tmp_path / "first"
-        second = tmp_path / "second"
-        launcher._materialize_host_home(prof, home, project_path=first)
-        launcher._materialize_host_home(prof, home, project_path=second)
-        bc = home / launcher._HOST_PROJECT_BREADCRUMB
-        assert bc.read_text(encoding="utf-8").strip() == str(second)
-
-    def test_breadcrumb_absent_when_no_project_path(self, tmp_path):
-        """Callers that don't supply project_path (e.g. tests) must not see a stale breadcrumb."""
-        prof, home = tmp_path / "prof", tmp_path / "home"
-        prof.mkdir()
-        _fake_profile(prof)
-        launcher._materialize_host_home(prof, home)
-        bc = home / launcher._HOST_PROJECT_BREADCRUMB
-        assert not bc.exists()
-
-    def test_host_launch_plan_writes_breadcrumb(self, monkeypatch, tmp_path):
-        """_host_launch_plan passes project_path down so a real launch always leaves a breadcrumb."""
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
-        prof = paths.profile_dir("s", "claude")
-        prof.mkdir(parents=True)
-        _fake_profile(prof)
-        home, _argv, _cwd = launcher._host_launch_plan("s", "claude", tmp_path)
-        bc = home / launcher._HOST_PROJECT_BREADCRUMB
-        assert bc.is_file()
-        assert bc.read_text(encoding="utf-8").strip() == str(tmp_path)
+    def test_non_config_eight_hex_dir_is_left_alone(self, tmp_path):
+        """Matched narrowly: an 8-hex name alone is not enough to delete something."""
+        home = tmp_path / "home"
+        d = home / "deadbeef"
+        d.mkdir(parents=True)
+        (d / "notes.md").write_text("a recipe's own data")
+        launcher._migrate_legacy_host_homes(home)
+        assert d.exists()
 
 
 class TestHostGC:
-    """harnessed host-gc: list and prune host config dirs, scrubbing stranded credentials."""
+    """host-gc under the per-stack layout: an orphan is a config dir whose STACK is gone from the
+    catalog — a far better signal than the old one-way project_hash, which could not be resolved
+    back to anything."""
 
-    def _mk_home(
-        self,
-        root: Path,
-        stack: str,
-        harness: str,
-        proj_hash: str,
-        project_path: "Path | None" = None,
-        cred_body: "str | None" = None,
-        cred_symlink: "Path | None" = None,
-    ) -> Path:
-        home = root / stack / harness / proj_hash
-        home.mkdir(parents=True)
-        if project_path is not None:
-            (home / launcher._HOST_PROJECT_BREADCRUMB).write_text(
-                str(project_path), encoding="utf-8"
-            )
-        if cred_symlink is not None:
-            (home / ".credentials.json").symlink_to(cred_symlink)
-        elif cred_body is not None:
-            (home / ".credentials.json").write_text(cred_body)
+    def _home(self, stack, harness="claude", *, cred=None, legacy=None):
+        home = paths.host_homes_root() / stack / harness
+        home.mkdir(parents=True, exist_ok=True)
+        (home / "settings.json").write_text("{}")
+        if cred is not None:
+            (home / ".credentials.json").write_text(cred)
+        if legacy:
+            d = home / legacy
+            d.mkdir(exist_ok=True)
+            (d / "settings.json").write_text("{}")
         return home
 
-    def test_list_shows_ok_and_orphan(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        root = paths.host_homes_root()
-        live = tmp_path / "live-project"
-        live.mkdir()
-        self._mk_home(root, "stackA", "claude", "abc12345", project_path=live)
-        self._mk_home(root, "stackA", "claude", "def67890", project_path=tmp_path / "gone")
-        result = runner.invoke(launcher.app, ["host-gc"])
-        assert result.exit_code == 0
-        assert "ok" in result.output
-        assert "ORPHAN" in result.output
+    def _run(self, monkeypatch, tmp_path, *args):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        return runner.invoke(launcher.app, ["host-gc", *args])
 
-    def test_list_flags_real_credential_file(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        root = paths.host_homes_root()
-        self._mk_home(
-            root, "stackA", "claude", "abc12345",
-            project_path=tmp_path / "gone",
-            cred_body='{"token":"secret"}',
+    def test_lists_real_stack_as_ok_and_unknown_stack_as_orphan(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        self._home("hostspike")          # a real catalog stack
+        self._home("deleted-stack-xyz")  # not in any catalog root
+        r = self._run(monkeypatch, tmp_path)
+        assert r.exit_code == 0, r.output
+        assert "hostspike/claude" in r.output and "deleted-stack-xyz/claude" in r.output
+        assert "ORPHAN" in r.output
+
+    def test_shim_sibling_is_not_listed_as_a_config_dir(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        home = self._home("hostspike")
+        paths.host_home_shim(home).mkdir(parents=True, exist_ok=True)
+        r = self._run(monkeypatch, tmp_path)
+        assert "claude.home" not in r.output
+
+    def test_flags_a_real_credential_file(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        self._home("hostspike", cred="tok")
+        assert "REAL-FILE" in self._run(monkeypatch, tmp_path).output
+
+    def test_surfaces_legacy_per_project_dirs(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        self._home("hostspike", legacy="a1b2c3d4")
+        assert "legacy" in self._run(monkeypatch, tmp_path).output
+
+    def test_prune_removes_only_the_orphan(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        live = self._home("hostspike")
+        gone = self._home("deleted-stack-xyz")
+        r = self._run(monkeypatch, tmp_path, "--prune")
+        assert r.exit_code == 0, r.output
+        assert live.exists(), "a stack still in the catalog must never be removed"
+        assert not gone.exists()
+
+    def test_dry_run_deletes_nothing(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        gone = self._home("deleted-stack-xyz")
+        r = self._run(monkeypatch, tmp_path, "--prune", "--dry-run")
+        assert "would remove" in r.output
+        assert gone.exists()
+
+    def test_prune_scrubs_the_credential_before_deleting(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        self._home("deleted-stack-xyz", cred="a-real-token")
+        scrubbed = []
+        monkeypatch.setattr(launcher, "_scrub_host_home", lambda p: scrubbed.append(p))
+        self._run(monkeypatch, tmp_path, "--prune")
+        assert len(scrubbed) == 1, "removal must go through the scrub path, never a bare rmtree"
+
+
+class TestSecondLaunchSkipsInstalls:
+    """bd harnessed-8px.12 acceptance: an install is logically once per STACK. It only ever ran on
+    every launch because the materialize wiped its output on every launch."""
+
+    def _launch(self, tmp_path, monkeypatch, calls):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        monkeypatch.setattr(
+            launcher, "_host_run_installs",
+            lambda stack, project_path, *, harness, home: calls.append(stack),
         )
-        result = runner.invoke(launcher.app, ["host-gc"])
-        assert result.exit_code == 0
-        assert "REAL-FILE" in result.output
-
-    def test_prune_removes_orphan_only(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        root = paths.host_homes_root()
-        live = tmp_path / "live-project"
-        live.mkdir()
-        live_home = self._mk_home(root, "stackA", "claude", "abc12345", project_path=live)
-        dead_home = self._mk_home(root, "stackA", "claude", "def67890", project_path=tmp_path / "gone")
-        result = runner.invoke(launcher.app, ["host-gc", "--prune"])
-        assert result.exit_code == 0
-        assert live_home.exists(), "live project dir must not be deleted"
-        assert not dead_home.exists(), "orphan dir must be removed"
-
-    def test_prune_refuses_to_delete_live_project_dir(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        root = paths.host_homes_root()
-        live = tmp_path / "live-project"
-        live.mkdir()
-        live_home = self._mk_home(root, "stackA", "claude", "abc12345", project_path=live)
-        result = runner.invoke(launcher.app, ["host-gc", "--prune"])
-        assert result.exit_code == 0
-        assert live_home.exists()
-
-    def test_prune_scrubs_real_credential_before_delete(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        root = paths.host_homes_root()
-        dead_home = self._mk_home(
-            root, "stackA", "claude", "def67890",
-            project_path=tmp_path / "gone",
-            cred_body='{"token":"supersecret"}',
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+        return runner.invoke(
+            launcher.app, ["launch", "hostspike", "claude", str(tmp_path), "--host"]
         )
-        cred_path = dead_home / ".credentials.json"
-        assert cred_path.is_file()
-        result = runner.invoke(launcher.app, ["host-gc", "--prune"])
-        assert result.exit_code == 0
-        assert not dead_home.exists(), "orphan dir must be removed after scrub"
 
-    def test_scrub_overwrites_real_cred_before_unlink(self, tmp_path):
-        """_scrub_host_home zeroes a real .credentials.json before deletion."""
-        home = tmp_path / "home"
-        home.mkdir()
-        cred = home / ".credentials.json"
-        cred.write_text('{"token":"supersecret"}')
-        launcher._scrub_host_home(home)
-        assert not home.exists()
+    def test_installs_run_on_first_launch_and_are_skipped_on_the_second(
+        self, monkeypatch, tmp_path
+    ):
+        calls: list[str] = []
+        first = self._launch(tmp_path, monkeypatch, calls)
+        assert first.exit_code == 0, first.output
+        assert calls == ["hostspike"], "first launch must build the home and run installs"
 
-    def test_scrub_handles_symlink_cred_without_overwriting(self, tmp_path):
-        """A symlink cred must not be overwritten — it points at the live shared file."""
-        home = tmp_path / "home"
-        home.mkdir()
-        real_cred = tmp_path / "real.credentials.json"
-        real_cred.write_text('{"token":"live"}')
-        (home / ".credentials.json").symlink_to(real_cred)
-        launcher._scrub_host_home(home)
-        assert not home.exists()
-        # The symlink target (real shared file) must be untouched.
-        assert real_cred.read_text() == '{"token":"live"}'
+        second = self._launch(tmp_path, monkeypatch, calls)
+        assert second.exit_code == 0, second.output
+        assert calls == ["hostspike"], "unchanged stack must not re-run installs"
+        assert "installs skipped" in second.output
 
-    def test_dry_run_does_not_delete(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        root = paths.host_homes_root()
-        dead_home = self._mk_home(root, "stackA", "claude", "def67890", project_path=tmp_path / "gone")
-        result = runner.invoke(launcher.app, ["host-gc", "--prune", "--dry-run"])
-        assert result.exit_code == 0
-        assert dead_home.exists(), "dry-run must not delete anything"
-        assert "would remove" in result.output
-
-    def test_no_breadcrumb_dir_treated_as_orphan(self, monkeypatch, tmp_path):
-        """Pre-migration dirs without a breadcrumb are listed as orphans."""
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        root = paths.host_homes_root()
-        no_bc = root / "stackA" / "claude" / "abc12345"
-        no_bc.mkdir(parents=True)
-        result = runner.invoke(launcher.app, ["host-gc"])
-        assert result.exit_code == 0
-        assert "ORPHAN" in result.output
-
-    def test_empty_root_returns_gracefully(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-        result = runner.invoke(launcher.app, ["host-gc"])
-        assert result.exit_code == 0
-        assert "No host config dirs" in result.output
+    def test_a_changed_stack_fingerprint_reruns_installs(self, monkeypatch, tmp_path):
+        calls: list[str] = []
+        self._launch(tmp_path, monkeypatch, calls)
+        assert calls == ["hostspike"]
+        # Simulate a recipe edit: the stamp no longer matches the stack's recipe closure.
+        home = paths.host_home("hostspike", "claude")
+        (home / launcher._HOST_STACK_FINGERPRINT).write_text("something-else\n")
+        self._launch(tmp_path, monkeypatch, calls)
+        assert calls == ["hostspike", "hostspike"], "a changed stack must rebuild and re-install"
