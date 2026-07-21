@@ -2800,8 +2800,11 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
 # Host-native content-only backend subdirs to materialize from the assembled profile's .claude tree.
 _HOST_HARNESS = "claude"  # spike scope: only claude consumes CLAUDE_CONFIG_DIR directly here.
 
+# Breadcrumb written into every host config dir so orphan detection can reverse the project_hash.
+_HOST_PROJECT_BREADCRUMB = ".harnessed-project"
 
-def _materialize_host_home(prof: Path, home: Path) -> None:
+
+def _materialize_host_home(prof: Path, home: Path, project_path: "str | Path | None" = None) -> None:
     """Copy the assembled profile's CONTENT layer into a host CLAUDE_CONFIG_DIR (`home`).
 
     Content-only: the `.claude/*` tree (skills/commands/rules/agents + CLAUDE.md) plus the
@@ -2809,6 +2812,9 @@ def _materialize_host_home(prof: Path, home: Path) -> None:
     container-only artifacts (.mcp.json, hatago.config.json, the derived Dockerfile) which wire the
     MCP hub that does not exist host-side. The home is rebuilt from scratch each launch so a removed
     recipe's files never linger.
+
+    When `project_path` is provided, a `.harnessed-project` breadcrumb is written after rebuilding
+    so that `host-gc` can identify which project each config dir belongs to.
     """
     if home.exists():
         shutil.rmtree(home)
@@ -2820,6 +2826,9 @@ def _materialize_host_home(prof: Path, home: Path) -> None:
     settings = prof / "settings.json"
     if settings.is_file():
         shutil.copy2(settings, home / "settings.json")
+    if project_path is not None:
+        # Written AFTER the rmtree above so it survives each launch cycle.
+        (home / _HOST_PROJECT_BREADCRUMB).write_text(str(project_path), encoding="utf-8")
 
 
 def _host_claude_source() -> Path:
@@ -2841,6 +2850,26 @@ def _relink(link: Path, target: Path) -> None:
         else:
             link.unlink()
     link.symlink_to(target)
+
+
+def _scrub_host_home(home: Path) -> None:
+    """Remove a host config dir, overwriting any real .credentials.json before deletion.
+
+    Overwrites the credential file with null bytes and fsync's before unlinking, then removes the
+    entire directory tree. This reduces the window in which a stranded token is recoverable from
+    disk. LIMITATION: on SSDs with wear-leveling firmware the controller may have already remapped
+    the underlying flash blocks, so overwrite does not guarantee physical erasure — it is better
+    than a bare unlink and is the level of assurance available without raw device access.
+    """
+    cred = home / ".credentials.json"
+    if cred.is_file() and not cred.is_symlink():
+        size = max(cred.stat().st_size, 1)
+        with cred.open("r+b") as fh:
+            fh.write(b"\x00" * size)
+            fh.flush()
+            os.fsync(fh.fileno())
+        cred.unlink()
+    shutil.rmtree(home)
 
 
 def _rescue_host_credentials() -> None:
@@ -2933,7 +2962,7 @@ def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Pat
     # BEFORE the materialize: it rmtree's `home`, and a token the last session refreshed lives in
     # there as a regular file that replaced our symlink (bd harnessed-8px.10).
     _rescue_host_credentials()
-    _materialize_host_home(prof, home)
+    _materialize_host_home(prof, home, project_path=project_path)
     _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
     argv = ["claude"]
@@ -4445,9 +4474,121 @@ def rescan(
 # Subcommand names — anything else in the first position is treated as a stack name and routed
 # to `launch` (the `harnessed <stack> [project] [--fresh]` shorthand the README documents and the
 # capability test relies on).
+@app.command("host-gc")
+def host_gc(
+    prune: bool = typer.Option(False, "--prune", help="Remove orphan dirs whose project path no longer exists"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed without removing it"),
+) -> None:
+    """List host config dirs; optionally remove orphans and scrub stranded credentials.
+
+    Default (no flags): list every host config dir with stack/harness/hash, project path, age,
+    size, and credential status (symlink vs. real file vs. absent).
+
+    --prune: remove dirs whose project path no longer exists on disk. A dir whose project path
+    is present is NEVER removed — a path can be absent because a volume is unmounted, and silently
+    deleting that config would be data loss. Inspect the listing first.
+
+    --dry-run: combine with --prune to see what would be removed without touching anything.
+
+    Credential scrubbing: real .credentials.json files (written by Claude on token refresh,
+    replacing the symlink) are overwritten with null bytes and fsync'd before the dir is removed.
+    On SSDs with wear-leveling firmware the controller may have already remapped the underlying
+    blocks, so overwrite reduces but does not guarantee physical erasure. It is better than a bare
+    unlink and is the level of assurance a software tool can provide without raw device access.
+
+    Interaction with harnessed-8px.12 (re-keying to per-stack dirs): that migration orphans every
+    existing per-project dir at once. Run `host-gc --dry-run --prune` AFTER the migration to
+    review, then `host-gc --prune` to scrub. The _scrub_host_home helper is reusable by the
+    migration path for exactly this purpose.
+    """
+    import time as _time
+
+    root = paths.host_homes_root()
+    if not root.exists():
+        _out.print("No host config dirs found.")
+        return
+
+    # Enumerate root/<stack>/<harness>/<project_hash>
+    entries: list[tuple[str, str, str, str, float, float, bool, str, Path]] = []
+    for stack_dir in sorted(root.iterdir()):
+        if not stack_dir.is_dir():
+            continue
+        for harness_dir in sorted(stack_dir.iterdir()):
+            if not harness_dir.is_dir():
+                continue
+            for proj_dir in sorted(harness_dir.iterdir()):
+                if not proj_dir.is_dir():
+                    continue
+
+                breadcrumb = proj_dir / _HOST_PROJECT_BREADCRUMB
+                if breadcrumb.is_file():
+                    project_path_str = breadcrumb.read_text(encoding="utf-8").strip()
+                    is_orphan = not Path(project_path_str).exists()
+                else:
+                    project_path_str = "(no breadcrumb — pre-migration dir)"
+                    is_orphan = True
+
+                age_days = (_time.time() - proj_dir.stat().st_mtime) / 86400
+                size_kb = sum(
+                    f.stat().st_size for f in proj_dir.rglob("*") if f.is_file()
+                ) / 1024
+
+                cred = proj_dir / ".credentials.json"
+                if cred.is_symlink():
+                    cred_status = "symlink"
+                elif cred.is_file():
+                    cred_status = "REAL-FILE"
+                else:
+                    cred_status = "none"
+
+                entries.append((
+                    stack_dir.name, harness_dir.name, proj_dir.name,
+                    project_path_str, age_days, size_kb, is_orphan, cred_status, proj_dir,
+                ))
+
+    if not entries:
+        _out.print("No host config dirs found.")
+        return
+
+    for stack, harness, proj_hash, project_path_str, age_days, size_kb, is_orphan, cred_status, proj_dir in entries:
+        status = "[red]ORPHAN[/red]" if is_orphan else "[green]ok[/green]"
+        cred_tag = f"  cred:[yellow]{cred_status}[/yellow]" if cred_status != "none" else ""
+        _out.print(
+            f"{status}  {stack}/{harness}/{proj_hash}  "
+            f"age={age_days:.0f}d  {size_kb:.0f}KB  {project_path_str}{cred_tag}"
+        )
+
+    if not prune:
+        orphan_count = sum(1 for e in entries if e[6])
+        if orphan_count:
+            _out.print(f"\n[dim]{orphan_count} orphan(s). Run with --prune to remove.[/dim]")
+        return
+
+    orphans = [e for e in entries if e[6]]
+    if not orphans:
+        _out.print("\nNo orphans to remove.")
+        return
+
+    removed = 0
+    for stack, harness, proj_hash, project_path_str, age_days, size_kb, is_orphan, cred_status, proj_dir in orphans:
+        label = f"{stack}/{harness}/{proj_hash} ({project_path_str})"
+        if dry_run:
+            _out.print(f"[yellow]would remove[/yellow] {label}")
+            removed += 1
+            continue
+        _out.print(f"[blue][INFO][/blue] Removing {label}")
+        _scrub_host_home(proj_dir)
+        removed += 1
+
+    if dry_run:
+        _out.print(f"\n[dim]{removed} orphan(s) would be removed (--dry-run, nothing deleted).[/dim]")
+    else:
+        _out.print(f"\n[green][SUCCESS][/green] Removed {removed} orphan(s).")
+
+
 _COMMANDS = {
     "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
-    "install", "uninstall", "scan", "rescan", "svc", "aws-sso",
+    "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc",
 }
 
 
