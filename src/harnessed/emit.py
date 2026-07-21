@@ -583,7 +583,16 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
             existing = hooks.get(event)
             if not isinstance(existing, list):
                 existing = []
-            hooks[event] = existing + list(entries)
+            merged = list(existing)
+            for entry in entries:
+                # UNION, not append (bd harnessed-8px.15). `baked` is frequently a file that already
+                # carries these very entries: the assemble-time floor is written from this same
+                # `required`, so re-applying it at launch used to duplicate every recipe hook and the
+                # agent then ran each one TWICE per event. Identity is whole-entry equality — a
+                # recipe that deliberately declares two similar-but-different groups keeps both.
+                if entry not in merged:
+                    merged.append(entry)
+            hooks[event] = merged
 
     return result
 

@@ -845,10 +845,15 @@ class TestWarnDuplicateHooks:
     def test_gate_removed_omp_context_mode_regression(self):
         """Acceptance criterion 3: context-mode on omp with gate REMOVED trips the check.
 
-        This is the regression the gate prevents. Without skip_harnesses=[omp], the context-mode
-        hooks land in the required settings for omp. If an image-baked settings.json already
-        carries those same hooks (e.g. because a prior floor was merged in), merge_settings
-        appends them again and warn_duplicate_hooks must fire.
+        This is the regression the gate prevents: without skip_harnesses=[omp], the context-mode
+        hooks land in the required settings for omp at all, where the omp bridge already provides
+        them.
+
+        This test USED to assert that merging `required` into a file already carrying those hooks
+        produced duplicates for warn_duplicate_hooks to flag. That premise is gone — merge_settings
+        now UNIONs (bd harnessed-8px.15), because that duplication was a real defect the warning
+        only ever reported after the fact: recipe hooks ran twice per event on every host launch.
+        The gate check itself is unchanged and is what this test is actually about.
         """
         context_mode_hooks = {
             "SessionStart": [HookCommand(command="context-mode hook claude-code sessionstart")],
@@ -863,13 +868,66 @@ class TestWarnDuplicateHooks:
         assert "hooks" in required
         # Simulate: the profile settings.json already has those hooks (from the floor or prior merge).
         # merge_settings APPENDS required hooks → duplicates.
-        baked_with_same_hooks = required  # baked = required is the worst-case duplicate scenario
+        # THE regression: ungated, omp gets context-mode's hooks at all.
+        cmds = [
+            h["command"]
+            for groups in required["hooks"].values() for g in groups for h in g["hooks"]
+        ]
+        assert any("context-mode hook claude-code sessionstart" in c for c in cmds)
+
+        # And re-applying required to a file that already carries it is now a NO-OP, which is what
+        # the real second `--host` launch was warning about.
+        baked_with_same_hooks = json.loads(json.dumps(required))
         final = merge_settings(baked_with_same_hooks, required)
         warns: list[str] = []
-        dupes = warn_duplicate_hooks(final, "omp", warn=warns.append)
-        # Every hook that required contributed appears twice → all are flagged
-        assert len(dupes) > 0
-        # Check harness, event, command all named in at least one warning
-        assert any("omp" in w for w in warns)
-        assert any("SessionStart" in w for w in warns)
-        assert any("context-mode hook claude-code sessionstart" in w for w in warns)
+        assert warn_duplicate_hooks(final, "omp", warn=warns.append) == []
+        assert warns == []
+
+
+class TestRequiredHooksAreUnionedNotAppended:
+    """bd harnessed-8px.15, found by a real second `--host` launch that warned:
+    "duplicate hook entry in settings.json: event='SessionStart' command='context-mode …'".
+
+    `baked` is routinely a file that ALREADY carries the required entries — the assemble-time floor
+    is written from this same `required` dict, and `_merge_host_claude_settings` then re-applies
+    `required` to it at launch. Appending unconditionally meant the agent ran every recipe hook
+    TWICE per event."""
+
+    def _req(self):
+        return {"hooks": {"SessionStart": [
+            {"hooks": [{"type": "command", "command": "context-mode hook sessionstart"}]}
+        ]}}
+
+    def test_reapplying_required_to_the_floor_does_not_duplicate(self):
+        required = self._req()
+        # The floor IS required — exactly what write_settings_json puts on disk at assemble time.
+        merged = merge_settings(json.loads(json.dumps(required)), required)
+        assert len(merged["hooks"]["SessionStart"]) == 1
+
+    def test_idempotent_across_repeated_merges(self):
+        required = self._req()
+        acc = json.loads(json.dumps(required))
+        for _ in range(4):  # four launches against a persisted profile
+            acc = merge_settings(acc, required)
+        assert len(acc["hooks"]["SessionStart"]) == 1
+
+    def test_a_genuinely_different_entry_is_still_added(self):
+        required = self._req()
+        baked = {"hooks": {"SessionStart": [
+            {"hooks": [{"type": "command", "command": "somebody-elses-hook"}]}
+        ]}}
+        merged = merge_settings(baked, required)
+        cmds = [h["command"] for g in merged["hooks"]["SessionStart"] for h in g["hooks"]]
+        assert cmds == ["somebody-elses-hook", "context-mode hook sessionstart"]
+
+    def test_same_command_different_matcher_is_kept(self):
+        """Two groups differing only by matcher are not duplicates — dropping one would silently
+        narrow a recipe's hook coverage."""
+        required = {"hooks": {"PreToolUse": [
+            {"matcher": "Bash", "hooks": [{"type": "command", "command": "guard"}]}
+        ]}}
+        baked = {"hooks": {"PreToolUse": [
+            {"matcher": "Read", "hooks": [{"type": "command", "command": "guard"}]}
+        ]}}
+        merged = merge_settings(baked, required)
+        assert len(merged["hooks"]["PreToolUse"]) == 2
