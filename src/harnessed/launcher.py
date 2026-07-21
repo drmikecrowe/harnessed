@@ -2895,6 +2895,53 @@ def _host_home_lock(home: Path) -> Generator[None, None, None]:
         fh.close()
 
 
+# Files Claude Code's daemon keeps in its per-project state dir. Presence of ANY of these marks a
+# directory as live daemon state rather than recipe content.
+_DAEMON_STATE_MARKERS = (
+    "daemon.json", "daemon.log", "daemon-auth-status.json", "daemon-auth-cooldown",
+)
+
+
+def _is_daemon_state(entry: Path) -> bool:
+    """True when `entry` is Claude Code's own daemon/runtime state, which a rebuild must NOT delete.
+
+    Identified by CONTENT, not by name. The daemon's per-project state dirs are opaque 8-hex-char
+    keys (`51ba83b8`, `d8551d86`); matching that shape would be guesswork, and a recipe is free to
+    ship a directory with any name. A directory holding `daemon.json`/`daemon.log`/`daemon-auth-*`
+    is unambiguously the daemon's.
+    """
+    if not entry.is_dir() or entry.is_symlink():
+        return False
+    if entry.name == "daemon":
+        return True
+    return any((entry / marker).exists() for marker in _DAEMON_STATE_MARKERS)
+
+
+def _clear_host_home_except_runtime(home: Path) -> None:
+    """Empty the config dir the way the wholesale rmtree did — but spare live daemon state.
+
+    bd harnessed-8px.20. `_materialize_host_home` used to `shutil.rmtree(home)`. That is right for
+    RECIPE CONTENT: the wipe is what stops a recipe dropped from the stack leaving files behind
+    (8px.12). It is wrong for Claude Code's own runtime state, which lives in the same directory and
+    belongs to a process that may be RUNNING.
+
+    Observed (2026-07-21): a rebuild deleted `daemon.json`/`daemon.log` out from under a daemon alive
+    13h53m. ~200ms after losing its state the daemon wrote `{"status":"auth_required"}` and the
+    credential file was gutted; the orphaned daemon then held `control.sock` with nothing valid
+    behind it, so the next launch timed out reaching the background service. One rmtree, both bugs.
+
+    Selective deletion rather than move-aside-and-restore: an interrupted rebuild can then never
+    strand the preserved state somewhere the next launch will not look for it.
+    """
+    for entry in home.iterdir():
+        if _is_daemon_state(entry):
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()  # covers files AND symlinks (never follow one into ~/.claude)
+
+
 def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = None) -> bool:
     """Copy the assembled profile's CONTENT layer into a host CLAUDE_CONFIG_DIR (`home`).
 
@@ -2923,8 +2970,8 @@ def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = 
     # BEFORE the rmtree: it would delete a legacy per-project dir without scrubbing its credential.
     _migrate_legacy_host_homes(home)
     if home.exists():
-        shutil.rmtree(home)
-    home.mkdir(parents=True)
+        _clear_host_home_except_runtime(home)
+    home.mkdir(parents=True, exist_ok=True)
     src_claude = prof / ".claude"
     if src_claude.is_dir():
         # Contents of .claude/ become the config-dir root: .claude/skills -> <home>/skills, etc.

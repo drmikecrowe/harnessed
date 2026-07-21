@@ -70,6 +70,72 @@ class TestMaterialize:
         assert not (home / "hatago.config.json").exists()
         assert not (home / "Dockerfile.harnessed-x").exists()
 
+    def test_a_running_daemons_state_survives_the_rebuild(self, tmp_path):
+        """bd harnessed-8px.20. The rebuild used to rmtree the whole config dir, deleting the state
+        of a daemon that was still RUNNING against it. ~200ms after losing daemon.json the daemon
+        declared auth_required and the credential file was gutted; the orphaned process then held
+        control.sock with nothing valid behind it, so the next launch timed out reaching the
+        background service. Observed live 2026-07-21 against a daemon alive 13h53m."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        # The daemon's per-project state dir: an opaque hex key, identified by its CONTENTS.
+        state = home / "51ba83b8"
+        state.mkdir(parents=True)
+        (state / "daemon.json").write_text('{"port":1234}')
+        (state / "daemon.log").write_text("running\n")
+        (home / "daemon").mkdir()
+        (home / "daemon" / "sock").write_text("x")
+
+        launcher._materialize_host_home(prof, home)
+
+        assert (state / "daemon.json").read_text() == '{"port":1234}', (
+            "the running daemon's state was deleted — this is what gutted the credentials"
+        )
+        assert (state / "daemon.log").is_file()
+        assert (home / "daemon" / "sock").is_file()
+        assert (home / "skills" / "greet-helper" / "SKILL.md").is_file()  # profile still landed
+
+    def test_dropped_recipe_content_is_still_removed(self, tmp_path):
+        """The 8px.20 preserve must not weaken the 8px.12 invariant: sparing daemon state is not a
+        licence to spare recipe content. A dir that merely LOOKS like state (no daemon markers) is
+        content and must go, or a removed recipe could leave files behind forever."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        home.mkdir()
+        (home / "skills" / "dropped-recipe-skill").mkdir(parents=True)
+        (home / "skills" / "dropped-recipe-skill" / "SKILL.md").write_text("stale")
+        (home / "stale-top-level.md").write_text("residue")
+        # Same 8-hex shape as a daemon key, but NO daemon markers — this is not state.
+        decoy = home / "deadbeef"
+        decoy.mkdir()
+        (decoy / "SKILL.md").write_text("recipe content wearing a hex name")
+
+        launcher._materialize_host_home(prof, home)
+
+        assert not (home / "skills" / "dropped-recipe-skill").exists()
+        assert not (home / "stale-top-level.md").exists()
+        assert not decoy.exists(), "a hex-named dir without daemon markers is content, not state"
+
+    def test_a_state_symlink_is_removed_not_followed(self, tmp_path):
+        """Selective deletion must never follow a symlink out of the config dir. _share_host_claude_state
+        links projects/ etc. at the real ~/.claude — deleting through one would take the user's own
+        transcripts with it."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        outside = tmp_path / "real-claude" / "projects"
+        outside.mkdir(parents=True)
+        (outside / "transcript.jsonl").write_text("precious")
+        home.mkdir()
+        (home / "projects").symlink_to(outside)
+
+        launcher._materialize_host_home(prof, home)
+
+        assert (outside / "transcript.jsonl").read_text() == "precious", "followed a symlink out"
+        assert not (home / "projects").exists()
+
     def test_rebuilds_home_from_scratch(self, tmp_path):
         prof, home = tmp_path / "prof", tmp_path / "home"
         prof.mkdir()
