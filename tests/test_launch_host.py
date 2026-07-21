@@ -120,6 +120,38 @@ class TestShareClaudeState:
         launcher._share_host_claude_state(home)
         assert (home / ".claude.json").read_text() == '{"account":"real"}'
 
+    @staticmethod
+    def _cred(marker: str) -> str:
+        """A structurally REAL credential carrying a marker, so a test can tell which copy won.
+
+        The bodies here used to be bare stubs carrying only a marker key. Those stopped being valid
+        once _rescue_host_credentials began gating on usability (a stub has no accessToken, so it is
+        indistinguishable from the gutted file the gate exists to reject). The invariants these tests
+        assert are unchanged — only the fixtures had to become credential-shaped.
+        """
+        return json.dumps({
+            "claudeAiOauth": {
+                "accessToken": f"at-{marker}",
+                "refreshToken": f"rt-{marker}",
+                "expiresAt": 1784662315830,
+                "scopes": ["user:inference"],
+            }
+        })
+
+    @staticmethod
+    def _gutted() -> str:
+        """The real-world poison (observed 2026-07-21): envelope intact, tokens emptied, expiry 0."""
+        return json.dumps({
+            "claudeAiOauth": {
+                "accessToken": "",
+                "refreshToken": "",
+                "expiresAt": 0,
+                "refreshTokenExpiresAt": 1787005628797,
+                "scopes": ["user:inference"],
+                "subscriptionType": 3,
+            }
+        })
+
     def _shared(self, monkeypatch, tmp_path, body=None, mtime=None):
         """Point HOME at a fake home and optionally seed the SHARED ~/.claude credential."""
         fake_home = tmp_path / "home"
@@ -151,10 +183,10 @@ class TestShareClaudeState:
         REPLACES our symlink with a regular file — so the fresh token sits in the stack config dir
         while the shared ~/.claude copy goes stale. _materialize_host_home then rmtree's the config
         dir and we re-link to the stale copy, logging the user out every token lifetime."""
-        real = self._shared(monkeypatch, tmp_path, '{"token":"stale"}', 100_000)
-        self._stack_cred("s", "proj1", '{"token":"fresh"}', 200_000)
+        real = self._shared(monkeypatch, tmp_path, self._cred("stale"), 100_000)
+        self._stack_cred("s", "proj1", self._cred("fresh"), 200_000)
         launcher._rescue_host_credentials()
-        assert real.read_text() == '{"token":"fresh"}'
+        assert real.read_text() == self._cred("fresh")
         assert oct(real.stat().st_mode)[-3:] == "600"  # never widen a credential file
 
     def test_rescues_across_stacks_and_projects_not_just_the_launching_one(
@@ -164,19 +196,77 @@ class TestShareClaudeState:
         three. Rescuing only the launching home would converge lazily: a token refreshed in project A
         would not reach the shared copy until project A relaunched, so launching project B first
         would still restore a stale token and force a login."""
-        real = self._shared(monkeypatch, tmp_path, '{"token":"stale"}', 100_000)
-        self._stack_cred("stack-a", "proj1", '{"token":"older"}', 150_000)
-        self._stack_cred("stack-b", "proj2", '{"token":"newest"}', 300_000)
-        self._stack_cred("stack-b", "proj3", '{"token":"middle"}', 200_000)
+        real = self._shared(monkeypatch, tmp_path, self._cred("stale"), 100_000)
+        self._stack_cred("stack-a", "proj1", self._cred("older"), 150_000)
+        self._stack_cred("stack-b", "proj2", self._cred("newest"), 300_000)
+        self._stack_cred("stack-b", "proj3", self._cred("middle"), 200_000)
         launcher._rescue_host_credentials()
-        assert real.read_text() == '{"token":"newest"}'
+        assert real.read_text() == self._cred("newest")
 
     def test_older_stack_token_never_overwrites_a_newer_shared_one(self, monkeypatch, tmp_path):
         """A stack home left over from days ago must not drag the shared token backwards."""
-        real = self._shared(monkeypatch, tmp_path, '{"token":"current"}', 200_000)
-        self._stack_cred("s", "proj1", '{"token":"ancient"}', 100_000)
+        # Both sides are USABLE credentials, so this exercises the mtime guard specifically — with a
+        # stub body it would pass for the wrong reason (rejected as unusable, never compared).
+        real = self._shared(monkeypatch, tmp_path, self._cred("current"), 200_000)
+        self._stack_cred("s", "proj1", self._cred("ancient"), 100_000)
         launcher._rescue_host_credentials()
-        assert real.read_text() == '{"token":"current"}'
+        assert real.read_text() == self._cred("current")
+
+    def test_a_gutted_credential_never_overwrites_a_working_shared_one(self, monkeypatch, tmp_path):
+        """bd harnessed-8px.10, second failure mode — observed live 2026-07-21.
+
+        A GUTTED credential (envelope intact: scopes/subscriptionType/refreshTokenExpiresAt; but
+        accessToken and refreshToken empty and expiresAt 0) sat in a stack home as the NEWEST file.
+        The rescue guarded only on mtime, so it promoted the empty file over a perfectly good shared
+        token — and every stack sourcing from shared was then logged out. One stack going empty
+        poisoned all of them.
+        """
+        real = self._shared(monkeypatch, tmp_path, self._cred("good"), 100_000)
+        self._stack_cred("s", "proj1", self._gutted(), 900_000)  # newest, but unusable
+        launcher._rescue_host_credentials()
+        assert real.read_text() == self._cred("good"), (
+            "an emptied credential was promoted over a working one — every stack is now logged out"
+        )
+
+    def test_a_gutted_shared_copy_is_healed_from_a_usable_home(self, monkeypatch, tmp_path):
+        """The mtime guard alone would preserve an already-poisoned shared copy FOREVER: it is
+        newer than every good token, so nothing may overwrite it, and every launch re-links to a
+        credential with no token in it. Usability has to beat freshness in that direction too."""
+        real = self._shared(monkeypatch, tmp_path, self._gutted(), 900_000)  # poisoned AND newest
+        self._stack_cred("s", "proj1", self._cred("survivor"), 100_000)  # older, but real
+        launcher._rescue_host_credentials()
+        assert real.read_text() == self._cred("survivor"), (
+            "a gutted shared copy was left in place — the user stays logged out on every launch"
+        )
+
+    def test_all_candidates_gutted_leaves_the_shared_copy_untouched(self, monkeypatch, tmp_path):
+        """Nothing usable anywhere is a real state (a genuine logout). Do not thrash the shared
+        file — leave it exactly as found so the next real login is the thing that fixes it."""
+        real = self._shared(monkeypatch, tmp_path, self._cred("good"), 100_000)
+        self._stack_cred("s", "proj1", self._gutted(), 900_000)
+        self._stack_cred("s", "proj2", self._gutted(), 800_000)
+        launcher._rescue_host_credentials()
+        assert real.read_text() == self._cred("good")
+
+    def test_unparseable_credential_is_not_a_candidate(self, monkeypatch, tmp_path):
+        """Refusing on doubt costs nothing here — this gate only ever decides whether to overwrite
+        a working file — and a truncated/corrupt write must never win on being newest."""
+        real = self._shared(monkeypatch, tmp_path, self._cred("good"), 100_000)
+        self._stack_cred("s", "proj1", "{not json at all", 900_000)
+        launcher._rescue_host_credentials()  # must not raise
+        assert real.read_text() == self._cred("good")
+
+    def test_an_expired_access_token_is_still_worth_rescuing(self, monkeypatch, tmp_path):
+        """The gate must NOT reject on expiry. An expired ACCESS token whose refresh token is still
+        good is the normal healthy state — it is precisely what the refresh flow exists to renew, so
+        discarding it would throw away the credential we most need to keep."""
+        expired = json.dumps({"claudeAiOauth": {
+            "accessToken": "at-expired", "refreshToken": "rt-still-good", "expiresAt": 1,
+        }})
+        real = self._shared(monkeypatch, tmp_path, self._cred("older"), 100_000)
+        self._stack_cred("s", "proj1", expired, 900_000)
+        launcher._rescue_host_credentials()
+        assert real.read_text() == expired
 
     def test_intact_symlink_is_not_a_rescue_candidate(self, monkeypatch, tmp_path):
         """A surviving symlink means that home's refresh propagated live — it already IS the shared

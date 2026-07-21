@@ -2989,6 +2989,40 @@ def _scrub_host_home(home: Path) -> None:
     shutil.rmtree(home)
 
 
+def _credentials_are_usable(path: Path) -> bool:
+    """True when this credentials file actually holds a token worth propagating.
+
+    Observed failure (real logout, 2026-07-21): `~/.claude/.credentials.json` and a stack home both
+    held a GUTTED credential — the envelope intact (scopes, subscriptionType, rateLimitTier,
+    refreshTokenExpiresAt) but `accessToken` and `refreshToken` empty strings and `expiresAt` 0.
+    `_rescue_host_credentials` promoted it anyway, because its only guard was mtime: an emptied file
+    that happens to be NEWEST overwrites a perfectly good shared token, and every stack sourcing
+    from shared is then logged out. One stack going empty poisoned all of them.
+
+    So freshness is necessary but NOT sufficient — a credential must also be usable. Unreadable or
+    unparseable counts as unusable: this gate only ever decides whether to COPY a file over a
+    working one, so refusing on doubt costs nothing and prevents exactly the poisoning above.
+
+    Deliberately NOT checked: whether `expiresAt` is in the future. An expired ACCESS token is the
+    normal, healthy state of a credential whose refresh token is still good — that is the case the
+    whole refresh mechanism exists to serve. Rejecting it would throw away the token we most need to
+    keep. Only a MISSING/EMPTY token or a zeroed expiry marks the gutted file.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False
+    oauth = data.get("claudeAiOauth", data)
+    if not isinstance(oauth, dict):
+        return False
+    if not (oauth.get("accessToken") or "").strip():
+        return False
+    if not (oauth.get("refreshToken") or "").strip():
+        return False
+    # expiresAt 0 accompanied the gutted file; a real credential always carries a real stamp.
+    return bool(oauth.get("expiresAt"))
+
+
 def _rescue_host_credentials() -> None:
     """Promote the newest refreshed token found in ANY host home into the shared `~/.claude` copy.
 
@@ -3028,13 +3062,22 @@ def _rescue_host_credentials() -> None:
         # A surviving symlink means that home's refresh propagated live — it IS the shared copy.
         if cand.is_symlink() or not cand.is_file():
             continue
+        # Freshness alone is not enough: a GUTTED credential (empty tokens, expiresAt 0) is often
+        # the newest file on disk, and promoting it overwrites a working shared token and logs
+        # every other stack out. Never let one become the winner.
+        if not _credentials_are_usable(cand):
+            continue
         if newest is None or cand.stat().st_mtime > newest.stat().st_mtime:
             newest = cand
     if newest is None:
         return
     real = _host_claude_source() / ".credentials.json"
-    if real.is_file() and real.stat().st_mtime >= newest.stat().st_mtime:
-        return  # shared copy already at least as fresh — never move a token backwards
+    # A shared copy that is already gutted must be HEALED even though it is newer — that is exactly
+    # the state a previous poisoning leaves behind, and the mtime guard alone would preserve it
+    # forever while every stack that sources from it starts logged out.
+    if real.is_file() and _credentials_are_usable(real):
+        if real.stat().st_mtime >= newest.stat().st_mtime:
+            return  # shared copy is usable AND at least as fresh — never move a token backwards
     real.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(newest, real)
     real.chmod(0o600)
