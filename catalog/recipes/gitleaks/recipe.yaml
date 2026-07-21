@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: gitleaks — secret-scanning PreToolUse gate.
+#
+# ONE mechanism that works in BOTH modes (container build and --host launch):
+#   install.sh downloads the gitleaks binary and places gitleaks-guard in $HARNESSED_BIN_DIR.
+#   The hooks.PreToolUse block below wires the guard: `git commit` and `git push` Bash calls
+#   run through gitleaks before Claude's tool executor touches them.
+#
+# Why this fixes the old shape: the prior recipe smeared one capability across three mechanisms —
+# `tools: gitleaks@8.30.1` for the binary (mise aqua), a Dockerfile COPY for gitleaks-guard, and
+# a `setup:` nag for host hooks. None of them worked on a --host launch. Here there is ONE
+# install.sh run by both executors.
+#
+# No `expect:` — this recipe lands a binary and a hook script in $HARNESSED_BIN_DIR, not
+# skills/commands/mcps. The capability test oracle cannot probe a binary on PATH (there is no
+# `expect:` kind for that); it is verified by the explicit test in test_install_script.py.
+name: gitleaks
+description: >-
+  gitleaks secret scanner — installs the binary and wires a PreToolUse gate that blocks agent
+  git commit/push when secrets are staged. --no-verify cannot bypass this gate; the Bash tool
+  call itself is refused before the executor sees it.
+
+# The tarball download + guard copy, as ONE bash file run by BOTH executors: as a `RUN bash
+# install.sh` layer during `podman build`, and by the launcher after the host home is materialized
+# on `launch --host`.
+#
+# `cache: v8.30.1` MUST equal GITLEAKS_VERSION in install.sh. It keys the host content cache
+# ($XDG_CACHE_HOME/harnessed/install/gitleaks/v8.30.1/gitleaks), so the per-launch re-run —
+# mandatory because the host home is wiped on every launch — downloads once, not every time.
+# Bump both together to upgrade.
+#
+# No `system:` — the binary lands in $HARNESSED_BIN_DIR (a harnessed-owned path that curl writes
+# to without root), so a host launch is fully equivalent to the container build.
+install:
+  script: install.sh
+  cache: v8.30.1
+
+# PreToolUse deny gate: refuse `git commit` / `git push` Bash calls when gitleaks finds a secret.
+# `matcher: Bash` routes only Bash-tool PreToolUse events to the guard; all other tools pass through.
+# The guard is on PATH via $HARNESSED_BIN_DIR (install.sh places it there in both modes).
+hooks:
+  PreToolUse:
+    - command: gitleaks-guard
+      matcher: Bash
+
+# The HOST half. The PreToolUse gate covers the agent's commits. The user's own `git commit`
+# in a terminal is outside that gate — harnessed has no hook into the host shell.
+setup:
+  summary: >-
+    For your own `git commit` in a terminal (outside the agent), wire gitleaks per-repo via
+    pre-commit: `gitleaks git --staged` is the pre-commit scan command. Never use a global
+    core.hooksPath — it silently overrides every repo's .git/hooks and breaks pre-commit.
+  reference: https://github.com/gitleaks/gitleaks
