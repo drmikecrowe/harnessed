@@ -46,9 +46,8 @@ setup:
   condition: test ! -d .repowise
 
 # The CLI, as ONE bash file run by BOTH executors: `RUN bash install.sh` in the derived image, and
-# by the launcher after the host home is materialized on `launch --host`. Replaces the recipe
-# Dockerfile (container-only) AND subsumes the `provision:` block below, which is left in place only
-# because retiring `provision:` is bd harnessed-zi6.1's job, not this migration's.
+# by the launcher after the host home is materialized on `launch --host`. Replaces both the recipe
+# Dockerfile (container-only) and the former `provision:` block (host-only) — one file, both modes.
 #
 # No `cache:` — `install.cache` keys a pinned CONTENT clone; uv caches wheels itself. No `system:` —
 # `uv tool install` needs no root (host mode redirects it into the stack tools tree via UV_TOOL_DIR).
@@ -68,13 +67,3 @@ mcp:
       command: repowise
       args: [mcp, --transport, stdio]
 
-# Host-native install (`launch --host`) — SUPERSEDED by `install:` above, which now covers both
-# modes from one file. Kept until `provision:` is retired wholesale (bd harnessed-zi6.1); the two
-# install the same pin, so the duplicate is a no-op, not a conflict. Bump both together until then.
-provision:
-  - via: uv-tool
-    package: repowise
-    version: "0.31.0"
-    command: repowise
-      # transport: stdio (schema default). hatago spawns this in-container with cwd = the project, so
-      # `repowise mcp` finds the project's `.repowise/` by walking up from there.

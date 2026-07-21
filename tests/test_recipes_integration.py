@@ -57,8 +57,7 @@ NO_CAPABILITY_ORACLE = {
     # host-native beads-daemon tracer stacks (spike): beads is CLI+hook+service only, no oracle surface.
     "hostbeads",
     "hostbeads_stealth",
-    # host-provision tracer (spike): installs a uv-tool, no skill/mcp surface.
-    "hostprov",
+
 }
 
 

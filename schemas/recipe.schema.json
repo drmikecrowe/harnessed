@@ -63,22 +63,6 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
-    "provision": {
-      "description": "Host-native install steps for `launch --host` (container-independent — the derived image still installs via its Dockerfile). Puts a recipe's stdio-MCP tool on PATH so the harness can spawn it without a container. Backend `uv-tool` runs `uv tool install`; `npm` runs `npm install -g`.",
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["via", "package", "version", "command"],
-        "properties": {
-          "via": { "type": "string", "enum": ["uv-tool", "npm"] },
-          "package": { "type": "string", "minLength": 1 },
-          "version": { "type": "string", "minLength": 1 },
-          "command": { "type": "string", "minLength": 1 },
-          "python": { "type": "string" }
-        }
-      }
-    },
     "env": {
       "description": "Environment variables set for the RUNNING agent (and its hooks and child processes) — the one recipe deliverable a script cannot provide, since a script's `export` dies with the script. Delivered as image ENV at build, as `podman run -e` on the container, and into the launcher's own environment on `launch --host`. Values are mode-portable TEMPLATES, not literals: `{persist:<name>}` resolves to wherever this recipe's persist entry <name> actually lives in the current mode (the container bind-mount target vs. the real host persist dir), `{project_dir}` to the workspace root, `{host_home}` to the real host $HOME. Do NOT hardcode a container-absolute path like /home/harnessed/... — it does not exist on a host launch. Distinct from mcp.servers[].env, which is per-MCP-server.",
       "type": "object",

@@ -3265,48 +3265,6 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
             raise typer.Exit(1)
 
 
-def _host_provision(stack: str) -> list[str]:
-    """Install each recipe's host `provision:` tools into a STACK-SCOPED location and return the bin
-    dir(s) to prepend to PATH — so hatago's stdio children (serena, repowise, …) resolve host-native.
-
-    Idempotent: skips a tool whose command already exists in the stack bin dir (installs are slow).
-    Stack-scoped (not global) so two stacks can pin different versions without clobbering each other.
-    """
-    _, recipes = load_stack_with_recipes(None, stack)
-    entries = [p for r in recipes for p in r.provision]
-    if not entries:
-        return []
-    tools_root, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    for p in entries:
-        if (bin_dir / p.command).exists():
-            continue  # already provisioned
-        env = dict(os.environ)
-        if p.via == "uv-tool":
-            tool = "uv"
-            cmd = ["uv", "tool", "install", *(["-p", p.python] if p.python else []),
-                   f"{p.package}=={p.version}"]
-            env["UV_TOOL_DIR"] = str(uv_tool_dir)
-            env["UV_TOOL_BIN_DIR"] = str(bin_dir)
-        elif p.via == "npm":
-            tool = "npm"
-            cmd = ["npm", "install", "-g", f"{p.package}@{p.version}"]
-            env["npm_config_prefix"] = str(tools_root)  # → executables land in <tools_root>/bin
-        else:
-            continue
-        if shutil.which(tool) is None:
-            _err.print(
-                f"[bold red]error:[/bold red] host provisioning needs '{tool}' on PATH "
-                f"(to install {p.package} {p.version})"
-            )
-            raise typer.Exit(1)
-        _err.print(f"[blue][INFO][/blue] provisioning {p.package} {p.version} via {p.via} (host, stack-scoped) ...")
-        if subprocess.run(cmd, env=env).returncode != 0:
-            _err.print(f"[bold red]error:[/bold red] provisioning {p.package} failed")
-            raise typer.Exit(1)
-    return [str(bin_dir)]
-
-
 def _host_native_mcp(stack: str) -> Optional[dict]:
     """Resolve the stack's MCP servers into a NATIVE claude `.mcp.json` `mcpServers` dict — no hatago
     hub. claude spawns the stdio servers itself (cwd=project, so `--project-from-cwd` resolves) and
@@ -3326,7 +3284,7 @@ def _host_native_mcp(stack: str) -> Optional[dict]:
             if cmd and shutil.which(cmd) is None:
                 _err.print(
                     f"[yellow]warn:[/yellow] MCP server '{s.name}' needs '{cmd}' on PATH — "
-                    "claude will fail to start it until it's installed (add a recipe `provision:`)"
+                    "claude will fail to start it until it's installed (add an install.sh to the recipe)"
                 )
             entry: dict = {"command": cmd, "args": list(s.args)}
             if s.env:
@@ -3391,16 +3349,13 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     host_stk, host_recipes = load_stack_with_recipes(None, stack)
     os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
 
-    # Provision host stdio-MCP tools onto PATH BEFORE recipe setups + native MCP, so claude can spawn
-    # them (and the child-command presence check passes). Mutating this process's PATH is fine — it's
-    # dedicated to this launch, and claude (env built from os.environ) inherits it.
-    prov_bins = _host_provision(stack)
-    # The stack bin dir goes on PATH whether or not `provision:` populated it: a `setup.script` may
-    # install into it below (after this point), and _host_native_mcp's presence check runs after that.
+    # Put the stack bin dir on PATH BEFORE recipe setups + native MCP check. install.sh may put tools
+    # there (via UV_TOOL_BIN_DIR / PNPM_HOME redirect), and _host_native_mcp's presence check runs
+    # after that — it needs them resolvable. Mutating this process's PATH is fine: it's dedicated to
+    # this launch, and claude (env built from os.environ below) inherits it.
     _, stack_bin, _ = _stack_tools_dirs(stack)
     os.environ["PATH"] = os.pathsep.join(
-        [*prov_bins, *([str(stack_bin)] if str(stack_bin) not in prov_bins else []),
-         os.environ.get("PATH", "")]
+        [str(stack_bin), os.environ.get("PATH", "")]
     )
     # Folder-env contract into THIS process's env, for the same reason (and with the same precedent)
     # as the PATH mutation above: a container launch sets the contract box-wide (`podman run -e`) so

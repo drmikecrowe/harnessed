@@ -119,13 +119,13 @@ class TestMigratedRecipesDeclareInstall:
         assert r.install.cache == "2.2.22"
         assert f'CCSTATUSLINE_VERSION="{r.install.cache}"' in _script("ccstatusline").read_text()
 
-    def test_context_mode_pin_matches_its_other_two_install_channels(self):
-        # Three channels for one upstream package: `tools:` (container CLI), `provision:` (host
-        # CLI), and the omp plugin in install.sh. Drift means omp runs a different version.
+    def test_context_mode_pin_matches_its_install_channels(self):
+        # Two channels for the CLI: `tools:` (container, via mise npm backend) and install.sh
+        # (host, via PNPM_HOME-redirected pnpm — bd harnessed-zi6.1 retired `provision:`).
+        # The omp plugin in install.sh must also match. Drift means different versions across modes.
         r = _recipe("context-mode")
         assert 'CONTEXT_MODE_VERSION="1.0.169"' in _script("context-mode").read_text()
         assert "npm:context-mode@1.0.169" in r.tools
-        assert [p.version for p in r.provision] == ["1.0.169"]
 
 
 # --- context-mode: harness-conditional, container-only ---------------------------------------------
@@ -133,8 +133,9 @@ class TestMigratedRecipesDeclareInstall:
 class TestContextModeOmpBranch:
     @pytest.mark.parametrize("harness", ["claude", "codex", "omp"])
     def test_never_touches_the_config_dir(self, tmp_path, harness):
-        # install.sh installs the omp plugin and nothing else; every other layer of this recipe is
-        # declarative (tools/mcp/hooks/env/persist).
+        # install.sh installs the CLI (via pnpm) and the omp plugin; neither writes the config dir.
+        # Every other layer of this recipe is declarative (tools/mcp/hooks/env/persist).
+        _stub(tmp_path / "bin", "pnpm", "")  # CLI install runs first in host mode; must succeed
         r = _run("context-mode", tmp_path, mode="host", harness=harness)
         assert r.returncode == 0
         assert list((tmp_path / "config").iterdir()) == []
@@ -159,6 +160,7 @@ class TestContextModeOmpBranch:
         # write there, so the step is skipped — named, with a reason, on stderr, exit 0.
         log = tmp_path / "omp.log"
         _stub(tmp_path / "bin", "omp", f'printf "%s\\n" "$*" >> {log}\n')
+        _stub(tmp_path / "bin", "pnpm", "")  # CLI install runs first; must succeed silently
         r = _run("context-mode", tmp_path, mode="host", harness="omp")
         assert r.returncode == 0
         assert not log.exists()  # omp was never invoked, even though it was on PATH

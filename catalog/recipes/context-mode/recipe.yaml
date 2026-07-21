@@ -26,10 +26,9 @@ description: >
 # Installed via mise's `npm:` backend (pinned) → a `context-mode` shim lands on PATH. Both the MCP
 # server and every hook command below invoke that same one binary.
 #
-# Keep this version in lockstep with install.sh's CONTEXT_MODE_VERSION (the omp plugin install) and
-# with `provision:` below. Three pins because they are three different install channels for the same
-# upstream package — mise's npm backend for the container CLI/MCP binary, npm for the host one, and
-# `omp plugin install` for the omp extension.
+# Keep this version in lockstep with install.sh's CONTEXT_MODE_VERSION. Two install channels for
+# the CLI/MCP binary: mise's npm backend here (container) and install.sh's pnpm section (host).
+# The omp extension version in install.sh is the third pin — same upstream package, different channel.
 tools:
   - npm:context-mode@1.0.169
 
@@ -41,14 +40,6 @@ mcp:
     - name: context-mode
       command: context-mode
       transport: stdio
-
-# Host-native install (`launch --host`) — the npm backend, mirroring the `tools:` npm pin above.
-# Container-independent: the image still installs the CLI via its `tools:` mise layer.
-provision:
-  - via: npm
-    package: context-mode
-    version: "1.0.169"
-    command: context-mode
 
 # --- Install layer ---
 # What used to be this recipe's whole Dockerfile: the omp plugin install, as one bash file run by

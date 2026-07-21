@@ -158,18 +158,18 @@ class TestGstackStraddles:
 
 
 class TestAgentCarnetPartial:
-    """agent-carnet migrated only its CONTENT half; the CLI install is deliberately container-only."""
+    """agent-carnet: CLI + skill both delivered by install.sh in both modes (bd harnessed-zi6.1)."""
 
     def test_the_skill_comes_from_the_install_script(self):
         script = (CATALOG / "recipes" / "agent-carnet" / "install.sh").read_text(encoding="utf-8")
         assert "skills/agent-carnet" in script
         assert "SKILL.md" in script, "verify the copy, or an empty skill dir ships silently"
 
-    def test_the_cli_install_stays_in_the_dockerfile(self):
-        # `pnpm add -g` host-side would write into the user's global pnpm store — outside every
-        # harnessed-owned directory. Putting the CLI on PATH host-side is `provision:`'s job.
-        assert "pnpm add -g agent-carnet@" in _code(CATALOG / "recipes" / "agent-carnet" / "Dockerfile")
-        assert "pnpm add -g" not in _code(CATALOG / "recipes" / "agent-carnet" / "install.sh")
+    def test_the_cli_install_is_in_install_sh_for_both_modes(self):
+        # The Dockerfile no longer has a pnpm RUN — install.sh is the single CLI install path,
+        # run by the assembler as RUN bash install.sh in the image AND by the launcher on a host.
+        assert "pnpm add -g" in _code(CATALOG / "recipes" / "agent-carnet" / "install.sh")
+        assert "pnpm add -g" not in _code(CATALOG / "recipes" / "agent-carnet" / "Dockerfile")
 
     def test_one_version_literal_binds_the_cli_and_the_skill(self):
         r = _recipe("agent-carnet")

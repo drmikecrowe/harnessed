@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
-# install.sh — context-mode's omp plugin, moved out of the recipe Dockerfile (bd harnessed-8px.5).
+# install.sh — context-mode CLI (host) + omp plugin (container+omp only).
 #
-# This is the whole of the old Dockerfile. `HARNESS` is part of the install env contract in BOTH
-# modes, so the `if [ "${HARNESS}" = "omp" ]` that used to live in a `RUN` branches here instead,
-# and the recipe stays harness-independent exactly as before.
+# Two deliverables, both formerly separate channels:
+#   1. context-mode CLI/MCP binary — container: `tools:` (mise npm backend); host: this script.
+#   2. omp extension — container+omp only: `omp plugin install` (see omp section below).
 #
 # Env this file may rely on (emit.install_env — same keys host and container):
 #   HARNESS, HARNESSED_MODE, HARNESSED_RECIPE_DIR, HARNESSED_CONFIG_DIR, HARNESSED_INSTALL_CACHE
+#   HARNESSED_BIN_DIR  the stack bin dir (host) or base image ~/.local/bin (container)
 # PROJECT_DIR and friends are absent by design — a build has no project mounted.
 #
-# NOT installed here: the `context-mode` CLI/MCP binary itself. That has its own two channels
-# already — `tools:` (mise `npm:` backend, container) and `provision:` (host) — and both are pinned
-# to the same 1.0.169 as this file. Keep all three in lockstep when bumping.
+# Keep CONTEXT_MODE_VERSION in lockstep with the `tools:` pin in recipe.yaml and the
+# `omp plugin install` version below — all three install the same upstream package.
 set -euo pipefail
 
 CONTEXT_MODE_VERSION="1.0.169"
+
+# --- CLI install (host only) ----------------------------------------------------------------------
+# Container gets the CLI via `tools:` (mise npm backend) — nothing to do here in that mode.
+# On a host launch there is no mise layer, so install it into HARNESSED_BIN_DIR (the stack's
+# bin dir, already on PATH before setup scripts run). pnpm global redirected via PNPM_HOME so the
+# install is stack-scoped and never touches the user's own pnpm global store.
+if [ "${HARNESSED_MODE:-}" = "host" ]; then
+    PNPM_HOME="$HARNESSED_BIN_DIR" pnpm add -g "context-mode@${CONTEXT_MODE_VERSION}"
+fi
 
 # --- omp only -------------------------------------------------------------------------------------
 # Under omp the bridged Claude hooks are inert (omp-claude-hooks-bridge drops
@@ -41,8 +50,8 @@ fi
 # announced. Never silently (bd harnessed-8px.1).
 #
 # Consequence, stated plainly: `harnessed launch --host` with HARNESS=omp gets context-mode's MCP
-# server and CLI (via `provision:`) but NOT the native omp extension, so the four omp-native event
-# handlers are absent in that combination. Run the stack in a container to get them.
+# server and CLI (via install.sh above) but NOT the native omp extension, so the four omp-native
+# event handlers are absent in that combination. Run the stack in a container to get them.
 if [ "${HARNESSED_MODE:-}" != "container" ]; then
     echo "WARNING install (context-mode): 'omp plugin install context-mode@${CONTEXT_MODE_VERSION}'" \
          "SKIPPED on a host launch — it writes into your own ~/.omp/plugins, which harnessed does" \

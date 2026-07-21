@@ -784,18 +784,6 @@ def _parse_conflicts(raw_conflicts) -> list[str]:
 
 
 @dataclass
-class Provision:
-    """One host-native install step (recipe `provision:`). HOST-ONLY — the container image keeps its
-    Dockerfile; this is the parallel `launch --host` install so a recipe's stdio MCP child lands on
-    PATH without a container. `via` is the backend (only `uv-tool` today: `uv tool install`)."""
-    via: str
-    package: str
-    version: str
-    command: str       # the executable the install yields — used to skip when already present
-    python: str = ""   # optional: uv tool install -p <python>
-
-
-@dataclass
 class Recipe:
     name: str
     description: str = ""
@@ -831,9 +819,6 @@ class Recipe:
     # `pulumi@3.140.0`). MUST be pinned — a floating `@latest`/bare name is rejected, same as a
     # Dockerfile pin. Lets a recipe add a CLI + open its egress with NO Dockerfile. See egress.md.
     tools: list[str] = field(default_factory=list)
-    # Host-native install steps (recipe.yaml `provision:`) — see Provision. Container-independent:
-    # the derived image still installs via its Dockerfile; this is only for `launch --host`.
-    provision: list[Provision] = field(default_factory=list)
     # Environment for the RUNNING agent (recipe.yaml `env:`) — NAME → value template. The one
     # recipe deliverable a bash script cannot express (an `export` dies with the script). Values are
     # mode-portable templates; see _parse_env / resolve_recipe_env for the placeholder contract.
@@ -1009,7 +994,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
     "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks", "setup", "install", "egress", "tools", "provision", "env",  # typed
+    "conflicts", "hooks", "setup", "install", "egress", "tools", "env",  # typed
     "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -1066,40 +1051,6 @@ def _parse_egress(raw_egress, manifest: Path) -> list[str]:
         out.append(host)
     return out
 
-
-_PROVISION_BACKENDS = frozenset({"uv-tool", "npm"})
-
-
-def _parse_provision(raw_provision, manifest: Path) -> list["Provision"]:
-    """Parse a recipe's `provision:` list into pinned host-install steps."""
-    if not raw_provision:
-        return []
-    if not isinstance(raw_provision, list):
-        raise SchemaError(f"{manifest}: 'provision' must be a list of install steps")
-    out: list[Provision] = []
-    for entry in raw_provision:
-        if not isinstance(entry, dict):
-            raise SchemaError(f"{manifest}: provision entry {entry!r} must be a mapping")
-        via = str(entry.get("via", "")).strip()
-        if via not in _PROVISION_BACKENDS:
-            raise SchemaError(
-                f"{manifest}: provision entry has via={via!r}; supported: "
-                f"{', '.join(sorted(_PROVISION_BACKENDS))}"
-            )
-        package = str(entry.get("package", "")).strip()
-        version = str(entry.get("version", "")).strip()
-        command = str(entry.get("command", "")).strip()
-        if not (package and version and command):
-            raise SchemaError(
-                f"{manifest}: provision entry {entry!r} needs package, version, and command"
-            )
-        if _FLOATING_REF_RE.search(version) or version in {"latest", "*"}:
-            raise SchemaError(
-                f"{manifest}: provision version {version!r} must be an explicit pin (no @latest/*)"
-            )
-        out.append(Provision(via=via, package=package, version=version, command=command,
-                             python=str(entry.get("python", "")).strip()))
-    return out
 
 
 def _parse_tools(raw_tools, manifest: Path) -> list[str]:
@@ -1293,7 +1244,6 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         install=_parse_install(raw.get("install")),
         egress=_parse_egress(raw.get("egress"), manifest),
         tools=_parse_tools(raw.get("tools"), manifest),
-        provision=_parse_provision(raw.get("provision"), manifest),
         env=env,
         root=recipe_dir,
         ref=ref or raw["name"],

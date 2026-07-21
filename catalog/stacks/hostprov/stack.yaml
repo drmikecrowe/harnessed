@@ -1,6 +1,0 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
-# Stack: hostprov — host-provision tracer (see hostprov-demo).
-name: hostprov
-instructions: hostprov tracer.
-recipes: [hostprov-demo]
-services: []

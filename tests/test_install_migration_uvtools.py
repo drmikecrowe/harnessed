@@ -88,14 +88,6 @@ class TestEveryMigratedRecipe:
 class TestPinsStayInSyncWithTheRecipe:
     """A version living in two files drifts. Each assertion below is one such pair."""
 
-    def test_repowise_script_pin_matches_the_surviving_provision_block(self):
-        """`provision:` is redundant now but is retired by bd harnessed-zi6.1, not by this
-        migration — so until then the two must install the SAME version."""
-        r = _recipe("repowise")
-        body = _code(r.root / "install.sh")
-        assert r.provision, "the provision: block was removed — drop this test with it"
-        assert f'REPOWISE_VERSION="{r.provision[0].version}"' in body
-
     def test_serena_script_pin_is_the_version_the_recipe_documents(self):
         body = _code(_recipe("serena").root / "install.sh")
         assert 'SERENA_VERSION="1.5.3"' in body
