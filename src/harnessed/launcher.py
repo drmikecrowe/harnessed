@@ -2650,6 +2650,7 @@ def _ensure_service(
         host_dir, agent_dir, location = _service_data_dir(svc, stack, project_path)
         persist.guard_ownership(host_dir)
         host_dir.mkdir(parents=True, exist_ok=True)
+        _assert_data_dir_unlocked(svc, host_dir)
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
         # (a dolt data dir written by a foreign uid would EACCES for every agent container).
         run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
@@ -2696,9 +2697,90 @@ def _ensure_service(
 
     run_cmd.append(svc.image)
     _run(run_cmd, capture_output=True)
+    _assert_service_running(rt, cname, svc)
     _install_corp_proxy_ca_in_container(rt, cname, best_effort=True)
     _wait_service_healthy(rt, cname, svc)
 
+
+
+def _host_process_in_dir(exe: str, host_dir: Path) -> tuple[int, str] | None:
+    """Find a HOST process named `exe` whose cwd is inside `host_dir`. None if there is none.
+
+    Matching on cwd (not on the command line) is what makes this precise: a dolt sql-server chdirs
+    into the data dir it locks, so cwd identifies the *contended resource*, whereas the port or db
+    name on the command line does not.
+    """
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            # Other users' processes raise PermissionError here — not our contention to worry about.
+            if not (entry / "cwd").resolve().is_relative_to(host_dir):
+                continue
+            if Path(os.readlink(entry / "exe")).name != exe:
+                continue
+            cmdline = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+        except OSError:
+            continue  # the process exited mid-scan, or is not ours to inspect
+        return int(entry.name), cmdline.strip()
+    return None
+
+
+def _assert_data_dir_unlocked(svc: "ServiceDef", host_dir: Path) -> None:
+    """Abort BEFORE starting a sidecar whose data dir is already locked by a host process.
+
+    A `scope: project` service exists because it holds an exclusive on-disk lock over per-project
+    data. The sidecar shape removes contention between CONTAINERS by construction — but a HOST
+    process on the same data dir still wins the lock, and the sidecar then dies on startup. The
+    symptom lands far from the cause: clients fail against a socket that was never created, and the
+    engine's own advice ("start the server yourself") is unactionable inside an agent container that
+    deliberately ships no engine binary. Catching it here keeps the diagnosis next to the problem.
+    """
+    if not svc.exclusive_lock:
+        return
+    holder = _host_process_in_dir(svc.exclusive_lock, host_dir.resolve())
+    if holder is None:
+        return
+    pid, cmdline = holder
+    _err.print(
+        f"[bold red]error:[/bold red] service '{svc.name}' cannot start: a host "
+        f"'{svc.exclusive_lock}' process already holds {host_dir}"
+    )
+    _err.print(f"  PID {pid}: {cmdline}")
+    _err.print("  Stop it and retry, or run this stack with --host so it uses that server instead.")
+    raise typer.Exit(1)
+
+
+def _service_container_status(rt: str, cname: str) -> str:
+    """Container status ('running', 'exited', ...), or '' if the container is gone."""
+    result = subprocess.run(
+        [rt, "inspect", "-f", "{{.State.Status}}", cname],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _abort_dead_service(rt: str, cname: str, svc: "ServiceDef") -> None:
+    """Report why a service container died and abort the launch.
+
+    `podman run -d` returns 0 once the container is CREATED, so a service whose process dies a
+    moment later leaves the launch believing it succeeded. The reason is already in the container's
+    log — surface it rather than making the user go find it.
+    """
+    logs = subprocess.run([rt, "logs", "--tail", "20", cname], capture_output=True, text=True)
+    _err.print(f"[bold red]error:[/bold red] service '{svc.name}' exited at startup ({cname})")
+    detail = f"{logs.stdout}{logs.stderr}".strip()
+    if detail:
+        _err.print(f"[dim]--- {rt} logs --tail 20 {cname} ---[/dim]")
+        _err.print(detail)
+    raise typer.Exit(1)
+
+
+def _assert_service_running(rt: str, cname: str, svc: "ServiceDef") -> None:
+    """Fail the launch immediately if the container we just started is already dead."""
+    if _service_container_status(rt, cname) != "running":
+        _abort_dead_service(rt, cname, svc)
 
 
 def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int = 60) -> None:
@@ -2732,6 +2814,12 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
         )
         if result.returncode == 0:
             return
+        # A dead container fails the healthcheck for a reason no amount of waiting fixes: every
+        # `exec` is failing because there is nothing to exec INTO. Distinguishing that from a
+        # slow start is what separates "wait longer" from "abort now" — without it, a service that
+        # died in its first second still burns the whole timeout before a warning nobody can act on.
+        if _service_container_status(rt, cname) != "running":
+            _abort_dead_service(rt, cname, svc)
         time.sleep(1)
 
     _err.print(f"[yellow][WARNING][/yellow] service '{svc.name}' healthcheck did not pass within {timeout}s")
