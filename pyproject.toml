@@ -48,10 +48,15 @@ harnessed = ["catalog/**/*"]
 #   extra-tools.txt  — the user's resolved mise tool list, staged into the build context by
 #                      _ensure_extra_tools. The committed seed (extra-tools.default.txt) SHIPS;
 #                      the resolved per-user file must not.
+#   recipes.backlog  — recipes parked as untested. `find_in_catalog` only ever looks at
+#                      catalog/recipes, so these are already unresolvable; keeping them out of the
+#                      wheel means an installed harnessed carries no half-finished recipe at all.
 harnessed = [
     "catalog/*.local",
     "catalog/*.local/**/*",
     "catalog/base/extra-tools.txt",
+    "catalog/recipes.backlog/*",
+    "catalog/recipes.backlog/**/*",
 ]
 
 [tool.pytest.ini_options]
