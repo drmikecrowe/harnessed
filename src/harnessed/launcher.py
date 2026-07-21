@@ -11,6 +11,7 @@ Replaces the bash launcher (harnessed + lib/*.sh) with a Typer CLI that:
 from __future__ import annotations
 
 import json
+import fcntl
 import hashlib
 import os
 import re
@@ -34,6 +35,7 @@ from rich.console import Console
 from rich.markup import escape
 from ruamel.yaml import YAML
 
+from . import __version__
 from . import emit
 from . import paths
 from . import persist
@@ -51,6 +53,7 @@ from .schema import (
     load_service,
     load_stack,
     load_stack_with_recipes,
+    resolve_recipe_env,
 )
 
 app = typer.Typer(
@@ -792,12 +795,23 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     # scan here against the image we just built, this time with tokens resolved on the host — same
     # thing `harnessed rescan <image>` does. Advisory: it reports posture and never fails the build.
     # Skipped by `--no-security-scans`.
+    rescan_report = False
     if os.environ.get("HARNESSED_NO_SCANS") != "true":
         _say(f"[blue][INFO][/blue] Credentialed re-scan of {derived} (snyk + socket) ...")
-        _scan_image_in_container(rt, derived)
-    # Merge image-baked ~/.claude extensions into the profile only when a recipe actually baked some.
-    if any((r.root / "Dockerfile").is_file() for r in result.recipes):
-        _merge_baked_extensions(rt, derived, prof)
+        # Write ITS report to the profile: this is the only scan that runs snyk/socket, so its
+        # findings must be the ones surfaced (bd harnessed-de7).
+        scan_report = prof / "scan-report.json"
+        # Remove any report from a PREVIOUS build first: an existing file would otherwise be taken
+        # for this scan's output and treated as authoritative.
+        scan_report.unlink(missing_ok=True)
+        _scan_image_in_container(rt, derived, report_dest=scan_report)
+        rescan_report = scan_report.is_file()
+    # NOTE: the image-baked ~/.claude extraction that used to run here is GONE (bd harnessed-8px.7).
+    # It existed because a Dockerfile RUN could deliver skills/commands into the image's ~/.claude,
+    # which the profile bind-mount would then hide. Content delivery now goes through `install:`,
+    # which writes into $HARNESSED_CONFIG_DIR in both modes, so there is nothing to extract — every
+    # recipe Dockerfile was audited and none references ~/.claude at all. `validate_no_claude_writes`
+    # keeps it that way LOUDLY, rather than this pass silently papering over a regression.
 
     # Replace the assemble-time settings.json FLOOR with the image's installer-written
     # settings.json (merged with harnessed's required grant). UNCONDITIONAL — a settings.json can
@@ -812,8 +826,9 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     if harness == "opencode":
         _merge_baked_opencode(rt, derived, prof, result.stack)
 
-    # Surface the advisory supply-chain report (baked by the derived image's final scan layer).
-    _surface_scan_report(rt, derived, prof)
+    # Surface the advisory supply-chain report. When the credentialed re-scan already wrote one,
+    # that is authoritative — the image-baked report is credential-free and cannot see snyk/socket.
+    _surface_scan_report(rt, derived, prof, keep_existing=rescan_report)
 
     # Build all service images referenced by this stack so they are ready before first run.
     # Layer-cached: a no-op when each service Dockerfile is unchanged.
@@ -1201,9 +1216,6 @@ def _derived_image(stack: str, harness: str) -> str:
     return f"harnessed-{harness}-{stack}:latest"
 
 
-# Extension dirs an agent reads out of the Claude-canonical ~/.claude tree.
-_EXT_SUBDIRS = ("skills", "commands", "plugins", "agents", "hooks", "rules")
-
 _T = TypeVar("_T")
 
 
@@ -1222,29 +1234,6 @@ def _with_image_container(rt: str, image: str, fn: Callable[[str], _T]) -> _T | 
         return fn(cid)
     finally:
         subprocess.run([rt, "rm", "-f", cid], capture_output=True)
-
-
-def _merge_baked_extensions(rt: str, image: str, prof: Path) -> None:
-    """Copy ~/.claude/{skills,commands,plugins,…} baked into `image` INTO the profile tree.
-
-    A Dockerfile recipe delivers skills/commands/plugins by writing them into the image's
-    ~/.claude. The launcher bind-mounts the profile's .claude over the container's, which would
-    hide those image-baked files — so we extract them into the profile here, unifying
-    recipe-fanned (profile) and image-baked (Dockerfile) extensions before launch.
-    """
-    def _copy(cid: str) -> None:
-        claude = prof / ".claude"
-        for sub in _EXT_SUBDIRS:
-            dest = claude / sub
-            dest.mkdir(parents=True, exist_ok=True)
-            # `.` suffix copies directory CONTENTS (merge), not the dir itself. Missing source in
-            # the image is fine (not every agent bakes every subdir).
-            subprocess.run(
-                [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.claude/{sub}/.", str(dest)],
-                capture_output=True,
-            )
-
-    _with_image_container(rt, image, _copy)
 
 
 def _merge_baked_settings(rt: str, image: str, prof: Path, harness: str = "") -> None:
@@ -1421,7 +1410,9 @@ def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None
     out.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
 
 
-def _surface_scan_report(rt: str, image: str, prof: Path) -> None:
+def _surface_scan_report(
+    rt: str, image: str, prof: Path, *, keep_existing: bool = False
+) -> None:
     """Copy the in-image supply-chain report (harnessed-scan, the derived image's final layer) to the
     profile dir and print a one-line advisory summary. The scan is advisory — this surfaces its posture
     host-side so the user sees it without digging into the image or scrolling the build log."""
@@ -1434,8 +1425,14 @@ def _surface_scan_report(rt: str, image: str, prof: Path) -> None:
         )
         return True
 
+    # `keep_existing` means the credentialed re-scan already wrote the authoritative report here.
+    # Copying the image-baked one over it would REPLACE snyk/socket findings with a report that
+    # structurally cannot contain them, which is what produced a green "no high/critical" verdict on
+    # a build that had just reported 4 high (bd harnessed-de7).
+    if keep_existing and dest.is_file():
+        pass
     # create-fail (None) mirrors the old `if not cid: return` — leave any stale report untouched.
-    if not _with_image_container(rt, image, _copy):
+    elif not _with_image_container(rt, image, _copy):
         return
     if not dest.is_file():
         return
@@ -2280,7 +2277,67 @@ def _ensure_gitignore_entry(project_path: Path, name: str) -> None:
         pass  # non-fatal
 
 
-def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> str:
+def harnessed_env(
+    stack: str,
+    project_path: Path,
+    *,
+    harness: str,
+    mode: str,
+    mount_path: Path | None = None,
+    recipe=None,
+    sockets: bool = True,
+) -> dict[str, str]:
+    """THE folder-env contract — the same var names, with the same meanings, on every surface.
+
+    One definition, injected everywhere a catalog-authored string or file can run: the container
+    attach shell (`_init_shell_prologue`), both `setup.condition` eval sites
+    (`_collect_setup_notices` host-side, `_host_run_setups`), `setup.script`/`setup.run`, the
+    container itself (`podman run -e`), and the host agent process (`os.environ` in `_launch_host`).
+    A recipe author writes `${MAIN_REPO_DIR}` once and it resolves the same in all of them.
+
+    See ARCHITECTURE.md §"Folder-env contract" for the authoritative table. Notes on two entries:
+
+    * `HARNESSED_GIT_COMMON_DIR` is the explicitly-named handle for the git common dir (same value
+      as MAIN_REPO_DIR). A bare `GIT_COMMON_DIR` is deliberately NEVER exported: git itself consumes
+      that variable, so it would hijack common-dir resolution the moment the agent cd's into a
+      different repository.
+    * `HARNESS` is unprefixed on purpose — it is already the token a recipe Dockerfile branches on
+      (`ARG HARNESS`), so a setup script branching on `$HARNESS` means exactly the same thing.
+
+    `mode` is "host" or "container". Socket-backed service vars (HARNESSED_<NAME>_SOCKET) are
+    container-only: their value is a container-side path, and a host launch runs no service sidecars, so
+    exporting them host-side would hand a recipe a path that does not exist. `sockets=False`
+    suppresses them entirely — `_script_env` needs a key set that is IDENTICAL in both modes, and
+    the container gets the socket vars box-wide anyway.
+    """
+    main_repo = paths.git_common_dir(project_path) or project_path
+    workspace = mount_path or paths.bare_worktree_container(project_path) or project_path
+    env = {
+        "HARNESS": harness,
+        "PROJECT_DIR": str(project_path),
+        "MAIN_REPO_DIR": str(main_repo),
+        "HARNESSED_GIT_COMMON_DIR": str(main_repo),
+        "CONTAINER_WORKSPACE_DIR": str(workspace),
+        "HOST_WORKSPACE_DIR": str(workspace),
+        # The host $HOME, which is NOT the container's ($HOME is /home/harnessed in the pod). A
+        # `scope: global` persist entry is mounted path-preserving, so a recipe whose tool reads a
+        # dotdir under the host home (e.g. pulumi's ~/.pulumi) must point the tool at the mirrored
+        # path — `$HOST_HOME/.pulumi`, not `~/.pulumi`. This export is that handle.
+        "HOST_HOME": str(Path.home()),
+    }
+    if mode == "container" and sockets:
+        env.update(svc_socket_env(stack, project_path))
+    if recipe is not None:
+        # A setup script does `cp` where a recipe Dockerfile did `COPY`, so it needs its own source
+        # dir. Container-side that is the ro mount from `_setup_script_mounts`; host-side it is the
+        # catalog dir itself.
+        env["HARNESSED_RECIPE_DIR"] = (
+            f"{_CTR_RECIPE_DIR}/{recipe.name}" if mode == "container" else str(recipe.root)
+        )
+    return env
+
+
+def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path, *, harness: str) -> str:
     """Shell snippet run in the attach shell BEFORE the harness starts (Model A).
 
     Exports the generic path contract, then runs each recipe's `init.run` inline in this SAME shell
@@ -2296,7 +2353,6 @@ def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> st
     helper the init.run sources from). Returns just the exports when no recipe declares init.
     """
     _, recipes = load_stack_with_recipes(None, stack)
-    main_repo = paths.git_common_dir(project_path) or project_path
     parts = [
         # Rootless podman on macOS maps host UIDs through the VM; git refuses to operate in mounted
         # dirs ("dubious ownership") — breaking mise templates that shell out to git. Use git's
@@ -2305,21 +2361,14 @@ def _init_shell_prologue(stack: str, project_path: Path, mount_path: Path) -> st
         # fails with "Device or resource busy". These env vars are inherited by mise and all
         # subprocesses it spawns, including the git invocations inside mise templates.
         "export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='safe.directory' GIT_CONFIG_VALUE_0='*'",
-        "export "
-        f"PROJECT_DIR={shlex.quote(str(project_path))} "
-        f"MAIN_REPO_DIR={shlex.quote(str(main_repo))} "
-        f"CONTAINER_WORKSPACE_DIR={shlex.quote(str(mount_path))} "
-        f"HOST_WORKSPACE_DIR={shlex.quote(str(mount_path))} "
-        # The host $HOME, which is NOT the container's ($HOME is /home/harnessed in the pod). A
-        # `scope: global` persist entry is mounted path-preserving, so a recipe whose tool reads a
-        # dotdir under the host home (e.g. pulumi's ~/.pulumi) must point the tool at the mirrored
-        # path — `$HOST_HOME/.pulumi`, not `~/.pulumi`. This export is that handle.
-        f"HOST_HOME={shlex.quote(str(Path.home()))}",
     ]
-    # Socket-backed project-scoped services (e.g. beads-server): export the container-side socket
-    # path so a recipe's `setup:` can reference it verbatim instead of recomputing path arithmetic.
-    for var, sock in svc_socket_env(stack, project_path).items():
-        parts.append(f"export {var}={shlex.quote(sock)}")
+    # The folder-env contract (incl. socket-backed project-scoped services, e.g. beads-server, so a
+    # recipe's `setup:` can reference the socket verbatim instead of recomputing path arithmetic).
+    contract = harnessed_env(
+        stack, project_path, harness=harness, mode="container", mount_path=mount_path
+    )
+    for var, val in contract.items():
+        parts.append(f"export {var}={shlex.quote(val)}")
     # Plain exports never fail, so they're joined with `;` — `&&` is reserved for the recipe-init
     # fail-fast blocks below, keeping it absent entirely when no recipe declares init.
     prologue = "; ".join(parts)
@@ -2594,6 +2643,7 @@ def _ensure_service(
         host_dir, agent_dir, location = _service_data_dir(svc, stack, project_path)
         persist.guard_ownership(host_dir)
         host_dir.mkdir(parents=True, exist_ok=True)
+        _assert_data_dir_unlocked(svc, host_dir)
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
         # (a dolt data dir written by a foreign uid would EACCES for every agent container).
         run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
@@ -2640,9 +2690,90 @@ def _ensure_service(
 
     run_cmd.append(svc.image)
     _run(run_cmd, capture_output=True)
+    _assert_service_running(rt, cname, svc)
     _install_corp_proxy_ca_in_container(rt, cname, best_effort=True)
     _wait_service_healthy(rt, cname, svc)
 
+
+
+def _host_process_in_dir(exe: str, host_dir: Path) -> tuple[int, str] | None:
+    """Find a HOST process named `exe` whose cwd is inside `host_dir`. None if there is none.
+
+    Matching on cwd (not on the command line) is what makes this precise: a dolt sql-server chdirs
+    into the data dir it locks, so cwd identifies the *contended resource*, whereas the port or db
+    name on the command line does not.
+    """
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            # Other users' processes raise PermissionError here — not our contention to worry about.
+            if not (entry / "cwd").resolve().is_relative_to(host_dir):
+                continue
+            if Path(os.readlink(entry / "exe")).name != exe:
+                continue
+            cmdline = (entry / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+        except OSError:
+            continue  # the process exited mid-scan, or is not ours to inspect
+        return int(entry.name), cmdline.strip()
+    return None
+
+
+def _assert_data_dir_unlocked(svc: "ServiceDef", host_dir: Path) -> None:
+    """Abort BEFORE starting a sidecar whose data dir is already locked by a host process.
+
+    A `scope: project` service exists because it holds an exclusive on-disk lock over per-project
+    data. The sidecar shape removes contention between CONTAINERS by construction — but a HOST
+    process on the same data dir still wins the lock, and the sidecar then dies on startup. The
+    symptom lands far from the cause: clients fail against a socket that was never created, and the
+    engine's own advice ("start the server yourself") is unactionable inside an agent container that
+    deliberately ships no engine binary. Catching it here keeps the diagnosis next to the problem.
+    """
+    if not svc.exclusive_lock:
+        return
+    holder = _host_process_in_dir(svc.exclusive_lock, host_dir.resolve())
+    if holder is None:
+        return
+    pid, cmdline = holder
+    _err.print(
+        f"[bold red]error:[/bold red] service '{svc.name}' cannot start: a host "
+        f"'{svc.exclusive_lock}' process already holds {host_dir}"
+    )
+    _err.print(f"  PID {pid}: {cmdline}")
+    _err.print("  Stop it and retry, or run this stack with --host so it uses that server instead.")
+    raise typer.Exit(1)
+
+
+def _service_container_status(rt: str, cname: str) -> str:
+    """Container status ('running', 'exited', ...), or '' if the container is gone."""
+    result = subprocess.run(
+        [rt, "inspect", "-f", "{{.State.Status}}", cname],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _abort_dead_service(rt: str, cname: str, svc: "ServiceDef") -> None:
+    """Report why a service container died and abort the launch.
+
+    `podman run -d` returns 0 once the container is CREATED, so a service whose process dies a
+    moment later leaves the launch believing it succeeded. The reason is already in the container's
+    log — surface it rather than making the user go find it.
+    """
+    logs = subprocess.run([rt, "logs", "--tail", "20", cname], capture_output=True, text=True)
+    _err.print(f"[bold red]error:[/bold red] service '{svc.name}' exited at startup ({cname})")
+    detail = f"{logs.stdout}{logs.stderr}".strip()
+    if detail:
+        _err.print(f"[dim]--- {rt} logs --tail 20 {cname} ---[/dim]")
+        _err.print(detail)
+    raise typer.Exit(1)
+
+
+def _assert_service_running(rt: str, cname: str, svc: "ServiceDef") -> None:
+    """Fail the launch immediately if the container we just started is already dead."""
+    if _service_container_status(rt, cname) != "running":
+        _abort_dead_service(rt, cname, svc)
 
 
 def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int = 60) -> None:
@@ -2676,6 +2807,12 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
         )
         if result.returncode == 0:
             return
+        # A dead container fails the healthcheck for a reason no amount of waiting fixes: every
+        # `exec` is failing because there is nothing to exec INTO. Distinguishing that from a
+        # slow start is what separates "wait longer" from "abort now" — without it, a service that
+        # died in its first second still burns the whole timeout before a warning nobody can act on.
+        if _service_container_status(rt, cname) != "running":
+            _abort_dead_service(rt, cname, svc)
         time.sleep(1)
 
     _err.print(f"[yellow][WARNING][/yellow] service '{svc.name}' healthcheck did not pass within {timeout}s")
@@ -2703,7 +2840,9 @@ def _collect_setup_notices(
     The dismiss flag gates ONLY unconditional notices — conditional ones always follow their
     condition. Conditions are catalog-authored shell strings; they run on the host here (not in
     the container), in the project directory, so project-scoped checks like `bd list` see the
-    right state.
+    right state — and with the folder-env contract in env (`harnessed_env`), so a condition can
+    test a real path (`[ ! -f "${MAIN_REPO_DIR}/.beads/metadata.json" ]`) instead of expanding an
+    unset var to the empty string and passing falsely.
     """
     dismissed = paths.setup_dismissed_flag(stack, harness, project_path).exists()
     out: list[Recipe] = []
@@ -2714,6 +2853,9 @@ def _collect_setup_notices(
             proc = subprocess.run(
                 ["bash", "-lc", recipe.setup.condition],
                 cwd=str(project_path),
+                env={**os.environ, **harnessed_env(
+                    stack, project_path, harness=harness, mode="host", recipe=recipe
+                )},
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -2765,19 +2907,159 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
 # Host-native content-only backend subdirs to materialize from the assembled profile's .claude tree.
 _HOST_HARNESS = "claude"  # spike scope: only claude consumes CLAUDE_CONFIG_DIR directly here.
 
+# Breadcrumb written into every host config dir so orphan detection can reverse the project_hash.
 
-def _materialize_host_home(prof: Path, home: Path) -> None:
+
+def _host_stack_fingerprint(stack: str, recipes: list) -> str:
+    """What the host config dir's content is a function of: the stack's recipe closure, plus
+    harnessed's own version.
+
+    The version is in there because a host launch has no image build to force a refresh. Change what
+    `emit` writes into settings.json and the recipe closure is byte-identical, so without the version
+    every existing config dir would keep serving the old output forever.
+    """
+    stack_dir = paths.find_in_catalog("stacks", stack)
+    return f"{__version__}:{compute_recipe_hash(stack_dir / 'stack.yaml', recipes)}"
+
+
+# Written INSIDE the config dir, deliberately: the stamp must die with the content it describes, so
+# a hand-deleted or half-written dir reads as "no fingerprint" and rebuilds rather than being trusted.
+_HOST_STACK_FINGERPRINT = ".harnessed-stack"
+# `<project_hash>` dirs from the pre-8px.12 layout, now nested inside the config dir itself.
+_LEGACY_PROJECT_DIR_RE = re.compile(r"^[0-9a-f]{8}$")
+
+
+def _migrate_legacy_host_homes(home: Path) -> None:
+    """Scrub pre-8px.12 per-project config dirs that are now nested INSIDE the config dir.
+
+    The old key was `<stack>/<harness>/<project_hash>`; the new config dir IS `<stack>/<harness>`, so
+    every old per-project dir became a child of it. They must be SCRUBBED rather than swept away by
+    the rmtree below: after bd harnessed-8px.10 any of them that saw a token refresh holds a real
+    `.credentials.json`, and a bare rmtree would leave that token recoverable on disk.
+
+    Matched narrowly — an 8-hex name AND something that actually looks like a config dir — so a
+    recipe that ever ships an 8-hex-named directory is not silently deleted.
+    """
+    if not home.is_dir():
+        return
+    for child in sorted(home.iterdir()):
+        if not (child.is_dir() and not child.is_symlink()):
+            continue
+        if not _LEGACY_PROJECT_DIR_RE.match(child.name):
+            continue
+        if not ((child / "settings.json").is_file() or (child / ".credentials.json").exists()):
+            continue  # 8-hex name but not a config dir — leave it alone
+        _err.print(
+            f"[blue][INFO][/blue] Migrating away a pre-8px.12 per-project config dir "
+            f"({child.name}); its credential file is scrubbed, not just unlinked."
+        )
+        _scrub_host_home(child)
+
+
+@contextmanager
+def _host_home_lock(home: Path) -> Generator[None, None, None]:
+    """Serialize fingerprint-check + wipe + rebuild + install for one (stack, harness).
+
+    The window this closes is narrow by construction: with the wipe gated on the fingerprint
+    (bd harnessed-8px.12), an unchanged stack never rebuilds, so two launches only contend when both
+    observe a CHANGED fingerprint. Compare the behaviour it replaces, where every launch was
+    destructive and a second launch could wipe a running session's config dir outright.
+
+    Held across the installs too, not just the materialize: releasing after the rebuild would let a
+    second launch see a matching stamp, skip installs, and exec the agent while the first launch's
+    install scripts were still writing into the same dir.
+
+    The lock file is a SIBLING of the config dir — anything inside it dies in the rmtree.
+    `<harness>.lock` is a file, so host-gc's `is_dir()` scan skips it.
+    """
+    lock_path = home.parent / f"{home.name}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(lock_path, "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        fh.close()
+
+
+# Files Claude Code's daemon keeps in its per-project state dir. Presence of ANY of these marks a
+# directory as live daemon state rather than recipe content.
+_DAEMON_STATE_MARKERS = (
+    "daemon.json", "daemon.log", "daemon-auth-status.json", "daemon-auth-cooldown",
+)
+
+
+def _is_daemon_state(entry: Path) -> bool:
+    """True when `entry` is Claude Code's own daemon/runtime state, which a rebuild must NOT delete.
+
+    Identified by CONTENT, not by name. The daemon's per-project state dirs are opaque 8-hex-char
+    keys (`51ba83b8`, `d8551d86`); matching that shape would be guesswork, and a recipe is free to
+    ship a directory with any name. A directory holding `daemon.json`/`daemon.log`/`daemon-auth-*`
+    is unambiguously the daemon's.
+    """
+    if not entry.is_dir() or entry.is_symlink():
+        return False
+    if entry.name == "daemon":
+        return True
+    return any((entry / marker).exists() for marker in _DAEMON_STATE_MARKERS)
+
+
+def _clear_host_home_except_runtime(home: Path) -> None:
+    """Empty the config dir the way the wholesale rmtree did — but spare live daemon state.
+
+    bd harnessed-8px.20. `_materialize_host_home` used to `shutil.rmtree(home)`. That is right for
+    RECIPE CONTENT: the wipe is what stops a recipe dropped from the stack leaving files behind
+    (8px.12). It is wrong for Claude Code's own runtime state, which lives in the same directory and
+    belongs to a process that may be RUNNING.
+
+    Observed (2026-07-21): a rebuild deleted `daemon.json`/`daemon.log` out from under a daemon alive
+    13h53m. ~200ms after losing its state the daemon wrote `{"status":"auth_required"}` and the
+    credential file was gutted; the orphaned daemon then held `control.sock` with nothing valid
+    behind it, so the next launch timed out reaching the background service. One rmtree, both bugs.
+
+    Selective deletion rather than move-aside-and-restore: an interrupted rebuild can then never
+    strand the preserved state somewhere the next launch will not look for it.
+    """
+    for entry in home.iterdir():
+        if _is_daemon_state(entry):
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()  # covers files AND symlinks (never follow one into ~/.claude)
+
+
+def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = None) -> bool:
     """Copy the assembled profile's CONTENT layer into a host CLAUDE_CONFIG_DIR (`home`).
 
     Content-only: the `.claude/*` tree (skills/commands/rules/agents + CLAUDE.md) plus the
     settings.json floor — exactly what the container bind-mounts onto ~/.claude, minus the
     container-only artifacts (.mcp.json, hatago.config.json, the derived Dockerfile) which wire the
-    MCP hub that does not exist host-side. The home is rebuilt from scratch each launch so a removed
-    recipe's files never linger.
+    MCP hub that does not exist host-side.
+
+    Returns True if it (re)built, False if an up-to-date home was left untouched.
+
+    GATED on `fingerprint` (bd harnessed-8px.12). The rebuild is still WHOLESALE — the dir stays a
+    pure function of (profile + installs), so a recipe removed from the stack still cannot leave
+    files behind — but it now happens only when the stack actually changed, instead of on every
+    launch. That wipe-every-time was the root of three separate problems: it forced the project into
+    the config-dir key (to stop one launch wiping another's live dir), it made install scripts re-run
+    per project per launch (with `install.cache` existing purely to make that affordable), and it
+    reset `.claude.json` — so MCP approvals and folder trust never persisted.
+
+    Passing `fingerprint=None` keeps the old unconditional-rebuild behaviour, which is what the
+    materialize-only tests want.
     """
+    if fingerprint is not None:
+        stamp = home / _HOST_STACK_FINGERPRINT
+        if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == fingerprint:
+            return False
+    # BEFORE the rmtree: it would delete a legacy per-project dir without scrubbing its credential.
+    _migrate_legacy_host_homes(home)
     if home.exists():
-        shutil.rmtree(home)
-    home.mkdir(parents=True)
+        _clear_host_home_except_runtime(home)
+    home.mkdir(parents=True, exist_ok=True)
     src_claude = prof / ".claude"
     if src_claude.is_dir():
         # Contents of .claude/ become the config-dir root: .claude/skills -> <home>/skills, etc.
@@ -2785,6 +3067,20 @@ def _materialize_host_home(prof: Path, home: Path) -> None:
     settings = prof / "settings.json"
     if settings.is_file():
         shutil.copy2(settings, home / "settings.json")
+    return True
+
+
+def _stamp_host_home(home: Path, fingerprint: str) -> None:
+    """Record the fingerprint — the LAST step of a successful build, after the installs.
+
+    Deliberately NOT written by `_materialize_host_home`: the content it certifies is not complete
+    until every `install.script` has run. Stamping at the end of the copy instead meant a FAILED
+    install left a matching stamp behind, so the next launch saw "unchanged", skipped both the
+    rebuild and the installs, and started the agent against a permanently half-installed stack —
+    silently. Seen for real: a host launch died on context-mode's install with the stamp already on
+    disk (bd harnessed-8px.15).
+    """
+    (home / _HOST_STACK_FINGERPRINT).write_text(fingerprint + "\n", encoding="utf-8")
 
 
 def _host_claude_source() -> Path:
@@ -2806,6 +3102,120 @@ def _relink(link: Path, target: Path) -> None:
         else:
             link.unlink()
     link.symlink_to(target)
+
+
+def _scrub_host_home(home: Path) -> None:
+    """Remove a host config dir, overwriting any real .credentials.json before deletion.
+
+    Overwrites the credential file with null bytes and fsync's before unlinking, then removes the
+    entire directory tree. This reduces the window in which a stranded token is recoverable from
+    disk. LIMITATION: on SSDs with wear-leveling firmware the controller may have already remapped
+    the underlying flash blocks, so overwrite does not guarantee physical erasure — it is better
+    than a bare unlink and is the level of assurance available without raw device access.
+    """
+    cred = home / ".credentials.json"
+    if cred.is_file() and not cred.is_symlink():
+        size = max(cred.stat().st_size, 1)
+        with cred.open("r+b") as fh:
+            fh.write(b"\x00" * size)
+            fh.flush()
+            os.fsync(fh.fileno())
+        cred.unlink()
+    shutil.rmtree(home)
+
+
+def _credentials_are_usable(path: Path) -> bool:
+    """True when this credentials file actually holds a token worth propagating.
+
+    Observed failure (real logout, 2026-07-21): `~/.claude/.credentials.json` and a stack home both
+    held a GUTTED credential — the envelope intact (scopes, subscriptionType, rateLimitTier,
+    refreshTokenExpiresAt) but `accessToken` and `refreshToken` empty strings and `expiresAt` 0.
+    `_rescue_host_credentials` promoted it anyway, because its only guard was mtime: an emptied file
+    that happens to be NEWEST overwrites a perfectly good shared token, and every stack sourcing
+    from shared is then logged out. One stack going empty poisoned all of them.
+
+    So freshness is necessary but NOT sufficient — a credential must also be usable. Unreadable or
+    unparseable counts as unusable: this gate only ever decides whether to COPY a file over a
+    working one, so refusing on doubt costs nothing and prevents exactly the poisoning above.
+
+    Deliberately NOT checked: whether `expiresAt` is in the future. An expired ACCESS token is the
+    normal, healthy state of a credential whose refresh token is still good — that is the case the
+    whole refresh mechanism exists to serve. Rejecting it would throw away the token we most need to
+    keep. Only a MISSING/EMPTY token or a zeroed expiry marks the gutted file.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False
+    oauth = data.get("claudeAiOauth", data)
+    if not isinstance(oauth, dict):
+        return False
+    if not (oauth.get("accessToken") or "").strip():
+        return False
+    if not (oauth.get("refreshToken") or "").strip():
+        return False
+    # expiresAt 0 accompanied the gutted file; a real credential always carries a real stamp.
+    return bool(oauth.get("expiresAt"))
+
+
+def _rescue_host_credentials() -> None:
+    """Promote the newest refreshed token found in ANY host home into the shared `~/.claude` copy.
+
+    Must run BEFORE `_materialize_host_home`, which `shutil.rmtree`s the home being launched —
+    otherwise that home's copy of the token is deleted before it can be rescued.
+
+    Scans EVERY home, not just the one being launched, because a config dir is keyed
+    `<stack>/<harness>/<project>`: one stack open in three projects has three of them. Rescuing only
+    the launching home would converge lazily — a token refreshed in project A would not reach the
+    shared copy until project A itself relaunched, so launching project B first would still restore
+    a stale token and force a login. Scanning all of them is what makes "one login everywhere" true
+    across stacks and projects rather than only within one.
+
+    `_share_host_claude_state` symlinks `home/.credentials.json` at the real `~/.claude` one so a
+    refresh propagates and one login serves everywhere. That holds only while the symlink survives.
+    Claude Code rewrites this file on token refresh, and the rewrite REPLACES the symlink with a
+    regular file: the refreshed token lands in the stack's config dir and the shared copy never sees
+    it. The next launch then wipes the config dir and re-links to the now-stale shared copy — so the
+    user is logged out roughly every time the token would have refreshed (bd harnessed-8px.10).
+
+    Evidence it is a replace and not a write-through: the shared file's mtime stayed hours behind the
+    per-stack regular files that had superseded it.
+
+    So: if the symlink is gone and what replaced it is NEWER than the shared copy, copy it back
+    before the wipe. Self-healing — no exit hook, which matters because `_launch_host` hands the
+    process to `os.execvpe` and never regains control.
+    """
+    root = paths.host_homes_root()
+    if not root.is_dir():
+        return
+    # Explicit depths, never `**`: a config dir contains SYMLINKED state dirs (projects/, tasks/, …)
+    # pointing back into ~/.claude, and a recursive walk risks following them out of the tree.
+    # `*/*/*` is the current <stack>/<harness>/<project> layout; `*/*` catches pre-project-keying
+    # homes still on disk.
+    newest: Path | None = None
+    for cand in (*root.glob("*/*/*/.credentials.json"), *root.glob("*/*/.credentials.json")):
+        # A surviving symlink means that home's refresh propagated live — it IS the shared copy.
+        if cand.is_symlink() or not cand.is_file():
+            continue
+        # Freshness alone is not enough: a GUTTED credential (empty tokens, expiresAt 0) is often
+        # the newest file on disk, and promoting it overwrites a working shared token and logs
+        # every other stack out. Never let one become the winner.
+        if not _credentials_are_usable(cand):
+            continue
+        if newest is None or cand.stat().st_mtime > newest.stat().st_mtime:
+            newest = cand
+    if newest is None:
+        return
+    real = _host_claude_source() / ".credentials.json"
+    # A shared copy that is already gutted must be HEALED even though it is newer — that is exactly
+    # the state a previous poisoning leaves behind, and the mtime guard alone would preserve it
+    # forever while every stack that sources from it starts logged out.
+    if real.is_file() and _credentials_are_usable(real):
+        if real.stat().st_mtime >= newest.stat().st_mtime:
+            return  # shared copy is usable AND at least as fresh — never move a token backwards
+    real.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(newest, real)
+    real.chmod(0o600)
 
 
 def _share_host_claude_state(home: Path) -> None:
@@ -2837,18 +3247,74 @@ def _share_host_claude_state(home: Path) -> None:
         shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
 
 
-def _host_launch_plan(stack: str, harness: str, project_path: Path) -> tuple[Path, list[str], Path]:
-    """Materialize the host home (+ seed auth) and return (home, argv, cwd) WITHOUT exec'ing.
+def _propagate_host_settings(profile_settings: Path, live: Path) -> None:
+    """Write the freshly-computed profile settings.json over the live one WITHOUT dropping keys an
+    install script wrote into it.
+
+    Resolves a collision between two gates. `install:` scripts write into $HARNESSED_CONFIG_DIR —
+    the LIVE home, not the profile — e.g. ccstatusline's `statusLine` block. Those installs are
+    skipped when the stack fingerprint matches (bd harnessed-8px.12), while settings.json is
+    re-propagated on every launch (bd harnessed-8px.18). A plain copy therefore deleted the
+    installer's output with nothing left to put it back: the status line survived the first launch
+    after a stack change and vanished on every restart after it.
+
+    Profile keys always WIN — that is 8px.18's whole point (the host's live ~/.claude preferences
+    and harnessed's required grants are recomputed each launch). ONLY keys the profile does not
+    define at all are carried over. This is the host-side analogue of `emit.merge_settings` carrying
+    every non-required baked key through verbatim container-side.
+    """
+    try:
+        fresh = json.loads(profile_settings.read_text() or "{}")
+        prior = json.loads(live.read_text() or "{}") if live.is_file() else {}
+    except (OSError, ValueError):
+        # Unparseable/unreadable on either side → fall back to the plain copy. A settings file the
+        # user hand-edited into invalid JSON must not take the whole launch down with it.
+        shutil.copy2(profile_settings, live)
+        return
+    carried = (
+        {k: v for k, v in prior.items() if k not in fresh}
+        if isinstance(fresh, dict) and isinstance(prior, dict)
+        else {}
+    )
+    if not carried:
+        shutil.copy2(profile_settings, live)  # nothing to preserve → byte-identical propagation
+        return
+    live.write_text(json.dumps({**fresh, **carried}, indent=2) + "\n")
+
+
+def _host_launch_plan(
+    stack: str, harness: str, project_path: Path, *, recipes: list | None = None
+) -> tuple[Path, list[str], Path, bool]:
+    """Materialize the host home (+ seed auth) and return (home, argv, cwd, rebuilt) WITHOUT exec'ing.
 
     Split out from _launch_host so the plan is verifiable in tests without handing over the TTY.
+
+    `rebuilt` is False when the stack fingerprint matched and the existing home was left alone; the
+    caller uses it to skip the install scripts, which have nothing to do (bd harnessed-8px.12).
+    Passing `recipes=None` disables the gate and rebuilds unconditionally.
     """
     prof = profile_dir(stack, harness)
-    home = paths.host_home(stack, harness, project_path)
-    _materialize_host_home(prof, home)
+    home = paths.host_home(stack, harness)
+    # BEFORE the materialize: if it rebuilds, it rmtree's `home`, and a token the last session
+    # refreshed lives in there as a regular file that replaced our symlink (bd harnessed-8px.10).
+    _rescue_host_credentials()
+    fingerprint = _host_stack_fingerprint(stack, recipes) if recipes is not None else None
+    rebuilt = _materialize_host_home(prof, home, fingerprint=fingerprint)
+    # settings.json is the ONE profile artifact recomputed on EVERY launch, so it must be propagated
+    # even when the fingerprint gate skipped the rebuild (bd harnessed-8px.18). It is not a pure
+    # function of the recipe closure the fingerprint covers: `_merge_host_claude_settings` folds in
+    # the host's LIVE ~/.claude preferences and re-applies harnessed's required grants each time.
+    # Without this, changing your host defaultMode — or harnessed fixing what it emits — never
+    # reaches the config dir until something unrelated happens to change the stack. That is exactly
+    # how the 8px.17 duplicate-hook fix landed in the profile and left the live config untouched.
+    # Everything else in here (skills/rules/commands/CLAUDE.md) IS a function of that closure.
+    settings = prof / "settings.json"
+    if settings.is_file():
+        _propagate_host_settings(settings, home / "settings.json")
     _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
     argv = ["claude"]
-    return home, argv, project_path
+    return home, argv, project_path, rebuilt
 
 
 def _gcd_db_name(project_path: Path) -> str:
@@ -2922,6 +3388,8 @@ def _script_env(
     values: dict[str, str],
     *,
     mode: str,
+    harness: str,
+    recipe=None,
     bin_dir: Path | None = None,
 ) -> dict[str, str]:
     """The env a recipe's `setup.script` sees — IDENTICAL keys in host and container mode.
@@ -2937,6 +3405,8 @@ def _script_env(
     common dir — `.bare/` — is outside the mount), so they are computed host-side and injected.
     """
     env: dict[str, str] = {
+        **harnessed_env(stack, project_path, harness=harness, mode=mode, recipe=recipe,
+                        sockets=False),
         "HARNESSED_MODE": mode,
         "HARNESSED_STACK": stack,
         "HARNESSED_PROJECT_DIR": str(project_path),
@@ -2957,19 +3427,27 @@ def _script_env(
 
 
 _CTR_SETUP_DIR = "/opt/harnessed/setup"
+# Single-sourced with the build-phase COPY target (emit._install_dockerfile_lines) so
+# $HARNESSED_RECIPE_DIR names the same container path whether the recipe dir arrived there by
+# `install:`'s COPY or `setup.script`'s runtime bind-mount.
+_CTR_RECIPE_DIR = emit.CTR_RECIPE_DIR
 
 
 def _setup_script_mounts(recipes) -> list[str]:
-    """`-v …:ro` args placing each recipe's `setup.script` inside the container.
+    """`-v …:ro` args placing each recipe's `setup.script` — and the recipe dir it came from —
+    inside the container.
 
     A MOUNT, not a Dockerfile COPY, on purpose: the script is authorable catalog content, so editing
     it must not require an image rebuild — and the image stays untouched by this whole mechanism.
+    The recipe dir rides along because a script does `cp` where a Dockerfile did `COPY`; it is the
+    container-side value of $HARNESSED_RECIPE_DIR (see `harnessed_env`).
     """
     args: list[str] = []
     for recipe in recipes:
         if recipe.setup and recipe.setup.script:
             src = recipe.root / recipe.setup.script
             args += ["-v", f"{src}:{_CTR_SETUP_DIR}/{recipe.name}.sh:ro"]
+            args += ["-v", f"{recipe.root}:{_CTR_RECIPE_DIR}/{recipe.name}:ro"]
     return args
 
 
@@ -2992,7 +3470,20 @@ def _pending_setup_scripts(project_path: Path, recipes) -> list:
     return pending
 
 
-def _container_setup_env(stack: str, project_path: Path, pending) -> dict[str, str]:
+def _recipe_env(recipes, project_path: Path, *, mode: str) -> dict[str, str]:
+    """Every recipe's `env:` resolved for one mode — the SINGLE declaration behind all three
+    consumers (build-time install step, setup script, and the agent process itself).
+
+    Later recipes win on a clash, matching the Dockerfile layering this replaces (a later `ENV` for
+    the same name overrides an earlier one), so stack recipe order stays the tie-breaker.
+    """
+    env: dict[str, str] = {}
+    for recipe in recipes:
+        env.update(resolve_recipe_env(recipe, mode=mode, project_path=project_path))
+    return env
+
+
+def _container_setup_env(stack: str, project_path: Path, pending, *, harness: str) -> dict[str, str]:
     """The setup env for a container launch, resolved HOST-side (a `setup.config` item may PROMPT,
     which has to happen before the container starts) and set as REAL CONTAINER ENV.
 
@@ -3007,7 +3498,9 @@ def _container_setup_env(stack: str, project_path: Path, pending) -> dict[str, s
     env: dict[str, str] = {}
     for recipe in pending:
         values = _resolve_setup_config(recipe.setup, primitives, interactive=sys.stdin.isatty())
-        env.update(_script_env(stack, project_path, values, mode="container"))
+        env.update(_script_env(
+            stack, project_path, values, mode="container", harness=harness, recipe=recipe
+        ))
     return env
 
 
@@ -3026,7 +3519,78 @@ def _run_container_setups(rt: str, inst: str, pending) -> None:
             raise typer.Exit(1)
 
 
-def _host_run_setups(stack: str, project_path: Path) -> None:
+def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Path) -> None:
+    """Run each recipe's `install.script` HOST-side — the host half of `RUN bash install.sh`.
+
+    ORDERING IS LOAD-BEARING and the caller must not move it: this runs AFTER
+    `_materialize_host_home`, which `shutil.rmtree`s `home` on EVERY launch so a removed recipe's
+    files never linger. Run installs before that and their output is deleted milliseconds later —
+    silently, which is precisely the failure mode of harnessed-8px.1. It also runs BEFORE
+    `_host_run_setups`: install bakes content, setup configures against it.
+
+    That per-launch wipe also rules out a "first launch only" gate: the home is new every time, so
+    the install is needed every time. `install.cache` is what makes that affordable — the OUTPUT
+    cannot persist but the pinned SOURCE can (see paths.install_cache_dir).
+
+    A recipe declaring `install.system` has a component only a container build can perform (root /
+    apt-get). harnessed does not sudo and does not mutate the user's system, so that component is
+    skipped here — but announced, verbatim, with the recipe named. Never silently.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    installs = [r for r in recipes if r.install]
+    if not installs:
+        return
+    _, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
+    # The `$HOME` shim an installer that only writes "globally" runs under. Created once and RELINKED
+    # each launch: `home` is rmtree'd and rebuilt every time, so the symlink must be re-pointed at the
+    # new inode even though the path string is unchanged.
+    home_shim = paths.host_home_shim(home)
+    home_shim.mkdir(parents=True, exist_ok=True)
+    _relink(home_shim / ".claude", home)
+    recipe_env = _recipe_env(installs, project_path, mode="host")
+    for recipe in installs:
+        inst = recipe.install
+        if inst.system:
+            _err.print(
+                f"[bold yellow]WARNING[/bold yellow] install ({recipe.name}): container-only step "
+                f"SKIPPED on a host launch — {inst.system}. harnessed will not sudo or otherwise "
+                "write outside its own directories; run this stack in a container to get it."
+            )
+        if inst.script is None:
+            # ROOT-ONLY install (`system:` with no script): the warning above IS the whole host-side
+            # behaviour. Schema guarantees a script-less install carries a reason, so this is never
+            # a silent skip.
+            continue
+        cache = paths.install_cache_dir(recipe.name, inst.cache) if inst.cache else None
+        if cache is not None:
+            # Create the PARENT only. The cache dir's own existence is the script's hit/miss test.
+            cache.parent.mkdir(parents=True, exist_ok=True)
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        home.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ)
+        env.update(recipe_env)   # recipe `env:` beats the inherited environment …
+        env.update(emit.install_env(  # … and the harnessed-owned contract beats BOTH. Same
+            recipe, mode="host", harness=harness,  # winner as container mode, where the inline
+            config_dir=str(home),                  # RUN assignments beat the preceding ENV lines.
+            cache_dir=str(cache) if cache else "",
+            bin_dir=str(bin_dir),
+            home_shim=str(home_shim),
+        ))
+        # Host-only, mirroring _host_run_setups: keep any tool an install lands in the stack tree
+        # rather than the user's global one.
+        env["UV_TOOL_DIR"] = str(uv_tool_dir)
+        env["UV_TOOL_BIN_DIR"] = str(bin_dir)
+        env["npm_config_prefix"] = str(bin_dir.parent)
+        env["PATH"] = os.pathsep.join([str(bin_dir), os.environ.get("PATH", "")])
+        _err.print(f"[blue][INFO][/blue] install ({recipe.name}): {inst.script} (host)")
+        if subprocess.run(
+            ["bash", str(recipe.root / inst.script)], cwd=str(project_path), env=env
+        ).returncode != 0:
+            _err.print(f"[bold red]error:[/bold red] install for '{recipe.name}' failed")
+            raise typer.Exit(1)
+
+
+def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
     """Run each recipe's executable setup (host-native) whose `condition` is satisfied — either the
     both-mode `setup.script` (preferred) or the legacy host-only `setup.run`.
 
@@ -3044,7 +3608,10 @@ def _host_run_setups(stack: str, project_path: Path) -> None:
         # A `setup.script` ignores it and runs every launch — see _pending_setup_scripts for why
         # (a first-run gate can never correct state that exists but is wrong).
         if setup.run and setup.condition and subprocess.run(
-            ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True
+            ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True,
+            env={**os.environ, **harnessed_env(
+                stack, project_path, harness=harness, mode="host", recipe=recipe
+            )},
         ).returncode != 0:
             continue
         if primitives is None:
@@ -3054,7 +3621,8 @@ def _host_run_setups(stack: str, project_path: Path) -> None:
             script = recipe.root / setup.script
             bin_dir.mkdir(parents=True, exist_ok=True)
             env = dict(os.environ)
-            env.update(_script_env(stack, project_path, values, mode="host", bin_dir=bin_dir))
+            env.update(_script_env(stack, project_path, values, mode="host",
+                                   harness=harness, recipe=recipe, bin_dir=bin_dir))
             # Host-only: point uv/npm at the stack-scoped tree so a script's install lands in
             # bin_dir rather than the user's global tool dir. In-container these stay unset — the
             # image already baked the tool via its Dockerfile.
@@ -3064,53 +3632,14 @@ def _host_run_setups(stack: str, project_path: Path) -> None:
             argv, label = ["bash", str(script)], f"{setup.script} (host)"
         else:
             cmd = _subst(setup.run, values)
-            env, argv, label = dict(os.environ), ["bash", "-lc", cmd], cmd
+            env = {**os.environ, **harnessed_env(
+                stack, project_path, harness=harness, mode="host", recipe=recipe
+            )}
+            argv, label = ["bash", "-lc", cmd], cmd
         _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {label}")
         if subprocess.run(argv, cwd=str(project_path), env=env).returncode != 0:
             _err.print(f"[bold red]error:[/bold red] setup for '{recipe.name}' failed")
             raise typer.Exit(1)
-
-
-def _host_provision(stack: str) -> list[str]:
-    """Install each recipe's host `provision:` tools into a STACK-SCOPED location and return the bin
-    dir(s) to prepend to PATH — so hatago's stdio children (serena, repowise, …) resolve host-native.
-
-    Idempotent: skips a tool whose command already exists in the stack bin dir (installs are slow).
-    Stack-scoped (not global) so two stacks can pin different versions without clobbering each other.
-    """
-    _, recipes = load_stack_with_recipes(None, stack)
-    entries = [p for r in recipes for p in r.provision]
-    if not entries:
-        return []
-    tools_root, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    for p in entries:
-        if (bin_dir / p.command).exists():
-            continue  # already provisioned
-        env = dict(os.environ)
-        if p.via == "uv-tool":
-            tool = "uv"
-            cmd = ["uv", "tool", "install", *(["-p", p.python] if p.python else []),
-                   f"{p.package}=={p.version}"]
-            env["UV_TOOL_DIR"] = str(uv_tool_dir)
-            env["UV_TOOL_BIN_DIR"] = str(bin_dir)
-        elif p.via == "npm":
-            tool = "npm"
-            cmd = ["npm", "install", "-g", f"{p.package}@{p.version}"]
-            env["npm_config_prefix"] = str(tools_root)  # → executables land in <tools_root>/bin
-        else:
-            continue
-        if shutil.which(tool) is None:
-            _err.print(
-                f"[bold red]error:[/bold red] host provisioning needs '{tool}' on PATH "
-                f"(to install {p.package} {p.version})"
-            )
-            raise typer.Exit(1)
-        _err.print(f"[blue][INFO][/blue] provisioning {p.package} {p.version} via {p.via} (host, stack-scoped) ...")
-        if subprocess.run(cmd, env=env).returncode != 0:
-            _err.print(f"[bold red]error:[/bold red] provisioning {p.package} failed")
-            raise typer.Exit(1)
-    return [str(bin_dir)]
 
 
 def _host_native_mcp(stack: str) -> Optional[dict]:
@@ -3132,7 +3661,7 @@ def _host_native_mcp(stack: str) -> Optional[dict]:
             if cmd and shutil.which(cmd) is None:
                 _err.print(
                     f"[yellow]warn:[/yellow] MCP server '{s.name}' needs '{cmd}' on PATH — "
-                    "claude will fail to start it until it's installed (add a recipe `provision:`)"
+                    "claude will fail to start it until it's installed (add an install.sh to the recipe)"
                 )
             entry: dict = {"command": cmd, "args": list(s.args)}
             if s.env:
@@ -3161,8 +3690,8 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     then stop the daemons THIS launch started)."""
     if harness != _HOST_HARNESS:
         _err.print(
-            f"[bold red]error:[/bold red] --host currently supports only '{_HOST_HARNESS}' "
-            f"(got '{harness}') — content-only spike"
+            f"[bold red]error:[/bold red] host-run currently supports only '{_HOST_HARNESS}' "
+            f"(got '{harness}')"
         )
         raise typer.Exit(1)
 
@@ -3177,7 +3706,7 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
         raise typer.Exit(1)
 
     # Assemble IN-PROCESS every launch — host-native, emit-only, NO podman and NO image build. This is
-    # what keeps --host container-free end to end: unlike `harnessed build` (which also builds a
+    # what keeps host-run container-free end to end: unlike `harnessed build` (which also builds a
     # multi-GB image), we only need the profile's content layer. Assembly is sub-second, so a
     # rebuild-per-launch also sidesteps staleness bookkeeping entirely. `build_root` is the dir that
     # CONTAINS profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
@@ -3188,25 +3717,80 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
 
-    # Provision host stdio-MCP tools onto PATH BEFORE recipe setups + native MCP, so claude can spawn
-    # them (and the child-command presence check passes). Mutating this process's PATH is fine — it's
-    # dedicated to this launch, and claude (env built from os.environ) inherits it.
-    prov_bins = _host_provision(stack)
-    # The stack bin dir goes on PATH whether or not `provision:` populated it: a `setup.script` may
-    # install into it below (after this point), and _host_native_mcp's presence check runs after that.
+    # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
+    # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
+    # this launch), so all three consumers get it from one place: any install/setup script spawned
+    # from here inherits it, and so does claude itself — `env = dict(os.environ)` at the exec below
+    # is what actually delivers it to the running agent, the row that was broken before.
+    # Recipe declarations win over an inherited value, mirroring `podman run -e` in container mode.
+    host_stk, host_recipes = load_stack_with_recipes(None, stack)
+    os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
+
+    # Put the stack bin dir on PATH BEFORE recipe setups + native MCP check. install.sh may put tools
+    # there (via UV_TOOL_BIN_DIR / PNPM_HOME redirect), and _host_native_mcp's presence check runs
+    # after that — it needs them resolvable. Mutating this process's PATH is fine: it's dedicated to
+    # this launch, and claude (env built from os.environ below) inherits it.
     _, stack_bin, _ = _stack_tools_dirs(stack)
     os.environ["PATH"] = os.pathsep.join(
-        [*prov_bins, *([str(stack_bin)] if str(stack_bin) not in prov_bins else []),
-         os.environ.get("PATH", "")]
+        [str(stack_bin), os.environ.get("PATH", "")]
     )
+    # Folder-env contract into THIS process's env, for the same reason (and with the same precedent)
+    # as the PATH mutation above: a container launch sets the contract box-wide (`podman run -e`) so
+    # every process agrees, and the host has no box — os.environ IS the box. Without this the agent
+    # exec'd below inherits nothing, because subprocess.run(env=…) in _host_run_setups is a private
+    # copy that dies with the setup. Set BEFORE the setups so they see it too.
+    os.environ.update(harnessed_env(stack, project_path, harness=harness, mode="host"))
+
+    # Materialize the host home FIRST, then install, then setup. This order is required, not
+    # stylistic: _materialize_host_home rmtree's the home on every launch, so an install that ran
+    # before it would have its output deleted — silently (harnessed-8px.1). Setup follows install
+    # because install bakes the content setup then configures. _host_launch_plan is pure
+    # materialization (its returned argv is rebuilt below), so hoisting it above the scripts costs
+    # nothing and is what lets a script write into the home at all.
+    #
+    # Resolve settings into the PROFILE first: _materialize_host_home (inside the plan) copies
+    # prof/settings.json into the host config dir verbatim, so anything not applied here never
+    # reaches the agent. This is the host half of the container path's merge (see the
+    # _merge_host_claude_settings call in `launch`) — without it a host session ran on the bare
+    # assemble-time FLOOR, so the host's own ~/.claude defaultMode never crossed over and a user
+    # running `auto` silently got `acceptEdits` (bd harnessed-8px.8). merge_settings applies
+    # required.defaultMode with setdefault — a floor, not an override — so the host's mode wins.
+    if harness in ("claude", "omp", "opencode"):
+        _merge_host_claude_settings(
+            profile_dir(stack, harness),
+            emit.required_settings(
+                _resolve_service_servers(_merge_servers(host_recipes), None),
+                host_recipes, host_stk.permissions, harness,
+            ),
+            harness,
+        )
+    # Lock spans the rebuild AND the installs — see _host_home_lock for why releasing earlier would
+    # let a second launch skip installs that are still running.
+    with _host_home_lock(paths.host_home(stack, harness)):
+        home, argv, cwd, rebuilt = _host_launch_plan(
+            stack, harness, project_path, recipes=host_recipes
+        )
+    # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content a
+    # Dockerfile RUN used to deliver to containers only.
+    #
+    # SKIPPED when the home was not rebuilt (bd harnessed-8px.12). An install is logically once per
+    # STACK, not once per launch: it only ever ran every time because the materialize wiped its
+    # output every time. With the wipe gated on the stack fingerprint, the output is still there, so
+    # re-running would re-download and re-extract to produce the bytes already on disk.
+        if rebuilt:
+            _host_run_installs(stack, project_path, harness=harness, home=home)
+            # ONLY now is the build complete. _host_run_installs exits non-zero on failure, so a
+            # failed install never reaches this line and the next launch rebuilds and retries
+            # instead of trusting a stamp that certifies content which was never finished.
+            _stamp_host_home(home, _host_stack_fingerprint(stack, host_recipes))
+        else:
+            _say(f"[blue][INFO][/blue] Stack unchanged — reusing {home} (installs skipped)")
     # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
     # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
-    _host_run_setups(stack, project_path)
+    _host_run_setups(stack, project_path, harness=harness)
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
-    # sees just-provisioned tools.
+    # sees just-provisioned tools AND anything an install/setup script put in the stack bin dir.
     mcp_servers = _host_native_mcp(stack)
-
-    home, argv, cwd = _host_launch_plan(stack, harness, project_path)
 
     # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude load
     # ONLY this file, so the copied .claude.json's global mcpServers never leak into an isolated
@@ -3228,6 +3812,41 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
         os.execvpe(argv[0], argv, env)  # never returns
     # --rm: supervise (fork claude, wait). No host daemons to tear down — bd owns its shared server.
     subprocess.run(argv, env=env)
+
+
+def _require_supported_harness(harness: str) -> None:
+    """Shared by `launch` and `host-run` so the two entry points cannot drift apart."""
+    if harness not in HARNESS_CONFIG_DIR:
+        _err.print(
+            f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+            f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+        )
+        raise typer.Exit(1)
+
+
+@app.command("host-run")
+def host_run(
+    stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
+    harness: str = typer.Argument("claude", help="Harness to use (host-native: claude)"),
+    path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+    rm: bool = typer.Option(
+        False, "--rm", help="Stop host daemons this launch started when the session exits"
+    ),
+) -> None:
+    """Run a stack HOST-NATIVELY — no podman, no container.
+
+    The host backend's own verb (bd harnessed-ltj), separate from `launch` because the two share no
+    flags but `--rm`. `--fresh`, `--no-firewall`, `--mount-folder`, `--agent-start-folder` and
+    `--shell` all describe a pod that does not exist here, so a combined verb could only accept them
+    and do nothing.
+
+    What host mode isolates is CONFIGURATION, not the filesystem: the stack's assembled profile is
+    materialized into a per-stack CLAUDE_CONFIG_DIR and the harness is exec'd against your real
+    machine, in your real project, with your real credentials. Use `launch` when you want the
+    container boundary too.
+    """
+    _require_supported_harness(harness)
+    _launch_host(stack, harness, path, rm=rm)
 
 
 @app.command()
@@ -3252,26 +3871,10 @@ def launch(
         False, "--shell",
         help="Open an interactive bash shell in the container instead of starting the agent",
     ),
-    host: bool = typer.Option(
-        False, "--host",
-        help="Content-only host-native run: materialize the profile into a host CLAUDE_CONFIG_DIR "
-             "and exec the harness on the host (no podman, no MCP). Spike — claude only.",
-    ),
 ) -> None:
-    """Launch an isolated harness stack against a project directory."""
-    if harness not in HARNESS_CONFIG_DIR:
-        _err.print(
-            f"[bold red]error:[/bold red] unsupported harness '{harness}' "
-            f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
-        )
-        raise typer.Exit(1)
+    """Launch an isolated harness stack against a project directory (container backend)."""
+    _require_supported_harness(harness)
 
-    # Host-native content-only backend: fully self-contained and podman-free (never touches
-    # _runtime()/images/mounts). Diverts before any container logic — the whole point is to run
-    # without a container. See _launch_host. --rm → supervise + stop host daemons on exit.
-    if host:
-        _launch_host(stack, harness, path, rm=rm)
-        return
     if no_firewall:
         os.environ["NO_FIREWALL"] = "true"
 
@@ -3368,6 +3971,19 @@ def launch(
         # keyring dir deliberately survives a normal recreate, so this is the one place it is cleared.
         _keyring_fresh_wipe(harness, inst)
 
+    # Start any service sidecars this stack's recipes reference. Idempotent — skips services already
+    # running. Global services are host-published (reached from the pod via
+    # host.containers.internal:<port>); project-scoped ones bind-mount this project's persist dir and
+    # are reached through a unix socket inside it, so they need the project/mount context.
+    #
+    # BEFORE the re-attach branch below, deliberately: a long-lived agent container outlives its
+    # sidecars. This used to sit after the create path only, so once an instance was running, every
+    # subsequent launch took the attach branch and never looked at services again — a sidecar that
+    # died stayed dead for the life of the container, long after whatever killed it was gone
+    # (observed 2026-07-21: a sidecar dead for 3h, revived by nothing, while `bd` failed every
+    # session). Reviving it is exactly what "idempotent" already promised.
+    _ensure_services(rt, stack, project_path=project_path, mount_path=mount_path)
+
     # Re-attach to a running instance (interactive only) — but if it was built from an older image
     # (rebuilt since it started), a re-attach would silently run the stale build. Offer to recreate.
     headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
@@ -3400,12 +4016,6 @@ def launch(
 
     # Recipe init (Model A) now runs inside the attach shell (_attach → _init_shell_prologue), not a
     # transient container — so init-derived env reaches the agent. Nothing to do here at pod-create.
-
-    # Start any service sidecars this stack's recipes reference. Idempotent — skips services already
-    # running. Global services are host-published (reached from the pod via
-    # host.containers.internal:<port>); project-scoped ones bind-mount this project's persist dir and
-    # are reached through a unix socket inside it, so they need the project/mount context.
-    _ensure_services(rt, stack, project_path=project_path, mount_path=mount_path)
 
     _out.print(f"[blue][INFO][/blue] Creating isolated pod: {pod} (harness + hatago)")
     _out.print(f"[blue][INFO][/blue] Project: {project_path} -> {CONTAINER_HOME / relpath}")
@@ -3515,19 +4125,36 @@ def launch(
     # exec`, a hook, or any subprocess saw $HARNESSED_BEADS_SERVER_SOCKET unset — and bd silently
     # accepts an EMPTY --server-socket, falling back to its old TCP config instead of failing. Set it
     # on the container so every process in it agrees.
-    socket_env = [arg for var, sock in svc_socket_env(stack, project_path).items()
-                  for arg in ("-e", f"{var}={sock}")]
+    # (Now the whole folder-env contract, not just the sockets — `_init_shell_prologue` still
+    # exports it for the attach shell, but a hook or a `podman exec` never sees that shell.)
+    socket_env = [arg for var, val in harnessed_env(
+        stack, project_path, harness=harness, mode="container", mount_path=mount_path
+    ).items() for arg in ("-e", f"{var}={val}")]
     # Same rationale as socket_env: a recipe's setup env belongs to the CONTAINER, not to one exec,
     # so hooks and later execs see what the setup script saw. Resolved here because a `setup.config`
     # item may prompt, which must happen before the container starts.
     pending_setups = _pending_setup_scripts(project_path, launch_recipes)
-    setup_env = [arg for var, val in _container_setup_env(stack, project_path, pending_setups).items()
+    setup_env = [arg for var, val in _container_setup_env(
+                     stack, project_path, pending_setups, harness=harness).items()
                  for arg in ("-e", f"{var}={val}")]
+    # Recipe `env:` — set on the CONTAINER for the third time and the same reason. The image already
+    # carries the build-resolvable subset as real ENV (emit.write_derived_dockerfile), but that is
+    # not sufficient: a value templated on the PROJECT (`{project_dir}`, an in_repo persist dir) is
+    # unknowable at build. Setting the resolved values here makes the running agent's env complete
+    # and identical to what the host mode gives it.
+    recipe_env = [arg for var, val in _recipe_env(launch_recipes, project_path, mode="container").items()
+                  for arg in ("-e", f"{var}={val}")]
     harness_run = [
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
         "--name", inst,
         *[arg for f in secrets_env_files for arg in ("--env-file", str(f))],
+        # ORDER IS PRECEDENCE: podman applies `-e` left-to-right, so the LAST wins. Recipe `env:` goes
+        # FIRST — it is catalog-authored and must not be able to clobber harnessed-owned values. That
+        # matches host mode, where _launch_host applies _recipe_env to os.environ and THEN overwrites
+        # with harnessed_env. Reversing these two silently inverts precedence between modes (caught
+        # merging harnessed-0tk.7 and harnessed-8px.2, each of which was self-consistent alone).
+        *recipe_env,
         *socket_env,
         *setup_env,
         *member_mounts,
@@ -3606,7 +4233,7 @@ def _attach(
     `init.run` inline (fail-fast) BEFORE exec-ing the harness, so init-derived env reaches the agent.
     """
     mise_init = "source ~/.bashrc && mise trust -a 2>/dev/null"
-    init_prologue = _init_shell_prologue(stack, project_path, mount_path)
+    init_prologue = _init_shell_prologue(stack, project_path, mount_path, harness=harness)
 
     if shell:
         tail = "exec bash -l"
@@ -4026,7 +4653,9 @@ def uninstall_stack(
         _out.print(f"No shim found at {shim}")
 
 
-def _scan_image_in_container(rt: str, image: str) -> bool:
+def _scan_image_in_container(
+    rt: str, image: str, *, report_dest: "Path | None" = None
+) -> bool:
     """Run the image's own baked `harnessed-scan` inside a throwaway container, with scanner tokens
     injected as env.
 
@@ -4049,14 +4678,39 @@ def _scan_image_in_container(rt: str, image: str) -> bool:
             "[yellow]note:[/yellow] no ~/.config/harnessed/.env.schema or .env — snyk and socket "
             "have no tokens and will be skipped (osv-scanner + pip-audit still run)"
         )
+    # NOT `--rm`: this scan's report is the only one that ever contains snyk/socket findings, and a
+    # removed container takes it with it. That is exactly how bd harnessed-de7 happened — the
+    # credentialed findings were printed, discarded, and then the weaker build-time report was
+    # surfaced in their place under a green "no high/critical" verdict. Keep the container just long
+    # enough to `cp` the report out, then remove it in the `finally`.
+    #
+    # `cp` rather than a bind-mount on purpose: the image runs as the unprivileged `harnessed` user,
+    # and writing to a host dir from a rootless container needs userns mapping that this call site
+    # does not otherwise require. Copying out has no such dependency.
+    cid = ""
     try:
-        res = subprocess.run([
-            rt, "run", "--rm",
-            *[arg for f in env_files for arg in ("--env-file", str(f))],
-            image, "harnessed-scan",
-        ])
+        with tempfile.TemporaryDirectory() as td:
+            cidfile = Path(td) / "cid"  # must NOT pre-exist — podman refuses to overwrite it
+            res = subprocess.run([
+                rt, "run", "--cidfile", str(cidfile),
+                *[arg for f in env_files for arg in ("--env-file", str(f))],
+                image, "harnessed-scan",
+            ])
+            cid = cidfile.read_text().strip() if cidfile.is_file() else ""
+        if report_dest is not None and cid:
+            report_dest.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.harnessed/scan-report.json",
+                 str(report_dest)],
+                capture_output=True,
+            )
+        # Return means "the scan ran cleanly" — NOT "a report was persisted". `_scan_image` calls
+        # this without a report_dest and needs that original meaning; whether a report landed is a
+        # separate question the caller answers by looking for the file.
         return res.returncode == 0
     finally:
+        if cid:
+            subprocess.run([rt, "rm", "-f", cid], capture_output=True)
         for f in temp_files:
             Path(f).unlink(missing_ok=True)
 
@@ -4193,9 +4847,116 @@ def rescan(
 # Subcommand names — anything else in the first position is treated as a stack name and routed
 # to `launch` (the `harnessed <stack> [project] [--fresh]` shorthand the README documents and the
 # capability test relies on).
+@app.command("host-gc")
+def host_gc(
+    prune: bool = typer.Option(False, "--prune", help="Remove orphan dirs whose project path no longer exists"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed without removing it"),
+) -> None:
+    """List host config dirs; optionally remove orphans and scrub stranded credentials.
+
+    Default (no flags): list every host config dir with stack/harness/hash, project path, age,
+    size, and credential status (symlink vs. real file vs. absent).
+
+    --prune: remove dirs whose project path no longer exists on disk. A dir whose project path
+    is present is NEVER removed — a path can be absent because a volume is unmounted, and silently
+    deleting that config would be data loss. Inspect the listing first.
+
+    --dry-run: combine with --prune to see what would be removed without touching anything.
+
+    Credential scrubbing: real .credentials.json files (written by Claude on token refresh,
+    replacing the symlink) are overwritten with null bytes and fsync'd before the dir is removed.
+    On SSDs with wear-leveling firmware the controller may have already remapped the underlying
+    blocks, so overwrite reduces but does not guarantee physical erasure. It is better than a bare
+    unlink and is the level of assurance a software tool can provide without raw device access.
+
+    Interaction with harnessed-8px.12 (re-keying to per-stack dirs): that migration orphans every
+    existing per-project dir at once. Run `host-gc --dry-run --prune` AFTER the migration to
+    review, then `host-gc --prune` to scrub. The _scrub_host_home helper is reusable by the
+    migration path for exactly this purpose.
+    """
+    import time as _time
+
+    root = paths.host_homes_root()
+    if not root.exists():
+        _out.print("No host config dirs found.")
+        return
+
+    # Enumerate root/<stack>/<harness> — the config dir IS the stack identity (bd harnessed-8px.12),
+    # so a dir is an orphan when its STACK no longer resolves in the catalog. That is a far better
+    # signal than the old per-project breadcrumb: a stack name is right there in the path, where a
+    # project_hash was a one-way sha1 that could not be resolved back to anything.
+    entries: list[tuple[str, str, bool, float, float, str, list[str], Path]] = []
+    for stack_dir in sorted(root.iterdir()):
+        if not stack_dir.is_dir():
+            continue
+        stack_gone = not (paths.find_in_catalog("stacks", stack_dir.name) / "stack.yaml").is_file()
+        for home in sorted(stack_dir.iterdir()):
+            # `<harness>.home` is the $HOME shim (paths.host_home_shim), a sibling of the config dir
+            # — not a config dir itself, and removing it out from under a stack would break installs.
+            if not home.is_dir() or home.name.endswith(".home"):
+                continue
+            age_days = (_time.time() - home.stat().st_mtime) / 86400
+            size_kb = sum(f.stat().st_size for f in home.rglob("*") if f.is_file()) / 1024
+            cred = home / ".credentials.json"
+            cred_status = "symlink" if cred.is_symlink() else ("REAL-FILE" if cred.is_file() else "none")
+            # Pre-8px.12 per-project dirs, now nested inside. The next launch scrubs them; surfacing
+            # them here means a user who never relaunches that stack can still see they exist.
+            legacy = [
+                c.name for c in sorted(home.iterdir())
+                if c.is_dir() and not c.is_symlink() and _LEGACY_PROJECT_DIR_RE.match(c.name)
+            ]
+            entries.append(
+                (stack_dir.name, home.name, stack_gone, age_days, size_kb, cred_status, legacy, home)
+            )
+
+    if not entries:
+        _out.print("No host config dirs found.")
+        return
+
+    for stack, harness, is_orphan, age_days, size_kb, cred_status, legacy, home in entries:
+        status = "[red]ORPHAN[/red]" if is_orphan else "[green]ok[/green]"
+        cred_tag = f"  cred:[yellow]{cred_status}[/yellow]" if cred_status != "none" else ""
+        legacy_tag = (
+            f"  [yellow]{len(legacy)} legacy per-project dir(s)[/yellow]" if legacy else ""
+        )
+        reason = " (stack no longer in catalog)" if is_orphan else ""
+        _out.print(
+            f"{status}  {stack}/{harness}  "
+            f"age={age_days:.0f}d  {size_kb:.0f}KB{cred_tag}{legacy_tag}{reason}"
+        )
+
+    if not prune:
+        orphan_count = sum(1 for e in entries if e[2])
+        if orphan_count:
+            _out.print(f"\n[dim]{orphan_count} orphan(s). Run with --prune to remove.[/dim]")
+        return
+
+    orphans = [e for e in entries if e[2]]  # stack no longer in the catalog
+    if not orphans:
+        _out.print("\nNo orphans to remove.")
+        return
+
+    removed = 0
+    for stack, harness, _is_orphan, _age, _size, _cred, _legacy, home in orphans:
+        label = f"{stack}/{harness} (stack no longer in catalog)"
+        proj_dir = home
+        if dry_run:
+            _out.print(f"[yellow]would remove[/yellow] {label}")
+            removed += 1
+            continue
+        _out.print(f"[blue][INFO][/blue] Removing {label}")
+        _scrub_host_home(proj_dir)
+        removed += 1
+
+    if dry_run:
+        _out.print(f"\n[dim]{removed} orphan(s) would be removed (--dry-run, nothing deleted).[/dim]")
+    else:
+        _out.print(f"\n[green][SUCCESS][/green] Removed {removed} orphan(s).")
+
+
 _COMMANDS = {
     "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
-    "install", "uninstall", "scan", "rescan", "svc", "aws-sso",
+    "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc", "host-run",
 }
 
 

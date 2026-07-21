@@ -7,7 +7,7 @@
 #
 # Like `time`, this is a stdio MCP server: hatago spawns it as a child (stdio→HTTP) and the harness
 # only ever talks to hatago's single Streamable-HTTP endpoint. Unlike `time` (uvx) the server is a
-# baked-in binary, so a Dockerfile installs it (the assembler can't see RUN-step output, hence the
+# baked-in binary, so `install.sh` installs it (the assembler can't see a script's output, hence the
 # `expect:` below). The recipe ships no skill — upstream offers none.
 #
 # Contingent on the hatago consolidation (catalog/todos/2026-06-29-hatago-consolidation.md): until
@@ -17,16 +17,28 @@ name: codebase-memory-mcp
 description: 158-language codebase knowledge graph (tree-sitter) via a stdio MCP server.
 # setup: none needed — self-contained binary; MCP fully wired by recipe
 
+# The binary, as ONE bash file run by BOTH executors: `RUN bash install.sh` in the derived image,
+# and by the launcher after the host home is materialized on `launch --host`. The Dockerfile it
+# replaces was container-only, so a host launch had no `codebase-memory-mcp` on PATH at all and the
+# stdio child below silently resolved to nothing.
+#
+# No `cache:` — `install.cache` keys a pinned CONTENT clone, and mise already caches the release
+# asset it downloads. No `system:` — nothing here needs root; mise installs under the invoking
+# user's own dirs in both modes.
+install:
+  script: install.sh
+
 # What the capability test must find after a successful build: the cbm MCP server connected through
-# the hatago hub. (The binary itself is installed by the Dockerfile; `expect:` is the only way the
+# the hatago hub. (The binary itself is installed by `install.sh`; `expect:` is the only way the
 # capability test learns about it.)
 expect:
   mcp: [codebase-memory-mcp]
 
 # --- MCP layer ---
 # `transport: stdio` (default): hatago runs `codebase-memory-mcp` as a child, wrapping stdio→HTTP.
-# The command resolves through the mise shims on PATH (the Dockerfile installs via mise's github:
-# backend — NOT into /usr/local/bin). No args: upstream's own stdio config is `"args": []`; cbm
+# The command resolves through the mise shims on PATH in a container, and through the stack bin dir
+# on a host launch (install.sh, which uses mise's github: backend — NOT /usr/local/bin — in both
+# modes). No args: upstream's own stdio config is `"args": []`; cbm
 # detects the repo from the child's cwd and auto-indexes, so `--project-root` is not needed here.
 mcp:
   servers:

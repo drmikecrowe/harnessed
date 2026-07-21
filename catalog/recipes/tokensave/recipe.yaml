@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: tokensave — a pre-indexed semantic code knowledge graph MCP server (80+ tools, 50+ languages).
+#
+# tokensave is a stdio MCP server that indexes the project into a libSQL graph under .tokensave/.
+# hatago (the in-container MCP hub) spawns it as a stdio child (stdio→HTTP), so the child inherits
+# the project as cwd and indexes it. `transport: stdio` is the default and is omitted here. No skill
+# is shipped — upstream offers none; the 80+ tools are discovered via the native tool surface.
+#
+# CONTINGENT on the hatago consolidation (catalog/todos/2026-06-29-hatago-consolidation.md): until
+# hatago lands in the harness container this recipe is correct in shape but cannot index (no project
+# mount). The optional git-hook freshness enhancement (below) additionally needs the startup-hooks
+# feature — a separate, lighter dependency — and is therefore deferred (commented out).
+name: tokensave
+description: tokensave — pre-indexed semantic code knowledge graph (80+ tools, 50+ languages, 100% local).
+
+# ROOT-ONLY install: `system:` with NO `script:`. The Dockerfile's download + sha256 verify half
+# would run fine unprivileged, but its DESTINATION is what needs root — `install -m 0755 …
+# /usr/local/bin/tokensave` under `USER root`. Splitting it would leave a script that fetches a
+# 24 MB binary and has nowhere on a host to put it: the install env contract (emit.install_env)
+# exposes HARNESSED_CONFIG_DIR and HARNESSED_INSTALL_CACHE, neither of which is on PATH, and no
+# bin dir. So the step stays whole in the Dockerfile, and this declaration is what makes the host
+# skip AUDIBLE — the launcher prints the reason below verbatim, naming the recipe.
+install:
+  system: >-
+    the tokensave release binary is verified and installed into /usr/local/bin under USER root, and
+    the install contract exposes no host-side PATH directory to install it into instead
+
+setup:
+  summary: >-
+    Run `tokensave init` once per project to create the `.tokensave/` knowledge graph database
+    (the server only syncs already-initialised projects), then restart your agent.
+  reference: https://github.com/aovestdipaperino/tokensave
+
+# What the capability test must find after building: the tokensave MCP server connected through hatago.
+expect:
+  mcp: [tokensave]
+
+# --- MCP layer ---
+# hatago spawns `tokensave serve` in-container; it sees the bind-mounted project and writes .tokensave/
+# into it. A network-native server would use `url`/`service` + `transport: http` instead.
+mcp:
+  servers:
+    - name: tokensave
+      command: tokensave
+      args: [serve]
+      # transport: stdio (default). hatago spawns it in-container → it sees the project.
+
+# --- Freshness (OPTIONAL, deferred) ---
+# `tokensave serve` already self-freshens (on-demand staleness check + catch-up sync on connect), so
+# no hook is required for the MCP tools to work. The git-hook install below is a pure enhancement
+# that additionally needs the startup-hooks feature (not yet landed); left commented out until then.
+# hooks:
+#   new_session:
+#     script: hooks/new-session.sh
+#     when_missing: .tokensave

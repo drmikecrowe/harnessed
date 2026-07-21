@@ -20,11 +20,20 @@ that drift as part of promoting one, not before.
 | Recipe | State |
 | --- | --- |
 | `gbrain` | Has an `expect:` oracle; never exercised. Pairs with the still-shipped `catalog/services/gbrain` service. |
-| `hyperpowers` | Has an `expect:` oracle and an `install.sh`; never exercised. |
-| `tokensave` | Has an `expect:` oracle. Container-only by declaration (`install.system` — root-level binary install). |
 | `headroom` | No `expect:` oracle at all. |
 | `hindsight` | No `expect:` oracle at all. |
-| `solidspec` | No `expect:` oracle. Container-only by declaration (`install.system` — apt `cmake`/`pkg-config` for libgit2). |
+
+`hyperpowers`, `solidspec` and `tokensave` were considered and deliberately **left in place**: they
+are the subjects of the install-migration epic and are named directly by its tests
+(`CONTENT_RECIPES` in `tests/test_install_migration_content.py`, `ROOT_ONLY` in
+`tests/test_install_migration_system.py`). They are unexercised at runtime but heavily covered
+statically, so parking them would delete coverage rather than quarantine risk.
+
+PR #130 parked all three on `main` while this epic was in flight, and merging `main` in here
+deliberately reverts that for these three only — `gbrain`/`headroom`/`hindsight` stay parked, as
+both branches agreed. This is a deferral, not a disagreement about their fitness: the moment the
+migration epic lands, `ROOT_ONLY` and `CONTENT_RECIPES` should be repointed and the three parked for
+real. Do that as its own change, so the test edits are a decision rather than merge fallout.
 
 ## Promoting one back
 

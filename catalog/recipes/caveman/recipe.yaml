@@ -2,16 +2,16 @@
 # Recipe: caveman — output-compression skill suite, vendored by cloning the pinned release tag.
 #
 # The whole recipe is: clone caveman's pinned tag and copy its upstream skills/commands/agents
-# trees into ~/.claude/ (the exact layout `claude plugin install` drops, minus the plugin-registry
-# wrapping). The assembler can't see what a Dockerfile RUN step installs, so `expect:` lists a
-# representative few for the capability test to probe.
+# trees into the agent config dir (the exact layout `claude plugin install` drops, minus the
+# plugin-registry wrapping). The assembler can't see what `install.sh` installs, so `expect:` lists
+# a representative few for the capability test to probe.
 #
 # GAP 2 (Claude-native settings.json hooks, docs/todos/2026-06-27-recipe-stress-test.md) is now
 # implemented (schema.py `hooks:`, merged into settings.json by emit.py) — this recipe is its first
 # consumer. Upstream caveman ships a `SessionStart` hook (`src/hooks/caveman-activate.js`) that
 # auto-activates caveman mode from turn 1; we don't replicate that JS hook verbatim (would need
 # Node + the plugin-loader machinery, out of scope for this lightweight recipe), but `hooks:` below
-# gives the same "first time in this project" nudge via a plain shell one-liner: no Dockerfile
+# gives the same "first time in this project" nudge via a plain shell one-liner: no install-script
 # change needed, since the whole hook body fits in the `command` string.
 name: caveman
 description: caveman — output-compression skill; agent speaks terse "caveman", ~75% fewer output tokens, full technical accuracy. Levels lite/full/ultra/wenyan.
@@ -20,6 +20,21 @@ setup:
     Run `/caveman-init` once per project to configure output-compression preferences (intensity
     level and auto-activation).
   reference: https://github.com/JuliusBrussee/caveman
+
+# The clone-and-copy, as ONE bash file run by BOTH executors: `RUN bash install.sh` in the derived
+# image, and by the launcher after the host home is materialized on `launch --host`. The Dockerfile
+# this replaced ran only in the former, so a host launch had 0 caveman skills (bd harnessed-8px.1).
+#
+# `cache:` MUST equal the CAVEMAN_REF pinned inside install.sh. It keys the host content cache
+# ($XDG_CACHE_HOME/harnessed/install/caveman/v1.9.0) so the per-launch re-run — mandatory, because
+# the host home is rebuilt from scratch every launch — clones once, not every time. The schema
+# rejects a floating key; bump both together to upgrade, which yields a fresh cache dir.
+#
+# No `system:` — nothing here needs root (pure Markdown/TOML written under the agent config dir),
+# so a host launch is fully equivalent to the container build.
+install:
+  script: install.sh
+  cache: v1.9.0
 
 # What the capability test must find in the running container after a successful build. caveman
 # lands 7 skills into ~/.claude/skills and 4 slash-commands into ~/.claude/commands; declare a

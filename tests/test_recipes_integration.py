@@ -21,6 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import inspect
 import pytest
 
 from harnessed import paths
@@ -57,8 +58,7 @@ NO_CAPABILITY_ORACLE = {
     # host-native beads-daemon tracer stacks (spike): beads is CLI+hook+service only, no oracle surface.
     "hostbeads",
     "hostbeads_stealth",
-    # host-provision tracer (spike): installs a uv-tool, no skill/mcp surface.
-    "hostprov",
+
 }
 
 
@@ -197,6 +197,7 @@ def test_live_capabilities_present_in_container(stack):
 # of an image-baked ~/.claude/settings.json and the overwrite of the profile floor. We bake a
 # throwaway image rather than a catalog fixture because no catalog recipe writes settings.json yet.
 
+from harnessed import launcher
 from harnessed.launcher import _merge_baked_settings, _runtime  # noqa: E402
 from harnessed.paths import CONTAINER_HOME  # noqa: E402
 
@@ -263,3 +264,66 @@ def test_merge_baked_settings_keeps_floor_when_image_has_no_settings(tmp_path):
         subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
 
     assert result == _FLOOR, "floor stub should be untouched when nothing is baked"
+
+
+class TestCredentialedScanReportWins:
+    """bd harnessed-de7. A real build printed '0 critical · 4 high across 5 source(s)' and then
+    '✓ supply-chain: no high/critical advisories'. Both cannot be true.
+
+    _scan_image_in_container is the ONLY path on which snyk and socket run — the build-time layer is
+    deliberately credential-free. It used to run with `--rm`, so its report died with the container,
+    and _surface_scan_report then copied the image-baked (credential-free) report out and printed the
+    verdict from that. A build with high findings and a clean build produced the same green line.
+    """
+
+    def _report(self, path, crit, high, source="socket · node globals"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "advisory": True, "gating": 0,
+            "totals": {"critical": crit, "high": high},
+            "sources": [{"source": source, "critical": crit, "high": high}],
+        }))
+
+    def test_credentialed_report_is_not_clobbered_by_the_baked_one(self, tmp_path, capsys):
+        prof = tmp_path / "prof"
+        dest = prof / "scan-report.json"
+        self._report(dest, 0, 4)  # what the credentialed re-scan found
+
+        launcher._surface_scan_report("podman", "img", prof, keep_existing=True)
+        assert json.loads(dest.read_text())["totals"]["high"] == 4
+        out = capsys.readouterr().out
+        assert "4 high" in out
+        assert "no high/critical" not in out, "the false all-clear is the whole bug"
+
+    def test_without_a_credentialed_report_the_baked_one_is_still_used(self, tmp_path, monkeypatch):
+        """keep_existing=False must preserve the old behaviour — a build with scans disabled still
+        surfaces whatever the image baked."""
+        prof = tmp_path / "prof"
+        copied = []
+        monkeypatch.setattr(
+            launcher, "_with_image_container",
+            lambda rt, image, fn: (copied.append(image), True)[1],
+        )
+        launcher._surface_scan_report("podman", "img", prof, keep_existing=False)
+        assert copied == ["img"], "the baked report must still be extracted when there is no re-scan"
+
+    def test_the_scan_container_survives_long_enough_to_copy_its_report(self):
+        src = inspect.getsource(launcher._scan_image_in_container)
+        # The QUOTED form — an argv element. The prose above it explains why --rm is absent, so a
+        # bare substring check matches the comment and passes for the wrong reason.
+        assert '"--rm"' not in src, "a removed container takes the credentialed report with it"
+        assert '"--cidfile"' in src and '"cp"' in src
+
+    def test_return_value_still_means_the_scan_ran_not_that_a_report_landed(self):
+        """`_scan_image` calls this with NO report_dest for `harnessed rescan`. Overloading the
+        return to mean "a report was persisted" made that caller always see failure — caught by
+        tests/test_rescan_credentialed.py, which asserts a clean run returns True."""
+        src = inspect.getsource(launcher._scan_image_in_container)
+        assert "return res.returncode == 0" in src
+
+    def test_a_stale_report_from_a_previous_build_is_not_mistaken_for_this_scans(self):
+        """The build decides `keep_existing` by whether the file exists, so a leftover report from
+        an earlier build would be treated as authoritative for a scan that never wrote one."""
+        src = inspect.getsource(launcher._build_stack)
+        assert "scan_report.unlink(missing_ok=True)" in src
+        assert src.index("scan_report.unlink") < src.index("_scan_image_in_container(")

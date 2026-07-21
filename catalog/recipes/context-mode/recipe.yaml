@@ -26,9 +26,9 @@ description: >
 # Installed via mise's `npm:` backend (pinned) → a `context-mode` shim lands on PATH. Both the MCP
 # server and every hook command below invoke that same one binary.
 #
-# Keep this version in lockstep with Dockerfile's CONTEXT_MODE_VERSION (the omp plugin install).
-# Two pins because they are two different install channels for the same upstream package — mise's
-# npm backend for the CLI/MCP binary, `omp plugin install` for the omp extension.
+# Keep this version in lockstep with install.sh's CONTEXT_MODE_VERSION. Two install channels for
+# the CLI/MCP binary: mise's npm backend here (container) and install.sh's pnpm section (host).
+# The omp extension version in install.sh is the third pin — same upstream package, different channel.
 tools:
   - npm:context-mode@1.0.169
 
@@ -41,13 +41,22 @@ mcp:
       command: context-mode
       transport: stdio
 
-# Host-native install (`launch --host`) — the npm backend, mirroring the `tools:` npm pin above.
-# Container-independent: the image still installs via its `tools:` mise layer / Dockerfile.
-provision:
-  - via: npm
-    package: context-mode
-    version: "1.0.169"
-    command: context-mode
+# --- Install layer ---
+# What used to be this recipe's whole Dockerfile: the omp plugin install, as one bash file run by
+# BOTH executors (bd harnessed-8px.5). `HARNESS` is in the install env in both modes, so the
+# `${HARNESS} = omp` branch that lived in the `RUN` now lives in the script and the recipe stays
+# harness-independent.
+#
+# No `cache:` — `omp plugin install` fetches and installs in one step with nowhere to point a
+# populate-if-empty content cache, and the whole step runs container-side only (see below), where
+# the cache is /tmp scratch anyway.
+#
+# No `system:` either: nothing here needs root. The step IS skipped on a host launch, but for a
+# different reason — it would write into the user's own ~/.omp/plugins — so the warning is emitted
+# by the script itself, which can also say the true thing (it only applies to HARNESS=omp, whereas a
+# `system:` string would print for every harness including the ones that skip nothing).
+install:
+  script: install.sh
 
 # --- Hook layer (GAP 2) ---
 # The `context-mode hook <platform> <event>` CLI dispatcher is upstream's current wiring form (the
@@ -59,9 +68,11 @@ provision:
 # it is a pure decision+side-effect bridge: it drops hookSpecificOutput.additionalContext, so the
 # PreToolUse routing nudge and the SessionStart context re-injection — the two halves upstream marks
 # REQUIRED — reach nothing, and it maps no omp event to PreCompact at all. omp instead gets
-# upstream's own omp extension, installed by this recipe's Dockerfile: it covers all four events
+# upstream's own omp extension, installed by this recipe's `install.sh`: it covers all four events
 # natively (and hard-blocks curl/wget in bash rather than merely nudging). Leaving these hooks on
 # for omp would double-write the session DB and spawn a node CLI per tool call for discarded output.
+# CAVEAT (host): that extension install is container-only — see install.sh — so `launch --host`
+# with HARNESS=omp has neither the bridged hooks (skipped here) nor the native extension.
 #
 # Matchers are taken from upstream's own matcher lists, minus the plugin-marketplace tool names
 # (`mcp__plugin_context-mode_context-mode__ctx_*`): those only exist on a plugin install, and here
@@ -92,7 +103,7 @@ hooks:
 # post-compaction resume reads back. Without persist it dies with the container, and `--fresh` would
 # silently cost every prior session.
 #
-# The Dockerfile pins CONTEXT_MODE_DIR to ~/.context-mode so BOTH paths land here: it is already the
+# `env:` below pins CONTEXT_MODE_DIR at this entry so BOTH paths land here: it is already the
 # default for the hook/CLI path, but the omp plugin would otherwise root at ~/.omp/context-mode/
 # (its OMPAdapter), which nothing mounts.
 #
@@ -103,6 +114,18 @@ persist:
   - name: .context-mode
     scope: workspace
     location: host
+
+# --- Env layer ---
+# The store root, read at RUN time by the CLI, every hook invocation, and the omp plugin alike — so
+# it must be live in the AGENT's environment, which is why it is `env:` and not a setup script (an
+# `export` dies with the script that ran it).
+#
+# `{persist:.context-mode}` — NOT a literal path. The dir this entry resolves to differs per mode:
+# in the pod it is the bind-mount target ~/.context-mode; on `launch --host` there is no mount and
+# the bytes live at their real $XDG_DATA_HOME/harnessed/persist/... location. One declaration, the
+# correct absolute path in both.
+env:
+  CONTEXT_MODE_DIR: "{persist:.context-mode}"
 
 # Capability test: the context-mode MCP server connected through the hatago hub. (The hooks are
 # merged into settings.json by the assembler; the oracle only probes the MCP connection.)

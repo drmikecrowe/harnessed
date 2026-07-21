@@ -127,6 +127,132 @@ Two consequences worth knowing:
 **hatago** as a process *inside* that container (hatago-consolidation), and brings up any referenced
 services (started host-published, idempotently).
 
+## Two launch verbs, one per backend
+
+| verb | backend | what it isolates |
+| --- | --- | --- |
+| `harnessed launch <stack> <harness>` | container (podman pod + hatago + services) | the filesystem, the network, **and** the configuration |
+| `harnessed host-run <stack> [harness]` | host-native — no podman, no MCP hub | the **configuration only** |
+
+`host-run` materializes the stack's assembled profile into a per-stack `CLAUDE_CONFIG_DIR`
+(`<stack>/<harness>`, see `paths.host_home`) and execs the harness against your real machine, real
+project, and real credentials. Configuration isolation *is* the host backend's boundary — which
+skills, rules, commands and hooks are live — so a stack's hooks fire only in that stack rather than
+in every session, the way a global `~/.claude` would.
+
+The two verbs share no flags but `--rm` (host-side: stop daemons this launch started). That is the
+reason they are separate commands rather than one command with a mode switch — `--fresh`,
+`--no-firewall`, `--shell`, `--mount-folder` and `--agent-start-folder` all describe a pod, and a
+host launch has none, so a combined verb could only accept them and do nothing.
+
+## Folder-env contract
+
+The **one** set of environment variables a recipe may rely on. Same names, same meanings, on every
+surface — container and `--host` alike. Single definition: `launcher.harnessed_env()`.
+
+| Variable | Value |
+| --- | --- |
+| `HARNESS` | The harness being launched (`claude`, `omp`, …). Unprefixed on purpose: it is already the token a recipe Dockerfile branches on (`ARG HARNESS`), so `$HARNESS` in a setup script means the same thing. |
+| `PROJECT_DIR` | The project directory the agent starts in. |
+| `MAIN_REPO_DIR` | The git **common dir** — in a bare + linked-worktree layout that is the bare repo dir, not the default-branch work tree. Falls back to `PROJECT_DIR` outside a repo. |
+| `HARNESSED_GIT_COMMON_DIR` | Same value as `MAIN_REPO_DIR`, under an explicit name. A bare `GIT_COMMON_DIR` is **never** exported: git itself consumes that variable and it would hijack common-dir resolution the moment the agent `cd`s into another repo. |
+| `HOST_WORKSPACE_DIR` / `CONTAINER_WORKSPACE_DIR` | The mounted workspace root (auto-widened to the bare-repo container so sibling worktrees are visible). Identical strings — the project is bind-mounted at its own host path. |
+| `HOST_HOME` | The **host** `$HOME`, which is not the container's (`/home/harnessed`). A `scope: global` persist entry is mounted path-preserving, so a recipe pointing a tool at e.g. `~/.pulumi` must write `$HOST_HOME/.pulumi`. |
+| `HARNESSED_RECIPE_DIR` | *(recipe-scoped surfaces only)* The recipe's own source dir — a setup script does `cp` where a Dockerfile did `COPY`. Host: the catalog dir. Container: `/opt/harnessed/recipes/<recipe>` (bind-mounted `:ro`). |
+| `HARNESSED_<SERVICE>_SOCKET` | *(container only)* Container-side socket path for each socket-backed project-scoped service (e.g. `HARNESSED_BEADS_SERVER_SOCKET`). Omitted host-side: `--host` runs no service sidecars, so the path would not exist. |
+
+Injected at every place catalog-authored content runs: the container attach shell
+(`_init_shell_prologue`), the container itself (`podman run -e`, so hooks and later `podman exec`s
+agree), **both** `setup.condition` eval sites (`_collect_setup_notices`, `_host_run_setups`),
+`setup.run` / `setup.script` (`_script_env`, which additionally carries the `HARNESSED_MODE` /
+`HARNESSED_CFG_*` / repo-identity vars), and the **host agent process** (`os.environ` in
+`_launch_host` — on the host there is no container to set env on, so `os.environ` is the box).
+
+This is why a condition may be written against a real path — `[ ! -f
+"${MAIN_REPO_DIR}/.beads/metadata.json" ]`. Under an env-less eval that expanded to the empty string
+and the test passed falsely.
+
+## Recipe scripts: `install:` vs `setup.script`
+
+Both are a bash file in the recipe dir (an `install:` may instead be a bare `system:` reason with no
+script at all — see **Shape** below), run by **both** executors (container and `--host`), linted
+identically (raw `npm`/`npx` and floating refs rejected inside the `.sh` — `validate_install_script`
+/ `validate_setup_script`, because `validate_pin` only ever reads Dockerfile *text*). They differ in
+exactly one thing: **the phase**.
+
+| | container | host |
+| --- | --- | --- |
+| `install:` | **build** — `RUN bash <script>` in the derived Dockerfile, with the recipe dir `COPY`'d to `/opt/harnessed/recipes/<recipe>` | immediately **after** `_materialize_host_home` |
+| `setup.script` | **runtime** — `podman exec` after start, before the egress firewall closes | after `install` |
+
+The split is forced, not stylistic. `setup` cannot run at build: no project is bind-mounted, so
+`HARNESSED_PROJECT_DIR` is unresolvable. `install` must not run at container runtime: it is baking
+the image, and re-running it per container start re-pays the clone every launch.
+
+Host installs run **after** the materialize because `_materialize_host_home` does
+`shutil.rmtree(home)` on **every** launch (so a removed recipe's files never linger). Run before it,
+the install's output is deleted milliseconds later, silently — which is exactly the shape of the bug
+this mechanism fixes. That same wipe makes "run once on first launch" structurally impossible, so
+the install runs every launch; `install.cache` is what makes that affordable (the *output* cannot
+persist, but the pinned *source* can).
+
+**Install env** — deliberately a *subset* of the folder-env contract above, not a superset:
+
+| Variable | Value |
+| --- | --- |
+| `HARNESS` | as above |
+| `HARNESSED_MODE` | `host` \| `container` |
+| `HARNESSED_RECIPE_DIR` | the recipe's own dir — `cp` where a Dockerfile did `COPY` |
+| `HARNESSED_CONFIG_DIR` | the agent config dir to install **into**: image `~/.claude` at build, the materialized host home on a host launch |
+| `HARNESSED_INSTALL_CACHE` | `$XDG_CACHE_HOME/harnessed/install/<recipe>/<install.cache>`, or empty when no `cache:` is declared. Cache **miss** is "the directory does not exist" — harnessed creates only its parent. Build-side this is `/tmp` scratch, removed in the same layer. |
+| `HARNESSED_BIN_DIR` | where to land an **executable**: the base image's `~/.local/bin` (already on `PATH`) at build, the stack's own bin dir on a host launch. Without it a script has no portable destination for a binary and must either go root-only or guess at `$UV_TOOL_BIN_DIR`. |
+| `HARNESSED_HOME_SHIM` | a dir whose `.claude` **is** `$HARNESSED_CONFIG_DIR`, for upstream installers that only know how to install "globally" into `$HOME/.claude`: run them as `HOME="$HARNESSED_HOME_SHIM" <installer>`. The image home at build (where that is already true); a **stable** per-project sibling of the config dir on a host launch. Stability is the point — a recipe rolling its own with `mktemp -d` gets a shim deleted on exit, so any absolute path the installer *recorded* dies with it. `install.sh` must not build its own shim; a catalog test enforces this. |
+
+`PROJECT_DIR` and friends are **absent on purpose**. A build cannot know them; exporting them
+host-side only would hand authors a variable that works on host and silently expands to empty in a
+build. Anything needing project context belongs in `setup.script`, whose phase has a project.
+
+**Host-only extras.** Alongside the contract above, `_host_run_installs` also redirects the package
+managers so a tool installed by an install script lands in the *stack's* tree rather than the user's
+global one — there is no image to contain it host-side:
+
+| Variable | Value |
+| --- | --- |
+| `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` | the stack's uv tool dir and bin dir, so `uv tool install` stays inside the stack |
+| `npm_config_prefix` | the stack tools dir, so `pnpm add -g` does not write the user's global prefix |
+| `PATH` | `$HARNESSED_BIN_DIR` **first**, so a tool an install just landed is resolvable by the next line of the same script |
+
+These are host-only *by design*: container-side the image already provides the containment they
+recreate. They are NOT part of the both-modes contract, so a script must not depend on their values
+— use `$HARNESSED_BIN_DIR` for a path you need to name.
+
+**Shape.** `install:` is usually one bash file, but not always:
+
+- `script:` only — the common case; runs in both modes.
+- `script:` **and** `system:` — a partial migration. The script runs in both modes; the recipe's
+  Dockerfile keeps a container-only step (root, or a write outside harnessed-owned dirs). `system:`
+  is a prose reason, printed verbatim at host launch to say what that launch does *not* get.
+- `system:` only, **no script** — a root-only install. The whole step lives in the recipe's
+  Dockerfile; nothing is emitted at build and the host behaviour is the warning and nothing else.
+
+`validate_container_only_declared` rejects the fourth combination — a recipe with an `install:` whose
+Dockerfile still has a `RUN` but which declares no `system:`. That shape delivers less on a host
+launch than the recipe promises, silently. Relatedly, a recipe Dockerfile may not reference
+`~/.claude` at all (`validate_no_claude_writes`): content written there is invisible to a host launch
+and hidden by the profile bind-mount in a container, so it belongs in `install.script` writing to
+`$HARNESSED_CONFIG_DIR`.
+
+**Precedence, identical in both modes**: inherited environment → recipe `env:` → harnessed-owned
+install contract. The contract wins. Container gets that from inline `VAR=… bash install.sh`
+assignments beating the preceding `ENV` lines; host from `env.update(install_env(...))` running last.
+Asserted as *order*, not values, in `tests/test_install_script.py::TestPrecedence`.
+
+**System-level steps** (`USER root`, `apt-get`, `COPY` into `/usr/local/bin`) stay in the recipe
+Dockerfile — harnessed never sudos or mutates the user's system. A recipe with such a step declares
+`install.system: "<reason>"`; a host launch then **skips it and says so**, naming the recipe and
+printing the reason verbatim. Documented skip, not hard failure (a hard failure would make `--host`
+unusable for stacks in the default set) — and never a *silent* skip.
+
 ## The capability test is the oracle
 
 `harnessed test <stack>` launches the stack `--fresh` headless and diffs the **manifest oracle**

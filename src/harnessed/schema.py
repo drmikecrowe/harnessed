@@ -640,6 +640,106 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
     )
 
 
+@dataclass
+class InstallSpec:
+    """A recipe's `install:` — the BUILD-phase sibling of `setup.script` (bd harnessed-8px.3).
+
+    Same language (bash), same file-in-the-recipe-dir shape, same lint. The ONLY difference is the
+    PHASE, and that difference is forced, not preferential:
+
+      install  container: BUILD TIME  (`RUN bash install.sh` in the derived Dockerfile)
+               host:      after `_materialize_host_home`, before setup
+      setup    container: RUNTIME     (`podman exec` into the started container)
+               host:      after install
+
+    `setup` cannot run at build (no project bind-mount, so HARNESSED_PROJECT_DIR is unresolvable);
+    `install` must not run at container runtime (it is baking the image — running it per container
+    start would re-pay the clone every launch). The consequence for the env contract is that
+    `install` sees a strictly PROJECT-INDEPENDENT env (see launcher._install_env): the folder-env
+    vars a build cannot know are deliberately absent rather than present-but-wrong.
+    """
+    # Relative path to the bash script inside the recipe dir. OPTIONAL, but only because a
+    # ROOT-ONLY install exists: a recipe whose install is ENTIRELY system-level (apt-get, a binary
+    # landing in /usr/local/bin) has no user-level half to put in a script, yet still must be able
+    # to declare `system:` so a host launch WARNS rather than silently shipping a stack that is
+    # missing the tool. At least one of `script` / `system`, or `install:` says and does nothing.
+    script: str | None = None
+    # A PINNED content ref (tag/SHA/version). Its presence turns on the host content cache at
+    # $XDG_CACHE_HOME/harnessed/install/<recipe>/<cache>, handed to the script as
+    # $HARNESSED_INSTALL_CACHE. The cache is what makes "run on EVERY host launch" affordable:
+    # `_materialize_host_home` rmtree's the home each launch (so the output cannot persist and
+    # "first launch only" is structurally wrong), but the SOURCE content can persist, keyed by a
+    # ref that by policy never moves. Floating values are rejected — a moving key is a stale cache.
+    cache: str | None = None
+    # Non-empty reason string ⇒ this recipe's install has a SYSTEM-LEVEL component (USER root,
+    # apt-get, COPY into /usr/local/bin) that only a container build can perform. harnessed must
+    # never sudo or mutate the user's system, so on a host launch that component is SKIPPED — but
+    # LOUDLY, naming the recipe and this reason. A silent skip is exactly how harnessed-8px.1
+    # (14 missing skills, no error) happened; the reason string is what makes it un-silent.
+    system: str | None = None
+
+
+# Bare refs that MOVE. `_FLOATING_REF_RE` only catches the decorated forms (`--branch main`,
+# `@latest`), so a bare `cache: main` would sail through it — hence this second list.
+_FLOATING_CACHE_KEYS = frozenset({"latest", "main", "master", "head", "trunk", "dev", "edge"})
+
+
+def _parse_install(raw_install) -> "InstallSpec | None":
+    """Parse the optional `install:` object — omitted by recipes that install nothing."""
+    if not raw_install:
+        return None
+    if not isinstance(raw_install, dict):
+        raise SchemaError("recipe 'install' must be an object with a 'script' or 'system' field")
+    script = raw_install.get("script")
+    if script is not None:
+        if not isinstance(script, str) or not script.strip():
+            raise SchemaError("recipe 'install.script' must be a non-empty string")
+        script = script.strip()
+        if Path(script).is_absolute() or ".." in Path(script).parts:
+            raise SchemaError(
+                f"recipe 'install.script' {script!r} must be a relative path inside the recipe dir"
+            )
+    cache = raw_install.get("cache")
+    if cache is not None:
+        if not isinstance(cache, str) or not cache.strip():
+            raise SchemaError("recipe 'install.cache', if set, must be a non-empty string")
+        cache = cache.strip()
+        if cache.lower() in _FLOATING_CACHE_KEYS or _FLOATING_REF_RE.search(cache):
+            raise SchemaError(
+                f"recipe 'install.cache' {cache!r} is a floating ref — the cache key must be a "
+                "pinned tag, version, or SHA, or the cache goes stale and never refreshes."
+            )
+        if "/" in cache or cache.startswith("."):
+            raise SchemaError(
+                f"recipe 'install.cache' {cache!r} must be a bare ref (no '/' or leading '.') — "
+                "it becomes a single directory name under the harnessed install cache."
+            )
+    system = raw_install.get("system")
+    if system is not None and (not isinstance(system, str) or not system.strip()):
+        raise SchemaError(
+            "recipe 'install.system', if set, must be a non-empty string explaining WHICH "
+            "system-level step only a container build can perform (it is printed verbatim as the "
+            "host-skip warning)"
+        )
+    unknown = sorted(set(raw_install) - {"script", "cache", "system"})
+    if unknown:
+        raise SchemaError(
+            f"recipe 'install': unknown field(s) {unknown} — valid fields: script, cache, system"
+        )
+    if cache and script is None:
+        raise SchemaError(
+            "recipe 'install.cache' without 'install.script' — the cache exists only to be "
+            "populated and read BY the script; a root-only install has nothing to hand it to."
+        )
+    if script is None and not system:
+        raise SchemaError(
+            "recipe 'install' needs at least one of 'install.script' (the user-level half, run in "
+            "BOTH modes) or 'install.system' (the reason a root-only step is container-only). With "
+            "neither it declares nothing and executes nothing."
+        )
+    return InstallSpec(script=script, cache=cache, system=system.strip() if system else None)
+
+
 def _parse_setup_config(raw_config) -> list["SetupConfigItem"]:
     if not raw_config:
         return []
@@ -684,18 +784,6 @@ def _parse_conflicts(raw_conflicts) -> list[str]:
 
 
 @dataclass
-class Provision:
-    """One host-native install step (recipe `provision:`). HOST-ONLY — the container image keeps its
-    Dockerfile; this is the parallel `launch --host` install so a recipe's stdio MCP child lands on
-    PATH without a container. `via` is the backend (only `uv-tool` today: `uv tool install`)."""
-    via: str
-    package: str
-    version: str
-    command: str       # the executable the install yields — used to skip when already present
-    python: str = ""   # optional: uv tool install -p <python>
-
-
-@dataclass
 class Recipe:
     name: str
     description: str = ""
@@ -718,6 +806,10 @@ class Recipe:
     # it on either side is enough.
     conflicts: list[str] = field(default_factory=list)
     setup: "SetupSpec | None" = None
+    # Build-phase install script (recipe.yaml `install:`) — ONE bash file executed by BOTH the
+    # container build (`RUN bash install.sh`) and a host launch. The mechanism that makes a
+    # Dockerfile RUN's deliverables exist on `launch --host` too. See InstallSpec.
+    install: "InstallSpec | None" = None
     # Extra outbound hosts this recipe's tools need — appended to the container egress firewall
     # allowlist (catalog/base/egress-firewall.sh) at launch, ONLY when this recipe is in the stack
     # (the firewall stays default-DROP otherwise). Bare hostnames, no scheme/path/port (e.g.
@@ -727,9 +819,11 @@ class Recipe:
     # `pulumi@3.140.0`). MUST be pinned — a floating `@latest`/bare name is rejected, same as a
     # Dockerfile pin. Lets a recipe add a CLI + open its egress with NO Dockerfile. See egress.md.
     tools: list[str] = field(default_factory=list)
-    # Host-native install steps (recipe.yaml `provision:`) — see Provision. Container-independent:
-    # the derived image still installs via its Dockerfile; this is only for `launch --host`.
-    provision: list[Provision] = field(default_factory=list)
+    # Environment for the RUNNING agent (recipe.yaml `env:`) — NAME → value template. The one
+    # recipe deliverable a bash script cannot express (an `export` dies with the script). Values are
+    # mode-portable templates; see _parse_env / resolve_recipe_env for the placeholder contract.
+    # Distinct from McpServer.env, which is per-MCP-server.
+    env: dict[str, str] = field(default_factory=dict)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
     # The catalog ref a stack used to load this recipe — `beads/stealth` for a variety, else the
     # plain name. Carries the FAMILY (the part before the slash), which _check_recipe_conflicts uses
@@ -740,7 +834,14 @@ class Recipe:
 
 # Authored `permissions:` values a stack.yaml may set — kept in sync with
 # emit._PERMISSION_DEFAULT_MODE, the table that maps each to a Claude `permissions.defaultMode`.
-_STACK_PERMISSIONS_MODES = frozenset({"prompt", "auto", "yolo"})
+# Claude's own mode names pass through verbatim; `prompt`/`yolo` are aliases (bd harnessed-8px.8).
+# Restated rather than imported because emit imports schema — the dependency cannot be reversed.
+# tests/test_schema.py asserts this set equals emit._PERMISSION_DEFAULT_MODE's keys, so the two
+# cannot drift silently.
+_STACK_PERMISSIONS_MODES = frozenset({
+    "acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan",
+    "prompt", "yolo",
+})
 
 
 @dataclass
@@ -826,6 +927,7 @@ class ServiceDef:
     data_persist: str = ""
     volume: str = ""
     healthcheck: str = ""
+    exclusive_lock: str = ""
     raw: dict = field(default_factory=dict)
 
     @property
@@ -893,7 +995,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
     "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks", "setup", "egress", "tools", "provision",  # typed
+    "conflicts", "hooks", "setup", "install", "egress", "tools", "env",  # typed
     "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -951,40 +1053,6 @@ def _parse_egress(raw_egress, manifest: Path) -> list[str]:
     return out
 
 
-_PROVISION_BACKENDS = frozenset({"uv-tool", "npm"})
-
-
-def _parse_provision(raw_provision, manifest: Path) -> list["Provision"]:
-    """Parse a recipe's `provision:` list into pinned host-install steps."""
-    if not raw_provision:
-        return []
-    if not isinstance(raw_provision, list):
-        raise SchemaError(f"{manifest}: 'provision' must be a list of install steps")
-    out: list[Provision] = []
-    for entry in raw_provision:
-        if not isinstance(entry, dict):
-            raise SchemaError(f"{manifest}: provision entry {entry!r} must be a mapping")
-        via = str(entry.get("via", "")).strip()
-        if via not in _PROVISION_BACKENDS:
-            raise SchemaError(
-                f"{manifest}: provision entry has via={via!r}; supported: "
-                f"{', '.join(sorted(_PROVISION_BACKENDS))}"
-            )
-        package = str(entry.get("package", "")).strip()
-        version = str(entry.get("version", "")).strip()
-        command = str(entry.get("command", "")).strip()
-        if not (package and version and command):
-            raise SchemaError(
-                f"{manifest}: provision entry {entry!r} needs package, version, and command"
-            )
-        if _FLOATING_REF_RE.search(version) or version in {"latest", "*"}:
-            raise SchemaError(
-                f"{manifest}: provision version {version!r} must be an explicit pin (no @latest/*)"
-            )
-        out.append(Provision(via=via, package=package, version=version, command=command,
-                             python=str(entry.get("python", "")).strip()))
-    return out
-
 
 def _parse_tools(raw_tools, manifest: Path) -> list[str]:
     """Parse a recipe's `tools:` list into pinned mise tool specs (e.g. 'pulumi@3.140.0')."""
@@ -1006,6 +1074,146 @@ def _parse_tools(raw_tools, manifest: Path) -> list[str]:
     return out
 
 
+# --- Recipe `env:` — environment for the RUNNING agent (bd harnessed-8px.2) --------------------
+#
+# The one recipe deliverable that cannot become a bash script: a script's `export` dies with the
+# script's process, but this env must be live for the agent (and its hooks and child processes).
+# Hence a declarative field rather than another executable step.
+#
+# THE TRAP the templates exist to solve: a value like `/home/harnessed/.beads` is CONTAINER-absolute
+# (`/home/harnessed` is the POD's $HOME). Copied literally into a `launch --host` it names a
+# directory that does not exist on the host. So values are TEMPLATES over the launcher's existing
+# path contract, resolved per mode, and ONE declaration yields the right absolute path in each:
+#
+#   {persist:<name>}  the dir this recipe's `persist:` entry <name> actually resolves to.
+#                     container → $CONTAINER_HOME/<name> (where _persist_mounts bind-mounts it);
+#                     host      → the real $XDG_DATA_HOME/harnessed/persist/... dir, keyed by the
+#                                 entry's own scope (workspace vs project) — i.e. the same
+#                                 arithmetic _persist_mounts / _service_data_dir already do.
+#                     A `location: in_repo` entry resolves to the in-repo dir, which is identical in
+#                     both modes (the workspace is mounted path-preserving).
+#   {project_dir}     the project workspace root — mode-invariant for the same reason
+#                     HARNESSED_PROJECT_DIR is (_build_mount_args mounts it at its own host path).
+#   {host_home}       the REAL host $HOME, which in the pod is NOT $HOME (precedent: the HOST_HOME
+#                     export in _init_shell_prologue).
+#
+# A `scope: global` persist entry is deliberately NOT referenceable: it is mounted path-preserving
+# (host path == container path), so a recipe needing it writes the literal path and it is already
+# correct in both modes.
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_ENV_PLACEHOLDER_RE = re.compile(r"\{([^{}]*)\}")
+_ENV_BARE_PLACEHOLDERS = frozenset({"project_dir", "host_home"})
+
+
+def _parse_env(raw_env, manifest: Path) -> dict[str, str]:
+    """Parse a recipe's `env:` mapping of NAME → value template. NOT McpServer.env (that one is
+    per-MCP-server and passed to that one server process; this one is the agent's own env)."""
+    if not raw_env:
+        return {}
+    if not isinstance(raw_env, dict):
+        raise SchemaError(f"{manifest}: 'env' must be a mapping of NAME: value")
+    out: dict[str, str] = {}
+    for name, val in raw_env.items():
+        if not isinstance(name, str) or not _ENV_NAME_RE.match(name):
+            raise SchemaError(
+                f"{manifest}: env key {name!r} is not a valid environment variable name "
+                "(letters, digits, underscore; not starting with a digit)"
+            )
+        if isinstance(val, bool) or val is None:
+            raise SchemaError(
+                f"{manifest}: env value for {name!r} must be a string or number, got {val!r} — "
+                "quote it (e.g. \"1\") so the value is unambiguous"
+            )
+        out[name] = str(val)
+    return out
+
+
+def _validate_env_templates(env: dict[str, str], persist: PersistSpec, manifest: Path) -> None:
+    """Reject unknown placeholders and dangling `{persist:<name>}` refs AT LOAD, not at launch —
+    otherwise a typo surfaces as a literal `{persist:.bead}` in the agent's env, silently."""
+    names = {e.name for e in persist.entries if e.name is not None}
+    for var, template in env.items():
+        for ph in _ENV_PLACEHOLDER_RE.findall(template):
+            if ph in _ENV_BARE_PLACEHOLDERS:
+                continue
+            if not ph.startswith("persist:"):
+                raise SchemaError(
+                    f"{manifest}: env {var}: unknown placeholder '{{{ph}}}'. Known: "
+                    "{persist:<name>}, {project_dir}, {host_home}"
+                )
+            ref = ph[len("persist:"):]
+            if ref not in names:
+                known = ", ".join(sorted(names)) or "(none declared)"
+                raise SchemaError(
+                    f"{manifest}: env {var}: '{{{ph}}}' references a persist entry this recipe does "
+                    f"not declare. Declared persist names: {known}"
+                )
+
+
+def _persist_entry_dir(
+    recipe: Recipe, entry: PersistEntry, *, mode: str, project_path: Path | None
+) -> str | None:
+    """Absolute path an `env:` template's `{persist:<name>}` resolves to, or None when it cannot be
+    known yet (build time has no project). Mirrors _persist_mounts / _service_data_dir placement."""
+    assert entry.name is not None
+    if entry.location == "in_repo":
+        # Path-preserving in both modes — but anchored at the checkout, so it needs the project.
+        return None if project_path is None else str(paths.persist_in_repo_dir(project_path, entry.name))
+    if mode == "container":
+        # Where _persist_mounts bind-mounts it — a fixed container path, project-independent, which
+        # is exactly why this case survives being baked into the image at build time.
+        return f"{paths.CONTAINER_HOME}/{entry.name}"
+    if project_path is None:
+        return None
+    if entry.scope == "project":
+        return str(paths.persist_project_dir(recipe.name, project_path, entry.name))
+    return str(paths.persist_workspace_dir(recipe.name, project_path, entry.name))
+
+
+def resolve_recipe_env(
+    recipe: Recipe, *, mode: str, project_path: Path | None
+) -> dict[str, str]:
+    """Resolve a recipe's `env:` templates for one mode ('container' or 'host').
+
+    `project_path=None` means BUILD time (no project exists yet): any var whose value needs the
+    project is OMITTED rather than half-substituted. Those still reach the agent at launch, where
+    the project is known — build-time `ENV` is only the extra guarantee that an image-build step
+    (a Dockerfile RUN / install script) sees what it can.
+    """
+    by_name = {e.name: e for e in recipe.persist.entries if e.name is not None}
+    resolved: dict[str, str] = {}
+    for var, template in recipe.env.items():
+        deferred = False
+
+        def _sub(m: re.Match) -> str:
+            nonlocal deferred
+            ph = m.group(1)
+            if ph == "host_home":
+                return str(Path.home())
+            if ph == "project_dir":
+                if project_path is None:
+                    deferred = True
+                    return ""
+                return str(project_path)
+            if ph.startswith("persist:"):
+                entry = by_name.get(ph[len("persist:"):])
+                if entry is None:  # unreachable: _validate_env_templates rejects this at load
+                    raise SchemaError(
+                        f"recipe '{recipe.name}': env {var}: no persist entry '{ph[len('persist:'):]}'"
+                    )
+                val = _persist_entry_dir(recipe, entry, mode=mode, project_path=project_path)
+                if val is None:
+                    deferred = True
+                    return ""
+                return val
+            raise SchemaError(f"recipe '{recipe.name}': env {var}: unknown placeholder '{{{ph}}}'")
+
+        value = _ENV_PLACEHOLDER_RE.sub(_sub, template)
+        if not deferred:
+            resolved[var] = value
+    return resolved
+
+
 def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Recipe:
     recipe_dir = Path(recipe_dir)
     manifest = recipe_dir / "recipe.yaml"
@@ -1017,6 +1225,9 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
     if strict:
         _validate_recipe_fields(raw, manifest)
     hooks, hooks_skip_harnesses = _parse_hooks(raw.get("hooks"))
+    persist = _parse_persist(raw.get("persist"))
+    env = _parse_env(raw.get("env"), manifest)
+    _validate_env_templates(env, persist, manifest)
     return Recipe(
         name=raw["name"],
         description=raw.get("description", ""),
@@ -1025,15 +1236,16 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         commands=_parse_fileext(raw.get("commands")),
         rules=_parse_fileext(raw.get("rules")),
         expect=_parse_expect(raw.get("expect")),
-        persist=_parse_persist(raw.get("persist")),
+        persist=persist,
         init=_parse_init(raw.get("init")),
         hooks=hooks,
         hooks_skip_harnesses=hooks_skip_harnesses,
         conflicts=_parse_conflicts(raw.get("conflicts")),
         setup=_parse_setup(raw.get("setup")),
+        install=_parse_install(raw.get("install")),
         egress=_parse_egress(raw.get("egress"), manifest),
         tools=_parse_tools(raw.get("tools"), manifest),
-        provision=_parse_provision(raw.get("provision"), manifest),
+        env=env,
         root=recipe_dir,
         ref=ref or raw["name"],
         raw=raw,
@@ -1323,6 +1535,10 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
     if scope == "global" and data_persist:
         raise SchemaError(f"{manifest}: 'data.persist' requires scope: project")
 
+    exclusive_lock = (raw.get("exclusive_lock") or "").strip()
+    if exclusive_lock and scope != "project":
+        raise SchemaError(f"{manifest}: 'exclusive_lock' requires scope: project")
+
     return ServiceDef(
         name=raw["name"],
         image=raw["image"],
@@ -1333,6 +1549,7 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
         # A project-scoped service takes its data dir from `data.persist`, never a named volume.
         volume="" if scope == "project" else (raw.get("volume") or f"{name}-data"),
         healthcheck=raw.get("healthcheck", ""),
+        exclusive_lock=exclusive_lock,
         raw=raw,
     )
 
@@ -1452,6 +1669,9 @@ _FLOATING_REF_RE = re.compile(
     r'|@latest\b',
     re.IGNORECASE,
 )
+# A Dockerfile RUN instruction. Used by `validate_container_only_declared` to detect the half of a
+# partially migrated recipe that a host launch cannot execute.
+_DOCKERFILE_RUN_RE = re.compile(r'^\s*RUN\s', re.MULTILINE)
 # A bare DNS hostname: labels of alnum/hyphen joined by dots, a 2+ char alpha TLD, ≤253 chars.
 # No scheme, path, port, or wildcard — the egress firewall resolves each to IPs via getent.
 _HOSTNAME_RE = re.compile(
@@ -1561,10 +1781,21 @@ def validate_setup_script(recipe: Recipe) -> None:
     """
     if not (recipe.setup and recipe.setup.script):
         return
-    path = recipe.root / recipe.setup.script
+    _lint_script_file(recipe, "setup.script", recipe.setup.script)
+
+
+def _lint_script_file(recipe: Recipe, field_name: str, rel_path: str) -> None:
+    """Existence + npm/npx + floating-ref gate over one catalog-authored .sh FILE body.
+
+    Shared by `validate_setup_script` and `validate_install_script`: BOTH fields move shell commands
+    out of strings/Dockerfiles and into a file, and a file is invisible to the two text-reading
+    gates (`validate_no_raw_npm` reads a fixed key list; `validate_pin` reads Dockerfile bodies).
+    Every new script-bearing field must route through here or pin enforcement silently stops for it.
+    """
+    path = recipe.root / rel_path
     if not path.is_file():
         raise RecipeLintError(
-            f"recipe '{recipe.name}': setup.script '{recipe.setup.script}' not found at {path}"
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' not found at {path}"
         )
     body = "\n".join(
         line for line in path.read_text(encoding="utf-8").splitlines()
@@ -1574,15 +1805,81 @@ def validate_setup_script(recipe: Recipe) -> None:
     if match:
         token = match.group(0)
         raise RecipeLintError(
-            f"recipe '{recipe.name}': setup.script '{recipe.setup.script}' uses raw npm/npx token "
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' uses raw npm/npx token "
             f"'{token}'. Replace it with the pnpm equivalent '{_NPM_TO_PNPM.get(token, 'pnpm')}'."
         )
     match = _FLOATING_REF_RE.search(body)
     if match:
         raise PinValidationError(
-            f"recipe '{recipe.name}': setup.script '{recipe.setup.script}' contains a floating ref "
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' contains a floating ref "
             f"'{match.group(0).strip()}'. Pin to an explicit tag, version, or SHA."
         )
+
+
+def validate_install_script(recipe: Recipe) -> None:
+    """Lint a recipe's `install.script` FILE body — the same gate as `setup.script`.
+
+    `install:` is the field that empties recipe Dockerfiles, so without this it would be the LARGEST
+    hole in `validate_pin`: every `git clone --branch`, every version-pinned download that the pin
+    gate exists to police moves out of the Dockerfile text and into a .sh the gate never reads.
+    """
+    if not (recipe.install and recipe.install.script):
+        return
+    _lint_script_file(recipe, "install.script", recipe.install.script)
+
+
+def validate_no_claude_writes(recipe: Recipe, dockerfile_body: str) -> None:
+    """Reject a recipe Dockerfile that touches `~/.claude` — content belongs in `install.script`.
+
+    The launcher used to extract image-baked `~/.claude` content back out into the profile, because
+    the profile bind-mount would otherwise hide it. That pass is gone (bd harnessed-8px.7): every
+    content recipe now writes into `$HARNESSED_CONFIG_DIR` via `install:`, which lands in BOTH modes.
+
+    Without this lint, deleting the extraction turns a Dockerfile `~/.claude` write into a SILENT
+    content loss in container mode — the same shape as harnessed-8px.1, just with the modes swapped.
+    A recipe that needs to deliver content has `install.script`; one that genuinely needs a
+    container-only step declares `install.system`.
+    """
+    body = "\n".join(
+        line for line in dockerfile_body.splitlines() if not line.lstrip().startswith("#")
+    )
+    if ".claude" not in body:
+        return
+    raise RecipeLintError(
+        f"recipe '{recipe.name}': Dockerfile references '~/.claude'. Content delivered that way is "
+        "invisible to a host launch AND hidden by the profile bind-mount in a container. Write it "
+        "into \"$HARNESSED_CONFIG_DIR\" from install.script instead, which lands in both modes."
+    )
+
+
+def validate_container_only_declared(recipe: Recipe, dockerfile_body: str) -> None:
+    """Reject a PARTIALLY migrated recipe that leaves a container-only `RUN` undeclared.
+
+    `install:` moves a Dockerfile RUN body into a script BOTH modes run. A recipe may legitimately
+    keep some RUNs behind — a root step, a global package install — but that means a host launch
+    delivers LESS than the recipe promises. `install.system` is the reason string the launcher prints
+    when it skips that half; without it the shortfall reaches the user as nothing at all, which is
+    precisely how harnessed-8px.1 (14 missing skills, no error) happened. A comment in the recipe
+    explaining the gap does not count: comments are invisible at runtime.
+
+    Only recipes that HAVE an `install:` are gated. A recipe with no `install:` has not been migrated
+    and is container-only by construction — there is no half-delivered state to mis-report.
+    """
+    if not recipe.install or recipe.install.system:
+        return
+    body = "\n".join(
+        line for line in dockerfile_body.splitlines() if not line.lstrip().startswith("#")
+    )
+    match = _DOCKERFILE_RUN_RE.search(body)
+    if not match:
+        return
+    raise RecipeLintError(
+        f"recipe '{recipe.name}': Dockerfile still has a RUN step but 'install.system' is not set. "
+        "A recipe with an 'install:' runs its script in both modes, so any RUN left in the "
+        "Dockerfile is container-only and a host launch silently delivers less than the recipe "
+        "promises. Set 'install.system' to a reason naming what a host launch does NOT get (it is "
+        "printed verbatim at launch), or move the step into install.script so both modes get it."
+    )
 
 
 def validate_init_no_exit(recipe: Recipe) -> None:

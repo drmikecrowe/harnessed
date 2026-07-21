@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# Recipe: solidspec — multi-methodology spec-driven development CLI (spec → plan → tasks →
+# implement → ship). Bakes the Rust binary at build time (see Dockerfile).
+#
+# No MCP, no service, no skill shipped: upstream offers none (init writes slash commands +
+# an AGENT.md into agent dirs, not a ~/.claude/skills dir). Project-scoped slash commands
+# come from `solidspec init` at runtime, not from this recipe.
+name: solidspec
+description: solidspec — multi-methodology spec-driven development CLI (spec → plan → tasks → implement → ship).
+
+# ROOT-ONLY install: `system:` with NO `script:`. This recipe has no user-level half to migrate.
+# The Dockerfile's `cargo install --git --tag v0.3.0` looks user-level (it runs as `USER harnessed`),
+# but it is not separable:
+#   1. It only compiles because the preceding `USER root` apt-get put cmake + pkg-config on the
+#      image — libgit2-sys builds libgit2 from source. Container-side an `install.sh` would run
+#      BEFORE the recipe Dockerfile body, i.e. before that apt-get, so moving the cargo step into a
+#      script would break the build outright.
+#   2. Host-side it would compile a Rust binary into the user's own ~/.cargo/bin — mutating the
+#      machine outside every harnessed-owned dir, and hard-failing the launch on any host without
+#      cmake/pkg-config/cargo.
+# So the whole step stays in the Dockerfile and this declaration exists for exactly one reason: on
+# `launch --host` the launcher prints the string below verbatim, naming the recipe, instead of
+# handing the agent a stack that promises `solidspec` and has no such binary (bd harnessed-8px.1).
+install:
+  system: >-
+    the `solidspec` binary is compiled from source at build time and its libgit2 dependency needs
+    cmake + pkg-config installed with apt-get under USER root, so the entire install is container-only
+
+# Per-project scaffolding (`.solidspec/` + agent slash commands) is a runtime, per-project
+# operation the build-time Dockerfile can't reach, so it is NOT auto-run (see
+# docs/guides/recipe-authoring.md — recipes hint setup, they don't auto-init every agent).
+# Surfaced instead via the harness-agnostic `setup:` note below.
+setup:
+  summary: >-
+    Run `solidspec init --here --no-git` once per project to scaffold `.solidspec/` and register
+    slash commands, then restart your agent.
+  reference: https://github.com/jyjeanne/solidspec

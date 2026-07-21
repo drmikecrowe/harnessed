@@ -16,53 +16,19 @@ uv run pytest -q                     # fast unit + assembly tests (no containers
 
 The CLI runs on the host; edits under `src/harnessed/` take effect immediately (no image rebuild).
 
-### Secret gate (recommended)
-
-Two scripts refuse to commit or push a secret: `.githooks/gitleaks-precommit` (scans the staged
-tree) and `.githooks/gitleaks-push` (scans the commits a push would publish). They need
-[gitleaks](https://github.com/gitleaks/gitleaks) and nothing else.
+### Git hooks
 
 **harnessed ships hook logic, never hook wiring.** A git hook is one executable per event with no
 chaining, so any tool that claims `.git/hooks/pre-commit` is at war with every other tool that wants
-it. These are plain scripts — wire them however you already work:
+it. A recipe needing a host git hook ships a plain script and leaves the wiring to you.
 
-```bash
-mise use -g gitleaks@8.30.1      # or: brew install gitleaks
-
-# Plain git hooks (no framework). The guard makes the hook a no-op on branches that
-# don't carry the script — otherwise an older checkout would fail EVERY commit.
-H=$(git rev-parse --git-common-dir)/hooks
-printf '#!/bin/sh\n[ -x .githooks/gitleaks-precommit ] || exit 0\nexec .githooks/gitleaks-precommit\n' > "$H/pre-commit"
-printf '#!/bin/sh\n[ -x .githooks/gitleaks-push ] || exit 0\nexec .githooks/gitleaks-push "$@"\n'     > "$H/pre-push"
-chmod +x "$H/pre-commit" "$H/pre-push"
-```
-
-Already use [pre-commit](https://pre-commit.com), lefthook, or husky? Point it at the same two
-scripts instead (`language: script` + `stages: [pre-commit]` / `[pre-push]` for pre-commit). The
-push script takes its range from `PRE_COMMIT_FROM_REF`/`PRE_COMMIT_TO_REF`, git's stdin ref list, or
-the branch's upstream — whichever the wiring provides.
-
-For the whole picture — how git resolves hooks, why worktrees share one hooks dir, and the traps
-that make a secret gate worse than useless — see the
+For the whole picture — how git resolves hooks, and why worktrees share one hooks dir — see the
 [Git hooks guide](https://github.com/drmikecrowe/harnessed/wiki/guides/git-hooks).
-
-**Both scans exist because they catch different things.** The staged scan is the earliest point,
-before a secret is in history at all. It is also blind to anything that got there another way —
-`git commit --no-verify`, a rebase or cherry-pick, or commits pulled from a clone with no hooks — so
-the push, which is the irreversible step, gets its own scan of the commits actually being sent.
-
-Both **fail closed**: a missing or erroring gitleaks refuses the operation rather than leaving it
-silently unscanned. Override deliberately with `GITLEAKS_SKIP=1 git commit …` / `… git push …`.
 
 **Do not set `core.hooksPath`.** Set locally *or* globally, it makes the repo's own `.git/hooks` be
 ignored entirely — which is how tools silently disable each other. (`bd init` sets a local one; in
 harnessed beads is **container-only**, so nothing should be setting it on your host. If something
 did: `git config --unset core.hooksPath`, adding `--global` if needed.)
-
-The container side is gated separately and needs no setup at all: the `mikes-universal-setup` recipe
-wires a `PreToolUse` hook that denies the agent's `git commit` / `git push` **tool call**. That one
-is not a git hook, so `--no-verify` cannot reach it — which is why it, and not this, is the gate
-harnessed actually relies on.
 
 ## `catalog/` is a published artifact
 
@@ -90,8 +56,16 @@ the recipe's Dockerfile. Three ways a recipe delivers capability:
 - **Skill / command** — ship a `skills/<leaf>/` or `commands/<leaf>/` dir; the assembler fans it into
   the profile's `.claude/`.
 - **Rules** — ship a `rules/<leaf>/` dir; the assembler fans it into the profile's `.claude/rules/` (system-prompt-equivalent guidance for Claude Code).
-- **Dockerfile** — install into the agent image's `~/.claude/…` (or install a CLI). Because the
-  assembler can't see what a Dockerfile installs, **declare it** so the capability test can probe it:
+- **`install:` script** — one bash file run by **both** executors, so it delivers identically in a
+  container build and a `--host` launch. Write content into `"$HARNESSED_CONFIG_DIR"`, executables
+  into `"$HARNESSED_BIN_DIR"`, and run an installer that only understands "global" as
+  `HOME="$HARNESSED_HOME_SHIM" <installer>`. A recipe Dockerfile must **not** write into `~/.claude`:
+  that content is invisible to a host launch and hidden by the profile bind-mount in a container.
+  Anything genuinely container-only (root, `apt-get`) stays in the Dockerfile and is declared in
+  `install.system`, whose prose reason is printed at host launch so the shortfall is never silent.
+
+Because the assembler can't see what a script or Dockerfile installs, **declare it** so the
+capability test can probe it:
 
 ```yaml
 name: my-recipe
@@ -104,7 +78,22 @@ expect:                       # only what your Dockerfile delivers (not skills:/
 ```
 
 Recipe Dockerfiles: **no `FROM`**, **no `ARG HARNESS`** (the assembler supplies both); **pin every
-download** (no `@latest` / `--branch main` — the build rejects floating refs). See
+download** (no `@latest` / `--branch main` — the build rejects floating refs).
+
+**A `setup.config` item with a `prompt:` must refuse to run without a TTY.** Today every config
+item in the catalog is `derive:`-only, which resolves fine headlessly — so no guard exists yet. If
+you add a *prompted* item, add the refusal with it: a headless launch (`CI`, a script) takes the
+default silently, and some defaults are forever-values. The beads issue prefix is the motivating
+case — it appears in every issue ID and is expensive to change, so it must never be set by silence.
+Abort with the recipe name and the interactive command to run once; a `setup.condition` then keeps
+later headless launches unaffected.
+
+**Write outside harnessed-owned dirs → document removal in the recipe's README.** A recipe that
+touches anything beyond `$HARNESSED_CONFIG_DIR`, `$HARNESSED_BIN_DIR`, and its own persist dirs —
+a global package, a file in the user's home, a system service — must say in its README exactly what
+it leaves behind and how to remove it. A host launch runs against the user's real machine, where
+there is no image to throw away, so "uninstall the stack" cannot mean anything unless the recipe
+spells it out. See
 [docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md); worked examples: `catalog/recipes/time`
 (stdio MCP + skill), `catalog/recipes/ping` (service ref), `catalog/recipes/gstack` (Dockerfile).
 

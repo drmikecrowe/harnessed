@@ -25,7 +25,7 @@ from pathlib import Path
 _ARG_HARNESS_RE = re.compile(r'^ARG\s+HARNESS\s*$', re.IGNORECASE)
 
 from . import paths
-from .schema import McpServer, Recipe, Stack
+from .schema import McpServer, Recipe, Stack, resolve_recipe_env
 
 # hatago's single Streamable-HTTP endpoint (design D-04; default port 3535, `HATAGO_PORT`
 # overridable). Single source: `paths.hatago_endpoint()`. The harness `.mcp.json` points ONLY
@@ -406,12 +406,21 @@ def _recipe_hooks_settings(recipes: list[Recipe], harness: str | None = None) ->
     return out
 
 
-# Stack `permissions:` → Claude Code settings.json `permissions.defaultMode` (bd main-c5g). Unset
-# (or an unrecognized value) maps to the historical harnessed baseline `acceptEdits` so nothing
-# regresses; the three authored modes map explicitly.
+# Stack `permissions:` → Claude Code settings.json `permissions.defaultMode` (bd main-c5g,
+# retargeted in bd harnessed-8px.8). Unset (or an unrecognized value) maps to the historical
+# harnessed baseline `acceptEdits` so nothing regresses.
+#
+# Claude's own mode names PASS THROUGH verbatim. `prompt`/`yolo` remain as friendly aliases.
+# `auto` used to map to `acceptEdits`, which was wrong: `auto` is a REAL and DISTINCT Claude mode
+# (the CLI's enum is acceptEdits/auto/bypassPermissions/default/dontAsk/plan), so a stack author
+# writing `permissions: auto` was silently given a different mode than the one they named. It now
+# means what it says — pass through to Claude's `auto`. Use `acceptEdits` for the old behaviour.
+_CLAUDE_PERMISSION_MODES = (
+    "acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan",
+)
 _PERMISSION_DEFAULT_MODE = {
+    **{mode: mode for mode in _CLAUDE_PERMISSION_MODES},
     "prompt": "default",
-    "auto": "acceptEdits",
     "yolo": "bypassPermissions",
 }
 
@@ -420,8 +429,9 @@ def _permission_default_mode(permissions: str | None) -> str:
     """Map a stack's `permissions:` value to a Claude `permissions.defaultMode` (bd main-c5g).
 
     None (unset) → `acceptEdits`, preserving the prior always-auto-accept behaviour in a disposable
-    container. prompt→default, auto→acceptEdits, yolo→bypassPermissions. An unrecognized value falls
-    back to `acceptEdits` rather than emitting an invalid mode.
+    container. Claude's own mode names pass through verbatim; `prompt`→default and
+    `yolo`→bypassPermissions are aliases. An unrecognized value falls back to `acceptEdits` rather
+    than emitting an invalid mode.
     """
     if permissions is None:
         return "acceptEdits"
@@ -573,7 +583,16 @@ def merge_settings(baked: dict | None, required: dict, *, warn=None) -> dict:
             existing = hooks.get(event)
             if not isinstance(existing, list):
                 existing = []
-            hooks[event] = existing + list(entries)
+            merged = list(existing)
+            for entry in entries:
+                # UNION, not append (bd harnessed-8px.15). `baked` is frequently a file that already
+                # carries these very entries: the assemble-time floor is written from this same
+                # `required`, so re-applying it at launch used to duplicate every recipe hook and the
+                # agent then ran each one TWICE per event. Identity is whole-entry equality — a
+                # recipe that deliberately declares two similar-but-different groups keeps both.
+                if entry not in merged:
+                    merged.append(entry)
+            hooks[event] = merged
 
     return result
 
@@ -682,6 +701,118 @@ def write_hatago_config(
     return out
 
 
+def _dockerfile_env_quote(value: str) -> str:
+    r"""Escape a recipe `env:` value for the double-quoted form of Dockerfile ENV.
+
+    Backslash and `"` are the two characters the quoted form itself consumes; `$` is escaped so a
+    value that happens to contain `$FOO` is not expanded against the build's ARGs (recipe env values
+    are literals, not build-time templates — their only templating is the `{…}` placeholders, which
+    resolve_recipe_env has already substituted by this point).
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$")
+
+
+# --- install: (bd harnessed-8px.3) ----------------------------------------------------------------
+# Where a recipe's own directory lands container-side. The SAME path in both the build (COPY'd by
+# _install_dockerfile_lines) and at runtime (bind-mounted ro by launcher._setup_script_mounts), so
+# $HARNESSED_RECIPE_DIR means one thing container-side no matter which phase reads it.
+CTR_RECIPE_DIR = "/opt/harnessed/recipes"
+# Build-time scratch for $HARNESSED_INSTALL_CACHE. The host cache persists (that is its whole point
+# — see InstallSpec.cache); the container's cannot and must not: a build layer that kept the clone
+# would bake it into the image. It is removed in the same RUN layer that creates it.
+_CTR_INSTALL_CACHE = "/tmp/harnessed-install-cache"
+
+
+def install_env(
+    recipe: Recipe, *, mode: str, harness: str, config_dir: str, cache_dir: str,
+    bin_dir: str, home_shim: str,
+) -> dict[str, str]:
+    """THE `install.script` env contract — identical KEYS in host and container mode.
+
+    Deliberately a SUBSET of the folder-env contract (`launcher.harnessed_env`), not a superset of
+    it: install runs at container BUILD time, where there is no project bind-mount, so PROJECT_DIR /
+    MAIN_REPO_DIR / HOST_WORKSPACE_DIR are unknowable. Exporting them host-side only would hand
+    authors a variable that works on host and silently expands to empty in a build — the exact
+    class of mode-asymmetric failure this epic exists to remove. A script needing project context
+    belongs in `setup.script`, whose phase HAS a project.
+
+    PRECEDENCE (asserted by test_install_env_precedence, in BOTH modes): these harnessed-owned keys
+    are applied LAST and therefore WIN over both the inherited environment and the recipe's own
+    `env:`. Container mode gets that from inline `VAR=… bash install.sh` assignments beating the
+    preceding `ENV` lines; host mode from `env.update(install_env(...))` running after
+    `env.update(_recipe_env(...))`. Same winner both ways — the defect the 8px.2 merge exposed.
+    """
+    return {
+        "HARNESS": harness,
+        "HARNESSED_MODE": mode,
+        # Source dir for the `cp` a script does where a Dockerfile did `COPY`.
+        "HARNESSED_RECIPE_DIR": (
+            f"{CTR_RECIPE_DIR}/{recipe.name}" if mode == "container" else str(recipe.root)
+        ),
+        # The agent config dir the install writes its deliverables INTO — image ~/.claude at build,
+        # the materialized host home on a host launch. One name, so `cp … "$HARNESSED_CONFIG_DIR"/skills/`
+        # is the whole mode-portability story for a content recipe.
+        "HARNESSED_CONFIG_DIR": config_dir,
+        # Populate-if-empty content cache (empty string when the recipe declares no `install.cache`).
+        "HARNESSED_INSTALL_CACHE": cache_dir,
+        # Where an install lands an EXECUTABLE. Container: a user-writable dir already on the base
+        # image's PATH. Host: the stack's own bin dir, which `_host_run_installs` also puts first on
+        # PATH. Without this an install script cannot LEARN a portable destination for a binary —
+        # the gap that kept tokensave root-only and forced codebase-memory-mcp onto
+        # ${UV_TOOL_BIN_DIR:?} (bd harnessed-8px.7).
+        "HARNESSED_BIN_DIR": bin_dir,
+        # A dir whose `.claude` IS $HARNESSED_CONFIG_DIR, for upstream installers that only know how
+        # to write "globally" into $HOME/.claude: run them as `HOME="$HARNESSED_HOME_SHIM" installer`.
+        # Container: the image home, where $HOME/.claude already is the config dir, so this is a
+        # no-op. Host: a STABLE per-project dir harnessed creates and symlinks. Stability is the
+        # whole point — recipes previously improvised this with `mktemp -d` and a trap, so any
+        # absolute path the installer recorded died with the temp dir (bd harnessed-8px.9).
+        "HARNESSED_HOME_SHIM": home_shim,
+    }
+
+
+def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
+    """The derived-Dockerfile block for one recipe's `install:` — COPY the recipe dir, then run it.
+
+    A COPY (not the runtime bind-mount `setup.script` uses) because a build has no bind-mounts, and
+    because baking the deliverables is the entire point of the install phase. Runs as `harnessed`:
+    an install writes to ~/.claude and needs no root — anything that DOES need root stays in the
+    recipe's Dockerfile and is declared via `install.system` so a host launch warns about it.
+    """
+    inst = recipe.install
+    if inst is None or inst.script is None:
+        # `install: {system: …}` with no script is a ROOT-ONLY install: the whole step lives in the
+        # recipe's own Dockerfile and the declaration exists solely so the HOST executor can warn.
+        # Nothing to COPY and nothing to RUN here.
+        return []
+    ctr_recipe = f"{CTR_RECIPE_DIR}/{recipe.name}"
+    cache = f"{_CTR_INSTALL_CACHE}/{recipe.name}/{inst.cache}" if inst.cache else ""
+    env = install_env(
+        recipe, mode="container", harness=harness,
+        config_dir="/home/harnessed/.claude", cache_dir=cache,
+        # Already on PATH via the base image's `ENV PATH=…/.local/bin:…`, and writable by the
+        # `harnessed` user this RUN executes as.
+        bin_dir="/home/harnessed/.local/bin",
+        # $HOME/.claude IS the config dir in the image, so the shim is just the home itself.
+        home_shim="/home/harnessed",
+    )
+    # Inline assignments on the RUN, NOT `ENV`: these are build-phase inputs, and an `ENV` would
+    # persist them into the shipped image (leaking HARNESSED_MODE=container et al into the agent's
+    # environment). Inline also gives the precedence documented in install_env for free.
+    assigns = " ".join(f'{k}="{_dockerfile_env_quote(v)}"' for k, v in env.items())
+    lines = [
+        f"# --- recipe install: {recipe.name} ---",
+        "USER harnessed",
+        f"COPY catalog/recipes/{recipe.ref or recipe.name} {ctr_recipe}",
+    ]
+    run = f"RUN {assigns} bash {ctr_recipe}/{inst.script}"
+    if cache:
+        # Same layer, or the clone ships in the image.
+        run += f" && rm -rf {_CTR_INSTALL_CACHE}"
+    lines += [run, ""]
+    return lines
+
+
 def write_derived_dockerfile(
     profile_dir: Path, stack_name: str, harness: str, recipes: list[Recipe],
     *, hatago: dict | None = None, with_scan: bool = True
@@ -706,6 +837,22 @@ def write_derived_dockerfile(
         "",
     ]
     for recipe in recipes:
+        # Recipe `env:` → real image ENV, emitted BEFORE this recipe's own body so a RUN in that
+        # body sees it (the build-time consumer). Only vars whose value is knowable without a
+        # project are baked — resolve_recipe_env omits the rest, which still reach the agent at
+        # launch via `podman run -e` (launcher._recipe_env_args). Emitted whether or not the recipe
+        # has a Dockerfile: `env:` is a standalone deliverable.
+        env = resolve_recipe_env(recipe, mode="container", project_path=None)
+        if env:
+            lines.append(f"# --- recipe env: {recipe.name} ---")
+            lines += [f'ENV {var}="{_dockerfile_env_quote(val)}"' for var, val in env.items()]
+            lines.append("")
+
+        # `install:` — emitted AFTER this recipe's `env:` (so the script sees it) and BEFORE its
+        # Dockerfile body (so a body that still carries system-level steps layers on top of the
+        # install rather than under it).
+        lines += _install_dockerfile_lines(recipe, harness)
+
         dockerfile = recipe.root / "Dockerfile"
         if not dockerfile.is_file():
             continue  # backward-compat: recipes without Dockerfiles contribute no layer

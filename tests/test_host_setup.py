@@ -173,7 +173,7 @@ class TestScriptEnv:
     VALUES = {"repo": "harnessed", "gcd_db": "prog_harnessed", "config.name": "harnessed"}
 
     def test_primitives_and_config_become_env(self):
-        env = launcher._script_env("st", Path("/p"), self.VALUES, mode="host")
+        env = launcher._script_env("st", Path("/p"), self.VALUES, mode="host", harness="claude")
         assert env["HARNESSED_MODE"] == "host"
         assert env["HARNESSED_STACK"] == "st"
         assert env["HARNESSED_PROJECT_DIR"] == "/p"
@@ -182,20 +182,20 @@ class TestScriptEnv:
         assert env["HARNESSED_CFG_NAME"] == "harnessed"
 
     def test_key_set_identical_across_modes(self):
-        host = launcher._script_env("st", Path("/p"), self.VALUES, mode="host")
-        ctr = launcher._script_env("st", Path("/p"), self.VALUES, mode="container")
+        host = launcher._script_env("st", Path("/p"), self.VALUES, mode="host", harness="claude")
+        ctr = launcher._script_env("st", Path("/p"), self.VALUES, mode="container", harness="claude")
         assert set(host) - {"HARNESSED_MODE"} == set(ctr) - {"HARNESSED_MODE"}
         assert ctr["HARNESSED_MODE"] == "container"
 
     def test_bin_dir_leads_path_so_install_then_configure_works(self, tmp_path):
-        env = launcher._script_env("st", Path("/p"), self.VALUES, mode="host", bin_dir=tmp_path)
+        env = launcher._script_env("st", Path("/p"), self.VALUES, mode="host", harness="claude", bin_dir=tmp_path)
         assert env["HARNESSED_BIN_DIR"] == str(tmp_path)
         assert env["PATH"].startswith(f"{tmp_path}:")
 
     def test_project_dir_is_mode_invariant(self):
         """_build_mount_args mounts the project at its own host path, so the string is identical."""
-        host = launcher._script_env("st", Path("/home/u/proj"), {}, mode="host")
-        ctr = launcher._script_env("st", Path("/home/u/proj"), {}, mode="container")
+        host = launcher._script_env("st", Path("/home/u/proj"), {}, mode="host", harness="claude")
+        ctr = launcher._script_env("st", Path("/home/u/proj"), {}, mode="container", harness="claude")
         assert host["HARNESSED_PROJECT_DIR"] == ctr["HARNESSED_PROJECT_DIR"] == "/home/u/proj"
 
 

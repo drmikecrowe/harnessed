@@ -18,9 +18,9 @@
       "minLength": 1
     },
     "permissions": {
-      "description": "Permission mode written into the profile. 'prompt' (default) asks before tool use; 'auto' accepts edits without prompting; 'yolo' writes per-harness skip-permission config — safe in an isolated instance.",
+      "description": "Permission mode written into the profile as Claude's permissions.defaultMode. Claude's own mode names pass through verbatim (acceptEdits, auto, bypassPermissions, default, dontAsk, plan); 'prompt' and 'yolo' are aliases for 'default' and 'bypassPermissions'. Unset means 'acceptEdits' — safe in an isolated instance. Note 'auto' is Claude's real auto mode and is NOT the same as 'acceptEdits'.",
       "type": "string",
-      "enum": ["prompt", "auto", "yolo"]
+      "enum": ["acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan", "prompt", "yolo"]
     },
     "instructions": {
       "description": "Stack-level identity text emitted into the profile's .claude/CLAUDE.md at assemble time — 'what is this assembled agent'. Distinct from recipe-level rules (per-recipe RULE.md files). Claude-only.",

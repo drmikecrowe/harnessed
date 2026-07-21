@@ -53,6 +53,26 @@ def xdg_state_home() -> Path:
     return Path(xdg) if xdg else Path.home() / ".local" / "state"
 
 
+def xdg_cache_home() -> Path:
+    """Return $XDG_CACHE_HOME, defaulting to ~/.cache."""
+    xdg = os.environ.get("XDG_CACHE_HOME", "")
+    return Path(xdg) if xdg else Path.home() / ".cache"
+
+
+def install_cache_dir(recipe_name: str, cache_key: str) -> Path:
+    """Content cache for one recipe's `install.script`, keyed by its PINNED ref.
+
+    Host installs re-run on EVERY launch — `_materialize_host_home` rmtree's the home each time, so
+    their output cannot survive and a first-launch-only gate would leave the home permanently empty.
+    Re-cloning per launch is the price unless the SOURCE is cached, and caching is only safe with a
+    key that never moves — which the repo's pin policy already guarantees (`_parse_install` rejects
+    floating keys). Cache MISS = this directory does not exist; the script populates it and copies
+    out of it. Bumping the recipe's pin yields a new directory, so an upgrade can never read stale
+    content.
+    """
+    return xdg_cache_home() / "harnessed" / "install" / recipe_name / cache_key
+
+
 def harnessed_home() -> Path:
     """harnessed's home: the directory that CONTAINS `catalog/`. Never derived from the CWD.
 
@@ -240,15 +260,42 @@ def host_homes_root() -> Path:
     return xdg_data_home() / "harnessed" / "home"
 
 
-def host_home(stack: str, harness: str, project_path: str | Path) -> Path:
-    """Absolute host CLAUDE_CONFIG_DIR for `stack` + `harness` + project (host-native launch backend).
+def host_home(stack: str, harness: str) -> Path:
+    """Absolute host CLAUDE_CONFIG_DIR for `stack` + `harness` (host-native launch backend).
 
-    Keyed by project (via `project_hash`, matching the container `instance_name`) so concurrent
-    launches of the SAME stack in DIFFERENT projects get their own config dir — a second launch's
-    materialize/rmtree can't yank the config dir out from under the first, and each project keeps its
-    own `.claude.json` (MCP approvals, folder trust) instead of sharing one clobbered copy.
+    NOT keyed by project (bd harnessed-8px.12). `--host` isolates CONFIGURATION, and the STACK is
+    what defines the configuration — so the config dir is the stack's identity and nothing else
+    belongs in the key. Nothing project-specific lives in here: `.mcp.json` is built from the stack's
+    recipes alone, no `setup.script` writes to the config dir, and `.claude.json` is internally a
+    path-keyed map that has served every project from one file since `~/.claude` existed.
+
+    It USED to carry a `project_hash`, but only to dodge a self-inflicted hazard: the materialize
+    wiped the dir on every launch, so two projects sharing one would let a second launch yank the dir
+    out from under a running session. That wipe is now gated on the stack fingerprint
+    (`_materialize_host_home`), so an unchanged stack never wipes and the hazard is gone — along with
+    the per-project duplication of identical stack content, the orphan sprawl, and re-running every
+    install script on every launch of every project.
     """
-    return host_homes_root() / stack / harness / project_hash(project_path)
+    return host_homes_root() / stack / harness
+
+
+def host_home_shim(home: Path) -> Path:
+    """A stable dir whose `.claude` symlinks to `home` — the host value of `$HARNESSED_HOME_SHIM`.
+
+    Upstream installers commonly only know how to install "globally" into `$HOME/.claude`. Host-side
+    that would mean the USER'S real `~/.claude`, so a recipe runs them under a fake `$HOME` whose
+    `.claude` points at the stack's config dir instead.
+
+    A SIBLING of `home`, not a child: `_materialize_host_home` rmtree's `home` on every launch, so a
+    shim inside it would not survive. Sibling-per-project rather than one per stack, because the
+    `.claude` symlink can only point at one config dir and two projects must not alias onto each
+    other's.
+
+    Stability is the entire point. Recipes previously improvised this with `mktemp -d` plus a trap,
+    so every absolute path the installer recorded (gsd-core baked 12 hook paths into settings.json)
+    pointed into a dir that was deleted seconds later — bd harnessed-8px.9.
+    """
+    return home.parent / f"{home.name}.home"
 
 
 def project_hash(project_path: str | Path) -> str:

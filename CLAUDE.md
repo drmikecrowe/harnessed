@@ -62,12 +62,39 @@ the repo root). Run `git worktree list` if you are unsure where you are.
   `ls`/`fd` inside a worktree means "ignored or untracked *here*", never "missing from the project".
   Confirm against `main/`, `git ls-tree`, and `.gitignore` before claiming anything is absent or dead.
 
+## Running the tests
+
+```bash
+mise trust && mise exec -- uv sync --extra dev   # once per worktree
+mise exec -- uv run pytest -q
+```
+
+Two traps, both of which produce **failures that CI never sees**:
+
+- **`--extra dev` is required.** `pytest` lives in `[project.optional-dependencies].dev`. A plain
+  `uv sync` installs the project without it, and `uv run pytest` then silently falls through to a
+  system `pytest` on a different Python — every test errors with `ModuleNotFoundError: No module
+  named 'harnessed'`, which looks like a broken checkout rather than a missing extra.
+- **The venv is per-branch.** `mise.toml` sets `UV_PROJECT_ENVIRONMENT` to
+  `~/.local/share/harnessed/venvs/<branch>/.venv` (one venv per branch, deliberately outside the
+  repo so a container bind-mount cannot corrupt it). A fresh worktree therefore starts with no venv
+  and needs the sync above — it is not inherited from `main/`.
+
+**Do not "fix" a color-related assertion failure by changing the assertion.** If a CLI test fails
+comparing plain text against ANSI-escaped output (`assert "no such stack 'x'" in "\x1b[1;31merror…"`),
+the environment is wrong, not the test. `rich` renders plain when stdout is not a TTY — which is the
+case under typer's `CliRunner` — but `FORCE_COLOR` overrides that check, and terminal shell
+integration sets it without asking (Ghostty exports `FORCE_COLOR=3`). `tests/conftest.py` pops it at
+**module import**, which is early enough only because `rich` reads it when a `Console` is
+constructed and `launcher.py` builds its Consoles at import; an autouse fixture runs too late. If you
+add a new conftest or run tests outside pytest, preserve that.
+
 ## Project skills
 
 Skills live under `.agents/skills/`. See that directory for the current set.
 
 
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
@@ -111,6 +138,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
    # Team-maintainer opt-in only, unless current instructions forbid it:
    git pull --rebase
+   bd dolt push
    git push
    git status
    ```
