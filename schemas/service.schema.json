@@ -55,6 +55,11 @@
       "description": "Shell command used as the container healthcheck (e.g. curl -sf http://localhost:8080/health || exit 1).",
       "type": "string"
     },
+    "exclusive_lock": {
+      "description": "Basename of the executable that takes an exclusive on-disk lock on this service's data dir (e.g. dolt). The launcher aborts BEFORE starting the sidecar if a HOST process of that name is already running inside the data dir, because the sidecar would lose the race for the lock and die on startup. Requires scope: project — a project-scoped service exists precisely because its data cannot be shared.",
+      "type": "string",
+      "minLength": 1
+    },
     "sync": {
       "description": "Shell command run INSIDE the service container by `harnessed svc sync <name>`. For a dolt sql-server this is `bd dolt push`: bd's git sync shells out to the dolt CLI, which only routes to a server on its own loopback, so the push cannot run from an agent container. Never automatic — it writes to your git remote.",
       "type": "string"
