@@ -627,3 +627,51 @@ class TestFailedInstallDoesNotStamp:
         r = runner.invoke(launcher.app, ["launch", "hostspike", "claude", str(tmp_path), "--host"])
         assert r.exit_code == 0, r.output
         assert calls == ["hostspike"], "the retry must actually re-run the installs"
+
+
+class TestSettingsPropagateWithoutARebuild:
+    """bd harnessed-8px.18. The 8px.12 fingerprint gate skips _materialize_host_home when the stack
+    is unchanged — but that is what copies settings.json into the config dir. settings.json is NOT a
+    pure function of the recipe closure the fingerprint covers: _merge_host_claude_settings folds in
+    the host's live ~/.claude preferences and re-applies harnessed's required grants every launch.
+
+    Caught on a real third launch: the 8px.17 duplicate-hook fix reached the profile and the live
+    config dir kept running the doubled hooks, because nothing had changed the stack.
+    """
+
+    def test_settings_reach_the_home_even_when_the_stack_is_unchanged(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        prof = paths.profile_dir("s", "claude")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+        monkeypatch.setattr(launcher, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
+
+        home, _a, _c, rebuilt = launcher._host_launch_plan("s", "claude", tmp_path, recipes=[])
+        assert rebuilt is True
+        # _host_launch_plan deliberately does NOT stamp — _launch_host does, only after the installs
+        # succeed, so a failed install can never leave a matching stamp behind (70fb163).
+        launcher._stamp_host_home(home, "fp-1")
+
+        # A launch-time settings change: host prefs merged, or harnessed fixing what it emits.
+        (prof / "settings.json").write_text('{"permissions":{"defaultMode":"auto"}}')
+
+        home, _a, _c, rebuilt = launcher._host_launch_plan("s", "claude", tmp_path, recipes=[])
+        assert rebuilt is False, "unchanged stack must not rebuild"
+        assert json.loads((home / "settings.json").read_text())["permissions"]["defaultMode"] == "auto"
+
+    def test_content_is_still_gated(self, tmp_path, monkeypatch):
+        """Only settings.json is exempt — skills/rules ARE a function of the recipe closure, so a
+        skipped rebuild must not resurrect them (that would defeat the gate entirely)."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        prof = paths.profile_dir("s2", "claude")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+        monkeypatch.setattr(launcher, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
+        home, *_ = launcher._host_launch_plan("s2", "claude", tmp_path, recipes=[])
+        launcher._stamp_host_home(home, "fp-1")
+        (prof / ".claude" / "skills" / "late-skill").mkdir(parents=True)
+        (prof / ".claude" / "skills" / "late-skill" / "SKILL.md").write_text("# late\n")
+        launcher._host_launch_plan("s2", "claude", tmp_path, recipes=[])
+        assert not (home / "skills" / "late-skill").exists()

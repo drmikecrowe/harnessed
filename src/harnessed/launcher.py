@@ -3070,6 +3070,17 @@ def _host_launch_plan(
     _rescue_host_credentials()
     fingerprint = _host_stack_fingerprint(stack, recipes) if recipes is not None else None
     rebuilt = _materialize_host_home(prof, home, fingerprint=fingerprint)
+    # settings.json is the ONE profile artifact recomputed on EVERY launch, so it must be propagated
+    # even when the fingerprint gate skipped the rebuild (bd harnessed-8px.18). It is not a pure
+    # function of the recipe closure the fingerprint covers: `_merge_host_claude_settings` folds in
+    # the host's LIVE ~/.claude preferences and re-applies harnessed's required grants each time.
+    # Without this, changing your host defaultMode — or harnessed fixing what it emits — never
+    # reaches the config dir until something unrelated happens to change the stack. That is exactly
+    # how the 8px.17 duplicate-hook fix landed in the profile and left the live config untouched.
+    # Everything else in here (skills/rules/commands/CLAUDE.md) IS a function of that closure.
+    settings = prof / "settings.json"
+    if settings.is_file():
+        shutil.copy2(settings, home / "settings.json")
     _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
     argv = ["claude"]
