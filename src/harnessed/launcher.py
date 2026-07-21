@@ -2288,7 +2288,7 @@ def harnessed_env(
       (`ARG HARNESS`), so a setup script branching on `$HARNESS` means exactly the same thing.
 
     `mode` is "host" or "container". Socket-backed service vars (HARNESSED_<NAME>_SOCKET) are
-    container-only: their value is a container-side path, and `--host` runs no service sidecars, so
+    container-only: their value is a container-side path, and a host launch runs no service sidecars, so
     exporting them host-side would hand a recipe a path that does not exist. `sockets=False`
     suppresses them entirely — `_script_env` needs a key set that is IDENTICAL in both modes, and
     the container gets the socket vars box-wide anyway.
@@ -3460,8 +3460,8 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     then stop the daemons THIS launch started)."""
     if harness != _HOST_HARNESS:
         _err.print(
-            f"[bold red]error:[/bold red] --host currently supports only '{_HOST_HARNESS}' "
-            f"(got '{harness}') — content-only spike"
+            f"[bold red]error:[/bold red] host-run currently supports only '{_HOST_HARNESS}' "
+            f"(got '{harness}')"
         )
         raise typer.Exit(1)
 
@@ -3476,7 +3476,7 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
         raise typer.Exit(1)
 
     # Assemble IN-PROCESS every launch — host-native, emit-only, NO podman and NO image build. This is
-    # what keeps --host container-free end to end: unlike `harnessed build` (which also builds a
+    # what keeps host-run container-free end to end: unlike `harnessed build` (which also builds a
     # multi-GB image), we only need the profile's content layer. Assembly is sub-second, so a
     # rebuild-per-launch also sidesteps staleness bookkeeping entirely. `build_root` is the dir that
     # CONTAINS profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
@@ -3605,11 +3605,10 @@ def host_run(
 ) -> None:
     """Run a stack HOST-NATIVELY — no podman, no container.
 
-    The first-class verb for the host backend (bd harnessed-ltj). `launch --host` still works and
-    delegates here, but it is deprecated: `--host` was scaffolding bolted onto the container verb,
-    and MOST OF THAT VERB'S FLAGS ARE MEANINGLESS HERE. `--fresh`, `--no-firewall`, `--mount-folder`,
-    `--agent-start-folder` and `--shell` all describe a pod that does not exist on a host launch, so
-    offering them was an invitation to pass a flag that silently did nothing.
+    The host backend's own verb (bd harnessed-ltj), separate from `launch` because the two share no
+    flags but `--rm`. `--fresh`, `--no-firewall`, `--mount-folder`, `--agent-start-folder` and
+    `--shell` all describe a pod that does not exist here, so a combined verb could only accept them
+    and do nothing.
 
     What host mode isolates is CONFIGURATION, not the filesystem: the stack's assembled profile is
     materialized into a per-stack CLAUDE_CONFIG_DIR and the harness is exec'd against your real
