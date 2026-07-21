@@ -323,3 +323,182 @@ class TestHostCliRouting:
             assert env[var]
         # git consumes GIT_COMMON_DIR itself — exporting it would hijack common-dir resolution.
         assert "GIT_COMMON_DIR" not in env
+
+
+class TestBreadcrumb:
+    """_materialize_host_home writes a .harnessed-project breadcrumb so host-gc can identify dirs."""
+
+    def test_breadcrumb_written_when_project_path_supplied(self, tmp_path):
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        project = tmp_path / "myproject"
+        launcher._materialize_host_home(prof, home, project_path=project)
+        bc = home / launcher._HOST_PROJECT_BREADCRUMB
+        assert bc.is_file()
+        assert bc.read_text(encoding="utf-8").strip() == str(project)
+
+    def test_breadcrumb_overwritten_on_each_launch(self, tmp_path):
+        """Every launch wipes and rebuilds home; the breadcrumb must survive the wipe."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        launcher._materialize_host_home(prof, home, project_path=first)
+        launcher._materialize_host_home(prof, home, project_path=second)
+        bc = home / launcher._HOST_PROJECT_BREADCRUMB
+        assert bc.read_text(encoding="utf-8").strip() == str(second)
+
+    def test_breadcrumb_absent_when_no_project_path(self, tmp_path):
+        """Callers that don't supply project_path (e.g. tests) must not see a stale breadcrumb."""
+        prof, home = tmp_path / "prof", tmp_path / "home"
+        prof.mkdir()
+        _fake_profile(prof)
+        launcher._materialize_host_home(prof, home)
+        bc = home / launcher._HOST_PROJECT_BREADCRUMB
+        assert not bc.exists()
+
+    def test_host_launch_plan_writes_breadcrumb(self, monkeypatch, tmp_path):
+        """_host_launch_plan passes project_path down so a real launch always leaves a breadcrumb."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        prof = paths.profile_dir("s", "claude")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+        home, _argv, _cwd = launcher._host_launch_plan("s", "claude", tmp_path)
+        bc = home / launcher._HOST_PROJECT_BREADCRUMB
+        assert bc.is_file()
+        assert bc.read_text(encoding="utf-8").strip() == str(tmp_path)
+
+
+class TestHostGC:
+    """harnessed host-gc: list and prune host config dirs, scrubbing stranded credentials."""
+
+    def _mk_home(
+        self,
+        root: Path,
+        stack: str,
+        harness: str,
+        proj_hash: str,
+        project_path: "Path | None" = None,
+        cred_body: "str | None" = None,
+        cred_symlink: "Path | None" = None,
+    ) -> Path:
+        home = root / stack / harness / proj_hash
+        home.mkdir(parents=True)
+        if project_path is not None:
+            (home / launcher._HOST_PROJECT_BREADCRUMB).write_text(
+                str(project_path), encoding="utf-8"
+            )
+        if cred_symlink is not None:
+            (home / ".credentials.json").symlink_to(cred_symlink)
+        elif cred_body is not None:
+            (home / ".credentials.json").write_text(cred_body)
+        return home
+
+    def test_list_shows_ok_and_orphan(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        root = paths.host_homes_root()
+        live = tmp_path / "live-project"
+        live.mkdir()
+        self._mk_home(root, "stackA", "claude", "abc12345", project_path=live)
+        self._mk_home(root, "stackA", "claude", "def67890", project_path=tmp_path / "gone")
+        result = runner.invoke(launcher.app, ["host-gc"])
+        assert result.exit_code == 0
+        assert "ok" in result.output
+        assert "ORPHAN" in result.output
+
+    def test_list_flags_real_credential_file(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        root = paths.host_homes_root()
+        self._mk_home(
+            root, "stackA", "claude", "abc12345",
+            project_path=tmp_path / "gone",
+            cred_body='{"token":"secret"}',
+        )
+        result = runner.invoke(launcher.app, ["host-gc"])
+        assert result.exit_code == 0
+        assert "REAL-FILE" in result.output
+
+    def test_prune_removes_orphan_only(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        root = paths.host_homes_root()
+        live = tmp_path / "live-project"
+        live.mkdir()
+        live_home = self._mk_home(root, "stackA", "claude", "abc12345", project_path=live)
+        dead_home = self._mk_home(root, "stackA", "claude", "def67890", project_path=tmp_path / "gone")
+        result = runner.invoke(launcher.app, ["host-gc", "--prune"])
+        assert result.exit_code == 0
+        assert live_home.exists(), "live project dir must not be deleted"
+        assert not dead_home.exists(), "orphan dir must be removed"
+
+    def test_prune_refuses_to_delete_live_project_dir(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        root = paths.host_homes_root()
+        live = tmp_path / "live-project"
+        live.mkdir()
+        live_home = self._mk_home(root, "stackA", "claude", "abc12345", project_path=live)
+        result = runner.invoke(launcher.app, ["host-gc", "--prune"])
+        assert result.exit_code == 0
+        assert live_home.exists()
+
+    def test_prune_scrubs_real_credential_before_delete(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        root = paths.host_homes_root()
+        dead_home = self._mk_home(
+            root, "stackA", "claude", "def67890",
+            project_path=tmp_path / "gone",
+            cred_body='{"token":"supersecret"}',
+        )
+        cred_path = dead_home / ".credentials.json"
+        assert cred_path.is_file()
+        result = runner.invoke(launcher.app, ["host-gc", "--prune"])
+        assert result.exit_code == 0
+        assert not dead_home.exists(), "orphan dir must be removed after scrub"
+
+    def test_scrub_overwrites_real_cred_before_unlink(self, tmp_path):
+        """_scrub_host_home zeroes a real .credentials.json before deletion."""
+        home = tmp_path / "home"
+        home.mkdir()
+        cred = home / ".credentials.json"
+        cred.write_text('{"token":"supersecret"}')
+        launcher._scrub_host_home(home)
+        assert not home.exists()
+
+    def test_scrub_handles_symlink_cred_without_overwriting(self, tmp_path):
+        """A symlink cred must not be overwritten — it points at the live shared file."""
+        home = tmp_path / "home"
+        home.mkdir()
+        real_cred = tmp_path / "real.credentials.json"
+        real_cred.write_text('{"token":"live"}')
+        (home / ".credentials.json").symlink_to(real_cred)
+        launcher._scrub_host_home(home)
+        assert not home.exists()
+        # The symlink target (real shared file) must be untouched.
+        assert real_cred.read_text() == '{"token":"live"}'
+
+    def test_dry_run_does_not_delete(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        root = paths.host_homes_root()
+        dead_home = self._mk_home(root, "stackA", "claude", "def67890", project_path=tmp_path / "gone")
+        result = runner.invoke(launcher.app, ["host-gc", "--prune", "--dry-run"])
+        assert result.exit_code == 0
+        assert dead_home.exists(), "dry-run must not delete anything"
+        assert "would remove" in result.output
+
+    def test_no_breadcrumb_dir_treated_as_orphan(self, monkeypatch, tmp_path):
+        """Pre-migration dirs without a breadcrumb are listed as orphans."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        root = paths.host_homes_root()
+        no_bc = root / "stackA" / "claude" / "abc12345"
+        no_bc.mkdir(parents=True)
+        result = runner.invoke(launcher.app, ["host-gc"])
+        assert result.exit_code == 0
+        assert "ORPHAN" in result.output
+
+    def test_empty_root_returns_gracefully(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        result = runner.invoke(launcher.app, ["host-gc"])
+        assert result.exit_code == 0
+        assert "No host config dirs" in result.output
