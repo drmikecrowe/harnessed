@@ -11,6 +11,7 @@ Replaces the bash launcher (harnessed + lib/*.sh) with a Typer CLI that:
 from __future__ import annotations
 
 import json
+import fcntl
 import hashlib
 import os
 import re
@@ -2850,6 +2851,33 @@ def _migrate_legacy_host_homes(home: Path) -> None:
         _scrub_host_home(child)
 
 
+@contextmanager
+def _host_home_lock(home: Path) -> Generator[None, None, None]:
+    """Serialize fingerprint-check + wipe + rebuild + install for one (stack, harness).
+
+    The window this closes is narrow by construction: with the wipe gated on the fingerprint
+    (bd harnessed-8px.12), an unchanged stack never rebuilds, so two launches only contend when both
+    observe a CHANGED fingerprint. Compare the behaviour it replaces, where every launch was
+    destructive and a second launch could wipe a running session's config dir outright.
+
+    Held across the installs too, not just the materialize: releasing after the rebuild would let a
+    second launch see a matching stamp, skip installs, and exec the agent while the first launch's
+    install scripts were still writing into the same dir.
+
+    The lock file is a SIBLING of the config dir — anything inside it dies in the rmtree.
+    `<harness>.lock` is a file, so host-gc's `is_dir()` scan skips it.
+    """
+    lock_path = home.parent / f"{home.name}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(lock_path, "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        fh.close()
+
+
 def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = None) -> bool:
     """Copy the assembled profile's CONTENT layer into a host CLAUDE_CONFIG_DIR (`home`).
 
@@ -3485,9 +3513,12 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
             ),
             harness,
         )
-    home, argv, cwd, rebuilt = _host_launch_plan(
-        stack, harness, project_path, recipes=host_recipes
-    )
+    # Lock spans the rebuild AND the installs — see _host_home_lock for why releasing earlier would
+    # let a second launch skip installs that are still running.
+    with _host_home_lock(paths.host_home(stack, harness)):
+        home, argv, cwd, rebuilt = _host_launch_plan(
+            stack, harness, project_path, recipes=host_recipes
+        )
     # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content a
     # Dockerfile RUN used to deliver to containers only.
     #

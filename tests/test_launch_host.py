@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from harnessed import launcher, paths
@@ -539,3 +540,46 @@ class TestSecondLaunchSkipsInstalls:
         (home / launcher._HOST_STACK_FINGERPRINT).write_text("something-else\n")
         self._launch(tmp_path, monkeypatch, calls)
         assert calls == ["hostspike", "hostspike"], "a changed stack must rebuild and re-install"
+
+
+class TestHostHomeLock:
+    """bd harnessed-8px.12 criterion 4. The gate makes contention rare — an unchanged stack never
+    rebuilds — but two launches that both see a CHANGED fingerprint must not rebuild concurrently."""
+
+    def test_lock_actually_excludes_a_second_holder(self, tmp_path):
+        import fcntl as _f
+        home = tmp_path / "data" / "harnessed" / "home" / "s" / "claude"
+        with launcher._host_home_lock(home):
+            other = open(home.parent / f"{home.name}.lock", "w")
+            try:
+                with pytest.raises(BlockingIOError):
+                    _f.flock(other.fileno(), _f.LOCK_EX | _f.LOCK_NB)
+            finally:
+                other.close()
+
+    def test_lock_is_released_on_exit(self, tmp_path):
+        import fcntl as _f
+        home = tmp_path / "data" / "harnessed" / "home" / "s" / "claude"
+        with launcher._host_home_lock(home):
+            pass
+        other = open(home.parent / f"{home.name}.lock", "w")
+        try:
+            _f.flock(other.fileno(), _f.LOCK_EX | _f.LOCK_NB)  # must not raise
+        finally:
+            other.close()
+
+    def test_lock_file_is_a_sibling_so_the_rebuild_cannot_delete_it(self, tmp_path):
+        home = tmp_path / "data" / "harnessed" / "home" / "s" / "claude"
+        with launcher._host_home_lock(home):
+            pass
+        assert (home.parent / "claude.lock").is_file()
+        assert not home.exists(), "the lock must not create the config dir it guards"
+
+    def test_lock_spans_the_installs_not_just_the_rebuild(self):
+        """Releasing after the rebuild would let a second launch see a matching stamp, skip
+        installs, and exec the agent while the first launch's scripts were still writing."""
+        src = inspect.getsource(launcher._launch_host)
+        # Match the CALL sites, not the prose — an earlier comment names _host_launch_plan too.
+        lock_at = src.index("with _host_home_lock(")
+        assert lock_at < src.index("_host_launch_plan(")
+        assert lock_at < src.index("_host_run_installs(")
