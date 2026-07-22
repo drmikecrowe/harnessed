@@ -1034,20 +1034,19 @@ def _build_stack_guarded(
         _BUILD_TAG.reset(token)
 
 
-def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
-    """Run `varlock load --format json` in schema_dir, writing a mode-0600 temp env-file of clean
-    `KEY=VALUE` lines and returning its path. The caller MUST unlink the file after launch.
+def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
+    """Run `varlock load --format json` in schema_dir and return the resolved `KEY -> value` map
+    (values stringified, `None`s dropped). Returns None on varlock failure so a launch degrades
+    gracefully rather than hard-failing.
 
-    Uses `--format json` (not `--format env`): varlock's `env` format double-quotes every value
-    (`KEY="val"`), but podman `--env-file` does NOT strip quotes — it takes everything after `=`
-    literally, so the quoted format lands `KEY='"val"'` in the container. JSON gives the raw
-    unquoted values, which we write verbatim (podman reads the value to end-of-line, so no quoting
-    or escaping is needed for single-line values like API keys/tokens).
+    Uses `--format json` (not `--format env`) because the `env` format double-quotes every value
+    (`KEY="val"`) and podman `--env-file` keeps those quotes literal; JSON gives raw values, which
+    both consumers want — see `_varlock_resolve_env_file` (container) and `_resolve_launch_env`
+    (host, where the values go straight into `os.environ` and never touch disk).
 
     Assumes a `.env.schema` in schema_dir and `varlock` on PATH (checked by the caller).
-    `OP_SERVICE_ACCOUNT_TOKEN` is appended when already set in the host env (headless / CI
-    path — service-account bearer auth, no desktop app required). Returns None on varlock
-    failure so the launch degrades gracefully rather than hard-failing.
+    `OP_SERVICE_ACCOUNT_TOKEN` is included when already set in the host env (headless / CI path —
+    service-account bearer auth, no desktop app required).
     """
     result = subprocess.run(
         ["varlock", "load", "--format", "json"],
@@ -1069,17 +1068,32 @@ def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
         return None
 
     def _fmt(v: object) -> str:
-        # podman env-file is KEY=VALUE with the value literal to end-of-line — no quoting needed.
         if isinstance(v, bool):
             return "true" if v else "false"
         return str(v)
 
-    lines = "".join(
-        f"{k}={_fmt(v)}\n" for k, v in resolved.items() if v is not None
-    )
+    values = {k: _fmt(v) for k, v in resolved.items() if v is not None}
     op_token = os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")
     if op_token:
-        lines += f"OP_SERVICE_ACCOUNT_TOKEN={op_token}\n"
+        values["OP_SERVICE_ACCOUNT_TOKEN"] = op_token
+    return values
+
+
+def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
+    """Resolve schema_dir via varlock, writing a mode-0600 temp env-file of clean `KEY=VALUE` lines
+    and returning its path. The caller MUST unlink the file after launch.
+
+    Values are written verbatim: `_varlock_resolve` hands back raw (unquoted) values, and podman
+    reads an env-file value to end-of-line — so no quoting or escaping is needed for the
+    single-line values this carries (API keys/tokens). Returns None when resolution fails, so the
+    launch degrades gracefully rather than hard-failing.
+    """
+    resolved = _varlock_resolve(schema_dir)
+    if resolved is None:
+        return None
+
+    # podman env-file is KEY=VALUE with the value literal to end-of-line — no quoting needed.
+    lines = "".join(f"{k}={v}\n" for k, v in resolved.items())
 
     fd, tmp = tempfile.mkstemp(prefix="harnessed-env.", suffix=".env")
     try:
@@ -1095,6 +1109,31 @@ def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
     return Path(tmp)
 
 
+def _parse_plain_env_line(raw: str) -> tuple[str, str] | None:
+    """Parse one dotenv line into (key, value), stripping an `export ` prefix and one pair of
+    surrounding quotes. Returns None for blank/comment/`=`-less lines (nothing to set)."""
+    stripped = raw.strip()
+    if not stripped or stripped.startswith("#") or "=" not in stripped:
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[len("export "):]
+    key, _, val = stripped.partition("=")
+    key, val = key.strip(), val.strip()
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+        val = val[1:-1]
+    return key, val
+
+
+def _plain_env_values(src: Path) -> dict[str, str]:
+    """Read a plain `.env` into a `KEY -> value` map (same normalization as
+    `_normalize_plain_env_file`, minus the temp file). Used by the host path, which sets the values
+    in-process instead of handing podman an env-file."""
+    return dict(
+        pair for raw in src.read_text().splitlines()
+        if (pair := _parse_plain_env_line(raw)) is not None
+    )
+
+
 def _normalize_plain_env_file(src: Path) -> Path:
     """Copy a plain `.env` into a mode-0600 temp env-file, stripping one pair of surrounding quotes
     from each value and any `export ` prefix. The caller MUST unlink the returned file after launch.
@@ -1106,17 +1145,11 @@ def _normalize_plain_env_file(src: Path) -> Path:
     """
     out: list[str] = []
     for raw in src.read_text().splitlines():
-        stripped = raw.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
+        pair = _parse_plain_env_line(raw)
+        if pair is None:
             out.append(raw)
             continue
-        if stripped.startswith("export "):
-            stripped = stripped[len("export "):]
-        key, _, val = stripped.partition("=")
-        key, val = key.strip(), val.strip()
-        if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
-            val = val[1:-1]
-        out.append(f"{key}={val}")
+        out.append(f"{pair[0]}={pair[1]}")
 
     fd, tmp = tempfile.mkstemp(prefix="harnessed-env.", suffix=".env")
     try:
@@ -1184,6 +1217,44 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
             temp_files.append(p)
 
     return env_files, temp_files
+
+
+def _resolve_launch_env(project_path: Path | None = None) -> dict[str, str]:
+    """The host-native twin of `_resolve_launch_secrets`: the same sources and the same
+    global → project precedence (project wins), returned as a `KEY -> value` map instead of a list
+    of `--env-file` paths.
+
+    Host mode has no pod to hand an env-file to — `os.environ` IS the box — so the values are set
+    in-process by the caller and NEVER written to disk. That is strictly better than the container
+    path's mode-0600 temp file, which is only there because podman needs a file.
+
+    Returns {} when nothing is configured (no schema / no `varlock` on PATH / no `.env`), or when
+    varlock fails — a launch must not hard-fail on secrets that may not be needed at all.
+    """
+    values: dict[str, str] = {}
+    have_varlock = bool(shutil.which("varlock"))
+
+    global_dir = Path.home() / ".config" / "harnessed"
+    global_schema = global_dir / ".env.schema"
+    global_env = global_dir / ".env"
+    if global_schema.is_file() and have_varlock:
+        resolved = _varlock_resolve(global_dir)
+        if resolved:
+            values.update(resolved)
+    elif global_env.is_file():
+        values.update(_plain_env_values(global_env))
+
+    if project_path is not None:
+        proj_schema = project_path / ".env.schema"
+        proj_env = project_path / ".env"
+        if proj_schema.is_file() and have_varlock:
+            resolved = _varlock_resolve(project_path)
+            if resolved:
+                values.update(resolved)
+        elif proj_env.is_file():
+            values.update(_plain_env_values(proj_env))
+
+    return values
 
 
 def _build_derived_image(rt: str, derived: str, dockerfile: Path, ctx: str, recipe_hash: str) -> None:
@@ -3716,6 +3787,19 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     except (SchemaError, CollisionError) as exc:
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
+
+    # Launch-time secrets — the host half of the container path's `--env-file` (see
+    # _resolve_launch_secrets). Set on THIS process for the same reason as the recipe env below:
+    # os.environ is the host's box, and `env = dict(os.environ)` at the exec is what delivers them
+    # to the agent. Nothing is written to disk on this path.
+    #
+    # Two precedence calls, both deliberate (bd harnessed-36l):
+    #   - applied BEFORE _recipe_env, so a recipe declaration still wins — mirroring container mode,
+    #     where `podman run -e` beats `--env-file`.
+    #   - overrides an inherited shell value of the same name. The schema is the declared source of
+    #     truth; letting a stale export in the invoking shell silently beat it is the failure mode
+    #     that is hardest to see from inside a session.
+    os.environ.update(_resolve_launch_env(project_path))
 
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
     # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
