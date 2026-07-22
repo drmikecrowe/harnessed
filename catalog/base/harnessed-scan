@@ -24,7 +24,13 @@ REPORT_DIR="$HOME_DIR/.harnessed"
 REPORT="$REPORT_DIR/scan-report.json"
 WORK="$(mktemp -d)"
 MANIFEST="$WORK/manifest"
+# Every scanner we COMMIT to running is recorded here, before it runs. The manifest only ever gets a
+# line when a scanner produced parseable output, so a scanner that runs and yields nothing would
+# otherwise vanish from the report entirely — 5 of 6 scanners silent still reads as a clean scan.
+# Reconciling attempts against the manifest is what lets the summary name what it did NOT see.
+ATTEMPTS="$WORK/attempts"
 : >"$MANIFEST"
+: >"$ATTEMPTS"
 mkdir -p "$REPORT_DIR"
 
 # Scanner tokens. Two arrival paths, both env-only — never a build-arg, so never baked into image
@@ -84,6 +90,7 @@ snyk_scan() {
     command -v snyk >/dev/null 2>&1 || return 0
     [[ -n "${SNYK_TOKEN:-}" ]] || return 0
     echo "  · snyk: ${label}"
+    printf 'snyk|%s\n' "$label" >>"$ATTEMPTS"
     tmp="$(synth_manifest_dir "$nm")" || return 0
     out="$WORK/snyk-$(slug "$label").json"
     ( cd "$tmp" && snyk test --json ) >"$out" 2>/dev/null
@@ -119,6 +126,7 @@ socket_scan() {
     command -v socket >/dev/null 2>&1 || return 0
     [[ -n "${SOCKET_CLI_API_TOKEN:-}" ]] || return 0
     echo "  · socket: ${label}"
+    printf 'socket|%s\n' "$label" >>"$ATTEMPTS"
     org="$(socket_org)"
     [[ -n "$org" ]] || { echo "    (socket: no org for this token — skipped)"; return 0; }
     tmp="$(synth_manifest_dir "$nm")" || return 0
@@ -178,6 +186,7 @@ if command -v osv-scanner >/dev/null 2>&1; then
     [[ -d "$HOME_DIR/.claude/commands" ]] && osv_dirs+=("$HOME_DIR/.claude/commands")
     if [[ ${#osv_dirs[@]} -gt 0 ]]; then
         echo "  · osv-scanner: recipe lockfiles"
+        printf 'osv|recipe lockfiles\n' >>"$ATTEMPTS"
         osv-scanner scan source --recursive --format json "${osv_dirs[@]}" >"$WORK/osv.json" 2>/dev/null
         [[ -s "$WORK/osv.json" ]] && printf 'osv|recipe lockfiles|%s\n' "$WORK/osv.json" >>"$MANIFEST"
     fi
@@ -186,12 +195,13 @@ fi
 # 4. pip-audit over the active Python env.
 if command -v pip-audit >/dev/null 2>&1; then
     echo "  · pip-audit: python env"
+    printf 'pip-audit|python env\n' >>"$ATTEMPTS"
     pip-audit --format=json >"$WORK/pip-audit.json" 2>/dev/null
     [[ -s "$WORK/pip-audit.json" ]] && printf 'pip-audit|python env|%s\n' "$WORK/pip-audit.json" >>"$MANIFEST"
 fi
 
 # Summarize every scanner's JSON into one compact table + a consolidated report. Advisory only.
-HARNESSED_SCAN_REPORT="$REPORT" python3 - "$MANIFEST" <<'PY'
+HARNESSED_SCAN_REPORT="$REPORT" HARNESSED_SCAN_ATTEMPTS="$ATTEMPTS" python3 - "$MANIFEST" <<'PY'
 import sys, os, json
 
 rows = []   # {source, tool, critical, high, other, notable:[...]}
@@ -289,11 +299,38 @@ with open(sys.argv[1]) as f:
         rows.append({"source": source, "tool": tool, "critical": crit,
                      "high": high, "other": len(items) - crit - high, "notable": notable[:4]})
 
+for r in rows:
+    r["status"] = "ok"
+
+# COVERAGE IS FIRST-CLASS. A scanner that ran but produced nothing parseable writes no manifest line,
+# so without this reconciliation it disappears from sources[] and its silence is indistinguishable
+# from a clean result. Reconcile what we COMMITTED to running against what actually reported: every
+# attempt with no parseable output stays in sources[] as an explicit no-output entry.
+reported = {(r["tool"], r["source"]) for r in rows}
+unreported = []
+try:
+    with open(os.environ["HARNESSED_SCAN_ATTEMPTS"]) as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            tool, _, source = line.partition("|")
+            if (tool, source) not in reported:
+                unreported.append({"source": source, "tool": tool, "critical": 0, "high": 0,
+                                   "other": 0, "notable": [], "status": "no-output"})
+except Exception:
+    pass
+rows.extend(unreported)
+
 tot_c = sum(r["critical"] for r in rows)
 tot_h = sum(r["high"] for r in rows)
+scanned = [r for r in rows if r["status"] == "ok"]
 
 report = {"advisory": True, "gating": 0,
           "totals": {"critical": tot_c, "high": tot_h},
+          "covered": bool(scanned),
+          "coverage": {"attempted": len(rows), "reported": len(scanned),
+                       "no_output": [r["tool"] for r in unreported]},
           "sources": rows}
 try:
     with open(os.environ["HARNESSED_SCAN_REPORT"], "w") as f:
@@ -304,17 +341,23 @@ except Exception:
 flagged = [r for r in rows if r["critical"] or r["high"]]
 print("")
 print("  supply-chain summary — advisory (build not gated)")
-if not rows:
-    print("  (no scanner output — scanner tokens absent and/or scanners missing)")
+if not scanned:
+    print("  ⚠ NO COVERAGE — 0 scanners produced output. This is NOT a clean result.")
 elif not flagged:
-    print("  no high/critical advisories across %d source(s)." % len(rows))
+    print("  no high/critical advisories across %d reporting source(s)." % len(scanned))
 else:
     print("  %-34s %4s %4s   notable packages" % ("SOURCE", "CRIT", "HIGH"))
     for r in sorted(flagged, key=lambda r: (-r["critical"], -r["high"])):
         label = ("%s · %s" % (r["tool"], r["source"]))[:34]
         print("  %-34s %4d %4d   %s" % (label, r["critical"], r["high"], ", ".join(r["notable"])))
     print("  " + "-" * 62)
-print("  %d critical · %d high across %d source(s) · 0 gating" % (tot_c, tot_h, len(rows)))
+if unreported:
+    print("  ⚠ %d scanner(s) ran but produced NO parseable output — not covered by this result:"
+          % len(unreported))
+    for r in unreported:
+        print("      %s · %s" % (r["tool"], r["source"]))
+print("  %d critical · %d high across %d reporting source(s) · 0 gating"
+      % (tot_c, tot_h, len(scanned)))
 print("  full report: %s" % os.environ.get("HARNESSED_SCAN_REPORT", "?"))
 print("")
 PY
