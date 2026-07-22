@@ -62,8 +62,30 @@ app = typer.Typer(
     add_completion=False,
 )
 
-_out = Console()
-_err = Console(stderr=True)
+# Warnings printed during a launch are hidden the moment os.execvp hands the terminal over: Claude
+# Code's fullscreen renderer draws on the ALTERNATE screen buffer, so everything harnessed printed
+# is out of view for the whole session. Count warnings here rather than at the ~7 call sites, which
+# use three different markers ("[WARNING]", "warning:", "WARNING") and whose exact output several
+# tests assert on — this leaves every message byte-identical. _acknowledge_warnings() reads the
+# counter just before the handoff.
+_WARN_MARKER = re.compile(r"\bWARNING\b|\bwarning:", re.IGNORECASE)
+
+
+class _WarnCountingConsole(Console):
+    """A Console that remembers how many warnings it has printed."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.warnings = 0
+
+    def print(self, *args, **kwargs) -> None:  # type: ignore[override]
+        if args and isinstance(args[0], str) and _WARN_MARKER.search(args[0]):
+            self.warnings += 1
+        super().print(*args, **kwargs)
+
+
+_out = _WarnCountingConsole()
+_err = _WarnCountingConsole(stderr=True)
 
 # --- shared image names (base; agent images come from catalog/agents/<h>/agent.yaml) ---
 # hatago is no longer a separate image — it is baked into harnessed-base and runs in-container
@@ -2902,6 +2924,32 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
     return choice.startswith("t")
 
 
+def _acknowledge_warnings() -> None:
+    """Hold the terminal until the user acknowledges any warning printed during this launch.
+
+    Call immediately before the `os.execvp` handoff. Past that point harnessed is gone and the
+    agent owns the terminal: Claude Code's fullscreen renderer draws on the alternate screen
+    buffer, so anything printed here is hidden until the session ends. A warning nobody reads is
+    a warning that did not happen.
+
+    Deliberately gated on warnings ONLY — `[INFO]` lines are reference material, and making every
+    launch cost a keypress would be worse than the problem. Skipped when stdin is not a TTY, so
+    headless/CI/capability-test launches never block (same guard as `_prompt_setup_notices`).
+    """
+    count = _out.warnings + _err.warnings
+    if not count or not sys.stdin.isatty():
+        return
+    noun = "warning" if count == 1 else "warnings"
+    _out.print(
+        f"\n[bold yellow]{count} {noun} above.[/bold yellow] "
+        "The agent is about to take over the screen — they will scroll out of view."
+    )
+    try:
+        typer.prompt("Press Enter to continue", default="", show_default=False)
+    except (EOFError, KeyboardInterrupt):
+        raise typer.Exit(0) from None
+
+
 # --- Typer commands ------------------------------------------------------------
 
 # Host-native content-only backend subdirs to materialize from the assembled profile's .claude tree.
@@ -3808,6 +3856,8 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     os.chdir(cwd)
 
     if not rm:
+        # Last chance to be read: past the exec, the agent owns the screen.
+        _acknowledge_warnings()
         # execvpe REPLACES this process — clean TTY handoff to claude on the host.
         os.execvpe(argv[0], argv, env)  # never returns
     # --rm: supervise (fork claude, wait). No host daemons to tear down — bd owns its shared server.
@@ -4267,6 +4317,8 @@ def _attach(
     ]
 
     if not ephemeral:
+        # Last chance to be read: past the exec, the agent owns the screen.
+        _acknowledge_warnings()
         # os.execvp replaces this process — hands the TTY to the container natively.
         os.execvp(rt, exec_argv)
 
