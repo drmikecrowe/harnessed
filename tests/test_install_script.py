@@ -463,7 +463,7 @@ class TestPrecedence:
         prof.mkdir()
         out = emit.write_derived_dockerfile(prof, "s", "claude", [r], with_scan=False).read_text()
         assert out.index('ENV HARNESSED_MODE="recipe-tried-to-win"') < out.index(
-            'RUN HARNESS="claude" HARNESSED_MODE="container"'
+            'HARNESS="claude" HARNESSED_MODE="container"'
         )
 
     def test_host_applies_the_contract_after_recipe_env(self):

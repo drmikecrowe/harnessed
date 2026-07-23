@@ -60,7 +60,9 @@ class TestWriteDerivedDockerfile:
         r2 = Recipe(name="tf", tools=["terraform@1.9.0"], root=tmp_path / "tf")
         out = write_derived_dockerfile(tmp_path, "time", "claude", [r1, r2], with_scan=False)
         body = out.read_text()
-        assert 'RUN mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in body
+        # Cache mounts sit between RUN and the command (bd harnessed-1t4.2); the command itself is
+        # one aggregated, sorted `mise use -g`.
+        assert 'mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in body
         assert "# --- recipe tools (mise) ---" in body
 
     def test_no_mise_layer_without_tools(self, tmp_path):

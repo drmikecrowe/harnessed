@@ -771,6 +771,36 @@ def install_env(
     }
 
 
+# --- bd harnessed-1t4.2: build-time download caches -----------------------------------------------
+# A `--mount=type=cache` dir is NOT committed into the image — it lives on the build host and
+# survives between builds, so a layer MISS costs a re-link instead of a re-download. Before this, the
+# derived image hit 0 of 24 cached steps and re-fetched every package from the network every time.
+#
+# Targets are DOWNLOAD caches only, never install dirs: a cache mount hides its target at COMMIT, so
+# mounting $PNPM_HOME (which holds the global bin dir) would ship an image with no binaries. The
+# paths are the ones the built base image actually reports (`pnpm store path`, `uv cache dir`,
+# `~/.cache`), not assumed defaults.
+#
+# uid/gid 1000 is the `harnessed` user every one of these layers runs as — a root-owned mount makes
+# the layer fail outright under rootless podman.
+#
+# sharing: pnpm's content-addressed store and uv's cache are safe for concurrent readers/writers, so
+# parallel stack builds (`harnessed build --jobs > 1`) share them; mise's download cache carries no
+# such documented guarantee, so it is serialized rather than raced.
+_BUILD_CACHES = (
+    ("/home/harnessed/.cache/mise", "harnessed-mise", "locked"),
+    ("/home/harnessed/.local/share/pnpm/store", "harnessed-pnpm-store", "shared"),
+    ("/home/harnessed/.cache/pnpm", "harnessed-pnpm-meta", "shared"),
+    ("/home/harnessed/.cache/uv", "harnessed-uv", "shared"),
+)
+# Deliberately constant: an id that varied per stack would give every stack its own cache and the
+# sharing these exist for would never happen.
+CACHE_MOUNTS = " ".join(
+    f"--mount=type=cache,target={target},id={cache_id},uid=1000,gid=1000,sharing={sharing}"
+    for target, cache_id, sharing in _BUILD_CACHES
+)
+
+
 def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
     """The derived-Dockerfile block for one recipe's `install:` — COPY the recipe dir, then run it.
 
@@ -805,7 +835,9 @@ def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
         "USER harnessed",
         f"COPY catalog/recipes/{recipe.ref or recipe.name} {ctr_recipe}",
     ]
-    run = f"RUN {assigns} bash {ctr_recipe}/{inst.script}"
+    # Every download cache, not a per-recipe guess: an install.sh may reach for any of pnpm, uv or
+    # mise, and the script body is the recipe author's to change without touching the emitter.
+    run = f"RUN {CACHE_MOUNTS} {assigns} bash {ctr_recipe}/{inst.script}"
     if cache:
         # Same layer, or the clone ships in the image.
         run += f" && rm -rf {_CTR_INSTALL_CACHE}"
@@ -881,7 +913,9 @@ def write_derived_dockerfile(
         joined = " ".join(f'"{t}"' for t in tool_specs)
         lines.append("# --- recipe tools (mise) ---")
         lines.append("USER harnessed")
-        lines.append(f"RUN mise use -g {joined} && mise install")
+        # `mise use -g` fans out to backends that shell out to pnpm (npm:) and uv (pipx:), so this
+        # layer gets the same cache set as a recipe install.
+        lines.append(f"RUN {CACHE_MOUNTS} mise use -g {joined} && mise install")
         lines.append("")
 
     if with_scan:

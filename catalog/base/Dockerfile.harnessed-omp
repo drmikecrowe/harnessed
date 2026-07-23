@@ -19,7 +19,11 @@ FROM harnessed-base:latest
 ARG OMP_VERSION
 # omp plugins are Bun-based (the claude-hooks-bridge ships a bun.lock + TS entry). Install bun via
 # mise so `omp plugin install` can resolve/run them.
-RUN mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" bun && mise install && omp tiny-models download
+RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=1000,gid=1000,sharing=locked \
+    --mount=type=cache,target=/home/harnessed/.local/share/pnpm/store,id=harnessed-pnpm-store,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/pnpm,id=harnessed-pnpm-meta,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/uv,id=harnessed-uv,uid=1000,gid=1000,sharing=shared \
+    mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" bun && mise install && omp tiny-models download
 
 # Pre-install the claude-hooks-bridge extension so an omp stack auto-loads it via omp
 # extension discovery (no per-launch -e). Owner-authored npm package (MIT); pinned by

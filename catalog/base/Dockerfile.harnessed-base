@@ -72,6 +72,17 @@ RUN --mount=type=secret,id=corp_proxy_ca,dst=/tmp/corp-proxy-ca.crt,required=fal
         update-ca-certificates; \
     fi
 USER ${USERNAME}
+# Pre-create every build cache-mount target AND its parents, owned by ${USERNAME} (bd
+# harnessed-1t4.2). Not cosmetic: podman creates a missing mount point and its parent dirs as ROOT.
+# The store mount is /home/${USERNAME}/.local/share/pnpm/store, so without this the runtime created
+# a root-owned /home/${USERNAME}/.local/share — and every later `mise install` died with
+# "create_dir_all: ~/.local/share/mise/installs/…: Permission denied". Caught by a real build.
+RUN mkdir -p /home/${USERNAME}/.cache/mise \
+             /home/${USERNAME}/.cache/pnpm \
+             /home/${USERNAME}/.cache/uv \
+             /home/${USERNAME}/.local/share/pnpm/store \
+             /home/${USERNAME}/.local/share/mise
+
 # mise (runtime manager) + shims on PATH
 RUN curl -fsSL https://mise.run | bash
 ENV PATH="/home/${USERNAME}/.local/share/mise/shims:/home/${USERNAME}/.local/bin:${PATH}"
@@ -96,7 +107,11 @@ USER ${USERNAME}
 # Note: opencode-ai removed — non-functional in base. npm.package_manager=pnpm routes npm: tools
 # through pnpm so the managed policy governs them (RESEARCH Pitfall 5); set BEFORE `mise use -g`.
 # pnpm@11 (not @latest) so the v11 supply-chain defaults are in effect (Node ≥ 20 required; node@22 LTS).
-RUN mise settings set experimental true && \
+RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=1000,gid=1000,sharing=locked \
+    --mount=type=cache,target=/home/harnessed/.local/share/pnpm/store,id=harnessed-pnpm-store,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/pnpm,id=harnessed-pnpm-meta,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/uv,id=harnessed-uv,uid=1000,gid=1000,sharing=shared \
+    mise settings set experimental true && \
     mise settings set npm.package_manager pnpm && \
     mise use -g \
         node@22 \
@@ -124,7 +139,11 @@ USER root
 COPY catalog/base/extra-tools.txt /tmp/extra-tools.txt
 RUN chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 USER ${USERNAME}
-RUN grep -v '^\s*#' /tmp/extra-tools.txt | grep -v '^\s*$' | awk '{print $1}' | \
+RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=1000,gid=1000,sharing=locked \
+    --mount=type=cache,target=/home/harnessed/.local/share/pnpm/store,id=harnessed-pnpm-store,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/pnpm,id=harnessed-pnpm-meta,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/uv,id=harnessed-uv,uid=1000,gid=1000,sharing=shared \
+    grep -v '^\s*#' /tmp/extra-tools.txt | grep -v '^\s*$' | awk '{print $1}' | \
     xargs -r mise use -g && mise install
 
 # Supply-chain scanners (BLD-02) + the in-image scan script, baked once and invoked as the final
@@ -133,7 +152,11 @@ RUN grep -v '^\s*#' /tmp/extra-tools.txt | grep -v '^\s*$' | awk '{print $1}' | 
 # (deliberately credential-free) build and only run under `harnessed rescan`, which resolves the
 # tokens on the HOST from ~/.config/harnessed/.env{,.schema} and injects them as container env.
 # All four are baked here so rescan needs no network install. uv backs pip-audit (uvx policy).
-RUN mise use -g uv osv-scanner && mise install \
+RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=1000,gid=1000,sharing=locked \
+    --mount=type=cache,target=/home/harnessed/.local/share/pnpm/store,id=harnessed-pnpm-store,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/pnpm,id=harnessed-pnpm-meta,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/uv,id=harnessed-uv,uid=1000,gid=1000,sharing=shared \
+    mise use -g uv osv-scanner && mise install \
     && uv tool install pip-audit \
     && mkdir -p "$PNPM_HOME/bin" && pnpm add -g snyk socket@1.1.143
 USER root
@@ -156,7 +179,11 @@ USER ${USERNAME}
 # cloning and BUILDING the branch inside its derived image — 410 packages resolved per build, on top
 # of this layer. Same bin map ({hatago, hatago-mcp-hub} → dist/node/cli.js), so nothing that invokes
 # the binary by name changes.
-RUN pnpm add -g "@drmikecrowe/hatago-mcp-hub@0.1.2"
+RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=1000,gid=1000,sharing=locked \
+    --mount=type=cache,target=/home/harnessed/.local/share/pnpm/store,id=harnessed-pnpm-store,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/pnpm,id=harnessed-pnpm-meta,uid=1000,gid=1000,sharing=shared \
+    --mount=type=cache,target=/home/harnessed/.cache/uv,id=harnessed-uv,uid=1000,gid=1000,sharing=shared \
+    pnpm add -g "@drmikecrowe/hatago-mcp-hub@0.1.2"
 
 # Interactive shell config
 RUN echo 'PS1="\[\033[01;32m\][harnessed]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/${USERNAME}/.bashrc && \
