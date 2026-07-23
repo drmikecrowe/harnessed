@@ -6,6 +6,10 @@
 #
 # Tool-specific personal-workflow skills (obsidian-*, playwriter, ghostty) were deliberately left
 # out — they assume tools not everyone uses, so they don't fit a "universal" example.
+#
+# agent-browser was dropped 2026-07-23: unused, and vendoring it was actively wrong — upstream
+# (github.com/vercel-labs/agent-browser) installs a STUB SKILL.md that defers to the installed CLI
+# precisely so the instructions never go stale. A frozen copy defeats that design.
 name: mikes-universal-setup
 description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills — an example personal always-on setup."
 
@@ -24,25 +28,43 @@ rules:
   - path: rules/stop-and-ask
   - path: rules/token-efficient
 
+# Provenance is recorded per skill below. Nearly all of these are VENDORED THIRD-PARTY copies, not
+# original work — the opposite of what this file used to imply. See README.md for the full table and
+# the outstanding licence obligations. Owner tags:
+#   [oakoss]   github.com/oakoss/agent-skills — `license: MIT` in each SKILL.md frontmatter, but the
+#              repo ships NO LICENSE file and GitHub reports no repo licence. Attribution is
+#              per-file only; verify before relying on the MIT grant.
+#   [gsd]      github.com/open-gsd/gsd-core (MIT, LICENSE present)
+#   [kepano]   github.com/kepano/obsidian-skills (MIT)
+#   [blader]   github.com/blader/humanizer (MIT)
+#   [mine]     authored here
+#   [?]        upstream NOT identified — do not assume it is ours
 skills:
-  - path: skills/agent-browser
-  - path: skills/application-security
+  - path: skills/application-security   # [oakoss]
+  # [?] No upstream found. Distinctive Spanish trigger phrases ("optimizar codigo") did not match
+  # any published skill. Treat as unknown provenance until identified, not as original work.
   - path: skills/code-optimizer
-  - path: skills/create-skill
-  - path: skills/defuddle
+  - path: skills/create-skill           # [gsd]
+  - path: skills/defuddle               # [kepano]
+  # [?] anthropics/claude-code ships a skill of this exact name (plugins/frontend-design). NOT
+  # confirmed to be the same file — this copy references Liquid Glass / Shopify Polaris / picsum,
+  # which were not verified upstream. Diff before attributing.
   - path: skills/frontend-design
-  - path: skills/handoff
-  # Vendored third-party (MIT), not authored here: github.com/blader/humanizer @
+  - path: skills/handoff                # [gsd] — distinct from the same-named mattpocock skill
+  # [blader] Vendored third-party (MIT): github.com/blader/humanizer @
   # 1b48564898e999219882660237fde01bf4843a0f. Upstream ships no tags/releases and is a single
   # SKILL.md, so it is committed here (with its LICENSE) rather than cloned by a Dockerfile the
   # way superpowers' 14-skill tree is. To update: re-copy SKILL.md from upstream and bump the SHA.
+  # This is the ONLY skill here whose LICENSE actually ships alongside it.
   - path: skills/humanizer
-  - path: skills/map-codebase
-  - path: skills/mermaid-diagrams
+  - path: skills/map-codebase           # [gsd]
+  - path: skills/mermaid-diagrams       # [oakoss]
+  # [oakoss] BYTE-IDENTICAL to upstream skills/mise/SKILL.md (verified 2026-07-23, 7842 bytes).
+  # Recorded because these two were long believed to be original work.
   - path: skills/mise
-  - path: skills/python-uv
-  - path: skills/security-review
-  - path: skills/skill-management
-  - path: skills/tdd
-  - path: skills/varlock
-  - path: skills/wrangler
+  - path: skills/python-uv              # [oakoss] byte-identical upstream, 8419 bytes
+  - path: skills/security-review        # [gsd]
+  - path: skills/skill-management       # [oakoss] source: agentskills.io
+  - path: skills/tdd                    # [gsd] idiom; originally github.com/mattpocock/skills (MIT)
+  - path: skills/varlock                # [mine]
+  - path: skills/wrangler               # [mine]
