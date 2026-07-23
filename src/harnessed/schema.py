@@ -1669,6 +1669,21 @@ _FLOATING_REF_RE = re.compile(
     r'|@latest\b',
     re.IGNORECASE,
 )
+# --- bd harnessed-1t4.6: a clone ref must be IMMUTABLE, not merely "not main" ---------------------
+# `_FLOATING_REF_RE` names three refs explicitly, which let `--branch "feat/per-server-tool-filtering"`
+# through a gate that exists to stop exactly that: a feature branch moves like main does, so two
+# builds a week apart produce different images from identical inputs. The rule is therefore stated
+# positively — a clone ref is acceptable only if it is a version-like TAG or a full 40-hex SHA.
+_CLONE_REF_RE = re.compile(r'--branch(?:=|\s+)(?P<ref>"[^"]*"|\'[^\']*\'|\S+)')
+# v6.0.3, 1.2.3, 0.1.2, v2.0.0-rc.1 — and a full commit SHA. Deliberately narrow: an unrecognised
+# shape fails closed rather than being guessed at.
+_IMMUTABLE_REF_RE = re.compile(r'^(?:[0-9a-fA-F]{40}|v?\d+(?:\.\d+)*(?:[-+.][0-9A-Za-z.]+)?)$')
+# `"$FOO"` / `${FOO}` — catalog scripts pin via `FOO_REF="v6.0.3"` and clone `--branch "$FOO_REF"`,
+# so the gate follows exactly one hop to the literal assignment in the same body.
+_SHELL_VAR_REF_RE = re.compile(r'^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$')
+_SHELL_ASSIGN_RE = re.compile(
+    r'^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(\"[^\"]*\"|\'[^\']*\'|\S*)\s*$', re.MULTILINE
+)
 # A Dockerfile RUN instruction. Used by `validate_container_only_declared` to detect the half of a
 # partially migrated recipe that a host launch cannot execute.
 _DOCKERFILE_RUN_RE = re.compile(r'^\s*RUN\s', re.MULTILINE)
@@ -1752,6 +1767,38 @@ def validate_no_raw_npm(recipe: Recipe) -> None:
         )
 
 
+def _unquote(token: str) -> str:
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'":
+        return token[1:-1]
+    return token
+
+
+def _mutable_clone_ref(body: str) -> str | None:
+    """Return a human-readable description of the first NON-immutable `--branch` ref, else None.
+
+    Comment-stripping is the caller's job (both call sites already do it for `_FLOATING_REF_RE`).
+    Fail-closed: a ref this cannot prove immutable — including a variable with no literal assignment
+    in the same body — is reported, because "can't tell" and "moves" have the same build consequence.
+    """
+    assigns = {m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)}
+    for match in _CLONE_REF_RE.finditer(body):
+        raw = _unquote(match.group("ref"))
+        var = _SHELL_VAR_REF_RE.match(raw)
+        if var:
+            name = var.group(1)
+            if name not in assigns:
+                return (
+                    f"${name} (no literal assignment in this file, so the ref cannot be shown "
+                    f"immutable)"
+                )
+            ref, shown = assigns[name], f"${name} = '{assigns[name]}'"
+        else:
+            ref, shown = raw, f"'{raw}'"
+        if not _IMMUTABLE_REF_RE.match(ref):
+            return shown
+    return None
+
+
 def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
     """Raises PinValidationError if the Dockerfile body contains a floating ref (ASM-02).
 
@@ -1768,6 +1815,12 @@ def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
         raise PinValidationError(
             f"recipe '{recipe_name}': Dockerfile contains a floating ref '{match.group(0).strip()}'. "
             "Pin to a tag (e.g. v1.2.3) or SHA (e.g. @sha256:...) instead of floating branches or :latest."
+        )
+    ref = _mutable_clone_ref(stripped)
+    if ref:
+        raise PinValidationError(
+            f"recipe '{recipe_name}': Dockerfile clones a moving ref {ref}. "
+            "A branch moves — clone a tag (e.g. v1.2.3) or a full commit SHA instead."
         )
 
 
@@ -1813,6 +1866,12 @@ def _lint_script_file(recipe: Recipe, field_name: str, rel_path: str) -> None:
         raise PinValidationError(
             f"recipe '{recipe.name}': {field_name} '{rel_path}' contains a floating ref "
             f"'{match.group(0).strip()}'. Pin to an explicit tag, version, or SHA."
+        )
+    ref = _mutable_clone_ref(body)
+    if ref:
+        raise PinValidationError(
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' clones a moving ref {ref}. "
+            "A branch moves — clone a tag (e.g. v1.2.3) or a full commit SHA instead."
         )
 
 
