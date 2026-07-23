@@ -869,7 +869,14 @@ def write_derived_dockerfile(
     # Declarative recipe `tools:` — install pinned mise tools as one global layer, so a recipe can add
     # a CLI (e.g. pulumi) with no Dockerfile. Runs as `harnessed` (mise's globals live under that
     # user's home) after all recipe layers. Pins are validated at load (_parse_tools).
-    tool_specs = [t for recipe in recipes for t in recipe.tools]
+    #
+    # SORTED + DEDUPED (bd harnessed-1t4.5): podman keys its layer cache on the literal instruction
+    # text, so emitting these in stack.yaml authoring order made two stacks with the SAME tool set
+    # miss each other's cached layer for no reason. Sorting makes the layer a function of the tool
+    # SET. Recipe layers above deliberately keep authored order — install order there IS semantic
+    # (a later recipe may overwrite an earlier one's content) — but `mise use -g` is declarative and
+    # order-free, so nothing is lost by canonicalising it.
+    tool_specs = sorted({t for recipe in recipes for t in recipe.tools})
     if tool_specs:
         joined = " ".join(f'"{t}"' for t in tool_specs)
         lines.append("# --- recipe tools (mise) ---")
