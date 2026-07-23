@@ -270,20 +270,35 @@ Claude format is canonical (every other agent adapts out of it); pnpm everywhere
 for light Python MCP servers; credentials referenced from the host, never baked; Streamable-HTTP MCP
 (SSE is deprecated).
 
-**Credentials are referenced, never replicated (SOP).** harnessed never copies, seeds, snapshots, or
-symlinks a harness's credential store into a per-stack home — container or host. The reason is
-structural, not stylistic: a harness **rewrites its own credential store on token refresh**, and it
-does so by replacing the file, not by writing through it. Any copy harnessed makes therefore rots
-the moment a token refreshes, and the next launch restores the stale one — a silent logout the user
-experiences as "it keeps asking me to log in". Two mechanisms are sanctioned:
+**Credentials are referenced, never replicated (SOP).** harnessed never copies, seeds, or snapshots
+a harness's credential store into a per-stack home — container or host. The reason is structural,
+not stylistic: a harness **rewrites its own credential store on token refresh**. Any copy harnessed
+makes therefore rots the moment a token refreshes, and the next launch restores the stale one — a
+silent logout the user experiences as "it keeps asking me to log in". Two mechanisms are sanctioned:
 
-1. **Reference the live store** — mount the real path (ro where the harness only reads it, rw where
-   the harness owns the whole dir). Always current by construction; nothing to go stale.
+1. **Reference the live store** — a mount or a symlink at the real path (ro where the harness only
+   reads it, rw where it owns the whole dir). Always current by construction.
 2. **Reference a token or broker URL** — an env token, or omp's `auth.broker.url` +
    `auth.broker.token`. No file involved at all.
 
 Everything else is replication and is out of bounds, however carefully guarded. "Copy it back if
 it's newer" is still replication — it just moves the race rather than removing it.
+
+**A symlink is a reference only while the harness writes in place.** This is the property that
+decides whether mechanism 1 is available for a given harness, so establish it before designing:
+
+- **Writes in place → the link holds.** SQLite is the worked example: it resolves the symlink, so
+  `-wal`/`-shm` are created beside the **target**, and concurrent openers through different links
+  share one database rather than diverging. Verified against omp's `agent.db` (two links, two live
+  connections, one consistent row set; both links intact afterwards).
+- **Replaces the file → the link silently becomes a copy.** Claude Code rewrites
+  `.credentials.json` by replacement, converting the link into a regular file whose refreshed token
+  never reaches the shared store. That is harnessed-8px.10, and it is a property of the harness, not
+  a flaw in symlinks.
+
+**This SOP governs credentials only.** Symlinking *history, sessions, memory and usage state* up to
+one shared location is deliberate design, not a violation — a universal rolled-up view across every
+stack is the point, and those files are not subject to the replace-on-refresh hazard above.
 
 **Auth is per-harness, and both current paths comply.** claude mounts its real
 `~/.claude/.credentials.json` **read-only** + a token-free onboarding stub (mechanism 1). **omp**
@@ -294,9 +309,9 @@ That is mechanism 1 too, at dir granularity: shared host state, deliberately not
 "fix" it back to isolation by snapshotting the dir — that was built, tried, and rejected; see
 [design §4c](docs/harnessed-design.md).
 
-The SOP's live counter-example is the host backend: `CLAUDE_CONFIG_DIR` moves config **and**
-credentials together, so host mode had to put *something* credential-shaped in the per-stack home.
-The symlink chosen there is a genuine reference, but Claude Code replaces it with a regular file on
-refresh — silently converting it into a copy. See harnessed-8px.10. Treat any design that needs a
-credential to live inside a per-stack home as a smell: prefer mechanism 2, or accept a per-stack
-login, which costs one login and cannot rot.
+Both host backends inherit the same shape, because `CLAUDE_CONFIG_DIR` and `PI_CODING_AGENT_DIR`
+each move config **and** credentials together. The per-stack home therefore holds content
+(`skills`/`rules`/`commands`/`mcp.json`/`config.yml`) while state — `agent.db`, `history.db`,
+`sessions/`, `memories/` — is symlinked back to the one shared store, which keeps history universal
+and, for omp, makes auth shared as a side effect of mechanism 1. claude is the harness where that
+does not hold, per the replace-on-refresh case above.

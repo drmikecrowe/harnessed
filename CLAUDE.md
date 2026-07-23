@@ -25,10 +25,12 @@ Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can
   no pnpm equivalent. **`uvx`** for light Python MCP servers.
 - **Pin every download** in recipe Dockerfiles (no `@latest`/`--branch main` — the build rejects them).
 - **Credentials referenced, never replicated.** Never baked into an image or committed — and never
-  copied, seeded, snapshotted, or symlinked into a per-stack home (host or container). A harness
-  rewrites its own credential store on token refresh, so any copy harnessed makes rots silently and
-  logs the user out. Reference the live store (a mount of the real path) or a token/broker URL. See
-  ARCHITECTURE.md §Constraints.
+  copied, seeded, or snapshotted into a per-stack home (host or container). Reference the live store
+  (mount, symlink, or token/broker URL) so a refresh is always visible. A *symlink* counts as a
+  reference only while the harness rewrites its store **in place**; a harness that replaces the file
+  on refresh silently turns that link into a stale copy (see harnessed-8px.10). This is separate
+  from — and does not restrict — symlinking history/session/usage state up for a universal rolled-up
+  view, which is deliberate design. See ARCHITECTURE.md §Constraints.
 - **Streamable-HTTP MCP** only (SSE is deprecated).
 - Authorable content lives under **`catalog/`** (repo) and **`~/.config/harnessed/catalog`** (user
   overlay, wins on clash). Generated profiles go to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
