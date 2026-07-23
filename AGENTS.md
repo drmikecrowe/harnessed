@@ -78,8 +78,8 @@ the repo root). Run `git worktree list` if you are unsure where you are.
 ## Conventions
 
 See [CLAUDE.md](CLAUDE.md) for the non-negotiable constraints (host-native CLI; Claude format
-canonical; recipes harness-independent; pnpm everywhere; pinned downloads; credentials never baked;
-Streamable-HTTP MCP).
+canonical; recipes harness-independent; pnpm everywhere; pinned downloads; credentials referenced,
+never replicated; Streamable-HTTP MCP).
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker

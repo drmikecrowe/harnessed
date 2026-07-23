@@ -270,8 +270,33 @@ Claude format is canonical (every other agent adapts out of it); pnpm everywhere
 for light Python MCP servers; credentials referenced from the host, never baked; Streamable-HTTP MCP
 (SSE is deprecated).
 
-**Auth is per-harness.** claude seeds a read-only credential mount + a token-free onboarding stub
-(isolated). **omp is a deliberate exception**: it stores auth/usage/sessions together in
-`~/.omp/agent`, so the launcher **bind-mounts that host dir read-write** (shared host state, not
-isolated) and runs plain `omp` (never `--profile`). This is intentional — do not "fix" it back to
-isolation; see [design §4c](docs/harnessed-design.md) for the full rationale.
+**Credentials are referenced, never replicated (SOP).** harnessed never copies, seeds, snapshots, or
+symlinks a harness's credential store into a per-stack home — container or host. The reason is
+structural, not stylistic: a harness **rewrites its own credential store on token refresh**, and it
+does so by replacing the file, not by writing through it. Any copy harnessed makes therefore rots
+the moment a token refreshes, and the next launch restores the stale one — a silent logout the user
+experiences as "it keeps asking me to log in". Two mechanisms are sanctioned:
+
+1. **Reference the live store** — mount the real path (ro where the harness only reads it, rw where
+   the harness owns the whole dir). Always current by construction; nothing to go stale.
+2. **Reference a token or broker URL** — an env token, or omp's `auth.broker.url` +
+   `auth.broker.token`. No file involved at all.
+
+Everything else is replication and is out of bounds, however carefully guarded. "Copy it back if
+it's newer" is still replication — it just moves the race rather than removing it.
+
+**Auth is per-harness, and both current paths comply.** claude mounts its real
+`~/.claude/.credentials.json` **read-only** + a token-free onboarding stub (mechanism 1). **omp**
+stores auth/usage/sessions together in `~/.omp/agent` with no separately-mountable credential file,
+so the launcher **bind-mounts that host dir read-write** and runs plain `omp` (never `--profile`,
+which points omp at an isolated *empty* store — a credential-only seed lands on the login screen).
+That is mechanism 1 too, at dir granularity: shared host state, deliberately not isolated. Do not
+"fix" it back to isolation by snapshotting the dir — that was built, tried, and rejected; see
+[design §4c](docs/harnessed-design.md).
+
+The SOP's live counter-example is the host backend: `CLAUDE_CONFIG_DIR` moves config **and**
+credentials together, so host mode had to put *something* credential-shaped in the per-stack home.
+The symlink chosen there is a genuine reference, but Claude Code replaces it with a regular file on
+refresh — silently converting it into a copy. See harnessed-8px.10. Treat any design that needs a
+credential to live inside a per-stack home as a smell: prefer mechanism 2, or accept a per-stack
+login, which costs one login and cannot rot.

@@ -24,7 +24,11 @@ Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can
   The one exception is upgrading npm itself in the base image (`npm install -g npm@<pin>`) — there is
   no pnpm equivalent. **`uvx`** for light Python MCP servers.
 - **Pin every download** in recipe Dockerfiles (no `@latest`/`--branch main` — the build rejects them).
-- **Credentials referenced from the host, never baked** into an image or committed.
+- **Credentials referenced, never replicated.** Never baked into an image or committed — and never
+  copied, seeded, snapshotted, or symlinked into a per-stack home (host or container). A harness
+  rewrites its own credential store on token refresh, so any copy harnessed makes rots silently and
+  logs the user out. Reference the live store (a mount of the real path) or a token/broker URL. See
+  ARCHITECTURE.md §Constraints.
 - **Streamable-HTTP MCP** only (SSE is deprecated).
 - Authorable content lives under **`catalog/`** (repo) and **`~/.config/harnessed/catalog`** (user
   overlay, wins on clash). Generated profiles go to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
