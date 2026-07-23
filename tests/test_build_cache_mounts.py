@@ -175,15 +175,22 @@ class TestLiveCacheBehaviour:
     """The syntax is only worth anything if this podman actually honours it."""
 
     def test_cache_survives_a_layer_miss(self, tmp_path):
+        # Per-run BUST values: podman's LAYER cache is global and persists between test runs, so a
+        # fixed one makes the second build a no-op replay of the PREVIOUS run's layer and the
+        # assertion below stops testing anything. `tmp_path.parent.name` is pytest's per-invocation
+        # counter (its basename is the same every run), which is what makes the markers unique.
+        # The cache id stays fixed — that is the thing under test, and a per-run id would leave a
+        # new cache dir behind on every run.
+        run_id = tmp_path.parent.name
         mount = (
-            "--mount=type=cache,target=/home/harnessed/.cache/probe,"
+            "--mount=type=cache,target=/home/harnessed/.cache/probe,id=harnessed-probe,"
             "uid=1000,gid=1000,sharing=locked"
         )
         (tmp_path / "Dockerfile").write_text(
             "FROM docker.io/library/alpine:3.21\n"
             "RUN adduser -D -u 1000 harnessed\n"
             "USER harnessed\n"
-            "ARG BUST=1\n"
+            "ARG BUST\n"
             f'RUN {mount} sh -c \'echo "$BUST" >> /home/harnessed/.cache/probe/log; '
             "cat /home/harnessed/.cache/probe/log'\n",
             encoding="utf-8",
@@ -197,7 +204,9 @@ class TestLiveCacheBehaviour:
             )
             return out.stdout + out.stderr
 
-        build("1")
-        second = build("2")
-        # The busted layer re-ran (it printed "2") and still saw what the first run left behind.
-        assert "2" in second and re.search(r"^1$", second, re.MULTILINE), second
+        first, second = f"{run_id}-a", f"{run_id}-b"
+        build(first)
+        out = build(second)
+        # The busted layer re-ran (it printed its own marker) and still saw what the first left.
+        assert second in out, out
+        assert re.search(rf"^{re.escape(first)}$", out, re.MULTILINE), out
