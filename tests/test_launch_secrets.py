@@ -326,3 +326,130 @@ class TestHatagoEntryUrlEnv:
         entry = emit._hatago_entry(server)
         # The value should look like a shell variable reference, not a URL or resolved value.
         assert entry["url"].startswith("${") and entry["url"].endswith("}")
+
+
+# ---------------------------------------------------------------------------
+# _resolve_launch_env — the host-native twin (harnessed-36l)
+# ---------------------------------------------------------------------------
+
+class TestResolveLaunchEnvSources:
+    """Same sources and same global → project precedence as _resolve_launch_secrets, returned as a
+    dict. Host mode has no pod to hand an env-file to, so nothing is written to disk."""
+
+    def _global_schema(self, monkeypatch, tmp_path, values: dict):
+        home = tmp_path / "home"
+        home.mkdir()
+        schema = home / ".config" / "harnessed" / ".env.schema"
+        schema.parent.mkdir(parents=True)
+        schema.write_text("SNYK_TOKEN=op(op://Private/Snyk/credential)\n")
+        monkeypatch.setattr(Path, "home", lambda: home)
+        monkeypatch.setattr(launcher.shutil, "which", lambda _: "/usr/bin/varlock")
+        monkeypatch.delenv("OP_SERVICE_ACCOUNT_TOKEN", raising=False)
+        monkeypatch.setattr(
+            launcher.subprocess, "run", lambda *a, **kw: _fake_varlock_json(values)
+        )
+
+    def test_nothing_configured_returns_empty(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        called = []
+        monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **kw: called.append(1))
+        assert launcher._resolve_launch_env() == {}
+        assert called == []
+
+    def test_no_varlock_skips_global_schema(self, monkeypatch, tmp_path):
+        self._global_schema(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"})
+        monkeypatch.setattr(launcher.shutil, "which", lambda _: None)
+        assert launcher._resolve_launch_env() == {}
+
+    def test_global_schema_resolved(self, monkeypatch, tmp_path):
+        self._global_schema(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123", "OTHER": "value"})
+        assert launcher._resolve_launch_env() == {"SNYK_TOKEN": "abc123", "OTHER": "value"}
+
+    def test_varlock_failure_degrades_to_empty(self, monkeypatch, tmp_path):
+        self._global_schema(monkeypatch, tmp_path, {})
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **kw: subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr="failed to connect to 1Password"
+            ),
+        )
+        # A launch must not hard-fail on secrets it may not even need.
+        assert launcher._resolve_launch_env() == {}
+
+    def test_project_wins_over_global(self, monkeypatch, tmp_path):
+        self._global_schema(monkeypatch, tmp_path, {"FOO": "global"})
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text("FOO=project\n")
+        assert launcher._resolve_launch_env(proj)["FOO"] == "project"
+
+    def test_plain_env_is_normalized(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "empty-home")
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text(
+            '# a comment\n'
+            '\n'
+            'export QUOTED="v1"\n'
+            "SINGLE='v2'\n"
+            "PLAIN=v3\n"
+        )
+        assert launcher._resolve_launch_env(proj) == {
+            "QUOTED": "v1", "SINGLE": "v2", "PLAIN": "v3",
+        }
+
+    def test_writes_nothing_to_disk(self, monkeypatch, tmp_path):
+        """The whole point of the host path: resolved secrets never land in a file."""
+        self._global_schema(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"})
+        made = []
+        monkeypatch.setattr(
+            launcher.tempfile, "mkstemp", lambda *a, **kw: made.append(1) or (_ for _ in ()).throw(
+                AssertionError("host path must not create a temp file")
+            ),
+        )
+        assert launcher._resolve_launch_env()["SNYK_TOKEN"] == "abc123"
+        assert made == []
+
+
+class TestHostLaunchAppliesSecrets:
+    """The wiring: _launch_host must put resolved secrets in the env the agent is exec'd with,
+    and the two precedence calls must hold (harnessed-36l)."""
+
+    def test_secrets_reach_the_agent_with_correct_precedence(self, monkeypatch, tmp_path):
+        from typer.testing import CliRunner
+
+        from harnessed.schema import Recipe, Stack
+
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        # A stale export in the invoking shell — the schema must beat it.
+        monkeypatch.setenv("SNYK_TOKEN", "stale-from-shell")
+
+        monkeypatch.setattr(
+            launcher, "_resolve_launch_env",
+            lambda project_path=None: {"SNYK_TOKEN": "from-schema", "RECIPE_OWNED": "from-schema"},
+        )
+        # A recipe declaring the same name must still win — mirroring `podman run -e` beating
+        # --env-file in container mode.
+        r = Recipe(name="envy", env={"RECIPE_OWNED": "from-recipe"})
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes",
+            lambda root, stack: (Stack(name="hostspike"), [r]),
+        )
+
+        captured: dict = {}
+
+        def fake_execvpe(file, argv, env):
+            captured.update(env)
+            raise SystemExit(0)
+
+        monkeypatch.setattr(launcher.os, "execvpe", fake_execvpe)
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = CliRunner().invoke(
+            launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)]
+        )
+        assert result.exit_code == 0, result.output
+
+        assert captured["SNYK_TOKEN"] == "from-schema"    # schema beats a stale shell export
+        assert captured["RECIPE_OWNED"] == "from-recipe"  # recipe env beats a resolved secret
