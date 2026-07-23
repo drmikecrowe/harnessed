@@ -144,7 +144,7 @@ def assemble(
     # ASM-03 — derived Dockerfile, with a final supply-chain scan layer (BLD-02) unless the build
     # opted out via --no-security-scans (HARNESSED_NO_SCANS).
     with_scan = os.environ.get("HARNESSED_NO_SCANS") != "true"
-    emit.write_derived_dockerfile(profile_dir, stack.name, harness, recipes, hatago=stack.hatago, with_scan=with_scan)
+    emit.write_derived_dockerfile(profile_dir, stack.name, harness, recipes, with_scan=with_scan)
 
     # Fan each recipe's standalone skills/commands into the harness-native profile tree
     # (<profile>/.claude/{skills,commands}). The launcher mounts these dirs into the instance and

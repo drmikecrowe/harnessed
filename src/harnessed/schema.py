@@ -169,12 +169,6 @@ _PERSIST_NAME_COMPONENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 # and escape ~/.ssh; '.'/'..' pass the charset but are navigation, rejected explicitly at parse.
 _SSH_KEY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
-# A stack `hatago.repo` is `github:<owner>/<repo>` and `hatago.ref` is a branch/tag/SHA — both are
-# interpolated into a generated Dockerfile `RUN` line (emit.write_derived_dockerfile), so the
-# charset is restricted to what a git ref / GitHub path segment can legally contain — no shell
-# metacharacters, no quotes, no whitespace.
-_HATAGO_REPO_RE = re.compile(r"^github:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
-_HATAGO_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 _PERSIST_VALID_SCOPES = {"workspace", "project", "global"}
 _PERSIST_RESERVED_SCOPES = {"repo"}
@@ -884,12 +878,6 @@ class Stack:
     # unlike the agent auto-forward. No-op when the host token file is absent. See
     # _aws_sso_ecs_forward_args and docs/guides/aws-sso.md.
     forward_aws_sso: bool = False
-    # Per-stack override for the hatago MCP hub install (default: the base image's pinned npm
-    # release — catalog/base/Dockerfile.harnessed-base). {repo: "github:<owner>/<repo>", ref:
-    # "<branch|tag|sha>"} — installed via pnpm's git-spec `github:<owner>/<repo>#<ref>` (NOT mise's
-    # `github:` backend: that resolves GitHub Release assets, and an override is typically an
-    # unreleased branch of what is otherwise an npm package). None → no override layer emitted.
-    hatago: dict | None = None
     state: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
 
@@ -1256,6 +1244,9 @@ KNOWN_STACK_FIELDS = frozenset({
     "name", "extends", "recipes", "services", "harnesses", "permissions", "instructions",
     "forward_git_credentials", "ssh_keys", "forward_aws_sso", "hatago", "state",
 })
+# `hatago` stays in the KNOWN set deliberately after its removal (bd harnessed-1t4.1): it must reach
+# `_reject_removed_hatago_override`, whose message says what replaced it, rather than dying in the
+# generic "unknown field / did you mean" path.
 
 # Fields a child UNIONS with its parent's (parent order first, then the child's additions, de-duped).
 # Everything else is an override: a key the child declares wins outright; a key it omits is
@@ -1382,7 +1373,7 @@ def load_stack(stack_dir: Path) -> Stack:
         )
     harnesses = _parse_harnesses(raw.get("harnesses"), manifest)
     ssh_keys = _parse_ssh_keys(raw.get("ssh_keys"), manifest)
-    hatago = _parse_hatago(raw.get("hatago"), manifest)
+    _reject_removed_hatago_override(raw, manifest)
     permissions = raw.get("permissions")
     if permissions is not None and permissions not in _STACK_PERMISSIONS_MODES:
         raise SchemaError(
@@ -1399,7 +1390,6 @@ def load_stack(stack_dir: Path) -> Stack:
         forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
         ssh_keys=ssh_keys,
         forward_aws_sso=bool(raw.get("forward_aws_sso", False)),
-        hatago=hatago,
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
     )
@@ -1430,32 +1420,24 @@ def _parse_harnesses(raw_harnesses, manifest: Path) -> list[str]:
     return names
 
 
-def _parse_hatago(raw_hatago, manifest: Path) -> dict | None:
-    """Validate the stack `hatago:` override block — `{repo: "github:<owner>/<repo>", ref: "..."}`.
+def _reject_removed_hatago_override(raw: dict, manifest: Path) -> None:
+    """The stack `hatago: {repo, ref}` override is REMOVED (bd harnessed-1t4.1).
 
-    Both values are later interpolated into a generated Dockerfile RUN line
-    (emit.write_derived_dockerfile), so they're validated against a strict charset here rather than
-    at emit time — a bad value must fail loudly at load, not produce a malformed/injectable RUN line.
+    It shallow-cloned a fork and built it from source inside the derived image — a 410-package layer
+    on every build, on top of the hatago the base image already installs. The fork is published, so
+    the base image installs it directly and there is nothing left to override.
+
+    Stack parsing is otherwise tolerant of unknown fields (D-14), which would silently turn a
+    still-present block into a no-op. This is a build-input change the author must see, so it fails.
     """
-    if not raw_hatago:
-        return None
-    if not isinstance(raw_hatago, dict) or "repo" not in raw_hatago:
-        raise SchemaError(
-            f"{manifest}: 'hatago' must be a mapping with at least 'repo' "
-            f"(e.g. hatago: {{repo: github:owner/repo, ref: some-branch}})"
-        )
-    repo = raw_hatago["repo"]
-    if not isinstance(repo, str) or not _HATAGO_REPO_RE.match(repo):
-        raise SchemaError(
-            f"{manifest}: hatago.repo {repo!r} must look like 'github:<owner>/<repo>'"
-        )
-    ref = raw_hatago.get("ref")
-    if ref is not None and (not isinstance(ref, str) or not _HATAGO_REF_RE.match(ref)):
-        raise SchemaError(
-            f"{manifest}: hatago.ref {ref!r} must be a valid git ref (branch/tag/SHA), "
-            f"no shell metacharacters"
-        )
-    return {"repo": repo, "ref": ref}
+    if raw.get("hatago") is None:
+        return
+    raise SchemaError(
+        f"{manifest}: the 'hatago:' stack override has been removed — hatago is installed from "
+        f"the published @drmikecrowe/hatago-mcp-hub npm release in "
+        f"catalog/base/Dockerfile.harnessed-base (which carries per-server tool filtering). "
+        f"Delete the 'hatago:' block from this stack."
+    )
 
 
 def _parse_ssh_keys(raw_keys, manifest: Path) -> list[str]:

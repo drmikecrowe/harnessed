@@ -150,7 +150,13 @@ USER ${USERNAME}
 # hatago MCP hub (in-container MCP bus, hatago-consolidation.md) + time server, baked once.
 # Every harness image inherits these — no separate hatago image. pnpm add -g is the project
 # convention for npm globals (CLAUDE.md); uv tool install for the python server.
-RUN pnpm add -g "@himorishige/hatago-mcp-hub@0.0.16"
+#
+# @drmikecrowe/… is the maintained FORK (bd harnessed-1t4.1). Upstream @himorishige stopped at
+# 0.0.16 (2025-09-14); the fork carries per-server tool filtering, which a stack used to obtain by
+# cloning and BUILDING the branch inside its derived image — 410 packages resolved per build, on top
+# of this layer. Same bin map ({hatago, hatago-mcp-hub} → dist/node/cli.js), so nothing that invokes
+# the binary by name changes.
+RUN pnpm add -g "@drmikecrowe/hatago-mcp-hub@0.1.2"
 
 # Interactive shell config
 RUN echo 'PS1="\[\033[01;32m\][harnessed]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/${USERNAME}/.bashrc && \

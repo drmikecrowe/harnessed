@@ -815,7 +815,7 @@ def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
 
 def write_derived_dockerfile(
     profile_dir: Path, stack_name: str, harness: str, recipes: list[Recipe],
-    *, hatago: dict | None = None, with_scan: bool = True
+    *, with_scan: bool = True
 ) -> Path:
     """Emit profiles/<stack>/<harness>/Dockerfile.harnessed-<stack> for host `podman build` (ASM-03).
 
@@ -883,81 +883,6 @@ def write_derived_dockerfile(
         lines.append("USER harnessed")
         lines.append(f"RUN mise use -g {joined} && mise install")
         lines.append("")
-
-    if hatago:
-        # Override the base image's pinned hatago release (catalog/base/Dockerfile.harnessed-base)
-        # with a stack-specified repo/ref.
-        #
-        # NEITHER of the two existing install conventions applies here:
-        #  - mise's `github:` backend (used by rtk/beads/dolt) resolves GitHub *Release* assets —
-        #    there is no release for an unmerged feature branch.
-        #  - A plain `pnpm add -g github:<owner>/<repo>#<ref>` git-spec install fails outright:
-        #    hatago-mcp-hub is a pnpm workspace monorepo whose ROOT package.json has no `name`
-        #    field (ERR_PNPM_MISSING_PACKAGE_NAME) — the publishable package lives at
-        #    packages/mcp-hub, and its build (tsdown) needs its workspace:* sibling packages
-        #    resolved, which a bare git-spec install can't do.
-        # So: shallow-clone the ref, install ONLY the target package + its workspace:* deps (`pnpm
-        # install --filter <pkg>...` — excludes the repo's examples/apps workspace members), build
-        # each package in the dependency graph one at a time in topological order (see below), then
-        # pnpm-link the built target package directory in globally.
-        #
-        # pnpm v11 (pinned in the base image) denies dependency postinstall/build scripts by
-        # default (ERR_PNPM_IGNORED_BUILDS) unless explicitly reviewed via pnpm-workspace.yaml's
-        # `allowBuilds` map — and it evaluates this against the WHOLE workspace lockfile, not just
-        # the --filter-ed subset. tsdown (the target package's build tool) needs esbuild's
-        # postinstall to fetch its platform binary, so approve it. sharp/workerd belong to the
-        # repo's examples/apps members (unrelated to what we're building) — decline them explicitly
-        # rather than leave them "unreviewed" (which errors) or loosen the strict-builds gate.
-        owner_repo = hatago["repo"].removeprefix("github:")
-        ref = hatago.get("ref")
-        branch_flag = f' --branch "{ref}"' if ref else ""
-        allow_builds = "allowBuilds:\\n  esbuild: true\\n  sharp: false\\n  workerd: false\\n"
-        # tsdown/rolldown-plugin-dts (0.14.2/0.15.10, this repo's pinned versions) emits content-
-        # hashed .d.ts filenames (e.g. dist/index-CcGtRq4c.d.ts) instead of the plain names each
-        # package's package.json `types`/`exports` declare (dist/index.d.ts) — so any sibling
-        # package importing another tsdown-built package's types fails tsc with TS7016 ("Could not
-        # find a declaration file"). Renaming the hashed file to its canonical name after each
-        # package builds fixes this — `find`'s pattern matches the hash (8 chars, base64url-ish
-        # alphabet) suffix regardless of which package/entry produced it.
-        fixup = (
-            'for f in $(find dist -type f -regextype posix-extended '
-            '-regex ".*-[A-Za-z0-9_-]{8}.d.ts(.map)?" 2>/dev/null); do '
-            'c=$(printf "%s" "$f" | sed -E "s/-[A-Za-z0-9_-]{8}(.d.ts(.map)?)$/\\1/"); '
-            '[ "$f" != "$c" ] && cp "$f" "$c"; done'
-        )
-        # --workspace-concurrency=1 forces pnpm to run each matched package's `build` strictly one
-        # at a time in dependency order (default concurrency runs independent packages — e.g.
-        # runtime and transport, which both only depend on core — in parallel, racing ahead of the
-        # fixup below before it can run). Every package this filter matches defines a `build`
-        # script, so no --if-present guard is needed (pnpm forwards --if-present as a literal CLI
-        # arg to the build tool when the script DOES exist, which broke tsc's arg parsing).
-        build_and_fixup = f'pnpm run build && {fixup}'
-        lines += [
-            f"# --- stack override: hatago MCP hub ({stack_name} stack.yaml `hatago:`) ---",
-            "RUN git clone --depth 1" + branch_flag + f' "https://github.com/{owner_repo}.git" /tmp/hatago-src \\',
-            "    && cd /tmp/hatago-src \\",
-            # Guard the append: upstream may already ship an `allowBuilds:` key in
-            # pnpm-workspace.yaml (its own block already approves esbuild). Appending a second
-            # `allowBuilds:` makes a duplicate mapping key, which pnpm's YAML parser rejects.
-            f"    && (grep -q '^allowBuilds:' pnpm-workspace.yaml || printf '{allow_builds}' >> pnpm-workspace.yaml) \\",
-            # NOT --no-frozen-lockfile: the clone ships its own pnpm-lock.yaml for this exact
-            # commit, already in sync with its package.json files. Forcing a re-resolve let pnpm
-            # pick different transitive tsdown/rolldown/esbuild versions per package than upstream
-            # tested with — surfaced as a rolldown "Invalid input options" warning and a missing
-            # generated .d.ts that broke a sibling package's `tsc` build.
-            '    && pnpm install --filter "@himorishige/hatago-mcp-hub..." \\',
-            # The trailing `...` here (unlike the install filter's own `...`, kept for clarity) is
-            # load-bearing: mcp-hub's devDependencies are its workspace:* siblings (hatago-core,
-            # -hub, -runtime, -server, -transport), each with its OWN `build` script producing the
-            # dist/ that mcp-hub's tsdown build resolves them against. Building mcp-hub alone left
-            # those imports unresolved (rollup silently treats them as external) — a CLI that
-            # crashes at runtime since the siblings are devDependencies, never installed downstream.
-            '    && pnpm --filter "@himorishige/hatago-mcp-hub..." --workspace-concurrency=1 exec'
-            f" -- sh -c '{build_and_fixup}' \\",
-            "    && pnpm add -g file:/tmp/hatago-src/packages/mcp-hub \\",
-            "    && cd / && rm -rf /tmp/hatago-src",
-            "",
-        ]
 
     if with_scan:
         # Final layer: in-image supply-chain scan (BLD-02), ADVISORY — it reports a severity summary
