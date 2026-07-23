@@ -22,6 +22,12 @@ conflicts: [beads]
 # `cache:` MUST equal AGENT_CARNET_VERSION in install.sh (and the Dockerfile ARG). It keys the host
 # content cache ($XDG_CACHE_HOME/harnessed/install/agent-carnet/0.1.5) so the per-launch re-run —
 # mandatory, because the host home is rebuilt from scratch every launch — downloads once.
+# `tools:` owns the CLI (bd harnessed-1t4.3) — one merged, cached mise layer in the image and
+# the same pinned spec on a host launch. install.sh keeps the half mise cannot do: copying the
+# bundled skill out of the npm tarball into the config dir.
+tools:
+  - npm:agent-carnet@0.1.5
+
 install:
   script: install.sh
   cache: "0.1.5"

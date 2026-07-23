@@ -3638,6 +3638,60 @@ def _run_container_setups(rt: str, inst: str, pending) -> None:
             raise typer.Exit(1)
 
 
+def _host_tool_shims_dir(stack: str) -> Path:
+    """Where a host launch's `tools:` binaries become resolvable (bd harnessed-1t4.3).
+
+    mise's shims dir under the STACK's own data dir — not `~/.local/share/mise/shims`, which belongs
+    to the user. `_launch_host` puts this on PATH next to the stack bin dir.
+    """
+    return _stack_tools_dirs(stack)[0] / "mise" / "shims"
+
+
+def _host_install_tools(stack: str, recipes) -> None:
+    """Install the stack's declarative `tools:` HOST-side — the host half of the derived image's
+    merged `RUN mise use -g … && mise install` layer (bd harnessed-1t4.3).
+
+    Without this, `tools:` was honoured in exactly ONE place (emit.write_derived_dockerfile), so
+    moving a recipe's tool install out of its `install.sh` and into `tools:` would have deleted that
+    binary from every `launch --host` — silently, which is the harnessed-8px.1 failure shape.
+
+    Everything mise touches is redirected into the stack's own tools tree. That redirection is the
+    whole reason this is possible at all: rtk's install.sh refused to use mise on a host launch
+    precisely because mise's global config and data dir belong to the user, and harnessed does not
+    write there. Same tool specs, same sorted order, same pins as the container layer.
+
+    mise absent on the host is announced with the tools it could not deliver, never silent.
+    """
+    specs = sorted({t for recipe in recipes for t in recipe.tools})
+    if not specs:
+        return
+    if not shutil.which("mise"):
+        _err.print(
+            "[bold yellow]WARNING[/bold yellow] tools: mise is not on PATH, so these pinned tools "
+            f"are NOT installed for this host launch: {', '.join(specs)}. Install mise "
+            "(https://mise.jdx.dev) or run this stack in a container."
+        )
+        return
+    mise_root = _stack_tools_dirs(stack)[0] / "mise"
+    mise_root.mkdir(parents=True, exist_ok=True)
+    env = {
+        **os.environ,
+        "MISE_DATA_DIR": str(mise_root),
+        "MISE_CONFIG_DIR": str(mise_root / "config"),
+        "MISE_STATE_DIR": str(mise_root / "state"),
+        # NOT redirected: the download cache is a cache. Sharing the user's means a host launch and a
+        # container build (which mounts the same kind of cache) both stop re-downloading.
+    }
+    _err.print(f"[blue][INFO][/blue] tools: mise use -g {' '.join(specs)} (host)")
+    if subprocess.run(
+        ["mise", "use", "-g", *specs], env=env, cwd=str(mise_root)
+    ).returncode != 0 or subprocess.run(
+        ["mise", "install"], env=env, cwd=str(mise_root)
+    ).returncode != 0:
+        _err.print("[bold red]error:[/bold red] installing the stack's `tools:` failed")
+        raise typer.Exit(1)
+
+
 def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Path) -> None:
     """Run each recipe's `install.script` HOST-side — the host half of `RUN bash install.sh`.
 
@@ -3862,9 +3916,11 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # there (via UV_TOOL_BIN_DIR / PNPM_HOME redirect), and _host_native_mcp's presence check runs
     # after that — it needs them resolvable. Mutating this process's PATH is fine: it's dedicated to
     # this launch, and claude (env built from os.environ below) inherits it.
+    # The stack's mise shims dir joins it (bd harnessed-1t4.3): `tools:` installs land there, and a
+    # binary the agent cannot resolve is the same as one that was never installed.
     _, stack_bin, _ = _stack_tools_dirs(stack)
     os.environ["PATH"] = os.pathsep.join(
-        [str(stack_bin), os.environ.get("PATH", "")]
+        [str(stack_bin), str(_host_tool_shims_dir(stack)), os.environ.get("PATH", "")]
     )
     # Folder-env contract into THIS process's env, for the same reason (and with the same precedent)
     # as the PATH mutation above: a container launch sets the contract box-wide (`podman run -e`) so
@@ -3910,6 +3966,9 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # output every time. With the wipe gated on the stack fingerprint, the output is still there, so
     # re-running would re-download and re-extract to produce the bytes already on disk.
         if rebuilt:
+            # `tools:` BEFORE `install:` — the same order as the derived image, and load-bearing:
+            # an install.sh now configures a binary that tools: provides (serena init -b LSP).
+            _host_install_tools(stack, host_recipes)
             _host_run_installs(stack, project_path, harness=harness, home=home)
             # ONLY now is the build complete. _host_run_installs exits non-zero on failure, so a
             # failed install never reaches this line and the next launch rebuilds and retries

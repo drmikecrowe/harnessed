@@ -18,5 +18,11 @@ description: rtk (Rust Token Killer) — compress dev-command output 60-90% befo
 # binary at all (see install.sh: an install.sh cannot put an executable on the host agent's PATH;
 # that is `provision:`, bd harnessed-zi6.1). The host skip is a WARNING from the script, not
 # `system:`: nothing here needs root, so a `system:` reason string would be a lie about why.
+# `tools:` owns the binary (bd harnessed-1t4.3), via the same mise `github:` release install the
+# script used to run container-side — and now on a host launch too, because harnessed points
+# mise at the STACK's own config/data dir instead of the user's global one.
+tools:
+  - github:rtk-ai/rtk@0.43.0
+
 install:
   script: install.sh

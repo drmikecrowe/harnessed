@@ -51,8 +51,15 @@ setup:
 #
 # No `cache:` — `install.cache` keys a pinned CONTENT clone; uv caches wheels itself. No `system:` —
 # `uv tool install` needs no root (host mode redirects it into the stack tools tree via UV_TOOL_DIR).
-install:
-  script: install.sh
+# `tools:` owns the CLI (bd harnessed-1t4.3). mise's pipx backend resolves it through uv (no
+# pipx binary required — verified in the base image), so this is the same wheel install the
+# former `uv tool install repowise==0.31.0` did, in the merged and cached tool layer.
+tools:
+  - pipx:repowise@0.31.0
+
+# No `install:` — the CLI is the recipe's ONLY deliverable and `tools:` above owns it (bd
+# harnessed-1t4.3). repowise's project work (`repowise init --index-only`) is a per-project step
+# the README documents, not an install step.
 
 # What the capability test probes after a successful build: the repowise server connected through
 # the hatago hub. (The capability test only confirms the connection — the index is per-project state

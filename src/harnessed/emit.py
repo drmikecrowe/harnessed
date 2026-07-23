@@ -781,15 +781,21 @@ def install_env(
 # paths are the ones the built base image actually reports (`pnpm store path`, `uv cache dir`,
 # `~/.cache`), not assumed defaults.
 #
+# pnpm's CONTENT-ADDRESSED STORE is deliberately absent, and must stay absent. It looks like the
+# obvious thing to cache, but pnpm v11 does not copy out of it — a global install is a symlink into
+# `store/v11/links/…`, so with the store mounted as a cache the image ships dangling links and
+# `hatago --version` dies with MODULE_NOT_FOUND at runtime. Verified by building it. mise's `npm:`
+# backend links the same way, so this applies to every JS tool, not just the globals. uv and mise are
+# not affected: both materialize real files into their install dirs (also verified by building).
+#
 # uid/gid 1000 is the `harnessed` user every one of these layers runs as — a root-owned mount makes
 # the layer fail outright under rootless podman.
 #
-# sharing: pnpm's content-addressed store and uv's cache are safe for concurrent readers/writers, so
+# sharing: pnpm's metadata cache and uv's cache are safe for concurrent readers/writers, so
 # parallel stack builds (`harnessed build --jobs > 1`) share them; mise's download cache carries no
 # such documented guarantee, so it is serialized rather than raced.
 _BUILD_CACHES = (
     ("/home/harnessed/.cache/mise", "harnessed-mise", "locked"),
-    ("/home/harnessed/.local/share/pnpm/store", "harnessed-pnpm-store", "shared"),
     ("/home/harnessed/.cache/pnpm", "harnessed-pnpm-meta", "shared"),
     ("/home/harnessed/.cache/uv", "harnessed-uv", "shared"),
 )

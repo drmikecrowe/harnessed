@@ -21,13 +21,16 @@ name: ccstatusline
 description: ccstatusline — bake the pinned status-line renderer + a Claude statusLine config into the agent image.
 # setup: none needed — self-contained; optional host config auto-mounted
 
-# `cache:` MUST equal the CCSTATUSLINE_VERSION pinned inside install.sh — it keys the host content
-# cache ($XDG_CACHE_HOME/harnessed/install/ccstatusline/2.2.22), which on a host launch holds the
-# installed package itself, not just a source clone. That is deliberate: $HARNESSED_CONFIG_DIR is
-# rmtree'd on every host launch, but the statusLine command is an absolute path the agent execs for
-# the whole session, so the tree has to outlive the config dir. Bump both together.
+# `tools:` owns the binary in BOTH modes (bd harnessed-1t4.3); install.sh keeps the statusLine block,
+# which is configuration. That also retires the former `install.cache`: the cache existed only to
+# hold a host-side pnpm install somewhere durable, because $HARNESSED_CONFIG_DIR is rmtree'd on every
+# host launch while the statusLine command is an absolute path the agent execs for a whole session.
+# mise's stack-scoped shims dir is already durable and on PATH in both modes, so the path is simply
+# where the tool resolves. Keep this pin in lockstep with CCSTATUSLINE_VERSION in install.sh.
 #
 # No `system:` — nothing here needs root, and neither half is skipped on a host launch.
+tools:
+  - npm:ccstatusline@2.2.22
+
 install:
   script: install.sh
-  cache: 2.2.22

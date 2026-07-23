@@ -25,11 +25,12 @@ podman = pytest.mark.skipif(not _PODMAN, reason="set HARNESSED_PODMAN=1 for live
 # probing the built base image (`pnpm store path`, `uv cache dir`, ~/.cache) — not assumed defaults.
 DOWNLOADERS = {
     "mise install": "/home/harnessed/.cache/mise",
-    "pnpm add": "/home/harnessed/.local/share/pnpm/store",
+    "pnpm add": "/home/harnessed/.cache/pnpm",
     "uv tool install": "/home/harnessed/.cache/uv",
 }
-# The full set a cached layer carries: the three above plus pnpm's registry-metadata cache.
-CACHE_TARGETS = set(DOWNLOADERS.values()) | {"/home/harnessed/.cache/pnpm"}
+CACHE_TARGETS = set(DOWNLOADERS.values())
+# pnpm's content-addressed store is NOT in that set, and must never be: see
+# TestThePnpmStoreIsNeverCached.
 
 
 def _run_instructions(body: str) -> list[str]:
@@ -110,6 +111,27 @@ class TestShippedImagesCacheTheirDownloads:
                 assert not shipped.startswith(target.rstrip("/") + "/"), (
                     f"cache mount {target} would hide {shipped}, which must ship in the image"
                 )
+
+
+class TestThePnpmStoreIsNeverCached:
+    """The store looks like the obvious thing to cache. Caching it ships a broken image.
+
+    pnpm v11 does not copy out of the store — a global install is a symlink into
+    `store/v11/links/…`, and mise's `npm:` backend links the same way. With the store mounted as a
+    build cache the links dangle at COMMIT, so the image builds green and then dies at RUNTIME with
+    MODULE_NOT_FOUND. Verified by building it: `hatago --version` failed exactly that way.
+    """
+
+    STORE = "/home/harnessed/.local/share/pnpm/store"
+
+    def test_no_shipped_dockerfile_mounts_the_store(self):
+        for path in _shipped_image_dockerfiles():
+            assert self.STORE not in path.read_text(encoding="utf-8"), path.name
+
+    def test_no_emitted_layer_mounts_the_store(self, tmp_path):
+        from harnessed.emit import CACHE_MOUNTS
+
+        assert self.STORE not in CACHE_MOUNTS
 
 
 class TestDerivedImageCachesRecipeInstalls:
