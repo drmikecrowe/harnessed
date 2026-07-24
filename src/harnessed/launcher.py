@@ -3920,7 +3920,9 @@ def _host_native_mcp(stack: str) -> Optional[dict]:
     return out or None
 
 
-def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = False) -> None:
+def _launch_host(
+    stack: str, harness: str, path: Optional[str], *, rm: bool = False, extra: Optional[list[str]] = None
+) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
     the host's own auth.
@@ -4054,7 +4056,7 @@ def _launch_host(stack: str, harness: str, path: Optional[str], *, rm: bool = Fa
     # stack (content-only included). With servers → the stack's set; without → an empty set.
     mcp_path = home / ".mcp.json"
     mcp_path.write_text(json.dumps({"mcpServers": mcp_servers or {}}, indent=2), encoding="utf-8")
-    argv = ["claude", "--mcp-config", str(mcp_path), "--strict-mcp-config"]
+    argv = ["claude", "--mcp-config", str(mcp_path), "--strict-mcp-config", *(extra or [])]
 
     _err.print(
         f"[green]host-native[/green]: CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
@@ -4099,13 +4101,16 @@ def host_run(
     `--shell` all describe a pod that does not exist here, so a combined verb could only accept them
     and do nothing.
 
+    Args after a standalone `--` are appended verbatim to the harness command
+    (`harnessed host-run S claude -- --resume` runs `claude … --resume`).
+
     What host mode isolates is CONFIGURATION, not the filesystem: the stack's assembled profile is
     materialized into a per-stack CLAUDE_CONFIG_DIR and the harness is exec'd against your real
     machine, in your real project, with your real credentials. Use `launch` when you want the
     container boundary too.
     """
     _require_supported_harness(harness)
-    _launch_host(stack, harness, path, rm=rm)
+    _launch_host(stack, harness, path, rm=rm, extra=_passthrough)
 
 
 @app.command()
@@ -4260,11 +4265,11 @@ def launch(
                     "[yellow]note:[/yellow] attaching to the existing (older-build) instance — "
                     "run with --fresh to update."
                 )
-                _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell)
+                _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough)
                 return
         else:
             _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
-            _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell)
+            _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough)
             return
     # Stopped leftover: a previous non-ephemeral session exited without tearing down its pod (only
     # --rm cleans up). A same-name `pod create` would fail "name already in use", so remove the
@@ -4475,7 +4480,7 @@ def launch(
         _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago in-container)")
         return
 
-    _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell)
+    _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough)
 
 
 def _attach(
@@ -4490,6 +4495,7 @@ def _attach(
     pod: Optional[str] = None,
     start_dir: Optional[Path] = None,
     shell: bool = False,
+    extra: Optional[list[str]] = None,
 ) -> None:
     """Exec into the running instance with the harness command.
 
@@ -4497,6 +4503,8 @@ def _attach(
     ephemeral (--rm): run the exec as a child so the pod can be torn down when the session exits.
     start_dir: working directory for the agent (defaults to project_path; --agent-start-folder).
     shell (--shell): drop into an interactive bash instead of starting the harness.
+    extra: passthrough args (from `launch … -- <suffix>`) appended verbatim to the harness command;
+    ignored under --shell, which starts no harness.
 
     Recipe init (Model A): the attach shell exports the path contract and runs each recipe's
     `init.run` inline (fail-fast) BEFORE exec-ing the harness, so init-derived env reaches the agent.
@@ -4517,6 +4525,10 @@ def _attach(
         mcp_cfg = str(paths.container_mcp_config())
         harness_cmd_tpl = _HARNESS_ATTACH_CMD.get(harness, "claude")
         tail = harness_cmd_tpl.format(mcp_cfg=mcp_cfg, instance=inst)
+    # Passthrough suffix (`launch … -- <suffix>`): append to the harness command, shell-quoted since
+    # `tail` is run via `bash -l -c`. Skipped under --shell (no harness command to extend).
+    if extra and not shell:
+        tail = tail + " " + " ".join(shlex.quote(a) for a in extra)
     # Antigravity only: start dbus + gnome-keyring in THIS shell before exec-ing agy, so agy inherits
     # the keyring env (bd main-ec5). Empty for every other harness → their shell_cmd is unchanged.
     keyring_init = _keyring_init(harness)
@@ -5360,18 +5372,37 @@ def aws_sso(
         _out.print("\n[dim]aws-sso ecs server stopped.[/dim]")
 
 
-def main() -> None:
-    import sys
+# Args after a standalone `--` are passthrough: appended verbatim to the launched harness command
+# (e.g. `harnessed launch S claude -- --chrome` runs `claude … --chrome`). Click treats `--` only as
+# end-of-options and would bind the first suffix token to the `path` positional, so we split it off
+# argv before Typer parses. Set by main(); read by `launch` / `host-run`.
+_passthrough: list[str] = []
 
-    argv = sys.argv[1:]
+
+def _extract_passthrough(argv: list[str]) -> list[str]:
+    """Split argv at the first standalone `--`, stashing everything after it in `_passthrough` and
+    returning the head. With no `--`, clears `_passthrough` and returns argv unchanged."""
+    global _passthrough
+    if "--" in argv:
+        i = argv.index("--")
+        _passthrough = argv[i + 1 :]
+        return argv[:i]
+    _passthrough = []
+    return argv
+
+
+def main() -> None:
+    argv = _extract_passthrough(sys.argv[1:])
     # Find the first non-option token; if it is not a known subcommand, it is a stack name and we
     # prepend `launch` so `harnessed tracer-time …` == `harnessed launch tracer-time …`.
+    prepend: list[str] = []
     for tok in argv:
         if tok.startswith("-"):
             continue
         if tok not in _COMMANDS:
-            sys.argv = [sys.argv[0], "launch", *argv]
+            prepend = ["launch"]
         break
+    sys.argv = [sys.argv[0], *prepend, *argv]
     app()
 
 
