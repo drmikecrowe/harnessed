@@ -874,6 +874,31 @@ def write_derived_dockerfile(
         "ARG HARNESS",  # re-declare in post-FROM stage so RUN instructions see it
         "",
     ]
+    # Declarative recipe `tools:` — install pinned mise tools as one global layer, so a recipe can add
+    # a CLI (e.g. pulumi) with no Dockerfile. Runs as `harnessed` (mise's globals live under that
+    # user's home).
+    #
+    # EMITTED BEFORE the recipe install/Dockerfile layers (bd harnessed-1t4.3): `tools:` owns the
+    # BINARY and an install.sh CONFIGURES it (ccstatusline's `command -v ccstatusline`, serena's
+    # `serena init`), so the binary must exist first. This mirrors the host launch, where
+    # `_host_install_tools` runs before `_host_run_installs`. A real build failed the other way round.
+    #
+    # SORTED + DEDUPED (bd harnessed-1t4.5): podman keys its layer cache on the literal instruction
+    # text, so emitting these in stack.yaml authoring order made two stacks with the SAME tool set
+    # miss each other's cached layer for no reason. Sorting makes the layer a function of the tool
+    # SET. Recipe layers below deliberately keep authored order — install order there IS semantic
+    # (a later recipe may overwrite an earlier one's content) — but `mise use -g` is declarative and
+    # order-free, so nothing is lost by canonicalising it.
+    tool_specs = sorted({t for recipe in recipes for t in recipe.tools})
+    if tool_specs:
+        joined = " ".join(f'"{t}"' for t in tool_specs)
+        lines.append("# --- recipe tools (mise) ---")
+        lines.append("USER harnessed")
+        # `mise use -g` fans out to backends that shell out to pnpm (npm:) and uv (pipx:), so this
+        # layer gets the same cache set as a recipe install.
+        lines.append(f"RUN {CACHE_MOUNTS} mise use -g {joined} && mise install")
+        lines.append("")
+
     for recipe in recipes:
         # Recipe `env:` → real image ENV, emitted BEFORE this recipe's own body so a RUN in that
         # body sees it (the build-time consumer). Only vars whose value is knowable without a
@@ -902,26 +927,6 @@ def write_derived_dockerfile(
         ]
         lines.append(f"# --- recipe: {recipe.name} ---")
         lines.extend(filtered)
-        lines.append("")
-
-    # Declarative recipe `tools:` — install pinned mise tools as one global layer, so a recipe can add
-    # a CLI (e.g. pulumi) with no Dockerfile. Runs as `harnessed` (mise's globals live under that
-    # user's home) after all recipe layers. Pins are validated at load (_parse_tools).
-    #
-    # SORTED + DEDUPED (bd harnessed-1t4.5): podman keys its layer cache on the literal instruction
-    # text, so emitting these in stack.yaml authoring order made two stacks with the SAME tool set
-    # miss each other's cached layer for no reason. Sorting makes the layer a function of the tool
-    # SET. Recipe layers above deliberately keep authored order — install order there IS semantic
-    # (a later recipe may overwrite an earlier one's content) — but `mise use -g` is declarative and
-    # order-free, so nothing is lost by canonicalising it.
-    tool_specs = sorted({t for recipe in recipes for t in recipe.tools})
-    if tool_specs:
-        joined = " ".join(f'"{t}"' for t in tool_specs)
-        lines.append("# --- recipe tools (mise) ---")
-        lines.append("USER harnessed")
-        # `mise use -g` fans out to backends that shell out to pnpm (npm:) and uv (pipx:), so this
-        # layer gets the same cache set as a recipe install.
-        lines.append(f"RUN {CACHE_MOUNTS} mise use -g {joined} && mise install")
         lines.append("")
 
     if with_scan:
