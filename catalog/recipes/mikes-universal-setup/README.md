@@ -18,9 +18,9 @@ byte-identical to upstream despite being long believed original.
 | --- | --- | --- | --- |
 | `application-security`, `mermaid-diagrams`, `mise`, `python-uv`, `skill-management` | [oakoss/agent-skills](https://github.com/oakoss/agent-skills) | MIT *(frontmatter only — see below)* | **fetched at build** via `install.sh`, pinned SHA — not vendored |
 | `map-codebase` | [open-gsd/gsd-core](https://github.com/open-gsd/gsd-core) | MIT | derived, then decoupled + modified — stays vendored |
-| `tdd` | [mattpocock/skills](https://github.com/mattpocock/skills) | MIT | modified ~114 lines — stays vendored |
-| `defuddle` | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) | MIT | modified — stays vendored |
-| `humanizer` | [blader/humanizer](https://github.com/blader/humanizer) @ `1b48564898e999219882660237fde01bf4843a0f` | MIT | vendored with LICENSE |
+| `tdd` | **origin unresolved** (not mattpocock — matches no upstream commit) | — | treated as authored-here |
+| `defuddle` | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) | MIT | derived + locally modified (stronger trigger) — vendored **with LICENSE + PROVENANCE.md** |
+| `humanizer` | [blader/humanizer](https://github.com/blader/humanizer) @ `1b48564898e999219882660237fde01bf4843a0f` | MIT | legacy pin, byte-identical — fetch candidate, vendored with LICENSE for now |
 | `varlock`, `wrangler` | authored here | — | original |
 
 All five oakoss skills were verified byte-for-byte against `oakoss/agent-skills` at HEAD `0283bed3`
@@ -58,8 +58,9 @@ re-approves. `harnessed-tfm` (the pin auto-updater) must never auto-bump it. See
 ### Outstanding obligations
 
 1. **The oakoss licence gap is now discharged** for these five — fetch-not-vendor means they are no
-   longer redistributed in the wheel at all. Still outstanding: `map-codebase`, `tdd`, `defuddle` are
-   vendored MIT copies whose upstream LICENSE is **not** committed alongside them (only `humanizer`'s
-   is). MIT requires the notice travel with the copy.
+   longer redistributed in the wheel at all. `humanizer` and `defuddle` now ship their upstream
+   LICENSE. Still outstanding: `map-codebase` is a vendored copy derived from `open-gsd/gsd-core`
+   (MIT) whose LICENSE is **not** committed alongside it. (`tdd` needs none — origin unresolved,
+   treated as authored-here.) MIT requires the notice travel with the copy.
 2. **`oakoss/agent-skills` has no LICENSE file** and GitHub reports no repo licence — the MIT claim
    exists only in each `SKILL.md`'s frontmatter. Confirm the grant before relying on it.

@@ -50,17 +50,21 @@ expect:
   skills: [application-security, mermaid-diagrams, mise, python-uv, skill-management]
 
 skills:
-  - path: skills/defuddle               # [kepano] modified (differs from upstream) — stays vendored
+  # [kepano] DERIVED from kepano/obsidian-skills (MIT), with a local trigger-strengthening edit, so
+  # it is vendored not fetched (a fetch would revert the edit). Provenance + the exact change are in
+  # skills/defuddle/PROVENANCE.md; kepano's LICENSE ships in skills/defuddle/LICENSE.
+  - path: skills/defuddle
   # [blader] Vendored third-party (MIT): github.com/blader/humanizer @
-  # 1b48564898e999219882660237fde01bf4843a0f. Upstream ships no tags/releases and is a single
-  # SKILL.md, so it is committed here (with its LICENSE) rather than cloned by a Dockerfile the
-  # way superpowers' 14-skill tree is. To update: re-copy SKILL.md from upstream and bump the SHA.
-  # This is the ONLY skill here whose LICENSE actually ships alongside it.
+  # 1b48564898e999219882660237fde01bf4843a0f. Verified byte-identical at that SHA (legacy pin, not a
+  # local edit), single SKILL.md, LICENSE alongside. A clean FETCH CANDIDATE — kept vendored only
+  # until the shared skill-fetch convention (harnessed-s8l follow-up) lands.
   - path: skills/humanizer
   # [gsd] DERIVED from open-gsd/gsd-core, then decoupled and modified here (no longer tracks
   # upstream). Attribution is owed and recorded; this is NOT a fetch candidate — the local version
   # is the one we want. Original: github.com/open-gsd/gsd-core (MIT).
   - path: skills/map-codebase
-  - path: skills/tdd                    # [mattpocock] heavily modified here (differs ~114 lines)
+  # [mine] Origin unresolved — a GSD-flavoured TDD skill that matches NO commit in mattpocock/skills
+  # (its once-assumed source) or open-gsd/gsd-core. Treated as authored-here until proven otherwise.
+  - path: skills/tdd
   - path: skills/varlock                # [mine]
   - path: skills/wrangler               # [mine]
