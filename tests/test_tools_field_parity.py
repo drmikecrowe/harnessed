@@ -125,3 +125,40 @@ class TestHostLaunchHonoursTools:
 
         src = inspect.getsource(launcher._launch_host)
         assert src.index("_host_install_tools") < src.index("_host_run_installs")
+
+
+class TestEmittedDockerfileInstallsToolsBeforeInstallScripts:
+    """The CONTAINER half of the same ordering the host launch enforces (bd harnessed-1t4.3).
+
+    A real build broke here: ccstatusline's install.sh does `command -v ccstatusline`, but the merged
+    `mise use -g` layer was emitted AFTER every recipe's install.sh, so in a container the binary did
+    not exist yet and the script exited non-zero. `tools:` owns the binary; install.sh configures it;
+    the binary must be installed first — in both executors, not just on the host.
+    """
+
+    def _derived_body(self, tmp_path):
+        from harnessed.emit import write_derived_dockerfile
+        from harnessed.schema import InstallSpec
+
+        recipe = tmp_path / "cc"
+        recipe.mkdir(parents=True)
+        (recipe / "install.sh").write_text("command -v ccstatusline\n", encoding="utf-8")
+        r = Recipe(name="cc", root=recipe, tools=["npm:ccstatusline@2.2.22"])
+        r.install = InstallSpec(script="install.sh")
+        return write_derived_dockerfile(tmp_path, "s", "claude", [r]).read_text(encoding="utf-8")
+
+    def test_the_mise_layer_precedes_the_recipe_install_layer(self, tmp_path):
+        body = self._derived_body(tmp_path)
+        assert body.index("mise use -g") < body.index("install.sh"), (
+            "the tools: layer must be emitted before any recipe install.sh runs"
+        )
+
+    def test_the_real_ccstatusline_recipe_has_its_tool_before_its_install(self, tmp_path):
+        # The recipe that actually broke: its tools: pin must land before the RUN that executes its
+        # install.sh (the script does `command -v ccstatusline`). The Dockerfile carries the pin and
+        # the `bash …/ccstatusline/install.sh` invocation, not the script body.
+        from harnessed.emit import write_derived_dockerfile
+
+        recipe = load_recipe(paths.harnessed_home() / "catalog" / "recipes" / "ccstatusline")
+        body = write_derived_dockerfile(tmp_path, "s", "claude", [recipe]).read_text(encoding="utf-8")
+        assert body.index("npm:ccstatusline@") < body.index("ccstatusline/install.sh")
