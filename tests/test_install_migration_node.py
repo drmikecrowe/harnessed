@@ -130,12 +130,14 @@ class TestMigratedRecipesDeclareInstall:
         # host skips, which have nothing to do with privilege.
         assert _recipe(name).install.system is None
 
-    def test_ccstatusline_cache_key_equals_the_pin_in_the_script(self):
-        # The cache dir holds the INSTALLED package host-side, so a drifted key would serve a stale
-        # binary forever (the cache never refreshes — hit is "the directory exists").
+    def test_ccstatusline_declares_no_content_cache(self):
+        # bd harnessed-1t4.3: `install.cache` existed only to park a host-side pnpm install somewhere
+        # durable, because the config dir is wiped every launch. `tools:` installs into mise's
+        # stack-scoped tree, which already outlives the wipe — so a cache here would be dead state.
         r = _recipe("ccstatusline")
-        assert r.install.cache == "2.2.22"
-        assert f'CCSTATUSLINE_VERSION="{r.install.cache}"' in _script("ccstatusline").read_text()
+        assert r.install.cache is None
+        assert "npm:ccstatusline@2.2.22" in r.tools
+        assert 'CCSTATUSLINE_VERSION="2.2.22"' in _script("ccstatusline").read_text()
 
     def test_context_mode_pin_matches_its_install_channels(self):
         # Two channels for the CLI: `tools:` (container, via mise npm backend) and install.sh
@@ -189,39 +191,30 @@ class TestContextModeOmpBranch:
 # --- rtk: binary is container-only, global wiring is both -------------------------------------------
 
 class TestRtkInstall:
-    def test_host_without_rtk_warns_and_does_not_touch_mise(self, tmp_path):
-        # `mise use -g` writes the USER'S global mise config, and install.sh has no channel for
-        # putting an executable on the host agent's PATH (that is `provision:`, bd harnessed-zi6.1).
+    """bd harnessed-1t4.3 moved the BINARY to `tools:`; this script owns the global wiring only."""
+
+    def test_the_script_no_longer_installs_the_binary_itself(self, tmp_path):
+        # `tools: [github:rtk-ai/rtk@…]` owns it now, in both modes — so a mise call from here would
+        # be a second, competing install channel.
         log = tmp_path / "mise.log"
         _stub(tmp_path / "bin", "mise", f'printf "%s\\n" "$*" >> {log}\n')
-        r = _run("rtk", tmp_path, mode="host", harness="claude")
-        assert r.returncode == 0
+        _stub(tmp_path / "bin", "rtk", "true\n")
+        assert _run("rtk", tmp_path, mode="host", harness="claude").returncode == 0
         assert not log.exists()
-        assert "rtk" in r.stderr and "WARNING" in r.stderr
 
-    def test_container_installs_the_pinned_binary_then_wires_globally(self, tmp_path):
-        # In a build rtk is NOT yet on PATH — `mise install` is what puts it there, so the stub
-        # materializes the rtk stub the way the real backend would.
-        mise_log, rtk_log = tmp_path / "mise.log", tmp_path / "rtk.log"
-        rtk_bin = tmp_path / "bin" / "rtk"
-        _stub(
-            tmp_path / "bin", "mise",
-            f'printf "%s\\n" "$*" >> {mise_log}\n'
-            f"cat > {rtk_bin} <<'EOF'\n"
-            "#!/usr/bin/env bash\n"
-            f'printf "%s\\n" "$*" >> {rtk_log}\n'
-            "EOF\n"
-            f"chmod +x {rtk_bin}\n",
-        )
-        # Container: $HOME/.claude IS the config dir, so the script must call rtk init directly.
+    def test_container_wires_globally_against_the_tools_provided_binary(self, tmp_path):
+        rtk_log = tmp_path / "rtk.log"
+        _stub(tmp_path / "bin", "rtk", f'printf "%s\\n" "$*" >> {rtk_log}\n')
         home = tmp_path / "ctrhome"
-        config = home / ".claude"
-        r = _run("rtk", tmp_path, mode="container", harness="claude", home=home, config_dir=config)
+        r = _run("rtk", tmp_path, mode="container", harness="claude",
+                 home=home, config_dir=home / ".claude")
         assert r.returncode == 0
-        assert mise_log.read_text().splitlines() == [
-            "use -g github:rtk-ai/rtk@0.43.0", "install",
-        ]
         assert rtk_log.read_text().splitlines() == ["--version", "init -g --auto-patch"]
+
+    def test_a_missing_binary_fails_loudly_rather_than_wiring_nothing(self, tmp_path):
+        # If `tools:` did not deliver rtk, wiring hooks that shell out to it would produce a config
+        # that is broken at RUNTIME instead of at install time.
+        assert _run("rtk", tmp_path, mode="host", harness="claude").returncode != 0
 
     def test_host_with_rtk_present_wires_into_the_stack_config_dir_not_the_user_home(self, tmp_path):
         # `rtk init -g` targets $HOME/.claude. Host-side that would be the user's REAL home, so the
@@ -277,94 +270,61 @@ class TestGsdCoreInstall:
         assert not (tmp_path / "userhome" / ".claude").exists()
 
 
-# --- ccstatusline: the computed statusLine path -----------------------------------------------------
+# --- ccstatusline: the resolved statusLine path -----------------------------------------------------
 
-def _pnpm_installing_stub(tmp_path: Path) -> Path:
-    """A `pnpm add` that materializes node_modules/.bin/ccstatusline in the cwd, as pnpm would."""
-    return _stub(
-        tmp_path / "bin", "pnpm",
-        'mkdir -p node_modules/.bin\n'
-        'printf "#!/usr/bin/env bash\\necho hi\\n" > node_modules/.bin/ccstatusline\n'
-        'chmod +x node_modules/.bin/ccstatusline\n',
-    )
+def _ccstatusline_on_path(tmp_path: Path) -> Path:
+    """The binary `tools:` provides, wherever the mode puts it — the script must just resolve it."""
+    return _stub(tmp_path / "toolshims", "ccstatusline", "echo hi\n")
 
 
 class TestCcstatuslineInstall:
-    def test_container_writes_the_mise_shim_path(self, tmp_path):
-        _stub(tmp_path / "bin", "mise", "true\n")
-        home = tmp_path / "ctrhome"
-        shim = home / ".local" / "share" / "mise" / "shims"
-        shim.mkdir(parents=True)
-        (shim / "ccstatusline").write_text("#!/bin/sh\n")
-        (shim / "ccstatusline").chmod(0o755)
-        r = _run("ccstatusline", tmp_path, mode="container", harness="claude",
-                 home=home, config_dir=home / ".claude")
-        assert r.returncode == 0
-        out = json.loads((home / ".claude" / "settings.json").read_text())
-        assert out["statusLine"] == {
-            "type": "command", "command": str(shim / "ccstatusline"),
-            "padding": 0, "refreshInterval": 10,
-        }
+    """bd harnessed-1t4.3: `tools:` owns the binary in both modes, so the script records the path
+    the tool RESOLVES to instead of computing a different one per mode."""
 
-    def test_host_writes_a_host_resolvable_path_not_the_container_one(self, tmp_path):
+    def _run_with_tool(self, tmp_path, *, mode, harness, config_dir=None, home=None):
+        shims = _ccstatusline_on_path(tmp_path).parent
+        return _run("ccstatusline", tmp_path, mode=mode, harness=harness,
+                    stub_path=shims, config_dir=config_dir, home=home)
+
+    def test_the_recorded_path_is_the_resolved_binary(self, tmp_path):
+        r = self._run_with_tool(tmp_path, mode="container", harness="claude")
+        assert r.returncode == 0, r.stderr
+        cmd = json.loads((tmp_path / "config" / "settings.json").read_text())["statusLine"]["command"]
+        assert cmd == str(tmp_path / "toolshims" / "ccstatusline")
+        assert os.access(cmd, os.X_OK)
+
+    def test_the_same_script_records_a_host_resolvable_path(self, tmp_path):
         # The regression the old Dockerfile shipped: /home/harnessed/... baked into a host launch's
         # settings.json, pointing at a directory that does not exist on the host.
-        _pnpm_installing_stub(tmp_path)
-        cache = tmp_path / "cache" / "ccstatusline" / "2.2.22"
-        cache.parent.mkdir(parents=True)
-        r = _run("ccstatusline", tmp_path, mode="host", harness="claude", cache=cache)
-        assert r.returncode == 0
+        r = self._run_with_tool(tmp_path, mode="host", harness="claude")
+        assert r.returncode == 0, r.stderr
         cmd = json.loads((tmp_path / "config" / "settings.json").read_text())["statusLine"]["command"]
-        assert cmd == str(cache / "node_modules" / ".bin" / "ccstatusline")
         assert not cmd.startswith("/home/harnessed")
         assert os.access(cmd, os.X_OK)
 
-    def test_host_populates_the_cache_via_a_partial_rename(self, tmp_path):
-        # An interrupted install must never look like a populated cache: hit == "the dir exists".
-        _pnpm_installing_stub(tmp_path)
-        cache = tmp_path / "cache" / "ccstatusline" / "2.2.22"
-        cache.parent.mkdir(parents=True)
-        assert _run("ccstatusline", tmp_path, mode="host", harness="claude", cache=cache).returncode == 0
-        assert (cache / "node_modules" / ".bin" / "ccstatusline").is_file()
-        assert not list(cache.parent.glob("*.partial.*"))
-
-    def test_host_cache_hit_does_not_reinstall(self, tmp_path):
-        log = tmp_path / "pnpm.log"
-        _stub(tmp_path / "bin", "pnpm", f'printf "%s\\n" "$*" >> {log}\n')
-        cache = tmp_path / "cache" / "ccstatusline" / "2.2.22"
-        (cache / "node_modules" / ".bin").mkdir(parents=True)
-        binary = cache / "node_modules" / ".bin" / "ccstatusline"
-        binary.write_text("#!/bin/sh\n")
-        binary.chmod(0o755)
-        r = _run("ccstatusline", tmp_path, mode="host", harness="claude", cache=cache)
-        assert r.returncode == 0
-        assert not log.exists()
+    def test_a_missing_binary_fails_loudly_rather_than_recording_a_dead_path(self, tmp_path):
+        # statusLine is exec'd for the whole session; a bad path fails at RUNTIME, invisibly.
+        r = _run("ccstatusline", tmp_path, mode="host", harness="claude")
+        assert r.returncode != 0
+        assert not (tmp_path / "config" / "settings.json").exists()
 
     def test_settings_merge_preserves_other_recipes_baked_keys(self, tmp_path):
         # Read-modify-write, not overwrite: install.sh runs after the profile settings.json is in
         # place (host) and alongside other recipes' baked keys (container).
-        _pnpm_installing_stub(tmp_path)
-        cache = tmp_path / "cache" / "ccstatusline" / "2.2.22"
-        cache.parent.mkdir(parents=True)
         config = tmp_path / "config"
         config.mkdir()
         (config / "settings.json").write_text(json.dumps({"model": "sonnet"}))
-        r = _run("ccstatusline", tmp_path, mode="host", harness="claude", cache=cache)
-        assert r.returncode == 0
+        r = self._run_with_tool(tmp_path, mode="host", harness="claude", config_dir=config)
+        assert r.returncode == 0, r.stderr
         out = json.loads((config / "settings.json").read_text())
         assert out["model"] == "sonnet"
         assert out["statusLine"]["type"] == "command"
 
     @pytest.mark.parametrize("harness", ["codex", "omp"])
-    def test_non_claude_harness_gets_the_binary_but_no_statusline(self, tmp_path, harness):
-        # statusLine is a Claude Code concept. The binary install is not gated — same split the
-        # Dockerfile's `${HARNESS} = claude` branch had.
-        _pnpm_installing_stub(tmp_path)
-        cache = tmp_path / "cache" / "ccstatusline" / "2.2.22"
-        cache.parent.mkdir(parents=True)
-        r = _run("ccstatusline", tmp_path, mode="host", harness=harness, cache=cache)
-        assert r.returncode == 0
-        assert (cache / "node_modules" / ".bin" / "ccstatusline").is_file()
+    def test_non_claude_harness_gets_no_statusline(self, tmp_path, harness):
+        # statusLine is a Claude Code concept; the binary itself is unconditional (`tools:`).
+        r = self._run_with_tool(tmp_path, mode="host", harness=harness)
+        assert r.returncode == 0, r.stderr
         assert not (tmp_path / "config" / "settings.json").exists()
 
 

@@ -169,12 +169,6 @@ _PERSIST_NAME_COMPONENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 # and escape ~/.ssh; '.'/'..' pass the charset but are navigation, rejected explicitly at parse.
 _SSH_KEY_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
-# A stack `hatago.repo` is `github:<owner>/<repo>` and `hatago.ref` is a branch/tag/SHA — both are
-# interpolated into a generated Dockerfile `RUN` line (emit.write_derived_dockerfile), so the
-# charset is restricted to what a git ref / GitHub path segment can legally contain — no shell
-# metacharacters, no quotes, no whitespace.
-_HATAGO_REPO_RE = re.compile(r"^github:[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
-_HATAGO_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 _PERSIST_VALID_SCOPES = {"workspace", "project", "global"}
 _PERSIST_RESERVED_SCOPES = {"repo"}
@@ -884,12 +878,6 @@ class Stack:
     # unlike the agent auto-forward. No-op when the host token file is absent. See
     # _aws_sso_ecs_forward_args and docs/guides/aws-sso.md.
     forward_aws_sso: bool = False
-    # Per-stack override for the hatago MCP hub install (default: the base image's pinned npm
-    # release — catalog/base/Dockerfile.harnessed-base). {repo: "github:<owner>/<repo>", ref:
-    # "<branch|tag|sha>"} — installed via pnpm's git-spec `github:<owner>/<repo>#<ref>` (NOT mise's
-    # `github:` backend: that resolves GitHub Release assets, and an override is typically an
-    # unreleased branch of what is otherwise an npm package). None → no override layer emitted.
-    hatago: dict | None = None
     state: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
 
@@ -1256,6 +1244,9 @@ KNOWN_STACK_FIELDS = frozenset({
     "name", "extends", "recipes", "services", "harnesses", "permissions", "instructions",
     "forward_git_credentials", "ssh_keys", "forward_aws_sso", "hatago", "state",
 })
+# `hatago` stays in the KNOWN set deliberately after its removal (bd harnessed-1t4.1): it must reach
+# `_reject_removed_hatago_override`, whose message says what replaced it, rather than dying in the
+# generic "unknown field / did you mean" path.
 
 # Fields a child UNIONS with its parent's (parent order first, then the child's additions, de-duped).
 # Everything else is an override: a key the child declares wins outright; a key it omits is
@@ -1382,7 +1373,7 @@ def load_stack(stack_dir: Path) -> Stack:
         )
     harnesses = _parse_harnesses(raw.get("harnesses"), manifest)
     ssh_keys = _parse_ssh_keys(raw.get("ssh_keys"), manifest)
-    hatago = _parse_hatago(raw.get("hatago"), manifest)
+    _reject_removed_hatago_override(raw, manifest)
     permissions = raw.get("permissions")
     if permissions is not None and permissions not in _STACK_PERMISSIONS_MODES:
         raise SchemaError(
@@ -1399,7 +1390,6 @@ def load_stack(stack_dir: Path) -> Stack:
         forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
         ssh_keys=ssh_keys,
         forward_aws_sso=bool(raw.get("forward_aws_sso", False)),
-        hatago=hatago,
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
     )
@@ -1430,32 +1420,24 @@ def _parse_harnesses(raw_harnesses, manifest: Path) -> list[str]:
     return names
 
 
-def _parse_hatago(raw_hatago, manifest: Path) -> dict | None:
-    """Validate the stack `hatago:` override block — `{repo: "github:<owner>/<repo>", ref: "..."}`.
+def _reject_removed_hatago_override(raw: dict, manifest: Path) -> None:
+    """The stack `hatago: {repo, ref}` override is REMOVED (bd harnessed-1t4.1).
 
-    Both values are later interpolated into a generated Dockerfile RUN line
-    (emit.write_derived_dockerfile), so they're validated against a strict charset here rather than
-    at emit time — a bad value must fail loudly at load, not produce a malformed/injectable RUN line.
+    It shallow-cloned a fork and built it from source inside the derived image — a 410-package layer
+    on every build, on top of the hatago the base image already installs. The fork is published, so
+    the base image installs it directly and there is nothing left to override.
+
+    Stack parsing is otherwise tolerant of unknown fields (D-14), which would silently turn a
+    still-present block into a no-op. This is a build-input change the author must see, so it fails.
     """
-    if not raw_hatago:
-        return None
-    if not isinstance(raw_hatago, dict) or "repo" not in raw_hatago:
-        raise SchemaError(
-            f"{manifest}: 'hatago' must be a mapping with at least 'repo' "
-            f"(e.g. hatago: {{repo: github:owner/repo, ref: some-branch}})"
-        )
-    repo = raw_hatago["repo"]
-    if not isinstance(repo, str) or not _HATAGO_REPO_RE.match(repo):
-        raise SchemaError(
-            f"{manifest}: hatago.repo {repo!r} must look like 'github:<owner>/<repo>'"
-        )
-    ref = raw_hatago.get("ref")
-    if ref is not None and (not isinstance(ref, str) or not _HATAGO_REF_RE.match(ref)):
-        raise SchemaError(
-            f"{manifest}: hatago.ref {ref!r} must be a valid git ref (branch/tag/SHA), "
-            f"no shell metacharacters"
-        )
-    return {"repo": repo, "ref": ref}
+    if raw.get("hatago") is None:
+        return
+    raise SchemaError(
+        f"{manifest}: the 'hatago:' stack override has been removed — hatago is installed from "
+        f"the published @drmikecrowe/hatago-mcp-hub npm release in "
+        f"catalog/base/Dockerfile.harnessed-base (which carries per-server tool filtering). "
+        f"Delete the 'hatago:' block from this stack."
+    )
 
 
 def _parse_ssh_keys(raw_keys, manifest: Path) -> list[str]:
@@ -1669,6 +1651,21 @@ _FLOATING_REF_RE = re.compile(
     r'|@latest\b',
     re.IGNORECASE,
 )
+# --- bd harnessed-1t4.6: a clone ref must be IMMUTABLE, not merely "not main" ---------------------
+# `_FLOATING_REF_RE` names three refs explicitly, which let `--branch "feat/per-server-tool-filtering"`
+# through a gate that exists to stop exactly that: a feature branch moves like main does, so two
+# builds a week apart produce different images from identical inputs. The rule is therefore stated
+# positively — a clone ref is acceptable only if it is a version-like TAG or a full 40-hex SHA.
+_CLONE_REF_RE = re.compile(r'--branch(?:=|\s+)(?P<ref>"[^"]*"|\'[^\']*\'|\S+)')
+# v6.0.3, 1.2.3, 0.1.2, v2.0.0-rc.1 — and a full commit SHA. Deliberately narrow: an unrecognised
+# shape fails closed rather than being guessed at.
+_IMMUTABLE_REF_RE = re.compile(r'^(?:[0-9a-fA-F]{40}|v?\d+(?:\.\d+)*(?:[-+.][0-9A-Za-z.]+)?)$')
+# `"$FOO"` / `${FOO}` — catalog scripts pin via `FOO_REF="v6.0.3"` and clone `--branch "$FOO_REF"`,
+# so the gate follows exactly one hop to the literal assignment in the same body.
+_SHELL_VAR_REF_RE = re.compile(r'^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$')
+_SHELL_ASSIGN_RE = re.compile(
+    r'^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(\"[^\"]*\"|\'[^\']*\'|\S*)\s*$', re.MULTILINE
+)
 # A Dockerfile RUN instruction. Used by `validate_container_only_declared` to detect the half of a
 # partially migrated recipe that a host launch cannot execute.
 _DOCKERFILE_RUN_RE = re.compile(r'^\s*RUN\s', re.MULTILINE)
@@ -1752,6 +1749,38 @@ def validate_no_raw_npm(recipe: Recipe) -> None:
         )
 
 
+def _unquote(token: str) -> str:
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'":
+        return token[1:-1]
+    return token
+
+
+def _mutable_clone_ref(body: str) -> str | None:
+    """Return a human-readable description of the first NON-immutable `--branch` ref, else None.
+
+    Comment-stripping is the caller's job (both call sites already do it for `_FLOATING_REF_RE`).
+    Fail-closed: a ref this cannot prove immutable — including a variable with no literal assignment
+    in the same body — is reported, because "can't tell" and "moves" have the same build consequence.
+    """
+    assigns = {m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)}
+    for match in _CLONE_REF_RE.finditer(body):
+        raw = _unquote(match.group("ref"))
+        var = _SHELL_VAR_REF_RE.match(raw)
+        if var:
+            name = var.group(1)
+            if name not in assigns:
+                return (
+                    f"${name} (no literal assignment in this file, so the ref cannot be shown "
+                    f"immutable)"
+                )
+            ref, shown = assigns[name], f"${name} = '{assigns[name]}'"
+        else:
+            ref, shown = raw, f"'{raw}'"
+        if not _IMMUTABLE_REF_RE.match(ref):
+            return shown
+    return None
+
+
 def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
     """Raises PinValidationError if the Dockerfile body contains a floating ref (ASM-02).
 
@@ -1768,6 +1797,12 @@ def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
         raise PinValidationError(
             f"recipe '{recipe_name}': Dockerfile contains a floating ref '{match.group(0).strip()}'. "
             "Pin to a tag (e.g. v1.2.3) or SHA (e.g. @sha256:...) instead of floating branches or :latest."
+        )
+    ref = _mutable_clone_ref(stripped)
+    if ref:
+        raise PinValidationError(
+            f"recipe '{recipe_name}': Dockerfile clones a moving ref {ref}. "
+            "A branch moves — clone a tag (e.g. v1.2.3) or a full commit SHA instead."
         )
 
 
@@ -1813,6 +1848,12 @@ def _lint_script_file(recipe: Recipe, field_name: str, rel_path: str) -> None:
         raise PinValidationError(
             f"recipe '{recipe.name}': {field_name} '{rel_path}' contains a floating ref "
             f"'{match.group(0).strip()}'. Pin to an explicit tag, version, or SHA."
+        )
+    ref = _mutable_clone_ref(body)
+    if ref:
+        raise PinValidationError(
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' clones a moving ref {ref}. "
+            "A branch moves — clone a tag (e.g. v1.2.3) or a full commit SHA instead."
         )
 
 

@@ -18,14 +18,10 @@ set -euo pipefail
 # keys a CONTENT clone, and uv already caches wheels itself — there is nothing for harnessed to hold.
 SERENA_VERSION="1.5.3"
 
-# Unconditional, NOT guarded on `command -v serena`. Verified uv behaviour: re-running with the same
-# pin prints "already installed" and exits 0, while a CHANGED pin swaps the version — so the
-# every-launch host re-run is cheap and a SERENA_VERSION bump actually lands. A `command -v` guard
-# would make bumps permanently sticky on the host, where the tool dir survives the home wipe.
-#
-# Host mode: _host_run_installs sets UV_TOOL_DIR/UV_TOOL_BIN_DIR to the STACK-scoped tools tree and
-# puts that bin dir first on PATH, so this never touches the user's global uv tools.
-uv tool install -p 3.13 "serena-agent==${SERENA_VERSION}"
+# The CLI itself is `tools: [pipx:serena-agent@…]` in recipe.yaml (bd harnessed-1t4.3) — the same
+# pinned wheel install in both modes, resolved by mise's pipx backend through uv, into the merged
+# and cached tool layer. What stays here is the CONFIGURATION half, which mise cannot express.
+# Keep SERENA_VERSION in lockstep with that pin.
 
 # `serena init` writes the global config that selects the code-intelligence backend. Without it
 # `start-mcp-server` comes up with no LSP backend. `-b LSP` is the current default, stated

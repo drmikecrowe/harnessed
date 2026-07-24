@@ -16,19 +16,10 @@ set -euo pipefail
 
 CONTEXT_MODE_VERSION="1.0.169"
 
-# --- CLI install (host only) ----------------------------------------------------------------------
-# Container gets the CLI via `tools:` (mise npm backend) — nothing to do here in that mode.
-# On a host launch there is no mise layer, so install it into HARNESSED_BIN_DIR (the stack's
-# bin dir, already on PATH before setup scripts run). pnpm global redirected via PNPM_HOME so the
-# install is stack-scoped and never touches the user's own pnpm global store.
-#
-# PNPM_HOME is the PARENT of the bin dir, not the bin dir itself: pnpm's global bin is
-# "$PNPM_HOME/bin". Pointing it straight at $HARNESSED_BIN_DIR resolves to "<bin>/bin", which is one
-# level too deep and NOT on PATH — pnpm then hard-errors ("The configured global bin directory ...
-# is not in PATH") and the whole install fails. Seen for real on a host launch (bd harnessed-8px.15).
-if [ "${HARNESSED_MODE:-}" = "host" ]; then
-    PNPM_HOME="$(dirname "$HARNESSED_BIN_DIR")" pnpm add -g "context-mode@${CONTEXT_MODE_VERSION}"
-fi
+# --- CLI install: NOT here -----------------------------------------------------------------------
+# `tools: [npm:context-mode@…]` delivers the CLI in BOTH modes now (bd harnessed-1t4.3). It used to
+# cover the container only, so this script carried a host-mode `pnpm add -g` branch; a host launch
+# applies the same pinned tool spec, so that branch is gone rather than duplicated.
 
 # --- omp only -------------------------------------------------------------------------------------
 # Under omp the bridged Claude hooks are inert (omp-claude-hooks-bridge drops

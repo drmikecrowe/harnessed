@@ -32,6 +32,11 @@ description: Serena — LSP-backed semantic code intelligence (symbol retrieval,
 # FOOTPRINT (bd harnessed-8px.6): `serena init` writes `~/.serena/serena_config.yml`, and setup.sh
 # writes a project-local `.serena/`. Both are OUTSIDE HARNESSED_CONFIG_DIR; README.md documents the
 # removal commands.
+# `tools:` owns the CLI (bd harnessed-1t4.3); install.sh keeps `serena init -b LSP`, the
+# CONFIGURATION half mise cannot express. mise's pipx backend resolves through uv.
+tools:
+  - pipx:serena-agent@1.5.3
+
 install:
   script: install.sh
 

@@ -32,8 +32,16 @@ description: >
 #
 # No `cache:` — `install.cache` keys a pinned CONTENT clone; pnpm has its own store. No `system:` —
 # `pnpm add -g` needs no root (host mode redirects it into the stack tools tree via npm_config_prefix).
-install:
-  script: install.sh
+# `tools:` owns the stdio adapter binary (bd harnessed-1t4.3). `@agentmemory/mcp`, NOT
+# `@agentmemory/agentmemory`: only this package ships the `agentmemory-mcp` binary recipe.yaml
+# spawns; the other ships the store CLI, which belongs in the service image. This installs the
+# ADAPTER ONLY — the store is the SERVICE (catalog/services/agentmemory, REST on :3111), so a
+# stack using this recipe must still declare `services: [agentmemory]`.
+tools:
+  - npm:@agentmemory/mcp@0.9.27
+
+# No `install:` — the adapter binary is the recipe's ONLY deliverable and `tools:` above owns it
+# (bd harnessed-1t4.3). There is no configuration or content half left for a script to do.
 
 # The stdio shim is a hatago child baked into the harness image. It proxies to the shared REST
 # store over the network (AGENTMEMORY_URL → host.containers.internal:3111, the service port).

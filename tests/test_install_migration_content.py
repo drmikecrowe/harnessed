@@ -165,15 +165,20 @@ class TestAgentCarnetPartial:
         assert "skills/agent-carnet" in script
         assert "SKILL.md" in script, "verify the copy, or an empty skill dir ships silently"
 
-    def test_the_cli_install_is_in_install_sh_for_both_modes(self):
-        # The Dockerfile no longer has a pnpm RUN — install.sh is the single CLI install path,
-        # run by the assembler as RUN bash install.sh in the image AND by the launcher on a host.
-        assert "pnpm add -g" in _code(CATALOG / "recipes" / "agent-carnet" / "install.sh")
+    def test_the_cli_comes_from_tools_not_the_script(self):
+        # bd harnessed-1t4.3: `tools:` owns the binary in both modes — one merged, cached mise layer
+        # in the image and the same pinned spec on a host launch. install.sh keeps only the skill,
+        # which mise cannot deliver.
+        assert "npm:agent-carnet@0.1.5" in _recipe("agent-carnet").tools
+        assert "pnpm add -g" not in _code(CATALOG / "recipes" / "agent-carnet" / "install.sh")
         assert "pnpm add -g" not in _code(CATALOG / "recipes" / "agent-carnet" / "Dockerfile")
 
     def test_one_version_literal_binds_the_cli_and_the_skill(self):
         r = _recipe("agent-carnet")
         version = r.install.cache
+        assert f"npm:agent-carnet@{version}" in r.tools, (
+            "the tools: pin and the skill's cache key must name the same artifact"
+        )
         docker = (r.root / "Dockerfile").read_text(encoding="utf-8")
         assert f"ARG AGENT_CARNET_VERSION={version}" in docker, (
             "the CLI and the skill must come from the SAME immutable npm artifact"

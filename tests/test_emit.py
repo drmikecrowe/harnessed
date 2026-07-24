@@ -53,32 +53,6 @@ class TestWriteDerivedDockerfile:
         out = write_derived_dockerfile(tmp_path, "time", "claude", [])
         assert "hatago-mcp-hub" not in out.read_text() and "hatago" not in out.read_text().lower()
 
-    def test_hatago_override_clones_builds_and_links_the_workspace_package(self, tmp_path):
-        hatago = {"repo": "github:drmikecrowe/hatago-mcp-hub", "ref": "feat/per-server-tool-filtering"}
-        out = write_derived_dockerfile(tmp_path, "time", "claude", [], hatago=hatago)
-        body = out.read_text()
-        assert 'git clone --depth 1 --branch "feat/per-server-tool-filtering"' in body
-        assert '"https://github.com/drmikecrowe/hatago-mcp-hub.git" /tmp/hatago-src' in body
-        assert "allowBuilds:\\n  esbuild: true\\n  sharp: false\\n  workerd: false" in body
-        # Append is guarded so an upstream-provided allowBuilds: doesn't duplicate the mapping key.
-        assert "grep -q '^allowBuilds:' pnpm-workspace.yaml ||" in body
-        assert 'pnpm install --filter "@himorishige/hatago-mcp-hub..."' in body
-        assert "--no-frozen-lockfile" not in body
-        # --workspace-concurrency=1 forces one-package-at-a-time topological build order, so the
-        # dts-fixup can run between each package's build and its dependents' (tsdown emits
-        # content-hashed .d.ts filenames that break a dependent's `tsc` type resolution otherwise).
-        assert 'pnpm --filter "@himorishige/hatago-mcp-hub..." --workspace-concurrency=1 exec' in body
-        assert "pnpm run build &&" in body
-        assert "--if-present" not in body
-        assert 'find dist -type f -regextype posix-extended -regex' in body
-        assert "pnpm add -g file:/tmp/hatago-src/packages/mcp-hub" in body
-
-    def test_hatago_override_without_ref_clones_default_branch(self, tmp_path):
-        hatago = {"repo": "github:owner/repo", "ref": None}
-        out = write_derived_dockerfile(tmp_path, "time", "claude", [], hatago=hatago)
-        body = out.read_text()
-        assert 'git clone --depth 1 "https://github.com/owner/repo.git" /tmp/hatago-src' in body
-
     def test_recipe_tools_emit_mise_layer(self, tmp_path):
         # Declarative `tools:` → one pinned `mise use -g` layer (aggregated across recipes), run as
         # the harnessed user. No Dockerfile needed on the recipe.
@@ -86,7 +60,9 @@ class TestWriteDerivedDockerfile:
         r2 = Recipe(name="tf", tools=["terraform@1.9.0"], root=tmp_path / "tf")
         out = write_derived_dockerfile(tmp_path, "time", "claude", [r1, r2], with_scan=False)
         body = out.read_text()
-        assert 'RUN mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in body
+        # Cache mounts sit between RUN and the command (bd harnessed-1t4.2); the command itself is
+        # one aggregated, sorted `mise use -g`.
+        assert 'mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in body
         assert "# --- recipe tools (mise) ---" in body
 
     def test_no_mise_layer_without_tools(self, tmp_path):

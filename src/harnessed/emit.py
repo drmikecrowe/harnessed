@@ -771,6 +771,42 @@ def install_env(
     }
 
 
+# --- bd harnessed-1t4.2: build-time download caches -----------------------------------------------
+# A `--mount=type=cache` dir is NOT committed into the image — it lives on the build host and
+# survives between builds, so a layer MISS costs a re-link instead of a re-download. Before this, the
+# derived image hit 0 of 24 cached steps and re-fetched every package from the network every time.
+#
+# Targets are DOWNLOAD caches only, never install dirs: a cache mount hides its target at COMMIT, so
+# mounting $PNPM_HOME (which holds the global bin dir) would ship an image with no binaries. The
+# paths are the ones the built base image actually reports (`pnpm store path`, `uv cache dir`,
+# `~/.cache`), not assumed defaults.
+#
+# pnpm's CONTENT-ADDRESSED STORE is deliberately absent, and must stay absent. It looks like the
+# obvious thing to cache, but pnpm v11 does not copy out of it — a global install is a symlink into
+# `store/v11/links/…`, so with the store mounted as a cache the image ships dangling links and
+# `hatago --version` dies with MODULE_NOT_FOUND at runtime. Verified by building it. mise's `npm:`
+# backend links the same way, so this applies to every JS tool, not just the globals. uv and mise are
+# not affected: both materialize real files into their install dirs (also verified by building).
+#
+# uid/gid 1000 is the `harnessed` user every one of these layers runs as — a root-owned mount makes
+# the layer fail outright under rootless podman.
+#
+# sharing: pnpm's metadata cache and uv's cache are safe for concurrent readers/writers, so
+# parallel stack builds (`harnessed build --jobs > 1`) share them; mise's download cache carries no
+# such documented guarantee, so it is serialized rather than raced.
+_BUILD_CACHES = (
+    ("/home/harnessed/.cache/mise", "harnessed-mise", "locked"),
+    ("/home/harnessed/.cache/pnpm", "harnessed-pnpm-meta", "shared"),
+    ("/home/harnessed/.cache/uv", "harnessed-uv", "shared"),
+)
+# Deliberately constant: an id that varied per stack would give every stack its own cache and the
+# sharing these exist for would never happen.
+CACHE_MOUNTS = " ".join(
+    f"--mount=type=cache,target={target},id={cache_id},uid=1000,gid=1000,sharing={sharing}"
+    for target, cache_id, sharing in _BUILD_CACHES
+)
+
+
 def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
     """The derived-Dockerfile block for one recipe's `install:` — COPY the recipe dir, then run it.
 
@@ -805,7 +841,9 @@ def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
         "USER harnessed",
         f"COPY catalog/recipes/{recipe.ref or recipe.name} {ctr_recipe}",
     ]
-    run = f"RUN {assigns} bash {ctr_recipe}/{inst.script}"
+    # Every download cache, not a per-recipe guess: an install.sh may reach for any of pnpm, uv or
+    # mise, and the script body is the recipe author's to change without touching the emitter.
+    run = f"RUN {CACHE_MOUNTS} {assigns} bash {ctr_recipe}/{inst.script}"
     if cache:
         # Same layer, or the clone ships in the image.
         run += f" && rm -rf {_CTR_INSTALL_CACHE}"
@@ -815,7 +853,7 @@ def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
 
 def write_derived_dockerfile(
     profile_dir: Path, stack_name: str, harness: str, recipes: list[Recipe],
-    *, hatago: dict | None = None, with_scan: bool = True
+    *, with_scan: bool = True
 ) -> Path:
     """Emit profiles/<stack>/<harness>/Dockerfile.harnessed-<stack> for host `podman build` (ASM-03).
 
@@ -869,88 +907,22 @@ def write_derived_dockerfile(
     # Declarative recipe `tools:` — install pinned mise tools as one global layer, so a recipe can add
     # a CLI (e.g. pulumi) with no Dockerfile. Runs as `harnessed` (mise's globals live under that
     # user's home) after all recipe layers. Pins are validated at load (_parse_tools).
-    tool_specs = [t for recipe in recipes for t in recipe.tools]
+    #
+    # SORTED + DEDUPED (bd harnessed-1t4.5): podman keys its layer cache on the literal instruction
+    # text, so emitting these in stack.yaml authoring order made two stacks with the SAME tool set
+    # miss each other's cached layer for no reason. Sorting makes the layer a function of the tool
+    # SET. Recipe layers above deliberately keep authored order — install order there IS semantic
+    # (a later recipe may overwrite an earlier one's content) — but `mise use -g` is declarative and
+    # order-free, so nothing is lost by canonicalising it.
+    tool_specs = sorted({t for recipe in recipes for t in recipe.tools})
     if tool_specs:
         joined = " ".join(f'"{t}"' for t in tool_specs)
         lines.append("# --- recipe tools (mise) ---")
         lines.append("USER harnessed")
-        lines.append(f"RUN mise use -g {joined} && mise install")
+        # `mise use -g` fans out to backends that shell out to pnpm (npm:) and uv (pipx:), so this
+        # layer gets the same cache set as a recipe install.
+        lines.append(f"RUN {CACHE_MOUNTS} mise use -g {joined} && mise install")
         lines.append("")
-
-    if hatago:
-        # Override the base image's pinned hatago release (catalog/base/Dockerfile.harnessed-base)
-        # with a stack-specified repo/ref.
-        #
-        # NEITHER of the two existing install conventions applies here:
-        #  - mise's `github:` backend (used by rtk/beads/dolt) resolves GitHub *Release* assets —
-        #    there is no release for an unmerged feature branch.
-        #  - A plain `pnpm add -g github:<owner>/<repo>#<ref>` git-spec install fails outright:
-        #    hatago-mcp-hub is a pnpm workspace monorepo whose ROOT package.json has no `name`
-        #    field (ERR_PNPM_MISSING_PACKAGE_NAME) — the publishable package lives at
-        #    packages/mcp-hub, and its build (tsdown) needs its workspace:* sibling packages
-        #    resolved, which a bare git-spec install can't do.
-        # So: shallow-clone the ref, install ONLY the target package + its workspace:* deps (`pnpm
-        # install --filter <pkg>...` — excludes the repo's examples/apps workspace members), build
-        # each package in the dependency graph one at a time in topological order (see below), then
-        # pnpm-link the built target package directory in globally.
-        #
-        # pnpm v11 (pinned in the base image) denies dependency postinstall/build scripts by
-        # default (ERR_PNPM_IGNORED_BUILDS) unless explicitly reviewed via pnpm-workspace.yaml's
-        # `allowBuilds` map — and it evaluates this against the WHOLE workspace lockfile, not just
-        # the --filter-ed subset. tsdown (the target package's build tool) needs esbuild's
-        # postinstall to fetch its platform binary, so approve it. sharp/workerd belong to the
-        # repo's examples/apps members (unrelated to what we're building) — decline them explicitly
-        # rather than leave them "unreviewed" (which errors) or loosen the strict-builds gate.
-        owner_repo = hatago["repo"].removeprefix("github:")
-        ref = hatago.get("ref")
-        branch_flag = f' --branch "{ref}"' if ref else ""
-        allow_builds = "allowBuilds:\\n  esbuild: true\\n  sharp: false\\n  workerd: false\\n"
-        # tsdown/rolldown-plugin-dts (0.14.2/0.15.10, this repo's pinned versions) emits content-
-        # hashed .d.ts filenames (e.g. dist/index-CcGtRq4c.d.ts) instead of the plain names each
-        # package's package.json `types`/`exports` declare (dist/index.d.ts) — so any sibling
-        # package importing another tsdown-built package's types fails tsc with TS7016 ("Could not
-        # find a declaration file"). Renaming the hashed file to its canonical name after each
-        # package builds fixes this — `find`'s pattern matches the hash (8 chars, base64url-ish
-        # alphabet) suffix regardless of which package/entry produced it.
-        fixup = (
-            'for f in $(find dist -type f -regextype posix-extended '
-            '-regex ".*-[A-Za-z0-9_-]{8}.d.ts(.map)?" 2>/dev/null); do '
-            'c=$(printf "%s" "$f" | sed -E "s/-[A-Za-z0-9_-]{8}(.d.ts(.map)?)$/\\1/"); '
-            '[ "$f" != "$c" ] && cp "$f" "$c"; done'
-        )
-        # --workspace-concurrency=1 forces pnpm to run each matched package's `build` strictly one
-        # at a time in dependency order (default concurrency runs independent packages — e.g.
-        # runtime and transport, which both only depend on core — in parallel, racing ahead of the
-        # fixup below before it can run). Every package this filter matches defines a `build`
-        # script, so no --if-present guard is needed (pnpm forwards --if-present as a literal CLI
-        # arg to the build tool when the script DOES exist, which broke tsc's arg parsing).
-        build_and_fixup = f'pnpm run build && {fixup}'
-        lines += [
-            f"# --- stack override: hatago MCP hub ({stack_name} stack.yaml `hatago:`) ---",
-            "RUN git clone --depth 1" + branch_flag + f' "https://github.com/{owner_repo}.git" /tmp/hatago-src \\',
-            "    && cd /tmp/hatago-src \\",
-            # Guard the append: upstream may already ship an `allowBuilds:` key in
-            # pnpm-workspace.yaml (its own block already approves esbuild). Appending a second
-            # `allowBuilds:` makes a duplicate mapping key, which pnpm's YAML parser rejects.
-            f"    && (grep -q '^allowBuilds:' pnpm-workspace.yaml || printf '{allow_builds}' >> pnpm-workspace.yaml) \\",
-            # NOT --no-frozen-lockfile: the clone ships its own pnpm-lock.yaml for this exact
-            # commit, already in sync with its package.json files. Forcing a re-resolve let pnpm
-            # pick different transitive tsdown/rolldown/esbuild versions per package than upstream
-            # tested with — surfaced as a rolldown "Invalid input options" warning and a missing
-            # generated .d.ts that broke a sibling package's `tsc` build.
-            '    && pnpm install --filter "@himorishige/hatago-mcp-hub..." \\',
-            # The trailing `...` here (unlike the install filter's own `...`, kept for clarity) is
-            # load-bearing: mcp-hub's devDependencies are its workspace:* siblings (hatago-core,
-            # -hub, -runtime, -server, -transport), each with its OWN `build` script producing the
-            # dist/ that mcp-hub's tsdown build resolves them against. Building mcp-hub alone left
-            # those imports unresolved (rollup silently treats them as external) — a CLI that
-            # crashes at runtime since the siblings are devDependencies, never installed downstream.
-            '    && pnpm --filter "@himorishige/hatago-mcp-hub..." --workspace-concurrency=1 exec'
-            f" -- sh -c '{build_and_fixup}' \\",
-            "    && pnpm add -g file:/tmp/hatago-src/packages/mcp-hub \\",
-            "    && cd / && rm -rf /tmp/hatago-src",
-            "",
-        ]
 
     if with_scan:
         # Final layer: in-image supply-chain scan (BLD-02), ADVISORY — it reports a severity summary

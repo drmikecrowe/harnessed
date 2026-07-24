@@ -25,9 +25,11 @@ from harnessed.schema import load_recipe, validate_install_script
 
 CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 
-# The batch. `serena` is the interesting one — it is the only member that also keeps a `setup.sh`,
-# because it is the only one with per-project work to do.
-MIGRATED = ["serena", "repowise", "codebase-memory-mcp", "agentmemory"]
+# The batch. bd harnessed-1t4.3 then split it in two: a recipe whose ONLY deliverable was the binary
+# now declares it in `tools:` and has no script left at all, while one with a configuration or
+# content half keeps `install.script` for that half.
+MIGRATED = ["serena", "codebase-memory-mcp"]
+TOOLS_ONLY = ["repowise", "agentmemory"]
 
 
 def _recipe(name):
@@ -78,29 +80,54 @@ class TestEveryMigratedRecipe:
         assert _recipe(name).install.cache is None
 
     def test_the_script_pins_an_exact_version(self, name):
-        """Every one of these installs a pinned artifact. A script that lost its `==`/`@<version>`
-        would silently start tracking upstream HEAD across rebuilds."""
+        """Every pinned artifact a script still fetches keeps its `==`/`@<version>`; a script that
+        lost it would silently start tracking upstream HEAD across rebuilds."""
         body = _code(_recipe(name).root / "install.sh")
         assert "@latest" not in body
-        assert "==" in body or "@${" in body
+
+
+@pytest.mark.parametrize("name", TOOLS_ONLY)
+class TestBinaryOnlyRecipesAreFullyDeclarative:
+    """bd harnessed-1t4.3: when the binary was the whole recipe, the script has nothing left to do."""
+
+    def test_declares_the_binary_in_tools(self, name):
+        assert _recipe(name).tools, f"{name} must declare its binary in tools:"
+
+    def test_every_tool_spec_is_pinned(self, name):
+        for spec in _recipe(name).tools:
+            assert "@latest" not in spec and "@" in spec.rsplit(":", 1)[-1], spec
+
+    def test_has_no_install_script_left(self, name):
+        r = _recipe(name)
+        assert r.install is None or r.install.script is None
+        assert not (r.root / "install.sh").exists()
+
+    def test_has_no_dockerfile_left(self, name):
+        assert not (_recipe(name).root / "Dockerfile").exists()
 
 
 class TestPinsStayInSyncWithTheRecipe:
     """A version living in two files drifts. Each assertion below is one such pair."""
 
-    def test_serena_script_pin_is_the_version_the_recipe_documents(self):
-        body = _code(_recipe("serena").root / "install.sh")
-        assert 'SERENA_VERSION="1.5.3"' in body
-        assert 'serena-agent==${SERENA_VERSION}' in body
+    def test_serena_script_pin_matches_the_tools_pin(self):
+        # The pin moved to `tools:` (bd harnessed-1t4.3); the script keeps the literal because it
+        # documents which version its `serena init` configures. Two files, so assert they agree.
+        r = _recipe("serena")
+        assert 'SERENA_VERSION="1.5.3"' in _code(r.root / "install.sh")
+        assert "pipx:serena-agent@1.5.3" in r.tools
 
 
 class TestSerenaInstallSetupSplit:
     """serena is the only member with BOTH halves, and the split is the whole point of the phase
     distinction: install has no project, setup does."""
 
-    def test_install_does_the_cli_and_the_global_backend_config(self):
-        body = _code(_recipe("serena").root / "install.sh")
-        assert "uv tool install" in body
+    def test_tools_does_the_cli_and_install_does_the_global_backend_config(self):
+        # bd harnessed-1t4.3 drew the line here: `tools:` owns WHAT BINARY, install.sh owns
+        # CONFIGURATION. `serena init -b LSP` is the configuration half and stays.
+        r = _recipe("serena")
+        body = _code(r.root / "install.sh")
+        assert "pipx:serena-agent@1.5.3" in r.tools
+        assert "uv tool install" not in body
         assert "serena init -b LSP" in body
 
     def test_install_never_touches_project_state(self):
@@ -157,14 +184,15 @@ class TestAgentmemoryInstallsTheAdapterNotTheStore:
     the package that ships the `agentmemory-mcp` binary recipe.yaml spawns — `@agentmemory/agentmemory`
     ships the store CLI and belongs in the service image."""
 
-    def test_installs_the_mcp_adapter_package(self):
-        body = _code(_recipe("agentmemory").root / "install.sh")
-        assert "@agentmemory/mcp@" in body
-        assert "@agentmemory/agentmemory" not in body
+    def test_declares_the_mcp_adapter_package(self):
+        tools = _recipe("agentmemory").tools
+        assert any(t.startswith("npm:@agentmemory/mcp@") for t in tools), tools
+        assert not any("agentmemory/agentmemory" in t for t in tools)
 
-    def test_uses_pnpm_never_npm(self):
-        body = _code(_recipe("agentmemory").root / "install.sh")
-        assert "pnpm add -g" in body
+    def test_the_npm_backend_routes_through_the_managed_pnpm_policy(self):
+        # mise's `npm:` backend is configured with npm.package_manager=pnpm in the base image, so a
+        # declarative install is still governed by the pnpm supply-chain config — no raw npm.
+        assert all(t.startswith("npm:") for t in _recipe("agentmemory").tools)
 
     def test_the_installed_binary_is_the_one_the_mcp_entry_spawns(self):
         r = _recipe("agentmemory")

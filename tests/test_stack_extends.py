@@ -65,11 +65,6 @@ class TestExtendsMerge:
         assert stk.permissions == "prompt"
         assert stk.forward_aws_sso is True  # untouched key still inherited
 
-    def test_hatago_override_replaces_wholesale(self, tmp_path):
-        _stack(tmp_path, "base", 'hatago:\n  repo: "github:a/b"\n  ref: "v1"\n')
-        child = _stack(tmp_path, "kid", 'extends: base\nhatago:\n  repo: "github:c/d"\n  ref: "v2"\n')
-        assert load_stack(child).hatago == {"repo": "github:c/d", "ref": "v2"}
-
     def test_name_is_never_inherited(self, tmp_path):
         _stack(tmp_path, "base", "recipes: [a]\n")
         child = _stack(tmp_path, "kid", "extends: base\n")
@@ -130,7 +125,7 @@ class TestStrictStackFields:
             "s",
             "recipes: [a]\nservices: [b]\nharnesses: [claude]\npermissions: auto\n"
             "instructions: hi\nforward_git_credentials: true\nforward_aws_sso: true\n"
-            "ssh_keys: [id_ed25519]\nhatago:\n  repo: 'github:a/b'\n  ref: v1\nstate: {k: v}\n",
+            "ssh_keys: [id_ed25519]\nstate: {k: v}\n",
         )
         stk = load_stack(d)
         assert stk.recipes == ["a"] and stk.services == ["b"] and stk.permissions == "auto"

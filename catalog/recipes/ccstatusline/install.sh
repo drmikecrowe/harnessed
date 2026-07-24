@@ -16,38 +16,13 @@ CCSTATUSLINE_VERSION="2.2.22"
 
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 
-# --- 1. the binary -------------------------------------------------------------------------------
-if [ "${HARNESSED_MODE:-}" = "container" ]; then
-    # Unchanged from the Dockerfile: mise's `npm:` backend. harnessed-base ships mise + shims on PATH
-    # and sets `npm.package_manager pnpm`, so this routes through the managed pnpm supply-chain
-    # config — no raw npm/npx — and lands a shim at ~/.local/share/mise/shims/ccstatusline.
-    mise use -g "npm:ccstatusline@${CCSTATUSLINE_VERSION}"
-    mise install
-    bin="$HOME/.local/share/mise/shims/ccstatusline"
-else
-    # Host: install into $HARNESSED_INSTALL_CACHE, which is the ONLY place a host install may leave
-    # something durable. It has to be durable: statusLine is an absolute path in settings.json that
-    # the agent execs for the whole session, and $HARNESSED_CONFIG_DIR is rmtree'd and rebuilt on
-    # EVERY launch (_materialize_host_home) — so the tree cannot live there, only the pointer to it.
-    # `mise use -g` is not an option host-side: it writes the user's own global mise config.
-    if ! command -v pnpm >/dev/null 2>&1; then
-        echo "error: install (ccstatusline) needs 'pnpm' on PATH to install ccstatusline" \
-             "${CCSTATUSLINE_VERSION} host-native." >&2
-        exit 1
-    fi
-    cache="${HARNESSED_INSTALL_CACHE:?host install requires HARNESSED_INSTALL_CACHE}"
-    # Cache MISS is "the directory does not exist" — harnessed creates only its parent. Populate a
-    # temp sibling and rename, so an interrupted install can never be mistaken for a populated cache.
-    if [ ! -d "$cache" ]; then
-        tmp="${cache}.partial.$$"
-        rm -rf "$tmp"
-        mkdir -p "$tmp"
-        printf '{"name":"harnessed-ccstatusline","private":true}\n' > "$tmp/package.json"
-        (cd "$tmp" && pnpm add "ccstatusline@${CCSTATUSLINE_VERSION}")
-        mv "$tmp" "$cache"
-    fi
-    bin="$cache/node_modules/.bin/ccstatusline"
-fi
+# --- 1. the binary: NOT here ----------------------------------------------------------------------
+# `tools: [npm:ccstatusline@…]` owns it in BOTH modes (bd harnessed-1t4.3), which is also what
+# collapses the two branches this section used to carry: a container `mise use -g` and a host
+# `pnpm add` into the install cache, each yielding a DIFFERENT absolute path. mise's shims dir is
+# on PATH in both modes and outlives the per-launch config-dir wipe, so the path statusLine records
+# is simply where the tool resolves. Keep CCSTATUSLINE_VERSION in lockstep with that pin.
+bin="$(command -v ccstatusline)"
 test -x "$bin"
 
 # --- 2. the statusLine block ---------------------------------------------------------------------
