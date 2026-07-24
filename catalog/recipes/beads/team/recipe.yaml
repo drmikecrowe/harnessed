@@ -84,6 +84,20 @@ persist:
     scope: project
     location: in_repo
     vcs: tracked
+
+# `bd` reads BEADS_DIR from its own environment on EVERY invocation — the agent's, a hook's, a
+# subshell's — and only falls back to a git-common-dir walk when it is unset. That fallback needs the
+# CALLER to be standing inside the repo, which is true for claude (its bd hooks run with the project
+# as CWD) but NOT for every harness: omp starts the agent in $HOME (/home/harnessed), and from there
+# the walk finds no `.beads`, so `bd where` reports "No active beads workspace found" and the agent
+# mis-narrates it as "the Dolt server isn't running" (harnessed-b0s). Exporting BEADS_DIR makes bd
+# CWD-independent. `{persist:.beads}` resolves against the entry above (in_repo -> the checkout's
+# git-common-dir `.beads`, path-preserving in both container and host modes), so client and the
+# beads-server service — which resolves the SAME entry for its data dir — agree by construction.
+# beads/stealth already carries this env for the identical reason; team needs it just as much.
+env:
+  BEADS_DIR: "{persist:.beads}"
+
 # No `init:` — beads is NOT auto-initialized. bd's setup writes into the project
 # (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and cannot be made reliably
 # idempotent/footprint-free across every git layout, so first-time init stays a deliberate user
