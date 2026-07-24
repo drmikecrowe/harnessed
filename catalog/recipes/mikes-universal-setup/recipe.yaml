@@ -37,34 +37,32 @@ rules:
 #   [gsd]      github.com/open-gsd/gsd-core (MIT, LICENSE present)
 #   [kepano]   github.com/kepano/obsidian-skills (MIT)
 #   [blader]   github.com/blader/humanizer (MIT)
+#   [mattpocock] github.com/mattpocock/skills (MIT)
 #   [mine]     authored here
-#   [?]        upstream NOT identified — do not assume it is ours
+#
+# BYTE-IDENTICAL to upstream and pending migration: the five [oakoss] skills below are exact copies
+# of github.com/oakoss/agent-skills (SKILL.md + references/ all verified identical 2026-07-23, HEAD
+# 0283bed3). They are slated to move from vendored copies to a pinned build-time install via the
+# vercel `skills` CLI (`skills add oakoss/agent-skills#<sha> --skill <name>`) so the bytes are never
+# copied by hand. Until that lands they remain vendored. Skills that were MODIFIED here (map-codebase,
+# tdd, defuddle) are NOT migration candidates — a fetch would discard the local edits.
 skills:
-  - path: skills/application-security   # [oakoss]
-  # [?] No upstream found. Distinctive Spanish trigger phrases ("optimizar codigo") did not match
-  # any published skill. Treat as unknown provenance until identified, not as original work.
-  - path: skills/code-optimizer
-  - path: skills/create-skill           # [gsd]
-  - path: skills/defuddle               # [kepano]
-  # [?] anthropics/claude-code ships a skill of this exact name (plugins/frontend-design). NOT
-  # confirmed to be the same file — this copy references Liquid Glass / Shopify Polaris / picsum,
-  # which were not verified upstream. Diff before attributing.
-  - path: skills/frontend-design
-  - path: skills/handoff                # [gsd] — distinct from the same-named mattpocock skill
+  - path: skills/application-security   # [oakoss] byte-identical upstream — migration candidate
+  - path: skills/defuddle               # [kepano] modified (differs from upstream) — stays vendored
   # [blader] Vendored third-party (MIT): github.com/blader/humanizer @
   # 1b48564898e999219882660237fde01bf4843a0f. Upstream ships no tags/releases and is a single
   # SKILL.md, so it is committed here (with its LICENSE) rather than cloned by a Dockerfile the
   # way superpowers' 14-skill tree is. To update: re-copy SKILL.md from upstream and bump the SHA.
   # This is the ONLY skill here whose LICENSE actually ships alongside it.
   - path: skills/humanizer
-  - path: skills/map-codebase           # [gsd]
-  - path: skills/mermaid-diagrams       # [oakoss]
-  # [oakoss] BYTE-IDENTICAL to upstream skills/mise/SKILL.md (verified 2026-07-23, 7842 bytes).
-  # Recorded because these two were long believed to be original work.
-  - path: skills/mise
-  - path: skills/python-uv              # [oakoss] byte-identical upstream, 8419 bytes
-  - path: skills/security-review        # [gsd]
-  - path: skills/skill-management       # [oakoss] source: agentskills.io
-  - path: skills/tdd                    # [gsd] idiom; originally github.com/mattpocock/skills (MIT)
+  # [gsd] DERIVED from open-gsd/gsd-core, then decoupled and modified here (no longer tracks
+  # upstream). Attribution is owed and recorded; this is NOT a fetch candidate — the local version
+  # is the one we want. Original: github.com/open-gsd/gsd-core (MIT).
+  - path: skills/map-codebase
+  - path: skills/mermaid-diagrams       # [oakoss] byte-identical upstream — migration candidate
+  - path: skills/mise                   # [oakoss] byte-identical upstream — migration candidate
+  - path: skills/python-uv              # [oakoss] byte-identical upstream — migration candidate
+  - path: skills/skill-management       # [oakoss] byte-identical upstream — migration candidate
+  - path: skills/tdd                    # [mattpocock] heavily modified here (differs ~114 lines)
   - path: skills/varlock                # [mine]
   - path: skills/wrangler               # [mine]
