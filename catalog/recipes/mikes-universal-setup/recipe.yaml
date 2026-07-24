@@ -28,26 +28,28 @@ rules:
   - path: rules/stop-and-ask
   - path: rules/token-efficient
 
-# Provenance is recorded per skill below. Nearly all of these are VENDORED THIRD-PARTY copies, not
-# original work — the opposite of what this file used to imply. See README.md for the full table and
-# the outstanding licence obligations. Owner tags:
-#   [oakoss]   github.com/oakoss/agent-skills — `license: MIT` in each SKILL.md frontmatter, but the
-#              repo ships NO LICENSE file and GitHub reports no repo licence. Attribution is
-#              per-file only; verify before relying on the MIT grant.
-#   [gsd]      github.com/open-gsd/gsd-core (MIT, LICENSE present)
-#   [kepano]   github.com/kepano/obsidian-skills (MIT)
-#   [blader]   github.com/blader/humanizer (MIT)
-#   [mattpocock] github.com/mattpocock/skills (MIT)
-#   [mine]     authored here
-#
-# BYTE-IDENTICAL to upstream and pending migration: the five [oakoss] skills below are exact copies
-# of github.com/oakoss/agent-skills (SKILL.md + references/ all verified identical 2026-07-23, HEAD
-# 0283bed3). They are slated to move from vendored copies to a pinned build-time install via the
-# vercel `skills` CLI (`skills add oakoss/agent-skills#<sha> --skill <name>`) so the bytes are never
-# copied by hand. Until that lands they remain vendored. Skills that were MODIFIED here (map-codebase,
-# tdd, defuddle) are NOT migration candidates — a fetch would discard the local edits.
+# Skills arrive two ways (bd harnessed-s8l):
+#   1. install.script FETCHES the five byte-identical [oakoss] skills at a pinned commit SHA — they
+#      are NO LONGER vendored here (were exact copies of github.com/oakoss/agent-skills; hand-copying
+#      meant drift + redistributing third-party content in the wheel with no licence). Fetch-not-vendor
+#      fixes both. See install.sh for the pin and the HOLD/manual-upgrade rationale.
+#   2. `skills:` below vendors the ones that are MODIFIED here (a fetch would discard the edits) or
+#      genuinely ours. Owner tags: [gsd] open-gsd/gsd-core, [kepano] kepano/obsidian-skills,
+#      [blader] blader/humanizer, [mattpocock] mattpocock/skills, [mine] authored here — all MIT.
+#      See README.md for the full provenance table and the outstanding LICENSE-notice obligations.
+install:
+  script: install.sh
+  # HOLD — manual-upgrade-only skill pin; equals OAKOSS_SHA in install.sh, keys the host content
+  # cache. A COMMIT SHA, never a tag. harnessed-tfm must NOT auto-bump this; bump only after a human
+  # diff review (bd memory skill-pins-are-manual-upgrade-only).
+  cache: "0283bed313563d5677a0838f4bf921b03296cf6c"
+
+# The five fetched by install.sh — the capability test verifies they landed (the assembler cannot
+# see what an install script installs, so we declare it). Keep in sync with SKILLS in install.sh.
+expect:
+  skills: [application-security, mermaid-diagrams, mise, python-uv, skill-management]
+
 skills:
-  - path: skills/application-security   # [oakoss] byte-identical upstream — migration candidate
   - path: skills/defuddle               # [kepano] modified (differs from upstream) — stays vendored
   # [blader] Vendored third-party (MIT): github.com/blader/humanizer @
   # 1b48564898e999219882660237fde01bf4843a0f. Upstream ships no tags/releases and is a single
@@ -59,10 +61,6 @@ skills:
   # upstream). Attribution is owed and recorded; this is NOT a fetch candidate — the local version
   # is the one we want. Original: github.com/open-gsd/gsd-core (MIT).
   - path: skills/map-codebase
-  - path: skills/mermaid-diagrams       # [oakoss] byte-identical upstream — migration candidate
-  - path: skills/mise                   # [oakoss] byte-identical upstream — migration candidate
-  - path: skills/python-uv              # [oakoss] byte-identical upstream — migration candidate
-  - path: skills/skill-management       # [oakoss] byte-identical upstream — migration candidate
   - path: skills/tdd                    # [mattpocock] heavily modified here (differs ~114 lines)
   - path: skills/varlock                # [mine]
   - path: skills/wrangler               # [mine]
