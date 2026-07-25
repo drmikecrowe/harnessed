@@ -110,7 +110,9 @@ itself against a socket nobody is serving. This forces the ordering in §6.
 
 ## 4. The central tension: `metadata.json` is tracked, but the socket path is machine-local
 
-This is the unresolved conflict at the heart of the integration, and it is **open**.
+The conflict at the heart of the integration. **Resolved** — the resolution is below, and the code
+now implements it — but the conflict is written out in full first, because the resolution only makes
+sense once you can see what it avoids.
 
 - bd's convention (§2): `metadata.json` is **tracked** and shared with the team.
 - harnessed's mechanism (§3): socket mode is the only safe mode, and it works by writing
@@ -236,6 +238,11 @@ does not already track one. Scope it accordingly. **Open.**
 | `harnessed-162` | `HARNESSED_<SVC>_SOCKET` is exported only in container mode, so the recipes' `:?` guard always fires host-side. |
 | `harnessed-5ek` | `_service_data_dir` returns the **container** path for `location: host`; blocks `harnessed-162`, since relaxing the mode gate alone would export a path that does not exist on the host. |
 
+All three are **fixed** in this branch, along with two more instances of the same shape (recipe
+`init:` and the setup-notice prompt, both container-only). That is five capabilities wired for one
+mode and silently skipped in the other — a pattern rather than five accidents, tracked as
+`harnessed-w3g`: nothing structurally prevents a sixth.
+
 ---
 
 ## 8. Decisions on record
@@ -252,15 +259,15 @@ Settled 2026-07-25. Each is a choice, not a discovery — revisit deliberately, 
 | D6 | The socket is delivered by **environment**, never persisted | §4 — the only way D1 and requirement 2 can both hold |
 | D7 | Stealth's `info/exclude` does **not** live in `svc migrate` | Wrong trigger (the footprint comes from `bd setup`), and a blanket path pattern would hide a user's own future `CLAUDE.md`. Belongs with init — §6 |
 
-## 9. Open questions
+## 9. Questions, resolved 2026-07-25
 
-| # | Question | Blocks |
+| # | Question | Resolution |
 | --- | --- | --- |
-| Q1 | Does `BEADS_DOLT_SERVER_SOCKET` **override** a socket already persisted in `metadata.json`? | Whether existing workspaces need a cleanup step after §4 lands. harnessed's own checkout is in exactly that state |
-| Q2 | `svc migrate` has never copied a real database — all tests use synthetic Dolt dirs | Confidence in the recovery path |
-| Q3 | Requirement 4 is half-met: team-over-stealth is undetectable without a recorded placement marker | §5 |
-| Q4 | Does auto-init suppress `bd init`'s automatic commit? | §6 — suppressing diverges from bd; not suppressing means harnessed commits to the user's repo unasked |
-| Q5 | Adopt `dolt.auto-start: false` in the tracked `config.yaml`? | Repo-wide guarantee vs. teammates having to run `bd dolt start` themselves (§3) |
+| Q1 | Does `BEADS_DOLT_SERVER_SOCKET` override a socket already in `metadata.json`? | **Yes** — verified: pointed at a decoy path it overrode the persisted socket, refused to auto-start, spawned nothing. Existing workspaces need **no** cleanup step |
+| Q2 | `svc migrate` never tested against real Dolt bytes | **Done** — a real `dolt init` database with committed rows migrated through the live code path and read back at the destination. Kept as a test gated on the dolt binary (skips on the hermetic runner). The run also exposed a 40 KiB database printing as "0.0 MiB" in the confirmation prompt |
+| Q3 | Team-over-stealth undetectable | **Placement recorded** in the git common dir — shared across worktrees, never tracked (stealth stays invisible). Second, disagreeing launch is refused. Not self-healing: both sides may hold real data |
+| Q4 | Team auto-init and `bd init`'s commit | **Team stays user-initialized.** It was not: `setup.run` auto-ran `bd init --shared-server …` with auto-start enabled — the origin of §10. Removed; the notice now BLOCKS the launch in both modes |
+| Q5 | Adopt `dolt.auto-start: false`? | **Adopted**, written into the workspace's `config.yaml`. Covers stray terminals, hooks, and teammates who never run harnessed — the fresh-clone case, where an empty data dir is what auto-start turns into a database |
 
 ## 10. Incident record — 2026-07-19 → 2026-07-25
 
