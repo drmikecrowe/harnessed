@@ -176,7 +176,7 @@ harnessed test time claude
 | `harnessed new <stack> [--recipes a,b,c]` | Scaffold a harness-free stack manifest |
 | `harnessed install \| uninstall <stack>` | Write / remove a `~/.local/bin/<stack>` launcher shim (forwards the harness arg) |
 | `harnessed rescan` | Re-scan installed harnessed images online (the nightly timer's trigger) |
-| `harnessed update [--check] [--yes]` | Find outdated catalog pins and offer to bump them. `tools:` entries resolve against npm / PyPI / GitHub releases / mise; pins inside install scripts and Dockerfiles are reported as **unresolved** rather than skipped. Pins marked `hold` are listed but never bumped. `--check` is the CI mode: non-zero exit on a stale pin, writes nothing |
+| `harnessed update [--check] [--yes] [--cooldown-days N]` | Find outdated catalog pins and offer to bump them. `tools:` entries resolve against npm / PyPI / GitHub releases / mise; pins inside install scripts and Dockerfiles are reported as **unresolved** rather than skipped. Pins marked `hold` are listed but never bumped, and a release younger than the cooldown (default **7 days**) is listed but not offered — a bad publish is usually yanked within days. `--check` is the CI mode: non-zero exit on a stale pin, writes nothing |
 | `harnessed --fresh ...` | Tear down any existing pod/instance first (isolated) |
 | `harnessed --no-firewall ...` | Skip the egress firewall for this run |
 | `harnessed -h \| --help` | Show help |

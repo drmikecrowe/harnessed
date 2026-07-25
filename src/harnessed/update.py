@@ -37,17 +37,26 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 from ruamel.yaml import YAML
 
-from .schema import SchemaError, load_recipe
+from . import paths
+from .schema import SchemaError, load_recipe, load_stack
 
 __all__ = [
-    "Pin", "Finding", "Report", "ResolveError",
+    "Pin", "Finding", "Release", "Report", "ResolveError",
     "discover_pins", "build_report", "apply", "resolve_latest", "version_key",
+    "mise_repo", "affected_stacks", "verify_commands", "DEFAULT_COOLDOWN_DAYS",
 ]
+
+# A release younger than this is never offered. A compromised or broken publish is usually yanked
+# within days, so waiting a week costs nothing and closes that window (Renovate: minimumReleaseAge).
+# Measured on 2026-07-25, this would have withheld 2 of the 5 bumps the command then offered —
+# pulumi 3.254.0 at 2 days old, and ccstatusline 2.2.26 published the same day.
+DEFAULT_COOLDOWN_DAYS = 7
 
 
 class ResolveError(RuntimeError):
@@ -113,11 +122,27 @@ class Pin:
         return self.backend != "opaque"
 
 
+@dataclass(frozen=True)
+class Release:
+    """What a backend answered: the newest version, and when it was published.
+
+    `published` is None only when a backend genuinely cannot say. That is not treated as "fine" —
+    the cooldown cannot be honoured for an undated release, so it is withheld and reported.
+    """
+    version: str
+    published: datetime | None = None
+
+
 @dataclass
 class Finding:
     pin: Pin
     latest: str | None = None
     error: str | None = None
+    published: datetime | None = None
+    age_days: float | None = None
+    # Set when the release is newer but inside the cooldown. `apply` refuses these outright, so a
+    # caller that hands it the wrong bucket still cannot write a too-fresh version.
+    cooling: bool = False
 
     @property
     def stale(self) -> bool:
@@ -135,12 +160,17 @@ class Report:
     held: list[Finding] = field(default_factory=list)
     current: list[Finding] = field(default_factory=list)
     unresolved: list[Finding] = field(default_factory=list)
+    # Newer, but too young to trust yet. Its own bucket rather than a silent drop: the user is
+    # entitled to know a release exists and is being waited out, not just see nothing.
+    cooling: list[Finding] = field(default_factory=list)
 
     def check_exit_code(self) -> int:
-        """`--check`: non-zero ONLY for a stale, unheld, resolvable pin.
+        """`--check`: non-zero ONLY for a stale, unheld, resolvable, past-cooldown pin.
 
-        Unresolved pins do not fail. Every recipe with a Dockerfile has one, so failing on them
-        would make CI permanently red — and a permanently-red check is one nobody reads.
+        Unresolved pins do not fail — every recipe with a Dockerfile has one, and a permanently-red
+        check is one nobody reads. Cooling pins do not fail either: you cannot act on a release you
+        are deliberately waiting for, so failing would keep CI red for a week through no fault of
+        the repo.
         """
         return 1 if self.stale else 0
 
@@ -249,28 +279,85 @@ def _run_mise(cmd: list[str]) -> str:
     return subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=True).stdout
 
 
+def _parse_ts(raw: str | None) -> datetime | None:
+    """ISO-8601 as the registries emit it. npm uses a `Z` suffix that older stdlib will not take."""
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+# `mise registry` row: `pulumi   aqua:pulumi/pulumi asdf:canha/asdf-pulumi`. Only these backends
+# name the TOOL's own repo. `asdf:` names the asdf PLUGIN's repo (canha/asdf-pulumi), whose
+# releases are the plugin's, not pulumi's — reading a version from it would be nonsense.
+_REPO_BACKENDS = ("aqua:", "ubi:", "github:")
+
+
+def mise_repo(tool: str, *, run: Callable[[list[str]], str] = _run_mise) -> str | None:
+    """The GitHub `owner/repo` backing a mise-registered tool, via mise's own registry.
+
+    This is what lets a bare `pulumi@3.251.0` obtain a publish DATE: `mise latest` returns a
+    version and nothing else, but the repo it resolves to has dated releases. Deriving the mapping
+    from mise means no hand-maintained tool->repo table to rot.
+    """
+    for line in run(["mise", "registry"]).splitlines():
+        parts = line.split()
+        if len(parts) < 2 or parts[0] != tool:   # exact name match: `pulumi` is not `kubespy`
+            continue
+        for token in parts[1:]:
+            for prefix in _REPO_BACKENDS:
+                if token.startswith(prefix):
+                    repo = token[len(prefix):]
+                    if repo.count("/") == 1:
+                        return repo
+    return None
+
+
+def _github_release(repo: str, fetch: Callable[[str], str]) -> Release:
+    data = json.loads(fetch(f"https://api.github.com/repos/{repo}/releases/latest"))
+    return Release(version=data["tag_name"], published=_parse_ts(data.get("published_at")))
+
+
 def resolve_latest(backend: str, name: str, *,
                    fetch: Callable[[str], str] = _http_get,
-                   run: Callable[[list[str]], str] = _run_mise) -> str | None:
-    """Ask `backend` for the newest version of `name`. Raises ResolveError if it cannot answer."""
+                   run: Callable[[list[str]], str] = _run_mise) -> Release | None:
+    """Ask `backend` for the newest release of `name`, WITH its publish date.
+
+    The date is not optional garnish — it is what the cooldown is enforced on, so each backend uses
+    the endpoint that carries one. Raises ResolveError if the backend cannot answer.
+    """
     try:
         if backend == "npm":
-            # The scope's '/' is a real path separator here — percent-encoding it 404s.
-            return json.loads(fetch(f"https://registry.npmjs.org/{name}/latest"))["version"]
+            # The full packument, NOT `/latest`: only the packument carries the `time` map. The
+            # scope's '/' is a real path separator here — percent-encoding it 404s.
+            data = json.loads(fetch(f"https://registry.npmjs.org/{name}"))
+            version = data["dist-tags"]["latest"]
+            return Release(version=version, published=_parse_ts(data.get("time", {}).get(version)))
         if backend == "pipx":
-            return json.loads(fetch(f"https://pypi.org/pypi/{name}/json"))["info"]["version"]
+            data = json.loads(fetch(f"https://pypi.org/pypi/{name}/json"))
+            urls = data.get("urls") or []
+            return Release(
+                version=data["info"]["version"],
+                published=_parse_ts(urls[0].get("upload_time_iso_8601") if urls else None),
+            )
         if backend == "github":
-            return json.loads(
-                fetch(f"https://api.github.com/repos/{name}/releases/latest")
-            )["tag_name"]
+            return _github_release(name, fetch)
         if backend == "mise":
-            # mise owns the registered-tool -> upstream mapping; asking it beats hardcoding a
-            # release feed per tool and going stale the moment mise's registry changes.
-            out = run(["mise", "latest", name]).strip()
-            return out or None
+            repo = mise_repo(name, run=run)
+            if repo is None:
+                # Falling back to an undated `mise latest` would offer a bump under a rule that
+                # promises a 7-day age check we could not perform. Surface it instead.
+                raise ResolveError(
+                    f"mise registry names no aqua/ubi/github repo for {name!r}, so its release "
+                    "date cannot be checked — bump it by hand after reading upstream's notes"
+                )
+            return _github_release(repo, fetch)
     except ResolveError:
         raise
-    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+    except (json.JSONDecodeError, KeyError, TypeError, IndexError) as exc:
         raise ResolveError(f"{backend} returned an unusable payload for {name}: {exc}") from exc
     except subprocess.SubprocessError as exc:
         raise ResolveError(f"mise could not resolve {name}: {exc}") from exc
@@ -279,11 +366,19 @@ def resolve_latest(backend: str, name: str, *,
     return None
 
 
-def build_report(recipe_dirs, *, resolve: Callable[[str, str], str | None] | None = None) -> Report:
-    """Classify every pin across `recipe_dirs`. Reads only — nothing here writes."""
+def build_report(recipe_dirs, *,
+                 resolve: Callable[[str, str], "Release | None"] | None = None,
+                 now: datetime | None = None,
+                 cooldown_days: float = DEFAULT_COOLDOWN_DAYS) -> Report:
+    """Classify every pin across `recipe_dirs`. Reads only — nothing here writes.
+
+    `cooldown_days` is the minimum release age: anything newer lands in `cooling` rather than
+    `stale`. Pass 0 to disable it (and with it the requirement that a release be dated at all).
+    """
     if resolve is None:
         def resolve(backend, name):  # noqa: E306
             return resolve_latest(backend, name)
+    now = now or datetime.now(timezone.utc)
 
     report = Report()
     for d in recipe_dirs:
@@ -295,26 +390,102 @@ def build_report(recipe_dirs, *, resolve: Callable[[str, str], str | None] | Non
                 (report.held if pin.hold else report.unresolved).append(f)
                 continue
             try:
-                latest = resolve(pin.backend, pin.name)
+                rel = resolve(pin.backend, pin.name)
             except ResolveError as exc:
                 report.unresolved.append(Finding(pin=pin, error=str(exc)))
                 continue
-            if latest is None:
+            if rel is None:
                 report.unresolved.append(
                     Finding(pin=pin, error=f"{pin.backend} knows no version for {pin.name}")
                 )
                 continue
-            f = Finding(pin=pin, latest=latest)
+
+            age = None if rel.published is None else (now - rel.published).total_seconds() / 86400
+            # Normalise ONCE, here, so the report shows exactly the string `apply` will write. A
+            # GitHub tag arrives `v`-prefixed; the pin's own convention wins (see _match_v_prefix).
+            latest = _match_v_prefix(pin.current, rel.version)
+            f = Finding(pin=pin, latest=latest, published=rel.published, age_days=age)
+
+            # The hold outranks everything: a held pin is never offered whatever its age.
             if pin.hold:
                 report.held.append(f)
-            elif f.stale:
-                report.stale.append(f)
-            else:
+            elif not f.stale:
                 report.current.append(f)
+            elif cooldown_days <= 0:
+                report.stale.append(f)
+            elif age is None:
+                # Undated + a cooldown in force = a promise we cannot keep. Do not offer it.
+                report.unresolved.append(Finding(
+                    pin=pin, latest=rel.version,
+                    error=f"{rel.version} is newer, but {pin.backend} gave no publish date, so "
+                          f"its release age cannot be checked against the {cooldown_days:g}-day "
+                          "cooldown — review it by hand",
+                ))
+            elif age < cooldown_days:
+                f.cooling = True
+                report.cooling.append(f)
+            else:
+                report.stale.append(f)
     return report
 
 
+# --- what to verify after a bump (bd harnessed-czo) -------------------------------------------
+
+def affected_stacks(recipe_names) -> dict[str, list[str]]:
+    """Stacks whose `recipes:` includes any of `recipe_names` → that stack's declared harnesses.
+
+    "Rebuild the affected stacks" is only actionable if something names them, and a stack lists its
+    recipes flatly, so this is a lookup rather than a guess.
+    """
+    wanted = set(recipe_names)
+    out: dict[str, list[str]] = {}
+    for root in paths.catalog_roots():
+        stacks = root / "stacks"
+        if not stacks.is_dir():
+            continue
+        for manifest in sorted(stacks.glob("*/stack.yaml")):
+            if manifest.parent.name in out:      # user overlay wins, as everywhere else
+                continue
+            try:
+                stack = load_stack(manifest.parent)
+            except (SchemaError, OSError):
+                continue
+            if wanted.intersection(stack.recipes):
+                out[stack.name] = list(stack.harnesses)
+    return out
+
+
+def verify_commands(stacks: dict[str, list[str]]) -> list[str]:
+    """Literal command lines to rebuild + capability-test each affected stack.
+
+    A stack with no declared `harnesses:` still gets a line, with a `<harness>` placeholder —
+    dropping it would hide a real dependency of the bump.
+    """
+    lines: list[str] = []
+    for stack, harnesses in stacks.items():
+        for h in harnesses or ["<harness>"]:
+            lines.append(f"harnessed build {stack} {h} && harnessed test {stack} {h}")
+    return lines
+
+
 # --- rewriting ------------------------------------------------------------------------------
+
+def _match_v_prefix(current: str, latest: str) -> str:
+    """Rewrite `latest` to use whatever `v`-prefix convention `current` already used.
+
+    A GitHub release answers with its TAG, and tags usually carry a `v` — so `pulumi@3.251.0`
+    resolves to `v3.254.0` and a naive substitution would write `pulumi@v3.254.0`, a shape that
+    file never used and the tool backend may not accept. The pin's own convention is the one that
+    is known to build, so it wins. (Ordering is unaffected: `version_key` strips the `v` already.)
+    """
+    has_v = latest[:1] in ("v", "V")
+    wants_v = current[:1] in ("v", "V")
+    if has_v and not wants_v:
+        return latest[1:]
+    if wants_v and not has_v:
+        return current[0] + latest
+    return latest
+
 
 def _rewrite_tools_entry(manifest: Path, old_spec: str, new_spec: str) -> bool:
     """Swap one `tools:` entry, preserving comments, key order, and the mapping form.
@@ -358,12 +529,14 @@ def apply(findings) -> list[Finding]:
 
     An opaque pin is skipped: there is no safe automated rewrite for a ref buried in shell, and
     guessing at one risks corrupting a build script. Refusing, visibly, is the correct answer.
+
+    A cooling pin is skipped too, so the cooldown holds even if a caller passes the wrong bucket.
     """
     done: list[Finding] = []
     for f in findings:
-        if not f.pin.resolvable or not f.latest:
+        if not f.pin.resolvable or not f.latest or f.cooling:
             continue
-        new_spec = f.pin.spec.replace(f"@{f.pin.current}", f"@{f.latest}")
+        new_spec = f.pin.spec.replace(f"@{f.pin.current}", f"@{_match_v_prefix(f.pin.current, f.latest)}")
         if new_spec == f.pin.spec:
             continue
         if _rewrite_tools_entry(f.pin.file, f.pin.spec, new_spec):

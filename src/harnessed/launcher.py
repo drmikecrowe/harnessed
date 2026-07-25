@@ -5173,6 +5173,17 @@ def _print_update_report(report) -> None:
                 f"  {where(f)}  {f.pin.spec}\n"
                 f"      [yellow]{f.pin.current}[/yellow] -> [green]{f.latest}[/green]"
             )
+    if report.cooling:
+        # Shown, not dropped: the user is entitled to know a newer release exists and is being
+        # waited out. Naming the age is what makes "wait" a decision rather than a mystery.
+        _out.print("[bold]Held back by the release-age cooldown:[/bold]")
+        for f in report.cooling:
+            age = f"{f.age_days:.1f}" if f.age_days is not None else "?"
+            _out.print(
+                f"  {where(f)}  {f.pin.spec}\n"
+                f"      {f.pin.current} -> {f.latest}  "
+                f"[yellow]published {age} days ago — too new to offer[/yellow]"
+            )
     if report.held:
         _out.print("[bold]Held (manual-upgrade-only — not offered):[/bold]")
         for f in report.held:
@@ -5195,6 +5206,10 @@ def update_pins(
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Accept every offered bump without prompting.",
     ),
+    cooldown_days: float = typer.Option(
+        None, "--cooldown-days",
+        help="Minimum release age before an update is offered (default 7). 0 disables it.",
+    ),
 ) -> None:
     """Find outdated pins across the catalog and offer to bump them.
 
@@ -5202,6 +5217,9 @@ def update_pins(
     buried in install scripts and Dockerfiles cannot be resolved automatically and are REPORTED as
     unresolved rather than skipped. Pins marked `hold` (recipe.yaml `install.hold`, or a `tools:`
     entry's `hold`) are listed for information only and never bumped — see bd harnessed-c5t.
+
+    A release younger than the cooldown (default 7 days) is never offered: a compromised or broken
+    publish is usually yanked within days, so waiting a week costs nothing and closes that window.
     """
     from . import update as pinupdate
 
@@ -5213,7 +5231,11 @@ def update_pins(
     # Resolve THROUGH the module attribute rather than importing the function, so a test (or a
     # future offline mode) can swap `update.resolve_latest` and have it take effect here.
     report = pinupdate.build_report(
-        dirs, resolve=lambda backend, name: pinupdate.resolve_latest(backend, name)
+        dirs,
+        resolve=lambda backend, name: pinupdate.resolve_latest(backend, name),
+        cooldown_days=(
+            pinupdate.DEFAULT_COOLDOWN_DAYS if cooldown_days is None else cooldown_days
+        ),
     )
     _print_update_report(report)
 
@@ -5244,11 +5266,21 @@ def update_pins(
         _out.print(f"Left {skipped} pin(s) unchanged.")
     if written:
         # The repo catalog is under the worktree -> tests -> PR rule; a bumped pin is a code change
-        # like any other, and an unverified bump is worse than a stale one.
-        _out.print(
-            "[blue][INFO][/blue] Pins rewritten. Rebuild and run the capability tests for the "
-            "affected stacks before committing."
-        )
+        # like any other, and an unverified bump is worse than a stale one. Naming the stacks and
+        # printing the literal commands is the difference between a reminder and a task the user
+        # has to go research (bd harnessed-czo).
+        bumped = sorted({f.pin.recipe for f in written})
+        stacks = pinupdate.affected_stacks(bumped)
+        _out.print(f"[blue][INFO][/blue] Bumped: {', '.join(bumped)}")
+        if stacks:
+            _out.print(f"       Affected stacks: {', '.join(sorted(stacks))}")
+            _out.print("       Verify before committing:")
+            for line in pinupdate.verify_commands(stacks):
+                _out.print(f"         {line}")
+        else:
+            _out.print(
+                "       No stack in the active catalog uses these recipes — nothing to rebuild."
+            )
 
 
 @app.command("test")
