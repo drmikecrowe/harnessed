@@ -3186,7 +3186,14 @@ def _collect_setup_notices(
     return out
 
 
-def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str, harness: str) -> bool:
+def _prompt_setup_notices(
+    recipes: list[Recipe],
+    project_path: Path,
+    stack: str,
+    harness: str,
+    *,
+    allow_terminal: bool = True,
+) -> bool:
     """Show aggregated user-facing `setup:` notices host-side at launch and act on the choice.
 
     No-op when nothing qualifies (`_collect_setup_notices`) or stdin is not a TTY (headless/CI
@@ -3207,8 +3214,13 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
         assert recipe.setup is not None  # guaranteed by _collect_setup_notices
         _out.print(f"  • [bold]{recipe.name}[/bold]: {recipe.setup.summary}")
         _out.print(f"    see: {recipe.setup.reference}")
+    # [T]erminal means "launch into a container shell instead of the agent". A host launch has no
+    # container to drop into — `host-run` does not even accept `--shell` — so offering it there would
+    # be a choice that silently does nothing. Omit it rather than accept-and-ignore.
     choice = typer.prompt(
-        "[O]k / [T]erminal (shell in the container) / [D]ismiss (don't show again) / [Q]uit",
+        "[O]k / [T]erminal (shell in the container) / [D]ismiss (don't show again) / [Q]uit"
+        if allow_terminal
+        else "[O]k / [D]ismiss (don't show again) / [Q]uit",
         default="O",
     )
     choice = choice.strip().lower()
@@ -3218,7 +3230,7 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
         flag = paths.setup_dismissed_flag(stack, harness, project_path)
         flag.parent.mkdir(parents=True, exist_ok=True)
         flag.write_text("", encoding="utf-8")
-    return choice.startswith("t")
+    return allow_terminal and choice.startswith("t")
 
 
 def _acknowledge_warnings() -> None:
@@ -4265,6 +4277,14 @@ def _launch_host(
     # Recipe `init:` — the host half of the attach shell's init prologue. After setups, since a
     # setup script may install the very binary init invokes.
     _host_run_inits(stack, project_path, harness=harness)
+
+    # Pending `setup:` notices, and BLOCK on them — the host half of what `launch` does at its own
+    # line. This was container-only too, so a host launch printed nothing and started the agent
+    # anyway: a fresh `beads/team` checkout came up with no workspace, and the agent discovered it
+    # rather than the user. Runs after init, so a recipe that self-initializes (beads/stealth) has
+    # already satisfied its own condition and stays silent. `allow_terminal=False` — there is no
+    # container to drop a shell into here.
+    _prompt_setup_notices(host_recipes, project_path, stack, harness, allow_terminal=False)
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
     # sees just-provisioned tools AND anything an install/setup script put in the stack bin dir.
     mcp_servers = _host_native_mcp(stack)
