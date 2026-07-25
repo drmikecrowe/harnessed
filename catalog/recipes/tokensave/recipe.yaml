@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: tokensave — a pre-indexed semantic code knowledge graph MCP server (80+ tools, 50+ languages).
 #
 # tokensave is a stdio MCP server that indexes the project into a libSQL graph under .tokensave/.

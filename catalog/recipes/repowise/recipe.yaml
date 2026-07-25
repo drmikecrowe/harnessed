@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: repowise — code health / change-risk / defect-prediction layer over the project
 # (repowise-dev/repowise, PyPI `repowise`, AGPL-3.0).
 #

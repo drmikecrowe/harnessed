@@ -36,11 +36,7 @@ include = ["harnessed*"]
 # where it has always been, and setuptools materializes it here as real files. See
 # `paths.harnessed_home`, which resolves through the symlink so the podman build context is always
 # a REAL directory containing a REAL catalog/ (podman rejects symlinks escaping the context).
-# `src/harnessed/schemas` is likewise a symlink, to the repo-root `schemas/`. The manifests'
-# `# yaml-language-server: $schema=../../../schemas/<kind>.schema.json` refs are relative to the
-# manifest, so the schemas must ship NEXT TO the catalog for an installed harnessed to resolve them —
-# and `launcher._ensure_user_schemas_link` links the user overlay at this same dir.
-harnessed = ["catalog/**/*", "schemas/*.json"]
+harnessed = ["catalog/**/*"]
 
 [tool.setuptools.exclude-package-data]
 # Keep HOST-LOCAL, gitignored artifacts out of a distributed wheel. Both of these live inside

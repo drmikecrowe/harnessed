@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
 # Stack: hostmcp — host-native MCP-hub tracer. The `time` recipe ships an env-free stdio MCP server
 # (uvx mcp-server-time), so `launch --host` starts a real hatago hub on a per-project port with no
 # credentials/placeholders — the guinea pig for host MCP wiring.

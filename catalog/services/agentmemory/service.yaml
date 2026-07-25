@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/service.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/service.schema.json
 # Service: agentmemory — the shared persistent-memory STORE (plan agentmemory / design §9).
 #
 # Own image/container/volume, host-published on :3111, instance-independent — one memory

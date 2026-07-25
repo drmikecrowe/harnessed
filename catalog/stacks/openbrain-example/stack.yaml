@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
 # Stack: openbrain-example — Claude + a single remote, url-based MCP server.
 #
 # TEMPLATE / illustrative. The openbrain-example recipe points at a PLACEHOLDER URL, so this stack

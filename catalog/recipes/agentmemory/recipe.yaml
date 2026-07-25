@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: agentmemory — a shared persistent-memory store (service) + a per-instance stdio shim.
 #
 # Two pieces, cleanly split (plan agentmemory / design §9):

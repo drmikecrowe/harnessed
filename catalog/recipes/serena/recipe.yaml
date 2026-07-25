@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: serena — LSP-backed semantic code intelligence over the project (oraios/serena).
 #
 # Serena runs as an MCP server whose DEFAULT transport is stdio (`start-mcp-server`), so it is a

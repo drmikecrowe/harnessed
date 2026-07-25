@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: pulumi — install the Pulumi CLI (https://www.pulumi.com/docs/cli/) and open the container
 # egress firewall to Pulumi Cloud. Pure YAML, no Dockerfile: `tools:` bakes the pinned CLI as a
 # `mise use -g` layer and `egress:` appends the Pulumi hosts to the default-DROP allowlist ONLY when

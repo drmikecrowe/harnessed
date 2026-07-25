@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: beads/stealth — bake the `bd` CLI (https://github.com/gastownhall/beads) as a pure CLIENT
 # of the project's `beads-server` service, with `.beads/` OUTSIDE the repo: fully invisible
 # placement, zero git footprint.

@@ -126,26 +126,6 @@ def user_catalog() -> Path:
     return xdg_config_home() / "harnessed" / "catalog"
 
 
-def schemas_dir() -> Path:
-    """The JSON schemas shipped with harnessed: `<harnessed_home>/schemas`.
-
-    Every catalog manifest opens with `# yaml-language-server: $schema=../../../schemas/<kind>.schema.json`
-    — a path relative to the MANIFEST, so the schemas must sit next to `catalog/` in every root a
-    manifest can live in. That is this dir in the repo/wheel, and `user_schemas_dir()` in the user
-    overlay (which `launcher._ensure_user_schemas_link` links back here).
-    """
-    return harnessed_home() / "schemas"
-
-
-def user_schemas_dir() -> Path:
-    """Where an overlay manifest's relative `$schema` ref lands: $XDG_CONFIG_HOME/harnessed/schemas.
-
-    `~/.config/harnessed/catalog/stacks/<name>/stack.yaml` + `../../../schemas/` == this. Nothing
-    creates it as content — it is a symlink to `schemas_dir()`.
-    """
-    return xdg_config_home() / "harnessed" / "schemas"
-
-
 def local_links_dir(checkout: Path) -> Path:
     """Where the DX overlay symlinks live in a source checkout: `<checkout>/catalog-local/`.
 

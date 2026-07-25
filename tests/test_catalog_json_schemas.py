@@ -6,9 +6,18 @@ parser in `schema.py` and CAN silently drift (the recipe schema once described `
 object and omitted `init:`, so every recipe with the current shapes showed editor errors while the
 runtime happily loaded them).
 
-This module validates (1) each schema is itself well-formed, and (2) every shipped catalog manifest
+This module validates (1) each schema is itself well-formed, (2) every shipped catalog manifest
 validates against its schema — so a future parser change that isn't mirrored into the JSON schema
-fails here instead of in someone's editor.
+fails here instead of in someone's editor — and (3) every manifest names its schema by the canonical
+raw-GitHub URL.
+
+(3) exists because that ref used to be a path RELATIVE to the manifest (`../../../schemas/...`),
+which resolves ONLY inside a source checkout. It resolved to nothing in the user overlay
+(~/.config/harnessed/catalog/... has no sibling schemas/), nothing in a `uv tool` install (the wheel
+ships no schemas/, and site-packages moves every upgrade), and there is no on-disk path to point at
+under `uvx` at all — its environment is ephemeral. An absolute URL is the only form that resolves
+from all four, at any manifest depth. Copying an old header back in is the likely regression, hence
+the guard.
 """
 
 import json
@@ -30,6 +39,11 @@ _KINDS = {
     "service": ("schemas/service.schema.json", "catalog/services", "service.yaml"),
     "agent": ("schemas/agent.schema.json", "catalog/agents", "agent.yaml"),
 }
+
+
+# The canonical `$schema` ref. Pinned to `main` deliberately: an editor hint must describe the parser
+# you are authoring against, and the "pin every download" rule covers image-build inputs, not this.
+_SCHEMA_URL = "https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/{kind}.schema.json"
 
 
 def _manifests(kind: str):
@@ -60,6 +74,15 @@ def _all_manifests():
         for kind in sorted(_KINDS)
         for f in _manifests(kind)
     ]
+
+
+@pytest.mark.parametrize("kind,manifest", _all_manifests())
+def test_manifest_declares_the_canonical_schema_url(kind, manifest):
+    """An absolute URL, never a manifest-relative path — see the module docstring."""
+    hint = f"# yaml-language-server: $schema={_SCHEMA_URL.format(kind=kind)}"
+    text = manifest.read_text()
+    assert hint in text, f"{manifest} must declare:\n{hint}"
+    assert "$schema=../" not in text, f"{manifest} still has a manifest-relative $schema ref"
 
 
 @pytest.mark.parametrize("kind,manifest", _all_manifests())

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/service.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/service.schema.json
 # Service: gbrain — a shared, long-lived knowledge brain sidecar (plan 04-01 / GAP 5).
 #
 # GBrain is unambiguously a shared, instance-independent brain, not a per-project tool: its data

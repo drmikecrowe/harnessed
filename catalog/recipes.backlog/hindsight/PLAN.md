@@ -80,7 +80,7 @@ shippable as a reference. The operator materializes the **real** recipe in the u
 (see "Secrets / the live recipe").
 
 ```yaml
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: hindsight — TEMPLATE for reaching an already-running host hindsight deployment.
 #
 # Shape: a network-native MCP server referenced by DIRECT URL (no `command`, not a stdio child

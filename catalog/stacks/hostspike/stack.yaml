@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/stack.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
 # Stack: hostspike — content-only tracer for the host-native launch backend.
 #
 # Pure config-content: the `greet` recipe ships a standalone skill and NO MCP server, so this stack

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: openbrain-example — TEMPLATE for a remote, url-based Streamable-HTTP MCP server.
 #
 # This is the third MCP shape: a network-native server referenced by a DIRECT URL, with NO

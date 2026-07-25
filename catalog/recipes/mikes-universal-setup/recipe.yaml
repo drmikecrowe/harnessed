@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: mikes-universal-setup — Mike's always-on rules + generic utility skills, published as a
 # worked example of a personal baseline recipe. Previously lived only as an untracked local overlay
 # (catalog/recipes.local/universal, gitignored, with skills symlinked to ~/.agents/skills/); this
