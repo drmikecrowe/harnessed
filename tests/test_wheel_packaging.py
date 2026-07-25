@@ -89,6 +89,12 @@ class TestWheelShipsCatalog:
         assert any("/catalog/recipes/" in n for n in wheel_names)
         assert any("/catalog/agents/" in n for n in wheel_names)
 
+    def test_json_schemas_are_packaged(self, wheel_names):
+        """Manifest `$schema` refs are relative, so the schemas must ship beside the catalog —
+        otherwise the overlay link made by launcher._ensure_user_schemas_link dangles."""
+        for kind in ("agent", "recipe", "service", "stack"):
+            assert f"harnessed/schemas/{kind}.schema.json" in wheel_names
+
     def test_extra_tools_seed_ships(self, wheel_names):
         """The committed seed ships; only the user's resolved file is excluded."""
         assert "harnessed/catalog/base/extra-tools.default.txt" in wheel_names

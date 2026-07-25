@@ -362,6 +362,41 @@ def _ensure_local_catalog_links() -> None:
             target.symlink_to(dest)
 
 
+def _ensure_user_schemas_link() -> None:
+    """Point `~/.config/harnessed/schemas` at the shipped `schemas/`, so overlay manifests validate.
+
+    A catalog manifest declares its JSON schema RELATIVE to itself
+    (`# yaml-language-server: $schema=../../../schemas/stack.schema.json`). That resolves inside the
+    repo/wheel, but an overlay stack at `~/.config/harnessed/catalog/stacks/<name>/stack.yaml`
+    resolves to `~/.config/harnessed/schemas/...` — which nothing created, so every overlay manifest
+    showed "Unable to load schema ...: No content" in the editor while building fine. A symlink is
+    what fixes it for BOTH depths at once (a recipe variety uses `../../../../schemas/`, same dir).
+
+    Never fatal: this is editor ergonomics, and a build must not fail over it.
+    """
+    src = paths.schemas_dir()
+    dest = paths.user_schemas_dir()
+    if not src.is_dir():
+        _err.print(
+            f"[yellow]warning:[/yellow] no schemas dir at {src}; "
+            f"overlay manifests in {paths.user_catalog()} will show editor schema errors"
+        )
+        return
+    if dest.is_symlink():
+        if dest.resolve() == src.resolve():
+            return
+        # Retarget rather than complain: an upgrade moves site-packages, and the old link is ours.
+        dest.unlink()
+    elif dest.exists():
+        _err.print(
+            f"[yellow]warning:[/yellow] {dest} exists and is not a symlink — leaving it alone. "
+            f"Remove it to let harnessed link it to {src}."
+        )
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.symlink_to(src)
+
+
 def _ensure_docs_wiki_clone() -> None:
     """Bootstrap docs/ as an unpinned live clone of the repo's GitHub wiki, when missing.
 
@@ -4641,6 +4676,7 @@ def build(
     if no_scans:
         os.environ["HARNESSED_NO_SCANS"] = "true"
     _ensure_local_catalog_links()
+    _ensure_user_schemas_link()
     _ensure_docs_wiki_clone()
     rt = _runtime()
 
