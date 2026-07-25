@@ -2803,6 +2803,8 @@ def _ensure_service(
         persist.guard_ownership(host_dir)
         host_dir.mkdir(parents=True, exist_ok=True)
         _assert_data_dir_unlocked(svc, host_dir)
+        _assert_placement_matches(svc, location, project_path)
+        _assert_named_database_present(svc, host_dir)
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
         # (a dolt data dir written by a foreign uid would EACCES for every agent container).
         run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
@@ -2900,6 +2902,82 @@ def _assert_data_dir_unlocked(svc: "ServiceDef", host_dir: Path) -> None:
     )
     _err.print(f"  PID {pid}: {cmdline}")
     _err.print("  Stop it and retry, or run this stack with --host so it uses that server instead.")
+    raise typer.Exit(1)
+
+
+def _beads_metadata(host_dir: Path) -> dict | None:
+    """`metadata.json` from a beads data dir, or None when there is no readable workspace there."""
+    try:
+        meta = json.loads((host_dir / "metadata.json").read_text())
+    except (OSError, ValueError):
+        return None
+    return meta if isinstance(meta, dict) else None
+
+
+def _assert_named_database_present(svc: "ServiceDef", host_dir: Path) -> None:
+    """Abort when the workspace names a database this data dir does not contain.
+
+    `metadata.json` records `dolt_database`, and the sidecar serves `<data>/dolt/` as its --data-dir,
+    so that database MUST exist at `<data>/dolt/<name>/`. When it does not, the sidecar starts
+    perfectly happily and every client then fails with `database "<name>" not found` (errno 1049) —
+    a message that points at the server, not at the missing bytes, which is why the state is so hard
+    to read from the client side.
+
+    Two ways to get here, both real:
+      * The workspace was pointed at ANOTHER server that holds the database — bd's own multi-project
+        `~/.beads/shared-server`, for instance, which a plain `bd init` will silently adopt. The
+        bytes exist, just not here; they have to be migrated in.
+      * A `beads/team` checkout was cloned fresh. `metadata.json` is tracked, the Dolt bytes are not,
+        so the workspace arrives naming a database that was never materialized locally. It needs
+        `bd bootstrap` (or a Dolt remote that actually has data — see harnessed's own 2026-07-24
+        failure, where the remote had none).
+
+    Checked on the host, from the filesystem alone: no server, no client, no connection required.
+    """
+    if svc.exclusive_lock != "dolt":
+        return
+    meta = _beads_metadata(host_dir)
+    if meta is None:
+        return  # no workspace yet — first-run init owns that case, not this guard
+    db = meta.get("dolt_database")
+    if not db or (host_dir / "dolt" / str(db)).is_dir():
+        return
+    _err.print(
+        f"[bold red]error:[/bold red] service '{svc.name}' cannot serve this workspace: it names "
+        f"database '{db}', which is not in {host_dir / 'dolt'}"
+    )
+    _err.print("  The sidecar would start and every 'bd' call would fail with errno 1049.")
+    _err.print("  The bytes live wherever this workspace was previously pointed (commonly bd's own")
+    _err.print("  ~/.beads/shared-server/dolt). Migrate that database in, or run 'bd bootstrap' if")
+    _err.print("  the Dolt remote has data.")
+    raise typer.Exit(1)
+
+
+def _assert_placement_matches(svc: "ServiceDef", location: str, project_path: Path) -> None:
+    """Abort when a host-placed (stealth) launch would ignore an in-repo (team) workspace.
+
+    The two beads recipes differ ONLY in placement: `beads/team` puts `.beads` in the repo,
+    `beads/stealth` puts it on the host outside the repo. Nothing in either one notices the other,
+    so launching the stealth stack over a checkout that already carries a team workspace silently
+    starts a SECOND, empty workspace — the issues do not appear, nothing errors, and the obvious
+    reading ("my data is gone") is wrong.
+
+    Only this direction is detectable from placement alone: the team dir is at a known,
+    recipe-independent path under the checkout, whereas the stealth dir is keyed by recipe name and
+    a project hash, so a team launch cannot enumerate where a stealth workspace might be.
+    """
+    if location != "host":
+        return
+    team_dir = paths.persist_in_repo_dir(project_path, svc.data_persist)
+    if _beads_metadata(team_dir) is None:
+        return
+    _err.print(
+        f"[bold red]error:[/bold red] service '{svc.name}' is running host-placed (stealth), but "
+        f"{team_dir} already holds an in-repo workspace"
+    )
+    _err.print("  Launching stealth here would start a second, empty workspace and your issues")
+    _err.print("  would simply not appear. Use the team stack for this checkout, or move the")
+    _err.print(f"  in-repo workspace aside first: mv {team_dir} {team_dir}.bak")
     raise typer.Exit(1)
 
 

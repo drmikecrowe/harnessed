@@ -13,6 +13,7 @@ socket clients removes the contention by construction.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -381,6 +382,83 @@ class TestExclusiveLockPreflight:
         finally:
             proc.kill()
             proc.wait()
+
+
+class TestNamedDatabaseMustBePresent:
+    """`metadata.json` names the database; the sidecar serves `<data>/dolt/`.
+
+    If the named database is not a child of that data dir the sidecar starts fine and every client
+    fails with errno 1049 instead — the state harnessed's own checkout sat in from 2026-07-19, where
+    the bytes were in bd's `~/.beads/shared-server` and nothing on the client side said so.
+    """
+
+    def _svc(self, tmp_path, lock="dolt"):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                f"data:\n  persist: .beads\nexclusive_lock: {lock}\n",
+            ),
+            "beads-server",
+        )
+
+    def _meta(self, tmp_path, **keys):
+        (tmp_path / "metadata.json").write_text(json.dumps({"backend": "dolt", **keys}))
+
+    def test_aborts_when_the_named_database_is_absent(self, tmp_path):
+        self._meta(tmp_path, dolt_database="programming_personal_harnessed")
+        with pytest.raises(typer.Exit):
+            launcher._assert_named_database_present(self._svc(tmp_path), tmp_path)
+
+    def test_passes_when_the_named_database_is_present(self, tmp_path):
+        self._meta(tmp_path, dolt_database="myproject")
+        (tmp_path / "dolt" / "myproject").mkdir(parents=True)
+        launcher._assert_named_database_present(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_a_workspace_that_does_not_exist_yet_is_left_to_first_run_init(self, tmp_path):
+        launcher._assert_named_database_present(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_unreadable_metadata_is_not_this_guards_problem(self, tmp_path):
+        (tmp_path / "metadata.json").write_text("{ not json")
+        launcher._assert_named_database_present(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_another_engine_is_never_checked(self, tmp_path):
+        self._meta(tmp_path, dolt_database="absent")
+        launcher._assert_named_database_present(self._svc(tmp_path, lock="sleep"), tmp_path)
+
+
+class TestPlacementMismatchIsRejected:
+    """team (`in_repo`) and stealth (`host`) placement are invisible to each other.
+
+    A stealth launch over a checkout that already carries a team workspace starts a second, EMPTY
+    workspace: no error, no issues, and "my data is gone" is the natural — and wrong — reading.
+    """
+
+    def _svc(self, tmp_path):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                "data:\n  persist: .beads\nexclusive_lock: dolt\n",
+            ),
+            "beads-server",
+        )
+
+    def test_stealth_aborts_over_an_existing_in_repo_workspace(self, tmp_path):
+        team = launcher.paths.persist_in_repo_dir(tmp_path, ".beads")
+        team.mkdir(parents=True, exist_ok=True)
+        (team / "metadata.json").write_text(json.dumps({"dolt_database": "x"}))
+        with pytest.raises(typer.Exit):
+            launcher._assert_placement_matches(self._svc(tmp_path), "host", tmp_path)
+
+    def test_stealth_passes_when_the_checkout_has_no_in_repo_workspace(self, tmp_path):
+        launcher._assert_placement_matches(self._svc(tmp_path), "host", tmp_path)  # must not raise
+
+    def test_in_repo_placement_is_never_checked(self, tmp_path):
+        team = launcher.paths.persist_in_repo_dir(tmp_path, ".beads")
+        team.mkdir(parents=True, exist_ok=True)
+        (team / "metadata.json").write_text(json.dumps({"dolt_database": "x"}))
+        launcher._assert_placement_matches(self._svc(tmp_path), "in_repo", tmp_path)
 
 
 class TestDeadServiceFailsFast:
