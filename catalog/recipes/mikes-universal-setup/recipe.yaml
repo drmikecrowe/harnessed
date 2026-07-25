@@ -39,10 +39,16 @@ rules:
 #      See README.md for the full provenance table and the outstanding LICENSE-notice obligations.
 install:
   script: install.sh
-  # HOLD — manual-upgrade-only. Keys the host content cache; changes whenever a pinned SHA in
-  # install.sh changes (bump together after a human diff review). harnessed-tfm must NOT auto-bump
-  # skill pins (bd memory skill-pins-are-manual-upgrade-only).
+  # Keys the host content cache; changes whenever a pinned SHA in install.sh changes (bump the two
+  # together, after a human diff review — see `hold` below).
   cache: "oak0283bed3-hum1b485648"
+  # The HOLD, machine-readable (bd harnessed-c5t) — was a comment here until the field existed, and
+  # a comment is not something `harnessed update` can read.
+  hold: >-
+    skill content: a skill is agent instructions executed with the agent's full tool permissions,
+    so a compromised upgrade is prompt injection, not a CVE — no scanner in the osv/trivy/grype
+    family vets it. Bump the SHAs in install.sh (and the cache key above) only after a human has
+    read the diff of the new content.
 
 # Fetched by install.sh — the capability test verifies they landed (the assembler cannot see what an
 # install script installs, so we declare it). Keep in sync with install.sh.

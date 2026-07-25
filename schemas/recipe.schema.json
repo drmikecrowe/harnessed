@@ -59,9 +59,22 @@
       "items": { "type": "string", "minLength": 1 }
     },
     "tools": {
-      "description": "Pinned mise tools installed into the derived image as a `mise use -g` layer, letting a recipe add a CLI with no Dockerfile (e.g. 'pulumi@3.140.0'). MUST be pinned — a floating '@latest' or bare tool name is rejected. Accepts any mise spec: registered tool, github:owner/repo@tag, or npm:pkg@version. See docs/guides/egress.md.",
+      "description": "Pinned mise tools installed into the derived image as a `mise use -g` layer, letting a recipe add a CLI with no Dockerfile (e.g. 'pulumi@3.140.0'). MUST be pinned — a floating '@latest' or bare tool name is rejected. Accepts any mise spec: registered tool, github:owner/repo@tag, or npm:pkg@version. An entry may instead be a {spec, hold} mapping, where a non-empty `hold` reason marks that one pin manual-upgrade-only for `harnessed update`; the pin is still installed identically. See docs/guides/egress.md.",
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["spec"],
+            "properties": {
+              "spec": { "description": "The pinned mise tool spec, exactly as it would be written in the plain string form.", "type": "string", "minLength": 1 },
+              "hold": { "description": "Non-empty reason this ONE pin is manual-upgrade-only. `harnessed update` lists it informationally, never offers it for bumping, and never fails `--check` on it. A hold does not license a floating ref — the spec must still be pinned.", "type": "string", "minLength": 1 }
+            }
+          }
+        ]
+      }
     },
     "env": {
       "description": "Environment variables set for the RUNNING agent (and its hooks and child processes) — the one recipe deliverable a script cannot provide, since a script's `export` dies with the script. Delivered as image ENV at build, as `podman run -e` on the container, and into the launcher's own environment on `launch --host`. Values are mode-portable TEMPLATES, not literals: `{persist:<name>}` resolves to wherever this recipe's persist entry <name> actually lives in the current mode (the container bind-mount target vs. the real host persist dir), `{project_dir}` to the workspace root, `{host_home}` to the real host $HOME. Do NOT hardcode a container-absolute path like /home/harnessed/... — it does not exist on a host launch. Distinct from mcp.servers[].env, which is per-MCP-server.",
@@ -132,11 +145,12 @@
       "type": "object",
       "additionalProperties": false,
       "anyOf": [{ "required": ["script"] }, { "required": ["system"] }],
-      "dependentRequired": { "cache": ["script"] },
+      "dependentRequired": { "cache": ["script"], "hold": ["script"] },
       "properties": {
         "script": { "description": "Path (relative to the recipe dir) of the bash install script. Linted like a Dockerfile body: raw npm/npx and floating refs are rejected. Optional ONLY for a ROOT-ONLY install, which has no user-level half: then `system` alone is declared, the step stays in the recipe Dockerfile, and the host executor's sole job is to warn.", "type": "string", "minLength": 1 },
         "cache": { "description": "PINNED content ref (tag/version/SHA) keying the host content cache at $XDG_CACHE_HOME/harnessed/install/<recipe>/<cache>, handed to the script as $HARNESSED_INSTALL_CACHE (empty when omitted). Cache MISS is 'the directory does not exist' — harnessed creates only its parent; the script populates it and copies out of it. This is what makes the mandatory per-launch re-run affordable. Floating values (latest/main/master/HEAD/...) are rejected: a moving key never refreshes. Keep it equal to the ref pinned inside the script.", "type": "string", "minLength": 1 },
-        "system": { "description": "Set to a non-empty reason string when this recipe's install has a SYSTEM-LEVEL component (USER root, apt-get, COPY into /usr/local/bin) that only a container build can perform — that part stays in the recipe Dockerfile. harnessed never sudos or mutates the user's system, so on a host launch the component is skipped and this string is printed verbatim as a loud warning naming the recipe. Declaring it is what keeps the skip from being SILENT.", "type": "string", "minLength": 1 }
+        "system": { "description": "Set to a non-empty reason string when this recipe's install has a SYSTEM-LEVEL component (USER root, apt-get, COPY into /usr/local/bin) that only a container build can perform — that part stays in the recipe Dockerfile. harnessed never sudos or mutates the user's system, so on a host launch the component is skipped and this string is printed verbatim as a loud warning naming the recipe. Declaring it is what keeps the skip from being SILENT.", "type": "string", "minLength": 1 },
+        "hold": { "description": "Set to a non-empty reason string when every pin fetched BY this install script is MANUAL-UPGRADE-ONLY. `harnessed update` may list a newer upstream ref for them, but never offers them in the interactive bump set and never fails `--check` on them. The motivating case is SKILL content: a skill is agent INSTRUCTIONS run with the agent's full tool permissions, so a compromised upgrade is prompt injection rather than a CVE — no osv/trivy/grype-class scanner detects it and a human must read the diff. `cache` cannot carry this meaning (agent-carnet keys a CLI+skill install with it, so its presence classifies nothing). Like `system`, the value is a REASON shown to whoever decides whether to lift the hold, not a flag. Per-tool equivalent: the `{spec, hold}` mapping form of `tools`.", "type": "string", "minLength": 1 }
       }
     },
     "deps": {
