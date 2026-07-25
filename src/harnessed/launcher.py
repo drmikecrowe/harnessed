@@ -2945,6 +2945,67 @@ def _assert_data_dir_not_self_served(svc: "ServiceDef", host_dir: Path) -> None:
     raise typer.Exit(1)
 
 
+_STEALTH_GIT_EXCLUDES = ("/.claude/settings.json", "/CLAUDE.md")
+
+
+def _ensure_stealth_git_excludes(project_path: Path) -> list[str]:
+    """Keep bd's setup footprint out of `git status` for a stealth placement. Returns what it added.
+
+    `beads/stealth` exists so the tool is invisible to the repo and to collaborators, and `bd init
+    --stealth` does git-exclude the state it knows about. But `bd setup <harness> --stealth` still
+    writes `.claude/settings.json` and `CLAUDE.md` on bd 1.1.0, and neither is in bd's exclude list —
+    the recipe documents this as a footprint the user "opts into knowingly". For a placement whose
+    entire purpose is invisibility, that is worth closing rather than documenting.
+
+    Written to the git COMMON dir's `info/exclude`, so it holds for every worktree of the checkout —
+    in a bare + linked-worktree layout `<worktree>/.git` is a file, not a directory, and the real
+    `info/exclude` lives beside the bare repo.
+
+    Idempotent, and additive only: entries already present are left alone, and nothing is removed.
+    Excluding a path that is already TRACKED is a no-op in git, so this cannot hide a tracked
+    CLAUDE.md from anyone.
+    """
+    gcd = paths.git_common_dir(project_path)
+    if gcd is None:
+        return []
+    exclude = gcd / "info" / "exclude"
+    present = exclude.read_text().split() if exclude.is_file() else []
+    missing = [p for p in _STEALTH_GIT_EXCLUDES if p not in present]
+    if not missing:
+        return []
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    with exclude.open("a") as fh:
+        fh.write("\n# harnessed beads/stealth — bd's setup footprint, excluded to keep it invisible\n")
+        fh.write("".join(f"{p}\n" for p in missing))
+    return missing
+
+
+def _dolt_migration_sources(host_dir: Path, db: str) -> list[Path]:
+    """Directories that hold database `db` and could be migrated into this data dir.
+
+    Only two are guessable, and both are where the database actually ends up in practice:
+      * `~/.beads/shared-server/dolt/<db>` — bd's own multi-project server, which a plain `bd init`
+        adopts silently. This is where harnessed's own issues lived while every `bd` call reported
+        the database missing.
+      * `<data>/dolt.*/<db>` — a data dir quarantined out of the way by the self-served guard.
+
+    Anything else is named explicitly with `--from`; guessing more widely would mean scanning the
+    filesystem for something the user can point at in one argument.
+
+    A candidate counts only if it carries `.dolt/repo_state.json` — the marker of an initialized
+    repo, and the same signal `_assert_data_dir_not_self_served` keys on.
+    """
+    found: list[Path] = []
+    for cand in [Path.home() / ".beads" / "shared-server" / "dolt" / db, *sorted(host_dir.glob(f"dolt.*/{db}"))]:
+        if (cand / ".dolt" / "repo_state.json").is_file() and cand not in found:
+            found.append(cand)
+    return found
+
+
+def _dir_size(path: Path) -> int:
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
 def _beads_metadata(host_dir: Path) -> dict | None:
     """`metadata.json` from a beads data dir, or None when there is no readable workspace there."""
     try:
@@ -2988,8 +3049,9 @@ def _assert_named_database_present(svc: "ServiceDef", host_dir: Path) -> None:
     )
     _err.print("  The sidecar would start and every 'bd' call would fail with errno 1049.")
     _err.print("  The bytes live wherever this workspace was previously pointed (commonly bd's own")
-    _err.print("  ~/.beads/shared-server/dolt). Migrate that database in, or run 'bd bootstrap' if")
-    _err.print("  the Dolt remote has data.")
+    _err.print("  ~/.beads/shared-server/dolt). Bring them in with:")
+    _err.print(f"    harnessed svc migrate {svc.name} --stack <stack>")
+    _err.print("  or run 'bd bootstrap' if the Dolt remote has data.")
     raise typer.Exit(1)
 
 
@@ -5361,13 +5423,114 @@ _COMMANDS = {
 }
 
 
+def _svc_migrate(
+    svc_def: "ServiceDef", stack: str, project_path: Path, from_path: str, assume_yes: bool
+) -> None:
+    """Move an existing database INTO this service's data dir, with the user's confirmation.
+
+    The gap this fills: the sidecar re-asserts socket mode in `metadata.json` on every startup, but
+    re-pointing the metadata does not move the bytes. A workspace that bd adopted onto its own
+    multi-project server therefore comes up correctly configured and still empty, and every client
+    fails with errno 1049 — which `_assert_named_database_present` now catches at launch and sends
+    here.
+
+    Deliberately a separate, explicit command rather than something `launch` does for you: it copies
+    a database between directories, and the recipes already hold the line that first-time beads setup
+    is a deliberate user action rather than a side effect of launching.
+
+    Copies, never moves. A failed or half-finished migration must leave the source exactly as it was,
+    so the old location stays usable as a fallback until the user removes it themselves.
+    """
+    if svc_def.exclusive_lock != "dolt":
+        _err.print(f"[bold red]error:[/bold red] service '{svc_def.name}' defines no migration")
+        raise typer.Exit(1)
+    host_dir, _, location = _service_data_dir(svc_def, stack, project_path)
+    meta = _beads_metadata(host_dir)
+    db = str((meta or {}).get("dolt_database") or "")
+    if not db:
+        _err.print(
+            f"[bold red]error:[/bold red] no workspace to migrate: {host_dir / 'metadata.json'} "
+            "does not name a database"
+        )
+        raise typer.Exit(1)
+
+    dest = host_dir / "dolt" / db
+    if dest.is_dir():
+        _out.print(f"[blue][INFO][/blue] '{db}' is already in {host_dir / 'dolt'} — nothing to do")
+        return
+
+    # Copying into a data dir that an engine has open risks a torn copy, and the flock makes the
+    # result unusable anyway. Same check the launch path runs before starting the sidecar.
+    holder = _host_process_in_dir("dolt", host_dir.resolve())
+    if holder is not None:
+        pid, cmdline = holder
+        _err.print(f"[bold red]error:[/bold red] a host 'dolt' holds {host_dir} — stop it first")
+        _err.print(f"  PID {pid}: {cmdline}")
+        raise typer.Exit(1)
+
+    if from_path:
+        src = Path(from_path).expanduser().resolve()
+        if not (src / ".dolt" / "repo_state.json").is_file():
+            _err.print(f"[bold red]error:[/bold red] {src} is not a Dolt database (no .dolt/repo_state.json)")
+            raise typer.Exit(1)
+        sources = [src]
+    else:
+        sources = _dolt_migration_sources(host_dir, db)
+
+    if not sources:
+        _err.print(f"[bold red]error:[/bold red] found no database '{db}' to migrate")
+        _err.print("  Looked in ~/.beads/shared-server/dolt/ and any quarantined <data>/dolt.*/")
+        _err.print("  Point at it explicitly with --from <dir>, or run 'bd bootstrap' if the Dolt")
+        _err.print("  remote has data.")
+        raise typer.Exit(1)
+    if len(sources) > 1:
+        _err.print(f"[bold red]error:[/bold red] more than one database '{db}' found — pick one with --from:")
+        for cand in sources:
+            _err.print(f"    --from {cand}")
+        raise typer.Exit(1)
+
+    src = sources[0]
+    size_mb = _dir_size(src) / (1024 * 1024)
+    mtime = datetime.fromtimestamp((src / ".dolt").stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    _out.print(f"[blue][INFO][/blue] migrate database '{db}'")
+    _out.print(f"           from  {src}  ({size_mb:.1f} MiB, last written {mtime})")
+    _out.print(f"           into  {dest}")
+    _out.print("           the source is COPIED, not moved — it stays where it is")
+    if not assume_yes:
+        if not sys.stdin.isatty():
+            _err.print("[bold red]error:[/bold red] not a terminal — re-run with --yes to confirm")
+            raise typer.Exit(1)
+        if not typer.confirm("Proceed?"):
+            _out.print("[blue][INFO][/blue] aborted, nothing was written")
+            raise typer.Exit(1)
+
+    # Stage beside the destination and rename, so an interrupted copy never leaves a partial
+    # database where the server would find one and serve it.
+    staging = dest.with_name(dest.name + ".migrating")
+    shutil.rmtree(staging, ignore_errors=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, staging, symlinks=True)
+    staging.rename(dest)
+    if not (dest / ".dolt" / "repo_state.json").is_file():
+        _err.print(f"[bold red]error:[/bold red] migration landed at {dest} but is not a Dolt database")
+        raise typer.Exit(1)
+    _out.print(f"[green][SUCCESS][/green] '{db}' migrated into {host_dir / 'dolt'}")
+
+    if location == "host":
+        added = _ensure_stealth_git_excludes(project_path)
+        if added:
+            _out.print(f"[blue][INFO][/blue] stealth: excluded {', '.join(added)} via git info/exclude")
+
+
 @app.command("svc")
 def svc(
-    action: str = typer.Argument(..., help="up | down | sync"),
+    action: str = typer.Argument(..., help="up | down | sync | migrate"),
     name: str = typer.Argument(..., help="Service name (services/<name>/service.yaml)"),
     stack: str = typer.Option("", "--stack", help="Stack context (required for scope: project)"),
+    from_: str = typer.Option("", "--from", help="migrate: source database dir (skips discovery)"),
+    assume_yes: bool = typer.Option(False, "--yes", help="migrate: skip the confirmation prompt"),
 ) -> None:
-    """Manage a service sidecar (build+start, stop+remove, or sync).
+    """Manage a service sidecar (build+start, stop+remove, sync, or migrate its data in).
 
     `up`/`down` on a `scope: project` service act on THIS project's container (git-common-dir keyed),
     so they need `--stack` to resolve which persist entry holds the data.
@@ -5376,6 +5539,10 @@ def svc(
     sql-server`'s git sync (`bd dolt push` → refs/dolt/data) shells out to the dolt CLI, which only
     routes to a server on its OWN loopback — so the push can only run inside the service container,
     never in an agent container. Sync pushes to your git remote, so it is explicit, never automatic.
+
+    `migrate` copies an existing database INTO this service's data dir — the half that re-asserting
+    socket mode cannot do, since re-pointing `metadata.json` does not move the bytes. It is what the
+    launch-time "names database X, which is not in ..." abort tells you to run.
     """
     rt = _runtime()
     project_path = Path.cwd().resolve()
@@ -5408,8 +5575,13 @@ def svc(
             _err.print(f"[bold red]error:[/bold red] sync failed for service '{name}'")
             raise typer.Exit(result.returncode)
         _out.print(f"[green][SUCCESS][/green] Service '{name}' synced")
+    elif action == "migrate":
+        _svc_migrate(svc_def, stack, project_path, from_, assume_yes)
     else:
-        _err.print(f"[bold red]error:[/bold red] unknown svc action '{action}' (use: up | down | sync)")
+        _err.print(
+            f"[bold red]error:[/bold red] unknown svc action '{action}' "
+            "(use: up | down | sync | migrate)"
+        )
         raise typer.Exit(1)
 
 

@@ -484,6 +484,150 @@ class TestNamedDatabaseMustBePresent:
         launcher._assert_named_database_present(self._svc(tmp_path, lock="sleep"), tmp_path)
 
 
+def _dolt_db_at(path):
+    """Minimal on-disk shape of an initialized Dolt database."""
+    (path / ".dolt").mkdir(parents=True, exist_ok=True)
+    (path / ".dolt" / "repo_state.json").write_text('{"head": "refs/heads/main"}')
+    (path / ".dolt" / "noms").mkdir(exist_ok=True)
+    (path / ".dolt" / "noms" / "manifest").write_text("x" * 128)
+    return path
+
+
+class TestMigrationSourceDiscovery:
+    """Only the two places a database actually ends up are guessed; anything else needs --from."""
+
+    def test_finds_the_database_on_bds_shared_server(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        _dolt_db_at(home / ".beads" / "shared-server" / "dolt" / "proj")
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
+        found = launcher._dolt_migration_sources(tmp_path / "data", "proj")
+        assert found == [home / ".beads" / "shared-server" / "dolt" / "proj"]
+
+    def test_finds_a_quarantined_data_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "empty-home"))
+        data = tmp_path / "data"
+        _dolt_db_at(data / "dolt.poisoned-2026-07-24" / "proj")
+        assert launcher._dolt_migration_sources(data, "proj") == [
+            data / "dolt.poisoned-2026-07-24" / "proj"
+        ]
+
+    def test_a_directory_without_repo_state_is_not_a_candidate(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "empty-home"))
+        data = tmp_path / "data"
+        (data / "dolt.stale" / "proj").mkdir(parents=True)  # no .dolt/repo_state.json
+        assert launcher._dolt_migration_sources(data, "proj") == []
+
+
+class TestStealthGitExcludes:
+    """Stealth exists to be invisible; bd's own exclude list misses its setup footprint."""
+
+    def _repo(self, tmp_path):
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        return tmp_path
+
+    def test_adds_the_missing_entries_to_the_common_dir(self, tmp_path):
+        repo = self._repo(tmp_path)
+        added = launcher._ensure_stealth_git_excludes(repo)
+        assert added == ["/.claude/settings.json", "/CLAUDE.md"]
+        written = (repo / ".git" / "info" / "exclude").read_text()
+        assert "/.claude/settings.json" in written and "/CLAUDE.md" in written
+
+    def test_is_idempotent(self, tmp_path):
+        repo = self._repo(tmp_path)
+        launcher._ensure_stealth_git_excludes(repo)
+        assert launcher._ensure_stealth_git_excludes(repo) == []
+
+    def test_a_non_git_directory_is_left_alone(self, tmp_path):
+        assert launcher._ensure_stealth_git_excludes(tmp_path) == []
+
+
+class TestSvcMigrate:
+    """Copies a database in, never moves it — a failed migration must leave the source usable."""
+
+    def _svc(self, tmp_path, lock="dolt"):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                f"data:\n  persist: .beads\nexclusive_lock: {lock}\n",
+            ),
+            "beads-server",
+        )
+
+    def _wire(self, monkeypatch, host_dir, location="in_repo"):
+        monkeypatch.setattr(
+            launcher, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), location)
+        )
+        monkeypatch.setattr(launcher, "_host_process_in_dir", lambda exe, d: None)
+
+    def test_migrates_and_leaves_the_source_in_place(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        src = _dolt_db_at(tmp_path / "elsewhere" / "proj")
+        self._wire(monkeypatch, host_dir)
+        launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(src), assume_yes=True)
+        assert (host_dir / "dolt" / "proj" / ".dolt" / "repo_state.json").is_file()
+        assert (src / ".dolt" / "repo_state.json").is_file()  # source untouched
+        assert not (host_dir / "dolt" / "proj.migrating").exists()  # staging cleaned up
+
+    def test_is_a_no_op_when_the_database_is_already_there(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        _dolt_db_at(host_dir / "dolt" / "proj")
+        self._wire(monkeypatch, host_dir)
+        launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, "", assume_yes=True)  # no raise
+
+    def test_aborts_when_no_source_is_found(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "empty-home"))
+        self._wire(monkeypatch, host_dir)
+        with pytest.raises(typer.Exit):
+            launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, "", assume_yes=True)
+
+    def test_refuses_a_from_that_is_not_a_database(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        notdb = tmp_path / "notdb"
+        notdb.mkdir()
+        self._wire(monkeypatch, host_dir)
+        with pytest.raises(typer.Exit):
+            launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(notdb), assume_yes=True)
+
+    def test_refuses_while_a_host_engine_holds_the_data_dir(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        src = _dolt_db_at(tmp_path / "elsewhere" / "proj")
+        monkeypatch.setattr(
+            launcher, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), "in_repo")
+        )
+        monkeypatch.setattr(launcher, "_host_process_in_dir", lambda exe, d: (999, "dolt sql-server"))
+        with pytest.raises(typer.Exit):
+            launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(src), assume_yes=True)
+        assert not (host_dir / "dolt" / "proj").exists()
+
+    def test_stealth_placement_also_gets_the_git_excludes(self, tmp_path, monkeypatch):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        src = _dolt_db_at(tmp_path / "elsewhere" / "proj")
+        self._wire(monkeypatch, host_dir, location="host")
+        launcher._svc_migrate(self._svc(tmp_path), "stk", repo, str(src), assume_yes=True)
+        assert "/CLAUDE.md" in (repo / ".git" / "info" / "exclude").read_text()
+
+    def test_a_service_without_a_dolt_lock_has_no_migration(self, tmp_path, monkeypatch):
+        with pytest.raises(typer.Exit):
+            launcher._svc_migrate(self._svc(tmp_path, lock=""), "stk", tmp_path, "", assume_yes=True)
+
+
 class TestPlacementMismatchIsRejected:
     """team (`in_repo`) and stealth (`host`) placement are invisible to each other.
 
