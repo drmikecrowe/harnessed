@@ -84,11 +84,21 @@ PY
 # Stable, filesystem-safe slug for a scanner label ("recipe: foo" -> "recipe__foo").
 slug() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '_'; }
 
+# A scanner we committed to but never started — no token, or the binary is not installed. It has to
+# reach the report, or a consumer of scan-report.json cannot tell a skipped scanner from one that
+# never existed, and 1-of-6 coverage reads as a clean scan (bd harnessed-wx9). Distinct from a
+# no-output row, which means the scanner RAN and is probably broken. `|` is the field separator, so
+# strip any from the reason rather than corrupting the ledger.
+record_skip() {
+    local tool="$1" label="$2" reason="$3"
+    printf '%s|%s|unrun|%s\n' "$tool" "$label" "${reason//|/ }" >>"$ATTEMPTS"
+}
+
 snyk_scan() {
     local nm="$1" label="$2" tmp out
     [[ -d "$nm" ]] || return 0
-    command -v snyk >/dev/null 2>&1 || return 0
-    [[ -n "${SNYK_TOKEN:-}" ]] || return 0
+    command -v snyk >/dev/null 2>&1 || { record_skip snyk "$label" "snyk not installed"; return 0; }
+    [[ -n "${SNYK_TOKEN:-}" ]] || { record_skip snyk "$label" "no SNYK_TOKEN"; return 0; }
     echo "  · snyk: ${label}"
     printf 'snyk|%s\n' "$label" >>"$ATTEMPTS"
     tmp="$(synth_manifest_dir "$nm")" || return 0
@@ -123,8 +133,8 @@ except Exception:
 socket_scan() {
     local nm="$1" label="$2" tmp out id org
     [[ -d "$nm" ]] || return 0
-    command -v socket >/dev/null 2>&1 || return 0
-    [[ -n "${SOCKET_CLI_API_TOKEN:-}" ]] || return 0
+    command -v socket >/dev/null 2>&1 || { record_skip socket "$label" "socket not installed"; return 0; }
+    [[ -n "${SOCKET_CLI_API_TOKEN:-}" ]] || { record_skip socket "$label" "no SOCKET_CLI_API_TOKEN"; return 0; }
     echo "  · socket: ${label}"
     printf 'socket|%s\n' "$label" >>"$ATTEMPTS"
     org="$(socket_org)"
@@ -189,7 +199,11 @@ if command -v osv-scanner >/dev/null 2>&1; then
         printf 'osv|recipe lockfiles\n' >>"$ATTEMPTS"
         osv-scanner scan source --recursive --format json "${osv_dirs[@]}" >"$WORK/osv.json" 2>/dev/null
         [[ -s "$WORK/osv.json" ]] && printf 'osv|recipe lockfiles|%s\n' "$WORK/osv.json" >>"$MANIFEST"
+    else
+        record_skip osv "recipe lockfiles" "no skills/ or commands/ dir to scan"
     fi
+else
+    record_skip osv "recipe lockfiles" "osv-scanner not installed"
 fi
 
 # 4. pip-audit over the active Python env.
@@ -198,6 +212,8 @@ if command -v pip-audit >/dev/null 2>&1; then
     printf 'pip-audit|python env\n' >>"$ATTEMPTS"
     pip-audit --format=json >"$WORK/pip-audit.json" 2>/dev/null
     [[ -s "$WORK/pip-audit.json" ]] && printf 'pip-audit|python env|%s\n' "$WORK/pip-audit.json" >>"$MANIFEST"
+else
+    record_skip pip-audit "python env" "pip-audit not installed"
 fi
 
 # Summarize every scanner's JSON into one compact table + a consolidated report. Advisory only.
@@ -306,31 +322,50 @@ for r in rows:
 # so without this reconciliation it disappears from sources[] and its silence is indistinguishable
 # from a clean result. Reconcile what we COMMITTED to running against what actually reported: every
 # attempt with no parseable output stays in sources[] as an explicit no-output entry.
+# Two ways to be uncovered, and they mean opposite things (bd harnessed-wx9):
+#   no-output  the scanner RAN and yielded nothing parseable  -> it is probably BROKEN
+#   unrun      the scanner never started (no token, not installed) -> it was never configured
+# Conflating them either hides a broken scanner or cries wolf about a deliberately unconfigured
+# one. A ledger line is `tool|source` for an attempt, or `tool|source|unrun|reason` for a skip.
 reported = {(r["tool"], r["source"]) for r in rows}
 unreported = []
+unrun = []
 try:
     with open(os.environ["HARNESSED_SCAN_ATTEMPTS"]) as f:
         for line in f:
             line = line.rstrip("\n")
             if not line:
                 continue
-            tool, _, source = line.partition("|")
-            if (tool, source) not in reported:
-                unreported.append({"source": source, "tool": tool, "critical": 0, "high": 0,
-                                   "other": 0, "notable": [], "status": "no-output"})
+            parts = line.split("|", 3)
+            tool, source = parts[0], (parts[1] if len(parts) > 1 else "")
+            status = parts[2] if len(parts) > 2 else "attempted"
+            row = {"source": source, "tool": tool, "critical": 0, "high": 0,
+                   "other": 0, "notable": []}
+            if status == "unrun":
+                row["status"] = "unrun"
+                row["reason"] = parts[3] if len(parts) > 3 else ""
+                unrun.append(row)
+            elif (tool, source) not in reported:
+                row["status"] = "no-output"
+                unreported.append(row)
 except Exception:
     pass
 rows.extend(unreported)
+rows.extend(unrun)
 
 tot_c = sum(r["critical"] for r in rows)
 tot_h = sum(r["high"] for r in rows)
 scanned = [r for r in rows if r["status"] == "ok"]
+# Anything we committed to that did not report — whether broken or never started — is a hole in
+# the coverage this result claims.
+uncovered = unreported + unrun
 
 report = {"advisory": True, "gating": 0,
           "totals": {"critical": tot_c, "high": tot_h},
           "covered": bool(scanned),
           "coverage": {"attempted": len(rows), "reported": len(scanned),
-                       "no_output": [r["tool"] for r in unreported]},
+                       "no_output": [r["tool"] for r in unreported],
+                       "unrun": [r["tool"] for r in unrun]},
           "sources": rows}
 try:
     with open(os.environ["HARNESSED_SCAN_REPORT"], "w") as f:
@@ -345,6 +380,11 @@ if not scanned:
     print("  ⚠ NO COVERAGE — 0 scanners produced output. This is NOT a clean result.")
 elif not flagged:
     print("  no high/critical advisories across %d reporting source(s)." % len(scanned))
+    # The whole point of the bead: a green line earned by 1 of 6 scanners is a FALSE clean. Say so
+    # right where the reassuring sentence is, not only in a warning further down that scrolls past.
+    if uncovered:
+        print("  ⚠ but %d of %d scanner(s) contributed nothing — this is NOT a full all-clear."
+              % (len(uncovered), len(rows)))
 else:
     print("  %-34s %4s %4s   notable packages" % ("SOURCE", "CRIT", "HIGH"))
     for r in sorted(flagged, key=lambda r: (-r["critical"], -r["high"])):
@@ -356,6 +396,13 @@ if unreported:
           % len(unreported))
     for r in unreported:
         print("      %s · %s" % (r["tool"], r["source"]))
+if unrun:
+    # Separate wording from the no-output block on purpose: this list is ACTIONABLE ("set
+    # SNYK_TOKEN"), whereas that one means a scanner is misbehaving. Printing the reason is what
+    # makes it actionable at all.
+    print("  ⚠ %d scanner(s) did not run — not covered by this result:" % len(unrun))
+    for r in unrun:
+        print("      %s · %s (%s)" % (r["tool"], r["source"], r["reason"] or "no reason recorded"))
 print("  %d critical · %d high across %d reporting source(s) · 0 gating"
       % (tot_c, tot_h, len(scanned)))
 print("  full report: %s" % os.environ.get("HARNESSED_SCAN_REPORT", "?"))
