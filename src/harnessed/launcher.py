@@ -3996,6 +3996,37 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
             raise typer.Exit(1)
 
 
+def _host_run_inits(stack: str, project_path: Path, *, harness: str) -> None:
+    """Run each recipe's `init.run` host-side — the host half of what the attach shell does.
+
+    Model A: init runs on EVERY launch and the command self-gates, so this needs no marker. It was
+    wired only into `_init_shell_prologue`, i.e. the container attach shell, which made an `init:`
+    declaration a silent no-op under `host-run` — the same container-only wiring that produced
+    harnessed-2sm/-162/-5ek.
+
+    Fail-fast, matching the container path: an agent must not start against a half-initialized tool.
+    Runs AFTER `_host_run_setups`, because a setup script may be what installs the binary init calls.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    for recipe in recipes:
+        if recipe.init is None:
+            continue
+        _say(f"[blue][INFO][/blue] init ({recipe.name}): host")
+        result = subprocess.run(
+            ["bash", "-lc", recipe.init.run],
+            cwd=str(project_path),
+            env={**os.environ, **harnessed_env(
+                stack, project_path, harness=harness, mode="host", recipe=recipe
+            )},
+        )
+        if result.returncode != 0:
+            _err.print(
+                f"[bold red]error:[/bold red] recipe '{recipe.name}' init failed "
+                f"(exit {result.returncode})"
+            )
+            raise typer.Exit(result.returncode)
+
+
 def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
     """Run each recipe's executable setup (host-native) whose `condition` is satisfied — either the
     both-mode `setup.script` (preferred) or the legacy host-only `setup.run`.
@@ -4230,6 +4261,9 @@ def _launch_host(
     # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
     # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
     _host_run_setups(stack, project_path, harness=harness)
+    # Recipe `init:` — the host half of the attach shell's init prologue. After setups, since a
+    # setup script may install the very binary init invokes.
+    _host_run_inits(stack, project_path, harness=harness)
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
     # sees just-provisioned tools AND anything an install/setup script put in the stack bin dir.
     mcp_servers = _host_native_mcp(stack)

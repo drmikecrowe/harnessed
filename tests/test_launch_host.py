@@ -538,6 +538,38 @@ class TestHostCliRouting:
         assert result.exit_code == 0, result.output
         assert ensured == [("podman", "hostspike")]
 
+    def test_host_run_runs_recipe_init(self, monkeypatch, tmp_path):
+        """Recipe `init:` was wired only into the container attach shell, so declaring it was a
+        silent no-op under `host-run` — the same container-only wiring as harnessed-2sm/-162/-5ek."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        ran: list = []
+
+        monkeypatch.setattr(launcher, "_service_refs", lambda _s: [])
+        monkeypatch.setattr(launcher, "_host_run_inits", lambda *a, **k: ran.append(a[0]))
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+        assert ran == ["hostspike"]
+
+    def test_host_init_runs_the_command_and_fails_fast(self, monkeypatch, tmp_path):
+        import typer
+
+        from harnessed.schema import InitSpec, Recipe
+
+        marker = tmp_path / "ran"
+        ok = Recipe(name="r-ok", init=InitSpec(run=f"touch {marker}"))
+        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _r, _s: (None, [ok]))
+        launcher._host_run_inits("s", tmp_path, harness="claude")
+        assert marker.is_file()
+
+        bad = Recipe(name="r-bad", init=InitSpec(run="exit 3"))
+        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _r, _s: (None, [bad]))
+        with pytest.raises(typer.Exit):  # an agent must not start on a half-initialized tool
+            launcher._host_run_inits("s", tmp_path, harness="claude")
+
     def test_host_run_needs_no_runtime_when_the_stack_has_no_services(self, monkeypatch, tmp_path):
         """A service-less host launch must not require podman to be installed — `_runtime()` is only
         touched when the stack actually declares something to start."""
