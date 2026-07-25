@@ -669,6 +669,114 @@ class TestSvcMigrate:
             launcher._svc_migrate(self._svc(tmp_path, lock=""), "stk", tmp_path, "", assume_yes=True)
 
 
+class TestDoltAutostartIsDisabled:
+    """bd's auto-start is what poisons a data dir; the env var only covers harnessed's own processes.
+
+    This key covers the rest — stray terminals, hooks, and teammates who never run harnessed. The
+    fresh-clone case is the one that matters: no local Dolt data means an EMPTY data dir, which is
+    exactly what auto-start turns into a database.
+    """
+
+    def _svc(self, tmp_path, lock="dolt"):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                f"data:\n  persist: .beads\nexclusive_lock: {lock}\n",
+            ),
+            "beads-server",
+        )
+
+    def test_appends_the_key_to_an_existing_workspace_config(self, tmp_path):
+        (tmp_path / "config.yaml").write_text("sync.remote: git+ssh://example/x.git\n")
+        launcher._ensure_dolt_autostart_disabled(self._svc(tmp_path), tmp_path)
+        text = (tmp_path / "config.yaml").read_text()
+        assert "dolt.auto-start: false" in text
+        assert "sync.remote" in text, "must be additive — never rewrite bd's own config"
+
+    def test_is_idempotent(self, tmp_path):
+        (tmp_path / "config.yaml").write_text("x: 1\n")
+        svc = self._svc(tmp_path)
+        launcher._ensure_dolt_autostart_disabled(svc, tmp_path)
+        launcher._ensure_dolt_autostart_disabled(svc, tmp_path)
+        assert (tmp_path / "config.yaml").read_text().count("dolt.auto-start") == 1
+
+    def test_a_deliberate_re_enable_is_not_overridden(self, tmp_path):
+        # A user who turns auto-start back on must not have it flipped again every launch.
+        (tmp_path / "config.yaml").write_text("dolt.auto-start: true\n")
+        launcher._ensure_dolt_autostart_disabled(self._svc(tmp_path), tmp_path)
+        assert (tmp_path / "config.yaml").read_text() == "dolt.auto-start: true\n"
+
+    def test_no_workspace_yet_is_left_alone(self, tmp_path):
+        launcher._ensure_dolt_autostart_disabled(self._svc(tmp_path), tmp_path)  # must not raise
+        assert not (tmp_path / "config.yaml").exists()
+
+    def test_another_engine_is_never_touched(self, tmp_path):
+        (tmp_path / "config.yaml").write_text("x: 1\n")
+        launcher._ensure_dolt_autostart_disabled(self._svc(tmp_path, lock="sleep"), tmp_path)
+        assert "dolt.auto-start" not in (tmp_path / "config.yaml").read_text()
+
+
+class TestPlacementIsRecordedAndEnforced:
+    """The direction `_assert_placement_matches` cannot see.
+
+    A stealth dir is keyed by recipe name + project hash, so a team launch cannot enumerate it.
+    Recording which placement ran first closes that: the second, disagreeing launch is refused
+    rather than silently starting an empty workspace whose missing issues read as data loss.
+    """
+
+    def _svc(self, tmp_path):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                "data:\n  persist: .beads\nexclusive_lock: dolt\n",
+            ),
+            "beads-server",
+        )
+
+    def _repo(self, tmp_path, monkeypatch):
+        gcd = tmp_path / ".git"
+        gcd.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: gcd)
+        return gcd
+
+    def test_first_launch_records_the_placement(self, tmp_path, monkeypatch):
+        gcd = self._repo(tmp_path, monkeypatch)
+        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)
+        assert json.loads((gcd / "harnessed-placement.json").read_text()) == {"beads-server": "host"}
+
+    def test_the_same_placement_relaunches_cleanly(self, tmp_path, monkeypatch):
+        self._repo(tmp_path, monkeypatch)
+        svc = self._svc(tmp_path)
+        launcher._assert_placement_unchanged(svc, "in_repo", tmp_path)
+        launcher._assert_placement_unchanged(svc, "in_repo", tmp_path)  # must not raise
+
+    def test_switching_placement_aborts(self, tmp_path, monkeypatch):
+        self._repo(tmp_path, monkeypatch)
+        svc = self._svc(tmp_path)
+        launcher._assert_placement_unchanged(svc, "host", tmp_path)
+        with pytest.raises(typer.Exit):  # team launch over a stealth workspace
+            launcher._assert_placement_unchanged(svc, "in_repo", tmp_path)
+
+    def test_the_record_lives_in_the_git_dir_so_git_never_sees_it(self, tmp_path, monkeypatch):
+        # Stealth exists to be invisible; a marker in the working tree would defeat that.
+        gcd = self._repo(tmp_path, monkeypatch)
+        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)
+        assert (gcd / "harnessed-placement.json").is_file()
+        assert not (tmp_path / "harnessed-placement.json").exists()
+
+    def test_outside_a_git_checkout_it_is_a_no_op(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: None)
+        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)  # must not raise
+
+    def test_a_corrupt_record_does_not_block_the_launch(self, tmp_path, monkeypatch):
+        gcd = self._repo(tmp_path, monkeypatch)
+        (gcd / "harnessed-placement.json").write_text("{ not json")
+        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)  # must not raise
+        assert json.loads((gcd / "harnessed-placement.json").read_text()) == {"beads-server": "host"}
+
+
 class TestPlacementMismatchIsRejected:
     """team (`in_repo`) and stealth (`host`) placement are invisible to each other.
 

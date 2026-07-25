@@ -2821,7 +2821,9 @@ def _ensure_service(
         _assert_data_dir_unlocked(svc, host_dir)
         _assert_data_dir_not_self_served(svc, host_dir)
         _assert_placement_matches(svc, location, project_path)
+        _assert_placement_unchanged(svc, location, project_path)
         _assert_named_database_present(svc, host_dir)
+        _ensure_dolt_autostart_disabled(svc, host_dir)
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
         # (a dolt data dir written by a foreign uid would EACCES for every agent container).
         run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
@@ -2984,6 +2986,102 @@ def _dolt_migration_sources(host_dir: Path, db: str) -> list[Path]:
 
 def _dir_size(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _ensure_dolt_autostart_disabled(svc: "ServiceDef", host_dir: Path) -> None:
+    """Turn bd's auto-start off in the workspace's own config, for everyone who touches this repo.
+
+    `BEADS_DOLT_SERVER_SOCKET` only protects processes harnessed launched. This key protects the
+    rest: a stray `bd` in a plain terminal, a git hook, a SessionStart hook — and a TEAMMATE who
+    never runs harnessed at all. Without it bd starts a server chdir'd into its data dir with no
+    --data-dir, which on an EMPTY data dir initializes that directory as a database and makes the
+    project database permanently unreachable. A fresh clone is exactly that empty-data-dir case, so
+    the teammate scenario is not hypothetical (two repos on this machine caught it independently).
+
+    `config.yaml` is part of bd's tracked surface, so for `beads/team` this lands in a file the user
+    will commit — deliberately, since the protection is only repo-wide if it is shared. Announced
+    when written, because silently dirtying a tracked file is its own kind of surprise.
+
+    Skipped when there is no workspace yet: `bd init` writes config.yaml, and the next launch adds
+    the key. Additive and idempotent — an existing setting of either value is left alone, so a user
+    who deliberately re-enables auto-start is not overridden on every launch.
+    """
+    if svc.exclusive_lock != "dolt":
+        return
+    cfg = host_dir / "config.yaml"
+    try:
+        text = cfg.read_text()
+    except OSError:
+        return
+    if re.search(r"^\s*dolt\.auto-start\s*:", text, re.MULTILINE):
+        return
+    with cfg.open("a", encoding="utf-8") as fh:
+        fh.write(
+            "\n# harnessed: bd auto-starts a dolt sql-server chdir'd into its data dir with no\n"
+            "# --data-dir whenever it cannot reach one. On an empty data dir — a fresh clone —\n"
+            "# that initializes the directory ITSELF as a database and the project database becomes\n"
+            "# unreachable (errno 1049). Start the server explicitly instead: `bd dolt start`.\n"
+            "dolt.auto-start: false\n"
+        )
+    _out.print(f"[blue][INFO][/blue] set dolt.auto-start: false in {cfg}")
+
+
+def _placement_marker(project_path: Path) -> Path | None:
+    """Where the active placement is recorded — inside the git COMMON dir, or None outside a repo.
+
+    The git dir is deliberate on both counts: it is shared by every worktree of the checkout (so the
+    record cannot disagree between them), and git never tracks its own internals, so this stays
+    invisible — which `beads/stealth`, whose entire purpose is invisibility, requires.
+    """
+    gcd = paths.git_common_dir(project_path)
+    return None if gcd is None else gcd / "harnessed-placement.json"
+
+
+def _assert_placement_unchanged(svc: "ServiceDef", location: str, project_path: Path) -> None:
+    """Abort when this service's data was last placed somewhere else, and record it when it was not.
+
+    `_assert_placement_matches` catches only stealth-over-team, because the team dir sits at a known
+    recipe-independent path while a stealth dir is keyed by recipe name plus a project hash — a team
+    launch cannot enumerate where a stealth workspace might be. Recording the placement closes the
+    other direction: whichever ran first leaves a note, and a later launch in the other placement is
+    refused instead of silently starting a second, EMPTY workspace whose missing issues read as data
+    loss.
+
+    Deliberately not self-healing. Both placements may hold real data by the time they disagree, and
+    picking one would discard the other; the user has to say which they meant.
+    """
+    marker = _placement_marker(project_path)
+    if marker is None:
+        return  # not a git checkout — nothing stable to key the record on
+    try:
+        seen = json.loads(marker.read_text()).get(svc.name)
+    except (OSError, ValueError):
+        seen = None
+    if seen is not None and seen != location:
+        _err.print(
+            f"[bold red]error:[/bold red] service '{svc.name}' was last used with "
+            f"'{seen}' placement, but this stack wants '{location}'"
+        )
+        _err.print("  Launching would start a second, empty workspace — your issues would simply")
+        _err.print("  not appear. Use the stack matching the placement above, or, once you are sure")
+        _err.print(f"  which copy you want, delete the record: rm {marker}")
+        raise typer.Exit(1)
+    if seen == location:
+        return
+    try:
+        current = json.loads(marker.read_text()) if marker.is_file() else {}
+        if not isinstance(current, dict):
+            current = {}
+    except (OSError, ValueError):
+        current = {}
+    current[svc.name] = location
+    # Best-effort: this record only ever PREVENTS a future mistake, so failing to write it must not
+    # take down the launch in front of us (a read-only git dir, or one that does not exist yet).
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps(current, indent=2), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def _beads_metadata(host_dir: Path) -> dict | None:
