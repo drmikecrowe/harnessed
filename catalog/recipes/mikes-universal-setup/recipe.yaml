@@ -6,6 +6,10 @@
 #
 # Tool-specific personal-workflow skills (obsidian-*, playwriter, ghostty) were deliberately left
 # out — they assume tools not everyone uses, so they don't fit a "universal" example.
+#
+# agent-browser was dropped 2026-07-23: unused, and vendoring it was actively wrong — upstream
+# (github.com/vercel-labs/agent-browser) installs a STUB SKILL.md that defers to the installed CLI
+# precisely so the instructions never go stale. A frozen copy defeats that design.
 name: mikes-universal-setup
 description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills — an example personal always-on setup."
 
@@ -24,25 +28,40 @@ rules:
   - path: rules/stop-and-ask
   - path: rules/token-efficient
 
+# Skills arrive two ways:
+#   1. install.script FETCHES the UNMODIFIED third-party skills at pinned commit SHAs — they are NOT
+#      vendored here (hand-copying meant drift + redistributing third-party content in the wheel with
+#      no licence). This is a BRIDGE (bd harnessed-197): the vercel `skills` CLI is the intended
+#      end state but cannot yet pin to a SHA or verify content on restore, so install.sh supplies the
+#      pin+verify the ecosystem lacks. Sources: oakoss/agent-skills (5), blader/humanizer (1).
+#   2. `skills:` below vendors the ones MODIFIED here (a fetch would discard the edits) or authored
+#      here. Owner tags: [gsd] open-gsd/gsd-core, [kepano] kepano/obsidian-skills, [mine] here — MIT.
+#      See README.md for the full provenance table and the outstanding LICENSE-notice obligations.
+install:
+  script: install.sh
+  # HOLD — manual-upgrade-only. Keys the host content cache; changes whenever a pinned SHA in
+  # install.sh changes (bump together after a human diff review). harnessed-tfm must NOT auto-bump
+  # skill pins (bd memory skill-pins-are-manual-upgrade-only).
+  cache: "oak0283bed3-hum1b485648"
+
+# Fetched by install.sh — the capability test verifies they landed (the assembler cannot see what an
+# install script installs, so we declare it). Keep in sync with install.sh.
+expect:
+  skills: [application-security, mermaid-diagrams, mise, python-uv, skill-management, humanizer]
+
 skills:
-  - path: skills/agent-browser
-  - path: skills/application-security
-  - path: skills/code-optimizer
-  - path: skills/create-skill
+  # [kepano] DERIVED from kepano/obsidian-skills (MIT), with a local trigger-strengthening edit, so
+  # it is vendored not fetched (a fetch would revert the edit). Provenance + the exact change are in
+  # skills/defuddle/PROVENANCE.md; kepano's LICENSE ships in skills/defuddle/LICENSE.
   - path: skills/defuddle
-  - path: skills/frontend-design
-  - path: skills/handoff
-  # Vendored third-party (MIT), not authored here: github.com/blader/humanizer @
-  # 1b48564898e999219882660237fde01bf4843a0f. Upstream ships no tags/releases and is a single
-  # SKILL.md, so it is committed here (with its LICENSE) rather than cloned by a Dockerfile the
-  # way superpowers' 14-skill tree is. To update: re-copy SKILL.md from upstream and bump the SHA.
-  - path: skills/humanizer
+  # (humanizer is no longer vendored — it is byte-identical to blader/humanizer@1b48564, so it is
+  # fetched at a pinned SHA by install.sh alongside the oakoss five. See install.sh / harnessed-197.)
+  # [gsd] DERIVED from open-gsd/gsd-core, then decoupled and modified here (no longer tracks
+  # upstream). Attribution is owed and recorded; this is NOT a fetch candidate — the local version
+  # is the one we want. Original: github.com/open-gsd/gsd-core (MIT).
   - path: skills/map-codebase
-  - path: skills/mermaid-diagrams
-  - path: skills/mise
-  - path: skills/python-uv
-  - path: skills/security-review
-  - path: skills/skill-management
+  # [mine] Origin unresolved — a GSD-flavoured TDD skill that matches NO commit in mattpocock/skills
+  # (its once-assumed source) or open-gsd/gsd-core. Treated as authored-here until proven otherwise.
   - path: skills/tdd
-  - path: skills/varlock
-  - path: skills/wrangler
+  - path: skills/varlock                # [mine]
+  - path: skills/wrangler               # [mine]

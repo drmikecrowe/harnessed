@@ -18,7 +18,7 @@ metadata:
   version: "1.0"
   category: development
   tags: codebase-analysis, documentation, onboarding, brownfield
-  upstream: https://github.com/gsd-build/get-shit-done
+  upstream: https://github.com/open-gsd/gsd-core
 ---
 
 # Map Codebase
