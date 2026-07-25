@@ -29,7 +29,7 @@ def _plain(text: str) -> str:
 def _table(table, name):
     """Look a version up and wrap it as a year-old Release, so the cooldown never interferes."""
     version = table.get(name)
-    return None if version is None else _old(version)
+    return [] if version is None else [_old(version)]
 
 
 def _old(version):
@@ -58,7 +58,7 @@ def catalog(tmp_path, monkeypatch):
 
     monkeypatch.setattr(launcher.paths, "catalog_roots", lambda: [tmp_path / "catalog"])
     monkeypatch.setattr(
-        update, "resolve_latest",
+        update, "resolve_releases",
         lambda backend, name, **kw: _table({"x": "1.5.0", "y": "9.9.9"}, name),
     )
     return root
@@ -100,13 +100,13 @@ class TestCheckMode:
         assert (catalog / "stale" / "recipe.yaml").read_bytes() == before
 
     def test_check_exits_zero_when_nothing_is_stale(self, catalog, monkeypatch):
-        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
+        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
         result = runner.invoke(launcher.app, ["update", "--check"])
         assert result.exit_code == 0
 
     def test_a_held_pin_alone_never_fails_check(self, catalog, monkeypatch):
         """`frozen` is 8 majors behind on purpose. CI must stay green."""
-        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
+        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
         result = runner.invoke(launcher.app, ["update", "--check"])
         assert result.exit_code == 0
         assert "frozen" in _plain(result.output), "a held pin is still LISTED, just not fatal"
@@ -127,7 +127,7 @@ class TestReporting:
     def test_a_resolver_failure_surfaces_as_unresolved(self, catalog, monkeypatch):
         def boom(backend, name, **kw):
             raise update.ResolveError("network unreachable")
-        monkeypatch.setattr(update, "resolve_latest", boom)
+        monkeypatch.setattr(update, "resolve_releases", boom)
         result = runner.invoke(launcher.app, ["update", "--check"])
         out = _plain(result.output)
         assert "network unreachable" in out
@@ -158,7 +158,7 @@ class TestInteractive:
         assert "npm:y@1.0.0" in (catalog / "frozen" / "recipe.yaml").read_text()
 
     def test_nothing_stale_says_so_and_exits_clean(self, catalog, monkeypatch):
-        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
+        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
         result = runner.invoke(launcher.app, ["update"])
         assert result.exit_code == 0
         assert "up to date" in _plain(result.output).lower()
@@ -170,11 +170,11 @@ class TestCooldownSurface:
     @pytest.fixture
     def fresh(self, catalog, monkeypatch):
         from datetime import datetime, timedelta, timezone
-        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: (
-            update.Release(
+        monkeypatch.setattr(update, "resolve_releases", lambda backend, name, **kw: (
+            [update.Release(
                 version={"x": "1.5.0", "y": "9.9.9"}[name],
                 published=datetime.now(timezone.utc) - timedelta(days=2),
-            ) if name in ("x", "y") else None
+            )] if name in ("x", "y") else []
         ))
         return catalog
 
@@ -194,7 +194,7 @@ class TestCooldownSurface:
 
     def test_the_window_can_be_overridden_on_the_command_line(self, fresh):
         """`--cooldown-days 0` opts out — for someone who has read the release themselves."""
-        runner.invoke(launcher.app, ["update", "--yes", "--cooldown-days", "0"])
+        runner.invoke(launcher.app, ["update", "--yes", "--minimum-release-age", "0"])
         assert "npm:x@1.5.0" in (fresh / "stale" / "recipe.yaml").read_text()
 
 

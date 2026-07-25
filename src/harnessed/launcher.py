@@ -5173,6 +5173,16 @@ def _print_update_report(report) -> None:
                 f"  {where(f)}  {f.pin.spec}\n"
                 f"      [yellow]{f.pin.current}[/yellow] -> [green]{f.latest}[/green]"
             )
+            if f.skipped_newer:
+                # Offering 1.6.0 while 1.6.1 exists looks like a bug unless we say why.
+                age = (
+                    f"{f.skipped_newer_age_days:.1f} days old"
+                    if f.skipped_newer_age_days is not None else "too new"
+                )
+                _out.print(
+                    f"      [dim]({f.skipped_newer} exists but is {age} — "
+                    "below the minimum release age)[/dim]"
+                )
     if report.cooling:
         # Shown, not dropped: the user is entitled to know a newer release exists and is being
         # waited out. Naming the age is what makes "wait" a decision rather than a mystery.
@@ -5206,9 +5216,10 @@ def update_pins(
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Accept every offered bump without prompting.",
     ),
-    cooldown_days: float = typer.Option(
-        None, "--cooldown-days",
-        help="Minimum release age before an update is offered (default 7). 0 disables it.",
+    minimum_release_age: float = typer.Option(
+        None, "--minimum-release-age",
+        help="Minutes a release must have existed before it is offered (default 10080 = 7 days, "
+             "pnpm's `minimumReleaseAge` unit). 0 disables the gate.",
     ),
 ) -> None:
     """Find outdated pins across the catalog and offer to bump them.
@@ -5218,8 +5229,10 @@ def update_pins(
     unresolved rather than skipped. Pins marked `hold` (recipe.yaml `install.hold`, or a `tools:`
     entry's `hold`) are listed for information only and never bumped — see bd harnessed-c5t.
 
-    A release younger than the cooldown (default 7 days) is never offered: a compromised or broken
-    publish is usually yanked within days, so waiting a week costs nothing and closes that window.
+    Modelled on pnpm's `minimumReleaseAge`: a release younger than the window (default 7 days) is
+    not offered, because a compromised or broken publish is usually yanked within days. As in pnpm,
+    that does not mean "no update" — the newest version that IS old enough is offered instead, and
+    the newer one it passed over is named.
     """
     from . import update as pinupdate
 
@@ -5232,9 +5245,10 @@ def update_pins(
     # future offline mode) can swap `update.resolve_latest` and have it take effect here.
     report = pinupdate.build_report(
         dirs,
-        resolve=lambda backend, name: pinupdate.resolve_latest(backend, name),
-        cooldown_days=(
-            pinupdate.DEFAULT_COOLDOWN_DAYS if cooldown_days is None else cooldown_days
+        resolve=lambda backend, name: pinupdate.resolve_releases(backend, name),
+        minimum_release_age_minutes=(
+            pinupdate.DEFAULT_MINIMUM_RELEASE_AGE_MINUTES
+            if minimum_release_age is None else minimum_release_age
         ),
     )
     _print_update_report(report)
