@@ -13,7 +13,8 @@
 #
 # HOLD / manual-upgrade only: a skill is agent instructions no scanner vets. Bump a SHA below only
 # after a human reads the upstream diff, and keep `install.cache` in recipe.yaml in sync so the fetch
-# cache invalidates. harnessed-tfm must not auto-bump these (bd memory skill-pins-are-manual-upgrade-only).
+# cache invalidates. This is DECLARED, not just described — `install.hold` in recipe.yaml is what
+# `harnessed update` reads to keep these out of its bump set (bd harnessed-c5t).
 set -euo pipefail
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 

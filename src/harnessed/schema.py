@@ -671,6 +671,16 @@ class InstallSpec:
     # LOUDLY, naming the recipe and this reason. A silent skip is exactly how harnessed-8px.1
     # (14 missing skills, no error) happened; the reason string is what makes it un-silent.
     system: str | None = None
+    # Non-empty reason string ⇒ every pin behind this install script is MANUAL-UPGRADE-ONLY.
+    # `harnessed update` (bd harnessed-tfm) may LIST a newer upstream ref for them, but must never
+    # put them in the interactive bump set and must never fail `--check` on them. The motivating
+    # case is SKILL content: a skill is agent INSTRUCTIONS run with the agent's full tool
+    # permissions, so a compromised upgrade is prompt injection, not a CVE — nothing in the
+    # osv/trivy/grype family detects it, and a human has to read the diff. `cache` cannot carry
+    # this meaning: agent-carnet keys a CLI+skill install with it, so its presence classifies
+    # nothing. Like `system`, the value is a REASON, not a flag — it is shown to whoever decides
+    # whether to lift the hold.
+    hold: str | None = None
 
 
 # Bare refs that MOVE. `_FLOATING_REF_RE` only catches the decorated forms (`--branch main`,
@@ -715,10 +725,23 @@ def _parse_install(raw_install) -> "InstallSpec | None":
             "system-level step only a container build can perform (it is printed verbatim as the "
             "host-skip warning)"
         )
-    unknown = sorted(set(raw_install) - {"script", "cache", "system"})
+    hold = raw_install.get("hold")
+    if hold is not None and (not isinstance(hold, str) or not hold.strip()):
+        raise SchemaError(
+            "recipe 'install.hold', if set, must be a non-empty string explaining WHY this "
+            "recipe's pins are manual-upgrade-only (it is shown to whoever decides whether to "
+            "lift the hold — a bare `hold: true` throws that away)"
+        )
+    unknown = sorted(set(raw_install) - {"script", "cache", "system", "hold"})
     if unknown:
         raise SchemaError(
-            f"recipe 'install': unknown field(s) {unknown} — valid fields: script, cache, system"
+            f"recipe 'install': unknown field(s) {unknown} — valid fields: script, cache, system, "
+            "hold"
+        )
+    if hold and script is None:
+        raise SchemaError(
+            "recipe 'install.hold' without 'install.script' — the hold marks the pins fetched BY "
+            "the script as manual-upgrade-only; a root-only install has no such pins to hold."
         )
     if cache and script is None:
         raise SchemaError(
@@ -731,7 +754,12 @@ def _parse_install(raw_install) -> "InstallSpec | None":
             "BOTH modes) or 'install.system' (the reason a root-only step is container-only). With "
             "neither it declares nothing and executes nothing."
         )
-    return InstallSpec(script=script, cache=cache, system=system.strip() if system else None)
+    return InstallSpec(
+        script=script,
+        cache=cache,
+        system=system.strip() if system else None,
+        hold=hold.strip() if hold else None,
+    )
 
 
 def _parse_setup_config(raw_config) -> list["SetupConfigItem"]:
@@ -813,6 +841,11 @@ class Recipe:
     # `pulumi@3.140.0`). MUST be pinned — a floating `@latest`/bare name is rejected, same as a
     # Dockerfile pin. Lets a recipe add a CLI + open its egress with NO Dockerfile. See egress.md.
     tools: list[str] = field(default_factory=list)
+    # Spec → hold reason, for the `tools:` entries written in the mapping form (bd harnessed-c5t).
+    # Held pins are still installed exactly like any other — the hold speaks only to `harnessed
+    # update`, which lists them informationally and never offers to bump them. Empty for the
+    # overwhelmingly common plain-string form. The install-script equivalent is InstallSpec.hold.
+    tools_hold: dict[str, str] = field(default_factory=dict)
     # Environment for the RUNNING agent (recipe.yaml `env:`) — NAME → value template. The one
     # recipe deliverable a bash script cannot express (an `export` dies with the script). Values are
     # mode-portable templates; see _parse_env / resolve_recipe_env for the placeholder contract.
@@ -1042,24 +1075,63 @@ def _parse_egress(raw_egress, manifest: Path) -> list[str]:
 
 
 
-def _parse_tools(raw_tools, manifest: Path) -> list[str]:
-    """Parse a recipe's `tools:` list into pinned mise tool specs (e.g. 'pulumi@3.140.0')."""
+def _parse_tools(raw_tools, manifest: Path) -> tuple[list[str], dict[str, str]]:
+    """Parse a recipe's `tools:` list into pinned mise tool specs (e.g. 'pulumi@3.140.0').
+
+    Two entry forms, and the mapping one exists ONLY to carry a hold (bd harnessed-c5t):
+
+        tools:
+          - npm:ccstatusline@2.2.22            # plain — bumpable by `harnessed update`
+          - spec: github:foo/bar@1.2.3         # held — listed informationally, never auto-bumped
+            hold: "upstream 2.x drops the API we depend on"
+
+    Returns (specs, holds). The specs list is IDENTICAL in both forms so every consumer of
+    `Recipe.tools` (emit's and launcher's `mise use -g` layer) stays a list-of-strings and never
+    learns that holds exist. Only `harnessed update` reads the second value.
+    """
     if not raw_tools:
-        return []
+        return [], {}
     if not isinstance(raw_tools, list):
         raise SchemaError(f"{manifest}: 'tools' must be a list of pinned mise tools")
     out: list[str] = []
+    holds: dict[str, str] = {}
     for entry in raw_tools:
-        spec = entry.strip() if isinstance(entry, str) else entry
+        hold = None
+        if isinstance(entry, dict):
+            unknown = sorted(set(entry) - {"spec", "hold"})
+            if unknown:
+                raise SchemaError(
+                    f"{manifest}: tools entry has unknown field(s) {unknown} — a mapping entry "
+                    "takes exactly 'spec' and optionally 'hold'"
+                )
+            spec = entry.get("spec")
+            if not isinstance(spec, str) or not spec.strip():
+                raise SchemaError(
+                    f"{manifest}: tools entry {entry!r} must carry a non-empty 'spec' — a hold "
+                    "with nothing to hold is not a pin"
+                )
+            hold = entry.get("hold")
+            if hold is not None and (not isinstance(hold, str) or not hold.strip()):
+                raise SchemaError(
+                    f"{manifest}: tools entry {spec!r} has a 'hold' that is not a non-empty "
+                    "reason string — the reason is shown to whoever decides whether to lift it"
+                )
+        else:
+            spec = entry
+        spec = spec.strip() if isinstance(spec, str) else spec
         if not isinstance(spec, str) or not spec:
             raise SchemaError(f"{manifest}: tools entry {entry!r} must be a non-empty string")
+        # A hold freezes the pin; it does not license a floating one. Both forms are pinned or
+        # neither is — otherwise `hold:` becomes the escape hatch that reintroduces `@latest`.
         if _FLOATING_REF_RE.search(spec) or "@" not in spec:
             raise SchemaError(
                 f"{manifest}: tools entry {spec!r} must be pinned to an explicit version "
                 "(e.g. 'pulumi@3.140.0' — no '@latest' and no bare tool name)"
             )
         out.append(spec)
-    return out
+        if hold:
+            holds[spec] = hold.strip()
+    return out, holds
 
 
 # --- Recipe `env:` — environment for the RUNNING agent (bd harnessed-8px.2) --------------------
@@ -1216,6 +1288,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
     persist = _parse_persist(raw.get("persist"))
     env = _parse_env(raw.get("env"), manifest)
     _validate_env_templates(env, persist, manifest)
+    tools, tools_hold = _parse_tools(raw.get("tools"), manifest)
     return Recipe(
         name=raw["name"],
         description=raw.get("description", ""),
@@ -1232,7 +1305,8 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         setup=_parse_setup(raw.get("setup")),
         install=_parse_install(raw.get("install")),
         egress=_parse_egress(raw.get("egress"), manifest),
-        tools=_parse_tools(raw.get("tools"), manifest),
+        tools=tools,
+        tools_hold=tools_hold,
         env=env,
         root=recipe_dir,
         ref=ref or raw["name"],
