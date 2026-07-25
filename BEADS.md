@@ -51,6 +51,29 @@ remote (`bd dolt push` / `bd dolt pull`). The local Dolt store is runtime state 
 from the remote, which is why bd's own error text says "the Dolt database is runtime state, not in
 git" and suggests `bd bootstrap`.
 
+**`bd init` writes into the repo and COMMITS.** Verified on bd 1.1.0 in a scratch checkout: a plain
+`bd init` creates 18 files and commits them as `bd init: initialize beads issue tracking` — no
+prompt. harnessed's own history carries that commit (`fee7e8d`). What it writes:
+
+| Plain `bd init` | `bd init --stealth` |
+| --- | --- |
+| `AGENTS.md`, `CLAUDE.md` | *(neither)* |
+| `.claude/settings.json`, `.codex/{config.toml,hooks.json}` | *(none)* |
+| `.agents/skills/beads/**` | *(none)* |
+| `.beads/**` incl. `metadata.json`, `config.yaml`, git hooks | `.beads/**`, git-excluded |
+| root `.gitignore` (Dolt patterns) | `.git/info/exclude` entries instead |
+| **auto-commits all 18** | **no commit, nothing tracked, clean `git status`** |
+
+This is the direct confirmation that **`metadata.json` is tracked** — it is in that commit — which is
+what makes §4 a real conflict rather than an inference from `.gitignore` rules.
+
+**Stealth's exclude list has a near-miss.** `bd init --stealth` writes these to
+`.git/info/exclude`: `.beads/`, `.claude/settings.local.json`, `.dolt/`, `*.db`,
+`.beads-credential-key`, `.beads/proxieddb/`. Note `settings.local.json` — **not** `settings.json`.
+So when `bd setup <harness> --project --stealth` subsequently writes `.claude/settings.json` and
+`CLAUDE.md`, neither is covered, and `git status` shows `?? .claude/` and `?? CLAUDE.md`. Verified;
+this is the footprint the stealth recipe flags as one the user "opts into knowingly".
+
 **Dolt's data-dir shape.** A `dolt sql-server --data-dir D` serves the *subdirectories* of `D` as
 databases. The project database therefore lives at `<data>/dolt/<dbname>/`, and `<data>/dolt/`
 itself must never be a repo.
@@ -143,6 +166,13 @@ because `bd setup` writes into the project (`.claude/settings.json` + `CLAUDE.md
 could not be made reliably idempotent or footprint-free. That reversal is deliberate; the recipes'
 `No init:` comments should be updated when it lands, not left to contradict the behaviour.
 
+**A plain `bd init` auto-commits 18 files (§2).** So "harnessed initializes the workspace for the
+user" means harnessed causes an unrequested commit to their repo unless it suppresses that. For a
+tool whose stated requirement is that the user should not have to think about any of this, silently
+committing `AGENTS.md`, `CLAUDE.md`, `.codex/` and `.claude/settings.json` on first launch is very
+likely the wrong default — but suppressing it means diverging from bd's own init behaviour, which
+requirement 2 says we conform to. **Open, and it should be settled before auto-init ships.**
+
 Ordering is forced by §3 — socket-mode init cannot precede the server:
 
 1. Ensure the `beads-server` sidecar is up and healthy.
@@ -154,10 +184,11 @@ Ordering is forced by §3 — socket-mode init cannot precede the server:
 **Stealth's footprint becomes harnessed's problem at this point.** While init was a deliberate user
 action, the recipe could fairly say the user "opts into that footprint knowingly". Once harnessed
 runs it automatically, harnessed owns the `.claude/settings.json` + `CLAUDE.md` that bd leaves
-outside its own stealth exclude list, and adding them to the git common dir's `info/exclude` becomes
-justified. Note the hazard that makes this a decision rather than a detail: `info/exclude` entries
-are **path patterns**, not provenance — excluding `/CLAUDE.md` suppresses any future `CLAUDE.md` the
-user writes themselves, in a repo that does not already track one. Scope it accordingly. **Open.**
+outside its own stealth exclude list (§2 — bd excludes the near-miss `.claude/settings.local.json`),
+and adding them to the git common dir's `info/exclude` becomes justified. Note the hazard that makes
+this a decision rather than a detail: `info/exclude` entries are **path patterns**, not provenance —
+excluding `/CLAUDE.md` suppresses any future `CLAUDE.md` the user writes themselves, in a repo that
+does not already track one. Scope it accordingly. **Open.**
 
 ---
 
