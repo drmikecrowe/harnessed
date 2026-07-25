@@ -48,15 +48,20 @@ from .schema import SchemaError, load_recipe, load_stack
 
 __all__ = [
     "Pin", "Finding", "Release", "Report", "ResolveError",
-    "discover_pins", "build_report", "apply", "resolve_latest", "version_key",
-    "mise_repo", "affected_stacks", "verify_commands", "DEFAULT_COOLDOWN_DAYS",
+    "discover_pins", "build_report", "apply", "resolve_releases", "version_key",
+    "mise_repo", "affected_stacks", "verify_commands",
+    "DEFAULT_MINIMUM_RELEASE_AGE_MINUTES",
 ]
 
-# A release younger than this is never offered. A compromised or broken publish is usually yanked
-# within days, so waiting a week costs nothing and closes that window (Renovate: minimumReleaseAge).
-# Measured on 2026-07-25, this would have withheld 2 of the 5 bumps the command then offered —
-# pulumi 3.254.0 at 2 days old, and ccstatusline 2.2.26 published the same day.
-DEFAULT_COOLDOWN_DAYS = 7
+# Modelled on pnpm's `minimumReleaseAge`, including its unit: MINUTES. A compromised or broken
+# publish is usually yanked within days, so declining to install anything younger costs nothing and
+# closes that window. Our default is 7 days rather than pnpm's 1440 (1 day) — measured on
+# 2026-07-25, ALL FIVE pins the command offered were younger than a week, two of them hours old.
+#
+# Like pnpm, and unlike a naive gate, a too-fresh newest release does not mean "no update": the
+# newest version that IS old enough is offered instead (see `_select`). Refusing outright would
+# leave a stale pin stale for a week even when a mature intermediate release exists.
+DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 7 * 1440  # 10080
 
 
 class ResolveError(RuntimeError):
@@ -143,6 +148,10 @@ class Finding:
     # Set when the release is newer but inside the cooldown. `apply` refuses these outright, so a
     # caller that hands it the wrong bucket still cannot write a too-fresh version.
     cooling: bool = False
+    # A NEWER release than `latest` that was passed over for being too young. Offering 1.6.0 while
+    # 1.6.1 exists is surprising unless the report says why, so this is carried for the renderer.
+    skipped_newer: str | None = None
+    skipped_newer_age_days: float | None = None
 
     @property
     def stale(self) -> bool:
@@ -316,68 +325,154 @@ def mise_repo(tool: str, *, run: Callable[[list[str]], str] = _run_mise) -> str 
     return None
 
 
-def _github_release(repo: str, fetch: Callable[[str], str]) -> Release:
-    data = json.loads(fetch(f"https://api.github.com/repos/{repo}/releases/latest"))
-    return Release(version=data["tag_name"], published=_parse_ts(data.get("published_at")))
+def _github_releases(repo: str, fetch: Callable[[str], str]) -> list[Release]:
+    """Published, non-draft, non-prerelease releases — newest first, as GitHub returns them.
+
+    The LIST endpoint, not `/releases/latest`: the age gate has to be able to fall back to an
+    older-but-mature release, which means seeing more than one. A prerelease or draft is not a
+    shipped version, so offering one would bump the catalog onto an unreleased build.
+    """
+    data = json.loads(fetch(f"https://api.github.com/repos/{repo}/releases?per_page=100"))
+    return [
+        Release(version=r["tag_name"], published=_parse_ts(r.get("published_at")))
+        for r in data
+        if not r.get("prerelease") and not r.get("draft")
+    ]
 
 
-def resolve_latest(backend: str, name: str, *,
-                   fetch: Callable[[str], str] = _http_get,
-                   run: Callable[[list[str]], str] = _run_mise) -> Release | None:
-    """Ask `backend` for the newest release of `name`, WITH its publish date.
+def resolve_releases(backend: str, name: str, *,
+                     fetch: Callable[[str], str] = _http_get,
+                     run: Callable[[list[str]], str] = _run_mise) -> list[Release]:
+    """Every known release of `name`, each WITH its publish date.
 
-    The date is not optional garnish — it is what the cooldown is enforced on, so each backend uses
-    the endpoint that carries one. Raises ResolveError if the backend cannot answer.
+    Dates are not garnish — they are what the minimum-release-age gate is enforced on — and the
+    full LIST (rather than just the newest) is what lets a too-fresh newest release fall back to a
+    mature predecessor, the way pnpm does. Raises ResolveError if the backend cannot answer.
+
+    Payload shapes verified against the live registries on 2026-07-25.
     """
     try:
         if backend == "npm":
-            # The full packument, NOT `/latest`: only the packument carries the `time` map. The
-            # scope's '/' is a real path separator here — percent-encoding it 404s.
+            # The full packument, NOT `/latest`: only the packument carries `time`. The scope's '/'
+            # is a real path separator here — percent-encoding it 404s.
             data = json.loads(fetch(f"https://registry.npmjs.org/{name}"))
-            version = data["dist-tags"]["latest"]
-            return Release(version=version, published=_parse_ts(data.get("time", {}).get(version)))
+            times = data.get("time", {})
+            # Cross `versions` with `time`: `time` also holds `created`/`modified` (the only
+            # non-version keys npm emits), and can retain entries for versions since unpublished.
+            return [
+                Release(version=v, published=_parse_ts(times.get(v)))
+                for v in data.get("versions", {})
+            ]
         if backend == "pipx":
             data = json.loads(fetch(f"https://pypi.org/pypi/{name}/json"))
-            urls = data.get("urls") or []
-            return Release(
-                version=data["info"]["version"],
-                published=_parse_ts(urls[0].get("upload_time_iso_8601") if urls else None),
-            )
+            out: list[Release] = []
+            for version, files in (data.get("releases") or {}).items():
+                # A fully-yanked release keeps its key but loses its files: no date, not
+                # installable, therefore not a candidate.
+                if not files:
+                    continue
+                out.append(Release(
+                    version=version,
+                    published=_parse_ts(files[0].get("upload_time_iso_8601")),
+                ))
+            return out
         if backend == "github":
-            return _github_release(name, fetch)
+            return _github_releases(name, fetch)
         if backend == "mise":
             repo = mise_repo(name, run=run)
             if repo is None:
                 # Falling back to an undated `mise latest` would offer a bump under a rule that
-                # promises a 7-day age check we could not perform. Surface it instead.
+                # promises an age check we could not perform. Surface it instead.
                 raise ResolveError(
                     f"mise registry names no aqua/ubi/github repo for {name!r}, so its release "
                     "date cannot be checked — bump it by hand after reading upstream's notes"
                 )
-            return _github_release(repo, fetch)
+            return _github_releases(repo, fetch)
     except ResolveError:
         raise
-    except (json.JSONDecodeError, KeyError, TypeError, IndexError) as exc:
+    except (json.JSONDecodeError, KeyError, TypeError, IndexError, AttributeError) as exc:
         raise ResolveError(f"{backend} returned an unusable payload for {name}: {exc}") from exc
     except subprocess.SubprocessError as exc:
         raise ResolveError(f"mise could not resolve {name}: {exc}") from exc
     except OSError as exc:
         raise ResolveError(f"could not reach {backend} for {name}: {exc}") from exc
-    return None
+    return []
+
+
+def _select(pin: Pin, releases: list[Release], now: datetime, min_age_minutes: float):
+    """Pick the version to offer for `pin`, pnpm-style.
+
+    Returns (kind, finding). `kind` is the report bucket. The rule, in order:
+
+      * only versions ABOVE the current pin are candidates — never offer a downgrade
+      * with the gate off, the newest candidate wins outright
+      * otherwise the newest candidate OLD ENOUGH wins, and any newer one it passed over is
+        recorded so the report can explain the apparently-odd choice
+      * if nothing is old enough, the newest candidate is reported as cooling — visible, not offered
+      * an undated candidate is never selectable: we cannot honour the age guarantee for it
+    """
+    def age_days(r: Release) -> float | None:
+        return None if r.published is None else (now - r.published).total_seconds() / 86400
+
+    def finding(r: Release, **kw) -> Finding:
+        # Normalise ONCE so the report shows exactly the string `apply` will write: a GitHub tag
+        # arrives `v`-prefixed and the pin's own convention wins (see _match_v_prefix).
+        return Finding(pin=pin, latest=_match_v_prefix(pin.current, r.version),
+                       published=r.published, age_days=age_days(r), **kw)
+
+    current_key = version_key(pin.current)
+    candidates = []
+    for r in releases:
+        try:
+            if version_key(r.version) > current_key:
+                candidates.append(r)
+        except (ValueError, AttributeError, TypeError):
+            continue                      # an unparseable tag is not a candidate
+    if not candidates:
+        return "current", Finding(pin=pin, latest=pin.current)
+
+    candidates.sort(key=lambda r: version_key(r.version))
+    newest = candidates[-1]
+
+    if min_age_minutes <= 0:
+        return "stale", finding(newest)
+
+    min_days = min_age_minutes / 1440
+    safe = [r for r in candidates if (a := age_days(r)) is not None and a >= min_days]
+    if safe:
+        chosen = safe[-1]
+        f = finding(chosen)
+        if version_key(newest.version) > version_key(chosen.version):
+            f.skipped_newer = _match_v_prefix(pin.current, newest.version)
+            f.skipped_newer_age_days = age_days(newest)
+        return "stale", f
+
+    if all(r.published is None for r in candidates):
+        return "unresolved", Finding(
+            pin=pin, latest=_match_v_prefix(pin.current, newest.version),
+            error=f"{newest.version} is newer, but {pin.backend} gave no publish date, so its "
+                  f"release age cannot be checked against the {min_days:g}-day minimum — review "
+                  "it by hand",
+        )
+
+    f = finding(newest)
+    f.cooling = True
+    return "cooling", f
 
 
 def build_report(recipe_dirs, *,
-                 resolve: Callable[[str, str], "Release | None"] | None = None,
+                 resolve: Callable[[str, str], list[Release]] | None = None,
                  now: datetime | None = None,
-                 cooldown_days: float = DEFAULT_COOLDOWN_DAYS) -> Report:
+                 minimum_release_age_minutes: float = DEFAULT_MINIMUM_RELEASE_AGE_MINUTES
+                 ) -> Report:
     """Classify every pin across `recipe_dirs`. Reads only — nothing here writes.
 
-    `cooldown_days` is the minimum release age: anything newer lands in `cooling` rather than
-    `stale`. Pass 0 to disable it (and with it the requirement that a release be dated at all).
+    `minimum_release_age_minutes` follows pnpm's `minimumReleaseAge`, unit included. Pass 0 to
+    disable the gate (and with it the requirement that a release be dated at all).
     """
     if resolve is None:
         def resolve(backend, name):  # noqa: E306
-            return resolve_latest(backend, name)
+            return resolve_releases(backend, name)
     now = now or datetime.now(timezone.utc)
 
     report = Report()
@@ -390,42 +485,24 @@ def build_report(recipe_dirs, *,
                 (report.held if pin.hold else report.unresolved).append(f)
                 continue
             try:
-                rel = resolve(pin.backend, pin.name)
+                releases = resolve(pin.backend, pin.name) or []
             except ResolveError as exc:
                 report.unresolved.append(Finding(pin=pin, error=str(exc)))
                 continue
-            if rel is None:
+            if not releases:
                 report.unresolved.append(
                     Finding(pin=pin, error=f"{pin.backend} knows no version for {pin.name}")
                 )
                 continue
 
-            age = None if rel.published is None else (now - rel.published).total_seconds() / 86400
-            # Normalise ONCE, here, so the report shows exactly the string `apply` will write. A
-            # GitHub tag arrives `v`-prefixed; the pin's own convention wins (see _match_v_prefix).
-            latest = _match_v_prefix(pin.current, rel.version)
-            f = Finding(pin=pin, latest=latest, published=rel.published, age_days=age)
-
-            # The hold outranks everything: a held pin is never offered whatever its age.
-            if pin.hold:
+            kind, f = _select(pin, releases, now, minimum_release_age_minutes)
+            # The hold outranks the age gate: a held pin is never offered whatever its age, but it
+            # is still LISTED with whatever newer version exists.
+            if pin.hold and kind != "current":
+                f.cooling = False
                 report.held.append(f)
-            elif not f.stale:
-                report.current.append(f)
-            elif cooldown_days <= 0:
-                report.stale.append(f)
-            elif age is None:
-                # Undated + a cooldown in force = a promise we cannot keep. Do not offer it.
-                report.unresolved.append(Finding(
-                    pin=pin, latest=rel.version,
-                    error=f"{rel.version} is newer, but {pin.backend} gave no publish date, so "
-                          f"its release age cannot be checked against the {cooldown_days:g}-day "
-                          "cooldown — review it by hand",
-                ))
-            elif age < cooldown_days:
-                f.cooling = True
-                report.cooling.append(f)
             else:
-                report.stale.append(f)
+                getattr(report, kind).append(f)
     return report
 
 

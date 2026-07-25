@@ -49,7 +49,7 @@ def _fake_resolver(table, *, fail=(), age_days=365):
         if (backend, name) in fail:
             raise update.ResolveError(f"registry said no: {name}")
         version = table.get((backend, name))
-        return None if version is None else update.Release(version=version, published=published)
+        return [] if version is None else [update.Release(version=version, published=published)]
     return resolve
 
 
@@ -365,14 +365,14 @@ class TestResolvers:
                 "time": {"0.9.28": "2026-01-01T00:00:00Z"},
             })
 
-        update.resolve_latest("npm", "@agentmemory/mcp", fetch=fetch)
+        update.resolve_releases("npm", "@agentmemory/mcp", fetch=fetch)
         assert seen["url"] == "https://registry.npmjs.org/@agentmemory/mcp"
 
     def test_a_malformed_payload_raises_resolve_error(self):
         """A registry returning something unexpected must surface as unresolved, not crash the
         whole run or be read as 'no newer version'."""
         with pytest.raises(update.ResolveError):
-            update.resolve_latest("npm", "x", fetch=lambda url: "not json")
+            update.resolve_releases("npm", "x", fetch=lambda url: "not json")
 
 
 class TestCatalogSweep:
