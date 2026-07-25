@@ -238,7 +238,31 @@ does not already track one. Scope it accordingly. **Open.**
 
 ---
 
-## 8. Incident record — 2026-07-19 → 2026-07-25
+## 8. Decisions on record
+
+Settled 2026-07-25. Each is a choice, not a discovery — revisit deliberately, not by accident.
+
+| # | Decision | Why |
+| --- | --- | --- |
+| D1 | Socket mode is **mandatory** for harnessed-managed workspaces | It is the only configuration that disables bd's auto-start, and the data dir cannot be pinned in server mode (§3) |
+| D2 | harnessed **re-asserts** the mode every launch, not just detects | The 07-16 reinit drifted this workspace silently and nothing noticed for days; setup runs once, launches run always |
+| D3 | **No `bd` shim on PATH** | Rejected as machinery; socket mode already makes stray `bd` calls fail cleanly rather than destructively |
+| D4 | Per-project data dir, **not** bd's shared server | Matches the per-project sidecar; the shared server is what collided on port 3308 |
+| D5 | **bd's conventions are the contract** | Requirement 2 — a teammate with plain `bd` is a first-class user, so harnessed conforms and protects, never places |
+| D6 | The socket is delivered by **environment**, never persisted | §4 — the only way D1 and requirement 2 can both hold |
+| D7 | Stealth's `info/exclude` does **not** live in `svc migrate` | Wrong trigger (the footprint comes from `bd setup`), and a blanket path pattern would hide a user's own future `CLAUDE.md`. Belongs with init — §6 |
+
+## 9. Open questions
+
+| # | Question | Blocks |
+| --- | --- | --- |
+| Q1 | Does `BEADS_DOLT_SERVER_SOCKET` **override** a socket already persisted in `metadata.json`? | Whether existing workspaces need a cleanup step after §4 lands. harnessed's own checkout is in exactly that state |
+| Q2 | `svc migrate` has never copied a real database — all tests use synthetic Dolt dirs | Confidence in the recovery path |
+| Q3 | Requirement 4 is half-met: team-over-stealth is undetectable without a recorded placement marker | §5 |
+| Q4 | Does auto-init suppress `bd init`'s automatic commit? | §6 — suppressing diverges from bd; not suppressing means harnessed commits to the user's repo unasked |
+| Q5 | Adopt `dolt.auto-start: false` in the tracked `config.yaml`? | Repo-wide guarantee vs. teammates having to run `bd dolt start` themselves (§3) |
+
+## 10. Incident record — 2026-07-19 → 2026-07-25
 
 Kept because each misdiagnosis was reasonable given what the system reports.
 
