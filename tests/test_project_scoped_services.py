@@ -518,29 +518,6 @@ class TestMigrationSourceDiscovery:
         assert launcher._dolt_migration_sources(data, "proj") == []
 
 
-class TestStealthGitExcludes:
-    """Stealth exists to be invisible; bd's own exclude list misses its setup footprint."""
-
-    def _repo(self, tmp_path):
-        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-        return tmp_path
-
-    def test_adds_the_missing_entries_to_the_common_dir(self, tmp_path):
-        repo = self._repo(tmp_path)
-        added = launcher._ensure_stealth_git_excludes(repo)
-        assert added == ["/.claude/settings.json", "/CLAUDE.md"]
-        written = (repo / ".git" / "info" / "exclude").read_text()
-        assert "/.claude/settings.json" in written and "/CLAUDE.md" in written
-
-    def test_is_idempotent(self, tmp_path):
-        repo = self._repo(tmp_path)
-        launcher._ensure_stealth_git_excludes(repo)
-        assert launcher._ensure_stealth_git_excludes(repo) == []
-
-    def test_a_non_git_directory_is_left_alone(self, tmp_path):
-        assert launcher._ensure_stealth_git_excludes(tmp_path) == []
-
-
 class TestSvcMigrate:
     """Copies a database in, never moves it — a failed migration must leave the source usable."""
 
@@ -610,18 +587,6 @@ class TestSvcMigrate:
         with pytest.raises(typer.Exit):
             launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(src), assume_yes=True)
         assert not (host_dir / "dolt" / "proj").exists()
-
-    def test_stealth_placement_also_gets_the_git_excludes(self, tmp_path, monkeypatch):
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(["git", "init", "-q", str(repo)], check=True)
-        host_dir = tmp_path / "data"
-        host_dir.mkdir()
-        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
-        src = _dolt_db_at(tmp_path / "elsewhere" / "proj")
-        self._wire(monkeypatch, host_dir, location="host")
-        launcher._svc_migrate(self._svc(tmp_path), "stk", repo, str(src), assume_yes=True)
-        assert "/CLAUDE.md" in (repo / ".git" / "info" / "exclude").read_text()
 
     def test_a_service_without_a_dolt_lock_has_no_migration(self, tmp_path, monkeypatch):
         with pytest.raises(typer.Exit):

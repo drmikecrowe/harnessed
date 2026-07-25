@@ -2945,41 +2945,6 @@ def _assert_data_dir_not_self_served(svc: "ServiceDef", host_dir: Path) -> None:
     raise typer.Exit(1)
 
 
-_STEALTH_GIT_EXCLUDES = ("/.claude/settings.json", "/CLAUDE.md")
-
-
-def _ensure_stealth_git_excludes(project_path: Path) -> list[str]:
-    """Keep bd's setup footprint out of `git status` for a stealth placement. Returns what it added.
-
-    `beads/stealth` exists so the tool is invisible to the repo and to collaborators, and `bd init
-    --stealth` does git-exclude the state it knows about. But `bd setup <harness> --stealth` still
-    writes `.claude/settings.json` and `CLAUDE.md` on bd 1.1.0, and neither is in bd's exclude list —
-    the recipe documents this as a footprint the user "opts into knowingly". For a placement whose
-    entire purpose is invisibility, that is worth closing rather than documenting.
-
-    Written to the git COMMON dir's `info/exclude`, so it holds for every worktree of the checkout —
-    in a bare + linked-worktree layout `<worktree>/.git` is a file, not a directory, and the real
-    `info/exclude` lives beside the bare repo.
-
-    Idempotent, and additive only: entries already present are left alone, and nothing is removed.
-    Excluding a path that is already TRACKED is a no-op in git, so this cannot hide a tracked
-    CLAUDE.md from anyone.
-    """
-    gcd = paths.git_common_dir(project_path)
-    if gcd is None:
-        return []
-    exclude = gcd / "info" / "exclude"
-    present = exclude.read_text().split() if exclude.is_file() else []
-    missing = [p for p in _STEALTH_GIT_EXCLUDES if p not in present]
-    if not missing:
-        return []
-    exclude.parent.mkdir(parents=True, exist_ok=True)
-    with exclude.open("a") as fh:
-        fh.write("\n# harnessed beads/stealth — bd's setup footprint, excluded to keep it invisible\n")
-        fh.write("".join(f"{p}\n" for p in missing))
-    return missing
-
-
 def _dolt_migration_sources(host_dir: Path, db: str) -> list[Path]:
     """Directories that hold database `db` and could be migrated into this data dir.
 
@@ -5444,7 +5409,7 @@ def _svc_migrate(
     if svc_def.exclusive_lock != "dolt":
         _err.print(f"[bold red]error:[/bold red] service '{svc_def.name}' defines no migration")
         raise typer.Exit(1)
-    host_dir, _, location = _service_data_dir(svc_def, stack, project_path)
+    host_dir, _, _ = _service_data_dir(svc_def, stack, project_path)
     meta = _beads_metadata(host_dir)
     db = str((meta or {}).get("dolt_database") or "")
     if not db:
@@ -5515,11 +5480,6 @@ def _svc_migrate(
         _err.print(f"[bold red]error:[/bold red] migration landed at {dest} but is not a Dolt database")
         raise typer.Exit(1)
     _out.print(f"[green][SUCCESS][/green] '{db}' migrated into {host_dir / 'dolt'}")
-
-    if location == "host":
-        added = _ensure_stealth_git_excludes(project_path)
-        if added:
-            _out.print(f"[blue][INFO][/blue] stealth: excluded {', '.join(added)} via git info/exclude")
 
 
 @app.command("svc")
