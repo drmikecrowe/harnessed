@@ -26,6 +26,20 @@ def _plain(text: str) -> str:
     return _ANSI.sub("", text)
 
 
+def _table(table, name):
+    """Look a version up and wrap it as a year-old Release, so the cooldown never interferes."""
+    version = table.get(name)
+    return None if version is None else _old(version)
+
+
+def _old(version):
+    """A resolver result old enough that the release-age cooldown never interferes."""
+    from datetime import datetime, timedelta, timezone
+    return update.Release(
+        version=version, published=datetime.now(timezone.utc) - timedelta(days=365)
+    )
+
+
 @pytest.fixture
 def catalog(tmp_path, monkeypatch):
     """A throwaway catalog with one stale pin, one held pin, and one opaque pin."""
@@ -45,7 +59,7 @@ def catalog(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher.paths, "catalog_roots", lambda: [tmp_path / "catalog"])
     monkeypatch.setattr(
         update, "resolve_latest",
-        lambda backend, name, **kw: {"x": "1.5.0", "y": "9.9.9"}.get(name),
+        lambda backend, name, **kw: _table({"x": "1.5.0", "y": "9.9.9"}, name),
     )
     return root
 
@@ -86,17 +100,13 @@ class TestCheckMode:
         assert (catalog / "stale" / "recipe.yaml").read_bytes() == before
 
     def test_check_exits_zero_when_nothing_is_stale(self, catalog, monkeypatch):
-        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: {
-            "x": "1.0.0", "y": "9.9.9",
-        }.get(name))
+        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
         result = runner.invoke(launcher.app, ["update", "--check"])
         assert result.exit_code == 0
 
     def test_a_held_pin_alone_never_fails_check(self, catalog, monkeypatch):
         """`frozen` is 8 majors behind on purpose. CI must stay green."""
-        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: {
-            "x": "1.0.0", "y": "9.9.9",
-        }.get(name))
+        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
         result = runner.invoke(launcher.app, ["update", "--check"])
         assert result.exit_code == 0
         assert "frozen" in _plain(result.output), "a held pin is still LISTED, just not fatal"
@@ -148,9 +158,68 @@ class TestInteractive:
         assert "npm:y@1.0.0" in (catalog / "frozen" / "recipe.yaml").read_text()
 
     def test_nothing_stale_says_so_and_exits_clean(self, catalog, monkeypatch):
-        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: {
-            "x": "1.0.0", "y": "9.9.9",
-        }.get(name))
+        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: _table({"x": "1.0.0", "y": "9.9.9"}, name))
         result = runner.invoke(launcher.app, ["update"])
         assert result.exit_code == 0
         assert "up to date" in _plain(result.output).lower()
+
+
+class TestCooldownSurface:
+    """bd harnessed-7zb — a too-fresh release is shown, not offered, and never fails CI."""
+
+    @pytest.fixture
+    def fresh(self, catalog, monkeypatch):
+        from datetime import datetime, timedelta, timezone
+        monkeypatch.setattr(update, "resolve_latest", lambda backend, name, **kw: (
+            update.Release(
+                version={"x": "1.5.0", "y": "9.9.9"}[name],
+                published=datetime.now(timezone.utc) - timedelta(days=2),
+            ) if name in ("x", "y") else None
+        ))
+        return catalog
+
+    def test_a_fresh_release_is_not_bumped_even_with_yes(self, fresh):
+        runner.invoke(launcher.app, ["update", "--yes"])
+        assert "npm:x@1.0.0" in (fresh / "stale" / "recipe.yaml").read_text(), (
+            "a release published 2 days ago must not be written, --yes or not"
+        )
+
+    def test_a_fresh_release_is_still_listed_with_its_age(self, fresh):
+        out = _plain(runner.invoke(launcher.app, ["update", "--check"]).output)
+        assert "cooldown" in out.lower()
+        assert "1.5.0" in out and "days ago" in out
+
+    def test_a_fresh_release_does_not_fail_check(self, fresh):
+        assert runner.invoke(launcher.app, ["update", "--check"]).exit_code == 0
+
+    def test_the_window_can_be_overridden_on_the_command_line(self, fresh):
+        """`--cooldown-days 0` opts out — for someone who has read the release themselves."""
+        runner.invoke(launcher.app, ["update", "--yes", "--cooldown-days", "0"])
+        assert "npm:x@1.5.0" in (fresh / "stale" / "recipe.yaml").read_text()
+
+
+class TestPostBumpGuidance:
+    """bd harnessed-czo — name the stacks and print the commands, rather than saying 'the affected
+    stacks' and leaving the user to work out which those are."""
+
+    @pytest.fixture
+    def with_stacks(self, catalog, tmp_path):
+        stacks = tmp_path / "catalog" / "stacks"
+        (stacks / "alpha").mkdir(parents=True)
+        (stacks / "alpha" / "stack.yaml").write_text(
+            "name: alpha\nrecipes: [stale]\nharnesses: [claude]\n"
+        )
+        return catalog
+
+    def test_the_bumped_recipe_and_its_stacks_are_named(self, with_stacks):
+        out = _plain(runner.invoke(launcher.app, ["update", "--yes"]).output)
+        assert "Bumped: stale" in out
+        assert "alpha" in out
+
+    def test_the_literal_verify_commands_are_printed(self, with_stacks):
+        out = _plain(runner.invoke(launcher.app, ["update", "--yes"]).output)
+        assert "harnessed build alpha claude && harnessed test alpha claude" in out
+
+    def test_a_recipe_in_no_stack_says_so_instead_of_an_empty_list(self, catalog):
+        out = _plain(runner.invoke(launcher.app, ["update", "--yes"]).output)
+        assert "nothing to rebuild" in out.lower()

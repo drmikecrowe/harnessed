@@ -17,6 +17,7 @@ Three rules shape this command, and each has a class below:
 """
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -35,12 +36,20 @@ def _recipe_dir(tmp_path, name, body, *, install_sh=None, dockerfile=None):
     return d
 
 
-def _fake_resolver(table, *, fail=()):
-    """A resolver stub. `table` maps (backend, name) -> latest; `fail` names keys that raise."""
+def _fake_resolver(table, *, fail=(), age_days=365):
+    """A resolver stub. `table` maps (backend, name) -> latest; `fail` names keys that raise.
+
+    Dates default to a year old so the release-age cooldown (bd harnessed-7zb) never interferes —
+    these tests are about classification and rewriting, not freshness. The cooldown has its own
+    file, where the age is the variable under test.
+    """
+    published = datetime.now(timezone.utc) - timedelta(days=age_days)
+
     def resolve(backend, name):
         if (backend, name) in fail:
             raise update.ResolveError(f"registry said no: {name}")
-        return table.get((backend, name))
+        version = table.get((backend, name))
+        return None if version is None else update.Release(version=version, published=published)
     return resolve
 
 
@@ -340,15 +349,9 @@ class TestRewrite:
 class TestResolvers:
     """URL/command construction per backend, with the network stubbed."""
 
-    def test_npm_reads_the_registry_dist_tag(self):
-        seen = {}
-
-        def fetch(url):
-            seen["url"] = url
-            return json.dumps({"version": "1.2.3"})
-
-        assert update.resolve_latest("npm", "context-mode", fetch=fetch) == "1.2.3"
-        assert seen["url"] == "https://registry.npmjs.org/context-mode/latest"
+    # Per-backend URL and payload handling now lives in test_update_cooldown.py, because each
+    # resolver must return a publish DATE and the date is what those tests pin down. Kept here:
+    # the two assertions that are about resolution itself rather than about freshness.
 
     def test_a_scoped_npm_package_keeps_its_slash_unescaped(self):
         """`@scope/name` is one path segment pair in the registry API — percent-encoding the slash
@@ -357,42 +360,13 @@ class TestResolvers:
 
         def fetch(url):
             seen["url"] = url
-            return json.dumps({"version": "0.9.28"})
+            return json.dumps({
+                "dist-tags": {"latest": "0.9.28"},
+                "time": {"0.9.28": "2026-01-01T00:00:00Z"},
+            })
 
         update.resolve_latest("npm", "@agentmemory/mcp", fetch=fetch)
-        assert seen["url"] == "https://registry.npmjs.org/@agentmemory/mcp/latest"
-
-    def test_pypi_is_used_for_pipx(self):
-        seen = {}
-
-        def fetch(url):
-            seen["url"] = url
-            return json.dumps({"info": {"version": "1.5.4"}})
-
-        assert update.resolve_latest("pipx", "serena-agent", fetch=fetch) == "1.5.4"
-        assert seen["url"] == "https://pypi.org/pypi/serena-agent/json"
-
-    def test_github_reads_the_latest_release_tag(self):
-        seen = {}
-
-        def fetch(url):
-            seen["url"] = url
-            return json.dumps({"tag_name": "v0.44.0"})
-
-        assert update.resolve_latest("github", "rtk-ai/rtk", fetch=fetch) == "v0.44.0"
-        assert seen["url"] == "https://api.github.com/repos/rtk-ai/rtk/releases/latest"
-
-    def test_mise_shells_out_for_a_registered_tool(self):
-        """A bare `pulumi@3.251.0` names a mise-registered tool — mise itself owns that mapping, so
-        asking it is more honest than hardcoding pulumi's release feed."""
-        calls = []
-
-        def run(cmd):
-            calls.append(cmd)
-            return "3.252.0\n"
-
-        assert update.resolve_latest("mise", "pulumi", run=run) == "3.252.0"
-        assert calls == [["mise", "latest", "pulumi"]]
+        assert seen["url"] == "https://registry.npmjs.org/@agentmemory/mcp"
 
     def test_a_malformed_payload_raises_resolve_error(self):
         """A registry returning something unexpected must surface as unresolved, not crash the
