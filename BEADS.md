@@ -83,13 +83,20 @@ itself must never be a repo.
 ## 3. The constraints harnessed cannot design around
 
 **bd auto-starts a server whenever it cannot reach one** — chdir'd into its data dir, with no
-`--data-dir`. This is not configurable away:
+`--data-dir`. The data dir it uses cannot be redirected:
 
 - `bd dolt set data-dir` is **rejected in server mode**: `setting data-dir in server mode is not
   supported (GH#2438). In server mode, the database is determined by the 'database' config key, not
   the local data directory.`
 - `dolt.data-dir` in `config.yaml` is silently ignored. `dolt.port` in the same file *is* honoured,
   which makes the omission easy to miss.
+
+**Auto-start itself CAN be turned off**, via `dolt.auto-start: false` in `.beads/config.yaml`.
+Verified: bd then refuses with *"Dolt server auto-start is disabled (dolt.auto-start: false). Start
+the server manually: bd dolt start"* and spawns nothing. This key is surfaced only in the failure
+text of an auto-start that could not complete, which is why it is easy to miss — it is not in
+`bd --help`, `bd dolt --help`, or `bd dolt set`'s key list. `config.yaml` is part of bd's **tracked**
+surface (§2), so this setting is machine-independent and safe to commit.
 
 **Socket mode is the only configuration that disables auto-start.** Verified: a workspace whose
 `metadata.json` carries `dolt_server_socket` refuses to spawn a server against an absent socket —
@@ -122,16 +129,43 @@ is trackable. Verified: `git ls-files .beads` returns only the worktree stub's `
 `interactions.jsonl`; the real workspace at `.bare/.beads` is untracked in its entirety. A normal
 single-checkout project would place `.beads/` in the working tree and expose the conflict immediately.
 
-Directions, none chosen:
+### The resolution: never write the socket to disk
 
-1. Keep `dolt_server_socket` out of tracked state — a machine-local override file bd consults, if
-   one exists or can be added upstream.
-2. Treat `metadata.json` as machine-local in harnessed-managed repos (add it to `.gitignore`),
-   accepting divergence from bd's convention and losing whatever bd intends to share through it.
-3. Have harnessed rewrite the socket to a **relative** or `$VAR`-based path, if bd will resolve one.
+**`BEADS_DOLT_SERVER_SOCKET` puts bd in socket mode on its own.** Verified against a workspace whose
+`metadata.json` says `dolt_mode: server` and carries **no** socket key: with the variable set to an
+absent path, bd refuses with *"Auto-start is not supported in socket mode"* and spawns nothing.
+Without it, the same workspace attempts a normal auto-start.
 
-Until this is settled, `beads/team` on a normal checkout is not safe to commit after a harnessed
-launch. **Do not commit `metadata.json` containing a `dolt_server_socket`.**
+That dissolves the conflict, because the machine-local value never has to be persisted:
+
+| | value | machine-specific? |
+| --- | --- | --- |
+| `metadata.json` `dolt_mode` | `server` | no — safe to track |
+| `BEADS_DOLT_SERVER_SOCKET` | absolute socket path | yes — **environment only, never written** |
+
+- **harnessed users** get the variable from the recipe's `env:` (container) and from the mise config
+  above the checkout (host shells harnessed did not launch), so every `bd` call is in socket mode and
+  auto-start is impossible.
+- **Teammates without harnessed** simply do not have the variable, fall through to bd's ordinary
+  behaviour, and are never handed a path that does not exist on their machine. Requirement 2 holds.
+
+**This means the `beads-server` entrypoint should stop rewriting `metadata.json`.** That migration
+block exists because `bd init` refuses to touch an initialized workspace — but if the socket is
+never persisted, there is nothing to migrate, and the block can be deleted rather than made
+team-safe. Until that lands: **do not commit a `metadata.json` containing a `dolt_server_socket`.**
+
+**Optional belt-and-braces:** `dolt.auto-start: false` in the tracked `config.yaml` (§3) disables
+auto-start for *everyone*, including teammates, making the data-dir poisoning impossible repo-wide
+rather than only in harnessed sessions. The cost is that a teammate must run `bd dolt start`
+themselves, so it trades convenience for a guarantee. Independent of the above; adopt or not on its
+own merits.
+
+Rejected: adding `metadata.json` to `.gitignore` (diverges from bd's convention and discards the
+`project_id` / `dolt_database` that bd does intend to share), and a clean/smudge filter to strip the
+key on commit (fragile, and invisible when it fails).
+
+**Untested:** whether the environment variable overrides a socket already present in
+`metadata.json`. It matters only for migrating existing workspaces off the persisted key.
 
 ---
 
