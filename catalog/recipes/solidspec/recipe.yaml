@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: solidspec — multi-methodology spec-driven development CLI (spec → plan → tasks →
 # implement → ship). Bakes the Rust binary at build time (see Dockerfile).
 #

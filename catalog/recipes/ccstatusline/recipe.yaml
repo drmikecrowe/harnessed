@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: ccstatusline — bake the ccstatusline status-line renderer into the agent image.
 #
 # ccstatusline is the program Claude Code invokes for its `statusLine` (a `type: command` entry in

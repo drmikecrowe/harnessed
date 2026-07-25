@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: agent-carnet — bake the agent-carnet CLI (pure-JS Node) and install its upstream-bundled
 # Claude skill into ~/.claude/skills/agent-carnet. No MCP, no service: agent-carnet is a CLI, not a
 # server. The .carnet/ notebook is a runtime, per-project operation the build-time Dockerfile can't

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/service.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/service.schema.json
 # Service: beads-server — the ONE `dolt sql-server` for a project. Every `bd` in every agent
 # container is a client of it; nothing else ever opens the Dolt data dir.
 #

@@ -86,7 +86,7 @@ makes recipe-baked stdio children possible). Nothing in the service speaks MCP.
 ## catalog/services/agentmemory/service.yaml (sketch — do NOT create yet)
 
 ```yaml
-# yaml-language-server: $schema=../../../schemas/service.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/service.schema.json
 # Shared persistent-memory STORE. Own image/container/volume, host-published,
 # instance-independent (one memory across all agents/instances — design §9).
 # REST-only :3111. No MCP surface — the recipe's stdio shim is the MCP adapter.

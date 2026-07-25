@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: codebase-memory-mcp (cbm) — structural code intelligence via a stdio MCP server.
 #
 # cbm builds a tree-sitter knowledge graph across 158 languages (14 tools: index_repository,
