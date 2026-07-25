@@ -41,6 +41,7 @@ from . import paths
 from . import persist
 from . import staleness
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
+from .persist_gc import _fmt_size
 from .assemble import assemble, compute_recipe_hash, _merge_servers, _resolve_service_servers
 from .synclinks import CollisionError
 from .schema import (
@@ -5527,10 +5528,13 @@ def _svc_migrate(
         raise typer.Exit(1)
 
     src = sources[0]
-    size_mb = _dir_size(src) / (1024 * 1024)
+    # persist_gc's formatter, not a hardcoded MiB: a small database rounds to "0.0 MiB", which reads
+    # as "there is nothing here" in the one prompt whose job is to tell the user what they are about
+    # to copy (a real 40 KiB database printed exactly that in the 2026-07-25 end-to-end run).
+    size = _fmt_size(_dir_size(src))
     mtime = datetime.fromtimestamp((src / ".dolt").stat().st_mtime).strftime("%Y-%m-%d %H:%M")
     _out.print(f"[blue][INFO][/blue] migrate database '{db}'")
-    _out.print(f"           from  {src}  ({size_mb:.1f} MiB, last written {mtime})")
+    _out.print(f"           from  {src}  ({size}, last written {mtime})")
     _out.print(f"           into  {dest}")
     _out.print("           the source is COPIED, not moved — it stays where it is")
     if not assume_yes:

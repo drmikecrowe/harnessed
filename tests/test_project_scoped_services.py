@@ -14,6 +14,7 @@ socket clients removes the contention by construction.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -633,6 +634,35 @@ class TestSvcMigrate:
         with pytest.raises(typer.Exit):
             launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(src), assume_yes=True)
         assert not (host_dir / "dolt" / "proj").exists()
+
+    @pytest.mark.skipif(shutil.which("dolt") is None, reason="needs the dolt binary")
+    def test_migrates_a_real_dolt_database(self, tmp_path, monkeypatch):
+        """The synthetic tests above prove the CONTROL FLOW; this proves the bytes survive.
+
+        Everything else in this class drives `_svc_migrate` against directories that merely look
+        like Dolt databases. That leaves the actual premise — that a plain directory copy of a
+        quiescent Dolt database yields a working database — asserted rather than tested. Gated on
+        the dolt binary, so it skips on the hermetic CI runner; run it locally before trusting a
+        change to the copy path.
+        """
+        src = tmp_path / "src" / "probe"
+        src.mkdir(parents=True)
+        run = lambda *a: subprocess.run(a, cwd=src, capture_output=True, check=True)
+        run("dolt", "init", "--name", "probe", "--email", "probe@local")
+        run("dolt", "sql", "-q", "CREATE TABLE issues (id VARCHAR(64) PRIMARY KEY, title TEXT)")
+        run("dolt", "sql", "-q", "INSERT INTO issues VALUES ('probe-1','real bytes')")
+
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "probe"}))
+        self._wire(monkeypatch, host_dir)
+        launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(src), assume_yes=True)
+
+        out = subprocess.run(
+            ["dolt", "sql", "-q", "SELECT title FROM issues WHERE id='probe-1'"],
+            cwd=host_dir / "dolt" / "probe", capture_output=True, text=True, check=True,
+        ).stdout
+        assert "real bytes" in out, "the migrated database must be readable, not just present"
 
     def test_a_service_without_a_dolt_lock_has_no_migration(self, tmp_path, monkeypatch):
         with pytest.raises(typer.Exit):
