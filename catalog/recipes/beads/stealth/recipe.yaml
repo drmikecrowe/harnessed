@@ -84,6 +84,18 @@ persist:
 # agree by construction — now in both modes.
 env:
   BEADS_DIR: "{persist:.beads}"
+  # Socket mode, delivered by ENVIRONMENT rather than written to disk. bd honours this on its own —
+  # verified against a workspace whose metadata.json says `dolt_mode: server` with NO socket key:
+  # set, bd refuses with "Auto-start is not supported in socket mode" and spawns nothing.
+  #
+  # Stealth's `.beads` is outside the repo, so the tracked-metadata hazard that drives this in
+  # beads/team does not bite here — but the value is still machine-local, and keeping BOTH recipes on
+  # one mechanism is what stops the two placements from drifting into different failure modes. The
+  # beads-server entrypoint deliberately writes nothing to metadata.json; see BEADS.md §4.
+  #
+  # Same `{persist:.beads}` entry the service resolves for its data dir, and it serves its socket at
+  # `<data>/run/mysql.sock` — so client and server agree by construction, in both modes.
+  BEADS_DOLT_SERVER_SOCKET: "{persist:.beads}/run/mysql.sock"
 
 # No `init:` — beads is NOT auto-initialized (same rationale as beads/team; `bd setup --stealth`
 # still leaves an untracked `.claude/settings.json` + `CLAUDE.md` footprint on bd 1.1.0, so it cannot

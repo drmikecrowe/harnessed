@@ -2799,7 +2799,7 @@ def _ensure_service(
 
     if svc.scope == "project":
         assert project_path is not None  # guarded above
-        host_dir, agent_dir, location = _service_data_dir(svc, stack, project_path)
+        host_dir, _, location = _service_data_dir(svc, stack, project_path)
         persist.guard_ownership(host_dir)
         host_dir.mkdir(parents=True, exist_ok=True)
         _assert_data_dir_unlocked(svc, host_dir)
@@ -2809,12 +2809,11 @@ def _ensure_service(
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
         # (a dolt data dir written by a foreign uid would EACCES for every agent container).
         run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
-        if svc.is_socket_only:
-            # The CLIENT-visible socket path — NOT this container's /data/run/... view of it. A
-            # service that records a socket path for its clients (beads writes it into
-            # .beads/metadata.json) must record the path THEY use, or every client dials a path that
-            # does not exist in its mount namespace.
-            run_cmd += ["-e", f"HARNESSED_SOCKET_PATH={agent_dir}/{svc.socket}"]
+        # No HARNESSED_SOCKET_PATH: it existed solely so the beads-server entrypoint could stamp the
+        # client-visible socket into .beads/metadata.json, and that writer is gone (metadata.json is
+        # tracked, the socket path is machine-local — BEADS.md §4). Clients now learn the socket from
+        # their own environment, which the recipes resolve through the same persist entry, so nothing
+        # has to be passed into the server for the clients' benefit.
         if location == "in_repo" and mount_path is not None:
             # The git repo itself — remote git traffic (bd's `dolt clone` of refs/dolt/data at init,
             # and `bd dolt push` at sync) runs HERE, because bd shells out to a dolt CLI that only

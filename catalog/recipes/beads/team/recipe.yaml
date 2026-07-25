@@ -97,6 +97,22 @@ persist:
 # beads/stealth already carries this env for the identical reason; team needs it just as much.
 env:
   BEADS_DIR: "{persist:.beads}"
+  # Socket mode, delivered by ENVIRONMENT rather than written to disk. bd honours this on its own —
+  # verified against a workspace whose metadata.json says `dolt_mode: server` with NO socket key:
+  # set, bd refuses with "Auto-start is not supported in socket mode" and spawns nothing; unset, the
+  # same workspace auto-starts exactly as bd normally would.
+  #
+  # That second half is the whole point for TEAM placement. metadata.json is part of bd's TRACKED
+  # surface (`bd init` commits it), so a socket path recorded there travels to every teammate as an
+  # absolute path from someone else's machine — and because socket mode disables auto-start, they do
+  # not degrade gracefully, they are hard-blocked. Keeping the value in the environment means a
+  # teammate without harnessed simply does not have it and gets bd's ordinary behaviour, which is
+  # the one rule this placement exists to keep. See BEADS.md §4.
+  #
+  # Same `{persist:.beads}` entry the beads-server service resolves for its data dir, and the server
+  # serves its socket at `<data>/run/mysql.sock` — so client and server agree by construction, in
+  # both modes.
+  BEADS_DOLT_SERVER_SOCKET: "{persist:.beads}/run/mysql.sock"
 
 # No `init:` — beads is NOT auto-initialized. bd's setup writes into the project
 # (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and cannot be made reliably
