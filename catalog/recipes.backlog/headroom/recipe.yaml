@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: headroom — context compression via the headroom MCP server (MCP-tools mode only).
 #
 # Exposes headroom_compress / headroom_retrieve / headroom_stats as stdio MCP tools the agent

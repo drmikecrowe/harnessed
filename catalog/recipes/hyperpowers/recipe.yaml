@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: hyperpowers — Ryan Stortz / withzombies' markdown-first dev-workflow skill suite.
 #
 # Upstream (https://github.com/withzombies/hyperpowers, MIT) ships a Claude Code plugin whose

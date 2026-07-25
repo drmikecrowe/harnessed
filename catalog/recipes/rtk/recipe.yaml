@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: rtk — bake the "Rust Token Killer" CLI into the agent image.
 #
 # rtk is a proxy CLI the agent invokes explicitly (`rtk git status`, `rtk read file.rs`, …) that runs

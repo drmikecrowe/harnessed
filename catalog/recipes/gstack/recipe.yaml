@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: gstack — install a third-party skill suite by running its own upstream installer.
 #
 # The whole recipe is: do what gstack's install docs say (git clone + ./setup). ./setup bakes ~50

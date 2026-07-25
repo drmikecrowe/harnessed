@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../../../schemas/recipe.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 # Recipe: caveman — output-compression skill suite, vendored by cloning the pinned release tag.
 #
 # The whole recipe is: clone caveman's pinned tag and copy its upstream skills/commands/agents

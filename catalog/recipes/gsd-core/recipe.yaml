@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
 name: gsd-core
 description: >-
   GSD Core (opengsd.net) — a spec-driven-development skill/agent/workflow suite
