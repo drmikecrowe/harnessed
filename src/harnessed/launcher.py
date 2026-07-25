@@ -2484,8 +2484,14 @@ def harnessed_env(
         # path — `$HOST_HOME/.pulumi`, not `~/.pulumi`. This export is that handle.
         "HOST_HOME": str(Path.home()),
     }
-    if mode == "container" and sockets:
-        env.update(svc_socket_env(stack, project_path))
+    if sockets:
+        # Both modes (bd harnessed-162). This used to be container-only, so a host launch never got
+        # HARNESSED_<SVC>_SOCKET and the beads recipes' `setup:` line — which interpolates it with a
+        # `:?` guard — always aborted, even with the sidecar running. The guard was telling the truth:
+        # the variable genuinely did not exist. Correct in host mode only because _service_data_dir
+        # now resolves the agent path per mode (harnessed-5ek); before that this would have exported
+        # a container path onto the host.
+        env.update(svc_socket_env(stack, project_path, mode))
     if recipe is not None:
         # A setup script does `cp` where a recipe Dockerfile did `COPY`, so it needs its own source
         # dir. Container-side that is the ro mount from `_setup_script_mounts`; host-side it is the
@@ -2629,8 +2635,10 @@ def _svc_project_key(svc: "ServiceDef", project_path: Path | None) -> str:
     return paths.project_hash(gcd if gcd is not None else project_path)
 
 
-def _service_data_dir(svc: "ServiceDef", stack: str, project_path: Path) -> tuple[Path, str, str]:
-    """Resolve a project-scoped service's data dir → (host_dir, agent_container_path, location).
+def _service_data_dir(
+    svc: "ServiceDef", stack: str, project_path: Path, mode: str = "container"
+) -> tuple[Path, str, str]:
+    """Resolve a project-scoped service's data dir → (host_dir, agent_path, location).
 
     The service does NOT choose where its bytes live — the RECIPE does. The service names a persist
     entry (`data.persist`), the launcher finds the recipe in this stack that declares it, and
@@ -2656,7 +2664,14 @@ def _service_data_dir(svc: "ServiceDef", stack: str, project_path: Path) -> tupl
                 host_dir = paths.persist_project_dir(recipe.name, project_path, entry.name)
             else:
                 host_dir = paths.persist_workspace_dir(recipe.name, project_path, entry.name)
-            return host_dir, f"{_CONTAINER_HOME_STR}/{entry.name}", "host"
+            # The AGENT-visible path genuinely differs by mode, and only for `location: host`: in a
+            # pod the entry is bind-mounted at $CONTAINER_HOME/<name>, while a host launch has no
+            # mount at all and the agent sees the real persist dir. Returning the container path
+            # unconditionally (bd harnessed-5ek) meant any host-mode consumer got
+            # `/home/harnessed/<name>` — a path that does not exist on the machine it would be used
+            # on. Same two-modes-disagree problem `{persist:<name>}` solves for recipe `env:`.
+            agent_dir = str(host_dir) if mode == "host" else f"{_CONTAINER_HOME_STR}/{entry.name}"
+            return host_dir, agent_dir, "host"
 
     raise SchemaError(
         f"service '{svc.name}' declares data.persist: '{svc.data_persist}', but no recipe in stack "
@@ -2664,7 +2679,7 @@ def _service_data_dir(svc: "ServiceDef", stack: str, project_path: Path) -> tupl
     )
 
 
-def svc_socket_env(stack: str, project_path: Path) -> dict[str, str]:
+def svc_socket_env(stack: str, project_path: Path, mode: str = "container") -> dict[str, str]:
     """Container-side socket path for each socket-backed project-scoped service in the stack.
 
     Exported into the attach shell (see _init_shell_prologue) as HARNESSED_<NAME>_SOCKET so a
@@ -2676,7 +2691,7 @@ def svc_socket_env(stack: str, project_path: Path) -> dict[str, str]:
         svc = load_service(None, name)
         if not (svc.scope == "project" and svc.is_socket_only):
             continue
-        _, agent_dir, _ = _service_data_dir(svc, stack, project_path)
+        _, agent_dir, _ = _service_data_dir(svc, stack, project_path, mode)
         var = "HARNESSED_" + svc.name.upper().replace("-", "_") + "_SOCKET"
         env[var] = f"{agent_dir}/{svc.socket}"
     return env
@@ -4122,6 +4137,22 @@ def _launch_host(
     #     truth; letting a stale export in the invoking shell silently beat it is the failure mode
     #     that is hardest to see from inside a session.
     os.environ.update(_resolve_launch_env(project_path))
+
+    # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). A `services:` entry is a property
+    # of the STACK, not of the backend: host mode makes the AGENT host-native, it does not remove the
+    # service the stack says it needs. Omitting this left every beads stack under `host-run` with no
+    # server, no socket and no data dir, and an agent that reported "no beads database" — with
+    # nothing in the launch output saying a declared service had been skipped.
+    #
+    # A socket-backed sidecar composes with a host agent for free: the socket is a filesystem object
+    # inside the persist dir the service bind-mounts, so the host process dials exactly the path the
+    # container serves it on. No port, no netns to bridge, nothing mode-specific.
+    #
+    # Ahead of the recipe env and setup scripts below, which is what needs the socket to already
+    # exist. Guarded on the stack actually declaring services, so a host launch of a service-less
+    # stack still needs no container runtime at all.
+    if _service_refs(stack):
+        _ensure_services(_runtime(), stack, project_path=project_path, mount_path=project_path)
 
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
     # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to

@@ -175,6 +175,34 @@ class TestServiceDataDir:
         with pytest.raises(SchemaError, match="data.persist"):
             launcher._service_data_dir(svc, "no-beads-stack", tmp_path)
 
+    def test_host_mode_sees_the_real_dir_not_the_container_mount(self, tmp_path, monkeypatch):
+        """bd harnessed-5ek: `location: host` is bind-mounted at $CONTAINER_HOME/<name> in a pod,
+        but a host launch has no mount — the agent there sees the real persist dir. Returning the
+        container path in both modes handed host-mode consumers /home/harnessed/..., which does not
+        exist on the machine it would be used on."""
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
+        monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        )
+        project = tmp_path / "repo"
+        host_dir, agent_dir, _ = launcher._service_data_dir(svc, "any", project, "host")
+        assert agent_dir == str(host_dir)
+        assert not agent_dir.startswith("/home/harnessed")
+
+    def test_in_repo_placement_is_identical_in_both_modes(self, tmp_path, monkeypatch):
+        # `location: in_repo` is mounted path-preserving, so there is nothing to switch on.
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        )
+        project = tmp_path / "repo"
+        ctr = launcher._service_data_dir(svc, "any", project, "container")
+        host = launcher._service_data_dir(svc, "any", project, "host")
+        assert ctr == host
+
 
 class TestClientVisibleSocketPath:
     """The path a service advertises to clients is THEIR path, never the service's own /data view.
@@ -196,6 +224,24 @@ class TestClientVisibleSocketPath:
         sock = launcher.svc_socket_env("any", project)["HARNESSED_BEADS_SERVER_SOCKET"]
         assert sock == f"{project}/.beads/run/mysql.sock"
         assert not sock.startswith("/data"), "clients must never be handed the service's own mount path"
+
+    def test_host_mode_socket_is_a_path_that_exists_on_the_host(self, tmp_path, monkeypatch):
+        """bd harnessed-162/-5ek: the socket env used to be container-only, so a host launch never
+        got it and the beads recipes' `:?` guard always fired. Exporting it in host mode is only
+        correct because the agent path is now resolved per mode — otherwise this would hand a host
+        process /home/harnessed/..."""
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        project = tmp_path / "repo"
+        monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
+        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        )
+        sock = launcher.svc_socket_env("any", project, "host")["HARNESSED_BEADS_SERVER_SOCKET"]
+        assert sock.startswith(str(tmp_path / "persist"))
+        assert not sock.startswith("/home/harnessed")
 
 
 class TestSocketEnvExport:
