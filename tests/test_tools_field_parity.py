@@ -162,3 +162,56 @@ class TestEmittedDockerfileInstallsToolsBeforeInstallScripts:
         recipe = load_recipe(paths.harnessed_home() / "catalog" / "recipes" / "ccstatusline")
         body = write_derived_dockerfile(tmp_path, "s", "claude", [recipe]).read_text(encoding="utf-8")
         assert body.index("npm:ccstatusline@") < body.index("ccstatusline/install.sh")
+
+
+class TestNpmToolsResolveThroughPnpmNotAube:
+    """A correctly-pinned `npm:` tool must still install once mise's default backend rejects it.
+
+    mise 2026.7.x defaults `npm.package_manager` to `auto`, which selects mise's own resolver
+    (`aube`). aube enforces publisher-trust over the ENTIRE dependency tree, so ONE transitive dep
+    published without trust evidence fails the whole install — of a package that is itself fine.
+    `npm:context-mode@1.0.169` is the live case: it dies on `@hono/node-server@1.19.15`, and the pin
+    is already the latest release, so there is no version to move to.
+
+    Routing the `npm:` backend through pnpm keeps mise as the installer and the pin exact while
+    dropping the tree-wide veto. Both executors must set it, or the failure simply moves.
+    """
+
+    ENV_VAR = "MISE_NPM_PACKAGE_MANAGER"
+
+    def test_the_host_launch_sets_the_pnpm_backend(self, tmp_path, monkeypatch):
+        calls: list = []
+        TestHostLaunchHonoursTools()._fake_mise(monkeypatch, calls)
+        launcher._host_install_tools("s", [Recipe(name="a", root=tmp_path, tools=["npm:x@1"])])
+        assert calls[0][1].get(self.ENV_VAR) == "pnpm", (
+            "a host launch must route npm: through pnpm — aube vetoes untrusted transitive deps"
+        )
+
+    def test_the_host_override_wins_over_the_inherited_environment(self, tmp_path, monkeypatch):
+        # `**os.environ` is splatted first; an inherited `auto` must not survive it, because `auto`
+        # is not a preference the user can usefully hold here — it just fails.
+        monkeypatch.setenv(self.ENV_VAR, "auto")
+        calls: list = []
+        TestHostLaunchHonoursTools()._fake_mise(monkeypatch, calls)
+        launcher._host_install_tools("s", [Recipe(name="a", root=tmp_path, tools=["npm:x@1"])])
+        assert calls[0][1].get(self.ENV_VAR) == "pnpm"
+
+    def test_the_derived_dockerfile_sets_it_on_the_tools_layer(self, tmp_path):
+        from harnessed.emit import write_derived_dockerfile
+
+        r = Recipe(name="a", root=tmp_path, tools=["npm:context-mode@1.0.169"])
+        body = write_derived_dockerfile(tmp_path, "s", "claude", [r]).read_text(encoding="utf-8")
+        tools_run = next(ln for ln in body.splitlines() if "mise use -g" in ln)
+        assert f"{self.ENV_VAR}=pnpm" in tools_run, (
+            f"the tools: layer must set {self.ENV_VAR}=pnpm, got: {tools_run}"
+        )
+
+    def test_it_is_scoped_to_the_build_and_not_leaked_as_image_env(self, tmp_path):
+        # It governs build-time tool installation only; the agent's runtime has no use for it.
+        from harnessed.emit import write_derived_dockerfile
+
+        r = Recipe(name="a", root=tmp_path, tools=["npm:context-mode@1.0.169"])
+        body = write_derived_dockerfile(tmp_path, "s", "claude", [r]).read_text(encoding="utf-8")
+        assert not any(
+            ln.startswith("ENV") and self.ENV_VAR in ln for ln in body.splitlines()
+        ), f"{self.ENV_VAR} must be inline on the RUN, not a persistent image ENV"

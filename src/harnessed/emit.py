@@ -896,7 +896,22 @@ def write_derived_dockerfile(
         lines.append("USER harnessed")
         # `mise use -g` fans out to backends that shell out to pnpm (npm:) and uv (pipx:), so this
         # layer gets the same cache set as a recipe install.
-        lines.append(f"RUN {CACHE_MOUNTS} mise use -g {joined} && mise install")
+        #
+        # MISE_NPM_PACKAGE_MANAGER=pnpm is NOT a preference — it is required. As of mise 2026.7.x the
+        # `npm:` backend defaults (`npm.package_manager = "auto"`) to mise's own resolver, `aube`,
+        # which enforces a publisher-trust policy over the WHOLE dependency tree. One transitive dep
+        # published without trust evidence hard-fails the install of a package that is itself fine
+        # and correctly pinned — `npm:context-mode@1.0.169` dies on `@hono/node-server@1.19.15`
+        # ("trust downgrade … no trust evidence"), and no version bump escapes it because the pin is
+        # already the latest release. Routing through pnpm keeps mise as the installer and the pin
+        # exact while dropping aube's tree-wide veto. pnpm (not `npm.shell_out=true`, the other
+        # escape hatch) because pnpm is the package manager this repo mandates everywhere else.
+        #
+        # Set INLINE on the RUN, not as an image ENV: this governs build-time tool installation only
+        # and has no business in the agent's runtime environment.
+        lines.append(
+            f"RUN {CACHE_MOUNTS} MISE_NPM_PACKAGE_MANAGER=pnpm mise use -g {joined} && mise install"
+        )
         lines.append("")
 
     for recipe in recipes:
