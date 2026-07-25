@@ -3891,6 +3891,14 @@ def _host_install_tools(stack: str, recipes) -> None:
         "MISE_STATE_DIR": str(mise_root / "state"),
         # NOT redirected: the download cache is a cache. Sharing the user's means a host launch and a
         # container build (which mounts the same kind of cache) both stop re-downloading.
+        #
+        # Same override, same reason, as the container `tools:` layer — see the long note in
+        # emit.write_derived_dockerfile. mise's default `npm:` backend (`aube`) vetoes an install
+        # when ANY transitive dep lacks publisher-trust evidence, which kills correctly-pinned
+        # packages that have no newer release to move to. pnpm keeps the pin and the installer and
+        # drops the tree-wide veto. Placed AFTER the `**os.environ` splat so it wins, but it is a
+        # default a user cannot usefully countermand: with `auto` the install simply fails.
+        "MISE_NPM_PACKAGE_MANAGER": "pnpm",
     }
     _err.print(f"[blue][INFO][/blue] tools: mise use -g {' '.join(specs)} (host)")
     if subprocess.run(
