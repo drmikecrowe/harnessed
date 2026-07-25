@@ -5139,6 +5139,118 @@ def clean_profiles() -> None:
     _out.print("[green][SUCCESS][/green] Profile cache purged")
 
 
+def _update_recipe_dirs() -> list[Path]:
+    """Every recipe dir across the active catalog roots (user overlay + repo), deduped by ref.
+
+    Enumerated by walking for `recipe.yaml` rather than via `list_catalog`, because a recipe FAMILY
+    (`beads/stealth`) nests one level down and `update` wants every manifest, family member or not.
+    """
+    seen: set[str] = set()
+    dirs: list[Path] = []
+    for root in paths.catalog_roots():
+        recipes = root / "recipes"
+        if not recipes.is_dir():
+            continue
+        for manifest in sorted(recipes.rglob("recipe.yaml")):
+            ref = str(manifest.parent.relative_to(recipes))
+            if ref in seen:        # user overlay wins, exactly as everywhere else
+                continue
+            seen.add(ref)
+            dirs.append(manifest.parent)
+    return dirs
+
+
+def _print_update_report(report) -> None:
+    """Render the buckets. Held and unresolved print even in `--check`, because the whole point of
+    this command is that nothing a human should know about stays invisible."""
+    def where(f) -> str:
+        return f"{f.pin.recipe} ({f.pin.file.name})"
+
+    if report.stale:
+        _out.print("[bold]Outdated pins:[/bold]")
+        for f in report.stale:
+            _out.print(
+                f"  {where(f)}  {f.pin.spec}\n"
+                f"      [yellow]{f.pin.current}[/yellow] -> [green]{f.latest}[/green]"
+            )
+    if report.held:
+        _out.print("[bold]Held (manual-upgrade-only — not offered):[/bold]")
+        for f in report.held:
+            newer = f" (newer available: {f.latest})" if f.latest else ""
+            _out.print(f"  {where(f)}  {f.pin.spec}{newer}\n      hold: {f.pin.hold}")
+    if report.unresolved:
+        # Loud on purpose. A pin we could not check is the one case where silence would read as
+        # "fine", and that false confidence is what this command exists to remove.
+        _out.print("[bold]Unresolved (could NOT be checked — review by hand):[/bold]")
+        for f in report.unresolved:
+            _out.print(f"  {where(f)}  {f.pin.spec}\n      [yellow]{f.error}[/yellow]")
+
+
+@app.command("update")
+def update_pins(
+    check: bool = typer.Option(
+        False, "--check",
+        help="CI mode: report and exit non-zero if any pin is outdated. Writes nothing.",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Accept every offered bump without prompting.",
+    ),
+) -> None:
+    """Find outdated pins across the catalog and offer to bump them.
+
+    `tools:` entries resolve against their backend (npm / PyPI / GitHub releases / mise). Pins
+    buried in install scripts and Dockerfiles cannot be resolved automatically and are REPORTED as
+    unresolved rather than skipped. Pins marked `hold` (recipe.yaml `install.hold`, or a `tools:`
+    entry's `hold`) are listed for information only and never bumped — see bd harnessed-c5t.
+    """
+    from . import update as pinupdate
+
+    dirs = _update_recipe_dirs()
+    if not dirs:
+        _err.print("[yellow]warning:[/yellow] no recipes found in the active catalog")
+        raise typer.Exit(0)
+
+    # Resolve THROUGH the module attribute rather than importing the function, so a test (or a
+    # future offline mode) can swap `update.resolve_latest` and have it take effect here.
+    report = pinupdate.build_report(
+        dirs, resolve=lambda backend, name: pinupdate.resolve_latest(backend, name)
+    )
+    _print_update_report(report)
+
+    if check:
+        if report.stale:
+            _err.print(
+                f"[bold red]error:[/bold red] {len(report.stale)} outdated pin(s) — "
+                "run `harnessed update` to bump them"
+            )
+        raise typer.Exit(report.check_exit_code())
+
+    if not report.stale:
+        _out.print("[green]All resolvable pins are up to date.[/green]")
+        raise typer.Exit(0)
+
+    accepted = []
+    for f in report.stale:
+        if yes or typer.confirm(
+            f"Bump {f.pin.recipe} {f.pin.spec}: {f.pin.current} -> {f.latest}?", default=True
+        ):
+            accepted.append(f)
+
+    written = pinupdate.apply(accepted)
+    for f in written:
+        _out.print(f"[green][SUCCESS][/green] {f.pin.recipe}: {f.pin.current} -> {f.latest}")
+    skipped = len(report.stale) - len(written)
+    if skipped:
+        _out.print(f"Left {skipped} pin(s) unchanged.")
+    if written:
+        # The repo catalog is under the worktree -> tests -> PR rule; a bumped pin is a code change
+        # like any other, and an unverified bump is worse than a stale one.
+        _out.print(
+            "[blue][INFO][/blue] Pins rewritten. Rebuild and run the capability tests for the "
+            "affected stacks before committing."
+        )
+
+
 @app.command("test")
 def test_stack(
     stack: str = typer.Argument(..., help="Stack name"),
@@ -5573,9 +5685,14 @@ def host_gc(
         _out.print(f"\n[green][SUCCESS][/green] Removed {removed} orphan(s).")
 
 
+# Every subcommand `main()` must NOT mistake for a stack name. Adding an @app.command without
+# adding it here makes the command unreachable from the real binary (`harnessed update` parses as
+# `harnessed launch update`) while CliRunner tests, which invoke `app` directly, still pass. A test
+# asserts this set covers every registered command — see test_update_cli.py.
 _COMMANDS = {
     "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
     "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc", "host-run",
+    "update",
 }
 
 
