@@ -2803,6 +2803,7 @@ def _ensure_service(
         persist.guard_ownership(host_dir)
         host_dir.mkdir(parents=True, exist_ok=True)
         _assert_data_dir_unlocked(svc, host_dir)
+        _assert_data_dir_not_self_served(svc, host_dir)
         _assert_placement_matches(svc, location, project_path)
         _assert_named_database_present(svc, host_dir)
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
@@ -2902,6 +2903,45 @@ def _assert_data_dir_unlocked(svc: "ServiceDef", host_dir: Path) -> None:
     )
     _err.print(f"  PID {pid}: {cmdline}")
     _err.print("  Stop it and retry, or run this stack with --host so it uses that server instead.")
+    raise typer.Exit(1)
+
+
+def _assert_data_dir_not_self_served(svc: "ServiceDef", host_dir: Path) -> None:
+    """Abort when a host engine has initialized the sidecar's data dir AS a database.
+
+    Dolt serves the *subdirectories* of its --data-dir as databases, so the beads-server entrypoint
+    points it at `<data>/dolt/` and the project database lands at `<data>/dolt/<db>/`. A host `bd`
+    that cannot reach a server auto-starts its own — chdir'd into that same `<data>/dolt/` and with
+    NO --data-dir — and that run initializes the data dir itself as a repo. The directory is now a
+    database in its own right, so ANY server later pointed at it serves exactly one database named
+    `dolt`, and the project database becomes unreachable: every `bd` call dies with
+    `database "<project>" not found` (errno 1049).
+
+    Observed 2026-07-19 on harnessed's own checkout, where it survived three server restarts and
+    five days. The failure is reported by the CLIENT as a missing database, and nothing in that
+    message points at the data dir's shape — so the obvious readings ("the server is down", "the
+    database was lost") are both wrong and both lead away from the fix.
+
+    The signature is `repo_state.json`, NOT the mere existence of `<data>/dolt/.dolt/`: a perfectly
+    healthy sql-server also creates that directory, for `sql-server.info` and a `tmp/`. Only an
+    INITIALIZED repo carries `repo_state.json` (beside `noms/`, `config.json`, `stats/`). Keying on
+    the directory alone would reject every healthy running server — both states were compared on
+    disk before this was written.
+    """
+    if svc.exclusive_lock != "dolt":
+        return
+    data_dir = host_dir / "dolt"
+    repo_state = data_dir / ".dolt" / "repo_state.json"
+    if not repo_state.is_file():
+        return
+    _err.print(
+        f"[bold red]error:[/bold red] service '{svc.name}' cannot start: {data_dir} is itself a "
+        "Dolt database"
+    )
+    _err.print("  A host 'dolt' initialized the data dir in place. A server pointed at it serves")
+    _err.print("  one database named 'dolt', so the project database is unreachable (errno 1049).")
+    _err.print("  Move it aside (this preserves anything in it) and relaunch:")
+    _err.print(f"    mv {data_dir / '.dolt'} {data_dir / '.dolt'}.poisoned")
     raise typer.Exit(1)
 
 

@@ -384,6 +384,63 @@ class TestExclusiveLockPreflight:
             proc.wait()
 
 
+class TestSelfServedDataDirIsRejected:
+    """A host `dolt` that auto-started inside the sidecar's data dir turns it INTO a database.
+
+    Dolt serves the subdirectories of its --data-dir, so the entrypoint points it at `<data>/dolt/`
+    and the project db lands at `<data>/dolt/<db>/`. A host auto-start chdirs into `<data>/dolt/`
+    with no --data-dir and initializes a repo right there — after which any server pointed at it
+    serves one db named `dolt` and every client gets errno 1049 for the project db instead
+    (observed 2026-07-19; it survived three restarts and five days because the error names a
+    missing database and says nothing about the data dir's shape).
+    """
+
+    def _svc(self, tmp_path, lock="dolt"):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                f"data:\n  persist: .beads\nexclusive_lock: {lock}\n",
+            ),
+            "beads-server",
+        )
+
+    def _init_repo_at(self, path):
+        """The on-disk shape of an initialized Dolt repo (what a host auto-start leaves behind)."""
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "repo_state.json").write_text('{"head": "refs/heads/main"}')
+        (path / "noms").mkdir(exist_ok=True)
+
+    def test_aborts_when_the_data_dir_is_itself_a_database(self, tmp_path):
+        self._init_repo_at(tmp_path / "dolt" / ".dolt")
+        with pytest.raises(typer.Exit):
+            launcher._assert_data_dir_not_self_served(self._svc(tmp_path), tmp_path)
+
+    def test_a_running_server_is_not_mistaken_for_a_database(self, tmp_path):
+        # A HEALTHY sql-server also creates <data>/dolt/.dolt/ — for sql-server.info and tmp/.
+        # Keying on the directory alone would reject every healthy launch; only repo_state.json
+        # means "initialized repo". Both shapes were compared on disk before this test was written.
+        healthy = tmp_path / "dolt" / ".dolt"
+        healthy.mkdir(parents=True)
+        (healthy / "sql-server.info").write_text("1234:3309:some-uuid")
+        (healthy / "tmp").mkdir()
+        (tmp_path / "dolt" / "myproject" / ".dolt").mkdir(parents=True)
+        launcher._assert_data_dir_not_self_served(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_a_healthy_layout_passes(self, tmp_path):
+        # What the sidecar itself creates: the database is a CHILD of the data dir, never the dir.
+        (tmp_path / "dolt" / "myproject" / ".dolt").mkdir(parents=True)
+        launcher._assert_data_dir_not_self_served(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_a_fresh_data_dir_passes(self, tmp_path):
+        launcher._assert_data_dir_not_self_served(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_a_service_locking_another_engine_is_never_checked(self, tmp_path):
+        # The poisoning signature is Dolt's data-dir layout; it means nothing for another engine.
+        self._init_repo_at(tmp_path / "dolt" / ".dolt")
+        launcher._assert_data_dir_not_self_served(self._svc(tmp_path, lock="sleep"), tmp_path)
+
+
 class TestNamedDatabaseMustBePresent:
     """`metadata.json` names the database; the sidecar serves `<data>/dolt/`.
 
