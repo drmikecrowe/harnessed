@@ -1,0 +1,45 @@
+name: pin check
+
+# `harnessed update --check` over the catalog: does any pin have a newer upstream release that is
+# already past the minimum release age? (bd harnessed-tfm, harnessed-7zb, harnessed-4xu)
+#
+# DELIBERATELY NOT `pull_request`. This check resolves LIVE registries, so its result depends on
+# what npm/PyPI/GitHub published today, not on the diff. As a PR gate it would fail an unrelated
+# contributor's branch the moment a third party cut a release — red through nobody's fault, and
+# unfixable by the author. A check that behaves that way is one everyone learns to ignore, which is
+# the same false-signal problem bd harnessed-wx9 was about, pointed the other way.
+#
+# Renovate and Dependabot surface staleness on a cadence rather than blocking merges. This does the
+# same: a failing SCHEDULED run is the notification.
+on:
+  schedule:
+    # Mondays 06:00 UTC. Weekly, not daily: the gate already refuses anything published in the last
+    # 7 days, so a daily run would re-report the same pins six times before any of them is offerable.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup uv (+ Python 3.12)
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      # `tools:` entries with no backend prefix (currently `pulumi`) resolve through `mise registry`
+      # to find the aqua:owner/repo backing them, then read that repo's dated GitHub releases.
+      # Without mise on the runner those pins degrade to "unresolved" — reported, never silently
+      # skipped, but unchecked. Installing it is what keeps the sweep actually complete.
+      - name: Setup mise
+        uses: jdx/mise-action@v2
+        with:
+          install: false
+
+      # Exits non-zero only for a pin that is stale AND past the minimum release age AND not held.
+      # Held pins (recipe.yaml `install.hold` / a `tools:` entry's `hold`), cooling pins, and
+      # unresolvable ones are all reported in the output without failing — see bd harnessed-c5t.
+      - name: Check catalog pins
+        run: uv run --extra dev harnessed update --check
