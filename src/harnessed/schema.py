@@ -1737,6 +1737,34 @@ _IMMUTABLE_REF_RE = re.compile(r'^(?:[0-9a-fA-F]{40}|v?\d+(?:\.\d+)*(?:[-+.][0-9
 # `"$FOO"` / `${FOO}` — catalog scripts pin via `FOO_REF="v6.0.3"` and clone `--branch "$FOO_REF"`,
 # so the gate follows exactly one hop to the literal assignment in the same body.
 _SHELL_VAR_REF_RE = re.compile(r'^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$')
+# --- bd harnessed-po7: an ARCHIVE download is a clone by another spelling -------------------------
+# `curl .../archive/main.tar.gz` moves exactly as much as `--branch main`, but `_CLONE_REF_RE` only
+# ever looked at `--branch`, so a branch-pinned archive sailed through the gate that exists to stop
+# it. Proven when the bead was filed: swapping a SHA for `archive/main.tar.gz` left every pin test
+# green. codeload.github.com is the same download under another hostname AND is in the egress
+# allowlist, so omitting it would leave a reachable bypass.
+#   github.com/<o>/<r>/archive/[refs/heads/|refs/tags/]<ref>.tar.gz|.zip
+#   codeload.github.com/<o>/<r>/(tarball|zipball|tar.gz|zip)/[refs/heads/|refs/tags/]<ref>
+# A git archive at a 40-hex SHA is content-addressed, so requiring one is the pin AND a cheap
+# integrity check.
+# `{1,2}` on the owner/repo segments is load-bearing, not laxity: the catalog's own fetch writes
+#   curl -fsSL "https://github.com/$1/archive/$2.tar.gz"
+# where `$1` IS `owner/repo` — ONE textual segment. Requiring two literal segments made this gate
+# miss the exact file the bug was reported against, which synthetic `o/r` fixtures never revealed.
+_ARCHIVE_REF_RE = re.compile(
+    r'(?:github\.com/(?:[^/\s"\']+/){1,2}archive/'
+    r'|codeload\.github\.com/(?:[^/\s"\']+/){1,2}(?:tarball|zipball|tar\.gz|zip)/)'
+    r'(?P<qualifier>refs/heads/|refs/tags/)?'
+    r'(?P<ref>[^\s"\'|>?&]+?)'
+    r'(?:\.tar\.gz|\.tgz|\.zip)?(?=$|[\s"\'|>?&])'
+)
+# `$1`/`${2}` — a shell FUNCTION PARAMETER. Unlike the clone gate, this is a PASS-THROUGH rather
+# than a fail-closed rejection: the catalog's own correctly-pinned recipe reads
+#   fetch() { curl "https://github.com/$1/archive/$2.tar.gz" ...; }
+#   fetch oakoss/agent-skills "$OAKOSS_SHA" ...
+# and the ref simply is not knowable from the URL line. Failing closed would reject a recipe that
+# is pinned exactly right, so the literal case (the reported bug) is what this gate catches.
+_POSITIONAL_PARAM_RE = re.compile(r'^\$\{?\d+\}?$')
 _SHELL_ASSIGN_RE = re.compile(
     r'^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(\"[^\"]*\"|\'[^\']*\'|\S*)\s*$', re.MULTILINE
 )
@@ -1855,6 +1883,38 @@ def _mutable_clone_ref(body: str) -> str | None:
     return None
 
 
+def _mutable_archive_ref(body: str) -> str | None:
+    """Describe the first github/codeload ARCHIVE ref that cannot be shown immutable, else None.
+
+    Same shape as `_mutable_clone_ref` — one-hop variable resolution against literal assignments in
+    the same body — with one deliberate difference: a positional parameter passes through instead
+    of failing closed. See `_POSITIONAL_PARAM_RE` for why.
+    """
+    assigns = {m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)}
+    for match in _ARCHIVE_REF_RE.finditer(body):
+        # `refs/tags/v1.2.3` is already self-describing as immutable-ish; `refs/heads/x` is a
+        # branch by definition and must go through the same check as a bare ref.
+        if match.group("qualifier") == "refs/tags/":
+            continue
+        raw = _unquote(match.group("ref"))
+        if _POSITIONAL_PARAM_RE.match(raw):
+            continue
+        var = _SHELL_VAR_REF_RE.match(raw)
+        if var:
+            name = var.group(1)
+            if name not in assigns:
+                return (
+                    f"${name} (no literal assignment in this file, so the ref cannot be shown "
+                    "immutable)"
+                )
+            ref, shown = assigns[name], f"${name} = '{assigns[name]}'"
+        else:
+            ref, shown = raw, f"'{raw}'"
+        if not _IMMUTABLE_REF_RE.match(ref):
+            return shown
+    return None
+
+
 def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
     """Raises PinValidationError if the Dockerfile body contains a floating ref (ASM-02).
 
@@ -1877,6 +1937,13 @@ def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
         raise PinValidationError(
             f"recipe '{recipe_name}': Dockerfile clones a moving ref {ref}. "
             "A branch moves — clone a tag (e.g. v1.2.3) or a full commit SHA instead."
+        )
+    ref = _mutable_archive_ref(stripped)
+    if ref:
+        raise PinValidationError(
+            f"recipe '{recipe_name}': Dockerfile downloads a source archive at a moving ref {ref}. "
+            "An archive URL pins nothing unless the ref does — use a full commit SHA (which also "
+            "makes the download content-addressed) or a version tag."
         )
 
 
@@ -1928,6 +1995,13 @@ def _lint_script_file(recipe: Recipe, field_name: str, rel_path: str) -> None:
         raise PinValidationError(
             f"recipe '{recipe.name}': {field_name} '{rel_path}' clones a moving ref {ref}. "
             "A branch moves — clone a tag (e.g. v1.2.3) or a full commit SHA instead."
+        )
+    ref = _mutable_archive_ref(body)
+    if ref:
+        raise PinValidationError(
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' downloads a source archive at a "
+            f"moving ref {ref}. An archive URL pins nothing unless the ref does — use a full commit "
+            "SHA (which also makes the download content-addressed) or a version tag."
         )
 
 
