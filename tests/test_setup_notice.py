@@ -41,6 +41,13 @@ def _dismiss(stack, proj):
 
 
 class TestCollectSetupNotices:
+    @pytest.fixture(autouse=True)
+    def _no_socket_resolution(self, monkeypatch):
+        """A conditional notice builds the folder-env contract, which resolves the stack's sockets —
+        and these use a synthetic stack name with no manifest. Stub it: the subject here is notice
+        polarity and the dismiss flag, not socket wiring."""
+        monkeypatch.setattr(launcher, "svc_socket_env", lambda *a, **k: {})
+
     def test_unconditional_shown_then_gated_by_flag(self, state):
         recipes = [_r("caveman")]
         assert [r.name for r in launcher._collect_setup_notices(recipes, state, "s", "claude")] == ["caveman"]

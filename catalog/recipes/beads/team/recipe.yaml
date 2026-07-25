@@ -55,19 +55,25 @@ setup:
     beads-server --stack <stack>` — `bd dolt push` cannot work from inside an agent (see the README).
   reference: https://github.com/gastownhall/beads
   condition: '[ ! -f "$(git rev-parse --git-common-dir)/.beads/metadata.json" ]'
-  # Host-native (`launch --host`): harnessed auto-runs the init below. bd owns the shared-server
-  # daemon (auto-started, one server for all projects at ~/.beads/shared-server/); harnessed supplies
-  # the project IDENTITY — a unique, worktree-stable database (git-common-dir derived) and a
-  # representative issue prefix (asked once, defaulting to the repo name — NOT the folder, which bd's
-  # own default would use and collide on across bare+worktree repos).
-  config:
-    - key: database
-      derive: "{gcd_db}" # e.g. programming_personal_harnessed — unique + stable
-    - key: prefix
-      prompt: "Issue prefix for {repo}?" # asked once, first launch
-      default: "{repo}" # e.g. harnessed — short, human-facing (on every issue ID)
-  run: >-
-    bd init --shared-server --database {config.database} --prefix {config.prefix} --init-if-missing
+  # NO `run:` — team is initialized BY THE USER, deliberately. Two independent reasons:
+  #
+  # 1. `bd init` in this placement COMMITS. It creates 18 files (AGENTS.md, CLAUDE.md, .codex/,
+  #    .claude/settings.json, .agents/skills/beads/**) and commits them unprompted — verified on bd
+  #    1.1.0. Doing that to a SHARED repo on the user's behalf is their call, not harnessed's.
+  #    (beads/stealth does auto-init, because `--stealth` writes no commit and tracks nothing.)
+  #
+  # 2. What used to be here was actively harmful:
+  #        bd init --shared-server --database {config.database} --prefix {config.prefix}
+  #    No `--external`, no `--server-socket` — so auto-start stayed ENABLED — pointed at bd's global
+  #    `~/.beads/shared-server`, one server for every project on the machine. That is the exact
+  #    configuration behind the 2026-07-19 incident (BEADS.md §10): a host `bd` with auto-start live
+  #    initialized its own data dir as a database, and the project database became unreachable for
+  #    five days. It landed in 0790b7d on 2026-07-16 — the same date as this workspace's
+  #    `metadata.json.bak-before-shared-reinit`.
+  #
+  # `setup.summary` above still fires, and `_prompt_setup_notices` now blocks the launch on it in
+  # BOTH modes, so a user on a fresh team checkout is stopped and told what to run rather than
+  # silently handed an auto-started server.
 
 # `agent-carnet` is also a shared, cross-session notebook (its own `rules:` entry tells the agent to
 # treat carnet as the SOLE memory store). Combining both gives the agent two competing persistent-
@@ -97,6 +103,22 @@ persist:
 # beads/stealth already carries this env for the identical reason; team needs it just as much.
 env:
   BEADS_DIR: "{persist:.beads}"
+  # Socket mode, delivered by ENVIRONMENT rather than written to disk. bd honours this on its own —
+  # verified against a workspace whose metadata.json says `dolt_mode: server` with NO socket key:
+  # set, bd refuses with "Auto-start is not supported in socket mode" and spawns nothing; unset, the
+  # same workspace auto-starts exactly as bd normally would.
+  #
+  # That second half is the whole point for TEAM placement. metadata.json is part of bd's TRACKED
+  # surface (`bd init` commits it), so a socket path recorded there travels to every teammate as an
+  # absolute path from someone else's machine — and because socket mode disables auto-start, they do
+  # not degrade gracefully, they are hard-blocked. Keeping the value in the environment means a
+  # teammate without harnessed simply does not have it and gets bd's ordinary behaviour, which is
+  # the one rule this placement exists to keep. See BEADS.md §4.
+  #
+  # Same `{persist:.beads}` entry the beads-server service resolves for its data dir, and the server
+  # serves its socket at `<data>/run/mysql.sock` — so client and server agree by construction, in
+  # both modes.
+  BEADS_DOLT_SERVER_SOCKET: "{persist:.beads}/run/mysql.sock"
 
 # No `init:` — beads is NOT auto-initialized. bd's setup writes into the project
 # (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and cannot be made reliably

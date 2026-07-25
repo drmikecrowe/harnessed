@@ -53,7 +53,12 @@ setup:
     and your existing issue data is opened in place. No git sync in this placement — `.beads/` is
     outside the repo and there is no remote to push to.
   reference: https://github.com/gastownhall/beads
-  condition: '! bd list >/dev/null 2>&1'
+  # Gate on the workspace's OWN metadata.json, never on `bd list` (beads/team was corrected the same
+  # way in e57b757; stealth was missed). `bd list` in an uninitialized workspace does not fail — it
+  # falls back to bd's default database and reports "no open issues", exit 0. So `! bd list`
+  # evaluates false and suppresses this notice on exactly the workspace that still needs setting up
+  # (observed 2026-07-25 against a freshly created stealth persist dir).
+  condition: '[ ! -f "${BEADS_DIR:?}/metadata.json" ]'
 
 # agent-carnet is also a shared, cross-session notebook (its own `rules:` entry tells the agent to
 # treat carnet as the SOLE memory store). Combining both gives the agent two competing persistent-
@@ -84,10 +89,41 @@ persist:
 # agree by construction — now in both modes.
 env:
   BEADS_DIR: "{persist:.beads}"
+  # Socket mode, delivered by ENVIRONMENT rather than written to disk. bd honours this on its own —
+  # verified against a workspace whose metadata.json says `dolt_mode: server` with NO socket key:
+  # set, bd refuses with "Auto-start is not supported in socket mode" and spawns nothing.
+  #
+  # Stealth's `.beads` is outside the repo, so the tracked-metadata hazard that drives this in
+  # beads/team does not bite here — but the value is still machine-local, and keeping BOTH recipes on
+  # one mechanism is what stops the two placements from drifting into different failure modes. The
+  # beads-server entrypoint deliberately writes nothing to metadata.json; see BEADS.md §4.
+  #
+  # Same `{persist:.beads}` entry the service resolves for its data dir, and it serves its socket at
+  # `<data>/run/mysql.sock` — so client and server agree by construction, in both modes.
+  BEADS_DOLT_SERVER_SOCKET: "{persist:.beads}/run/mysql.sock"
 
-# No `init:` — beads is NOT auto-initialized (same rationale as beads/team; `bd setup --stealth`
-# still leaves an untracked `.claude/settings.json` + `CLAUDE.md` footprint on bd 1.1.0, so it cannot
-# be made invisible automatically). `setup.condition` (`! bd list`) is self-gating: the assembler
-# turns it into a Claude SessionStart hook that prints once, then stays silent once the workspace has
-# a database (see emit._recipe_hooks_settings). It checks BEADS_DIR (the host-persisted store — see
-# `env:` above).
+# CREATE the workspace. Stealth is the placement where this is safe, and that is a measured claim,
+# not an assumption: `bd init --stealth` writes NO commit, tracks nothing, and leaves `git status`
+# clean — it git-excludes `.beads/` and stops there (verified against bd 1.1.0, 2026-07-25). A plain
+# `bd init` is a different animal entirely: it creates 18 files (AGENTS.md, CLAUDE.md, .codex/,
+# .claude/settings.json, .agents/skills/beads/**) and COMMITS them, unprompted. That is why
+# `beads/team` still has no `init:` — auto-initializing there would commit to a shared repo on the
+# user's behalf, which is a decision they have to make. See BEADS.md §6.
+#
+# `--external` is the load-bearing flag, not a detail: it is what keeps bd from EVER auto-starting
+# its own dolt. Without it bd starts a server chdir'd into its data dir with no --data-dir, which
+# initializes that directory as a database in its own right and makes the project database
+# permanently unreachable (BEADS.md §3 and the incident in §10).
+#
+# Model A self-gating: init runs on every launch, so the command must be idempotent itself. Gate on
+# metadata.json rather than `bd list` — an uninitialized workspace does not fail `bd list`, it falls
+# back to bd's default database and exits 0, so a `bd list` gate re-runs never and initializes never.
+#
+# `bd setup <harness>` stays MANUAL. It is the step that writes `.claude/settings.json` + `CLAUDE.md`
+# into the repo, and bd's stealth exclude list covers `.claude/settings.local.json` — not those two —
+# so it is the one part of stealth that is not actually invisible. `setup:` above prompts for it.
+init:
+  run: >-
+    [ -f "${BEADS_DIR:?}/metadata.json" ] || bd init --stealth --server --external
+    --server-socket "${HARNESSED_BEADS_SERVER_SOCKET:?beads-server not attached — add
+    services:[beads-server] to the stack}"

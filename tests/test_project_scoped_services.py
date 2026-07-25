@@ -13,6 +13,8 @@ socket clients removes the contention by construction.
 
 from __future__ import annotations
 
+import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -174,6 +176,34 @@ class TestServiceDataDir:
         with pytest.raises(SchemaError, match="data.persist"):
             launcher._service_data_dir(svc, "no-beads-stack", tmp_path)
 
+    def test_host_mode_sees_the_real_dir_not_the_container_mount(self, tmp_path, monkeypatch):
+        """bd harnessed-5ek: `location: host` is bind-mounted at $CONTAINER_HOME/<name> in a pod,
+        but a host launch has no mount — the agent there sees the real persist dir. Returning the
+        container path in both modes handed host-mode consumers /home/harnessed/..., which does not
+        exist on the machine it would be used on."""
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
+        monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        )
+        project = tmp_path / "repo"
+        host_dir, agent_dir, _ = launcher._service_data_dir(svc, "any", project, "host")
+        assert agent_dir == str(host_dir)
+        assert not agent_dir.startswith("/home/harnessed")
+
+    def test_in_repo_placement_is_identical_in_both_modes(self, tmp_path, monkeypatch):
+        # `location: in_repo` is mounted path-preserving, so there is nothing to switch on.
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        )
+        project = tmp_path / "repo"
+        ctr = launcher._service_data_dir(svc, "any", project, "container")
+        host = launcher._service_data_dir(svc, "any", project, "host")
+        assert ctr == host
+
 
 class TestClientVisibleSocketPath:
     """The path a service advertises to clients is THEIR path, never the service's own /data view.
@@ -195,6 +225,24 @@ class TestClientVisibleSocketPath:
         sock = launcher.svc_socket_env("any", project)["HARNESSED_BEADS_SERVER_SOCKET"]
         assert sock == f"{project}/.beads/run/mysql.sock"
         assert not sock.startswith("/data"), "clients must never be handed the service's own mount path"
+
+    def test_host_mode_socket_is_a_path_that_exists_on_the_host(self, tmp_path, monkeypatch):
+        """bd harnessed-162/-5ek: the socket env used to be container-only, so a host launch never
+        got it and the beads recipes' `:?` guard always fired. Exporting it in host mode is only
+        correct because the agent path is now resolved per mode — otherwise this would hand a host
+        process /home/harnessed/..."""
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        project = tmp_path / "repo"
+        monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
+        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        )
+        sock = launcher.svc_socket_env("any", project, "host")["HARNESSED_BEADS_SERVER_SOCKET"]
+        assert sock.startswith(str(tmp_path / "persist"))
+        assert not sock.startswith("/home/harnessed")
 
 
 class TestSocketEnvExport:
@@ -381,6 +429,386 @@ class TestExclusiveLockPreflight:
         finally:
             proc.kill()
             proc.wait()
+
+
+class TestSelfServedDataDirIsRejected:
+    """A host `dolt` that auto-started inside the sidecar's data dir turns it INTO a database.
+
+    Dolt serves the subdirectories of its --data-dir, so the entrypoint points it at `<data>/dolt/`
+    and the project db lands at `<data>/dolt/<db>/`. A host auto-start chdirs into `<data>/dolt/`
+    with no --data-dir and initializes a repo right there — after which any server pointed at it
+    serves one db named `dolt` and every client gets errno 1049 for the project db instead
+    (observed 2026-07-19; it survived three restarts and five days because the error names a
+    missing database and says nothing about the data dir's shape).
+    """
+
+    def _svc(self, tmp_path, lock="dolt"):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                f"data:\n  persist: .beads\nexclusive_lock: {lock}\n",
+            ),
+            "beads-server",
+        )
+
+    def _init_repo_at(self, path):
+        """The on-disk shape of an initialized Dolt repo (what a host auto-start leaves behind)."""
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "repo_state.json").write_text('{"head": "refs/heads/main"}')
+        (path / "noms").mkdir(exist_ok=True)
+
+    def test_aborts_when_the_data_dir_is_itself_a_database(self, tmp_path):
+        self._init_repo_at(tmp_path / "dolt" / ".dolt")
+        with pytest.raises(typer.Exit):
+            launcher._assert_data_dir_not_self_served(self._svc(tmp_path), tmp_path)
+
+    def test_a_running_server_is_not_mistaken_for_a_database(self, tmp_path):
+        # A HEALTHY sql-server also creates <data>/dolt/.dolt/ — for sql-server.info and tmp/.
+        # Keying on the directory alone would reject every healthy launch; only repo_state.json
+        # means "initialized repo". Both shapes were compared on disk before this test was written.
+        healthy = tmp_path / "dolt" / ".dolt"
+        healthy.mkdir(parents=True)
+        (healthy / "sql-server.info").write_text("1234:3309:some-uuid")
+        (healthy / "tmp").mkdir()
+        (tmp_path / "dolt" / "myproject" / ".dolt").mkdir(parents=True)
+        launcher._assert_data_dir_not_self_served(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_a_healthy_layout_passes(self, tmp_path):
+        # What the sidecar itself creates: the database is a CHILD of the data dir, never the dir.
+        (tmp_path / "dolt" / "myproject" / ".dolt").mkdir(parents=True)
+        launcher._assert_data_dir_not_self_served(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_a_fresh_data_dir_passes(self, tmp_path):
+        launcher._assert_data_dir_not_self_served(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_a_service_locking_another_engine_is_never_checked(self, tmp_path):
+        # The poisoning signature is Dolt's data-dir layout; it means nothing for another engine.
+        self._init_repo_at(tmp_path / "dolt" / ".dolt")
+        launcher._assert_data_dir_not_self_served(self._svc(tmp_path, lock="sleep"), tmp_path)
+
+
+class TestNamedDatabaseMustBePresent:
+    """`metadata.json` names the database; the sidecar serves `<data>/dolt/`.
+
+    If the named database is not a child of that data dir the sidecar starts fine and every client
+    fails with errno 1049 instead — the state harnessed's own checkout sat in from 2026-07-19, where
+    the bytes were in bd's `~/.beads/shared-server` and nothing on the client side said so.
+    """
+
+    def _svc(self, tmp_path, lock="dolt"):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                f"data:\n  persist: .beads\nexclusive_lock: {lock}\n",
+            ),
+            "beads-server",
+        )
+
+    def _meta(self, tmp_path, **keys):
+        (tmp_path / "metadata.json").write_text(json.dumps({"backend": "dolt", **keys}))
+
+    def test_aborts_when_the_named_database_is_absent(self, tmp_path):
+        self._meta(tmp_path, dolt_database="programming_personal_harnessed")
+        with pytest.raises(typer.Exit):
+            launcher._assert_named_database_present(self._svc(tmp_path), tmp_path)
+
+    def test_passes_when_the_named_database_is_present(self, tmp_path):
+        self._meta(tmp_path, dolt_database="myproject")
+        (tmp_path / "dolt" / "myproject").mkdir(parents=True)
+        launcher._assert_named_database_present(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_a_workspace_that_does_not_exist_yet_is_left_to_first_run_init(self, tmp_path):
+        launcher._assert_named_database_present(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_unreadable_metadata_is_not_this_guards_problem(self, tmp_path):
+        (tmp_path / "metadata.json").write_text("{ not json")
+        launcher._assert_named_database_present(self._svc(tmp_path), tmp_path)  # must not raise
+
+    def test_another_engine_is_never_checked(self, tmp_path):
+        self._meta(tmp_path, dolt_database="absent")
+        launcher._assert_named_database_present(self._svc(tmp_path, lock="sleep"), tmp_path)
+
+
+def _dolt_db_at(path):
+    """Minimal on-disk shape of an initialized Dolt database."""
+    (path / ".dolt").mkdir(parents=True, exist_ok=True)
+    (path / ".dolt" / "repo_state.json").write_text('{"head": "refs/heads/main"}')
+    (path / ".dolt" / "noms").mkdir(exist_ok=True)
+    (path / ".dolt" / "noms" / "manifest").write_text("x" * 128)
+    return path
+
+
+class TestMigrationSourceDiscovery:
+    """Only the two places a database actually ends up are guessed; anything else needs --from."""
+
+    def test_finds_the_database_on_bds_shared_server(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        _dolt_db_at(home / ".beads" / "shared-server" / "dolt" / "proj")
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
+        found = launcher._dolt_migration_sources(tmp_path / "data", "proj")
+        assert found == [home / ".beads" / "shared-server" / "dolt" / "proj"]
+
+    def test_finds_a_quarantined_data_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "empty-home"))
+        data = tmp_path / "data"
+        _dolt_db_at(data / "dolt.poisoned-2026-07-24" / "proj")
+        assert launcher._dolt_migration_sources(data, "proj") == [
+            data / "dolt.poisoned-2026-07-24" / "proj"
+        ]
+
+    def test_a_directory_without_repo_state_is_not_a_candidate(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "empty-home"))
+        data = tmp_path / "data"
+        (data / "dolt.stale" / "proj").mkdir(parents=True)  # no .dolt/repo_state.json
+        assert launcher._dolt_migration_sources(data, "proj") == []
+
+
+class TestSvcMigrate:
+    """Copies a database in, never moves it — a failed migration must leave the source usable."""
+
+    def _svc(self, tmp_path, lock="dolt"):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                f"data:\n  persist: .beads\nexclusive_lock: {lock}\n",
+            ),
+            "beads-server",
+        )
+
+    def _wire(self, monkeypatch, host_dir, location="in_repo"):
+        monkeypatch.setattr(
+            launcher, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), location)
+        )
+        monkeypatch.setattr(launcher, "_host_process_in_dir", lambda exe, d: None)
+
+    def test_migrates_and_leaves_the_source_in_place(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        src = _dolt_db_at(tmp_path / "elsewhere" / "proj")
+        self._wire(monkeypatch, host_dir)
+        launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(src), assume_yes=True)
+        assert (host_dir / "dolt" / "proj" / ".dolt" / "repo_state.json").is_file()
+        assert (src / ".dolt" / "repo_state.json").is_file()  # source untouched
+        assert not (host_dir / "dolt" / "proj.migrating").exists()  # staging cleaned up
+
+    def test_is_a_no_op_when_the_database_is_already_there(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        _dolt_db_at(host_dir / "dolt" / "proj")
+        self._wire(monkeypatch, host_dir)
+        launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, "", assume_yes=True)  # no raise
+
+    def test_aborts_when_no_source_is_found(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "empty-home"))
+        self._wire(monkeypatch, host_dir)
+        with pytest.raises(typer.Exit):
+            launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, "", assume_yes=True)
+
+    def test_refuses_a_from_that_is_not_a_database(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        notdb = tmp_path / "notdb"
+        notdb.mkdir()
+        self._wire(monkeypatch, host_dir)
+        with pytest.raises(typer.Exit):
+            launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(notdb), assume_yes=True)
+
+    def test_refuses_while_a_host_engine_holds_the_data_dir(self, tmp_path, monkeypatch):
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
+        src = _dolt_db_at(tmp_path / "elsewhere" / "proj")
+        monkeypatch.setattr(
+            launcher, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), "in_repo")
+        )
+        monkeypatch.setattr(launcher, "_host_process_in_dir", lambda exe, d: (999, "dolt sql-server"))
+        with pytest.raises(typer.Exit):
+            launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(src), assume_yes=True)
+        assert not (host_dir / "dolt" / "proj").exists()
+
+    @pytest.mark.skipif(shutil.which("dolt") is None, reason="needs the dolt binary")
+    def test_migrates_a_real_dolt_database(self, tmp_path, monkeypatch):
+        """The synthetic tests above prove the CONTROL FLOW; this proves the bytes survive.
+
+        Everything else in this class drives `_svc_migrate` against directories that merely look
+        like Dolt databases. That leaves the actual premise — that a plain directory copy of a
+        quiescent Dolt database yields a working database — asserted rather than tested. Gated on
+        the dolt binary, so it skips on the hermetic CI runner; run it locally before trusting a
+        change to the copy path.
+        """
+        src = tmp_path / "src" / "probe"
+        src.mkdir(parents=True)
+        run = lambda *a: subprocess.run(a, cwd=src, capture_output=True, check=True)
+        run("dolt", "init", "--name", "probe", "--email", "probe@local")
+        run("dolt", "sql", "-q", "CREATE TABLE issues (id VARCHAR(64) PRIMARY KEY, title TEXT)")
+        run("dolt", "sql", "-q", "INSERT INTO issues VALUES ('probe-1','real bytes')")
+
+        host_dir = tmp_path / "data"
+        host_dir.mkdir()
+        (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "probe"}))
+        self._wire(monkeypatch, host_dir)
+        launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(src), assume_yes=True)
+
+        out = subprocess.run(
+            ["dolt", "sql", "-q", "SELECT title FROM issues WHERE id='probe-1'"],
+            cwd=host_dir / "dolt" / "probe", capture_output=True, text=True, check=True,
+        ).stdout
+        assert "real bytes" in out, "the migrated database must be readable, not just present"
+
+    def test_a_service_without_a_dolt_lock_has_no_migration(self, tmp_path, monkeypatch):
+        with pytest.raises(typer.Exit):
+            launcher._svc_migrate(self._svc(tmp_path, lock=""), "stk", tmp_path, "", assume_yes=True)
+
+
+class TestDoltAutostartIsDisabled:
+    """bd's auto-start is what poisons a data dir; the env var only covers harnessed's own processes.
+
+    This key covers the rest — stray terminals, hooks, and teammates who never run harnessed. The
+    fresh-clone case is the one that matters: no local Dolt data means an EMPTY data dir, which is
+    exactly what auto-start turns into a database.
+    """
+
+    def _svc(self, tmp_path, lock="dolt"):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                f"data:\n  persist: .beads\nexclusive_lock: {lock}\n",
+            ),
+            "beads-server",
+        )
+
+    def test_appends_the_key_to_an_existing_workspace_config(self, tmp_path):
+        (tmp_path / "config.yaml").write_text("sync.remote: git+ssh://example/x.git\n")
+        launcher._ensure_dolt_autostart_disabled(self._svc(tmp_path), tmp_path)
+        text = (tmp_path / "config.yaml").read_text()
+        assert "dolt.auto-start: false" in text
+        assert "sync.remote" in text, "must be additive — never rewrite bd's own config"
+
+    def test_is_idempotent(self, tmp_path):
+        (tmp_path / "config.yaml").write_text("x: 1\n")
+        svc = self._svc(tmp_path)
+        launcher._ensure_dolt_autostart_disabled(svc, tmp_path)
+        launcher._ensure_dolt_autostart_disabled(svc, tmp_path)
+        assert (tmp_path / "config.yaml").read_text().count("dolt.auto-start") == 1
+
+    def test_a_deliberate_re_enable_is_not_overridden(self, tmp_path):
+        # A user who turns auto-start back on must not have it flipped again every launch.
+        (tmp_path / "config.yaml").write_text("dolt.auto-start: true\n")
+        launcher._ensure_dolt_autostart_disabled(self._svc(tmp_path), tmp_path)
+        assert (tmp_path / "config.yaml").read_text() == "dolt.auto-start: true\n"
+
+    def test_no_workspace_yet_is_left_alone(self, tmp_path):
+        launcher._ensure_dolt_autostart_disabled(self._svc(tmp_path), tmp_path)  # must not raise
+        assert not (tmp_path / "config.yaml").exists()
+
+    def test_another_engine_is_never_touched(self, tmp_path):
+        (tmp_path / "config.yaml").write_text("x: 1\n")
+        launcher._ensure_dolt_autostart_disabled(self._svc(tmp_path, lock="sleep"), tmp_path)
+        assert "dolt.auto-start" not in (tmp_path / "config.yaml").read_text()
+
+
+class TestPlacementIsRecordedAndEnforced:
+    """The direction `_assert_placement_matches` cannot see.
+
+    A stealth dir is keyed by recipe name + project hash, so a team launch cannot enumerate it.
+    Recording which placement ran first closes that: the second, disagreeing launch is refused
+    rather than silently starting an empty workspace whose missing issues read as data loss.
+    """
+
+    def _svc(self, tmp_path):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                "data:\n  persist: .beads\nexclusive_lock: dolt\n",
+            ),
+            "beads-server",
+        )
+
+    def _repo(self, tmp_path, monkeypatch):
+        gcd = tmp_path / ".git"
+        gcd.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: gcd)
+        return gcd
+
+    def test_first_launch_records_the_placement(self, tmp_path, monkeypatch):
+        gcd = self._repo(tmp_path, monkeypatch)
+        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)
+        assert json.loads((gcd / "harnessed-placement.json").read_text()) == {"beads-server": "host"}
+
+    def test_the_same_placement_relaunches_cleanly(self, tmp_path, monkeypatch):
+        self._repo(tmp_path, monkeypatch)
+        svc = self._svc(tmp_path)
+        launcher._assert_placement_unchanged(svc, "in_repo", tmp_path)
+        launcher._assert_placement_unchanged(svc, "in_repo", tmp_path)  # must not raise
+
+    def test_switching_placement_aborts(self, tmp_path, monkeypatch):
+        self._repo(tmp_path, monkeypatch)
+        svc = self._svc(tmp_path)
+        launcher._assert_placement_unchanged(svc, "host", tmp_path)
+        with pytest.raises(typer.Exit):  # team launch over a stealth workspace
+            launcher._assert_placement_unchanged(svc, "in_repo", tmp_path)
+
+    def test_the_record_lives_in_the_git_dir_so_git_never_sees_it(self, tmp_path, monkeypatch):
+        # Stealth exists to be invisible; a marker in the working tree would defeat that.
+        gcd = self._repo(tmp_path, monkeypatch)
+        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)
+        assert (gcd / "harnessed-placement.json").is_file()
+        assert not (tmp_path / "harnessed-placement.json").exists()
+
+    def test_outside_a_git_checkout_it_is_a_no_op(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: None)
+        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)  # must not raise
+
+    def test_a_corrupt_record_does_not_block_the_launch(self, tmp_path, monkeypatch):
+        gcd = self._repo(tmp_path, monkeypatch)
+        (gcd / "harnessed-placement.json").write_text("{ not json")
+        launcher._assert_placement_unchanged(self._svc(tmp_path), "host", tmp_path)  # must not raise
+        assert json.loads((gcd / "harnessed-placement.json").read_text()) == {"beads-server": "host"}
+
+
+class TestPlacementMismatchIsRejected:
+    """team (`in_repo`) and stealth (`host`) placement are invisible to each other.
+
+    A stealth launch over a checkout that already carries a team workspace starts a second, EMPTY
+    workspace: no error, no issues, and "my data is gone" is the natural — and wrong — reading.
+    """
+
+    def _svc(self, tmp_path):
+        return load_service(
+            _svc_yaml(
+                tmp_path,
+                "name: beads-server\nimage: x:latest\nscope: project\nsocket: run/mysql.sock\n"
+                "data:\n  persist: .beads\nexclusive_lock: dolt\n",
+            ),
+            "beads-server",
+        )
+
+    def test_stealth_aborts_over_an_existing_in_repo_workspace(self, tmp_path):
+        team = launcher.paths.persist_in_repo_dir(tmp_path, ".beads")
+        team.mkdir(parents=True, exist_ok=True)
+        (team / "metadata.json").write_text(json.dumps({"dolt_database": "x"}))
+        with pytest.raises(typer.Exit):
+            launcher._assert_placement_matches(self._svc(tmp_path), "host", tmp_path)
+
+    def test_stealth_passes_when_the_checkout_has_no_in_repo_workspace(self, tmp_path):
+        launcher._assert_placement_matches(self._svc(tmp_path), "host", tmp_path)  # must not raise
+
+    def test_in_repo_placement_is_never_checked(self, tmp_path):
+        team = launcher.paths.persist_in_repo_dir(tmp_path, ".beads")
+        team.mkdir(parents=True, exist_ok=True)
+        (team / "metadata.json").write_text(json.dumps({"dolt_database": "x"}))
+        launcher._assert_placement_matches(self._svc(tmp_path), "in_repo", tmp_path)
 
 
 class TestDeadServiceFailsFast:

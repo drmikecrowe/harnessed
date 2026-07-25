@@ -59,30 +59,46 @@ class TestSubst:
         assert out == "db=x repo=harnessed keep={unknown}"
 
 
-class TestBeadsTeamCodified:
-    def test_resolves_to_shared_server_init(self, monkeypatch):
-        gcd = Path.home() / "Programming" / "Personal" / "harnessed" / ".bare"
-        monkeypatch.setattr(launcher.paths, "git_common_dir", lambda _p: gcd)
-        r = load_recipe(CATALOG / "recipes" / "beads" / "team", strict=True)
-        assert r.setup.run and "--shared-server" in r.setup.run
+class TestBeadsTeamIsNotAutoInitialized:
+    """beads/team must NEVER self-initialize. This replaces two tests that pinned the opposite, and
+    the behaviour they pinned is the origin of the 2026-07-19 incident.
 
-        prims = launcher._repo_primitives(Path("/x"))
-        vals = launcher._resolve_setup_config(r.setup, prims, interactive=False)  # default prefix
-        cmd = launcher._subst(r.setup.run, vals)
-        assert cmd == (
-            "bd init --shared-server --database programming_personal_harnessed "
-            "--prefix harnessed --init-if-missing"
-        )
+    What used to run automatically on a host launch:
 
-    def test_prompt_used_when_interactive(self, monkeypatch):
-        gcd = Path.home() / "Programming" / "Personal" / "harnessed" / ".bare"
-        monkeypatch.setattr(launcher.paths, "git_common_dir", lambda _p: gcd)
-        monkeypatch.setattr(launcher.typer, "prompt", lambda *a, **k: "hns")  # user overrides prefix
+        bd init --shared-server --database <gcd> --prefix <repo> --init-if-missing
+
+    No `--external`, no `--server-socket`, so bd's auto-start stayed enabled — pointed at the global
+    `~/.beads/shared-server`, one database dir for every project on the machine. Three days later a
+    host `bd` auto-started into its own data dir, initialized that directory as a database, and the
+    project database was unreachable for five days (BEADS.md §10). The feature landed 2026-07-16 —
+    the same date as this checkout's `metadata.json.bak-before-shared-reinit`.
+
+    It is also the placement where `bd init` COMMITS 18 files to a shared repo, which is the user's
+    decision. beads/stealth auto-inits instead, because `--stealth` writes no commit at all.
+    """
+
+    def test_team_declares_no_executable_setup(self):
         r = load_recipe(CATALOG / "recipes" / "beads" / "team", strict=True)
-        vals = launcher._resolve_setup_config(r.setup, launcher._repo_primitives(Path("/x")),
-                                              interactive=True)
-        assert vals["config.prefix"] == "hns"
-        assert vals["config.database"] == "programming_personal_harnessed"  # derive is silent
+        assert r.setup is not None, "the user-facing notice must survive"
+        assert not r.setup.run, "team must not self-initialize"
+        assert not r.setup.script
+
+    def test_team_declares_no_init_block(self):
+        r = load_recipe(CATALOG / "recipes" / "beads" / "team", strict=True)
+        assert r.init is None, "`init:` would run on every launch — the same hazard by another door"
+
+    def test_no_beads_recipe_reaches_bds_shared_server(self):
+        for variety in ("team", "stealth"):
+            r = load_recipe(CATALOG / "recipes" / "beads" / variety, strict=True)
+            blob = f"{(r.setup.run or '') if r.setup else ''} {r.init.run if r.init else ''}"
+            assert "--shared-server" not in blob, f"beads/{variety} must not use bd's shared server"
+
+    def test_stealth_initializes_itself_externally(self):
+        r = load_recipe(CATALOG / "recipes" / "beads" / "stealth", strict=True)
+        assert r.init is not None
+        # --external is what keeps bd from ever auto-starting a dolt of its own.
+        assert "--external" in r.init.run and "--server-socket" in r.init.run
+        assert "--stealth" in r.init.run
 
 
 class TestNativeMcp:

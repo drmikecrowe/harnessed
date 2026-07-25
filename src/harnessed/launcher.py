@@ -41,6 +41,7 @@ from . import paths
 from . import persist
 from . import staleness
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
+from .persist_gc import _fmt_size
 from .assemble import assemble, compute_recipe_hash, _merge_servers, _resolve_service_servers
 from .synclinks import CollisionError
 from .schema import (
@@ -2484,8 +2485,14 @@ def harnessed_env(
         # path — `$HOST_HOME/.pulumi`, not `~/.pulumi`. This export is that handle.
         "HOST_HOME": str(Path.home()),
     }
-    if mode == "container" and sockets:
-        env.update(svc_socket_env(stack, project_path))
+    if sockets:
+        # Both modes (bd harnessed-162). This used to be container-only, so a host launch never got
+        # HARNESSED_<SVC>_SOCKET and the beads recipes' `setup:` line — which interpolates it with a
+        # `:?` guard — always aborted, even with the sidecar running. The guard was telling the truth:
+        # the variable genuinely did not exist. Correct in host mode only because _service_data_dir
+        # now resolves the agent path per mode (harnessed-5ek); before that this would have exported
+        # a container path onto the host.
+        env.update(svc_socket_env(stack, project_path, mode))
     if recipe is not None:
         # A setup script does `cp` where a recipe Dockerfile did `COPY`, so it needs its own source
         # dir. Container-side that is the ro mount from `_setup_script_mounts`; host-side it is the
@@ -2629,8 +2636,10 @@ def _svc_project_key(svc: "ServiceDef", project_path: Path | None) -> str:
     return paths.project_hash(gcd if gcd is not None else project_path)
 
 
-def _service_data_dir(svc: "ServiceDef", stack: str, project_path: Path) -> tuple[Path, str, str]:
-    """Resolve a project-scoped service's data dir → (host_dir, agent_container_path, location).
+def _service_data_dir(
+    svc: "ServiceDef", stack: str, project_path: Path, mode: str = "container"
+) -> tuple[Path, str, str]:
+    """Resolve a project-scoped service's data dir → (host_dir, agent_path, location).
 
     The service does NOT choose where its bytes live — the RECIPE does. The service names a persist
     entry (`data.persist`), the launcher finds the recipe in this stack that declares it, and
@@ -2656,7 +2665,14 @@ def _service_data_dir(svc: "ServiceDef", stack: str, project_path: Path) -> tupl
                 host_dir = paths.persist_project_dir(recipe.name, project_path, entry.name)
             else:
                 host_dir = paths.persist_workspace_dir(recipe.name, project_path, entry.name)
-            return host_dir, f"{_CONTAINER_HOME_STR}/{entry.name}", "host"
+            # The AGENT-visible path genuinely differs by mode, and only for `location: host`: in a
+            # pod the entry is bind-mounted at $CONTAINER_HOME/<name>, while a host launch has no
+            # mount at all and the agent sees the real persist dir. Returning the container path
+            # unconditionally (bd harnessed-5ek) meant any host-mode consumer got
+            # `/home/harnessed/<name>` — a path that does not exist on the machine it would be used
+            # on. Same two-modes-disagree problem `{persist:<name>}` solves for recipe `env:`.
+            agent_dir = str(host_dir) if mode == "host" else f"{_CONTAINER_HOME_STR}/{entry.name}"
+            return host_dir, agent_dir, "host"
 
     raise SchemaError(
         f"service '{svc.name}' declares data.persist: '{svc.data_persist}', but no recipe in stack "
@@ -2664,7 +2680,7 @@ def _service_data_dir(svc: "ServiceDef", stack: str, project_path: Path) -> tupl
     )
 
 
-def svc_socket_env(stack: str, project_path: Path) -> dict[str, str]:
+def svc_socket_env(stack: str, project_path: Path, mode: str = "container") -> dict[str, str]:
     """Container-side socket path for each socket-backed project-scoped service in the stack.
 
     Exported into the attach shell (see _init_shell_prologue) as HARNESSED_<NAME>_SOCKET so a
@@ -2676,7 +2692,7 @@ def svc_socket_env(stack: str, project_path: Path) -> dict[str, str]:
         svc = load_service(None, name)
         if not (svc.scope == "project" and svc.is_socket_only):
             continue
-        _, agent_dir, _ = _service_data_dir(svc, stack, project_path)
+        _, agent_dir, _ = _service_data_dir(svc, stack, project_path, mode)
         var = "HARNESSED_" + svc.name.upper().replace("-", "_") + "_SOCKET"
         env[var] = f"{agent_dir}/{svc.socket}"
     return env
@@ -2799,19 +2815,23 @@ def _ensure_service(
 
     if svc.scope == "project":
         assert project_path is not None  # guarded above
-        host_dir, agent_dir, location = _service_data_dir(svc, stack, project_path)
+        host_dir, _, location = _service_data_dir(svc, stack, project_path)
         persist.guard_ownership(host_dir)
         host_dir.mkdir(parents=True, exist_ok=True)
         _assert_data_dir_unlocked(svc, host_dir)
+        _assert_data_dir_not_self_served(svc, host_dir)
+        _assert_placement_matches(svc, location, project_path)
+        _assert_placement_unchanged(svc, location, project_path)
+        _assert_named_database_present(svc, host_dir)
+        _ensure_dolt_autostart_disabled(svc, host_dir)
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
         # (a dolt data dir written by a foreign uid would EACCES for every agent container).
         run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
-        if svc.is_socket_only:
-            # The CLIENT-visible socket path — NOT this container's /data/run/... view of it. A
-            # service that records a socket path for its clients (beads writes it into
-            # .beads/metadata.json) must record the path THEY use, or every client dials a path that
-            # does not exist in its mount namespace.
-            run_cmd += ["-e", f"HARNESSED_SOCKET_PATH={agent_dir}/{svc.socket}"]
+        # No HARNESSED_SOCKET_PATH: it existed solely so the beads-server entrypoint could stamp the
+        # client-visible socket into .beads/metadata.json, and that writer is gone (metadata.json is
+        # tracked, the socket path is machine-local — BEADS.md §4). Clients now learn the socket from
+        # their own environment, which the recipes resolve through the same persist entry, so nothing
+        # has to be passed into the server for the clients' benefit.
         if location == "in_repo" and mount_path is not None:
             # The git repo itself — remote git traffic (bd's `dolt clone` of refs/dolt/data at init,
             # and `bd dolt push` at sync) runs HERE, because bd shells out to a dolt CLI that only
@@ -2900,6 +2920,244 @@ def _assert_data_dir_unlocked(svc: "ServiceDef", host_dir: Path) -> None:
     )
     _err.print(f"  PID {pid}: {cmdline}")
     _err.print("  Stop it and retry, or run this stack with --host so it uses that server instead.")
+    raise typer.Exit(1)
+
+
+def _assert_data_dir_not_self_served(svc: "ServiceDef", host_dir: Path) -> None:
+    """Abort when a host engine has initialized the sidecar's data dir AS a database.
+
+    Dolt serves the *subdirectories* of its --data-dir as databases, so the beads-server entrypoint
+    points it at `<data>/dolt/` and the project database lands at `<data>/dolt/<db>/`. A host `bd`
+    that cannot reach a server auto-starts its own — chdir'd into that same `<data>/dolt/` and with
+    NO --data-dir — and that run initializes the data dir itself as a repo. The directory is now a
+    database in its own right, so ANY server later pointed at it serves exactly one database named
+    `dolt`, and the project database becomes unreachable: every `bd` call dies with
+    `database "<project>" not found` (errno 1049).
+
+    Observed 2026-07-19 on harnessed's own checkout, where it survived three server restarts and
+    five days. The failure is reported by the CLIENT as a missing database, and nothing in that
+    message points at the data dir's shape — so the obvious readings ("the server is down", "the
+    database was lost") are both wrong and both lead away from the fix.
+
+    The signature is `repo_state.json`, NOT the mere existence of `<data>/dolt/.dolt/`: a perfectly
+    healthy sql-server also creates that directory, for `sql-server.info` and a `tmp/`. Only an
+    INITIALIZED repo carries `repo_state.json` (beside `noms/`, `config.json`, `stats/`). Keying on
+    the directory alone would reject every healthy running server — both states were compared on
+    disk before this was written.
+    """
+    if svc.exclusive_lock != "dolt":
+        return
+    data_dir = host_dir / "dolt"
+    repo_state = data_dir / ".dolt" / "repo_state.json"
+    if not repo_state.is_file():
+        return
+    _err.print(
+        f"[bold red]error:[/bold red] service '{svc.name}' cannot start: {data_dir} is itself a "
+        "Dolt database"
+    )
+    _err.print("  A host 'dolt' initialized the data dir in place. A server pointed at it serves")
+    _err.print("  one database named 'dolt', so the project database is unreachable (errno 1049).")
+    _err.print("  Move it aside (this preserves anything in it) and relaunch:")
+    _err.print(f"    mv {data_dir / '.dolt'} {data_dir / '.dolt'}.poisoned")
+    raise typer.Exit(1)
+
+
+def _dolt_migration_sources(host_dir: Path, db: str) -> list[Path]:
+    """Directories that hold database `db` and could be migrated into this data dir.
+
+    Only two are guessable, and both are where the database actually ends up in practice:
+      * `~/.beads/shared-server/dolt/<db>` — bd's own multi-project server, which a plain `bd init`
+        adopts silently. This is where harnessed's own issues lived while every `bd` call reported
+        the database missing.
+      * `<data>/dolt.*/<db>` — a data dir quarantined out of the way by the self-served guard.
+
+    Anything else is named explicitly with `--from`; guessing more widely would mean scanning the
+    filesystem for something the user can point at in one argument.
+
+    A candidate counts only if it carries `.dolt/repo_state.json` — the marker of an initialized
+    repo, and the same signal `_assert_data_dir_not_self_served` keys on.
+    """
+    found: list[Path] = []
+    for cand in [Path.home() / ".beads" / "shared-server" / "dolt" / db, *sorted(host_dir.glob(f"dolt.*/{db}"))]:
+        if (cand / ".dolt" / "repo_state.json").is_file() and cand not in found:
+            found.append(cand)
+    return found
+
+
+def _dir_size(path: Path) -> int:
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _ensure_dolt_autostart_disabled(svc: "ServiceDef", host_dir: Path) -> None:
+    """Turn bd's auto-start off in the workspace's own config, for everyone who touches this repo.
+
+    `BEADS_DOLT_SERVER_SOCKET` only protects processes harnessed launched. This key protects the
+    rest: a stray `bd` in a plain terminal, a git hook, a SessionStart hook — and a TEAMMATE who
+    never runs harnessed at all. Without it bd starts a server chdir'd into its data dir with no
+    --data-dir, which on an EMPTY data dir initializes that directory as a database and makes the
+    project database permanently unreachable. A fresh clone is exactly that empty-data-dir case, so
+    the teammate scenario is not hypothetical (two repos on this machine caught it independently).
+
+    `config.yaml` is part of bd's tracked surface, so for `beads/team` this lands in a file the user
+    will commit — deliberately, since the protection is only repo-wide if it is shared. Announced
+    when written, because silently dirtying a tracked file is its own kind of surprise.
+
+    Skipped when there is no workspace yet: `bd init` writes config.yaml, and the next launch adds
+    the key. Additive and idempotent — an existing setting of either value is left alone, so a user
+    who deliberately re-enables auto-start is not overridden on every launch.
+    """
+    if svc.exclusive_lock != "dolt":
+        return
+    cfg = host_dir / "config.yaml"
+    try:
+        text = cfg.read_text()
+    except OSError:
+        return
+    if re.search(r"^\s*dolt\.auto-start\s*:", text, re.MULTILINE):
+        return
+    with cfg.open("a", encoding="utf-8") as fh:
+        fh.write(
+            "\n# harnessed: bd auto-starts a dolt sql-server chdir'd into its data dir with no\n"
+            "# --data-dir whenever it cannot reach one. On an empty data dir — a fresh clone —\n"
+            "# that initializes the directory ITSELF as a database and the project database becomes\n"
+            "# unreachable (errno 1049). Start the server explicitly instead: `bd dolt start`.\n"
+            "dolt.auto-start: false\n"
+        )
+    _out.print(f"[blue][INFO][/blue] set dolt.auto-start: false in {cfg}")
+
+
+def _placement_marker(project_path: Path) -> Path | None:
+    """Where the active placement is recorded — inside the git COMMON dir, or None outside a repo.
+
+    The git dir is deliberate on both counts: it is shared by every worktree of the checkout (so the
+    record cannot disagree between them), and git never tracks its own internals, so this stays
+    invisible — which `beads/stealth`, whose entire purpose is invisibility, requires.
+    """
+    gcd = paths.git_common_dir(project_path)
+    return None if gcd is None else gcd / "harnessed-placement.json"
+
+
+def _assert_placement_unchanged(svc: "ServiceDef", location: str, project_path: Path) -> None:
+    """Abort when this service's data was last placed somewhere else, and record it when it was not.
+
+    `_assert_placement_matches` catches only stealth-over-team, because the team dir sits at a known
+    recipe-independent path while a stealth dir is keyed by recipe name plus a project hash — a team
+    launch cannot enumerate where a stealth workspace might be. Recording the placement closes the
+    other direction: whichever ran first leaves a note, and a later launch in the other placement is
+    refused instead of silently starting a second, EMPTY workspace whose missing issues read as data
+    loss.
+
+    Deliberately not self-healing. Both placements may hold real data by the time they disagree, and
+    picking one would discard the other; the user has to say which they meant.
+    """
+    marker = _placement_marker(project_path)
+    if marker is None:
+        return  # not a git checkout — nothing stable to key the record on
+    try:
+        seen = json.loads(marker.read_text()).get(svc.name)
+    except (OSError, ValueError):
+        seen = None
+    if seen is not None and seen != location:
+        _err.print(
+            f"[bold red]error:[/bold red] service '{svc.name}' was last used with "
+            f"'{seen}' placement, but this stack wants '{location}'"
+        )
+        _err.print("  Launching would start a second, empty workspace — your issues would simply")
+        _err.print("  not appear. Use the stack matching the placement above, or, once you are sure")
+        _err.print(f"  which copy you want, delete the record: rm {marker}")
+        raise typer.Exit(1)
+    if seen == location:
+        return
+    try:
+        current = json.loads(marker.read_text()) if marker.is_file() else {}
+        if not isinstance(current, dict):
+            current = {}
+    except (OSError, ValueError):
+        current = {}
+    current[svc.name] = location
+    # Best-effort: this record only ever PREVENTS a future mistake, so failing to write it must not
+    # take down the launch in front of us (a read-only git dir, or one that does not exist yet).
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps(current, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _beads_metadata(host_dir: Path) -> dict | None:
+    """`metadata.json` from a beads data dir, or None when there is no readable workspace there."""
+    try:
+        meta = json.loads((host_dir / "metadata.json").read_text())
+    except (OSError, ValueError):
+        return None
+    return meta if isinstance(meta, dict) else None
+
+
+def _assert_named_database_present(svc: "ServiceDef", host_dir: Path) -> None:
+    """Abort when the workspace names a database this data dir does not contain.
+
+    `metadata.json` records `dolt_database`, and the sidecar serves `<data>/dolt/` as its --data-dir,
+    so that database MUST exist at `<data>/dolt/<name>/`. When it does not, the sidecar starts
+    perfectly happily and every client then fails with `database "<name>" not found` (errno 1049) —
+    a message that points at the server, not at the missing bytes, which is why the state is so hard
+    to read from the client side.
+
+    Two ways to get here, both real:
+      * The workspace was pointed at ANOTHER server that holds the database — bd's own multi-project
+        `~/.beads/shared-server`, for instance, which a plain `bd init` will silently adopt. The
+        bytes exist, just not here; they have to be migrated in.
+      * A `beads/team` checkout was cloned fresh. `metadata.json` is tracked, the Dolt bytes are not,
+        so the workspace arrives naming a database that was never materialized locally. It needs
+        `bd bootstrap` (or a Dolt remote that actually has data — see harnessed's own 2026-07-24
+        failure, where the remote had none).
+
+    Checked on the host, from the filesystem alone: no server, no client, no connection required.
+    """
+    if svc.exclusive_lock != "dolt":
+        return
+    meta = _beads_metadata(host_dir)
+    if meta is None:
+        return  # no workspace yet — first-run init owns that case, not this guard
+    db = meta.get("dolt_database")
+    if not db or (host_dir / "dolt" / str(db)).is_dir():
+        return
+    _err.print(
+        f"[bold red]error:[/bold red] service '{svc.name}' cannot serve this workspace: it names "
+        f"database '{db}', which is not in {host_dir / 'dolt'}"
+    )
+    _err.print("  The sidecar would start and every 'bd' call would fail with errno 1049.")
+    _err.print("  The bytes live wherever this workspace was previously pointed (commonly bd's own")
+    _err.print("  ~/.beads/shared-server/dolt). Bring them in with:")
+    _err.print(f"    harnessed svc migrate {svc.name} --stack <stack>")
+    _err.print("  or run 'bd bootstrap' if the Dolt remote has data.")
+    raise typer.Exit(1)
+
+
+def _assert_placement_matches(svc: "ServiceDef", location: str, project_path: Path) -> None:
+    """Abort when a host-placed (stealth) launch would ignore an in-repo (team) workspace.
+
+    The two beads recipes differ ONLY in placement: `beads/team` puts `.beads` in the repo,
+    `beads/stealth` puts it on the host outside the repo. Nothing in either one notices the other,
+    so launching the stealth stack over a checkout that already carries a team workspace silently
+    starts a SECOND, empty workspace — the issues do not appear, nothing errors, and the obvious
+    reading ("my data is gone") is wrong.
+
+    Only this direction is detectable from placement alone: the team dir is at a known,
+    recipe-independent path under the checkout, whereas the stealth dir is keyed by recipe name and
+    a project hash, so a team launch cannot enumerate where a stealth workspace might be.
+    """
+    if location != "host":
+        return
+    team_dir = paths.persist_in_repo_dir(project_path, svc.data_persist)
+    if _beads_metadata(team_dir) is None:
+        return
+    _err.print(
+        f"[bold red]error:[/bold red] service '{svc.name}' is running host-placed (stealth), but "
+        f"{team_dir} already holds an in-repo workspace"
+    )
+    _err.print("  Launching stealth here would start a second, empty workspace and your issues")
+    _err.print("  would simply not appear. Use the team stack for this checkout, or move the")
+    _err.print(f"  in-repo workspace aside first: mv {team_dir} {team_dir}.bak")
     raise typer.Exit(1)
 
 
@@ -3026,7 +3284,14 @@ def _collect_setup_notices(
     return out
 
 
-def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str, harness: str) -> bool:
+def _prompt_setup_notices(
+    recipes: list[Recipe],
+    project_path: Path,
+    stack: str,
+    harness: str,
+    *,
+    allow_terminal: bool = True,
+) -> bool:
     """Show aggregated user-facing `setup:` notices host-side at launch and act on the choice.
 
     No-op when nothing qualifies (`_collect_setup_notices`) or stdin is not a TTY (headless/CI
@@ -3047,8 +3312,13 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
         assert recipe.setup is not None  # guaranteed by _collect_setup_notices
         _out.print(f"  • [bold]{recipe.name}[/bold]: {recipe.setup.summary}")
         _out.print(f"    see: {recipe.setup.reference}")
+    # [T]erminal means "launch into a container shell instead of the agent". A host launch has no
+    # container to drop into — `host-run` does not even accept `--shell` — so offering it there would
+    # be a choice that silently does nothing. Omit it rather than accept-and-ignore.
     choice = typer.prompt(
-        "[O]k / [T]erminal (shell in the container) / [D]ismiss (don't show again) / [Q]uit",
+        "[O]k / [T]erminal (shell in the container) / [D]ismiss (don't show again) / [Q]uit"
+        if allow_terminal
+        else "[O]k / [D]ismiss (don't show again) / [Q]uit",
         default="O",
     )
     choice = choice.strip().lower()
@@ -3058,7 +3328,7 @@ def _prompt_setup_notices(recipes: list[Recipe], project_path: Path, stack: str,
         flag = paths.setup_dismissed_flag(stack, harness, project_path)
         flag.parent.mkdir(parents=True, exist_ok=True)
         flag.write_text("", encoding="utf-8")
-    return choice.startswith("t")
+    return allow_terminal and choice.startswith("t")
 
 
 def _acknowledge_warnings() -> None:
@@ -3837,6 +4107,37 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
             raise typer.Exit(1)
 
 
+def _host_run_inits(stack: str, project_path: Path, *, harness: str) -> None:
+    """Run each recipe's `init.run` host-side — the host half of what the attach shell does.
+
+    Model A: init runs on EVERY launch and the command self-gates, so this needs no marker. It was
+    wired only into `_init_shell_prologue`, i.e. the container attach shell, which made an `init:`
+    declaration a silent no-op under `host-run` — the same container-only wiring that produced
+    harnessed-2sm/-162/-5ek.
+
+    Fail-fast, matching the container path: an agent must not start against a half-initialized tool.
+    Runs AFTER `_host_run_setups`, because a setup script may be what installs the binary init calls.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    for recipe in recipes:
+        if recipe.init is None:
+            continue
+        _say(f"[blue][INFO][/blue] init ({recipe.name}): host")
+        result = subprocess.run(
+            ["bash", "-lc", recipe.init.run],
+            cwd=str(project_path),
+            env={**os.environ, **harnessed_env(
+                stack, project_path, harness=harness, mode="host", recipe=recipe
+            )},
+        )
+        if result.returncode != 0:
+            _err.print(
+                f"[bold red]error:[/bold red] recipe '{recipe.name}' init failed "
+                f"(exit {result.returncode})"
+            )
+            raise typer.Exit(result.returncode)
+
+
 def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
     """Run each recipe's executable setup (host-native) whose `condition` is satisfied — either the
     both-mode `setup.script` (preferred) or the legacy host-only `setup.run`.
@@ -3979,6 +4280,22 @@ def _launch_host(
     #     that is hardest to see from inside a session.
     os.environ.update(_resolve_launch_env(project_path))
 
+    # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). A `services:` entry is a property
+    # of the STACK, not of the backend: host mode makes the AGENT host-native, it does not remove the
+    # service the stack says it needs. Omitting this left every beads stack under `host-run` with no
+    # server, no socket and no data dir, and an agent that reported "no beads database" — with
+    # nothing in the launch output saying a declared service had been skipped.
+    #
+    # A socket-backed sidecar composes with a host agent for free: the socket is a filesystem object
+    # inside the persist dir the service bind-mounts, so the host process dials exactly the path the
+    # container serves it on. No port, no netns to bridge, nothing mode-specific.
+    #
+    # Ahead of the recipe env and setup scripts below, which is what needs the socket to already
+    # exist. Guarded on the stack actually declaring services, so a host launch of a service-less
+    # stack still needs no container runtime at all.
+    if _service_refs(stack):
+        _ensure_services(_runtime(), stack, project_path=project_path, mount_path=project_path)
+
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
     # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
     # this launch), so all three consumers get it from one place: any install/setup script spawned
@@ -4055,6 +4372,17 @@ def _launch_host(
     # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
     # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
     _host_run_setups(stack, project_path, harness=harness)
+    # Recipe `init:` — the host half of the attach shell's init prologue. After setups, since a
+    # setup script may install the very binary init invokes.
+    _host_run_inits(stack, project_path, harness=harness)
+
+    # Pending `setup:` notices, and BLOCK on them — the host half of what `launch` does at its own
+    # line. This was container-only too, so a host launch printed nothing and started the agent
+    # anyway: a fresh `beads/team` checkout came up with no workspace, and the agent discovered it
+    # rather than the user. Runs after init, so a recipe that self-initializes (beads/stealth) has
+    # already satisfied its own condition and stays silent. `allow_terminal=False` — there is no
+    # container to drop a shell into here.
+    _prompt_setup_notices(host_recipes, project_path, stack, harness, allow_terminal=False)
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
     # sees just-provisioned tools AND anything an install/setup script put in the stack bin dir.
     mcp_servers = _host_native_mcp(stack)
@@ -5251,13 +5579,112 @@ _COMMANDS = {
 }
 
 
+def _svc_migrate(
+    svc_def: "ServiceDef", stack: str, project_path: Path, from_path: str, assume_yes: bool
+) -> None:
+    """Move an existing database INTO this service's data dir, with the user's confirmation.
+
+    The gap this fills: the sidecar re-asserts socket mode in `metadata.json` on every startup, but
+    re-pointing the metadata does not move the bytes. A workspace that bd adopted onto its own
+    multi-project server therefore comes up correctly configured and still empty, and every client
+    fails with errno 1049 — which `_assert_named_database_present` now catches at launch and sends
+    here.
+
+    Deliberately a separate, explicit command rather than something `launch` does for you: it copies
+    a database between directories, and the recipes already hold the line that first-time beads setup
+    is a deliberate user action rather than a side effect of launching.
+
+    Copies, never moves. A failed or half-finished migration must leave the source exactly as it was,
+    so the old location stays usable as a fallback until the user removes it themselves.
+    """
+    if svc_def.exclusive_lock != "dolt":
+        _err.print(f"[bold red]error:[/bold red] service '{svc_def.name}' defines no migration")
+        raise typer.Exit(1)
+    host_dir, _, _ = _service_data_dir(svc_def, stack, project_path)
+    meta = _beads_metadata(host_dir)
+    db = str((meta or {}).get("dolt_database") or "")
+    if not db:
+        _err.print(
+            f"[bold red]error:[/bold red] no workspace to migrate: {host_dir / 'metadata.json'} "
+            "does not name a database"
+        )
+        raise typer.Exit(1)
+
+    dest = host_dir / "dolt" / db
+    if dest.is_dir():
+        _out.print(f"[blue][INFO][/blue] '{db}' is already in {host_dir / 'dolt'} — nothing to do")
+        return
+
+    # Copying into a data dir that an engine has open risks a torn copy, and the flock makes the
+    # result unusable anyway. Same check the launch path runs before starting the sidecar.
+    holder = _host_process_in_dir("dolt", host_dir.resolve())
+    if holder is not None:
+        pid, cmdline = holder
+        _err.print(f"[bold red]error:[/bold red] a host 'dolt' holds {host_dir} — stop it first")
+        _err.print(f"  PID {pid}: {cmdline}")
+        raise typer.Exit(1)
+
+    if from_path:
+        src = Path(from_path).expanduser().resolve()
+        if not (src / ".dolt" / "repo_state.json").is_file():
+            _err.print(f"[bold red]error:[/bold red] {src} is not a Dolt database (no .dolt/repo_state.json)")
+            raise typer.Exit(1)
+        sources = [src]
+    else:
+        sources = _dolt_migration_sources(host_dir, db)
+
+    if not sources:
+        _err.print(f"[bold red]error:[/bold red] found no database '{db}' to migrate")
+        _err.print("  Looked in ~/.beads/shared-server/dolt/ and any quarantined <data>/dolt.*/")
+        _err.print("  Point at it explicitly with --from <dir>, or run 'bd bootstrap' if the Dolt")
+        _err.print("  remote has data.")
+        raise typer.Exit(1)
+    if len(sources) > 1:
+        _err.print(f"[bold red]error:[/bold red] more than one database '{db}' found — pick one with --from:")
+        for cand in sources:
+            _err.print(f"    --from {cand}")
+        raise typer.Exit(1)
+
+    src = sources[0]
+    # persist_gc's formatter, not a hardcoded MiB: a small database rounds to "0.0 MiB", which reads
+    # as "there is nothing here" in the one prompt whose job is to tell the user what they are about
+    # to copy (a real 40 KiB database printed exactly that in the 2026-07-25 end-to-end run).
+    size = _fmt_size(_dir_size(src))
+    mtime = datetime.fromtimestamp((src / ".dolt").stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    _out.print(f"[blue][INFO][/blue] migrate database '{db}'")
+    _out.print(f"           from  {src}  ({size}, last written {mtime})")
+    _out.print(f"           into  {dest}")
+    _out.print("           the source is COPIED, not moved — it stays where it is")
+    if not assume_yes:
+        if not sys.stdin.isatty():
+            _err.print("[bold red]error:[/bold red] not a terminal — re-run with --yes to confirm")
+            raise typer.Exit(1)
+        if not typer.confirm("Proceed?"):
+            _out.print("[blue][INFO][/blue] aborted, nothing was written")
+            raise typer.Exit(1)
+
+    # Stage beside the destination and rename, so an interrupted copy never leaves a partial
+    # database where the server would find one and serve it.
+    staging = dest.with_name(dest.name + ".migrating")
+    shutil.rmtree(staging, ignore_errors=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, staging, symlinks=True)
+    staging.rename(dest)
+    if not (dest / ".dolt" / "repo_state.json").is_file():
+        _err.print(f"[bold red]error:[/bold red] migration landed at {dest} but is not a Dolt database")
+        raise typer.Exit(1)
+    _out.print(f"[green][SUCCESS][/green] '{db}' migrated into {host_dir / 'dolt'}")
+
+
 @app.command("svc")
 def svc(
-    action: str = typer.Argument(..., help="up | down | sync"),
+    action: str = typer.Argument(..., help="up | down | sync | migrate"),
     name: str = typer.Argument(..., help="Service name (services/<name>/service.yaml)"),
     stack: str = typer.Option("", "--stack", help="Stack context (required for scope: project)"),
+    from_: str = typer.Option("", "--from", help="migrate: source database dir (skips discovery)"),
+    assume_yes: bool = typer.Option(False, "--yes", help="migrate: skip the confirmation prompt"),
 ) -> None:
-    """Manage a service sidecar (build+start, stop+remove, or sync).
+    """Manage a service sidecar (build+start, stop+remove, sync, or migrate its data in).
 
     `up`/`down` on a `scope: project` service act on THIS project's container (git-common-dir keyed),
     so they need `--stack` to resolve which persist entry holds the data.
@@ -5266,6 +5693,10 @@ def svc(
     sql-server`'s git sync (`bd dolt push` → refs/dolt/data) shells out to the dolt CLI, which only
     routes to a server on its OWN loopback — so the push can only run inside the service container,
     never in an agent container. Sync pushes to your git remote, so it is explicit, never automatic.
+
+    `migrate` copies an existing database INTO this service's data dir — the half that re-asserting
+    socket mode cannot do, since re-pointing `metadata.json` does not move the bytes. It is what the
+    launch-time "names database X, which is not in ..." abort tells you to run.
     """
     rt = _runtime()
     project_path = Path.cwd().resolve()
@@ -5298,8 +5729,13 @@ def svc(
             _err.print(f"[bold red]error:[/bold red] sync failed for service '{name}'")
             raise typer.Exit(result.returncode)
         _out.print(f"[green][SUCCESS][/green] Service '{name}' synced")
+    elif action == "migrate":
+        _svc_migrate(svc_def, stack, project_path, from_, assume_yes)
     else:
-        _err.print(f"[bold red]error:[/bold red] unknown svc action '{action}' (use: up | down | sync)")
+        _err.print(
+            f"[bold red]error:[/bold red] unknown svc action '{action}' "
+            "(use: up | down | sync | migrate)"
+        )
         raise typer.Exit(1)
 
 

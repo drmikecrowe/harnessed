@@ -40,7 +40,7 @@ def _recipe(tmp_path, name, *, condition=None, run=None):
 class TestHarnessedEnv:
     def test_every_documented_var_is_present_in_both_modes(self, tmp_path, monkeypatch):
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
-        host = launcher.harnessed_env("s", tmp_path, harness="claude", mode="host")
+        host = launcher.harnessed_env("s", tmp_path, harness="claude", mode="host", sockets=False)
         ctr = launcher.harnessed_env("s", tmp_path, harness="claude", mode="container",
                                      mount_path=tmp_path, sockets=False)
         assert CONTRACT_KEYS <= set(host)
@@ -49,13 +49,13 @@ class TestHarnessedEnv:
     def test_harness_is_unprefixed_so_a_script_matches_a_dockerfile_arg(self, tmp_path, monkeypatch):
         """`ARG HARNESS` in a recipe Dockerfile and `$HARNESS` in a setup script must be one token."""
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
-        env = launcher.harnessed_env("s", tmp_path, harness="opencode", mode="host")
+        env = launcher.harnessed_env("s", tmp_path, harness="opencode", mode="host", sockets=False)
         assert env["HARNESS"] == "opencode"
 
     def test_main_repo_dir_is_the_git_common_dir(self, tmp_path, monkeypatch):
         common = tmp_path / "bare"
         monkeypatch.setattr(paths, "git_common_dir", lambda p: common)
-        env = launcher.harnessed_env("s", tmp_path / "main", harness="claude", mode="host")
+        env = launcher.harnessed_env("s", tmp_path / "main", harness="claude", mode="host", sockets=False)
         assert env["MAIN_REPO_DIR"] == str(common)
         assert env["HARNESSED_GIT_COMMON_DIR"] == str(common)
 
@@ -64,7 +64,7 @@ class TestHarnessedEnv:
         moment the agent cd's into a different repository."""
         monkeypatch.setattr(paths, "git_common_dir", lambda p: tmp_path / "bare")
         assert "GIT_COMMON_DIR" not in launcher.harnessed_env(
-            "s", tmp_path, harness="claude", mode="host"
+            "s", tmp_path, harness="claude", mode="host", sockets=False
         )
 
     def test_recipe_dir_is_the_catalog_dir_on_host_and_the_mount_in_container(
@@ -72,7 +72,8 @@ class TestHarnessedEnv:
     ):
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
         r = _recipe(tmp_path / "cat", "rr")
-        host = launcher.harnessed_env("s", tmp_path, harness="claude", mode="host", recipe=r)
+        host = launcher.harnessed_env("s", tmp_path, harness="claude", mode="host", recipe=r,
+                                      sockets=False)
         ctr = launcher.harnessed_env("s", tmp_path, harness="claude", mode="container",
                                      recipe=r, sockets=False)
         assert host["HARNESSED_RECIPE_DIR"] == str(r.root)
@@ -80,7 +81,7 @@ class TestHarnessedEnv:
 
     def test_recipe_dir_absent_when_not_recipe_scoped(self, tmp_path, monkeypatch):
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
-        env = launcher.harnessed_env("s", tmp_path, harness="claude", mode="host")
+        env = launcher.harnessed_env("s", tmp_path, harness="claude", mode="host", sockets=False)
         assert "HARNESSED_RECIPE_DIR" not in env
 
     def test_container_recipe_dir_is_actually_mounted(self, tmp_path):
@@ -99,6 +100,17 @@ class TestHarnessedEnv:
 class TestConditionEvalSeesTheContract:
     """The acceptance criterion: a condition referencing ${MAIN_REPO_DIR} resolves to the real path
     at BOTH eval sites."""
+
+    @pytest.fixture(autouse=True)
+    def _no_socket_resolution(self, monkeypatch):
+        """These use a synthetic stack name, and socket resolution loads the real manifest.
+
+        `_collect_setup_notices` is production code, so `sockets=False` cannot be passed in from
+        here — and it SHOULD build the socket vars, since a `setup.condition` may reference them.
+        Stub the resolution instead: what is under test is that ${MAIN_REPO_DIR} reaches the eval,
+        not which sockets a stack declares.
+        """
+        monkeypatch.setattr(launcher, "svc_socket_env", lambda *a, **k: {})
 
     def _repo(self, tmp_path, monkeypatch, *, marker: bool):
         common = tmp_path / "bare"

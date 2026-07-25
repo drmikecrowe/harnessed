@@ -508,6 +508,85 @@ class TestHostCliRouting:
         assert captured["ccd"] == str(paths.host_home("hostspike", "claude"))
         assert paths.is_built("hostspike", "claude")  # profile assembled during the launch itself
 
+    def test_host_run_brings_up_the_stacks_sidecars(self, monkeypatch, tmp_path):
+        """bd harnessed-2sm: `services:` is a property of the STACK, not of the backend.
+
+        `launch` ensured them; `_launch_host` did not, so every beads stack under `host-run` came up
+        with no server, no socket and no data dir — and nothing in the output said a declared service
+        had been skipped. A socket-backed sidecar composes with a host agent for free: the socket is
+        a filesystem object in the persist dir the service bind-mounts, so the host process dials the
+        same path the container serves it on.
+        """
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        ensured: list = []
+
+        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
+        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        monkeypatch.setattr(
+            launcher, "_ensure_services", lambda rt, stack, **kw: ensured.append((rt, stack))
+        )
+        # hostspike declares no beads recipe, so resolving beads-server's data dir against it is a
+        # genuine SchemaError — the fake service ref above is only here to prove the CALL happens.
+        # Socket resolution has its own coverage in test_project_scoped_services.py.
+        monkeypatch.setattr(launcher, "svc_socket_env", lambda *_a, **_k: {})
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+
+        assert result.exit_code == 0, result.output
+        assert ensured == [("podman", "hostspike")]
+
+    def test_host_run_runs_recipe_init(self, monkeypatch, tmp_path):
+        """Recipe `init:` was wired only into the container attach shell, so declaring it was a
+        silent no-op under `host-run` — the same container-only wiring as harnessed-2sm/-162/-5ek."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        ran: list = []
+
+        monkeypatch.setattr(launcher, "_service_refs", lambda _s: [])
+        monkeypatch.setattr(launcher, "_host_run_inits", lambda *a, **k: ran.append(a[0]))
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+        assert ran == ["hostspike"]
+
+    def test_host_init_runs_the_command_and_fails_fast(self, monkeypatch, tmp_path):
+        import typer
+
+        from harnessed.schema import InitSpec, Recipe
+
+        marker = tmp_path / "ran"
+        ok = Recipe(name="r-ok", init=InitSpec(run=f"touch {marker}"))
+        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _r, _s: (None, [ok]))
+        launcher._host_run_inits("s", tmp_path, harness="claude")
+        assert marker.is_file()
+
+        bad = Recipe(name="r-bad", init=InitSpec(run="exit 3"))
+        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _r, _s: (None, [bad]))
+        with pytest.raises(typer.Exit):  # an agent must not start on a half-initialized tool
+            launcher._host_run_inits("s", tmp_path, harness="claude")
+
+    def test_host_run_needs_no_runtime_when_the_stack_has_no_services(self, monkeypatch, tmp_path):
+        """A service-less host launch must not require podman to be installed — `_runtime()` is only
+        touched when the stack actually declares something to start."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+
+        def boom():
+            raise AssertionError("_runtime() must not be called for a service-less stack")
+
+        monkeypatch.setattr(launcher, "_service_refs", lambda _s: [])
+        monkeypatch.setattr(launcher, "_runtime", boom)
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+        assert result.exit_code == 0, result.output
+
     def test_host_settings_inherit_the_host_claude_default_mode(self, monkeypatch, tmp_path):
         """bd harnessed-8px.8, found by a REAL --host launch: the session came up in acceptEdits
         even though the host ~/.claude declared `auto`.
