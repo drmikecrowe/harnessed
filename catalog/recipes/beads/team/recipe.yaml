@@ -56,7 +56,19 @@ setup:
     Git sync is a HOST command: `harnessed svc sync beads-server --stack <stack>` — `bd dolt push`
     from inside an agent is not supported (see the README).
   reference: https://github.com/gastownhall/beads
-  condition: '[ ! -f "$(git rev-parse --git-common-dir)/.beads/metadata.json" ]'
+  # $BEADS_DIR, not `git rev-parse --git-common-dir` — the raw git form is WRONG for a normal
+  # checkout and it never showed here because harnessed's own repo is bare+worktrees. There the
+  # common dir is `.bare/` and `.bare/.beads` is genuinely the workspace, so the test passes. In an
+  # ordinary clone the common dir is `<repo>/.git`, so this tested `<repo>/.git/.beads/metadata.json`
+  # while bd's workspace sits at `<repo>/.beads` — a path that can never exist. The condition could
+  # therefore never be satisfied: the notice fired on EVERY launch of an initialized workspace,
+  # telling the user to run `bd init`, which then correctly refused with "already initialized"
+  # (observed 2026-07-26). A setup prompt that cannot be discharged trains people to ignore prompts.
+  #
+  # $BEADS_DIR resolves through the same `{persist:.beads}` entry the launcher and the beads-server
+  # service use, so it is right in BOTH layouts and in both container and host mode by construction
+  # — which is exactly why beads/stealth already tests it this way.
+  condition: '[ ! -f "${BEADS_DIR:?}/metadata.json" ]'
   # NO `run:` — team is initialized BY THE USER, deliberately. Two independent reasons:
   #
   # 1. `bd init` in this placement COMMITS. It creates 18 files (AGENTS.md, CLAUDE.md, .codex/,
