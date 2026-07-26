@@ -24,10 +24,20 @@
       "default": "global"
     },
     "port": {
-      "description": "The host-published port the service listens on (1–65535). Peers reach it at host.containers.internal:<port>. Required unless `socket` is set (socket-only services publish no port).",
+      "description": "The port the service listens on (1–65535). Without `publish` this is BOTH the container and the host port, and peers reach it at host.containers.internal:<port>. With `publish: ephemeral` it is the CONTAINER port only — the host side is allocated per launch. Required unless `socket` is set (socket-only services publish no port).",
       "type": "integer",
       "minimum": 1,
       "maximum": 65535
+    },
+    "publish": {
+      "description": "How the container's `port` reaches the host. `ephemeral` publishes it on a runtime-allocated host port bound to 127.0.0.1, which the launcher reads back with `podman port` at every launch — the way a project-scoped service (one container PER PROJECT) gets a port without any allocation machinery or collisions, and without recording a port that would go stale. Loopback-bound by design, so a service using this MUST authenticate: see client_env `{password}`. Mutually exclusive with `socket`.",
+      "type": "string",
+      "enum": ["ephemeral"]
+    },
+    "client_env": {
+      "description": "Environment a CLIENT needs to reach this service, declared here because only the service knows its own protocol's variable names. Values are templated on {host}, {port}, {socket}, {password}; the launcher resolves them per launch and injects them into the agent's environment. Use this rather than a recipe `env:` for anything that does not exist until the container runs — a recipe env value is resolved at emit time. {host} resolves per mode: 127.0.0.1 for a host agent, host.containers.internal for a containerized one.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
     },
     "socket": {
       "description": "Unix socket path RELATIVE to the service's data dir (e.g. run/mysql.sock). When set, the service publishes NO host port: peers reach it through the socket, which rides the shared bind-mount as a filesystem object — no network namespace, no port allocation. Requires scope: project.",

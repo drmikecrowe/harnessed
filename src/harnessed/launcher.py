@@ -17,6 +17,7 @@ import os
 import re
 import shlex
 import shutil
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -2493,6 +2494,10 @@ def harnessed_env(
         # now resolves the agent path per mode (harnessed-5ek); before that this would have exported
         # a container path onto the host.
         env.update(svc_socket_env(stack, project_path, mode))
+        # A service's own declared client env (host/port/password for a published sidecar). Last,
+        # so a service that declares both a HARNESSED_<SVC>_SOCKET-style handle and explicit
+        # client vars resolves them from the same launch.
+        env.update(svc_client_env(stack, project_path, mode))
     if recipe is not None:
         # A setup script does `cp` where a recipe Dockerfile did `COPY`, so it needs its own source
         # dir. Container-side that is the ro mount from `_setup_script_mounts`; host-side it is the
@@ -2685,7 +2690,9 @@ def svc_socket_env(stack: str, project_path: Path, mode: str = "container") -> d
 
     Exported into the attach shell (see _init_shell_prologue) as HARNESSED_<NAME>_SOCKET so a
     recipe's `setup:` can reference the socket without recomputing the launcher's path arithmetic —
-    e.g. `bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"`.
+    e.g. `bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"`. A service
+    reached over a published port uses `client_env` (svc_client_env) instead — the port is not a
+    path, and it is not known until the container is running.
     """
     env: dict[str, str] = {}
     for name in _service_refs(stack):
@@ -2695,6 +2702,94 @@ def svc_socket_env(stack: str, project_path: Path, mode: str = "container") -> d
         _, agent_dir, _ = _service_data_dir(svc, stack, project_path, mode)
         var = "HARNESSED_" + svc.name.upper().replace("-", "_") + "_SOCKET"
         env[var] = f"{agent_dir}/{svc.socket}"
+    return env
+
+
+def _svc_password(svc: ServiceDef, project_path: Path | None) -> str:
+    """Machine-local shared secret for a published service — created once, reused thereafter.
+
+    Stored under XDG state, NEVER in the service's data dir. For `location: in_repo` that dir is
+    the user's repo: a secret written there is one `git add -A` from the remote, and bd's own
+    `.beads/.gitignore` covers the files bd knows about, not ours. Same reasoning as D6 — the
+    machine-local value stays machine-local.
+
+    Why a password at all: `publish: ephemeral` binds the port to 127.0.0.1, which stops the LAN
+    but not other local processes and other users on the box. The socket form got its access
+    control from filesystem permissions on the data dir; a TCP port has none, so it has to
+    authenticate instead. 0600, and the parent dir 0700.
+    """
+    key = _svc_project_key(svc, project_path) or "global"
+    store = paths.xdg_state_home() / "harnessed" / "svc-secrets"
+    store.mkdir(parents=True, exist_ok=True)
+    store.chmod(0o700)
+    secret = store / f"{svc.name}-{key}"
+    if not secret.is_file():
+        # token_urlsafe, not a hash of the project path: the path is guessable, a secret must not be.
+        secret.write_text(secrets.token_urlsafe(24), encoding="utf-8")
+        secret.chmod(0o600)
+    return secret.read_text(encoding="utf-8").strip()
+
+
+def _svc_published_port(rt: str, cname: str, ctr_port: int) -> int:
+    """Host port the runtime chose for `ctr_port`, via `podman port` — 0 if it cannot be read.
+
+    The single source of truth for an ephemeral publish. Deliberately not cached anywhere: the
+    port changes whenever the container is recreated, and a stale copy in a file or an env var is
+    exactly the failure the socket design was avoiding when it refused to persist its own path.
+    """
+    result = subprocess.run(
+        [rt, "port", cname, str(ctr_port)], capture_output=True, text=True, check=False
+    )
+    if result.returncode != 0:
+        return 0
+    # `podman port <c> 3307` prints e.g. "127.0.0.1:49183"; may print several lines (one per
+    # published address family). Take the first that parses.
+    for line in result.stdout.splitlines():
+        _, _, tail = line.strip().rpartition(":")
+        if tail.isdigit():
+            return int(tail)
+    return 0
+
+
+def svc_client_env(stack: str, project_path: Path, mode: str = "container") -> dict[str, str]:
+    """Resolve each project-scoped service's `client_env` for this launch.
+
+    The service declares what its clients need (`BEADS_DOLT_SERVER_PORT: "{port}"`); this fills in
+    the values that only exist once the container is running. Templated rather than hard-coded in
+    the launcher so `launcher` knows "a service declares client env", not "beads wants
+    BEADS_DOLT_SERVER_PORT" — the same separation `data.persist` gives placement.
+
+    `{host}` differs by mode and that is the entire reason this is resolved per launch rather than
+    baked: a host agent dials 127.0.0.1, a containerized agent dials host.containers.internal, and
+    both mean the same published port.
+    """
+    env: dict[str, str] = {}
+    for name in _service_refs(stack):
+        svc = load_service(None, name)
+        if svc.scope != "project" or not svc.client_env:
+            continue
+        values = {
+            "host": "127.0.0.1" if mode == "host" else "host.containers.internal",
+            "password": _svc_password(svc, project_path) if svc.wants_password else "",
+        }
+        if svc.is_socket_only:
+            _, agent_dir, _ = _service_data_dir(svc, stack, project_path, mode)
+            values["socket"] = f"{agent_dir}/{svc.socket}"
+        if svc.is_ephemeral_port:
+            cname = _svc_container(svc.name, _svc_project_key(svc, project_path))
+            port = _svc_published_port(_runtime(), cname, svc.port)
+            if not port:
+                # No silent fallback to a plausible-looking default. A wrong port here is the
+                # 2026-07-19 shape: the client cannot reach the server, bd's auto-start is what
+                # would normally paper over it, and auto-start is exactly what we disable.
+                _err.print(
+                    f"[yellow][WARNING][/yellow] service '{svc.name}': could not read the "
+                    f"published port for {cname}; clients will not be configured"
+                )
+                continue
+            values["port"] = str(port)
+        for key, template in svc.client_env.items():
+            env[key] = template.format(**values)
     return env
 
 
@@ -2807,11 +2902,28 @@ def _ensure_service(
             return
     # Remove any stopped leftover with the same name before (re)starting.
     subprocess.run([rt, "rm", "-f", cname], capture_output=True)
-    where = f"socket {svc.socket}" if svc.is_socket_only else f":{svc.port}"
+    if svc.is_socket_only:
+        where = f"socket {svc.socket}"
+    elif svc.is_ephemeral_port:
+        where = f"127.0.0.1:<ephemeral>->{svc.port}"
+    else:
+        where = f":{svc.port}"
     _out.print(f"[blue][INFO][/blue] Starting service '{name}' on {where} ({cname})")
     run_cmd = [rt, "run", "-d", "--name", cname, *_corp_proxy_ca_mount_args()]
-    if not svc.is_socket_only:
+    if svc.is_ephemeral_port:
+        # 127.0.0.1 with NO host port: the runtime allocates. That is the whole dynamic-port
+        # story — N project-scoped sidecars can never collide, and nothing is written down to go
+        # stale, because the port is read back with `podman port` at every launch.
+        #
+        # Loopback-bound, not 0.0.0.0: an unqualified `-p` publishes on every interface, which
+        # would put a project's issue database on the LAN.
+        run_cmd += ["-p", f"127.0.0.1::{svc.port}"]
+    elif not svc.is_socket_only:
         run_cmd += ["-p", f"{svc.port}:{svc.port}"]
+    if svc.wants_password:
+        # Generic name: the launcher provisions a secret, the ENTRYPOINT decides what to call it
+        # in its own protocol's terms. Same layering as client_env.
+        run_cmd += ["-e", f"HARNESSED_SVC_PASSWORD={_svc_password(svc, project_path)}"]
 
     if svc.scope == "project":
         assert project_path is not None  # guarded above
@@ -3207,12 +3319,21 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
     import time
 
     if not svc.is_socket_only:
+        # An ephemeral publish means svc.port is the CONTAINER port; probing it on the host would
+        # test a port nothing is listening on (or worse, someone else's). Ask the runtime.
+        probe_port = (
+            _svc_published_port(rt, cname, svc.port) if svc.is_ephemeral_port else svc.port
+        )
         for _ in range(30):
-            try:
-                with socket.create_connection(("127.0.0.1", svc.port), timeout=1):
-                    break
-            except OSError:
-                time.sleep(1)
+            if not probe_port:
+                probe_port = _svc_published_port(rt, cname, svc.port)
+            if probe_port:
+                try:
+                    with socket.create_connection(("127.0.0.1", probe_port), timeout=1):
+                        break
+                except OSError:
+                    pass
+            time.sleep(1)
 
     if not svc.healthcheck:
         return
@@ -3310,8 +3431,13 @@ def _prompt_setup_notices(
     _out.print("\n[bold]Setup needed for this stack:[/bold]")
     for recipe in notices:
         assert recipe.setup is not None  # guaranteed by _collect_setup_notices
-        _out.print(f"  • [bold]{recipe.name}[/bold]: {recipe.setup.summary}")
-        _out.print(f"    see: {recipe.setup.reference}")
+        # escape() — the summary is AUTHOR-WRITTEN PROSE, not markup. Interpolated raw, rich parses
+        # any `[word]` in it as a style tag and DROPS it silently: beads/team's
+        # "add `services: [beads-server]` to the stack" printed as "add `services: ` to the stack",
+        # deleting the one token the instruction exists to convey (observed 2026-07-26). Silent is
+        # the trap — an unknown tag is not an error, so nothing surfaces but the missing words.
+        _out.print(f"  • [bold]{recipe.name}[/bold]: {escape(recipe.setup.summary)}")
+        _out.print(f"    see: {escape(recipe.setup.reference)}")
     # [T]erminal means "launch into a container shell instead of the agent". A host launch has no
     # container to drop into — `host-run` does not even accept `--shell` — so offering it there would
     # be a choice that silently does nothing. Omit it rather than accept-and-ignore.

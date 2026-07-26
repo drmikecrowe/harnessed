@@ -43,15 +43,17 @@ install:
 
 setup:
   summary: >-
-    Run `bd init --stealth --server --external --server-socket "${HARNESSED_BEADS_SERVER_SOCKET:?beads-server
-    not attached — add `services: [beads-server]` to the stack}"` then `bd setup <harness> --project
+    Run these INSIDE the agent session, not in your own shell — they read the connection details
+    the launcher exports into the agent's environment and nowhere else. In Claude Code, prefix the
+    line with `!` to run it in the session:
+    `!bd init --stealth --server --external --server-port "${BEADS_DOLT_SERVER_PORT:?beads-server
+    not attached — add 'services: [beads-server]' to the stack}"` then `bd setup <harness> --project
     --stealth` once per workspace, then restart the agent; these steps point bd at this project's
-    beads-server (creating its database there) and wire the bd prime workflow into the harness. The
-    `:?` guard matters — bd accepts an EMPTY --server-socket and silently keeps its old TCP config. A
-    workspace initialized BEFORE the server needs no migration step: the beads-server repoints its
-    metadata.json at the socket on startup (bd itself refuses to re-init an initialized workspace),
-    and your existing issue data is opened in place. No git sync in this placement — `.beads/` is
-    outside the repo and there is no remote to push to.
+    beads-server (creating its database there) and wire the bd prime workflow into the harness.
+    Host, user, password and the auto-start interlock come from the environment, so only the port
+    is passed explicitly — as the `:?` guard, which is the one check that the service is actually
+    attached. No git sync in this placement — `.beads/` is outside the repo and there is no remote
+    to push to.
   reference: https://github.com/gastownhall/beads
   # Gate on the workspace's OWN metadata.json, never on `bd list` (beads/team was corrected the same
   # way in e57b757; stealth was missed). `bd list` in an uninitialized workspace does not fail — it
@@ -89,18 +91,11 @@ persist:
 # agree by construction — now in both modes.
 env:
   BEADS_DIR: "{persist:.beads}"
-  # Socket mode, delivered by ENVIRONMENT rather than written to disk. bd honours this on its own —
-  # verified against a workspace whose metadata.json says `dolt_mode: server` with NO socket key:
-  # set, bd refuses with "Auto-start is not supported in socket mode" and spawns nothing.
-  #
-  # Stealth's `.beads` is outside the repo, so the tracked-metadata hazard that drives this in
-  # beads/team does not bite here — but the value is still machine-local, and keeping BOTH recipes on
-  # one mechanism is what stops the two placements from drifting into different failure modes. The
-  # beads-server entrypoint deliberately writes nothing to metadata.json; see BEADS.md §4.
-  #
-  # Same `{persist:.beads}` entry the service resolves for its data dir, and it serves its socket at
-  # `<data>/run/mysql.sock` — so client and server agree by construction, in both modes.
-  BEADS_DOLT_SERVER_SOCKET: "{persist:.beads}/run/mysql.sock"
+  # NO connection variables here any more — they come from the SERVICE (`client_env:` in
+  # services/beads-server/service.yaml), injected per launch because the published port does not
+  # exist until the container runs. Stealth's `.beads` is outside the repo, so the tracked-metadata
+  # hazard that drives this in beads/team does not bite here; keeping BOTH placements on one
+  # mechanism is what stops them drifting into different failure modes. See BEADS.md §4.
 
 # CREATE the workspace. Stealth is the placement where this is safe, and that is a measured claim,
 # not an assumption: `bd init --stealth` writes NO commit, tracks nothing, and leaves `git status`
@@ -125,5 +120,5 @@ env:
 init:
   run: >-
     [ -f "${BEADS_DIR:?}/metadata.json" ] || bd init --stealth --server --external
-    --server-socket "${HARNESSED_BEADS_SERVER_SOCKET:?beads-server not attached — add
+    --server-port "${BEADS_DOLT_SERVER_PORT:?beads-server not attached — add
     services:[beads-server] to the stack}"

@@ -935,9 +935,24 @@ class ServiceDef:
       * `data.persist` replaces `volume`. The launcher bind-mounts the host dir behind a persist
         entry declared by a recipe in the stack, so the SERVICE inherits the RECIPE's placement
         choice (`location: in_repo` vs `host`) rather than owning a named volume of its own.
-      * `socket` replaces `port`. A unix socket inside that same bind-mounted dir is a FILESYSTEM
-        object, so every container mounting the dir reaches the server with no network namespace
-        and no port allocation — the launcher has no dynamic-port machinery, and needs none.
+      * `socket` was the original answer to reaching it, and `publish: ephemeral` is the current
+        one. See below — the socket form is still supported, but a socket-only server is reachable
+        only by code that speaks unix sockets, and a client that falls back to TCP for any part of
+        its work (bd's health checks do) has nothing to connect to.
+
+    `publish: ephemeral` — publish the container's `port` on an ephemeral HOST port bound to
+    127.0.0.1, then read back what the runtime chose (`podman port <ctr> <port>`). This is how a
+    project-scoped service gets a port without the launcher owning any allocation machinery: the
+    runtime allocates, so N per-project sidecars never collide and nothing is recorded on disk to
+    drift. Loopback-bound deliberately — the published port is reachable by any local process, so
+    a service using this must authenticate (see `client_env` `{password}`).
+
+    `client_env` — the env a CLIENT needs to reach this service, declared BY THE SERVICE because
+    only the service knows its own protocol's variable names. Values are templated on `{host}`,
+    `{port}`, `{socket}`, `{password}`; the launcher resolves them per launch (the port does not
+    exist until the container runs, so this cannot go through `resolve_recipe_env`, which runs at
+    emit time) and injects the result into the agent's environment. Keeps `launcher` generic: it
+    knows "a service declares client env", not "beads wants BEADS_DOLT_SERVER_PORT".
     """
 
     name: str
@@ -945,6 +960,8 @@ class ServiceDef:
     port: int = 0
     scope: str = "global"
     socket: str = ""
+    publish: str = ""
+    client_env: dict[str, str] = field(default_factory=dict)
     data_persist: str = ""
     volume: str = ""
     healthcheck: str = ""
@@ -955,6 +972,16 @@ class ServiceDef:
     def is_socket_only(self) -> bool:
         """True when peers reach this service through a unix socket, not a published port."""
         return bool(self.socket)
+
+    @property
+    def is_ephemeral_port(self) -> bool:
+        """True when the runtime picks the host port at run time and the launcher reads it back."""
+        return self.publish == "ephemeral"
+
+    @property
+    def wants_password(self) -> bool:
+        """True when any client_env value needs `{password}` — the launcher then provisions one."""
+        return any("{password}" in v for v in self.client_env.values())
 
 
 _VALID_TRANSPORTS = frozenset({"stdio", "http", "sse"})
@@ -1595,12 +1622,46 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
     if exclusive_lock and scope != "project":
         raise SchemaError(f"{manifest}: 'exclusive_lock' requires scope: project")
 
+    publish = (raw.get("publish") or "").strip()
+    if publish and publish != "ephemeral":
+        raise SchemaError(f"{manifest}: 'publish' must be 'ephemeral' if set, got {publish!r}")
+    # No `publish and not port` check: a manifest with neither `port` nor `socket` is already
+    # rejected above, and `publish` cannot be combined with `socket`, so an unported publish
+    # cannot reach here.
+    if publish and socket:
+        raise SchemaError(
+            f"{manifest}: 'publish' and 'socket' are mutually exclusive — a service is reached "
+            "one way, so clients cannot disagree about which"
+        )
+
+    client_env = raw.get("client_env") or {}
+    if not isinstance(client_env, dict):
+        raise SchemaError(f"{manifest}: 'client_env' must be a mapping of NAME: template")
+    _CLIENT_ENV_TOKENS = frozenset({"host", "port", "socket", "password"})
+    for key, value in client_env.items():
+        if not isinstance(value, str):
+            raise SchemaError(f"{manifest}: client_env[{key!r}] must be a string")
+        for token in re.findall(r"\{(\w+)\}", value):
+            if token not in _CLIENT_ENV_TOKENS:
+                raise SchemaError(
+                    f"{manifest}: client_env[{key!r}] uses unknown token {{{token}}} "
+                    f"(known: {', '.join(sorted(_CLIENT_ENV_TOKENS))})"
+                )
+        if "{socket}" in value and not socket:
+            raise SchemaError(f"{manifest}: client_env[{key!r}] uses {{socket}} but none is declared")
+        if ("{port}" in value or "{host}" in value) and socket:
+            raise SchemaError(
+                f"{manifest}: client_env[{key!r}] uses {{host}}/{{port}} on a socket-only service"
+            )
+
     return ServiceDef(
         name=raw["name"],
         image=raw["image"],
         port=port,
         scope=scope,
         socket=socket,
+        publish=publish,
+        client_env=client_env,
         data_persist=data_persist,
         # A project-scoped service takes its data dir from `data.persist`, never a named volume.
         volume="" if scope == "project" else (raw.get("volume") or f"{name}-data"),
