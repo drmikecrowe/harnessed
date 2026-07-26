@@ -93,6 +93,25 @@ class TestBeadsTeamIsNotAutoInitialized:
             blob = f"{(r.setup.run or '') if r.setup else ''} {r.init.run if r.init else ''}"
             assert "--shared-server" not in blob, f"beads/{variety} must not use bd's shared server"
 
+    def test_both_placements_gate_on_beads_dir_not_raw_git(self):
+        """`git rev-parse --git-common-dir` is wrong for an ordinary clone.
+
+        There the common dir is `<repo>/.git`, so the old team condition tested
+        `<repo>/.git/.beads/metadata.json` while bd's workspace lives at `<repo>/.beads` — a path
+        that can never exist, so the notice fired on every launch of an already-initialized
+        workspace and `bd init` then refused. It passed unnoticed because harnessed's OWN repo is
+        bare+worktrees, where the common dir is `.bare/` and `.bare/.beads` is the real workspace.
+
+        $BEADS_DIR resolves through the same persist entry the launcher and the service use, so it
+        is correct in both layouts and both modes.
+        """
+        for placement in ("team", "stealth"):
+            recipe = load_recipe(CATALOG / "recipes" / "beads" / placement, strict=True)
+            assert recipe.setup is not None
+            cond = recipe.setup.condition or ""
+            assert "BEADS_DIR" in cond, f"beads/{placement} must gate on $BEADS_DIR"
+            assert "git-common-dir" not in cond, f"beads/{placement} must not shell out to git"
+
     def test_stealth_initializes_itself_externally(self):
         r = load_recipe(CATALOG / "recipes" / "beads" / "stealth", strict=True)
         assert r.init is not None
