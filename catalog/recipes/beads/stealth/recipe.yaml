@@ -117,8 +117,17 @@ env:
 # `bd setup <harness>` stays MANUAL. It is the step that writes `.claude/settings.json` + `CLAUDE.md`
 # into the repo, and bd's stealth exclude list covers `.claude/settings.local.json` — not those two —
 # so it is the one part of stealth that is not actually invisible. `setup:` above prompts for it.
+#
+# The PATH line puts `bd-shim` (install.sh → bd-shim.sh) ahead of mise's `bd`, which makes BEADS_DIR
+# and the connection vars the FALLBACK for a bd invocation rather than its answer: they are resolved
+# once against the launch project, but one harness process can host sessions in several projects
+# (Claude Code's session switcher) and every one of them inherits the launch project's absolute
+# paths — `bd list` in project B listing project A's issues, silently. The shim re-resolves from
+# $PWD per invocation and refuses rather than guess. See bd-shim.sh. It leads the line so the
+# `bd init` below also goes through it; for the launch project that is a straight passthrough.
 init:
   run: >-
+    export PATH="${HARNESSED_BIN_DIR:?}/bd-shim:$PATH";
     [ -f "${BEADS_DIR:?}/metadata.json" ] || bd init --stealth --server --external
     --server-port "${BEADS_DOLT_SERVER_PORT:?beads-server not attached — add
     services:[beads-server] to the stack}"
