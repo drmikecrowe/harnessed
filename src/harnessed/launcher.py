@@ -3368,6 +3368,16 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
 
     A socket-backed service publishes no port, so there is nothing to TCP-probe: its healthcheck
     (exec'd in the container, where the socket lives) IS the readiness signal.
+
+    **A healthcheck that never passes ABORTS the launch** (harnessed-dwt). It used to warn and let
+    the launch continue, which closed only half of the silent-degradation class: harnessed-709 made
+    a service that DIES abort, but one that starts, stays up, and never becomes usable still sailed
+    through. The agent then comes up attached to a service it cannot talk to, and every command
+    against it fails somewhere far away from the cause — which is exactly how a healthy system and a
+    broken one became indistinguishable in the beads work of 2026-07-26.
+
+    There is no `required:` flag. A stack does not attach a sidecar whose health it is indifferent
+    to, and a warning nobody can act on is not a lesser failure, just a later one.
     """
     import socket
     import time
@@ -3392,6 +3402,7 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
     if not svc.healthcheck:
         return
 
+    result = None
     for _ in range(timeout):
         result = subprocess.run(
             [rt, "exec", cname, "bash", "-c", svc.healthcheck],
@@ -3407,7 +3418,22 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
             _abort_dead_service(rt, cname, svc)
         time.sleep(1)
 
-    _err.print(f"[yellow][WARNING][/yellow] service '{svc.name}' healthcheck did not pass within {timeout}s")
+    _err.print(
+        f"[bold red]error:[/bold red] service '{svc.name}' started but never became healthy "
+        f"within {timeout}s ({cname})"
+    )
+    # The LAST healthcheck's own output, not the container log. For an auth failure the log shows a
+    # server running contentedly while the healthcheck holds the actual reason
+    # (`Error 1045 (28000): Access denied for user 'root'`) — print what the check saw, or the user
+    # goes looking in the one place that cannot tell them.
+    detail = ""
+    if result is not None:
+        detail = (result.stdout.decode(errors="replace") + result.stderr.decode(errors="replace")).strip()
+    if detail:
+        _err.print("[dim]--- last healthcheck output ---[/dim]")
+        _err.print(detail)
+    _err.print(f"  Inspect with: {rt} logs --tail 50 {cname}")
+    raise typer.Exit(1)
 
 
 def _ensure_services(
