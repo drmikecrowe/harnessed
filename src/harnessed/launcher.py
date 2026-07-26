@@ -2485,6 +2485,15 @@ def harnessed_env(
         # dotdir under the host home (e.g. pulumi's ~/.pulumi) must point the tool at the mirrored
         # path — `$HOST_HOME/.pulumi`, not `~/.pulumi`. This export is that handle.
         "HOST_HOME": str(Path.home()),
+        # The dir an `install.script` landed its executables in — the SAME value the install
+        # contract hands that script (emit.install_env's bin_dir), so a recipe that installs a
+        # wrapper at build time can put it on PATH at attach time (`init: run: export
+        # PATH="${HARNESSED_BIN_DIR:?}/…:$PATH"`, beads' bd-shim). Mode-resolved for the same
+        # reason every other path here is: the container's bin dir is the image's, the host's is
+        # the stack's own tools dir.
+        "HARNESSED_BIN_DIR": (
+            f"{CONTAINER_HOME}/.local/bin" if mode == "container" else str(_stack_tools_dirs(stack)[1])
+        ),
     }
     if sockets:
         # Both modes (bd harnessed-162). This used to be container-only, so a host launch never got

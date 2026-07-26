@@ -17,6 +17,19 @@
 # already cheap and a second cache would be duplicate bookkeeping.
 set -euo pipefail
 
+# --- the workspace-resolving `bd` wrapper -------------------------------------------------------
+# Installed BEFORE the version gate below on purpose: that gate exits early when bd is already the
+# pinned version, and the shim still has to be (re)placed — the host home and the stack tools dir
+# are rebuilt on every launch. See bd-shim.sh for what it does and why.
+#
+# Its OWN dir rather than $HARNESSED_BIN_DIR itself, because the recipe's `init:` prepends this dir
+# to PATH so the wrapper beats mise's `bd` shim: a dir holding exactly one file shadows exactly one
+# tool, which is the difference between fixing bd's resolution and reordering everything harnessed
+# ever installed.
+shim_dir="${HARNESSED_BIN_DIR:?}/bd-shim"
+mkdir -p "$shim_dir"
+install -m 0755 "${HARNESSED_RECIPE_DIR:?}/bd-shim.sh" "$shim_dir/bd"
+
 # Pin the exact release (no @latest / :latest / --branch — the script lint rejects floating refs).
 BEADS_VERSION="1.1.0"
 

@@ -83,9 +83,15 @@ class TestBeadsTeamIsNotAutoInitialized:
         assert not r.setup.run, "team must not self-initialize"
         assert not r.setup.script
 
-    def test_team_declares_no_init_block(self):
+    def test_team_init_never_runs_bd(self):
+        """`init:` runs on every launch, so anything that touches the DATABASE there is the same
+        hazard by another door. Team's init exists only to put the `bd-shim` wrapper on PATH (see
+        tests/test_beads_bd_shim.py) — a plain export, no `bd` invocation of any kind."""
         r = load_recipe(CATALOG / "recipes" / "beads" / "team", strict=True)
-        assert r.init is None, "`init:` would run on every launch — the same hazard by another door"
+        if r.init is None:
+            return
+        assert r.init.run.startswith("export "), "team's init must be an export, not a command"
+        assert "bd " not in r.init.run, "team must not self-initialize"
 
     def test_no_beads_recipe_reaches_bds_shared_server(self):
         for variety in ("team", "stealth"):

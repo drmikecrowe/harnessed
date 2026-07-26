@@ -128,9 +128,21 @@ env:
   # there travels to every teammate as a path or port from someone else's box. A teammate without
   # harnessed inherits none of these vars and gets bd's ordinary behaviour. See BEADS.md §4.
 
-# No `init:` — beads is NOT auto-initialized. bd's setup writes into the project
-# (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and cannot be made reliably
+# `init:` does NOT initialize beads — beads is NOT auto-initialized here. bd's setup writes into the
+# project (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and cannot be made reliably
 # idempotent/footprint-free across every git layout, so first-time init stays a deliberate user
 # action via `setup:` above. `setup.condition` (`! bd list`) makes it self-gating: the assembler
 # synthesizes a Claude SessionStart hook that prints the summary once, then stays silent once the
 # workspace has a database (see emit._recipe_hooks_settings).
+#
+# What init DOES is put `bd-shim` (install.sh → bd-shim.sh) ahead of mise's `bd` on PATH, so the
+# BEADS_DIR and connection vars above become the FALLBACK for a bd invocation rather than its
+# answer. They are resolved once, against the launch project; one harness process can host sessions
+# in several projects (Claude Code's session switcher), and every one of them inherits the launch
+# project's absolute paths — `bd list` in project B listing project A's issues, silently. The shim
+# re-resolves from $PWD per invocation and refuses rather than guess. See bd-shim.sh.
+#
+# A plain export, so it self-gates by construction (Model A runs init on EVERY attach). Prepending
+# twice is harmless: PATH lookup stops at the first hit either way.
+init:
+  run: export PATH="${HARNESSED_BIN_DIR:?}/bd-shim:$PATH"
