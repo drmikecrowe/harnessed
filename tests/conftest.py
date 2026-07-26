@@ -1,8 +1,13 @@
 """Shared pytest fixtures."""
 
 import os
+from pathlib import Path
 
 import pytest
+
+# The REAL user config dir, captured before any fixture monkeypatches XDG_CONFIG_HOME away. Used to
+# re-expose podman's own config inside the isolated root — see `_isolated_user_catalog`.
+_REAL_XDG_CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
 
 # MODULE LEVEL, NOT A FIXTURE — and that is the whole point. `rich` reads FORCE_COLOR when a
 # `Console` is CONSTRUCTED, and launcher.py builds `_out`/`_err` at module import. An autouse
@@ -38,8 +43,31 @@ def _isolated_user_catalog(monkeypatch, tmp_path_factory):
 
     Tests that *want* an overlay (test_ensure_local_catalog_links, test_persist_*) set
     XDG_CONFIG_HOME themselves; their own monkeypatch runs after this one and overrides it.
+
+    PODMAN SHARES THIS VARIABLE (bd harnessed-vs8). Rootless podman reads
+    `$XDG_CONFIG_HOME/containers/storage.conf`, which is where a custom `graphroot` is declared. With
+    the root blanked, podman falls back to the DEFAULT graphroot, finds an empty image store, and
+    tries to PULL a `localhost/…` image from a registry literally named `localhost` — reported as
+    `dial tcp [::1]:443: connect: connection refused`, which looks like a network fault and is not
+    one. Every HARNESSED_PODMAN=1 test is affected on a machine whose graphroot is non-default.
+
+    So `containers/` is SYMLINKED back in. Deliberately not "restore the real XDG_CONFIG_HOME when
+    podman is in play": that would hand those tests the developer's catalog overlay again and
+    reinstate the exact machine-dependence this fixture exists to remove. Linking one subdirectory
+    keeps both properties — podman sees its config, `harnessed/catalog` stays absent.
+
+    LATENT TRAP for whoever adds the next live test: a test that sets its OWN XDG_CONFIG_HOME loses
+    this symlink with it, and podman goes back to the wrong graphroot. No test does both today (the
+    overriding tests in test_persist_mounts are not podman-gated), but a podman-gated test that
+    needs its own overlay must re-link `containers/` into whatever root it points at.
     """
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
+    xdg = tmp_path_factory.mktemp("xdg")
+    real_containers = _REAL_XDG_CONFIG_HOME / "containers"
+    if real_containers.is_dir():
+        # A symlink, not a copy: podman may read several files here (containers.conf,
+        # registries.conf, storage.conf) and a copy would silently go stale against the real one.
+        (xdg / "containers").symlink_to(real_containers)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
 
 
 @pytest.fixture(autouse=True)

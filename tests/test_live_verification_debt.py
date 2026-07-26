@@ -33,26 +33,10 @@ from harnessed import launcher, paths
 _PODMAN = os.environ.get("HARNESSED_PODMAN") == "1"
 podman = pytest.mark.skipif(not _PODMAN, reason="set HARNESSED_PODMAN=1 for live podman tests")
 
-# Captured at IMPORT, before conftest's autouse fixture monkeypatches it away.
-_REAL_XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-
-
-@pytest.fixture(autouse=True)
-def _real_container_config(monkeypatch):
-    """Give podman back its real config dir for the live tests.
-
-    `conftest._isolated_user_catalog` points XDG_CONFIG_HOME at an empty tmp dir so the user's
-    catalog overlay cannot leak into the suite — correct, and load-bearing for hermeticity. But
-    ROOTLESS PODMAN also reads `$XDG_CONFIG_HOME/containers/storage.conf`, which is where a custom
-    `graphroot` is declared. Blanked, podman silently falls back to the DEFAULT graphroot, finds an
-    empty image store, and tries to PULL `localhost/harnessed-base` from a registry named
-    `localhost` — a confusing network error that looks nothing like its cause.
-
-    Found by exactly that failure on a machine whose graphroot is /home/<user>/containers/storage.
-    Restored only for podman-gated tests, so hermeticity is unchanged everywhere else.
-    """
-    if _PODMAN:
-        monkeypatch.setenv("XDG_CONFIG_HOME", _REAL_XDG_CONFIG_HOME)
+# NOTE: this module used to restore the real XDG_CONFIG_HOME itself so podman could find its
+# storage.conf. `conftest._isolated_user_catalog` now symlinks `containers/` into the isolated root
+# instead (bd harnessed-vs8), which fixes it for EVERY podman-gated module and — unlike the local
+# workaround — without handing these tests the developer's catalog overlay back.
 
 # The scan script is baked into harnessed-base, so the copy-out can be exercised against that image
 # without building a whole stack (multi-GB, minutes). Building it here would make the test a build
