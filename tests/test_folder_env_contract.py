@@ -108,9 +108,12 @@ class TestConditionEvalSeesTheContract:
         `_collect_setup_notices` is production code, so `sockets=False` cannot be passed in from
         here — and it SHOULD build the socket vars, since a `setup.condition` may reference them.
         Stub the resolution instead: what is under test is that ${MAIN_REPO_DIR} reaches the eval,
-        not which sockets a stack declares.
+        not which sockets a stack declares. `svc_client_env` needs the same treatment — it also
+        resolves the stack's services, and a `setup.condition` may reference what it exports (the
+        beads recipes' guard now reads $BEADS_DOLT_SERVER_PORT, which comes from exactly there).
         """
         monkeypatch.setattr(launcher, "svc_socket_env", lambda *a, **k: {})
+        monkeypatch.setattr(launcher, "svc_client_env", lambda *a, **k: {})
 
     def _repo(self, tmp_path, monkeypatch, *, marker: bool):
         common = tmp_path / "bare"

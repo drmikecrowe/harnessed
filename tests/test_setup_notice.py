@@ -47,6 +47,7 @@ class TestCollectSetupNotices:
         and these use a synthetic stack name with no manifest. Stub it: the subject here is notice
         polarity and the dismiss flag, not socket wiring."""
         monkeypatch.setattr(launcher, "svc_socket_env", lambda *a, **k: {})
+        monkeypatch.setattr(launcher, "svc_client_env", lambda *a, **k: {})
 
     def test_unconditional_shown_then_gated_by_flag(self, state):
         recipes = [_r("caveman")]
@@ -123,6 +124,24 @@ class TestPromptSetupNotices:
         for answer in ("O", "d"):
             self._prompt(monkeypatch, answer)
             assert launcher._prompt_setup_notices([_r("caveman")], state, "s", "claude") is False
+
+    def test_summary_brackets_survive_rendering(self, state, monkeypatch, capsys):
+        """A `[word]` in author-written prose must print, not vanish into rich's markup parser.
+
+        beads/team tells the user to `add 'services: [beads-server]' to the stack`; interpolated
+        raw, rich read `[beads-server]` as a style tag and silently dropped it, so the printed
+        instruction lost the one token it exists to convey.
+        """
+        recipe = Recipe(
+            name="beads-team",
+            setup=SetupSpec(
+                summary="add 'services: [beads-server]' to the stack",
+                reference="https://example/x",
+            ),
+        )
+        self._prompt(monkeypatch, "O")
+        launcher._prompt_setup_notices([recipe], state, "s", "claude")
+        assert "services: [beads-server]" in capsys.readouterr().out
 
     def test_quit_aborts_exit_zero(self, state, monkeypatch):
         self._prompt(monkeypatch, "Q")

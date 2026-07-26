@@ -96,8 +96,10 @@ class TestBeadsTeamIsNotAutoInitialized:
     def test_stealth_initializes_itself_externally(self):
         r = load_recipe(CATALOG / "recipes" / "beads" / "stealth", strict=True)
         assert r.init is not None
-        # --external is what keeps bd from ever auto-starting a dolt of its own.
-        assert "--external" in r.init.run and "--server-socket" in r.init.run
+        # --external is what keeps bd from ever auto-starting a dolt of its own. The port comes
+        # from the service's client_env and is passed explicitly so its `:?` guard is the check
+        # that beads-server is actually attached.
+        assert "--external" in r.init.run and "--server-port" in r.init.run
         assert "--stealth" in r.init.run
 
 

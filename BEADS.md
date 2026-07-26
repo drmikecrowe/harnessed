@@ -251,13 +251,75 @@ Settled 2026-07-25. Each is a choice, not a discovery — revisit deliberately, 
 
 | # | Decision | Why |
 | --- | --- | --- |
-| D1 | Socket mode is **mandatory** for harnessed-managed workspaces | It is the only configuration that disables bd's auto-start, and the data dir cannot be pinned in server mode (§3) |
+| D1 | ~~Socket mode is **mandatory**~~ — **superseded by D8, 2026-07-26** | Its premise (socket mode is the *only* auto-start interlock) was already false when written — see §11 |
 | D2 | harnessed **re-asserts** the mode every launch, not just detects | The 07-16 reinit drifted this workspace silently and nothing noticed for days; setup runs once, launches run always |
 | D3 | **No `bd` shim on PATH** | Rejected as machinery; socket mode already makes stray `bd` calls fail cleanly rather than destructively |
 | D4 | Per-project data dir, **not** bd's shared server | Matches the per-project sidecar; the shared server is what collided on port 3308 |
 | D5 | **bd's conventions are the contract** | Requirement 2 — a teammate with plain `bd` is a first-class user, so harnessed conforms and protects, never places |
 | D6 | The socket is delivered by **environment**, never persisted | §4 — the only way D1 and requirement 2 can both hold |
 | D7 | Stealth's `info/exclude` does **not** live in `svc migrate` | Wrong trigger (the footprint comes from `bd setup`), and a blanket path pattern would hide a user's own future `CLAUDE.md`. Belongs with init — §6 |
+| D8 | The sidecar is reached over a **published loopback TCP port**, not a unix socket | A socket-only server cannot serve a client that speaks TCP for part of its work, and bd does. §11 |
+| D9 | The auto-start interlock is `BEADS_DOLT_AUTO_START`, delivered by **environment** | Same mechanism D6 already established, so D8 costs nothing that D1 was protecting |
+| D10 | A published service **authenticates**; the secret lives in XDG state, never the data dir | A TCP port has no filesystem ACL. For `in_repo` placement the data dir is the user's repo |
+
+---
+
+## 11. The socket reversal — 2026-07-26
+
+**Symptom.** A user followed the `beads/team` setup notice exactly, on a clean checkout. `bd init`
+connected over the socket, created the database and ran its migrations — the sidecar log shows the
+whole thing — and then printed:
+
+```
+  Server: root@127.0.0.1:0
+  ⚠ Server host defaulted to 127.0.0.1.
+⚠ Setup incomplete. Some issues were detected:
+  • Dolt Connection: Failed to connect to Dolt server
+  • Dolt Schema: Failed to open database
+Run bd doctor --fix to see details and fix these issues.
+```
+
+Nothing was wrong. bd configures itself for the socket and then **verifies over TCP**, and nothing
+was published, so the check had nothing to reach — port `0` because there is no port. The same
+defect shows on every healthy harnessed workspace: `bd doctor` on this repo reports 73 passed, 0
+errors, and `⚠ Dolt Locks: cannot connect to Dolt: no Dolt server port configured`.
+
+That is not a message to explain away in a setup notice. Correct configuration that reports failure
+— and invites the user to `bd doctor --fix` a configuration that is already right — is a design
+defect. It also cost a full session of debugging to establish that nothing had broken.
+
+**Why D1 could be reversed.** D1 justified the socket as the *only* interlock against the §10
+auto-start catastrophe. §3 of this same document already recorded that `dolt.auto-start: false`
+also disables it, and Q5 adopted that. The binary settles it — `strings` on bd 1.1.0:
+
+```
+BEADS_DOLT_AUTO_START   BEADS_DOLT_SERVER_HOST   BEADS_DOLT_SERVER_PORT
+BEADS_DOLT_SERVER_USER  BEADS_DOLT_SERVER_MODE   BEADS_DOLT_PASSWORD
+```
+
+Every value the socket form delivered by environment can be delivered by environment over TCP,
+including the interlock. **D6 is untouched**: nothing machine-local is written to `metadata.json`
+or `config.yaml`, so a teammate without harnessed inherits none of it — requirement 2 holds.
+
+**What replaced it.** `publish: ephemeral` on the service: the runtime picks a free host port on
+127.0.0.1 and the launcher reads it back with `podman port` at every launch. No allocation
+machinery (the objection that chose the socket), no collisions between N per-project sidecars, and
+nothing recorded to go stale. The loopback trap the socket avoided — `127.0.0.1` meaning something
+different in each netns — is handled by `client_env` `{host}`, which resolves to `127.0.0.1` for a
+host agent and `host.containers.internal` for a container one.
+
+**What it costs.** A published port has no filesystem permissions to hide behind, so the blanket
+passwordless `root@'%'` grant had to go: the launcher provisions a per-project secret under XDG
+state (never the data dir — for `in_repo` that dir is the user's repo) and the entrypoint refuses
+to start without it.
+
+**A bonus, not a motivation.** The socket lived at `<repo>/.beads/run/mysql.sock` — a non-file
+inside the user's source tree. serena's indexer died on it (`Failed to read … No such device or
+address`) in the same session that produced this reversal. Nothing serves a socket now.
+
+**Unverified.** Whether `bd dolt push` now works from the host, which would retire
+`harnessed svc sync beads-server`. `service.yaml` claims the dolt CLI routes only to its own
+loopback; whether bd threads `--host/--port` through has not been tested. Left in place.
 
 ## 9. Questions, resolved 2026-07-25
 

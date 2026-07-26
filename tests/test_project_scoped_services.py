@@ -267,6 +267,145 @@ class TestSocketEnvExport:
         assert launcher.svc_socket_env("any", tmp_path) == {}
 
 
+PUBLISHED_SVC = """\
+name: beads-server
+image: harnessed-beads-server:latest
+scope: project
+port: 3307
+publish: ephemeral
+data:
+  persist: .beads
+client_env:
+  BEADS_DOLT_SERVER_HOST: "{host}"
+  BEADS_DOLT_SERVER_PORT: "{port}"
+  BEADS_DOLT_PASSWORD: "{password}"
+  BEADS_DOLT_AUTO_START: "false"
+"""
+
+
+class TestPublishValidation:
+    """`publish: ephemeral` is the only accepted spelling, and it cannot coexist with a socket."""
+
+    def test_socket_and_publish_are_mutually_exclusive(self, tmp_path):
+        body = PUBLISHED_SVC + "socket: run/mysql.sock\n"
+        with pytest.raises(SchemaError, match="mutually exclusive"):
+            load_service(_svc_yaml(tmp_path, body), "beads-server")
+
+    def test_publish_requires_a_container_port(self, tmp_path):
+        """`publish` names HOW to expose a port, so a manifest without one is incomplete. Caught by
+        the pre-existing port/socket requirement rather than a second check of its own."""
+        body = "name: s\nimage: i\nscope: project\npublish: ephemeral\ndata:\n  persist: .beads\n"
+        with pytest.raises(SchemaError, match="required field 'port' is missing"):
+            load_service(_svc_yaml(tmp_path, body, name="s"), "s")
+
+    def test_unknown_client_env_token_is_rejected(self, tmp_path):
+        body = PUBLISHED_SVC.replace('"{password}"', '"{hostname}"')
+        with pytest.raises(SchemaError, match="unknown token"):
+            load_service(_svc_yaml(tmp_path, body), "beads-server")
+
+    def test_host_port_tokens_rejected_on_a_socket_service(self, tmp_path):
+        body = PROJECT_SVC + 'client_env:\n  X: "{port}"\n'
+        with pytest.raises(SchemaError, match="socket-only service"):
+            load_service(_svc_yaml(tmp_path, body), "beads-server")
+
+
+class TestPublishedPortReadback:
+    """The published port is READ BACK from the runtime, never assumed or recorded.
+
+    An ephemeral publish means the runtime chose the host port; `svc.port` is the CONTAINER port.
+    Anything that treats them as interchangeable dials a port nothing is listening on — or, worse,
+    a port some unrelated process owns.
+    """
+
+    def test_parses_podman_port_output(self, monkeypatch):
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="127.0.0.1:49183\n", stderr=""),
+        )
+        assert launcher._svc_published_port("podman", "c", 3307) == 49183
+
+    def test_ipv6_form_parses(self, monkeypatch):
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="[::]:49184\n", stderr=""),
+        )
+        assert launcher._svc_published_port("podman", "c", 3307) == 49184
+
+    def test_failure_reports_zero_rather_than_guessing(self, monkeypatch):
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: subprocess.CompletedProcess(a, 1, stdout="", stderr="no such container"),
+        )
+        assert launcher._svc_published_port("podman", "c", 3307) == 0
+
+
+class TestClientEnvResolution:
+    """The SERVICE declares what its clients need; the launcher fills in the launch-time values."""
+
+    @pytest.fixture
+    def wired(self, tmp_path, monkeypatch):
+        svc = load_service(_svc_yaml(tmp_path, PUBLISHED_SVC), "beads-server")
+        project = tmp_path / "repo"
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        monkeypatch.setattr(paths, "xdg_state_home", lambda: tmp_path / "state")
+        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
+        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
+        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        monkeypatch.setattr(launcher, "_svc_published_port", lambda *a: 49183)
+        return project
+
+    def test_host_mode_dials_loopback(self, wired):
+        env = launcher.svc_client_env("any", wired, "host")
+        assert env["BEADS_DOLT_SERVER_HOST"] == "127.0.0.1"
+        assert env["BEADS_DOLT_SERVER_PORT"] == "49183"
+
+    def test_container_mode_dials_the_host_gateway(self, wired):
+        """127.0.0.1 inside a container is the CONTAINER — the loopback trap the socket form was
+        chosen to avoid. `{host}` resolving per mode is what replaces that guarantee."""
+        env = launcher.svc_client_env("any", wired, "container")
+        assert env["BEADS_DOLT_SERVER_HOST"] == "host.containers.internal"
+        assert env["BEADS_DOLT_SERVER_PORT"] == "49183"
+
+    def test_autostart_interlock_is_exported(self, wired):
+        """BEADS.md D1 got this from socket mode; it now comes from the environment. Losing it is
+        how a client that cannot reach the server initializes the data dir as a database (§10)."""
+        assert launcher.svc_client_env("any", wired, "host")["BEADS_DOLT_AUTO_START"] == "false"
+
+    def test_password_is_stable_across_calls_and_never_empty(self, wired):
+        first = launcher.svc_client_env("any", wired, "host")["BEADS_DOLT_PASSWORD"]
+        second = launcher.svc_client_env("any", wired, "host")["BEADS_DOLT_PASSWORD"]
+        assert first and first == second
+
+    def test_unreadable_port_exports_nothing_for_that_service(self, wired, monkeypatch):
+        """No plausible-looking default. A wrong port is the 2026-07-19 shape: the client cannot
+        reach the server, and the auto-start that would normally paper over it is disabled."""
+        monkeypatch.setattr(launcher, "_svc_published_port", lambda *a: 0)
+        assert launcher.svc_client_env("any", wired, "host") == {}
+
+
+class TestServiceSecretPlacement:
+    def test_secret_never_lands_in_the_service_data_dir(self, tmp_path, monkeypatch):
+        """For `location: in_repo` the data dir IS the user's repo. A secret written there is one
+        `git add -A` from the remote, and bd's own .beads/.gitignore covers bd's files, not ours."""
+        svc = load_service(_svc_yaml(tmp_path, PUBLISHED_SVC), "beads-server")
+        project = tmp_path / "repo"
+        project.mkdir()
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        monkeypatch.setattr(paths, "xdg_state_home", lambda: tmp_path / "state")
+        launcher._svc_password(svc, project)
+        assert not list(project.rglob("*")), "nothing may be written under the project"
+        written = list((tmp_path / "state").rglob("*"))
+        assert written, "the secret must be persisted under XDG state"
+
+    def test_secret_file_is_not_world_readable(self, tmp_path, monkeypatch):
+        svc = load_service(_svc_yaml(tmp_path, PUBLISHED_SVC), "beads-server")
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: tmp_path / ".git")
+        monkeypatch.setattr(paths, "xdg_state_home", lambda: tmp_path / "state")
+        launcher._svc_password(svc, tmp_path)
+        secret = next(p for p in (tmp_path / "state").rglob("*") if p.is_file())
+        assert secret.stat().st_mode & 0o077 == 0, "a TCP port has no filesystem ACL to hide behind"
+
+
 class TestInRepoServiceGetsTheRemoteGitSurface:
     """An `in_repo` service does the project's REMOTE git traffic (bd's `dolt clone` at init, `bd
     dolt push` at sync), because bd shells out to a dolt CLI that only talks to a server on its own
