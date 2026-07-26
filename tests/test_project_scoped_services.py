@@ -448,6 +448,73 @@ class TestStaleSocketKeyMigration:
         assert "dolt_server_socket" in capsys.readouterr().err
 
 
+class TestNeverHealthyAbortsTheLaunch:
+    """harnessed-dwt: a service that starts, stays up, and never becomes healthy must ABORT.
+
+    harnessed-709 closed the DIES case; this closes the other half. A service that is up but
+    unusable used to warn and let the launch proceed, so the agent came up attached to something it
+    could not talk to and every command failed far away from the cause. With MySQL auth on the
+    beads sidecar that state is reachable: a wrong password gives a running server whose healthcheck
+    can never pass.
+    """
+
+    @pytest.fixture
+    def svc(self, tmp_path):
+        # socket-backed so there is no TCP probe to stub, and WITH a healthcheck — without one the
+        # function returns early and every assertion here would pass for the wrong reason.
+        return load_service(
+            _svc_yaml(tmp_path, PROJECT_SVC + 'healthcheck: "dolt sql -q \'SELECT 1\'"\n'),
+            "beads-server",
+        )
+
+    @pytest.fixture(autouse=True)
+    def _no_sleeping(self, monkeypatch):
+        monkeypatch.setattr("time.sleep", lambda _s: None)
+
+    def _health(self, monkeypatch, rc: int, out: bytes = b"", err: bytes = b"", status="running"):
+        monkeypatch.setattr(launcher, "_service_container_status", lambda *a: status)
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: subprocess.CompletedProcess(a, rc, stdout=out, stderr=err),
+        )
+
+    def test_timeout_aborts_instead_of_warning(self, svc, monkeypatch):
+        self._health(monkeypatch, rc=1)
+        with pytest.raises(typer.Exit) as exc:
+            launcher._wait_service_healthy("podman", "c", svc, timeout=2)
+        assert exc.value.exit_code == 1
+
+    def test_the_last_healthcheck_output_is_surfaced(self, svc, monkeypatch, capsys):
+        """The container log shows a server running contentedly; the healthcheck holds the reason.
+        Print the log alone and the user looks in the one place that cannot tell them."""
+        self._health(monkeypatch, rc=1, err=b"Error 1045 (28000): Access denied for user 'root'")
+        with pytest.raises(typer.Exit):
+            launcher._wait_service_healthy("podman", "c", svc, timeout=2)
+        assert "Access denied" in capsys.readouterr().err
+
+    def test_a_healthy_service_returns_quietly(self, svc, monkeypatch, capsys):
+        self._health(monkeypatch, rc=0)
+        launcher._wait_service_healthy("podman", "c", svc, timeout=2)  # must not raise
+        assert "never became healthy" not in capsys.readouterr().err
+
+    def test_a_dead_container_still_takes_the_dead_path(self, svc, monkeypatch):
+        """709's abort must survive: a container that died gets the container LOG, not a 60s wait."""
+        self._health(monkeypatch, rc=1, status="exited")
+        called = []
+        monkeypatch.setattr(launcher, "_abort_dead_service",
+                            lambda *a: called.append(a) or (_ for _ in ()).throw(typer.Exit(1)))
+        with pytest.raises(typer.Exit):
+            launcher._wait_service_healthy("podman", "c", svc, timeout=5)
+        assert called, "a dead container must route to _abort_dead_service, not the timeout branch"
+
+    def test_a_service_with_no_healthcheck_cannot_fail(self, tmp_path, monkeypatch):
+        """Nothing was declared, so there is nothing to hold it to — must not abort."""
+        self._health(monkeypatch, rc=1)
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        assert not svc.healthcheck
+        launcher._wait_service_healthy("podman", "c", svc, timeout=2)  # must not raise
+
+
 class TestServiceSecretPlacement:
     def test_secret_never_lands_in_the_service_data_dir(self, tmp_path, monkeypatch):
         """For `location: in_repo` the data dir IS the user's repo. A secret written there is one
