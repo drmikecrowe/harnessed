@@ -2881,6 +2881,13 @@ def _ensure_service(
     if not _image_exists(rt, svc.image):
         _build_service_image(rt, name)
     cname = _svc_container(name, _svc_project_key(svc, project_path))
+    if svc.scope == "project":
+        assert project_path is not None  # guarded above
+        # BEFORE the running-container check below, not with the other workspace guards further
+        # down: a HEALTHY running sidecar returns early from that check, and this migration has to
+        # run for exactly the workspace that has one. It is also cheap and idempotent — after the
+        # first launch the key is gone and this is a dict lookup.
+        _ensure_no_stale_socket_key(svc, _service_data_dir(svc, stack, project_path)[0])
     if _container_running(rt, cname):
         if _container_stale(rt, cname, svc.image):
             headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
@@ -3098,6 +3105,53 @@ def _dolt_migration_sources(host_dir: Path, db: str) -> list[Path]:
 
 def _dir_size(path: Path) -> int:
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _ensure_no_stale_socket_key(svc: ServiceDef, host_dir: Path) -> None:
+    """Drop a `dolt_server_socket` left in metadata.json by a socket-era workspace.
+
+    The migration for the socket→published-port reversal (BEADS.md §11). Every workspace
+    initialized before it carries an absolute socket path in metadata.json, and **that key beats
+    the environment on bd's data path** — verified 2026-07-26 on a real workspace, and it is a
+    split inside bd rather than a precedence rule you can reason around:
+
+        bd dolt status  → reads BEADS_DOLT_SERVER_HOST/PORT → finds the server, works
+        bd list / stats → reads metadata.json dolt_server_socket → dials a socket that no longer
+                          exists → "Auto-start is not supported in socket mode"
+
+    So the workspace is hard-blocked on every data command while `status` cheerfully reports a
+    healthy server. Nothing recreates the key — the entrypoint's metadata writer was deleted
+    deliberately (BEADS.md §4) — so removing it once is permanent.
+
+    This is not a workaround for the reversal; it restores the invariant §4 already stated. The key
+    is an absolute host path in a file bd TRACKS, so committed it hands every teammate a path that
+    cannot exist for them, and socket mode denies them the auto-start fallback. §4's words: "do not
+    commit a metadata.json containing a dolt_server_socket."
+
+    Announced when written. For `beads/team` this dirties a tracked file, and silently editing a
+    file the user is about to commit is its own kind of surprise (same convention as
+    `_ensure_dolt_autostart_disabled`).
+
+    Skipped for a socket-backed service — there the key is not stale, it is the configuration.
+    """
+    if svc.exclusive_lock != "dolt" or svc.is_socket_only:
+        return
+    meta = host_dir / "metadata.json"
+    try:
+        data = json.loads(meta.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return  # no workspace yet, or one we did not write — leave it alone
+    if not isinstance(data, dict) or "dolt_server_socket" not in data:
+        return
+    stale = data.pop("dolt_server_socket")
+    # indent=2 + trailing newline is bd's own formatting, so the diff is one deleted line rather
+    # than a whole-file reflow in a tracked file.
+    meta.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    _err.print(
+        f"[yellow][NOTICE][/yellow] {meta}: removed stale 'dolt_server_socket' ({stale}).\n"
+        "  This service is reached over a published port now; the key would have overridden that "
+        "on bd's data path and blocked every command. Commit the change (see BEADS.md §11)."
+    )
 
 
 def _ensure_dolt_autostart_disabled(svc: "ServiceDef", host_dir: Path) -> None:

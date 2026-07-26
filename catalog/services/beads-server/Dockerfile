@@ -59,16 +59,23 @@ RUN dolt config --global --add user.name "beads-server" \
 
 # /data is a BIND MOUNT of this project's .beads (the launcher wires it from the owning recipe's
 # persist entry) — deliberately NOT a VOLUME: a named volume would put the bytes somewhere no agent
-# container can see, and the whole point is that agents reach the socket inside this dir.
+# container can see, and the whole point is that agents reach the project's data in this dir.
 #
-# No EXPOSE: this service publishes NO host port. Peers connect over the unix socket at
-# /data/run/mysql.sock. The in-container TCP listener on 3307 exists only for the healthcheck and for
-# the dolt CLI `bd dolt push` shells out to.
+# No EXPOSE, but the port IS reached: the launcher publishes 3307 on a runtime-allocated host port
+# bound to 127.0.0.1 (`publish: ephemeral`), so the host side is chosen per launch and EXPOSE — a
+# static declaration — could only ever be wrong. See service.yaml for why the socket form was
+# reversed.
 #
 # HEALTHCHECK verifies MySQL-level AUTH, not just a listener. dolt 2.1.10 has no `sql-client`
 # subcommand (the previous healthcheck used it, so it could never pass); the global --host/--port/
 # --user flags on `dolt sql` are the supported client form, and --no-tls is required.
+#
+# --password MUST match what the entrypoint actually granted. It was left as '' when the port
+# reversal landed, so every rebuilt sidecar authenticated with an empty password against a server
+# that now requires one and sat permanently `unhealthy` while serving every client correctly. A
+# healthcheck that authenticates differently from real clients is worse than none: it reports
+# failure on a healthy server, which is the exact defect the reversal existed to remove.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=6 \
-    CMD dolt --host 127.0.0.1 --port 3307 --user root --password '' --no-tls sql -q 'SELECT 1' >/dev/null 2>&1 || exit 1
+    CMD dolt --host 127.0.0.1 --port 3307 --user root --password "${HARNESSED_SVC_PASSWORD}" --no-tls sql -q 'SELECT 1' >/dev/null 2>&1 || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

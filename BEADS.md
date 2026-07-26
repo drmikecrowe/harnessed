@@ -321,6 +321,34 @@ address`) in the same session that produced this reversal. Nothing serves a sock
 `harnessed svc sync beads-server`. `service.yaml` claims the dolt CLI routes only to its own
 loopback; whether bd threads `--host/--port` through has not been tested. Left in place.
 
+### The migration this needed — verified the hard way, 2026-07-26
+
+Every workspace initialized before the reversal carries an absolute `dolt_server_socket` in
+`metadata.json`, and **that key beats the environment on bd's data path.** Q1 established that the
+*socket* env var overrode a persisted socket; it does not follow that host/port do, and they do not.
+bd resolves the connection in two places that disagree:
+
+| Command | Reads | Result |
+| --- | --- | --- |
+| `bd dolt status` | `BEADS_DOLT_SERVER_HOST` / `PORT` | finds the server, reports it healthy |
+| `bd list`, `bd stats` | `metadata.json` `dolt_server_socket` | dials a socket that no longer exists |
+
+So the workspace is hard-blocked on every data command — `dial unix …/run/mysql.sock: no such file
+or directory` followed by `Auto-start is not supported in socket mode` — while `status` insists the
+server is fine. The split is what makes it hard to read: the diagnostic path works, so the natural
+conclusion is that the server is the problem, and it is not.
+
+`_ensure_no_stale_socket_key` removes the key at launch, before the running-container check (a
+healthy sidecar returns early from that check, and a healthy sidecar is precisely the case that has
+this problem). Nothing recreates it — the entrypoint's metadata writer was deleted in §4 — so the
+removal is permanent.
+
+This is not a workaround for the reversal. §4 already said the key must never be on disk, and it is
+still true for the reason given there: it is a machine-local absolute path in a file bd **tracks**,
+so committed it hands every teammate a path that cannot exist for them, with socket mode denying
+them the auto-start fallback. The migration restores the stated invariant. It does dirty a tracked
+file, so it is announced.
+
 ## 9. Questions, resolved 2026-07-25
 
 | # | Question | Resolution |
