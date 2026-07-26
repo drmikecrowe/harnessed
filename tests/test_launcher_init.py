@@ -6,9 +6,11 @@ agent. No real podman; `load_stack_with_recipes`, `paths.git_common_dir`, and `o
 monkeypatched.
 """
 
+import os
 import shlex
 
 import pytest
+import typer
 
 from harnessed import launcher, paths
 from harnessed.schema import InitSpec, PersistSpec, Recipe, Stack
@@ -165,3 +167,63 @@ class TestAttachRunsInit:
         shell_cmd = captured["argv"][-1]
         assert "varlock" not in shell_cmd
         assert "--secret" not in shell_cmd
+
+
+# ---------------------------------------------------------------------------
+# TestHostInitEnvPropagation
+# ---------------------------------------------------------------------------
+
+
+class TestHostInitEnvPropagation:
+    """`init.run`'s exports must reach the HOST agent, not die with a subprocess.
+
+    Model A's guarantee is that init runs in the shell that then starts the harness. The container
+    path gets that from `_init_shell_prologue`'s brace group; host-side the agent is exec'd from
+    `os.environ`, so `_host_run_inits` has to carry the delta back. Until it did, every host `init:`
+    that was a plain `export` was a silent no-op — beads' `bd-shim` PATH line (the shim was
+    installed and never on PATH, observed 2026-07-26) and pulumi's `PULUMI_HOME`.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolated_environ(self, monkeypatch):
+        """Real bash runs here, and the function under test writes to os.environ by design."""
+        monkeypatch.setattr(os, "environ", dict(os.environ))
+
+    def _run(self, monkeypatch, tmp_path, run: str) -> None:
+        _stub_recipes(monkeypatch, [_recipe("r", run)])
+        monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
+        proj = tmp_path / "proj"
+        proj.mkdir(exist_ok=True)
+        launcher._host_run_inits("s", proj, harness="claude")
+
+    def test_an_exported_var_reaches_the_agent_env(self, tmp_path, monkeypatch):
+        self._run(monkeypatch, tmp_path, 'export HARNESSED_TEST_VAR="hello world"')
+        assert os.environ["HARNESSED_TEST_VAR"] == "hello world"
+
+    def test_path_additions_are_prepended_not_replaced(self, tmp_path, monkeypatch):
+        """The launcher composed the agent's PATH (stack tools dir first). A `bash -lc` login shell
+        also re-runs the user's profile, so assigning its PATH wholesale would hand the agent a
+        different toolchain. Only what init ADDED is taken."""
+        os.environ["PATH"] = f"/stack/tools/bin{os.pathsep}/usr/bin"
+        self._run(monkeypatch, tmp_path, 'export PATH="/shim/dir:$PATH"')
+        entries = os.environ["PATH"].split(os.pathsep)
+        assert entries[0] == "/shim/dir"
+        assert "/stack/tools/bin" in entries and "/usr/bin" in entries
+
+    def test_a_no_op_init_changes_nothing(self, tmp_path, monkeypatch):
+        """The delta is captured inside the init shell, so profile-sourced variables — which are
+        not something a recipe asked to export — must not ride along."""
+        before = dict(os.environ)
+        self._run(monkeypatch, tmp_path, "true")
+        assert dict(os.environ) == before
+
+    def test_a_failing_init_aborts_and_propagates_nothing(self, tmp_path, monkeypatch):
+        with pytest.raises(typer.Exit):
+            self._run(monkeypatch, tmp_path, 'export HARNESSED_TEST_VAR=set; exit 3')
+        assert "HARNESSED_TEST_VAR" not in os.environ
+
+    def test_shell_bookkeeping_is_not_propagated(self, tmp_path, monkeypatch):
+        """PWD is the init shell's cwd (the project); adopting it would relocate the agent."""
+        os.environ["PWD"] = "/somewhere/else"
+        self._run(monkeypatch, tmp_path, "true")
+        assert os.environ["PWD"] == "/somewhere/else"
