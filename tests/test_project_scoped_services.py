@@ -383,6 +383,71 @@ class TestClientEnvResolution:
         assert launcher.svc_client_env("any", wired, "host") == {}
 
 
+class TestStaleSocketKeyMigration:
+    """metadata.json's `dolt_server_socket` beats the env on bd's DATA path (BEADS.md §11).
+
+    Verified on a real workspace after the socket->port reversal: `bd dolt status` read the env and
+    reported a healthy TCP server while `bd list` read metadata.json, dialled a socket that no
+    longer existed, and failed with "Auto-start is not supported in socket mode". Every workspace
+    initialized before the reversal is in that state until the key is removed.
+    """
+
+    def _svc(self, tmp_path, body=None):
+        return load_service(_svc_yaml(tmp_path, body or PUBLISHED_SVC + "exclusive_lock: dolt\n"),
+                            "beads-server")
+
+    def _meta(self, d: Path, **extra) -> Path:
+        d.mkdir(parents=True, exist_ok=True)
+        meta = d / "metadata.json"
+        meta.write_text(json.dumps({"dolt_mode": "server", "dolt_database": "x", **extra}, indent=2))
+        return meta
+
+    def test_stale_socket_key_is_removed(self, tmp_path):
+        meta = self._meta(tmp_path / "beads", dolt_server_socket="/gone/mysql.sock")
+        launcher._ensure_no_stale_socket_key(self._svc(tmp_path), tmp_path / "beads")
+        assert "dolt_server_socket" not in json.loads(meta.read_text())
+
+    def test_the_rest_of_the_workspace_survives(self, tmp_path):
+        """dolt_mode and dolt_database are machine-INdependent and bd's to own — only the absolute
+        socket path is machine-local, and only it goes."""
+        meta = self._meta(tmp_path / "beads", dolt_server_socket="/gone/mysql.sock")
+        launcher._ensure_no_stale_socket_key(self._svc(tmp_path), tmp_path / "beads")
+        data = json.loads(meta.read_text())
+        assert data["dolt_mode"] == "server" and data["dolt_database"] == "x"
+
+    def test_socket_backed_service_keeps_its_key(self, tmp_path):
+        """There the key is not stale, it IS the configuration."""
+        svc = self._svc(tmp_path, PROJECT_SVC + "exclusive_lock: dolt\n")
+        meta = self._meta(tmp_path / "beads", dolt_server_socket="/real/mysql.sock")
+        launcher._ensure_no_stale_socket_key(svc, tmp_path / "beads")
+        assert json.loads(meta.read_text())["dolt_server_socket"] == "/real/mysql.sock"
+
+    def test_idempotent_and_silent_once_clean(self, tmp_path, capsys):
+        meta = self._meta(tmp_path / "beads")
+        before = meta.read_text()
+        launcher._ensure_no_stale_socket_key(self._svc(tmp_path), tmp_path / "beads")
+        assert meta.read_text() == before, "a clean workspace must not be rewritten"
+        assert "dolt_server_socket" not in capsys.readouterr().err
+
+    def test_missing_workspace_is_not_an_error(self, tmp_path):
+        """`bd init` has not run yet — there is nothing to migrate and nothing to create."""
+        launcher._ensure_no_stale_socket_key(self._svc(tmp_path), tmp_path / "absent")
+        assert not (tmp_path / "absent").exists()
+
+    def test_unparseable_metadata_is_left_alone(self, tmp_path):
+        d = tmp_path / "beads"
+        d.mkdir()
+        (d / "metadata.json").write_text("{not json")
+        launcher._ensure_no_stale_socket_key(self._svc(tmp_path), d)
+        assert (d / "metadata.json").read_text() == "{not json"
+
+    def test_removal_is_announced(self, tmp_path, capsys):
+        """It dirties a file the user will commit; doing that silently is its own surprise."""
+        self._meta(tmp_path / "beads", dolt_server_socket="/gone/mysql.sock")
+        launcher._ensure_no_stale_socket_key(self._svc(tmp_path), tmp_path / "beads")
+        assert "dolt_server_socket" in capsys.readouterr().err
+
+
 class TestServiceSecretPlacement:
     def test_secret_never_lands_in_the_service_data_dir(self, tmp_path, monkeypatch):
         """For `location: in_repo` the data dir IS the user's repo. A secret written there is one
