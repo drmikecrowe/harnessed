@@ -37,7 +37,7 @@ print(json.dumps({
     "args": sys.argv[1:],
     "env": {k: os.environ.get(k, "") for k in (
         "BEADS_DIR", "BEADS_DOLT_SERVER_HOST", "BEADS_DOLT_SERVER_PORT",
-        "BEADS_DOLT_PASSWORD", "BEADS_DOLT_AUTO_START",
+        "BEADS_DOLT_PASSWORD", "BEADS_DOLT_AUTO_START", "BEADS_DOLT_SERVER_SOCKET",
     )},
 }))' "$@"
 """
@@ -98,6 +98,8 @@ def env(tmp_path: Path):
             e["PATH"] = f"{self.shim_dir}:{stub_dir}:{e['PATH']}"
             e["BEADS_DIR"] = str(beads_dir or (launch / ".beads"))
             e["HARNESSED_GIT_COMMON_DIR"] = str(launch_gcd)
+            # A socket-era launch carries this; it must not survive a retarget.
+            e["BEADS_DOLT_SERVER_SOCKET"] = str(launch / ".beads" / "run" / "mysql.sock")
             e["XDG_STATE_HOME"] = str(state)
             e["XDG_DATA_HOME"] = str(data)
             e.pop("HARNESSED_BD_SHIM", None)
@@ -207,6 +209,28 @@ class TestForeignProject:
 
         out = _payload(env.run(foreign, "list"))
         assert out["env"]["BEADS_DIR"] == str(stealth_dir)
+
+
+    def test_the_launch_projects_socket_is_cleared(self, env, tmp_path):
+        """Setting the new connection is not enough. bd picks socket mode whenever
+        BEADS_DOLT_SERVER_SOCKET is set, so a launch-era socket outranks every port variable and bd
+        dials the LAUNCH project's database while believing it is talking to this one — observed
+        2026-07-27 as "Dolt server unreachable at <launch project>/.beads/run/mysql.sock" from a
+        session whose BEADS_DIR had been retargeted correctly. Whether TCP or the socket wins is a
+        coin flip, which is exactly what the honesty rule exists to prevent."""
+        foreign = tmp_path / "foreign"
+        fgcd = _git_repo(foreign)
+        (foreign / ".beads").mkdir()
+        env.with_podman("49183")
+        env.secret(fgcd)
+        out = _payload(env.run(foreign, "list"))
+        assert out["env"]["BEADS_DOLT_SERVER_SOCKET"] == ""
+        assert out["env"]["BEADS_DOLT_SERVER_PORT"] == "49183"
+
+    def test_the_launch_socket_survives_a_passthrough(self, env):
+        """Only a RETARGET clears it. In the launch project the socket is the correct connection."""
+        out = _payload(env.run(env.launch_dir, "list"))
+        assert out["env"]["BEADS_DOLT_SERVER_SOCKET"].endswith("mysql.sock")
 
     def test_no_workspace_refuses_instead_of_falling_back(self, env, tmp_path):
         foreign = tmp_path / "foreign"

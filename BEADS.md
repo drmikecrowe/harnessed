@@ -263,7 +263,8 @@ Settled 2026-07-25. Each is a choice, not a discovery — revisit deliberately, 
 | D10 | A published service **authenticates**; the secret lives in XDG state, never the data dir | A TCP port has no filesystem ACL. For `in_repo` placement the data dir is the user's repo |
 | D11 | A `bd` **shim leads PATH** and re-resolves the workspace from `$PWD` per invocation | One harness process hosts sessions in several projects (Claude Code's switcher); launch-time env is a fallback, not the answer. §12 |
 | D12 | The sidecar's port is **stable per project** (`publish: stable`), not ephemeral | An ephemeral port cannot be written anywhere a non-harnessed client would find it, so every such client stays unconfigured. §12 |
-| D13 | The **project** carries its own tool env (`mise.local.toml` → a dotenv in XDG state) | harnessed configuring only the agent it launches is what left plain `bd`, self-started agents and hooks blind. The pointer is in the repo; the secret is not |
+| D13 | The **project** carries its own tool env (`mise.local.toml` → a dotenv in XDG state) | harnessed configuring only the agent it launches is what left plain `bd` blind. Covers INTERACTIVE shells only (mise activation is a `precmd` hook) — agents are covered by D11 instead. §12 |
+| D14 | A retarget **removes** the old project's connection, it does not merely add the new one | `BEADS_DOLT_SERVER_SOCKET` outranks every port variable, so a launch-era socket silently wins. §12 |
 
 ---
 
@@ -402,11 +403,20 @@ downstream). The one thing the error never says is that the data dir is the wron
 **Three independent causes, each invisible on its own.**
 
 1. **Launch-time env is per-process, and one process hosts many projects.** `BEADS_DIR` and the
-   connection vars are resolved once, against the project harnessed was launched in. Claude Code's
-   session switcher opens sessions in other projects inside that same process, and every one of them
-   inherits the launch project's absolute paths. `bd list` in project B lists project A's issues and
-   reports nothing wrong. Fixed by the `bd` shim (D11): the launch values become a fallback, and each
-   invocation re-resolves from `$PWD`.
+   connection vars are resolved once, against the project harnessed was launched in. `bd list` in
+   project B then lists project A's issues and reports nothing wrong.
+
+   There are **three** ways that env reaches a process working somewhere else, and each was found
+   separately — which is why this kept coming back after being "fixed":
+
+   | Path | How the wrong env arrives |
+   | --- | --- |
+   | Claude Code's session switcher | One harness PROCESS hosts sessions in several projects; all inherit the launch env |
+   | The daemon | It forks child jobs carrying its OWN launch env — a job whose CWD is project B holds project A's `BEADS_DIR` and `HARNESSED_GIT_COMMON_DIR` |
+   | The host `init:` prologue | See (2) — the fix for the above was installed but never on PATH |
+
+   Fixed by the `bd` shim (D11): the launch values become a fallback, and each invocation re-resolves
+   from `$PWD`.
 
 2. **A host `init:` that was a plain `export` did nothing.** The container path runs `init.run` as a
    brace group in the attach shell, so its exports reach the agent. The host path ran it in a
@@ -421,6 +431,21 @@ downstream). The one thing the error never says is that the data dir is the wron
    `mysql.user` in `.beads/dolt`, so every client that assumes dolt's default passwordless `root`
    was locked out of the project's own issues. "Every client" included bd's own `bd dolt start`
    server: it came up on that data dir and could not log in to it.
+
+4. **The retarget was defeated by a variable it did not clear.** The shim set `BEADS_DIR` and the
+   port variables but left `BEADS_DOLT_SERVER_SOCKET` alone, and **bd selects socket mode whenever
+   that variable is set** — so a launch-era socket outranked every port value the shim exported. bd
+   dialled the LAUNCH project's database while `BEADS_DIR` pointed correctly at another one.
+
+   What makes this the nastiest of the four: it is **nondeterministic in appearance**. One run
+   surfaced `Dolt server unreachable at <launch project>/.beads/run/mysql.sock`; another, on the same
+   code, reported `bd dolt status` connecting happily over TCP to the right sidecar. Whether the
+   stale socket or the fresh port wins depends on which value bd consults first for that command —
+   the same two-code-paths-disagree shape as the stale-`metadata.json` migration in §11.
+
+   Hence D14: `env -u BEADS_DOLT_SERVER_SOCKET -u HARNESSED_BEADS_SERVER_SOCKET
+   -u BEADS_DOLT_SERVER_DATABASE` leads the retarget. Adding a correct connection is not enough when
+   an incorrect one is still readable.
 
 **What the guards did and did not catch.** The host-engine guard worked exactly as designed — it
 named the PID holding the lock and what to do. The `healthcheck` did not, and could not: it runs
@@ -438,8 +463,16 @@ every client it exists to serve.
 * The port becomes **stable per project** (D12), because a value that changes on every container
   recreate cannot be written anywhere a non-harnessed client would look.
 * The project gets **its own env** (D13): a gitignored `mise.local.toml` pointing at a 0600 dotenv
-  in XDG state. mise loads it for any process whose CWD is under the project, so a plain `bd`, a
-  self-started agent and a hook are all configured — while the secret stays out of the source tree.
+  in XDG state, so the secret stays out of the source tree.
+
+  **Scope, measured rather than assumed.** mise applies per-directory env through an activation
+  hook (`precmd`), which fires in **interactive shells only**. Verified: a variable that exists
+  solely in a project's mise config came back empty from `zsh -lc` while `mise env` computed it
+  correctly, and came back set once `mise activate` was eval'd. So D13 covers a human typing `bd`
+  in a terminal — and does **not** cover agent-spawned shells, daemon jobs, hooks or scripts, which
+  is precisely the population that failed here. Those are covered by D11's shim instead. Two
+  mechanisms, two audiences; neither one covers both, and claiming otherwise was an early draft of
+  this section.
 
 **The lesson under all three.** harnessed configured the agent it launched and assumed that was the
 population. It is not: the same repo is used by terminals, by agents the user starts, and by
