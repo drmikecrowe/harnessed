@@ -127,7 +127,16 @@ fi
 
 # `podman port` answered, so we are on the host and the sidecar publishes on loopback — the same
 # value launcher.svc_client_env fills in for `{host}` in host mode.
+# `env -u` FIRST, and it is load-bearing. Setting the new connection is not enough: bd picks socket
+# mode whenever BEADS_DOLT_SERVER_SOCKET is set, so a launch-era socket left in the environment wins
+# over every port variable below and bd dials the LAUNCH project's socket while believing it is
+# talking to this one (observed 2026-07-27: "Dolt server unreachable at <launch project>/.beads/run/
+# mysql.sock" from a session whose BEADS_DIR had been correctly retargeted). Retargeting has to
+# REMOVE the old project's connection, not just add the new one.
 exec env \
+    -u BEADS_DOLT_SERVER_SOCKET \
+    -u HARNESSED_BEADS_SERVER_SOCKET \
+    -u BEADS_DOLT_SERVER_DATABASE \
     BEADS_DIR="$beads_dir" \
     BEADS_DOLT_SERVER_MODE=server \
     BEADS_DOLT_SERVER_HOST=127.0.0.1 \
