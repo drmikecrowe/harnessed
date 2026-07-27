@@ -34,10 +34,19 @@
 # on a perfectly healthy workspace reports "no Dolt server port configured". Correct setup that
 # prints failure is a design defect, not a message to explain away.
 #
-# `publish: ephemeral` gives the port without the allocation machinery the socket design was
-# avoiding: the runtime picks a free host port on 127.0.0.1 and the launcher reads it back with
-# `podman port` at every launch. N per-project sidecars cannot collide, and nothing is written to
-# disk to go stale. The loopback trap the socket avoided is handled by `client_env` `{host}`,
+# `publish: stable` (was `ephemeral`, 2026-07-27) gives the port WITHOUT letting it move. harnessed
+# allocates one free loopback port per project, once, and records it in
+# $XDG_DATA_HOME/harnessed/svc-ports.json. N per-project sidecars still cannot collide — the
+# registry is machine-wide, so an allocation can see what every other project was promised.
+#
+# Ephemeral was the wrong half of that trade. "Nothing is written down, so nothing goes stale" also
+# means nothing OUTSIDE a harnessed launch can ever be configured: a plain `bd` in the repo, a
+# `claude` the user started themselves, a hook. Those clients are not an edge case — on 2026-07-27
+# every live agent in a project had zero BEADS_ variables, so bd fell back to auto-start, hit the
+# sidecar's exclusive lock, and told the user to run `bd bootstrap`. A port that survives a reboot
+# is what lets the PROJECT hold its own beads config (mise.local.toml) instead of that config
+# existing only inside a harnessed process. The loopback trap the socket avoided is handled by
+# `client_env` `{host}`,
 # which resolves per mode — 127.0.0.1 for a host agent, host.containers.internal for a container.
 #
 # Dropping the socket also takes a unix socket back out of the user's source tree. At
@@ -51,8 +60,8 @@
 name: beads-server
 image: harnessed-beads-server:latest
 scope: project
-port: 3307          # the CONTAINER port; the host side is allocated per launch
-publish: ephemeral
+port: 3307          # the CONTAINER port; the host side is allocated ONCE per project
+publish: stable
 data:
   persist: .beads
 

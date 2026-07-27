@@ -997,6 +997,19 @@ class ServiceDef:
         return self.publish == "ephemeral"
 
     @property
+    def is_stable_port(self) -> bool:
+        """True when the host port is allocated ONCE per project and reused forever after.
+
+        `ephemeral` deliberately writes nothing down, so the port is re-read at every launch — which
+        is correct for a client harnessed itself configures, and useless for one it does not. A port
+        that changes on every container recreate cannot be recorded anywhere a plain `bd` in the
+        project would find it, so every tool outside a harnessed launch stays unconfigured. `stable`
+        buys exactly one property: the value can be written down (paths.svc_ports_file, and from
+        there the project's mise.local.toml) and still be true tomorrow.
+        """
+        return self.publish == "stable"
+
+    @property
     def wants_password(self) -> bool:
         """True when any client_env value needs `{password}` — the launcher then provisions one."""
         return any("{password}" in v for v in self.client_env.values())
@@ -1641,8 +1654,10 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
         raise SchemaError(f"{manifest}: 'exclusive_lock' requires scope: project")
 
     publish = (raw.get("publish") or "").strip()
-    if publish and publish != "ephemeral":
-        raise SchemaError(f"{manifest}: 'publish' must be 'ephemeral' if set, got {publish!r}")
+    if publish and publish not in ("ephemeral", "stable"):
+        raise SchemaError(
+            f"{manifest}: 'publish' must be 'ephemeral' or 'stable' if set, got {publish!r}"
+        )
     # No `publish and not port` check: a manifest with neither `port` nor `socket` is already
     # rejected above, and `publish` cannot be combined with `socket`, so an unported publish
     # cannot reach here.

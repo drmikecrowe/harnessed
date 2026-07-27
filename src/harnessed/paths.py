@@ -325,6 +325,17 @@ def setup_dismissed_flag(stack: str, harness: str, project_path: str | Path) -> 
     return xdg_state_home() / "harnessed" / "setup-dismissed" / instance_name(stack, harness, project_path)
 
 
+def svc_ports_file() -> Path:
+    """Registry of every `publish: stable` host port harnessed has handed out (XDG DATA).
+
+    ONE file for the whole machine, not one per project: the question an allocation has to answer
+    is "is this port already promised to some OTHER project?", and a per-project file cannot see
+    far enough to answer it. Data rather than state — losing it does not just cost a cache refill,
+    it re-allocates ports that are already written into projects' mise.local.toml.
+    """
+    return xdg_data_home() / "harnessed" / "svc-ports.json"
+
+
 def persist_root() -> Path:
     """Root for recipe-declared persistent data (XDG DATA).
 

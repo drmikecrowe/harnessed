@@ -30,9 +30,9 @@
       "maximum": 65535
     },
     "publish": {
-      "description": "How the container's `port` reaches the host. `ephemeral` publishes it on a runtime-allocated host port bound to 127.0.0.1, which the launcher reads back with `podman port` at every launch — the way a project-scoped service (one container PER PROJECT) gets a port without any allocation machinery or collisions, and without recording a port that would go stale. Loopback-bound by design, so a service using this MUST authenticate: see client_env `{password}`. Mutually exclusive with `socket`.",
+      "description": "How the container's `port` reaches the host, both loopback-bound so a service using either MUST authenticate (see client_env `{password}`). `ephemeral`: the runtime allocates the host port and the launcher reads it back with `podman port` at every launch — nothing is recorded, so nothing goes stale, but nothing OUTSIDE a harnessed launch can ever be configured with it either. `stable`: harnessed allocates one free loopback port per project ONCE and records it in $XDG_DATA_HOME/harnessed/svc-ports.json (machine-wide, so allocations across projects cannot collide); the value survives restarts, reboots and container recreates, which is what lets the PROJECT hold its own client config (e.g. a gitignored mise.local.toml) instead of that config existing only inside a harnessed process. Mutually exclusive with `socket`.",
       "type": "string",
-      "enum": ["ephemeral"]
+      "enum": ["ephemeral", "stable"]
     },
     "client_env": {
       "description": "Environment a CLIENT needs to reach this service, declared here because only the service knows its own protocol's variable names. Values are templated on {host}, {port}, {socket}, {password}; the launcher resolves them per launch and injects them into the agent's environment. Use this rather than a recipe `env:` for anything that does not exist until the container runs — a recipe env value is resolved at emit time. {host} resolves per mode: 127.0.0.1 for a host agent, host.containers.internal for a containerized one.",
