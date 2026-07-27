@@ -4214,6 +4214,71 @@ def _pending_setup_scripts(project_path: Path, recipes) -> list:
     return pending
 
 
+_MISE_MARKER = "# managed by harnessed"
+
+
+def _write_project_tool_env(stack: str, project_path: Path) -> None:
+    """Give the PROJECT the same tool env harnessed gives the agent, via mise.
+
+    The gap this closes: harnessed configures the agent it launches and nothing else. Everything
+    else in that repo — a `bd` you run in a terminal, a `claude` you started yourself, a hook — sees
+    none of it. On 2026-07-27 that meant three live agents in one project with zero BEADS_
+    variables, each falling back to bd's auto-start, each hitting the sidecar's exclusive lock.
+
+    Two files, and which value lives in which is the whole design:
+
+      * A dotenv OUTSIDE the repo ($XDG_STATE_HOME, 0600) holds the values, INCLUDING the service
+        password. Credentials are referenced, never replicated — a secret copied into the source
+        tree is one `git add -f`, one backup, one tree-walking tool away from leaving the machine,
+        and `mise.local.toml` being gitignored is not the same guarantee as not being there.
+      * `mise.local.toml` in the repo holds only a POINTER to it (`[env] _.file`). mise loads it for
+        any process whose CWD is under the project, which is exactly the audience that was missing.
+
+    Only ever CREATES `mise.local.toml`; an existing one is never rewritten. A user's mise config is
+    theirs, TOML has no safe blind-append (a second `[env]` table is a parse error), and silently
+    reformatting it would be a worse bug than the one this fixes. When it exists without our pointer
+    we print the two lines to add and move on.
+
+    Requires every value to be stable — a `publish: ephemeral` port would be written down and be
+    wrong after the next container recreate, which is why beads-server is `publish: stable`.
+    """
+    _, recipes = load_stack_with_recipes(None, stack)
+    values = {
+        **_recipe_env(recipes, project_path, mode="host"),
+        **svc_client_env(stack, project_path, "host"),
+    }
+    if not values:
+        return
+
+    gcd = paths.git_common_dir(project_path)
+    env_file = (
+        paths.xdg_state_home() / "harnessed" / "project-env"
+        / f"{paths.project_hash(gcd or project_path)}.env"
+    )
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.parent.chmod(0o700)
+    body = "".join(f"{k}={v}\n" for k, v in sorted(values.items()))
+    env_file.write_text(f"# {_MISE_MARKER} — regenerated every launch. Do not edit.\n{body}", "utf-8")
+    env_file.chmod(0o600)
+
+    mise_local = project_path / "mise.local.toml"
+    pointer = f'[env]\n_.file = "{env_file}"\n'
+    if not mise_local.exists():
+        mise_local.write_text(
+            f"{_MISE_MARKER}: this file is NOT committed (see .gitignore). It points mise at the\n"
+            f"# tool env for this project, so `bd` and friends work in a plain terminal too.\n"
+            f"{pointer}",
+            encoding="utf-8",
+        )
+        _say(f"[blue][INFO][/blue] wrote {mise_local.name} — `bd` now works in a plain shell here")
+    elif str(env_file) not in mise_local.read_text(encoding="utf-8"):
+        _say(
+            f"[blue][INFO][/blue] {mise_local.name} exists and is yours to edit; to configure this "
+            f"project's tools for a plain shell, add:\n    {pointer.rstrip()}"
+        )
+    _ensure_gitignore_entry(project_path, "mise.local.toml")
+
+
 def _recipe_env(recipes, project_path: Path, *, mode: str) -> dict[str, str]:
     """Every recipe's `env:` resolved for one mode — the SINGLE declaration behind all three
     consumers (build-time install step, setup script, and the agent process itself).
@@ -4707,6 +4772,10 @@ def _launch_host(
     if _service_refs(stack):
         _ensure_services(_runtime(), stack, project_path=project_path, mount_path=project_path)
 
+    # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
+    # repo is configured too. After services, because the client env includes their connection.
+    _write_project_tool_env(stack, project_path)
+
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
     # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
     # this launch), so all three consumers get it from one place: any install/setup script spawned
@@ -4994,6 +5063,9 @@ def launch(
     # (observed 2026-07-21: a sidecar dead for 3h, revived by nothing, while `bd` failed every
     # session). Reviving it is exactly what "idempotent" already promised.
     _ensure_services(rt, stack, project_path=project_path, mount_path=mount_path)
+
+    # Same as the host path: the project gets a config of its own, not just the agent we launch.
+    _write_project_tool_env(stack, project_path)
 
     # Re-attach to a running instance (interactive only) — but if it was built from an older image
     # (rebuilt since it started), a re-attach would silently run the stale build. Offer to recreate.

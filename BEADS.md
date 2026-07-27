@@ -253,7 +253,7 @@ Settled 2026-07-25. Each is a choice, not a discovery — revisit deliberately, 
 | --- | --- | --- |
 | D1 | ~~Socket mode is **mandatory**~~ — **superseded by D8, 2026-07-26** | Its premise (socket mode is the *only* auto-start interlock) was already false when written — see §11 |
 | D2 | harnessed **re-asserts** the mode every launch, not just detects | The 07-16 reinit drifted this workspace silently and nothing noticed for days; setup runs once, launches run always |
-| D3 | **No `bd` shim on PATH** | Rejected as machinery; socket mode already makes stray `bd` calls fail cleanly rather than destructively |
+| D3 | ~~**No `bd` shim on PATH**~~ — **superseded by D11, 2026-07-26** | Its premise was that a stray `bd` fails cleanly. Under TCP it does not: it resolves the LAUNCH project's `BEADS_DIR` and answers confidently about the wrong repo — see §12 |
 | D4 | Per-project data dir, **not** bd's shared server | Matches the per-project sidecar; the shared server is what collided on port 3308 |
 | D5 | **bd's conventions are the contract** | Requirement 2 — a teammate with plain `bd` is a first-class user, so harnessed conforms and protects, never places |
 | D6 | The socket is delivered by **environment**, never persisted | §4 — the only way D1 and requirement 2 can both hold |
@@ -261,6 +261,9 @@ Settled 2026-07-25. Each is a choice, not a discovery — revisit deliberately, 
 | D8 | The sidecar is reached over a **published loopback TCP port**, not a unix socket | A socket-only server cannot serve a client that speaks TCP for part of its work, and bd does. §11 |
 | D9 | The auto-start interlock is `BEADS_DOLT_AUTO_START`, delivered by **environment** | Same mechanism D6 already established, so D8 costs nothing that D1 was protecting |
 | D10 | A published service **authenticates**; the secret lives in XDG state, never the data dir | A TCP port has no filesystem ACL. For `in_repo` placement the data dir is the user's repo |
+| D11 | A `bd` **shim leads PATH** and re-resolves the workspace from `$PWD` per invocation | One harness process hosts sessions in several projects (Claude Code's switcher); launch-time env is a fallback, not the answer. §12 |
+| D12 | The sidecar's port is **stable per project** (`publish: stable`), not ephemeral | An ephemeral port cannot be written anywhere a non-harnessed client would find it, so every such client stays unconfigured. §12 |
+| D13 | The **project** carries its own tool env (`mise.local.toml` → a dotenv in XDG state) | harnessed configuring only the agent it launches is what left plain `bd`, self-started agents and hooks blind. The pointer is in the repo; the secret is not |
 
 ---
 
@@ -378,3 +381,67 @@ Kept because each misdiagnosis was reasonable given what the system reports.
 Three readings the symptom invites, all wrong: *the server is down* (it was running and healthy);
 *the database was lost* (it was intact elsewhere); *the port is wrong* (it was, twice, but that was
 downstream). The one thing the error never says is that the data dir is the wrong shape.
+
+
+---
+
+## 12. The lockout — 2026-07-27
+
+**Symptom.** Every `bd` in a project failed, in three different ways depending on who asked.
+
+    $ bd list                     # plain terminal, or a self-started agent
+    Error: failed to open database: ... database "<project>" is locked by another dolt process
+    ... Run bd bootstrap to recover from the remote or confirm what bootstrap will do.
+
+    $ bd list                     # with the launch env reconstructed by hand
+    Error: ... Error 1045 (28000): Access denied for user 'root'
+
+    $ bd list                     # in a second session of one harnessed launch
+    <the LAUNCH project's issues, confidently, with no error at all>
+
+**Three independent causes, each invisible on its own.**
+
+1. **Launch-time env is per-process, and one process hosts many projects.** `BEADS_DIR` and the
+   connection vars are resolved once, against the project harnessed was launched in. Claude Code's
+   session switcher opens sessions in other projects inside that same process, and every one of them
+   inherits the launch project's absolute paths. `bd list` in project B lists project A's issues and
+   reports nothing wrong. Fixed by the `bd` shim (D11): the launch values become a fallback, and each
+   invocation re-resolves from `$PWD`.
+
+2. **A host `init:` that was a plain `export` did nothing.** The container path runs `init.run` as a
+   brace group in the attach shell, so its exports reach the agent. The host path ran it in a
+   subprocess, which threw every export away — silently, because an export cannot fail. That is why
+   the shim from (1) was installed on disk and never on PATH. `_host_run_inits` now captures the env
+   delta (`env -0` before/after, inside the same shell) and applies it.
+
+3. **Password-protecting the sidecar changed the credentials of the USER'S DATABASE.** This is the
+   one worth remembering. Dolt persists its user table **inside the data dir**, and for `in_repo`
+   placement that dir is the user's repo. D10 reads "the secret lives in XDG state, never the data
+   dir" — true of the secret, false of its *effect*. Setting a password on `root` rewrote
+   `mysql.user` in `.beads/dolt`, so every client that assumes dolt's default passwordless `root`
+   was locked out of the project's own issues. "Every client" included bd's own `bd dolt start`
+   server: it came up on that data dir and could not log in to it.
+
+**What the guards did and did not catch.** The host-engine guard worked exactly as designed — it
+named the PID holding the lock and what to do. The `healthcheck` did not, and could not: it runs
+`SELECT 1` from **inside** the container, over loopback, as the admin. That is the one path that
+always works. It never exercises the client's path — different source address, therefore a different
+`root@` record, and different credentials. A server can be perfectly healthy and unreachable by
+every client it exists to serve.
+
+**Resolution.**
+
+* The password **stays**. Verified end to end against an isolated passworded server: `bd init
+  --server --external`, `bd create` and `bd list` all succeed with `BEADS_DOLT_PASSWORD` set, and
+  fail with `1045` without it. bd authenticates over TCP correctly. The lockout was never that a
+  password existed — it was that the password was discoverable only by harnessed.
+* The port becomes **stable per project** (D12), because a value that changes on every container
+  recreate cannot be written anywhere a non-harnessed client would look.
+* The project gets **its own env** (D13): a gitignored `mise.local.toml` pointing at a 0600 dotenv
+  in XDG state. mise loads it for any process whose CWD is under the project, so a plain `bd`, a
+  self-started agent and a hook are all configured — while the secret stays out of the source tree.
+
+**The lesson under all three.** harnessed configured the agent it launched and assumed that was the
+population. It is not: the same repo is used by terminals, by agents the user starts, and by
+teammates without harnessed at all. Requirement 2 already said so — "a teammate with plain `bd` is a
+first-class user" — and each of these was a way of forgetting it.
