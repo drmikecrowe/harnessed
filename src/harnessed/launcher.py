@@ -4505,6 +4505,35 @@ def _host_install_tools(stack: str, recipes) -> None:
         raise typer.Exit(1)
 
 
+# Each harness's OWN config-dir variable. An upstream installer that honours one of these beats
+# both `$HARNESSED_CONFIG_DIR` and the `$HOME` shim, because an explicit config-dir env var wins
+# over a relocated home. Inherited from the launching process it silently redirects an install into
+# whatever config dir the PARENT had — which is exactly what happens when a stack is launched from
+# inside another stack's host session, since `_launch_host` exports CLAUDE_CONFIG_DIR for the agent.
+#
+# Demonstrated (bd harnessed-8px.26): gsd-core's install.sh, run with an inherited CLAUDE_CONFIG_DIR,
+# wrote 69 skills and four top-level artifacts into an UNRELATED stack's home, ignoring the shim it
+# was given.
+#
+# Pinned rather than unset, deliberately: unsetting makes such an installer fall back to
+# `$HOME/.claude`, the user's REAL config dir, which is a worse landing spot than the parent stack's.
+# Only claude is listed because `_HOST_HARNESS` scopes the host backend to claude today; add the
+# others (omp's PI_*, codex, opencode, antigravity) as each gains host support.
+_HARNESS_CONFIG_DIR_ENV: dict[str, tuple[str, ...]] = {
+    "claude": ("CLAUDE_CONFIG_DIR",),
+}
+
+
+def _harness_config_env(harness: str, home: Path) -> dict[str, str]:
+    """Pin the harness's own config-dir variable at this stack's home (bd harnessed-8px.26).
+
+    Applied wherever catalog-authored content runs host-side — installs, setup scripts, and the
+    `setup.condition` eval — alongside the UV_TOOL_DIR / npm_config_prefix redirection those sites
+    already do. Same intent: keep what a recipe writes inside the stack's own tree.
+    """
+    return {var: str(home) for var in _HARNESS_CONFIG_DIR_ENV.get(harness, ())}
+
+
 def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Path) -> None:
     """Run each recipe's `install.script` HOST-side — the host half of `RUN bash install.sh`.
 
@@ -4568,6 +4597,8 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
         env["UV_TOOL_BIN_DIR"] = str(bin_dir)
         env["npm_config_prefix"] = str(bin_dir.parent)
         env["PATH"] = os.pathsep.join([str(bin_dir), os.environ.get("PATH", "")])
+        # LAST, so an inherited CLAUDE_CONFIG_DIR cannot survive into the script (bd 8px.26).
+        env.update(_harness_config_env(harness, home))
         _err.print(f"[blue][INFO][/blue] install ({recipe.name}): {inst.script} (host)")
         if subprocess.run(
             ["bash", str(recipe.root / inst.script)], cwd=str(project_path), env=env
@@ -4680,6 +4711,9 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
     (unique database, chosen prefix)."""
     _, recipes = load_stack_with_recipes(None, stack)
     _, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
+    # Same containment as the install path (bd harnessed-8px.26): a setup script is catalog-authored
+    # content too, so an inherited CLAUDE_CONFIG_DIR would redirect its writes just as readily.
+    cfg_env = _harness_config_env(harness, paths.host_home(stack, harness))
     primitives: dict[str, str] | None = None
     for recipe in recipes:
         setup = recipe.setup
@@ -4692,7 +4726,7 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
             ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True,
             env={**os.environ, **harnessed_env(
                 stack, project_path, harness=harness, mode="host", recipe=recipe
-            )},
+            ), **cfg_env},
         ).returncode != 0:
             continue
         # Before `config` resolution, which may prompt: asking for values the user is about to
@@ -4714,12 +4748,13 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
             env["UV_TOOL_DIR"] = str(uv_tool_dir)
             env["UV_TOOL_BIN_DIR"] = str(bin_dir)
             env["npm_config_prefix"] = str(bin_dir.parent)
+            env.update(cfg_env)
             argv, label = ["bash", str(script)], f"{setup.script} (host)"
         else:
             cmd = _subst(setup.run, values)
             env = {**os.environ, **harnessed_env(
                 stack, project_path, harness=harness, mode="host", recipe=recipe
-            )}
+            ), **cfg_env}
             argv, label = ["bash", "-lc", cmd], cmd
         _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {label}")
         if subprocess.run(argv, cwd=str(project_path), env=env).returncode != 0:

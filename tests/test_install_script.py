@@ -221,6 +221,29 @@ class TestHostExecutor:
         home = self._run(tmp_path, r, monkeypatch)
         assert (home / "skills" / "marker").read_text().strip() == "claude/host"
 
+    def test_inherited_claude_config_dir_cannot_redirect_an_install(self, tmp_path, monkeypatch):
+        """bd harnessed-8px.26.
+
+        `_launch_host` exports CLAUDE_CONFIG_DIR for the agent, so launching a stack from inside
+        another stack's host session used to hand that value straight to every install script. An
+        upstream installer honours it over both $HARNESSED_CONFIG_DIR and the $HOME shim, so the
+        install wrote into the PARENT stack's home. Observed for real: 69 skills plus four
+        top-level artifacts landing in an unrelated stack's config dir.
+        """
+        foreign = tmp_path / "another-stacks-home"
+        foreign.mkdir()
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(foreign))
+        r = _recipe(
+            tmp_path, install="install:\n  script: install.sh\n",
+            script_body='set -eu\nmkdir -p "$CLAUDE_CONFIG_DIR/skills"\n'
+                        'echo landed > "$CLAUDE_CONFIG_DIR/skills/marker"\n',
+        )
+        home = self._run(tmp_path, r, monkeypatch)
+        assert (home / "skills" / "marker").exists(), \
+            "install did not land in this stack's own home"
+        assert not (foreign / "skills").exists(), \
+            "install escaped into the config dir inherited from the launching process"
+
     def test_recipe_dir_lets_a_script_cp_where_a_dockerfile_copied(self, tmp_path, monkeypatch):
         r = _recipe(
             tmp_path, install="install:\n  script: install.sh\n",
