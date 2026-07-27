@@ -82,6 +82,11 @@ CONTAINER_ONLY: dict[str, str] = {
     "_run_container_setups": "container half; host: _host_run_setups",
     "_pending_setup_scripts": "container half; host: _host_run_setups",
     "_resolve_launch_secrets": "container half (--env-file); host: _resolve_launch_env",
+    # Composes image content + profile content into one agent-config tree. A volume is the
+    # container-side answer to a problem the host does not have: host mode materializes the
+    # per-stack home directly (_materialize_host_home + LinkSyncer.fan) with nothing mounted over
+    # it, which is exactly why bd harnessed-8px.22 hit container launches and not host ones.
+    "_ensure_config_volume": "composes a podman volume; host: _materialize_host_home",
     # --- called by the host VERB rather than by _launch_host ---
     "_require_supported_harness": "`host_run` calls it itself, before delegating",
 }

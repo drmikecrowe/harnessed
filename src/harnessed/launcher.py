@@ -96,6 +96,9 @@ _err = _WarnCountingConsole(stderr=True)
 _BASE_IMAGE = "harnessed-base:latest"
 _CLAUDE_IMAGE = "harnessed-claude:latest"
 _CONTAINER_HOME_STR = str(CONTAINER_HOME)
+# Where the emitted profile is mounted `:ro` while composing the agent-config volume
+# (`_ensure_config_volume`). Scratch for that one throwaway container; never seen by the agent.
+_CTR_PROFILE_DIR = "/tmp/harnessed-profile"
 
 # Attach command for each harness inside the container.
 _HARNESS_ATTACH_CMD = {
@@ -1632,15 +1635,76 @@ def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int =
     return False
 
 
+def _stack_config_volume(stack: str, harness: str) -> str:
+    """Name of the per-stack agent-config volume (bd harnessed-8px.21.2).
+
+    Per (stack, harness) because the composed content differs on both axes: the recipe closure
+    picks the content, and the harness picks which profile tree is fanned into it. Two stacks
+    sharing a volume would compose each other's skills.
+    """
+    return f"harnessed-cfg-{harness}-{stack}"
+
+
+def _ensure_config_volume(rt: str, stack: str, harness: str, prof: Path, image: str) -> str:
+    """Create and compose the per-stack agent-config volume, returning its name.
+
+    Replaces the per-subdir `:ro` bind-mounts that caused bd harnessed-8px.22, where a profile
+    dir mounted over `~/.claude/skills` hid everything an `install.script` had delivered there —
+    measured at 70 of 75 skills invisible, including all 34 `gsd-*`. Nothing is layered over
+    anything now: ONE tree, composed in order.
+
+    Two podman behaviours make this work, both verified against 6.0.1 in the bd harnessed-8px.21.1
+    spike, and both easy to get wrong:
+
+    1. COPY-UP. Mounting an EMPTY named volume over a path the image populated copies the image's
+       content into the volume. That is what delivers the install-written `~/.claude` (and, for
+       the `~/.local` volume this bead's sibling adds, the base image's own mise/snyk). It happens
+       exactly ONCE — thereafter volume content wins and image updates are invisible, which is why
+       the gate in harnessed-8px.21.3 must key on image identity and not only the recipe hash.
+
+    2. USERNS. The pod is created `--userns=keep-id` and the agent inherits it as a pod member, so
+       this populate step MUST use keep-id too. A volume first populated under the DEFAULT userns
+       is unusable by the agent: uid 1000 inside reads the files as owner 999 and every write
+       EACCESes. Verified in both directions.
+
+    The profile is copied in on every launch, deliberately: that preserves today's semantics where
+    the profile always wins over baked content. It is a local copy of small trees, not the
+    expensive part — installs are what harnessed-8px.21.3 gates.
+    """
+    vol = _stack_config_volume(stack, harness)
+    _run([rt, "volume", "create", vol], check=False, capture_output=True)
+    # `cp -a src/. dst/` MERGES into the copy-up'd tree rather than replacing it — the whole point.
+    compose = (
+        "set -e; "
+        f"if [ -d {_CTR_PROFILE_DIR}/.claude ]; then "
+        f"  cp -a {_CTR_PROFILE_DIR}/.claude/. {_CONTAINER_HOME_STR}/.claude/; "
+        "fi; "
+        f"if [ -f {_CTR_PROFILE_DIR}/settings.json ]; then "
+        f"  cp -a {_CTR_PROFILE_DIR}/settings.json {_CONTAINER_HOME_STR}/.claude/settings.json; "
+        "fi"
+    )
+    _run([
+        rt, "run", "--rm", "--userns=keep-id",
+        "-v", f"{vol}:{_CONTAINER_HOME_STR}/.claude",
+        "-v", f"{prof}:{_CTR_PROFILE_DIR}:ro",
+        "--entrypoint", "sh", image, "-c", compose,
+    ], capture_output=True)
+    return vol
+
+
 def _build_mount_args(
     harness: str,
     prof: Path,
     mount_path: Path,
+    config_volume: str = "",
 ) -> list[str]:
     """Assemble -v mount arguments for the harness container.
 
     `mount_path` is the host folder path-mirrored into the container (the project itself by default,
     or a parent dir via --mount-folder). The agent's cwd (start_dir) lives at or under it.
+
+    `config_volume` is the composed agent-config volume from `_ensure_config_volume`. When empty
+    (a harness with no `~/.claude` surface) nothing is mounted there at all.
     """
     args: list[str] = []
     ctr_home = _CONTAINER_HOME_STR
@@ -1650,18 +1714,15 @@ def _build_mount_args(
     if mcp_src.is_file() and harness == "claude":
         args += ["-v", f"{mcp_src}:{ctr_home}/.mcp.json:ro"]
 
-    # settings.json → $CONTAINER_HOME/.claude/settings.json
-    settings_src = prof / "settings.json"
-    if settings_src.is_file() and harness in ("claude", "omp", "opencode"):
-        args += ["-v", f"{settings_src}:{ctr_home}/.claude/settings.json:ro"]
-
-    # claude/ profile tree (skills, commands, agents, hooks, rules)
-    claude_src = prof / ".claude"
-    if claude_src.is_dir() and harness in ("claude", "omp", "opencode"):
-        for subdir in ("skills", "commands", "agents", "hooks", "rules"):
-            d = claude_src / subdir
-            if d.is_dir():
-                args += ["-v", f"{d}:{ctr_home}/.claude/{subdir}:ro"]
+    # The agent config tree — ONE composed volume (bd harnessed-8px.21.2), not the per-subdir `:ro`
+    # bind-mounts this replaces. Those mounted `<profile>/.claude/<subdir>` OVER the image's own,
+    # hiding every skill/command an `install.script` had delivered: 70 of 75 skills invisible, and
+    # an EMPTY profile `commands/` dir shadowing a real one, because `synclinks._fan_into` creates
+    # skills/commands/rules unconditionally and the mount gate was existence, not non-emptiness.
+    # `_ensure_config_volume` composes image content and profile content into one tree instead, so
+    # there is nothing left to shadow.
+    if config_volume and harness in ("claude", "omp", "opencode"):
+        args += ["-v", f"{config_volume}:{ctr_home}/.claude"]
 
     # opencode persona config (bd main-rlw): the merged opencode.json + persona prompt (written
     # post-build by _merge_baked_opencode, only when the stack has `instructions:`) override the
@@ -5112,8 +5173,15 @@ def launch(
     if harness in ("claude", "omp", "opencode"):
         _merge_host_claude_settings(prof, required, harness)
 
+    # Compose the agent-config volume BEFORE the mounts reference it (bd harnessed-8px.21.2). Uses
+    # `harness_image` — the derived image when one exists, else the plain agent image — because
+    # podman's copy-up is what lifts that image's `~/.claude` into the volume in the first place.
+    config_volume = ""
+    if harness in ("claude", "omp", "opencode"):
+        config_volume = _ensure_config_volume(rt, stack, harness, prof, harness_image)
+
     # Build mount args.
-    mount_args = _build_mount_args(harness, prof, mount_path)
+    mount_args = _build_mount_args(harness, prof, mount_path, config_volume)
     # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the token/credential).
     mount_args += _claude_config_seed_mount(harness, inst)
     # NB: the Claude credential fallback mount is appended AFTER secrets resolve (below) — whether
