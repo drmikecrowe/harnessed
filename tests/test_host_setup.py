@@ -77,11 +77,16 @@ class TestBeadsTeamIsNotAutoInitialized:
     decision. beads/stealth auto-inits instead, because `--stealth` writes no commit at all.
     """
 
-    def test_team_declares_no_executable_setup(self):
+    def test_team_never_initializes_without_asking(self):
+        """Team DOES automate `bd init` now — behind `setup.confirm`, which is what keeps the
+        decision the user's (see tests/test_setup_confirm.py). What must never come back is
+        executable setup that runs unattended: `run:` is host-only and ungated by a confirm prompt,
+        and it is the field the 2026-07-19 shared-server command lived in."""
         r = load_recipe(CATALOG / "recipes" / "beads" / "team", strict=True)
         assert r.setup is not None, "the user-facing notice must survive"
         assert not r.setup.run, "team must not self-initialize"
-        assert not r.setup.script
+        if r.setup.script:
+            assert r.setup.confirm, "team's setup script must be gated by a confirm"
 
     def test_team_init_never_runs_bd(self):
         """`init:` runs on every launch, so anything that touches the DATABASE there is the same
