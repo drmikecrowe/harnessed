@@ -4174,7 +4174,9 @@ def _container_setup_env(stack: str, project_path: Path, pending, *, harness: st
     return env
 
 
-def _run_container_setups(rt: str, inst: str, pending) -> None:
+def _run_container_setups(
+    rt: str, inst: str, pending, stack: str, project_path: Path, *, harness: str
+) -> None:
     """Execute each pending `setup.script` inside the running container.
 
     The env it needs is already ON the container (_container_setup_env → `podman run -e`), so this
@@ -4182,11 +4184,63 @@ def _run_container_setups(rt: str, inst: str, pending) -> None:
     step that downloads things (serena's language servers, etc.).
     """
     for recipe in pending:
+        if not _confirm_setup(recipe, stack, project_path, harness=harness):
+            continue
         _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {recipe.setup.script} (container)")
         proc = _run([rt, "exec", inst, "bash", f"{_CTR_SETUP_DIR}/{recipe.name}.sh"], check=False)
         if proc.returncode != 0:
             _err.print(f"[bold red]error:[/bold red] setup for '{recipe.name}' failed in container")
             raise typer.Exit(1)
+
+
+def _confirm_setup(recipe, stack: str, project_path: Path, *, harness: str) -> bool:
+    """Gate a recipe's executable setup behind `setup.confirm`. True = run it.
+
+    Executable setup normally runs unattended on every launch whose `condition` is unsatisfied,
+    which is right for a tool that writes to its own dirs and wrong for one that writes to the
+    USER'S repo. `bd init` in team placement creates and COMMITS 18 files into a shared checkout —
+    the reason that step stayed manual, and the reason a plain `run:` was not the answer.
+
+    So: no `confirm` → unchanged, run it. With `confirm` → print the text and require an explicit
+    yes. Declining skips only this launch; `condition` is still unsatisfied, so the offer returns
+    next time rather than being silently dismissed forever.
+
+    No TTY → SKIP, never run. A headless launch (CI, the capability test, a scripted run) cannot
+    answer, and "nobody objected" is not consent for a commit into someone's repo. Same guard as
+    `_prompt_setup_notices`, opposite default — that one proceeds without prompting because it only
+    prints; this one would write.
+    """
+    setup = getattr(recipe, "setup", None)
+    if setup is None or not setup.confirm:
+        return True
+    # `condition` is consulted HERE even though `_pending_setup_scripts` refuses to consult it. That
+    # refusal is about scripts converging state every launch, which is right — but a script behind a
+    # `confirm` cannot run unattended anyway, so without this gate the user would be asked to
+    # authorize a repo-changing step on EVERY launch, including the ones where it is already done.
+    # A prompt that fires when there is nothing to do is how people learn to answer without reading.
+    # Same host-side evaluation, same env contract, as _collect_setup_notices.
+    if setup.condition and subprocess.run(
+        ["bash", "-lc", setup.condition],
+        cwd=str(project_path), capture_output=True,
+        env={**os.environ, **harnessed_env(
+            stack, project_path, harness=harness, mode="host", recipe=recipe
+        )},
+    ).returncode != 0:
+        return False
+    if not sys.stdin.isatty():
+        _err.print(
+            f"[yellow]warning:[/yellow] skipping setup for '{recipe.name}' — it needs confirmation "
+            "and there is no terminal to ask. Run this launch interactively to complete it."
+        )
+        return False
+    # escape() for the same reason _prompt_setup_notices escapes its summary: this is author-written
+    # prose, and rich silently DROPS any `[word]` in it as an unknown style tag.
+    _out.print(f"\n[bold yellow]Setup for {recipe.name} will change this repository:[/bold yellow]")
+    _out.print(f"  {escape(setup.confirm)}")
+    try:
+        return typer.confirm("Proceed?", default=False)
+    except (EOFError, KeyboardInterrupt):
+        raise typer.Exit(0) from None
 
 
 def _host_tool_shims_dir(stack: str) -> Path:
@@ -4376,6 +4430,10 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
                 stack, project_path, harness=harness, mode="host", recipe=recipe
             )},
         ).returncode != 0:
+            continue
+        # Before `config` resolution, which may prompt: asking for values the user is about to
+        # decline to use is backwards.
+        if not _confirm_setup(recipe, stack, project_path, harness=harness):
             continue
         if primitives is None:
             primitives = _repo_primitives(project_path)
@@ -5011,7 +5069,7 @@ def launch(
     # Recipe-declared egress: union the extra allowlist hosts across this stack's recipes so the
     # Recipe setup scripts run here: after the CA is trusted, before the firewall closes egress —
     # a first-run setup is the step most likely to need the network.
-    _run_container_setups(rt, inst, pending_setups)
+    _run_container_setups(rt, inst, pending_setups, stack, project_path, harness=harness)
 
     # firewall opens them ONLY when a recipe that needs them is present (default-DROP otherwise).
     egress_domains = sorted({d for r in launch_recipes for d in r.egress})

@@ -44,17 +44,17 @@ install:
 
 setup:
   summary: >-
-    Run these INSIDE the agent session, not in your own shell — they read the connection details
-    the launcher exports into the agent's environment and nowhere else. In Claude Code, prefix the
-    line with `!` to run it in the session:
+    This workspace has no beads database yet. The launcher offers to run `bd init` for you — it
+    asks first, because that command COMMITS beads' files into this repo (see the confirm text).
+    Accept it, or run the equivalent yourself INSIDE the agent session, where the connection
+    details live: in Claude Code, prefix the line with `!` —
     `!bd init --server --external --server-port "${BEADS_DOLT_SERVER_PORT:?beads-server not
-    attached — add 'services: [beads-server]' to the stack}"` then `bd setup <harness> --project`
-    once per workspace, then restart the agent; these steps point bd at this project's beads-server
-    (creating its database there) and wire the bd prime workflow into the harness. Host, user,
-    password and the auto-start interlock come from the environment, so only the port is passed
-    explicitly — as the `:?` guard, which is the one check that the service is actually attached.
-    Git sync is a HOST command: `harnessed svc sync beads-server --stack <stack>` — `bd dolt push`
-    from inside an agent is not supported (see the README).
+    attached — add 'services: [beads-server]' to the stack}"`. Either way, finish with
+    `bd setup <harness> --project` once per workspace and restart the agent; that wires the bd
+    prime workflow into the harness. Host, user, password and the auto-start interlock come from
+    the environment, so only the port is ever passed explicitly. Git sync is a HOST command:
+    `harnessed svc sync beads-server --stack <stack>` — `bd dolt push` from inside an agent is not
+    supported (see the README).
   reference: https://github.com/gastownhall/beads
   # $BEADS_DIR, not `git rev-parse --git-common-dir` — the raw git form is WRONG for a normal
   # checkout and it never showed here because harnessed's own repo is bare+worktrees. There the
@@ -69,25 +69,34 @@ setup:
   # service use, so it is right in BOTH layouts and in both container and host mode by construction
   # — which is exactly why beads/stealth already tests it this way.
   condition: '[ ! -f "${BEADS_DIR:?}/metadata.json" ]'
-  # NO `run:` — team is initialized BY THE USER, deliberately. Two independent reasons:
+  # Team IS initialized by the launcher now — but only ever after the user says yes. `confirm:` is
+  # what changed; the reasoning that kept this manual has not.
   #
   # 1. `bd init` in this placement COMMITS. It creates 18 files (AGENTS.md, CLAUDE.md, .codex/,
   #    .claude/settings.json, .agents/skills/beads/**) and commits them unprompted — verified on bd
-  #    1.1.0. Doing that to a SHARED repo on the user's behalf is their call, not harnessed's.
-  #    (beads/stealth does auto-init, because `--stealth` writes no commit and tracks nothing.)
+  #    1.1.0. Doing that to a SHARED repo is the user's call, which is exactly what the confirm asks.
+  #    The old answer was to print instructions and make them type the command; that is the same
+  #    decision with more friction, and it is where people got stuck (2026-07-26).
+  #    (beads/stealth needs no confirm — `--stealth` writes no commit and tracks nothing.)
   #
-  # 2. What used to be here was actively harmful:
+  # 2. What used to be here was actively harmful, and is NOT what runs now:
   #        bd init --shared-server --database {config.database} --prefix {config.prefix}
   #    No `--external`, no `--server-socket` — so auto-start stayed ENABLED — pointed at bd's global
   #    `~/.beads/shared-server`, one server for every project on the machine. That is the exact
   #    configuration behind the 2026-07-19 incident (BEADS.md §10): a host `bd` with auto-start live
   #    initialized its own data dir as a database, and the project database became unreachable for
-  #    five days. It landed in 0790b7d on 2026-07-16 — the same date as this workspace's
-  #    `metadata.json.bak-before-shared-reinit`.
+  #    five days. `setup.sh` passes `--external` against THIS project's sidecar; no shared server,
+  #    no auto-start, ever.
   #
-  # `setup.summary` above still fires, and `_prompt_setup_notices` now blocks the launch on it in
-  # BOTH modes, so a user on a fresh team checkout is stopped and told what to run rather than
-  # silently handed an auto-started server.
+  # `script:` (not `run:`) so it works in both modes — a host launch runs it directly, a container
+  # launch runs the same file inside the pod before attach. The confirm gate is evaluated host-side
+  # in both, and skips silently when `condition` says the workspace is already initialized.
+  script: setup.sh
+  confirm: >-
+    bd init will create and COMMIT beads' files into this repository — AGENTS.md, CLAUDE.md,
+    .codex/, .claude/settings.json and .agents/skills/beads/ (18 files on bd 1.1.0) — and point
+    this workspace at the project's beads-server. Everyone who pulls this repo gets them. Decline
+    to launch without a beads workspace; you will be asked again next launch.
 
 # `agent-carnet` is also a shared, cross-session notebook (its own `rules:` entry tells the agent to
 # treat carnet as the SOLE memory store). Combining both gives the agent two competing persistent-

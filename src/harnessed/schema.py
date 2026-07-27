@@ -583,6 +583,14 @@ class SetupSpec:
     # same file works in both modes with no templating. Mutually exclusive with `run`.
     # The script is expected to be idempotent — it runs on every launch, and self-gates.
     script: str | None = None
+    # A warning the user must accept BEFORE `run`/`script` executes, for setup whose side effects
+    # land in THEIR repo rather than in harnessed's own state. Without it, executable setup runs
+    # unattended on every launch whose `condition` is unsatisfied — correct for a tool that writes
+    # to its own dirs, wrong for `bd init`, which creates and COMMITS 18 files into a shared
+    # checkout. `confirm` is what lets a recipe automate that step without deciding it for the user:
+    # the launcher prints this text and runs the setup only on an explicit yes (never without a
+    # TTY). Declining just skips this launch — `condition` brings the offer back next time.
+    confirm: str | None = None
 
 
 def _parse_setup(raw_setup) -> "SetupSpec | None":
@@ -616,13 +624,22 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
         raise SchemaError(
             f"recipe 'setup.script' {script!r} must be a relative path inside the recipe dir"
         )
+    confirm = raw_setup.get("confirm")
+    if confirm is not None and (not isinstance(confirm, str) or not confirm.strip()):
+        raise SchemaError("recipe 'setup.confirm', if set, must be a non-empty string")
+    if confirm and not (run or script):
+        raise SchemaError(
+            "recipe 'setup.confirm' gates 'run'/'script' — it means nothing without one of them"
+        )
     config = _parse_setup_config(raw_setup.get("config"))
 
-    unknown = sorted(set(raw_setup) - {"summary", "reference", "condition", "run", "script", "config"})
+    unknown = sorted(
+        set(raw_setup) - {"summary", "reference", "condition", "run", "script", "config", "confirm"}
+    )
     if unknown:
         raise SchemaError(
             f"recipe 'setup': unknown field(s) {unknown} — valid fields: "
-            "summary, reference, condition, run, script, config"
+            "summary, reference, condition, run, script, config, confirm"
         )
     return SetupSpec(
         summary=summary.strip(),
@@ -631,6 +648,7 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
         run=run.strip() if run else None,
         script=script.strip() if script else None,
         config=config,
+        confirm=confirm.strip() if confirm else None,
     )
 
 
