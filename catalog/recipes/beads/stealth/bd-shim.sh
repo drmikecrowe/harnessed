@@ -57,10 +57,29 @@ if [ -n "$launch_gcd" ] && [ -d "$launch_gcd" ]; then
     launch_gcd=$(CDPATH= cd -- "$launch_gcd" && pwd -P)
 fi
 
-# Not in a repo, or in the repo harnessed launched in → the launch env is already correct. This is
-# the case that keeps the b0s fix alive: an agent started in $HOME finds no repo and inherits
-# BEADS_DIR exactly as before.
-if [ -z "$gcd" ] || [ "$gcd" = "$launch_gcd" ]; then
+# No repo under $PWD → nothing to re-resolve FROM, so the launch env is all there is. This is the
+# case that keeps the b0s fix alive: an agent started in $HOME finds no repo and inherits BEADS_DIR
+# exactly as before.
+if [ -z "$gcd" ]; then
+    exec "$real_bd" "$@"
+fi
+
+# In the repo harnessed launched in, the launch env is normally correct — but "normally" is doing
+# real work there, because the launch env is not durable. A daemon can hold one for days (observed:
+# a 2-day-old daemon forking every session and job from a pre-reversal environment), while the
+# sidecar underneath it is rebuilt by a harnessed that has since changed transport. The env then
+# names a socket that nothing serves, bd selects socket mode because the variable exists, and it
+# reports "Dolt server unreachable … Auto-start is not supported in socket mode" about a database
+# whose server is healthy and listening on a port.
+#
+# So a socket in the environment is trusted only while it is actually a socket. `-S` is the whole
+# check. When it fails we do NOT pass through to a guaranteed, misleading failure: we re-resolve the
+# launch project exactly as if it were foreign, which is the same three-part proof either way.
+stale_socket=""
+if [ -n "${BEADS_DOLT_SERVER_SOCKET:-}" ] && [ ! -S "${BEADS_DOLT_SERVER_SOCKET}" ]; then
+    stale_socket=1
+fi
+if [ "$gcd" = "$launch_gcd" ] && [ -z "$stale_socket" ]; then
     exec "$real_bd" "$@"
 fi
 
@@ -119,9 +138,17 @@ pw_file="${XDG_STATE_HOME:-$HOME/.local/state}/harnessed/svc-secrets/beads-serve
 
 if [ -z "$port" ] || [ ! -f "$pw_file" ]; then
     echo "bd (harnessed shim): $root has a beads workspace, but no reachable beads-server for it." >&2
-    echo "  This session's harnessed launch is bound to ${launch_gcd:-<none>} and will not run bd" >&2
-    echo "  against another project's database over the wrong server. Launch harnessed in $root" >&2
-    echo "  (which starts its beads-server sidecar), or cd back to the launch project." >&2
+    if [ "$gcd" = "$launch_gcd" ]; then
+        # The launch project, re-resolved because its inherited socket is gone. Saying "cd back"
+        # here would be nonsense — they are already standing in the right repo.
+        echo "  This session's environment names a unix socket that no longer exists, and no" >&2
+        echo "  running beads-server was found for this project. The environment predates the" >&2
+        echo "  sidecar it points at: relaunch harnessed here to pick up the current one." >&2
+    else
+        echo "  This session's harnessed launch is bound to ${launch_gcd:-<none>} and will not run bd" >&2
+        echo "  against another project's database over the wrong server. Launch harnessed in $root" >&2
+        echo "  (which starts its beads-server sidecar), or cd back to the launch project." >&2
+    fi
     exit 1
 fi
 

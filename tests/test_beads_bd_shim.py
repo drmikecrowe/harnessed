@@ -76,6 +76,9 @@ def env(tmp_path: Path):
         launch_dir = launch
         gcd = launch_gcd
         podman_log = tmp_path / "podman.log"
+        # A socket-era launch carries this. Opt-in per test: the current transport is TCP, and
+        # whether the socket is LIVE is now behaviour under test rather than fixture noise.
+        socket_path: str | None = None
 
         def with_podman(self, port: str | None = "49183") -> None:
             """A stub `podman port` — `None` means the sidecar is not running."""
@@ -98,8 +101,14 @@ def env(tmp_path: Path):
             e["PATH"] = f"{self.shim_dir}:{stub_dir}:{e['PATH']}"
             e["BEADS_DIR"] = str(beads_dir or (launch / ".beads"))
             e["HARNESSED_GIT_COMMON_DIR"] = str(launch_gcd)
-            # A socket-era launch carries this; it must not survive a retarget.
-            e["BEADS_DOLT_SERVER_SOCKET"] = str(launch / ".beads" / "run" / "mysql.sock")
+            # Explicit both ways. The developer running these tests is very likely inside a
+            # harnessed session whose own BEADS_DOLT_SERVER_SOCKET is set — and, post-reversal,
+            # points at a socket nothing serves. Inheriting that silently turns every passthrough
+            # case into a stale-socket case.
+            e.pop("BEADS_DOLT_SERVER_SOCKET", None)
+            e.pop("HARNESSED_BEADS_SERVER_SOCKET", None)
+            if self.socket_path:
+                e["BEADS_DOLT_SERVER_SOCKET"] = self.socket_path
             e["XDG_STATE_HOME"] = str(state)
             e["XDG_DATA_HOME"] = str(data)
             e.pop("HARNESSED_BD_SHIM", None)
@@ -163,6 +172,62 @@ class TestPassthrough:
         assert _payload(proc)["env"]["BEADS_DIR"] == str(env.launch_dir / ".beads")
 
 
+class TestStaleLaunchEnv:
+    """The launch project is re-resolved too — but only when its inherited socket is gone.
+
+    A daemon can hold a launch env for days while the sidecar underneath it is rebuilt by a
+    harnessed that has since changed transport. bd then selects socket mode because the variable
+    exists, and reports "Dolt server unreachable … Auto-start is not supported in socket mode" about
+    a database whose server is healthy on a port. Passing that through unvalidated is how the launch
+    project became the one case the shim could not help.
+    """
+
+    def test_a_live_socket_is_still_trusted(self, env):
+        """The check is `-S`, not "is a socket variable set" — a working socket must pass through
+        untouched, or every socket-era launch breaks."""
+        sock = env.launch_dir / ".beads" / "run" / "mysql.sock"
+        sock.parent.mkdir(parents=True, exist_ok=True)
+        env.socket_path = str(sock)
+        import socket as _s
+        srv = _s.socket(_s.AF_UNIX, _s.SOCK_STREAM)
+        srv.bind(str(sock))
+        try:
+            out = _payload(env.run(env.launch_dir, "list"))
+            assert out["env"]["BEADS_DOLT_SERVER_SOCKET"] == str(sock)
+        finally:
+            srv.close()
+
+    def test_a_vanished_socket_is_re_resolved(self, env, tmp_path):
+        """The launch project, whose socket no longer exists: discover the sidecar instead."""
+        env.socket_path = str(env.launch_dir / ".beads" / "run" / "gone.sock")
+        env.with_podman("49183")
+        env.secret(env.gcd, "pw-launch")
+        (env.launch_dir / ".beads").mkdir(parents=True, exist_ok=True)
+        out = _payload(env.run(env.launch_dir, "list"))
+        assert out["env"]["BEADS_DOLT_SERVER_SOCKET"] == ""
+        assert out["env"]["BEADS_DOLT_SERVER_PORT"] == "49183"
+        assert out["env"]["BEADS_DOLT_PASSWORD"] == "pw-launch"
+
+    def test_it_says_relaunch_not_cd_back(self, env):
+        """Telling someone standing in the right repo to `cd back` is nonsense."""
+        env.socket_path = str(env.launch_dir / ".beads" / "run" / "gone.sock")
+        env.with_podman(None)
+        (env.launch_dir / ".beads").mkdir(parents=True, exist_ok=True)
+        proc = env.run(env.launch_dir, "list")
+        assert proc.returncode != 0
+        assert "relaunch harnessed here" in proc.stderr
+        assert "cd back" not in proc.stderr
+
+    def test_no_repo_still_passes_through_with_a_dead_socket(self, env, tmp_path):
+        """b0s: an agent started in $HOME has nothing to re-resolve FROM, so the launch env is all
+        there is — even a stale one. Never turn that into an error."""
+        env.socket_path = str(env.launch_dir / ".beads" / "run" / "gone.sock")
+        elsewhere = tmp_path / "not-a-repo"
+        elsewhere.mkdir()
+        out = _payload(env.run(elsewhere, "list"))
+        assert out["env"]["BEADS_DIR"] == str(env.launch_dir / ".beads")
+
+
 class TestForeignProject:
     """A different repository under $PWD — resolve it completely or refuse."""
 
@@ -221,16 +286,12 @@ class TestForeignProject:
         foreign = tmp_path / "foreign"
         fgcd = _git_repo(foreign)
         (foreign / ".beads").mkdir()
+        env.socket_path = str(env.launch_dir / ".beads" / "run" / "mysql.sock")
         env.with_podman("49183")
         env.secret(fgcd)
         out = _payload(env.run(foreign, "list"))
         assert out["env"]["BEADS_DOLT_SERVER_SOCKET"] == ""
         assert out["env"]["BEADS_DOLT_SERVER_PORT"] == "49183"
-
-    def test_the_launch_socket_survives_a_passthrough(self, env):
-        """Only a RETARGET clears it. In the launch project the socket is the correct connection."""
-        out = _payload(env.run(env.launch_dir, "list"))
-        assert out["env"]["BEADS_DOLT_SERVER_SOCKET"].endswith("mysql.sock")
 
     def test_no_workspace_refuses_instead_of_falling_back(self, env, tmp_path):
         foreign = tmp_path / "foreign"
