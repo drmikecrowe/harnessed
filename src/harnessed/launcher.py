@@ -4322,6 +4322,45 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
             raise typer.Exit(1)
 
 
+# Shell bookkeeping, not anything a recipe meant to export. `_` and OLDPWD change on their own; PWD
+# is the init shell's cwd (the project) and would silently relocate the agent.
+_INIT_ENV_IGNORE = frozenset({"_", "SHLVL", "PWD", "OLDPWD", "__harnessed_rc"})
+
+
+def _parse_env0(path: Path) -> dict[str, str]:
+    """`env -0` output → dict. NUL-separated, so a value containing a newline survives intact."""
+    out: dict[str, str] = {}
+    for entry in path.read_bytes().decode("utf-8", "replace").split("\0"):
+        key, sep, value = entry.partition("=")
+        if sep and key:
+            out[key] = value
+    return out
+
+
+def _propagate_init_env(before: Path, after: Path) -> None:
+    """Apply what a recipe's `init.run` exported to `os.environ`, so the host agent inherits it.
+
+    PATH is merged, never replaced. The launcher composed the agent's PATH deliberately (the stack's
+    own tools dir leads it), while the init shell's PATH also carries whatever the user's profile
+    added — assigning that wholesale would hand the agent a different toolchain than the one the
+    stack installed. So only the entries init ADDED are taken, in order, and prepended.
+    """
+    b, a = _parse_env0(before), _parse_env0(after)
+    for key, value in a.items():
+        if key in _INIT_ENV_IGNORE or b.get(key) == value:
+            continue
+        if key == "PATH":
+            seen = set(b.get("PATH", "").split(os.pathsep))
+            current = os.environ.get("PATH", "")
+            seen.update(current.split(os.pathsep))
+            added = [p for p in value.split(os.pathsep) if p and p not in seen]
+            if added:
+                os.environ["PATH"] = os.pathsep.join([*added, current]) if current else \
+                    os.pathsep.join(added)
+        else:
+            os.environ[key] = value
+
+
 def _host_run_inits(stack: str, project_path: Path, *, harness: str) -> None:
     """Run each recipe's `init.run` host-side — the host half of what the attach shell does.
 
@@ -4332,19 +4371,44 @@ def _host_run_inits(stack: str, project_path: Path, *, harness: str) -> None:
 
     Fail-fast, matching the container path: an agent must not start against a half-initialized tool.
     Runs AFTER `_host_run_setups`, because a setup script may be what installs the binary init calls.
+
+    AND IT PROPAGATES THE ENV THE INIT EXPORTS. That is the whole point of Model A — the container
+    path runs `init.run` as a brace group in the SAME shell that then execs the harness, precisely so
+    that `export BEADS_DIR=…` reaches the agent. Host-side there is no attach shell: the agent is
+    exec'd from `os.environ` (see `_launch_host`), and running init in a subprocess threw every
+    export away with the subprocess. `init: run: export …` therefore did nothing at all under
+    `host-run` — silently, because an export cannot fail. Observed 2026-07-26 on beads' `bd-shim`
+    PATH line (installed, never on PATH); `pulumi`'s `PULUMI_HOME` had the same silent no-op.
+
+    The delta is captured INSIDE the init shell (`env -0` before and after), not by diffing against
+    what we passed in: `bash -lc` sources the user's profile first, and a profile-added variable is
+    not something a recipe asked to export into the agent.
     """
     _, recipes = load_stack_with_recipes(None, stack)
     for recipe in recipes:
         if recipe.init is None:
             continue
         _say(f"[blue][INFO][/blue] init ({recipe.name}): host")
-        result = subprocess.run(
-            ["bash", "-lc", recipe.init.run],
-            cwd=str(project_path),
-            env={**os.environ, **harnessed_env(
-                stack, project_path, harness=harness, mode="host", recipe=recipe
-            )},
-        )
+        with tempfile.TemporaryDirectory() as td:
+            before, after = Path(td) / "before", Path(td) / "after"
+            # `{ …; }` (not a subshell) for the same reason the container prologue uses one, and the
+            # exit status is preserved across the second capture so fail-fast still sees it.
+            script = (
+                f"env -0 > {shlex.quote(str(before))}\n"
+                f"{{ {recipe.init.run}; }}\n"
+                "__harnessed_rc=$?\n"
+                f"env -0 > {shlex.quote(str(after))}\n"
+                "exit $__harnessed_rc\n"
+            )
+            result = subprocess.run(
+                ["bash", "-lc", script],
+                cwd=str(project_path),
+                env={**os.environ, **harnessed_env(
+                    stack, project_path, harness=harness, mode="host", recipe=recipe
+                )},
+            )
+            if result.returncode == 0:
+                _propagate_init_env(before, after)
         if result.returncode != 0:
             _err.print(
                 f"[bold red]error:[/bold red] recipe '{recipe.name}' init failed "
