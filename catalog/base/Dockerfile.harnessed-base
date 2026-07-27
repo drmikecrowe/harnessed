@@ -87,6 +87,16 @@ RUN mkdir -p /home/${USERNAME}/.cache/mise \
 # mise (runtime manager) + shims on PATH
 RUN curl -fsSL https://mise.run | bash
 ENV PATH="/home/${USERNAME}/.local/share/mise/shims:/home/${USERNAME}/.local/bin:${PATH}"
+# mise's global config lives at $XDG_CONFIG_HOME/mise/config.toml by default — i.e. under ~/.config,
+# which is OUTSIDE the ~/.local volume that bd harnessed-8px.21.3 persists `tools:` into. `mise use
+# -g` would then record its versions in an ephemeral container: the NEXT step sees the shim on PATH
+# but no version bound to it, and dies with "No version is set for shim: <tool>". Found by running
+# the real executor end-to-end; a unit test cannot see it because the failure is cross-container.
+#
+# Relocated INTO ~/.local/share/mise so the versions travel with the installs they describe, in one
+# volume. Set as an image ENV rather than per-invocation so the agent's own shims resolve too — the
+# running agent needs the same binding the installer wrote.
+ENV MISE_GLOBAL_CONFIG_FILE="/home/${USERNAME}/.local/share/mise/config.toml"
 
 # pnpm's global bin dir is $PNPM_HOME/bin; it must be on PATH or `pnpm add -g` fails ("not in PATH")
 # and the installed binary (e.g. snyk, used by the supply-chain scan layer) is unreachable at runtime.

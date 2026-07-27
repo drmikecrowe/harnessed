@@ -53,17 +53,29 @@ class TestWriteDerivedDockerfile:
         out = write_derived_dockerfile(tmp_path, "time", "claude", [])
         assert "hatago-mcp-hub" not in out.read_text() and "hatago" not in out.read_text().lower()
 
-    def test_recipe_tools_emit_mise_layer(self, tmp_path):
-        # Declarative `tools:` → one pinned `mise use -g` layer (aggregated across recipes), run as
-        # the harnessed user. No Dockerfile needed on the recipe.
+    def test_recipe_tools_are_NOT_a_dockerfile_layer(self, tmp_path, monkeypatch):
+        """bd harnessed-8px.21.4 moved `tools:` out of the image and into the runtime executor.
+        Assert BOTH halves — gone from the Dockerfile, and still aggregated + sorted in the step
+        that replaced it — so this cannot pass by the feature silently disappearing."""
+        from harnessed import launcher
+
         r1 = Recipe(name="pulumi", tools=["pulumi@3.140.0"], root=tmp_path / "pulumi")
         r2 = Recipe(name="tf", tools=["terraform@1.9.0"], root=tmp_path / "tf")
-        out = write_derived_dockerfile(tmp_path, "time", "claude", [r1, r2], with_scan=False)
-        body = out.read_text()
-        # Cache mounts sit between RUN and the command (bd harnessed-1t4.2); the command itself is
-        # one aggregated, sorted `mise use -g`.
-        assert 'mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in body
-        assert "# --- recipe tools (mise) ---" in body
+        body = write_derived_dockerfile(
+            tmp_path, "time", "claude", [r1, r2], with_scan=False
+        ).read_text()
+        assert "mise use -g" not in body
+        assert "recipe tools (mise)" not in body
+
+        calls: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        launcher._run_container_installs(
+            "podman", "time", "claude", "img", [r1, r2], "cfgvol", "toolsvol",
+        )
+        assert any(
+            'mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in a
+            for c in calls for a in c
+        )
 
     def test_no_mise_layer_without_tools(self, tmp_path):
         out = write_derived_dockerfile(tmp_path, "time", "claude", [Recipe(name="x", root=tmp_path)], with_scan=False)

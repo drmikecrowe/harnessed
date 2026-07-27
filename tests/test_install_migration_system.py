@@ -145,11 +145,19 @@ class TestHostLaunchWarnsInsteadOfSkippingSilently:
 
 
 class TestTheRootStepStaysInTheDockerfile:
-    def test_root_only_install_emits_no_build_step(self, tmp_path):
-        """Container-side the root work is already in the recipe's own Dockerfile. Emitting a COPY
-        and a `bash` for a script that does not exist would break the build."""
+    def test_root_only_install_runs_no_container_step(self, tmp_path, monkeypatch):
+        """Container-side the root work is already in the recipe's own Dockerfile. Running a script
+        that does not exist would fail the install. The executor must skip it, exactly as the
+        emitter used to."""
+        from harnessed import launcher
+
         r = _tmp_recipe(tmp_path, install="install:\n  system: 'needs root'\n", with_script=False)
-        assert emit._install_dockerfile_lines(r, "claude") == []
+        calls: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        launcher._run_container_installs(
+            "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
+        )
+        assert calls == []
 
     @pytest.mark.parametrize("ref", ROOT_ONLY)
     def test_catalog_root_only_recipes_keep_their_dockerfile(self, ref):
@@ -329,3 +337,52 @@ class TestGlobalPnpmInstallsStayInsideHarnessedDirs:
             f"on a host launch: {offenders}. Use PNPM_HOME=\"$(dirname \"$HARNESSED_BIN_DIR\")\" — "
             "the parent, because pnpm's global bin dir is $PNPM_HOME/bin."
         )
+
+
+class TestDockerfileCannotDependOnItsOwnInstall:
+    """bd harnessed-8px.21.6 — the ordering flip needs enforcing, not just documenting.
+
+    Until harnessed-8px.21.4, a recipe's `install:` was emitted BEFORE its Dockerfile body, so a
+    body could legitimately layer on top of install output. Now bodies run at BUILD and installs at
+    container RUNTIME, so that coupling silently stops working. The flip was safe only because no
+    body in the catalog had it — a property of today's catalog, not of the design.
+    """
+
+    def _body(self, tmp_path, dockerfile: str):
+        from harnessed.schema import validate_dockerfile_not_dependent_on_install
+
+        r = _tmp_recipe(tmp_path, install="install:\n  script: install.sh\n")
+        return validate_dockerfile_not_dependent_on_install, r, dockerfile
+
+    def test_a_body_invoking_its_own_install_script_is_rejected(self, tmp_path):
+        check, r, body = self._body(tmp_path, "USER harnessed\nRUN bash install.sh\n")
+        with pytest.raises(RecipeLintError, match="install.sh"):
+            check(r, body)
+
+    def test_a_body_merely_MENTIONING_it_in_a_comment_is_fine(self, tmp_path):
+        # Recipe Dockerfiles legitimately explain what moved to install.sh; a comment is not a
+        # dependency, and rejecting one would force authors to delete their own rationale.
+        check, r, body = self._body(tmp_path, "# content moved to install.sh\nUSER root\n")
+        check(r, body)
+
+    def test_a_recipe_with_no_install_script_is_unaffected(self, tmp_path):
+        from harnessed.schema import validate_dockerfile_not_dependent_on_install
+
+        r = _tmp_recipe(tmp_path, install="install:\n  system: 'needs root'\n", with_script=False)
+        validate_dockerfile_not_dependent_on_install(r, "RUN echo install.sh\n")
+
+    def test_the_whole_catalog_passes(self):
+        from harnessed.schema import validate_dockerfile_not_dependent_on_install
+
+        from harnessed.schema import load_recipe
+
+        checked = 0
+        for d in sorted((paths.harnessed_home() / "catalog" / "recipes").iterdir()):
+            df = d / "Dockerfile"
+            if not df.is_file():
+                continue
+            validate_dockerfile_not_dependent_on_install(
+                load_recipe(d), df.read_text(encoding="utf-8")
+            )
+            checked += 1
+        assert checked, "no catalog Dockerfiles found — the sweep silently checked nothing"

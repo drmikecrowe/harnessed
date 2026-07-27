@@ -141,13 +141,21 @@ class TestGstackStraddles:
         assert "./setup" not in _code(CATALOG / "recipes" / "gstack" / "Dockerfile")
         assert "./setup" in _code(CATALOG / "recipes" / "gstack" / "install.sh")
 
-    def test_install_layers_before_the_root_dockerfile_body(self):
-        # emit puts a recipe's install block BEFORE its Dockerfile body, so the root steps layer on
-        # top of the install rather than under it. gstack's chown of ~/.bun depends on that order.
+    def test_the_dockerfile_body_carries_only_the_root_step(self):
+        # INVERTED by bd harnessed-8px.21.4. install: used to be emitted BEFORE this recipe's
+        # Dockerfile body so the root steps layered on top of it. Now every Dockerfile body runs at
+        # BUILD and every install at container runtime, so the orders are decoupled entirely.
+        #
+        # That is only safe because no Dockerfile body consumes its own install output — all five
+        # were read on 2026-07-27 and none does. gstack's `chown -R harnessed:harnessed ~/.bun`
+        # targets what the BASE image installed, not what its install.sh writes.
         r = _recipe("gstack")
-        lines = emit._install_dockerfile_lines(r, "claude")
-        assert any(line.startswith("RUN ") and "install.sh" in line for line in lines)
-        assert "USER root" not in "\n".join(lines)
+        body = (r.root / "Dockerfile").read_text(encoding="utf-8")
+        assert "USER root" in body
+        instructions = [ln for ln in body.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+        assert not any("install.sh" in ln for ln in instructions), (
+            "a Dockerfile body must not invoke its own install script — the executor owns that now"
+        )
 
     def test_install_fails_loudly_when_bun_is_missing(self):
         # A host launch without bun cannot run upstream's ./setup. Failing loudly is the acceptance
@@ -200,22 +208,32 @@ class TestCatalogWideInvariants:
             if dockerfile.is_file():
                 validate_pin(r.name, dockerfile.read_text(encoding="utf-8"))
 
-    def test_derived_dockerfile_carries_an_install_step_for_each(self):
+    def test_the_container_executor_runs_an_install_step_for_each(self, monkeypatch):
+        from harnessed import launcher
+
         recipes = [_recipe(n) for n in CONTENT_RECIPES]
-        lines = [ln for r in recipes for ln in emit._install_dockerfile_lines(r, "claude")]
-        text = "\n".join(lines)
+        calls: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        launcher._run_container_installs(
+            "podman", "s", "claude", "img", recipes, "cfgvol", "toolsvol",
+        )
+        text = "\n".join(" ".join(c) for c in calls)
         for name in CONTENT_RECIPES:
-            assert f"# --- recipe install: {name} ---" in text
             assert f"{emit.CTR_RECIPE_DIR}/{name}/install.sh" in text
 
-    def test_container_install_cache_never_ships_in_the_image(self):
-        # A cached clone left behind would bake the whole upstream repo into every derived image.
-        for name in CONTENT_RECIPES:
-            run = [
-                ln for ln in emit._install_dockerfile_lines(_recipe(name), "claude")
-                if ln.startswith("RUN ")
-            ]
-            assert len(run) == 1
-            assert f"rm -rf {emit._CTR_INSTALL_CACHE}" in run[0], (
-                f"{name}: the build-time cache must be removed in the SAME layer that creates it"
-            )
+    def test_no_install_cache_can_ship_in_the_image(self):
+        # A cached clone left behind would have baked the whole upstream repo into every derived
+        # image, which is why the build had to `rm -rf` it in the same layer. bd harnessed-8px.21.4
+        # removes the hazard at the source: the image has no install step at all, so the cache is a
+        # runtime bind mount of the SHARED host cache and is never a layer in the first place.
+        from harnessed.emit import write_derived_dockerfile
+        import tempfile
+        from pathlib import Path as _P
+
+        with tempfile.TemporaryDirectory() as td:
+            body = write_derived_dockerfile(
+                _P(td), "s", "claude", [_recipe(n) for n in CONTENT_RECIPES]
+            ).read_text(encoding="utf-8")
+        instructions = [ln for ln in body.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+        assert not any(emit.CTR_INSTALL_CACHE in ln for ln in instructions)
+        assert not any("install.sh" in ln for ln in instructions)

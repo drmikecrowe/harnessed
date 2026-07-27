@@ -1,14 +1,16 @@
 """The `install:` mechanism — bd harnessed-8px.3.
 
-ONE bash file per recipe, executed by BOTH the container build (`RUN bash install.sh`) and a host
-launch, so the deliverables of what used to be a container-only Dockerfile RUN exist in both modes.
+ONE bash file per recipe, executed by BOTH the container executor and a host launch, so the
+deliverables of what used to be a container-only Dockerfile RUN exist in both modes.
 That asymmetry is bd harnessed-8px.1: a `--host` launch of a stack containing superpowers shipped
 0 of its 14 skills and said nothing.
 
 Four properties carry the whole design, and each has its own class below:
 
-  * PHASE — install is BUILD-time container-side, so its env is a deliberate SUBSET of the
-    folder-env contract (no PROJECT_DIR: a build has no project mounted).
+  * PHASE — install's env is a deliberate SUBSET of the folder-env contract (no PROJECT_DIR).
+    That subset was fixed when install ran at BUILD time container-side; bd harnessed-8px.21.4
+    moved it to container RUNTIME (into a per-stack volume) and the subset deliberately did NOT
+    widen — a project is still not part of the install phase in either mode.
   * ORDERING — host installs run AFTER `_materialize_host_home`, which rmtree's the home on every
     launch. Before it, the output is deleted milliseconds later, silently.
   * CACHE — because of that same wipe, "first launch only" is structurally impossible; the install
@@ -148,61 +150,106 @@ class TestEnvContract:
 
 
 class TestContainerExecutor:
-    def _emit(self, tmp_path, recipes) -> str:
+    """The container half of the install contract.
+
+    It used to be emitted as Dockerfile RUN layers; since bd harnessed-8px.21.4 it is executed at
+    container runtime into per-stack volumes by `launcher._run_container_installs`. Every invariant
+    below MOVED with it — none was dropped — so these assert against the podman argv the executor
+    builds rather than against emitted Dockerfile text.
+    """
+
+    def _argv(self, tmp_path, recipes, monkeypatch):
+        """Capture the podman command lines the executor would run."""
+        calls: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        monkeypatch.setattr(
+            launcher.paths, "install_cache_dir",
+            lambda name, key: tmp_path / "cache" / name / key,
+        )
+        launcher._run_container_installs(
+            "podman", "s", "claude", "img", recipes, "cfgvol", "toolsvol",
+        )
+        return calls
+
+    def _install_argv(self, tmp_path, recipes, monkeypatch):
+        return [c for c in self._argv(tmp_path, recipes, monkeypatch) if "install.sh" in " ".join(c)]
+
+    def test_bind_mounts_the_recipe_dir_and_runs_the_script(self, tmp_path, monkeypatch):
+        """A bind mount replaces the build's COPY — there is no build context at runtime, and the
+        recipe dir is already on the host."""
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
+        cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
+        assert f"{r.root}:{emit.CTR_RECIPE_DIR}/r:ro" in cmd
+        assert f"{emit.CTR_RECIPE_DIR}/r/install.sh" in cmd
+
+    def test_runs_as_the_unprivileged_user(self, tmp_path, monkeypatch):
+        """An install writes to ~/.claude and needs no root. Anything that DOES stays in the recipe
+        Dockerfile and is declared via `install.system`. The image's own USER is `harnessed`, so the
+        executor must never override it."""
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
+        cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
+        assert "--user" not in cmd and "-u" not in cmd
+
+    def test_contract_never_persists_into_the_shipped_image(self, tmp_path, monkeypatch):
+        """`ENV HARNESSED_MODE=container` would leak build-phase inputs into the running agent's
+        environment. Passed with `-e` to a throwaway container, they die with it — and the derived
+        Dockerfile carries no trace of them at all."""
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
+        cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
+        assert "HARNESSED_MODE=container" in cmd
         prof = tmp_path / "prof"
         prof.mkdir(exist_ok=True)
-        return emit.write_derived_dockerfile(
-            prof, "s", "claude", recipes, with_scan=False
+        dockerfile = emit.write_derived_dockerfile(
+            prof, "s", "claude", [r], with_scan=False
         ).read_text()
+        assert "HARNESSED_MODE" not in dockerfile
+        assert "HARNESSED_CONFIG_DIR" not in dockerfile
 
-    def test_copies_the_recipe_dir_and_runs_the_script(self, tmp_path):
+    def test_config_dir_is_the_container_claude_dir(self, tmp_path, monkeypatch):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
-        out = self._emit(tmp_path, [r])
-        assert f"COPY catalog/recipes/r {emit.CTR_RECIPE_DIR}/r" in out
-        assert f"bash {emit.CTR_RECIPE_DIR}/r/install.sh" in out
-        assert out.index("COPY catalog/recipes/r") < out.index("bash ")
+        cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
+        assert "HARNESSED_CONFIG_DIR=/home/harnessed/.claude" in cmd
 
-    def test_runs_as_the_unprivileged_user(self, tmp_path):
-        """An install writes to ~/.claude and needs no root. Anything that DOES stays in the
-        recipe Dockerfile and is declared via `install.system`."""
-        out = self._emit(tmp_path, [_recipe(tmp_path, install="install:\n  script: install.sh\n")])
-        assert out.index("USER harnessed") < out.index("bash ")
-
-    def test_contract_is_inline_on_the_run_not_persisted_as_image_env(self, tmp_path):
-        """`ENV HARNESSED_MODE=container` would leak build-phase inputs into the shipped image and
-        therefore into the running agent's environment. Inline assignments die with the RUN."""
-        out = self._emit(tmp_path, [_recipe(tmp_path, install="install:\n  script: install.sh\n")])
-        assert 'HARNESSED_MODE="container" ' in out
-        assert "ENV HARNESSED_MODE" not in out
-        assert "ENV HARNESSED_CONFIG_DIR" not in out
-
-    def test_config_dir_is_the_image_claude_dir(self, tmp_path):
-        out = self._emit(tmp_path, [_recipe(tmp_path, install="install:\n  script: install.sh\n")])
-        assert 'HARNESSED_CONFIG_DIR="/home/harnessed/.claude"' in out
-
-    def test_cache_dir_is_build_scratch_removed_in_the_same_layer(self, tmp_path):
-        """The HOST cache persists — that is its point. The container's must not: a build layer
-        that kept the clone would bake it into the shipped image."""
+    def test_cache_dir_is_the_shared_host_cache_and_PERSISTS(self, tmp_path, monkeypatch):
+        """INVERTED by bd harnessed-8px.21.4, deliberately. The build had to throw its cache away
+        (`rm -rf` in the same layer) or the clone shipped inside the image. A runtime install has no
+        layer to bake, so it mounts the SAME persistent host cache the host executor uses — which is
+        what finally makes the cache shared ACROSS stacks."""
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n  cache: v6.0.3\n")
-        out = self._emit(tmp_path, [r])
-        run = next(ln for ln in out.splitlines() if ln.startswith("RUN ") and "install.sh" in ln)
-        assert "/tmp/harnessed-install-cache/r/v6.0.3" in run
-        assert run.rstrip().endswith("&& rm -rf /tmp/harnessed-install-cache")
+        cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
+        ctr = f"{emit.CTR_INSTALL_CACHE}/r/v6.0.3"
+        assert f"{tmp_path / 'cache' / 'r' / 'v6.0.3'}:{ctr}:rw" in cmd
+        assert f"HARNESSED_INSTALL_CACHE={ctr}" in cmd
+        assert not any("rm -rf" in a for a in cmd)
 
-    def test_no_cache_declared_means_empty_cache_var(self, tmp_path):
-        out = self._emit(tmp_path, [_recipe(tmp_path, install="install:\n  script: install.sh\n")])
-        assert 'HARNESSED_INSTALL_CACHE=""' in out
-        assert "rm -rf /tmp/harnessed-install-cache" not in out
+    def test_no_cache_declared_means_empty_cache_var_and_no_mount(self, tmp_path, monkeypatch):
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
+        cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
+        assert "HARNESSED_INSTALL_CACHE=" in cmd
+        assert not any(emit.CTR_INSTALL_CACHE in a for a in cmd)
 
-    def test_emitted_for_a_recipe_with_no_dockerfile(self, tmp_path):
+    def test_runs_for_a_recipe_with_no_dockerfile(self, tmp_path, monkeypatch):
         """The whole point of the epic: a recipe migrates OFF its Dockerfile entirely."""
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
         assert not (r.root / "Dockerfile").exists()
-        assert "install.sh" in self._emit(tmp_path, [r])
+        assert self._install_argv(tmp_path, [r], monkeypatch)
 
-    def test_nothing_emitted_without_an_install_block(self, tmp_path):
-        out = self._emit(tmp_path, [_recipe(tmp_path)])
-        assert "recipe install" not in out
+    def test_nothing_runs_without_an_install_block(self, tmp_path, monkeypatch):
+        assert not self._argv(tmp_path, [_recipe(tmp_path)], monkeypatch)
+
+    def test_every_step_uses_keep_id(self, tmp_path, monkeypatch):
+        """bd harnessed-8px.21.1. The pod is created `--userns=keep-id` and the agent inherits it as
+        a pod member. A volume populated under any OTHER mapping is unreadable by the agent: uid
+        1000 sees the files as owner 999 and every write EACCESes."""
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n", extra='tools: ["npm:x@1"]\n')
+        for cmd in self._argv(tmp_path, [r], monkeypatch):
+            assert "--userns=keep-id" in cmd
+
+    def test_both_volumes_are_mounted_on_every_step(self, tmp_path, monkeypatch):
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
+        for cmd in self._argv(tmp_path, [r], monkeypatch):
+            assert "cfgvol:/home/harnessed/.claude" in cmd
+            assert "toolsvol:/home/harnessed/.local" in cmd
 
 
 class TestHostExecutor:
@@ -477,17 +524,20 @@ class TestPrecedence:
     Winner in both: the harnessed-owned contract. Asserted as ORDER, not as values.
     """
 
-    def test_container_applies_the_contract_after_recipe_env(self, tmp_path):
-        """Dockerfile: `ENV` lines for `env:` come first; the contract rides inline on the RUN,
-        and an inline assignment beats an inherited ENV."""
+    def test_container_applies_the_contract_after_recipe_env(self, tmp_path, monkeypatch):
+        """Since bd harnessed-8px.21.4 the container executor merges `{**recipe_env, **contract}`
+        and passes the result as `-e`, so this can assert the VALUE rather than the ordering of two
+        Dockerfile lines — a stricter check than the emitted-text version it replaces."""
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
                     env='env:\n  HARNESSED_MODE: "recipe-tried-to-win"\n')
-        prof = tmp_path / "prof"
-        prof.mkdir()
-        out = emit.write_derived_dockerfile(prof, "s", "claude", [r], with_scan=False).read_text()
-        assert out.index('ENV HARNESSED_MODE="recipe-tried-to-win"') < out.index(
-            'HARNESS="claude" HARNESSED_MODE="container"'
+        calls: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        launcher._run_container_installs(
+            "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
         )
+        cmd = calls[0]
+        assert "HARNESSED_MODE=container" in cmd
+        assert "HARNESSED_MODE=recipe-tried-to-win" not in cmd
 
     def test_host_applies_the_contract_after_recipe_env(self):
         src = inspect.getsource(launcher._host_run_installs)

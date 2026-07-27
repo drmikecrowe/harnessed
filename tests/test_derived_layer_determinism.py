@@ -1,20 +1,33 @@
-"""bd harnessed-1t4.5 — the merged mise tool layer must be a function of the tool SET.
+"""bd harnessed-1t4.5 — the merged mise tool step must be a function of the tool SET.
 
-podman's layer cache key is the literal instruction text, so a `RUN mise use -g …` whose argument
-order follows stack.yaml authoring order means two stacks with the same tools share zero layers.
-The requirement is stated at the level a stack author sees it: same tools in, same layer out.
+Originally about podman's layer cache: a `RUN mise use -g …` whose argument order followed
+stack.yaml authoring order meant two stacks with the same tools shared zero layers. bd
+harnessed-8px.21.4 moved `tools:` out of image layers and into the runtime executor, so the cache
+rationale is gone — but the requirement is unchanged and is stated at the level a stack author
+sees it: same tools in, same work out, regardless of which recipe declared what or in what order.
+
+Sorting also keeps the step comparable across runs, which is what makes the fingerprint gate in
+harnessed-8px.21.3 stable for an unchanged stack.
 """
 from __future__ import annotations
 
-from harnessed.emit import write_derived_dockerfile
+from harnessed import launcher
 from harnessed.schema import Recipe
 
 
-def _tools_line(tmp_path, recipes, stack="s"):
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    out = write_derived_dockerfile(tmp_path, stack, "claude", recipes)
-    lines = [ln for ln in out.read_text(encoding="utf-8").splitlines() if "mise use -g" in ln]
-    assert len(lines) == 1, f"expected exactly one merged tool layer, got {lines}"
+def _tools_line(tmp_path, recipes, stack="s", monkeypatch=None):
+    """The single `mise use -g …` command the container executor would run."""
+    calls: list[list[str]] = []
+    orig = launcher._run
+    launcher._run = lambda cmd, *a, **k: calls.append(cmd)
+    try:
+        launcher._run_container_installs(
+            "podman", stack, "claude", "img", list(recipes), "cfgvol", "toolsvol",
+        )
+    finally:
+        launcher._run = orig
+    lines = [a for c in calls for a in c if "mise use -g" in a]
+    assert len(lines) == 1, f"expected exactly one merged tool step, got {lines}"
     return lines[0]
 
 

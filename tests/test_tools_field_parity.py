@@ -127,7 +127,7 @@ class TestHostLaunchHonoursTools:
         assert src.index("_host_install_tools") < src.index("_host_run_installs")
 
 
-class TestEmittedDockerfileInstallsToolsBeforeInstallScripts:
+class TestContainerExecutorInstallsToolsBeforeInstallScripts:
     """The CONTAINER half of the same ordering the host launch enforces (bd harnessed-1t4.3).
 
     A real build broke here: ccstatusline's install.sh does `command -v ccstatusline`, but the merged
@@ -136,8 +136,16 @@ class TestEmittedDockerfileInstallsToolsBeforeInstallScripts:
     the binary must be installed first — in both executors, not just on the host.
     """
 
-    def _derived_body(self, tmp_path):
-        from harnessed.emit import write_derived_dockerfile
+    def _steps(self, recipes, monkeypatch):
+        """The flattened command lines the container executor would run, in order."""
+        calls: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        launcher._run_container_installs(
+            "podman", "s", "claude", "img", list(recipes), "cfgvol", "toolsvol",
+        )
+        return [" ".join(c) for c in calls]
+
+    def test_the_mise_step_precedes_the_recipe_install_step(self, tmp_path, monkeypatch):
         from harnessed.schema import InstallSpec
 
         recipe = tmp_path / "cc"
@@ -145,23 +153,18 @@ class TestEmittedDockerfileInstallsToolsBeforeInstallScripts:
         (recipe / "install.sh").write_text("command -v ccstatusline\n", encoding="utf-8")
         r = Recipe(name="cc", root=recipe, tools=["npm:ccstatusline@2.2.22"])
         r.install = InstallSpec(script="install.sh")
-        return write_derived_dockerfile(tmp_path, "s", "claude", [r]).read_text(encoding="utf-8")
-
-    def test_the_mise_layer_precedes_the_recipe_install_layer(self, tmp_path):
-        body = self._derived_body(tmp_path)
-        assert body.index("mise use -g") < body.index("install.sh"), (
-            "the tools: layer must be emitted before any recipe install.sh runs"
+        steps = self._steps([r], monkeypatch)
+        joined = "\n".join(steps)
+        assert joined.index("mise use -g") < joined.index("install.sh"), (
+            "tools: must be installed before any recipe install.sh runs"
         )
 
-    def test_the_real_ccstatusline_recipe_has_its_tool_before_its_install(self, tmp_path):
-        # The recipe that actually broke: its tools: pin must land before the RUN that executes its
-        # install.sh (the script does `command -v ccstatusline`). The Dockerfile carries the pin and
-        # the `bash …/ccstatusline/install.sh` invocation, not the script body.
-        from harnessed.emit import write_derived_dockerfile
-
+    def test_the_real_ccstatusline_recipe_has_its_tool_before_its_install(self, tmp_path, monkeypatch):
+        # The recipe that actually broke: its tools: pin must be installed before the step that runs
+        # its install.sh (the script does `command -v ccstatusline`).
         recipe = load_recipe(paths.harnessed_home() / "catalog" / "recipes" / "ccstatusline")
-        body = write_derived_dockerfile(tmp_path, "s", "claude", [recipe]).read_text(encoding="utf-8")
-        assert body.index("npm:ccstatusline@") < body.index("ccstatusline/install.sh")
+        joined = "\n".join(self._steps([recipe], monkeypatch))
+        assert joined.index("npm:ccstatusline@") < joined.index("ccstatusline/install.sh")
 
 
 class TestNpmToolsResolveThroughPnpmNotAube:
@@ -196,14 +199,15 @@ class TestNpmToolsResolveThroughPnpmNotAube:
         launcher._host_install_tools("s", [Recipe(name="a", root=tmp_path, tools=["npm:x@1"])])
         assert calls[0][1].get(self.ENV_VAR) == "pnpm"
 
-    def test_the_derived_dockerfile_sets_it_on_the_tools_layer(self, tmp_path):
-        from harnessed.emit import write_derived_dockerfile
-
+    def test_the_container_executor_sets_it_on_the_tools_step(self, tmp_path, monkeypatch):
         r = Recipe(name="a", root=tmp_path, tools=["npm:context-mode@1.0.169"])
-        body = write_derived_dockerfile(tmp_path, "s", "claude", [r]).read_text(encoding="utf-8")
-        tools_run = next(ln for ln in body.splitlines() if "mise use -g" in ln)
-        assert f"{self.ENV_VAR}=pnpm" in tools_run, (
-            f"the tools: layer must set {self.ENV_VAR}=pnpm, got: {tools_run}"
+        calls: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        launcher._run_container_installs(
+            "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
+        )
+        assert f"{self.ENV_VAR}=pnpm" in calls[0], (
+            f"the tools: step must set {self.ENV_VAR}=pnpm, got: {calls[0]}"
         )
 
     def test_it_is_scoped_to_the_build_and_not_leaked_as_image_env(self, tmp_path):

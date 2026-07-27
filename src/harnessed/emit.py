@@ -714,13 +714,13 @@ def _dockerfile_env_quote(value: str) -> str:
 
 # --- install: (bd harnessed-8px.3) ----------------------------------------------------------------
 # Where a recipe's own directory lands container-side. The SAME path in both the build (COPY'd by
-# _install_dockerfile_lines) and at runtime (bind-mounted ro by launcher._setup_script_mounts), so
+# launcher._run_container_installs) and by setup (launcher._setup_script_mounts), so
 # $HARNESSED_RECIPE_DIR means one thing container-side no matter which phase reads it.
 CTR_RECIPE_DIR = "/opt/harnessed/recipes"
 # Build-time scratch for $HARNESSED_INSTALL_CACHE. The host cache persists (that is its whole point
 # — see InstallSpec.cache); the container's cannot and must not: a build layer that kept the clone
 # would bake it into the image. It is removed in the same RUN layer that creates it.
-_CTR_INSTALL_CACHE = "/tmp/harnessed-install-cache"
+CTR_INSTALL_CACHE = "/tmp/harnessed-install-cache"
 
 
 def install_env(
@@ -807,50 +807,6 @@ CACHE_MOUNTS = " ".join(
 )
 
 
-def _install_dockerfile_lines(recipe: Recipe, harness: str) -> list[str]:
-    """The derived-Dockerfile block for one recipe's `install:` — COPY the recipe dir, then run it.
-
-    A COPY (not the runtime bind-mount `setup.script` uses) because a build has no bind-mounts, and
-    because baking the deliverables is the entire point of the install phase. Runs as `harnessed`:
-    an install writes to ~/.claude and needs no root — anything that DOES need root stays in the
-    recipe's Dockerfile and is declared via `install.system` so a host launch warns about it.
-    """
-    inst = recipe.install
-    if inst is None or inst.script is None:
-        # `install: {system: …}` with no script is a ROOT-ONLY install: the whole step lives in the
-        # recipe's own Dockerfile and the declaration exists solely so the HOST executor can warn.
-        # Nothing to COPY and nothing to RUN here.
-        return []
-    ctr_recipe = f"{CTR_RECIPE_DIR}/{recipe.name}"
-    cache = f"{_CTR_INSTALL_CACHE}/{recipe.name}/{inst.cache}" if inst.cache else ""
-    env = install_env(
-        recipe, mode="container", harness=harness,
-        config_dir="/home/harnessed/.claude", cache_dir=cache,
-        # Already on PATH via the base image's `ENV PATH=…/.local/bin:…`, and writable by the
-        # `harnessed` user this RUN executes as.
-        bin_dir="/home/harnessed/.local/bin",
-        # $HOME/.claude IS the config dir in the image, so the shim is just the home itself.
-        home_shim="/home/harnessed",
-    )
-    # Inline assignments on the RUN, NOT `ENV`: these are build-phase inputs, and an `ENV` would
-    # persist them into the shipped image (leaking HARNESSED_MODE=container et al into the agent's
-    # environment). Inline also gives the precedence documented in install_env for free.
-    assigns = " ".join(f'{k}="{_dockerfile_env_quote(v)}"' for k, v in env.items())
-    lines = [
-        f"# --- recipe install: {recipe.name} ---",
-        "USER harnessed",
-        f"COPY catalog/recipes/{recipe.ref or recipe.name} {ctr_recipe}",
-    ]
-    # Every download cache, not a per-recipe guess: an install.sh may reach for any of pnpm, uv or
-    # mise, and the script body is the recipe author's to change without touching the emitter.
-    run = f"RUN {CACHE_MOUNTS} {assigns} bash {ctr_recipe}/{inst.script}"
-    if cache:
-        # Same layer, or the clone ships in the image.
-        run += f" && rm -rf {_CTR_INSTALL_CACHE}"
-    lines += [run, ""]
-    return lines
-
-
 def write_derived_dockerfile(
     profile_dir: Path, stack_name: str, harness: str, recipes: list[Recipe],
     *, with_scan: bool = True
@@ -874,45 +830,16 @@ def write_derived_dockerfile(
         "ARG HARNESS",  # re-declare in post-FROM stage so RUN instructions see it
         "",
     ]
-    # Declarative recipe `tools:` — install pinned mise tools as one global layer, so a recipe can add
-    # a CLI (e.g. pulumi) with no Dockerfile. Runs as `harnessed` (mise's globals live under that
-    # user's home).
+    # `tools:` and `install:` are NOT emitted here (bd harnessed-8px.21.4). They run at container
+    # RUNTIME into per-stack volumes, gated on a fingerprint, because baking them as image layers
+    # made every recipe edit cost a layer rebuild: measured at 307s for a ONE-LINE change to
+    # gsd-core/install.sh, against 4.3s for the same install executed natively. Almost none of that
+    # was download — the cache mounts already covered that — it was podman committing layers over a
+    # large tree, which a volume write skips entirely. See launcher._run_container_installs.
     #
-    # EMITTED BEFORE the recipe install/Dockerfile layers (bd harnessed-1t4.3): `tools:` owns the
-    # BINARY and an install.sh CONFIGURES it (ccstatusline's `command -v ccstatusline`, serena's
-    # `serena init`), so the binary must exist first. This mirrors the host launch, where
-    # `_host_install_tools` runs before `_host_run_installs`. A real build failed the other way round.
-    #
-    # SORTED + DEDUPED (bd harnessed-1t4.5): podman keys its layer cache on the literal instruction
-    # text, so emitting these in stack.yaml authoring order made two stacks with the SAME tool set
-    # miss each other's cached layer for no reason. Sorting makes the layer a function of the tool
-    # SET. Recipe layers below deliberately keep authored order — install order there IS semantic
-    # (a later recipe may overwrite an earlier one's content) — but `mise use -g` is declarative and
-    # order-free, so nothing is lost by canonicalising it.
-    tool_specs = sorted({t for recipe in recipes for t in recipe.tools})
-    if tool_specs:
-        joined = " ".join(f'"{t}"' for t in tool_specs)
-        lines.append("# --- recipe tools (mise) ---")
-        lines.append("USER harnessed")
-        # `mise use -g` fans out to backends that shell out to pnpm (npm:) and uv (pipx:), so this
-        # layer gets the same cache set as a recipe install.
-        #
-        # MISE_NPM_PACKAGE_MANAGER=pnpm is NOT a preference — it is required. As of mise 2026.7.x the
-        # `npm:` backend defaults (`npm.package_manager = "auto"`) to mise's own resolver, `aube`,
-        # which enforces a publisher-trust policy over the WHOLE dependency tree. One transitive dep
-        # published without trust evidence hard-fails the install of a package that is itself fine
-        # and correctly pinned — `npm:context-mode@1.0.169` dies on `@hono/node-server@1.19.15`
-        # ("trust downgrade … no trust evidence"), and no version bump escapes it because the pin is
-        # already the latest release. Routing through pnpm keeps mise as the installer and the pin
-        # exact while dropping aube's tree-wide veto. pnpm (not `npm.shell_out=true`, the other
-        # escape hatch) because pnpm is the package manager this repo mandates everywhere else.
-        #
-        # Set INLINE on the RUN, not as an image ENV: this governs build-time tool installation only
-        # and has no business in the agent's runtime environment.
-        lines.append(
-            f"RUN {CACHE_MOUNTS} MISE_NPM_PACKAGE_MANAGER=pnpm mise use -g {joined} && mise install"
-        )
-        lines.append("")
+    # What remains below is what a volume CANNOT carry: recipe `env:` (a real image ENV, since a
+    # shell export dies with the script that set it) and system-level Dockerfile bodies (USER root /
+    # apt-get / writes to /usr), which harnessed will not do on a host and cannot do in a volume.
 
     for recipe in recipes:
         # Recipe `env:` → real image ENV, emitted BEFORE this recipe's own body so a RUN in that
@@ -925,11 +852,6 @@ def write_derived_dockerfile(
             lines.append(f"# --- recipe env: {recipe.name} ---")
             lines += [f'ENV {var}="{_dockerfile_env_quote(val)}"' for var, val in env.items()]
             lines.append("")
-
-        # `install:` — emitted AFTER this recipe's `env:` (so the script sees it) and BEFORE its
-        # Dockerfile body (so a body that still carries system-level steps layers on top of the
-        # install rather than under it).
-        lines += _install_dockerfile_lines(recipe, harness)
 
         dockerfile = recipe.root / "Dockerfile"
         if not dockerfile.is_file():

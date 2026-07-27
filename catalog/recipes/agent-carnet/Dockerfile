@@ -5,7 +5,8 @@
 # harness-independent.
 #
 # CLI and skill are both delivered by install.sh (both modes — container build and host launch).
-# The assembler includes install.sh as RUN bash install.sh in the generated image, so no separate
+# install.sh runs at container RUNTIME into the stack's volumes (bd harnessed-8px.21.4), not as an
+# image layer, so no separate
 # RUN is needed here. agent-carnet is pure JS (no native binary, no apt/system deps).
 USER harnessed
 # Version anchor: must stay in sync with AGENT_CARNET_VERSION in install.sh and `install.cache`

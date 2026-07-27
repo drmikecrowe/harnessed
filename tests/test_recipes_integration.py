@@ -327,3 +327,47 @@ class TestCredentialedScanReportWins:
         src = inspect.getsource(launcher._build_stack)
         assert "scan_report.unlink(missing_ok=True)" in src
         assert src.index("scan_report.unlink") < src.index("_scan_image_in_container(")
+
+
+@podman
+def test_merge_baked_settings_reads_the_VOLUME_not_the_image(tmp_path):
+    """bd harnessed-8px.21.7 — the regression this exists to stop.
+
+    `install:` used to run at build, so the installer-written settings.json lived in the IMAGE and
+    `_merge_baked_settings` read it from there. bd harnessed-8px.21.4 moved installs to a per-stack
+    volume. Reading the image would now find nothing, keep the assemble-time floor, and silently
+    drop every install-written key — which is precisely harnessed-8px.19 ("ccstatusline statusLine
+    gone on every restart"), a P1 this epic already fixed once and closed.
+
+    The image here is deliberately BARE: if the volume were ignored, the floor would stand and the
+    assertion below would fail. That is what makes this test fail without the fix.
+    """
+    tag = "harnessed-test-settings-volume:latest"
+    vol = "harnessed-test-settings-vol"
+    rt = _build_image_with(tmp_path, tag, None)
+    installed = {"statusLine": {"type": "command", "command": "ccstatusline"}}
+    prof = tmp_path / "profile"
+    prof.mkdir()
+    (prof / "settings.json").write_text(json.dumps(_FLOOR))
+    try:
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+        # Write the installer's settings.json INTO the volume, as a real install would.
+        # Written with the SAME userns the reader uses. A volume populated under a different
+        # mapping is unreadable by the agent (bd harnessed-8px.21.1), so mirroring harnessed here
+        # is part of what the test asserts, not incidental setup.
+        subprocess.run(
+            [rt, "run", "--rm", "-i", "--userns=keep-id",
+             "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"cat > {CONTAINER_HOME}/.claude/settings.json"],
+            input=json.dumps(installed), text=True, check=True, capture_output=True,
+        )
+        _merge_baked_settings(rt, tag, prof, volume=vol)
+        merged = json.loads((prof / "settings.json").read_text())
+    finally:
+        subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+
+    assert merged.get("statusLine") == installed["statusLine"], (
+        "install-written settings key lost — _merge_baked_settings read the image, not the volume"
+    )
+    assert "mcp__hatago" in merged["permissions"]["allow"], "required grant not re-applied"
