@@ -17,3 +17,6 @@ run = "python3 tools/wiki-links.py"
 [tasks.docs-check]
 description = "Report docs/ wiki link and sidebar problems without writing (exits non-zero)"
 run = "python3 tools/wiki-links.py --check"
+
+[tasks.pull-and-build]
+run = 'git pull && uv tool install --editable .'
