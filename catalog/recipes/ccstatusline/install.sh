@@ -23,6 +23,16 @@ CCSTATUSLINE_VERSION="2.2.22"
 # on PATH in both modes and outlives the per-launch config-dir wipe, so the path statusLine records
 # is simply where the tool resolves. Keep CCSTATUSLINE_VERSION in lockstep with that pin.
 bin="$(command -v ccstatusline)"
+# ...but NOT the shim, if that is what resolved. A mise shim is a symlink to the mise binary that
+# re-resolves the tool by argv[0] against MISE_DATA_DIR every time it runs. statusLine.command is a
+# path RECORDED IN settings.json and re-invoked for a whole session (and by any later plain `claude`
+# in that config dir), so it must not depend on ambient env: Claude Code spawns it as a plain
+# subprocess, and the moment MISE_DATA_DIR is not what it was at install time the shim dies with
+# `mise ERROR ccstatusline is not a valid shim`. `mise which` gives the real
+# .../installs/npm-ccstatusline/<version>/bin/ccstatusline, which needs no env at all.
+if real="$(mise which ccstatusline 2>/dev/null)" && [ -x "$real" ]; then
+    bin="$real"
+fi
 test -x "$bin"
 
 # --- 2. the statusLine block ---------------------------------------------------------------------
