@@ -11,6 +11,8 @@ per-recipe migration.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from harnessed import launcher, paths
@@ -215,3 +217,60 @@ class TestNpmToolsResolveThroughPnpmNotAube:
         assert not any(
             ln.startswith("ENV") and self.ENV_VAR in ln for ln in body.splitlines()
         ), f"{self.ENV_VAR} must be inline on the RUN, not a persistent image ENV"
+
+
+class TestMiseShimsResolveAtRunTimeNotJustInstallTime:
+    """A mise shim is a symlink to the mise binary — it re-resolves the tool by argv[0] against
+    MISE_DATA_DIR EVERY TIME IT RUNS, not once at install.
+
+    `_launch_host` put the stack's shims dir on the agent's PATH but left MISE_DATA_DIR unset, so
+    mise fell back to the user's ~/.local/share/mise — where the stack installed nothing — and every
+    shim on that PATH entry died with `mise ERROR <tool> is not a valid shim`. Surfaced as a dead
+    ccstatusline statusLine on `launch --host`: settings.json recorded the shim path, and Claude Code
+    spawns statusLine as a plain subprocess.
+    """
+
+    def test_the_shims_dir_lives_under_the_data_dir_the_env_points_at(self):
+        env = launcher._host_mise_env("s")
+        shims = launcher._host_tool_shims_dir("s")
+        assert shims.parent == Path(env["MISE_DATA_DIR"]), (
+            "a shim resolves against MISE_DATA_DIR; a shims dir that does not live under it is a "
+            f"dir of broken symlinks (shims={shims}, MISE_DATA_DIR={env['MISE_DATA_DIR']})"
+        )
+
+    def test_install_time_and_run_time_see_the_same_mise_instance(self, tmp_path, monkeypatch):
+        # The drift that caused the bug: _host_install_tools redirected mise into the stack tree in a
+        # PRIVATE env dict, so the binary landed somewhere the run-time shim could never look.
+        calls: list = []
+        monkeypatch.setattr(launcher.shutil, "which", lambda cmd: "/usr/bin/mise")
+
+        class Result:
+            returncode = 0
+
+        monkeypatch.setattr(
+            launcher.subprocess,
+            "run",
+            lambda argv, **kw: (calls.append(kw.get("env") or {}), Result())[1],
+        )
+        launcher._host_install_tools("s", [Recipe(name="a", root=tmp_path, tools=["pipx:x@1"])])
+        run_time = launcher._host_mise_env("s")
+        for var, value in run_time.items():
+            assert calls[0].get(var) == value, (
+                f"{var} differs between install time ({calls[0].get(var)!r}) and the agent's "
+                f"environment ({value!r}) — the shim will look in the wrong place"
+            )
+
+
+class TestStatusLineRecordsAResolvedBinary:
+    """statusLine.command is written into settings.json and re-invoked for a whole session (and by
+    any later plain `claude` in that config dir), so it must not be a path whose meaning depends on
+    ambient env. A mise shim is exactly such a path."""
+
+    def test_the_ccstatusline_install_resolves_the_shim_to_the_real_binary(self):
+        body = (
+            paths.harnessed_home() / "catalog" / "recipes" / "ccstatusline" / "install.sh"
+        ).read_text(encoding="utf-8")
+        assert "mise which ccstatusline" in body, (
+            "install.sh must resolve `command -v ccstatusline` (which hits the shim on a host "
+            "launch) to the real installs/… binary before baking it into settings.json"
+        )

@@ -4391,6 +4391,26 @@ def _host_tool_shims_dir(stack: str) -> Path:
     return _stack_tools_dirs(stack)[0] / "mise" / "shims"
 
 
+def _host_mise_env(stack: str) -> dict[str, str]:
+    """The redirect that points mise at the STACK's own instance instead of the user's.
+
+    Needed in TWO places, and shipping it to only one is the bug this exists to prevent: a mise
+    shim is a symlink to the mise binary, so it re-resolves the tool by argv[0] against mise's
+    data dir AT RUN TIME. Install-time redirection alone puts the binary somewhere the shim can
+    never find it again — `mise ERROR <tool> is not a valid shim`, because mise fell back to
+    ~/.local/share/mise where the stack installed nothing.
+
+    So _launch_host exports this alongside the PATH entry for `_host_tool_shims_dir`: a shims dir
+    on PATH without this env is a dir of guaranteed-broken symlinks.
+    """
+    mise_root = _stack_tools_dirs(stack)[0] / "mise"
+    return {
+        "MISE_DATA_DIR": str(mise_root),
+        "MISE_CONFIG_DIR": str(mise_root / "config"),
+        "MISE_STATE_DIR": str(mise_root / "state"),
+    }
+
+
 def _host_install_tools(stack: str, recipes) -> None:
     """Install the stack's declarative `tools:` HOST-side — the host half of the derived image's
     merged `RUN mise use -g … && mise install` layer (bd harnessed-1t4.3).
@@ -4420,9 +4440,7 @@ def _host_install_tools(stack: str, recipes) -> None:
     mise_root.mkdir(parents=True, exist_ok=True)
     env = {
         **os.environ,
-        "MISE_DATA_DIR": str(mise_root),
-        "MISE_CONFIG_DIR": str(mise_root / "config"),
-        "MISE_STATE_DIR": str(mise_root / "state"),
+        **_host_mise_env(stack),
         # NOT redirected: the download cache is a cache. Sharing the user's means a host launch and a
         # container build (which mounts the same kind of cache) both stop re-downloading.
         #
@@ -4795,6 +4813,12 @@ def _launch_host(
     os.environ["PATH"] = os.pathsep.join(
         [str(stack_bin), str(_host_tool_shims_dir(stack)), os.environ.get("PATH", "")]
     )
+    # The shims dir is USELESS without this. Each shim re-execs mise, which resolves the tool by
+    # argv[0] against MISE_DATA_DIR — unset, it reads the user's ~/.local/share/mise, where the
+    # stack installed nothing, and every shim on the PATH entry above fails with "not a valid
+    # shim". Set on os.environ (not a private dict) for the same reason as PATH: installs, setups,
+    # the agent, and everything the agent spawns all need it, and os.environ IS the host's box.
+    os.environ.update(_host_mise_env(stack))
     # Folder-env contract into THIS process's env, for the same reason (and with the same precedent)
     # as the PATH mutation above: a container launch sets the contract box-wide (`podman run -e`) so
     # every process agrees, and the host has no box — os.environ IS the box. Without this the agent
