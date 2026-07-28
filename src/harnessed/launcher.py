@@ -1668,7 +1668,9 @@ def _stack_config_volume(stack: str, harness: str) -> str:
     return f"harnessed-cfg-{harness}-{stack}"
 
 
-def _ensure_config_volume(rt: str, stack: str, harness: str, prof: Path, image: str) -> str:
+def _ensure_config_volume(
+    rt: str, stack: str, harness: str, prof: Path, image: str, *, fresh: bool = False,
+) -> str:
     """Create and compose the per-stack agent-config volume, returning its name.
 
     Replaces the per-subdir `:ro` bind-mounts that caused bd harnessed-8px.22, where a profile
@@ -1695,7 +1697,19 @@ def _ensure_config_volume(rt: str, stack: str, harness: str, prof: Path, image: 
     expensive part — installs are what harnessed-8px.21.3 gates.
     """
     vol = _stack_config_volume(stack, harness)
-    _run([rt, "volume", "create", vol], check=False, capture_output=True)
+    if fresh:
+        # Composition is purely ADDITIVE — copy-up, then `cp -a` of the profile, then installs.
+        # Nothing here removes, so without this a recipe dropped from the stack would leave its
+        # skills and commands in the volume forever. `_materialize_host_home` rmtree's the host home
+        # on every launch for exactly this reason ("so a removed recipe's files never linger"); the
+        # container side has to do the same thing, just gated on the fingerprint instead of
+        # unconditionally, because here the content is expensive to rebuild.
+        #
+        # Safe to destroy: the volume holds COMPOSED content only. Credentials and the rw history
+        # dirs are bind-mounted over it at launch and live on the host, so they are not in here.
+        _run([rt, "volume", "rm", "-f", vol], check=False, capture_output=True)
+    _run([rt, "volume", "create", *_volume_labels(stack, harness, "config"), vol],
+         check=False, capture_output=True)
     # `cp -a src/. dst/` MERGES into the copy-up'd tree rather than replacing it — the whole point.
     compose = (
         "set -e; "
@@ -1717,6 +1731,20 @@ def _ensure_config_volume(rt: str, stack: str, harness: str, prof: Path, image: 
 
 # Shared by every stack, on purpose — see _run_container_installs.
 _SHARED_DL_CACHE_VOLUME = "harnessed-dl-cache"
+# Volumes are identified by LABEL, not by parsing their name: a stack name may contain the same
+# hyphens the name format uses, so `harnessed-cfg-claude-a-b` is ambiguous about where the harness
+# ends and the stack begins. The labels carry the fields directly (bd harnessed-8px.21.8).
+_VOL_LABEL = "harnessed.role"
+_VOL_STACK_LABEL = "harnessed.stack"
+_VOL_HARNESS_LABEL = "harnessed.harness"
+
+
+def _volume_labels(stack: str, harness: str, role: str) -> list[str]:
+    return [
+        "--label", f"{_VOL_LABEL}={role}",
+        "--label", f"{_VOL_STACK_LABEL}={stack}",
+        "--label", f"{_VOL_HARNESS_LABEL}={harness}",
+    ]
 
 
 def _stack_tools_volume(stack: str, harness: str) -> str:
@@ -1857,14 +1885,29 @@ def _ensure_stack_volumes(
     The stamp is written only AFTER the installs succeed, mirroring the host path: a failed install
     must never certify content that was never finished, or the next launch trusts a stamp for a
     half-populated volume instead of retrying.
+
+    The fingerprint is read BEFORE composing, because a changed stack must start from an EMPTY
+    config volume. Composition only ever adds, so reusing the old volume would leave a removed
+    recipe's skills and commands in place forever.
     """
-    cfg_vol = _ensure_config_volume(rt, stack, harness, prof, image)
     tools_vol = _stack_tools_volume(stack, harness)
-    _run([rt, "volume", "create", tools_vol], check=False, capture_output=True)
-    _run([rt, "volume", "create", _SHARED_DL_CACHE_VOLUME], check=False, capture_output=True)
+    _run([rt, "volume", "create", *_volume_labels(stack, harness, "tools"), tools_vol],
+         check=False, capture_output=True)
+    _run([rt, "volume", "create", "--label", f"{_VOL_LABEL}=shared", _SHARED_DL_CACHE_VOLUME],
+         check=False, capture_output=True)
 
     want = _container_stack_fingerprint(rt, stack, recipes, image)
-    if (_volume_read(rt, cfg_vol, image, _HOST_STACK_FINGERPRINT) or "").strip() == want:
+    have = _volume_read(
+        rt, _stack_config_volume(stack, harness), image, _HOST_STACK_FINGERPRINT
+    )
+    unchanged = (have or "").strip() == want
+
+    # `fresh=` discards the old config volume when the stack moved. The TOOLS volume is kept either
+    # way: `mise use -g` is declarative, so a changed tool set rewrites the config it reads, and
+    # discarding it would re-download every pinned tool for no benefit. Host mode draws the same
+    # line — `_materialize_host_home` wipes the config home but never the stack's tools dir.
+    cfg_vol = _ensure_config_volume(rt, stack, harness, prof, image, fresh=not unchanged)
+    if unchanged:
         _say(f"[blue][INFO][/blue] Stack unchanged — reusing {cfg_vol} (installs skipped)")
         return cfg_vol, tools_vol
 
@@ -6518,10 +6561,14 @@ def host_gc(
 # adding it here makes the command unreachable from the real binary (`harnessed update` parses as
 # `harnessed launch update`) while CliRunner tests, which invoke `app` directly, still pass. A test
 # asserts this set covers every registered command — see test_update_cli.py.
+# Every registered subcommand name. A name MISSING here is not a no-op: `main()` treats the first
+# non-option token as a stack name and prepends `launch`, so the command becomes unreachable and
+# fails with "Missing argument 'HARNESS'" — which reads like a usage error, not a missing
+# registration. tests/test_cli_commands.py keeps this in step with the registry.
 _COMMANDS = {
-    "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
+    "launch", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
     "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc", "host-run",
-    "update",
+    "update", "volume-gc",
 }
 
 
@@ -6620,6 +6667,89 @@ def _svc_migrate(
         _err.print(f"[bold red]error:[/bold red] migration landed at {dest} but is not a Dolt database")
         raise typer.Exit(1)
     _out.print(f"[green][SUCCESS][/green] '{db}' migrated into {host_dir / 'dolt'}")
+
+
+@app.command("volume-gc")
+def volume_gc(
+    prune: bool = typer.Option(False, "--prune", help="Remove volumes whose stack no longer resolves"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed without removing it"),
+) -> None:
+    """List the per-stack volumes; optionally reclaim ones whose stack is gone.
+
+    The volume counterpart of `host-gc` (bd harnessed-8px.21.8). Since bd harnessed-8px.21.3 a
+    container launch persists each stack's installed content in `harnessed-cfg-*` (~/.claude) and
+    `harnessed-tools-*` (~/.local). Nothing else reclaims them: `rm` and `prune` tear down pods and
+    containers, which by design leave NAMED volumes alone, and `clean` purges the profile cache
+    rather than the volumes.
+
+    ORPHAN = its stack no longer resolves in the catalog. The same signal `host-gc` uses, and for
+    the same reason: the stack name is right there in the volume's labels, so an orphan can be
+    named rather than inferred.
+
+    Volumes are matched by LABEL, never by parsing their name — a stack name may contain the same
+    hyphens the name format uses, so the name alone is ambiguous.
+
+    NOT removed by --prune: the shared download cache (`harnessed-dl-cache`), which belongs to no
+    single stack and is pure cache — deleting it only costs a re-download. Remove it by hand if you
+    want the space back.
+
+    A volume whose stack still resolves is NEVER removed. Reinstalling it is expensive, and a stack
+    can be temporarily unresolvable because a catalog overlay is not mounted.
+    """
+    rt = _runtime()
+    out = subprocess.run(
+        [rt, "volume", "ls", "--filter", f"label={_VOL_LABEL}",
+         "--format", "{{.Name}}\t{{.Labels}}"],
+        capture_output=True, text=True,
+    )
+    rows: list[tuple[str, str, str, str, bool]] = []
+    for line in out.stdout.splitlines():
+        name, _, labels = line.strip().partition("\t")
+        if not name:
+            continue
+        parsed = dict(
+            kv.split("=", 1) for kv in labels.split(",") if "=" in kv
+        )
+        role = parsed.get(_VOL_LABEL, "?")
+        stack = parsed.get(_VOL_STACK_LABEL, "")
+        harness = parsed.get(_VOL_HARNESS_LABEL, "")
+        if role == "shared":
+            rows.append((name, role, "-", "-", False))
+            continue
+        # `find_in_catalog` NEVER raises — it returns the highest-precedence candidate path even
+        # when nothing exists there, so the manifest has to be probed. The same test `host-gc` uses.
+        orphan = not stack or not (
+            paths.find_in_catalog("stacks", stack) / "stack.yaml"
+        ).is_file()
+        rows.append((name, role, stack, harness, orphan))
+
+    if not rows:
+        _out.print("No harnessed volumes found.")
+        return
+
+    for name, role, stack, harness, orphan in sorted(rows):
+        tag = "[yellow]ORPHAN[/yellow]" if orphan else "[green]in use[/green]"
+        _out.print(f"{tag}  {name}  role={role} stack={stack} harness={harness}")
+
+    orphans = [r for r in rows if r[4]]
+    if not prune:
+        if orphans:
+            _out.print(
+                f"\n{len(orphans)} orphan(s). Re-run with --prune to remove "
+                "(or --dry-run --prune to preview)."
+            )
+        return
+    if not orphans:
+        _out.print("\nNothing to prune.")
+        return
+    for name, _role, stack, _harness, _o in orphans:
+        if dry_run:
+            _out.print(f"[yellow]would remove[/yellow] {name} (stack '{stack}' no longer resolves)")
+            continue
+        _out.print(f"[blue][INFO][/blue] Removing {name} (stack '{stack}' no longer resolves)")
+        subprocess.run([rt, "volume", "rm", "-f", name], capture_output=True)
+    if not dry_run:
+        _out.print(f"[green][SUCCESS][/green] Removed {len(orphans)} orphan volume(s)")
 
 
 @app.command("svc")

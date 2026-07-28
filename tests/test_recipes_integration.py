@@ -198,6 +198,7 @@ def test_live_capabilities_present_in_container(stack):
 # throwaway image rather than a catalog fixture because no catalog recipe writes settings.json yet.
 
 from harnessed import launcher
+from harnessed import launcher  # noqa: E402
 from harnessed.launcher import _merge_baked_settings, _runtime  # noqa: E402
 from harnessed.paths import CONTAINER_HOME  # noqa: E402
 
@@ -371,3 +372,45 @@ def test_merge_baked_settings_reads_the_VOLUME_not_the_image(tmp_path):
         "install-written settings key lost — _merge_baked_settings read the image, not the volume"
     )
     assert "mcp__hatago" in merged["permissions"]["allow"], "required grant not re-applied"
+
+
+@podman
+def test_a_removed_recipes_content_does_not_linger_in_the_volume(tmp_path):
+    """bd harnessed-8px.21.8 — the container mirror of `_materialize_host_home`'s wipe.
+
+    Composition is purely additive: copy-up, then `cp -a` of the profile, then installs. Nothing
+    removes. So a recipe dropped from a stack would leave its skills in the volume forever, while
+    the same stack on the host loses them immediately — `_materialize_host_home` rmtree's the home
+    every launch precisely "so a removed recipe's files never linger".
+
+    Asserts the wipe by putting a marker in the volume and confirming a fingerprint change clears
+    it, which is what a removed recipe's content is from the volume's point of view.
+    """
+    tag = "harnessed-test-stale:latest"
+    rt = _build_image_with(tmp_path, tag, None)
+    stack, harness = "harnessed-test-stale-stack", "claude"
+    vol = launcher._stack_config_volume(stack, harness)
+    prof = tmp_path / "profile"
+    (prof / ".claude").mkdir(parents=True)
+    try:
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+        # Content from a recipe that is about to be dropped from the stack.
+        subprocess.run(
+            [rt, "run", "--rm", "--userns=keep-id", "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"mkdir -p {CONTAINER_HOME}/.claude/skills/departed && "
+                         f"touch {CONTAINER_HOME}/.claude/skills/departed/SKILL.md"],
+            check=True, capture_output=True,
+        )
+        launcher._ensure_config_volume(rt, stack, harness, prof, tag, fresh=True)
+        out = subprocess.run(
+            [rt, "run", "--rm", "--userns=keep-id", "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"ls {CONTAINER_HOME}/.claude/skills 2>/dev/null | wc -l"],
+            capture_output=True, text=True,
+        )
+    finally:
+        subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+
+    assert out.stdout.strip() == "0", (
+        f"the dropped recipe's content survived the wipe: {out.stdout!r}"
+    )
