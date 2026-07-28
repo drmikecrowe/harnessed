@@ -1302,10 +1302,14 @@ def _build_derived_image(rt: str, derived: str, dockerfile: Path, ctx: str, reci
     without credentials, so recipe install / skill / command / rule verification never depends on
     a secret resolving.
 
-    The Dockerfile's scan layer (if present — `write_derived_dockerfile`'s `with_scan`) declares
-    `RUN --mount=type=secret,id=snyk_token,required=false,...`, so it runs fine with no token at
-    all (snyk warn-skips; osv-scanner + pip-audit advisory output still runs). A real, credentialed
-    scan is a deliberately SEPARATE, explicit step — see `harnessed rescan`, which re-scans already
+    There is no scan layer in the Dockerfile at all since bd harnessed-8px.21.5. There used to be
+    one, declaring `RUN --mount=type=secret,id=snyk_token,required=false,...` so it ran fine with no
+    token (snyk warn-skipped; osv-scanner + pip-audit still produced advisory output). It was
+    removed because harnessed-8px.21.4 stopped installing anything into the image: the layer then
+    scanned an image holding no stack content, and still printed "no high/critical advisories" off
+    1 of 4 scanners. This function's no-secrets rule is unchanged and is now trivially true.
+
+    A real, credentialed scan is a deliberately SEPARATE, explicit step — see `harnessed rescan`, which re-scans already
     -built images online — not something `harnessed build` does on your behalf. If you want
     SNYK_TOKEN available for that separate step, resolve it yourself (e.g. `varlock run -- harnessed
     rescan`) — this function does not, and should not, do that resolution implicitly.
@@ -1535,9 +1539,16 @@ def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None
 def _surface_scan_report(
     rt: str, image: str, prof: Path, *, keep_existing: bool = False
 ) -> None:
-    """Copy the in-image supply-chain report (harnessed-scan, the derived image's final layer) to the
-    profile dir and print a one-line advisory summary. The scan is advisory — this surfaces its posture
-    host-side so the user sees it without digging into the image or scrolling the build log."""
+    """Print a one-line advisory summary of the supply-chain report. Advisory — never gates.
+
+    The report now comes from the CREDENTIALED post-build scan (`keep_existing=True`), which is the
+    only pass that has snyk/socket tokens and the only one that mounts the stack volumes. The
+    image-baked fallback below survives for images built before bd harnessed-8px.21.5, which carried
+    a scan layer; images built since carry no report at all, and the fallback simply finds nothing.
+
+    Saying so out loud matters: a build that scanned nothing must not look identical to a build that
+    scanned everything and found nothing.
+    """
     dest = prof / "scan-report.json"
 
     def _copy(cid: str) -> bool:
@@ -1557,6 +1568,10 @@ def _surface_scan_report(
     elif not _with_image_container(rt, image, _copy):
         return
     if not dest.is_file():
+        _out.print(
+            "[yellow]note:[/yellow] no supply-chain report produced — nothing was scanned "
+            "(set HARNESSED_NO_SCANS=false, or run `harnessed rescan <image>` with tokens)"
+        )
         return
     try:
         totals = json.loads(dest.read_text())["totals"]

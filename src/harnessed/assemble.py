@@ -143,10 +143,10 @@ def assemble(
     emit.write_mcp_json(profile_dir)
     emit.write_settings_json(profile_dir, servers, recipes, stack.permissions, harness)
     emit.write_hatago_config(profile_dir, servers)
-    # ASM-03 — derived Dockerfile, with a final supply-chain scan layer (BLD-02) unless the build
-    # opted out via --no-security-scans (HARNESSED_NO_SCANS).
-    with_scan = os.environ.get("HARNESSED_NO_SCANS") != "true"
-    emit.write_derived_dockerfile(profile_dir, stack.name, harness, recipes, with_scan=with_scan)
+    # ASM-03 — derived Dockerfile. No scan layer: the scan moved to the credentialed post-build
+    # pass (bd harnessed-8px.21.5), which is the only one that has tokens and the only one that can
+    # see the stack volumes. HARNESSED_NO_SCANS is honoured there instead.
+    emit.write_derived_dockerfile(profile_dir, stack.name, harness, recipes)
 
     # Fan each recipe's standalone skills/commands into the harness-native profile tree
     # (<profile>/.claude/{skills,commands}). The launcher mounts these dirs into the instance and

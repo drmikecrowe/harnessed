@@ -200,7 +200,7 @@ class TestContainerExecutor:
         prof = tmp_path / "prof"
         prof.mkdir(exist_ok=True)
         dockerfile = emit.write_derived_dockerfile(
-            prof, "s", "claude", [r], with_scan=False
+            prof, "s", "claude", [r]
         ).read_text()
         assert "HARNESSED_MODE" not in dockerfile
         assert "HARNESSED_CONFIG_DIR" not in dockerfile

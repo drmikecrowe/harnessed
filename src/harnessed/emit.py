@@ -809,7 +809,6 @@ CACHE_MOUNTS = " ".join(
 
 def write_derived_dockerfile(
     profile_dir: Path, stack_name: str, harness: str, recipes: list[Recipe],
-    *, with_scan: bool = True
 ) -> Path:
     """Emit profiles/<stack>/<harness>/Dockerfile.harnessed-<stack> for host `podman build` (ASM-03).
 
@@ -866,18 +865,14 @@ def write_derived_dockerfile(
         lines.extend(filtered)
         lines.append("")
 
-    if with_scan:
-        # Final layer: in-image supply-chain scan (BLD-02), ADVISORY — it reports a severity summary
-        # and writes a report but never fails the build (harnessed installs third-party tooling whose
-        # dep trees always carry open advisories; a hard gate would block every build). Scans what the
-        # build installed (mise globals + recipe trees under ~/.claude). SNYK_TOKEN arrives as a build
-        # secret (never a build-arg → never baked); required=false so a tokenless build still proceeds
-        # (snyk warn-skips). Disabled entirely by `harnessed build --no-security-scans`.
-        lines += [
-            "# --- supply-chain scan (BLD-02) ---",
-            "RUN --mount=type=secret,id=snyk_token,required=false,mode=0444 harnessed-scan",
-            "",
-        ]
+    # NO SCAN LAYER (bd harnessed-8px.21.5). It used to be the final RUN, scanning the mise
+    # globals and recipe trees the build had just installed. Since harnessed-8px.21.4 the build
+    # installs none of that, so the layer scanned an image containing no stack content and still
+    # printed "no high/critical advisories" — off 1 of 4 scanners, with osv reporting "no skills/ or
+    # commands/ dir to scan". A green-looking result covering almost nothing is worse than no
+    # result. The credentialed post-build scan (launcher._scan_image_in_container) is the real one:
+    # it resolves tokens host-side, so snyk and socket actually run, and it mounts the stack volumes
+    # so it sees what was installed.
 
     out = profile_dir / f"Dockerfile.harnessed-{stack_name}"
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -313,7 +313,7 @@ class TestDockerfileEmission:
         prof = tmp_path / "prof"
         prof.mkdir()
         return emit.write_derived_dockerfile(
-            prof, "s", "claude", recipes, with_scan=False
+            prof, "s", "claude", recipes
         ).read_text()
 
     def test_env_becomes_image_env(self, tmp_path):
