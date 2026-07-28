@@ -612,3 +612,59 @@ class TestSuperpowersMigrated:
         )
 
 
+
+
+class TestRawDownloadsAreIntegrityAnchored:
+    """bd harnessed-8px.13 — a PIN IS NOT INTEGRITY.
+
+    `validate_pin` enforces a VERSION, which declares intent; it does not verify CONTENT. A release
+    asset can be replaced and a tag can be re-pointed, and https protects transit, not the artifact.
+    So any install.sh that downloads a raw archive must anchor it to CONTENT somehow.
+
+    TWO anchors are accepted, deliberately:
+
+      * a sha256 of the artifact, verified before extraction (agent-carnet)
+      * a content-addressed URL — a full 40-hex git commit SHA (mikes-universal-setup)
+
+    The second is not a loophole. A commit SHA pins the tree cryptographically, and demanding a
+    tarball sha256 there would be actively worse: GitHub has changed archive compression before, so
+    the bytes are not stable over time and a byte hash would break builds for a non-event.
+
+    This matters more since bd harnessed-8px.21.3: the install cache is now SHARED across stacks and
+    persistent, so an unverified artifact is reused rather than refetched.
+    """
+
+    DOWNLOADS_TO_FILE = re.compile(r"curl[^|\n]*\s-[oO]\b")
+    SHA256_VERIFY = re.compile(r"sha256sum\s+-c")
+    COMMIT_SHA = re.compile(r"\b[0-9a-f]{40}\b")
+
+    def _scripts(self):
+        return sorted((CATALOG / "recipes").glob("*/install.sh"))
+
+    def test_at_least_one_script_downloads(self):
+        """Guards the guard: if the detector silently stops matching, the sweep below passes by
+        checking nothing at all."""
+        assert any(
+            self.DOWNLOADS_TO_FILE.search(p.read_text(encoding="utf-8")) for p in self._scripts()
+        ), "no install.sh matched the download detector — the pattern has probably drifted"
+
+    def test_every_raw_download_is_anchored(self):
+        unanchored = []
+        for p in self._scripts():
+            body = p.read_text(encoding="utf-8")
+            if not self.DOWNLOADS_TO_FILE.search(body):
+                continue
+            if self.SHA256_VERIFY.search(body) or self.COMMIT_SHA.search(body):
+                continue
+            unanchored.append(p.parent.name)
+        assert not unanchored, (
+            "these install.sh scripts download an artifact with neither a sha256 check nor a "
+            f"content-addressed (commit-SHA) URL: {unanchored}. A version pin is not integrity."
+        )
+
+    def test_agent_carnet_verifies_before_extracting(self):
+        """Order is the whole point: nothing from an unverified archive may reach the config dir."""
+        body = (CATALOG / "recipes" / "agent-carnet" / "install.sh").read_text(encoding="utf-8")
+        assert body.index("sha256sum -c") < body.index("tar -xzf"), (
+            "the checksum must be verified BEFORE extraction"
+        )
