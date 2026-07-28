@@ -94,6 +94,22 @@ record_skip() {
     printf '%s|%s|unrun|%s\n' "$tool" "$label" "${reason//|/ }" >>"$ATTEMPTS"
 }
 
+# Every scanner below is NETWORK-BOUND and none of them self-limit. bd harnessed-8px.28: a `socket`
+# invocation blocked for 71 HOURS at 0% CPU, having written nothing, and the scan container sat
+# there for three days. Nothing upstream of it had a timeout either, so `harnessed build` would have
+# waited forever.
+#
+# `-k 10` matters and is not boilerplate: that container ignored SIGTERM ("StopSignal SIGTERM failed
+# to stop container in 10 seconds, resorting to SIGKILL"), so a plain TERM would not have reclaimed
+# it. Send TERM, then KILL 10s later.
+#
+# Per-CALL rather than one bound over the whole script, so one wedged scanner costs its own result
+# and not the other three. `timeout` exits 124 on expiry, which every call site below turns into an
+# explicit "timed out" skip — the summary must say a scanner was cut off, never silently report it
+# as having contributed nothing.
+SCAN_TIMEOUT="${HARNESSED_SCAN_TIMEOUT:-120}"
+bounded() { timeout -k 10 "$SCAN_TIMEOUT" "$@"; }
+
 snyk_scan() {
     local nm="$1" label="$2" tmp out
     [[ -d "$nm" ]] || return 0
@@ -103,7 +119,8 @@ snyk_scan() {
     printf 'snyk|%s\n' "$label" >>"$ATTEMPTS"
     tmp="$(synth_manifest_dir "$nm")" || return 0
     out="$WORK/snyk-$(slug "$label").json"
-    ( cd "$tmp" && snyk test --json ) >"$out" 2>/dev/null
+    ( cd "$tmp" && bounded snyk test --json ) >"$out" 2>/dev/null
+    [[ $? -eq 124 ]] && { record_skip snyk "$label" "timed out after ${SCAN_TIMEOUT}s"; return 0; }
     rm -rf "$tmp"
     [[ -s "$out" ]] && printf 'snyk|%s|%s\n' "$label" "$out" >>"$MANIFEST"
 }
@@ -116,7 +133,7 @@ SOCKET_ORG_CACHED=""
 socket_org() {
     [[ -n "${SOCKET_CLI_ORG_SLUG:-}" ]] && { printf '%s' "$SOCKET_CLI_ORG_SLUG"; return 0; }
     [[ -n "$SOCKET_ORG_CACHED" ]] && { printf '%s' "$SOCKET_ORG_CACHED"; return 0; }
-    SOCKET_ORG_CACHED="$(socket organization list --json --no-banner --no-spinner 2>/dev/null \
+    SOCKET_ORG_CACHED="$(bounded socket organization list --json --no-banner --no-spinner 2>/dev/null \
         | python3 -c 'import json,sys
 try:
     d = json.load(sys.stdin)
@@ -140,7 +157,7 @@ socket_scan() {
     org="$(socket_org)"
     [[ -n "$org" ]] || { echo "    (socket: no org for this token — skipped)"; return 0; }
     tmp="$(synth_manifest_dir "$nm")" || return 0
-    id="$(cd "$tmp" && socket scan create --json --tmp --no-interactive --no-banner --no-spinner \
+    id="$(cd "$tmp" && bounded socket scan create --json --tmp --no-interactive --no-banner --no-spinner \
             --org "$org" . 2>/dev/null \
           | python3 -c 'import json,sys
 try:
@@ -154,7 +171,8 @@ except Exception:
     # --org here too: `scan view` is an org-scoped endpoint. Interactively it falls back to the
     # default org in ~/.config/socket, which a container does not have — omit it and the call fails
     # silently, leaving socket contributing nothing while still LOOKING like it ran.
-    socket scan view "$id" --json --no-banner --no-spinner --org "$org" >"$out" 2>/dev/null
+    bounded socket scan view "$id" --json --no-banner --no-spinner --org "$org" >"$out" 2>/dev/null
+    [[ $? -eq 124 ]] && { record_skip socket "$label" "timed out after ${SCAN_TIMEOUT}s"; return 0; }
     [[ -s "$out" ]] && printf 'socket|%s|%s\n' "$label" "$out" >>"$MANIFEST"
 }
 
@@ -197,7 +215,8 @@ if command -v osv-scanner >/dev/null 2>&1; then
     if [[ ${#osv_dirs[@]} -gt 0 ]]; then
         echo "  · osv-scanner: recipe lockfiles"
         printf 'osv|recipe lockfiles\n' >>"$ATTEMPTS"
-        osv-scanner scan source --recursive --format json "${osv_dirs[@]}" >"$WORK/osv.json" 2>/dev/null
+        bounded osv-scanner scan source --recursive --format json "${osv_dirs[@]}" >"$WORK/osv.json" 2>/dev/null
+        [[ $? -eq 124 ]] && record_skip osv "recipe lockfiles" "timed out after ${SCAN_TIMEOUT}s"
         [[ -s "$WORK/osv.json" ]] && printf 'osv|recipe lockfiles|%s\n' "$WORK/osv.json" >>"$MANIFEST"
     else
         record_skip osv "recipe lockfiles" "no skills/ or commands/ dir to scan"
@@ -210,7 +229,8 @@ fi
 if command -v pip-audit >/dev/null 2>&1; then
     echo "  · pip-audit: python env"
     printf 'pip-audit|python env\n' >>"$ATTEMPTS"
-    pip-audit --format=json >"$WORK/pip-audit.json" 2>/dev/null
+    bounded pip-audit --format=json >"$WORK/pip-audit.json" 2>/dev/null
+    [[ $? -eq 124 ]] && record_skip pip-audit "python env" "timed out after ${SCAN_TIMEOUT}s"
     [[ -s "$WORK/pip-audit.json" ]] && printf 'pip-audit|python env|%s\n' "$WORK/pip-audit.json" >>"$MANIFEST"
 else
     record_skip pip-audit "python env" "pip-audit not installed"

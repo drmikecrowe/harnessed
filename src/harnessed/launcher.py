@@ -6280,6 +6280,11 @@ def uninstall_stack(
         _out.print(f"No shim found at {shim}")
 
 
+# Backstop for the whole scan container. Deliberately much larger than harnessed-scan's own
+# per-scanner bound: several scanners run in sequence and a thorough scan must not be cut off.
+_SCAN_CONTAINER_TIMEOUT = 900
+
+
 def _scan_image_in_container(
     rt: str, image: str, *, report_dest: "Path | None" = None, extra_args: list[str] | None = None
 ) -> bool:
@@ -6318,7 +6323,7 @@ def _scan_image_in_container(
     try:
         with tempfile.TemporaryDirectory() as td:
             cidfile = Path(td) / "cid"  # must NOT pre-exist — podman refuses to overwrite it
-            res = subprocess.run([
+            argv = [
                 rt, "run", "--cidfile", str(cidfile),
                 *[arg for f in env_files for arg in ("--env-file", str(f))],
                 # The stack volumes (bd harnessed-8px.21.5). Once `tools:`/`install:` stopped being
@@ -6327,7 +6332,27 @@ def _scan_image_in_container(
                 # failing one. Mounting the volumes keeps the report about the whole stack.
                 *(extra_args or []),
                 image, "harnessed-scan",
-            ])
+            ]
+            # OUTER bound (bd harnessed-8px.28). harnessed-scan now bounds each scanner itself, so
+            # this is the backstop for the script wedging somewhere else entirely — and it is not
+            # hypothetical: a scan container ran for 71 HOURS at 0% CPU with no timeout anywhere
+            # above it, which would have hung `harnessed build` indefinitely and silently.
+            #
+            # Generous relative to the inner per-call bound, because a legitimate scan runs several
+            # scanners in sequence and must not be cut off just for being thorough.
+            try:
+                res = subprocess.run(argv, timeout=_SCAN_CONTAINER_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                # Read the cid HERE too: the assignment below never ran, and without it the
+                # `finally` has nothing to remove — which is exactly how the 71-hour container was
+                # left behind. `rm -f` there escalates to SIGKILL, which that one needed.
+                cid = cidfile.read_text().strip() if cidfile.is_file() else ""
+                _out.print(
+                    f"[yellow]⚠ supply-chain:[/yellow] scan timed out after "
+                    f"{_SCAN_CONTAINER_TIMEOUT}s and was killed — posture NOT verified. "
+                    "Advisory only, so the build continues."
+                )
+                return False
             cid = cidfile.read_text().strip() if cidfile.is_file() else ""
         if report_dest is not None and cid:
             report_dest.parent.mkdir(parents=True, exist_ok=True)

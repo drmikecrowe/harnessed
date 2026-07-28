@@ -414,3 +414,44 @@ def test_a_removed_recipes_content_does_not_linger_in_the_volume(tmp_path):
     assert out.stdout.strip() == "0", (
         f"the dropped recipe's content survived the wipe: {out.stdout!r}"
     )
+
+
+@podman
+def test_a_hung_scan_is_killed_and_its_container_reclaimed(tmp_path, monkeypatch):
+    """bd harnessed-8px.28.
+
+    A scan container ran for 71 HOURS at 0% CPU, having written nothing, because
+    `_scan_image_in_container` called `subprocess.run` with no timeout. `harnessed build` would have
+    waited on it forever. The container also ignored SIGTERM, so reclaiming it needs `rm -f`.
+
+    Uses a real hanging container rather than a mocked subprocess: the failure was never in the
+    Python, it was in the container surviving. A mock would assert the code path and still leave the
+    bug reachable.
+    """
+    tag = "harnessed-test-hang:latest"
+    ctx = tmp_path / "img"
+    ctx.mkdir()
+    # `harnessed-scan` here just blocks, standing in for the wedged `socket` call.
+    (ctx / "Dockerfile").write_text(
+        f"FROM {_TEST_BASE}\n"
+        "RUN printf '#!/bin/sh\\nsleep 3600\\n' > /usr/local/bin/harnessed-scan "
+        "&& chmod +x /usr/local/bin/harnessed-scan\n"
+    )
+    rt = _runtime()
+    assert subprocess.run([rt, "build", "-t", tag, str(ctx)],
+                          capture_output=True).returncode == 0
+
+    monkeypatch.setattr(launcher, "_SCAN_CONTAINER_TIMEOUT", 5)
+    monkeypatch.setattr(launcher, "_resolve_launch_secrets", lambda project_path=None: ([], []))
+    try:
+        ok = launcher._scan_image_in_container(rt, tag)
+        # Nothing from this image may still be running: the whole point is that a hang is reclaimed.
+        running = subprocess.run(
+            [rt, "ps", "--filter", f"ancestor={tag}", "--format", "{{.Names}}"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+    finally:
+        subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
+
+    assert ok is False, "a timed-out scan must not report success"
+    assert not running, f"the hung scan container survived the timeout: {running!r}"
