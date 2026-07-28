@@ -5586,6 +5586,19 @@ def launch(
     # and identical to what the host mode gives it.
     recipe_env = [arg for var, val in _recipe_env(launch_recipes, project_path, mode="container").items()
                   for arg in ("-e", f"{var}={val}")]
+    # bd harnessed-8px.27. `_write_project_tool_env` puts a `mise.local.toml` in EVERY project, and
+    # mise refuses an untrusted config file. The image trusts configs via `mise trust -a` in
+    # ~/.bashrc and /etc/profile.d — both of which only run for a LOGIN or interactive shell. Setup
+    # scripts run as `podman exec … bash <script>`, which is neither, so any setup invoking a mise
+    # shim died with "Config files in …/mise.local.toml are not trusted". serena hit this: its
+    # binary IS a mise shim (`tools: pipx:serena-agent`), so merely running it loads the project
+    # config.
+    #
+    # Set on the CONTAINER, not the exec, for the same reason as socket_env above: hooks and later
+    # execs must agree with what the setup script saw. Preferred over `bash -lc`, which would fix
+    # the trust as a side effect of sourcing profile.d while also re-ordering PATH and pulling in
+    # every other login-shell behaviour — a much wider change than the bug warrants.
+    mise_trust_env = ["-e", f"MISE_TRUSTED_CONFIG_PATHS={mount_path}"]
     harness_run = [
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
@@ -5603,6 +5616,7 @@ def launch(
         *_claude_oauth_token_args(harness),
         *socket_env,
         *setup_env,
+        *mise_trust_env,
         *member_mounts,
         # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
         # to plain `sleep infinity` on older images so the launch degrades gracefully rather than

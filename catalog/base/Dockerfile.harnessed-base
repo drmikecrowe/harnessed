@@ -134,7 +134,7 @@ RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=
         ripgrep \
         gh@2.96.0 && \
     mise install && \
-    mise trust ~/.config/mise/config.toml
+    mise trust "$MISE_GLOBAL_CONFIG_FILE"
 
 # Pin the node-bundled npm to a patched release. node@22 ships npm@10.9.8, whose transitive deps
 # (brace-expansion, pacote) carry HIGH-severity CVEs the supply-chain scan flags. A self-upgrade is
