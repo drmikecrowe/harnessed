@@ -98,12 +98,6 @@ setup:
     this workspace at the project's beads-server. Everyone who pulls this repo gets them. Decline
     to launch without a beads workspace; you will be asked again next launch.
 
-# `agent-carnet` is also a shared, cross-session notebook (its own `rules:` entry tells the agent to
-# treat carnet as the SOLE memory store). Combining both gives the agent two competing persistent-
-# memory systems and contradictory workflow instructions. Sibling varieties of one family are
-# IMPLICITLY exclusive (schema._check_recipe_conflicts), so `beads/stealth` needs no entry here.
-conflicts: [agent-carnet]
-
 # THE knob. `location: in_repo` + `vcs: tracked` is what makes this the TEAM recipe: `.beads/` is
 # committed and shared. The `beads-server` service names this entry (`data.persist: .beads`) and
 # bind-mounts whatever host dir it resolves to as its data dir — so the SERVICE follows the RECIPE's

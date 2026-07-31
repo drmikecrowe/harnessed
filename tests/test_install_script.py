@@ -623,7 +623,7 @@ class TestRawDownloadsAreIntegrityAnchored:
 
     TWO anchors are accepted, deliberately:
 
-      * a sha256 of the artifact, verified before extraction (agent-carnet)
+      * a sha256 of the artifact, verified before extraction
       * a content-addressed URL — a full 40-hex git commit SHA (mikes-universal-setup)
 
     The second is not a loophole. A commit SHA pins the tree cryptographically, and demanding a
@@ -662,9 +662,3 @@ class TestRawDownloadsAreIntegrityAnchored:
             f"content-addressed (commit-SHA) URL: {unanchored}. A version pin is not integrity."
         )
 
-    def test_agent_carnet_verifies_before_extracting(self):
-        """Order is the whole point: nothing from an unverified archive may reach the config dir."""
-        body = (CATALOG / "recipes" / "agent-carnet" / "install.sh").read_text(encoding="utf-8")
-        assert body.index("sha256sum -c") < body.index("tar -xzf"), (
-            "the checksum must be verified BEFORE extraction"
-        )

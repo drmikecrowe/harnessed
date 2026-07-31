@@ -62,12 +62,6 @@ setup:
   # (observed 2026-07-25 against a freshly created stealth persist dir).
   condition: '[ ! -f "${BEADS_DIR:?}/metadata.json" ]'
 
-# agent-carnet is also a shared, cross-session notebook (its own `rules:` entry tells the agent to
-# treat carnet as the SOLE memory store). Combining both gives the agent two competing persistent-
-# memory systems and contradictory workflow instructions. Sibling varieties of one family are
-# IMPLICITLY exclusive (schema._check_recipe_conflicts), so `beads/team` needs no entry here.
-conflicts: [agent-carnet]
-
 # THE knob. `location: host` is what makes this the STEALTH recipe: `.beads/` is host-persisted
 # OUTSIDE the repo, so git never sees it. `scope: project` (git-common-dir keyed) shares one store
 # across all worktrees of a checkout but never across clones. The `beads-server` service names this

@@ -6,10 +6,10 @@ INSTRUCTIONS executed with the agent's full tool permissions, so a skill upgrade
 prompt-injection / instruction-substitution surface, not a CVE. No scanner in the osv/trivy/grype
 family vets it. Skill pins therefore upgrade only when a human has diffed the new SHA.
 
-That decision needs a MACHINE-READABLE seam, and `install.cache` is not one: agent-carnet uses
-install.cache for a CLI+skill combination, so the presence of a cache key says nothing about pin
-class. Hence `install.hold` — a non-empty reason string, the same idiom `install.system` already
-uses, meaning "every pin behind this install script is manual-upgrade-only".
+That decision needs a MACHINE-READABLE seam, and `install.cache` is not one: a cache key can be
+used for any combination of CLI and content, so its presence classifies nothing about pin class.
+Hence `install.hold` — a non-empty reason string, the same idiom `install.system` already uses,
+meaning "every pin behind this install script is manual-upgrade-only".
 
 The contract tfm reads:
 
