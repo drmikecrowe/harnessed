@@ -142,12 +142,19 @@ def catalog_roots() -> list[Path]:
 
     User catalog overlays the repo catalog: ~/.config/harnessed/catalog overrides the shipped
     catalog/ for any same-named agent/recipe/service/stack, and adds names the repo doesn't have.
+
+    The generated-stack root (`generated_catalog_root`) is LAST: a machine-minted stack must never
+    shadow one you authored under the same name. It is included only when it exists, so a user who
+    has never run `harnessed run` gets exactly the previous two roots.
     """
     roots: list[Path] = []
     uc = user_catalog()
     if uc.is_dir():
         roots.append(uc)
     roots.append(harnessed_home() / "catalog")
+    gen = generated_catalog_root()
+    if gen.is_dir():
+        roots.append(gen)
     return roots
 
 
@@ -238,6 +245,20 @@ def list_catalog_stacks() -> list[str]:
     Used by `harnessed build`'s no-arg reconciliation pass and `harnessed list`.
     """
     return list_catalog("stacks")
+
+
+def generated_catalog_root() -> Path:
+    """Catalog root for MACHINE-MINTED stacks (`harnessed run`) — XDG DATA, never the overlay.
+
+    A CATALOG ROOT, i.e. the dir that CONTAINS `stacks/` — the same shape as the other two, because
+    `list_catalog` iterates `root / kind`. Manifests land at `<root>/stacks/<name>/stack.yaml`.
+
+    Deliberately not `~/.config/harnessed/catalog`: that is where the user authors, and mixing
+    generated manifests into it means `harnessed list` cannot tell them apart and a regenerated
+    file silently clobbers a hand edit. Derived, disposable, reproducible from its inputs — the
+    same category as `profiles_root`, and stored beside it for that reason.
+    """
+    return xdg_data_home() / "harnessed" / "generated"
 
 
 def profiles_root() -> Path:
