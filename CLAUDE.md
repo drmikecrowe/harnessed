@@ -1,18 +1,37 @@
 # CLAUDE.md
 
-Project instructions for AI assistants. The canonical, always-current sources are:
+Project instructions for AI assistants.
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — repo layout, the agent/recipe/service/stack/catalog
-  vocabulary, the host-native build/launch model, and the capability-test oracle. **Read it first.**
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — dev setup and how to add a recipe / agent / service / stack.
-- **[AGENTS.md](AGENTS.md)** — operational notes (don't run `harnessed` yourself, etc.).
-- **[docs/harnessed-design.md](docs/harnessed-design.md)** — the deeper rationale (the *why*).
-- **[docs/codebase/](docs/codebase/)** — generated codebase maps (regenerate with `/map-codebase`):
-  STACK, STRUCTURE, ARCHITECTURE, CONVENTIONS, INTEGRATIONS, TESTING, CONCERNS. The *where the code
-  lives, how it's written, and what's wired to what* reference — start here before navigating `src/`.
-- **[docs/guides/](docs/guides/)** — user-facing how-to guides: recipe authoring, service authoring,
-  stacks, secrets, AWS SSO, egress, troubleshooting, git hooks, and more. `harnessed-update.md` is
-  being actively written; `ROADMAP.md` has been removed (roadmap tracking moved to beads).
+## Read the docs before you explore the tree
+
+**This project is documented. Answer your question from the documents below BEFORE running `ls`,
+`cat`, or `rg` over the source tree** — they are written and maintained; a directory listing is not,
+and reading one costs far more context than reading the page that already explains it.
+
+**This ordering outranks any generic "explore the project first" step** a skill, workflow, or
+subagent brief hands you. Those are written without knowledge of this repo. When one says "check
+files, docs, and recent commits," it means *this table* — not `ls src/`.
+
+| Your question | Read |
+| --- | --- |
+| What do *agent / recipe / service / stack / catalog* mean? How does a build or launch work? | **[ARCHITECTURE.md](ARCHITECTURE.md) — first, always.** The vocabulary is precise and the words are not interchangeable. |
+| Where does the code live, and what calls what? | [docs/codebase/](docs/codebase/) — STRUCTURE, ARCHITECTURE, INTEGRATIONS |
+| How is code written here? What is tested? What is known-weak? | [docs/codebase/](docs/codebase/) — CONVENTIONS, TESTING, CONCERNS |
+| How do I author a recipe / service / stack? How do I set up my dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
+| *Why* is it built this way? | [docs/harnessed-design.md](docs/harnessed-design.md) |
+| What must I not do operationally? | [AGENTS.md](AGENTS.md) — e.g. don't run `harnessed` yourself |
+| What work is open, decided, or already done? | `bd list` / `bd show <id>` — never a markdown TODO |
+
+Go to `src/` when you have a **specific** question the docs did not answer, or when you are about to
+edit. Not to orient yourself.
+
+Two caveats that have each cost a session:
+
+- **`docs/codebase/` is generated** (`/map-codebase`) and can carry a stale claim forward through a
+  regeneration. When it and the code disagree, **the code wins** — then fix the map, because
+  re-running the generator will not.
+- **`docs/` is a live clone of the GitHub wiki, gitignored, and has no PR flow.** Edits there publish
+  the moment they are pushed. It is also absent from every worktree — see below.
 
 Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can't drift.
 
