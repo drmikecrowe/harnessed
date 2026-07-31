@@ -22,7 +22,25 @@ from . import paths
 # pathological set from producing an unwieldy (or illegal) directory name.
 NAME_MAX = 64
 _HASH_LEN = 8
-_UNSAFE = re.compile(r"[^a-z0-9._-]+")
+
+# The name is interpolated into a podman tag by `_derived_image` on the build path
+# (`harnessed-<harness>-<stack>:latest`), so it must satisfy the OCI name-component grammar:
+# alphanumerics separated by `.`, `_`, `__` or runs of `-`, with no leading or trailing separator.
+# That alphabet is STRICTLY SMALLER than a filesystem's, and podman rejects a bad tag at build time
+# — which the suite cannot catch, because it runs no podman. Hence:
+#
+#   _JOIN must be legal in a tag AND impossible for _sanitize to emit. If a sanitized ref could
+#   contain the separator, `["a<sep>b", "c"]` and `["a", "b<sep>c"]` would both join to
+#   `a<sep>b<sep>c` with neither flagged lossy — a silent collision onto one manifest, one image
+#   and one pair of volumes.
+#
+# `.` and `_` are the only tag-legal separators, so the sanitizer's output alphabet is narrowed to
+# `[a-z0-9-]` and `.` is reserved for the join. Folding `_` and `.` into `-` also closes a second
+# hole: a ref like `_foo` or `.foo` would otherwise survive intact and produce a component starting
+# with a separator, which the grammar forbids. No catalog recipe name contains `.` or `_`, so this
+# costs nothing in readability.
+_JOIN = "."
+_UNSAFE = re.compile(r"[^a-z0-9-]+")
 
 
 def normalize(recipes: list[str], extends: str | None) -> tuple[str | None, tuple[str, ...]]:
@@ -33,9 +51,11 @@ def normalize(recipes: list[str], extends: str | None) -> tuple[str | None, tupl
     return extends, tuple(sorted({r.strip() for r in recipes if r.strip()}))
 
 
-# Components that are legal-looking but would escape or collapse the target directory. `.` and `..`
-# survive sanitization intact, and an all-unsafe ref like `***` sanitizes to the empty string; mint
-# would then write to the stacks dir itself or to its PARENT instead of a stack of its own.
+# Components that would escape or collapse the target directory. An all-unsafe ref like `***`, and
+# now `.`/`..` too (the narrowed alphabet folds their dots to `-`, which the trailing strip then
+# removes), sanitize to the empty string; mint would write to the stacks dir itself or to its PARENT
+# instead of a stack of its own. `.` and `..` stay listed because the check must hold whatever the
+# alphabet is — they are the names that are dangerous, not the route by which they arrive.
 _RESERVED = frozenset({"", ".", ".."})
 
 
@@ -95,7 +115,7 @@ def derive_name(recipes: list[str], extends: str | None, services: list[str] | N
                 f"catalog ref {original!r} does not yield a usable stack-name component"
             )
 
-    readable = "+".join(parts)
+    readable = _JOIN.join(parts)
     # Any value whose sanitized form differs from the original has LOST information, so the readable
     # join is no longer a faithful encoding and two different sets could land on one name. Checking
     # only for "/" missed case folding (`Foo` vs `foo`) and space folding (`foo bar` vs `foo-bar`).
@@ -107,7 +127,9 @@ def derive_name(recipes: list[str], extends: str | None, services: list[str] | N
         return readable
 
     suffix = "-" + _digest(base, refs, svcs)
-    return readable[: NAME_MAX - len(suffix)].rstrip("+-") + suffix
+    # Truncation can land mid-component and leave a trailing separator, which the grammar forbids
+    # directly before the suffix's `-`. Strip both the join char and `-`.
+    return readable[: NAME_MAX - len(suffix)].rstrip(_JOIN + "-") + suffix
 
 
 def mint(

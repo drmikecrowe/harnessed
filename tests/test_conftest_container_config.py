@@ -65,7 +65,14 @@ class TestHermeticityIsUnchanged:
             "machine-dependent, which is what _isolated_user_catalog exists to prevent"
         )
 
-    def test_catalog_roots_is_the_repo_catalog_alone(self):
+    def test_catalog_roots_is_the_repo_catalog_alone(self, tmp_path, monkeypatch):
+        """XDG_DATA_HOME is pinned to an empty dir because the conftest isolates XDG_CONFIG_HOME
+        (the user overlay) but NOT XDG_DATA_HOME, where the generated root lives. Without this the
+        assertion passes only until the developer's first `harnessed run` creates
+        `~/.local/share/harnessed/generated` — after which this hermeticity guard fails on the
+        machine, not in the code. Same isolation gap as the one fixed in
+        test_harnessed_home.test_catalog_roots_end_at_home."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
         roots = paths.catalog_roots()
         assert len(roots) == 1, f"expected only the repo catalog, got {roots}"
         assert roots[0] == paths.harnessed_home() / "catalog"
