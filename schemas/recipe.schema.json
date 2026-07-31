@@ -178,6 +178,11 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
+    "services": {
+      "type": "array",
+      "description": "Sidecar services this recipe requires that have no MCP surface (e.g. beads-server, which speaks MySQL). Unioned with the stack's own services: at launch.",
+      "items": { "type": "string", "minLength": 1 }
+    },
     "persist": {
       "description": "Folders/files that must survive harnessed's --fresh launches. A LIST of entries; each declares scope + location explicitly (never inferred from the string shape). See docs/guides/recipe-authoring.md.",
       "type": "array",

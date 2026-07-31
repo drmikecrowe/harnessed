@@ -1006,3 +1006,54 @@ class TestRecipeVarieties:
         self._write_stack(tmp_path, "s", ["beads/team", "other/team"])
         _, recipes = load_stack_with_recipes(tmp_path, "s")
         assert [r.ref for r in recipes] == ["beads/team", "other/team"]
+
+
+class TestRecipeServices:
+    def test_parse_defaults_to_empty(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\n")
+        assert load_recipe(d).services == []
+
+    def test_parse_services_list(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\nservices: [beads-server]\n")
+        assert load_recipe(d).services == ["beads-server"]
+
+    def test_non_list_rejected(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\nservices: beads-server\n")
+        with pytest.raises(SchemaError, match="'services' must be a list"):
+            load_recipe(d)
+
+    def test_empty_entry_rejected(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\nservices: ['']\n")
+        with pytest.raises(SchemaError, match="non-empty strings"):
+            load_recipe(d)
+
+    @pytest.mark.parametrize("bad", ["''", "{}", "0"])
+    def test_falsy_non_list_rejected(self, tmp_path, bad):
+        """A falsy guard would return [] here and skip the type check, silently dropping a
+        REQUIRED sidecar — the exact failure this field exists to prevent."""
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text(f"name: r\nservices: {bad}\n")
+        with pytest.raises(SchemaError, match="'services' must be a list"):
+            load_recipe(d)
+
+    def test_explicit_empty_list_is_allowed(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\nservices: []\n")
+        assert load_recipe(d).services == []
+
+    def test_services_is_a_known_field(self, tmp_path):
+        """strict=True must NOT reject it — otherwise the field is unusable in `build`."""
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\nservices: [beads-server]\n")
+        assert load_recipe(d, strict=True).services == ["beads-server"]
