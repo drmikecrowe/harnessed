@@ -26,7 +26,7 @@ Any number of agent containers may run against the project at once: they are all
 | **Placement** | Outside the repo. `persist: {name: .beads, scope: project, location: host}` — host-persisted at `$XDG_DATA_HOME/harnessed/persist/beads-stealth/<git-common-dir-hash>/.beads/`, bind-mounted at `/home/harnessed/.beads`. `scope: project` (git-common-dir keyed) shares one DB across every worktree of a checkout but **not** across clones — the right behavior for a tracker that spans branches. |
 | **Storage** | The `beads-server` service — one `dolt sql-server` per project — which bind-mounts *that host dir* as its data dir, because this recipe declared `.beads` `location: host`. bd is a pure client over a unix socket; it never starts an engine. |
 | **Git** | None. `--stealth` is passed throughout: `bd init --stealth` configures `.git/info/exclude` and disables git operations. No hooks, no Dolt remote, no `AGENTS.md` mutation — and so **no sync**: `harnessed svc sync beads-server` is a [`beads/team`](../team/README.md) affordance. The data lives on the host and stays there. |
-| **`BEADS_DIR`** | Declared as recipe `env: {BEADS_DIR: "{persist:.beads}"}`. harnessed resolves the `{persist:…}` reference per mode — the bind-mount target in a container, the host persist dir on a `--host` launch — and delivers it to every process in both. |
+| **`BEADS_DIR`** | Declared as recipe `env: {BEADS_DIR: "{persist:.beads}"}`. harnessed resolves the `{persist:…}` reference per mode — the bind-mount target in a container, the host persist dir on a `harnessed host-run` launch — and delivers it to every process in both. |
 | **Baked** | `bd` 1.1.0 only. No `dolt` binary — bd never runs an engine here. |
 
 ### Why recipe `env:`, not a shell export or a Dockerfile `ENV`
@@ -78,7 +78,7 @@ from your stack.
 | `bd init --stealth` | an exclude entry in `.git/info/exclude` | delete that line |
 | `bd setup <harness> --project --stealth` | `CLAUDE.md` — a managed beads block appended to the **project's** file, **not** git-excluded on bd 1.1.0 | delete that block |
 | `bd setup <harness> --project --stealth` | `.claude/settings.json` — a bd SessionStart hook entry, in the **project**, **not** git-excluded on bd 1.1.0 | delete that hook entry |
-| `install.sh`, on **`launch --host` only** | the user's global mise config + mise tool store | `mise unuse -g "github:gastownhall/beads@1.1.0"` |
+| `install.sh`, on **`harnessed host-run` only** | the user's global mise config + mise tool store | `mise unuse -g "github:gastownhall/beads@1.1.0"` |
 
 The last row is host-only: in a container the same command writes inside the image and disappears
 with it. And on a host `install.sh` installs `bd` **only when it is absent** — if some other `bd` is

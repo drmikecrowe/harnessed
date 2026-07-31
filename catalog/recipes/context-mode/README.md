@@ -23,9 +23,9 @@ installation. harnessed mounts `~/.omp/agent` read-write as deliberately shared 
 does not install plugins into your omp, and there is no per-stack omp plugin root to redirect the
 install into.
 
-So `launch --host` with `HARNESS=omp` gets the MCP server and CLI (via `provision:`) but neither the
-bridged hooks nor the native extension. Run the stack in a container for the full wiring. Every other
-harness is unaffected — the hooks are the delivery mechanism there, and they work in both modes.
+So `harnessed host-run` with `HARNESS=omp` gets the MCP server and CLI (via `install:`) but neither
+the bridged hooks nor the native extension. Run the stack in a container for the full wiring. Every
+other harness is unaffected — the hooks are the delivery mechanism there, and they work in both modes.
 
 ## Footprint / removal
 

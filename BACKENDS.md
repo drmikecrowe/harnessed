@@ -64,7 +64,7 @@ Every backend implements the same seam so a composed stack can run on any of the
 | Capability | What the backend must do |
 |---|---|
 | **materialize config** | Deliver the assembled `.claude/*` profile (skills/commands/rules/CLAUDE.md/settings) to where the harness reads it (bind-mount, copy, or symlink). |
-| **provision tools** | Make `provision:` tools resolvable to the harness (image layer, host PATH, or Feature). |
+| **provision tools** | Make tools resolvable to the harness: `install:` scripts run on first start (fingerprint-gated), `setup.script` at attach time. Container: baked into the image or run via `podman exec`; host: written to the stack's `$HARNESSED_BIN_DIR`. |
 | **wire MCP** | Present the stack's MCP servers to the harness (native `.mcp.json`, or hatago hub). |
 | **seed auth** | Give the harness the host's credentials (mount, symlink, or copy). |
 | **wire services** | Stand up service-backed dependencies and route the harness to them (pod netns, compose, or N/A). |
@@ -83,7 +83,7 @@ capability-test oracle).
 | Recipe primitive | host | bwrap | container | devcontainer |
 |---|:-:|:-:|:-:|:-:|
 | `.claude` profile (skills/commands/rules) | ✅ | ✅ | ✅ | ✅ |
-| `provision:` (PATH tools) | ✅ | ✅ | bake in image | → Feature |
+| `install:` / `setup.script` (PATH tools) | ✅ | ✅ | bake in image / exec | → Feature |
 | Dockerfile recipe layer | ✗ | ✗ | ✅ | ✅ |
 | native `.mcp.json` (stdio) | ✅ | ✅ | ✅ / hatago | ✅ |
 | service sidecars | ✗ (yet) | ✗ (yet) | ✅ pod | ✅ compose |
@@ -100,7 +100,7 @@ Once this matrix exists, today's open questions become cells, not ad-hoc gaps:
 - **Isolation** — a backend *capability* (none → landlock → container → VM). Not intrinsic.
 - **Reproducible pinned env** — a backend *capability* (host toolchain vs. pinned image). Not
   intrinsic. Container/devcontainer/microVM have it; host/bwrap do not (leaf tools pinned via
-  `provision:`, substrate is the host — pin the runtime via mise to narrow the gap).
+  `install:` / `setup.script`, substrate is the host — pin the runtime via mise to narrow the gap).
 
 Consequence: **supply-chain scanning changes role by backend.** In a container it is a containment
 boundary; on a (sandboxed) host it is advisory hygiene ("warn before installing a bad pinned tool").
@@ -113,8 +113,9 @@ Both are worth having; describe them honestly per backend.
 2. **Name the seam**: extract the §3 backend interface; make `_launch_host` and the container path
    conform. (Enables everything below.)
 3. **Capability matrix + assembler gate** (§4): warn/refuse on unsupported primitive × backend.
-4. **`run` verb** (`harnessed-ltj`): `harnessed run <stack> <harness> [--backend=…]` so backend is a
-   first-class choice, not a flag bolted onto the container `launch`.
+4. **`host-run` verb** (`harnessed-ltj`, shipped): `harnessed host-run <stack> [harness]` —
+   host-native launch with no podman, sharing no flags with `launch`. The general `--backend`
+   selection surface (per-stack default in `stack.yaml`, unified `run` verb) remains open.
 5. **Container OAuth-token freshness — host token proxy** (`harnessed-nym`, P1): the root
    frustration behind the host spike, fixed IN the container world. Per-instance credential copies
    diverge (idle side goes stale → silent logout); replace with a host-side token endpoint over a
@@ -139,11 +140,15 @@ Decided (recorded on the beads named below):
   path + auth escape hatch), no new feature investment; bwrap deferred.
 - **Container auth** (`harnessed-nym`, P1): host token proxy over a bind-mounted unix socket — not
   per-instance copies, not a shared rw mount.
-- **beads dolt-server placement** (`0tk.6` notes): per-project `beads-server` sidecar is the
-  PRIMARY placement; the host shared-server survives only as what `--host` uses today. `0tk.6`
-  detect+abort guards the seam between them.
-- **Non-TTY first-run setup** (`0tk.8`): refuse with guidance when a prompted config item has no
-  TTY — a forever-value (e.g. the beads issue prefix) is never set by silence.
+- **beads dolt-server placement** (`0tk.6`, closed): per-project `beads-server` sidecar is the
+  PRIMARY placement; the host shared-server survives only as what `harnessed host-run` uses today.
+  `0tk.6` detect+abort guards the seam between them.
+- **Unified folder-env contract** (`0tk.7`, closed): recipe `env:` with `{persist:…}` references
+  resolves to the mode-correct path (bind-mount target in a container, host persist dir on
+  `harnessed host-run`) — one declaration, both modes. Static container-only `ENV` entries in
+  Dockerfiles replaced.
+- **Non-TTY first-run setup** (`0tk.8`, closed): refuse with guidance when a prompted config item
+  has no TTY — a forever-value (e.g. the beads issue prefix) is never set by silence.
 
 Still open:
 
@@ -152,4 +157,4 @@ Still open:
 - **Domain-level egress** on host/bwrap backends needs a proxy/DNS story (clawker-style) or is
   declared out of scope for those backends.
 - **`--backend` selection surface**: per-stack default in `stack.yaml`? CLI override? Both?
-  (Decide inside the `run` verb work, `harnessed-ltj`.)
+  (Decide inside the unified `run` verb work, `harnessed-ltj`.)

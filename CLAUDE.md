@@ -10,6 +10,9 @@ Project instructions for AI assistants. The canonical, always-current sources ar
 - **[docs/codebase/](docs/codebase/)** — generated codebase maps (regenerate with `/map-codebase`):
   STACK, STRUCTURE, ARCHITECTURE, CONVENTIONS, INTEGRATIONS, TESTING, CONCERNS. The *where the code
   lives, how it's written, and what's wired to what* reference — start here before navigating `src/`.
+- **[docs/guides/](docs/guides/)** — user-facing how-to guides: recipe authoring, service authoring,
+  stacks, secrets, AWS SSO, egress, troubleshooting, git hooks, and more. `harnessed-update.md` is
+  being actively written; `ROADMAP.md` has been removed (roadmap tracking moved to beads).
 
 Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can't drift.
 

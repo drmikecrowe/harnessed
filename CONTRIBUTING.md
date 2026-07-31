@@ -57,12 +57,13 @@ the recipe's Dockerfile. Three ways a recipe delivers capability:
   the profile's `.claude/`.
 - **Rules** — ship a `rules/<leaf>/` dir; the assembler fans it into the profile's `.claude/rules/` (system-prompt-equivalent guidance for Claude Code).
 - **`install:` script** — one bash file run by **both** executors, so it delivers identically in a
-  container build and a `--host` launch. Write content into `"$HARNESSED_CONFIG_DIR"`, executables
-  into `"$HARNESSED_BIN_DIR"`, and run an installer that only understands "global" as
+  container build and a `harnessed host-run` launch. Write content into `"$HARNESSED_CONFIG_DIR"`,
+  executables into `"$HARNESSED_BIN_DIR"`, and run an installer that only understands "global" as
   `HOME="$HARNESSED_HOME_SHIM" <installer>`. A recipe Dockerfile must **not** write into `~/.claude`:
-  that content is invisible to a host launch and hidden by the profile bind-mount in a container.
-  Anything genuinely container-only (root, `apt-get`) stays in the Dockerfile and is declared in
-  `install.system`, whose prose reason is printed at host launch so the shortfall is never silent.
+  that content is invisible to a host-native launch and hidden by the profile bind-mount in a
+  container. Anything genuinely container-only (root, `apt-get`) stays in the Dockerfile and is
+  declared in `install.system`, whose prose reason is printed at host launch so the shortfall is
+  never silent.
 
 Because the assembler can't see what a script or Dockerfile installs, **declare it** so the
 capability test can probe it:
