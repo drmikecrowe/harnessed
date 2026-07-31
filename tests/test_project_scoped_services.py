@@ -611,6 +611,79 @@ class TestInRepoServiceGetsTheRemoteGitSurface:
         assert f"{home}/.ssh/id_rsa_work:" not in cmd, "private key mounted without ssh_keys opt-in"
 
 
+class TestServiceDataDirPathPreservingMount:
+    """The service data dir is mounted at BOTH /data AND its own host-absolute path.
+
+    Root cause: a host-side `bd` calls `CALL dolt_backup('add', ..., '<abs-host-path>')`,
+    and Dolt inside the container resolves that absolute path against the CONTAINER filesystem.
+    Without the second mount the parent directories (e.g. `.bare/`) are absent from the container
+    and `os.MkdirAll` fails with EACCES when the unprivileged `harnessed` user tries to create
+    them under a root-owned stub. The /data alias must be kept — container-internal config and
+    the socket path depend on it.
+    """
+
+    def _capture_cmd(self, tmp_path: Path, monkeypatch, location: str) -> tuple[str, Path]:
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        project = tmp_path / "repo"
+        project.mkdir(parents=True, exist_ok=True)
+        fake_home = tmp_path / "home"
+        fake_home.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        # Route persist_root inside tmp_path so the test never writes outside it.
+        monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
+        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes",
+            lambda _r, _s: (None, [_beads_recipe(location)]),
+        )
+        monkeypatch.setattr(launcher, "_image_exists", lambda _rt, _img: True)
+        monkeypatch.setattr(launcher, "_container_running", lambda _rt, _c: False)
+        monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
+        monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
+        monkeypatch.setattr(launcher, "_assert_service_running", lambda *a, **k: None)
+        monkeypatch.setattr(
+            launcher.subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+        )
+        captured: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, **k: captured.append(cmd))
+        mount_path = project if location == "in_repo" else None
+        launcher._ensure_service(
+            "podman", "beads-server", stack="any", project_path=project, mount_path=mount_path
+        )
+        if location == "in_repo":
+            host_dir = paths.persist_in_repo_dir(project, ".beads")
+        else:
+            host_dir = paths.persist_project_dir("beads-stealth", project, ".beads")
+        return " ".join(captured[0]), host_dir
+
+    def test_in_repo_data_dir_also_mounted_at_host_absolute_path(self, tmp_path, monkeypatch):
+        """in_repo placement: data dir accessible at its host-absolute path inside the container.
+
+        Reproduces the auto-backup failure: bd passes the host absolute path to dolt_backup,
+        Dolt resolves it in the container, and without this mount the parent dir (.bare/) is
+        absent and mkdir fails EACCES.
+        """
+        cmd, host_dir = self._capture_cmd(tmp_path, monkeypatch, "in_repo")
+        assert f"-v {host_dir}:{host_dir}:rw" in cmd, (
+            "data dir must be mounted at its host-absolute path so bd's dolt_backup absolute "
+            "path resolves to the same directory inside the container"
+        )
+        # /data alias must still be present — container-internal config depends on it.
+        assert f"-v {host_dir}:/data:rw" in cmd
+
+    def test_host_data_dir_also_mounted_at_host_absolute_path(self, tmp_path, monkeypatch):
+        """host placement: data dir accessible at its host-absolute path inside the container."""
+        cmd, host_dir = self._capture_cmd(tmp_path, monkeypatch, "host")
+        assert f"-v {host_dir}:{host_dir}:rw" in cmd, (
+            "data dir must be mounted at its host-absolute path so bd's dolt_backup absolute "
+            "path resolves to the same directory inside the container"
+        )
+        assert f"-v {host_dir}:/data:rw" in cmd
+
+
 class TestExclusiveLockPreflight:
     """A host process on the data dir must abort the launch BEFORE the sidecar is started.
 
