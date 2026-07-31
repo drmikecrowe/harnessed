@@ -10,10 +10,12 @@
 # cannot perform: a root-level apt install. It is declared as `install.system:` in recipe.yaml, so a
 # host launch prints the reason and skips it by name instead of failing or pretending.
 #
-# ORDERING NOTE: the assembler emits a recipe's `install:` block BEFORE its Dockerfile body
-# (emit.write_derived_dockerfile), so install.sh's ./setup runs first and these root steps layer on
-# top. That is fine, and is why the chown below still matters: install-deps only supplies the shared
-# libraries Chromium needs to LAUNCH at runtime, which nothing in ./setup requires.
+# ORDERING NOTE: this body used to run AFTER install.sh, because the assembler emitted a recipe's
+# `install:` block before its Dockerfile body. Since bd harnessed-8px.21.4 that is reversed — every
+# Dockerfile body runs at BUILD and every install.sh at container runtime — so these root steps now
+# run FIRST. Nothing here depends on install.sh's output, which is what makes the flip safe: the
+# chown below hands back ~/.bun after the root `bunx` above touched it, and install-deps only
+# supplies the shared libraries Chromium needs to LAUNCH, which nothing in ./setup requires.
 USER root
 # gstack drives a headless Chromium via Playwright. Its ./setup runs `playwright install chromium`
 # (the browser binary) but NOT `playwright install-deps` (the OS shared libraries Chromium needs to

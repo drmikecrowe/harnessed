@@ -118,10 +118,19 @@ Two consequences worth knowing:
    stack's claude and omp builds never clobber each other.
 2. build the shared **base** image, which bakes the **hatago** hub (and the time server) in-process
    (hatago-consolidation) — there is no separate hatago image.
-3. if any recipe ships a Dockerfile, build the **derived** `harnessed-<harness>-<stack>` image and
-   **merge** its baked `~/.claude/{skills,commands,plugins,…}` back into the profile (so
-   image-delivered and recipe-fanned extensions coexist — the profile mount would otherwise shadow
-   the baked ones).
+3. if any recipe ships a Dockerfile, build the **derived** `harnessed-<harness>-<stack>` image —
+   **system layers only** (`USER root` / `apt-get` / writes to `/usr`), plus recipe `env:` as real
+   image `ENV`.
+4. **populate the per-stack volumes** (`_ensure_stack_volumes`): `tools:` and every
+   `install.script` run in a container writing to `harnessed-cfg-<harness>-<stack>` (`~/.claude`)
+   and `harnessed-tools-<harness>-<stack>` (`~/.local`). Fingerprint-gated, so an unchanged stack
+   pays nothing. `launch` calls the same function, which is what keeps the two paths in step.
+5. scan the populated volumes and merge the installer-written `settings.json` back into the profile.
+
+The volume is **composed**, never layered: podman's copy-up lifts the image's own content in, then
+the fanned profile content goes on top. That is what retired the old copy-the-baked-content-back-out
+pass — with one tree there is nothing left for a mount to shadow (bd harnessed-8px.22, where a
+profile dir mounted over `~/.claude/skills` hid 70 of 75 skills).
 
 `harnessed <stack> <harness>` then launches the pod (derived image if present, else the agent image), starts
 **hatago** as a process *inside* that container (hatago-consolidation), and brings up any referenced
@@ -184,12 +193,17 @@ exactly one thing: **the phase**.
 
 | | container | host |
 | --- | --- | --- |
-| `install:` | **build** — `RUN bash <script>` in the derived Dockerfile, with the recipe dir `COPY`'d to `/opt/harnessed/recipes/<recipe>` | immediately **after** `_materialize_host_home` |
+| `install:` | **first start** — `bash <script>` in a container writing to the per-stack volumes, with the recipe dir bind-mounted `:ro` at `/opt/harnessed/recipes/<recipe>`. Fingerprint-gated | immediately **after** `_materialize_host_home` |
 | `setup.script` | **runtime** — `podman exec` after start, before the egress firewall closes | after `install` |
 
 The split is forced, not stylistic. `setup` cannot run at build: no project is bind-mounted, so
-`HARNESSED_PROJECT_DIR` is unresolvable. `install` must not run at container runtime: it is baking
-the image, and re-running it per container start re-pays the clone every launch.
+`HARNESSED_PROJECT_DIR` is unresolvable. `install` used to be barred from container runtime for the
+mirror-image reason — re-running it per start would re-pay the clone every launch — but that assumed
+**no persistence**. A fingerprint-gated per-stack volume removes the assumption: you pay once per
+stack *change*, not per start, exactly as the host path already did. Moving it there is bd
+harnessed-8px.21, and the reason is cost: a one-line edit to a recipe's `install.sh` cost **307s** as
+a layer rebuild against **4.3s** for the same install executed natively. Almost none of that gap was
+download — the build already had cache mounts — it was podman committing layers over a large tree.
 
 Host installs run **after** the materialize because `_materialize_host_home` does
 `shutil.rmtree(home)` on **every** launch (so a removed recipe's files never linger). Run before it,
@@ -206,7 +220,7 @@ persist, but the pinned *source* can).
 | `HARNESSED_MODE` | `host` \| `container` |
 | `HARNESSED_RECIPE_DIR` | the recipe's own dir — `cp` where a Dockerfile did `COPY` |
 | `HARNESSED_CONFIG_DIR` | the agent config dir to install **into**: image `~/.claude` at build, the materialized host home on a host launch |
-| `HARNESSED_INSTALL_CACHE` | `$XDG_CACHE_HOME/harnessed/install/<recipe>/<install.cache>`, or empty when no `cache:` is declared. Cache **miss** is "the directory does not exist" — harnessed creates only its parent. Build-side this is `/tmp` scratch, removed in the same layer. |
+| `HARNESSED_INSTALL_CACHE` | `$XDG_CACHE_HOME/harnessed/install/<recipe>/<install.cache>`, or empty when no `cache:` is declared. Cache **miss** is "the directory does not exist" — harnessed creates only its parent. **The same host dir in both modes**: container-side it is bind-mounted into the install container, so the cache is finally shared *across stacks*. It used to be `/tmp` scratch discarded in the same layer, because a build that kept the clone would have shipped it inside the image. |
 | `HARNESSED_BIN_DIR` | where to land an **executable**: the base image's `~/.local/bin` (already on `PATH`) at build, the stack's own bin dir on a host launch. Without it a script has no portable destination for a binary and must either go root-only or guess at `$UV_TOOL_BIN_DIR`. |
 | `HARNESSED_HOME_SHIM` | a dir whose `.claude` **is** `$HARNESSED_CONFIG_DIR`, for upstream installers that only know how to install "globally" into `$HOME/.claude`: run them as `HOME="$HARNESSED_HOME_SHIM" <installer>`. The image home at build (where that is already true); a **stable** per-project sibling of the config dir on a host launch. Stability is the point — a recipe rolling its own with `mktemp -d` gets a shim deleted on exit, so any absolute path the installer *recorded* dies with it. `install.sh` must not build its own shim; a catalog test enforces this. |
 

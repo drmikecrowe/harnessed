@@ -96,6 +96,9 @@ _err = _WarnCountingConsole(stderr=True)
 _BASE_IMAGE = "harnessed-base:latest"
 _CLAUDE_IMAGE = "harnessed-claude:latest"
 _CONTAINER_HOME_STR = str(CONTAINER_HOME)
+# Where the emitted profile is mounted `:ro` while composing the agent-config volume
+# (`_ensure_config_volume`). Scratch for that one throwaway container; never seen by the agent.
+_CTR_PROFILE_DIR = "/tmp/harnessed-profile"
 
 # Attach command for each harness inside the container.
 _HARNESS_ATTACH_CMD = {
@@ -820,6 +823,18 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     # scan here against the image we just built, this time with tokens resolved on the host — same
     # thing `harnessed rescan <image>` does. Advisory: it reports posture and never fails the build.
     # Skipped by `--no-security-scans`.
+    # Populate the per-stack volumes BEFORE the scan and before the settings merge (bd
+    # harnessed-8px.21.3/.21.4). `build` emits system layers only now, so this is where a stack
+    # actually becomes complete — and it is the same call `launch` makes, which is what stops the
+    # two paths from diverging. Fingerprint-gated, so a rebuild of an unchanged stack is a no-op.
+    _, build_recipes = load_stack_with_recipes(root, stack)
+    cfg_vol, tools_vol = _ensure_stack_volumes(rt, stack, harness, prof, derived, build_recipes)
+    vol_args = [
+        "--userns=keep-id",
+        "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
+        "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
+    ]
+
     rescan_report = False
     if os.environ.get("HARNESSED_NO_SCANS") != "true":
         _say(f"[blue][INFO][/blue] Credentialed re-scan of {derived} (snyk + socket) ...")
@@ -829,7 +844,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
         # Remove any report from a PREVIOUS build first: an existing file would otherwise be taken
         # for this scan's output and treated as authoritative.
         scan_report.unlink(missing_ok=True)
-        _scan_image_in_container(rt, derived, report_dest=scan_report)
+        _scan_image_in_container(rt, derived, report_dest=scan_report, extra_args=vol_args)
         rescan_report = scan_report.is_file()
     # NOTE: the image-baked ~/.claude extraction that used to run here is GONE (bd harnessed-8px.7).
     # It existed because a Dockerfile RUN could deliver skills/commands into the image's ~/.claude,
@@ -842,7 +857,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     # settings.json (merged with harnessed's required grant). UNCONDITIONAL — a settings.json can
     # be baked by the agent BASE image, not only by a recipe Dockerfile, so this must NOT hide
     # behind the recipe-bake gate above.
-    _merge_baked_settings(rt, derived, prof, harness)
+    _merge_baked_settings(rt, derived, prof, harness, volume=cfg_vol)
 
     # opencode identity (bd main-rlw): when the stack ships `instructions:`, read the image-baked
     # opencode.json, add a custom persona agent + a rules-file glob, and write the merged config
@@ -1287,10 +1302,14 @@ def _build_derived_image(rt: str, derived: str, dockerfile: Path, ctx: str, reci
     without credentials, so recipe install / skill / command / rule verification never depends on
     a secret resolving.
 
-    The Dockerfile's scan layer (if present — `write_derived_dockerfile`'s `with_scan`) declares
-    `RUN --mount=type=secret,id=snyk_token,required=false,...`, so it runs fine with no token at
-    all (snyk warn-skips; osv-scanner + pip-audit advisory output still runs). A real, credentialed
-    scan is a deliberately SEPARATE, explicit step — see `harnessed rescan`, which re-scans already
+    There is no scan layer in the Dockerfile at all since bd harnessed-8px.21.5. There used to be
+    one, declaring `RUN --mount=type=secret,id=snyk_token,required=false,...` so it ran fine with no
+    token (snyk warn-skipped; osv-scanner + pip-audit still produced advisory output). It was
+    removed because harnessed-8px.21.4 stopped installing anything into the image: the layer then
+    scanned an image holding no stack content, and still printed "no high/critical advisories" off
+    1 of 4 scanners. This function's no-secrets rule is unchanged and is now trivially true.
+
+    A real, credentialed scan is a deliberately SEPARATE, explicit step — see `harnessed rescan`, which re-scans already
     -built images online — not something `harnessed build` does on your behalf. If you want
     SNYK_TOKEN available for that separate step, resolve it yourself (e.g. `varlock run -- harnessed
     rescan`) — this function does not, and should not, do that resolution implicitly.
@@ -1332,7 +1351,9 @@ def _with_image_container(rt: str, image: str, fn: Callable[[str], _T]) -> _T | 
         subprocess.run([rt, "rm", "-f", cid], capture_output=True)
 
 
-def _merge_baked_settings(rt: str, image: str, prof: Path, harness: str = "") -> None:
+def _merge_baked_settings(
+    rt: str, image: str, prof: Path, harness: str = "", volume: str = "",
+) -> None:
     """Replace the assemble-time settings.json FLOOR with the image's installer-written
     settings.json, surgically re-applying harnessed's required grant (emit.merge_settings).
 
@@ -1374,7 +1395,16 @@ def _merge_baked_settings(rt: str, image: str, prof: Path, harness: str = "") ->
         return None
 
     # create-fail (None) routes the same as a missing baked file: floor kept, nothing written.
-    baked_text = _with_image_container(rt, image, _copy)
+    #
+    # WHERE the installer-written settings.json lives moved with bd harnessed-8px.21.4: `install:`
+    # no longer runs at build, so the file is in the config VOLUME, not in the image. Reading the
+    # image here would find nothing, keep the floor, and silently drop every install-written key —
+    # which is precisely harnessed-8px.19 ("ccstatusline statusLine gone on every restart"), a P1
+    # this epic already fixed once. The image read stays as the fallback because the agent BASE
+    # image is an independent bake surface (harnessed-8px.7's reason for keeping this function).
+    baked_text = _volume_read(rt, volume, image, "settings.json") if volume else None
+    if baked_text is None:
+        baked_text = _with_image_container(rt, image, _copy)
 
     def _warn(msg: str) -> None:
         _out.print(f"[yellow]⚠ settings:[/yellow] {msg}")
@@ -1509,9 +1539,16 @@ def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None
 def _surface_scan_report(
     rt: str, image: str, prof: Path, *, keep_existing: bool = False
 ) -> None:
-    """Copy the in-image supply-chain report (harnessed-scan, the derived image's final layer) to the
-    profile dir and print a one-line advisory summary. The scan is advisory — this surfaces its posture
-    host-side so the user sees it without digging into the image or scrolling the build log."""
+    """Print a one-line advisory summary of the supply-chain report. Advisory — never gates.
+
+    The report now comes from the CREDENTIALED post-build scan (`keep_existing=True`), which is the
+    only pass that has snyk/socket tokens and the only one that mounts the stack volumes. The
+    image-baked fallback below survives for images built before bd harnessed-8px.21.5, which carried
+    a scan layer; images built since carry no report at all, and the fallback simply finds nothing.
+
+    Saying so out loud matters: a build that scanned nothing must not look identical to a build that
+    scanned everything and found nothing.
+    """
     dest = prof / "scan-report.json"
 
     def _copy(cid: str) -> bool:
@@ -1531,6 +1568,10 @@ def _surface_scan_report(
     elif not _with_image_container(rt, image, _copy):
         return
     if not dest.is_file():
+        _out.print(
+            "[yellow]note:[/yellow] no supply-chain report produced — nothing was scanned "
+            "(set HARNESSED_NO_SCANS=false, or run `harnessed rescan <image>` with tokens)"
+        )
         return
     try:
         totals = json.loads(dest.read_text())["totals"]
@@ -1632,15 +1673,281 @@ def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int =
     return False
 
 
+def _stack_config_volume(stack: str, harness: str) -> str:
+    """Name of the per-stack agent-config volume (bd harnessed-8px.21.2).
+
+    Per (stack, harness) because the composed content differs on both axes: the recipe closure
+    picks the content, and the harness picks which profile tree is fanned into it. Two stacks
+    sharing a volume would compose each other's skills.
+    """
+    return f"harnessed-cfg-{harness}-{stack}"
+
+
+def _ensure_config_volume(
+    rt: str, stack: str, harness: str, prof: Path, image: str, *, fresh: bool = False,
+) -> str:
+    """Create and compose the per-stack agent-config volume, returning its name.
+
+    Replaces the per-subdir `:ro` bind-mounts that caused bd harnessed-8px.22, where a profile
+    dir mounted over `~/.claude/skills` hid everything an `install.script` had delivered there —
+    measured at 70 of 75 skills invisible, including all 34 `gsd-*`. Nothing is layered over
+    anything now: ONE tree, composed in order.
+
+    Two podman behaviours make this work, both verified against 6.0.1 in the bd harnessed-8px.21.1
+    spike, and both easy to get wrong:
+
+    1. COPY-UP. Mounting an EMPTY named volume over a path the image populated copies the image's
+       content into the volume. That is what delivers the install-written `~/.claude` (and, for
+       the `~/.local` volume this bead's sibling adds, the base image's own mise/snyk). It happens
+       exactly ONCE — thereafter volume content wins and image updates are invisible, which is why
+       the gate in harnessed-8px.21.3 must key on image identity and not only the recipe hash.
+
+    2. USERNS. The pod is created `--userns=keep-id` and the agent inherits it as a pod member, so
+       this populate step MUST use keep-id too. A volume first populated under the DEFAULT userns
+       is unusable by the agent: uid 1000 inside reads the files as owner 999 and every write
+       EACCESes. Verified in both directions.
+
+    The profile is copied in on every launch, deliberately: that preserves today's semantics where
+    the profile always wins over baked content. It is a local copy of small trees, not the
+    expensive part — installs are what harnessed-8px.21.3 gates.
+    """
+    vol = _stack_config_volume(stack, harness)
+    if fresh:
+        # Composition is purely ADDITIVE — copy-up, then `cp -a` of the profile, then installs.
+        # Nothing here removes, so without this a recipe dropped from the stack would leave its
+        # skills and commands in the volume forever. `_materialize_host_home` rmtree's the host home
+        # on every launch for exactly this reason ("so a removed recipe's files never linger"); the
+        # container side has to do the same thing, just gated on the fingerprint instead of
+        # unconditionally, because here the content is expensive to rebuild.
+        #
+        # Safe to destroy: the volume holds COMPOSED content only. Credentials and the rw history
+        # dirs are bind-mounted over it at launch and live on the host, so they are not in here.
+        _run([rt, "volume", "rm", "-f", vol], check=False, capture_output=True)
+    _run([rt, "volume", "create", *_volume_labels(stack, harness, "config"), vol],
+         check=False, capture_output=True)
+    # `cp -a src/. dst/` MERGES into the copy-up'd tree rather than replacing it — the whole point.
+    compose = (
+        "set -e; "
+        f"if [ -d {_CTR_PROFILE_DIR}/.claude ]; then "
+        f"  cp -a {_CTR_PROFILE_DIR}/.claude/. {_CONTAINER_HOME_STR}/.claude/; "
+        "fi; "
+        f"if [ -f {_CTR_PROFILE_DIR}/settings.json ]; then "
+        f"  cp -a {_CTR_PROFILE_DIR}/settings.json {_CONTAINER_HOME_STR}/.claude/settings.json; "
+        "fi"
+    )
+    _run([
+        rt, "run", "--rm", "--userns=keep-id",
+        "-v", f"{vol}:{_CONTAINER_HOME_STR}/.claude",
+        "-v", f"{prof}:{_CTR_PROFILE_DIR}:ro",
+        "--entrypoint", "sh", image, "-c", compose,
+    ], capture_output=True)
+    return vol
+
+
+# Shared by every stack, on purpose — see _run_container_installs.
+_SHARED_DL_CACHE_VOLUME = "harnessed-dl-cache"
+# Volumes are identified by LABEL, not by parsing their name: a stack name may contain the same
+# hyphens the name format uses, so `harnessed-cfg-claude-a-b` is ambiguous about where the harness
+# ends and the stack begins. The labels carry the fields directly (bd harnessed-8px.21.8).
+_VOL_LABEL = "harnessed.role"
+_VOL_STACK_LABEL = "harnessed.stack"
+_VOL_HARNESS_LABEL = "harnessed.harness"
+
+
+def _volume_labels(stack: str, harness: str, role: str) -> list[str]:
+    return [
+        "--label", f"{_VOL_LABEL}={role}",
+        "--label", f"{_VOL_STACK_LABEL}={stack}",
+        "--label", f"{_VOL_HARNESS_LABEL}={harness}",
+    ]
+
+
+def _stack_tools_volume(stack: str, harness: str) -> str:
+    """Name of the per-stack TOOLS volume — `~/.local`, which covers all three PATH-bearing dirs.
+
+    Verified in the bd harnessed-8px.21.1 spike: `$PNPM_HOME` is `~/.local/share/pnpm`, mise keeps
+    its installs and its 67 shims under `~/.local/share/mise`, and `$HARNESSED_BIN_DIR` is
+    `~/.local/bin`. One volume at the common parent covers all three, and podman's copy-up carries
+    the base image's own mise/snyk/socket IN rather than hiding them.
+    """
+    return f"harnessed-tools-{harness}-{stack}"
+
+
+def _container_stack_fingerprint(rt: str, stack: str, recipes: list, image: str) -> str:
+    """The container gate: the host fingerprint PLUS the image's identity.
+
+    The extra component is forced by podman's copy-up, which runs exactly ONCE per volume. After
+    that the volume's content wins permanently and image updates are invisible — so a base image
+    that gained a tool would never reach an existing stack, and nothing would signal it. Verified in
+    the harnessed-8px.21.1 spike.
+
+    Host mode needs no such component because a host launch has no image at all, which is why
+    `_host_stack_fingerprint` carries `__version__` instead.
+    """
+    img = subprocess.run(
+        [rt, "image", "inspect", "-f", "{{.Id}}", image], capture_output=True, text=True,
+    ).stdout.strip()
+    return f"{_host_stack_fingerprint(stack, recipes)}:{img}"
+
+
+def _volume_read(rt: str, volume: str, image: str, rel: str) -> str | None:
+    """`cat` one file out of the config volume, or None when absent.
+
+    None vs "" is load-bearing for the settings merge, which must distinguish "no baked file"
+    (keep the floor) from "empty file".
+    """
+    out = subprocess.run(
+        [rt, "run", "--rm", "--userns=keep-id",
+         "-v", f"{volume}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image,
+         "-c", f"cat {_CONTAINER_HOME_STR}/.claude/{rel}"],
+        capture_output=True, text=True,
+    )
+    # Anything other than a clean read is "absent", NOT "empty". Returning "" for a failed podman
+    # run made `_merge_baked_settings` treat an unreadable volume as MALFORMED JSON — it warned and
+    # kept the floor, which looks identical to the harnessed-8px.19 regression this is meant to
+    # prevent. Caught by test_merge_baked_settings_reads_the_VOLUME_not_the_image.
+    return out.stdout if out.returncode == 0 else None
+
+
+def _run_container_installs(
+    rt: str, stack: str, harness: str, image: str, recipes: list, cfg_vol: str, tools_vol: str,
+) -> None:
+    """Run `tools:` then every `install.script` INSIDE a container, writing to the two volumes.
+
+    The container half of `_host_run_installs`, in deliberately the same ORDER: `tools:` owns the
+    binary and an install.sh CONFIGURES it (`serena init -b LSP`, ccstatusline's `command -v`), so
+    the binary must exist first. A real build failed the other way round.
+
+    One container per step rather than one generated shell script: each recipe's env differs, and
+    passing it with `-e` avoids hand-quoting a script whose failure mode is silent and
+    arbitrary-code-shaped.
+
+    `--userns=keep-id` on every step, matching the pod the agent inherits. A volume written under
+    any other mapping is unreadable by the agent (harnessed-8px.21.1).
+    """
+    common = [
+        "--userns=keep-id",
+        "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
+        "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
+        # The download cache, and the direct successor to the build's `--mount=type=cache` (bd
+        # harnessed-1t4.2: "a layer cache MISS must not mean a re-download"). Those mounts died with
+        # the layers; without this the container's ~/.cache is ephemeral and every reinstall
+        # re-fetches from the network, which would make the runtime executor SLOWER than the build
+        # it replaces.
+        #
+        # Deliberately NOT per-stack: one volume shared by every stack, which is the sharing 1t4.2
+        # existed for. It covers ~/.cache/{mise,pnpm,uv} in one mount because an install.sh may
+        # reach for any of them and that is the recipe author's choice to make.
+        "-v", f"{_SHARED_DL_CACHE_VOLUME}:{_CONTAINER_HOME_STR}/.cache",
+    ]
+
+    tool_specs = sorted({t for r in recipes for t in r.tools})
+    if tool_specs:
+        joined = " ".join(f'"{t}"' for t in tool_specs)
+        _say(f"[blue][INFO][/blue] tools: {len(tool_specs)} pinned tool(s) → {tools_vol}")
+        # MISE_NPM_PACKAGE_MANAGER=pnpm is required, not preferred: mise's own `aube` resolver
+        # enforces a tree-wide publisher-trust policy that hard-fails a correctly-pinned package
+        # over an untrusted transitive dep. Sorted+deduped so the set, not the authoring order,
+        # determines the work.
+        _run([rt, "run", "--rm", *common, "-e", "MISE_NPM_PACKAGE_MANAGER=pnpm",
+              "--entrypoint", "sh", image, "-c", f"mise use -g {joined} && mise install"])
+
+    for recipe in recipes:
+        inst = recipe.install
+        if inst is None or inst.script is None:
+            continue  # root-only install: the whole step is a system layer in the recipe Dockerfile
+        cache_host = paths.install_cache_dir(recipe.name, inst.cache) if inst.cache else None
+        ctr_cache = f"{emit.CTR_INSTALL_CACHE}/{recipe.name}/{inst.cache}" if cache_host else ""
+        env = emit.install_env(
+            recipe, mode="container", harness=harness,
+            config_dir=f"{_CONTAINER_HOME_STR}/.claude",
+            # The SHARED, cross-stack source cache — the same host dir `_host_run_installs` uses.
+            # The build path threw this away (`rm -rf` in the same layer), so every stack re-cloned
+            # what another had already fetched. Running at runtime is what makes it reachable.
+            cache_dir=ctr_cache,
+            bin_dir=f"{_CONTAINER_HOME_STR}/.local/bin",
+            home_shim=_CONTAINER_HOME_STR,
+        )
+        # Recipe `env:` beats the inherited environment; the harnessed contract beats BOTH — same
+        # winner as the Dockerfile emission, where inline RUN assignments beat preceding ENV lines.
+        merged = {**resolve_recipe_env(recipe, mode="container", project_path=None), **env}
+        args = [rt, "run", "--rm", *common,
+                "-v", f"{recipe.root}:{emit.CTR_RECIPE_DIR}/{recipe.name}:ro"]
+        if cache_host is not None:
+            cache_host.parent.mkdir(parents=True, exist_ok=True)
+            args += ["-v", f"{cache_host}:{ctr_cache}:rw"]
+        for k, v in merged.items():
+            args += ["-e", f"{k}={v}"]
+        args += ["--entrypoint", "bash", image,
+                 f"{emit.CTR_RECIPE_DIR}/{recipe.name}/{inst.script}"]
+        _say(f"[blue][INFO][/blue] install ({recipe.name}): {inst.script} (container)")
+        _run(args)
+
+
+def _ensure_stack_volumes(
+    rt: str, stack: str, harness: str, prof: Path, image: str, recipes: list,
+) -> tuple[str, str]:
+    """Compose both per-stack volumes, running installs only when the fingerprint moved.
+
+    The container mirror of the host path's `rebuilt` gate: when the stack is unchanged the install
+    output is still sitting in the volume, so re-running would re-download and re-extract bytes
+    already on disk.
+
+    Called by BOTH `harnessed build` and `harnessed launch`. That shared call is what keeps `build`
+    meaningful once it emits system layers only — build populates and then scans, launch populates
+    and runs.
+
+    The stamp is written only AFTER the installs succeed, mirroring the host path: a failed install
+    must never certify content that was never finished, or the next launch trusts a stamp for a
+    half-populated volume instead of retrying.
+
+    The fingerprint is read BEFORE composing, because a changed stack must start from an EMPTY
+    config volume. Composition only ever adds, so reusing the old volume would leave a removed
+    recipe's skills and commands in place forever.
+    """
+    tools_vol = _stack_tools_volume(stack, harness)
+    _run([rt, "volume", "create", *_volume_labels(stack, harness, "tools"), tools_vol],
+         check=False, capture_output=True)
+    _run([rt, "volume", "create", "--label", f"{_VOL_LABEL}=shared", _SHARED_DL_CACHE_VOLUME],
+         check=False, capture_output=True)
+
+    want = _container_stack_fingerprint(rt, stack, recipes, image)
+    have = _volume_read(
+        rt, _stack_config_volume(stack, harness), image, _HOST_STACK_FINGERPRINT
+    )
+    unchanged = (have or "").strip() == want
+
+    # `fresh=` discards the old config volume when the stack moved. The TOOLS volume is kept either
+    # way: `mise use -g` is declarative, so a changed tool set rewrites the config it reads, and
+    # discarding it would re-download every pinned tool for no benefit. Host mode draws the same
+    # line — `_materialize_host_home` wipes the config home but never the stack's tools dir.
+    cfg_vol = _ensure_config_volume(rt, stack, harness, prof, image, fresh=not unchanged)
+    if unchanged:
+        _say(f"[blue][INFO][/blue] Stack unchanged — reusing {cfg_vol} (installs skipped)")
+        return cfg_vol, tools_vol
+
+    _run_container_installs(rt, stack, harness, image, recipes, cfg_vol, tools_vol)
+    _run([rt, "run", "--rm", "--userns=keep-id",
+          "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image, "-c",
+          f"printf %s {shlex.quote(want)} > {_CONTAINER_HOME_STR}/.claude/{_HOST_STACK_FINGERPRINT}"],
+         capture_output=True)
+    return cfg_vol, tools_vol
+
+
 def _build_mount_args(
     harness: str,
     prof: Path,
     mount_path: Path,
+    config_volume: str = "",
+    tools_volume: str = "",
 ) -> list[str]:
     """Assemble -v mount arguments for the harness container.
 
     `mount_path` is the host folder path-mirrored into the container (the project itself by default,
     or a parent dir via --mount-folder). The agent's cwd (start_dir) lives at or under it.
+
+    `config_volume` is the composed agent-config volume from `_ensure_config_volume`. When empty
+    (a harness with no `~/.claude` surface) nothing is mounted there at all.
     """
     args: list[str] = []
     ctr_home = _CONTAINER_HOME_STR
@@ -1650,18 +1957,19 @@ def _build_mount_args(
     if mcp_src.is_file() and harness == "claude":
         args += ["-v", f"{mcp_src}:{ctr_home}/.mcp.json:ro"]
 
-    # settings.json → $CONTAINER_HOME/.claude/settings.json
-    settings_src = prof / "settings.json"
-    if settings_src.is_file() and harness in ("claude", "omp", "opencode"):
-        args += ["-v", f"{settings_src}:{ctr_home}/.claude/settings.json:ro"]
-
-    # claude/ profile tree (skills, commands, agents, hooks, rules)
-    claude_src = prof / ".claude"
-    if claude_src.is_dir() and harness in ("claude", "omp", "opencode"):
-        for subdir in ("skills", "commands", "agents", "hooks", "rules"):
-            d = claude_src / subdir
-            if d.is_dir():
-                args += ["-v", f"{d}:{ctr_home}/.claude/{subdir}:ro"]
+    # The agent config tree — ONE composed volume (bd harnessed-8px.21.2), not the per-subdir `:ro`
+    # bind-mounts this replaces. Those mounted `<profile>/.claude/<subdir>` OVER the image's own,
+    # hiding every skill/command an `install.script` had delivered: 70 of 75 skills invisible, and
+    # an EMPTY profile `commands/` dir shadowing a real one, because `synclinks._fan_into` creates
+    # skills/commands/rules unconditionally and the mount gate was existence, not non-emptiness.
+    # `_ensure_config_volume` composes image content and profile content into one tree instead, so
+    # there is nothing left to shadow.
+    if config_volume and harness in ("claude", "omp", "opencode"):
+        args += ["-v", f"{config_volume}:{ctr_home}/.claude"]
+    # `~/.local` — mise installs + shims, $PNPM_HOME, and $HARNESSED_BIN_DIR, all three on PATH.
+    # Harness-independent: `tools:` is a recipe declaration, not a claude-shaped one.
+    if tools_volume:
+        args += ["-v", f"{tools_volume}:{ctr_home}/.local"]
 
     # opencode persona config (bd main-rlw): the merged opencode.json + persona prompt (written
     # post-build by _merge_baked_opencode, only when the stack has `instructions:`) override the
@@ -4171,9 +4479,9 @@ def _script_env(
 
 
 _CTR_SETUP_DIR = "/opt/harnessed/setup"
-# Single-sourced with the build-phase COPY target (emit._install_dockerfile_lines) so
-# $HARNESSED_RECIPE_DIR names the same container path whether the recipe dir arrived there by
-# `install:`'s COPY or `setup.script`'s runtime bind-mount.
+# Single-sourced so $HARNESSED_RECIPE_DIR names the same container path for both consumers — the
+# install executor's bind-mount (_run_container_installs) and setup.script's (_setup_script_mounts).
+# Both are runtime bind-mounts since bd harnessed-8px.21.4; install's used to be a build-time COPY.
 _CTR_RECIPE_DIR = emit.CTR_RECIPE_DIR
 
 
@@ -4191,7 +4499,7 @@ def _setup_script_mounts(recipes) -> list[str]:
         if recipe.setup and recipe.setup.script:
             src = recipe.root / recipe.setup.script
             args += ["-v", f"{src}:{_CTR_SETUP_DIR}/{recipe.name}.sh:ro"]
-            args += ["-v", f"{recipe.root}:{_CTR_RECIPE_DIR}/{recipe.name}:ro"]
+            args += ["-v", f"{recipe.root}:{emit.CTR_RECIPE_DIR}/{recipe.name}:ro"]
     return args
 
 
@@ -4462,6 +4770,35 @@ def _host_install_tools(stack: str, recipes) -> None:
         raise typer.Exit(1)
 
 
+# Each harness's OWN config-dir variable. An upstream installer that honours one of these beats
+# both `$HARNESSED_CONFIG_DIR` and the `$HOME` shim, because an explicit config-dir env var wins
+# over a relocated home. Inherited from the launching process it silently redirects an install into
+# whatever config dir the PARENT had — which is exactly what happens when a stack is launched from
+# inside another stack's host session, since `_launch_host` exports CLAUDE_CONFIG_DIR for the agent.
+#
+# Demonstrated (bd harnessed-8px.26): gsd-core's install.sh, run with an inherited CLAUDE_CONFIG_DIR,
+# wrote 69 skills and four top-level artifacts into an UNRELATED stack's home, ignoring the shim it
+# was given.
+#
+# Pinned rather than unset, deliberately: unsetting makes such an installer fall back to
+# `$HOME/.claude`, the user's REAL config dir, which is a worse landing spot than the parent stack's.
+# Only claude is listed because `_HOST_HARNESS` scopes the host backend to claude today; add the
+# others (omp's PI_*, codex, opencode, antigravity) as each gains host support.
+_HARNESS_CONFIG_DIR_ENV: dict[str, tuple[str, ...]] = {
+    "claude": ("CLAUDE_CONFIG_DIR",),
+}
+
+
+def _harness_config_env(harness: str, home: Path) -> dict[str, str]:
+    """Pin the harness's own config-dir variable at this stack's home (bd harnessed-8px.26).
+
+    Applied wherever catalog-authored content runs host-side — installs, setup scripts, and the
+    `setup.condition` eval — alongside the UV_TOOL_DIR / npm_config_prefix redirection those sites
+    already do. Same intent: keep what a recipe writes inside the stack's own tree.
+    """
+    return {var: str(home) for var in _HARNESS_CONFIG_DIR_ENV.get(harness, ())}
+
+
 def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Path) -> None:
     """Run each recipe's `install.script` HOST-side — the host half of `RUN bash install.sh`.
 
@@ -4525,6 +4862,8 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
         env["UV_TOOL_BIN_DIR"] = str(bin_dir)
         env["npm_config_prefix"] = str(bin_dir.parent)
         env["PATH"] = os.pathsep.join([str(bin_dir), os.environ.get("PATH", "")])
+        # LAST, so an inherited CLAUDE_CONFIG_DIR cannot survive into the script (bd 8px.26).
+        env.update(_harness_config_env(harness, home))
         _err.print(f"[blue][INFO][/blue] install ({recipe.name}): {inst.script} (host)")
         if subprocess.run(
             ["bash", str(recipe.root / inst.script)], cwd=str(project_path), env=env
@@ -4637,6 +4976,9 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
     (unique database, chosen prefix)."""
     _, recipes = load_stack_with_recipes(None, stack)
     _, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
+    # Same containment as the install path (bd harnessed-8px.26): a setup script is catalog-authored
+    # content too, so an inherited CLAUDE_CONFIG_DIR would redirect its writes just as readily.
+    cfg_env = _harness_config_env(harness, paths.host_home(stack, harness))
     primitives: dict[str, str] | None = None
     for recipe in recipes:
         setup = recipe.setup
@@ -4649,7 +4991,7 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
             ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True,
             env={**os.environ, **harnessed_env(
                 stack, project_path, harness=harness, mode="host", recipe=recipe
-            )},
+            ), **cfg_env},
         ).returncode != 0:
             continue
         # Before `config` resolution, which may prompt: asking for values the user is about to
@@ -4671,12 +5013,13 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
             env["UV_TOOL_DIR"] = str(uv_tool_dir)
             env["UV_TOOL_BIN_DIR"] = str(bin_dir)
             env["npm_config_prefix"] = str(bin_dir.parent)
+            env.update(cfg_env)
             argv, label = ["bash", str(script)], f"{setup.script} (host)"
         else:
             cmd = _subst(setup.run, values)
             env = {**os.environ, **harnessed_env(
                 stack, project_path, harness=harness, mode="host", recipe=recipe
-            )}
+            ), **cfg_env}
             argv, label = ["bash", "-lc", cmd], cmd
         _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {label}")
         if subprocess.run(argv, cwd=str(project_path), env=env).returncode != 0:
@@ -5136,8 +5479,18 @@ def launch(
     if harness in ("claude", "omp", "opencode"):
         _merge_host_claude_settings(prof, required, harness)
 
+    # Compose the agent-config volume BEFORE the mounts reference it (bd harnessed-8px.21.2). Uses
+    # `harness_image` — the derived image when one exists, else the plain agent image — because
+    # podman's copy-up is what lifts that image's `~/.claude` into the volume in the first place.
+    # Fingerprint-gated, so an unchanged stack pays nothing: the install output is still in the
+    # volume from last time. A CHANGED stack reinstalls here with no podman build at all, which is
+    # the point of harnessed-8px.21 — a one-line recipe edit used to cost a 307s layer rebuild.
+    config_volume, tools_volume = _ensure_stack_volumes(
+        rt, stack, harness, prof, harness_image, launch_recipes
+    )
+
     # Build mount args.
-    mount_args = _build_mount_args(harness, prof, mount_path)
+    mount_args = _build_mount_args(harness, prof, mount_path, config_volume, tools_volume)
     # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the token/credential).
     mount_args += _claude_config_seed_mount(harness, inst)
     # NB: the Claude credential fallback mount is appended AFTER secrets resolve (below) — whether
@@ -5257,6 +5610,19 @@ def launch(
     # and identical to what the host mode gives it.
     recipe_env = [arg for var, val in _recipe_env(launch_recipes, project_path, mode="container").items()
                   for arg in ("-e", f"{var}={val}")]
+    # bd harnessed-8px.27. `_write_project_tool_env` puts a `mise.local.toml` in EVERY project, and
+    # mise refuses an untrusted config file. The image trusts configs via `mise trust -a` in
+    # ~/.bashrc and /etc/profile.d — both of which only run for a LOGIN or interactive shell. Setup
+    # scripts run as `podman exec … bash <script>`, which is neither, so any setup invoking a mise
+    # shim died with "Config files in …/mise.local.toml are not trusted". serena hit this: its
+    # binary IS a mise shim (`tools: pipx:serena-agent`), so merely running it loads the project
+    # config.
+    #
+    # Set on the CONTAINER, not the exec, for the same reason as socket_env above: hooks and later
+    # execs must agree with what the setup script saw. Preferred over `bash -lc`, which would fix
+    # the trust as a side effect of sourcing profile.d while also re-ordering PATH and pulling in
+    # every other login-shell behaviour — a much wider change than the bug warrants.
+    mise_trust_env = ["-e", f"MISE_TRUSTED_CONFIG_PATHS={mount_path}"]
     harness_run = [
         rt, "run", "-d",
         *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
@@ -5274,6 +5640,7 @@ def launch(
         *_claude_oauth_token_args(harness),
         *socket_env,
         *setup_env,
+        *mise_trust_env,
         *member_mounts,
         # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
         # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
@@ -5937,8 +6304,13 @@ def uninstall_stack(
         _out.print(f"No shim found at {shim}")
 
 
+# Backstop for the whole scan container. Deliberately much larger than harnessed-scan's own
+# per-scanner bound: several scanners run in sequence and a thorough scan must not be cut off.
+_SCAN_CONTAINER_TIMEOUT = 900
+
+
 def _scan_image_in_container(
-    rt: str, image: str, *, report_dest: "Path | None" = None
+    rt: str, image: str, *, report_dest: "Path | None" = None, extra_args: list[str] | None = None
 ) -> bool:
     """Run the image's own baked `harnessed-scan` inside a throwaway container, with scanner tokens
     injected as env.
@@ -5975,11 +6347,36 @@ def _scan_image_in_container(
     try:
         with tempfile.TemporaryDirectory() as td:
             cidfile = Path(td) / "cid"  # must NOT pre-exist — podman refuses to overwrite it
-            res = subprocess.run([
+            argv = [
                 rt, "run", "--cidfile", str(cidfile),
                 *[arg for f in env_files for arg in ("--env-file", str(f))],
+                # The stack volumes (bd harnessed-8px.21.5). Once `tools:`/`install:` stopped being
+                # image layers, an image-only scan still PASSES and still prints "no high/critical"
+                # while silently covering less — a narrower scan that reports green is worse than a
+                # failing one. Mounting the volumes keeps the report about the whole stack.
+                *(extra_args or []),
                 image, "harnessed-scan",
-            ])
+            ]
+            # OUTER bound (bd harnessed-8px.28). harnessed-scan now bounds each scanner itself, so
+            # this is the backstop for the script wedging somewhere else entirely — and it is not
+            # hypothetical: a scan container ran for 71 HOURS at 0% CPU with no timeout anywhere
+            # above it, which would have hung `harnessed build` indefinitely and silently.
+            #
+            # Generous relative to the inner per-call bound, because a legitimate scan runs several
+            # scanners in sequence and must not be cut off just for being thorough.
+            try:
+                res = subprocess.run(argv, timeout=_SCAN_CONTAINER_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                # Read the cid HERE too: the assignment below never ran, and without it the
+                # `finally` has nothing to remove — which is exactly how the 71-hour container was
+                # left behind. `rm -f` there escalates to SIGKILL, which that one needed.
+                cid = cidfile.read_text().strip() if cidfile.is_file() else ""
+                _out.print(
+                    f"[yellow]⚠ supply-chain:[/yellow] scan timed out after "
+                    f"{_SCAN_CONTAINER_TIMEOUT}s and was killed — posture NOT verified. "
+                    "Advisory only, so the build continues."
+                )
+                return False
             cid = cidfile.read_text().strip() if cidfile.is_file() else ""
         if report_dest is not None and cid:
             report_dest.parent.mkdir(parents=True, exist_ok=True)
@@ -6242,10 +6639,14 @@ def host_gc(
 # adding it here makes the command unreachable from the real binary (`harnessed update` parses as
 # `harnessed launch update`) while CliRunner tests, which invoke `app` directly, still pass. A test
 # asserts this set covers every registered command — see test_update_cli.py.
+# Every registered subcommand name. A name MISSING here is not a no-op: `main()` treats the first
+# non-option token as a stack name and prepends `launch`, so the command becomes unreachable and
+# fails with "Missing argument 'HARNESS'" — which reads like a usage error, not a missing
+# registration. tests/test_cli_commands.py keeps this in step with the registry.
 _COMMANDS = {
-    "launch", "init", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
+    "launch", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
     "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc", "host-run",
-    "update",
+    "update", "volume-gc",
 }
 
 
@@ -6344,6 +6745,89 @@ def _svc_migrate(
         _err.print(f"[bold red]error:[/bold red] migration landed at {dest} but is not a Dolt database")
         raise typer.Exit(1)
     _out.print(f"[green][SUCCESS][/green] '{db}' migrated into {host_dir / 'dolt'}")
+
+
+@app.command("volume-gc")
+def volume_gc(
+    prune: bool = typer.Option(False, "--prune", help="Remove volumes whose stack no longer resolves"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be removed without removing it"),
+) -> None:
+    """List the per-stack volumes; optionally reclaim ones whose stack is gone.
+
+    The volume counterpart of `host-gc` (bd harnessed-8px.21.8). Since bd harnessed-8px.21.3 a
+    container launch persists each stack's installed content in `harnessed-cfg-*` (~/.claude) and
+    `harnessed-tools-*` (~/.local). Nothing else reclaims them: `rm` and `prune` tear down pods and
+    containers, which by design leave NAMED volumes alone, and `clean` purges the profile cache
+    rather than the volumes.
+
+    ORPHAN = its stack no longer resolves in the catalog. The same signal `host-gc` uses, and for
+    the same reason: the stack name is right there in the volume's labels, so an orphan can be
+    named rather than inferred.
+
+    Volumes are matched by LABEL, never by parsing their name — a stack name may contain the same
+    hyphens the name format uses, so the name alone is ambiguous.
+
+    NOT removed by --prune: the shared download cache (`harnessed-dl-cache`), which belongs to no
+    single stack and is pure cache — deleting it only costs a re-download. Remove it by hand if you
+    want the space back.
+
+    A volume whose stack still resolves is NEVER removed. Reinstalling it is expensive, and a stack
+    can be temporarily unresolvable because a catalog overlay is not mounted.
+    """
+    rt = _runtime()
+    out = subprocess.run(
+        [rt, "volume", "ls", "--filter", f"label={_VOL_LABEL}",
+         "--format", "{{.Name}}\t{{.Labels}}"],
+        capture_output=True, text=True,
+    )
+    rows: list[tuple[str, str, str, str, bool]] = []
+    for line in out.stdout.splitlines():
+        name, _, labels = line.strip().partition("\t")
+        if not name:
+            continue
+        parsed = dict(
+            kv.split("=", 1) for kv in labels.split(",") if "=" in kv
+        )
+        role = parsed.get(_VOL_LABEL, "?")
+        stack = parsed.get(_VOL_STACK_LABEL, "")
+        harness = parsed.get(_VOL_HARNESS_LABEL, "")
+        if role == "shared":
+            rows.append((name, role, "-", "-", False))
+            continue
+        # `find_in_catalog` NEVER raises — it returns the highest-precedence candidate path even
+        # when nothing exists there, so the manifest has to be probed. The same test `host-gc` uses.
+        orphan = not stack or not (
+            paths.find_in_catalog("stacks", stack) / "stack.yaml"
+        ).is_file()
+        rows.append((name, role, stack, harness, orphan))
+
+    if not rows:
+        _out.print("No harnessed volumes found.")
+        return
+
+    for name, role, stack, harness, orphan in sorted(rows):
+        tag = "[yellow]ORPHAN[/yellow]" if orphan else "[green]in use[/green]"
+        _out.print(f"{tag}  {name}  role={role} stack={stack} harness={harness}")
+
+    orphans = [r for r in rows if r[4]]
+    if not prune:
+        if orphans:
+            _out.print(
+                f"\n{len(orphans)} orphan(s). Re-run with --prune to remove "
+                "(or --dry-run --prune to preview)."
+            )
+        return
+    if not orphans:
+        _out.print("\nNothing to prune.")
+        return
+    for name, _role, stack, _harness, _o in orphans:
+        if dry_run:
+            _out.print(f"[yellow]would remove[/yellow] {name} (stack '{stack}' no longer resolves)")
+            continue
+        _out.print(f"[blue][INFO][/blue] Removing {name} (stack '{stack}' no longer resolves)")
+        subprocess.run([rt, "volume", "rm", "-f", name], capture_output=True)
+    if not dry_run:
+        _out.print(f"[green][SUCCESS][/green] Removed {len(orphans)} orphan volume(s)")
 
 
 @app.command("svc")

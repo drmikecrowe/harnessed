@@ -2111,6 +2111,38 @@ def validate_install_script(recipe: Recipe) -> None:
     _lint_script_file(recipe, "install.script", recipe.install.script)
 
 
+def validate_dockerfile_not_dependent_on_install(recipe: Recipe, dockerfile_body: str) -> None:
+    """Reject a recipe Dockerfile body that runs its own `install.script`.
+
+    bd harnessed-8px.21.6. The emitter used to place a recipe's `install:` block BEFORE its
+    Dockerfile body, so a body could legitimately layer on top of the install's output. bd
+    harnessed-8px.21.4 reversed that: every Dockerfile body now runs at BUILD and every install at
+    container RUNTIME, so a body can no longer see install output at all.
+
+    The flip was safe only because no body in the catalog consumed its own install output — all five
+    were read before the change and none did. That is a property of today's catalog, not of the
+    design, so it needs enforcing or the next recipe author reintroduces the coupling and gets a
+    build that fails for a reason nothing explains.
+
+    Narrow on purpose: a body INVOKING the script is the detectable, unambiguous case. A body that
+    merely consumes a file the install happens to produce cannot be caught statically, which is why
+    the ordering is documented in ARCHITECTURE.md as well.
+    """
+    if recipe.install is None or recipe.install.script is None:
+        return
+    body = "\n".join(
+        line for line in dockerfile_body.splitlines() if not line.lstrip().startswith("#")
+    )
+    if recipe.install.script not in body:
+        return
+    raise RecipeLintError(
+        f"recipe '{recipe.name}': its Dockerfile references '{recipe.install.script}'. Since bd "
+        "harnessed-8px.21.4 the Dockerfile body runs at BUILD and install.script runs at container "
+        "RUNTIME, so the body cannot see the install's output. Move the dependent step into "
+        "install.script, or declare it as install.system if it genuinely needs root."
+    )
+
+
 def validate_no_claude_writes(recipe: Recipe, dockerfile_body: str) -> None:
     """Reject a recipe Dockerfile that touches `~/.claude` — content belongs in `install.script`.
 

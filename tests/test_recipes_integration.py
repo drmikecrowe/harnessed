@@ -198,6 +198,7 @@ def test_live_capabilities_present_in_container(stack):
 # throwaway image rather than a catalog fixture because no catalog recipe writes settings.json yet.
 
 from harnessed import launcher
+from harnessed import launcher  # noqa: E402
 from harnessed.launcher import _merge_baked_settings, _runtime  # noqa: E402
 from harnessed.paths import CONTAINER_HOME  # noqa: E402
 
@@ -327,3 +328,130 @@ class TestCredentialedScanReportWins:
         src = inspect.getsource(launcher._build_stack)
         assert "scan_report.unlink(missing_ok=True)" in src
         assert src.index("scan_report.unlink") < src.index("_scan_image_in_container(")
+
+
+@podman
+def test_merge_baked_settings_reads_the_VOLUME_not_the_image(tmp_path):
+    """bd harnessed-8px.21.7 — the regression this exists to stop.
+
+    `install:` used to run at build, so the installer-written settings.json lived in the IMAGE and
+    `_merge_baked_settings` read it from there. bd harnessed-8px.21.4 moved installs to a per-stack
+    volume. Reading the image would now find nothing, keep the assemble-time floor, and silently
+    drop every install-written key — which is precisely harnessed-8px.19 ("ccstatusline statusLine
+    gone on every restart"), a P1 this epic already fixed once and closed.
+
+    The image here is deliberately BARE: if the volume were ignored, the floor would stand and the
+    assertion below would fail. That is what makes this test fail without the fix.
+    """
+    tag = "harnessed-test-settings-volume:latest"
+    vol = "harnessed-test-settings-vol"
+    rt = _build_image_with(tmp_path, tag, None)
+    installed = {"statusLine": {"type": "command", "command": "ccstatusline"}}
+    prof = tmp_path / "profile"
+    prof.mkdir()
+    (prof / "settings.json").write_text(json.dumps(_FLOOR))
+    try:
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+        # Write the installer's settings.json INTO the volume, as a real install would.
+        # Written with the SAME userns the reader uses. A volume populated under a different
+        # mapping is unreadable by the agent (bd harnessed-8px.21.1), so mirroring harnessed here
+        # is part of what the test asserts, not incidental setup.
+        subprocess.run(
+            [rt, "run", "--rm", "-i", "--userns=keep-id",
+             "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"cat > {CONTAINER_HOME}/.claude/settings.json"],
+            input=json.dumps(installed), text=True, check=True, capture_output=True,
+        )
+        _merge_baked_settings(rt, tag, prof, volume=vol)
+        merged = json.loads((prof / "settings.json").read_text())
+    finally:
+        subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+
+    assert merged.get("statusLine") == installed["statusLine"], (
+        "install-written settings key lost — _merge_baked_settings read the image, not the volume"
+    )
+    assert "mcp__hatago" in merged["permissions"]["allow"], "required grant not re-applied"
+
+
+@podman
+def test_a_removed_recipes_content_does_not_linger_in_the_volume(tmp_path):
+    """bd harnessed-8px.21.8 — the container mirror of `_materialize_host_home`'s wipe.
+
+    Composition is purely additive: copy-up, then `cp -a` of the profile, then installs. Nothing
+    removes. So a recipe dropped from a stack would leave its skills in the volume forever, while
+    the same stack on the host loses them immediately — `_materialize_host_home` rmtree's the home
+    every launch precisely "so a removed recipe's files never linger".
+
+    Asserts the wipe by putting a marker in the volume and confirming a fingerprint change clears
+    it, which is what a removed recipe's content is from the volume's point of view.
+    """
+    tag = "harnessed-test-stale:latest"
+    rt = _build_image_with(tmp_path, tag, None)
+    stack, harness = "harnessed-test-stale-stack", "claude"
+    vol = launcher._stack_config_volume(stack, harness)
+    prof = tmp_path / "profile"
+    (prof / ".claude").mkdir(parents=True)
+    try:
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+        # Content from a recipe that is about to be dropped from the stack.
+        subprocess.run(
+            [rt, "run", "--rm", "--userns=keep-id", "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"mkdir -p {CONTAINER_HOME}/.claude/skills/departed && "
+                         f"touch {CONTAINER_HOME}/.claude/skills/departed/SKILL.md"],
+            check=True, capture_output=True,
+        )
+        launcher._ensure_config_volume(rt, stack, harness, prof, tag, fresh=True)
+        out = subprocess.run(
+            [rt, "run", "--rm", "--userns=keep-id", "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"ls {CONTAINER_HOME}/.claude/skills 2>/dev/null | wc -l"],
+            capture_output=True, text=True,
+        )
+    finally:
+        subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+
+    assert out.stdout.strip() == "0", (
+        f"the dropped recipe's content survived the wipe: {out.stdout!r}"
+    )
+
+
+@podman
+def test_a_hung_scan_is_killed_and_its_container_reclaimed(tmp_path, monkeypatch):
+    """bd harnessed-8px.28.
+
+    A scan container ran for 71 HOURS at 0% CPU, having written nothing, because
+    `_scan_image_in_container` called `subprocess.run` with no timeout. `harnessed build` would have
+    waited on it forever. The container also ignored SIGTERM, so reclaiming it needs `rm -f`.
+
+    Uses a real hanging container rather than a mocked subprocess: the failure was never in the
+    Python, it was in the container surviving. A mock would assert the code path and still leave the
+    bug reachable.
+    """
+    tag = "harnessed-test-hang:latest"
+    ctx = tmp_path / "img"
+    ctx.mkdir()
+    # `harnessed-scan` here just blocks, standing in for the wedged `socket` call.
+    (ctx / "Dockerfile").write_text(
+        f"FROM {_TEST_BASE}\n"
+        "RUN printf '#!/bin/sh\\nsleep 3600\\n' > /usr/local/bin/harnessed-scan "
+        "&& chmod +x /usr/local/bin/harnessed-scan\n"
+    )
+    rt = _runtime()
+    assert subprocess.run([rt, "build", "-t", tag, str(ctx)],
+                          capture_output=True).returncode == 0
+
+    monkeypatch.setattr(launcher, "_SCAN_CONTAINER_TIMEOUT", 5)
+    monkeypatch.setattr(launcher, "_resolve_launch_secrets", lambda project_path=None: ([], []))
+    try:
+        ok = launcher._scan_image_in_container(rt, tag)
+        # Nothing from this image may still be running: the whole point is that a hang is reclaimed.
+        running = subprocess.run(
+            [rt, "ps", "--filter", f"ancestor={tag}", "--format", "{{.Names}}"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+    finally:
+        subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
+
+    assert ok is False, "a timed-out scan must not report success"
+    assert not running, f"the hung scan container survived the timeout: {running!r}"

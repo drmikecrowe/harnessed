@@ -37,36 +37,69 @@ def _hook_recipe(name: str, hooks: dict, skip_harnesses: list[str] | None = None
 
 
 class TestWriteDerivedDockerfile:
-    def test_appends_supply_chain_scan_run_by_default(self, tmp_path):
+    def test_emits_the_from_line(self, tmp_path):
         out = write_derived_dockerfile(tmp_path, "time", "claude", [])
-        body = out.read_text()
-        assert "FROM harnessed-${HARNESS}:latest" in body
-        # The final supply-chain layer (BLD-02) runs even when no recipe ships a Dockerfile.
-        assert "harnessed-scan" in body
-        assert "--mount=type=secret,id=snyk_token" in body
+        assert "FROM harnessed-${HARNESS}:latest" in out.read_text()
 
-    def test_no_scan_when_disabled(self, tmp_path):
-        out = write_derived_dockerfile(tmp_path, "time", "claude", [], with_scan=False)
-        assert "harnessed-scan" not in out.read_text()
+    def test_no_scan_layer_is_emitted(self, tmp_path):
+        """bd harnessed-8px.21.5 removed it.
+
+        The scan used to be the final RUN, covering the mise globals and recipe trees the build had
+        just installed. Since harnessed-8px.21.4 the build installs none of that, so the layer
+        scanned an image holding no stack content — and still printed "no high/critical advisories"
+        off 1 of 4 scanners, with osv reporting "no skills/ or commands/ dir to scan". A
+        green-looking result that covers almost nothing is worse than no result.
+
+        It also had to declare `--mount=type=secret,id=snyk_token`, which is exactly the coupling
+        `_build_derived_image` promises not to have: a build must never depend on a secret.
+        """
+        body = write_derived_dockerfile(tmp_path, "time", "claude", []).read_text()
+        assert "harnessed-scan" not in body
+        assert "type=secret" not in body
+
+    def test_the_credentialed_post_build_scan_covers_the_volumes_instead(self):
+        """The scan did not disappear — it moved to where tokens and stack content both exist."""
+        import inspect
+
+        from harnessed import launcher
+
+        src = inspect.getsource(launcher._build_stack)
+        assert "_scan_image_in_container" in src, "build no longer scans at all"
+        assert "extra_args=vol_args" in src, (
+            "the post-build scan must mount the stack volumes, or it covers less than the layer it "
+            "replaced"
+        )
 
     def test_no_hatago_override_layer_by_default(self, tmp_path):
         out = write_derived_dockerfile(tmp_path, "time", "claude", [])
         assert "hatago-mcp-hub" not in out.read_text() and "hatago" not in out.read_text().lower()
 
-    def test_recipe_tools_emit_mise_layer(self, tmp_path):
-        # Declarative `tools:` → one pinned `mise use -g` layer (aggregated across recipes), run as
-        # the harnessed user. No Dockerfile needed on the recipe.
+    def test_recipe_tools_are_NOT_a_dockerfile_layer(self, tmp_path, monkeypatch):
+        """bd harnessed-8px.21.4 moved `tools:` out of the image and into the runtime executor.
+        Assert BOTH halves — gone from the Dockerfile, and still aggregated + sorted in the step
+        that replaced it — so this cannot pass by the feature silently disappearing."""
+        from harnessed import launcher
+
         r1 = Recipe(name="pulumi", tools=["pulumi@3.140.0"], root=tmp_path / "pulumi")
         r2 = Recipe(name="tf", tools=["terraform@1.9.0"], root=tmp_path / "tf")
-        out = write_derived_dockerfile(tmp_path, "time", "claude", [r1, r2], with_scan=False)
-        body = out.read_text()
-        # Cache mounts sit between RUN and the command (bd harnessed-1t4.2); the command itself is
-        # one aggregated, sorted `mise use -g`.
-        assert 'mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in body
-        assert "# --- recipe tools (mise) ---" in body
+        body = write_derived_dockerfile(
+            tmp_path, "time", "claude", [r1, r2]
+        ).read_text()
+        assert "mise use -g" not in body
+        assert "recipe tools (mise)" not in body
+
+        calls: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        launcher._run_container_installs(
+            "podman", "time", "claude", "img", [r1, r2], "cfgvol", "toolsvol",
+        )
+        assert any(
+            'mise use -g "pulumi@3.140.0" "terraform@1.9.0" && mise install' in a
+            for c in calls for a in c
+        )
 
     def test_no_mise_layer_without_tools(self, tmp_path):
-        out = write_derived_dockerfile(tmp_path, "time", "claude", [Recipe(name="x", root=tmp_path)], with_scan=False)
+        out = write_derived_dockerfile(tmp_path, "time", "claude", [Recipe(name="x", root=tmp_path)])
         assert "recipe tools (mise)" not in out.read_text()
 
 

@@ -134,40 +134,55 @@ class TestThePnpmStoreIsNeverCached:
         assert self.STORE not in CACHE_MOUNTS
 
 
-class TestDerivedImageCachesRecipeInstalls:
-    def _derived(self, tmp_path):
+class TestContainerExecutorCachesDownloads:
+    """The same requirement as the build-time cache mounts, after bd harnessed-8px.21.4 moved
+    `tools:`/`install:` out of image layers. Those `--mount=type=cache` mounts died with the layers;
+    without a replacement the container's ~/.cache would be ephemeral and every reinstall would
+    re-fetch from the network — making the runtime executor SLOWER than the build it replaces.
+    """
+
+    def _steps(self, tmp_path, monkeypatch, stack="s"):
+        from harnessed import launcher
+
         recipe = tmp_path / "r"
         recipe.mkdir(parents=True)
         (recipe / "install.sh").write_text("echo hi\n", encoding="utf-8")
         r = Recipe(name="r", root=recipe, tools=["npm:context-mode@1.0.169"])
         r.install = InstallSpec(script="install.sh")
-        return write_derived_dockerfile(tmp_path, "s", "claude", [r]).read_text(encoding="utf-8")
+        calls: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        launcher._run_container_installs(
+            "podman", stack, "claude", "img", [r], "cfgvol", "toolsvol",
+        )
+        return calls
 
-    def test_the_recipe_install_layer_mounts_every_download_cache(self, tmp_path):
-        # An install.sh may reach for any of the three (pnpm add -g, uv tool install, mise use -g),
-        # so the layer that runs it gets all three rather than a guess per recipe.
-        run = [r for r in _run_instructions(self._derived(tmp_path)) if "install.sh" in r]
+    def _cache_mount(self, cmd):
+        return [a for a in cmd if a.endswith("/home/harnessed/.cache")]
+
+    def test_the_install_step_mounts_the_download_cache(self, tmp_path, monkeypatch):
+        # An install.sh may reach for any of pnpm/uv/mise, so it gets the whole ~/.cache rather than
+        # a guess per recipe.
+        run = [c for c in self._steps(tmp_path, monkeypatch) if "install.sh" in " ".join(c)]
         assert len(run) == 1
-        assert _cache_targets(run[0]) == CACHE_TARGETS
+        assert self._cache_mount(run[0])
 
-    def test_the_merged_tool_layer_mounts_every_download_cache(self, tmp_path):
+    def test_the_merged_tool_step_mounts_the_download_cache(self, tmp_path, monkeypatch):
         # `mise use -g` fans out to backends that shell out to pnpm (npm:) and uv (pipx:).
-        run = [r for r in _run_instructions(self._derived(tmp_path)) if "mise use -g" in r]
+        run = [c for c in self._steps(tmp_path, monkeypatch) if "mise use -g" in " ".join(c)]
         assert len(run) == 1
-        assert _cache_targets(run[0]) == CACHE_TARGETS
+        assert self._cache_mount(run[0])
 
     def test_a_stack_with_no_recipes_emits_no_cache_mounts(self, tmp_path):
         body = write_derived_dockerfile(tmp_path, "s", "claude", []).read_text(encoding="utf-8")
         assert "type=cache" not in body
 
-    def test_cache_mounts_do_not_change_the_layer_for_the_same_inputs(self, tmp_path):
-        # The mounts must not carry anything build-specific (a stack name, a timestamp), or every
-        # stack gets its own cache and the sharing they exist for never happens.
-        a = self._derived(tmp_path / "a")
-        b = self._derived(tmp_path / "b")
-        mounts_a = re.findall(r"--mount=type=cache,[^\s]+", a)
-        mounts_b = re.findall(r"--mount=type=cache,[^\s]+", b)
-        assert mounts_a == mounts_b and mounts_a
+    def test_the_download_cache_is_shared_across_stacks(self, tmp_path, monkeypatch):
+        # The mount must carry nothing stack-specific, or every stack gets its own cache and the
+        # sharing it exists for never happens. This is STRONGER than the emitted-text check it
+        # replaces: it compares two different STACK NAMES, not two temp dirs.
+        a = self._cache_mount(self._steps(tmp_path / "a", monkeypatch, stack="stack-one")[0])
+        b = self._cache_mount(self._steps(tmp_path / "b", monkeypatch, stack="stack-two")[0])
+        assert a == b and a
 
 
 @podman

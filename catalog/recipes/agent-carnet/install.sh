@@ -29,9 +29,26 @@ AGENT_CARNET_TARBALL="https://registry.npmjs.org/agent-carnet/-/agent-carnet-${A
 
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 
+# bd harnessed-8px.13. A PIN IS NOT INTEGRITY: `validate_pin` enforces a VERSION, which declares
+# intent, but does not verify CONTENT — https protects transit, not the artifact. Verified against
+# the registry's own `dist.shasum` for 0.1.5 (sha1 ccfa17cb…, matched) when this was recorded.
+# Bump in lockstep with AGENT_CARNET_VERSION and `install.cache`; a mismatch here means the artifact
+# at that URL changed, which is exactly the event worth stopping for.
+AGENT_CARNET_SHA256="f60e7067c8ccd1c0e8cbb9268ecc12afd3b06b51d92e1001f2c340cb5b259551"
+
 fetch_pkg() {  # $1 = destination dir; leaves the tarball's `package/` root inside it
     mkdir -p "$1"
     curl -fsSL "$AGENT_CARNET_TARBALL" -o "$1/agent-carnet.tgz"
+    # BEFORE extraction, and fatal. The whole point is that nothing from an unverified archive
+    # reaches $HARNESSED_CONFIG_DIR — and since bd harnessed-8px.21.3 the install cache is shared
+    # ACROSS stacks and persistent, so a bad artifact would be reused rather than refetched.
+    echo "${AGENT_CARNET_SHA256}  $1/agent-carnet.tgz" | sha256sum -c - >/dev/null || {
+        echo "install (agent-carnet): checksum MISMATCH for ${AGENT_CARNET_TARBALL}" >&2
+        echo "  expected ${AGENT_CARNET_SHA256}" >&2
+        echo "  got      $(sha256sum "$1/agent-carnet.tgz" | cut -d' ' -f1)" >&2
+        rm -f "$1/agent-carnet.tgz"
+        exit 1
+    }
     tar -xzf "$1/agent-carnet.tgz" -C "$1"
     rm -f "$1/agent-carnet.tgz"
 }

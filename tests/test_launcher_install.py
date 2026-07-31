@@ -365,6 +365,33 @@ class TestBuildMountArgs:
         # The narrower project path is NOT mounted separately — it's covered by the parent mirror.
         assert not any(str(parent / "main") in a for a in args)
 
+    def test_no_per_subdir_claude_mounts_shadow_the_image(self, tmp_path, monkeypatch):
+        """Regression, bd harnessed-8px.22.
+
+        The profile's `.claude/{skills,commands,rules}` used to be bind-mounted `:ro` over the
+        image's own, hiding everything an `install.script` had delivered there — 70 of 75 skills
+        invisible, including all 69 `gsd-*`. Two things made it inevitable: `synclinks._fan_into`
+        creates those three dirs UNCONDITIONALLY, and the mount gate was `is_dir()`, so even an
+        EMPTY profile dir shadowed a populated image one.
+
+        The config tree is now one composed volume, so assert no mount lands *inside* `.claude`
+        except the deeper rw history dirs, which are meant to layer on top.
+        """
+        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        prof = tmp_path / "prof"
+        for sub in ("skills", "commands", "rules"):
+            (prof / ".claude" / sub).mkdir(parents=True)
+        (prof / ".claude" / "skills" / "from-profile").mkdir()
+        (prof / "settings.json").write_text("{}")
+
+        args = launcher._build_mount_args("claude", prof, tmp_path, "vol-under-test")
+
+        home = launcher._CONTAINER_HOME_STR
+        assert f"vol-under-test:{home}/.claude" in args, "config volume not mounted"
+        # Nothing from the PROFILE may be mounted under .claude — that is the shadowing shape.
+        offenders = [a for a in args if str(prof) in str(a) and f"{home}/.claude" in str(a)]
+        assert not offenders, f"profile content mounted over the config tree: {offenders}"
+
     def _prof_with_opencode_persona(self, tmp_path):
         prof = tmp_path / "prof"
         (prof / "opencode" / "prompts").mkdir(parents=True)
