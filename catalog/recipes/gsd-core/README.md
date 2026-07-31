@@ -5,12 +5,12 @@ its own upstream installer (`@opengsd/gsd-core`), pinned to an exact version.
 
 Ships as skills/agents baked by `install.sh`; no MCP server.
 
-## Container vs `launch --host`
+## Container vs `harnessed host-run`
 
 `install.sh` runs in **both** modes and does the same thing in each — this is a pure content recipe,
 so nothing is skipped host-side. The installer's `--global` flag targets `os.homedir()/.claude`; on a
-host launch `install.sh` points a throwaway `$HOME` at the stack's own config dir so "global" means
-*this stack*, never your real `~/.claude`.
+host-native launch `install.sh` points a throwaway `$HOME` at the stack's own config dir so "global"
+means *this stack*, never your real `~/.claude`.
 
 Requires `pnpm` on PATH host-side (it is the installer's runner). If `pnpm` is missing the install
 fails loudly rather than silently shipping a stack with no GSD skills.

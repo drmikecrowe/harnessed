@@ -315,14 +315,28 @@ decides whether mechanism 1 is available for a given harness, so establish it be
 one shared location is deliberate design, not a violation — a universal rolled-up view across every
 stack is the point, and those files are not subject to the replace-on-refresh hazard above.
 
-**Auth is per-harness, and both current paths comply.** claude mounts its real
-`~/.claude/.credentials.json` **read-only** + a token-free onboarding stub (mechanism 1). **omp**
-stores auth/usage/sessions together in `~/.omp/agent` with no separately-mountable credential file,
-so the launcher **bind-mounts that host dir read-write** and runs plain `omp` (never `--profile`,
-which points omp at an isolated *empty* store — a credential-only seed lands on the login screen).
-That is mechanism 1 too, at dir granularity: shared host state, deliberately not isolated. Do not
-"fix" it back to isolation by snapshotting the dir — that was built, tried, and rejected; see
-[design §4c](docs/harnessed-design.md).
+**Auth is per-harness.** For **claude** there are two paths, in order of preference:
+
+1. **`CLAUDE_CODE_OAUTH_TOKEN` (primary — mechanism 2).** A long-lived subscription token issued
+   by `claude setup-token` (~1-year lifetime). Forwarded from the host environment or a resolved
+   `--env-file` (varlock / 1Password). When present, no credential file is mounted at all — the
+   copy-divergence problem does not arise. Also mounted in all cases: a token-free `~/.claude.json`
+   onboarding stub so Claude skips the interactive setup screen.
+2. **Per-instance credential seed (legacy fallback — NOT mechanism 1).** When no OAuth token is
+   configured, the launcher seeds a per-instance copy of `~/.claude/.credentials.json`, mounted
+   **rw** so the container can refresh it. This is acknowledged replication — it violates the SOP
+   above — and is tolerated only so that hosts which have not yet run `claude setup-token` keep
+   working. The container's copy diverges from the host's on the first token refresh, and concurrent
+   rotation is undocumented. The launcher re-seeds from the host file when the copy has expired,
+   which addresses the "permanently logged out" failure mode of the original design; the underlying
+   race remains. Migrate with `claude setup-token`.
+
+**omp** stores auth/usage/sessions together in `~/.omp/agent` with no separately-mountable
+credential file, so the launcher **bind-mounts that host dir read-write** and runs plain `omp`
+(never `--profile`, which points omp at an isolated *empty* store — a credential-only seed lands on
+the login screen). That is mechanism 1 (reference the live store, at dir granularity): shared host
+state, deliberately not isolated. Do not "fix" it back to isolation by snapshotting the dir — that
+was built, tried, and rejected; see [design §4c](docs/harnessed-design.md).
 
 Both host backends inherit the same shape, because `CLAUDE_CONFIG_DIR` and `PI_CODING_AGENT_DIR`
 each move config **and** credentials together. The per-stack home therefore holds content

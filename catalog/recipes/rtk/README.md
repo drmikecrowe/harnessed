@@ -6,11 +6,11 @@ scrollback.
 
 Ships as a CLI baked by `install.sh`; no MCP server.
 
-## Container vs `launch --host`
+## Container vs `harnessed host-run`
 
 `install.sh` runs in both modes, but the two halves differ:
 
-| | container build | `launch --host` |
+| | container build | `harnessed host-run` |
 | --- | --- | --- |
 | the `rtk` binary | installed via mise's `github:` backend, pinned | **not installed** — a loud warning, see below |
 | `rtk init -g --auto-patch` (RTK.md + the PreToolUse hook) | into the image's `~/.claude` | into the stack's `$HARNESSED_CONFIG_DIR`, but only if `rtk` is already on your PATH |
@@ -18,8 +18,8 @@ Ships as a CLI baked by `install.sh`; no MCP server.
 The binary is deliberately not installed host-side. `mise use -g` writes *your* global mise config
 and data dir, which harnessed does not own; and `install:` has no way to place an executable on the
 host agent's PATH (it is handed `$HARNESSED_CONFIG_DIR` and the install cache, not the stack bin
-dir). Landing host-native binaries on PATH is `provision:`'s job — see bd harnessed-zi6.1. Until rtk
-grows one, install `rtk 0.43.0` yourself and the wiring half still runs, or run the stack in a
+dir). Landing host-native binaries on PATH is `setup.script`'s job — see bd harnessed-zi6.1. Until
+rtk grows one, install `rtk 0.43.0` yourself and the wiring half still runs, or run the stack in a
 container.
 
 ## Footprint / removal
