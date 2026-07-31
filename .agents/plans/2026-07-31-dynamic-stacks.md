@@ -121,6 +121,22 @@ class TestRecipeServices:
         with pytest.raises(SchemaError, match="non-empty strings"):
             load_recipe(d)
 
+    @pytest.mark.parametrize("bad", ["''", "{}", "0"])
+    def test_falsy_non_list_rejected(self, tmp_path, bad):
+        """A falsy guard would return [] here and skip the type check, silently dropping a
+        REQUIRED sidecar — the exact failure this field exists to prevent."""
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text(f"name: r\nservices: {bad}\n")
+        with pytest.raises(SchemaError, match="'services' must be a list"):
+            load_recipe(d)
+
+    def test_explicit_empty_list_is_allowed(self, tmp_path):
+        d = tmp_path / "r"
+        d.mkdir()
+        (d / "recipe.yaml").write_text("name: r\nservices: []\n")
+        assert load_recipe(d).services == []
+
     def test_services_is_a_known_field(self, tmp_path):
         """strict=True must NOT reject it — otherwise the field is unusable in `build`."""
         d = tmp_path / "r"
@@ -148,7 +164,13 @@ def _parse_services(raw_services) -> list[str]:
     working stack and the beads recipes had to fail at runtime telling the user to edit one.
     Unioned with the stack's own `services:` in `launcher._service_refs`.
     """
-    if not raw_services:
+    # `is None`, NOT a falsy test — deliberately diverging from the neighbouring _parse_conflicts.
+    # `services: ""`, `services: {}` and `services: 0` are all falsy, so a falsy guard returns []
+    # and the isinstance check below never runs: a typo silently drops a REQUIRED sidecar, which is
+    # precisely the failure this field exists to prevent. An explicit `services: []` still yields []
+    # via the loop. (_parse_conflicts has the falsy shape; its failure mode is milder — a dropped
+    # conflict warns rather than breaking a launch — so it is left alone here.)
+    if raw_services is None:
         return []
     if not isinstance(raw_services, list):
         raise SchemaError("recipe 'services' must be a list of service names")
@@ -190,7 +212,7 @@ In the `Recipe(...)` construction inside `load_recipe` (`schema.py:1350`), besid
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `tools/run-tests.sh tests/test_schema.py -k TestRecipeServices -v`
-Expected: PASS, 5 tests.
+Expected: PASS, 9 tests (the parametrized falsy case counts as three).
 
 - [ ] **Step 6: Write the failing `_service_refs` test**
 
@@ -317,7 +339,7 @@ Run: `tools/run-tests.sh tests/test_catalog_json_schemas.py -v`
 Expected: PASS.
 
 Run: `tools/run-tests.sh 2>&1 | tail -5`
-Expected: the Task 0 baseline count **plus 8** new tests, no failures.
+Expected: the Task 0 baseline count **plus 12** new tests, no failures.
 
 - [ ] **Step 13: Commit**
 
@@ -463,7 +485,7 @@ The shape matters and is fixed: `list_catalog` resolves `<root>/<kind>/<name>/<m
 - [ ] **Step 5: Run the full suite**
 
 Run: `tools/run-tests.sh 2>&1 | tail -5`
-Expected: baseline + 13, no failures. Watch specifically for fallout in `tests/test_harnessed_home.py` and anything asserting the exact length of `catalog_roots()`.
+Expected: baseline + 17, no failures. Watch specifically for fallout in `tests/test_harnessed_home.py` and anything asserting the exact length of `catalog_roots()`.
 
 - [ ] **Step 6: Commit**
 
@@ -563,6 +585,21 @@ class TestDeriveName:
         with pytest.raises(ValueError, match="at least one recipe"):
             dynstack.derive_name([], None)
 
+    def test_case_fold_collision_is_hashed(self):
+        """`_sanitize` lowercases, so `Foo` and `foo` produce the same readable join. Without a
+        digest they would share one generated manifest, image and pair of volumes."""
+        assert dynstack.derive_name(["Foo"], None) != dynstack.derive_name(["foo"], None)
+
+    def test_space_fold_collision_is_hashed(self):
+        assert dynstack.derive_name(["foo bar"], None) != dynstack.derive_name(["foo-bar"], None)
+
+    @pytest.mark.parametrize("ref", [".", "..", "***"])
+    def test_refs_yielding_reserved_components_are_rejected(self, ref):
+        """`.` and `..` survive sanitization and `***` sanitizes to empty, so mint would write to
+        the stacks dir itself or to its parent."""
+        with pytest.raises(ValueError, match="usable stack-name component"):
+            dynstack.derive_name([ref], None)
+
 
 class TestMint:
     def test_writes_a_manifest_that_names_itself(self, tmp_path, monkeypatch):
@@ -590,6 +627,19 @@ class TestMint:
         monkeypatch.setattr(dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         _, d = dynstack.mint(["serena"], None)
         assert "extends:" not in (d / "stack.yaml").read_text()
+
+    def test_authored_stack_of_the_same_name_is_refused(self, tmp_path, monkeypatch):
+        """The generated root is LAST in precedence, so an authored stack of the same derived name
+        wins resolution and would be built and launched instead of this one. Refuse, don't shadow."""
+        authored = tmp_path / "authored"
+        (authored / "stacks" / "serena").mkdir(parents=True)
+        (authored / "stacks" / "serena" / "stack.yaml").write_text("name: serena\nrecipes: []\n")
+        gen = tmp_path / "gen"
+        monkeypatch.setattr(dynstack.paths, "generated_catalog_root", lambda: gen)
+        monkeypatch.setattr(dynstack.paths, "catalog_roots", lambda: [authored, gen])
+
+        with pytest.raises(ValueError, match="collides with an authored stack"):
+            dynstack.mint(["serena"], None)
 
     def test_manifest_is_marked_generated_in_a_comment_not_a_field(self, tmp_path, monkeypatch):
         """Stack manifests REJECT unknown fields, so the marker must be a comment."""
@@ -668,8 +718,20 @@ def normalize(recipes: list[str], extends: str | None) -> tuple[str | None, tupl
     return extends, tuple(sorted({r.strip() for r in recipes if r.strip()}))
 
 
+# Components that are legal-looking but would escape or collapse the target directory. `.` and `..`
+# survive sanitization intact, and an all-unsafe ref like `***` sanitizes to the empty string; mint
+# would then write to the stacks dir itself or to its PARENT instead of a stack of its own.
+_RESERVED = frozenset({"", ".", ".."})
+
+
 def _sanitize(ref: str) -> str:
-    """A catalog ref reduced to one legal path component (`beads/team` -> `beads-team`)."""
+    """A catalog ref reduced to one legal path component (`beads/team` -> `beads-team`).
+
+    LOSSY BY DESIGN: it lowercases and folds every unsafe character to `-`, so `Foo`/`foo` and
+    `foo bar`/`foo-bar` collapse together. `derive_name` detects that loss and appends a digest —
+    do not try to make this reversible, because a path component genuinely cannot carry those
+    characters.
+    """
     return _UNSAFE.sub("-", ref.strip().lower().replace("/", "-")).strip("-")
 
 
@@ -691,9 +753,20 @@ def derive_name(recipes: list[str], extends: str | None) -> str:
     if not refs:
         raise ValueError("a dynamic stack needs at least one recipe")
 
-    parts = [_sanitize(p) for p in ([base] if base else []) + list(refs)]
+    values = ([base] if base is not None else []) + list(refs)
+    parts = [_sanitize(v) for v in values]
+
+    for original, clean in zip(values, parts):
+        if clean in _RESERVED:
+            raise ValueError(
+                f"catalog ref {original!r} does not yield a usable stack-name component"
+            )
+
     readable = "+".join(parts)
-    lossy = any("/" in r for r in refs) or (base is not None and "/" in base)
+    # Any value whose sanitized form differs from the original has LOST information, so the readable
+    # join is no longer a faithful encoding and two different sets could land on one name. Checking
+    # only for "/" missed case folding (`Foo` vs `foo`) and space folding (`foo bar` vs `foo-bar`).
+    lossy = any(clean != original for original, clean in zip(values, parts))
 
     if not lossy and len(readable) <= NAME_MAX:
         return readable
@@ -712,6 +785,19 @@ def mint(
     """
     base, refs = normalize(recipes, extends)
     name = derive_name(recipes, extends)
+
+    # An AUTHORED stack of the same name wins resolution — the generated root is deliberately last
+    # in precedence — so `find_in_catalog` would hand both build and launch the authored manifest
+    # while this one sat ignored, and `run` would silently execute something the user did not ask
+    # for. Refuse rather than shadow. (Reported on PR #176.)
+    existing = paths.find_in_catalog("stacks", name)
+    generated_root = paths.generated_catalog_root().resolve()
+    if (existing / "stack.yaml").is_file() and not existing.resolve().is_relative_to(generated_root):
+        raise ValueError(
+            f"derived name {name!r} collides with an authored stack at {existing} — that stack "
+            f"would win resolution and be launched instead. Rename it, or change the recipe set."
+        )
+
     stack_dir = paths.generated_catalog_root() / "stacks" / name
     stack_dir.mkdir(parents=True, exist_ok=True)
 
@@ -743,7 +829,7 @@ def mint(
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `tools/run-tests.sh tests/test_dynstack.py -v`
-Expected: PASS, 16 tests.
+Expected: PASS, 22 tests (the parametrized reserved-ref case counts as three).
 
 `mint` writes to `<generated_catalog_root>/stacks/<name>/stack.yaml`, which is why the tests patch `generated_catalog_root` to return `tmp_path` and then find the manifest under `tmp_path/stacks/<name>/`.
 
@@ -857,6 +943,39 @@ def test_unknown_harness_is_rejected(monkeypatch, tmp_path):
     monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
     result = runner.invoke(launcher.app, ["run", "--recipe", "serena", "not-a-harness"])
     assert result.exit_code != 0
+
+
+def test_failed_build_removes_a_manifest_this_run_created(monkeypatch, tmp_path):
+    """A stack that never built owns no volumes, so no GC would ever reclaim it — it would just
+    sit in `harnessed list` forever. (`dynstack` does `from . import paths`, so patching
+    `dynstack.paths` patches the one shared module object that launcher sees too.)"""
+    monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("build failed")
+
+    monkeypatch.setattr(launcher, "_build_stack", boom)
+    monkeypatch.setattr(launcher, "launch", lambda **kw: None)
+
+    runner.invoke(launcher.app, ["run", "--recipe", "serena", "claude"])
+    assert not (tmp_path / "stacks" / "default+serena").exists()
+
+
+def test_failed_build_keeps_a_preexisting_manifest(monkeypatch, tmp_path):
+    """Deleting someone's already-working stack because today's build broke is collateral damage."""
+    monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    monkeypatch.setattr(launcher, "launch", lambda **kw: None)
+    monkeypatch.setattr(launcher, "_build_stack", lambda *_a, **_kw: None)
+    runner.invoke(launcher.app, ["run", "--recipe", "serena", "claude"])  # first run: creates it
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("build failed")
+
+    monkeypatch.setattr(launcher, "_build_stack", boom)
+    runner.invoke(launcher.app, ["run", "--recipe", "serena", "claude"])
+    assert (tmp_path / "stacks" / "default+serena" / "stack.yaml").is_file()
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -910,14 +1029,27 @@ def run(
 
     base = None if no_extends else extends
     try:
-        stack, _ = dynstack.mint(list(recipe), base, services=list(service))
+        stack = dynstack.derive_name(list(recipe), base)
+        # Whether the manifest predates THIS invocation decides who owns cleanup below.
+        preexisting = (paths.generated_catalog_root() / "stacks" / stack / "stack.yaml").is_file()
+        stack, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
     except ValueError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}")
         raise typer.Exit(1)
 
     # A freshly minted stack has no assembled profile, and `launch` hard-errors without one. Build
     # unconditionally: _build_stack is fingerprint-gated downstream, so an unchanged set is cheap.
-    _build_stack(_runtime(), stack, harness)
+    #
+    # On failure, remove a manifest this invocation CREATED. Otherwise a stack that never built
+    # lingers in the catalog, appears in `harnessed list`, and no GC reclaims it — volume-gc keys on
+    # volumes, and a stack that never built owns none. A PRE-EXISTING manifest is left alone: it may
+    # be a working stack that today's recipe edit merely broke, and deleting it would be collateral.
+    try:
+        _build_stack(_runtime(), stack, harness)
+    except Exception:
+        if not preexisting:
+            shutil.rmtree(stack_dir, ignore_errors=True)
+        raise
 
     launch(stack=stack, harness=harness, path=path, fresh=False, rm=False, no_firewall=False,
            agent_start_folder=None, mount_folder=None, shell=False)
@@ -943,7 +1075,7 @@ Expected: PASS. `test_cli_commands.py` must stay green in **both** directions �
 - [ ] **Step 7: Run the full suite**
 
 Run: `tools/run-tests.sh 2>&1 | tail -5`
-Expected: baseline + 35, no failures.
+Expected: baseline + 47, no failures.
 
 - [ ] **Step 8: Verify by hand against a real stack**
 
@@ -1022,9 +1154,11 @@ identity comes from the forwarded agent plus your own `~/.ssh/config` (bd harnes
 
 - [ ] **Step 3: Document the per-repo binding**
 
-Add to ARCHITECTURE.md after the `run` paragraph:
+Add to ARCHITECTURE.md after the `run` paragraph. **Note the four-backtick outer fence** — the
+snippet contains its own ```` ```toml ```` block, and a three-backtick outer fence would be closed
+by it, silently truncating the instruction here:
 
-```markdown
+````markdown
 **Per-repo binding.** A project records its recipe set as a mise task:
 
 ```toml
@@ -1037,7 +1171,7 @@ No env var, no discovery, no precedence rules — and the trust question answers
 `mise trust` it. Rejected alternatives are recorded in bd harnessed-7rx: an unknown top-level
 `[harnessed]` table warns on every mise invocation, and `[env] HARNESSED_RECIPES` is live only when
 mise is activated, failing silently and expensively when it is not.
-```
+````
 
 - [ ] **Step 4: Verify the docs build clean and commit the repo half**
 
@@ -1088,6 +1222,35 @@ bd close harnessed-7rx --reason="Dynamic stacks shipped: recipes declare their s
 ```
 
 ---
+
+## Review finding deliberately not adopted
+
+**"Include resolved catalog content in the generated identity."** (CodeRabbit, PR #176, Major.) The
+argument: `normalize`/`_digest` hash only reference *strings*, so because the user overlay wins over
+the repo catalog, the same refs can resolve to different recipes, and one generated name could then
+describe two different effective stacks.
+
+The premise is true; the conclusion does not follow, because **content drift is already handled by a
+different mechanism**. `harnessed build` computes each stack's recipe-closure content hash
+(`compute_recipe_hash`) and compares it against the `harnessed.recipe-hash` label baked into the
+built image, and `launch` calls `staleness.check_profile_fresh`, which hard-errors on a profile
+whose recipes changed since it was assembled. Editing a recipe therefore triggers a rebuild today,
+under the stack's existing name.
+
+Folding content into the *name* would mint a **new identity on every recipe edit** — a new profile
+dir, a new image, and a new pair of volumes each time you touch a `recipe.yaml`. That is exactly the
+artifact churn content-derived naming exists to prevent, and it would leave the previous identity
+orphaned after every edit.
+
+The two answer different questions, and conflating them breaks the first to re-answer the second:
+
+| question | answered by |
+| --- | --- |
+| *Which recipe set is this?* | the derived **name** — must be stable across edits |
+| *Is the built artifact current for that set?* | the **recipe-hash** label + staleness check — must change on every edit |
+
+Keep them separate. If cross-catalog ambiguity ever bites in practice, the fix is to make the
+staleness error name the offending overlay recipe, not to destabilise the identity.
 
 ## Notes for the implementer
 
