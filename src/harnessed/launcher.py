@@ -38,6 +38,7 @@ from rich.markup import escape
 from ruamel.yaml import YAML
 
 from . import __version__
+from . import dynstack
 from . import emit
 from . import paths
 from . import persist
@@ -5784,6 +5785,68 @@ def _attach(
         _attach_marker(inst).unlink(missing_ok=True)
 
 
+@app.command("run")
+def run(
+    harness: str = typer.Argument(..., help="Harness to use (claude|omp|opencode|antigravity|codex)"),
+    recipe: list[str] = typer.Option(
+        [], "--recipe", "-r",
+        help="Recipe to include; repeat for each. Order is irrelevant — the set is sorted.",
+    ),
+    extends: str = typer.Option(
+        "default", "--extends",
+        help="Stack to inherit from (baseline recipes, permissions, credential forwarding).",
+    ),
+    no_extends: bool = typer.Option(
+        False, "--no-extends", help="Inherit from nothing — the recipe list stands alone.",
+    ),
+    service: list[str] = typer.Option(
+        [], "--service",
+        help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
+    ),
+    path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+) -> None:
+    """Launch a stack composed from a recipe set, without authoring a stack.yaml.
+
+    `harnessed run --recipe superpowers --recipe serena claude`
+
+    The set is normalized and named by its CONTENT, so an identical set in another repo resolves to
+    the same stack and shares its image and volumes. A real manifest is minted under the generated
+    catalog root, which is what lets `harnessed list`, the staleness check and both GCs treat it
+    like any other stack.
+    """
+    _require_supported_harness(harness)
+
+    base = None if no_extends else extends
+    try:
+        # services MUST be passed here too — they are part of the identity, so deriving without
+        # them would compute a different name than mint() does and the preexisting check below
+        # would inspect the wrong path.
+        stack = dynstack.derive_name(list(recipe), base, services=list(service))
+        # Whether the manifest predates THIS invocation decides who owns cleanup below.
+        preexisting = (paths.generated_catalog_root() / "stacks" / stack / "stack.yaml").is_file()
+        stack, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
+    except ValueError as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc}")
+        raise typer.Exit(1)
+
+    # A freshly minted stack has no assembled profile, and `launch` hard-errors without one. Build
+    # unconditionally: _build_stack is fingerprint-gated downstream, so an unchanged set is cheap.
+    #
+    # On failure, remove a manifest this invocation CREATED. Otherwise a stack that never built
+    # lingers in the catalog, appears in `harnessed list`, and no GC reclaims it — volume-gc keys on
+    # volumes, and a stack that never built owns none. A PRE-EXISTING manifest is left alone: it may
+    # be a working stack that today's recipe edit merely broke, and deleting it would be collateral.
+    try:
+        _build_stack(_runtime(), stack, harness)
+    except Exception:
+        if not preexisting:
+            shutil.rmtree(stack_dir, ignore_errors=True)
+        raise
+
+    launch(stack=stack, harness=harness, path=path, fresh=False, rm=False, no_firewall=False,
+           agent_start_folder=None, mount_folder=None, shell=False)
+
+
 @app.command("build")
 def build(
     stack: Optional[str] = typer.Argument(
@@ -6658,7 +6721,7 @@ def host_gc(
 _COMMANDS = {
     "launch", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
     "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc", "host-run",
-    "update", "volume-gc",
+    "update", "volume-gc", "run",
 }
 
 
