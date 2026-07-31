@@ -1,160 +1,114 @@
 # CLAUDE.md
 
-Project instructions for AI assistants. The canonical, always-current sources are:
+## Read docs before exploring the tree
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — repo layout, the agent/recipe/service/stack/catalog
-  vocabulary, the host-native build/launch model, and the capability-test oracle. **Read it first.**
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — dev setup and how to add a recipe / agent / service / stack.
-- **[AGENTS.md](AGENTS.md)** — operational notes (don't run `harnessed` yourself, etc.).
-- **[docs/harnessed-design.md](docs/harnessed-design.md)** — the deeper rationale (the *why*).
-- **[docs/codebase/](docs/codebase/)** — generated codebase maps (regenerate with `/map-codebase`):
-  STACK, STRUCTURE, ARCHITECTURE, CONVENTIONS, INTEGRATIONS, TESTING, CONCERNS. The *where the code
-  lives, how it's written, and what's wired to what* reference — start here before navigating `src/`.
-- **[docs/guides/](docs/guides/)** — user-facing how-to guides: recipe authoring, service authoring,
-  stacks, secrets, AWS SSO, egress, troubleshooting, git hooks, and more. `harnessed-update.md` is
-  being actively written; `ROADMAP.md` has been removed (roadmap tracking moved to beads).
+Answer from the table below **before** running `ls`/`cat`/`rg` over the source. This outranks any
+generic "explore the project first" step from a skill, workflow, or subagent brief — those are
+repo-blind. Open `src/` only with a specific question the docs did not answer, or to edit.
 
-Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can't drift.
+| Question | Read |
+| --- | --- |
+| What do *agent / recipe / service / stack / catalog* mean? How does build/launch work? | **[ARCHITECTURE.md](ARCHITECTURE.md) — first, always.** The vocabulary is precise; the words are not interchangeable. |
+| Where does code live? What calls what? | [docs/codebase/](docs/codebase/) — STRUCTURE, ARCHITECTURE, INTEGRATIONS |
+| How is code written? What is tested or known-weak? | [docs/codebase/](docs/codebase/) — CONVENTIONS, TESTING, CONCERNS |
+| How do I author a recipe/service/stack? Set up a dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
+| *Why* is it built this way? | [docs/harnessed-design.md](docs/harnessed-design.md) |
+| What must I not do operationally? | [AGENTS.md](AGENTS.md) |
+| What work is open or decided? | `bd list`, `bd show <id>` — never a markdown TODO |
+
+- **`docs/codebase/` is generated** (`/map-codebase`) and reproduces stale claims across
+  regenerations. Code wins on conflict — fix the map, re-running won't.
+- **`docs/` is the GitHub wiki** — separate repo (`harnessed.wiki.git`), gitignored, and present
+  only at `main/docs/`; task worktrees do not have it. Read the exemption below before editing it.
+
+Keep layout and vocabulary in ARCHITECTURE.md, not here.
 
 ## Non-negotiable constraints
 
-- **harnessed is a host Python CLI** (`src/harnessed/`, distributed via pipx/uvx) that drives podman
-  directly. No tool container; assembly runs in-process.
-- **Claude format is canonical** — every other agent adapts out of the same `.claude/` profile.
-- **Recipes are harness-independent** — no `harnesses:` field; harness-specific steps branch on
-  `${HARNESS}` inside the recipe Dockerfile.
-- **pnpm for package installs** — the recipe lint rejects raw `npm`/`npx` (`pnpm dlx` replaces `npx`).
-  The one exception is upgrading npm itself in the base image (`npm install -g npm@<pin>`) — there is
-  no pnpm equivalent. **`uvx`** for light Python MCP servers.
-- **Pin every download** in recipe Dockerfiles (no `@latest`/`--branch main` — the build rejects them).
-- **Credentials referenced, never replicated.** Never baked into an image or committed — and never
-  copied, seeded, or snapshotted into a per-stack home (host or container). Reference the live store
-  (mount, symlink, or token/broker URL) so a refresh is always visible. A *symlink* counts as a
-  reference only while the harness rewrites its store **in place**; a harness that replaces the file
-  on refresh silently turns that link into a stale copy (see harnessed-8px.10). This is separate
-  from — and does not restrict — symlinking history/session/usage state up for a universal rolled-up
-  view, which is deliberate design. See ARCHITECTURE.md §Constraints.
-- **Streamable-HTTP MCP** only (SSE is deprecated).
-- Authorable content lives under **`catalog/`** (repo) and **`~/.config/harnessed/catalog`** (user
-  overlay, wins on clash). Generated profiles go to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
-- **`catalog/` is shipped inside the wheel** (via the `src/harnessed/catalog` symlink + package-data),
-  so an installed `harnessed` needs no repo on disk. Two rules follow — see ARCHITECTURE.md §harnessed home:
-  1. **Nothing host-local inside `catalog/`.** It is a published artifact and setuptools follows
-     symlinks; the overlay symlinks therefore live in `catalog-local/`, never `catalog/<kind>.local`.
-  2. **Never key build/assembly off the CWD.** Anchor to `paths.harnessed_home()` (the dir containing
-     `catalog/`), so `harnessed build <stack>` behaves the same from any directory.
+- **Host Python CLI** (`src/harnessed/`, pipx/uvx) driving podman directly. No tool container;
+  assembly runs in-process.
+- **Claude format is canonical.** Every other agent adapts out of the same `.claude/` profile.
+- **Recipes are harness-independent** — no `harnesses:` field. Branch on `${HARNESS}` inside the
+  recipe Dockerfile.
+- **pnpm, never raw `npm`/`npx`** (`pnpm dlx` replaces `npx`); the lint rejects them. Sole exception:
+  `npm install -g npm@<pin>` in the base image. **`uvx`** for light Python MCP servers.
+- **Pin every download** — no `@latest`/`--branch main`; the build rejects them.
+- **Credentials referenced, never replicated.** Never bake, commit, copy, seed, or snapshot into a
+  per-stack home. Reference the live store (mount, symlink, token/broker URL). A symlink counts only
+  while the harness rewrites **in place** — one that replaces the file turns the link into a stale
+  copy (harnessed-8px.10). Symlinking history/session/usage state up is deliberate design, not a
+  violation. See ARCHITECTURE.md §Constraints.
+- **Streamable-HTTP MCP only** (SSE deprecated).
+- Author under **`catalog/`** (repo) or **`~/.config/harnessed/catalog`** (user overlay, wins on
+  clash). Profiles generate to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
+- **`catalog/` ships inside the wheel** (`src/harnessed/catalog` symlink + package-data), so — see
+  ARCHITECTURE.md §harnessed home:
+  1. **Nothing host-local in `catalog/`** — setuptools follows symlinks; overlay links live in
+     `catalog-local/`.
+  2. **Never key build/assembly off the CWD.** Anchor to `paths.harnessed_home()`.
 
 ## Git workflow (non-negotiable)
 
-**No commits to `main`. Every change flows through a worktree → passing tests → PR.**
+**Never commit to `main`.** Worktree → full suite passing → PR. Sign every commit
+(`.claude/rules/signed-commits`).
 
-1. Start work in a **new git worktree** (never edit/commit on `main` directly).
-2. Get the **full test suite passing** in that worktree before proposing to merge.
-3. Open a **PR** to `main` — merges happen via PR review, not direct pushes.
+Covers code, catalog, config, and all repo-tracked Markdown (`ARCHITECTURE.md`, this file, the
+`README.md` files, `.agents/skills/**`).
 
-This applies to code, catalog content, docs, and config alike. Commits are signed
-(see `.claude/rules/signed-commits`).
+### Exemption: `docs/` (the wiki)
 
-### Where to stand: start and finish in `main/`
+`harnessed.wiki.git` is a different repo with no PR or CI surface. Wiki changes therefore use no
+branches, no tests, and no PR — don't try. Pushing its default branch publishes the live pages
+immediately and irreversibly, so instead:
 
-This checkout is **bare + worktrees**: `.bare/` is the git dir, `<repo>/main/` is the canonical `main`
-checkout, and task worktrees live under `.claude/worktrees/<name>/` (a few older ones sit directly at
-the repo root). Run `git worktree list` if you are unsure where you are.
+1. Edit in place in `main/docs/` (task worktrees don't have it).
+2. Read the **whole** diff first, including files you didn't write — credentials, private paths,
+   internal names, unreleased plans. This replaces the PR review.
+3. Get explicit confirmation to push. Missing "yes" = no.
+4. Commit signed, then `git -C docs push`.
 
-- **Begin each session in `main/`, and return to `main/` when a task is done.** Do the *work* in a
-  task worktree per the rules above — but read, verify, and come to rest in `main/`. Never carry an
-  unrelated change into whatever worktree you happen to have inherited; it belongs to another task.
-- **Never conclude "file X doesn't exist" from inside a worktree.** Git does not populate a worktree
-  with **gitignored** content. Most consequentially `docs/`, which is an unpinned live clone of the
-  GitHub wiki (see `.gitignore`) — so `docs/guides/*`, `docs/codebase/*`, and `docs/harnessed-design.md`
-  exist **only in `main/`**, even though this file and AGENTS.md link to them freely. An empty
-  `ls`/`fd` inside a worktree means "ignored or untracked *here*", never "missing from the project".
-  Confirm against `main/`, `git ls-tree`, and `.gitignore` before claiming anything is absent or dead.
+Repo and wiki are separate deliveries; a PR never carries wiki edits. Say which half landed where.
 
-## Running the tests
+### Stand in `main/`
 
-```bash
-mise trust && mise exec -- uv sync --extra dev   # once per worktree
-mise exec -- uv run pytest -q
-```
+Bare + worktrees: `.bare/` is the git dir, `main/` the canonical checkout, tasks in
+`.claude/worktrees/<name>/`. Run `git worktree list` when unsure.
 
-Two traps, both of which produce **failures that CI never sees**:
+- **Start and end each session in `main/`.** Work in a task worktree; read, verify, and come to rest
+  in `main/`. Never carry an unrelated change into an inherited worktree.
+- **Never conclude "file X doesn't exist" from a worktree.** Gitignored content isn't populated
+  there — notably `docs/`, which exists only in `main/`. An empty `ls`/`fd` means "ignored here", not
+  "missing". Confirm against `main/`, `git ls-tree`, and `.gitignore`.
 
-- **`--extra dev` is required.** `pytest` lives in `[project.optional-dependencies].dev`. A plain
-  `uv sync` installs the project without it, and `uv run pytest` then silently falls through to a
-  system `pytest` on a different Python — every test errors with `ModuleNotFoundError: No module
-  named 'harnessed'`, which looks like a broken checkout rather than a missing extra.
-- **The venv is per-branch.** `mise.toml` sets `UV_PROJECT_ENVIRONMENT` to
-  `~/.local/share/harnessed/venvs/<branch>/.venv` (one venv per branch, deliberately outside the
-  repo so a container bind-mount cannot corrupt it). A fresh worktree therefore starts with no venv
-  and needs the sync above — it is not inherited from `main/`.
-
-**Do not "fix" a color-related assertion failure by changing the assertion.** If a CLI test fails
-comparing plain text against ANSI-escaped output (`assert "no such stack 'x'" in "\x1b[1;31merror…"`),
-the environment is wrong, not the test. `rich` renders plain when stdout is not a TTY — which is the
-case under typer's `CliRunner` — but `FORCE_COLOR` overrides that check, and terminal shell
-integration sets it without asking (Ghostty exports `FORCE_COLOR=3`). `tests/conftest.py` pops it at
-**module import**, which is early enough only because `rich` reads it when a `Console` is
-constructed and `launcher.py` builds its Consoles at import; an autouse fixture runs too late. If you
-add a new conftest or run tests outside pytest, preserve that.
-
-## Project skills
-
-Skills live under `.agents/skills/`. See that directory for the current set.
-
-
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
-## Beads Issue Tracker
-
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
+## Tests
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
+tools/run-tests.sh                        # whole suite
+tools/run-tests.sh tests/test_schema.py   # one file
+tools/run-tests.sh -k install -x          # filter, stop on first failure
 ```
 
-### Rules
+Run the script; don't hand-compose `mise`/`uv`/`pytest`. It handles worktree setup, is idempotent,
+and absorbs three traps that fail locally while CI stays green. Record the baseline count before your
+change — a drop is a regression even if your new tests pass.
 
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+The **run-tests skill** has the details: per-branch venvs, why `--extra dev` is mandatory, and why a
+plain-text-vs-ANSI assertion failure means the environment is wrong and must never be "fixed" by
+editing the assertion.
 
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
+A green run is not end-to-end proof: the suite runs no `podman build` and no `harnessed launch`.
 
-## Agent Context Profiles
+## Skills
 
-The managed Beads block is task-tracking guidance, not permission to override repository, user, or orchestrator instructions.
+`.agents/skills/`.
 
-- **Conservative (default)**: Use `bd` for task tracking. Do not run git commits, git pushes, or Dolt remote sync unless explicitly asked. At handoff, report changed files, validation, and suggested next commands.
-- **Minimal**: Keep tool instruction files as pointers to `bd prime`; use the same conservative git policy unless active instructions say otherwise.
-- **Team-maintainer**: Only when the repository explicitly opts in, agents may close beads, run quality gates, commit, and push as part of session close. A current "do not commit" or "do not push" instruction still wins.
 
-## Session Completion
+## Issue tracking: beads
 
-This protocol applies when ending a Beads implementation workflow. It is subordinate to explicit user, repository, and orchestrator instructions.
+`bd` is the tracker — never TodoWrite or a markdown TODO. `bd remember`, not a MEMORY.md.
 
-1. **File issues for remaining work** - Create beads for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **Handle git/sync by active profile**:
-   ```bash
-   # Conservative/minimal/default: report status and proposed commands; wait for approval.
-   git status
+`bd prime` runs as a SessionStart hook (`.claude/settings.json`) and already delivers the command
+reference, session-close protocol, and stored memories. Run it by hand after a compact or `/clear`.
 
-   # Team-maintainer opt-in only, unless current instructions forbid it:
-   git pull --rebase
-   bd dolt push
-   git push
-   git status
-   ```
-5. **Hand off** - Summarize changes, validation, issue status, and any blocked sync/commit/push step
-
-**Critical rules:**
-- Explicit user or orchestrator instructions override this Beads block.
-- Do not commit or push without clear authority from the active profile or the current user request.
-- If a required sync or push is blocked, stop and report the exact command and error.
-<!-- END BEADS INTEGRATION -->
+Beads guidance never authorizes a commit, push, or `bd dolt push` — the git workflow above governs,
+and outward-facing actions still need an explicit yes.
