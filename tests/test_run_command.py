@@ -32,8 +32,8 @@ def test_run_mints_builds_then_launches(monkeypatch, tmp_path):
         launcher.app, ["run", "--recipe", "superpowers", "--recipe", "serena", "claude"]
     )
     assert result.exit_code == 0, result.output
-    assert calls["built"] == ("default+serena+superpowers", "claude")
-    assert calls["launched"] == ("default+serena+superpowers", "claude")
+    assert calls["built"] == ("default.serena.superpowers", "claude")
+    assert calls["launched"] == ("default.serena.superpowers", "claude")
 
 
 def test_run_defaults_to_extending_default(monkeypatch, tmp_path):
@@ -43,7 +43,7 @@ def test_run_defaults_to_extending_default(monkeypatch, tmp_path):
     monkeypatch.setattr(launcher, "launch", lambda **kw: None)
 
     runner.invoke(launcher.app, ["run", "--recipe", "serena", "claude"])
-    text = (tmp_path / "stacks" / "default+serena" / "stack.yaml").read_text()
+    text = (tmp_path / "stacks" / "default.serena" / "stack.yaml").read_text()
     assert "extends: default" in text
 
 
@@ -87,7 +87,7 @@ def test_failed_build_removes_a_manifest_this_run_created(monkeypatch, tmp_path)
     monkeypatch.setattr(launcher, "launch", lambda **kw: None)
 
     runner.invoke(launcher.app, ["run", "--recipe", "serena", "claude"])
-    assert not (tmp_path / "stacks" / "default+serena").exists()
+    assert not (tmp_path / "stacks" / "default.serena").exists()
 
 
 def test_failed_build_keeps_a_preexisting_manifest(monkeypatch, tmp_path):
@@ -103,4 +103,4 @@ def test_failed_build_keeps_a_preexisting_manifest(monkeypatch, tmp_path):
 
     monkeypatch.setattr(launcher, "_build_stack", boom)
     runner.invoke(launcher.app, ["run", "--recipe", "serena", "claude"])
-    assert (tmp_path / "stacks" / "default+serena" / "stack.yaml").is_file()
+    assert (tmp_path / "stacks" / "default.serena" / "stack.yaml").is_file()

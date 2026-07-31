@@ -6,6 +6,8 @@ back to a hash only when the readable form would be ambiguous or over-long.
 """
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 
 import pytest
@@ -31,7 +33,7 @@ class TestDeriveName:
 
     def test_readable_join_for_a_simple_set(self):
         assert dynstack.derive_name(["superpowers", "serena"], "default") == (
-            "default+serena+superpowers"
+            "default.serena.superpowers"
         )
 
     def test_no_base_omits_the_prefix(self):
@@ -86,7 +88,7 @@ class TestDeriveName:
         """Regression guard: adding services to the identity must not put a digest on the common
         case, which is every invocation that does not use the --service escape hatch."""
         assert dynstack.derive_name(["superpowers", "serena"], "default", services=[]) == (
-            "default+serena+superpowers"
+            "default.serena.superpowers"
         )
 
     def test_services_are_not_confused_with_recipes(self):
@@ -102,6 +104,49 @@ class TestDeriveName:
         the stacks dir itself or to its parent."""
         with pytest.raises(ValueError, match="usable stack-name component"):
             dynstack.derive_name([ref], None)
+
+
+class TestImageReferenceSafety:
+    """The name is interpolated into a podman tag by `launcher._derived_image`
+    (`harnessed-<harness>-<stack>:latest`). A character that is legal in a directory name but not in
+    an OCI reference fails the BUILD, not the test suite — the suite runs no podman — so the grammar
+    has to be asserted here or nothing catches it.
+
+    OCI/docker name-component grammar: alphanumerics, separated by `.`, `_`, `__` or runs of `-`,
+    with no leading or trailing separator.
+    """
+
+    COMPONENT = re.compile(r"^[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*$")
+
+    def _assert_taggable(self, name: str) -> None:
+        assert self.COMPONENT.match(name), f"{name!r} is not a legal image-reference component"
+        assert self.COMPONENT.match(f"harnessed-claude-{name}"), f"{name!r} breaks the tag"
+
+    def test_the_real_world_set_is_taggable(self):
+        """The set that actually failed: `podman build -t harnessed-claude-default+beads-team+...`
+        died with 'invalid reference format' because `+` is not in the OCI alphabet."""
+        self._assert_taggable(dynstack.derive_name(["superpowers", "beads/team"], "default"))
+
+    @pytest.mark.parametrize("recipes,base,services", [
+        (["serena"], None, None),
+        (["superpowers", "serena"], "default", None),
+        (["beads/team"], None, None),
+        (["Foo Bar"], None, None),
+        (["a_b"], "c.d", None),
+        (["serena"], "default", ["beads-server"]),
+        ([f"recipe-number-{i}" for i in range(20)], "default", None),
+    ])
+    def test_every_derived_name_is_taggable(self, recipes, base, services):
+        self._assert_taggable(dynstack.derive_name(recipes, base, services=services))
+
+    def test_separator_cannot_be_produced_by_sanitizing_a_ref(self):
+        """The join separator must be OUTSIDE the sanitizer's output alphabet. If a sanitized ref
+        could contain it, `["a<sep>b", "c"]` and `["a", "b<sep>c"]` would both join to `a<sep>b<sep>c`
+        with neither detected as lossy — a silent collision onto one manifest, image and volume pair.
+        """
+        assert dynstack.derive_name(["a.b", "c"], None) != dynstack.derive_name(["a", "b.c"], None)
+        assert dynstack.derive_name(["a_b", "c"], None) != dynstack.derive_name(["a", "b_c"], None)
+        assert dynstack.derive_name(["a-b", "c"], None) != dynstack.derive_name(["a", "b-c"], None)
 
 
 class TestMint:
