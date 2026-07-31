@@ -30,8 +30,9 @@ Two caveats that have each cost a session:
 - **`docs/codebase/` is generated** (`/map-codebase`) and can carry a stale claim forward through a
   regeneration. When it and the code disagree, **the code wins** — then fix the map, because
   re-running the generator will not.
-- **`docs/` is a live clone of the GitHub wiki, gitignored, and has no PR flow.** Edits there publish
-  the moment they are pushed. It is also absent from every worktree — see below.
+- **`docs/` is a live clone of the GitHub wiki** — a *separate repository*
+  (`harnessed.wiki.git`), gitignored from this one, and absent from every worktree. It is the one
+  exemption to the git workflow below; read that exemption before editing anything under `docs/`.
 
 Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can't drift.
 
@@ -71,8 +72,28 @@ Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can
 2. Get the **full test suite passing** in that worktree before proposing to merge.
 3. Open a **PR** to `main` — merges happen via PR review, not direct pushes.
 
-This applies to code, catalog content, docs, and config alike. Commits are signed
-(see `.claude/rules/signed-commits`).
+This applies to code, catalog content, config, and **repo-tracked docs** — the root `*.md` files
+(`ARCHITECTURE.md`, this file, `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, recipe `README.md`s).
+Commits are signed (see `.claude/rules/signed-commits`).
+
+### The one exemption: `docs/` (the wiki)
+
+`docs/` is a clone of `harnessed.wiki.git` — a **different repository**. A GitHub wiki has no
+branches-for-review, no CI, and **no pull requests**, so worktree → tests → PR cannot be applied to
+it. Do not try; there is nothing to open a PR against.
+
+What replaces it, because a wiki push is **irreversible publication** — it is live the instant it
+lands, with no review gate:
+
+1. **Edit in place** in `main/docs/` (the wiki is absent from worktrees, so there is nowhere else).
+2. **Read the full diff before pushing** — every file, including ones you did not write. Check for
+   credentials, private paths, internal names, and unreleased plans. This is the review that a PR
+   would otherwise have provided.
+3. **Get explicit user confirmation to push.** Missing "yes" means no.
+4. Commit signed, as everywhere else, then `git -C docs push`.
+
+Repo changes and wiki changes are therefore *separate* deliveries: a PR never carries wiki edits, and
+a wiki push never waits on a PR. When one task touches both, say plainly which half landed where.
 
 ### Where to stand: start and finish in `main/`
 
