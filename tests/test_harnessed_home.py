@@ -41,9 +41,20 @@ class TestHarnessedHome:
         assert (catalog / "stacks").is_dir()
         assert (catalog / "base").is_dir()
 
-    def test_catalog_roots_end_at_home(self, monkeypatch):
+    def test_catalog_roots_end_at_home(self, monkeypatch, tmp_path):
+        """Home catalog is the last authored root; the generated root follows only when it exists.
+
+        Monkeypatch XDG_DATA_HOME to an empty tmp dir so the generated root is always absent here,
+        making the assertion stable on any machine regardless of prior `harnessed run` invocations.
+        """
         monkeypatch.delenv("HARNESSED_DIR", raising=False)
-        assert paths.catalog_roots()[-1] == paths.harnessed_home() / "catalog"
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        roots = paths.catalog_roots()
+        home_catalog = paths.harnessed_home() / "catalog"
+        assert home_catalog in roots, "harnessed_home/catalog must appear in catalog_roots()"
+        assert roots[-1] == home_catalog, (
+            "when no generated root exists, harnessed_home/catalog must be the last root"
+        )
 
     def test_raises_when_no_catalog_is_findable(self, monkeypatch, tmp_path):
         """No catalog beside the package → a named error, not a bogus 'unknown stack <x>'."""
