@@ -30,7 +30,7 @@ description: ccstatusline — bake the pinned status-line renderer + a Claude st
 #
 # No `system:` — nothing here needs root, and neither half is skipped on a host launch.
 tools:
-  - npm:ccstatusline@2.2.22
+  - npm:ccstatusline@2.2.25
 
 install:
   script: install.sh
