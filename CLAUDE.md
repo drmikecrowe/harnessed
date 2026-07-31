@@ -18,8 +18,8 @@ repo-blind. Open `src/` only with a specific question the docs did not answer, o
 
 - **`docs/codebase/` is generated** (`/map-codebase`) and reproduces stale claims across
   regenerations. Code wins on conflict — fix the map, re-running won't.
-- **`docs/` is the GitHub wiki** — separate repo (`harnessed.wiki.git`), gitignored, absent from
-  worktrees. Read the exemption below before editing it.
+- **`docs/` is the GitHub wiki** — separate repo (`harnessed.wiki.git`), gitignored, and present
+  only at `main/docs/`; task worktrees do not have it. Read the exemption below before editing it.
 
 Keep layout and vocabulary in ARCHITECTURE.md, not here.
 
@@ -52,14 +52,16 @@ Keep layout and vocabulary in ARCHITECTURE.md, not here.
 **Never commit to `main`.** Worktree → full suite passing → PR. Sign every commit
 (`.claude/rules/signed-commits`).
 
-Covers code, catalog, config, and repo-tracked docs (root `*.md`, recipe `README.md`s).
+Covers code, catalog, config, and all repo-tracked Markdown (`ARCHITECTURE.md`, this file, the
+`README.md` files, `.agents/skills/**`).
 
 ### Exemption: `docs/` (the wiki)
 
-`harnessed.wiki.git` is a different repo. A GitHub wiki has no branches, CI, or PRs — worktree →
-tests → PR cannot apply. Don't try. A wiki push is irreversible publication, so instead:
+`harnessed.wiki.git` is a different repo with no PR or CI surface. Wiki changes therefore use no
+branches, no tests, and no PR — don't try. Pushing its default branch publishes the live pages
+immediately and irreversibly, so instead:
 
-1. Edit in place in `main/docs/` (worktrees don't have it).
+1. Edit in place in `main/docs/` (task worktrees don't have it).
 2. Read the **whole** diff first, including files you didn't write — credentials, private paths,
    internal names, unreleased plans. This replaces the PR review.
 3. Get explicit confirmation to push. Missing "yes" = no.
