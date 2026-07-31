@@ -695,9 +695,9 @@ class InstallSpec:
     # case is SKILL content: a skill is agent INSTRUCTIONS run with the agent's full tool
     # permissions, so a compromised upgrade is prompt injection, not a CVE — nothing in the
     # osv/trivy/grype family detects it, and a human has to read the diff. `cache` cannot carry
-    # this meaning: agent-carnet keys a CLI+skill install with it, so its presence classifies
-    # nothing. Like `system`, the value is a REASON, not a flag — it is shown to whoever decides
-    # whether to lift the hold.
+    # this meaning: a cache key can be used for any CLI+content combination, so its presence
+    # classifies nothing. Like `system`, the value is a REASON, not a flag — it is shown to
+    # whoever decides whether to lift the hold.
     hold: str | None = None
 
 

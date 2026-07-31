@@ -162,7 +162,7 @@ Manual verification (the capability test only checks presence — verify the *be
    the on-demand + reminder combination proves insufficient in practice.
 
 > Note: there is a **separate, unrelated** startup-hooks design (`docs/todos/2026-06-29-startup-hooks.md`,
-> abandoned/never implemented — superseded by the working `init:` mechanism, see beads/agent-carnet).
+> abandoned/never implemented — superseded by the working `init:` mechanism).
 > Don't confuse it with GAP 2: `init:` runs a command once, host-side, before the agent ever
 > attaches; the `hooks:` field above is *Claude Code's own* hook runner, invoked from inside the
 > instance every time the event fires.

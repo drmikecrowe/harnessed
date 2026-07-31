@@ -182,7 +182,7 @@ class TestPartialMigrationMustDeclareWhatAHostLoses:
     promises. `install.system` is the reason the launcher prints; without it the shortfall reaches
     the user as nothing at all — the original 14-missing-skills failure, in miniature.
 
-    agent-carnet is why this lint exists: it kept `pnpm add -g` in its Dockerfile, documented the gap
+    The original motivating case: a recipe kept `pnpm add -g` in its Dockerfile, documented the gap
     in a YAML comment, and shipped a host launch that silently lacked the binary. Comments are
     invisible at runtime.
     """

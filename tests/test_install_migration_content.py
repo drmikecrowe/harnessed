@@ -32,7 +32,7 @@ CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 
 # The batch. superpowers is the template the rest follow (migrated ahead of them); it is included
 # because "the template still obeys its own contract" is exactly what regresses unnoticed.
-CONTENT_RECIPES = ["superpowers", "hyperpowers", "caveman", "agent-carnet", "gstack"]
+CONTENT_RECIPES = ["superpowers", "hyperpowers", "caveman", "gstack"]
 
 # Recipes whose ENTIRE body was content — nothing needed root, so the Dockerfile is gone outright.
 PURE_CONTENT = ["superpowers", "hyperpowers", "caveman"]
@@ -163,38 +163,6 @@ class TestGstackStraddles:
         script = (CATALOG / "recipes" / "gstack" / "install.sh").read_text(encoding="utf-8")
         assert "command -v bun" in script
         assert "exit 1" in script
-
-
-class TestAgentCarnetPartial:
-    """agent-carnet: CLI + skill both delivered by install.sh in both modes (bd harnessed-zi6.1)."""
-
-    def test_the_skill_comes_from_the_install_script(self):
-        script = (CATALOG / "recipes" / "agent-carnet" / "install.sh").read_text(encoding="utf-8")
-        assert "skills/agent-carnet" in script
-        assert "SKILL.md" in script, "verify the copy, or an empty skill dir ships silently"
-
-    def test_the_cli_comes_from_tools_not_the_script(self):
-        # bd harnessed-1t4.3: `tools:` owns the binary in both modes — one merged, cached mise layer
-        # in the image and the same pinned spec on a host launch. install.sh keeps only the skill,
-        # which mise cannot deliver.
-        assert "npm:agent-carnet@0.1.5" in _recipe("agent-carnet").tools
-        assert "pnpm add -g" not in _code(CATALOG / "recipes" / "agent-carnet" / "install.sh")
-        assert "pnpm add -g" not in _code(CATALOG / "recipes" / "agent-carnet" / "Dockerfile")
-
-    def test_one_version_literal_binds_the_cli_and_the_skill(self):
-        r = _recipe("agent-carnet")
-        version = r.install.cache
-        assert f"npm:agent-carnet@{version}" in r.tools, (
-            "the tools: pin and the skill's cache key must name the same artifact"
-        )
-        docker = (r.root / "Dockerfile").read_text(encoding="utf-8")
-        assert f"ARG AGENT_CARNET_VERSION={version}" in docker, (
-            "the CLI and the skill must come from the SAME immutable npm artifact"
-        )
-
-    def test_the_declarative_rule_survived(self):
-        # The partial migration must not have swallowed what the assembler could already see.
-        assert [rule.path for rule in _recipe("agent-carnet").rules] == ["rules/agent-carnet"]
 
 
 class TestCatalogWideInvariants:

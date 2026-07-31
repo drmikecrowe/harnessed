@@ -20,7 +20,6 @@ from harnessed.schema import Recipe, load_recipe
 
 # recipe name → the tool spec it must declare, and the fetch that must no longer be in its install.sh
 MIGRATED = {
-    "agent-carnet": ("npm:agent-carnet@", "pnpm add -g"),
     "agentmemory": ("npm:@agentmemory/mcp@", "pnpm add -g"),
     "context-mode": ("npm:context-mode@", "pnpm add -g"),
     "repowise": ("pipx:repowise@", "uv tool install"),
