@@ -104,8 +104,12 @@ Two consequences worth knowing:
   omits is **inherited**. Chains are allowed; cycles are an error. Unknown stack fields are
   **rejected** — a stack manifest has no forward-field case, and silently-ignored keys are how an
   `extends:` written before the feature existed went unnoticed while inheriting nothing.
-- **catalog** — the collection of agents/recipes/services/stacks. Two roots, searched in order:
-  the user overlay **`~/.config/harnessed/catalog`** (wins on a name clash) then the repo `catalog/`.
+- **catalog** — the collection of agents/recipes/services/stacks. Three roots, searched in order:
+  the user overlay **`~/.config/harnessed/catalog`** (wins on a name clash), the repo `catalog/`,
+  and last the **generated** root `$XDG_DATA_HOME/harnessed/generated/` holding machine-minted stacks
+  (`harnessed run`). Generated is last so it can never shadow a stack you authored, and it is kept
+  out of the overlay so `harnessed list` can tell authored from generated and a regenerated
+  manifest can never clobber a hand edit. It is included only when it exists.
 
 ## How a build works (host-native)
 
@@ -142,6 +146,7 @@ services (started host-published, idempotently).
 | --- | --- | --- |
 | `harnessed launch <stack> <harness>` | container (podman pod + hatago + services) | the filesystem, the network, **and** the configuration |
 | `harnessed host-run <stack> [harness]` | host-native — no podman, no MCP hub | the **configuration only** |
+| `harnessed run --recipe <r> … <harness>` | container, composed at launch | same as `launch` |
 
 `host-run` materializes the stack's assembled profile into a per-stack `CLAUDE_CONFIG_DIR`
 (`<stack>/<harness>`, see `paths.host_home`) and execs the harness against your real machine, real
@@ -153,6 +158,29 @@ The two verbs share no flags but `--rm` (host-side: stop daemons this launch sta
 reason they are separate commands rather than one command with a mode switch — `--fresh`,
 `--no-firewall`, `--shell`, `--mount-folder` and `--agent-start-folder` all describe a pod, and a
 host launch has none, so a combined verb could only accept them and do nothing.
+
+`run` is `launch` without a hand-written stack. It normalizes the recipe set, derives a name from
+its CONTENT, mints a `stack.yaml` under the generated catalog root, builds it, and hands off to
+`launch`. Because the name is content-derived, the same recipe set in five repos is one stack — one
+image, one pair of volumes. `--extends` defaults to `default`; `--no-extends` stands alone.
+
+A generated stack cannot use `ssh_keys:` — the private-key gate honors that field only from the
+user's own overlay. That is correct rather than unfortunate: `ssh_keys` is per-stack and a generated
+stack is shared across repos, so it could never express "the key for *this* repo". Per-repo SSH
+identity comes from the forwarded agent plus your own `~/.ssh/config` (bd harnessed-ji6).
+
+**Per-repo binding.** A project records its recipe set as a mise task:
+
+```toml
+[tasks.start-harness]
+run = "harnessed run --recipe superpowers --recipe serena claude"
+```
+
+No env var, no discovery, no precedence rules — and the trust question answers itself, because
+`mise run` refuses an untrusted config, so a cloned repo's task cannot select anything until you
+`mise trust` it. Rejected alternatives are recorded in bd harnessed-7rx: an unknown top-level
+`[harnessed]` table warns on every mise invocation, and `[env] HARNESSED_RECIPES` is live only when
+mise is activated, failing silently and expensively when it is not.
 
 ## Folder-env contract
 
