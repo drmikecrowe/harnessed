@@ -1,146 +1,107 @@
 # CLAUDE.md
 
-Project instructions for AI assistants.
+## Read docs before exploring the tree
 
-## Read the docs before you explore the tree
+Answer from the table below **before** running `ls`/`cat`/`rg` over the source. This outranks any
+generic "explore the project first" step from a skill, workflow, or subagent brief — those are
+repo-blind. Open `src/` only with a specific question the docs did not answer, or to edit.
 
-**This project is documented. Answer your question from the documents below BEFORE running `ls`,
-`cat`, or `rg` over the source tree** — they are written and maintained; a directory listing is not,
-and reading one costs far more context than reading the page that already explains it.
-
-**This ordering outranks any generic "explore the project first" step** a skill, workflow, or
-subagent brief hands you. Those are written without knowledge of this repo. When one says "check
-files, docs, and recent commits," it means *this table* — not `ls src/`.
-
-| Your question | Read |
+| Question | Read |
 | --- | --- |
-| What do *agent / recipe / service / stack / catalog* mean? How does a build or launch work? | **[ARCHITECTURE.md](ARCHITECTURE.md) — first, always.** The vocabulary is precise and the words are not interchangeable. |
-| Where does the code live, and what calls what? | [docs/codebase/](docs/codebase/) — STRUCTURE, ARCHITECTURE, INTEGRATIONS |
-| How is code written here? What is tested? What is known-weak? | [docs/codebase/](docs/codebase/) — CONVENTIONS, TESTING, CONCERNS |
-| How do I author a recipe / service / stack? How do I set up my dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
+| What do *agent / recipe / service / stack / catalog* mean? How does build/launch work? | **[ARCHITECTURE.md](ARCHITECTURE.md) — first, always.** The vocabulary is precise; the words are not interchangeable. |
+| Where does code live? What calls what? | [docs/codebase/](docs/codebase/) — STRUCTURE, ARCHITECTURE, INTEGRATIONS |
+| How is code written? What is tested or known-weak? | [docs/codebase/](docs/codebase/) — CONVENTIONS, TESTING, CONCERNS |
+| How do I author a recipe/service/stack? Set up a dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
 | *Why* is it built this way? | [docs/harnessed-design.md](docs/harnessed-design.md) |
-| What must I not do operationally? | [AGENTS.md](AGENTS.md) — e.g. don't run `harnessed` yourself |
-| What work is open, decided, or already done? | `bd list` / `bd show <id>` — never a markdown TODO |
+| What must I not do operationally? | [AGENTS.md](AGENTS.md) |
+| What work is open or decided? | `bd list`, `bd show <id>` — never a markdown TODO |
 
-Go to `src/` when you have a **specific** question the docs did not answer, or when you are about to
-edit. Not to orient yourself.
+- **`docs/codebase/` is generated** (`/map-codebase`) and reproduces stale claims across
+  regenerations. Code wins on conflict — fix the map, re-running won't.
+- **`docs/` is the GitHub wiki** — separate repo (`harnessed.wiki.git`), gitignored, absent from
+  worktrees. Read the exemption below before editing it.
 
-Two caveats that have each cost a session:
-
-- **`docs/codebase/` is generated** (`/map-codebase`) and can carry a stale claim forward through a
-  regeneration. When it and the code disagree, **the code wins** — then fix the map, because
-  re-running the generator will not.
-- **`docs/` is a live clone of the GitHub wiki** — a *separate repository*
-  (`harnessed.wiki.git`), gitignored from this one, and absent from every worktree. It is the one
-  exemption to the git workflow below; read that exemption before editing anything under `docs/`.
-
-Do not duplicate layout/vocabulary here — keep it in ARCHITECTURE.md so it can't drift.
+Keep layout and vocabulary in ARCHITECTURE.md, not here.
 
 ## Non-negotiable constraints
 
-- **harnessed is a host Python CLI** (`src/harnessed/`, distributed via pipx/uvx) that drives podman
-  directly. No tool container; assembly runs in-process.
-- **Claude format is canonical** — every other agent adapts out of the same `.claude/` profile.
-- **Recipes are harness-independent** — no `harnesses:` field; harness-specific steps branch on
-  `${HARNESS}` inside the recipe Dockerfile.
-- **pnpm for package installs** — the recipe lint rejects raw `npm`/`npx` (`pnpm dlx` replaces `npx`).
-  The one exception is upgrading npm itself in the base image (`npm install -g npm@<pin>`) — there is
-  no pnpm equivalent. **`uvx`** for light Python MCP servers.
-- **Pin every download** in recipe Dockerfiles (no `@latest`/`--branch main` — the build rejects them).
-- **Credentials referenced, never replicated.** Never baked into an image or committed — and never
-  copied, seeded, or snapshotted into a per-stack home (host or container). Reference the live store
-  (mount, symlink, or token/broker URL) so a refresh is always visible. A *symlink* counts as a
-  reference only while the harness rewrites its store **in place**; a harness that replaces the file
-  on refresh silently turns that link into a stale copy (see harnessed-8px.10). This is separate
-  from — and does not restrict — symlinking history/session/usage state up for a universal rolled-up
-  view, which is deliberate design. See ARCHITECTURE.md §Constraints.
-- **Streamable-HTTP MCP** only (SSE is deprecated).
-- Authorable content lives under **`catalog/`** (repo) and **`~/.config/harnessed/catalog`** (user
-  overlay, wins on clash). Generated profiles go to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
-- **`catalog/` is shipped inside the wheel** (via the `src/harnessed/catalog` symlink + package-data),
-  so an installed `harnessed` needs no repo on disk. Two rules follow — see ARCHITECTURE.md §harnessed home:
-  1. **Nothing host-local inside `catalog/`.** It is a published artifact and setuptools follows
-     symlinks; the overlay symlinks therefore live in `catalog-local/`, never `catalog/<kind>.local`.
-  2. **Never key build/assembly off the CWD.** Anchor to `paths.harnessed_home()` (the dir containing
-     `catalog/`), so `harnessed build <stack>` behaves the same from any directory.
+- **Host Python CLI** (`src/harnessed/`, pipx/uvx) driving podman directly. No tool container;
+  assembly runs in-process.
+- **Claude format is canonical.** Every other agent adapts out of the same `.claude/` profile.
+- **Recipes are harness-independent** — no `harnesses:` field. Branch on `${HARNESS}` inside the
+  recipe Dockerfile.
+- **pnpm, never raw `npm`/`npx`** (`pnpm dlx` replaces `npx`); the lint rejects them. Sole exception:
+  `npm install -g npm@<pin>` in the base image. **`uvx`** for light Python MCP servers.
+- **Pin every download** — no `@latest`/`--branch main`; the build rejects them.
+- **Credentials referenced, never replicated.** Never bake, commit, copy, seed, or snapshot into a
+  per-stack home. Reference the live store (mount, symlink, token/broker URL). A symlink counts only
+  while the harness rewrites **in place** — one that replaces the file turns the link into a stale
+  copy (harnessed-8px.10). Symlinking history/session/usage state up is deliberate design, not a
+  violation. See ARCHITECTURE.md §Constraints.
+- **Streamable-HTTP MCP only** (SSE deprecated).
+- Author under **`catalog/`** (repo) or **`~/.config/harnessed/catalog`** (user overlay, wins on
+  clash). Profiles generate to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
+- **`catalog/` ships inside the wheel** (`src/harnessed/catalog` symlink + package-data), so — see
+  ARCHITECTURE.md §harnessed home:
+  1. **Nothing host-local in `catalog/`** — setuptools follows symlinks; overlay links live in
+     `catalog-local/`.
+  2. **Never key build/assembly off the CWD.** Anchor to `paths.harnessed_home()`.
 
 ## Git workflow (non-negotiable)
 
-**No commits to `main`. Every change flows through a worktree → passing tests → PR.**
+**Never commit to `main`.** Worktree → full suite passing → PR. Sign every commit
+(`.claude/rules/signed-commits`).
 
-1. Start work in a **new git worktree** (never edit/commit on `main` directly).
-2. Get the **full test suite passing** in that worktree before proposing to merge.
-3. Open a **PR** to `main` — merges happen via PR review, not direct pushes.
+Covers code, catalog, config, and repo-tracked docs (root `*.md`, recipe `README.md`s).
 
-This applies to code, catalog content, config, and **repo-tracked docs** — the root `*.md` files
-(`ARCHITECTURE.md`, this file, `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, recipe `README.md`s).
-Commits are signed (see `.claude/rules/signed-commits`).
+### Exemption: `docs/` (the wiki)
 
-### The one exemption: `docs/` (the wiki)
+`harnessed.wiki.git` is a different repo. A GitHub wiki has no branches, CI, or PRs — worktree →
+tests → PR cannot apply. Don't try. A wiki push is irreversible publication, so instead:
 
-`docs/` is a clone of `harnessed.wiki.git` — a **different repository**. A GitHub wiki has no
-branches-for-review, no CI, and **no pull requests**, so worktree → tests → PR cannot be applied to
-it. Do not try; there is nothing to open a PR against.
+1. Edit in place in `main/docs/` (worktrees don't have it).
+2. Read the **whole** diff first, including files you didn't write — credentials, private paths,
+   internal names, unreleased plans. This replaces the PR review.
+3. Get explicit confirmation to push. Missing "yes" = no.
+4. Commit signed, then `git -C docs push`.
 
-What replaces it, because a wiki push is **irreversible publication** — it is live the instant it
-lands, with no review gate:
+Repo and wiki are separate deliveries; a PR never carries wiki edits. Say which half landed where.
 
-1. **Edit in place** in `main/docs/` (the wiki is absent from worktrees, so there is nowhere else).
-2. **Read the full diff before pushing** — every file, including ones you did not write. Check for
-   credentials, private paths, internal names, and unreleased plans. This is the review that a PR
-   would otherwise have provided.
-3. **Get explicit user confirmation to push.** Missing "yes" means no.
-4. Commit signed, as everywhere else, then `git -C docs push`.
+### Stand in `main/`
 
-Repo changes and wiki changes are therefore *separate* deliveries: a PR never carries wiki edits, and
-a wiki push never waits on a PR. When one task touches both, say plainly which half landed where.
+Bare + worktrees: `.bare/` is the git dir, `main/` the canonical checkout, tasks in
+`.claude/worktrees/<name>/`. Run `git worktree list` when unsure.
 
-### Where to stand: start and finish in `main/`
+- **Start and end each session in `main/`.** Work in a task worktree; read, verify, and come to rest
+  in `main/`. Never carry an unrelated change into an inherited worktree.
+- **Never conclude "file X doesn't exist" from a worktree.** Gitignored content isn't populated
+  there — notably `docs/`, which exists only in `main/`. An empty `ls`/`fd` means "ignored here", not
+  "missing". Confirm against `main/`, `git ls-tree`, and `.gitignore`.
 
-This checkout is **bare + worktrees**: `.bare/` is the git dir, `<repo>/main/` is the canonical `main`
-checkout, and task worktrees live under `.claude/worktrees/<name>/` (a few older ones sit directly at
-the repo root). Run `git worktree list` if you are unsure where you are.
-
-- **Begin each session in `main/`, and return to `main/` when a task is done.** Do the *work* in a
-  task worktree per the rules above — but read, verify, and come to rest in `main/`. Never carry an
-  unrelated change into whatever worktree you happen to have inherited; it belongs to another task.
-- **Never conclude "file X doesn't exist" from inside a worktree.** Git does not populate a worktree
-  with **gitignored** content. Most consequentially `docs/`, which is an unpinned live clone of the
-  GitHub wiki (see `.gitignore`) — so `docs/guides/*`, `docs/codebase/*`, and `docs/harnessed-design.md`
-  exist **only in `main/`**, even though this file and AGENTS.md link to them freely. An empty
-  `ls`/`fd` inside a worktree means "ignored or untracked *here*", never "missing from the project".
-  Confirm against `main/`, `git ls-tree`, and `.gitignore` before claiming anything is absent or dead.
-
-## Running the tests
+## Tests
 
 ```bash
 mise trust && mise exec -- uv sync --extra dev   # once per worktree
 mise exec -- uv run pytest -q
 ```
 
-Two traps, both of which produce **failures that CI never sees**:
+Two traps CI never sees:
 
-- **`--extra dev` is required.** `pytest` lives in `[project.optional-dependencies].dev`. A plain
-  `uv sync` installs the project without it, and `uv run pytest` then silently falls through to a
-  system `pytest` on a different Python — every test errors with `ModuleNotFoundError: No module
-  named 'harnessed'`, which looks like a broken checkout rather than a missing extra.
-- **The venv is per-branch.** `mise.toml` sets `UV_PROJECT_ENVIRONMENT` to
-  `~/.local/share/harnessed/venvs/<branch>/.venv` (one venv per branch, deliberately outside the
-  repo so a container bind-mount cannot corrupt it). A fresh worktree therefore starts with no venv
-  and needs the sync above — it is not inherited from `main/`.
+- **`--extra dev` is mandatory.** Without it `uv run pytest` falls through to a system pytest and
+  every test dies with `ModuleNotFoundError: No module named 'harnessed'` — looks like a broken
+  checkout, is a missing extra.
+- **The venv is per-branch** (`UV_PROJECT_ENVIRONMENT` → `~/.local/share/harnessed/venvs/<branch>/`,
+  outside the repo so a bind-mount can't corrupt it). A fresh worktree has none; sync first.
 
-**Do not "fix" a color-related assertion failure by changing the assertion.** If a CLI test fails
-comparing plain text against ANSI-escaped output (`assert "no such stack 'x'" in "\x1b[1;31merror…"`),
-the environment is wrong, not the test. `rich` renders plain when stdout is not a TTY — which is the
-case under typer's `CliRunner` — but `FORCE_COLOR` overrides that check, and terminal shell
-integration sets it without asking (Ghostty exports `FORCE_COLOR=3`). `tests/conftest.py` pops it at
-**module import**, which is early enough only because `rich` reads it when a `Console` is
-constructed and `launcher.py` builds its Consoles at import; an autouse fixture runs too late. If you
-add a new conftest or run tests outside pytest, preserve that.
+**Never "fix" a color assertion failure by editing the assertion.** A plain-text-vs-ANSI mismatch
+means the environment is wrong: `rich` renders plain off-TTY, but `FORCE_COLOR` overrides that and
+Ghostty exports `FORCE_COLOR=3`. `tests/conftest.py` pops it at **module import** — early enough only
+because `launcher.py` builds its Consoles at import; an autouse fixture is too late. Preserve that in
+any new conftest.
 
-## Project skills
+## Skills
 
-Skills live under `.agents/skills/`. See that directory for the current set.
+`.agents/skills/`.
 
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
