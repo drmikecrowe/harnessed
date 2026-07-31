@@ -136,8 +136,8 @@ class TestMigratedRecipesDeclareInstall:
         # stack-scoped tree, which already outlives the wipe — so a cache here would be dead state.
         r = _recipe("ccstatusline")
         assert r.install.cache is None
-        assert "npm:ccstatusline@2.2.22" in r.tools
-        assert 'CCSTATUSLINE_VERSION="2.2.22"' in _script("ccstatusline").read_text()
+        assert "npm:ccstatusline@2.2.25" in r.tools
+        assert 'CCSTATUSLINE_VERSION="2.2.25"' in _script("ccstatusline").read_text()
 
     def test_context_mode_pin_matches_its_install_channels(self):
         # Two channels for the CLI: `tools:` (container, via mise npm backend) and install.sh

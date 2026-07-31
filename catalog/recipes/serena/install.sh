@@ -16,7 +16,7 @@ set -euo pipefail
 
 # Exact PyPI pin (upstream's canonical install path). No `install.cache` in recipe.yaml: the cache
 # keys a CONTENT clone, and uv already caches wheels itself — there is nothing for harnessed to hold.
-SERENA_VERSION="1.5.3"
+SERENA_VERSION="1.6.1"
 
 # The CLI itself is `tools: [pipx:serena-agent@…]` in recipe.yaml (bd harnessed-1t4.3) — the same
 # pinned wheel install in both modes, resolved by mise's pipx backend through uv, into the merged

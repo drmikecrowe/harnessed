@@ -12,7 +12,7 @@
 # into the settings.json of whichever config dir this run is installing into.
 set -euo pipefail
 
-CCSTATUSLINE_VERSION="2.2.22"
+CCSTATUSLINE_VERSION="2.2.25"
 
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 

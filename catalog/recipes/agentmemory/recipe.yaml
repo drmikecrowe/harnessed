@@ -38,7 +38,7 @@ description: >
 # ADAPTER ONLY — the store is the SERVICE (catalog/services/agentmemory, REST on :3111), so a
 # stack using this recipe must still declare `services: [agentmemory]`.
 tools:
-  - npm:@agentmemory/mcp@0.9.27
+  - npm:@agentmemory/mcp@0.9.28
 
 # No `install:` — the adapter binary is the recipe's ONLY deliverable and `tools:` above owns it
 # (bd harnessed-1t4.3). There is no configuration or content half left for a script to do.

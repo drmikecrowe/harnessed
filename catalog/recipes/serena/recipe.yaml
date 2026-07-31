@@ -35,7 +35,7 @@ description: Serena — LSP-backed semantic code intelligence (symbol retrieval,
 # `tools:` owns the CLI (bd harnessed-1t4.3); install.sh keeps `serena init -b LSP`, the
 # CONFIGURATION half mise cannot express. mise's pipx backend resolves through uv.
 tools:
-  - pipx:serena-agent@1.5.3
+  - pipx:serena-agent@1.6.1
 
 install:
   script: install.sh
