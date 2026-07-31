@@ -823,6 +823,33 @@ def _parse_conflicts(raw_conflicts) -> list[str]:
     return conflicts
 
 
+def _parse_services(raw_services) -> list[str]:
+    """Parse the optional `services:` list — sidecars this recipe REQUIRES.
+
+    For a service with no MCP surface, which therefore cannot be referenced through
+    `mcp.servers[].service`: a `dolt sql-server` speaks MySQL, not MCP. Before this field the
+    dependency could only be declared by the STACK, so a recipe list alone could not describe a
+    working stack and the beads recipes had to fail at runtime telling the user to edit one.
+    Unioned with the stack's own `services:` in `launcher._service_refs`.
+    """
+    # `is None`, NOT a falsy test — deliberately diverging from the neighbouring _parse_conflicts.
+    # `services: ""`, `services: {}` and `services: 0` are all falsy, so a falsy guard returns []
+    # and the isinstance check below never runs: a typo silently drops a REQUIRED sidecar, which is
+    # precisely the failure this field exists to prevent. An explicit `services: []` still yields []
+    # via the loop. (_parse_conflicts has the falsy shape; its failure mode is milder — a dropped
+    # conflict warns rather than breaking a launch — so it is left alone here.)
+    if raw_services is None:
+        return []
+    if not isinstance(raw_services, list):
+        raise SchemaError("recipe 'services' must be a list of service names")
+    services: list[str] = []
+    for entry in raw_services:
+        if not isinstance(entry, str) or not entry.strip():
+            raise SchemaError(f"recipe 'services' entries must be non-empty strings, got {entry!r}")
+        services.append(entry.strip())
+    return services
+
+
 @dataclass
 class Recipe:
     name: str
@@ -845,6 +872,10 @@ class Recipe:
     # symmetrically across a stack's whole recipe list (see _check_recipe_conflicts) — declaring
     # it on either side is enough.
     conflicts: list[str] = field(default_factory=list)
+    # Sidecars this recipe REQUIRES that have no MCP surface, so they cannot be declared through
+    # `mcp.servers[].service` (a dolt sql-server speaks MySQL). Unioned with the stack's own
+    # `services:` by launcher._service_refs. Lets a bare recipe list describe a working stack.
+    services: list[str] = field(default_factory=list)
     setup: "SetupSpec | None" = None
     # Build-phase install script (recipe.yaml `install:`) — ONE bash file executed by BOTH the
     # container build (`RUN bash install.sh`) and a host launch. The mechanism that makes a
@@ -1074,7 +1105,7 @@ def _parse_fileext(raw_list) -> list[FileExt]:
 # stray floating ref inside a hook `command` string).
 KNOWN_RECIPE_FIELDS = frozenset({
     "name", "description", "mcp", "skills", "commands", "rules", "expect", "persist", "init",  # typed
-    "conflicts", "hooks", "setup", "install", "egress", "tools", "env",  # typed
+    "conflicts", "hooks", "setup", "install", "egress", "tools", "env", "services",  # typed
     "plugins", "deps", "scripts",  # D-14 forward fields (see _recipe_raw_strings)
 })
 
@@ -1360,6 +1391,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
         hooks=hooks,
         hooks_skip_harnesses=hooks_skip_harnesses,
         conflicts=_parse_conflicts(raw.get("conflicts")),
+        services=_parse_services(raw.get("services")),
         setup=_parse_setup(raw.get("setup")),
         install=_parse_install(raw.get("install")),
         egress=_parse_egress(raw.get("egress"), manifest),

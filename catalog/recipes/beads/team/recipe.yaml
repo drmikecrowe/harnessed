@@ -34,6 +34,12 @@
 name: beads-team
 description: "bd (beads) — graph issue tracker / task memory, TEAM placement: .beads/ in the repo, git-tracked, on the project's beads-server (one dolt sql-server per project, reached over a unix socket)."
 
+# The dolt sql-server this recipe is a pure CLIENT of. `bd` never starts an engine, so without this
+# service the socket never exists and `bd init` has nothing to connect to. Declared HERE rather than
+# in every stack because the dependency belongs to the recipe: a MySQL server has no MCP surface, so
+# it cannot be an `mcp.servers[].service` ref.
+services: [beads-server]
+
 # The entire build is now `install.sh` — `mise use -g github:gastownhall/beads@1.1.0` — run by BOTH
 # the container build and `launch --host`; the Dockerfile is deleted. NO `system:`: the old
 # Dockerfile's `USER root` sections contained nothing but comments, so there is no root-level half
