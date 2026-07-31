@@ -254,6 +254,87 @@ class TestShareClaudeState:
         assert (home / ".claude.json").is_file()
         assert not (home / ".claude.json").is_symlink()
 
+    def test_a_configured_oauth_token_suppresses_the_credential_symlink(self, monkeypatch, tmp_path):
+        """`CLAUDE_CODE_OAUTH_TOKEN` takes precedence over the credentials file, so with one
+        configured the file is dead weight — and maintaining it carries the whole 8px.10
+        symlink-replacement failure mode for nothing. The container path already refuses to mount a
+        credential file under a token (`_claude_creds_seed_mount`); this is the host's half."""
+        real = tmp_path / "host-claude"
+        real.mkdir()
+        (real / ".credentials.json").write_text('{"token":"x"}')
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-PLACEHOLDER")
+        home = tmp_path / "home"
+        home.mkdir()
+
+        launcher._share_host_claude_state(home)
+
+        assert not (home / ".credentials.json").exists()
+        # Session state is unrelated to auth and must still be shared.
+        assert (home / "projects").is_symlink()
+
+    def test_a_stale_per_stack_credential_is_removed_under_a_token(self, monkeypatch, tmp_path):
+        """A home built before the token was configured still holds a credentials file — as a
+        REGULAR file, since a refresh replaces the symlink. Leaving it behind means the very stale
+        copy this gate exists to retire outlives the switch to token auth."""
+        real = tmp_path / "host-claude"
+        real.mkdir()
+        (real / ".credentials.json").write_text('{"token":"shared"}')
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-PLACEHOLDER")
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".credentials.json").write_text('{"token":"stale-per-stack"}')
+
+        launcher._share_host_claude_state(home)
+
+        assert not (home / ".credentials.json").exists()
+
+    def test_the_shared_credential_is_never_deleted(self, monkeypatch, tmp_path):
+        """Only the per-stack copy is ours to retire. `~/.claude/.credentials.json` is the user's
+        own login, outside any stack — deleting it would log them out of plain `claude` too."""
+        real = tmp_path / "host-claude"
+        real.mkdir()
+        (real / ".credentials.json").write_text('{"token":"shared"}')
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-PLACEHOLDER")
+        home = tmp_path / "home"
+        home.mkdir()
+
+        launcher._share_host_claude_state(home)
+
+        assert (real / ".credentials.json").read_text() == '{"token":"shared"}'
+
+    def test_no_token_keeps_the_symlink(self, monkeypatch, tmp_path):
+        """Regression guard: without a token the credential file is load-bearing. Removing it here
+        would log the user out on every launch."""
+        real = tmp_path / "host-claude"
+        real.mkdir()
+        (real / ".credentials.json").write_text('{"token":"x"}')
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        home = tmp_path / "home"
+        home.mkdir()
+
+        launcher._share_host_claude_state(home)
+
+        assert (home / ".credentials.json").is_symlink()
+
+    def test_an_empty_token_var_is_not_a_configured_token(self, monkeypatch, tmp_path):
+        """`CLAUDE_CODE_OAUTH_TOKEN=` (exported empty) is how a shell profile disables it. Treating
+        the mere presence of the name as configured would log the user out with no way back."""
+        real = tmp_path / "host-claude"
+        real.mkdir()
+        (real / ".credentials.json").write_text('{"token":"x"}')
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(real))
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+        home = tmp_path / "home"
+        home.mkdir()
+
+        launcher._share_host_claude_state(home)
+
+        assert (home / ".credentials.json").is_symlink()
+
     def test_claude_json_seeded_from_home_level_not_config_dir(self, monkeypatch, tmp_path):
         # The account file is $HOME/.claude.json — NOT ~/.claude/.claude.json. Seed from the right one.
         fake_home = tmp_path / "home"
@@ -428,6 +509,18 @@ class TestShareClaudeState:
         real = self._shared(monkeypatch, tmp_path)
         launcher._rescue_host_credentials()  # no homes on disk at all — must not raise
         assert not real.exists()
+
+    def test_a_configured_token_skips_the_rescue_entirely(self, monkeypatch, tmp_path):
+        """Under a token the credential file is ignored by the harness, so promoting a per-stack
+        copy into the shared one is pure risk: the rescue's whole job is keeping a file alive that
+        nothing reads, and a gutted candidate would be written over the user's real login."""
+        real = self._shared(monkeypatch, tmp_path, '{"token":"shared"}', 100_000)
+        self._stack_cred("s", "proj1", self._cred("newer"), 900_000)
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-PLACEHOLDER")
+
+        launcher._rescue_host_credentials()
+
+        assert real.read_text() == '{"token":"shared"}'  # untouched — no promotion happened
 
     def test_plan_rescues_before_materialize_wipes_the_home(self, monkeypatch, tmp_path):
         """The ordering IS the fix: run the rescue after the rmtree and the fresh token is gone."""
