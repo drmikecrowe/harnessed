@@ -3337,6 +3337,14 @@ def _ensure_service(
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
         # (a dolt data dir written by a foreign uid would EACCES for every agent container).
         run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
+        # Path-preserving mirror: a host-side client (e.g. `bd`) that passes its absolute path to
+        # the containerised Dolt server (e.g. via `CALL dolt_backup('add', ..., '<abs-path>')`)
+        # will have Dolt resolve that path against the CONTAINER filesystem. Without this second
+        # mount the parent dirs (e.g. `.bare/`) are absent from the container and any mkdir inside
+        # them fails with EACCES from the unprivileged `harnessed` user trying to create a
+        # root-owned stub. Mounting host_dir at its own absolute path gives the container the same
+        # view the host has, so the path resolves to the same already-mounted rw directory.
+        run_cmd += ["-v", f"{host_dir}:{host_dir}:rw"]
         # No HARNESSED_SOCKET_PATH: it existed solely so the beads-server entrypoint could stamp the
         # client-visible socket into .beads/metadata.json, and that writer is gone (metadata.json is
         # tracked, the socket path is machine-local — BEADS.md §4). Clients now learn the socket from
