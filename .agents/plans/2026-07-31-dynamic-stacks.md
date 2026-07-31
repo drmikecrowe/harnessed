@@ -36,6 +36,24 @@
 | `tests/test_paths.py` | Generated root precedence + enumeration | Modify or create |
 | `ARCHITECTURE.md` | Two catalog roots become three; document `run` | Modify |
 
+**Module boundary — this is the seed for the launcher.py split (bd `harnessed-4l8`).** `launcher.py`
+is 7016 lines, 53% of the codebase, with 20 commands and 179 private helpers. `dynstack.py` is
+deliberately the first module extracted under the rule that split should follow:
+
+> Pure, derivable logic lives in a focused module. `launcher.py` keeps only the Typer surface and
+> podman orchestration. Command bodies stay thin and delegate immediately. Dependencies point
+> **into** the modules, never back out.
+
+`dynstack.py` has no launcher import and its tests never construct a CLI runner or touch podman —
+that is what makes it an exemplar rather than just another file. Task 3 ships a test asserting the
+direction, because a documented convention with no enforcement erodes at the third extraction.
+
+Note what is deliberately **not** moved: the `run` command itself. It needs `_build_stack`,
+`_runtime`, `launch`, `_require_supported_harness` and `_err`, so a module holding it could only
+resolve those through an import cycle or an indirection layer. Commands are the most coupled things
+in `launcher.py`; starting a refactor there buys a hard problem and a bad precedent. Start with pure
+logic, keep the command thin (Task 4's `run` body is ~15 lines), and let 4l8 extend the pattern.
+
 ---
 
 ### Task 0: Baseline
@@ -490,6 +508,8 @@ back to a hash only when the readable form would be ambiguous or over-long.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from harnessed import dynstack
@@ -578,6 +598,29 @@ class TestMint:
         text = (d / "stack.yaml").read_text()
         assert text.lstrip().startswith("#")
         assert "generated:" not in text
+
+
+class TestModuleBoundary:
+    """`dynstack` is the exemplar for the launcher.py split (bd harnessed-4l8).
+
+    launcher.py is 7016 lines — 53% of the codebase — with 20 commands and 179 private helpers.
+    The extraction pattern it needs is a DIRECTION rule: pure, derivable logic lives in a focused
+    module; launcher.py keeps only the Typer surface and podman orchestration; dependencies point
+    INTO the modules and never back out.
+
+    This test is the enforcement. The moment `dynstack` reaches back into `launcher`, the direction
+    reverses and every later extraction inherits an import cycle — which is precisely why the `run`
+    COMMAND stays in launcher.py: it needs `_build_stack`, `_runtime`, `launch` and `_err`, so a
+    module holding it could only work through a cycle or an indirection. Commands are the most
+    coupled thing in that file and are the wrong place to start; pure logic is the right place.
+    """
+
+    def test_dynstack_does_not_import_launcher(self):
+        src = (Path(__file__).parent.parent / "src" / "harnessed" / "dynstack.py").read_text()
+        assert "launcher" not in src, (
+            "dynstack must not depend on launcher — the dependency points INTO modules, never "
+            "back out (bd harnessed-4l8)"
+        )
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
