@@ -113,8 +113,8 @@ class TestPinsStayInSyncWithTheRecipe:
         # The pin moved to `tools:` (bd harnessed-1t4.3); the script keeps the literal because it
         # documents which version its `serena init` configures. Two files, so assert they agree.
         r = _recipe("serena")
-        assert 'SERENA_VERSION="1.5.3"' in _code(r.root / "install.sh")
-        assert "pipx:serena-agent@1.5.3" in r.tools
+        assert 'SERENA_VERSION="1.6.1"' in _code(r.root / "install.sh")
+        assert "pipx:serena-agent@1.6.1" in r.tools
 
 
 class TestSerenaInstallSetupSplit:
@@ -126,7 +126,7 @@ class TestSerenaInstallSetupSplit:
         # CONFIGURATION. `serena init -b LSP` is the configuration half and stays.
         r = _recipe("serena")
         body = _code(r.root / "install.sh")
-        assert "pipx:serena-agent@1.5.3" in r.tools
+        assert "pipx:serena-agent@1.6.1" in r.tools
         assert "uv tool install" not in body
         assert "serena init -b LSP" in body
 
