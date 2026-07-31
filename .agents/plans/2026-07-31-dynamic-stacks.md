@@ -514,7 +514,7 @@ Bead: `harnessed-7rx.3`. A new module rather than more `launcher.py`, which is a
 - Consumes: `paths.generated_catalog_root()` (Task 2).
 - Produces:
   - `normalize(recipes: list[str], extends: str | None) -> tuple[str | None, tuple[str, ...]]` — deduped, sorted recipe refs plus the base.
-  - `derive_name(recipes: list[str], extends: str | None) -> str` — the deterministic stack name.
+  - `derive_name(recipes: list[str], extends: str | None, services: list[str] | None = None) -> str` — the deterministic stack name. **Callers that pass `services` to `mint` must pass the same list here**, or the two disagree on the name.
   - `mint(recipes: list[str], extends: str | None, services: list[str] | None = None) -> tuple[str, Path]` — returns `(name, stack_dir)`, writing `stack.yaml` if absent or changed.
 
 - [ ] **Step 1: Write the failing tests**
@@ -593,6 +593,33 @@ class TestDeriveName:
     def test_space_fold_collision_is_hashed(self):
         assert dynstack.derive_name(["foo bar"], None) != dynstack.derive_name(["foo-bar"], None)
 
+    def test_different_services_yield_different_names(self):
+        """`run --service` writes into the manifest, so identical recipes with different services
+        are different stacks. Sharing a name would let them overwrite each other's manifest and
+        share one image and volume pair."""
+        a = dynstack.derive_name(["serena"], "default", services=["beads-server"])
+        b = dynstack.derive_name(["serena"], "default", services=["other-svc"])
+        assert a != b
+
+    def test_service_order_and_duplicates_do_not_matter(self):
+        a = dynstack.derive_name(["serena"], "default", services=["x", "y"])
+        b = dynstack.derive_name(["serena"], "default", services=["y", "x", "y"])
+        assert a == b
+
+    def test_no_services_keeps_the_plain_readable_name(self):
+        """Regression guard: adding services to the identity must not put a digest on the common
+        case, which is every invocation that does not use the --service escape hatch."""
+        assert dynstack.derive_name(["superpowers", "serena"], "default", services=[]) == (
+            "default+serena+superpowers"
+        )
+
+    def test_services_are_not_confused_with_recipes(self):
+        """The digest separates the groups, so a service named `b` must not collide with a recipe
+        named `b`."""
+        a = dynstack.derive_name(["a", "b"], None)
+        b = dynstack.derive_name(["a"], None, services=["b"])
+        assert a != b
+
     @pytest.mark.parametrize("ref", [".", "..", "***"])
     def test_refs_yielding_reserved_components_are_rejected(self, ref):
         """`.` and `..` survive sanitization and `***` sanitizes to empty, so mint would write to
@@ -622,6 +649,16 @@ class TestMint:
         monkeypatch.setattr(dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         _, d = dynstack.mint(["beads/team"], "default", services=["beads-server"])
         assert "- beads-server" in (d / "stack.yaml").read_text()
+
+    def test_different_service_selections_do_not_overwrite_each_other(self, tmp_path, monkeypatch):
+        """Two mints differing ONLY in services must land in two directories. Before services
+        entered the identity they derived one name, so the second silently rewrote the first."""
+        monkeypatch.setattr(dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+        n1, d1 = dynstack.mint(["serena"], "default", services=["svc-a"])
+        n2, d2 = dynstack.mint(["serena"], "default", services=["svc-b"])
+        assert n1 != n2 and d1 != d2
+        assert "- svc-a" in (d1 / "stack.yaml").read_text()
+        assert "- svc-b" in (d2 / "stack.yaml").read_text()
 
     def test_no_base_emits_no_extends_key(self, tmp_path, monkeypatch):
         monkeypatch.setattr(dynstack.paths, "generated_catalog_root", lambda: tmp_path)
@@ -735,23 +772,41 @@ def _sanitize(ref: str) -> str:
     return _UNSAFE.sub("-", ref.strip().lower().replace("/", "-")).strip("-")
 
 
-def _digest(base: str | None, refs: tuple[str, ...]) -> str:
-    """Stable short hash over the canonical form — computed from the UNSANITIZED refs, so two sets
-    that sanitize to the same string still hash differently."""
-    payload = "\x00".join([base or "", *refs])
+def _normalize_services(services: list[str] | None) -> tuple[str, ...]:
+    """Deduped, sorted service names — the THIRD input to a stack's identity, alongside the base
+    and the recipe set. `run --service` writes these into the manifest, so two invocations that
+    differ only here are genuinely different stacks."""
+    return tuple(sorted({s.strip() for s in (services or []) if s.strip()}))
+
+
+def _digest(base: str | None, refs: tuple[str, ...], svcs: tuple[str, ...] = ()) -> str:
+    """Stable short hash over the canonical form — computed from the UNSANITIZED inputs, so two
+    sets that sanitize to the same string still hash differently.
+
+    The `\\x1f` between groups keeps `(refs=("a","b"), svcs=())` distinct from
+    `(refs=("a",), svcs=("b",))`, which a single flat join would collapse.
+    """
+    payload = "\x00".join([base or "", *refs]) + "\x1f" + "\x00".join(svcs)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:_HASH_LEN]
 
 
-def derive_name(recipes: list[str], extends: str | None) -> str:
+def derive_name(recipes: list[str], extends: str | None, services: list[str] | None = None) -> str:
     """The deterministic stack name for this recipe set.
 
     Readable join by default. A hash is appended when the readable form is not a faithful encoding
-    of the input — either because a ref had to be sanitized (lossy: `beads/team` and `beads-team`
-    both flatten to `beads-team`) or because the join exceeded NAME_MAX.
+    of the input — because a ref had to be sanitized (lossy: `beads/team` and `beads-team` both
+    flatten to `beads-team`), because the join exceeded NAME_MAX, or because explicit `services`
+    were selected.
+
+    `services` MUST be passed by every caller that will hand the same list to `mint`. They are not
+    part of the readable join — that would bloat every name for a rarely-used escape hatch — so the
+    digest is the only thing that can distinguish them, and omitting them here lets two different
+    service selections mint over each other's manifest and share one image and volume pair.
     """
     base, refs = normalize(recipes, extends)
     if not refs:
         raise ValueError("a dynamic stack needs at least one recipe")
+    svcs = _normalize_services(services)
 
     values = ([base] if base is not None else []) + list(refs)
     parts = [_sanitize(v) for v in values]
@@ -768,10 +823,12 @@ def derive_name(recipes: list[str], extends: str | None) -> str:
     # only for "/" missed case folding (`Foo` vs `foo`) and space folding (`foo bar` vs `foo-bar`).
     lossy = any(clean != original for original, clean in zip(values, parts))
 
-    if not lossy and len(readable) <= NAME_MAX:
+    # `svcs` forces a digest for the reason in the docstring: services never appear in the readable
+    # join, so without this the digest is their only carrier and it would not be emitted.
+    if not lossy and not svcs and len(readable) <= NAME_MAX:
         return readable
 
-    suffix = "-" + _digest(base, refs)
+    suffix = "-" + _digest(base, refs, svcs)
     return readable[: NAME_MAX - len(suffix)].rstrip("+-") + suffix
 
 
@@ -784,7 +841,8 @@ def mint(
     staleness check. Writes only when the content differs, so the file's mtime tracks real change.
     """
     base, refs = normalize(recipes, extends)
-    name = derive_name(recipes, extends)
+    svcs = _normalize_services(services)
+    name = derive_name(recipes, extends, services)
 
     # An AUTHORED stack of the same name wins resolution — the generated root is deliberately last
     # in precedence — so `find_in_catalog` would hand both build and launch the authored manifest
@@ -813,9 +871,9 @@ def mint(
         lines.append(f"extends: {base}")
     lines.append("recipes:")
     lines.extend(f"  - {r}" for r in refs)
-    if services:
+    if svcs:
         lines.append("services:")
-        lines.extend(f"  - {s}" for s in sorted(set(services)))
+        lines.extend(f"  - {s}" for s in svcs)
     else:
         lines.append("services: []")
 
@@ -829,7 +887,7 @@ def mint(
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `tools/run-tests.sh tests/test_dynstack.py -v`
-Expected: PASS, 22 tests (the parametrized reserved-ref case counts as three).
+Expected: PASS, 27 tests (the parametrized reserved-ref case counts as three).
 
 `mint` writes to `<generated_catalog_root>/stacks/<name>/stack.yaml`, which is why the tests patch `generated_catalog_root` to return `tmp_path` and then find the manifest under `tmp_path/stacks/<name>/`.
 
@@ -1029,7 +1087,10 @@ def run(
 
     base = None if no_extends else extends
     try:
-        stack = dynstack.derive_name(list(recipe), base)
+        # services MUST be passed here too — they are part of the identity, so deriving without
+        # them would compute a different name than mint() does and the preexisting check below
+        # would inspect the wrong path.
+        stack = dynstack.derive_name(list(recipe), base, services=list(service))
         # Whether the manifest predates THIS invocation decides who owns cleanup below.
         preexisting = (paths.generated_catalog_root() / "stacks" / stack / "stack.yaml").is_file()
         stack, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
@@ -1075,7 +1136,7 @@ Expected: PASS. `test_cli_commands.py` must stay green in **both** directions �
 - [ ] **Step 7: Run the full suite**
 
 Run: `tools/run-tests.sh 2>&1 | tail -5`
-Expected: baseline + 47, no failures.
+Expected: baseline + 52, no failures.
 
 - [ ] **Step 8: Verify by hand against a real stack**
 
@@ -1251,6 +1312,27 @@ The two answer different questions, and conflating them breaks the first to re-a
 
 Keep them separate. If cross-catalog ambiguity ever bites in practice, the fix is to make the
 staleness error name the offending overlay recipe, not to destabilise the identity.
+
+**Re-raised as "two repositories can reuse one generated stack name while replacing each other's
+effective artifacts." That specific scenario cannot occur**, because catalog resolution has no
+project dimension. `paths.catalog_roots()` is exactly `xdg_config_home()/harnessed/catalog` plus
+`harnessed_home()/catalog`, and `harnessed_home()`'s own docstring is *"Never derived from the
+CWD"* — it varies only by `$HARNESSED_DIR`. Nothing in the chain consults the project directory,
+the git common dir, or the launch path. Two repos on one machine therefore resolve `superpowers` to
+the same recipe by construction, and the only way the resolution changes is **over time** — the user
+edits an overlay recipe — which is the drift case the recipe-hash already handles by rebuilding
+under the same name, which is the behaviour you want (your edit takes effect; it does not fork a
+second identity).
+
+**Documented assumption:** generated identity is scoped to one harnessed home. A user who sets
+`HARNESSED_DIR` per-project — plausible via a repo's mise `[env]`, given the per-repo binding this
+plan recommends — would have two catalogs and could collide. This is deliberately not defended
+against, because the defence is worse than the disease: folding `harnessed_home()` into the digest
+would change every generated name whenever the install path moves, and for a wheel install that is
+**every upgrade**, orphaning all profiles, images, and volumes each time. If per-project
+`HARNESSED_DIR` ever becomes a real pattern, scope the generated ROOT to it (a subdirectory per
+home) rather than the name — that isolates artifacts without making identity a function of an
+install path.
 
 ## Notes for the implementer
 
