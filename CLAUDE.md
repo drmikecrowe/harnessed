@@ -83,23 +83,20 @@ Bare + worktrees: `.bare/` is the git dir, `main/` the canonical checkout, tasks
 ## Tests
 
 ```bash
-mise trust && mise exec -- uv sync --extra dev   # once per worktree
-mise exec -- uv run pytest -q
+tools/run-tests.sh                        # whole suite
+tools/run-tests.sh tests/test_schema.py   # one file
+tools/run-tests.sh -k install -x          # filter, stop on first failure
 ```
 
-Two traps CI never sees:
+Run the script; don't hand-compose `mise`/`uv`/`pytest`. It handles worktree setup, is idempotent,
+and absorbs three traps that fail locally while CI stays green. Record the baseline count before your
+change — a drop is a regression even if your new tests pass.
 
-- **`--extra dev` is mandatory.** Without it `uv run pytest` falls through to a system pytest and
-  every test dies with `ModuleNotFoundError: No module named 'harnessed'` — looks like a broken
-  checkout, is a missing extra.
-- **The venv is per-branch** (`UV_PROJECT_ENVIRONMENT` → `~/.local/share/harnessed/venvs/<branch>/`,
-  outside the repo so a bind-mount can't corrupt it). A fresh worktree has none; sync first.
+The **run-tests skill** has the details: per-branch venvs, why `--extra dev` is mandatory, and why a
+plain-text-vs-ANSI assertion failure means the environment is wrong and must never be "fixed" by
+editing the assertion.
 
-**Never "fix" a color assertion failure by editing the assertion.** A plain-text-vs-ANSI mismatch
-means the environment is wrong: `rich` renders plain off-TTY, but `FORCE_COLOR` overrides that and
-Ghostty exports `FORCE_COLOR=3`. `tests/conftest.py` pops it at **module import** — early enough only
-because `launcher.py` builds its Consoles at import; an autouse fixture is too late. Preserve that in
-any new conftest.
+A green run is not end-to-end proof: the suite runs no `podman build` and no `harnessed launch`.
 
 ## Skills
 
