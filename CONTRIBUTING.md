@@ -14,7 +14,7 @@ export PATH="$PWD/.venv/bin:$PATH"   # put the `harnessed` CLI on PATH
 uv run pytest -q                     # fast unit + assembly tests (no containers)
 ```
 
-The CLI runs on the host; edits under `src/harnessed/` take effect immediately (no image rebuild).
+The CLI runs on the host. Edits under `src/harnessed/` take effect immediately (no image rebuild).
 
 ### Git hooks
 
@@ -26,8 +26,8 @@ For the whole picture — how git resolves hooks, and why worktrees share one ho
 [Git hooks guide](https://github.com/drmikecrowe/harnessed/wiki/guides/git-hooks).
 
 **Do not set `core.hooksPath`.** Set locally *or* globally, it makes the repo's own `.git/hooks` be
-ignored entirely — which is how tools silently disable each other. (`bd init` sets a local one; in
-harnessed beads is **container-only**, so nothing should be setting it on your host. If something
+ignored entirely — which is how tools silently disable each other. (`bd init` sets a local one. In
+harnessed, beads is **container-only**, so nothing must set it on your host. If something
 did: `git config --unset core.hooksPath`, adding `--global` if needed.)
 
 ## `catalog/` is a published artifact
@@ -38,22 +38,22 @@ Two things follow when you touch it:
 
 - **Never put host-local content in `catalog/`**, and never point a symlink out of it. setuptools
   follows symlinks, so anything you park there can be published. Your overlay symlinks live in
-  `catalog-local/` (created by `harnessed build`, gitignored); build artifacts go in a staged temp
+  `catalog-local/` (created by `harnessed build`, gitignored). Build artifacts go in a staged temp
   context, not back into `catalog/`. `tests/test_wheel_packaging.py` builds a real wheel and fails if
   host-local content shows up in it.
 - **Never key build/assembly off the CWD.** Anchor to `paths.harnessed_home()` — the directory that
   contains `catalog/` — so `harnessed build <stack>` works from any directory.
 
-Don't delete the `src/harnessed/catalog` symlink: without it an installed harnessed has no catalog.
+Do not delete the `src/harnessed/catalog` symlink. Without it an installed harnessed has no catalog.
 
 ## Add a recipe (the common case)
 
 A recipe lives at `catalog/recipes/<name>/recipe.yaml`. Recipes are **harness-independent** — never
-add a `harnesses:` field; if you need harness-specific install steps, branch on `${HARNESS}` inside
+add a `harnesses:` field. If you need harness-specific install steps, branch on `${HARNESS}` inside
 the recipe's Dockerfile. Three ways a recipe delivers capability:
 
 - **MCP server** — `mcp.servers:` (stdio child via `command:`, or network-native via `url:`/`service:`).
-- **Skill / command** — ship a `skills/<leaf>/` or `commands/<leaf>/` dir; the assembler fans it into
+- **Skill / command** — ship a `skills/<leaf>/` or `commands/<leaf>/` dir. The assembler fans it into
   the profile's `.claude/`.
 - **Rules** — ship a `rules/<leaf>/` dir; the assembler fans it into the profile's `.claude/rules/` (system-prompt-equivalent guidance for Claude Code).
 - **`install:` script** — one bash file run by **both** executors, so it delivers identically in a
@@ -65,7 +65,7 @@ the recipe's Dockerfile. Three ways a recipe delivers capability:
   declared in `install.system`, whose prose reason is printed at host launch so the shortfall is
   never silent.
 
-Because the assembler can't see what a script or Dockerfile installs, **declare it** so the
+Because the assembler cannot see what a script or Dockerfile installs, **declare it** so the
 capability test can probe it:
 
 ```yaml
@@ -78,7 +78,7 @@ expect:                       # only what your Dockerfile delivers (not skills:/
   mcp:      [my-server]
 ```
 
-Recipe Dockerfiles: **no `FROM`**, **no `ARG HARNESS`** (the assembler supplies both); **pin every
+Recipe Dockerfiles: **no `FROM`**, **no `ARG HARNESS`** (the assembler supplies both). **Pin every
 download** (no `@latest` / `--branch main` — the build rejects floating refs).
 
 **A `setup.config` item with a `prompt:` must refuse to run without a TTY.** Today every config
@@ -86,7 +86,7 @@ item in the catalog is `derive:`-only, which resolves fine headlessly — so no 
 you add a *prompted* item, add the refusal with it: a headless launch (`CI`, a script) takes the
 default silently, and some defaults are forever-values. The beads issue prefix is the motivating
 case — it appears in every issue ID and is expensive to change, so it must never be set by silence.
-Abort with the recipe name and the interactive command to run once; a `setup.condition` then keeps
+Abort with the recipe name and the interactive command to run once. A `setup.condition` then keeps
 later headless launches unaffected.
 
 **Write outside harnessed-owned dirs → document removal in the recipe's README.** A recipe that
@@ -95,7 +95,7 @@ a global package, a file in the user's home, a system service — must say in it
 it leaves behind and how to remove it. A host launch runs against the user's real machine, where
 there is no image to throw away, so "uninstall the stack" cannot mean anything unless the recipe
 spells it out. See
-[docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md); worked examples: `catalog/recipes/time`
+[docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md). Worked examples: `catalog/recipes/time`
 (stdio MCP + skill), `catalog/recipes/ping` (service ref), `catalog/recipes/gstack` (Dockerfile).
 
 ### Recipe varieties (one tool, several wirings)
@@ -115,7 +115,7 @@ catalog/recipes/beads/          # family — no recipe.yaml of its own, NOT a us
 recipes: [beads/team]
 ```
 
-The ref is simply the variety's path under `catalog/recipes/`; a family is exactly one dir deep. Each variety is
+The ref is the variety's path under `catalog/recipes/`. A family is exactly one dir deep. Each variety is
 self-contained (own `recipe.yaml`, `Dockerfile`, `tests/`) and is hashed independently — editing one
 variety does not rebuild stacks using another. Sibling varieties are **implicitly mutually
 exclusive**: a stack listing two of them fails at assemble time, so do not list them in each other's
@@ -131,7 +131,7 @@ exclusive**: a stack listing two of them fails at assemble time, so do not list 
 ## Compose + test a stack
 
 Stacks are **harness-free**, named after their recipes **`<recipe>[_<recipe>…]`** (underscores
-between fields, hyphens within a name; not after a harness). The harness is a run-time positional.
+between fields, hyphens within a name — not after a harness). The harness is a run-time positional.
 Scaffold + run the loop:
 
 ```bash
@@ -145,9 +145,9 @@ Personal/experimental catalog entries can live in `~/.config/harnessed/catalog/`
 
 ## Tests
 
-- `uv run pytest -q` — fast unit + assembly oracle (no containers); run before every PR.
+- `uv run pytest -q` — fast unit + assembly oracle (no containers). Run before every PR.
 - `HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py` — live: builds each stack and
   asserts every declared skill/command/plugin/MCP is present in the running container. Add your stack
-  to the catalog and it's covered automatically.
+  to the catalog and it is covered automatically.
 
 A contribution is done when `harnessed test <your-stack>` is green and the live integration test passes.
