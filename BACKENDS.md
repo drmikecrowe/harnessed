@@ -113,7 +113,7 @@ Both are worth having; describe them honestly per backend.
 2. **Name the seam**: extract the §3 backend interface; make `_launch_host` and the container path
    conform. (Enables everything below.)
 3. **Capability matrix + assembler gate** (§4): warn/refuse on unsupported primitive × backend.
-4. **`host-run` verb** (`harnessed-ltj`, shipped): `harnessed host-run <harness> [path]` —
+4. **`host-run` verb** (`harnessed-ltj`, shipped): `harnessed host-run claude [path]` —
    host-native launch with no podman, sharing no flags with `launch`. The general `--backend`
    selection surface (per-stack default in `stack.yaml`, unified `run` verb) remains open.
 5. **Container OAuth-token freshness — host token proxy** (`harnessed-nym`, P1): the root

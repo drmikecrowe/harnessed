@@ -6,7 +6,7 @@ Nothing here may ever fail a launch — aoe being absent, broken, slow, or a ver
 flag must all degrade to silence. Hence: every subprocess call is timeout-bounded, `check=False`,
 and wrapped; every public entry point swallows.
 
-REGISTER-ONLY, deliberately. harnessed still owns the process: `launch` ends in an `os.execvp` that
+REGISTER-ONLY, deliberately. harnessed still owns the process: a run verb ends in an `os.execvp` that
 hands YOUR terminal to the agent (via `podman exec -it` on the container backend, directly on the
 host backend). We record a session so it appears in the dashboard and can be re-started or attached
 from there later — we never hand the launch over to aoe. That is also why sessions must stay in
@@ -34,6 +34,7 @@ registering IS the command the user ran and they are entitled to its exit status
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -313,7 +314,7 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
             if tokens[:2] != ["harnessed", verb]:
                 continue
             if not any(
-                a == _STACK_FLAG[0] and b == stack for a, b in zip(tokens, tokens[1:])
+                a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(tokens)
             ):
                 continue
             sid = session.get("id")

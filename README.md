@@ -168,7 +168,7 @@ harnessed test time claude
 | Command | What it does |
 | --- | --- |
 | `harnessed container-run <harness> [path] --stack <name> [--fresh]` | Isolated stack on a harness: assembled profile + pod (harness + hatago) |
-| `harnessed host-run <harness> [path] --stack <name>` | Same stack, host-native — no podman, no container; config isolated per stack, credentials from host |
+| `harnessed host-run claude [path] --stack <name>` | Same stack, host-native — no podman, no container; config isolated per stack, credentials from host |
 | `harnessed build [<stack> [<harness>]]` | Build the base/harness/hatago images (+ reconcile declared/built pairs), or assemble + build a stack — for one harness, or for every harness in its `harnesses:` list |
 | `harnessed test <stack> <harness>` | Capability test: launch `--fresh` headless + assert declared capabilities (markdown report) |
 | `harnessed svc up \| down \| list <service>` | Manage shared service sidecars (own image + volume) |

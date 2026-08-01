@@ -145,7 +145,7 @@ services (started host-published, idempotently).
 | verb | backend | what it isolates |
 | --- | --- | --- |
 | `harnessed container-run <harness> [path]` | container (podman pod + hatago + services) | the filesystem, the network, **and** the configuration |
-| `harnessed host-run <harness> [path]` | host-native — no podman, no MCP hub | the **configuration only** |
+| `harnessed host-run claude [path]` | host-native — no podman, no MCP hub | the **configuration only** |
 
 **The verb picks the BACKEND; a flag picks the STACK.** Both take the same options — `--stack/-s`
 for a stack you authored, `--recipe/-r` (repeatable) to compose one on the fly — and exactly one of
@@ -162,6 +162,11 @@ Typer — which binds positionals by DECLARATION order, not by meaning — could
 from a project path under `--recipe`. That cost the recipe form a rejects-all-positionals rule, a
 separate `--path` option, and it still let `host-run <stack> --recipe X` silently launch the
 generated stack with the authored name demoted to a path, exit 0.
+
+The harness is required on both verbs, including `host-run` where **`claude` is currently the only
+accepted value** (`_HOST_HARNESS`; the other harnesses do not consume `CLAUDE_CONFIG_DIR` directly
+yet — bd harnessed-72j/-7rh/-rlw/-w8k). It is spelled out rather than defaulted because `path` is
+the second positional: a defaulted harness would make `host-run .` bind `.` as the harness.
 
 `host-run` materializes the stack's assembled profile into a per-stack `CLAUDE_CONFIG_DIR`
 (`<stack>/<harness>`, see `paths.host_home`) and execs the harness against your real machine, real
@@ -243,9 +248,10 @@ outlives the `execvp`. A dashboard is not worth twelve seconds of a launch.
 
 `--create-aoe-only` is the exception: on `container-run` and `host-run` it registers the session and
 exits without launching. There registering *is* the command, so it blocks, prints what it wrote, and
-exits non-zero if it could not. `run --create-aoe-only` still mints and builds — the row replays
-`container-run`, which hard-errors without an assembled profile, so skipping the build would
-create a row that is dead on arrival.
+exits non-zero if it could not. On `container-run` a `--recipe` set is still minted AND built —
+the row replays `container-run`, which hard-errors without an assembled profile, so skipping the
+build would create a row that is dead on arrival. `host-run` needs no build: it assembles
+in-process on every launch.
 
 ## Folder-env contract
 
