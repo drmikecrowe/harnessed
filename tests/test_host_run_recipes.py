@@ -130,17 +130,18 @@ class TestHostRunRecipeMinting:
                 stack=stack, path=path
             ),
         )
+        proj = tmp_path / "proj"
         result = runner.invoke(
-            launcher.app, ["host-run", "--recipe", "serena", "--path", "/tmp/proj"]
+            launcher.app, ["host-run", "--recipe", "serena", "--path", str(proj)]
         )
         assert result.exit_code == 0, result.output
-        assert captured == {"stack": "default.serena", "path": "/tmp/proj"}
+        assert captured == {"stack": "default.serena", "path": str(proj)}
 
     @pytest.mark.parametrize("extra", [
-        ["/tmp/proj"],              # meant as a path — indistinguishable from a stack name
+        ["some/project/dir"],       # meant as a path — indistinguishable from a stack name
         ["claude"],                 # a VALID harness: the case the old shift silently swallowed
         ["some-stack", "claude"],
-        ["some-stack", "claude", "/tmp/proj"],
+        ["some-stack", "claude", "some/project/dir"],
     ])
     def test_positionals_are_rejected_with_recipes(self, monkeypatch, tmp_path, extra):
         """Every positional shape must be refused rather than reinterpreted. The `claude` case is
@@ -172,7 +173,7 @@ class TestHostRunRecipeMinting:
         monkeypatch.setattr(launcher, "_launch_host", lambda *a, **k: None)
         result = runner.invoke(
             launcher.app,
-            ["host-run", "my-stack", "claude", "/tmp/a", "--path", "/tmp/b"],
+            ["host-run", "my-stack", "claude", "positional-dir", "--path", "option-dir"],
         )
         assert result.exit_code != 0
         assert "once, not twice" in result.output
