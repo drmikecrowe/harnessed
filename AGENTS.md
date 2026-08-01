@@ -25,7 +25,7 @@ HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py   # live cont
 ```
 
 The CLI runs on the host (edits under `src/harnessed/` are live). `harnessed build <stack> <harness>`
-assembles in-process and builds images; `harnessed test <stack> <harness>` is the capability oracle.
+assembles in-process and builds images. `harnessed test <stack> <harness>` is the capability oracle.
 
 ## Customizing (catalog content)
 
@@ -53,7 +53,7 @@ Everything authorable is under `catalog/` (and the user overlay `~/.config/harne
 
 1. Start work in a **new git worktree** — never edit or commit on `main` directly.
 2. Get the **full test suite passing** in that worktree before proposing to merge.
-3. Open a **PR** to `main`; merges happen via PR review, not direct pushes.
+3. Open a **PR** to `main`. Merges happen via PR review, not direct pushes.
 
 Applies to code, catalog content, docs, and config alike. Commits are signed
 (see `.claude/rules/signed-commits`). This overrides the "PUSH TO REMOTE" step in the Beads
@@ -67,8 +67,8 @@ the repo root). Run `git worktree list` if you are unsure where you are.
 
 - **Begin each session in `main/`, and return to `main/` when a task is done.** Do the *work* in a
   task worktree per the rules above — but read, verify, and come to rest in `main/`. Never carry an
-  unrelated change into whatever worktree you happen to have inherited; it belongs to another task.
-- **Never conclude "file X doesn't exist" from inside a worktree.** Git does not populate a worktree
+  unrelated change into whatever worktree you happen to have inherited. It belongs to another task.
+- **Never conclude "file X does not exist" from inside a worktree.** Git does not populate a worktree
   with **gitignored** content. Most consequentially `docs/`, which is an unpinned live clone of the
   GitHub wiki (see `.gitignore`) — so `docs/guides/*`, `docs/codebase/*`, and `docs/harnessed-design.md`
   exist **only in `main/`**, even though this file and CLAUDE.md link to them freely. An empty
@@ -77,9 +77,9 @@ the repo root). Run `git worktree list` if you are unsure where you are.
 
 ## Conventions
 
-See [CLAUDE.md](CLAUDE.md) for the non-negotiable constraints (host-native CLI; Claude format
-canonical; recipes harness-independent; pnpm everywhere; pinned downloads; credentials referenced,
-never replicated; Streamable-HTTP MCP).
+See [CLAUDE.md](CLAUDE.md) for the non-negotiable constraints: host-native CLI, Claude format
+canonical, recipes harness-independent, pnpm everywhere, pinned downloads, credentials referenced
+(never replicated), Streamable-HTTP MCP.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker
