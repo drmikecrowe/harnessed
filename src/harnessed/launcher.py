@@ -1076,6 +1076,27 @@ def _build_stack_guarded(
         _BUILD_TAG.reset(token)
 
 
+# Memo for `_varlock_resolve`, keyed on the resolved schema dir. Populated for the lifetime of one
+# CLI process, which is exactly one launch.
+#
+# `varlock load` shells out and may authenticate against a secrets manager (1Password), so each call
+# costs real latency. The same dir is resolved by several callers in a single launch:
+# `_varlock_resolve_env_file` builds the --env-file set, then `_claude_oauth_token_configured` asks
+# the same dirs whether a token is present (and `_resolve_launch_env` does both on the host path).
+# Uncached that is up to 4 subprocesses per launch where 2 suffice.
+#
+# Caching is safe here BECAUSE the process is short-lived and one launch must see a CONSISTENT
+# secret set anyway — resolving the same dir twice and acting on different answers would be a bug,
+# not a feature. Tests that need fresh resolution monkeypatch `_varlock_resolve` wholesale (which
+# bypasses this entirely) or call `_varlock_cache_clear()`.
+_VARLOCK_CACHE: dict[Path, dict[str, str] | None] = {}
+
+
+def _varlock_cache_clear() -> None:
+    """Drop the `_varlock_resolve` memo. For tests that resolve the same dir across differing state."""
+    _VARLOCK_CACHE.clear()
+
+
 def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
     """Run `varlock load --format json` in schema_dir and return the resolved `KEY -> value` map
     (values stringified, `None`s dropped). Returns None on varlock failure so a launch degrades
@@ -1086,10 +1107,17 @@ def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
     both consumers want — see `_varlock_resolve_env_file` (container) and `_resolve_launch_env`
     (host, where the values go straight into `os.environ` and never touch disk).
 
+    Memoized per schema dir — see `_VARLOCK_CACHE`. The failure result (None) is cached too, so a
+    broken varlock reports its error once per dir instead of once per caller.
+
     Assumes a `.env.schema` in schema_dir and `varlock` on PATH (checked by the caller).
     `OP_SERVICE_ACCOUNT_TOKEN` is included when already set in the host env (headless / CI path —
     service-account bearer auth, no desktop app required).
     """
+    cache_key = schema_dir.resolve()
+    if cache_key in _VARLOCK_CACHE:
+        return _VARLOCK_CACHE[cache_key]
+
     result = subprocess.run(
         ["varlock", "load", "--format", "json"],
         capture_output=True,
@@ -1101,12 +1129,14 @@ def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
             f"[bold red]error:[/bold red] varlock load failed in {schema_dir} "
             f"(exit {result.returncode}): {result.stderr.strip()}"
         )
+        _VARLOCK_CACHE[cache_key] = None
         return None
 
     try:
         resolved = json.loads(result.stdout)
     except json.JSONDecodeError as e:
         _err.print(f"[bold red]error:[/bold red] varlock load returned invalid JSON: {e}")
+        _VARLOCK_CACHE[cache_key] = None
         return None
 
     def _fmt(v: object) -> str:
@@ -1118,6 +1148,7 @@ def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
     op_token = os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")
     if op_token:
         values["OP_SERVICE_ACCOUNT_TOKEN"] = op_token
+    _VARLOCK_CACHE[cache_key] = values
     return values
 
 

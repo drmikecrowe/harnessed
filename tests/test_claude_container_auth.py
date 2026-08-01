@@ -9,6 +9,7 @@ instances permanently logged out, curable only by deleting the state dir by hand
 """
 
 import json
+import subprocess
 from datetime import datetime, timedelta, timezone
 
 from harnessed import launcher
@@ -198,3 +199,68 @@ class TestExpiryHelper:
         bad = tmp_path / "bad.json"
         bad.write_text("{}")
         assert launcher._claude_creds_expired(bad) is True
+
+
+class TestVarlockResolveMemo:
+    """`_varlock_resolve` shells out to `varlock load`, which may authenticate against a secrets
+    manager. Several callers resolve the SAME dir in one launch (env-file build, then the token
+    presence check), so the result is memoized per dir for the process lifetime.
+    """
+
+    def _stub_varlock(self, monkeypatch, calls: list[str], *, returncode: int = 0, stdout: str = "{}"):
+        launcher._varlock_cache_clear()
+
+        def fake_run(cmd, **kwargs):
+            calls.append(kwargs.get("cwd", ""))
+            return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr="boom")
+
+        monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+
+    def test_same_dir_resolves_once(self, monkeypatch, tmp_path):
+        """The second call for a dir must NOT spawn another varlock subprocess."""
+        calls: list[str] = []
+        self._stub_varlock(monkeypatch, calls, stdout='{"CLAUDE_CODE_OAUTH_TOKEN": "tok"}')
+
+        first = launcher._varlock_resolve(tmp_path)
+        second = launcher._varlock_resolve(tmp_path)
+
+        assert first == second == {"CLAUDE_CODE_OAUTH_TOKEN": "tok"}
+        assert len(calls) == 1, f"expected 1 varlock invocation, got {len(calls)}"
+
+    def test_distinct_dirs_each_resolve(self, monkeypatch, tmp_path):
+        """Memoization is per dir — global and project must both still be resolved."""
+        calls: list[str] = []
+        self._stub_varlock(monkeypatch, calls)
+        a = tmp_path / "global"
+        b = tmp_path / "project"
+        a.mkdir()
+        b.mkdir()
+
+        launcher._varlock_resolve(a)
+        launcher._varlock_resolve(b)
+
+        assert len(calls) == 2
+
+    def test_failure_is_cached_and_reported_once(self, monkeypatch, tmp_path):
+        """A failing varlock must not be retried once per caller.
+
+        The error is printed inside `_varlock_resolve`, so a single invocation is also proof it is
+        reported exactly once — no need to reach into the console's internals to count it.
+        """
+        calls: list[str] = []
+        self._stub_varlock(monkeypatch, calls, returncode=1)
+
+        assert launcher._varlock_resolve(tmp_path) is None
+        assert launcher._varlock_resolve(tmp_path) is None
+
+        assert len(calls) == 1, f"failure should be cached, got {len(calls)} invocations"
+
+    def test_cache_clear_forces_reresolution(self, monkeypatch, tmp_path):
+        calls: list[str] = []
+        self._stub_varlock(monkeypatch, calls)
+
+        launcher._varlock_resolve(tmp_path)
+        launcher._varlock_cache_clear()
+        launcher._varlock_resolve(tmp_path)
+
+        assert len(calls) == 2
