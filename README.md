@@ -85,7 +85,7 @@ Your `~/.config/harnessed` and `$XDG_DATA_HOME/harnessed` data are preserved.
 > **Working on the CLI itself?** Use an editable dev env instead — see [CONTRIBUTING.md](CONTRIBUTING.md)
 > (`uv sync --extra dev` + `export PATH="$PWD/.venv/bin:$PATH"`).
 
-> **Linux** — tested on Manjaro. It works on any systemd distro. macOS/WSL: untested.
+> **Linux** — tested on Manjaro. It should work on any systemd distro, but this is not tested. macOS/WSL: untested.
 
 ## First-run build
 
