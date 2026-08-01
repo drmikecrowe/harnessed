@@ -33,7 +33,8 @@ rules:
 #      vendored here (hand-copying meant drift + redistributing third-party content in the wheel with
 #      no licence). This is a BRIDGE (bd harnessed-197): the vercel `skills` CLI is the intended
 #      end state but cannot yet pin to a SHA or verify content on restore, so install.sh supplies the
-#      pin+verify the ecosystem lacks. Sources: oakoss/agent-skills (5), blader/humanizer (1).
+#      pin+verify the ecosystem lacks. Sources: oakoss/agent-skills (5), blader/humanizer (1),
+#      AminBlg/SimpleEnglish (1).
 #   2. `skills:` below vendors the ones MODIFIED here (a fetch would discard the edits) or authored
 #      here. Owner tags: [gsd] open-gsd/gsd-core, [kepano] kepano/obsidian-skills, [mine] here — MIT.
 #      See README.md for the full provenance table and the outstanding LICENSE-notice obligations.
@@ -41,7 +42,7 @@ install:
   script: install.sh
   # Keys the host content cache; changes whenever a pinned SHA in install.sh changes (bump the two
   # together, after a human diff review — see `hold` below).
-  cache: "oak0283bed3-hum1b485648"
+  cache: "oak0283bed3-hum1b485648-ste379728b5"
   # The HOLD, machine-readable (bd harnessed-c5t) — was a comment here until the field existed, and
   # a comment is not something `harnessed update` can read.
   hold: >-
@@ -53,7 +54,7 @@ install:
 # Fetched by install.sh — the capability test verifies they landed (the assembler cannot see what an
 # install script installs, so we declare it). Keep in sync with install.sh.
 expect:
-  skills: [application-security, mermaid-diagrams, mise, python-uv, skill-management, humanizer]
+  skills: [application-security, mermaid-diagrams, mise, python-uv, skill-management, humanizer, simple-english]
 
 skills:
   # [kepano] DERIVED from kepano/obsidian-skills (MIT), with a local trigger-strengthening edit, so
