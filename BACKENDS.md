@@ -76,8 +76,8 @@ seam explicitly and make both (plus future backends) conform.
 
 ## 4. Recipe-capability × backend matrix
 
-Not every recipe primitive is honorable on every backend. The assembler should **warn or refuse**
-when a stack uses a primitive its target backend can't satisfy (build on the existing
+Not every recipe primitive is supported on every backend. The assembler must **warn or refuse**
+when a stack uses a primitive its target backend cannot satisfy (build on the existing
 capability-test oracle).
 
 | Recipe primitive | host | bwrap | container | devcontainer |
