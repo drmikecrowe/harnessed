@@ -38,6 +38,7 @@ print(json.dumps({
     "env": {k: os.environ.get(k, "") for k in (
         "BEADS_DIR", "BEADS_DOLT_SERVER_HOST", "BEADS_DOLT_SERVER_PORT",
         "BEADS_DOLT_PASSWORD", "BEADS_DOLT_AUTO_START", "BEADS_DOLT_SERVER_SOCKET",
+        "HARNESSED_BEADS_SERVER_SOCKET",
     )},
 }))' "$@"
 """
@@ -108,7 +109,9 @@ def env(tmp_path: Path):
             e.pop("BEADS_DOLT_SERVER_SOCKET", None)
             e.pop("HARNESSED_BEADS_SERVER_SOCKET", None)
             if self.socket_path:
+                # A socket-era launch sets both; mirror that so tests can verify both are cleared.
                 e["BEADS_DOLT_SERVER_SOCKET"] = self.socket_path
+                e["HARNESSED_BEADS_SERVER_SOCKET"] = self.socket_path
             e["XDG_STATE_HOME"] = str(state)
             e["XDG_DATA_HOME"] = str(data)
             e.pop("HARNESSED_BD_SHIM", None)
@@ -226,6 +229,32 @@ class TestStaleLaunchEnv:
         elsewhere.mkdir()
         out = _payload(env.run(elsewhere, "list"))
         assert out["env"]["BEADS_DIR"] == str(env.launch_dir / ".beads")
+
+    def test_sidecar_restarted_in_port_mode_clears_both_socket_vars(self, env, tmp_path):
+        """Regression for harnessed-kf9.
+
+        A session launched in socket mode carries both BEADS_DOLT_SERVER_SOCKET and
+        HARNESSED_BEADS_SERVER_SOCKET. When the sidecar is rebuilt in port mode the socket path
+        never appears (port mode never creates <repo>/.beads/run/), so BEADS_DOLT_SERVER_SOCKET
+        names a path that is not a socket. Without the shim's stale-socket check, bd selects socket
+        mode because the variable exists and reports "Dolt server unreachable … Auto-start is not
+        supported in socket mode" — a misleading failure about a healthy port-mode server.
+
+        The shim must detect the missing socket, re-resolve the sidecar's current port, and exec bd
+        with BOTH socket variables cleared so bd does not select socket mode."""
+        env.socket_path = str(env.launch_dir / ".beads" / "run" / "mysql.sock")
+        # The socket path does NOT exist on disk — sidecar restarted in port mode.
+        assert not Path(env.socket_path).exists()
+        env.with_podman("49183")
+        env.secret(env.gcd, "pw-portmode")
+        (env.launch_dir / ".beads").mkdir(parents=True, exist_ok=True)
+        out = _payload(env.run(env.launch_dir, "list"))
+        # Both socket vars must be cleared so bd cannot select socket mode.
+        assert out["env"]["BEADS_DOLT_SERVER_SOCKET"] == ""
+        assert out["env"]["HARNESSED_BEADS_SERVER_SOCKET"] == ""
+        # And the port-mode connection must be established.
+        assert out["env"]["BEADS_DOLT_SERVER_PORT"] == "49183"
+        assert out["env"]["BEADS_DOLT_PASSWORD"] == "pw-portmode"
 
 
 class TestForeignProject:
