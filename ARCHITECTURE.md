@@ -202,6 +202,11 @@ ends in.
 | skipped | the `default` stack | the baseline every dynamic stack extends, not something the user composed |
 | removed by | `harnessed rm <stack>` | container rows only — `rm` tears down containers, and a host-native session owns none |
 
+**A row never outlives its launch.** Each backend registers only after its last validation gate —
+`is_built` plus the staleness check for the container path, in-process assembly for the host path.
+Registering earlier would leave a bookmark for a launch that died on a renamed recipe, and that row
+would fail identically every time it was started from the dashboard.
+
 Two aoe behaviours the code is shaped around, both verified 2026-08-01 and neither documented by
 aoe:
 

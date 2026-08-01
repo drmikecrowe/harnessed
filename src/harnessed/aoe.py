@@ -96,6 +96,14 @@ def _spawn(exe: str, batch: list[list[str]]) -> bool:
     Sequenced through one `sh -c` because the writes are ordered: the profile must exist before the
     group, and the group before the session. Output goes nowhere; a detached child has no terminal
     to write to and its failures are not the launch's problem.
+
+    JOINED WITH `;`, NOT `&&` — deliberately, and it looks like a bug until you check the exit
+    codes. Both `aoe profile create` and `aoe group create` exit 1 when the thing already exists
+    (verified 2026-08-01). The reads that build this batch are not atomic with it, so two launches
+    starting together can both observe a missing profile and both try to create it. Under `&&` the
+    loser's chain aborts on that benign "already exists" and its session is never added; under `;`
+    it proceeds and registers correctly. The failure mode `&&` would guard against — aoe being
+    down — already produces no row either way.
     """
     if not batch:
         return True

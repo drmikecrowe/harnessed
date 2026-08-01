@@ -5172,12 +5172,6 @@ def _launch_host(
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir / 'stack.yaml'})")
         raise typer.Exit(1)
 
-    # Same mirror as the container path, recorded under this verb so the two never collide: a
-    # host-native session and a containerized one for the same stack+harness+folder are different
-    # things to run. Placed before assembly so --create-aoe-only does no work it is about to throw
-    # away. No-op when aoe is absent; never raises.
-    _aoe_register("host-run", stack, harness, project_path, only=create_aoe_only)
-
     # Assemble IN-PROCESS every launch — host-native, emit-only, NO podman and NO image build. This is
     # what keeps host-run container-free end to end: unlike `harnessed build` (which also builds a
     # multi-GB image), we only need the profile's content layer. Assembly is sub-second, so a
@@ -5189,6 +5183,17 @@ def _launch_host(
     except (SchemaError, CollisionError) as exc:
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1)
+
+    # Same mirror as the container path, recorded under this verb so the two never collide: a
+    # host-native session and a containerized one for the same stack+harness+folder are different
+    # things to run. No-op when aoe is absent; never raises.
+    #
+    # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue of
+    # `launch`'s is_built/staleness checks — so registering ahead of it would leave a row behind for
+    # a launch that then died on a renamed recipe, and that row would fail identically every time it
+    # was started from the dashboard. It costs `--create-aoe-only` one assembly, which is
+    # sub-second, emit-only and container-free on this path.
+    _aoe_register("host-run", stack, harness, project_path, only=create_aoe_only)
 
     # Launch-time secrets — the host half of the container path's `--env-file` (see
     # _resolve_launch_secrets). Set on THIS process for the same reason as the recipe env below:

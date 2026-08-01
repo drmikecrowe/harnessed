@@ -18,6 +18,7 @@ import typer
 from typer.core import TyperGroup
 
 from harnessed import aoe, launcher
+from harnessed.schema import SchemaError
 
 
 PROFILE_LIST_EMPTY = "Profiles:\n  * default (default)\n\nTotal: 1 profiles\n"
@@ -314,8 +315,32 @@ class TestWriteDispatch:
     """Reads block, writes do not — `aoe add` takes ~12s and a launch must not wait on it."""
 
     def test_registration_is_detached_by_default(self, rec, tmp_path):
+        # The `rec` fixture reports the profile as already present, so only the group and the
+        # session are written. Asserted explicitly, because the expected batch below depends on it.
+        assert aoe._has_profile("/usr/bin/aoe") is True
         aoe.sync_session("launch", "serena", "claude", tmp_path)
         assert [a[0] for a in rec.spawned] == ["group", "add"]
+
+    def test_a_missing_profile_is_created_in_the_same_batch(self, monkeypatch, tmp_path):
+        # Ordering matters: the profile must exist before the group, the group before the session.
+        rec = Recorder(profiles=PROFILE_LIST_EMPTY).install(monkeypatch)
+        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        assert [a[0] for a in rec.spawned] == ["profile", "group", "add"]
+
+    def test_writes_are_sequenced_with_semicolons_not_and(self, monkeypatch):
+        # `aoe profile create` / `group create` exit 1 when the thing ALREADY EXISTS, and the reads
+        # that build the batch are not atomic with it. Under `&&`, a launch that raced another and
+        # lost would abort on that benign error and never add its session.
+        seen = {}
+
+        class FakePopen:
+            def __init__(self, argv, **kwargs):
+                seen["script"] = argv[2]
+
+        monkeypatch.setattr(aoe.subprocess, "Popen", FakePopen)
+        aoe._spawn("/usr/bin/aoe", [["profile", "create", "harnessed"], ["add", "/p"]])
+        assert "&&" not in seen["script"]
+        assert seen["script"].count(";") == 1
 
     def test_reads_never_go_through_the_detached_path(self, rec, tmp_path):
         aoe.sync_session("launch", "serena", "claude", tmp_path)
@@ -441,6 +466,47 @@ class TestCreateAoeOnly:
         group = typer.main.get_command(launcher.app)
         assert isinstance(group, TyperGroup)  # narrows to the .commands mapping
         assert any("--create-aoe-only" in p.opts for p in group.commands[verb].params)
+
+
+class TestHookPlacement:
+    """A row must never outlive the launch that created it.
+
+    Both backends register only after their last validation gate — `is_built`/staleness for the
+    container path, in-process assembly for the host path. Registering earlier leaves a bookmark
+    for a launch that died, and it would fail identically every time it was started from the
+    dashboard.
+    """
+
+    def _host_run(self, monkeypatch, tmp_path, *, assembly_fails: bool):
+        registered: list = []
+        (tmp_path / "stack.yaml").write_text("name: broken\n")
+        monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a: tmp_path)
+        monkeypatch.setattr(
+            launcher.aoe, "sync_session",
+            lambda *a, **k: (registered.append(a), True)[1],
+        )
+
+        def assemble(*_a, **_k):
+            if assembly_fails:
+                raise SchemaError("recipe 'gone' no longer resolves")
+            return None
+
+        monkeypatch.setattr(launcher, "assemble", assemble)
+        # create_aoe_only=True makes the hook itself the stopping point, so a successful assembly
+        # never reaches the launch machinery this test is not about. Both paths raise typer.Exit —
+        # 1 for the assembly failure, 0 for the registration — so the assertion is on what was
+        # registered, not on the exception.
+        with pytest.raises(typer.Exit):
+            launcher._launch_host("broken", "claude", str(tmp_path), create_aoe_only=True)
+        return registered
+
+    def test_failed_assembly_registers_nothing(self, monkeypatch, tmp_path):
+        assert self._host_run(monkeypatch, tmp_path, assembly_fails=True) == []
+
+    def test_registration_happens_once_assembly_succeeds(self, monkeypatch, tmp_path):
+        # Guards the test above from passing vacuously: if the hook were simply gone, both pass.
+        registered = self._host_run(monkeypatch, tmp_path, assembly_fails=False)
+        assert [a[0] for a in registered] == ["host-run"]
 
 
 class TestCommandFor:
