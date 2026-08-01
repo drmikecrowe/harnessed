@@ -86,11 +86,26 @@ class TestContainerHostname:
         assert out.startswith("harnessed-omp-")
         assert out.endswith("-59258991")
 
-    def test_never_ends_on_a_separator(self):
-        # A cut landing on `-` or `.` would leave an invalid label.
+    def test_truncation_never_leaves_a_trailing_separator(self):
+        # A cut landing on `-` or `.` would leave an invalid label, so the head is rstripped. The
+        # padding goes in FRONT of the repeating pattern to walk the cut across `-`, `.` and alnum
+        # in turn; padding the tail instead leaves the cut at a fixed offset and exercises nothing.
+        #
+        # `stripped` counts the cases that actually reached rstrip. Asserting it is what keeps this
+        # test honest: the first version checked `out.endswith(("-", "."))`, which can never fire
+        # because every result ends with the project hash, and its sweep never landed on a
+        # separator either — it passed while proving nothing.
+        tail = "-59258991"
+        stripped = 0
         for pad in range(40):
-            out = paths.container_hostname(f"harnessed-omp-{'a.b-' * 20}{'c' * pad}-59258991")
-            assert len(out) <= 64 and not out.endswith(("-", ".")), out
+            out = paths.container_hostname(f"harnessed-omp-{'x' * pad}{'a.b-' * 20}{tail}")
+            head = out[: -len(tail)]
+            assert len(out) <= 64, out
+            assert out.endswith(tail), out
+            assert head[-1] not in "-.", out
+            if len(head) < 64 - len(tail):
+                stripped += 1
+        assert stripped, "the sweep never landed on a separator, so it asserts nothing"
 
     def test_trailing_slash_stripped(self):
         a = paths.instance_name("stack", "claude", "/home/user/project")
