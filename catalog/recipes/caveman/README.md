@@ -4,7 +4,7 @@ An output-compression skill: the agent answers in terse "caveman" prose — roug
 tokens — while keeping full technical accuracy. Code, commands, and paths are never caveman-ified.
 
 Levels: `lite`, `full`, `ultra`, and `wenyan` variants. Ships as skills and commands installed by
-the recipe's `install.sh` — in the container image and on a `--host` launch alike; no MCP server.
+the recipe's `install.sh` — in the container image and on a `--host` launch alike. No MCP server.
 
 ## Removing what this recipe leaves behind
 

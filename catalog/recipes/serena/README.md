@@ -10,9 +10,9 @@ path — so it resolves the bind-mounted project and writes `.serena/` into the 
 
 > Serena cannot be a harnessed **service**. Services get a published port and a named volume but no
 > project bind-mount, and they are shared across every instance and project — so a serena service
-> would come up with no project to index. The stdio child is the shape that works.
+> starts with no project to index. The stdio child is the shape that works.
 
-## What is automatic, what isn't
+## What is automatic, what is not
 
 - **CLI + global config** (`uv tool install serena-agent`, then `serena init -b LSP`, the
   language-server backend) — `install.sh`, run by both the container build and a `--host` launch.

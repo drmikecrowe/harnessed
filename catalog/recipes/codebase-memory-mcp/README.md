@@ -12,7 +12,7 @@ auto-indexes.
 
 ## Host footprint — what it writes outside harnessed, and how to remove it
 
-`install.sh` deliberately does **not** run `mise use -g` on the host — that would add cbm to your
+`install.sh` deliberately does **not** run `mise use -g` on the host — `mise use -g` adds cbm to your
 global mise config and to every shell you open. It installs the versioned tool and links the binary
 into the stack's own bin dir instead. What that leaves behind:
 
@@ -23,6 +23,6 @@ into the stack's own bin dir instead. What that leaves behind:
 The symlink itself lives in the stack tool tree and goes with the stack:
 `rm -r "${XDG_DATA_HOME:-$HOME/.local/share}/harnessed/tools/<stack>"`.
 
-cbm's own SQLite index is written under the project it indexes; it goes with the project.
+cbm's own SQLite index is written under the project it indexes. It goes with the project.
 
 Upstream: <https://github.com/DeusData/codebase-memory-mcp>

@@ -15,6 +15,6 @@ pod's `$HOME` is `/home/harnessed`.
 path for CI, or for keeping the agent off your host token. Nothing is ever baked into the image.
 See `docs/guides/pulumi.md`.
 
-Ships a CLI only; no MCP server.
+Ships a CLI only. No MCP server.
 
 Upstream: <https://github.com/pulumi/pulumi>

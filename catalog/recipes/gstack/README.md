@@ -3,7 +3,7 @@
 Garry Tan's gstack skill suite — browser automation, design, PDF handling, and more. Installed by
 running upstream's own `./setup`, from the recipe's `install.sh`.
 
-Ships as skills; no MCP server.
+Ships as skills. No MCP server.
 
 `install.sh` runs in both modes, but one step cannot: `bunx playwright install-deps chromium` is an
 apt install needing root, so it stays in the recipe Dockerfile and is declared as `install.system:`.
