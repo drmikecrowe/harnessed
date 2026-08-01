@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 import typer
-from typer.testing import CliRunner
+from typer.core import TyperGroup
 
 from harnessed import aoe, launcher
 
@@ -432,9 +432,15 @@ class TestCreateAoeOnly:
 
     @pytest.mark.parametrize("verb", ["launch", "run", "host-run"])
     def test_every_launch_verb_accepts_the_flag(self, verb):
-        result = CliRunner().invoke(launcher.app, [verb, "--help"])
-        assert result.exit_code == 0, result.output
-        assert "--create-aoe-only" in result.output.replace("\n", " ").replace("  ", " ")
+        """Assert on the PARAMETER, not on rendered `--help`.
+
+        Help text is laid out by rich against the terminal width and painted with ANSI, so an
+        earlier version of this test passed locally and failed in CI purely because the flag name
+        wrapped. The declaration is what the assertion is actually about.
+        """
+        group = typer.main.get_command(launcher.app)
+        assert isinstance(group, TyperGroup)  # narrows to the .commands mapping
+        assert any("--create-aoe-only" in p.opts for p in group.commands[verb].params)
 
 
 class TestCommandFor:
