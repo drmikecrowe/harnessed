@@ -36,7 +36,7 @@ Do not use this skill for:
 Before writing anything:
 
 1. What is the public interface? (function signature, HTTP route, module exports)
-2. Which behaviors matter most? List them in order of how badly you'd want to know if they broke.
+2. Which behaviors matter most? List them in order of how much you want to know if they broke.
 3. What does a "caller" look like? Write one example call in prose.
 
 If the user has not supplied these, ask — one round, 1–3 questions.
@@ -55,7 +55,7 @@ Pick the next behavior. Write one test that pins it. Run — RED. Write the mini
 
 Guidelines for picking the next behavior:
 
-- Alternate happy-path-variant and edge-case tests — don't do all happy paths then all edges.
+- Alternate happy-path-variant and edge-case tests — do not do all happy paths then all edges.
 - Stop adding happy paths when they stop revealing new code. Move to errors.
 - If the next test would require no new code, you have hit the end of this slice — skip to Step 4.
 
@@ -67,7 +67,7 @@ Guidelines for writing the test:
 
 Guidelines for writing the code:
 
-- Minimum to pass. If there are three cases and two are untested, write only the one that's under test.
+- Minimum to pass. If there are three cases and two are untested, write only the one under test.
 - Copy-paste is fine on the first and second occurrence. Extract on the third.
 
 ## Step 4: Refactor while GREEN
@@ -77,8 +77,8 @@ Now that the behavior is pinned, clean up. Extract duplicated logic. Rename uncl
 Rules:
 
 - Every refactor keeps every test GREEN. Run tests after each small change.
-- If a refactor would require changing a test, the test was coupled to implementation — either the test is wrong, or the interface you thought you were pinning is actually different. Fix the test first, then refactor.
-- Don't refactor speculatively. Extract around real duplication and real seams, not imagined ones.
+- If a refactor requires changing a test, the test was coupled to implementation — either the test is wrong, or the interface you thought you were pinning is actually different. Fix the test first, then refactor.
+- Do not refactor speculatively. Extract around real duplication and real seams, not imagined ones.
 
 ## Step 5: Close the slice
 
@@ -97,7 +97,7 @@ When the behavior the task plan specified is fully under test and the code is cl
 - **Refactoring while RED.** You have no signal. Any change could be right or wrong.
 - **"Just one more test" after GREEN without refactoring.** You accumulate duplication and the code rots in place.
 - **Testing implementation detail.** "It calls `fetchUser` three times." Who cares? Test the observable result.
-- **Skipping the failing run.** If you never saw RED, you don't know the test would have caught the bug.
+- **Skipping the failing run.** If you never saw RED, you cannot verify the test catches the bug.
 
 </anti_patterns>
 
