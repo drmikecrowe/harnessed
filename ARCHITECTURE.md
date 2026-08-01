@@ -182,6 +182,53 @@ No env var, no discovery, no precedence rules — and the trust question answers
 `[harnessed]` table warns on every mise invocation, and `[env] HARNESSED_RECIPES` is live only when
 mise is activated, failing silently and expensively when it is not.
 
+## Agent of Empires mirror (optional)
+
+Agent of Empires (`aoe`) is a tmux session coordinator some users run in front of their agents. harnessed neither requires nor installs it. When it *is* installed
+(`aoe` on PATH **and** `~/.config/agent-of-empires/` present), every launch mirrors itself into a
+dedicated `harnessed` aoe profile: a group per git repo, a session per launch. `src/harnessed/aoe.py`
+is the whole bridge; `HARNESSED_NO_AOE=1` turns it off.
+
+**Register-only, one-way.** harnessed still owns the process — `launch` ends in an `os.execvp` that
+hands your terminal to the agent. The row is a bookmark that can be started or attached from the
+dashboard later; aoe never drives harnessed. Sessions are registered `--no-cockpit` because
+cockpit's ACP transport cannot reach through the `podman exec -it` attach the container backend
+ends in.
+
+| property | value | why |
+| --- | --- | --- |
+| identity | (project path, stack, harness, verb) | a stack has an assembled profile **per harness**, and the same stack host-native vs containerized is two different things to run |
+| group | the git **common** dir's repo | every worktree of one checkout shares a group instead of each spawning its own |
+| skipped | the `default` stack | the baseline every dynamic stack extends, not something the user composed |
+| removed by | `harnessed rm <stack>` | container rows only — `rm` tears down containers, and a host-native session owns none |
+
+**A row never outlives its launch.** Each backend registers only after its last validation gate —
+`is_built` plus the staleness check for the container path, in-process assembly for the host path.
+Registering earlier would leave a bookmark for a launch that died on a renamed recipe, and that row
+would fail identically every time it was started from the dashboard.
+
+Two aoe behaviours the code is shaped around, both verified 2026-08-01 and neither documented by
+aoe:
+
+1. **`--cmd` is not stored verbatim.** It is validated against aoe's own tool list and silently
+   substituted with the configured default, so a harnessed invocation came back as
+   `claude-with-env`. `--cmd-override` stores the string as given, and accepts harnesses aoe has no
+   notion of (`omp`). The recorded command is both the replay and the identity key, so this matters
+   twice.
+2. **`add` deduplicates on (title, path) and exits 0.** A collision is not an error, it is a row
+   that never appears. The title is therefore part of identity whether or not it looks cosmetic,
+   and must separate backend as well as harness and stack.
+
+`aoe add` takes ~12s (it starts aoe's daemon) while every read is ~0.01s. So the reads that decide
+*whether* to write run inline, and the writes are fired into a `start_new_session` child that
+outlives the `execvp`. A dashboard is not worth twelve seconds of a launch.
+
+`--create-aoe-only` is the exception: on `launch`, `run` and `host-run` it registers the session and
+exits without launching. There registering *is* the command, so it blocks, prints what it wrote, and
+exits non-zero if it could not. `run --create-aoe-only` still mints and builds — the row replays
+`harnessed launch`, which hard-errors without an assembled profile, so skipping the build would
+create a row that is dead on arrival.
+
 ## Folder-env contract
 
 The **one** set of environment variables a recipe may rely on. Same names, same meanings, on every
