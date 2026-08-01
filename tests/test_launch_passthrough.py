@@ -36,24 +36,31 @@ class TestExtractPassthrough:
 
 
 class TestMainArgvRewrite:
-    """`main` strips the passthrough and rebuilds sys.argv; it also keeps the implicit-`launch`
-    shorthand (`harnessed <stack> …` == `harnessed launch <stack> …`)."""
+    """`main` strips the passthrough and rebuilds sys.argv — and now does NOTHING else.
+
+    It used to prepend `launch` for any leading token that was not in the hand-maintained
+    `_COMMANDS` set, so `harnessed <stack> …` meant `harnessed launch <stack> …`. With the stack
+    named by `--stack`, a leading bare token is a subcommand and the shorthand is gone.
+    """
 
     @pytest.fixture(autouse=True)
     def _stub_app(self, monkeypatch):
         monkeypatch.setattr(launcher, "app", lambda: None)
 
-    def test_bare_stack_prepends_launch_and_strips_suffix(self, monkeypatch):
-        monkeypatch.setattr(launcher.sys, "argv", ["harnessed", "mystack", "claude", "--", "--chrome"])
+    def test_argv_passes_through_untouched_but_for_the_suffix(self, monkeypatch):
+        monkeypatch.setattr(
+            launcher.sys, "argv",
+            ["harnessed", "container-run", "claude", "-s", "mystack", "--", "--chrome"],
+        )
         launcher.main()
-        assert launcher.sys.argv == ["harnessed", "launch", "mystack", "claude"]
+        assert launcher.sys.argv == ["harnessed", "container-run", "claude", "-s", "mystack"]
         assert launcher._passthrough == ["--chrome"]
 
-    def test_explicit_launch_subcommand_not_double_prefixed(self, monkeypatch):
-        monkeypatch.setattr(launcher.sys, "argv", ["harnessed", "launch", "mystack", "claude", "--", "-p", "hi"])
+    def test_an_unknown_leading_token_is_not_rewritten(self, monkeypatch):
+        """It reaches Typer as a subcommand and fails there, rather than being read as a stack."""
+        monkeypatch.setattr(launcher.sys, "argv", ["harnessed", "mystack", "claude"])
         launcher.main()
-        assert launcher.sys.argv == ["harnessed", "launch", "mystack", "claude"]
-        assert launcher._passthrough == ["-p", "hi"]
+        assert launcher.sys.argv == ["harnessed", "mystack", "claude"]
 
     def test_no_suffix_leaves_args_intact(self, monkeypatch):
         monkeypatch.setattr(launcher.sys, "argv", ["harnessed", "host-run", "mystack"])

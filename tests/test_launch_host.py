@@ -590,7 +590,7 @@ class TestHostCliRouting:
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
         result = runner.invoke(
-            launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)]
+            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
         )
 
         assert result.exit_code == 0, result.output
@@ -626,7 +626,7 @@ class TestHostCliRouting:
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
-        result = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+        result = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
 
         assert result.exit_code == 0, result.output
         assert ensured == [("podman", "hostspike")]
@@ -643,7 +643,7 @@ class TestHostCliRouting:
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
-        result = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+        result = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
         assert result.exit_code == 0, result.output
         assert ran == ["hostspike"]
 
@@ -677,7 +677,7 @@ class TestHostCliRouting:
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
-        result = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+        result = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
         assert result.exit_code == 0, result.output
 
     def test_host_settings_inherit_the_host_claude_default_mode(self, monkeypatch, tmp_path):
@@ -701,7 +701,7 @@ class TestHostCliRouting:
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
         result = runner.invoke(
-            launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)]
+            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
         )
 
         assert result.exit_code == 0, result.output
@@ -727,7 +727,7 @@ class TestHostCliRouting:
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
         result = runner.invoke(
-            launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)]
+            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
         )
 
         assert result.exit_code == 0, result.output
@@ -928,7 +928,7 @@ class TestSecondLaunchSkipsInstalls:
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
         return runner.invoke(
-            launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)]
+            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
         )
 
     def test_installs_run_on_first_launch_and_are_skipped_on_the_second(
@@ -1016,7 +1016,7 @@ class TestFailedInstallDoesNotStamp:
         monkeypatch.setattr(launcher, "_host_run_installs", _installs)
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
-        return runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+        return runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
 
     def test_a_failed_install_leaves_no_stamp(self, monkeypatch, tmp_path):
         self._launch(tmp_path, monkeypatch, install_fails=True)
@@ -1034,7 +1034,7 @@ class TestFailedInstallDoesNotStamp:
         )
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
-        r = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+        r = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
         assert r.exit_code == 0, r.output
         assert calls == ["hostspike"], "the retry must actually re-run the installs"
 
@@ -1154,32 +1154,40 @@ class TestHostRunVerb:
     def test_host_run_dispatches_to_the_host_backend(self, monkeypatch, tmp_path):
         calls: list = []
         self._stub(monkeypatch, calls)
-        r = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)])
+        r = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
         assert r.exit_code == 0, r.output
         assert calls == [("hostspike", "claude", str(tmp_path), False)]
 
-    def test_harness_defaults_to_claude(self, monkeypatch, tmp_path):
+    def test_the_harness_is_required(self, monkeypatch, tmp_path):
+        """It used to default to claude, back when the stack led the positionals.
+
+        It cannot now: `path` is the second positional, so a defaulted harness would make
+        `host-run .` bind `.` as the harness and silently launch against the wrong directory —
+        `_require_supported_harness` would reject it, but only after the user had typed something
+        that reads correct. Requiring it keeps one grammar across both verbs, where the container
+        backend has five harnesses and no sane default at all.
+        """
         calls: list = []
         self._stub(monkeypatch, calls)
-        r = runner.invoke(launcher.app, ["host-run", "hostspike"])
-        assert r.exit_code == 0, r.output
-        assert calls[0][1] == "claude"
+        r = runner.invoke(launcher.app, ["host-run", "--stack", "hostspike"])
+        assert r.exit_code != 0
+        assert calls == [], "must not reach the backend without a harness"
 
     def test_rm_is_forwarded(self, monkeypatch, tmp_path):
         calls: list = []
         self._stub(monkeypatch, calls)
-        runner.invoke(launcher.app, ["host-run", "hostspike", "claude", str(tmp_path), "--rm"])
+        runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike", "--rm"])
         assert calls[0][3] is True
 
     def test_unsupported_harness_is_rejected(self, monkeypatch):
         calls: list = []
         self._stub(monkeypatch, calls)
-        r = runner.invoke(launcher.app, ["host-run", "hostspike", "nosuchharness"])
+        r = runner.invoke(launcher.app, ["host-run", "nosuchharness", "--stack", "hostspike"])
         assert r.exit_code == 1
         assert calls == [], "must not reach the backend with an unsupported harness"
 
     def test_container_only_flags_are_not_offered(self):
         """The whole point of the split: these cannot be passed to host-run at all."""
-        r = runner.invoke(launcher.app, ["host-run", "hostspike", "claude", "--fresh"])
+        r = runner.invoke(launcher.app, ["host-run", "claude", "--stack", "hostspike", "--fresh"])
         assert r.exit_code != 0
 

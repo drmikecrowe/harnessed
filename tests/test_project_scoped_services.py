@@ -1222,7 +1222,7 @@ class TestServicesAreEnsuredOnEveryLaunchPath:
     def _launch_source(self) -> str:
         import inspect
 
-        return inspect.getsource(launcher.launch)
+        return inspect.getsource(launcher.container_run)
 
     def test_services_are_ensured_before_any_attach_returns(self):
         src = self._launch_source()

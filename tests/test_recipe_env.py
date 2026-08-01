@@ -247,7 +247,7 @@ class TestLauncherDelivery:
         pod and lose on the host — silent host/container drift, the exact class of bug this epic exists
         to remove. Assert the ORDER, not just the values.
         """
-        source = inspect.getsource(launcher.launch)
+        source = inspect.getsource(launcher.container_run)
         pos = {name: source.index(f"*{name},") for name in ("recipe_env", "socket_env", "setup_env")}
         assert pos["recipe_env"] < pos["socket_env"], (
             "recipe env: must be passed BEFORE the folder-env contract so the contract wins"
@@ -296,7 +296,7 @@ class TestHostLaunchDelivery:
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
         result = CliRunner().invoke(
-            launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)]
+            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
         )
         assert result.exit_code == 0, result.output
 

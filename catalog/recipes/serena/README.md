@@ -28,7 +28,7 @@ path — so it resolves the bind-mounted project and writes `.serena/` into the 
   It pre-caches language-server symbols; without it the first symbol tool call pays the full
   language-server scan. Serena keeps the index current as files change afterwards.
 - **Language servers** are downloaded per language on **first use**. The default egress firewall
-  blocks that, so do the first index/activation with `harnessed <stack> <project> --no-firewall`
+  blocks that, so do the first index/activation with `harnessed container-run <harness> <project> --stack <name> --no-firewall`
   (or `NO_FIREWALL=true`); otherwise LSP-backed features fail for any language whose server was
   never fetched.
 

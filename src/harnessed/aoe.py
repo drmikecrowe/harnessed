@@ -6,7 +6,7 @@ Nothing here may ever fail a launch — aoe being absent, broken, slow, or a ver
 flag must all degrade to silence. Hence: every subprocess call is timeout-bounded, `check=False`,
 and wrapped; every public entry point swallows.
 
-REGISTER-ONLY, deliberately. harnessed still owns the process: `launch` ends in an `os.execvp` that
+REGISTER-ONLY, deliberately. harnessed still owns the process: a run verb ends in an `os.execvp` that
 hands YOUR terminal to the agent (via `podman exec -it` on the container backend, directly on the
 host backend). We record a session so it appears in the dashboard and can be re-started or attached
 from there later — we never hand the launch over to aoe. That is also why sessions must stay in
@@ -36,6 +36,7 @@ registering IS the command the user ran and they are entitled to its exit status
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -68,6 +69,11 @@ _WRITE_TIMEOUT = 120
 
 # `• name (3 sessions)` — aoe renders groups as a bullet list with no --json equivalent.
 _GROUP_LINE = re.compile(r"^\s*[•*-]\s+(\S+)\s+\(")
+
+# How the recorded command names its stack. Both run verbs take `--stack`, never a positional, so
+# the stack sits at a keyword rather than a fixed index — `command_for` writes it and
+# `forget_stack` reads it back, and they must not drift.
+_STACK_FLAG = ["--stack"]
 
 
 def _bin() -> str | None:
@@ -152,9 +158,9 @@ def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
     """The harnessed invocation recorded on the session — both the identity key and what aoe runs.
 
     Always the RESOLVED stack name and an absolute path, never the user's original argv. A dynamic
-    stack is minted into the generated catalog root before this is called, so `harnessed launch
+    stack is minted into the generated catalog root before this is called, so `--stack
     <derived-name>` replays it exactly and keeps one canonical form for every verb that reaches
-    here.
+    here — a row records the same shape whether the user typed `--stack` or a `--recipe` set.
 
     TERMINATED WITH `--`, which is not cosmetic. aoe's `auto_resume_on_restart` appends the recorded
     tool's resume flags to this string when a stopped session is restarted — for `tool = claude`,
@@ -169,7 +175,9 @@ def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
     decides WHICH agent's flags aoe generates. Without that label they are always claude's, and
     forwarding them to a non-claude agent kills the pane on every restart.
     """
-    return shlex.join(["harnessed", verb, stack, harness, str(project_path), "--"])
+    return shlex.join(
+        ["harnessed", verb, harness, str(project_path), *_STACK_FLAG, stack, "--"]
+    )
 
 
 def title_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
@@ -321,19 +329,26 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
     Scoped to ONE verb because `harnessed rm` is container-scoped: it removes every container
     instance of a stack across harnesses and projects, and leaves host-native sessions — which own
     no container — alone. Removing by session id, not title, so a user-renamed row still matches.
+
+    Matched on the `--stack <name>` PAIR rather than a token index. The stack used to be the third
+    token, which a prefix compare could check; it is now a flag value that sits after the harness
+    and path, so its position varies with whether a project path was recorded.
     """
     try:
         exe = _bin()
         if exe is None:
             return
-        prefix = ["harnessed", verb, stack]
         batch: list[list[str]] = []
         for session in _sessions(exe):
             try:
                 tokens = shlex.split(session.get("command") or "")
             except ValueError:
                 continue
-            if tokens[:3] != prefix:
+            if tokens[:2] != ["harnessed", verb]:
+                continue
+            if not any(
+                a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(tokens)
+            ):
                 continue
             sid = session.get("id")
             if sid:
