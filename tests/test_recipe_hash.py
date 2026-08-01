@@ -3,6 +3,8 @@
 Covers: the hash is stable, changes when any file in a recipe's closure or the stack's own
 stack.yaml changes, `paths.list_catalog_stacks` dedupes across catalog roots (user wins), and
 `_reconcile_stacks` only rebuilds stacks whose image label doesn't match the current hash.
+Also covers: service-only edits (entrypoint.sh, service.yaml, Dockerfile) move the hash
+regardless of whether the recipe or stack.yaml changed (harnessed-p0t).
 """
 
 from __future__ import annotations
@@ -23,11 +25,29 @@ def _write_recipe(root: Path, name: str, *, dockerfile: str = "RUN echo hi\n") -
     return Recipe(name=name, root=recipe_dir)
 
 
-def _write_stack(root: Path, name: str, *, recipes: list[str]) -> Path:
+def _write_stack(root: Path, name: str, *, recipes: list[str], services: list[str] | None = None) -> Path:
     stack_dir = root / "stacks" / name
     stack_dir.mkdir(parents=True)
-    (stack_dir / "stack.yaml").write_text(f"name: {name}\nrecipes: {recipes}\n")
+    content = f"name: {name}\nrecipes: {recipes}\n"
+    if services is not None:
+        content += f"services: {services}\n"
+    (stack_dir / "stack.yaml").write_text(content)
     return stack_dir
+
+
+def _write_service(root: Path, name: str, *, entrypoint: str = "#!/bin/sh\nexec serve\n") -> Path:
+    """Write a minimal service directory under ``root/services/<name>/``.
+
+    Returns the service directory path.
+    """
+    svc_dir = root / "services" / name
+    svc_dir.mkdir(parents=True)
+    (svc_dir / "service.yaml").write_text(
+        f"name: {name}\nimage: {name}:1.0.0\nport: 9000\n"
+    )
+    (svc_dir / "Dockerfile").write_text("FROM scratch\nCOPY entrypoint.sh /\n")
+    (svc_dir / "entrypoint.sh").write_text(entrypoint)
+    return svc_dir
 
 
 class TestComputeRecipeHash:
@@ -62,6 +82,71 @@ class TestComputeRecipeHash:
         stack_yaml = _write_stack(tmp_path, "s1", recipes=["r1", "r2"]) / "stack.yaml"
 
         assert compute_recipe_hash(stack_yaml, [r1, r2]) == compute_recipe_hash(stack_yaml, [r2, r1])
+
+    # --- service closure (harnessed-p0t) ---
+
+    def test_changes_when_stack_service_entrypoint_changes(self, tmp_path):
+        """A service-only edit must move the hash even when the stack.yaml is untouched."""
+        recipe = _write_recipe(tmp_path, "r1")
+        svc_dir = _write_service(tmp_path, "svc1")
+        stack_yaml = _write_stack(tmp_path, "s1", recipes=["r1"], services=["svc1"]) / "stack.yaml"
+        before = compute_recipe_hash(stack_yaml, [recipe])
+
+        (svc_dir / "entrypoint.sh").write_text("#!/bin/sh\nexec serve --changed\n")
+
+        assert compute_recipe_hash(stack_yaml, [recipe]) != before
+
+    def test_changes_when_stack_service_dockerfile_changes(self, tmp_path):
+        recipe = _write_recipe(tmp_path, "r1")
+        svc_dir = _write_service(tmp_path, "svc1")
+        stack_yaml = _write_stack(tmp_path, "s1", recipes=["r1"], services=["svc1"]) / "stack.yaml"
+        before = compute_recipe_hash(stack_yaml, [recipe])
+
+        (svc_dir / "Dockerfile").write_text("FROM ubuntu:24.04\nCOPY entrypoint.sh /\n")
+
+        assert compute_recipe_hash(stack_yaml, [recipe]) != before
+
+    def test_changes_when_recipe_service_file_changes(self, tmp_path):
+        """Service referenced via recipe.services (non-MCP sidecar) also moves the hash."""
+        svc_dir = _write_service(tmp_path, "svc2")
+        recipe = Recipe(
+            name="r1",
+            root=_write_recipe(tmp_path, "r1").root,
+            services=["svc2"],
+        )
+        stack_yaml = _write_stack(tmp_path, "s1", recipes=["r1"]) / "stack.yaml"
+        before = compute_recipe_hash(stack_yaml, [recipe])
+
+        (svc_dir / "entrypoint.sh").write_text("#!/bin/sh\nexec serve --new\n")
+
+        assert compute_recipe_hash(stack_yaml, [recipe]) != before
+
+    def test_missing_service_dir_does_not_raise(self, tmp_path):
+        """A service name with no matching directory is silently skipped (service may be external)."""
+        recipe = _write_recipe(tmp_path, "r1")
+        stack_yaml = _write_stack(tmp_path, "s1", recipes=["r1"], services=["nonexistent-svc"]) / "stack.yaml"
+
+        # Should not raise, just skip the missing service
+        compute_recipe_hash(stack_yaml, [recipe])
+
+    def test_user_overlay_service_edit_moves_hash(self, tmp_path, monkeypatch):
+        """Editing a service in the user overlay must move the hash even when the shipped service
+        with the same name is unchanged.  The user overlay wins on a name clash, so the hash
+        must be derived from the overlay copy, not the repo copy (harnessed-p0t overlay path)."""
+        user_root = tmp_path / "user"
+        repo_root = tmp_path / "repo"
+        recipe = _write_recipe(repo_root, "r1")
+        _write_service(repo_root, "svc1")          # shipped service (must NOT win)
+        overlay_svc = _write_service(user_root, "svc1")  # user overlay (must win)
+        stack_yaml = _write_stack(repo_root, "s1", recipes=["r1"], services=["svc1"]) / "stack.yaml"
+
+        monkeypatch.setattr(paths, "catalog_roots", lambda: [user_root, repo_root])
+
+        before = compute_recipe_hash(stack_yaml, [recipe])
+
+        (overlay_svc / "entrypoint.sh").write_text("#!/bin/sh\nexec serve --overlay-changed\n")
+
+        assert compute_recipe_hash(stack_yaml, [recipe]) != before
 
 
 class TestListCatalogStacks:

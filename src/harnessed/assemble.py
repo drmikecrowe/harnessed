@@ -18,12 +18,13 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import emit, staleness
+from . import emit, paths, staleness
 from .schema import (
     McpServer,
     Recipe,
     Stack,
     load_service,
+    load_stack,
     load_stack_with_recipes,
     validate_container_only_declared,
     validate_init_no_exit,
@@ -48,13 +49,18 @@ class AssembleResult:
 
 
 def compute_recipe_hash(stack_yaml: Path, recipes: list[Recipe]) -> str:
-    """Content hash of a stack's full recipe closure: the stack's own `stack.yaml` plus every
-    file under each recipe's directory (Dockerfile, recipe.yaml, skills/commands/rules trees).
+    """Content hash of a stack's full recipe closure: the stack's own ``stack.yaml``, every file
+    under each recipe directory, and every referenced service directory.
 
-    Stamped as the `harnessed.recipe-hash` label on the derived stack image (see
-    `_build_derived_image`) rather than kept in a side-file manifest, so the hash can never drift
-    from the image it describes — `harnessed build`'s reconciliation pass compares this against
-    `podman inspect`'s label directly.
+    Services are part of the stack's build closure — an edit to a service's Dockerfile or
+    entrypoint must move the hash just as a recipe edit does.  Service names are collected from
+    three sources: ``recipe.servers[].service`` (MCP service refs), ``recipe.services`` (non-MCP
+    sidecars declared by recipes), and the stack's own ``services:`` list.
+
+    Stamped as the ``harnessed.recipe-hash`` label on the derived stack image (see
+    ``_build_derived_image``) rather than kept in a side-file manifest, so the hash can never
+    drift from the image it describes — ``harnessed build``'s reconciliation pass compares this
+    against ``podman inspect``'s label directly.
     """
     digest = hashlib.sha256()
     digest.update(stack_yaml.read_bytes())
@@ -62,6 +68,64 @@ def compute_recipe_hash(stack_yaml: Path, recipes: list[Recipe]) -> str:
         for path in sorted(p for p in recipe.root.rglob("*") if p.is_file()):
             digest.update(str(path.relative_to(recipe.root)).encode())
             digest.update(path.read_bytes())
+
+    # Collect referenced service names from all three sources (mirrors _service_refs in launcher).
+    service_names: list[str] = []
+    for recipe in sorted(recipes, key=lambda r: r.name):
+        for server in recipe.servers:
+            if server.service and server.service not in service_names:
+                service_names.append(server.service)
+        for name in recipe.services:
+            if name not in service_names:
+                service_names.append(name)
+    stack = load_stack(stack_yaml.parent)
+    for name in stack.services:
+        if name not in service_names:
+            service_names.append(name)
+
+    # Locate each service directory.  Build the search list the same way the runtime does:
+    # paths.catalog_roots() first (user overlay wins on a name clash, matching runtime resolution),
+    # then any roots inferred from recipe/stack paths that are not already present (handles
+    # isolated test roots and non-standard layouts).
+    seen_roots: set[Path] = set()
+    service_catalog_roots: list[Path] = []
+    for croot in paths.catalog_roots():
+        if croot not in seen_roots:
+            service_catalog_roots.append(croot)
+            seen_roots.add(croot)
+    for recipe in recipes:
+        croot = recipe.root.parent.parent
+        if croot not in seen_roots:
+            service_catalog_roots.append(croot)
+            seen_roots.add(croot)
+    stack_croot = stack_yaml.parent.parent.parent
+    if stack_croot not in seen_roots:
+        service_catalog_roots.append(stack_croot)
+
+    for name in sorted(service_names):
+        service_dir: Path | None = None
+        for croot in service_catalog_roots:
+            cand = croot / "services" / name
+            if cand.is_dir():
+                service_dir = cand
+                break
+        if service_dir is None:
+            continue
+        # Length-prefix each field to avoid hash collisions from ambiguous concatenation
+        # (file "a/b" with content "c" must not collide with file "a" with content "bc").
+        # The service NAME is framed in too: the file paths below are relative to service_dir, so
+        # without it two same-content services are indistinguishable and a rename moves nothing.
+        svc_name = name.encode()
+        digest.update(len(svc_name).to_bytes(4, "big"))
+        digest.update(svc_name)
+        for path in sorted(p for p in service_dir.rglob("*") if p.is_file()):
+            rel = str(path.relative_to(service_dir)).encode()
+            content = path.read_bytes()
+            digest.update(len(rel).to_bytes(4, "big"))
+            digest.update(rel)
+            digest.update(len(content).to_bytes(8, "big"))
+            digest.update(content)
+
     return digest.hexdigest()
 
 
