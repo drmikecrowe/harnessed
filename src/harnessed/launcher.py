@@ -5467,6 +5467,16 @@ def host_run(
         _launch_host(
             stack_name, harness, path, rm=rm, extra=_passthrough, create_aoe_only=create_aoe_only
         )
+    except typer.Exit as exc:
+        # typer.Exit(0) is a SUCCESS that unwinds like a failure, and it must not clean up:
+        # `_aoe_register` ends `--create-aoe-only` that way, having just written a row whose
+        # recorded command names THIS manifest. Deleting it would manufacture precisely the
+        # dead-on-arrival row the container path builds ahead of registering to avoid.
+        # A NON-zero Exit is a real failure and still cleans up — `_launch_host` rejects a
+        # non-claude harness that way, and it does so after the mint.
+        if exc.exit_code != 0 and minted_dir is not None:
+            shutil.rmtree(minted_dir, ignore_errors=True)
+        raise
     except Exception:
         # Same ownership rule as `container_run`: a manifest THIS invocation minted is ours to
         # remove when the launch never gets off the ground. Host mode has no build to fail, but
@@ -5474,7 +5484,7 @@ def host_run(
         # set lands here — leaving an orphan that `harnessed list` shows and no GC reclaims, since
         # volume-gc keys on volumes and a stack that never launched owns none. A PRE-EXISTING
         # manifest (minted_dir is None) is left alone; it may be a working stack that today's
-        # recipe edit merely broke. Never reached on success: `_launch_host` ends in os.execvp.
+        # recipe edit merely broke. Never reached on a real launch: `_launch_host` ends in execvp.
         if minted_dir is not None:
             shutil.rmtree(minted_dir, ignore_errors=True)
         raise
