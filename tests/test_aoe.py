@@ -71,7 +71,13 @@ class Recorder:
         return [tuple(a[:2]) for a in self.calls]
 
     def added(self) -> list[list[str]]:
+        """Every `add` issued. One registration issues TWO: a `--tool`-labelled attempt and, because
+        aoe rejects a `--tool` it cannot resolve on the invoking PATH, a plain retry behind it."""
         return [a for a in self.calls if a[0] == "add"]
+
+    def registrations(self) -> list[list[str]]:
+        """One entry per registration — the labelled attempt, which carries every other flag too."""
+        return [a for a in self.added() if "--tool" in a]
 
     def removed(self) -> list[str]:
         return [a[1] for a in self.calls if a[0] == "remove"]
@@ -117,63 +123,114 @@ class TestDetection:
         monkeypatch.setattr(aoe, "_bin", lambda: None)
         monkeypatch.setattr(aoe, "_run", lambda *a, **k: calls.append(a))
         monkeypatch.setattr(aoe, "_spawn", lambda *a, **k: calls.append(a))
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert calls == []
 
 
 class TestSyncSession:
     def test_registers_profile_group_and_session(self, rec, tmp_path):
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert ("group", "create") in rec.verbs()
-        [add] = rec.added()
+        [add] = rec.registrations()
         assert add[1] == str(tmp_path)
         assert _flag(add, "-p") == aoe.PROFILE
-        assert _flag(add, "--cmd-override") == f"harnessed launch serena claude {tmp_path} --"
+        assert _flag(add, "--cmd-override") == f"harnessed container-run claude {tmp_path} --stack serena --"
 
     def test_uses_cmd_override_not_cmd(self, rec, tmp_path):
         # `--cmd` is validated against aoe's tool list and silently substitutes its configured
         # default, which would destroy both the replay and the identity key.
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert "--cmd" not in rec.added()[0]
 
     def test_existing_profile_is_not_recreated(self, rec, tmp_path):
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert ("profile", "create") not in rec.verbs()
 
     def test_missing_profile_is_created(self, monkeypatch, tmp_path):
         rec = Recorder(profiles=PROFILE_LIST_EMPTY)
         rec.install(monkeypatch)
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert ["profile", "create", aoe.PROFILE] in rec.calls
 
     def test_existing_group_is_not_recreated(self, monkeypatch, tmp_path):
         rec = Recorder(groups=f"Groups:\n\n• {tmp_path.name} (2 sessions)\n\nTotal: 1 groups\n")
         rec.install(monkeypatch)
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert ("group", "create") not in rec.verbs()
 
     def test_add_passes_only_flags_aoe_accepts(self, rec, tmp_path):
         # `aoe add` is a clap CLI: an unknown flag exits 2 before adding anything, and on the
         # detached write path that is invisible — the dashboard just stays empty. Regression cover
         # for `--no-cockpit`, which is not an aoe flag and lost every registration.
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         flags = {a for a in rec.added()[0] if a.startswith("-")}
-        assert flags <= {"-p", "-g", "-t", "--cmd-override"}
+        assert flags <= {"-p", "-g", "-t", "--cmd-override", "--tool"}
 
     def test_terminal_view_is_left_to_the_default(self, rec, tmp_path):
         # `aoe add` defaults to the raw tmux/PTY view, which is the one we need: the structured
         # view's ACP transport cannot reach through the `podman exec` attach `launch` ends in.
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert "--structured-view" not in rec.added()[0]
         assert "--agent" not in rec.added()[0]
 
     def test_default_stack_is_skipped(self, rec, tmp_path):
-        aoe.sync_session("launch", "default", "claude", tmp_path)
+        aoe.sync_session("container-run", "default", "claude", tmp_path)
         assert rec.calls == []
 
     def test_title_carries_folder_harness_and_stack(self, rec, tmp_path):
-        aoe.sync_session("launch", "serena", "omp", tmp_path)
+        aoe.sync_session("container-run", "serena", "omp", tmp_path)
         assert _flag(rec.added()[0], "-t") == f"{tmp_path.name} [omp/container] serena"
+
+
+class TestToolLabel:
+    """Which agent aoe thinks the row runs — it decides which resume flags a restart appends.
+
+    `--cmd-override` leaves the recorded tool at aoe's default (`claude`), so an unlabelled omp row
+    got claude's `--resume <uuid>` appended on restart. `command_for`'s trailing `--` then forwarded
+    it to the omp binary, which rejects a claude conversation id and dies; aoe respawns and loops.
+    """
+
+    def test_row_is_labelled_with_its_harness(self, rec, tmp_path):
+        aoe.sync_session("container-run", "serena", "omp", tmp_path)
+        assert _flag(rec.registrations()[0], "--tool") == "omp"
+
+    def test_claude_rows_are_labelled_too(self, rec, tmp_path):
+        # Same value aoe would have defaulted to, stated rather than left to the default.
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
+        assert _flag(rec.registrations()[0], "--tool") == "claude"
+
+    def test_a_plain_add_follows_the_labelled_one(self, rec, tmp_path):
+        # aoe resolves `--tool` against the invoking PATH and adds NOTHING when it cannot — which is
+        # the norm for a harness that lives in the pod. The retry keeps that from costing the row.
+        aoe.sync_session("container-run", "serena", "omp", tmp_path)
+        labelled, plain = rec.added()
+        assert labelled == [*plain, "--tool", "omp"]
+
+    def test_the_retry_is_identical_apart_from_the_label(self, rec, tmp_path):
+        # Same title and path is what makes aoe refuse it as a duplicate at exit 0 when the labelled
+        # add won. Diverge on either and the retry would add a SECOND row.
+        aoe.sync_session("container-run", "serena", "omp", tmp_path)
+        labelled, plain = rec.added()
+        assert _flag(plain, "-t") == _flag(labelled, "-t")
+        assert plain[1] == labelled[1]
+
+    def test_a_rejected_label_does_not_fail_a_blocking_register(self, monkeypatch, tmp_path):
+        # `--create-aoe-only` reports its exit status to the user. A `--tool` aoe would not resolve
+        # is an expected outcome, not the failure that flag is there to surface.
+        rec = Recorder()
+        rec.install(monkeypatch)
+        monkeypatch.setattr(
+            aoe, "_run", lambda exe, args, **k: _fail() if "--tool" in args else rec.run(exe, args)
+        )
+        assert aoe.sync_session("container-run", "serena", "omp", tmp_path, background=False) is True
+
+    def test_a_failed_plain_add_still_fails_a_blocking_register(self, monkeypatch, tmp_path):
+        rec = Recorder()
+        rec.install(monkeypatch)
+        monkeypatch.setattr(
+            aoe, "_run", lambda exe, args, **k: _fail() if args[0] == "add" else rec.run(exe, args)
+        )
+        assert aoe.sync_session("container-run", "serena", "omp", tmp_path, background=False) is False
 
 
 class TestTitleUniqueness:
@@ -185,25 +242,25 @@ class TestTitleUniqueness:
     """
 
     def test_backend_is_part_of_the_title(self, tmp_path):
-        container = aoe.title_for("launch", "serena", "claude", tmp_path)
+        container = aoe.title_for("container-run", "serena", "claude", tmp_path)
         host = aoe.title_for("host-run", "serena", "claude", tmp_path)
         assert container != host
 
     def test_harness_is_part_of_the_title(self, tmp_path):
-        assert aoe.title_for("launch", "serena", "claude", tmp_path) != aoe.title_for(
-            "launch", "serena", "omp", tmp_path
+        assert aoe.title_for("container-run", "serena", "claude", tmp_path) != aoe.title_for(
+            "container-run", "serena", "omp", tmp_path
         )
 
     def test_stack_is_part_of_the_title(self, tmp_path):
-        assert aoe.title_for("launch", "serena", "claude", tmp_path) != aoe.title_for(
-            "launch", "superpowers", "claude", tmp_path
+        assert aoe.title_for("container-run", "serena", "claude", tmp_path) != aoe.title_for(
+            "container-run", "superpowers", "claude", tmp_path
         )
 
     def test_host_and_container_titles_do_not_collide_end_to_end(self, monkeypatch, tmp_path):
         rec = Recorder().install(monkeypatch)
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
-        titles = [_flag(a, "-t") for a in rec.added()]
+        titles = [_flag(a, "-t") for a in rec.registrations()]
         assert len(titles) == 2 and len(set(titles)) == 2, titles
 
 
@@ -214,31 +271,31 @@ class TestIdentity:
         return f'[{{"id": "s1", "path": "{tmp_path}", "command": "{command}"}}]'
 
     def test_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
         rec.install(monkeypatch)
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert rec.added() == []
 
     def test_a_second_harness_is_a_second_session(self, monkeypatch, tmp_path):
         # One stack has an assembled profile PER harness, so claude and omp are two rows.
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
         rec.install(monkeypatch)
-        aoe.sync_session("launch", "serena", "omp", tmp_path)
-        assert len(rec.added()) == 1
+        aoe.sync_session("container-run", "serena", "omp", tmp_path)
+        assert len(rec.registrations()) == 1
 
     def test_host_and_container_verbs_do_not_collide(self, monkeypatch, tmp_path):
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
         rec.install(monkeypatch)
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
-        assert len(rec.added()) == 1
+        assert len(rec.registrations()) == 1
 
     def test_same_stack_in_another_folder_is_a_second_session(self, monkeypatch, tmp_path):
         other = tmp_path / "other"
         other.mkdir()
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
         rec.install(monkeypatch)
-        aoe.sync_session("launch", "serena", "claude", other)
-        assert len(rec.added()) == 1
+        aoe.sync_session("container-run", "serena", "claude", other)
+        assert len(rec.registrations()) == 1
 
 
 class TestGroup:
@@ -259,10 +316,10 @@ class TestGroup:
 
 class TestForgetStack:
     SESSIONS = (
-        '[{"id": "a", "command": "harnessed launch serena claude /p --"},'
-        ' {"id": "b", "command": "harnessed launch serena omp /p"},'
-        ' {"id": "c", "command": "harnessed launch other claude /p"},'
-        ' {"id": "d", "command": "harnessed host-run serena claude /p"}]'
+        '[{"id": "a", "command": "harnessed container-run claude /p --stack serena --"},'
+        ' {"id": "b", "command": "harnessed container-run omp /p --stack serena --"},'
+        ' {"id": "c", "command": "harnessed container-run claude /p --stack other --"},'
+        ' {"id": "d", "command": "harnessed host-run claude /p --stack serena --"}]'
     )
 
     def _rec(self, monkeypatch) -> Recorder:
@@ -272,13 +329,13 @@ class TestForgetStack:
 
     def test_removes_every_harness_of_the_named_stack(self, monkeypatch):
         rec = self._rec(monkeypatch)
-        aoe.forget_stack("launch", "serena")
+        aoe.forget_stack("container-run", "serena")
         assert sorted(rec.removed()) == ["a", "b"]
 
     def test_leaves_other_stacks_and_the_host_verb_alone(self, monkeypatch):
         # `harnessed rm` tears down CONTAINERS; a host-native session owns none.
         rec = self._rec(monkeypatch)
-        aoe.forget_stack("launch", "serena")
+        aoe.forget_stack("container-run", "serena")
         assert "c" not in rec.removed()
         assert "d" not in rec.removed()
 
@@ -287,7 +344,7 @@ class TestForgetStack:
         monkeypatch.setattr(aoe, "_bin", lambda: None)
         monkeypatch.setattr(aoe, "_run", lambda *a, **k: calls.append(a))
         monkeypatch.setattr(aoe, "_spawn", lambda *a, **k: calls.append(a))
-        aoe.forget_stack("launch", "serena")
+        aoe.forget_stack("container-run", "serena")
         assert calls == []
 
 
@@ -298,12 +355,12 @@ class TestNeverRaises:
     def test_sync_swallows_subprocess_failure(self, monkeypatch, tmp_path, exc):
         monkeypatch.setattr(aoe, "_bin", lambda: "/usr/bin/aoe")
         monkeypatch.setattr(aoe, "_run", lambda *a: (_ for _ in ()).throw(exc))
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
 
     def test_forget_swallows_subprocess_failure(self, monkeypatch):
         monkeypatch.setattr(aoe, "_bin", lambda: "/usr/bin/aoe")
         monkeypatch.setattr(aoe, "_run", lambda *a: (_ for _ in ()).throw(OSError("boom")))
-        aoe.forget_stack("launch", "serena")
+        aoe.forget_stack("container-run", "serena")
 
     def test_run_returns_none_instead_of_propagating(self, monkeypatch):
         def blow_up(*_a, **_k):
@@ -328,14 +385,14 @@ class TestWriteDispatch:
         # The `rec` fixture reports the profile as already present, so only the group and the
         # session are written. Asserted explicitly, because the expected batch below depends on it.
         assert aoe._has_profile("/usr/bin/aoe") is True
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
-        assert [a[0] for a in rec.spawned] == ["group", "add"]
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
+        assert [a[0] for a in rec.spawned] == ["group", "add", "add"]
 
     def test_a_missing_profile_is_created_in_the_same_batch(self, monkeypatch, tmp_path):
         # Ordering matters: the profile must exist before the group, the group before the session.
         rec = Recorder(profiles=PROFILE_LIST_EMPTY).install(monkeypatch)
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
-        assert [a[0] for a in rec.spawned] == ["profile", "group", "add"]
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
+        assert [a[0] for a in rec.spawned] == ["profile", "group", "add", "add"]
 
     def test_writes_are_sequenced_with_semicolons_not_and(self, monkeypatch):
         # `aoe profile create` / `group create` exit 1 when the thing ALREADY EXISTS, and the reads
@@ -353,14 +410,14 @@ class TestWriteDispatch:
         assert seen["script"].count(";") == 1
 
     def test_reads_never_go_through_the_detached_path(self, rec, tmp_path):
-        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert not any(a[:2] in (["list", "--json"], ["group", "list"]) for a in rec.spawned)
 
     def test_blocking_mode_runs_writes_inline(self, monkeypatch, tmp_path):
         rec = Recorder().install(monkeypatch)
-        aoe.sync_session("launch", "serena", "claude", tmp_path, background=False)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path, background=False)
         assert rec.spawned == []
-        assert [a[0] for a in rec.added()] == ["add"]
+        assert [a[0] for a in rec.added()] == ["add", "add"]
 
     def test_blocking_mode_reports_a_failed_write(self, monkeypatch, tmp_path):
         rec = Recorder().install(monkeypatch)
@@ -368,26 +425,26 @@ class TestWriteDispatch:
             aoe, "_run",
             lambda exe, args, **k: rec.run(exe, args) if args[1:2] == ["list"] else _fail(),
         )
-        assert aoe.sync_session("launch", "serena", "claude", tmp_path, background=False) is False
+        assert aoe.sync_session("container-run", "serena", "claude", tmp_path, background=False) is False
 
     def test_detached_dispatch_is_reported_as_success(self, rec, tmp_path):
-        assert aoe.sync_session("launch", "serena", "claude", tmp_path) is True
+        assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
 
     def test_already_registered_is_success_without_writing(self, monkeypatch, tmp_path):
         rec = Recorder(
             sessions=f'[{{"id": "s1", "path": "{tmp_path}",'
-                     f' "command": "harnessed launch serena claude {tmp_path} --"}}]'
+                     f' "command": "harnessed container-run claude {tmp_path} --stack serena --"}}]'
         ).install(monkeypatch)
-        assert aoe.sync_session("launch", "serena", "claude", tmp_path) is True
+        assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
         assert rec.spawned == []
 
     def test_unavailable_aoe_is_reported_as_failure(self, monkeypatch, tmp_path):
         # What `--create-aoe-only` turns into a non-zero exit.
         monkeypatch.setattr(aoe, "_bin", lambda: None)
-        assert aoe.sync_session("launch", "serena", "claude", tmp_path) is False
+        assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is False
 
     def test_skipped_stack_is_reported_as_failure(self, rec, tmp_path):
-        assert aoe.sync_session("launch", "default", "claude", tmp_path) is False
+        assert aoe.sync_session("container-run", "default", "claude", tmp_path) is False
 
     def test_spawn_survives_the_exec(self, monkeypatch):
         # start_new_session is the whole reason the detached `aoe add` is not killed when
@@ -437,7 +494,7 @@ class TestCreateAoeOnly:
         monkeypatch.setattr(launcher.aoe, "sync_session", fake_sync)
         seen["exit"] = None
         try:
-            launcher._aoe_register("launch", "serena", "claude", Path("/p"), only=only)
+            launcher._aoe_register("container-run", "serena", "claude", Path("/p"), only=only)
         except typer.Exit as exc:
             seen["exit"] = exc.exit_code
         return seen
@@ -465,7 +522,7 @@ class TestCreateAoeOnly:
         seen = self._register(monkeypatch, ok=False, only=True)
         assert seen["exit"] == 1
 
-    @pytest.mark.parametrize("verb", ["launch", "run", "host-run"])
+    @pytest.mark.parametrize("verb", ["container-run", "host-run"])
     def test_every_launch_verb_accepts_the_flag(self, verb):
         """Assert on the PARAMETER, not on rendered `--help`.
 
@@ -521,8 +578,8 @@ class TestHookPlacement:
 
 class TestCommandFor:
     def test_quotes_paths_with_spaces(self):
-        cmd = aoe.command_for("launch", "serena", "claude", Path("/tmp/my project"))
-        assert cmd == "harnessed launch serena claude '/tmp/my project' --"
+        cmd = aoe.command_for("container-run", "serena", "claude", Path("/tmp/my project"))
+        assert cmd == "harnessed container-run claude '/tmp/my project' --stack serena --"
 
     def test_terminates_with_a_bare_double_dash(self):
         # aoe's auto-resume appends the RECORDED TOOL's flags (claude: `--fork-session
@@ -530,9 +587,12 @@ class TestCommandFor:
         # parser, which exits on `No such option: --session-id`; with it they become passthrough
         # args for the agent.
         cmd = aoe.command_for("host-run", "serena", "claude", Path("/p"))
-        assert cmd.split() == ["harnessed", "host-run", "serena", "claude", "/p", "--"]
+        assert cmd.split() == [
+            "harnessed", "host-run", "claude", "/p", "--stack", "serena", "--",
+        ]
 
     def test_records_the_resolved_stack_name(self):
-        # Dynamic stacks are minted before this is called, so the derived name replays exactly.
-        cmd = aoe.command_for("run", "default.serena.superpowers", "claude", Path("/p"))
-        assert cmd == "harnessed run default.serena.superpowers claude /p --"
+        # Dynamic stacks are minted before this is called, so the derived name replays exactly —
+        # a `--recipe` invocation and a `--stack` one record the same shape.
+        cmd = aoe.command_for("container-run", "default.serena.superpowers", "claude", Path("/p"))
+        assert cmd == "harnessed container-run claude /p --stack default.serena.superpowers --"

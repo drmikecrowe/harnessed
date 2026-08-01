@@ -96,7 +96,7 @@ The **run-tests skill** has the details: per-branch venvs, why `--extra dev` is 
 plain-text-vs-ANSI assertion failure means the environment is wrong and must never be "fixed" by
 editing the assertion.
 
-A green run is not end-to-end proof: the suite runs no `podman build` and no `harnessed launch`.
+A green run is not end-to-end proof: the suite runs no `podman build` and no `harnessed container-run`.
 
 ## Skills
 

@@ -1,36 +1,13 @@
-"""`_COMMANDS` must list every registered subcommand.
+"""CLI-level invariants that only hold at the `app` boundary.
 
-`launcher.main()` treats the first non-option token as a STACK NAME and prepends `launch` unless
-that token is in `_COMMANDS`. So a subcommand missing from the set is not merely undocumented — it
-is unreachable, and it fails with "Missing argument 'HARNESS'", which reads like the user's mistake
-rather than a missing registration. Found when `volume-gc` (bd harnessed-8px.21.8) was added and
-routed to `launch`.
+This file used to police `_COMMANDS`, the hand-maintained set naming every token `launcher.main()`
+must NOT mistake for a stack. A registered command missing from it was unreachable and failed with
+"Missing argument 'HARNESS'", which read like the user's mistake rather than a missing registration
+(found when `volume-gc` was added — bd harnessed-8px.21.8). Both guard tests went with the
+mechanism: the stack is named by `--stack` now, so a leading token is always a subcommand and there
+is no set to keep in step.
 """
 from __future__ import annotations
-
-from harnessed.launcher import _COMMANDS, app
-
-
-def _registered() -> set[str]:
-    names = {c.name for c in app.registered_commands if c.name}
-    for group in app.registered_groups:
-        if group.name:
-            names.add(group.name)
-    return names
-
-
-def test_every_registered_command_is_routable():
-    missing = sorted(_registered() - _COMMANDS)
-    assert not missing, (
-        "these subcommands are registered but absent from _COMMANDS, so `main()` will route them "
-        f"to `launch` and they will fail with a confusing usage error: {missing}"
-    )
-
-
-def test_no_stale_entries():
-    """A name in the set that no command answers to shadows a STACK of that name."""
-    stale = sorted(_COMMANDS - _registered() - {"launch"})
-    assert not stale, f"_COMMANDS lists names no command is registered for: {stale}"
 
 
 def test_container_env_trusts_the_projects_mise_config():
@@ -49,7 +26,7 @@ def test_container_env_trusts_the_projects_mise_config():
 
     from harnessed import launcher
 
-    src = inspect.getsource(launcher.launch)
+    src = inspect.getsource(launcher.container_run)
     assert "MISE_TRUSTED_CONFIG_PATHS" in src, "the project's mise config is not trusted"
     assert "*mise_trust_env," in src, (
         "MISE_TRUSTED_CONFIG_PATHS is built but never spliced into the container's `podman run`"

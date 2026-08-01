@@ -88,8 +88,13 @@ CONTAINER_ONLY: dict[str, str] = {
     # LinkSyncer.fan) with nothing mounted over it — which is exactly why bd harnessed-8px.22 hit
     # container launches and not host ones — and runs its installs through _host_run_installs.
     "_ensure_stack_volumes": "composes podman volumes + runs installs; host: _materialize_host_home + _host_run_installs",
+    # --- container-only by nature ---
+    # Host mode has no image: `_launch_host` assembles in-process on every launch, so a minted
+    # recipe set needs no build step there at all.
+    "_build_stack": "builds the container image; the host assembles in-process every launch",
     # --- called by the host VERB rather than by _launch_host ---
     "_require_supported_harness": "`host_run` calls it itself, before delegating",
+    "_resolve_stack": "`host_run` calls it itself — shared --stack/--recipe resolution",
 }
 
 
@@ -115,10 +120,10 @@ def _stack_helpers(fn) -> set[str]:
 
 class TestLaunchAndHostRunStayInStep:
     def test_no_unexplained_container_only_capability(self):
-        container_only = _stack_helpers(launcher.launch) - _stack_helpers(launcher._launch_host)
+        container_only = _stack_helpers(launcher.container_run) - _stack_helpers(launcher._launch_host)
         unexplained = sorted(container_only - set(CONTAINER_ONLY))
         assert not unexplained, (
-            "these are called by `launch` but not by `_launch_host`:\n  "
+            "these are called by `container-run` but not by `_launch_host`:\n  "
             + "\n  ".join(unexplained)
             + "\n\nEither wire them into the host path too, or add each to CONTAINER_ONLY in this "
             "file with the reason it cannot apply to a host-native launch. Five capabilities were "
@@ -126,10 +131,10 @@ class TestLaunchAndHostRunStayInStep:
         )
 
     def test_the_ledger_has_no_stale_entries(self):
-        """A name that `launch` no longer calls is a licence nobody needs — and, worse, it would
+        """A name that `container-run` no longer calls is a licence nobody needs — and, worse, it would
         silently pre-authorise a FUTURE helper that happens to reuse the name."""
-        stale = sorted(set(CONTAINER_ONLY) - _stack_helpers(launcher.launch))
-        assert not stale, f"CONTAINER_ONLY lists helpers `launch` no longer calls: {stale}"
+        stale = sorted(set(CONTAINER_ONLY) - _stack_helpers(launcher.container_run))
+        assert not stale, f"CONTAINER_ONLY lists helpers `container-run` no longer calls: {stale}"
 
     def test_the_five_known_misses_are_wired_into_the_host_path(self):
         """Regression pin for the specific bugs, independent of the diff above: the ledger could be

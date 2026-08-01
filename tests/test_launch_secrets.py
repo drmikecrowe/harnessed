@@ -447,7 +447,7 @@ class TestHostLaunchAppliesSecrets:
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
         result = CliRunner().invoke(
-            launcher.app, ["host-run", "hostspike", "claude", str(tmp_path)]
+            launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"]
         )
         assert result.exit_code == 0, result.output
 

@@ -5359,32 +5359,73 @@ def _require_supported_harness(harness: str) -> None:
         raise typer.Exit(1)
 
 
+def _resolve_stack(
+    stack: Optional[str], recipe: list[str], extends: str, no_extends: bool, service: list[str]
+) -> tuple[str, Optional[Path]]:
+    """The stack to run — named via `--stack`, or composed from a `--recipe` set. Shared by both
+    run verbs, which differ in BACKEND and not in how a stack is chosen (bd harnessed-s84).
+
+    Returns `(name, minted_dir)`. `minted_dir` is non-None only when THIS call created the
+    manifest, making it the caller's to remove if a later build fails. An authored stack and a
+    dynamic one whose manifest already existed both yield None — neither is ours to delete.
+    """
+    if stack and recipe:
+        _err.print("[bold red]error:[/bold red] provide either --stack or --recipe, not both")
+        raise typer.Exit(1)
+    if not stack and not recipe:
+        _err.print("[bold red]error:[/bold red] provide --stack or at least one --recipe")
+        raise typer.Exit(1)
+    if stack:
+        return stack, None
+
+    base = None if no_extends else extends
+    try:
+        # services MUST be passed to BOTH calls — they are part of the identity, so deriving
+        # without them would compute a different name than mint() does and the preexisting check
+        # would inspect the wrong path.
+        derived = dynstack.derive_name(list(recipe), base, services=list(service))
+        preexisting = (paths.generated_catalog_root() / "stacks" / derived / "stack.yaml").is_file()
+        name, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
+    except ValueError as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+    return name, None if preexisting else stack_dir
+
+
+# Shared by both run verbs so the two grammars cannot drift apart.
+_STACK_OPT = typer.Option(
+    None, "--stack", "-s",
+    help="Authored stack to run (stacks/<name>/stack.yaml). Mutually exclusive with --recipe.",
+)
+_RECIPE_OPT = typer.Option(
+    [], "--recipe", "-r",
+    help="Recipe to include; repeat for each. Order is irrelevant — the set is sorted. "
+         "Mutually exclusive with --stack.",
+)
+_EXTENDS_OPT = typer.Option(
+    "default", "--extends",
+    help="Stack to inherit from (baseline recipes, permissions, credential forwarding).",
+)
+_NO_EXTENDS_OPT = typer.Option(
+    False, "--no-extends", help="Inherit from nothing — the recipe list stands alone.",
+)
+_SERVICE_OPT = typer.Option(
+    [], "--service",
+    help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
+)
+
+
 @app.command("host-run")
 def host_run(
-    stack: Optional[str] = typer.Argument(None, help="Stack name (stacks/<name>/stack.yaml). Mutually exclusive with --recipe."),
-    harness: str = typer.Argument("claude", help="Harness to use (host-native: claude)"),
+    harness: str = typer.Argument(..., help="Harness to use (host-native: claude)"),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+    stack: Optional[str] = _STACK_OPT,
+    recipe: list[str] = _RECIPE_OPT,
+    extends: str = _EXTENDS_OPT,
+    no_extends: bool = _NO_EXTENDS_OPT,
+    service: list[str] = _SERVICE_OPT,
     rm: bool = typer.Option(
         False, "--rm", help="Stop host daemons this launch started when the session exits"
-    ),
-    recipe: list[str] = typer.Option(
-        [], "--recipe", "-r",
-        help="Recipe to include; repeat for each. Mutually exclusive with the stack argument.",
-    ),
-    extends: str = typer.Option(
-        "default", "--extends",
-        help="Stack to inherit from (baseline recipes, permissions, credential forwarding).",
-    ),
-    no_extends: bool = typer.Option(
-        False, "--no-extends", help="Inherit from nothing — the recipe list stands alone.",
-    ),
-    service: list[str] = typer.Option(
-        [], "--service",
-        help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
-    ),
-    path_opt: Optional[str] = typer.Option(
-        None, "--path",
-        help="Project directory for the --recipe form, where positionals are not accepted.",
     ),
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
@@ -5394,86 +5435,70 @@ def host_run(
 ) -> None:
     """Run a stack HOST-NATIVELY — no podman, no container.
 
-    The host backend's own verb (bd harnessed-ltj), separate from `launch` because the two share no
-    flags but `--rm`. `--fresh`, `--no-firewall`, `--mount-folder`, `--agent-start-folder` and
-    `--shell` all describe a pod that does not exist here, so a combined verb could only accept them
-    and do nothing.
+    The host backend's own verb (bd harnessed-ltj), separate from `container-run` because the two
+    share no flags but `--rm`. `--fresh`, `--no-firewall`, `--mount-folder`, `--agent-start-folder`
+    and `--shell` all describe a pod that does not exist here, so a combined verb could only accept
+    them and do nothing.
+
+        harnessed host-run <harness> [path] --stack <name>
+        harnessed host-run <harness> [path] --recipe r1 --recipe r2
+
+    ONE grammar for both stack sources, and the harness leads. An earlier design put the stack in
+    the first positional slot, which made it indistinguishable from the project path under
+    `--recipe` — Typer binds positionals by DECLARATION order, not by meaning. That cost a
+    rejects-positionals rule and still let `host-run my-stack --recipe serena` launch the GENERATED
+    stack with the authored name silently demoted to a project path, exit 0. Naming the stack with
+    a flag removes the ambiguity at the source rather than policing it.
 
     Args after a standalone `--` are appended verbatim to the harness command
-    (`harnessed host-run S claude -- --resume` runs `claude … --resume`).
+    (`harnessed host-run claude -s S -- --resume` runs `claude … --resume`).
 
     What host mode isolates is CONFIGURATION, not the filesystem: the stack's assembled profile is
     materialized into a per-stack CLAUDE_CONFIG_DIR and the harness is exec'd against your real
-    machine, in your real project, with your real credentials. Use `launch` when you want the
+    machine, in your real project, with your real credentials. Use `container-run` when you want the
     container boundary too.
 
-    Two forms:
-
-    * `host-run <stack> [harness] [path]`  — authored stack.yaml, existing behaviour.
-    * `host-run --recipe r1 --recipe r2 [--path DIR]` — compose a recipe set on the fly, like `run`
-      does for the container backend. The set is content-named and a stack.yaml is minted under the
-      generated catalog root. No image build: `_launch_host` assembles in-process on every launch.
-
-    POSITIONALS ARE REJECTED in the recipe form, which is why `--path` exists. Typer binds
-    positionals by DECLARATION order, not by meaning, so with `--recipe` a lone `~/proj` is
-    indistinguishable from a stack name — both are just "the first positional". An earlier attempt
-    reinterpreted that slot as the path whenever `path` was empty, and it silently swallowed the two
-    invocations it most needed to catch: `host-run my-stack --recipe serena` bypassed the
-    exclusivity check entirely and launched the GENERATED stack with the authored name demoted to a
-    project path, and `host-run --recipe serena my-stack claude` discarded `my-stack` outright. Both
-    exited 0. The ambiguity is irreducible with positionals, so the grammar refuses them instead.
+    No image build on this path even for a minted recipe set: `_launch_host` assembles in-process on
+    every launch.
     """
-    has_recipes = bool(recipe)
-    has_stack = stack is not None
-
-    if has_stack and has_recipes:
-        _err.print(
-            "[bold red]error:[/bold red] provide either a stack argument OR --recipe flags, not both"
-        )
-        raise typer.Exit(1)
-
-    if not has_stack and not has_recipes:
-        _err.print(
-            "[bold red]error:[/bold red] provide a stack argument or at least one --recipe flag"
-        )
-        raise typer.Exit(1)
-
-    # `harness` has a default, so it is only "given" when it differs from it — good enough here
-    # because the host path accepts exactly one harness anyway (_HOST_HARNESS).
-    if has_recipes and (harness != _HOST_HARNESS or path is not None):
-        _err.print(
-            "[bold red]error:[/bold red] positional arguments are not accepted with --recipe; "
-            "use --path for the project directory"
-        )
-        raise typer.Exit(1)
-
-    if path_opt is not None:
-        if path is not None:
-            _err.print("[bold red]error:[/bold red] give the project directory once, not twice")
-            raise typer.Exit(1)
-        path = path_opt
-
-    if has_recipes:
-        base = None if no_extends else extends
-        try:
-            # services MUST be passed to both calls — they are part of the identity, so deriving
-            # without them would compute a different name than mint() does.
-            stack = dynstack.derive_name(list(recipe), base, services=list(service))
-            stack, _stack_dir = dynstack.mint(list(recipe), base, services=list(service))
-        except ValueError as exc:
-            _err.print(f"[bold red]error:[/bold red] {exc}")
-            raise typer.Exit(1)
-
-    assert stack is not None  # both branches above guarantee it; narrows Optional for the caller
     _require_supported_harness(harness)
-    _launch_host(stack, harness, path, rm=rm, extra=_passthrough, create_aoe_only=create_aoe_only)
+    stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
+    try:
+        _launch_host(
+            stack_name, harness, path, rm=rm, extra=_passthrough, create_aoe_only=create_aoe_only
+        )
+    except typer.Exit as exc:
+        # typer.Exit(0) is a SUCCESS that unwinds like a failure, and it must not clean up:
+        # `_aoe_register` ends `--create-aoe-only` that way, having just written a row whose
+        # recorded command names THIS manifest. Deleting it would manufacture precisely the
+        # dead-on-arrival row the container path builds ahead of registering to avoid.
+        # A NON-zero Exit is a real failure and still cleans up — `_launch_host` rejects a
+        # non-claude harness that way, and it does so after the mint.
+        if exc.exit_code != 0 and minted_dir is not None:
+            shutil.rmtree(minted_dir, ignore_errors=True)
+        raise
+    except Exception:
+        # Same ownership rule as `container_run`: a manifest THIS invocation minted is ours to
+        # remove when the launch never gets off the ground. Host mode has no build to fail, but
+        # `_launch_host` assembles in-process and a SchemaError/CollisionError from a bad recipe
+        # set lands here — leaving an orphan that `harnessed list` shows and no GC reclaims, since
+        # volume-gc keys on volumes and a stack that never launched owns none. A PRE-EXISTING
+        # manifest (minted_dir is None) is left alone; it may be a working stack that today's
+        # recipe edit merely broke. Never reached on a real launch: `_launch_host` ends in execvp.
+        if minted_dir is not None:
+            shutil.rmtree(minted_dir, ignore_errors=True)
+        raise
 
 
-@app.command()
-def launch(
-    stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
+@app.command("container-run")
+def container_run(
     harness: str = typer.Argument(..., help="Harness to use (claude|omp|opencode|antigravity|codex)"),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+    stack: Optional[str] = _STACK_OPT,
+    recipe: list[str] = _RECIPE_OPT,
+    extends: str = _EXTENDS_OPT,
+    no_extends: bool = _NO_EXTENDS_OPT,
+    service: list[str] = _SERVICE_OPT,
     fresh: bool = typer.Option(False, "--fresh", help="Tear down any existing pod/instance first"),
     rm: bool = typer.Option(False, "--rm", help="Ephemeral: tear the pod down when the interactive session exits"),
     no_firewall: bool = typer.Option(False, "--no-firewall", help="Skip egress firewall"),
@@ -5498,8 +5523,37 @@ def launch(
              "that would have worked.",
     ),
 ) -> None:
-    """Launch an isolated harness stack against a project directory (container backend)."""
+    """Run a stack in an isolated container against a project directory (container backend).
+
+        harnessed container-run <harness> [path] --stack <name>
+        harnessed container-run <harness> [path] --recipe r1 --recipe r2
+
+    Same grammar as `host-run`; the verb picks the backend and nothing else. The recipe form is
+    content-named and mints a real manifest under the generated catalog root, which is what lets
+    `harnessed list`, the staleness check and both GCs treat it like any other stack. An identical
+    set in another repo resolves to the same stack and shares its image and volumes — that is what
+    collapses proliferation rather than relocating it.
+    """
     _require_supported_harness(harness)
+    stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
+
+    if recipe:
+        # A freshly minted stack has no assembled profile, and everything below hard-errors without
+        # one. Unconditional because _build_stack is fingerprint-gated downstream, so an unchanged
+        # set is cheap — and deliberately NOT skipped under --create-aoe-only, since the command the
+        # registered row replays would be dead on arrival against an unbuilt stack.
+        #
+        # On failure, remove a manifest THIS invocation created. Otherwise a stack that never built
+        # lingers in the catalog, appears in `harnessed list`, and no GC reclaims it — volume-gc
+        # keys on volumes, and a stack that never built owns none. A PRE-EXISTING manifest is left
+        # alone: it may be a working stack that today's recipe edit merely broke, and deleting it
+        # would be collateral.
+        try:
+            _build_stack(_runtime(), stack, harness)
+        except Exception:
+            if minted_dir is not None:
+                shutil.rmtree(minted_dir, ignore_errors=True)
+            raise
 
     if no_firewall:
         os.environ["NO_FIREWALL"] = "true"
@@ -5565,7 +5619,7 @@ def launch(
     # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
     # launch that is about to fail never leaves a row behind, and before the podman work so the row
     # exists even if the container half goes wrong. No-op when aoe is absent; never raises.
-    _aoe_register("launch", stack, harness, project_path, only=create_aoe_only)
+    _aoe_register("container-run", stack, harness, project_path, only=create_aoe_only)
 
     try:
         stk = load_stack(stack_dir)
@@ -5966,79 +6020,6 @@ def _attach(
         _attach_marker(inst).unlink(missing_ok=True)
 
 
-@app.command("run")
-def run(
-    harness: str = typer.Argument(..., help="Harness to use (claude|omp|opencode|antigravity|codex)"),
-    recipe: list[str] = typer.Option(
-        [], "--recipe", "-r",
-        help="Recipe to include; repeat for each. Order is irrelevant — the set is sorted.",
-    ),
-    extends: str = typer.Option(
-        "default", "--extends",
-        help="Stack to inherit from (baseline recipes, permissions, credential forwarding).",
-    ),
-    no_extends: bool = typer.Option(
-        False, "--no-extends", help="Inherit from nothing — the recipe list stands alone.",
-    ),
-    service: list[str] = typer.Option(
-        [], "--service",
-        help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
-    ),
-    path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
-    create_aoe_only: bool = typer.Option(
-        False, "--create-aoe-only",
-        help="Register the Agent of Empires session for this recipe set and exit without "
-             "launching. The set is still minted and built, so the registered row is startable "
-             "from the dashboard; only the launch is skipped.",
-    ),
-) -> None:
-    """Launch a stack composed from a recipe set, without authoring a stack.yaml.
-
-    `harnessed run --recipe superpowers --recipe serena claude`
-
-    The set is normalized and named by its CONTENT, so an identical set in another repo resolves to
-    the same stack and shares its image and volumes. A real manifest is minted under the generated
-    catalog root, which is what lets `harnessed list`, the staleness check and both GCs treat it
-    like any other stack.
-    """
-    _require_supported_harness(harness)
-
-    base = None if no_extends else extends
-    try:
-        # services MUST be passed here too — they are part of the identity, so deriving without
-        # them would compute a different name than mint() does and the preexisting check below
-        # would inspect the wrong path.
-        stack = dynstack.derive_name(list(recipe), base, services=list(service))
-        # Whether the manifest predates THIS invocation decides who owns cleanup below.
-        preexisting = (paths.generated_catalog_root() / "stacks" / stack / "stack.yaml").is_file()
-        stack, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
-    except ValueError as exc:
-        _err.print(f"[bold red]error:[/bold red] {exc}")
-        raise typer.Exit(1)
-
-    # A freshly minted stack has no assembled profile, and `launch` hard-errors without one. Build
-    # unconditionally: _build_stack is fingerprint-gated downstream, so an unchanged set is cheap.
-    #
-    # On failure, remove a manifest this invocation CREATED. Otherwise a stack that never built
-    # lingers in the catalog, appears in `harnessed list`, and no GC reclaims it — volume-gc keys on
-    # volumes, and a stack that never built owns none. A PRE-EXISTING manifest is left alone: it may
-    # be a working stack that today's recipe edit merely broke, and deleting it would be collateral.
-    try:
-        _build_stack(_runtime(), stack, harness)
-    except Exception:
-        if not preexisting:
-            shutil.rmtree(stack_dir, ignore_errors=True)
-        raise
-
-    # The build above is deliberately NOT skipped under --create-aoe-only: `launch` — which is what
-    # the registered command replays — hard-errors without an assembled profile, so a row created
-    # against an unbuilt stack would be dead on arrival. _build_stack is fingerprint-gated, so this
-    # is cheap for a set that already built.
-    launch(stack=stack, harness=harness, path=path, fresh=False, rm=False, no_firewall=False,
-           agent_start_folder=None, mount_folder=None, shell=False,
-           create_aoe_only=create_aoe_only)
-
-
 @app.command("build")
 def build(
     stack: Optional[str] = typer.Argument(
@@ -6206,7 +6187,7 @@ def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
 
     # The containers are gone, so the aoe rows pointing at them are stale. Container verb only —
     # `rm` never touches host-native sessions, which own no container. No-op without aoe.
-    aoe.forget_stack("launch", stack)
+    aoe.forget_stack("container-run", stack)
 
 
 @app.command("prune")
@@ -6536,7 +6517,7 @@ def new_stack(
 def install_stack(
     stack: str = typer.Argument(..., help="Stack name"),
 ) -> None:
-    """Write a ~/.local/bin/<stack> launcher shim that runs `harnessed <stack>`."""
+    """Write a ~/.local/bin/<stack> launcher shim that runs `harnessed container-run`."""
     import shlex
     import stat
 
@@ -6552,12 +6533,20 @@ def install_stack(
     bin_dir = Path.home() / ".local" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     shim = bin_dir / stack
+    # `--stack` goes BEFORE "$@", and the ordering is load-bearing. The stack can no longer be a
+    # bare leading token — that slot is the harness — so the shim names it with the flag; but put
+    # the flag last and a passthrough invocation swallows it. `mystack claude . -- --resume` would
+    # expand to `… claude . -- --resume --stack mystack`, and `_extract_passthrough` splits at the
+    # FIRST `--`, sending `--stack mystack` to the agent and leaving the CLI with no stack at all.
     shim.write_text(
-        f"#!/usr/bin/env bash\nexec {shlex.quote(harnessed_bin)} {shlex.quote(stack)} \"$@\"\n",
+        "#!/usr/bin/env bash\n"
+        f"exec {shlex.quote(harnessed_bin)} container-run --stack {shlex.quote(stack)} \"$@\"\n",
         encoding="utf-8",
     )
     shim.chmod(shim.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    _out.print(f"[green][SUCCESS][/green] Installed shim: {shim} -> harnessed {stack}")
+    _out.print(
+        f"[green][SUCCESS][/green] Installed shim: {shim} -> harnessed container-run --stack {stack}"
+    )
     if str(bin_dir) not in os.environ.get("PATH", "").split(os.pathsep):
         _out.print(f"[yellow]note:[/yellow] {bin_dir} is not on your PATH — add it to run `{stack}` directly.")
 
@@ -6906,21 +6895,6 @@ def host_gc(
         _out.print(f"\n[green][SUCCESS][/green] Removed {removed} orphan(s).")
 
 
-# Every subcommand `main()` must NOT mistake for a stack name. Adding an @app.command without
-# adding it here makes the command unreachable from the real binary (`harnessed update` parses as
-# `harnessed launch update`) while CliRunner tests, which invoke `app` directly, still pass. A test
-# asserts this set covers every registered command — see test_update_cli.py.
-# Every registered subcommand name. A name MISSING here is not a no-op: `main()` treats the first
-# non-option token as a stack name and prepends `launch`, so the command becomes unreachable and
-# fails with "Missing argument 'HARNESS'" — which reads like a usage error, not a missing
-# registration. tests/test_cli_commands.py keeps this in step with the registry.
-_COMMANDS = {
-    "launch", "build", "list", "stop", "rm", "prune", "clean", "test", "new",
-    "install", "uninstall", "scan", "rescan", "svc", "aws-sso", "host-gc", "host-run",
-    "update", "volume-gc", "run",
-}
-
-
 def _svc_migrate(
     svc_def: "ServiceDef", stack: str, project_path: Path, from_path: str, assume_yes: bool
 ) -> None:
@@ -7242,9 +7216,9 @@ def aws_sso(
 
 
 # Args after a standalone `--` are passthrough: appended verbatim to the launched harness command
-# (e.g. `harnessed launch S claude -- --chrome` runs `claude … --chrome`). Click treats `--` only as
-# end-of-options and would bind the first suffix token to the `path` positional, so we split it off
-# argv before Typer parses. Set by main(); read by `launch` / `host-run`.
+# (e.g. `harnessed container-run claude -s S -- --chrome` runs `claude … --chrome`). Click treats
+# `--` only as end-of-options and would bind the first suffix token to the `path` positional, so we
+# split it off argv before Typer parses. Set by main(); read by both run verbs.
 _passthrough: list[str] = []
 
 
@@ -7261,17 +7235,13 @@ def _extract_passthrough(argv: list[str]) -> list[str]:
 
 
 def main() -> None:
-    argv = _extract_passthrough(sys.argv[1:])
-    # Find the first non-option token; if it is not a known subcommand, it is a stack name and we
-    # prepend `launch` so `harnessed tracer-time …` == `harnessed launch tracer-time …`.
-    prepend: list[str] = []
-    for tok in argv:
-        if tok.startswith("-"):
-            continue
-        if tok not in _COMMANDS:
-            prepend = ["launch"]
-        break
-    sys.argv = [sys.argv[0], *prepend, *argv]
+    # No bare-stack shortcut: the leading token is a subcommand, full stop. It used to be "a stack
+    # name unless it matches a registered command", which meant every new @app.command had to be
+    # added to a hand-maintained `_COMMANDS` set or it silently became unreachable — `harnessed
+    # update` parsing as `harnessed launch update` and failing with "Missing argument 'HARNESS'",
+    # which reads like a usage error rather than a missing registration. With the stack named by
+    # `--stack`, a bare leading token is a harness and there is nothing left to disambiguate.
+    sys.argv = [sys.argv[0], *_extract_passthrough(sys.argv[1:])]
     app()
 
 

@@ -47,14 +47,15 @@ class TestMainDispatch:
         launcher.main()
         assert captured["argv"] == ["harnessed", "scan"]
 
-    def test_unrecognized_token_still_shorthands_to_launch(self, monkeypatch):
-        """Regression guard: fixing `scan`'s dispatch must not disturb the `harnessed <stack>
-        [project]` shorthand the README documents for genuinely unknown first tokens."""
+    def test_an_unrecognized_token_is_left_alone(self, monkeypatch):
+        """There is no shorthand left to disturb: `harnessed <stack>` used to mean `launch <stack>`,
+        which is what made `scan`'s dispatch a bug in the first place. Now every leading token goes
+        to Typer as a subcommand and an unknown one fails there."""
         captured = {}
         monkeypatch.setattr(launcher, "app", lambda: captured.setdefault("argv", list(sys.argv)))
         monkeypatch.setattr(sys, "argv", ["harnessed", "my-stack", "claude"])
         launcher.main()
-        assert captured["argv"] == ["harnessed", "launch", "my-stack", "claude"]
+        assert captured["argv"] == ["harnessed", "my-stack", "claude"]
 
 
 @pytest.fixture

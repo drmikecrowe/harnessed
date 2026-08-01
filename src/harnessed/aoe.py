@@ -6,7 +6,7 @@ Nothing here may ever fail a launch — aoe being absent, broken, slow, or a ver
 flag must all degrade to silence. Hence: every subprocess call is timeout-bounded, `check=False`,
 and wrapped; every public entry point swallows.
 
-REGISTER-ONLY, deliberately. harnessed still owns the process: `launch` ends in an `os.execvp` that
+REGISTER-ONLY, deliberately. harnessed still owns the process: a run verb ends in an `os.execvp` that
 hands YOUR terminal to the agent (via `podman exec -it` on the container backend, directly on the
 host backend). We record a session so it appears in the dashboard and can be re-started or attached
 from there later — we never hand the launch over to aoe. That is also why sessions must stay in
@@ -17,7 +17,9 @@ view, so we pass NOTHING for it — an explicit opt-out flag would be an unknown
 PASS ONLY FLAGS `aoe add` ACCEPTS. It is a clap CLI: an unrecognised flag is not ignored, it exits 2
 before adding anything. On the background path that is invisible — the detached writer dies and the
 dashboard just stays empty. Verified against aoe 1.13.2; `--no-cockpit` was such a flag, and it
-silently cost every registration until `--create-aoe-only` surfaced it.
+silently cost every registration until `--create-aoe-only` surfaced it. The one deliberate exception
+is `--tool`, whose VALUE aoe validates and may reject; it is issued with a plain retry behind it so a
+rejection costs the label rather than the row. See `sync_session`.
 
 Session identity is (project path, stack, harness) — NOT (project path, stack). A stack has a
 separately assembled profile per harness (`profiles/<stack>/<harness>/`), so the claude and omp
@@ -34,6 +36,7 @@ registering IS the command the user ran and they are entitled to its exit status
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -66,6 +69,11 @@ _WRITE_TIMEOUT = 120
 
 # `• name (3 sessions)` — aoe renders groups as a bullet list with no --json equivalent.
 _GROUP_LINE = re.compile(r"^\s*[•*-]\s+(\S+)\s+\(")
+
+# How the recorded command names its stack. Both run verbs take `--stack`, never a positional, so
+# the stack sits at a keyword rather than a fixed index — `command_for` writes it and
+# `forget_stack` reads it back, and they must not drift.
+_STACK_FLAG = ["--stack"]
 
 
 def _bin() -> str | None:
@@ -127,13 +135,21 @@ def _spawn(exe: str, batch: list[list[str]]) -> bool:
         return False
 
 
-def _apply(exe: str, batch: list[list[str]], *, background: bool) -> bool:
-    """Execute a write batch, detached or blocking. True when every write is believed to have run."""
+def _apply(
+    exe: str, batch: list[list[str]], *, background: bool, optional: frozenset[int] = frozenset()
+) -> bool:
+    """Execute a write batch, detached or blocking. True when every write is believed to have run.
+
+    `optional` holds indices whose non-zero exit is an expected outcome rather than a failure, so a
+    blocking caller does not report an error for one. Used for the tool-labelled `add`, which aoe
+    rejects whenever it does not recognise the agent and which is always followed by a plain retry.
+    The detached path needs no equivalent: `_spawn` joins with `;`, which is already tolerant.
+    """
     if background:
         return _spawn(exe, batch)
-    for args in batch:
+    for i, args in enumerate(batch):
         result = _run(exe, args, timeout=_WRITE_TIMEOUT)
-        if result is None or result.returncode != 0:
+        if result is None or (result.returncode != 0 and i not in optional):
             return False
     return True
 
@@ -142,9 +158,9 @@ def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
     """The harnessed invocation recorded on the session — both the identity key and what aoe runs.
 
     Always the RESOLVED stack name and an absolute path, never the user's original argv. A dynamic
-    stack is minted into the generated catalog root before this is called, so `harnessed launch
+    stack is minted into the generated catalog root before this is called, so `--stack
     <derived-name>` replays it exactly and keeps one canonical form for every verb that reaches
-    here.
+    here — a row records the same shape whether the user typed `--stack` or a `--recipe` set.
 
     TERMINATED WITH `--`, which is not cosmetic. aoe's `auto_resume_on_restart` appends the recorded
     tool's resume flags to this string when a stopped session is restarted — for `tool = claude`,
@@ -154,8 +170,14 @@ def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
     only, which is why the first launch of a row looks fine. The trailing `--` puts them past
     harnessed's own option parsing (`launcher._extract_passthrough`), which forwards everything after
     it to the agent — the process they were meant for. Verified against aoe 1.13.2.
+
+    Half of a pair: this delivers the flags to the agent, and the `--tool` label in `sync_session`
+    decides WHICH agent's flags aoe generates. Without that label they are always claude's, and
+    forwarding them to a non-claude agent kills the pane on every restart.
     """
-    return shlex.join(["harnessed", verb, stack, harness, str(project_path), "--"])
+    return shlex.join(
+        ["harnessed", verb, harness, str(project_path), *_STACK_FLAG, stack, "--"]
+    )
 
 
 def title_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
@@ -261,7 +283,7 @@ def sync_session(
         group = _group_for(project_path)
         if not _has_group(exe, group):
             batch.append(["group", "create", group, "-p", PROFILE])
-        batch.append([
+        add = [
             "add", str(project_path),
             "-p", PROFILE,
             "-g", group,
@@ -276,8 +298,27 @@ def sync_session(
             # the one we need — `--structured-view` would drive the agent over ACP, which cannot
             # reach through a `podman exec` attach. There is no flag to request the default, and an
             # invented one (`--no-cockpit`) exits 2 and loses the whole registration.
-        ])
-        return _apply(exe, batch, background=background)
+        ]
+        # WHICH AGENT THIS ROW RUNS, attempted then retried without. `--cmd-override` sets the
+        # command but leaves the recorded tool at aoe's default, `claude` — so an omp row was stored
+        # as a claude one, and `auto_resume_on_restart` appended CLAUDE's resume flags to it on every
+        # restart. Since `command_for` terminates our command with `--`, those flags sail past
+        # harnessed's own parser and land on the omp binary, which rejects a claude conversation id
+        # outright: `Error: Session "<uuid>" not found.` The pane dies, aoe respawns it, and it loops.
+        # `--tool` makes aoe generate the flags of the agent that is actually there.
+        #
+        # THE RETRY IS LOAD-BEARING. aoe validates `--tool` against its built-in agent list AND the
+        # invoking process's PATH — `'codex' is not installed or not on $PATH` exits non-zero and
+        # adds NOTHING, silently on the detached path. That gate is the HOST's, but a container
+        # harness lives in the pod, and even a host-installed one can be missed: omp resolves through
+        # a mise install dir that is on the user's shell PATH and not on a daemon's. Asking aoe is no
+        # cheaper than trying: `aoe agents` is ~1.35s, a hundred times the other reads, and it answers
+        # for the wrong PATH anyway. So attempt the labelled add and follow it with the plain one,
+        # which aoe refuses as a duplicate title+path at exit 0 WITHOUT touching the stored tool when
+        # the first won, and which registers the row as before when it did not. Verified, aoe 1.13.2.
+        batch.append([*add, "--tool", harness])
+        batch.append(add)
+        return _apply(exe, batch, background=background, optional=frozenset({len(batch) - 2}))
     except Exception:  # noqa: BLE001 — an optional dashboard must never break a launch.
         return False
 
@@ -288,19 +329,26 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
     Scoped to ONE verb because `harnessed rm` is container-scoped: it removes every container
     instance of a stack across harnesses and projects, and leaves host-native sessions — which own
     no container — alone. Removing by session id, not title, so a user-renamed row still matches.
+
+    Matched on the `--stack <name>` PAIR rather than a token index. The stack used to be the third
+    token, which a prefix compare could check; it is now a flag value that sits after the harness
+    and path, so its position varies with whether a project path was recorded.
     """
     try:
         exe = _bin()
         if exe is None:
             return
-        prefix = ["harnessed", verb, stack]
         batch: list[list[str]] = []
         for session in _sessions(exe):
             try:
                 tokens = shlex.split(session.get("command") or "")
             except ValueError:
                 continue
-            if tokens[:3] != prefix:
+            if tokens[:2] != ["harnessed", verb]:
+                continue
+            if not any(
+                a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(tokens)
+            ):
                 continue
             sid = session.get("id")
             if sid:
