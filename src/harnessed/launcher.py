@@ -5318,11 +5318,30 @@ def _require_supported_harness(harness: str) -> None:
 
 @app.command("host-run")
 def host_run(
-    stack: str = typer.Argument(..., help="Stack name (stacks/<name>/stack.yaml)"),
+    stack: Optional[str] = typer.Argument(None, help="Stack name (stacks/<name>/stack.yaml). Mutually exclusive with --recipe."),
     harness: str = typer.Argument("claude", help="Harness to use (host-native: claude)"),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
     rm: bool = typer.Option(
         False, "--rm", help="Stop host daemons this launch started when the session exits"
+    ),
+    recipe: list[str] = typer.Option(
+        [], "--recipe", "-r",
+        help="Recipe to include; repeat for each. Mutually exclusive with the stack argument.",
+    ),
+    extends: str = typer.Option(
+        "default", "--extends",
+        help="Stack to inherit from (baseline recipes, permissions, credential forwarding).",
+    ),
+    no_extends: bool = typer.Option(
+        False, "--no-extends", help="Inherit from nothing — the recipe list stands alone.",
+    ),
+    service: list[str] = typer.Option(
+        [], "--service",
+        help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
+    ),
+    path_opt: Optional[str] = typer.Option(
+        None, "--path",
+        help="Project directory for the --recipe form, where positionals are not accepted.",
     ),
 ) -> None:
     """Run a stack HOST-NATIVELY — no podman, no container.
@@ -5339,7 +5358,65 @@ def host_run(
     materialized into a per-stack CLAUDE_CONFIG_DIR and the harness is exec'd against your real
     machine, in your real project, with your real credentials. Use `launch` when you want the
     container boundary too.
+
+    Two forms:
+
+    * `host-run <stack> [harness] [path]`  — authored stack.yaml, existing behaviour.
+    * `host-run --recipe r1 --recipe r2 [--path DIR]` — compose a recipe set on the fly, like `run`
+      does for the container backend. The set is content-named and a stack.yaml is minted under the
+      generated catalog root. No image build: `_launch_host` assembles in-process on every launch.
+
+    POSITIONALS ARE REJECTED in the recipe form, which is why `--path` exists. Typer binds
+    positionals by DECLARATION order, not by meaning, so with `--recipe` a lone `~/proj` is
+    indistinguishable from a stack name — both are just "the first positional". An earlier attempt
+    reinterpreted that slot as the path whenever `path` was empty, and it silently swallowed the two
+    invocations it most needed to catch: `host-run my-stack --recipe serena` bypassed the
+    exclusivity check entirely and launched the GENERATED stack with the authored name demoted to a
+    project path, and `host-run --recipe serena my-stack claude` discarded `my-stack` outright. Both
+    exited 0. The ambiguity is irreducible with positionals, so the grammar refuses them instead.
     """
+    has_recipes = bool(recipe)
+    has_stack = stack is not None
+
+    if has_stack and has_recipes:
+        _err.print(
+            "[bold red]error:[/bold red] provide either a stack argument OR --recipe flags, not both"
+        )
+        raise typer.Exit(1)
+
+    if not has_stack and not has_recipes:
+        _err.print(
+            "[bold red]error:[/bold red] provide a stack argument or at least one --recipe flag"
+        )
+        raise typer.Exit(1)
+
+    # `harness` has a default, so it is only "given" when it differs from it — good enough here
+    # because the host path accepts exactly one harness anyway (_HOST_HARNESS).
+    if has_recipes and (harness != _HOST_HARNESS or path is not None):
+        _err.print(
+            "[bold red]error:[/bold red] positional arguments are not accepted with --recipe; "
+            "use --path for the project directory"
+        )
+        raise typer.Exit(1)
+
+    if path_opt is not None:
+        if path is not None:
+            _err.print("[bold red]error:[/bold red] give the project directory once, not twice")
+            raise typer.Exit(1)
+        path = path_opt
+
+    if has_recipes:
+        base = None if no_extends else extends
+        try:
+            # services MUST be passed to both calls — they are part of the identity, so deriving
+            # without them would compute a different name than mint() does.
+            stack = dynstack.derive_name(list(recipe), base, services=list(service))
+            stack, _stack_dir = dynstack.mint(list(recipe), base, services=list(service))
+        except ValueError as exc:
+            _err.print(f"[bold red]error:[/bold red] {exc}")
+            raise typer.Exit(1)
+
+    assert stack is not None  # both branches above guarantee it; narrows Optional for the caller
     _require_supported_harness(harness)
     _launch_host(stack, harness, path, rm=rm, extra=_passthrough)
 
