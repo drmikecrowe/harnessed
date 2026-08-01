@@ -191,9 +191,11 @@ is the whole bridge; `HARNESSED_NO_AOE=1` turns it off.
 
 **Register-only, one-way.** harnessed still owns the process — `launch` ends in an `os.execvp` that
 hands your terminal to the agent. The row is a bookmark that can be started or attached from the
-dashboard later; aoe never drives harnessed. Sessions are registered `--no-cockpit` because
-cockpit's ACP transport cannot reach through the `podman exec -it` attach the container backend
-ends in.
+dashboard later; aoe never drives harnessed. Sessions stay in aoe's terminal (raw tmux/PTY) view,
+which is what `aoe add` already defaults to — the structured view's ACP transport cannot reach
+through the `podman exec -it` attach the container backend ends in. The `add` therefore passes only
+`-p`, `-g`, `-t` and `--cmd-override`: `aoe add` rejects an unknown flag with exit 2 before adding
+anything, and on the detached write path that failure is invisible.
 
 | property | value | why |
 | --- | --- | --- |

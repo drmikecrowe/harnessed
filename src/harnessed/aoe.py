@@ -9,9 +9,15 @@ and wrapped; every public entry point swallows.
 REGISTER-ONLY, deliberately. harnessed still owns the process: `launch` ends in an `os.execvp` that
 hands YOUR terminal to the agent (via `podman exec -it` on the container backend, directly on the
 host backend). We record a session so it appears in the dashboard and can be re-started or attached
-from there later — we never hand the launch over to aoe. That is also why sessions are registered
-`--no-cockpit`: aoe's cockpit mode drives an agent over ACP rather than through a PTY, which cannot
-reach through a `podman exec` attach.
+from there later — we never hand the launch over to aoe. That is also why sessions must stay in
+aoe's terminal (raw tmux/PTY) view: its structured view drives an agent over ACP rather than through
+a PTY, which cannot reach through a `podman exec` attach. `aoe add` already defaults to the terminal
+view, so we pass NOTHING for it — an explicit opt-out flag would be an unknown argument (see below).
+
+PASS ONLY FLAGS `aoe add` ACCEPTS. It is a clap CLI: an unrecognised flag is not ignored, it exits 2
+before adding anything. On the background path that is invisible — the detached writer dies and the
+dashboard just stays empty. Verified against aoe 1.13.2; `--no-cockpit` was such a flag, and it
+silently cost every registration until `--create-aoe-only` surfaced it.
 
 Session identity is (project path, stack, harness) — NOT (project path, stack). A stack has a
 separately assembled profile per harness (`profiles/<stack>/<harness>/`), so the claude and omp
@@ -257,8 +263,10 @@ def sync_session(
             # and the identity key. `--cmd-override` stores the string verbatim, and also accepts
             # harnesses aoe has no notion of, like `omp`. Verified against aoe 2026-08-01.
             "--cmd-override", command,
-            # PTY mode: cockpit's ACP transport cannot reach through a `podman exec` attach.
-            "--no-cockpit",
+            # No view flag: `aoe add` already defaults to the terminal (raw tmux/PTY) view, which is
+            # the one we need — `--structured-view` would drive the agent over ACP, which cannot
+            # reach through a `podman exec` attach. There is no flag to request the default, and an
+            # invented one (`--no-cockpit`) exits 2 and loses the whole registration.
         ])
         return _apply(exe, batch, background=background)
     except Exception:  # noqa: BLE001 — an optional dashboard must never break a launch.
