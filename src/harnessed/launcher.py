@@ -5748,7 +5748,13 @@ def launch(
 
     # Create pod.
     if _rt_uses_pods(rt):
-        pod_cmd = [rt, "pod", "create", "--name", pod, "--userns=keep-id"]
+        # --hostname explicitly: without it podman uses the pod NAME, which crun rejects past
+        # HOST_NAME_MAX (see paths.container_hostname). Set on the POD, not the member — pod members
+        # share the pod's UTS namespace, so this is the one that governs.
+        pod_cmd = [
+            rt, "pod", "create", "--name", pod,
+            "--hostname", paths.container_hostname(pod), "--userns=keep-id",
+        ]
         if net:
             pod_cmd += ["--network", net]
         _run(pod_cmd, capture_output=True)
@@ -5809,7 +5815,11 @@ def launch(
     mise_trust_env = ["-e", f"MISE_TRUSTED_CONFIG_PATHS={mount_path}"]
     harness_run = [
         rt, "run", "-d",
-        *(["--pod", pod] if _rt_uses_pods(rt) else [f"--network=container:{pod}"]),
+        # No --hostname in the pod branch: a member inherits the pod's UTS namespace, and the pod
+        # create above already set it. The pod-less runtime has no infra container to inherit from,
+        # so it needs its own bound (same EINVAL, from the container's own name).
+        *(["--pod", pod] if _rt_uses_pods(rt)
+          else [f"--network=container:{pod}", "--hostname", paths.container_hostname(inst)]),
         "--name", inst,
         *[arg for f in secrets_env_files for arg in ("--env-file", str(f))],
         # ORDER IS PRECEDENCE: podman applies `-e` left-to-right, so the LAST wins. Recipe `env:` goes

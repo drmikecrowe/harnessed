@@ -336,6 +336,31 @@ def instance_name(stack: str, harness: str, project_path: str | Path) -> str:
     return f"harnessed-{harness}-{stack}-{project_hash(project_path)}"
 
 
+# Linux caps a hostname at HOST_NAME_MAX, which is 64 on every platform harnessed targets.
+_HOST_NAME_MAX = 64
+
+
+def container_hostname(inst: str) -> str:
+    """A kernel-acceptable hostname for an instance name — `inst` itself when it already fits.
+
+    Podman derives the hostname from the pod/container NAME when none is given, and crun then fails
+    the pod's infra container with `sethostname: Invalid argument` (EINVAL) for anything past
+    HOST_NAME_MAX. Authored stack names never got close; a content-derived one does —
+    `harnessed-omp-default.beads-team.serena.superpowers-f6eb0941-59258991` is 69 characters, and
+    every launch of it died before the harness container started.
+
+    Truncates the MIDDLE, keeping the `harnessed-<harness>-` head and the whole trailing project
+    hash: those are what tell two prompts apart, and the stack name in between is the part that is
+    already a machine-minted hash. Purely cosmetic — nothing keys on the hostname, so a collision
+    between two long stacks in one project costs nothing. Trailing `-`/`.` is stripped so the cut
+    cannot leave an invalid label.
+    """
+    if len(inst) <= _HOST_NAME_MAX:
+        return inst
+    head, _, tail = inst.rpartition("-")
+    return f"{head[:_HOST_NAME_MAX - len(tail) - 1].rstrip('-.')}-{tail}"
+
+
 def setup_dismissed_flag(stack: str, harness: str, project_path: str | Path) -> Path:
     """Marker recording that the user dismissed a stack's unconditional `setup:` notices for this
     project (XDG STATE). Keyed per (stack, harness, project) via `instance_name`, so worktrees and

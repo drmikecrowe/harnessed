@@ -128,7 +128,7 @@ class TestSyncSession:
         [add] = rec.added()
         assert add[1] == str(tmp_path)
         assert _flag(add, "-p") == aoe.PROFILE
-        assert _flag(add, "--cmd-override") == f"harnessed launch serena claude {tmp_path}"
+        assert _flag(add, "--cmd-override") == f"harnessed launch serena claude {tmp_path} --"
 
     def test_uses_cmd_override_not_cmd(self, rec, tmp_path):
         # `--cmd` is validated against aoe's tool list and silently substitutes its configured
@@ -214,20 +214,20 @@ class TestIdentity:
         return f'[{{"id": "s1", "path": "{tmp_path}", "command": "{command}"}}]'
 
     def test_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path}"))
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
         rec.install(monkeypatch)
         aoe.sync_session("launch", "serena", "claude", tmp_path)
         assert rec.added() == []
 
     def test_a_second_harness_is_a_second_session(self, monkeypatch, tmp_path):
         # One stack has an assembled profile PER harness, so claude and omp are two rows.
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path}"))
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
         rec.install(monkeypatch)
         aoe.sync_session("launch", "serena", "omp", tmp_path)
         assert len(rec.added()) == 1
 
     def test_host_and_container_verbs_do_not_collide(self, monkeypatch, tmp_path):
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path}"))
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
         rec.install(monkeypatch)
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
         assert len(rec.added()) == 1
@@ -235,7 +235,7 @@ class TestIdentity:
     def test_same_stack_in_another_folder_is_a_second_session(self, monkeypatch, tmp_path):
         other = tmp_path / "other"
         other.mkdir()
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path}"))
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
         rec.install(monkeypatch)
         aoe.sync_session("launch", "serena", "claude", other)
         assert len(rec.added()) == 1
@@ -259,7 +259,7 @@ class TestGroup:
 
 class TestForgetStack:
     SESSIONS = (
-        '[{"id": "a", "command": "harnessed launch serena claude /p"},'
+        '[{"id": "a", "command": "harnessed launch serena claude /p --"},'
         ' {"id": "b", "command": "harnessed launch serena omp /p"},'
         ' {"id": "c", "command": "harnessed launch other claude /p"},'
         ' {"id": "d", "command": "harnessed host-run serena claude /p"}]'
@@ -376,7 +376,7 @@ class TestWriteDispatch:
     def test_already_registered_is_success_without_writing(self, monkeypatch, tmp_path):
         rec = Recorder(
             sessions=f'[{{"id": "s1", "path": "{tmp_path}",'
-                     f' "command": "harnessed launch serena claude {tmp_path}"}}]'
+                     f' "command": "harnessed launch serena claude {tmp_path} --"}}]'
         ).install(monkeypatch)
         assert aoe.sync_session("launch", "serena", "claude", tmp_path) is True
         assert rec.spawned == []
@@ -522,9 +522,17 @@ class TestHookPlacement:
 class TestCommandFor:
     def test_quotes_paths_with_spaces(self):
         cmd = aoe.command_for("launch", "serena", "claude", Path("/tmp/my project"))
-        assert cmd == "harnessed launch serena claude '/tmp/my project'"
+        assert cmd == "harnessed launch serena claude '/tmp/my project' --"
+
+    def test_terminates_with_a_bare_double_dash(self):
+        # aoe's auto-resume appends the RECORDED TOOL's flags (claude: `--fork-session
+        # --session-id <uuid>`) on restart. Without the terminator they hit harnessed's Click
+        # parser, which exits on `No such option: --session-id`; with it they become passthrough
+        # args for the agent.
+        cmd = aoe.command_for("host-run", "serena", "claude", Path("/p"))
+        assert cmd.split() == ["harnessed", "host-run", "serena", "claude", "/p", "--"]
 
     def test_records_the_resolved_stack_name(self):
         # Dynamic stacks are minted before this is called, so the derived name replays exactly.
         cmd = aoe.command_for("run", "default.serena.superpowers", "claude", Path("/p"))
-        assert cmd == "harnessed run default.serena.superpowers claude /p"
+        assert cmd == "harnessed run default.serena.superpowers claude /p --"
