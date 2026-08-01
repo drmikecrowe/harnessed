@@ -38,6 +38,7 @@ from rich.markup import escape
 from ruamel.yaml import YAML
 
 from . import __version__
+from . import aoe
 from . import dynstack
 from . import emit
 from . import paths
@@ -5114,8 +5115,39 @@ def _host_native_mcp(stack: str) -> Optional[dict]:
     return out or None
 
 
+def _aoe_register(verb: str, stack: str, harness: str, project_path: Path, *, only: bool) -> None:
+    """Mirror this launch into Agent of Empires, and stop here under `--create-aoe-only`.
+
+    Two different contracts share one call. On a normal launch the mirror is passive: fire the
+    write detached (`aoe add` takes ~12s) and carry on regardless of outcome — a dashboard is not
+    worth blocking or failing a launch for. Under `--create-aoe-only` registering IS the command,
+    so it blocks, reports, and propagates an exit status the user can script against.
+    """
+    registered = aoe.sync_session(verb, stack, harness, project_path, background=not only)
+    if not only:
+        return
+    if not registered:
+        _err.print(
+            "[bold red]error:[/bold red] --create-aoe-only: could not register the session. "
+            "Is Agent of Empires (`aoe`) installed and initialized "
+            f"({paths.xdg_config_home() / 'agent-of-empires'})?"
+        )
+        raise typer.Exit(1)
+    _out.print(
+        f"[bold green]Registered[/bold green] aoe session "
+        f"[bold]{aoe.title_for(verb, stack, harness, project_path)}[/bold]\n"
+        f"  profile:  {aoe.PROFILE}\n"
+        f"  group:    {aoe._group_for(project_path)}\n"
+        f"  command:  {aoe.command_for(verb, stack, harness, project_path)}\n"
+        f"  [dim]not launched (--create-aoe-only); start it with `aoe` or `aoe session start`[/dim]",
+        highlight=False,
+    )
+    raise typer.Exit(0)
+
+
 def _launch_host(
-    stack: str, harness: str, path: Optional[str], *, rm: bool = False, extra: Optional[list[str]] = None
+    stack: str, harness: str, path: Optional[str], *, rm: bool = False,
+    extra: Optional[list[str]] = None, create_aoe_only: bool = False,
 ) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
@@ -5139,6 +5171,12 @@ def _launch_host(
     if not (stack_dir / "stack.yaml").is_file():
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir / 'stack.yaml'})")
         raise typer.Exit(1)
+
+    # Same mirror as the container path, recorded under this verb so the two never collide: a
+    # host-native session and a containerized one for the same stack+harness+folder are different
+    # things to run. Placed before assembly so --create-aoe-only does no work it is about to throw
+    # away. No-op when aoe is absent; never raises.
+    _aoe_register("host-run", stack, harness, project_path, only=create_aoe_only)
 
     # Assemble IN-PROCESS every launch — host-native, emit-only, NO podman and NO image build. This is
     # what keeps host-run container-free end to end: unlike `harnessed build` (which also builds a
@@ -5343,6 +5381,11 @@ def host_run(
         None, "--path",
         help="Project directory for the --recipe form, where positionals are not accepted.",
     ),
+    create_aoe_only: bool = typer.Option(
+        False, "--create-aoe-only",
+        help="Register the Agent of Empires session for this stack and exit without launching. "
+             "Requires aoe; runs no assembly.",
+    ),
 ) -> None:
     """Run a stack HOST-NATIVELY — no podman, no container.
 
@@ -5418,7 +5461,7 @@ def host_run(
 
     assert stack is not None  # both branches above guarantee it; narrows Optional for the caller
     _require_supported_harness(harness)
-    _launch_host(stack, harness, path, rm=rm, extra=_passthrough)
+    _launch_host(stack, harness, path, rm=rm, extra=_passthrough, create_aoe_only=create_aoe_only)
 
 
 @app.command()
@@ -5442,6 +5485,12 @@ def launch(
     shell: bool = typer.Option(
         False, "--shell",
         help="Open an interactive bash shell in the container instead of starting the agent",
+    ),
+    create_aoe_only: bool = typer.Option(
+        False, "--create-aoe-only",
+        help="Register the Agent of Empires session for this stack and exit without launching. "
+             "Requires aoe; validates the stack first, so the row is only created for a launch "
+             "that would have worked.",
     ),
 ) -> None:
     """Launch an isolated harness stack against a project directory (container backend)."""
@@ -5507,6 +5556,11 @@ def launch(
     except staleness.StaleProfileError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack} {harness}")
         raise typer.Exit(1)
+
+    # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
+    # launch that is about to fail never leaves a row behind, and before the podman work so the row
+    # exists even if the container half goes wrong. No-op when aoe is absent; never raises.
+    _aoe_register("launch", stack, harness, project_path, only=create_aoe_only)
 
     try:
         stk = load_stack(stack_dir)
@@ -5916,6 +5970,12 @@ def run(
         help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
     ),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+    create_aoe_only: bool = typer.Option(
+        False, "--create-aoe-only",
+        help="Register the Agent of Empires session for this recipe set and exit without "
+             "launching. The set is still minted and built, so the registered row is startable "
+             "from the dashboard; only the launch is skipped.",
+    ),
 ) -> None:
     """Launch a stack composed from a recipe set, without authoring a stack.yaml.
 
@@ -5955,8 +6015,13 @@ def run(
             shutil.rmtree(stack_dir, ignore_errors=True)
         raise
 
+    # The build above is deliberately NOT skipped under --create-aoe-only: `launch` — which is what
+    # the registered command replays — hard-errors without an assembled profile, so a row created
+    # against an unbuilt stack would be dead on arrival. _build_stack is fingerprint-gated, so this
+    # is cheap for a set that already built.
     launch(stack=stack, harness=harness, path=path, fresh=False, rm=False, no_firewall=False,
-           agent_start_folder=None, mount_folder=None, shell=False)
+           agent_start_folder=None, mount_folder=None, shell=False,
+           create_aoe_only=create_aoe_only)
 
 
 @app.command("build")
@@ -6123,6 +6188,10 @@ def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
         subprocess.run([rt, "rm", "-f", name], capture_output=True)
     if not names:
         _out.print(f"No instances found for stack '{stack}'")
+
+    # The containers are gone, so the aoe rows pointing at them are stale. Container verb only —
+    # `rm` never touches host-native sessions, which own no container. No-op without aoe.
+    aoe.forget_stack("launch", stack)
 
 
 @app.command("prune")
