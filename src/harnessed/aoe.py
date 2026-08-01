@@ -145,8 +145,17 @@ def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
     stack is minted into the generated catalog root before this is called, so `harnessed launch
     <derived-name>` replays it exactly and keeps one canonical form for every verb that reaches
     here.
+
+    TERMINATED WITH `--`, which is not cosmetic. aoe's `auto_resume_on_restart` appends the recorded
+    tool's resume flags to this string when a stopped session is restarted — for `tool = claude`,
+    `--resume <id>` / `--fork-session --session-id <uuid>`. `--cmd-override` replaces the binary but
+    does NOT change the recorded tool, so those claude flags get appended to OUR command and
+    harnessed's Click CLI rejects them outright: `No such option: --session-id`. It bites on restart
+    only, which is why the first launch of a row looks fine. The trailing `--` puts them past
+    harnessed's own option parsing (`launcher._extract_passthrough`), which forwards everything after
+    it to the agent — the process they were meant for. Verified against aoe 1.13.2.
     """
-    return shlex.join(["harnessed", verb, stack, harness, str(project_path)])
+    return shlex.join(["harnessed", verb, stack, harness, str(project_path), "--"])
 
 
 def title_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
