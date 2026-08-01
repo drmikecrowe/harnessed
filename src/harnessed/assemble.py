@@ -24,6 +24,7 @@ from .schema import (
     Recipe,
     Stack,
     load_service,
+    load_stack,
     load_stack_with_recipes,
     validate_container_only_declared,
     validate_init_no_exit,
@@ -48,13 +49,18 @@ class AssembleResult:
 
 
 def compute_recipe_hash(stack_yaml: Path, recipes: list[Recipe]) -> str:
-    """Content hash of a stack's full recipe closure: the stack's own `stack.yaml` plus every
-    file under each recipe's directory (Dockerfile, recipe.yaml, skills/commands/rules trees).
+    """Content hash of a stack's full recipe closure: the stack's own ``stack.yaml``, every file
+    under each recipe directory, and every referenced service directory.
 
-    Stamped as the `harnessed.recipe-hash` label on the derived stack image (see
-    `_build_derived_image`) rather than kept in a side-file manifest, so the hash can never drift
-    from the image it describes — `harnessed build`'s reconciliation pass compares this against
-    `podman inspect`'s label directly.
+    Services are part of the stack's build closure — an edit to a service's Dockerfile or
+    entrypoint must move the hash just as a recipe edit does.  Service names are collected from
+    three sources: ``recipe.servers[].service`` (MCP service refs), ``recipe.services`` (non-MCP
+    sidecars declared by recipes), and the stack's own ``services:`` list.
+
+    Stamped as the ``harnessed.recipe-hash`` label on the derived stack image (see
+    ``_build_derived_image``) rather than kept in a side-file manifest, so the hash can never
+    drift from the image it describes — ``harnessed build``'s reconciliation pass compares this
+    against ``podman inspect``'s label directly.
     """
     digest = hashlib.sha256()
     digest.update(stack_yaml.read_bytes())
@@ -62,6 +68,47 @@ def compute_recipe_hash(stack_yaml: Path, recipes: list[Recipe]) -> str:
         for path in sorted(p for p in recipe.root.rglob("*") if p.is_file()):
             digest.update(str(path.relative_to(recipe.root)).encode())
             digest.update(path.read_bytes())
+
+    # Collect referenced service names from all three sources (mirrors _service_refs in launcher).
+    service_names: list[str] = []
+    for recipe in sorted(recipes, key=lambda r: r.name):
+        for server in recipe.servers:
+            if server.service and server.service not in service_names:
+                service_names.append(server.service)
+        for name in recipe.services:
+            if name not in service_names:
+                service_names.append(name)
+    stack = load_stack(stack_yaml.parent)
+    for name in stack.services:
+        if name not in service_names:
+            service_names.append(name)
+
+    # Locate each service directory. Try catalog roots implied by the recipe roots first (preserves
+    # user-overlay priority), then the root implied by the stack_yaml path.
+    seen_roots: set[Path] = set()
+    catalog_roots: list[Path] = []
+    for recipe in recipes:
+        croot = recipe.root.parent.parent
+        if croot not in seen_roots:
+            catalog_roots.append(croot)
+            seen_roots.add(croot)
+    stack_croot = stack_yaml.parent.parent.parent
+    if stack_croot not in seen_roots:
+        catalog_roots.append(stack_croot)
+
+    for name in sorted(service_names):
+        service_dir: Path | None = None
+        for croot in catalog_roots:
+            cand = croot / "services" / name
+            if cand.is_dir():
+                service_dir = cand
+                break
+        if service_dir is None:
+            continue
+        for path in sorted(p for p in service_dir.rglob("*") if p.is_file()):
+            digest.update(str(path.relative_to(service_dir)).encode())
+            digest.update(path.read_bytes())
+
     return digest.hexdigest()
 
 
