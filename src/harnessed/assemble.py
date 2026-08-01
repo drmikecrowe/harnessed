@@ -18,7 +18,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import emit, staleness
+from . import emit, paths, staleness
 from .schema import (
     McpServer,
     Recipe,
@@ -83,31 +83,43 @@ def compute_recipe_hash(stack_yaml: Path, recipes: list[Recipe]) -> str:
         if name not in service_names:
             service_names.append(name)
 
-    # Locate each service directory. Try catalog roots implied by the recipe roots first (preserves
-    # user-overlay priority), then the root implied by the stack_yaml path.
+    # Locate each service directory.  Build the search list the same way the runtime does:
+    # paths.catalog_roots() first (user overlay wins on a name clash, matching runtime resolution),
+    # then any roots inferred from recipe/stack paths that are not already present (handles
+    # isolated test roots and non-standard layouts).
     seen_roots: set[Path] = set()
-    catalog_roots: list[Path] = []
+    service_catalog_roots: list[Path] = []
+    for croot in paths.catalog_roots():
+        if croot not in seen_roots:
+            service_catalog_roots.append(croot)
+            seen_roots.add(croot)
     for recipe in recipes:
         croot = recipe.root.parent.parent
         if croot not in seen_roots:
-            catalog_roots.append(croot)
+            service_catalog_roots.append(croot)
             seen_roots.add(croot)
     stack_croot = stack_yaml.parent.parent.parent
     if stack_croot not in seen_roots:
-        catalog_roots.append(stack_croot)
+        service_catalog_roots.append(stack_croot)
 
     for name in sorted(service_names):
         service_dir: Path | None = None
-        for croot in catalog_roots:
+        for croot in service_catalog_roots:
             cand = croot / "services" / name
             if cand.is_dir():
                 service_dir = cand
                 break
         if service_dir is None:
             continue
+        # Length-prefix each field to avoid hash collisions from ambiguous concatenation
+        # (file "a/b" with content "c" must not collide with file "a" with content "bc").
         for path in sorted(p for p in service_dir.rglob("*") if p.is_file()):
-            digest.update(str(path.relative_to(service_dir)).encode())
-            digest.update(path.read_bytes())
+            rel = str(path.relative_to(service_dir)).encode()
+            content = path.read_bytes()
+            digest.update(len(rel).to_bytes(4, "big"))
+            digest.update(rel)
+            digest.update(len(content).to_bytes(8, "big"))
+            digest.update(content)
 
     return digest.hexdigest()
 

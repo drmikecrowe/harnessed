@@ -43,9 +43,9 @@ def _write_service(root: Path, name: str, *, entrypoint: str = "#!/bin/sh\nexec 
     svc_dir = root / "services" / name
     svc_dir.mkdir(parents=True)
     (svc_dir / "service.yaml").write_text(
-        f"name: {name}\nimage: {name}:latest\nport: 9000\n"
+        f"name: {name}\nimage: {name}:1.0.0\nport: 9000\n"
     )
-    (svc_dir / "Dockerfile").write_text(f"FROM scratch\nCOPY entrypoint.sh /\n")
+    (svc_dir / "Dockerfile").write_text("FROM scratch\nCOPY entrypoint.sh /\n")
     (svc_dir / "entrypoint.sh").write_text(entrypoint)
     return svc_dir
 
@@ -128,6 +128,25 @@ class TestComputeRecipeHash:
 
         # Should not raise, just skip the missing service
         compute_recipe_hash(stack_yaml, [recipe])
+
+    def test_user_overlay_service_edit_moves_hash(self, tmp_path, monkeypatch):
+        """Editing a service in the user overlay must move the hash even when the shipped service
+        with the same name is unchanged.  The user overlay wins on a name clash, so the hash
+        must be derived from the overlay copy, not the repo copy (harnessed-p0t overlay path)."""
+        user_root = tmp_path / "user"
+        repo_root = tmp_path / "repo"
+        recipe = _write_recipe(repo_root, "r1")
+        _write_service(repo_root, "svc1")          # shipped service (must NOT win)
+        overlay_svc = _write_service(user_root, "svc1")  # user overlay (must win)
+        stack_yaml = _write_stack(repo_root, "s1", recipes=["r1"], services=["svc1"]) / "stack.yaml"
+
+        monkeypatch.setattr(paths, "catalog_roots", lambda: [user_root, repo_root])
+
+        before = compute_recipe_hash(stack_yaml, [recipe])
+
+        (overlay_svc / "entrypoint.sh").write_text("#!/bin/sh\nexec serve --overlay-changed\n")
+
+        assert compute_recipe_hash(stack_yaml, [recipe]) != before
 
 
 class TestListCatalogStacks:
