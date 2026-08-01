@@ -71,7 +71,13 @@ class Recorder:
         return [tuple(a[:2]) for a in self.calls]
 
     def added(self) -> list[list[str]]:
+        """Every `add` issued. One registration issues TWO: a `--tool`-labelled attempt and, because
+        aoe rejects a `--tool` it cannot resolve on the invoking PATH, a plain retry behind it."""
         return [a for a in self.calls if a[0] == "add"]
+
+    def registrations(self) -> list[list[str]]:
+        """One entry per registration — the labelled attempt, which carries every other flag too."""
+        return [a for a in self.added() if "--tool" in a]
 
     def removed(self) -> list[str]:
         return [a[1] for a in self.calls if a[0] == "remove"]
@@ -125,7 +131,7 @@ class TestSyncSession:
     def test_registers_profile_group_and_session(self, rec, tmp_path):
         aoe.sync_session("launch", "serena", "claude", tmp_path)
         assert ("group", "create") in rec.verbs()
-        [add] = rec.added()
+        [add] = rec.registrations()
         assert add[1] == str(tmp_path)
         assert _flag(add, "-p") == aoe.PROFILE
         assert _flag(add, "--cmd-override") == f"harnessed launch serena claude {tmp_path} --"
@@ -158,7 +164,7 @@ class TestSyncSession:
         # for `--no-cockpit`, which is not an aoe flag and lost every registration.
         aoe.sync_session("launch", "serena", "claude", tmp_path)
         flags = {a for a in rec.added()[0] if a.startswith("-")}
-        assert flags <= {"-p", "-g", "-t", "--cmd-override"}
+        assert flags <= {"-p", "-g", "-t", "--cmd-override", "--tool"}
 
     def test_terminal_view_is_left_to_the_default(self, rec, tmp_path):
         # `aoe add` defaults to the raw tmux/PTY view, which is the one we need: the structured
@@ -174,6 +180,57 @@ class TestSyncSession:
     def test_title_carries_folder_harness_and_stack(self, rec, tmp_path):
         aoe.sync_session("launch", "serena", "omp", tmp_path)
         assert _flag(rec.added()[0], "-t") == f"{tmp_path.name} [omp/container] serena"
+
+
+class TestToolLabel:
+    """Which agent aoe thinks the row runs — it decides which resume flags a restart appends.
+
+    `--cmd-override` leaves the recorded tool at aoe's default (`claude`), so an unlabelled omp row
+    got claude's `--resume <uuid>` appended on restart. `command_for`'s trailing `--` then forwarded
+    it to the omp binary, which rejects a claude conversation id and dies; aoe respawns and loops.
+    """
+
+    def test_row_is_labelled_with_its_harness(self, rec, tmp_path):
+        aoe.sync_session("launch", "serena", "omp", tmp_path)
+        assert _flag(rec.registrations()[0], "--tool") == "omp"
+
+    def test_claude_rows_are_labelled_too(self, rec, tmp_path):
+        # Same value aoe would have defaulted to, stated rather than left to the default.
+        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        assert _flag(rec.registrations()[0], "--tool") == "claude"
+
+    def test_a_plain_add_follows_the_labelled_one(self, rec, tmp_path):
+        # aoe resolves `--tool` against the invoking PATH and adds NOTHING when it cannot — which is
+        # the norm for a harness that lives in the pod. The retry keeps that from costing the row.
+        aoe.sync_session("launch", "serena", "omp", tmp_path)
+        labelled, plain = rec.added()
+        assert labelled == [*plain, "--tool", "omp"]
+
+    def test_the_retry_is_identical_apart_from_the_label(self, rec, tmp_path):
+        # Same title and path is what makes aoe refuse it as a duplicate at exit 0 when the labelled
+        # add won. Diverge on either and the retry would add a SECOND row.
+        aoe.sync_session("launch", "serena", "omp", tmp_path)
+        labelled, plain = rec.added()
+        assert _flag(plain, "-t") == _flag(labelled, "-t")
+        assert plain[1] == labelled[1]
+
+    def test_a_rejected_label_does_not_fail_a_blocking_register(self, monkeypatch, tmp_path):
+        # `--create-aoe-only` reports its exit status to the user. A `--tool` aoe would not resolve
+        # is an expected outcome, not the failure that flag is there to surface.
+        rec = Recorder()
+        rec.install(monkeypatch)
+        monkeypatch.setattr(
+            aoe, "_run", lambda exe, args, **k: _fail() if "--tool" in args else rec.run(exe, args)
+        )
+        assert aoe.sync_session("launch", "serena", "omp", tmp_path, background=False) is True
+
+    def test_a_failed_plain_add_still_fails_a_blocking_register(self, monkeypatch, tmp_path):
+        rec = Recorder()
+        rec.install(monkeypatch)
+        monkeypatch.setattr(
+            aoe, "_run", lambda exe, args, **k: _fail() if args[0] == "add" else rec.run(exe, args)
+        )
+        assert aoe.sync_session("launch", "serena", "omp", tmp_path, background=False) is False
 
 
 class TestTitleUniqueness:
@@ -203,7 +260,7 @@ class TestTitleUniqueness:
         rec = Recorder().install(monkeypatch)
         aoe.sync_session("launch", "serena", "claude", tmp_path)
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
-        titles = [_flag(a, "-t") for a in rec.added()]
+        titles = [_flag(a, "-t") for a in rec.registrations()]
         assert len(titles) == 2 and len(set(titles)) == 2, titles
 
 
@@ -224,13 +281,13 @@ class TestIdentity:
         rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
         rec.install(monkeypatch)
         aoe.sync_session("launch", "serena", "omp", tmp_path)
-        assert len(rec.added()) == 1
+        assert len(rec.registrations()) == 1
 
     def test_host_and_container_verbs_do_not_collide(self, monkeypatch, tmp_path):
         rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
         rec.install(monkeypatch)
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
-        assert len(rec.added()) == 1
+        assert len(rec.registrations()) == 1
 
     def test_same_stack_in_another_folder_is_a_second_session(self, monkeypatch, tmp_path):
         other = tmp_path / "other"
@@ -238,7 +295,7 @@ class TestIdentity:
         rec = Recorder(sessions=self._existing(tmp_path, f"harnessed launch serena claude {tmp_path} --"))
         rec.install(monkeypatch)
         aoe.sync_session("launch", "serena", "claude", other)
-        assert len(rec.added()) == 1
+        assert len(rec.registrations()) == 1
 
 
 class TestGroup:
@@ -329,13 +386,13 @@ class TestWriteDispatch:
         # session are written. Asserted explicitly, because the expected batch below depends on it.
         assert aoe._has_profile("/usr/bin/aoe") is True
         aoe.sync_session("launch", "serena", "claude", tmp_path)
-        assert [a[0] for a in rec.spawned] == ["group", "add"]
+        assert [a[0] for a in rec.spawned] == ["group", "add", "add"]
 
     def test_a_missing_profile_is_created_in_the_same_batch(self, monkeypatch, tmp_path):
         # Ordering matters: the profile must exist before the group, the group before the session.
         rec = Recorder(profiles=PROFILE_LIST_EMPTY).install(monkeypatch)
         aoe.sync_session("launch", "serena", "claude", tmp_path)
-        assert [a[0] for a in rec.spawned] == ["profile", "group", "add"]
+        assert [a[0] for a in rec.spawned] == ["profile", "group", "add", "add"]
 
     def test_writes_are_sequenced_with_semicolons_not_and(self, monkeypatch):
         # `aoe profile create` / `group create` exit 1 when the thing ALREADY EXISTS, and the reads
@@ -360,7 +417,7 @@ class TestWriteDispatch:
         rec = Recorder().install(monkeypatch)
         aoe.sync_session("launch", "serena", "claude", tmp_path, background=False)
         assert rec.spawned == []
-        assert [a[0] for a in rec.added()] == ["add"]
+        assert [a[0] for a in rec.added()] == ["add", "add"]
 
     def test_blocking_mode_reports_a_failed_write(self, monkeypatch, tmp_path):
         rec = Recorder().install(monkeypatch)

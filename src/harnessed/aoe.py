@@ -17,7 +17,9 @@ view, so we pass NOTHING for it — an explicit opt-out flag would be an unknown
 PASS ONLY FLAGS `aoe add` ACCEPTS. It is a clap CLI: an unrecognised flag is not ignored, it exits 2
 before adding anything. On the background path that is invisible — the detached writer dies and the
 dashboard just stays empty. Verified against aoe 1.13.2; `--no-cockpit` was such a flag, and it
-silently cost every registration until `--create-aoe-only` surfaced it.
+silently cost every registration until `--create-aoe-only` surfaced it. The one deliberate exception
+is `--tool`, whose VALUE aoe validates and may reject; it is issued with a plain retry behind it so a
+rejection costs the label rather than the row. See `sync_session`.
 
 Session identity is (project path, stack, harness) — NOT (project path, stack). A stack has a
 separately assembled profile per harness (`profiles/<stack>/<harness>/`), so the claude and omp
@@ -127,13 +129,21 @@ def _spawn(exe: str, batch: list[list[str]]) -> bool:
         return False
 
 
-def _apply(exe: str, batch: list[list[str]], *, background: bool) -> bool:
-    """Execute a write batch, detached or blocking. True when every write is believed to have run."""
+def _apply(
+    exe: str, batch: list[list[str]], *, background: bool, optional: frozenset[int] = frozenset()
+) -> bool:
+    """Execute a write batch, detached or blocking. True when every write is believed to have run.
+
+    `optional` holds indices whose non-zero exit is an expected outcome rather than a failure, so a
+    blocking caller does not report an error for one. Used for the tool-labelled `add`, which aoe
+    rejects whenever it does not recognise the agent and which is always followed by a plain retry.
+    The detached path needs no equivalent: `_spawn` joins with `;`, which is already tolerant.
+    """
     if background:
         return _spawn(exe, batch)
-    for args in batch:
+    for i, args in enumerate(batch):
         result = _run(exe, args, timeout=_WRITE_TIMEOUT)
-        if result is None or result.returncode != 0:
+        if result is None or (result.returncode != 0 and i not in optional):
             return False
     return True
 
@@ -154,6 +164,10 @@ def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
     only, which is why the first launch of a row looks fine. The trailing `--` puts them past
     harnessed's own option parsing (`launcher._extract_passthrough`), which forwards everything after
     it to the agent — the process they were meant for. Verified against aoe 1.13.2.
+
+    Half of a pair: this delivers the flags to the agent, and the `--tool` label in `sync_session`
+    decides WHICH agent's flags aoe generates. Without that label they are always claude's, and
+    forwarding them to a non-claude agent kills the pane on every restart.
     """
     return shlex.join(["harnessed", verb, stack, harness, str(project_path), "--"])
 
@@ -261,7 +275,7 @@ def sync_session(
         group = _group_for(project_path)
         if not _has_group(exe, group):
             batch.append(["group", "create", group, "-p", PROFILE])
-        batch.append([
+        add = [
             "add", str(project_path),
             "-p", PROFILE,
             "-g", group,
@@ -276,8 +290,27 @@ def sync_session(
             # the one we need — `--structured-view` would drive the agent over ACP, which cannot
             # reach through a `podman exec` attach. There is no flag to request the default, and an
             # invented one (`--no-cockpit`) exits 2 and loses the whole registration.
-        ])
-        return _apply(exe, batch, background=background)
+        ]
+        # WHICH AGENT THIS ROW RUNS, attempted then retried without. `--cmd-override` sets the
+        # command but leaves the recorded tool at aoe's default, `claude` — so an omp row was stored
+        # as a claude one, and `auto_resume_on_restart` appended CLAUDE's resume flags to it on every
+        # restart. Since `command_for` terminates our command with `--`, those flags sail past
+        # harnessed's own parser and land on the omp binary, which rejects a claude conversation id
+        # outright: `Error: Session "<uuid>" not found.` The pane dies, aoe respawns it, and it loops.
+        # `--tool` makes aoe generate the flags of the agent that is actually there.
+        #
+        # THE RETRY IS LOAD-BEARING. aoe validates `--tool` against its built-in agent list AND the
+        # invoking process's PATH — `'codex' is not installed or not on $PATH` exits non-zero and
+        # adds NOTHING, silently on the detached path. That gate is the HOST's, but a container
+        # harness lives in the pod, and even a host-installed one can be missed: omp resolves through
+        # a mise install dir that is on the user's shell PATH and not on a daemon's. Asking aoe is no
+        # cheaper than trying: `aoe agents` is ~1.35s, a hundred times the other reads, and it answers
+        # for the wrong PATH anyway. So attempt the labelled add and follow it with the plain one,
+        # which aoe refuses as a duplicate title+path at exit 0 WITHOUT touching the stored tool when
+        # the first won, and which registers the row as before when it did not. Verified, aoe 1.13.2.
+        batch.append([*add, "--tool", harness])
+        batch.append(add)
+        return _apply(exe, batch, background=background, optional=frozenset({len(batch) - 2}))
     except Exception:  # noqa: BLE001 — an optional dashboard must never break a launch.
         return False
 
