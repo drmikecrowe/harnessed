@@ -359,6 +359,13 @@ stack is the point, and those files are not subject to the replace-on-refresh ha
    which addresses the "permanently logged out" failure mode of the original design; the underlying
    race remains. Migrate with `claude setup-token`.
 
+**`host-run` applies the same order.** Without a token it symlinks the per-stack `.credentials.json`
+at the host `CLAUDE_CONFIG_DIR`'s (default `~/.claude`; mechanism 1, subject to the replace-on-refresh hazard above — hence the rescue
+that promotes a refreshed token back before the next launch wipes the home). With one configured it
+does neither: no link is made, the rescue is skipped, and a copy an earlier token-free launch left
+behind is removed, so the stale file cannot outlive the switch. The shared `~/.claude` copy is never
+deleted — or, when configured, the shared `CLAUDE_CONFIG_DIR` copy is never deleted — because it is the user's own login, outside any stack.
+
 **omp** stores auth/usage/sessions together in `~/.omp/agent` with no separately-mountable
 credential file, so the launcher **bind-mounts that host dir read-write** and runs plain `omp`
 (never `--profile`, which points omp at an isolated *empty* store — a credential-only seed lands on

@@ -4223,6 +4223,23 @@ def _credentials_are_usable(path: Path) -> bool:
     return bool(oauth.get("expiresAt"))
 
 
+def _host_oauth_token_configured() -> bool:
+    """True when a `CLAUDE_CODE_OAUTH_TOKEN` will reach the host agent, so the credentials file is
+    dead weight and must not be maintained, shared or rescued.
+
+    `os.environ` alone is sufficient HERE, unlike the container path's
+    `_claude_oauth_token_configured` which must also scan `--env-file`s: `_launch_host` applies
+    `_resolve_launch_env` (varlock / `.env`, the host twin of those env-files) to this very process
+    BEFORE calling `_host_launch_plan`, so a token from either route is already visible by the time
+    the credential wiring runs. Keep that ordering if either function moves.
+
+    Empty is NOT configured — `export CLAUDE_CODE_OAUTH_TOKEN=` is how a shell profile turns it off,
+    and reading the bare name as "configured" would retire a load-bearing credential file and log
+    the user out with no way back.
+    """
+    return bool(os.environ.get(_OAUTH_TOKEN_VAR))
+
+
 def _rescue_host_credentials() -> None:
     """Promote the newest refreshed token found in ANY host home into the shared `~/.claude` copy.
 
@@ -4250,6 +4267,11 @@ def _rescue_host_credentials() -> None:
     before the wipe. Self-healing — no exit hook, which matters because `_launch_host` hands the
     process to `os.execvpe` and never regains control.
     """
+    # Under a token nothing reads this file, so promoting a copy is pure downside: the rescue exists
+    # to keep a credential alive, and its worst failure mode is writing a bad candidate over the
+    # user's real login. Skip it rather than run it for a file the harness ignores.
+    if _host_oauth_token_configured():
+        return
     root = paths.host_homes_root()
     if not root.is_dir():
         return
@@ -4301,9 +4323,22 @@ def _share_host_claude_state(home: Path) -> None:
         src = real / name
         src.mkdir(parents=True, exist_ok=True)  # ensure it exists so the symlink resolves
         _relink(home / name, src)
+    # A configured CLAUDE_CODE_OAUTH_TOKEN takes precedence over the credentials file, so linking one
+    # in maintains state nothing reads — while carrying the entire 8px.10 failure mode, because a
+    # refresh replaces the symlink with a regular file and the next launch restores a stale copy.
+    # The container path has refused to mount a credential file under a token since it was added
+    # (`_claude_creds_seed_mount`); this is the host's missing half.
+    #
+    # Retire a copy an earlier no-token launch left behind, or the stale file this gate exists to
+    # eliminate simply outlives the switch. ONLY the per-stack copy: `real` is the user's own login,
+    # outside any stack, and deleting it would log them out of plain `claude` too.
     cred = real / ".credentials.json"
-    if cred.exists():
-        _relink(home / ".credentials.json", cred)  # live token, shared
+    stack_cred = home / ".credentials.json"
+    if _host_oauth_token_configured():
+        if stack_cred.is_symlink() or stack_cred.exists():
+            stack_cred.unlink(missing_ok=True)
+    elif cred.exists():
+        _relink(stack_cred, cred)  # live token, shared
     # .claude.json (account/onboarding) lives NEXT TO the config dir, not inside it: at
     # $CLAUDE_CONFIG_DIR/.claude.json when that's set, else $HOME/.claude.json — NOT ~/.claude/.claude.json.
     env_ccd = os.environ.get("CLAUDE_CONFIG_DIR")
