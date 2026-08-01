@@ -93,7 +93,7 @@ Images are built on the host with `podman build` the first time they're needed:
 
 - **`harnessed-base`**: fat toolchain image (mise, node@24, python, pnpm; no harness CLI).
 - **`harnessed-<harness>-<stack>`**: the derived stack image, built by `harnessed build <stack> <harness>` — FROM `harnessed-base`, then the stack's recipe Dockerfiles concatenated, then **the agent CLI installed last**, then the supply-chain scan.
-- **`harnessed-<agent>`**: FROM `harnessed-base` + the agent CLI (`harnessed-claude`, `harnessed-omp`, …). No longer the derived image's parent — it's the fallback image `harnessed run` uses for a stack with no derived image yet.
+- **`harnessed-<agent>`**: FROM `harnessed-base` + the agent CLI (`harnessed-claude`, `harnessed-omp`, …). No longer the derived image's parent — it's the fallback image a run uses for a stack with no derived image yet.
 
 **Why the agent installs last.** Agent CLI pins churn far faster than recipes. When the agent image was the derived image's `FROM` parent, every agent bump changed the parent's id and so invalidated *every recipe layer of every stack* on that harness. With the agent on top, an agent bump rebuilds only the agent layer and the scan — the expensive recipe layers stay cached. It also makes the recipe layers harness-independent (they hang off `harnessed-base` with identical instructions), so a stack declaring `harnesses: [claude, omp]` builds its recipe layers once and both harnesses share them.
 
@@ -167,8 +167,8 @@ harnessed test time claude
 
 | Command | What it does |
 | --- | --- |
-| `harnessed <stack> <harness> [path] [--fresh]` | Isolated stack on a harness: assembled profile + pod (harness + hatago) |
-| `harnessed host-run <stack> [harness] [path]` | Same stack, host-native — no podman, no container; config isolated per stack, credentials from host |
+| `harnessed container-run <harness> [path] --stack <name> [--fresh]` | Isolated stack on a harness: assembled profile + pod (harness + hatago) |
+| `harnessed host-run <harness> [path] --stack <name>` | Same stack, host-native — no podman, no container; config isolated per stack, credentials from host |
 | `harnessed build [<stack> [<harness>]]` | Build the base/harness/hatago images (+ reconcile declared/built pairs), or assemble + build a stack — for one harness, or for every harness in its `harnesses:` list |
 | `harnessed test <stack> <harness>` | Capability test: launch `--fresh` headless + assert declared capabilities (markdown report) |
 | `harnessed svc up \| down \| list <service>` | Manage shared service sidecars (own image + volume) |
@@ -231,7 +231,7 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 
 - **pnpm everywhere** — every JavaScript install (global, per-recipe, hatago's bundled servers) uses **pnpm**, never `npm`/`npx`; `pnpm dlx` replaces `npx`. A managed supply-chain config applies `minimumReleaseAge` cooldowns and lifecycle-script default-deny. Recipe validation flags raw `npm`/`npx` and points at the pnpm equivalent ([design §7](docs/harnessed-design.md)).
 - **In-image supply-chain scan (advisory)** — the derived image's final layer runs **snyk** (over mise node globals + recipe installs, via a synthesized manifest; token-gated by a build *secret*, warn-skips without one), plus credential-free **osv-scanner** (recipe lockfiles) and **pip-audit** (the Python env). It **reports** a compact severity summary and writes `scan-report.json` — it does **not** fail the build. Rationale: harnessed installs third-party agent tooling whose dependency trees always carry open advisories, so a hard gate would block every build on code you don't control; visibility is the deliverable ([design §7](docs/harnessed-design.md)).
-- **Opt-in secrets** — varlock + 1Password resolve `op://` refs as **env only** (never a profile, image layer, or repo file) — into the pod for `launch`, into the agent process for `host-run`. Copy `.env.schema.example` to `~/.config/harnessed/.env.schema` to turn it on. See **[docs/guides/secrets.md](docs/guides/secrets.md)**.
+- **Opt-in secrets** — varlock + 1Password resolve `op://` refs as **env only** (never a profile, image layer, or repo file) — into the pod for `container-run`, into the agent process for `host-run`. Copy `.env.schema.example` to `~/.config/harnessed/.env.schema` to turn it on. See **[docs/guides/secrets.md](docs/guides/secrets.md)**.
 - **Nightly re-scan** — a systemd user timer re-runs osv-scanner **online** against installed images so a CVE disclosed *after* build still surfaces. See **[troubleshooting](docs/guides/troubleshooting.md#nightly-re-scan-timer-sec-04)** for setup (including the `loginctl enable-linger` prerequisite).
 - **Secrets/auth referenced, never baked** — Claude OAuth, scanner tokens, and 1Password secrets reach the instance as env or read-only mounts; never an image layer.
 
@@ -242,7 +242,7 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 
 - **A/B two memory systems.** Run `claude+hindsight` and `claude+openbrain` as separate stacks side by side; neither touches your host config or the other's state.
 - **Compare harnesses on equal footing.** Point `claude+hindsight` and `omp+hindsight` at the **same** service-scoped memory volume and judge which harness drives it better — same data, different engine.
-- **Clean-room a flaky plugin.** `harnessed <stack> <harness> --fresh` reproduces from zero state, then tears down leaving no residue in `~`.
+- **Clean-room a flaky plugin.** `harnessed container-run <harness> --stack <name> --fresh` reproduces from zero state, then tears down leaving no residue in `~`.
 - **Proof it built right.** Each stack ships a capability test: bring the instance up headless and assert it exposes exactly the MCP servers/skills/commands its manifest declares — rendered as a per-capability markdown report (✓ connected / ✗ missing).
 
 ---

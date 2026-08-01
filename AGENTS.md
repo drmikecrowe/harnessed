@@ -10,7 +10,7 @@ layout, conventions, integrations, testing — see [docs/codebase/](docs/codebas
 `/map-codebase`; ARCHITECTURE/STRUCTURE/CONVENTIONS/INTEGRATIONS/STACK/TESTING/CONCERNS).
 
 > [!IMPORTANT]
-> **Do not run `harnessed <stack> <harness>` yourself.** Launching attaches an interactive shell
+> **Do not run `harnessed container-run` / `harnessed host-run` yourself.** Launching attaches an interactive shell
 > inside a pod — it is for the user. To reason about behavior use `harnessed build`, `harnessed test`,
 > `harnessed list`, or read the source.
 

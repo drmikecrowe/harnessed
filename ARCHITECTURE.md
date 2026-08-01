@@ -95,7 +95,7 @@ Two consequences worth knowing:
 - **stack** — a **harness-free** chosen set of recipes, named after the recipes (e.g.
   `review-harness`, `gsd-core_repowise`; underscores between fields, hyphens within a name; a stack
   may **not** be named after a harness). The harness is **not** a stack property — it is a required
-  positional chosen at run/build time: `harnessed <stack> <harness>`. The same stack runs on any
+  argument chosen at run/build time: `harnessed container-run <harness> --stack <name>`. The same stack runs on any
   harness; claude+it and omp+it are the same stack, materialized into per-harness images/pods.
   A stack may **inherit** from another with `extends: <stack>` (resolved in its own catalog root
   first, then the catalog search path — so an overlay stack can extend one shipped in the repo):
@@ -107,7 +107,7 @@ Two consequences worth knowing:
 - **catalog** — the collection of agents/recipes/services/stacks. Three roots, searched in order:
   the user overlay **`~/.config/harnessed/catalog`** (wins on a name clash), the repo `catalog/`,
   and last the **generated** root `$XDG_DATA_HOME/harnessed/generated/` holding machine-minted stacks
-  (`harnessed run`). Generated is last so it can never shadow a stack you authored, and it is kept
+  (`--recipe`). Generated is last so it can never shadow a stack you authored, and it is kept
   out of the overlay so `harnessed list` can tell authored from generated and a regenerated
   manifest can never clobber a hand edit. It is included only when it exists.
 
@@ -128,7 +128,7 @@ Two consequences worth knowing:
 4. **populate the per-stack volumes** (`_ensure_stack_volumes`): `tools:` and every
    `install.script` run in a container writing to `harnessed-cfg-<harness>-<stack>` (`~/.claude`)
    and `harnessed-tools-<harness>-<stack>` (`~/.local`). Fingerprint-gated, so an unchanged stack
-   pays nothing. `launch` calls the same function, which is what keeps the two paths in step.
+   pays nothing. `container-run` calls the same function, which is what keeps the two paths in step.
 5. scan the populated volumes and merge the installer-written `settings.json` back into the profile.
 
 The volume is **composed**, never layered: podman's copy-up lifts the image's own content in, then
@@ -136,7 +136,7 @@ the fanned profile content goes on top. That is what retired the old copy-the-ba
 pass — with one tree there is nothing left for a mount to shadow (bd harnessed-8px.22, where a
 profile dir mounted over `~/.claude/skills` hid 70 of 75 skills).
 
-`harnessed <stack> <harness>` then launches the pod (derived image if present, else the agent image), starts
+`harnessed container-run <harness> --stack <name>` then launches the pod (derived image if present, else the agent image), starts
 **hatago** as a process *inside* that container (hatago-consolidation), and brings up any referenced
 services (started host-published, idempotently).
 
@@ -144,9 +144,24 @@ services (started host-published, idempotently).
 
 | verb | backend | what it isolates |
 | --- | --- | --- |
-| `harnessed launch <stack> <harness>` | container (podman pod + hatago + services) | the filesystem, the network, **and** the configuration |
-| `harnessed host-run <stack> [harness]` | host-native — no podman, no MCP hub | the **configuration only** |
-| `harnessed run --recipe <r> … <harness>` | container, composed at launch | same as `launch` |
+| `harnessed container-run <harness> [path]` | container (podman pod + hatago + services) | the filesystem, the network, **and** the configuration |
+| `harnessed host-run <harness> [path]` | host-native — no podman, no MCP hub | the **configuration only** |
+
+**The verb picks the BACKEND; a flag picks the STACK.** Both take the same options — `--stack/-s`
+for a stack you authored, `--recipe/-r` (repeatable) to compose one on the fly — and exactly one of
+the two is required:
+
+```bash
+harnessed container-run claude .       --stack gsd-core
+harnessed container-run omp   ~/proj   --recipe superpowers --recipe beads/team
+harnessed host-run      claude .       --recipe superpowers
+```
+
+The stack is named by a flag rather than a leading positional because with the stack in front,
+Typer — which binds positionals by DECLARATION order, not by meaning — could not tell a stack name
+from a project path under `--recipe`. That cost the recipe form a rejects-all-positionals rule, a
+separate `--path` option, and it still let `host-run <stack> --recipe X` silently launch the
+generated stack with the authored name demoted to a path, exit 0.
 
 `host-run` materializes the stack's assembled profile into a per-stack `CLAUDE_CONFIG_DIR`
 (`<stack>/<harness>`, see `paths.host_home`) and execs the harness against your real machine, real
@@ -159,10 +174,11 @@ reason they are separate commands rather than one command with a mode switch —
 `--no-firewall`, `--shell`, `--mount-folder` and `--agent-start-folder` all describe a pod, and a
 host launch has none, so a combined verb could only accept them and do nothing.
 
-`run` is `launch` without a hand-written stack. It normalizes the recipe set, derives a name from
-its CONTENT, mints a `stack.yaml` under the generated catalog root, builds it, and hands off to
-`launch`. Because the name is content-derived, the same recipe set in five repos is one stack — one
-image, one pair of volumes. `--extends` defaults to `default`; `--no-extends` stands alone.
+`--recipe` is how you run without a hand-written stack. It normalizes the recipe set, derives a name
+from its CONTENT, and mints a `stack.yaml` under the generated catalog root — which the container
+backend then builds, and the host backend does not need to (it assembles in-process every launch).
+Because the name is content-derived, the same recipe set in five repos is one stack — one image, one
+pair of volumes. `--extends` defaults to `default`; `--no-extends` stands alone.
 
 A generated stack cannot use `ssh_keys:` — the private-key gate honors that field only from the
 user's own overlay. That is correct rather than unfortunate: `ssh_keys` is per-stack and a generated
@@ -173,7 +189,7 @@ identity comes from the forwarded agent plus your own `~/.ssh/config` (bd harnes
 
 ```toml
 [tasks.start-harness]
-run = "harnessed run --recipe superpowers --recipe serena claude"
+run = "harnessed container-run claude --recipe superpowers --recipe serena"
 ```
 
 No env var, no discovery, no precedence rules — and the trust question answers itself, because
@@ -189,7 +205,7 @@ Agent of Empires (`aoe`) is a tmux session coordinator some users run in front o
 dedicated `harnessed` aoe profile: a group per git repo, a session per launch. `src/harnessed/aoe.py`
 is the whole bridge; `HARNESSED_NO_AOE=1` turns it off.
 
-**Register-only, one-way.** harnessed still owns the process — `launch` ends in an `os.execvp` that
+**Register-only, one-way.** harnessed still owns the process — `container-run` ends in an `os.execvp` that
 hands your terminal to the agent. The row is a bookmark that can be started or attached from the
 dashboard later; aoe never drives harnessed. Sessions stay in aoe's terminal (raw tmux/PTY) view,
 which is what `aoe add` already defaults to — the structured view's ACP transport cannot reach
@@ -225,10 +241,10 @@ aoe:
 *whether* to write run inline, and the writes are fired into a `start_new_session` child that
 outlives the `execvp`. A dashboard is not worth twelve seconds of a launch.
 
-`--create-aoe-only` is the exception: on `launch`, `run` and `host-run` it registers the session and
+`--create-aoe-only` is the exception: on `container-run` and `host-run` it registers the session and
 exits without launching. There registering *is* the command, so it blocks, prints what it wrote, and
 exits non-zero if it could not. `run --create-aoe-only` still mints and builds — the row replays
-`harnessed launch`, which hard-errors without an assembled profile, so skipping the build would
+`container-run`, which hard-errors without an assembled profile, so skipping the build would
 create a row that is dead on arrival.
 
 ## Folder-env contract
