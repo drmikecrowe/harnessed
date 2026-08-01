@@ -1,7 +1,7 @@
 # mikes-universal-setup
 
 A personal baseline: 5 rules (coding stance, tool preferences, confirmation gates, token economy)
-plus 11 generic utility skills — 5 vendored in-tree and 6 fetched at build time from pinned
+plus 12 generic utility skills — 5 vendored in-tree and 7 fetched at build time from pinned
 upstreams. Serves as the worked example of what a personal "how I want my agent to behave" recipe
 looks like.
 
@@ -18,6 +18,7 @@ byte-identical to upstream despite being long believed original.
 | --- | --- | --- | --- |
 | `application-security`, `mermaid-diagrams`, `mise`, `python-uv`, `skill-management` | [oakoss/agent-skills](https://github.com/oakoss/agent-skills) | MIT *(frontmatter only — see below)* | **fetched at build**, pinned SHA — not vendored |
 | `humanizer` | [blader/humanizer](https://github.com/blader/humanizer) | MIT | byte-identical at `1b48564` — **fetched at build**, pinned SHA — not vendored |
+| `simple-english` | [AminBlg/SimpleEnglish](https://github.com/AminBlg/SimpleEnglish) | MIT *(repo LICENSE file)* | unmodified at `379728b5` — **fetched at build**, pinned SHA — not vendored |
 | `map-codebase` | [open-gsd/gsd-core](https://github.com/open-gsd/gsd-core) | MIT | derived, then decoupled + modified — stays vendored |
 | `tdd` | **origin unresolved** (not mattpocock — matches no upstream commit) | — | treated as authored-here |
 | `defuddle` | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) | MIT | derived + locally modified (stronger trigger) — vendored **with LICENSE + PROVENANCE.md** |
@@ -25,7 +26,9 @@ byte-identical to upstream despite being long believed original.
 
 The oakoss five and `humanizer` were verified byte-for-byte against their upstreams (oakoss at
 `0283bed3` — `SKILL.md` + every `references/` file; humanizer at `1b48564`). Unmodified third-party
-work, so they are fetched, not vendored — see below.
+work, so they are fetched, not vendored — see below. `simple-english` was added the same way on
+2026-08-01 (`AminBlg/SimpleEnglish@379728b5`): a directory-skill taken unmodified, only
+`skills/simple-english/` copied — the repo's `evals/`, `prompts/`, and `examples/` are not installed.
 
 **Removed 2026-07-23** (unused or unattributable): `create-skill`, `handoff`, `security-review`
 (GSD-derived, not needed here), and `code-optimizer`, `frontend-design` (provenance never
@@ -39,7 +42,7 @@ again, it is a regression — replace it, do not fetch from it.
 
 ### How the fetched skills are installed — and why it's a bridge (bd harnessed-197)
 
-The six unmodified third-party skills are **not** vendored. `install.sh` fetches them at build time
+The seven unmodified third-party skills are **not** vendored. `install.sh` fetches them at build time
 (both container build and host launch) from GitHub archives pinned to **commit SHAs**, and installs
 them into `$HARNESSED_CONFIG_DIR/skills/`. `expect.skills` makes the capability test verify they
 landed.

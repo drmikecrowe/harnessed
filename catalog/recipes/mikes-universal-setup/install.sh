@@ -19,8 +19,9 @@ set -euo pipefail
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 
 # Pinned sources — commit SHAs, never tags (a tag moves; gsd-build is why).
-OAKOSS_SHA=0283bed313563d5677a0838f4bf921b03296cf6c   # oakoss/agent-skills — 5 dir-skills
-BLADER_SHA=1b48564898e999219882660237fde01bf4843a0f   # blader/humanizer   — 1 single-file skill
+OAKOSS_SHA=0283bed313563d5677a0838f4bf921b03296cf6c   # oakoss/agent-skills     — 5 dir-skills
+BLADER_SHA=1b48564898e999219882660237fde01bf4843a0f   # blader/humanizer        — 1 single-file skill
+AMINBLG_SHA=379728b51981b6d2ee1de0f201164483a9648972  # AminBlg/SimpleEnglish   — 1 dir-skill
 
 fetch() {  # $1=owner/repo  $2=sha  $3=dest → leaves the archive's <repo>-<sha>/ root inside $3
     mkdir -p "$3"
@@ -35,14 +36,16 @@ cache="${HARNESSED_INSTALL_CACHE:-}"
 if [ -n "$cache" ]; then
     if [ ! -d "$cache" ]; then
         tmp="${cache}.partial.$$"; rm -rf "$tmp"; mkdir -p "$tmp"
-        fetch oakoss/agent-skills "$OAKOSS_SHA" "$tmp/oakoss"
-        fetch blader/humanizer    "$BLADER_SHA" "$tmp/blader"
+        fetch oakoss/agent-skills   "$OAKOSS_SHA"  "$tmp/oakoss"
+        fetch blader/humanizer      "$BLADER_SHA"  "$tmp/blader"
+        fetch AminBlg/SimpleEnglish "$AMINBLG_SHA" "$tmp/aminblg"
         mv "$tmp" "$cache"
     fi
 else
     cache="$(mktemp -d)"; trap 'rm -rf "$cache"' EXIT
-    fetch oakoss/agent-skills "$OAKOSS_SHA" "$cache/oakoss"
-    fetch blader/humanizer    "$BLADER_SHA" "$cache/blader"
+    fetch oakoss/agent-skills   "$OAKOSS_SHA"  "$cache/oakoss"
+    fetch blader/humanizer      "$BLADER_SHA"  "$cache/blader"
+    fetch AminBlg/SimpleEnglish "$AMINBLG_SHA" "$cache/aminblg"
 fi
 
 mkdir -p "$HARNESSED_CONFIG_DIR/skills"
@@ -62,3 +65,9 @@ rm -rf "$HARNESSED_CONFIG_DIR/skills/humanizer"
 mkdir -p "$HARNESSED_CONFIG_DIR/skills/humanizer"
 cp -L "$hum/SKILL.md" "$HARNESSED_CONFIG_DIR/skills/humanizer/SKILL.md"
 test -f "$HARNESSED_CONFIG_DIR/skills/humanizer/SKILL.md"
+
+# AminBlg/SimpleEnglish: a directory-skill at skills/simple-english/ (SKILL.md + references/).
+ste="$cache/aminblg/SimpleEnglish-${AMINBLG_SHA}/skills/simple-english"
+rm -rf "$HARNESSED_CONFIG_DIR/skills/simple-english"
+cp -rL "$ste" "$HARNESSED_CONFIG_DIR/skills/simple-english"
+test -f "$HARNESSED_CONFIG_DIR/skills/simple-english/SKILL.md"
