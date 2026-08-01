@@ -7,7 +7,7 @@ description: Test-driven development with red-green-refactor loop. Use when user
 
 ## Philosophy
 
-**Core principle**: Tests must verify behavior through public interfaces, not implementation details. Code can change entirely; the tests must not change.
+**Core principle**: Tests must verify behavior through public interfaces, not implementation details. Internal implementation can change entirely; tests for unchanged public behavior must not change.
 
 **Good tests** are integration-style: they exercise real code paths through public APIs. They describe _what_ the system does, not _how_ it does it. A good test reads like a specification - "user can checkout with valid cart" tells you exactly what capability exists. These tests survive refactors because they do not care about internal structure.
 

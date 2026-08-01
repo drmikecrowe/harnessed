@@ -58,8 +58,8 @@ only shape shipped.
 Two consequences worth knowing:
 
 - **Agents reach the server over a unix socket**, not a port. The socket lives inside the
-  bind-mounted `.beads/`, so it is a filesystem object every container already sees. TCP cannot work
-  across containers: `127.0.0.1` means something different in each network namespace, so
+  bind-mounted `.beads/`, so it is a filesystem object every container already sees. Container-local
+  TCP cannot reach it: `127.0.0.1` means something different in each network namespace, so
   a client cannot reach another container's server, whatever port bd records. The launcher exports
   the path as `$HARNESSED_BEADS_SERVER_SOCKET`.
 - **Git sync runs on the host, not in the agent.** `bd dolt push` shells out to the `dolt` CLI, which

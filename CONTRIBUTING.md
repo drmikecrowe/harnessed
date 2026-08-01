@@ -27,7 +27,7 @@ For the whole picture — how git resolves hooks, and why worktrees share one ho
 
 **Do not set `core.hooksPath`.** Set locally *or* globally, it makes the repo's own `.git/hooks` be
 ignored entirely — which is how tools silently disable each other. (`bd init` sets a local one. In
-harnessed, beads is **container-only**, so nothing must set it on your host. If something
+harnessed, beads is **container-only**, so nothing should be setting it on your host. If something
 did: `git config --unset core.hooksPath`, adding `--global` if needed.)
 
 ## `catalog/` is a published artifact

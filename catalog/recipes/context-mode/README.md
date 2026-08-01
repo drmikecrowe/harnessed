@@ -1,7 +1,7 @@
 # context-mode
 
-Per-session token discipline. Large tool output is run in a sandbox. Only the *derived answer*
-enters the conversation, not the raw dump ("think in code"). Raw `Bash`/`Read`/`Grep`/
+Per-session token discipline. Tool calls that return large output run in a sandbox. Only the
+*derived answer* enters the conversation, not the raw output ("think in code"). Raw `Bash`/`Read`/`Grep`/
 `WebFetch` calls are routed through `ctx_*` tools instead. Session state is snapshotted to a
 local SQLite DB so the model can resume after a compaction.
 
