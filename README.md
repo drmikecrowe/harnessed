@@ -51,7 +51,7 @@ support is pending, see the runtime table above) and **[uv](https://docs.astral.
 to install the CLI.
 
 **Recommended — the checked-in installer.** [`install.sh`](install.sh) detects podman + uv (it never
-installs podman for you — that's privileged and distro-specific), then installs the CLI from a
+installs podman for you — that is privileged and distro-specific), then installs the CLI from a
 **pinned git tag**:
 
 ```bash
