@@ -5304,6 +5304,10 @@ def host_run(
         [], "--service",
         help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
     ),
+    path_opt: Optional[str] = typer.Option(
+        None, "--path",
+        help="Project directory for the --recipe form, where positionals are not accepted.",
+    ),
 ) -> None:
     """Run a stack HOST-NATIVELY — no podman, no container.
 
@@ -5323,21 +5327,20 @@ def host_run(
     Two forms:
 
     * `host-run <stack> [harness] [path]`  — authored stack.yaml, existing behaviour.
-    * `host-run --recipe r1 --recipe r2 [path]` — compose a recipe set on the fly, like `run` does
-      for the container backend. The set is content-named and a stack.yaml is minted under the
+    * `host-run --recipe r1 --recipe r2 [--path DIR]` — compose a recipe set on the fly, like `run`
+      does for the container backend. The set is content-named and a stack.yaml is minted under the
       generated catalog root. No image build: `_launch_host` assembles in-process on every launch.
+
+    POSITIONALS ARE REJECTED in the recipe form, which is why `--path` exists. Typer binds
+    positionals by DECLARATION order, not by meaning, so with `--recipe` a lone `~/proj` is
+    indistinguishable from a stack name — both are just "the first positional". An earlier attempt
+    reinterpreted that slot as the path whenever `path` was empty, and it silently swallowed the two
+    invocations it most needed to catch: `host-run my-stack --recipe serena` bypassed the
+    exclusivity check entirely and launched the GENERATED stack with the authored name demoted to a
+    project path, and `host-run --recipe serena my-stack claude` discarded `my-stack` outright. Both
+    exited 0. The ambiguity is irreducible with positionals, so the grammar refuses them instead.
     """
     has_recipes = bool(recipe)
-
-    # With --recipe the stack slot is unused, but Typer still binds the FIRST positional to it — so
-    # `host-run --recipe serena ~/proj` lands the path in `stack` and would trip the XOR check below
-    # with a message about a stack the user never typed. Shift it back to `path`, which is the only
-    # positional that means anything in this form (the harness is pinned to claude on the host
-    # path). Guarded on `path` being empty so an over-specified invocation still errors rather than
-    # silently discarding an argument.
-    if has_recipes and stack is not None and path is None:
-        stack, path = None, stack
-
     has_stack = stack is not None
 
     if has_stack and has_recipes:
@@ -5351,6 +5354,21 @@ def host_run(
             "[bold red]error:[/bold red] provide a stack argument or at least one --recipe flag"
         )
         raise typer.Exit(1)
+
+    # `harness` has a default, so it is only "given" when it differs from it — good enough here
+    # because the host path accepts exactly one harness anyway (_HOST_HARNESS).
+    if has_recipes and (harness != _HOST_HARNESS or path is not None):
+        _err.print(
+            "[bold red]error:[/bold red] positional arguments are not accepted with --recipe; "
+            "use --path for the project directory"
+        )
+        raise typer.Exit(1)
+
+    if path_opt is not None:
+        if path is not None:
+            _err.print("[bold red]error:[/bold red] give the project directory once, not twice")
+            raise typer.Exit(1)
+        path = path_opt
 
     if has_recipes:
         base = None if no_extends else extends

@@ -1,6 +1,7 @@
 """`harnessed host-run` — accept a recipe set (--recipe) without authoring a stack.yaml (harnessed-cta)."""
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
 from harnessed import launcher
@@ -12,15 +13,24 @@ class TestHostRunRecipeXOR:
     """stack XOR --recipe: exactly one must be given."""
 
     def test_stack_and_recipe_are_mutually_exclusive(self, monkeypatch, tmp_path):
+        """Must fail on the EXCLUSIVITY check, not incidentally. _launch_host is stubbed so a
+        nonzero exit cannot come from it rejecting 'my-stack' as a missing project directory, and
+        the message is asserted so the test cannot pass for an unrelated reason."""
+        launched: list = []
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
-        result = runner.invoke(
-            launcher.app, ["host-run", "my-stack", "--recipe", "serena"]
+        monkeypatch.setattr(
+            launcher, "_launch_host", lambda *a, **k: launched.append(a)
         )
+        result = runner.invoke(launcher.app, ["host-run", "my-stack", "--recipe", "serena"])
         assert result.exit_code != 0
+        assert "not both" in result.output
+        assert launched == [], "nothing may be launched when the invocation is rejected"
+        assert not list(tmp_path.glob("stacks/*/stack.yaml")), "nothing may be minted either"
 
     def test_neither_stack_nor_recipe_is_an_error(self):
         result = runner.invoke(launcher.app, ["host-run"])
         assert result.exit_code != 0
+        assert "at least one --recipe" in result.output
 
     def test_stack_alone_still_works(self, monkeypatch):
         """Existing authored-stack path is unchanged."""
@@ -109,10 +119,9 @@ class TestHostRunRecipeMinting:
             "a different --service must produce a different stack name"
         )
 
-    def test_a_project_path_can_be_given_alongside_recipes(self, monkeypatch, tmp_path):
-        """`host-run --recipe serena ~/proj` is what a user naturally types. Typer binds that first
-        positional to the `stack` slot, so without the shift it trips the XOR check and reports a
-        stack the user never typed — the project path would be unreachable in the recipe form."""
+    def test_a_project_path_is_given_with_the_path_option(self, monkeypatch, tmp_path):
+        """`--path` exists because positionals are ambiguous here: Typer binds by declaration order,
+        so under --recipe a lone `~/proj` and a stack name are the same token."""
         captured: dict = {}
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         monkeypatch.setattr(
@@ -121,19 +130,52 @@ class TestHostRunRecipeMinting:
                 stack=stack, path=path
             ),
         )
-        result = runner.invoke(launcher.app, ["host-run", "--recipe", "serena", "/tmp/proj"])
+        result = runner.invoke(
+            launcher.app, ["host-run", "--recipe", "serena", "--path", "/tmp/proj"]
+        )
         assert result.exit_code == 0, result.output
         assert captured == {"stack": "default.serena", "path": "/tmp/proj"}
 
-    def test_the_shift_does_not_swallow_an_over_specified_invocation(self, monkeypatch, tmp_path):
-        """The shift is guarded on `path` being empty. With both slots filled there is no coherent
-        reading, so it must error rather than silently drop one."""
+    @pytest.mark.parametrize("extra", [
+        ["/tmp/proj"],              # meant as a path — indistinguishable from a stack name
+        ["claude"],                 # a VALID harness: the case the old shift silently swallowed
+        ["some-stack", "claude"],
+        ["some-stack", "claude", "/tmp/proj"],
+    ])
+    def test_positionals_are_rejected_with_recipes(self, monkeypatch, tmp_path, extra):
+        """Every positional shape must be refused rather than reinterpreted. The `claude` case is
+        the one that matters most: the previous shift fired whenever `path` was empty, so it demoted
+        `some-stack` to a project path and exited 0."""
+        launched: list = []
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
-        monkeypatch.setattr(launcher, "_launch_host", lambda *a, **k: None)
+        monkeypatch.setattr(launcher, "_launch_host", lambda *a, **k: launched.append(a))
+        result = runner.invoke(launcher.app, ["host-run", "--recipe", "serena", *extra])
+        assert result.exit_code != 0, result.output
+        assert launched == [], "an ambiguous invocation must not launch anything"
+
+    def test_a_stack_positional_before_recipe_flags_still_trips_exclusivity(
+        self, monkeypatch, tmp_path
+    ):
+        """Regression for the exact bypass CodeRabbit caught: `host-run <stack> --recipe X` exited 0
+        and launched the GENERATED stack, with the authored name demoted to a project path."""
+        launched: list = []
+        monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+        monkeypatch.setattr(launcher, "_launch_host", lambda *a, **k: launched.append(a))
         result = runner.invoke(
-            launcher.app, ["host-run", "--recipe", "serena", "some-stack", "/tmp/proj"]
+            launcher.app, ["host-run", "my-authored-stack", "--recipe", "serena"]
         )
         assert result.exit_code != 0
+        assert launched == []
+
+    def test_path_option_and_positional_path_together_is_an_error(self, monkeypatch):
+        """Authored form accepts both spellings; giving the directory twice has no sane reading."""
+        monkeypatch.setattr(launcher, "_launch_host", lambda *a, **k: None)
+        result = runner.invoke(
+            launcher.app,
+            ["host-run", "my-stack", "claude", "/tmp/a", "--path", "/tmp/b"],
+        )
+        assert result.exit_code != 0
+        assert "once, not twice" in result.output
 
     def test_mint_error_surfaces_as_nonzero_exit(self, monkeypatch, tmp_path):
         """An invalid recipe name that derive_name / mint rejects → clean error, not a traceback."""
