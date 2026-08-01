@@ -45,7 +45,7 @@ class TestInstallShim:
         assert shim.exists()
         assert shim.stat().st_mode & 0o111  # executable
         # Absolute path baked in — NOT a bare `harnessed`.
-        assert "exec /opt/bin/harnessed claude_time \"$@\"" in content
+        assert "exec /opt/bin/harnessed container-run \"$@\" --stack claude_time" in content
         assert "exec harnessed " not in content
 
     def test_falls_back_to_running_binary_when_not_on_path(self, monkeypatch, tmp_path):
@@ -57,7 +57,7 @@ class TestInstallShim:
         launcher.install_stack("claude_time")
 
         content = (home / ".local" / "bin" / "claude_time").read_text()
-        assert "/dev/venv/bin/harnessed claude_time" in content
+        assert '/dev/venv/bin/harnessed container-run "$@" --stack claude_time' in content
 
     def test_unknown_stack_exits_nonzero_and_writes_no_shim(self, monkeypatch, tmp_path):
         _stub_catalog(monkeypatch, tmp_path, exists=False)

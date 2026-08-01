@@ -65,22 +65,21 @@ def catalog(tmp_path, monkeypatch):
 
 
 class TestCommandIsReachableFromArgv:
-    """`harnessed <token>` prepends `launch` unless <token> is a KNOWN subcommand, and that set is
-    hand-maintained. A command missing from it is invisible to the real binary while every
-    CliRunner test still passes — the CLI parses `harnessed update --check` as
-    `harnessed launch update --check` and dies on an unknown option. Found exactly that way."""
+    """`harnessed update` must reach the update command, not be reinterpreted on the way.
 
-    def test_update_is_a_known_subcommand(self):
-        assert "update" in launcher._COMMANDS
+    It once could not: `main()` prepended `launch` to any leading token outside a hand-maintained
+    `_COMMANDS` set, so the real binary parsed `harnessed update --check` as `harnessed launch
+    update --check` and died on an unknown option — while every CliRunner test, which invokes `app`
+    directly, still passed. That whole mechanism is gone (the stack is named by `--stack` now), so
+    this asserts the property rather than the bookkeeping that used to protect it.
+    """
 
-    def test_every_registered_command_is_in_the_argv_allowlist(self):
-        """The general guard, so the NEXT command cannot land with the same hole."""
-        registered = {c.name for c in launcher.app.registered_commands if c.name}
-        missing = registered - launcher._COMMANDS
-        assert not missing, (
-            f"commands {sorted(missing)} are registered with typer but absent from _COMMANDS, so "
-            "`harnessed <name>` would be parsed as a stack name and routed to launch"
-        )
+    def test_argv_reaches_the_command_unrewritten(self, monkeypatch):
+        seen: list = []
+        monkeypatch.setattr(launcher, "app", lambda: seen.append(list(launcher.sys.argv)))
+        monkeypatch.setattr(launcher.sys, "argv", ["harnessed", "update", "--check"])
+        launcher.main()
+        assert seen == [["harnessed", "update", "--check"]]
 
 
 class TestCheckMode:

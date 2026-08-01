@@ -67,6 +67,11 @@ _WRITE_TIMEOUT = 120
 # `• name (3 sessions)` — aoe renders groups as a bullet list with no --json equivalent.
 _GROUP_LINE = re.compile(r"^\s*[•*-]\s+(\S+)\s+\(")
 
+# How the recorded command names its stack. Both run verbs take `--stack`, never a positional, so
+# the stack sits at a keyword rather than a fixed index — `command_for` writes it and
+# `forget_stack` reads it back, and they must not drift.
+_STACK_FLAG = ["--stack"]
+
 
 def _bin() -> str | None:
     """Path to a usable `aoe`, or None when the integration must stay silent.
@@ -142,9 +147,9 @@ def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
     """The harnessed invocation recorded on the session — both the identity key and what aoe runs.
 
     Always the RESOLVED stack name and an absolute path, never the user's original argv. A dynamic
-    stack is minted into the generated catalog root before this is called, so `harnessed launch
+    stack is minted into the generated catalog root before this is called, so `--stack
     <derived-name>` replays it exactly and keeps one canonical form for every verb that reaches
-    here.
+    here — a row records the same shape whether the user typed `--stack` or a `--recipe` set.
 
     TERMINATED WITH `--`, which is not cosmetic. aoe's `auto_resume_on_restart` appends the recorded
     tool's resume flags to this string when a stopped session is restarted — for `tool = claude`,
@@ -155,7 +160,9 @@ def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
     harnessed's own option parsing (`launcher._extract_passthrough`), which forwards everything after
     it to the agent — the process they were meant for. Verified against aoe 1.13.2.
     """
-    return shlex.join(["harnessed", verb, stack, harness, str(project_path), "--"])
+    return shlex.join(
+        ["harnessed", verb, harness, str(project_path), *_STACK_FLAG, stack, "--"]
+    )
 
 
 def title_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
@@ -288,19 +295,26 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
     Scoped to ONE verb because `harnessed rm` is container-scoped: it removes every container
     instance of a stack across harnesses and projects, and leaves host-native sessions — which own
     no container — alone. Removing by session id, not title, so a user-renamed row still matches.
+
+    Matched on the `--stack <name>` PAIR rather than a token index. The stack used to be the third
+    token, which a prefix compare could check; it is now a flag value that sits after the harness
+    and path, so its position varies with whether a project path was recorded.
     """
     try:
         exe = _bin()
         if exe is None:
             return
-        prefix = ["harnessed", verb, stack]
         batch: list[list[str]] = []
         for session in _sessions(exe):
             try:
                 tokens = shlex.split(session.get("command") or "")
             except ValueError:
                 continue
-            if tokens[:3] != prefix:
+            if tokens[:2] != ["harnessed", verb]:
+                continue
+            if not any(
+                a == _STACK_FLAG[0] and b == stack for a, b in zip(tokens, tokens[1:])
+            ):
                 continue
             sid = session.get("id")
             if sid:
