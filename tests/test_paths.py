@@ -64,6 +64,34 @@ class TestInstanceName:
         b = paths.instance_name("stack-b", "claude", "/home/user/proj")
         assert a != b
 
+
+class TestContainerHostname:
+    """Podman derives the hostname from the pod name; crun rejects one past HOST_NAME_MAX (64)."""
+
+    # The exact name that failed: a content-derived stack pushed the pod to 69 chars, and every
+    # launch died with `crun: sethostname: Invalid argument` before the harness container started.
+    OVERLONG = "harnessed-omp-default.beads-team.serena.superpowers-f6eb0941-59258991"
+
+    def test_the_regression_name_fits(self):
+        assert len(self.OVERLONG) == 69
+        assert len(paths.container_hostname(self.OVERLONG)) == 64
+
+    def test_short_names_pass_through_unchanged(self):
+        name = paths.instance_name("serena", "claude", "/home/user/proj")
+        assert paths.container_hostname(name) == name
+
+    def test_keeps_the_head_and_the_whole_project_hash(self):
+        # Both ends carry the identifying information; the minted stack name in the middle does not.
+        out = paths.container_hostname(self.OVERLONG)
+        assert out.startswith("harnessed-omp-")
+        assert out.endswith("-59258991")
+
+    def test_never_ends_on_a_separator(self):
+        # A cut landing on `-` or `.` would leave an invalid label.
+        for pad in range(40):
+            out = paths.container_hostname(f"harnessed-omp-{'a.b-' * 20}{'c' * pad}-59258991")
+            assert len(out) <= 64 and not out.endswith(("-", ".")), out
+
     def test_trailing_slash_stripped(self):
         a = paths.instance_name("stack", "claude", "/home/user/project")
         b = paths.instance_name("stack", "claude", "/home/user/project/")
