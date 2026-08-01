@@ -113,6 +113,11 @@ def compute_recipe_hash(stack_yaml: Path, recipes: list[Recipe]) -> str:
             continue
         # Length-prefix each field to avoid hash collisions from ambiguous concatenation
         # (file "a/b" with content "c" must not collide with file "a" with content "bc").
+        # The service NAME is framed in too: the file paths below are relative to service_dir, so
+        # without it two same-content services are indistinguishable and a rename moves nothing.
+        svc_name = name.encode()
+        digest.update(len(svc_name).to_bytes(4, "big"))
+        digest.update(svc_name)
         for path in sorted(p for p in service_dir.rglob("*") if p.is_file()):
             rel = str(path.relative_to(service_dir)).encode()
             content = path.read_bytes()
