@@ -5388,7 +5388,7 @@ def _resolve_stack(
         name, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
     except ValueError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     return name, None if preexisting else stack_dir
 
 
@@ -5462,10 +5462,22 @@ def host_run(
     every launch.
     """
     _require_supported_harness(harness)
-    stack_name, _minted = _resolve_stack(stack, recipe, extends, no_extends, service)
-    _launch_host(
-        stack_name, harness, path, rm=rm, extra=_passthrough, create_aoe_only=create_aoe_only
-    )
+    stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
+    try:
+        _launch_host(
+            stack_name, harness, path, rm=rm, extra=_passthrough, create_aoe_only=create_aoe_only
+        )
+    except Exception:
+        # Same ownership rule as `container_run`: a manifest THIS invocation minted is ours to
+        # remove when the launch never gets off the ground. Host mode has no build to fail, but
+        # `_launch_host` assembles in-process and a SchemaError/CollisionError from a bad recipe
+        # set lands here — leaving an orphan that `harnessed list` shows and no GC reclaims, since
+        # volume-gc keys on volumes and a stack that never launched owns none. A PRE-EXISTING
+        # manifest (minted_dir is None) is left alone; it may be a working stack that today's
+        # recipe edit merely broke. Never reached on success: `_launch_host` ends in os.execvp.
+        if minted_dir is not None:
+            shutil.rmtree(minted_dir, ignore_errors=True)
+        raise
 
 
 @app.command("container-run")
@@ -6511,12 +6523,14 @@ def install_stack(
     bin_dir = Path.home() / ".local" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     shim = bin_dir / stack
-    # `--stack` goes AFTER "$@" so the user's own args lead: `<stack> claude .` reaches
-    # `harnessed container-run claude . --stack <stack>`. The stack can no longer be a bare leading
-    # token — that slot is the harness now — so the shim names it with the flag.
+    # `--stack` goes BEFORE "$@", and the ordering is load-bearing. The stack can no longer be a
+    # bare leading token — that slot is the harness — so the shim names it with the flag; but put
+    # the flag last and a passthrough invocation swallows it. `mystack claude . -- --resume` would
+    # expand to `… claude . -- --resume --stack mystack`, and `_extract_passthrough` splits at the
+    # FIRST `--`, sending `--stack mystack` to the agent and leaving the CLI with no stack at all.
     shim.write_text(
         "#!/usr/bin/env bash\n"
-        f"exec {shlex.quote(harnessed_bin)} container-run \"$@\" --stack {shlex.quote(stack)}\n",
+        f"exec {shlex.quote(harnessed_bin)} container-run --stack {shlex.quote(stack)} \"$@\"\n",
         encoding="utf-8",
     )
     shim.chmod(shim.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)

@@ -143,6 +143,36 @@ class TestHostRunRecipeMinting:
         assert result.exit_code == 0, result.output
         assert captured == {"stack": "default.serena", "path": str(proj)}
 
+    def test_a_failed_launch_removes_a_manifest_this_run_minted(self, monkeypatch, tmp_path):
+        """Same ownership rule as the container backend, which had it and this one did not.
+
+        Host mode has no build to fail, but `_launch_host` assembles in-process, so a bad recipe
+        set raises here instead. The orphan it would leave behind shows up in `harnessed list` and
+        no GC reclaims it — volume-gc keys on volumes, and a stack that never launched owns none.
+        """
+        monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+
+        def boom(*_a, **_k):
+            raise RuntimeError("assembly failed")
+
+        monkeypatch.setattr(launcher, "_launch_host", boom)
+        runner.invoke(launcher.app, ["host-run", "claude", "--recipe", "serena"])
+        assert not (tmp_path / "stacks" / "default.serena").exists()
+
+    def test_a_failed_launch_keeps_a_preexisting_manifest(self, monkeypatch, tmp_path):
+        """Deleting an already-working stack because today's launch broke is collateral damage."""
+        monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+        monkeypatch.setattr(launcher, "_launch_host", lambda *a, **k: None)
+        runner.invoke(launcher.app, ["host-run", "claude", "--recipe", "serena"])  # mints it
+        assert (tmp_path / "stacks" / "default.serena" / "stack.yaml").is_file(), "setup failed"
+
+        def boom(*_a, **_k):
+            raise RuntimeError("assembly failed")
+
+        monkeypatch.setattr(launcher, "_launch_host", boom)
+        runner.invoke(launcher.app, ["host-run", "claude", "--recipe", "serena"])
+        assert (tmp_path / "stacks" / "default.serena" / "stack.yaml").is_file()
+
     def test_mint_error_surfaces_as_nonzero_exit(self, monkeypatch, tmp_path):
         """An invalid recipe name that derive_name / mint rejects → clean error, not a traceback."""
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)

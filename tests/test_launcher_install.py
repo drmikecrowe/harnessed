@@ -45,7 +45,7 @@ class TestInstallShim:
         assert shim.exists()
         assert shim.stat().st_mode & 0o111  # executable
         # Absolute path baked in — NOT a bare `harnessed`.
-        assert "exec /opt/bin/harnessed container-run \"$@\" --stack claude_time" in content
+        assert 'exec /opt/bin/harnessed container-run --stack claude_time "$@"' in content
         assert "exec harnessed " not in content
 
     def test_falls_back_to_running_binary_when_not_on_path(self, monkeypatch, tmp_path):
@@ -57,7 +57,29 @@ class TestInstallShim:
         launcher.install_stack("claude_time")
 
         content = (home / ".local" / "bin" / "claude_time").read_text()
-        assert '/dev/venv/bin/harnessed container-run "$@" --stack claude_time' in content
+        assert '/dev/venv/bin/harnessed container-run --stack claude_time "$@"' in content
+
+    def test_stack_flag_precedes_user_args_so_passthrough_survives(self, monkeypatch, tmp_path):
+        """`--stack` must come BEFORE `"$@"`, and the ordering is load-bearing.
+
+        Put it last and a passthrough invocation swallows it: `mystack claude . -- --resume`
+        expands to `… claude . -- --resume --stack mystack`, and `_extract_passthrough` splits at
+        the FIRST `--` — so `--stack mystack` is handed to the AGENT and the CLI is left with no
+        stack, failing with "provide --stack or at least one --recipe".
+        """
+        _stub_catalog(monkeypatch, tmp_path, exists=True)
+        home = _home_in(monkeypatch, tmp_path)
+        monkeypatch.setattr(launcher.shutil, "which", lambda _: "/opt/bin/harnessed")
+        launcher.install_stack("claude_time")
+        content = (home / ".local" / "bin" / "claude_time").read_text()
+
+        assert content.index("--stack") < content.index('"$@"'), content
+
+        # And prove it end-to-end through the real splitter, with the args the shim would produce.
+        shim_argv = ["container-run", "--stack", "claude_time", "claude", ".", "--", "--resume"]
+        head = launcher._extract_passthrough(shim_argv)
+        assert "--stack" in head, "the stack must reach the CLI, not the agent"
+        assert launcher._passthrough == ["--resume"]
 
     def test_unknown_stack_exits_nonzero_and_writes_no_shim(self, monkeypatch, tmp_path):
         _stub_catalog(monkeypatch, tmp_path, exists=False)
