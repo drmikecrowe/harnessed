@@ -67,7 +67,7 @@ Use Beads for:
 - blockers and dependencies
 - discovered follow-up work
 - work that must survive thread reset, compaction, or handoff
-- status that another person or agent should be able to resume
+- status that another person or agent can resume
 
 Use agent-local planning tools only for the current turn's execution checklist. Do not treat them as shared project state.
 

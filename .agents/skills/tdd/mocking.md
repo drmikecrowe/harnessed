@@ -7,7 +7,7 @@ Mock at **system boundaries** only:
 - Time/randomness
 - File system (sometimes)
 
-Don't mock:
+Do not mock:
 
 - Your own classes/modules
 - Internal collaborators
