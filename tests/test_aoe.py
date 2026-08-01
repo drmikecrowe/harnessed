@@ -152,10 +152,20 @@ class TestSyncSession:
         aoe.sync_session("launch", "serena", "claude", tmp_path)
         assert ("group", "create") not in rec.verbs()
 
-    def test_pty_mode_is_forced(self, rec, tmp_path):
-        # Cockpit's ACP transport cannot reach through the `podman exec` attach `launch` ends in.
+    def test_add_passes_only_flags_aoe_accepts(self, rec, tmp_path):
+        # `aoe add` is a clap CLI: an unknown flag exits 2 before adding anything, and on the
+        # detached write path that is invisible — the dashboard just stays empty. Regression cover
+        # for `--no-cockpit`, which is not an aoe flag and lost every registration.
         aoe.sync_session("launch", "serena", "claude", tmp_path)
-        assert "--no-cockpit" in rec.added()[0]
+        flags = {a for a in rec.added()[0] if a.startswith("-")}
+        assert flags <= {"-p", "-g", "-t", "--cmd-override"}
+
+    def test_terminal_view_is_left_to_the_default(self, rec, tmp_path):
+        # `aoe add` defaults to the raw tmux/PTY view, which is the one we need: the structured
+        # view's ACP transport cannot reach through the `podman exec` attach `launch` ends in.
+        aoe.sync_session("launch", "serena", "claude", tmp_path)
+        assert "--structured-view" not in rec.added()[0]
+        assert "--agent" not in rec.added()[0]
 
     def test_default_stack_is_skipped(self, rec, tmp_path):
         aoe.sync_session("launch", "default", "claude", tmp_path)
