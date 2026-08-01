@@ -5,7 +5,7 @@ under `catalog/<kind>/`, so a `recipes: [gbrain]` in a stack will not find `reci
 — it fails as an unknown recipe. They are also excluded from the wheel (`pyproject.toml`
 `exclude-package-data`), so an installed `harnessed` carries none of them.
 
-This is deliberate: a recipe nobody has verified should not be one `recipes:` line away from
+This is deliberate: a recipe nobody has verified must not be one `recipes:` line away from
 running in someone's agent.
 
 ## Trade-off: parked means unlinted
@@ -32,7 +32,7 @@ statically, so parking them would delete coverage rather than quarantine risk.
 PR #130 parked all three on `main` while this epic was in flight, and merging `main` in here
 deliberately reverts that for these three only — `gbrain`/`headroom`/`hindsight` stay parked, as
 both branches agreed. This is a deferral, not a disagreement about their fitness: the moment the
-migration epic lands, `ROOT_ONLY` and `CONTENT_RECIPES` should be repointed and the three parked for
+migration epic lands, `ROOT_ONLY` and `CONTENT_RECIPES` must be repointed and the three parked for
 real. Do that as its own change, so the test edits are a decision rather than merge fallout.
 
 ## Promoting one back

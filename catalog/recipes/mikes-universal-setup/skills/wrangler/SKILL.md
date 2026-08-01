@@ -25,13 +25,13 @@ Check if Wrangler is installed by running:
 wrangler --version  # Requires v4.x+
 ```
 
-If Wrangler is not installed, you should install it by running:
+If Wrangler is not installed, install it by running:
 
 ```bash
 npm install -D wrangler@latest
 ```
 
-Wherever possible, you should use Wrangler instead of manually constructing API requests.
+Use Wrangler wherever possible instead of manually constructing API requests.
 
 ## Key Guidelines
 

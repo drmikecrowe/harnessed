@@ -8,7 +8,7 @@ repo-blind. Open `src/` only with a specific question the docs did not answer, o
 
 | Question | Read |
 | --- | --- |
-| What do *agent / recipe / service / stack / catalog* mean? How does build/launch work? | **[ARCHITECTURE.md](ARCHITECTURE.md) — first, always.** The vocabulary is precise; the words are not interchangeable. |
+| What do *agent / recipe / service / stack / catalog* mean? How does build/launch work? | **[ARCHITECTURE.md](ARCHITECTURE.md) — first, always.** The vocabulary is precise. The words are not interchangeable. |
 | Where does code live? What calls what? | [docs/codebase/](docs/codebase/) — STRUCTURE, ARCHITECTURE, INTEGRATIONS |
 | How is code written? What is tested or known-weak? | [docs/codebase/](docs/codebase/) — CONVENTIONS, TESTING, CONCERNS |
 | How do I author a recipe/service/stack? Set up a dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
@@ -17,9 +17,9 @@ repo-blind. Open `src/` only with a specific question the docs did not answer, o
 | What work is open or decided? | `bd list`, `bd show <id>` — never a markdown TODO |
 
 - **`docs/codebase/` is generated** (`/map-codebase`) and reproduces stale claims across
-  regenerations. Code wins on conflict — fix the map, re-running won't.
+  regenerations. Code wins on conflict — fix the map. Re-running does not fix it.
 - **`docs/` is the GitHub wiki** — separate repo (`harnessed.wiki.git`), gitignored, and present
-  only at `main/docs/`; task worktrees do not have it. Read the exemption below before editing it.
+  only at `main/docs/`. Task worktrees do not have it. Read the exemption below before editing it.
 
 Keep layout and vocabulary in ARCHITECTURE.md, not here.
 
@@ -30,9 +30,9 @@ Keep layout and vocabulary in ARCHITECTURE.md, not here.
 - **Claude format is canonical.** Every other agent adapts out of the same `.claude/` profile.
 - **Recipes are harness-independent** — no `harnesses:` field. Branch on `${HARNESS}` inside the
   recipe Dockerfile.
-- **pnpm, never raw `npm`/`npx`** (`pnpm dlx` replaces `npx`); the lint rejects them. Sole exception:
+- **pnpm, never raw `npm`/`npx`** (`pnpm dlx` replaces `npx`). The lint rejects them. Sole exception:
   `npm install -g npm@<pin>` in the base image. **`uvx`** for light Python MCP servers.
-- **Pin every download** — no `@latest`/`--branch main`; the build rejects them.
+- **Pin every download** — no `@latest`/`--branch main`. The build rejects them.
 - **Credentials referenced, never replicated.** Never bake, commit, copy, seed, or snapshot into a
   per-stack home. Reference the live store (mount, symlink, token/broker URL). A symlink counts only
   while the harness rewrites **in place** — one that replaces the file turns the link into a stale
@@ -43,7 +43,7 @@ Keep layout and vocabulary in ARCHITECTURE.md, not here.
   clash). Profiles generate to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
 - **`catalog/` ships inside the wheel** (`src/harnessed/catalog` symlink + package-data), so — see
   ARCHITECTURE.md §harnessed home:
-  1. **Nothing host-local in `catalog/`** — setuptools follows symlinks; overlay links live in
+  1. **Nothing host-local in `catalog/`** — setuptools follows symlinks. Overlay links live in
      `catalog-local/`.
   2. **Never key build/assembly off the CWD.** Anchor to `paths.harnessed_home()`.
 
@@ -58,16 +58,16 @@ Covers code, catalog, config, and all repo-tracked Markdown (`ARCHITECTURE.md`, 
 ### Exemption: `docs/` (the wiki)
 
 `harnessed.wiki.git` is a different repo with no PR or CI surface. Wiki changes therefore use no
-branches, no tests, and no PR — don't try. Pushing its default branch publishes the live pages
+branches, no tests, and no PR — do not try. Pushing its default branch publishes the live pages
 immediately and irreversibly, so instead:
 
-1. Edit in place in `main/docs/` (task worktrees don't have it).
+1. Edit in place in `main/docs/` (task worktrees do not have it).
 2. Read the **whole** diff first, including files you didn't write — credentials, private paths,
    internal names, unreleased plans. This replaces the PR review.
 3. Get explicit confirmation to push. Missing "yes" = no.
 4. Commit signed, then `git -C docs push`.
 
-Repo and wiki are separate deliveries; a PR never carries wiki edits. Say which half landed where.
+Repo and wiki are separate deliveries. A PR never carries wiki edits. Say which half landed where.
 
 ### Stand in `main/`
 
@@ -76,7 +76,7 @@ Bare + worktrees: `.bare/` is the git dir, `main/` the canonical checkout, tasks
 
 - **Start and end each session in `main/`.** Work in a task worktree; read, verify, and come to rest
   in `main/`. Never carry an unrelated change into an inherited worktree.
-- **Never conclude "file X doesn't exist" from a worktree.** Gitignored content isn't populated
+- **Never conclude "file X does not exist" from a worktree.** Gitignored content is not populated
   there — notably `docs/`, which exists only in `main/`. An empty `ls`/`fd` means "ignored here", not
   "missing". Confirm against `main/`, `git ls-tree`, and `.gitignore`.
 
@@ -88,7 +88,7 @@ tools/run-tests.sh tests/test_schema.py   # one file
 tools/run-tests.sh -k install -x          # filter, stop on first failure
 ```
 
-Run the script; don't hand-compose `mise`/`uv`/`pytest`. It handles worktree setup, is idempotent,
+Run the script. Do not hand-compose `mise`/`uv`/`pytest`. It handles worktree setup, is idempotent,
 and absorbs three traps that fail locally while CI stays green. Record the baseline count before your
 change — a drop is a regression even if your new tests pass.
 

@@ -21,7 +21,7 @@ only skips *global* client registration (`~/.claude/settings.json`), and `--no-c
 `--no-codex`/`--no-distill-hook` each gate exactly one specific file, none of them the MCP configs.
 Leave the stray files in place and you get repowise registered twice — once correctly through hatago,
 once more directly through the file it wrote — and the two copies can silently diverge (e.g. one has
-a working embedder, the other degrades to mock vectors, because they don't necessarily start with the
+a working embedder, the other degrades to mock vectors, because they do not necessarily start with the
 same environment). Restart the agent after running the command above.
 
 The graph-only tools (`get_overview`, `get_context`, `get_risk`, `get_health`, …) work from that
@@ -52,7 +52,7 @@ per-project opt-in choice — not baked into the recipe by default. Other provid
 
 `--no-claude-md` persists `editor_files.claude_md: false` into `.repowise/config.yaml` — harnessed
 owns `.claude/CLAUDE.md`, so repowise is told never to write or refresh it again, on any later `init`
-or `update`. If you'd rather let repowise own that file's content (its own hotspot/health/architecture
+or `update`. If you want repowise to own that file's content (its own hotspot/health/architecture
 summary, kept current), either re-run `init` without `--no-claude-md`, or set
 `editor_files: {claude_md: true}` directly in `.repowise/config.yaml` and then run
 `repowise generate-claude-md` once (subsequent `repowise update` runs will keep it refreshed).
@@ -65,7 +65,7 @@ conventions, **provided each file follows Nygard/MADR heading structure** (a `Co
 `Decision Outcome`/`Decision Drivers` section under a `#`/`##` heading, optionally with a `status:`
 front-matter field). A record missing recognizable headings is silently skipped unless an LLM
 provider is configured (see above) to catch it via prose-mining instead. If `get_why`/`get_context`
-aren't surfacing your ADRs, check the file headings first before assuming indexing is broken.
+are not surfacing your ADRs, check the file headings first before assuming indexing is broken.
 
 ## Host footprint — what it writes outside harnessed, and how to remove it
 

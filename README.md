@@ -14,14 +14,14 @@
 > | Runtime | Status | Notes |
 > | --- | --- | --- |
 > | **podman** (rootless) | 🧪 **in testing** | The reference runtime (pods). Most complete path — verify your host with `HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py`. |
-> | **Docker** | ⏳ **pending** | A shared-network-namespace path exists (`--network container:`) but is **not yet verified**. Egress firewall needs rootless `NET_ADMIN` (best-effort — `--no-firewall` to skip); shared **service sidecars** aren't wired (no `host.containers.internal`). |
+> | **Docker** | ⏳ **pending** | A shared-network-namespace path exists (`--network container:`) but is **not yet verified**. Egress firewall needs rootless `NET_ADMIN` (best-effort — `--no-firewall` to skip). Shared **service sidecars** are not wired (no `host.containers.internal`). |
 > | **Apple `container`** | ⏳ **pending** | Tracked follow-up. One VM/IP per container, no shared netns — needs a different networking story. |
 >
 > Runtime differences (pod vs shared-netns) are handled inside the host CLI (`src/harnessed/launcher.py`). See [troubleshooting](docs/guides/troubleshooting.md).
 
 You can read my [announcement here](https://mikesshinyobjects.tech/posts/2026/2026-03-20-code-container-isolating-ai-harnesses/)
 
-> Forked from [kevinMEH/code-container](https://github.com/kevinMEH/code-container) and extended significantly for rootless Podman, hardware authentication (YubiKey, 1Password), seamless Claude Code auth, composable harness stacks, and alternative AI providers.
+> Forked from [kevinMEH/code-container](https://github.com/kevinMEH/code-container) and extended for rootless Podman, hardware authentication (YubiKey, 1Password), Claude Code auth, composable harness stacks, and alternative AI providers.
 
 ---
 
@@ -32,7 +32,7 @@ and launch an authenticated instance that exposes **exactly** the skills/command
 services it declares — nothing from the host config — reproducibly, with **podman as the only host
 dependency**.
 
-It's for developers who want to compose and trial harness configurations — different
+It is for developers who want to compose and trial harness configurations — different
 skill/plugin/MCP/memory combinations — in clean, reproducible, throwaway-or-persistent environments
 without dragging every host default into the container or polluting `~`.
 
@@ -51,7 +51,7 @@ support is pending, see the runtime table above) and **[uv](https://docs.astral.
 to install the CLI.
 
 **Recommended — the checked-in installer.** [`install.sh`](install.sh) detects podman + uv (it never
-installs podman for you — that's privileged and distro-specific), then installs the CLI from a
+installs podman for you — that is privileged and distro-specific), then installs the CLI from a
 **pinned git tag**:
 
 ```bash
@@ -78,22 +78,22 @@ git clone https://github.com/drmikecrowe/harnessed.git
 uv tool install ./harnessed          # or: pipx install ./harnessed
 ```
 
-This puts `harnessed` in `~/.local/bin` (ensure it's on your PATH; `uv tool update-shell` sets it up).
-To uninstall: `./install.sh --uninstall` (or `uv tool uninstall harnessed` / `pipx uninstall harnessed`);
-your `~/.config/harnessed` and `$XDG_DATA_HOME/harnessed` data are preserved.
+This puts `harnessed` in `~/.local/bin`. Make sure it is on your PATH; `uv tool update-shell` sets it up.
+To uninstall: `./install.sh --uninstall` (or `uv tool uninstall harnessed` / `pipx uninstall harnessed`).
+Your `~/.config/harnessed` and `$XDG_DATA_HOME/harnessed` data are preserved.
 
 > **Working on the CLI itself?** Use an editable dev env instead — see [CONTRIBUTING.md](CONTRIBUTING.md)
 > (`uv sync --extra dev` + `export PATH="$PWD/.venv/bin:$PATH"`).
-
-> **Linux** — tested on Manjaro; should work on any systemd distro. macOS/WSL untested.
+>
+> **Linux** — tested on Manjaro. It should work on any systemd distro, but this is not tested. macOS/WSL: untested.
 
 ## First-run build
 
-Images are built on the host with `podman build` the first time they're needed:
+Images are built on the host with `podman build` the first time they are needed:
 
 - **`harnessed-base`**: fat toolchain image (mise, node@24, python, pnpm; no harness CLI).
 - **`harnessed-<harness>-<stack>`**: the derived stack image, built by `harnessed build <stack> <harness>` — FROM `harnessed-base`, then the stack's recipe Dockerfiles concatenated, then **the agent CLI installed last**, then the supply-chain scan.
-- **`harnessed-<agent>`**: FROM `harnessed-base` + the agent CLI (`harnessed-claude`, `harnessed-omp`, …). No longer the derived image's parent — it's the fallback image a run uses for a stack with no derived image yet.
+- **`harnessed-<agent>`**: FROM `harnessed-base` + the agent CLI (`harnessed-claude`, `harnessed-omp`, …). No longer the derived image's parent — it is the fallback image a run uses for a stack with no derived image yet.
 
 **Why the agent installs last.** Agent CLI pins churn far faster than recipes. When the agent image was the derived image's `FROM` parent, every agent bump changed the parent's id and so invalidated *every recipe layer of every stack* on that harness. With the agent on top, an agent bump rebuilds only the agent layer and the scan — the expensive recipe layers stay cached. It also makes the recipe layers harness-independent (they hang off `harnessed-base` with identical instructions), so a stack declaring `harnesses: [claude, omp]` builds its recipe layers once and both harnesses share them.
 
@@ -115,7 +115,7 @@ harnessed build <stack> <harness>  # assemble one stack for a harness: emit prof
 
 A bare `harnessed build` rebuilds the shared images once, then builds every stale stack
 **concurrently** (`--jobs`/`-j`). Each build's output is prefixed with its own coloured
-`stack(harness)` tag so the interleaved podman logs stay readable, and one stack failing doesn't
+`stack(harness)` tag so the interleaved podman logs stay readable, and one stack failing does not
 cancel the others — the failures are reported together at the end.
 
 A stack may declare which harnesses it is built for:
@@ -229,8 +229,8 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 
 ## Supply chain & security
 
-- **pnpm everywhere** — every JavaScript install (global, per-recipe, hatago's bundled servers) uses **pnpm**, never `npm`/`npx`; `pnpm dlx` replaces `npx`. A managed supply-chain config applies `minimumReleaseAge` cooldowns and lifecycle-script default-deny. Recipe validation flags raw `npm`/`npx` and points at the pnpm equivalent ([design §7](docs/harnessed-design.md)).
-- **In-image supply-chain scan (advisory)** — the derived image's final layer runs **snyk** (over mise node globals + recipe installs, via a synthesized manifest; token-gated by a build *secret*, warn-skips without one), plus credential-free **osv-scanner** (recipe lockfiles) and **pip-audit** (the Python env). It **reports** a compact severity summary and writes `scan-report.json` — it does **not** fail the build. Rationale: harnessed installs third-party agent tooling whose dependency trees always carry open advisories, so a hard gate would block every build on code you don't control; visibility is the deliverable ([design §7](docs/harnessed-design.md)).
+- **pnpm everywhere** — every JavaScript install (global, per-recipe, hatago's bundled servers) uses **pnpm**, never `npm`/`npx`. `pnpm dlx` replaces `npx`. A managed supply-chain config applies `minimumReleaseAge` cooldowns and lifecycle-script default-deny. Recipe validation flags raw `npm`/`npx` and points at the pnpm equivalent ([design §7](docs/harnessed-design.md)).
+- **In-image supply-chain scan (advisory)** — the derived image's final layer runs **snyk** (over mise node globals + recipe installs, via a synthesized manifest; token-gated by a build *secret*, warn-skips without one), plus credential-free **osv-scanner** (recipe lockfiles) and **pip-audit** (the Python env). It **reports** a compact severity summary and writes `scan-report.json` — it does **not** fail the build. Rationale: harnessed installs third-party agent tooling whose dependency trees always carry open advisories. A hard gate blocks every build on code you do not control. Visibility is the deliverable ([design §7](docs/harnessed-design.md)).
 - **Opt-in secrets** — varlock + 1Password resolve `op://` refs as **env only** (never a profile, image layer, or repo file) — into the pod for `container-run`, into the agent process for `host-run`. Copy `.env.schema.example` to `~/.config/harnessed/.env.schema` to turn it on. See **[docs/guides/secrets.md](docs/guides/secrets.md)**.
 - **Nightly re-scan** — a systemd user timer re-runs osv-scanner **online** against installed images so a CVE disclosed *after* build still surfaces. See **[troubleshooting](docs/guides/troubleshooting.md#nightly-re-scan-timer-sec-04)** for setup (including the `loginctl enable-linger` prerequisite).
 - **Secrets/auth referenced, never baked** — Claude OAuth, scanner tokens, and 1Password secrets reach the instance as env or read-only mounts; never an image layer.
@@ -264,6 +264,6 @@ without the friction of re-authentication or tool switching every session.
 
 **Use [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)** if you need enterprise-grade sandboxing with declarative security policies, a privacy-aware LLM proxy, and Kubernetes orchestration for multi-agent environments.
 
-**Use [Trail of Bits' devcontainer](https://github.com/trailofbits/claude-code-devcontainer)** if you're doing security audits or reviewing untrusted repos — their threat model explicitly accounts for malicious code trying to escape the container.
+**Use [Trail of Bits' devcontainer](https://github.com/trailofbits/claude-code-devcontainer)** if you are doing security audits or reviewing untrusted repos — their threat model explicitly accounts for malicious code trying to escape the container.
 
-**Use Anthropic's official devcontainer** if you're on a team that wants a standardised, VS Code-integrated development environment with Claude Code.
+**Use Anthropic's official devcontainer** if you are on a team that wants a standardised, VS Code-integrated development environment with Claude Code.

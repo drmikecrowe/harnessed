@@ -2,7 +2,7 @@
 
 Before ANY push, PR, or publish: read every file in the diff you did not author yourself.
 Vendored deps, third-party skills, WIP handed to you, files you copied or cloned. No exceptions
-for "it's just markdown" or "user said it's fine" — publishing is irreversible, review is cheap.
+for "it is just markdown" or "user said it is fine" — publishing is irreversible, review is cheap.
 
 A secret scanner catches key-shaped strings only. It cannot see the leaks below. That pass is yours.
 

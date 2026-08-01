@@ -7,7 +7,7 @@
 - One capture, many queries. Pipe expensive commands to `/tmp/` once. Never re-run to filter differently.
 - Subagents for broad exploration. If understanding a subsystem requires reading >3 files, dispatch a scout — return only the compressed finding.
 - Digest, not output. For background processes, use a digest/summary form (~30 tokens) not full output (~2000 tokens).
-- Read existing files before writing; don't re-read after Edit/Write succeeds — the tool would have errored.
+- Read existing files before writing; do not re-read after Edit/Write succeeds — the tool errors on failure.
 - No speculative reads. Do not open files "just in case." Know why you need a file before reading it.
 - Thorough in reasoning, concise in output. Tight narration — one sentence per update, no restating what tool output already says.
 - No sycophantic openers or closing fluff. No emojis or em-dashes.

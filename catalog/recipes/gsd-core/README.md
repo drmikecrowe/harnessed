@@ -3,13 +3,13 @@
 GSD Core — a spec-driven-development suite of skills, agents, and workflows. Installed by running
 its own upstream installer (`@opengsd/gsd-core`), pinned to an exact version.
 
-Ships as skills/agents baked by `install.sh`; no MCP server.
+Ships as skills/agents baked by `install.sh`. No MCP server.
 
 ## Container vs `harnessed host-run`
 
 `install.sh` runs in **both** modes and does the same thing in each — this is a pure content recipe,
-so nothing is skipped host-side. The installer's `--global` flag targets `os.homedir()/.claude`; on a
-host-native launch `install.sh` points a throwaway `$HOME` at the stack's own config dir so "global"
+so nothing is skipped host-side. The installer's `--global` flag targets `os.homedir()/.claude`. On a
+host-native launch, `install.sh` points a throwaway `$HOME` at the stack's own config dir so "global"
 means *this stack*, never your real `~/.claude`.
 
 Requires `pnpm` on PATH host-side (it is the installer's runner). If `pnpm` is missing the install

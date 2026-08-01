@@ -149,7 +149,7 @@ Use the templates in [references/templates.md](references/templates.md).
 - **Always include actual file paths** formatted with backticks: `src/services/user.ts`
 - **Document quality over brevity** — a 200-line CONVENTIONS.md with real code patterns beats a 50-line summary
 - **Show patterns, not just lists** — include HOW things are done with code examples from the actual codebase
-- **Be prescriptive** — "Use camelCase for functions" helps an agent write correct code; "Some functions use camelCase" doesn't
+- **Be prescriptive** — "Use camelCase for functions" helps an agent write correct code; "Some functions use camelCase" does not
 
 ## Step 4 — Summary
 

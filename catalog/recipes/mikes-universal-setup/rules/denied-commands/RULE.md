@@ -14,7 +14,7 @@ prompt you can talk your way past.
 ## The compound-command trap
 
 **The deny matcher inspects every segment of a command.** One denied word kills the whole chain —
-including the segments that would have succeeded.
+including the allowed segments.
 
 - **Never bury a denied binary in a pipe or `&&` chain.** `rg foo | grep -v test` is denied even
   though `rg` is fine. Filter inside `rg` itself.

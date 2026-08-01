@@ -1,16 +1,16 @@
 # harnessed — architecture
 
 The authoritative description of *what lives where* and *what the words mean*. Read this first.
-The deeper "why" is in [docs/harnessed-design.md](docs/harnessed-design.md); how to add things is in
+The deeper "why" is in [docs/harnessed-design.md](docs/harnessed-design.md). For how to add things, see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What harnessed is
 
 A **host Python CLI** that composes and launches containerized AI-coding-harness stacks. It runs on
 the host (installed via pipx/uvx) and drives **podman** directly — there is no tool container and no
-daemon socket. A launched stack is a podman **pod**: the chosen agent container — which also runs the
-**hatago** MCP hub as an in-container process (hatago-consolidation) — plus any referenced service
-sidecars.
+daemon socket. A launched stack is a podman **pod**: the chosen agent container plus any referenced service
+sidecars. The agent container also runs the **hatago** MCP hub as an in-process hub
+(hatago-consolidation).
 
 ## Repository layout
 
@@ -51,8 +51,8 @@ context — is anchored to **harnessed's home**: the directory that contains `ca
 | installed wheel | `site-packages/harnessed/` | shipped inside the wheel |
 
 `src/harnessed/catalog` is a **symlink** to the repo-root `catalog/`. setuptools follows it and
-materializes the catalog as real files inside the wheel, so an installed `harnessed` (uv tool / pipx /
-PyPI) carries its own recipes, agents, services, stacks and base Dockerfiles and needs **no repo on
+materializes the catalog as real files inside the wheel. An installed `harnessed` (uv tool / pipx /
+PyPI) carries its own recipes, agents, services, stacks, and base Dockerfiles. It needs **no repo on
 disk**. `harnessed_home()` resolves *through* that symlink, so home is always a real directory holding
 a real `catalog/` — podman rejects a context symlink that escapes the context. `HARNESSED_DIR`
 overrides it. **Do not delete the `src/harnessed/catalog` symlink** — without it an installed
@@ -62,12 +62,12 @@ Two consequences worth knowing:
 
 - **Nothing host-local may live inside `catalog/`.** It is a published artifact, and setuptools
   follows symlinks. That is why the overlay symlinks sit in `catalog-local/` (not
-  `catalog/<kind>.local`, their pre-move home) — a link to your private
-  `~/.config/harnessed/catalog` parked inside `catalog/` would be packaged into the wheel.
+  `catalog/<kind>.local`, their pre-move home). A link to your private
+  `~/.config/harnessed/catalog` parked inside `catalog/` is packaged into the wheel.
 - **Builds run from a staged context** (`launcher._staged_build_context`): a temp copy of `catalog/`
-  plus your resolved `extra-tools.txt`. Building straight from home would write into site-packages on
-  an installed harnessed, and would ship the entire repo (`.git`, `.venv`, `node_modules`) to podman
-  in a checkout. The Dockerfiles' context-relative `COPY catalog/…` paths are identical either way.
+  plus your resolved `extra-tools.txt`. If you build straight from home, you write into site-packages
+  on an installed harnessed. The same build also ships the entire repo (`.git`, `.venv`,
+  `node_modules`) to podman. The Dockerfiles' context-relative `COPY catalog/…` paths are identical either way.
 
 ## Vocabulary (precise — these are not interchangeable)
 
@@ -97,13 +97,14 @@ Two consequences worth knowing:
   may **not** be named after a harness). The harness is **not** a stack property — it is a required
   argument chosen at run/build time: `harnessed container-run <harness> --stack <name>`. The same stack runs on any
   harness; claude+it and omp+it are the same stack, materialized into per-harness images/pods.
-  A stack may **inherit** from another with `extends: <stack>` (resolved in its own catalog root
-  first, then the catalog search path — so an overlay stack can extend one shipped in the repo):
-  `recipes` / `services` / `harnesses` / `ssh_keys` **union** with the parent's (parent's entries
-  first, then the child's, de-duped), every other field the child declares **overrides**, and any it
-  omits is **inherited**. Chains are allowed; cycles are an error. Unknown stack fields are
-  **rejected** — a stack manifest has no forward-field case, and silently-ignored keys are how an
-  `extends:` written before the feature existed went unnoticed while inheriting nothing.
+  A stack may **inherit** from another with `extends: <stack>`. The field resolves against the
+  stack's own catalog root first, then the catalog search path — so an overlay stack can extend one
+  shipped in the repo. The fields `recipes`, `services`, `harnesses`, and `ssh_keys` **union** with
+  the parent's (parent's entries first, then the child's, de-duped). Every other field the child
+  declares **overrides** the parent's. Any field the child omits is **inherited**. Chains are
+  allowed. Cycles are an error. Unknown stack fields are **rejected** — a stack manifest has no
+  forward-field case. Silently-ignored keys are how an `extends:` written before the feature existed
+  went unnoticed while inheriting nothing.
 - **catalog** — the collection of agents/recipes/services/stacks. Three roots, searched in order:
   the user overlay **`~/.config/harnessed/catalog`** (wins on a name clash), the repo `catalog/`,
   and last the **generated** root `$XDG_DATA_HOME/harnessed/generated/` holding machine-minted stacks
@@ -172,12 +173,12 @@ the second positional: a defaulted harness would make `host-run .` bind `.` as t
 (`<stack>/<harness>`, see `paths.host_home`) and execs the harness against your real machine, real
 project, and real credentials. Configuration isolation *is* the host backend's boundary — which
 skills, rules, commands and hooks are live — so a stack's hooks fire only in that stack rather than
-in every session, the way a global `~/.claude` would.
+in every session, the way a global `~/.claude` does.
 
-The two verbs share no flags but `--rm` (host-side: stop daemons this launch started). That is the
-reason they are separate commands rather than one command with a mode switch — `--fresh`,
-`--no-firewall`, `--shell`, `--mount-folder` and `--agent-start-folder` all describe a pod, and a
-host launch has none, so a combined verb could only accept them and do nothing.
+The two verbs share no flags except `--rm` (host-side: stop daemons this launch started). They are
+separate commands rather than one command with a mode switch. The flags `--fresh`, `--no-firewall`,
+`--shell`, `--mount-folder`, and `--agent-start-folder` all describe a pod. A host launch has none
+of them, so a single combined verb can only accept them and do nothing.
 
 `--recipe` is how you run without a hand-written stack. It normalizes the recipe set, derives a name
 from its CONTENT, and mints a `stack.yaml` under the generated catalog root — which the container
@@ -187,7 +188,7 @@ pair of volumes. `--extends` defaults to `default`; `--no-extends` stands alone.
 
 A generated stack cannot use `ssh_keys:` — the private-key gate honors that field only from the
 user's own overlay. That is correct rather than unfortunate: `ssh_keys` is per-stack and a generated
-stack is shared across repos, so it could never express "the key for *this* repo". Per-repo SSH
+stack is shared across repos, so it cannot express "the key for *this* repo". Per-repo SSH
 identity comes from the forwarded agent plus your own `~/.ssh/config` (bd harnessed-ji6).
 
 **Per-repo binding.** A project records its recipe set as a mise task:
@@ -205,18 +206,17 @@ mise is activated, failing silently and expensively when it is not.
 
 ## Agent of Empires mirror (optional)
 
-Agent of Empires (`aoe`) is a tmux session coordinator some users run in front of their agents. harnessed neither requires nor installs it. When it *is* installed
-(`aoe` on PATH **and** `~/.config/agent-of-empires/` present), every launch mirrors itself into a
-dedicated `harnessed` aoe profile: a group per git repo, a session per launch. `src/harnessed/aoe.py`
-is the whole bridge; `HARNESSED_NO_AOE=1` turns it off.
+Agent of Empires (`aoe`) is a tmux session coordinator some users run in front of their agents. harnessed neither requires nor installs it. When `aoe` is installed (`aoe` on PATH and `~/.config/agent-of-empires/` present), every launch
+mirrors itself into a dedicated `harnessed` aoe profile. The profile has a group per git repo and a
+session per launch. `src/harnessed/aoe.py` is the whole bridge. `HARNESSED_NO_AOE=1` turns it off.
 
 **Register-only, one-way.** harnessed still owns the process — `container-run` ends in an `os.execvp` that
 hands your terminal to the agent. The row is a bookmark that can be started or attached from the
-dashboard later; aoe never drives harnessed. Sessions stay in aoe's terminal (raw tmux/PTY) view,
-which is what `aoe add` already defaults to — the structured view's ACP transport cannot reach
-through the `podman exec -it` attach the container backend ends in. The `add` therefore passes only
-`-p`, `-g`, `-t` and `--cmd-override`: `aoe add` rejects an unknown flag with exit 2 before adding
-anything, and on the detached write path that failure is invisible.
+dashboard later; aoe never drives harnessed. Sessions stay in aoe's terminal (raw tmux/PTY) view. This is what `aoe add` already defaults to —
+the structured view's ACP transport cannot reach through the `podman exec -it` attach that the
+container backend uses. The `add` command therefore passes only `-p`, `-g`, `-t`, and
+`--cmd-override`. `aoe add` rejects an unknown flag with exit 2 before adding anything. On the
+detached write path, that failure is invisible.
 
 | property | value | why |
 | --- | --- | --- |
@@ -227,8 +227,8 @@ anything, and on the detached write path that failure is invisible.
 
 **A row never outlives its launch.** Each backend registers only after its last validation gate —
 `is_built` plus the staleness check for the container path, in-process assembly for the host path.
-Registering earlier would leave a bookmark for a launch that died on a renamed recipe, and that row
-would fail identically every time it was started from the dashboard.
+If registration happens earlier, the row becomes a bookmark for a launch that died on a renamed
+recipe. That row fails identically every time it is started from the dashboard.
 
 Two aoe behaviours the code is shaped around, both verified 2026-08-01 and neither documented by
 aoe:
@@ -248,9 +248,9 @@ outlives the `execvp`. A dashboard is not worth twelve seconds of a launch.
 
 `--create-aoe-only` is the exception: on `container-run` and `host-run` it registers the session and
 exits without launching. There registering *is* the command, so it blocks, prints what it wrote, and
-exits non-zero if it could not. On `container-run` a `--recipe` set is still minted AND built —
-the row replays `container-run`, which hard-errors without an assembled profile, so skipping the
-build would create a row that is dead on arrival. `host-run` needs no build: it assembles
+exits non-zero if registration fails. On `container-run` a `--recipe` set is still minted AND
+built — the row replays `container-run`, which hard-errors without an assembled profile. Skipping
+the build creates a row that is dead on arrival. `host-run` needs no build: it assembles
 in-process on every launch.
 
 ## Folder-env contract
@@ -263,7 +263,7 @@ surface — container and `--host` alike. Single definition: `launcher.harnessed
 | `HARNESS` | The harness being launched (`claude`, `omp`, …). Unprefixed on purpose: it is already the token a recipe Dockerfile branches on (`ARG HARNESS`), so `$HARNESS` in a setup script means the same thing. |
 | `PROJECT_DIR` | The project directory the agent starts in. |
 | `MAIN_REPO_DIR` | The git **common dir** — in a bare + linked-worktree layout that is the bare repo dir, not the default-branch work tree. Falls back to `PROJECT_DIR` outside a repo. |
-| `HARNESSED_GIT_COMMON_DIR` | Same value as `MAIN_REPO_DIR`, under an explicit name. A bare `GIT_COMMON_DIR` is **never** exported: git itself consumes that variable and it would hijack common-dir resolution the moment the agent `cd`s into another repo. |
+| `HARNESSED_GIT_COMMON_DIR` | Same value as `MAIN_REPO_DIR`, under an explicit name. A bare `GIT_COMMON_DIR` is **never** exported: git itself consumes that variable and it hijacks common-dir resolution the moment the agent `cd`s into another repo. |
 | `HOST_WORKSPACE_DIR` / `CONTAINER_WORKSPACE_DIR` | The mounted workspace root (auto-widened to the bare-repo container so sibling worktrees are visible). Identical strings — the project is bind-mounted at its own host path. |
 | `HOST_HOME` | The **host** `$HOME`, which is not the container's (`/home/harnessed`). A `scope: global` persist entry is mounted path-preserving, so a recipe pointing a tool at e.g. `~/.pulumi` must write `$HOST_HOME/.pulumi`. |
 | `HARNESSED_BIN_DIR` | The dir an `install.script` lands executables in — the same value the install contract hands that script, so a recipe can install a wrapper at build time and put it on PATH at attach time (`init: run: export PATH="${HARNESSED_BIN_DIR:?}/…:$PATH"`, beads' `bd-shim`). Container: `/home/harnessed/.local/bin`. Host: the stack's own `tools/<stack>/bin`. |
@@ -297,7 +297,7 @@ exactly one thing: **the phase**.
 
 The split is forced, not stylistic. `setup` cannot run at build: no project is bind-mounted, so
 `HARNESSED_PROJECT_DIR` is unresolvable. `install` used to be barred from container runtime for the
-mirror-image reason — re-running it per start would re-pay the clone every launch — but that assumed
+mirror-image reason — re-running it per start re-pays the clone every launch — but that assumed
 **no persistence**. A fingerprint-gated per-stack volume removes the assumption: you pay once per
 stack *change*, not per start, exactly as the host path already did. Moving it there is bd
 harnessed-8px.21, and the reason is cost: a one-line edit to a recipe's `install.sh` cost **307s** as
@@ -319,12 +319,12 @@ persist, but the pinned *source* can).
 | `HARNESSED_MODE` | `host` \| `container` |
 | `HARNESSED_RECIPE_DIR` | the recipe's own dir — `cp` where a Dockerfile did `COPY` |
 | `HARNESSED_CONFIG_DIR` | the agent config dir to install **into**: image `~/.claude` at build, the materialized host home on a host launch |
-| `HARNESSED_INSTALL_CACHE` | `$XDG_CACHE_HOME/harnessed/install/<recipe>/<install.cache>`, or empty when no `cache:` is declared. Cache **miss** is "the directory does not exist" — harnessed creates only its parent. **The same host dir in both modes**: container-side it is bind-mounted into the install container, so the cache is finally shared *across stacks*. It used to be `/tmp` scratch discarded in the same layer, because a build that kept the clone would have shipped it inside the image. |
+| `HARNESSED_INSTALL_CACHE` | `$XDG_CACHE_HOME/harnessed/install/<recipe>/<install.cache>`, or empty when no `cache:` is declared. Cache **miss** is "the directory does not exist" — harnessed creates only its parent. **The same host dir in both modes**: container-side it is bind-mounted into the install container, so the cache is finally shared *across stacks*. It used to be `/tmp` scratch discarded in the same layer. Keeping the clone ships it inside the image. |
 | `HARNESSED_BIN_DIR` | where to land an **executable**: the base image's `~/.local/bin` (already on `PATH`) at build, the stack's own bin dir on a host launch. Without it a script has no portable destination for a binary and must either go root-only or guess at `$UV_TOOL_BIN_DIR`. |
 | `HARNESSED_HOME_SHIM` | a dir whose `.claude` **is** `$HARNESSED_CONFIG_DIR`, for upstream installers that only know how to install "globally" into `$HOME/.claude`: run them as `HOME="$HARNESSED_HOME_SHIM" <installer>`. The image home at build (where that is already true); a **stable** per-project sibling of the config dir on a host launch. Stability is the point — a recipe rolling its own with `mktemp -d` gets a shim deleted on exit, so any absolute path the installer *recorded* dies with it. `install.sh` must not build its own shim; a catalog test enforces this. |
 
-`PROJECT_DIR` and friends are **absent on purpose**. A build cannot know them; exporting them
-host-side only would hand authors a variable that works on host and silently expands to empty in a
+`PROJECT_DIR` and friends are **absent on purpose**. A build cannot know them. If you export them
+host-side only, authors get a variable that works on the host and silently expands to empty in a
 build. Anything needing project context belongs in `setup.script`, whose phase has a project.
 
 **Host-only extras.** Alongside the contract above, `_host_run_installs` also redirects the package
@@ -365,7 +365,7 @@ Asserted as *order*, not values, in `tests/test_install_script.py::TestPrecedenc
 **System-level steps** (`USER root`, `apt-get`, `COPY` into `/usr/local/bin`) stay in the recipe
 Dockerfile — harnessed never sudos or mutates the user's system. A recipe with such a step declares
 `install.system: "<reason>"`; a host launch then **skips it and says so**, naming the recipe and
-printing the reason verbatim. Documented skip, not hard failure (a hard failure would make `--host`
+printing the reason verbatim. Documented skip, not hard failure (a hard failure makes `--host`
 unusable for stacks in the default set) — and never a *silent* skip.
 
 ## The capability test is the oracle
@@ -396,7 +396,7 @@ silent logout the user experiences as "it keeps asking me to log in". Two mechan
    `auth.broker.token`. No file involved at all.
 
 Everything else is replication and is out of bounds, however carefully guarded. "Copy it back if
-it's newer" is still replication — it just moves the race rather than removing it.
+it is newer" is still replication — it just moves the race rather than removing it.
 
 **A symlink is a reference only while the harness writes in place.** This is the property that
 decides whether mechanism 1 is available for a given harness, so establish it before designing:

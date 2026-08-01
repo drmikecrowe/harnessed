@@ -10,7 +10,7 @@ Both steps live in `install.sh`, which runs on a **container build and a host la
 - **Installs the pinned `ccstatusline` CLI.** In a container, via mise's `npm:` backend, so a shim
   resolves at `/home/harnessed/.local/share/mise/shims/ccstatusline`. On a host launch, via `pnpm`
   into the recipe's install cache (`$XDG_CACHE_HOME/harnessed/install/ccstatusline/<version>`) —
-  `mise use -g` is not used host-side because it would write *your* global mise config.
+  `mise use -g` is not used host-side because it writes *your* global mise config.
 - **Writes a `statusLine` block** into the config dir's `settings.json` (branched on `${HARNESS}` —
   `statusLine` is a Claude Code concept, so only the `claude` harness gets it):
 
@@ -31,7 +31,7 @@ Both steps live in `install.sh`, which runs on a **container build and a host la
   harnessed's `emit.merge_settings` preserves this baked key while re-applying its own required
   settings (the hatago MCP grant), so the status line survives the post-build settings merge.
 
-Requires `pnpm` on PATH for the host path; a missing `pnpm` fails the install loudly.
+Requires `pnpm` on PATH for the host path. A missing `pnpm` fails the install loudly.
 
 ## Host config forward
 

@@ -8,7 +8,7 @@
 
 When beads must be **completely invisible** to the repo and its collaborators:
 
-- Personal / dogfooding use — e.g. running an agent against a repo whose contributors don't use beads
+- Personal / dogfooding use — e.g. running an agent against a repo whose contributors do not use beads
   and must not see it. (harnessed's own repo is the canonical case.)
 - `.beads/` never lives in the project at all: it is host-persisted **outside** the repo and
   bind-mounted in.

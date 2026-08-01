@@ -12,8 +12,8 @@ against a running system on 2026-07-24/25; everything marked **open** is not set
 
 ## 1. Requirements
 
-1. **harnessed understands beads and manages the database for the user.** The user should not have
-   to reason about data dirs, server modes, ports, or sockets.
+1. **harnessed understands beads and manages the database for the user.** The user does not need to
+   reason about data dirs, server modes, ports, or sockets.
 2. **`beads/team` shares the database.** Every user of the repo shares issues — and this must not
    require them to run harnessed. A teammate with plain `bd` has to work.
 3. **`beads/stealth` puts the database in a comparable place, invisible to the repo.** Ignored and
@@ -94,7 +94,7 @@ itself must never be a repo.
 **Auto-start itself CAN be turned off**, via `dolt.auto-start: false` in `.beads/config.yaml`.
 Verified: bd then refuses with *"Dolt server auto-start is disabled (dolt.auto-start: false). Start
 the server manually: bd dolt start"* and spawns nothing. This key is surfaced only in the failure
-text of an auto-start that could not complete, which is why it is easy to miss — it is not in
+text of a failed auto-start, which is why it is easy to miss — it is not in
 `bd --help`, `bd dolt --help`, or `bd dolt set`'s key list. `config.yaml` is part of bd's **tracked**
 surface (§2), so this setting is machine-independent and safe to commit.
 
@@ -129,7 +129,7 @@ harnessed's own checkout does not show this, and that is an accident of layout: 
 anchors at the git **common dir**, which here is `.bare/` — inside the git directory, where nothing
 is trackable. Verified: `git ls-files .beads` returns only the worktree stub's `.gitignore` and
 `interactions.jsonl`; the real workspace at `.bare/.beads` is untracked in its entirety. A normal
-single-checkout project would place `.beads/` in the working tree and expose the conflict immediately.
+single-checkout project places `.beads/` in the working tree and exposes the conflict immediately.
 
 ### The resolution: never write the socket to disk
 
@@ -151,7 +151,7 @@ That dissolves the conflict, because the machine-local value never has to be per
 - **Teammates without harnessed** simply do not have the variable, fall through to bd's ordinary
   behaviour, and are never handed a path that does not exist on their machine. Requirement 2 holds.
 
-**This means the `beads-server` entrypoint should stop rewriting `metadata.json`.** That migration
+**This means the `beads-server` entrypoint must stop rewriting `metadata.json`.** That migration
 block exists because `bd init` refuses to touch an initialized workspace — but if the socket is
 never persisted, there is nothing to migrate, and the block can be deleted rather than made
 team-safe. Until that lands: **do not commit a `metadata.json` containing a `dolt_server_socket`.**
@@ -199,15 +199,15 @@ now justifies. **Open.**
 Requirements 2 and 3 mean harnessed must create the workspace in the right mode when it is absent.
 This **reverses** the recipes' current stance, which is explicit that beads is not auto-initialized
 because `bd setup` writes into the project (`.claude/settings.json` + `CLAUDE.md` on bd 1.1.0) and
-could not be made reliably idempotent or footprint-free. That reversal is deliberate; the recipes'
-`No init:` comments should be updated when it lands, not left to contradict the behaviour.
+cannot be made reliably idempotent or footprint-free. That reversal is deliberate. The recipes'
+`No init:` comments must be updated when it lands, not left to contradict the behaviour.
 
 **A plain `bd init` auto-commits 18 files (§2).** So "harnessed initializes the workspace for the
 user" means harnessed causes an unrequested commit to their repo unless it suppresses that. For a
-tool whose stated requirement is that the user should not have to think about any of this, silently
-committing `AGENTS.md`, `CLAUDE.md`, `.codex/` and `.claude/settings.json` on first launch is very
+tool whose stated requirement is that the user does not need to think about any of this, silently
+committing `AGENTS.md`, `CLAUDE.md`, `.codex/` and `.claude/settings.json` on first launch is
 likely the wrong default — but suppressing it means diverging from bd's own init behaviour, which
-requirement 2 says we conform to. **Open, and it should be settled before auto-init ships.**
+requirement 2 says we conform to. **Open, and it must be settled before auto-init ships.**
 
 Ordering is forced by §3 — socket-mode init cannot precede the server:
 
@@ -218,7 +218,7 @@ Ordering is forced by §3 — socket-mode init cannot precede the server:
 3. `bd setup <harness> --project [--stealth]`.
 
 **Stealth's footprint becomes harnessed's problem at this point.** While init was a deliberate user
-action, the recipe could fairly say the user "opts into that footprint knowingly". Once harnessed
+action, the recipe can fairly say the user "opts into that footprint knowingly". Once harnessed
 runs it automatically, harnessed owns the `.claude/settings.json` + `CLAUDE.md` that bd leaves
 outside its own stealth exclude list (§2 — bd excludes the near-miss `.claude/settings.local.json`),
 and adding them to the git common dir's `info/exclude` becomes justified. Note the hazard that makes
@@ -292,7 +292,7 @@ That is not a message to explain away in a setup notice. Correct configuration t
 — and invites the user to `bd doctor --fix` a configuration that is already right — is a design
 defect. It also cost a full session of debugging to establish that nothing had broken.
 
-**Why D1 could be reversed.** D1 justified the socket as the *only* interlock against the §10
+**Why D1 can be reversed.** D1 justified the socket as the *only* interlock against the §10
 auto-start catastrophe. §3 of this same document already recorded that `dolt.auto-start: false`
 also disables it, and Q5 adopted that. The binary settles it — `strings` on bd 1.1.0:
 
@@ -321,8 +321,8 @@ to start without it.
 inside the user's source tree. serena's indexer died on it (`Failed to read … No such device or
 address`) in the same session that produced this reversal. Nothing serves a socket now.
 
-**Unverified.** Whether `bd dolt push` now works from the host, which would retire
-`harnessed svc sync beads-server`. `service.yaml` claims the dolt CLI routes only to its own
+**Unverified.** Whether `bd dolt push` now works from the host, which retires
+`harnessed svc sync beads-server` if it does. `service.yaml` claims the dolt CLI routes only to its own
 loopback; whether bd threads `--host/--port` through has not been tested. Left in place.
 
 ### The migration this needed — verified the hard way, 2026-07-26
@@ -375,8 +375,8 @@ Kept because each misdiagnosis was reasonable given what the system reports.
   programming_personal_harnessed`. It stayed broken for five days and three server restarts.
 - **07-24** Diagnosed. The bytes were intact the whole time in
   `~/.beads/shared-server/dolt/programming_personal_harnessed/` — 46 open issues, last written that
-  morning. Nothing was ever lost. `bd bootstrap`, which bd's own error suggests, could not have
-  helped: it clones from `refs/dolt/data`, and this workspace had never pushed.
+  morning. Nothing was ever lost. `bd bootstrap`, which bd's own error suggests, does not help: it
+  clones from `refs/dolt/data`, and this workspace had never pushed.
 - **07-25** Repaired to socket mode with the database at the per-project path. Guards added.
 
 Three readings the symptom invites, all wrong: *the server is down* (it was running and healthy);
@@ -430,7 +430,7 @@ downstream). The one thing the error never says is that the data dir is the wron
    dir" — true of the secret, false of its *effect*. Setting a password on `root` rewrote
    `mysql.user` in `.beads/dolt`, so every client that assumes dolt's default passwordless `root`
    was locked out of the project's own issues. "Every client" included bd's own `bd dolt start`
-   server: it came up on that data dir and could not log in to it.
+   server: it came up on that data dir and did not log in to it.
 
 4. **The retarget was defeated by a variable it did not clear.** The shim set `BEADS_DIR` and the
    port variables but left `BEADS_DOLT_SERVER_SOCKET` alone, and **bd selects socket mode whenever
@@ -448,7 +448,7 @@ downstream). The one thing the error never says is that the data dir is the wron
    an incorrect one is still readable.
 
 **What the guards did and did not catch.** The host-engine guard worked exactly as designed — it
-named the PID holding the lock and what to do. The `healthcheck` did not, and could not: it runs
+named the PID holding the lock and what to do. The `healthcheck` did not, and cannot: it runs
 `SELECT 1` from **inside** the container, over loopback, as the admin. That is the one path that
 always works. It never exercises the client's path — different source address, therefore a different
 `root@` record, and different credentials. A server can be perfectly healthy and unreachable by

@@ -51,7 +51,7 @@ bd config set dolt.auto-commit on
 - `--external` means bd connects but never starts or stops the server; that is the service's job.
 - `--non-interactive` is required: bd's `--team` / `--contributor` flags are interactive-only wizards,
   explicitly rejected without a TTY. `--role maintainer` is the sensible default for a project's home
-  repo; a contributor on an OSS fork should run `bd init --role contributor` instead.
+  repo; a contributor on an OSS fork must run `bd init --role contributor` instead.
 - `dolt.auto-commit on` persists every write — including dependency edges, which are *not* in
   `issues.jsonl`.
 
@@ -92,7 +92,7 @@ so there is nothing to undo.
 ## Caveats
 
 - **Real git footprint, by design.** This recipe installs git hooks and commits `.beads/`. That is the
-  point — pick [`beads/stealth`](../stealth/README.md) if it isn't what you want.
+  point — pick [`beads/stealth`](../stealth/README.md) if it is not what you want.
 - **Bare + linked-worktree layouts anchor `.beads/` at the bare repo.** bd resolves `.beads` off the
   git *common dir*, which in a bare setup is the bare repo — a directory with **no work tree**, so
   `.beads/` lands where nothing can `git add` it and auto-export fails with "this operation must be

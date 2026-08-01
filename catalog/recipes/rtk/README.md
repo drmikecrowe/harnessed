@@ -4,7 +4,7 @@ rtk (Rust Token Killer) — compresses dev-command output by 60–90% before it 
 a build/test/lint command in `rtk` and the model sees a digest instead of thousands of lines of
 scrollback.
 
-Ships as a CLI baked by `install.sh`; no MCP server.
+Ships as a CLI baked by `install.sh`. No MCP server.
 
 ## Container vs `harnessed host-run`
 
@@ -16,7 +16,7 @@ Ships as a CLI baked by `install.sh`; no MCP server.
 | `rtk init -g --auto-patch` (RTK.md + the PreToolUse hook) | into the image's `~/.claude` | into the stack's `$HARNESSED_CONFIG_DIR`, but only if `rtk` is already on your PATH |
 
 The binary is deliberately not installed host-side. `mise use -g` writes *your* global mise config
-and data dir, which harnessed does not own; and `install:` has no way to place an executable on the
+and data dir, which harnessed does not own. `install:` has no way to place an executable on the
 host agent's PATH (it is handed `$HARNESSED_CONFIG_DIR` and the install cache, not the stack bin
 dir). Landing host-native binaries on PATH is `setup.script`'s job — see bd harnessed-zi6.1. Until
 rtk grows one, install `rtk 0.43.0` yourself and the wiring half still runs, or run the stack in a

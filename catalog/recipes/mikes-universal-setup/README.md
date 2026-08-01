@@ -5,7 +5,7 @@ plus 12 generic utility skills — 5 vendored in-tree and 7 fetched at build tim
 upstreams. Serves as the worked example of what a personal "how I want my agent to behave" recipe
 looks like.
 
-Ships as rules + skills + an `install.script`; no MCP server, no Dockerfile.
+Ships as rules + skills + an `install.script`. No MCP server, no Dockerfile.
 
 ## Provenance
 
@@ -37,10 +37,10 @@ audit.
 
 **The canonical GSD upstream is [open-gsd/gsd-core](https://github.com/open-gsd/gsd-core).** An
 earlier `gsd-build/get-shit-done` URL in `map-codebase`'s frontmatter was corrected: that repo was
-compromised, and nothing here should point at it. If you find that string anywhere in this tree
+compromised, and this tree must not reference it. If you find that string anywhere in this tree
 again, it is a regression — replace it, do not fetch from it.
 
-### How the fetched skills are installed — and why it's a bridge (bd harnessed-197)
+### How the fetched skills are installed — and why it is a bridge (bd harnessed-197)
 
 The seven unmodified third-party skills are **not** vendored. `install.sh` fetches them at build time
 (both container build and host launch) from GitHub archives pinned to **commit SHAs**, and installs
@@ -64,7 +64,7 @@ the pin+verify the ecosystem lacks. **When those merge, delete `install.sh` and 
 Pin to a **SHA, not a tag** — a tag is a movable pointer, and a repo compromise (gsd-build) moves
 tags. The SHAs in `install.sh` and the `install.cache` marker in `recipe.yaml` are bumped together.
 
-**These pins are HOLD / manual-upgrade-only.** A skill is agent instructions; upgrading it pulls new
+**These pins are HOLD / manual-upgrade-only.** A skill is agent instructions. Upgrading it pulls new
 instructions no scanner can vet, so a bump means a human reads the upstream diff and re-approves.
 `harnessed-tfm` (the pin auto-updater) must never auto-bump them. See bd memory
 `skill-pins-are-manual-upgrade-only`.
