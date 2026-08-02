@@ -102,6 +102,47 @@ class TestOauthTokenDetection:
         assert result is False
         assert launcher._err.warnings > before, "expected a warning when varlock fails"
 
+    def test_global_varlock_failure_does_not_warn_when_project_supplies_the_token(
+        self, monkeypatch, tmp_path
+    ):
+        """A varlock failure in ONE dir must not warn if a later dir still supplies the token.
+
+        The warning promises "Mounting a credential file as fallback". When global varlock is down
+        but the project has the token, we return True and mount nothing — so warning there would
+        describe something that never happens.
+        """
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        home = _home(monkeypatch, tmp_path)
+        gdir = home / ".config" / "harnessed"
+        gdir.mkdir(parents=True)
+        (gdir / ".env.schema").write_text("")  # global takes the varlock branch...
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=from-project\n")  # ...project does not
+        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
+        monkeypatch.setattr(launcher, "_varlock_resolve", lambda d: None)  # global varlock fails
+
+        before = launcher._err.warnings
+        assert launcher._claude_oauth_token_configured("claude", proj) is True
+        assert launcher._err.warnings == before, "must not warn when the token was found anyway"
+
+    def test_all_varlock_failures_warn_once_listing_every_dir(self, monkeypatch, tmp_path):
+        """Two failed dirs produce ONE warning naming both, not one warning per dir."""
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        home = _home(monkeypatch, tmp_path)
+        gdir = home / ".config" / "harnessed"
+        gdir.mkdir(parents=True)
+        (gdir / ".env.schema").write_text("")
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env.schema").write_text("")
+        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
+        monkeypatch.setattr(launcher, "_varlock_resolve", lambda d: None)
+
+        before = launcher._err.warnings
+        assert launcher._claude_oauth_token_configured("claude", proj) is False
+        assert launcher._err.warnings == before + 1, "expected exactly one warning for both dirs"
+
     def test_empty_value_in_env_not_configured(self, monkeypatch, tmp_path):
         """export CLAUDE_CODE_OAUTH_TOKEN= turns the token OFF; empty must not count as configured."""
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)

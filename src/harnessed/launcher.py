@@ -2167,24 +2167,20 @@ def _claude_oauth_token_configured(harness: str, project_path: Path | None = Non
     if project_path is not None:
         dirs.append(project_path)
 
+    # Dirs where varlock ran and FAILED. Collected rather than warned about inline: a later dir can
+    # still supply the token (global varlock down, project `.env` has it), in which case we return
+    # True and mount nothing — so an inline warning would promise a credential-file fallback that
+    # never happens. Deferring to the return-False path also means ONE warning per launch listing
+    # every failed dir, instead of one per dir.
+    unresolved: list[Path] = []
+
     for d in dirs:
         schema = d / ".env.schema"
         if schema.is_file() and have_varlock:
             # Route 2: structured varlock query — no text-file scan.
             resolved = _varlock_resolve(d)
             if resolved is None:
-                # varlock ran but failed; the token may be configured via a mechanism
-                # (e.g. a runtime secrets agent) that this function cannot query at
-                # launch time.  Warn so the operator can distinguish this from a
-                # genuine absence before the credential-file fallback fires.
-                _err.print(
-                    f"[bold yellow]warning:[/bold yellow] could not resolve "
-                    f"{_OAUTH_TOKEN_VAR} via varlock in {d} — varlock failed, so "
-                    "the token may be present but is unreachable here.\n"
-                    "  Mounting a credential file as fallback.  If a runtime secrets "
-                    "agent supplies the token inside the container, this mount is "
-                    "unnecessary — configure the token explicitly to suppress it."
-                )
+                unresolved.append(d)
             elif resolved.get(_OAUTH_TOKEN_VAR):  # empty string is NOT configured
                 return True
         else:
@@ -2193,6 +2189,19 @@ def _claude_oauth_token_configured(harness: str, project_path: Path | None = Non
                 # Route 3: plain .env — _plain_env_values strips export / surrounding quotes.
                 if _plain_env_values(plain).get(_OAUTH_TOKEN_VAR):
                     return True
+
+    if unresolved:
+        # No source produced a token AND varlock failed somewhere, so we genuinely cannot tell
+        # "no token" from "token we could not reach". Say so before the credential file is mounted.
+        where = ", ".join(str(d) for d in unresolved)
+        _err.print(
+            f"[bold yellow]warning:[/bold yellow] could not resolve "
+            f"{_OAUTH_TOKEN_VAR} via varlock in {where} — varlock failed, so "
+            "the token may be present but is unreachable here.\n"
+            "  Mounting a credential file as fallback.  If a runtime secrets "
+            "agent supplies the token inside the container, this mount is "
+            "unnecessary — configure the token explicitly to suppress it."
+        )
 
     return False
 
