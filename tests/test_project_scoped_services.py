@@ -698,7 +698,9 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
     entry point — flagging drift on every alternating launch.
     """
 
-    def _capture_ensure_kwargs(self, tmp_path, monkeypatch, action: str) -> dict:
+    def _capture_ensure_kwargs(
+        self, tmp_path, monkeypatch, action: str, *, stack: str = "any", label: str | None = None
+    ) -> dict:
         checkout = tmp_path / "proj"
         project = checkout / "main"
         project.mkdir(parents=True)
@@ -708,10 +710,11 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: checkout / ".bare")
         # The bare + linked-worktree layout: the widened mount is the dir CONTAINING the bare repo.
         monkeypatch.setattr(paths, "bare_worktree_container", lambda _p: checkout)
+        monkeypatch.setattr(launcher, "_svc_container_stack", lambda _rt, _c: label)
         seen: dict = {}
         monkeypatch.setattr(launcher, "_ensure_service", lambda *a, **k: seen.update(k))
         monkeypatch.chdir(project)
-        launcher.svc(action, "beads-server", stack="any", from_="", assume_yes=False)
+        launcher.svc(action, "beads-server", stack=stack, from_="", assume_yes=False)
         seen["_checkout"] = checkout
         seen["_project"] = project
         return seen
@@ -735,6 +738,40 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
     def test_up_does_not_force_a_recreate(self, tmp_path, monkeypatch):
         seen = self._capture_ensure_kwargs(tmp_path, monkeypatch, "up")
         assert seen.get("force_recreate") is False
+
+    def test_recreate_reads_the_stack_off_the_container(self, tmp_path, monkeypatch):
+        """No --stack from inside the project: the container records the stack it was built from.
+
+        Asking for it again would be asking for something the machine already knows, and a typo
+        would silently rebuild against a different persist entry — a different data dir.
+        """
+        seen = self._capture_ensure_kwargs(
+            tmp_path, monkeypatch, "recreate", stack="", label="beads-team"
+        )
+        assert seen["stack"] == "beads-team"
+        assert seen["force_recreate"] is True
+
+    def test_an_explicit_stack_wins_over_the_label(self, tmp_path, monkeypatch):
+        seen = self._capture_ensure_kwargs(
+            tmp_path, monkeypatch, "recreate", stack="chosen", label="beads-team"
+        )
+        assert seen["stack"] == "chosen"
+
+    def test_recreate_without_a_container_to_read_asks_for_the_stack(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Nothing to infer from — say so, rather than guessing at a data dir."""
+        with pytest.raises(typer.Exit):
+            self._capture_ensure_kwargs(tmp_path, monkeypatch, "recreate", stack="", label=None)
+        err = capsys.readouterr().err
+        assert "pass --stack" in err
+        assert "not present" in err
+
+    def test_up_still_requires_an_explicit_stack(self, tmp_path, monkeypatch, capsys):
+        """`up` may have no container at all, so there is nothing to read a stack off of."""
+        with pytest.raises(typer.Exit):
+            self._capture_ensure_kwargs(tmp_path, monkeypatch, "up", stack="", label="beads-team")
+        assert "pass --stack" in capsys.readouterr().err
 
     def test_unknown_action_is_rejected(self, tmp_path, monkeypatch, capsys):
         """`restart` is the trap this whole bead exists for — it must not silently be an alias."""
@@ -812,13 +849,20 @@ class TestServiceConfigHashDetectsStaleContainers:
         assert f"--label" in cmd and launcher._SVC_CONFIG_HASH_LABEL in " ".join(cmd)
         assert cmd[-1].startswith("harnessed-beads-server"), "the image ref must stay last"
 
+    def test_the_container_records_the_stack_it_was_built_from(self, tmp_path, monkeypatch):
+        """What makes `svc recreate` need no --stack: the answer is on the container."""
+        created, _ = self._run_ensure(tmp_path, monkeypatch, running=False, label=None)
+        assert f"{launcher._SVC_STACK_LABEL}=any" in created[0]
+
     def test_the_stamped_hash_is_the_hash_of_the_argv_that_created_it(self, tmp_path, monkeypatch):
         """The label must describe the container it is on — otherwise every launch reports drift."""
         created, _ = self._run_ensure(tmp_path, monkeypatch, running=False, label=None)
         cmd = created[0]
-        i = cmd.index("--label")
-        without_label = cmd[:i] + cmd[i + 2:]
-        assert self._current_hash(created) == launcher._svc_config_hash(without_label)
+        without_labels = [
+            a for i, a in enumerate(cmd)
+            if a != "--label" and (i == 0 or cmd[i - 1] != "--label")
+        ]
+        assert self._current_hash(created) == launcher._svc_config_hash(without_labels)
 
     def test_a_matching_label_is_left_alone(self, tmp_path, monkeypatch):
         current = self._current_hash(self._run_ensure(tmp_path, monkeypatch, running=False, label=None)[0])

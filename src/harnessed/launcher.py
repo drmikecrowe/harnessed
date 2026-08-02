@@ -3329,6 +3329,7 @@ def _build_service_image(rt: str, name: str) -> None:
 
 
 _SVC_CONFIG_HASH_LABEL = "harnessed.svc-config-hash"
+_SVC_STACK_LABEL = "harnessed.svc-stack"
 
 
 def _svc_run_cmd(
@@ -3442,13 +3443,30 @@ def _svc_config_hash(run_cmd: list[str]) -> str:
     return hashlib.sha256("\0".join(run_cmd).encode("utf-8")).hexdigest()[:12]
 
 
-def _container_config_hash(rt: str, cname: str) -> str | None:
-    """The `harnessed.svc-config-hash` label on a container, or None if it predates the label."""
+def _container_label(rt: str, cname: str, label: str) -> str | None:
+    """One label off a container (running or stopped), or None if absent."""
     value = _inspect_id(
         rt, "container", cname,
-        '{{if .Config.Labels}}{{index .Config.Labels "' + _SVC_CONFIG_HASH_LABEL + '"}}{{end}}',
+        '{{if .Config.Labels}}{{index .Config.Labels "' + label + '"}}{{end}}',
     )
     return value or None
+
+
+def _container_config_hash(rt: str, cname: str) -> str | None:
+    """The `harnessed.svc-config-hash` label on a container, or None if it predates the label."""
+    return _container_label(rt, cname, _SVC_CONFIG_HASH_LABEL)
+
+
+def _svc_container_stack(rt: str, cname: str) -> str | None:
+    """The stack a sidecar was created for, read back off the container itself.
+
+    A `scope: project` sidecar's data dir is chosen by the STACK (which recipe declares the persist
+    entry), so rebuilding one needs to know which stack made it. Recording it on the container means
+    `svc recreate` does not have to ask: the answer is already there, and it is the exact stack the
+    container was built from rather than a guess about which stack this folder "means". Nothing else
+    on the machine records project → stack for a service.
+    """
+    return _container_label(rt, cname, _SVC_STACK_LABEL)
 
 
 def _svc_drift_reason(rt: str, cname: str, svc: "ServiceDef", want_hash: str) -> str | None:
@@ -3565,9 +3583,14 @@ def _ensure_service(
         _ensure_dolt_autostart_disabled(svc, host_dir)
 
     # `want_cmd` (built above) is exactly what we run — the same argv the hash was taken over, so
-    # the label a container carries always describes the argv that created it. The label goes in
-    # last, before the image ref, and is NOT part of its own hash.
-    run_cmd = [*want_cmd[:-1], "--label", f"{_SVC_CONFIG_HASH_LABEL}={want_hash}", want_cmd[-1]]
+    # the label a container carries always describes the argv that created it. Labels go in last,
+    # before the image ref, and are NOT part of the hash: the config hash cannot contain itself, and
+    # the stack is already reflected in the argv it produced (it picks the data dir), so hashing the
+    # name too would only add a second way to say the same thing.
+    labels = ["--label", f"{_SVC_CONFIG_HASH_LABEL}={want_hash}"]
+    if stack:
+        labels += ["--label", f"{_SVC_STACK_LABEL}={stack}"]
+    run_cmd = [*want_cmd[:-1], *labels, want_cmd[-1]]
     _run(run_cmd, capture_output=True)
     _assert_service_running(rt, cname, svc)
     _install_corp_proxy_ca_in_container(rt, cname, best_effort=True)
@@ -7265,7 +7288,10 @@ def volume_gc(
 def svc(
     action: str = typer.Argument(..., help="up | down | recreate | sync | migrate"),
     name: str = typer.Argument(..., help="Service name (services/<name>/service.yaml)"),
-    stack: str = typer.Option("", "--stack", help="Stack context (required for scope: project)"),
+    stack: str = typer.Option(
+        "", "--stack",
+        help="Stack context (required for scope: project; recreate reads it off the container)",
+    ),
     from_: str = typer.Option("", "--from", help="migrate: source database dir (skips discovery)"),
     assume_yes: bool = typer.Option(False, "--yes", help="migrate: skip the confirmation prompt"),
 ) -> None:
@@ -7273,6 +7299,9 @@ def svc(
 
     `up`/`down`/`recreate` on a `scope: project` service act on THIS project's container
     (git-common-dir keyed), so they need `--stack` to resolve which persist entry holds the data.
+    `recreate` is the exception: it rebuilds the container that is already here, and reads the stack
+    back off that container (`harnessed.svc-stack`), so from inside the project it takes no flags at
+    all. Pass `--stack` only to override, or when there is no container to read.
 
     `recreate` TEARS DOWN and REBUILDS the container — it is not `podman restart`, and deliberately
     is not named that. Mounts, published ports and env are fixed when a container is CREATED, so a
@@ -7292,14 +7321,27 @@ def svc(
     rt = _runtime()
     project_path = Path.cwd().resolve()
     svc_def = load_service(None, name)
+    key = _svc_project_key(svc_def, project_path)
+    cname = _svc_container(name, key)
+
+    if svc_def.scope == "project" and not stack and action == "recreate":
+        # Recreating rebuilds the sidecar THAT IS HERE, and that container already records the stack
+        # it was built from (_SVC_STACK_LABEL). Making the user re-supply it would be asking for
+        # something the machine knows — and inviting a typo that silently rebuilds against a
+        # different persist entry, i.e. a different data dir.
+        stack = _svc_container_stack(rt, cname) or ""
     if svc_def.scope == "project" and not stack:
         _err.print(
             f"[bold red]error:[/bold red] service '{name}' is scope: project — pass --stack so its "
-            "data dir can be resolved (e.g. harnessed svc up beads-server --stack my-stack)"
+            f"data dir can be resolved (e.g. harnessed svc {action} {name} --stack my-stack)"
         )
+        if action == "recreate":
+            # The only way to reach here on a recreate: nothing to read the stack off of.
+            _err.print(
+                f"  ({cname} is not present, or predates the {_SVC_STACK_LABEL} label — after one "
+                "run with --stack, recreate needs no flag here again.)"
+            )
         raise typer.Exit(1)
-    key = _svc_project_key(svc_def, project_path)
-    cname = _svc_container(name, key)
 
     if action in ("up", "recreate"):
         # The SAME mount a launch computes (bd harnessed-wnf). `launch` widens the path-mirrored
