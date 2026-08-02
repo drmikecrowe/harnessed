@@ -699,7 +699,8 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
     """
 
     def _capture_ensure_kwargs(
-        self, tmp_path, monkeypatch, action: str, *, stack: str = "any", label: str | None = None
+        self, tmp_path, monkeypatch, action: str, *, stack: str = "any", label: str | None = None,
+        instances: list[str] | None = None,
     ) -> dict:
         checkout = tmp_path / "proj"
         project = checkout / "main"
@@ -711,6 +712,9 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
         # The bare + linked-worktree layout: the widened mount is the dir CONTAINING the bare repo.
         monkeypatch.setattr(paths, "bare_worktree_container", lambda _p: checkout)
         monkeypatch.setattr(launcher, "_svc_container_stack", lambda _rt, _c: label)
+        monkeypatch.setattr(
+            launcher, "_svc_stacks_from_instances", lambda _rt, _p: list(instances or [])
+        )
         seen: dict = {}
         monkeypatch.setattr(launcher, "_ensure_service", lambda *a, **k: seen.update(k))
         monkeypatch.chdir(project)
@@ -765,7 +769,39 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
             self._capture_ensure_kwargs(tmp_path, monkeypatch, "recreate", stack="", label=None)
         err = capsys.readouterr().err
         assert "pass --stack" in err
-        assert "not present" in err
+        assert "no agent instance to infer from" in err
+
+    def test_recreate_falls_back_to_the_repo_s_agent_instance(self, tmp_path, monkeypatch, capsys):
+        """The bootstrap case: EVERY sidecar predates the label the first time this code runs.
+
+        Without a fallback, the first recreate — the one that fixes a container built before some
+        fix landed — would demand a flag for something harnessed already knows.
+        """
+        seen = self._capture_ensure_kwargs(
+            tmp_path, monkeypatch, "recreate", stack="", label=None, instances=["beads-team"]
+        )
+        assert seen["stack"] == "beads-team"
+        assert "Using stack 'beads-team'" in capsys.readouterr().out, (
+            "inferring a stack must be reported, never silent"
+        )
+
+    def test_the_container_label_beats_the_instance_scan(self, tmp_path, monkeypatch):
+        seen = self._capture_ensure_kwargs(
+            tmp_path, monkeypatch, "recreate", stack="", label="from-label",
+            instances=["from-instance"],
+        )
+        assert seen["stack"] == "from-label"
+
+    def test_two_candidate_stacks_refuse_to_guess(self, tmp_path, monkeypatch, capsys):
+        """Picking one would rebuild against the wrong persist entry — a different data dir."""
+        with pytest.raises(typer.Exit):
+            self._capture_ensure_kwargs(
+                tmp_path, monkeypatch, "recreate", stack="", label=None,
+                instances=["stack-a", "stack-b"],
+            )
+        err = capsys.readouterr().err
+        assert "more than one stack" in err
+        assert "stack-a, stack-b" in err
 
     def test_up_still_requires_an_explicit_stack(self, tmp_path, monkeypatch, capsys):
         """`up` may have no container at all, so there is nothing to read a stack off of."""
@@ -794,6 +830,55 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
         err = capsys.readouterr().err
         assert "unknown svc action 'restart'" in err
         assert "--stack" not in err, "an invalid action must not be echoed back as a suggestion"
+
+
+class TestReadingTheStackOutOfInstanceNames:
+    """Instance containers carry no labels, so `harnessed-<harness>-<stack>-<hash>` is the record.
+
+    Both ends are stripped against KNOWN values — the catalog's agents and this repo's worktree
+    hashes — rather than split on a delimiter, because stack names routinely contain dashes. A
+    generated stack is named like `default.beads-team.serena.superpowers-f6eb0941`; splitting that
+    on `-` yields `default.beads` and loses the rest.
+    """
+
+    def _scan(self, monkeypatch, names: list[str], hashes: set[str]) -> list[str]:
+        monkeypatch.setattr(paths, "list_catalog", lambda _kind: ["claude", "codex", "omp"])
+        monkeypatch.setattr(launcher, "_repo_project_hashes", lambda _p: hashes)
+        monkeypatch.setattr(
+            launcher.subprocess, "run",
+            lambda *a, **k: subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="\n".join(names) + "\n", stderr=""
+            ),
+        )
+        return launcher._svc_stacks_from_instances("podman", Path("/repo"))
+
+    def test_a_stack_name_containing_dashes_survives(self, monkeypatch):
+        name = "harnessed-omp-default.beads-team.serena.superpowers-f6eb0941-59258991"
+        assert self._scan(monkeypatch, [name], {"59258991"}) == [
+            "default.beads-team.serena.superpowers-f6eb0941"
+        ]
+
+    def test_only_this_repo_s_instances_count(self, monkeypatch):
+        names = [
+            "harnessed-claude-mine-11111111",
+            "harnessed-claude-someone-elses-22222222",
+        ]
+        assert self._scan(monkeypatch, names, {"11111111"}) == ["mine"]
+
+    def test_sibling_worktrees_are_searched_too(self, monkeypatch):
+        """One sidecar serves every worktree (it is keyed by git-common-dir), so the stack that
+        owns it may be running from a sibling rather than from where you are standing."""
+        names = ["harnessed-claude-from-a-sibling-22222222"]
+        assert self._scan(monkeypatch, names, {"11111111", "22222222"}) == ["from-a-sibling"]
+
+    def test_an_unknown_harness_is_not_mistaken_for_a_stack(self, monkeypatch):
+        assert self._scan(monkeypatch, ["harnessed-nosuch-x-11111111"], {"11111111"}) == []
+
+    def test_the_sidecars_own_containers_are_not_instances(self, monkeypatch):
+        assert self._scan(monkeypatch, ["harnessed-svc-beads-server-11111111"], {"11111111"}) == []
+
+    def test_no_instances_is_not_an_error(self, monkeypatch):
+        assert self._scan(monkeypatch, [], {"11111111"}) == []
 
 
 class TestServiceConfigHashDetectsStaleContainers:

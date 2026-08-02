@@ -3543,6 +3543,60 @@ def _svc_container_stack(rt: str, cname: str) -> str | None:
     return _container_label(rt, cname, _SVC_STACK_LABEL)
 
 
+def _repo_project_hashes(project_path: Path) -> set[str]:
+    """`project_hash` for this folder AND every sibling worktree of the same repo.
+
+    A sidecar is keyed by git-common-dir, so ONE of them serves every worktree of a bare+worktree
+    checkout — while agent instances are keyed per worktree. The stack that owns the sidecar may
+    therefore be running from a sibling, not from where you are standing.
+    """
+    hashes = {paths.project_hash(project_path)}
+    result = subprocess.run(
+        ["git", "-C", str(project_path), "worktree", "list", "--porcelain"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return hashes
+    for line in result.stdout.splitlines():
+        if line.startswith("worktree "):
+            hashes.add(paths.project_hash(Path(line[len("worktree "):].strip())))
+    return hashes
+
+
+def _svc_stacks_from_instances(rt: str, project_path: Path) -> list[str]:
+    """Stacks that have an agent instance for THIS repo, read out of instance container names.
+
+    The fallback for a sidecar created before `harnessed.svc-stack` existed — which is every sidecar
+    predating this code, i.e. exactly the population that most needs recreating. Without it the
+    first recreate on any existing machine demands a flag for something harnessed already knows.
+
+    Instance containers carry no labels, so the NAME is the only record — but it is an exact one:
+    `harnessed-<harness>-<stack>-<project_hash>` (paths.instance_name). Both ends are stripped
+    against known values (the catalog's agents, and the hashes of this repo's worktrees) rather than
+    split on a delimiter, because stack names routinely contain dashes — a generated one looks like
+    `default.beads-team.serena.superpowers-f6eb0941`.
+    """
+    result = subprocess.run(
+        [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return []
+    hashes = _repo_project_hashes(project_path)
+    harnesses = paths.list_catalog("agents")
+    found: set[str] = set()
+    for name in (n.strip() for n in result.stdout.splitlines()):
+        for harness in harnesses:
+            prefix = f"harnessed-{harness}-"
+            if not name.startswith(prefix):
+                continue
+            for project_hash in hashes:
+                suffix = f"-{project_hash}"
+                if name.endswith(suffix) and len(name) > len(prefix) + len(suffix):
+                    found.add(name[len(prefix):-len(suffix)])
+    return sorted(found)
+
+
 def _svc_drift_reason(rt: str, cname: str, svc: "ServiceDef", want_hash: str) -> str | None:
     """Why a RUNNING sidecar needs recreating, or None if it is current.
 
@@ -7391,9 +7445,10 @@ def svc(
 
     `up`/`down`/`recreate` on a `scope: project` service act on THIS project's container
     (git-common-dir keyed), so they need `--stack` to resolve which persist entry holds the data.
-    `recreate` is the exception: it rebuilds the container that is already here, and reads the stack
-    back off that container (`harnessed.svc-stack`), so from inside the project it takes no flags at
-    all. Pass `--stack` only to override, or when there is no container to read.
+    `recreate` is the exception: it rebuilds the container that is already here, so from inside the
+    project it takes no flags at all. It reads the stack back off that container
+    (`harnessed.svc-stack`) and, for a container predating that label, off the agent instance
+    running for this repo. Pass `--stack` only to override, or when neither source exists.
 
     `recreate` TEARS DOWN and REBUILDS the container — it is not `podman restart`, and deliberately
     is not named that. Mounts, published ports and env are fixed when a container is CREATED, so a
@@ -7432,16 +7487,37 @@ def svc(
         # something the machine knows — and inviting a typo that silently rebuilds against a
         # different persist entry, i.e. a different data dir.
         stack = _svc_container_stack(rt, cname) or ""
+        if not stack:
+            # No label: the container predates it, which is true of EVERY sidecar on any machine
+            # running this for the first time. Fall back to the agent instances for this repo, so
+            # the first recreate — the one that fixes a container built before some fix landed —
+            # does not demand a flag. Recreating stamps the label, so this runs at most once.
+            candidates = _svc_stacks_from_instances(rt, project_path)
+            if len(candidates) == 1:
+                stack = candidates[0]
+                _out.print(
+                    f"[blue][INFO][/blue] Using stack '{stack}' — from the agent instance running "
+                    f"for this repo ({cname} predates the {_SVC_STACK_LABEL} label)."
+                )
+            elif len(candidates) > 1:
+                _err.print(
+                    f"[bold red]error:[/bold red] this repo has instances for more than one stack "
+                    f"({', '.join(candidates)}) and {cname} predates the {_SVC_STACK_LABEL} label, "
+                    "so which one owns the sidecar cannot be told from here — pass --stack."
+                )
+                raise typer.Exit(1)
     if svc_def.scope == "project" and not stack:
         _err.print(
             f"[bold red]error:[/bold red] service '{name}' is scope: project — pass --stack so its "
             f"data dir can be resolved (e.g. harnessed svc {action} {name} --stack my-stack)"
         )
         if action == "recreate":
-            # The only way to reach here on a recreate: nothing to read the stack off of.
+            # Reached only when BOTH sources came up empty: no label on the container, and no agent
+            # instance for any worktree of this repo to read a stack off.
             _err.print(
-                f"  ({cname} is not present, or predates the {_SVC_STACK_LABEL} label — after one "
-                "run with --stack, recreate needs no flag here again.)"
+                f"  ({cname} carries no {_SVC_STACK_LABEL} label and this repo has no agent "
+                "instance to infer from. After one run with --stack, recreate needs no flag here "
+                "again.)"
             )
         raise typer.Exit(1)
 
