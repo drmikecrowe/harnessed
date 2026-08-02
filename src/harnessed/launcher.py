@@ -4940,8 +4940,70 @@ def _pending_setup_scripts(project_path: Path, recipes) -> list:
 
 _MISE_MARKER = "# managed by harnessed"
 
+# The comment that marks a `[tasks.<harness>]` table as OURS to regenerate. Ownership has to be
+# per-table, not per-file: the file as a whole is shared with the user the moment they add a task of
+# their own, and `_MISE_MARKER` at the top of it says nothing about who wrote the table at line 40.
+_MISE_TASK_MARKER = f"{_MISE_MARKER} — regenerated every launch; rename the task to make it yours."
 
-def _write_project_tool_env(stack: str, project_path: Path) -> None:
+
+def _mise_task_block(harness: str, stack: str, verb: str, command: str) -> str:
+    """One `[tasks.<harness>]` table, marked as ours, ending in a newline.
+
+    Named for the HARNESS alone — `mise run claude`, `mise run omp` — because that is the thing a
+    user types from muscle memory. The consequence is that a project's last launch of a given
+    harness owns that task name: launching a second stack with claude rewrites `[tasks.claude]`
+    rather than adding a second table. That is the same last-launch-wins rule the env file next to
+    it already follows, and the description records which stack the current one replays.
+    """
+    # ensure_ascii=False — TOML is UTF-8 by definition, and the default would render the em dash
+    # (and any non-ASCII in a project path) as a `\uXXXX` escape nobody wants to read.
+    return (
+        f"\n{_MISE_TASK_MARKER}\n"
+        f"[tasks.{harness}]\n"
+        f"description = {json.dumps(f'harnessed {verb} — {stack}', ensure_ascii=False)}\n"
+        f"run = {json.dumps(command, ensure_ascii=False)}\n"
+    )
+
+
+def _upsert_mise_task(mise_local: Path, harness: str, block: str) -> bool:
+    """Add or refresh our `[tasks.<harness>]` table in place. True when the file changed.
+
+    Only ever called on a file we own (see `_write_project_tool_env`). Appending `[tasks.claude]` at
+    EOF is valid TOML — a table header closes whatever table preceded it — so this appends when the
+    table is absent and rewrites in place when it is ours.
+
+    "Ours" is the marker comment on the line directly above the header. A user who deletes that
+    comment, or writes their own `[tasks.claude]` into our file, has taken the name — we never touch
+    it again and never silently lose their `run` line to a relaunch. Renaming the task is therefore
+    the documented way to take ownership of one.
+    """
+    text = mise_local.read_text(encoding="utf-8")
+    header = f"[tasks.{harness}]"
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == header), None)
+
+    if start is None:
+        mise_local.write_text(text.rstrip("\n") + "\n" + block, encoding="utf-8")
+        return True
+    if start == 0 or _MISE_TASK_MARKER not in lines[start - 1]:
+        return False
+
+    # Our block runs from the marker to the next table header. Ours never contains a multi-line
+    # array, so "a line starting with `[` at column 0" cannot be anything but the next table.
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].startswith("[")), len(lines)
+    )
+    rebuilt = "".join(lines[: start - 1]) + block.lstrip("\n") + "".join(lines[end:])
+    if rebuilt == text:
+        return False
+    mise_local.write_text(rebuilt, encoding="utf-8")
+    return True
+
+
+def _write_project_tool_env(
+    stack: str, project_path: Path, *, harness: str, verb: str,
+    no_strict_mcp: bool = False, aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
+) -> None:
     """Give the PROJECT the same tool env harnessed gives the agent, via mise.
 
     The gap this closes: harnessed configures the agent it launches and nothing else. Everything
@@ -4955,13 +5017,22 @@ def _write_project_tool_env(stack: str, project_path: Path) -> None:
         password. Credentials are referenced, never replicated — a secret copied into the source
         tree is one `git add -f`, one backup, one tree-walking tool away from leaving the machine,
         and `mise.local.toml` being gitignored is not the same guarantee as not being there.
-      * `mise.local.toml` in the repo holds only a POINTER to it (`[env] _.file`). mise loads it for
-        any process whose CWD is under the project, which is exactly the audience that was missing.
+      * `mise.local.toml` in the repo holds NO VALUES — only a POINTER to that dotenv
+        (`[env] _.file`) and the launch task below. mise loads it for any process whose CWD is under
+        the project, which is exactly the audience that was missing.
+      * a `[tasks.<harness>]` table, so `mise run claude` in this repo replays THIS launch. The
+        `run` line is `aoe.command_for` verbatim — the same string the dashboard row records —
+        because a launcher that drifts from the row purporting to restart it is worse than no
+        shortcut at all. It carries every flag that shapes the session (`--stack`,
+        `--no-strict-mcp-config`, `--aoe-group`, `--aoe-title`) and, like the row, omits the
+        per-invocation lifecycle flags (`--fresh`, `--rm`) that are yours to re-decide each time.
 
-    Only ever CREATES `mise.local.toml`; an existing one is never rewritten. A user's mise config is
-    theirs, TOML has no safe blind-append (a second `[env]` table is a parse error), and silently
-    reformatting it would be a worse bug than the one this fixes. When it exists without our pointer
-    we print the two lines to add and move on.
+    NEVER WRITES A FILE THAT IS NOT OURS. A `mise.local.toml` without our marker comment is the
+    user's: we print what to add and change nothing. Silently reformatting someone's config — TOML
+    round-trips lose comments and ordering, and a second `[env]` table is a parse error outright —
+    is a worse bug than the one this fixes. Inside a file we DO own, the task table may be refreshed
+    (see `_upsert_mise_task`), because a launch flag that changed has to reach the shortcut that
+    claims to replay the launch; the user can still claim the name by renaming the task.
 
     Requires every value to be stable — a `publish: ephemeral` port would be written down and be
     wrong after the next container recreate, which is why beads-server is `publish: stable`.
@@ -4971,35 +5042,64 @@ def _write_project_tool_env(stack: str, project_path: Path) -> None:
         **_recipe_env(recipes, project_path, mode="host"),
         **svc_client_env(stack, project_path, "host"),
     }
-    if not values:
-        return
 
-    gcd = paths.git_common_dir(project_path)
-    env_file = (
-        paths.xdg_state_home() / "harnessed" / "project-env"
-        / f"{paths.project_hash(gcd or project_path)}.env"
-    )
-    env_file.parent.mkdir(parents=True, exist_ok=True)
-    env_file.parent.chmod(0o700)
-    body = "".join(f"{k}={v}\n" for k, v in sorted(values.items()))
-    env_file.write_text(f"# {_MISE_MARKER} — regenerated every launch. Do not edit.\n{body}", "utf-8")
-    env_file.chmod(0o600)
+    env_file = None
+    if values:
+        gcd = paths.git_common_dir(project_path)
+        env_file = (
+            paths.xdg_state_home() / "harnessed" / "project-env"
+            / f"{paths.project_hash(gcd or project_path)}.env"
+        )
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+        env_file.parent.chmod(0o700)
+        body = "".join(f"{k}={v}\n" for k, v in sorted(values.items()))
+        env_file.write_text(
+            f"# {_MISE_MARKER} — regenerated every launch. Do not edit.\n{body}", "utf-8"
+        )
+        env_file.chmod(0o600)
 
     mise_local = project_path / "mise.local.toml"
-    pointer = f'[env]\n_.file = "{env_file}"\n'
     if not mise_local.exists():
         mise_local.write_text(
             f"{_MISE_MARKER}: this file is NOT committed (see .gitignore). It points mise at the\n"
-            f"# tool env for this project, so `bd` and friends work in a plain terminal too.\n"
-            f"{pointer}",
+            f"# tool env for this project, so `bd` and friends work in a plain terminal too, and\n"
+            f"# gives you `mise run <harness>` to start this stack again.\n",
             encoding="utf-8",
         )
         _say(f"[blue][INFO][/blue] wrote {mise_local.name} — `bd` now works in a plain shell here")
-    elif str(env_file) not in mise_local.read_text(encoding="utf-8"):
+
+    text = mise_local.read_text(encoding="utf-8")
+    if env_file is not None and str(env_file) not in text:
+        pointer = f'[env]\n_.file = "{env_file}"\n'
+        # Appending `[env]` is safe here and only here: a file carrying our marker has no `[env]` of
+        # its own yet (this is the only code that adds one), and a file that is not ours we do not
+        # touch at all. The reachable case is a project whose first launch had no tool env to write.
+        if _MISE_MARKER in text:
+            mise_local.write_text(text.rstrip("\n") + "\n" + pointer, encoding="utf-8")
+        else:
+            _say(
+                f"[blue][INFO][/blue] {mise_local.name} exists and is yours to edit; to configure "
+                f"this project's tools for a plain shell, add:\n    {pointer.rstrip()}"
+            )
+
+    command = aoe.command_for(
+        verb, stack, harness, Path(project_path).resolve(),
+        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+    )
+    block = _mise_task_block(harness, stack, verb, command)
+    if _MISE_MARKER not in mise_local.read_text(encoding="utf-8"):
+        # Someone else's file. Same rule as the pointer above: we offer, we do not edit. Appending a
+        # table would be TOML-safe, but "harnessed does not write your mise config" is a guarantee
+        # worth more than the convenience, and a task named for a harness is exactly the name they
+        # are most likely to want for something of their own.
+        # escape() — a TOML table header is `[tasks.claude]`, which rich reads as markup and eats,
+        # printing an instruction with the one line the user has to copy missing from it.
         _say(
-            f"[blue][INFO][/blue] {mise_local.name} exists and is yours to edit; to configure this "
-            f"project's tools for a plain shell, add:\n    {pointer.rstrip()}"
+            f"[blue][INFO][/blue] to get `mise run {harness}` for this stack, add to "
+            f"{mise_local.name}:\n{escape(block.strip())}"
         )
+    elif _upsert_mise_task(mise_local, harness, block):
+        _say(f"[blue][INFO][/blue] `mise run {harness}` in this repo now starts {stack}")
     _ensure_gitignore_entry(project_path, "mise.local.toml")
 
 
@@ -5618,7 +5718,10 @@ def _launch_host(
 
     # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
     # repo is configured too. After services, because the client env includes their connection.
-    _write_project_tool_env(stack, project_path)
+    _write_project_tool_env(
+        stack, project_path, harness=harness, verb="host-run",
+        no_strict_mcp=no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
+    )
 
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
     # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
@@ -6117,7 +6220,10 @@ def container_run(
     _ensure_services(rt, stack, project_path=project_path, mount_path=mount_path)
 
     # Same as the host path: the project gets a config of its own, not just the agent we launch.
-    _write_project_tool_env(stack, project_path)
+    _write_project_tool_env(
+        stack, project_path, harness=harness, verb="container-run",
+        no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
+    )
 
     # Re-attach to a running instance (interactive only) — but if it was built from an older image
     # (rebuilt since it started), a re-attach would silently run the stale build. Offer to recreate.
