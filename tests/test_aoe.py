@@ -136,7 +136,7 @@ class TestSyncSession:
         [add] = rec.registrations()
         assert add[1] == str(tmp_path)
         assert _flag(add, "-p") == aoe.PROFILE
-        assert _flag(add, "--cmd-override") == f"harnessed container-run claude {tmp_path} --stack serena --"
+        assert _flag(add, "--cmd-override") == "mise run claude --"
 
     def test_uses_cmd_override_not_cmd(self, rec, tmp_path):
         # `--cmd` is validated against aoe's tool list and silently substitutes its configured
@@ -288,48 +288,53 @@ class TestTitleUniqueness:
 
 
 class TestIdentity:
-    """(path, stack, harness) per verb — the key that decides duplicate vs distinct."""
+    """(path, harness) — the key that decides duplicate vs distinct.
 
-    def _existing(self, tmp_path: Path, command: str) -> str:
+    The recorded command is `mise run <harness>`, which names no stack and no verb, so everything
+    those two used to split now shares one row. Which stack that row starts is whatever the
+    project's `[tasks.<harness>]` currently says; the launch rewrites it.
+    """
+
+    def _existing(self, tmp_path: Path, command: str = "mise run claude --") -> str:
         return f'[{{"id": "s1", "path": "{tmp_path}", "command": "{command}"}}]'
 
     def test_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
+        rec = Recorder(sessions=self._existing(tmp_path))
         rec.install(monkeypatch)
         aoe.sync_session("container-run", "serena", "claude", tmp_path)
         assert rec.added() == []
 
     def test_a_second_harness_is_a_second_session(self, monkeypatch, tmp_path):
         # One stack has an assembled profile PER harness, so claude and omp are two rows.
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
+        rec = Recorder(sessions=self._existing(tmp_path))
         rec.install(monkeypatch)
         aoe.sync_session("container-run", "serena", "omp", tmp_path)
         assert len(rec.registrations()) == 1
 
-    def test_host_and_container_verbs_do_not_collide(self, monkeypatch, tmp_path):
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
+    def test_a_second_stack_reuses_the_row(self, monkeypatch, tmp_path):
+        # The deliberate collapse: `mise run claude` is the same command whichever stack the task
+        # points at, so the row follows the task instead of multiplying beside it.
+        rec = Recorder(sessions=self._existing(tmp_path))
+        rec.install(monkeypatch)
+        aoe.sync_session("container-run", "other-stack", "claude", tmp_path)
+        assert rec.added() == []
+
+    def test_both_verbs_share_one_row(self, monkeypatch, tmp_path):
+        rec = Recorder(sessions=self._existing(tmp_path))
         rec.install(monkeypatch)
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
-        assert len(rec.registrations()) == 1
+        assert rec.added() == []
 
     def test_an_open_mcp_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --no-strict-mcp-config --"))
+        rec = Recorder(sessions=self._existing(tmp_path))
         rec.install(monkeypatch)
         aoe.sync_session("container-run", "serena", "claude", tmp_path, no_strict_mcp=True)
         assert rec.added() == []
 
-    def test_strict_and_open_mcp_are_two_sessions(self, monkeypatch, tmp_path):
-        # Different MCP surface, so two things to run. The cost is one-time and unavoidable: a row
-        # registered before the flag was echoed does not match and is registered once more.
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
-        rec.install(monkeypatch)
-        aoe.sync_session("container-run", "serena", "claude", tmp_path, no_strict_mcp=True)
-        assert len(rec.registrations()) == 1
-
     def test_same_stack_in_another_folder_is_a_second_session(self, monkeypatch, tmp_path):
         other = tmp_path / "other"
         other.mkdir()
-        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
+        rec = Recorder(sessions=self._existing(tmp_path))
         rec.install(monkeypatch)
         aoe.sync_session("container-run", "serena", "claude", other)
         assert len(rec.registrations()) == 1
@@ -385,13 +390,13 @@ class TestUserNamedRows:
         aoe.sync_session("host-run", "s", "claude", tmp_path, title="a chosen title")
         assert _flag(rec.registrations()[0], "-t") == "a chosen title"
 
-    def test_both_are_echoed_on_the_recorded_command(self, rec, tmp_path):
-        # Left off, a restart from the dashboard would re-derive group and title and add a SECOND
-        # row beside the one the user placed — the duplicate these flags exist to prevent.
-        aoe.sync_session(
+    def test_both_are_echoed_on_the_launch_command(self, tmp_path):
+        # The row runs `mise run <harness>`, so the echo lands on the mise task's `run` line — which
+        # is this string. Left off, a restart from the dashboard would re-derive group and title and
+        # add a SECOND row beside the one the user placed.
+        tokens = shlex.split(aoe.command_for(
             "host-run", "s", "claude", tmp_path, group="a-chosen-group", title="a titled row"
-        )
-        tokens = shlex.split(_flag(rec.registrations()[0], "--cmd-override"))
+        ))
         assert tokens[-5:] == ["--aoe-group", "a-chosen-group", "--aoe-title", "a titled row", "--"]
 
     def test_an_existing_row_is_adopted_not_duplicated(self, monkeypatch, tmp_path):
@@ -560,8 +565,7 @@ class TestWriteDispatch:
 
     def test_already_registered_is_success_without_writing(self, monkeypatch, tmp_path):
         rec = Recorder(
-            sessions=f'[{{"id": "s1", "path": "{tmp_path}",'
-                     f' "command": "harnessed container-run claude {tmp_path} --stack serena --"}}]'
+            sessions=f'[{{"id": "s1", "path": "{tmp_path}", "command": "mise run claude --"}}]'
         ).install(monkeypatch)
         assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
         assert rec.spawned == []

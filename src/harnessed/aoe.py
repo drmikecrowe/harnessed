@@ -21,11 +21,13 @@ silently cost every registration until `--create-aoe-only` surfaced it. The one 
 is `--tool`, whose VALUE aoe validates and may reject; it is issued with a plain retry behind it so a
 rejection costs the label rather than the row. See `sync_session`.
 
-Session identity is (project path, stack, harness) — NOT (project path, stack). A stack has a
-separately assembled profile per harness (`profiles/<stack>/<harness>/`), so the claude and omp
-variants of one recipe set are two different things to run and two different rows. All three
-components are encoded in the recorded command, which is what we match on; titles stay purely
-cosmetic so a user renaming a row cannot break identity.
+Session identity is (project path, harness). The recorded command is `mise run <harness>` — the
+project's own launch task (see `mise_command`) — so a project gets one row per harness, and which
+STACK that row starts is whatever `[tasks.<harness>]` in its `mise.local.toml` currently says.
+Relaunching claude against a different stack rewrites that task, and the row follows. Harness stays
+part of identity because a stack has a separately assembled profile per harness
+(`profiles/<stack>/<harness>/`), so claude and omp are two different things to run. Titles stay
+purely cosmetic, so a user renaming a row cannot break identity.
 
 UNLESS THE USER NAMES THE ROW. `--aoe-group` and `--aoe-title` (see `sync_session`) override the
 derived group and title, and supplying BOTH also replaces the identity key: the row is matched on
@@ -175,11 +177,31 @@ def _apply(
     return True
 
 
+def mise_command(harness: str) -> str:
+    """What the row runs: the project's own `mise run <harness>` task.
+
+    That task's `run` line is `command_for` verbatim, written by the launch
+    (`launcher._write_project_tool_env`), so this is the same launch command by reference instead of
+    by copy — one place to edit it, and a dashboard command a human can read.
+
+    Terminated with `--` for the reason spelled out in `command_for`, plus one of its own: `mise run`
+    parses its own flags until `--`, so aoe's appended `--resume <id>` needs the separator to reach
+    the task at all. mise appends task args to the run script, where they land after the `--` that
+    command already ends with and reach the agent exactly as before.
+
+    No cwd is pinned — mise walks up from the working directory to find `mise.local.toml`, and the
+    row's path is the project. If that ever stops holding the failure is loud (`mise: no such
+    task`), not silent.
+    """
+    return shlex.join(["mise", "run", harness, "--"])
+
+
 def command_for(
     verb: str, stack: str, harness: str, project_path: Path,
     *, group: str | None = None, title: str | None = None, no_strict_mcp: bool = False,
 ) -> str:
-    """The harnessed invocation recorded on the session — both the identity key and what aoe runs.
+    """The harnessed invocation — the `run` line of the project's `mise run <harness>` task, which
+    is what a row invokes (see `mise_command`). Still the string a restart ultimately executes.
 
     Always the RESOLVED stack name and an absolute path, never the user's original argv. A dynamic
     stack is minted into the generated catalog root before this is called, so `--stack
@@ -204,10 +226,10 @@ def command_for(
     echoed back for the same reason and one more: it changes the MCP surface the agent comes up
     with, so a row that dropped it would restart as a DIFFERENT session than the one registered.
 
-    Everything echoed here is also part of the identity key on the command path, so adding a flag to
-    this list re-keys existing rows: a session registered before the flag was echoed no longer
-    matches and is registered a second time, once. `--aoe-group` + `--aoe-title` are immune — they
-    key on (group, title) and never look at the command.
+    NOT the identity key — `mise_command` is, and it names only the harness. Adding a flag here is
+    therefore free where it once re-keyed every existing row. The flip side: a flag added here and
+    nowhere else changes what a row DOES without changing which row it is, so anything a user must
+    be able to tell two launches apart by still has to reach the title. See `title_for`.
     """
     args = ["harnessed", verb, harness, str(project_path), *_STACK_FLAG, stack]
     if no_strict_mcp:
@@ -300,7 +322,7 @@ def _registered(
     exe: str, command: str, project_path: Path,
     *, group: str | None = None, title: str | None = None,
 ) -> bool:
-    """Whether this exact (path, stack, harness, verb) already has a row.
+    """Whether this (path, harness) already has a row.
 
     With BOTH `group` and `title` supplied the user has named the row, and (group, title) becomes
     the key instead — the only match that can find a row harnessed did not write, whose command
@@ -358,10 +380,7 @@ def sync_session(
         # Canonicalize once: the resolved path is both what we record and what we compare against,
         # so two routes to the same directory cannot register two rows.
         project_path = Path(project_path).resolve()
-        command = command_for(
-            verb, stack, harness, project_path,
-            group=group, title=title, no_strict_mcp=no_strict_mcp,
-        )
+        command = mise_command(harness)
         if _registered(exe, command, project_path, group=group, title=title):
             return True
 
