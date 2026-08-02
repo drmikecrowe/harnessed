@@ -33,7 +33,7 @@ class TestHostRunRecipeXOR:
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         monkeypatch.setattr(
             launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False: calls.append(stack),
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False: calls.append(stack),
         )
         result = runner.invoke(launcher.app, ["host-run", "claude"])
         assert result.exit_code == 0, result.output
@@ -46,7 +46,7 @@ class TestHostRunRecipeXOR:
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         monkeypatch.setattr(
             launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False: calls.append(stack),
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False: calls.append(stack),
         )
         result = runner.invoke(launcher.app, ["host-run", "claude", "--extends", "hostspike"])
         assert result.exit_code == 0, result.output
@@ -68,7 +68,7 @@ class TestHostRunRecipeXOR:
         calls: list = []
         monkeypatch.setattr(
             launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False: calls.append(stack),
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False: calls.append(stack),
         )
         result = runner.invoke(launcher.app, ["host-run", "claude", "--stack", "hostspike"])
         assert result.exit_code == 0, result.output
@@ -83,7 +83,7 @@ class TestHostRunRecipeMinting:
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         monkeypatch.setattr(
             launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False: calls.__setitem__(
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False: calls.__setitem__(
                 "launched", (stack, harness)
             ),
         )
@@ -136,7 +136,7 @@ class TestHostRunRecipeMinting:
         captured: dict = {}
         monkeypatch.setattr(
             launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False: captured.__setitem__("stack", stack),
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False: captured.__setitem__("stack", stack),
         )
 
         runner.invoke(launcher.app, ["host-run", "claude", "--recipe", "serena"])
@@ -164,7 +164,7 @@ class TestHostRunRecipeMinting:
         monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
         monkeypatch.setattr(
             launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False: captured.update(
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False: captured.update(
                 stack=stack, path=path
             ),
         )
