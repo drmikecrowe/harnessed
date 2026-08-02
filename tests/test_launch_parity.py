@@ -77,6 +77,8 @@ CONTAINER_ONLY: dict[str, str] = {
     "_wait_hatago": "waits on the in-pod MCP hub; the host uses _host_native_mcp",
     "_resolve_mount_path": "maps a host path to its in-container path",
     "_resolve_start_dir": "resolves the agent's start dir INSIDE the pod",
+    "project_relpath": "the mount point a host path takes INSIDE the container",
+    "instance_name": "names the container/pod; a host launch creates neither",
     # --- same capability, different executor (the host has its own implementation) ---
     "_container_setup_env": "container half of the setup env; host: _script_env via _host_run_setups",
     "_run_container_setups": "container half; host: _host_run_setups",
@@ -92,6 +94,8 @@ CONTAINER_ONLY: dict[str, str] = {
     # Host mode has no image: `_launch_host` assembles in-process on every launch, so a minted
     # recipe set needs no build step there at all.
     "_build_stack": "builds the container image; the host assembles in-process every launch",
+    "is_built": "requires a pre-assembled profile; `_launch_host` calls `assemble` itself instead",
+    "load_stack": "host: load_stack_with_recipes, which it needs for the recipe list anyway",
     # --- called by the host VERB rather than by _launch_host ---
     "_require_supported_harness": "`host_run` calls it itself, before delegating",
     "_resolve_stack": "`host_run` calls it itself — shared --stack/--recipe resolution",
@@ -99,10 +103,17 @@ CONTAINER_ONLY: dict[str, str] = {
 
 
 def _stack_helpers(fn) -> set[str]:
-    """Names of launcher-defined helpers this function calls.
+    """Names of harnessed-defined helpers this function calls.
 
-    Restricted to callables defined in `launcher` itself, which is what scopes this to harnessed's
-    own logic — stdlib and third-party calls are noise for this question.
+    Restricted to callables defined somewhere in the `harnessed` package, which is what scopes this
+    to harnessed's own logic — stdlib and third-party calls are noise for this question.
+
+    Package-wide rather than `launcher`-only ON PURPOSE. launcher.py is being split into modules
+    (bd harnessed-4l8), and a `__module__ == launcher` test would silently STOP SEEING each helper
+    the moment it moved — the lint would decay to nothing exactly as the file it guards is
+    rearranged, and every entry in CONTAINER_ONLY would go stale one extraction at a time. The
+    question this asks is "does the host path do the same stack-derived work", and that does not
+    depend on which module the work now lives in.
     """
     found: set[str] = set()
     for node in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(fn)))):
@@ -113,7 +124,8 @@ def _stack_helpers(fn) -> set[str]:
         if not name:
             continue
         obj = getattr(launcher, name, None)
-        if callable(obj) and getattr(obj, "__module__", None) == launcher.__name__:
+        module = getattr(obj, "__module__", None) or ""
+        if callable(obj) and (module == "harnessed" or module.startswith("harnessed.")):
             found.add(name)
     return found
 

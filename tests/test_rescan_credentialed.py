@@ -13,7 +13,7 @@ import subprocess
 import pytest
 from typer.testing import CliRunner
 
-from harnessed import launcher
+from harnessed import launcher, launchenv
 
 runner = CliRunner()
 
@@ -153,7 +153,10 @@ class TestGlobalScannerTokenSources:
 
         resolved = tmp_path / "resolved.env"
         resolved.write_text("SNYK_TOKEN=from-varlock\n")
-        monkeypatch.setattr(launcher, "_varlock_resolve_env_file", lambda d: resolved)
+        # Patched on `launchenv`, not `launcher`: `_resolve_launch_secrets` lives there now and
+        # resolves this name in its OWN module globals, so patching the launcher re-export would
+        # leave the real varlock call in place.
+        monkeypatch.setattr(launchenv, "_varlock_resolve_env_file", lambda d: resolved)
 
         env_files, _ = launcher._resolve_launch_secrets(project_path=None)
         assert env_files == [resolved]
