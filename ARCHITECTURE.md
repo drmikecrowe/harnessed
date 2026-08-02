@@ -192,7 +192,8 @@ Because the name is content-derived, the same recipe set in five repos is one st
 pair of volumes. `--extends` defaults to `default` — the baseline stack the repo ships (`catalog/stacks/default`,
 composing `catalog/recipes/default`), so the documented default resolves on a bare install rather
 than only for users who happened to author a `default` stack of their own. Overlay a stack of that
-name to replace it wholesale. `--no-extends` stands alone.
+name to replace it wholesale. `--no-extends` makes the recipe set stand alone, and therefore requires
+at least one `--recipe` — with nothing inherited and nothing composed there is no stack to run.
 
 A generated stack cannot use `ssh_keys:` — the private-key gate honors that field only from the
 user's own overlay. That is correct rather than unfortunate: `ssh_keys` is per-stack and a generated
