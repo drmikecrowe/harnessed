@@ -52,6 +52,10 @@ Keep layout and vocabulary in ARCHITECTURE.md, not here.
 **Never commit to `main`.** Worktree → full suite passing → PR. Sign every commit
 (`.claude/rules/signed-commits`).
 
+**Open PRs ready for review, never `--draft`.** A draft PR does not request review and does not run
+the checks that gate a merge, so it reads as "not finished" for work that is. If it is not ready,
+do not open it yet.
+
 Covers code, catalog, config, and all repo-tracked Markdown (`ARCHITECTURE.md`, this file, the
 `README.md` files, `.agents/skills/**`).
 
