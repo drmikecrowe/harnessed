@@ -9,9 +9,18 @@ instances permanently logged out, curable only by deleting the state dir by hand
 """
 
 import json
+import subprocess
 from datetime import datetime, timedelta, timezone
 
 from harnessed import launcher
+
+
+def _home(monkeypatch, tmp_path):
+    """Point HOME at an empty tmp dir so ~/.config/harnessed never interferes with the test."""
+    h = tmp_path / "home"
+    h.mkdir()
+    monkeypatch.setenv("HOME", str(h))
+    return h
 
 
 def _creds(expires_in: timedelta) -> str:
@@ -36,23 +45,125 @@ class TestOauthTokenDetection:
         monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "x")
         assert launcher._claude_oauth_token_args("codex") == []
 
-    def test_detects_token_in_env_file(self, monkeypatch, tmp_path):
-        """varlock/.env is the recommended route — a long-lived token belongs in a secret store."""
+    def test_detects_token_in_plain_env_file(self, monkeypatch, tmp_path):
+        """Plain .env in project_path is the non-varlock fallback (Route 3)."""
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-        env_file = tmp_path / "secrets.env"
-        env_file.write_text("OTHER=1\nCLAUDE_CODE_OAUTH_TOKEN=abc\n")
-        assert launcher._claude_oauth_token_configured("claude", [env_file]) is True
+        _home(monkeypatch, tmp_path)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text("OTHER=1\nCLAUDE_CODE_OAUTH_TOKEN=abc\n")
+        assert launcher._claude_oauth_token_configured("claude", proj) is True
 
-    def test_env_file_without_token_is_not_a_false_positive(self, monkeypatch, tmp_path):
+    def test_env_without_token_is_not_a_false_positive(self, monkeypatch, tmp_path):
+        """A plain .env that lacks the token must not count as configured."""
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-        env_file = tmp_path / "secrets.env"
-        # Substring of the name must not count — only a real KEY= assignment.
-        env_file.write_text("NOT_CLAUDE_CODE_OAUTH_TOKEN_HINT=1\n")
-        assert launcher._claude_oauth_token_configured("claude", [env_file]) is False
+        _home(monkeypatch, tmp_path)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        # Substring of the name must not count — only a real KEY=<value> assignment.
+        (proj / ".env").write_text("NOT_CLAUDE_CODE_OAUTH_TOKEN_HINT=1\n")
+        assert launcher._claude_oauth_token_configured("claude", proj) is False
 
-    def test_unreadable_env_file_falls_back(self, monkeypatch, tmp_path):
+    def test_no_project_path_and_no_global_config_returns_false(self, monkeypatch, tmp_path):
+        """No project_path and an empty home → definitively no token."""
         monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-        assert launcher._claude_oauth_token_configured("claude", [tmp_path / "missing.env"]) is False
+        _home(monkeypatch, tmp_path)
+        assert launcher._claude_oauth_token_configured("claude") is False
+
+    # --- regression tests (harnessed-9hp.3) ---
+
+    def test_detects_token_via_varlock_structured(self, monkeypatch, tmp_path):
+        """Route 2: _varlock_resolve (structured) finds the token without scanning text."""
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        _home(monkeypatch, tmp_path)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env.schema").write_text("")  # triggers the varlock branch
+        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
+        monkeypatch.setattr(
+            launcher, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": "secret-token"}
+        )
+        assert launcher._claude_oauth_token_configured("claude", proj) is True
+
+    def test_varlock_failure_warns_not_silently_remounts(self, monkeypatch, tmp_path):
+        """When varlock fails the function must WARN (not silently fall through) so the
+        operator can distinguish 'varlock failure' from 'genuinely no token' before the
+        credential-file mount fires (harnessed-9hp.3)."""
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        _home(monkeypatch, tmp_path)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env.schema").write_text("")
+        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
+        monkeypatch.setattr(launcher, "_varlock_resolve", lambda d: None)  # varlock failure
+
+        before = launcher._err.warnings
+        result = launcher._claude_oauth_token_configured("claude", proj)
+        assert result is False
+        assert launcher._err.warnings > before, "expected a warning when varlock fails"
+
+    def test_global_varlock_failure_does_not_warn_when_project_supplies_the_token(
+        self, monkeypatch, tmp_path
+    ):
+        """A varlock failure in ONE dir must not warn if a later dir still supplies the token.
+
+        The warning promises "Mounting a credential file as fallback". When global varlock is down
+        but the project has the token, we return True and mount nothing — so warning there would
+        describe something that never happens.
+        """
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        home = _home(monkeypatch, tmp_path)
+        gdir = home / ".config" / "harnessed"
+        gdir.mkdir(parents=True)
+        (gdir / ".env.schema").write_text("")  # global takes the varlock branch...
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=from-project\n")  # ...project does not
+        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
+        monkeypatch.setattr(launcher, "_varlock_resolve", lambda d: None)  # global varlock fails
+
+        before = launcher._err.warnings
+        assert launcher._claude_oauth_token_configured("claude", proj) is True
+        assert launcher._err.warnings == before, "must not warn when the token was found anyway"
+
+    def test_all_varlock_failures_warn_once_listing_every_dir(self, monkeypatch, tmp_path):
+        """Two failed dirs produce ONE warning naming both, not one warning per dir."""
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        home = _home(monkeypatch, tmp_path)
+        gdir = home / ".config" / "harnessed"
+        gdir.mkdir(parents=True)
+        (gdir / ".env.schema").write_text("")
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env.schema").write_text("")
+        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
+        monkeypatch.setattr(launcher, "_varlock_resolve", lambda d: None)
+
+        before = launcher._err.warnings
+        assert launcher._claude_oauth_token_configured("claude", proj) is False
+        assert launcher._err.warnings == before + 1, "expected exactly one warning for both dirs"
+
+    def test_empty_value_in_env_not_configured(self, monkeypatch, tmp_path):
+        """export CLAUDE_CODE_OAUTH_TOKEN= turns the token OFF; empty must not count as configured."""
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        _home(monkeypatch, tmp_path)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=\n")
+        assert launcher._claude_oauth_token_configured("claude", proj) is False
+
+    def test_empty_varlock_value_not_configured(self, monkeypatch, tmp_path):
+        """Varlock returning an empty string for the key must not count as configured."""
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        _home(monkeypatch, tmp_path)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env.schema").write_text("")
+        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
+        monkeypatch.setattr(
+            launcher, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": ""}
+        )
+        assert launcher._claude_oauth_token_configured("claude", proj) is False
 
 
 class TestCredsMountSupersededByToken:
@@ -129,3 +240,68 @@ class TestExpiryHelper:
         bad = tmp_path / "bad.json"
         bad.write_text("{}")
         assert launcher._claude_creds_expired(bad) is True
+
+
+class TestVarlockResolveMemo:
+    """`_varlock_resolve` shells out to `varlock load`, which may authenticate against a secrets
+    manager. Several callers resolve the SAME dir in one launch (env-file build, then the token
+    presence check), so the result is memoized per dir for the process lifetime.
+    """
+
+    def _stub_varlock(self, monkeypatch, calls: list[str], *, returncode: int = 0, stdout: str = "{}"):
+        launcher._varlock_cache_clear()
+
+        def fake_run(cmd, **kwargs):
+            calls.append(kwargs.get("cwd", ""))
+            return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr="boom")
+
+        monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+
+    def test_same_dir_resolves_once(self, monkeypatch, tmp_path):
+        """The second call for a dir must NOT spawn another varlock subprocess."""
+        calls: list[str] = []
+        self._stub_varlock(monkeypatch, calls, stdout='{"CLAUDE_CODE_OAUTH_TOKEN": "tok"}')
+
+        first = launcher._varlock_resolve(tmp_path)
+        second = launcher._varlock_resolve(tmp_path)
+
+        assert first == second == {"CLAUDE_CODE_OAUTH_TOKEN": "tok"}
+        assert len(calls) == 1, f"expected 1 varlock invocation, got {len(calls)}"
+
+    def test_distinct_dirs_each_resolve(self, monkeypatch, tmp_path):
+        """Memoization is per dir — global and project must both still be resolved."""
+        calls: list[str] = []
+        self._stub_varlock(monkeypatch, calls)
+        a = tmp_path / "global"
+        b = tmp_path / "project"
+        a.mkdir()
+        b.mkdir()
+
+        launcher._varlock_resolve(a)
+        launcher._varlock_resolve(b)
+
+        assert len(calls) == 2
+
+    def test_failure_is_cached_and_reported_once(self, monkeypatch, tmp_path):
+        """A failing varlock must not be retried once per caller.
+
+        The error is printed inside `_varlock_resolve`, so a single invocation is also proof it is
+        reported exactly once — no need to reach into the console's internals to count it.
+        """
+        calls: list[str] = []
+        self._stub_varlock(monkeypatch, calls, returncode=1)
+
+        assert launcher._varlock_resolve(tmp_path) is None
+        assert launcher._varlock_resolve(tmp_path) is None
+
+        assert len(calls) == 1, f"failure should be cached, got {len(calls)} invocations"
+
+    def test_cache_clear_forces_reresolution(self, monkeypatch, tmp_path):
+        calls: list[str] = []
+        self._stub_varlock(monkeypatch, calls)
+
+        launcher._varlock_resolve(tmp_path)
+        launcher._varlock_cache_clear()
+        launcher._varlock_resolve(tmp_path)
+
+        assert len(calls) == 2

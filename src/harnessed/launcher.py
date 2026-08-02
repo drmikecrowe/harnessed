@@ -1076,6 +1076,27 @@ def _build_stack_guarded(
         _BUILD_TAG.reset(token)
 
 
+# Memo for `_varlock_resolve`, keyed on the resolved schema dir. Populated for the lifetime of one
+# CLI process, which is exactly one launch.
+#
+# `varlock load` shells out and may authenticate against a secrets manager (1Password), so each call
+# costs real latency. The same dir is resolved by several callers in a single launch:
+# `_varlock_resolve_env_file` builds the --env-file set, then `_claude_oauth_token_configured` asks
+# the same dirs whether a token is present (and `_resolve_launch_env` does both on the host path).
+# Uncached that is up to 4 subprocesses per launch where 2 suffice.
+#
+# Caching is safe here BECAUSE the process is short-lived and one launch must see a CONSISTENT
+# secret set anyway — resolving the same dir twice and acting on different answers would be a bug,
+# not a feature. Tests that need fresh resolution monkeypatch `_varlock_resolve` wholesale (which
+# bypasses this entirely) or call `_varlock_cache_clear()`.
+_VARLOCK_CACHE: dict[Path, dict[str, str] | None] = {}
+
+
+def _varlock_cache_clear() -> None:
+    """Drop the `_varlock_resolve` memo. For tests that resolve the same dir across differing state."""
+    _VARLOCK_CACHE.clear()
+
+
 def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
     """Run `varlock load --format json` in schema_dir and return the resolved `KEY -> value` map
     (values stringified, `None`s dropped). Returns None on varlock failure so a launch degrades
@@ -1086,10 +1107,17 @@ def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
     both consumers want — see `_varlock_resolve_env_file` (container) and `_resolve_launch_env`
     (host, where the values go straight into `os.environ` and never touch disk).
 
+    Memoized per schema dir — see `_VARLOCK_CACHE`. The failure result (None) is cached too, so a
+    broken varlock reports its error once per dir instead of once per caller.
+
     Assumes a `.env.schema` in schema_dir and `varlock` on PATH (checked by the caller).
     `OP_SERVICE_ACCOUNT_TOKEN` is included when already set in the host env (headless / CI path —
     service-account bearer auth, no desktop app required).
     """
+    cache_key = schema_dir.resolve()
+    if cache_key in _VARLOCK_CACHE:
+        return _VARLOCK_CACHE[cache_key]
+
     result = subprocess.run(
         ["varlock", "load", "--format", "json"],
         capture_output=True,
@@ -1101,12 +1129,14 @@ def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
             f"[bold red]error:[/bold red] varlock load failed in {schema_dir} "
             f"(exit {result.returncode}): {result.stderr.strip()}"
         )
+        _VARLOCK_CACHE[cache_key] = None
         return None
 
     try:
         resolved = json.loads(result.stdout)
     except json.JSONDecodeError as e:
         _err.print(f"[bold red]error:[/bold red] varlock load returned invalid JSON: {e}")
+        _VARLOCK_CACHE[cache_key] = None
         return None
 
     def _fmt(v: object) -> str:
@@ -1118,6 +1148,7 @@ def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
     op_token = os.environ.get("OP_SERVICE_ACCOUNT_TOKEN")
     if op_token:
         values["OP_SERVICE_ACCOUNT_TOKEN"] = op_token
+    _VARLOCK_CACHE[cache_key] = values
     return values
 
 
@@ -2098,23 +2129,80 @@ def _claude_oauth_token_args(harness: str) -> list[str]:
     return []
 
 
-def _claude_oauth_token_configured(harness: str, env_files: list[Path]) -> bool:
-    """True when `CLAUDE_CODE_OAUTH_TOKEN` will reach the container (host env or an env-file).
+def _claude_oauth_token_configured(harness: str, project_path: Path | None = None) -> bool:
+    """True when ``CLAUDE_CODE_OAUTH_TOKEN`` will reach the container at runtime.
 
-    Drives the decision to skip the credential-file mount entirely. Env-files are read for the
-    KEY only — values are never parsed, logged, or returned.
+    Checks, in order:
+    1. ``os.environ`` — the token is already in the host process environment.
+    2. Varlock resolution — structured check via ``_varlock_resolve``; asking
+       ``resolved.get(KEY)`` is the authoritative answer and avoids a fragile
+       text scan of a serialised env-file (the previous approach).
+    3. Plain ``.env`` fallback — when no ``.env.schema`` / varlock is present,
+       ``_plain_env_values`` parses the raw file directly.
+
+    Drives ``_claude_creds_seed_mount``'s decision to skip or restore the legacy
+    credential-file mount.
+
+    Empty is NOT configured — ``export CLAUDE_CODE_OAUTH_TOKEN=`` is how a shell
+    profile disables a token, and treating the bare name as "configured" would
+    retire the credential file and silently log the user out with no recovery path
+    (same semantics as ``_host_oauth_token_configured``).
+
+    Emits a warning when ``_varlock_resolve`` itself fails (returns ``None``): the
+    token may be configured but is unreachable at launch time (e.g. via a runtime
+    secrets agent that does not write env-files).  The warning distinguishes this
+    "cannot determine" state from "genuinely no token", so the credential-file
+    mount that follows is not a silent regression.
     """
     if harness not in ("claude", "omp"):
         return False
+
+    # Route 1: already in the host process environment.
     if os.environ.get(_OAUTH_TOKEN_VAR):
         return True
-    for f in env_files:
-        try:
-            for line in f.read_text(encoding="utf-8").splitlines():
-                if line.lstrip().startswith(f"{_OAUTH_TOKEN_VAR}="):
+
+    have_varlock = bool(shutil.which("varlock"))
+    global_dir = Path.home() / ".config" / "harnessed"
+    dirs: list[Path] = [global_dir]
+    if project_path is not None:
+        dirs.append(project_path)
+
+    # Dirs where varlock ran and FAILED. Collected rather than warned about inline: a later dir can
+    # still supply the token (global varlock down, project `.env` has it), in which case we return
+    # True and mount nothing — so an inline warning would promise a credential-file fallback that
+    # never happens. Deferring to the return-False path also means ONE warning per launch listing
+    # every failed dir, instead of one per dir.
+    unresolved: list[Path] = []
+
+    for d in dirs:
+        schema = d / ".env.schema"
+        if schema.is_file() and have_varlock:
+            # Route 2: structured varlock query — no text-file scan.
+            resolved = _varlock_resolve(d)
+            if resolved is None:
+                unresolved.append(d)
+            elif resolved.get(_OAUTH_TOKEN_VAR):  # empty string is NOT configured
+                return True
+        else:
+            plain = d / ".env"
+            if plain.is_file():
+                # Route 3: plain .env — _plain_env_values strips export / surrounding quotes.
+                if _plain_env_values(plain).get(_OAUTH_TOKEN_VAR):
                     return True
-        except OSError:
-            continue  # unreadable env-file → treat as "no token here", fall back
+
+    if unresolved:
+        # No source produced a token AND varlock failed somewhere, so we genuinely cannot tell
+        # "no token" from "token we could not reach". Say so before the credential file is mounted.
+        where = ", ".join(str(d) for d in unresolved)
+        _err.print(
+            f"[bold yellow]warning:[/bold yellow] could not resolve "
+            f"{_OAUTH_TOKEN_VAR} via varlock in {where} — varlock failed, so "
+            "the token may be present but is unreachable here.\n"
+            "  Mounting a credential file as fallback.  If a runtime secrets "
+            "agent supplies the token inside the container, this mount is "
+            "unnecessary — configure the token explicitly to suppress it."
+        )
+
     return False
 
 
@@ -4228,11 +4316,14 @@ def _host_oauth_token_configured() -> bool:
     """True when a `CLAUDE_CODE_OAUTH_TOKEN` will reach the host agent, so the credentials file is
     dead weight and must not be maintained, shared or rescued.
 
-    `os.environ` alone is sufficient HERE, unlike the container path's
-    `_claude_oauth_token_configured` which must also scan `--env-file`s: `_launch_host` applies
-    `_resolve_launch_env` (varlock / `.env`, the host twin of those env-files) to this very process
-    BEFORE calling `_host_launch_plan`, so a token from either route is already visible by the time
-    the credential wiring runs. Keep that ordering if either function moves.
+    `os.environ` alone is sufficient HERE.  The container twin
+    `_claude_oauth_token_configured` calls `_varlock_resolve` directly for the
+    same reason this function only reads `os.environ`: both check the authoritative
+    structured source rather than scanning a serialised file.  `_launch_host`
+    applies `_resolve_launch_env` (varlock / `.env`) to this process at
+    launcher.py:5209 BEFORE `_host_launch_plan` runs, so any token from those
+    sources is already in `os.environ` by the time the credential wiring fires.
+    Keep that ordering if either function moves.
 
     Empty is NOT configured — `export CLAUDE_CODE_OAUTH_TOKEN=` is how a shell profile turns it off,
     and reading the bare name as "configured" would retire a load-bearing credential file and log
@@ -5791,10 +5882,10 @@ def container_run(
     # aborting checks above so an early exit can't strand resolved secrets on disk.
     secrets_env_files, secrets_temp_files = _resolve_launch_secrets(project_path)
 
-    # Claude auth, last of the mounts: a long-lived CLAUDE_CODE_OAUTH_TOKEN (host env or one of the
-    # env-files just resolved) supersedes the credential file, so nothing is mounted in that case.
+    # Claude auth, last of the mounts: a long-lived CLAUDE_CODE_OAUTH_TOKEN (host env, varlock, or
+    # plain .env) supersedes the credential file, so nothing is mounted in that case.
     mount_args += _claude_creds_seed_mount(
-        harness, inst, _claude_oauth_token_configured(harness, secrets_env_files)
+        harness, inst, _claude_oauth_token_configured(harness, project_path)
     )
 
     # Pod network.
