@@ -3328,75 +3328,28 @@ def _build_service_image(rt: str, name: str) -> None:
     _build_shared_once(svc.image, build)
 
 
-def _ensure_service(
+_SVC_CONFIG_HASH_LABEL = "harnessed.svc-config-hash"
+
+
+def _svc_run_cmd(
     rt: str,
-    name: str,
-    stack: str = "",
-    project_path: Path | None = None,
-    mount_path: Path | None = None,
-) -> None:
-    """Build (if missing) and start (if not running) one service sidecar.
+    svc: "ServiceDef",
+    cname: str,
+    stack: str,
+    project_path: Path | None,
+    mount_path: Path | None,
+) -> list[str]:
+    """The exact `<rt> run` argv for this sidecar, minus the config-hash label.
 
-    `scope: global` → the original shape: one container, `-p <port>:<port>`, named volume at /data.
+    PURE BY CONTRACT — no mkdir, no ownership guard, no placement assert. It is called twice: once on
+    the create path (where `_ensure_service` runs those side effects first), and once on the CHECK
+    path against an ALREADY-RUNNING container, to work out what the current code *would* create.
+    Side effects on the second call would fire for a container nobody is touching.
 
-    `scope: project` → one container per project (git-common-dir keyed), whose /data is a BIND MOUNT
-    of the persist dir the owning recipe declared (see _service_data_dir), and which publishes no
-    port when socket-backed. For an `in_repo` data dir the workspace is also mounted
-    path-preserving, because the service needs the git repo itself: bd's `dolt push` (the
-    refs/dolt/data sync) shells out to the dolt CLI, which only routes to a server on ITS OWN
-    loopback — so the sync can only ever run inside this container, not in an agent container.
-
-    If the running container is stale (image rebuilt since it started), prompts the user to
-    confirm recreation before the harness launches. Data (named volume or bind mount) is always
-    preserved. In headless mode the recreation proceeds automatically.
+    Everything that a container fixes at CREATE time — mounts, published ports, env, userns — is in
+    here, which is what makes hashing this argv a faithful fingerprint of the running container's
+    configuration (`_svc_config_hash`).
     """
-    svc = load_service(None, name)
-    if svc.scope == "project" and project_path is None:
-        _err.print(
-            f"[bold red]error:[/bold red] service '{name}' is scope: project and needs a project "
-            "context. Run it via a stack launch, not `harnessed svc up`."
-        )
-        raise typer.Exit(1)
-    if not _image_exists(rt, svc.image):
-        _build_service_image(rt, name)
-    cname = _svc_container(name, _svc_project_key(svc, project_path))
-    if svc.scope == "project":
-        assert project_path is not None  # guarded above
-        # BEFORE the running-container check below, not with the other workspace guards further
-        # down: a HEALTHY running sidecar returns early from that check, and this migration has to
-        # run for exactly the workspace that has one. It is also cheap and idempotent — after the
-        # first launch the key is gone and this is a dict lookup.
-        _ensure_no_stale_socket_key(svc, _service_data_dir(svc, stack, project_path)[0])
-    if _container_running(rt, cname):
-        if _container_stale(rt, cname, svc.image):
-            headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
-            _err.print(
-                f"[yellow]warning:[/yellow] service '{name}' is running on a stale build of "
-                f"{svc.image} — the image was rebuilt since this container started."
-            )
-            _err.print(f"  Will run: {rt} rm -f {cname}  (named-volume data is preserved)")
-            if not headless and sys.stdin.isatty():
-                if not typer.confirm("Recreate now to continue?", default=True):
-                    _err.print(
-                        f"[bold red]error:[/bold red] cannot launch with stale service '{name}'. "
-                        f"Fix manually: harnessed svc down {name} && harnessed svc up {name}"
-                    )
-                    raise typer.Exit(1)
-            subprocess.run([rt, "rm", "-f", cname], capture_output=True)
-            # fall through to start below
-        else:
-            return
-    # Remove any stopped leftover with the same name before (re)starting.
-    subprocess.run([rt, "rm", "-f", cname], capture_output=True)
-    if svc.is_socket_only:
-        where = f"socket {svc.socket}"
-    elif svc.is_ephemeral_port:
-        where = f"127.0.0.1:<ephemeral>->{svc.port}"
-    elif svc.is_stable_port:
-        where = f"127.0.0.1:{_svc_stable_port(svc, project_path)}->{svc.port}"
-    else:
-        where = f":{svc.port}"
-    _out.print(f"[blue][INFO][/blue] Starting service '{name}' on {where} ({cname})")
     run_cmd = [rt, "run", "-d", "--name", cname, *_corp_proxy_ca_mount_args()]
     if svc.is_ephemeral_port:
         # 127.0.0.1 with NO host port: the runtime allocates. That is the whole dynamic-port
@@ -3418,16 +3371,8 @@ def _ensure_service(
         run_cmd += ["-e", f"HARNESSED_SVC_PASSWORD={_svc_password(svc, project_path)}"]
 
     if svc.scope == "project":
-        assert project_path is not None  # guarded above
+        assert project_path is not None  # guarded by the caller
         host_dir, _, location = _service_data_dir(svc, stack, project_path)
-        persist.guard_ownership(host_dir)
-        host_dir.mkdir(parents=True, exist_ok=True)
-        _assert_data_dir_unlocked(svc, host_dir)
-        _assert_data_dir_not_self_served(svc, host_dir)
-        _assert_placement_matches(svc, location, project_path)
-        _assert_placement_unchanged(svc, location, project_path)
-        _assert_named_database_present(svc, host_dir)
-        _ensure_dolt_autostart_disabled(svc, host_dir)
         # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
         # (a dolt data dir written by a foreign uid would EACCES for every agent container).
         run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
@@ -3480,6 +3425,149 @@ def _ensure_service(
         run_cmd += ["-v", f"{svc.volume}:/data"]
 
     run_cmd.append(svc.image)
+    return run_cmd
+
+
+def _svc_config_hash(run_cmd: list[str]) -> str:
+    """Fingerprint of a sidecar's create-time configuration, stamped on the container as
+    `harnessed.svc-config-hash` and re-derived at every launch to detect drift.
+
+    Same idea as the derived image's `harnessed.recipe-hash`, applied to the one thing a container
+    can NEVER pick up later: `podman restart` re-runs the existing container, so mounts, ports and
+    env stay frozen at whatever the code emitted the day it was created. Without this label a
+    sidecar drifts arbitrarily far from the code that would create it today and nothing notices —
+    which is exactly how five beads-servers ran for days without the mount that makes dolt_backup
+    work (bd harnessed-ku9), each failing every backup silently.
+    """
+    return hashlib.sha256("\0".join(run_cmd).encode("utf-8")).hexdigest()[:12]
+
+
+def _container_config_hash(rt: str, cname: str) -> str | None:
+    """The `harnessed.svc-config-hash` label on a container, or None if it predates the label."""
+    value = _inspect_id(
+        rt, "container", cname,
+        '{{if .Config.Labels}}{{index .Config.Labels "' + _SVC_CONFIG_HASH_LABEL + '"}}{{end}}',
+    )
+    return value or None
+
+
+def _svc_drift_reason(rt: str, cname: str, svc: "ServiceDef", want_hash: str) -> str | None:
+    """Why a RUNNING sidecar needs recreating, or None if it is current.
+
+    Two independent kinds of staleness: the image was rebuilt under it (`_container_stale`), or its
+    create-time configuration no longer matches what this code would emit (`_svc_config_hash`).
+    A missing label is the second kind — the container was created before harnessed recorded any
+    configuration, so it cannot be shown to match and by construction predates every fix since.
+    """
+    if _container_stale(rt, cname, svc.image):
+        return f"the image {svc.image} was rebuilt since this container started"
+    have = _container_config_hash(rt, cname)
+    if have is None:
+        return ("it was created before harnessed stamped service configuration, so it may predate "
+                "fixes to how the container is built (mounts, ports, env)")
+    if have != want_hash:
+        return (f"its create-time configuration no longer matches this code "
+                f"({have} != {want_hash}) — mounts, ports or env changed, and a restart cannot "
+                "pick those up")
+    return None
+
+
+def _ensure_service(
+    rt: str,
+    name: str,
+    stack: str = "",
+    project_path: Path | None = None,
+    mount_path: Path | None = None,
+    force_recreate: bool = False,
+) -> None:
+    """Build (if missing) and start (if not running) one service sidecar.
+
+    `scope: global` → the original shape: one container, `-p <port>:<port>`, named volume at /data.
+
+    `scope: project` → one container per project (git-common-dir keyed), whose /data is a BIND MOUNT
+    of the persist dir the owning recipe declared (see _service_data_dir), and which publishes no
+    port when socket-backed. For an `in_repo` data dir the workspace is also mounted
+    path-preserving, because the service needs the git repo itself: bd's `dolt push` (the
+    refs/dolt/data sync) shells out to the dolt CLI, which only routes to a server on ITS OWN
+    loopback — so the sync can only ever run inside this container, not in an agent container.
+
+    If the running container is stale — the image was rebuilt under it, or its create-time
+    configuration no longer matches what this code would emit (`_svc_drift_reason`) — prompts the
+    user to confirm recreation before the harness launches. Data (named volume or bind mount) is
+    always preserved. In headless mode the recreation proceeds automatically.
+
+    `force_recreate` tears down a healthy container and rebuilds it through this same path — what
+    `harnessed svc recreate` calls. It has to be this function and not a down+up, because a
+    container's mounts and env are fixed at CREATE time: `podman restart` reuses the existing
+    container and reports success while changing nothing.
+    """
+    svc = load_service(None, name)
+    if svc.scope == "project" and project_path is None:
+        _err.print(
+            f"[bold red]error:[/bold red] service '{name}' is scope: project and needs a project "
+            "context. Run it via a stack launch, not `harnessed svc up`."
+        )
+        raise typer.Exit(1)
+    if not _image_exists(rt, svc.image):
+        _build_service_image(rt, name)
+    cname = _svc_container(name, _svc_project_key(svc, project_path))
+    if svc.scope == "project":
+        assert project_path is not None  # guarded above
+        # BEFORE the running-container check below, not with the other workspace guards further
+        # down: a HEALTHY running sidecar returns early from that check, and this migration has to
+        # run for exactly the workspace that has one. It is also cheap and idempotent — after the
+        # first launch the key is gone and this is a dict lookup.
+        _ensure_no_stale_socket_key(svc, _service_data_dir(svc, stack, project_path)[0])
+    # What the current code WOULD create — the yardstick for both the drift check below and the
+    # label stamped on the new container. Built before the running-container check precisely so a
+    # healthy-looking sidecar can be compared against it.
+    want_cmd = _svc_run_cmd(rt, svc, cname, stack, project_path, mount_path)
+    want_hash = _svc_config_hash(want_cmd)
+    if _container_running(rt, cname) and not force_recreate:
+        reason = _svc_drift_reason(rt, cname, svc, want_hash)
+        if reason is None:
+            return
+        headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
+        _err.print(f"[yellow]warning:[/yellow] service '{name}' needs recreating: {reason}.")
+        _err.print(f"  Will run: {rt} rm -f {cname}  (data — named volume or bind mount — is preserved)")
+        if not headless and sys.stdin.isatty():
+            if not typer.confirm("Recreate now to continue?", default=True):
+                _err.print(
+                    f"[bold red]error:[/bold red] cannot launch with stale service '{name}'. "
+                    f"Fix manually: harnessed svc recreate {name}"
+                    + (f" --stack {stack}" if svc.scope == "project" else "")
+                )
+                raise typer.Exit(1)
+        # fall through to start below
+    # Remove the running container we just decided against, or any stopped leftover of the same name.
+    subprocess.run([rt, "rm", "-f", cname], capture_output=True)
+    if svc.is_socket_only:
+        where = f"socket {svc.socket}"
+    elif svc.is_ephemeral_port:
+        where = f"127.0.0.1:<ephemeral>->{svc.port}"
+    elif svc.is_stable_port:
+        where = f"127.0.0.1:{_svc_stable_port(svc, project_path)}->{svc.port}"
+    else:
+        where = f":{svc.port}"
+    _out.print(f"[blue][INFO][/blue] Starting service '{name}' on {where} ({cname})")
+    if svc.scope == "project":
+        assert project_path is not None  # guarded above
+        # The side effects and aborts `_svc_run_cmd` deliberately does not carry, because they must
+        # fire only when a container is actually about to be created.
+        host_dir, _, location = _service_data_dir(svc, stack, project_path)
+        persist.guard_ownership(host_dir)
+        host_dir.mkdir(parents=True, exist_ok=True)
+        _assert_data_dir_unlocked(svc, host_dir)
+        _assert_data_dir_not_self_served(svc, host_dir)
+        _assert_placement_matches(svc, location, project_path)
+        _assert_placement_unchanged(svc, location, project_path)
+        _assert_named_database_present(svc, host_dir)
+        _ensure_dolt_autostart_disabled(svc, host_dir)
+
+    # `want_cmd` (built above) is exactly what we run — the same argv the hash was taken over, so
+    # the label a container carries always describes the argv that created it. The label goes in
+    # last, before the image ref, and is NOT part of its own hash.
+    run_cmd = [*want_cmd[:-1], "--label", f"{_SVC_CONFIG_HASH_LABEL}={want_hash}", want_cmd[-1]]
     _run(run_cmd, capture_output=True)
     _assert_service_running(rt, cname, svc)
     _install_corp_proxy_ca_in_container(rt, cname, best_effort=True)
@@ -5313,7 +5401,14 @@ def _launch_host(
     # exist. Guarded on the stack actually declaring services, so a host launch of a service-less
     # stack still needs no container runtime at all.
     if _service_refs(stack):
-        _ensure_services(_runtime(), stack, project_path=project_path, mount_path=project_path)
+        # _resolve_mount_path, not project_path (bd harnessed-wnf): the sidecar must get the same
+        # git surface whichever entry point starts it. Otherwise the create-time config — and so the
+        # `harnessed.svc-config-hash` label — differs by entry point, and alternating host-run with
+        # a container launch would flag drift and recreate the container every single time.
+        _ensure_services(
+            _runtime(), stack, project_path=project_path,
+            mount_path=_resolve_mount_path(project_path, None),
+        )
 
     # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
     # repo is configured too. After services, because the client env includes their connection.
@@ -7168,16 +7263,22 @@ def volume_gc(
 
 @app.command("svc")
 def svc(
-    action: str = typer.Argument(..., help="up | down | sync | migrate"),
+    action: str = typer.Argument(..., help="up | down | recreate | sync | migrate"),
     name: str = typer.Argument(..., help="Service name (services/<name>/service.yaml)"),
     stack: str = typer.Option("", "--stack", help="Stack context (required for scope: project)"),
     from_: str = typer.Option("", "--from", help="migrate: source database dir (skips discovery)"),
     assume_yes: bool = typer.Option(False, "--yes", help="migrate: skip the confirmation prompt"),
 ) -> None:
-    """Manage a service sidecar (build+start, stop+remove, sync, or migrate its data in).
+    """Manage a service sidecar (build+start, stop+remove, recreate, sync, or migrate its data in).
 
-    `up`/`down` on a `scope: project` service act on THIS project's container (git-common-dir keyed),
-    so they need `--stack` to resolve which persist entry holds the data.
+    `up`/`down`/`recreate` on a `scope: project` service act on THIS project's container
+    (git-common-dir keyed), so they need `--stack` to resolve which persist entry holds the data.
+
+    `recreate` TEARS DOWN and REBUILDS the container — it is not `podman restart`, and deliberately
+    is not named that. Mounts, published ports and env are fixed when a container is CREATED, so a
+    restart reuses the existing one and reports success while changing nothing. Recreating is the
+    only way a running sidecar picks up a change to how harnessed builds it. Data (the bind-mounted
+    or named-volume /data) is untouched.
 
     `sync` execs the service's own sync command in its container. It exists because a `dolt
     sql-server`'s git sync (`bd dolt push` → refs/dolt/data) shells out to the dolt CLI, which only
@@ -7200,9 +7301,25 @@ def svc(
     key = _svc_project_key(svc_def, project_path)
     cname = _svc_container(name, key)
 
-    if action == "up":
-        _ensure_service(rt, name, stack=stack, project_path=project_path, mount_path=project_path)
-        _out.print(f"[green][SUCCESS][/green] Service '{name}' is up ({cname})")
+    if action in ("up", "recreate"):
+        # The SAME mount a launch computes (bd harnessed-wnf). `launch` widens the path-mirrored
+        # folder to the parent of a bare repo so sibling worktrees are visible; passing the raw
+        # project_path here gave a service started via `svc up` a git surface that excluded the
+        # `.bare` parent — the very directory an `in_repo` .beads lives beside in that layout. With
+        # `recreate` routing through this same call, the un-widened mount would have been baked into
+        # every recreated container.
+        # Only a scope: project service mirrors the workspace at all, and _resolve_mount_path
+        # announces the widening — resolving it for a global sidecar would print advice about a
+        # mount that service never gets.
+        mount_path = (
+            _resolve_mount_path(project_path, None) if svc_def.scope == "project" else project_path
+        )
+        _ensure_service(
+            rt, name, stack=stack, project_path=project_path, mount_path=mount_path,
+            force_recreate=(action == "recreate"),
+        )
+        verb = "recreated" if action == "recreate" else "is up"
+        _out.print(f"[green][SUCCESS][/green] Service '{name}' {verb} ({cname})")
     elif action == "down":
         subprocess.run([rt, "rm", "-f", cname], capture_output=True)
         _out.print(f"[green][SUCCESS][/green] Service '{name}' is down ({cname})")
@@ -7224,7 +7341,7 @@ def svc(
     else:
         _err.print(
             f"[bold red]error:[/bold red] unknown svc action '{action}' "
-            "(use: up | down | sync | migrate)"
+            "(use: up | down | recreate | sync | migrate)"
         )
         raise typer.Exit(1)
 

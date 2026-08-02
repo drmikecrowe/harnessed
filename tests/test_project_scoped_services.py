@@ -684,6 +684,201 @@ class TestServiceDataDirPathPreservingMount:
         assert f"-v {host_dir}:/data:rw" in cmd
 
 
+class TestSvcEntryPointUsesTheSameMountAsALaunch:
+    """`harnessed svc up` must path-mirror the SAME folder a launch does (harnessed-wnf).
+
+    `launch` auto-widens the mount to the parent of a bare repo, so sibling worktrees are visible;
+    `svc up` passed the raw cwd. In a bare + linked-worktree checkout an `in_repo` `.beads` lives
+    beside `.bare/` — OUTSIDE the worktree — so a service started via `svc up` got a git surface
+    that excluded exactly the directory its data dir sits in, and `bd dolt push` from that container
+    could not see the repo the launch-started one does.
+
+    It matters twice over now: `recreate` routes through this same call, so an un-widened mount here
+    would be baked into every recreated container, and the create-time config hash would differ by
+    entry point — flagging drift on every alternating launch.
+    """
+
+    def _capture_ensure_kwargs(self, tmp_path, monkeypatch, action: str) -> dict:
+        checkout = tmp_path / "proj"
+        project = checkout / "main"
+        project.mkdir(parents=True)
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
+        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: checkout / ".bare")
+        # The bare + linked-worktree layout: the widened mount is the dir CONTAINING the bare repo.
+        monkeypatch.setattr(paths, "bare_worktree_container", lambda _p: checkout)
+        seen: dict = {}
+        monkeypatch.setattr(launcher, "_ensure_service", lambda *a, **k: seen.update(k))
+        monkeypatch.chdir(project)
+        launcher.svc(action, "beads-server", stack="any", from_="", assume_yes=False)
+        seen["_checkout"] = checkout
+        seen["_project"] = project
+        return seen
+
+    def test_svc_up_widens_the_mount_like_launch_does(self, tmp_path, monkeypatch):
+        seen = self._capture_ensure_kwargs(tmp_path, monkeypatch, "up")
+        assert seen["mount_path"] == seen["_checkout"], (
+            "svc up must mount the bare-repo parent, like launch — not just the worktree, which "
+            "excludes the .bare-sibling .beads the service serves"
+        )
+        assert seen["project_path"] == seen["_project"]
+
+    def test_recreate_uses_the_same_widened_mount(self, tmp_path, monkeypatch):
+        seen = self._capture_ensure_kwargs(tmp_path, monkeypatch, "recreate")
+        assert seen["mount_path"] == seen["_checkout"]
+        assert seen["force_recreate"] is True, (
+            "recreate must force a teardown — a container that is merely 'up' returns early and "
+            "nothing is rebuilt"
+        )
+
+    def test_up_does_not_force_a_recreate(self, tmp_path, monkeypatch):
+        seen = self._capture_ensure_kwargs(tmp_path, monkeypatch, "up")
+        assert seen.get("force_recreate") is False
+
+    def test_unknown_action_is_rejected(self, tmp_path, monkeypatch, capsys):
+        """`restart` is the trap this whole bead exists for — it must not silently be an alias."""
+        with pytest.raises(typer.Exit):
+            self._capture_ensure_kwargs(tmp_path, monkeypatch, "restart")
+        assert "unknown svc action 'restart'" in capsys.readouterr().err
+
+
+class TestServiceConfigHashDetectsStaleContainers:
+    """A running sidecar carries a `harnessed.svc-config-hash` label; a launch re-derives it.
+
+    Mounts, ports and env are fixed at CREATE time, so a container drifts from the code that would
+    create it today and nothing notices — `podman restart` cannot fix it and reports success anyway.
+    Observed (harnessed-ku9): every beads-server on the machine predated the path-preserving mirror
+    mount, so every auto-backup failed silently for days. The label is the services-side equivalent
+    of the derived image's `harnessed.recipe-hash`.
+    """
+
+    def _run_ensure(
+        self, tmp_path, monkeypatch, *, running: bool, label: str | None, force: bool = False
+    ) -> tuple[list[list[str]], list[list[str]]]:
+        """Drive `_ensure_service` against a fake runtime. Returns (created_cmds, subprocess_cmds).
+
+        Callable twice per tmp_path — the tests that compare a BEFORE hash against a running
+        container's label need exactly that.
+        """
+        if not (tmp_path / "services" / "beads-server").is_dir():
+            _svc_yaml(tmp_path, PROJECT_SVC)
+        svc = load_service(tmp_path, "beads-server")
+        project = tmp_path / "repo"
+        project.mkdir(parents=True, exist_ok=True)
+        fake_home = tmp_path / "home"
+        fake_home.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
+        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        )
+        monkeypatch.setattr(launcher, "_image_exists", lambda _rt, _img: True)
+        monkeypatch.setattr(launcher, "_container_running", lambda _rt, _c: running)
+        monkeypatch.setattr(launcher, "_container_stale", lambda _rt, _c, _i: False)
+        monkeypatch.setattr(launcher, "_container_config_hash", lambda _rt, _c: label)
+        monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
+        monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
+        monkeypatch.setattr(launcher, "_assert_service_running", lambda *a, **k: None)
+        # Headless: the recreate confirm is skipped, so the decision itself is what's under test.
+        monkeypatch.setenv("HARNESSED_HEADLESS", "true")
+        calls: list[list[str]] = []
+        monkeypatch.setattr(
+            launcher.subprocess,
+            "run",
+            lambda cmd, *a, **k: (
+                calls.append(list(cmd)),
+                subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
+            )[1],
+        )
+        created: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_run", lambda cmd, **k: created.append(list(cmd)))
+        launcher._ensure_service(
+            "podman", "beads-server", stack="any", project_path=project, mount_path=project,
+            force_recreate=force,
+        )
+        return created, calls
+
+    def _current_hash(self, created: list[list[str]]) -> str:
+        cmd = created[0]
+        return cmd[cmd.index("--label") + 1].split("=", 1)[1]
+
+    def test_new_container_is_stamped_with_its_config_hash(self, tmp_path, monkeypatch):
+        created, _ = self._run_ensure(tmp_path, monkeypatch, running=False, label=None)
+        assert len(created) == 1
+        cmd = created[0]
+        assert f"--label" in cmd and launcher._SVC_CONFIG_HASH_LABEL in " ".join(cmd)
+        assert cmd[-1].startswith("harnessed-beads-server"), "the image ref must stay last"
+
+    def test_the_stamped_hash_is_the_hash_of_the_argv_that_created_it(self, tmp_path, monkeypatch):
+        """The label must describe the container it is on — otherwise every launch reports drift."""
+        created, _ = self._run_ensure(tmp_path, monkeypatch, running=False, label=None)
+        cmd = created[0]
+        i = cmd.index("--label")
+        without_label = cmd[:i] + cmd[i + 2:]
+        assert self._current_hash(created) == launcher._svc_config_hash(without_label)
+
+    def test_a_matching_label_is_left_alone(self, tmp_path, monkeypatch):
+        current = self._current_hash(self._run_ensure(tmp_path, monkeypatch, running=False, label=None)[0])
+        created, _ = self._run_ensure(tmp_path, monkeypatch, running=True, label=current)
+        assert created == [], "a sidecar whose config still matches must not be torn down"
+
+    def test_a_mismatched_label_recreates(self, tmp_path, monkeypatch):
+        created, calls = self._run_ensure(tmp_path, monkeypatch, running=True, label="deadbeef")
+        assert len(created) == 1, "a container whose create-time config changed must be recreated"
+        assert any(c[:3] == ["podman", "rm", "-f"] for c in calls), (
+            "it must be REMOVED and recreated — `podman restart` reuses the existing container and "
+            "cannot pick up a mount or env change"
+        )
+
+    def test_a_container_predating_the_label_is_recreated(self, tmp_path, monkeypatch):
+        """The population this bead was filed over: created before harnessed recorded anything."""
+        created, _ = self._run_ensure(tmp_path, monkeypatch, running=True, label=None)
+        assert len(created) == 1
+
+    def test_force_recreate_tears_down_a_current_container(self, tmp_path, monkeypatch):
+        current = self._current_hash(self._run_ensure(tmp_path, monkeypatch, running=False, label=None)[0])
+        created, calls = self._run_ensure(
+            tmp_path, monkeypatch, running=True, label=current, force=True
+        )
+        assert len(created) == 1, "`svc recreate` must rebuild even a container that looks current"
+        assert any(c[:3] == ["podman", "rm", "-f"] for c in calls)
+
+    def test_a_mount_change_moves_the_hash(self, tmp_path, monkeypatch):
+        """The regression that motivated the label: a mount added by newer code must be visible."""
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        project = tmp_path / "repo"
+        project.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "home"))
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        )
+        base = launcher._svc_run_cmd("podman", svc, "c", "any", project, project)
+        widened = launcher._svc_run_cmd("podman", svc, "c", "any", project, project.parent)
+        assert launcher._svc_config_hash(base) != launcher._svc_config_hash(widened)
+
+    def test_building_the_argv_creates_nothing_on_disk(self, tmp_path, monkeypatch):
+        """`_svc_run_cmd` also runs against ALREADY-RUNNING containers, to work out what the current
+        code would create. Side effects there would fire for a container nobody asked to touch."""
+        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        project = tmp_path / "repo"
+        project.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "home"))
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
+        monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        )
+        launcher._svc_run_cmd("podman", svc, "c", "any", project, project)
+        assert not paths.persist_in_repo_dir(project, ".beads").exists(), (
+            "building the argv must not create the data dir"
+        )
+
+
 class TestExclusiveLockPreflight:
     """A host process on the data dir must abort the launch BEFORE the sidecar is started.
 
