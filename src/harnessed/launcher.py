@@ -3563,6 +3563,31 @@ def _repo_project_hashes(project_path: Path) -> set[str]:
     return hashes
 
 
+def _stack_from_instance_name(name: str, harnesses: list[str], hashes: set[str]) -> str | None:
+    """`<stack>` out of `harnessed-<harness>-<stack>-<project_hash>`, or None if it is not one.
+
+    Both ends are stripped against KNOWN values rather than split on a delimiter, because stack
+    names routinely contain dashes — a generated one looks like
+    `default.beads-team.serena.superpowers-f6eb0941`, which `split("-")` would truncate to
+    `default.beads`.
+
+    LONGEST harness first: with agents `claude` and `claude-extended` in the catalog, the container
+    `harnessed-claude-extended-mystack-<hash>` matches both prefixes, and the shorter one yields the
+    plausible-but-wrong stack `extended-mystack`. Longest-match-wins is the only reading that can be
+    right, and stopping at the first match keeps one container from contributing two candidates.
+    """
+    for harness in sorted(harnesses, key=len, reverse=True):
+        prefix = f"harnessed-{harness}-"
+        if not name.startswith(prefix):
+            continue
+        for project_hash in hashes:
+            suffix = f"-{project_hash}"
+            if name.endswith(suffix) and len(name) > len(prefix) + len(suffix):
+                return name[len(prefix):-len(suffix)]
+        return None
+    return None
+
+
 def _svc_stacks_from_instances(rt: str, project_path: Path) -> list[str]:
     """Stacks that have an agent instance for THIS repo, read out of instance container names.
 
@@ -3570,31 +3595,30 @@ def _svc_stacks_from_instances(rt: str, project_path: Path) -> list[str]:
     predating this code, i.e. exactly the population that most needs recreating. Without it the
     first recreate on any existing machine demands a flag for something harnessed already knows.
 
-    Instance containers carry no labels, so the NAME is the only record — but it is an exact one:
-    `harnessed-<harness>-<stack>-<project_hash>` (paths.instance_name). Both ends are stripped
-    against known values (the catalog's agents, and the hashes of this repo's worktrees) rather than
-    split on a delimiter, because stack names routinely contain dashes — a generated one looks like
-    `default.beads-team.serena.superpowers-f6eb0941`.
+    RUNNING instances win outright: a stopped one is a stack you used once, and `harnessed stop`
+    leaves it lying around indefinitely, so a stale instance from a stack you have moved on from
+    could otherwise be the only candidate and quietly decide which persist entry the rebuilt sidecar
+    serves. Stopped instances are still consulted when nothing is running, because the common case
+    for this command is a plain shell with no agent up — dropping them would fail the very use it
+    exists for.
     """
     result = subprocess.run(
-        [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
+        [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}\t{{.State}}"],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
         return []
     hashes = _repo_project_hashes(project_path)
     harnesses = paths.list_catalog("agents")
-    found: set[str] = set()
-    for name in (n.strip() for n in result.stdout.splitlines()):
-        for harness in harnesses:
-            prefix = f"harnessed-{harness}-"
-            if not name.startswith(prefix):
-                continue
-            for project_hash in hashes:
-                suffix = f"-{project_hash}"
-                if name.endswith(suffix) and len(name) > len(prefix) + len(suffix):
-                    found.add(name[len(prefix):-len(suffix)])
-    return sorted(found)
+    running: set[str] = set()
+    stopped: set[str] = set()
+    for line in result.stdout.splitlines():
+        name, _, state = line.partition("\t")
+        stack = _stack_from_instance_name(name.strip(), harnesses, hashes)
+        if stack is None:
+            continue
+        (running if state.strip() == "running" else stopped).add(stack)
+    return sorted(running) if running else sorted(stopped)
 
 
 def _svc_drift_reason(rt: str, cname: str, svc: "ServiceDef", want_hash: str) -> str | None:

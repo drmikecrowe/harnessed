@@ -14,6 +14,7 @@ socket clients removes the contention by construction.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -841,13 +842,18 @@ class TestReadingTheStackOutOfInstanceNames:
     on `-` yields `default.beads` and loses the rest.
     """
 
-    def _scan(self, monkeypatch, names: list[str], hashes: set[str]) -> list[str]:
-        monkeypatch.setattr(paths, "list_catalog", lambda _kind: ["claude", "codex", "omp"])
+    def _scan(
+        self, monkeypatch, names, hashes: set[str], harnesses=("claude", "codex", "omp")
+    ) -> list[str]:
+        """`names` is either plain names (treated as stopped) or (name, state) pairs."""
+        rows = [n if isinstance(n, tuple) else (n, "exited") for n in names]
+        monkeypatch.setattr(paths, "list_catalog", lambda _kind: list(harnesses))
         monkeypatch.setattr(launcher, "_repo_project_hashes", lambda _p: hashes)
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(
-                args=[], returncode=0, stdout="\n".join(names) + "\n", stderr=""
+                args=[], returncode=0,
+                stdout="".join(f"{n}\t{s}\n" for n, s in rows), stderr="",
             ),
         )
         return launcher._svc_stacks_from_instances("podman", Path("/repo"))
@@ -879,6 +885,73 @@ class TestReadingTheStackOutOfInstanceNames:
 
     def test_no_instances_is_not_an_error(self, monkeypatch):
         assert self._scan(monkeypatch, [], {"11111111"}) == []
+
+    def test_a_running_instance_beats_a_stale_stopped_one(self, monkeypatch):
+        """`harnessed stop` leaves instances lying around indefinitely, so a stack you have moved
+        on from must not get a vote while a stack you are actually running has one — it would
+        quietly decide which persist entry the rebuilt sidecar serves."""
+        names = [
+            ("harnessed-claude-abandoned-11111111", "exited"),
+            ("harnessed-claude-current-11111111", "running"),
+        ]
+        assert self._scan(monkeypatch, names, {"11111111"}) == ["current"]
+
+    def test_stopped_instances_still_count_when_nothing_is_running(self, monkeypatch):
+        """The common case for this command is a plain shell with no agent up — ignoring stopped
+        instances outright would fail the very use the fallback exists for."""
+        names = [("harnessed-claude-only-one-11111111", "exited")]
+        assert self._scan(monkeypatch, names, {"11111111"}) == ["only-one"]
+
+    def test_a_longer_harness_name_wins_the_prefix_match(self, monkeypatch):
+        """With `claude` and `claude-extended` both in the catalog, the shorter prefix also matches
+        and yields the plausible-but-WRONG stack `extended-mystack` — one container would offer two
+        candidates, and picking the wrong one rebuilds against a different persist entry."""
+        names = [("harnessed-claude-extended-mystack-12345678", "running")]
+        got = self._scan(
+            monkeypatch, names, {"12345678"}, harnesses=("claude", "claude-extended")
+        )
+        assert got == ["mystack"]
+
+
+class TestRepoProjectHashesUsesRealGit:
+    """`_repo_project_hashes` shells out to git — the mocked tests above never exercise that."""
+
+    def test_a_plain_repo_yields_its_own_hash(self, tmp_path):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        hashes = launcher._repo_project_hashes(repo)
+        assert paths.project_hash(repo) in hashes
+
+    def test_a_linked_worktree_sees_its_siblings(self, tmp_path):
+        """The reason this walks `git worktree list`: ONE sidecar (keyed by git-common-dir) serves
+        every worktree, while instances are keyed per worktree — so the stack that owns the sidecar
+        may be running from a sibling rather than from where you are standing."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e",
+            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e",
+        }
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        (repo / "f").write_text("x")
+        subprocess.run(["git", "add", "f"], cwd=repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-qm", "init", "--no-gpg-sign"], cwd=repo, check=True, env=env
+        )
+        sibling = tmp_path / "sibling"
+        subprocess.run(
+            ["git", "worktree", "add", "-q", str(sibling)], cwd=repo, check=True, env=env
+        )
+        hashes = launcher._repo_project_hashes(repo)
+        assert paths.project_hash(sibling) in hashes, (
+            "a sibling worktree's instance must be findable from here"
+        )
+
+    def test_outside_a_git_repo_it_still_returns_this_folder(self, tmp_path):
+        """git fails here; the fallback must degrade to the current folder, not raise."""
+        assert launcher._repo_project_hashes(tmp_path) == {paths.project_hash(tmp_path)}
 
 
 class TestServiceConfigHashDetectsStaleContainers:
