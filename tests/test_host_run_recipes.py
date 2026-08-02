@@ -26,10 +26,42 @@ class TestHostRunRecipeXOR:
         assert launched == [], "nothing may be launched when the invocation is rejected"
         assert not list(tmp_path.glob("stacks/*/stack.yaml")), "nothing may be minted either"
 
-    def test_neither_stack_nor_recipe_is_an_error(self):
+    def test_neither_stack_nor_recipe_runs_the_extends_baseline(self, monkeypatch, tmp_path):
+        """Composing nothing is a launch, not an error: the `default` baseline runs as-is, and
+        nothing is minted for it — it is an authored stack, so there is no manifest to write."""
+        calls: list = []
+        monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+        monkeypatch.setattr(
+            launcher, "_launch_host",
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False: calls.append(stack),
+        )
         result = runner.invoke(launcher.app, ["host-run", "claude"])
+        assert result.exit_code == 0, result.output
+        assert calls == ["default"]
+        assert not list(tmp_path.glob("stacks/*/stack.yaml")), "the baseline is authored, not minted"
+
+    def test_extends_names_the_baseline_that_runs(self, monkeypatch, tmp_path):
+        """`--extends` is the one knob that selects it, so a non-default baseline runs alone too."""
+        calls: list = []
+        monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+        monkeypatch.setattr(
+            launcher, "_launch_host",
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False: calls.append(stack),
+        )
+        result = runner.invoke(launcher.app, ["host-run", "claude", "--extends", "hostspike"])
+        assert result.exit_code == 0, result.output
+        assert calls == ["hostspike"]
+
+    def test_no_extends_without_a_recipe_is_an_error(self, monkeypatch, tmp_path):
+        """Inherit from nothing AND compose nothing leaves nothing to run — the one shape a bare
+        invocation cannot be read as."""
+        launched: list = []
+        monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+        monkeypatch.setattr(launcher, "_launch_host", lambda *a, **k: launched.append(a))
+        result = runner.invoke(launcher.app, ["host-run", "claude", "--no-extends"])
         assert result.exit_code != 0
-        assert "at least one --recipe" in result.output
+        assert "--no-extends" in result.output
+        assert launched == [], "nothing may be launched when the invocation is rejected"
 
     def test_stack_alone_still_works(self, monkeypatch):
         """Existing authored-stack path is unchanged."""

@@ -149,14 +149,19 @@ services (started host-published, idempotently).
 | `harnessed host-run claude [path]` | host-native — no podman, no MCP hub | the **configuration only** |
 
 **The verb picks the BACKEND; a flag picks the STACK.** Both take the same options — `--stack/-s`
-for a stack you authored, `--recipe/-r` (repeatable) to compose one on the fly — and exactly one of
-the two is required:
+for a stack you authored, `--recipe/-r` (repeatable) to compose one on the fly. The two are mutually
+exclusive, and giving neither runs the `--extends` baseline (`default`) as-is: composing nothing on
+top of the baseline is a legitimate launch, so the bare form needs no flags at all.
 
 ```bash
+harnessed host-run      claude .                    # the `default` baseline, nothing composed
 harnessed container-run claude .       --stack gsd-core
 harnessed container-run omp   ~/proj   --recipe superpowers --recipe beads/team
 harnessed host-run      claude .       --recipe superpowers
 ```
+
+`--no-extends` is the one shape a bare invocation cannot be read as — it inherits nothing, so
+without a `--recipe` list there is nothing left to run, and it is rejected.
 
 The stack is named by a flag rather than a leading positional because with the stack in front,
 Typer — which binds positionals by DECLARATION order, not by meaning — could not tell a stack name

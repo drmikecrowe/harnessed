@@ -69,9 +69,25 @@ def test_no_extends_drops_the_base(monkeypatch, tmp_path):
     assert "extends:" not in (tmp_path / "stacks" / "serena" / "stack.yaml").read_text()
 
 
-def test_requires_a_stack_or_a_recipe(monkeypatch, tmp_path):
+def test_neither_stack_nor_recipe_runs_the_extends_baseline(monkeypatch, tmp_path):
+    """Same resolution as host-run, from the same `_resolve_stack`: a bare invocation runs the
+    `default` baseline. `_build_stack` must NOT run — the baseline is an authored stack, and only
+    the minted recipe form needs a build."""
     monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
-    result = runner.invoke(launcher.app, ["container-run", "claude"])
+    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+
+    def boom(*_a, **_kw):
+        raise AssertionError("_build_stack must not run for the baseline stack")
+
+    monkeypatch.setattr(launcher, "_build_stack", boom)
+    result = runner.invoke(launcher.app, ["container-run", "claude", _nowhere(tmp_path)])
+    assert result.exit_code != 0, "expected the missing-project-dir exit, not a resolution error"
+    assert not list(tmp_path.glob("stacks/*/stack.yaml")), "the baseline is authored, not minted"
+
+
+def test_no_extends_without_a_recipe_is_an_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+    result = runner.invoke(launcher.app, ["container-run", "claude", "--no-extends"])
     assert result.exit_code != 0
     # NOTE: `_err` writes to stderr via rich. Depending on the CliRunner's stderr handling the text
     # may not land in `result.output`, so the EXIT CODE is the contract here. If you want to assert
