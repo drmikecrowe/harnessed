@@ -167,8 +167,8 @@ harnessed test time claude
 
 | Command | What it does |
 | --- | --- |
-| `harnessed container-run <harness> [path] --stack <name> [--fresh]` | Isolated stack on a harness: assembled profile + pod (harness + hatago) |
-| `harnessed host-run claude [path] --stack <name>` | Same stack, host-native — no podman, no container; config isolated per stack, credentials from host |
+| `harnessed container-run <harness> [path] [--stack <name> \| --recipe <name>…] [--fresh]` | Isolated stack on a harness: assembled profile + pod (harness + hatago). `--stack` and `--recipe` (repeatable) are mutually exclusive; with neither, runs the `default` baseline |
+| `harnessed host-run claude [path] [--stack <name> \| --recipe <name>…]` | Same stack, host-native — no podman, no container; config isolated per stack, credentials from host |
 | `harnessed build [<stack> [<harness>]]` | Build the base/harness/hatago images (+ reconcile declared/built pairs), or assemble + build a stack — for one harness, or for every harness in its `harnesses:` list |
 | `harnessed test <stack> <harness>` | Capability test: launch `--fresh` headless + assert declared capabilities (markdown report) |
 | `harnessed svc up \| down \| recreate \| sync \| migrate <service>` | Manage service sidecars. `recreate` tears down and rebuilds — mounts and env are fixed at create time, so `podman restart` cannot pick up a change to how the container is built |

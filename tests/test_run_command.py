@@ -69,14 +69,52 @@ def test_no_extends_drops_the_base(monkeypatch, tmp_path):
     assert "extends:" not in (tmp_path / "stacks" / "serena" / "stack.yaml").read_text()
 
 
-def test_requires_a_stack_or_a_recipe(monkeypatch, tmp_path):
+def test_neither_stack_nor_recipe_runs_the_extends_baseline(monkeypatch, tmp_path):
+    """Same resolution as host-run, from the same `_resolve_stack`: a bare invocation runs the
+    `default` baseline. `_build_stack` must NOT run — the baseline is an authored stack, and only
+    the minted recipe form needs a build.
+
+    The project directory is real and `is_built` is the observation point, so the test sees the
+    RESOLVED name rather than inferring it from a nonzero exit that any earlier gate could produce.
+    """
     monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
-    result = runner.invoke(launcher.app, ["container-run", "claude"])
+    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+
+    def boom(*_a, **_kw):
+        raise AssertionError("_build_stack must not run for the baseline stack")
+
+    monkeypatch.setattr(launcher, "_build_stack", boom)
+    # False stops the launch at the next gate, after resolution has committed to a stack.
+    seen: list = []
+    monkeypatch.setattr(launcher, "is_built", lambda stack, harness: seen.append(stack) or False)
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    result = runner.invoke(launcher.app, ["container-run", "claude", str(project)])
+
+    assert seen == ["default"], "the bare invocation must resolve to the --extends baseline"
+    assert result.exit_code != 0, "expected the unbuilt-profile exit, not a launch"
+    assert not list(tmp_path.glob("stacks/*/stack.yaml")), "the baseline is authored, not minted"
+
+
+def test_no_extends_without_a_recipe_is_an_error(monkeypatch, tmp_path):
+    """Inherit nothing AND compose nothing leaves no stack to run. Rejected in resolution, so
+    nothing downstream is reached and nothing is minted."""
+    monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
+
+    def boom(*_a, **_kw):
+        raise AssertionError("resolution must reject the invocation before any launch work")
+
+    monkeypatch.setattr(launcher, "is_built", boom)
+    monkeypatch.setattr(launcher, "_build_stack", boom)
+
+    result = runner.invoke(launcher.app, ["container-run", "claude", "--no-extends"])
     assert result.exit_code != 0
+    assert not list(tmp_path.glob("stacks/*/stack.yaml")), "nothing may be minted either"
     # NOTE: `_err` writes to stderr via rich. Depending on the CliRunner's stderr handling the text
-    # may not land in `result.output`, so the EXIT CODE is the contract here. If you want to assert
-    # the wording, capture stderr explicitly with `CliRunner(mix_stderr=False)` and read
-    # `result.stderr` — do not weaken this to `exit_code == 0`.
+    # may not land in `result.output`, so the EXIT CODE plus the stubs above are the contract here.
+    # If you want to assert the wording, capture stderr explicitly with `CliRunner(mix_stderr=False)`
+    # and read `result.stderr` — do not weaken this to `exit_code == 0`.
 
 
 def test_stack_and_recipe_are_mutually_exclusive(monkeypatch, tmp_path):

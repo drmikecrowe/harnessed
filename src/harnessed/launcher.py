@@ -5734,8 +5734,9 @@ def _require_supported_harness(harness: str) -> None:
 def _resolve_stack(
     stack: Optional[str], recipe: list[str], extends: str, no_extends: bool, service: list[str]
 ) -> tuple[str, Optional[Path]]:
-    """The stack to run — named via `--stack`, or composed from a `--recipe` set. Shared by both
-    run verbs, which differ in BACKEND and not in how a stack is chosen (bd harnessed-s84).
+    """The stack to run — named via `--stack`, composed from a `--recipe` set, or, with neither
+    given, the `--extends` baseline (`default`). Shared by both run verbs, which differ in BACKEND
+    and not in how a stack is chosen (bd harnessed-s84).
 
     Returns `(name, minted_dir)`. `minted_dir` is non-None only when THIS call created the
     manifest, making it the caller's to remove if a later build fails. An authored stack and a
@@ -5752,8 +5753,19 @@ def _resolve_stack(
         _err.print("[bold red]error:[/bold red] provide either --stack or --recipe, not both")
         raise typer.Exit(1)
     if not stack and not recipe:
-        _err.print("[bold red]error:[/bold red] provide --stack or at least one --recipe")
-        raise typer.Exit(1)
+        # Neither named: run the baseline every dynamic stack extends, exactly as if the user had
+        # typed `--stack default`. Composing nothing on top of the baseline is a legitimate launch,
+        # not a malformed one — requiring a throwaway `--recipe` to reach it made the common
+        # "just start the agent" case the only one with mandatory flags (bd harnessed-jhj).
+        # `--no-extends` is the one shape that cannot mean this: it says inherit from nothing, and
+        # with no recipe list to stand alone there is nothing left to run.
+        if no_extends:
+            _err.print(
+                "[bold red]error:[/bold red] --no-extends needs at least one --recipe "
+                "(it inherits nothing, so the recipe list is the whole stack)"
+            )
+            raise typer.Exit(1)
+        return extends, None
     if stack:
         return stack, None
 
@@ -5783,7 +5795,8 @@ _RECIPE_OPT = typer.Option(
 )
 _EXTENDS_OPT = typer.Option(
     "default", "--extends",
-    help="Stack to inherit from (baseline recipes, permissions, credential forwarding).",
+    help="Stack to inherit from (baseline recipes, permissions, credential forwarding). "
+         "With neither --stack nor --recipe, this baseline is itself the stack that runs.",
 )
 _NO_EXTENDS_OPT = typer.Option(
     False, "--no-extends", help="Inherit from nothing — the recipe list stands alone.",
@@ -5819,6 +5832,7 @@ def host_run(
     and `--shell` all describe a pod that does not exist here, so a combined verb could only accept
     them and do nothing.
 
+        harnessed host-run <harness> [path]                        # the `default` baseline
         harnessed host-run <harness> [path] --stack <name>
         harnessed host-run <harness> [path] --recipe r1 --recipe r2
 
@@ -5904,6 +5918,7 @@ def container_run(
 ) -> None:
     """Run a stack in an isolated container against a project directory (container backend).
 
+        harnessed container-run <harness> [path]                        # the `default` baseline
         harnessed container-run <harness> [path] --stack <name>
         harnessed container-run <harness> [path] --recipe r1 --recipe r2
 
