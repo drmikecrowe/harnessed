@@ -134,3 +134,144 @@ class TestEnsureLocalCatalogLinks:
             "must not create symlinks in an unrelated project's catalog/"
         )
         assert not (other / "catalog-local").exists()
+
+
+def _shipped_default_recipe(repo):
+    """The shipped baseline recipe the seed copies from.
+
+    The skill dir is a SYMLINK, mirroring the real catalog (`catalog/recipes/default/skills/...`
+    is the one copy `.agents/skills/` links to, and an overlay recipe may link at content the user
+    edits elsewhere). Without that, a seed using `symlinks=True` would satisfy every assertion.
+    """
+    d = repo / "catalog" / "recipes" / "default"
+    d.mkdir(parents=True)
+    real = repo / "elsewhere" / "harnessed-catalog"
+    real.mkdir(parents=True)
+    (real / "SKILL.md").write_text("---\nname: x\n---\n")
+    (d / "skills").mkdir()
+    (d / "skills" / "harnessed-catalog").symlink_to(real, target_is_directory=True)
+    (d / "recipe.yaml").write_text("name: default\nskills:\n  - path: skills/harnessed-catalog\n")
+    return d
+
+
+class TestSeedUserDefaultRecipe:
+    """`default` is what every dynamic stack inherits, so it is the recipe a user most wants to
+    edit — and the hardest one to start from a blank overlay dir."""
+
+    def test_seeds_a_real_copy_on_first_run(self, monkeypatch, tmp_path):
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+
+        launcher._ensure_local_catalog_links()
+
+        seeded = user_catalog / "recipes" / "default"
+        assert (seeded / "recipe.yaml").is_file()
+        assert (seeded / "skills" / "harnessed-catalog" / "SKILL.md").is_file()
+        assert not (seeded / "skills").is_symlink(), (
+            "the seed must dereference — a link into an installation the user later replaces "
+            "leaves a dangling baseline"
+        )
+
+    def test_the_copy_says_it_shadows_the_shipped_one(self, monkeypatch, tmp_path):
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+
+        launcher._ensure_local_catalog_links()
+
+        text = (user_catalog / "recipes" / "default" / "recipe.yaml").read_text()
+        assert "SEEDED BY HARNESSED" in text
+        assert "name: default" in text, "the banner must PREPEND, never replace, the manifest"
+
+    def test_never_overwrites_an_existing_default(self, monkeypatch, tmp_path):
+        """Idempotent AND non-destructive: the whole value of the seed is that it is the user's."""
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+        mine = user_catalog / "recipes" / "default"
+        mine.mkdir(parents=True)
+        (mine / "recipe.yaml").write_text("name: default\n# hand-authored\n")
+
+        launcher._ensure_local_catalog_links()
+        launcher._ensure_local_catalog_links()
+
+        assert (mine / "recipe.yaml").read_text() == "name: default\n# hand-authored\n"
+
+    def test_no_shipped_default_is_not_an_error(self, monkeypatch, tmp_path):
+        """A catalog root without the baseline (a fixture tree, an old install) must still run."""
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        _fake_checkout(monkeypatch, tmp_path)
+
+        launcher._ensure_local_catalog_links()
+
+        assert not (user_catalog / "recipes" / "default").exists()
+
+    def test_leaves_no_partial_dir_behind(self, monkeypatch, tmp_path):
+        """Seeding stages under a temp name and renames, so a crash cannot leave a half copy at
+        the real name — where the exists() guard would treat it as complete forever."""
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+        monkeypatch.setattr(
+            launcher.shutil, "copytree", lambda *a, **k: (_ for _ in ()).throw(OSError("boom"))
+        )
+
+        with pytest.raises(OSError):
+            launcher._ensure_local_catalog_links()
+
+        assert not (user_catalog / "recipes" / "default").exists()
+        assert list((user_catalog / "recipes").iterdir()) == []
+
+    def test_a_dangling_symlink_at_the_destination_is_left_alone(self, monkeypatch, tmp_path):
+        """`exists()` RESOLVES, so a broken link reads as absent — and renaming onto it raises
+        NotADirectoryError, taking the launch down with it. A link the user put there is theirs."""
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+        (user_catalog / "recipes").mkdir(parents=True)
+        dangling = user_catalog / "recipes" / "default"
+        dangling.symlink_to(tmp_path / "gone")
+
+        launcher._ensure_local_catalog_links()
+
+        assert dangling.is_symlink()
+        assert not dangling.exists(), "still dangling — we neither followed nor replaced it"
+
+    def test_losing_a_concurrent_seed_race_is_not_an_error(self, monkeypatch, tmp_path):
+        """Two first launches at once must not fail each other. Staging is per-process, and a
+        rename that loses to a complete `recipes/default` is a success, not an exception."""
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+        dest = user_catalog / "recipes" / "default"
+
+        real_rename = launcher.Path.rename
+
+        def rename_after_a_rival_finished(self, target):
+            """The rival process wins between our exists() check and our rename."""
+            if str(target) == str(dest) and not dest.exists():
+                dest.mkdir(parents=True)
+                (dest / "recipe.yaml").write_text("name: default\n# by the other process\n")
+            return real_rename(self, target)
+
+        monkeypatch.setattr(launcher.Path, "rename", rename_after_a_rival_finished)
+
+        launcher._ensure_local_catalog_links()  # must not raise
+
+        assert (dest / "recipe.yaml").read_text().endswith("# by the other process\n")
+        leftovers = [p.name for p in (user_catalog / "recipes").iterdir() if p.name != "default"]
+        assert leftovers == [], f"staging dirs left behind: {leftovers}"
+
+    def test_a_real_seeding_failure_still_raises(self, monkeypatch, tmp_path):
+        """The race tolerance must not swallow a genuine failure — no space, no permission —
+        which would otherwise seed nothing and say nothing."""
+        _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+        monkeypatch.setattr(
+            launcher.shutil, "copytree", lambda *a, **k: (_ for _ in ()).throw(OSError("no space"))
+        )
+
+        with pytest.raises(OSError, match="no space"):
+            launcher._ensure_local_catalog_links()

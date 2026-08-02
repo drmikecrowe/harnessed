@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
+# Recipe: default — the baseline every install gets.
+#
+# This is the recipe the shipped `default` stack composes, and `default` is what `--extends`
+# defaults to on both run verbs (launcher._EXTENDS_OPT). So a plain `harnessed container-run claude
+# --recipe foo` inherits this recipe with no configuration at all.
+#
+# It carries the one thing that is useful in EVERY harnessed session regardless of project: the
+# skill that teaches an agent how to author harnessed catalog content. A user who installs harnessed
+# and asks their agent for "a stack with X and Y" gets an agent that knows what a stack is, where to
+# author it, which fields the parser accepts, and how to verify the result — instead of one guessing
+# at YAML.
+#
+# Keep this recipe SMALL and universal. It is inherited by every dynamic stack, so anything added
+# here is paid for by everyone: no MCP servers (they cost a hatago child or a proxied endpoint), no
+# Dockerfile (it forces a derived image build for stacks that would otherwise need none), no
+# `persist:` and no `egress:`. A capability that only some projects want belongs in its own recipe,
+# which a stack opts into by name.
+#
+# A user who wants a different baseline does not edit this file — they author their own `default`
+# stack in ~/.config/harnessed/catalog/stacks/default, which wins resolution over the repo's.
+name: default
+description: Baseline recipe every install inherits — ships the harnessed-catalog authoring skill.
+
+# The skill dir is the real content; .agents/skills/harnessed-catalog is a symlink to it, so this
+# repo's own agents and a stack built from THIS catalog read one copy that cannot drift.
+#
+# Seeding does hand out a second copy, deliberately: launcher._seed_user_default_recipe copies this
+# recipe (dereferenced) into ~/.config/harnessed/catalog/recipes/default on first run, and the
+# overlay wins resolution from then on. So after a seed, a built stack reads the USER's copy while
+# this repo's agents read this one, and the user's edits are theirs to keep. That is the ownership
+# model, not a drift bug — see the banner the seed prepends to their copy.
+skills:
+  - path: skills/harnessed-catalog

@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
+# Stack: default — the baseline a dynamic (`--recipe`) stack inherits from.
+#
+# `--extends` defaults to the literal name `default` on both run verbs, and dynstack.write_stack
+# writes that name into every generated manifest. Until this file existed, the repo shipped no
+# `default` stack at all: the name resolved only if the user happened to have authored one in their
+# own overlay, so a fresh install running `harnessed container-run claude --recipe foo` failed on
+# `extends: 'default' — no such stack`. This is the stack that makes the documented default work
+# out of the box.
+#
+# Deliberately minimal: one recipe, no services, and NO policy fields. A shipped baseline that set
+# `permissions:` or turned on credential forwarding would silently apply that policy to every
+# dynamic stack on every install — that is the user's call, not the repo's.
+#
+# Harness-free by construction, like every stack: `harnessed build default claude`,
+# `harnessed container-run omp --stack default`.
+#
+# To use a different baseline, author ~/.config/harnessed/catalog/stacks/default/stack.yaml — the
+# user overlay is searched first and wins on a name clash, so it replaces this one wholesale
+# (see catalog/recipes/default/skills/harnessed-catalog/stack-fields.md).
+name: default
+recipes: [default]
+services: []
