@@ -51,7 +51,8 @@ def write_mcp_json(profile_dir: Path) -> Path:
     `type: http` is REQUIRED — Claude Code only treats an entry as a Streamable-HTTP server
     when the type is set; without it the server is not loaded. The launcher passes this file
     via `claude --mcp-config <file> --strict-mcp-config`, so hatago is the ONLY MCP server the
-    isolated harness sees (no host/project/account-synced servers leak in).
+    isolated harness sees (no host/project/account-synced servers leak in). Launching with
+    `--no-strict-mcp-config` drops the strict switch and opts back into those other sources.
     """
     out = profile_dir / ".mcp.json"
     _write_json(out, {"mcpServers": {HATAGO_MCP_KEY: {"type": "http", "url": HATAGO_ENDPOINT}}})

@@ -104,7 +104,9 @@ _CTR_PROFILE_DIR = "/tmp/harnessed-profile"
 
 # Attach command for each harness inside the container.
 _HARNESS_ATTACH_CMD = {
-    "claude": "claude --mcp-config '{mcp_cfg}' --strict-mcp-config",
+    # `{strict}` is " --strict-mcp-config" by default and empty under --no-strict-mcp-config, which
+    # lets claude also read its normal sources (notably the project's own .mcp.json).
+    "claude": "claude --mcp-config '{mcp_cfg}'{strict}",
     # No `--profile`: that isolates auth/sessions/settings into a separate store, which would ignore
     # the bind-mounted ~/.omp/agent. We share the host's default omp profile (auth + usage + sessions).
     "omp": "omp",
@@ -5513,13 +5515,17 @@ def _aoe_register(verb: str, stack: str, harness: str, project_path: Path, *, on
 def _launch_host(
     stack: str, harness: str, path: Optional[str], *, rm: bool = False,
     extra: Optional[list[str]] = None, create_aoe_only: bool = False,
+    no_strict_mcp: bool = False,
 ) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
     the host's own auth.
 
     `rm` switches from exec (persist the daemons, clean TTY handoff) to supervise (fork claude, wait,
-    then stop the daemons THIS launch started)."""
+    then stop the daemons THIS launch started).
+
+    `no_strict_mcp` (--no-strict-mcp-config) omits `--strict-mcp-config`, so claude reads its own MCP
+    sources (project `.mcp.json`, user config) in addition to the stack's file."""
     if harness != _HOST_HARNESS:
         _err.print(
             f"[bold red]error:[/bold red] host-run currently supports only '{_HOST_HARNESS}' "
@@ -5700,9 +5706,14 @@ def _launch_host(
     # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude load
     # ONLY this file, so the copied .claude.json's global mcpServers never leak into an isolated
     # stack (content-only included). With servers → the stack's set; without → an empty set.
+    # --no-strict-mcp-config opts OUT of that isolation: the file is still passed, but claude also
+    # reads the project's `.mcp.json` and the user config.
     mcp_path = home / ".mcp.json"
     mcp_path.write_text(json.dumps({"mcpServers": mcp_servers or {}}, indent=2), encoding="utf-8")
-    argv = ["claude", "--mcp-config", str(mcp_path), "--strict-mcp-config", *(extra or [])]
+    argv = ["claude", "--mcp-config", str(mcp_path)]
+    if not no_strict_mcp:
+        argv.append("--strict-mcp-config")
+    argv += extra or []
 
     _err.print(
         f"[green]host-native[/green]: CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
@@ -5805,6 +5816,12 @@ _SERVICE_OPT = typer.Option(
     [], "--service",
     help="Extra service sidecar. Rarely needed: a recipe declares the services it requires.",
 )
+_NO_STRICT_MCP_OPT = typer.Option(
+    False, "--no-strict-mcp-config",
+    help="claude only: drop --strict-mcp-config so claude ALSO loads its own MCP sources (the "
+         "project's .mcp.json, your user config) on top of the stack's. Default is strict — the "
+         "stack's MCP surface is exactly what it declares.",
+)
 
 
 @app.command("host-run")
@@ -5819,6 +5836,7 @@ def host_run(
     rm: bool = typer.Option(
         False, "--rm", help="Stop host daemons this launch started when the session exits"
     ),
+    no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -5858,7 +5876,8 @@ def host_run(
     stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
     try:
         _launch_host(
-            stack_name, harness, path, rm=rm, extra=_passthrough, create_aoe_only=create_aoe_only
+            stack_name, harness, path, rm=rm, extra=_passthrough,
+            create_aoe_only=create_aoe_only, no_strict_mcp=no_strict_mcp_config,
         )
     except typer.Exit as exc:
         # typer.Exit(0) is a SUCCESS that unwinds like a failure, and it must not clean up:
@@ -5909,6 +5928,7 @@ def container_run(
         False, "--shell",
         help="Open an interactive bash shell in the container instead of starting the agent",
     ),
+    no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -6083,11 +6103,11 @@ def container_run(
                     "[yellow]note:[/yellow] attaching to the existing (older-build) instance — "
                     "run with --fresh to update."
                 )
-                _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough)
+                _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)
                 return
         else:
             _out.print(f"[blue][INFO][/blue] Attaching to running instance: {inst}")
-            _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough)
+            _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)
             return
     # Stopped leftover: a previous non-ephemeral session exited without tearing down its pod (only
     # --rm cleans up). A same-name `pod create` would fail "name already in use", so remove the
@@ -6332,7 +6352,7 @@ def container_run(
         _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago in-container)")
         return
 
-    _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough)
+    _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)
 
 
 def _attach(
@@ -6348,6 +6368,7 @@ def _attach(
     start_dir: Optional[Path] = None,
     shell: bool = False,
     extra: Optional[list[str]] = None,
+    no_strict_mcp: bool = False,
 ) -> None:
     """Exec into the running instance with the harness command.
 
@@ -6357,6 +6378,9 @@ def _attach(
     shell (--shell): drop into an interactive bash instead of starting the harness.
     extra: passthrough args (from `launch … -- <suffix>`) appended verbatim to the harness command;
     ignored under --shell, which starts no harness.
+    no_strict_mcp (--no-strict-mcp-config): drop `--strict-mcp-config` from the claude command so
+    claude ALSO reads its own MCP sources — the project's `.mcp.json`, the user config — on top of
+    the stack's. Off by default: strict is what keeps a stack's MCP surface exactly what it declares.
 
     Recipe init (Model A): the attach shell exports the path contract and runs each recipe's
     `init.run` inline (fail-fast) BEFORE exec-ing the harness, so init-derived env reaches the agent.
@@ -6376,7 +6400,8 @@ def _attach(
     else:
         mcp_cfg = str(paths.container_mcp_config())
         harness_cmd_tpl = _HARNESS_ATTACH_CMD.get(harness, "claude")
-        tail = harness_cmd_tpl.format(mcp_cfg=mcp_cfg, instance=inst)
+        strict = "" if no_strict_mcp else " --strict-mcp-config"
+        tail = harness_cmd_tpl.format(mcp_cfg=mcp_cfg, instance=inst, strict=strict)
     # Passthrough suffix (`launch … -- <suffix>`): append to the harness command, shell-quoted since
     # `tail` is run via `bash -l -c`. Skipped under --shell (no harness command to extend).
     if extra and not shell:
