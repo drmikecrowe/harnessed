@@ -397,27 +397,41 @@ def _seed_user_default_recipe() -> None:
     real content rather than links back into an installation the user may later replace.
     """
     dest = paths.user_catalog() / "recipes" / "default"
-    if dest.exists():
+    # `is_symlink()` as well as `exists()`: a DANGLING symlink at `recipes/default` reports
+    # exists() == False (it resolves the target), and the rename below would then fail with
+    # NotADirectoryError and take the whole launch down. A link the user put there is theirs
+    # either way — broken or not, it is not ours to replace.
+    if dest.exists() or dest.is_symlink():
         return
 
     src = paths.harnessed_home() / "catalog" / "recipes" / "default"
     if not (src / "recipe.yaml").is_file():
         return  # nothing to seed (a catalog root without the shipped baseline)
 
-    tmp = dest.with_name(".default.seeding")
-    shutil.rmtree(tmp, ignore_errors=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # A PRIVATE staging dir per process, not one shared `.default.seeding`. Two first launches
+    # racing (two shells, a shell plus an editor task) would otherwise stage into the same path,
+    # and the first to finish would rmtree the other's half-written copy out from under it —
+    # both launches failing where neither had to. mkdtemp gives each its own, in the same
+    # directory so the rename stays atomic within one filesystem.
+    tmp = Path(tempfile.mkdtemp(prefix=".default.seeding-", dir=dest.parent))
     try:
         # symlinks=False: dereference. A link into site-packages breaks the moment harnessed is
         # upgraded or removed, and the whole point of the seed is a copy the user owns outright.
-        shutil.copytree(src, tmp, symlinks=False)
+        shutil.copytree(src, tmp, symlinks=False, dirs_exist_ok=True)
         manifest = tmp / "recipe.yaml"
         manifest.write_text(_SEEDED_DEFAULT_BANNER + manifest.read_text(), encoding="utf-8")
         # Rename last so an interrupted seed never leaves a half-copied recipe at the real name,
-        # where the `if dest.exists()` guard above would then treat it as complete forever.
+        # where the `dest.exists()` guard above would then treat it as complete forever.
         tmp.rename(dest)
     except OSError:
+        # Losing the race is a SUCCESS: the other process seeded the same bytes, and `dest` is
+        # now a complete recipe. Only re-raise when the destination really is not there, so a
+        # genuine failure (no space, no permission) still surfaces instead of seeding nothing
+        # and saying nothing.
         shutil.rmtree(tmp, ignore_errors=True)
-        raise
+        if not (dest / "recipe.yaml").is_file():
+            raise
 
 
 def _ensure_docs_wiki_clone() -> None:

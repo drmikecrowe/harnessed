@@ -3,14 +3,18 @@
 Stack manifests are **strict**: any key outside this set is rejected with a did-you-mean suggestion
 (`KNOWN_STACK_FIELDS` in `src/harnessed/schema.py`, the authority):
 
-```
+```text
 name extends recipes services harnesses permissions instructions
 forward_git_credentials ssh_keys forward_aws_sso state hatago
 ```
 
 Strictness is deliberate. Parsing used to be tolerant, and an `extends:` written before the feature
-existed inherited nothing for months while looking accepted. (`hatago:` stays in the set only so it
-can be rejected with a message naming what replaced it.)
+existed inherited nothing for months while looking accepted.
+
+`hatago:` is in that set but is **not** a usable field: it is kept only so a manifest still carrying
+the removed override is rejected with a message naming its replacement
+(`_reject_removed_hatago_override`) instead of dying in the generic unknown-field path. Never author
+it, and it is not inheritable.
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
@@ -69,7 +73,7 @@ permissions: yolo          # → yolo (child wins)
 | Field | Rule |
 | --- | --- |
 | `recipes`, `services`, `harnesses`, `ssh_keys` | **union**: base's entries in base order, then the child's, de-duped |
-| `permissions`, `instructions`, `state`, `hatago` | child wins **whole**, when set; otherwise inherited. `state` replaces — no per-key merge. |
+| `permissions`, `instructions`, `state` | child wins **whole**, when set; otherwise inherited. `state` replaces — no per-key merge. |
 | `forward_git_credentials`, `forward_aws_sso` | inherited; a child may set either back to `false` |
 | `name` | never inherited; must match the directory name |
 

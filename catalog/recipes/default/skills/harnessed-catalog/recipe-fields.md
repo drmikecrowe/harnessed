@@ -3,7 +3,7 @@
 Every accepted top-level key. Anything else is rejected in strict mode (`KNOWN_RECIPE_FIELDS` in
 `src/harnessed/schema.py`, which is the authority):
 
-```
+```text
 name description mcp skills commands rules expect persist init conflicts hooks setup
 install egress tools env services            plugins deps scripts   (forward-parsed only)
 ```
@@ -24,8 +24,10 @@ mcp:
     # 1. stdio child — hatago spawns it and wraps stdio→HTTP. Light, dependency-free servers.
     - name: time
       command: uvx
-      args: [mcp-server-time]
-      transport: stdio           # the default, but write it: the shape is load-bearing
+      args: [mcp-server-time==2026.7.10]   # PIN the package. Nothing validates `args:` —
+      transport: stdio                     # validate_pin reads Dockerfile text only — so an
+                                           # unpinned server here is on you. `transport` is the
+                                           # default, but write it: the shape is load-bearing
 
     # 2. local sidecar — resolved from catalog/services/<name>/service.yaml to a URL
     - name: ping
@@ -65,8 +67,13 @@ A rule with no `paths:` frontmatter loads at launch; `paths: ["src/**/*.ts"]` sc
 
 ## `expect:` — what the assembler cannot see
 
-The assembler knows about `skills:`/`commands:`/`mcp.servers`. It cannot see what a Dockerfile or an
-install script drops into `~/.claude`. Declare those so `harnessed test` probes for them:
+The assembler knows about `skills:`/`commands:`/`mcp.servers`. It cannot see what an
+`install.script` writes into `$HARNESSED_CONFIG_DIR`, or what `tools:` puts on `PATH`. Declare those
+so `harnessed test` probes for them:
+
+(A recipe **Dockerfile** is not on this list because it may not deliver `~/.claude` content at all —
+`validate_no_claude_writes` rejects any `.claude` mention in a recipe Dockerfile body. Content goes
+through `install.script`, which lands in both modes.)
 
 ```yaml
 expect:

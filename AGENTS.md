@@ -32,9 +32,10 @@ assembles in-process and builds images. `harnessed test <stack> <harness>` is th
 ## Customizing (catalog content)
 
 Everything authorable is under `catalog/` (and the user overlay `~/.config/harnessed/catalog`). The
-**`harnessed-catalog` skill** (`.agents/skills/harnessed-catalog`, shipped to every stack by
-`catalog/recipes/default`) is the working reference for all of it — field lists, the verification
-ladder, and the authoring rules below in one place.
+**`harnessed-catalog` skill** (`.agents/skills/harnessed-catalog`) is the working reference for all
+of it — field lists, the verification ladder, and the authoring rules below in one place. It also
+ships to launched stacks through `catalog/recipes/default`, so any stack that inherits the `default`
+baseline carries it; a `--stack` launch or `--no-extends` that omits the recipe does not.
 
 - **Recipe** → `catalog/recipes/<name>/recipe.yaml` — see
   [docs/guides/recipe-authoring.md](docs/guides/recipe-authoring.md) (examples: `catalog/recipes/time`,
