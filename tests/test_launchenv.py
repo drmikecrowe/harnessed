@@ -41,28 +41,31 @@ class TestModuleBoundary:
         Checked over the parsed IMPORTS rather than the raw text, because this module's docstring
         has to name `launcher` to explain why it was carved out of it.
         """
-        src = (Path(__file__).parent.parent / "src" / "harnessed" / "console.py").read_text()
+        assert not self._launcher_imports("console.py")
+
+    def test_no_lazy_import_of_launcher_anywhere_in_launchenv(self):
+        """A function-local `import launcher` would keep the coupling while looking clean at the
+        top of the file. `ast.walk` descends into function bodies, so an import at ANY nesting
+        depth is caught — including one that only fires on a branch no test happens to take.
+
+        Deliberately NOT done by evicting modules from `sys.modules` and re-importing: that
+        constructs a SECOND `console` module, and with it a second `_err` and a second warning
+        counter, which then leaks into whatever test imports next. That is the exact failure
+        TestSharedConsole exists to rule out — a boundary test must not manufacture it.
+        """
+        assert not self._launcher_imports("launchenv.py")
+
+    @staticmethod
+    def _launcher_imports(filename: str) -> list[str]:
+        """Every name imported by `src/harnessed/<filename>`, at any depth, that mentions launcher."""
+        src = (Path(__file__).parent.parent / "src" / "harnessed" / filename).read_text()
         imported: list[str] = []
         for node in ast.walk(ast.parse(src)):
             if isinstance(node, ast.Import):
                 imported += [a.name for a in node.names]
             elif isinstance(node, ast.ImportFrom):
                 imported += [node.module or ""] + [a.name for a in node.names]
-        assert not any("launcher" in name for name in imported), imported
-
-    def test_no_lazy_import_of_launcher_at_call_time(self):
-        """A function-local `import launcher` would pass the source check above while keeping the
-        coupling. Resolve the whole module graph and assert launcher is genuinely not in it."""
-        import importlib
-        import sys
-
-        for name in ("harnessed.launcher", "harnessed.launchenv", "harnessed.console"):
-            sys.modules.pop(name, None)
-        mod = importlib.import_module("harnessed.launchenv")
-        # Touch every public entry point so a lazy import inside one of them would fire.
-        mod._parse_plain_env_line("A=b")
-        mod._varlock_cache_clear()
-        assert "harnessed.launcher" not in sys.modules
+        return [name for name in imported if "launcher" in name]
 
 
 class TestSharedConsole:
