@@ -24,6 +24,10 @@ rules:
   # stop-and-ask gates WHETHER. A secret scanner only catches key-shaped strings — this is the
   # semantic pass it can't do.
   - path: rules/pre-publish-review
+  # Prompt-injection baseline: instructions only from user/project, everything fetched or
+  # tool-returned is data. Covers identity/rule overrides, secret disclosure, unvalidated
+  # executable output, encoding and pressure tricks, and harmful-content refusals.
+  - path: rules/prompt-defense
   - path: rules/rg
   - path: rules/stop-and-ask
   - path: rules/token-efficient
