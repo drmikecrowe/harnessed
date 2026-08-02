@@ -229,7 +229,7 @@ detached write path, that failure is invisible.
 
 | property | value | why |
 | --- | --- | --- |
-| identity | (project path, stack, harness, verb) | a stack has an assembled profile **per harness**, and the same stack host-native vs containerized is two different things to run |
+| identity | (project path, stack, harness, verb, MCP mode) | a stack has an assembled profile **per harness**, the same stack host-native vs containerized is two different things to run, and `--no-strict-mcp-config` changes the agent's MCP surface |
 | identity, overridden | (group, title), with `--aoe-group` **and** `--aoe-title` | the only key that can adopt a row harnessed did not write |
 | group | the git **common** dir's repo, or `--aoe-group` | every worktree of one checkout shares a group instead of each spawning its own |
 | skipped | the `default` stack | the baseline every dynamic stack extends, not something the user composed |
@@ -260,6 +260,22 @@ beside it under the derived group. Either flag alone still overrides its half bu
 the command — a group holds many sessions and a title is unique only within one, so neither alone
 identifies a row. Both are echoed back into the recorded command, or a restart from the dashboard
 would re-derive the placement and produce that duplicate anyway.
+
+**The recorded command replays the launch, so `--no-strict-mcp-config` is recorded too.** It is the
+one launch flag that changes the *session*, not the invocation: dropped, claude also loads the
+project's `.mcp.json` and the user's config, so a row that forgets it restarts with a different MCP
+surface than the one registered. `--rm`, `--fresh` and the pod flags describe this invocation's
+lifecycle and are correctly re-decided by a restart.
+
+Recording it makes it identity, and identity the title cannot express is identity aoe discards — so
+the derived title gains a ` +open-mcp` suffix in that mode. Without it the strict and open variants
+of one stack share a title, the second `add` is refused at exit 0, and the row keeps replaying the
+command it was first registered with. Strict titles are unchanged.
+
+aoe has no verb that rewrites a session's stored command (`session rename` changes only the title),
+so this fixes rows created from here on. A row registered before the flag was echoed keeps its old
+command and re-registers once under the new identity; one adopted by `--aoe-group` + `--aoe-title`
+is left exactly as it is, and must be removed and relaunched to pick the flag up.
 
 `aoe add` takes ~12s (it starts aoe's daemon) while every read is ~0.01s. So the reads that decide
 *whether* to write run inline, and the writes are fired into a `start_new_session` child that

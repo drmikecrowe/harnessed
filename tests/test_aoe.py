@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import typer
 from typer.core import TyperGroup
+from typer.testing import CliRunner
 
 from harnessed import aoe, launcher
 from harnessed.schema import SchemaError
@@ -257,6 +258,27 @@ class TestTitleUniqueness:
             "container-run", "superpowers", "claude", tmp_path
         )
 
+    def test_the_mcp_mode_is_part_of_the_title(self, tmp_path):
+        # It is recorded on the command, so it is identity — and identity the title cannot express
+        # is identity aoe discards. Same title and path means the second `add` is refused at exit 0
+        # and the row keeps replaying whichever command it was registered with first.
+        assert aoe.title_for("host-run", "serena", "claude", tmp_path) != aoe.title_for(
+            "host-run", "serena", "claude", tmp_path, no_strict_mcp=True
+        )
+
+    def test_strict_titles_are_unchanged(self, tmp_path):
+        # The default must not churn: every existing row was registered under this exact label.
+        assert aoe.title_for("host-run", "serena", "claude", tmp_path) == (
+            f"{tmp_path.name} [claude/host] serena"
+        )
+
+    def test_open_mcp_rows_do_not_collide_end_to_end(self, monkeypatch, tmp_path):
+        rec = Recorder().install(monkeypatch)
+        aoe.sync_session("host-run", "serena", "claude", tmp_path)
+        aoe.sync_session("host-run", "serena", "claude", tmp_path, no_strict_mcp=True)
+        titles = [_flag(a, "-t") for a in rec.registrations()]
+        assert len(titles) == 2 and len(set(titles)) == 2, titles
+
     def test_host_and_container_titles_do_not_collide_end_to_end(self, monkeypatch, tmp_path):
         rec = Recorder().install(monkeypatch)
         aoe.sync_session("container-run", "serena", "claude", tmp_path)
@@ -288,6 +310,20 @@ class TestIdentity:
         rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
         rec.install(monkeypatch)
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
+        assert len(rec.registrations()) == 1
+
+    def test_an_open_mcp_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --no-strict-mcp-config --"))
+        rec.install(monkeypatch)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path, no_strict_mcp=True)
+        assert rec.added() == []
+
+    def test_strict_and_open_mcp_are_two_sessions(self, monkeypatch, tmp_path):
+        # Different MCP surface, so two things to run. The cost is one-time and unavoidable: a row
+        # registered before the flag was echoed does not match and is registered once more.
+        rec = Recorder(sessions=self._existing(tmp_path, f"harnessed container-run claude {tmp_path} --stack serena --"))
+        rec.install(monkeypatch)
+        aoe.sync_session("container-run", "serena", "claude", tmp_path, no_strict_mcp=True)
         assert len(rec.registrations()) == 1
 
     def test_same_stack_in_another_folder_is_a_second_session(self, monkeypatch, tmp_path):
@@ -580,7 +616,8 @@ class TestCreateAoeOnly:
         seen: dict = {}
 
         def fake_sync(
-            verb, stack, harness, project_path, *, background=True, group=None, title=None
+            verb, stack, harness, project_path, *, background=True, group=None, title=None,
+            no_strict_mcp=False,
         ):
             seen.update(verb=verb, stack=stack, harness=harness, background=background)
             return ok
@@ -670,6 +707,61 @@ class TestHookPlacement:
         assert [a[0] for a in registered] == ["host-run"]
 
 
+class TestLaunchFlagsReachTheRow:
+    """`--no-strict-mcp-config` has to survive the trip from argv to the recorded command.
+
+    It is threaded separately on each verb — `host-run` through `_launch_host`, `container-run`
+    inline — so a wiring test per verb is a wiring test per call site. Both stop at
+    `--create-aoe-only`, which raises typer.Exit(0) from the register hook and never reaches the
+    launch machinery.
+    """
+
+    def _seen(self, monkeypatch, tmp_path) -> dict:
+        seen: dict = {}
+        monkeypatch.setattr(
+            launcher.aoe, "sync_session", lambda *a, **k: (seen.update(k), True)[1]
+        )
+        (tmp_path / "stack.yaml").write_text("name: s\n")
+        monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a: tmp_path)
+        return seen
+
+    def test_host_run_records_it(self, monkeypatch, tmp_path):
+        seen = self._seen(monkeypatch, tmp_path)
+        monkeypatch.setattr(launcher, "assemble", lambda *a, **k: None)
+        with pytest.raises(typer.Exit):
+            launcher._launch_host(
+                "s", "claude", str(tmp_path), create_aoe_only=True, no_strict_mcp=True
+            )
+        assert seen["no_strict_mcp"] is True
+
+    def test_host_run_defaults_to_strict(self, monkeypatch, tmp_path):
+        seen = self._seen(monkeypatch, tmp_path)
+        monkeypatch.setattr(launcher, "assemble", lambda *a, **k: None)
+        with pytest.raises(typer.Exit):
+            launcher._launch_host("s", "claude", str(tmp_path), create_aoe_only=True)
+        assert seen["no_strict_mcp"] is False
+
+    def _container_run(self, monkeypatch, tmp_path, argv: list[str]) -> dict:
+        seen = self._seen(monkeypatch, tmp_path)
+        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        monkeypatch.setattr(launcher, "is_built", lambda *a: True)
+        monkeypatch.setattr(launcher.staleness, "check_profile_fresh", lambda *a: None)
+        project = tmp_path / "proj"
+        project.mkdir()
+        CliRunner().invoke(
+            launcher.app,
+            ["container-run", "claude", str(project), "--stack", "s", "--create-aoe-only", *argv],
+        )
+        return seen
+
+    def test_container_run_records_it(self, monkeypatch, tmp_path):
+        seen = self._container_run(monkeypatch, tmp_path, ["--no-strict-mcp-config"])
+        assert seen["no_strict_mcp"] is True
+
+    def test_container_run_defaults_to_strict(self, monkeypatch, tmp_path):
+        assert self._container_run(monkeypatch, tmp_path, [])["no_strict_mcp"] is False
+
+
 class TestCommandFor:
     def test_quotes_paths_with_spaces(self):
         cmd = aoe.command_for("container-run", "serena", "claude", Path("/tmp/my project"))
@@ -684,6 +776,28 @@ class TestCommandFor:
         assert cmd.split() == [
             "harnessed", "host-run", "claude", "/p", "--stack", "serena", "--",
         ]
+
+    def test_no_strict_mcp_is_recorded(self):
+        # Dropped, claude also loads the project's `.mcp.json` and the user's config. A row that
+        # forgets it restarts with a different MCP surface than the one that was registered.
+        cmd = aoe.command_for("host-run", "serena", "claude", Path("/p"), no_strict_mcp=True)
+        assert cmd == "harnessed host-run claude /p --stack serena --no-strict-mcp-config --"
+
+    def test_strict_is_the_default_and_records_nothing(self):
+        cmd = aoe.command_for("host-run", "serena", "claude", Path("/p"))
+        assert "--no-strict-mcp-config" not in cmd
+
+    def test_the_whole_recorded_shape_with_every_echoed_flag(self):
+        # Pins ORDER as well as content: the command is the identity key on the fallback path, so
+        # two launches that differ only in how the flags are arranged must not become two rows.
+        cmd = aoe.command_for(
+            "host-run", "serena", "claude", Path("/p"),
+            no_strict_mcp=True, group="g", title="a titled row",
+        )
+        assert cmd == (
+            "harnessed host-run claude /p --stack serena --no-strict-mcp-config "
+            "--aoe-group g --aoe-title 'a titled row' --"
+        )
 
     def test_records_the_resolved_stack_name(self):
         # Dynamic stacks are minted before this is called, so the derived name replays exactly —
