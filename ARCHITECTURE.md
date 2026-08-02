@@ -230,7 +230,8 @@ detached write path, that failure is invisible.
 | property | value | why |
 | --- | --- | --- |
 | identity | (project path, stack, harness, verb) | a stack has an assembled profile **per harness**, and the same stack host-native vs containerized is two different things to run |
-| group | the git **common** dir's repo | every worktree of one checkout shares a group instead of each spawning its own |
+| identity, overridden | (group, title), with `--aoe-group` **and** `--aoe-title` | the only key that can adopt a row harnessed did not write |
+| group | the git **common** dir's repo, or `--aoe-group` | every worktree of one checkout shares a group instead of each spawning its own |
 | skipped | the `default` stack | the baseline every dynamic stack extends, not something the user composed |
 | removed by | `harnessed rm <stack>` | container rows only — `rm` tears down containers, and a host-native session owns none |
 
@@ -250,6 +251,15 @@ aoe:
 2. **`add` deduplicates on (title, path) and exits 0.** A collision is not an error, it is a row
    that never appears. The title is therefore part of identity whether or not it looks cosmetic,
    and must separate backend as well as harness and stack.
+
+**`--aoe-group` / `--aoe-title`** name the row instead of deriving it, on both run verbs. Given
+together they also replace the identity key with (group, title), which is the only match that finds
+a row harnessed did not write: a hand-placed or hand-edited one records the path as typed and
+carries flags `command_for` does not emit, so by command it is invisible and a duplicate lands
+beside it under the derived group. Either flag alone still overrides its half but leaves matching on
+the command — a group holds many sessions and a title is unique only within one, so neither alone
+identifies a row. Both are echoed back into the recorded command, or a restart from the dashboard
+would re-derive the placement and produce that duplicate anyway.
 
 `aoe add` takes ~12s (it starts aoe's daemon) while every read is ~0.01s. So the reads that decide
 *whether* to write run inline, and the writes are fired into a `start_new_session` child that

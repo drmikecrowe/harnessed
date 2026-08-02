@@ -9,6 +9,7 @@ No test shells out to a real `aoe`; `_run` is the seam.
 """
 from __future__ import annotations
 
+import shlex
 import subprocess
 
 from pathlib import Path
@@ -313,6 +314,97 @@ class TestGroup:
         monkeypatch.setattr(aoe.paths, "git_common_dir", lambda _: None)
         assert aoe._group_for(tmp_path / "scratch") == "scratch"
 
+    def test_an_explicit_group_wins_over_the_derived_one(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(aoe.paths, "git_common_dir", lambda _: tmp_path / "myrepo" / ".git")
+        wt = tmp_path / "myrepo" / "wt-a"
+        assert aoe.group_for(wt, group="a-chosen-group") == "a-chosen-group"
+        assert aoe.group_for(wt) == "myrepo"
+
+
+class TestUserNamedRows:
+    """`--aoe-group` / `--aoe-title`: the user placing and labelling a row themselves.
+
+    Supplying BOTH also replaces the identity key with (group, title). That is the only match that
+    can find a row harnessed did not write — a hand-placed one carries flags `command_for` never
+    emits and records the path as typed, so by command it is invisible and a duplicate lands beside
+    it under the derived group. Either flag alone must NOT switch matching: a group holds many
+    sessions and a title is unique only within one.
+    """
+
+    def _row(self, *, group: str, title: str, key: str = "group") -> str:
+        # Modelled on a real hand-added row: an unresolved path with a trailing slash, and a
+        # `--no-strict-mcp-config` that `command_for` does not emit.
+        return (
+            f'[{{"id": "s1", "path": "/p/1-unconfigured/", "title": "{title}", "{key}": "{group}",'
+            ' "command": "harnessed host-run claude /p/1-unconfigured/ --stack s'
+            ' --no-strict-mcp-config --"}]'
+        )
+
+    def test_group_places_the_row_and_is_created(self, rec, tmp_path):
+        aoe.sync_session("host-run", "s", "claude", tmp_path, group="a-chosen-group")
+        assert ["group", "create", "a-chosen-group", "-p", aoe.PROFILE] in rec.calls
+        assert _flag(rec.registrations()[0], "-g") == "a-chosen-group"
+
+    def test_title_labels_the_row(self, rec, tmp_path):
+        aoe.sync_session("host-run", "s", "claude", tmp_path, title="a chosen title")
+        assert _flag(rec.registrations()[0], "-t") == "a chosen title"
+
+    def test_both_are_echoed_on_the_recorded_command(self, rec, tmp_path):
+        # Left off, a restart from the dashboard would re-derive group and title and add a SECOND
+        # row beside the one the user placed — the duplicate these flags exist to prevent.
+        aoe.sync_session(
+            "host-run", "s", "claude", tmp_path, group="a-chosen-group", title="a titled row"
+        )
+        tokens = shlex.split(_flag(rec.registrations()[0], "--cmd-override"))
+        assert tokens[-5:] == ["--aoe-group", "a-chosen-group", "--aoe-title", "a titled row", "--"]
+
+    def test_an_existing_row_is_adopted_not_duplicated(self, monkeypatch, tmp_path):
+        rec = Recorder(sessions=self._row(group="a-chosen-group", title="a titled row"))
+        rec.install(monkeypatch)
+        aoe.sync_session(
+            "host-run", "s", "claude", tmp_path, group="a-chosen-group", title="a titled row"
+        )
+        assert rec.added() == []
+
+    def test_the_on_disk_group_key_is_accepted_too(self, monkeypatch, tmp_path):
+        # `aoe list --json` renames the stored `group_path` to `group`; tolerate either so a rename
+        # upstream costs a duplicate row at worst, never an exception.
+        rec = Recorder(sessions=self._row(group="a-chosen-group", title="a titled row", key="group_path"))
+        rec.install(monkeypatch)
+        aoe.sync_session(
+            "host-run", "s", "claude", tmp_path, group="a-chosen-group", title="a titled row"
+        )
+        assert rec.added() == []
+
+    def test_a_different_title_in_the_same_group_is_a_new_row(self, monkeypatch, tmp_path):
+        rec = Recorder(sessions=self._row(group="a-chosen-group", title="some other row"))
+        rec.install(monkeypatch)
+        aoe.sync_session(
+            "host-run", "s", "claude", tmp_path, group="a-chosen-group", title="a titled row"
+        )
+        assert len(rec.registrations()) == 1
+
+    def test_group_alone_does_not_adopt_a_row(self, monkeypatch, tmp_path):
+        # Every session in a group shares its group; matching on it would swallow unrelated rows.
+        rec = Recorder(sessions=self._row(group="a-chosen-group", title="a titled row"))
+        rec.install(monkeypatch)
+        aoe.sync_session("host-run", "s", "claude", tmp_path, group="a-chosen-group")
+        assert len(rec.registrations()) == 1
+
+    def test_title_alone_does_not_adopt_a_row(self, monkeypatch, tmp_path):
+        rec = Recorder(sessions=self._row(group="a-chosen-group", title="a titled row"))
+        rec.install(monkeypatch)
+        aoe.sync_session("host-run", "s", "claude", tmp_path, title="a titled row")
+        assert len(rec.registrations()) == 1
+
+    @pytest.mark.parametrize("flag", ["--aoe-group", "--aoe-title"])
+    @pytest.mark.parametrize("verb", ["container-run", "host-run"])
+    def test_every_launch_verb_accepts_the_flags(self, verb, flag):
+        # On the declaration, not on rendered `--help` — see test_every_launch_verb_accepts_the_flag.
+        group = typer.main.get_command(launcher.app)
+        assert isinstance(group, TyperGroup)  # narrows to the .commands mapping
+        assert any(flag in p.opts for p in group.commands[verb].params)
+
 
 class TestForgetStack:
     SESSIONS = (
@@ -487,7 +579,9 @@ class TestCreateAoeOnly:
     def _register(self, monkeypatch, *, ok: bool, only: bool) -> dict:
         seen: dict = {}
 
-        def fake_sync(verb, stack, harness, project_path, *, background=True):
+        def fake_sync(
+            verb, stack, harness, project_path, *, background=True, group=None, title=None
+        ):
             seen.update(verb=verb, stack=stack, harness=harness, background=background)
             return ok
 
