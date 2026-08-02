@@ -5484,7 +5484,7 @@ def _host_native_mcp(stack: str) -> Optional[dict]:
 
 def _aoe_register(
     verb: str, stack: str, harness: str, project_path: Path, *, only: bool,
-    group: Optional[str] = None, title: Optional[str] = None,
+    group: Optional[str] = None, title: Optional[str] = None, no_strict_mcp: bool = False,
 ) -> None:
     """Mirror this launch into Agent of Empires, and stop here under `--create-aoe-only`.
 
@@ -5494,10 +5494,12 @@ def _aoe_register(
     so it blocks, reports, and propagates an exit status the user can script against.
 
     `group`/`title` are the `--aoe-group`/`--aoe-title` overrides; passing both also switches how an
-    existing row is recognised. See `aoe.sync_session`.
+    existing row is recognised. `no_strict_mcp` is recorded so a restart reproduces this launch's
+    MCP surface. See `aoe.sync_session`.
     """
     registered = aoe.sync_session(
-        verb, stack, harness, project_path, background=not only, group=group, title=title
+        verb, stack, harness, project_path, background=not only,
+        group=group, title=title, no_strict_mcp=no_strict_mcp,
     )
     if not only:
         return
@@ -5510,10 +5512,10 @@ def _aoe_register(
         raise typer.Exit(1)
     _out.print(
         f"[bold green]Registered[/bold green] aoe session "
-        f"[bold]{aoe.title_for(verb, stack, harness, project_path, title=title)}[/bold]\n"
+        f"[bold]{aoe.title_for(verb, stack, harness, project_path, title=title, no_strict_mcp=no_strict_mcp)}[/bold]\n"
         f"  profile:  {aoe.PROFILE}\n"
         f"  group:    {aoe.group_for(project_path, group=group)}\n"
-        f"  command:  {aoe.command_for(verb, stack, harness, project_path, group=group, title=title)}\n"
+        f"  command:  {aoe.command_for(verb, stack, harness, project_path, group=group, title=title, no_strict_mcp=no_strict_mcp)}\n"
         f"  [dim]not launched (--create-aoe-only); start it with `aoe` or `aoe session start`[/dim]",
         highlight=False,
     )
@@ -5575,7 +5577,7 @@ def _launch_host(
     # sub-second, emit-only and container-free on this path.
     _aoe_register(
         "host-run", stack, harness, project_path, only=create_aoe_only,
-        group=aoe_group, title=aoe_title,
+        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
     )
 
     # Launch-time secrets — the host half of the container path's `--env-file` (see
@@ -6063,7 +6065,7 @@ def container_run(
     # exists even if the container half goes wrong. No-op when aoe is absent; never raises.
     _aoe_register(
         "container-run", stack, harness, project_path, only=create_aoe_only,
-        group=aoe_group, title=aoe_title,
+        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
     )
 
     try:

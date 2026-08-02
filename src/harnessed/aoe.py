@@ -89,6 +89,13 @@ _STACK_FLAG = ["--stack"]
 _GROUP_FLAG = "--aoe-group"
 _TITLE_FLAG = "--aoe-title"
 
+# The one LAUNCH flag that changes what the agent gets and therefore has to be replayed. `--rm`,
+# `--fresh` and the pod flags describe THIS invocation's lifecycle, not the session's shape; a
+# restart from the dashboard is a fresh launch and re-deciding them is correct. `--strict-mcp-config`
+# is different: dropped, claude also loads the project's `.mcp.json` and the user's config, so a row
+# that forgets it comes back with a different MCP surface than the one the user registered.
+_NO_STRICT_MCP_FLAG = "--no-strict-mcp-config"
+
 
 def _bin() -> str | None:
     """Path to a usable `aoe`, or None when the integration must stay silent.
@@ -170,7 +177,7 @@ def _apply(
 
 def command_for(
     verb: str, stack: str, harness: str, project_path: Path,
-    *, group: str | None = None, title: str | None = None,
+    *, group: str | None = None, title: str | None = None, no_strict_mcp: bool = False,
 ) -> str:
     """The harnessed invocation recorded on the session — both the identity key and what aoe runs.
 
@@ -193,9 +200,18 @@ def command_for(
     forwarding them to a non-claude agent kills the pane on every restart.
 
     `group`/`title` are echoed back as `--aoe-group`/`--aoe-title` so the placement the user asked
-    for survives a restart from the dashboard; see those flags' note above.
+    for survives a restart from the dashboard; see those flags' note above. `no_strict_mcp` is
+    echoed back for the same reason and one more: it changes the MCP surface the agent comes up
+    with, so a row that dropped it would restart as a DIFFERENT session than the one registered.
+
+    Everything echoed here is also part of the identity key on the command path, so adding a flag to
+    this list re-keys existing rows: a session registered before the flag was echoed no longer
+    matches and is registered a second time, once. `--aoe-group` + `--aoe-title` are immune — they
+    key on (group, title) and never look at the command.
     """
     args = ["harnessed", verb, harness, str(project_path), *_STACK_FLAG, stack]
+    if no_strict_mcp:
+        args.append(_NO_STRICT_MCP_FLAG)
     if group is not None:
         args += [_GROUP_FLAG, group]
     if title is not None:
@@ -204,7 +220,8 @@ def command_for(
 
 
 def title_for(
-    verb: str, stack: str, harness: str, project_path: Path, *, title: str | None = None
+    verb: str, stack: str, harness: str, project_path: Path,
+    *, title: str | None = None, no_strict_mcp: bool = False,
 ) -> str:
     """The dashboard label — and, unavoidably, half of aoe's own uniqueness key.
 
@@ -218,12 +235,19 @@ def title_for(
     Observed against aoe 2026-08-01: with the backend omitted, `host-run` registrations silently
     vanished behind their `launch` twin.
 
+    That invariant is why `no_strict_mcp` shows up in a LABEL. It is recorded on the command, which
+    makes it part of identity, and identity that the title cannot express is identity aoe throws
+    away: the strict and open-MCP variants of one stack would produce the same title, the second
+    `add` would be refused at exit 0, and the row would keep replaying the command it was first
+    registered with — the flag would appear to be ignored.
+
     An explicit `title` is returned verbatim — the caller owns the collision risk described above.
     """
     if title is not None:
         return title
     backend = "host" if verb == "host-run" else "container"
-    return f"{project_path.name} [{harness}/{backend}] {stack}"
+    mcp = " +open-mcp" if no_strict_mcp else ""
+    return f"{project_path.name} [{harness}/{backend}] {stack}{mcp}"
 
 
 def group_for(project_path: Path, *, group: str | None = None) -> str:
@@ -306,7 +330,7 @@ def _registered(
 
 def sync_session(
     verb: str, stack: str, harness: str, project_path: Path, *, background: bool = True,
-    group: str | None = None, title: str | None = None,
+    group: str | None = None, title: str | None = None, no_strict_mcp: bool = False,
 ) -> bool:
     """Register this launch with aoe, creating the profile and repo group on the way.
 
@@ -316,6 +340,9 @@ def sync_session(
     `group` (--aoe-group) and `title` (--aoe-title) override the derived placement and label. Given
     BOTH, the row is instead matched on (group, title) — how an existing, possibly hand-written row
     is adopted rather than duplicated. See `_registered` and the module note on identity.
+
+    `no_strict_mcp` (--no-strict-mcp-config) is recorded on the command so a restart brings the
+    agent up with the MCP surface this launch had. See `command_for`.
 
     Returns True when the row exists or its creation was dispatched, False when aoe is unavailable
     or a blocking write failed. Callers on the passive mirror path ignore this; `--create-aoe-only`
@@ -331,7 +358,10 @@ def sync_session(
         # Canonicalize once: the resolved path is both what we record and what we compare against,
         # so two routes to the same directory cannot register two rows.
         project_path = Path(project_path).resolve()
-        command = command_for(verb, stack, harness, project_path, group=group, title=title)
+        command = command_for(
+            verb, stack, harness, project_path,
+            group=group, title=title, no_strict_mcp=no_strict_mcp,
+        )
         if _registered(exe, command, project_path, group=group, title=title):
             return True
 
@@ -345,7 +375,9 @@ def sync_session(
             "add", str(project_path),
             "-p", PROFILE,
             "-g", group_name,
-            "-t", title_for(verb, stack, harness, project_path, title=title),
+            "-t", title_for(
+                verb, stack, harness, project_path, title=title, no_strict_mcp=no_strict_mcp
+            ),
             # `--cmd-override`, NOT `--cmd`. `--cmd` is validated against aoe's own tool list and
             # SILENTLY substitutes the configured default for anything it does not recognise, so a
             # harnessed invocation came back stored as `claude-with-env` — losing both the replay
