@@ -779,6 +779,22 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
             self._capture_ensure_kwargs(tmp_path, monkeypatch, "restart")
         assert "unknown svc action 'restart'" in capsys.readouterr().err
 
+    def test_an_unknown_action_is_rejected_before_the_stack_guard(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Order matters for the diagnosis, not just the exit code.
+
+        The scope/stack guard interpolates the action into the command it suggests. Reaching it
+        first answers `svc restart beads-server` with "pass --stack ... e.g. harnessed svc restart
+        beads-server --stack my-stack" — a command that is ALSO invalid, sending the user to a
+        second failure instead of the real one.
+        """
+        with pytest.raises(typer.Exit):
+            self._capture_ensure_kwargs(tmp_path, monkeypatch, "restart", stack="")
+        err = capsys.readouterr().err
+        assert "unknown svc action 'restart'" in err
+        assert "--stack" not in err, "an invalid action must not be echoed back as a suggestion"
+
 
 class TestServiceConfigHashDetectsStaleContainers:
     """A running sidecar carries a `harnessed.svc-config-hash` label; a launch re-derives it.
@@ -846,7 +862,8 @@ class TestServiceConfigHashDetectsStaleContainers:
         created, _ = self._run_ensure(tmp_path, monkeypatch, running=False, label=None)
         assert len(created) == 1
         cmd = created[0]
-        assert f"--label" in cmd and launcher._SVC_CONFIG_HASH_LABEL in " ".join(cmd)
+        assert "--label" in cmd
+        assert any(a.startswith(f"{launcher._SVC_CONFIG_HASH_LABEL}=") for a in cmd)
         assert cmd[-1].startswith("harnessed-beads-server"), "the image ref must stay last"
 
     def test_the_container_records_the_stack_it_was_built_from(self, tmp_path, monkeypatch):
@@ -907,19 +924,34 @@ class TestServiceConfigHashDetectsStaleContainers:
 
     def test_building_the_argv_creates_nothing_on_disk(self, tmp_path, monkeypatch):
         """`_svc_run_cmd` also runs against ALREADY-RUNNING containers, to work out what the current
-        code would create. Side effects there would fire for a container nobody asked to touch."""
-        svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
+        code would create. A write there would fire for a container nobody asked to touch.
+
+        The published shape is what makes this bite: a `publish: stable` port and a password both
+        come from allocate-once registries that CREATE machine-local state on a miss. Those are
+        resolved by `_ensure_service` and passed in, so the builder itself writes nothing.
+        """
+        # `stable`, not the fixture's `ephemeral`: a stable port is the one that gets allocated and
+        # written to the machine-wide registry. With `{password}` in client_env this covers both
+        # allocate-once registries at once.
+        stable = PUBLISHED_SVC.replace("publish: ephemeral", "publish: stable")
+        svc = load_service(_svc_yaml(tmp_path, stable), "beads-server")
         project = tmp_path / "repo"
         project.mkdir(parents=True, exist_ok=True)
+        state = tmp_path / "state"
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "home"))
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
+        monkeypatch.setattr(paths, "xdg_state_home", lambda: state)
         monkeypatch.setattr(
             launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
         launcher._svc_run_cmd("podman", svc, "c", "any", project, project)
         assert not paths.persist_in_repo_dir(project, ".beads").exists(), (
             "building the argv must not create the data dir"
+        )
+        assert not state.exists(), (
+            "building the argv must not allocate a port or mint a secret — those write "
+            "machine-local state for a container we are only inspecting"
         )
 
 

@@ -3330,6 +3330,9 @@ def _build_service_image(rt: str, name: str) -> None:
 
 _SVC_CONFIG_HASH_LABEL = "harnessed.svc-config-hash"
 _SVC_STACK_LABEL = "harnessed.svc-stack"
+# One list, used to validate the action AND to spell the choices in the error — so a new action can
+# never be accepted by the dispatch while the error still calls it unknown.
+_SVC_ACTIONS = ("up", "down", "recreate", "sync", "migrate")
 
 
 def _svc_run_cmd(
@@ -3339,13 +3342,20 @@ def _svc_run_cmd(
     stack: str,
     project_path: Path | None,
     mount_path: Path | None,
+    *,
+    stable_port: int = 0,
+    password: str = "",
 ) -> list[str]:
-    """The exact `<rt> run` argv for this sidecar, minus the config-hash label.
+    """The exact `<rt> run` argv for this sidecar, minus the labels.
 
-    PURE BY CONTRACT — no mkdir, no ownership guard, no placement assert. It is called twice: once on
-    the create path (where `_ensure_service` runs those side effects first), and once on the CHECK
-    path against an ALREADY-RUNNING container, to work out what the current code *would* create.
-    Side effects on the second call would fire for a container nobody is touching.
+    PURE — it reads the filesystem but writes nothing. That matters because it is called twice: once
+    on the create path, and once on the CHECK path against an ALREADY-RUNNING container, to work out
+    what the current code *would* create. A write on the second call would fire for a container
+    nobody asked to touch.
+
+    Hence `stable_port` and `password` arrive as arguments rather than being resolved here: both
+    come from allocate-once registries that CREATE machine-local state on a miss (a port entry, a
+    secret file). `_ensure_service` resolves them, at one visible place, on every path.
 
     Everything that a container fixes at CREATE time — mounts, published ports, env, userns — is in
     here, which is what makes hashing this argv a faithful fingerprint of the running container's
@@ -3363,13 +3373,13 @@ def _svc_run_cmd(
     elif svc.is_stable_port:
         # Same loopback binding, but the host side is OURS and permanent (_svc_stable_port), so the
         # value can be written into the project and still be right next week. Ephemeral cannot.
-        run_cmd += ["-p", f"127.0.0.1:{_svc_stable_port(svc, project_path)}:{svc.port}"]
+        run_cmd += ["-p", f"127.0.0.1:{stable_port}:{svc.port}"]
     elif not svc.is_socket_only:
         run_cmd += ["-p", f"{svc.port}:{svc.port}"]
     if svc.wants_password:
         # Generic name: the launcher provisions a secret, the ENTRYPOINT decides what to call it
         # in its own protocol's terms. Same layering as client_env.
-        run_cmd += ["-e", f"HARNESSED_SVC_PASSWORD={_svc_password(svc, project_path)}"]
+        run_cmd += ["-e", f"HARNESSED_SVC_PASSWORD={password}"]
 
     if svc.scope == "project":
         assert project_path is not None  # guarded by the caller
@@ -3536,10 +3546,21 @@ def _ensure_service(
         # run for exactly the workspace that has one. It is also cheap and idempotent — after the
         # first launch the key is gone and this is a dict lookup.
         _ensure_no_stale_socket_key(svc, _service_data_dir(svc, stack, project_path)[0])
+    # The two allocate-once values, resolved HERE rather than inside the pure builder: each creates
+    # machine-local state on a miss (a port registry entry, a secret file), and the builder also runs
+    # against containers we are only inspecting. Resolving them is idempotent — after the first
+    # allocation both are plain reads — and unavoidable either way, since what the current code
+    # WOULD publish is part of what we are comparing.
+    stable_port = _svc_stable_port(svc, project_path) if svc.is_stable_port else 0
+    password = _svc_password(svc, project_path) if svc.wants_password else ""
+
     # What the current code WOULD create — the yardstick for both the drift check below and the
     # label stamped on the new container. Built before the running-container check precisely so a
     # healthy-looking sidecar can be compared against it.
-    want_cmd = _svc_run_cmd(rt, svc, cname, stack, project_path, mount_path)
+    want_cmd = _svc_run_cmd(
+        rt, svc, cname, stack, project_path, mount_path,
+        stable_port=stable_port, password=password,
+    )
     want_hash = _svc_config_hash(want_cmd)
     if _container_running(rt, cname) and not force_recreate:
         reason = _svc_drift_reason(rt, cname, svc, want_hash)
@@ -3564,7 +3585,7 @@ def _ensure_service(
     elif svc.is_ephemeral_port:
         where = f"127.0.0.1:<ephemeral>->{svc.port}"
     elif svc.is_stable_port:
-        where = f"127.0.0.1:{_svc_stable_port(svc, project_path)}->{svc.port}"
+        where = f"127.0.0.1:{stable_port}->{svc.port}"
     else:
         where = f":{svc.port}"
     _out.print(f"[blue][INFO][/blue] Starting service '{name}' on {where} ({cname})")
@@ -7286,7 +7307,7 @@ def volume_gc(
 
 @app.command("svc")
 def svc(
-    action: str = typer.Argument(..., help="up | down | recreate | sync | migrate"),
+    action: str = typer.Argument(..., help=" | ".join(_SVC_ACTIONS)),
     name: str = typer.Argument(..., help="Service name (services/<name>/service.yaml)"),
     stack: str = typer.Option(
         "", "--stack",
@@ -7320,6 +7341,16 @@ def svc(
     """
     rt = _runtime()
     project_path = Path.cwd().resolve()
+    # BEFORE the scope/stack guard below, which interpolates `action` into the command it suggests:
+    # reaching that guard first answers `svc restart beads-server` with "pass --stack ... e.g.
+    # harnessed svc restart beads-server --stack my-stack", sending the user to a second failure
+    # instead of the real one. `restart` is exactly the wrong verb someone will try here.
+    if action not in _SVC_ACTIONS:
+        _err.print(
+            f"[bold red]error:[/bold red] unknown svc action '{action}' "
+            f"(use: {' | '.join(_SVC_ACTIONS)})"
+        )
+        raise typer.Exit(1)
     svc_def = load_service(None, name)
     key = _svc_project_key(svc_def, project_path)
     cname = _svc_container(name, key)
@@ -7380,12 +7411,6 @@ def svc(
         _out.print(f"[green][SUCCESS][/green] Service '{name}' synced")
     elif action == "migrate":
         _svc_migrate(svc_def, stack, project_path, from_, assume_yes)
-    else:
-        _err.print(
-            f"[bold red]error:[/bold red] unknown svc action '{action}' "
-            "(use: up | down | recreate | sync | migrate)"
-        )
-        raise typer.Exit(1)
 
 
 @app.command("aws-sso")
