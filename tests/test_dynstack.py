@@ -229,3 +229,42 @@ class TestModuleBoundary:
             "dynstack must not depend on launcher — the dependency points INTO modules, never "
             "back out (bd harnessed-4l8)"
         )
+
+
+class TestTheDefaultBaselineShips:
+    """`--extends` defaults to a stack NAME, so the repo has to ship that stack.
+
+    Until it did, the default was live only for users who had authored a `default` stack in their
+    own overlay: a fresh install running `harnessed container-run claude --recipe foo` minted a
+    manifest saying `extends: default` and then died on `no such stack`. The failure is in the
+    inherited default, not in anything the user typed, so it reads as harnessed being broken.
+    """
+
+    def _repo(self) -> Path:
+        return Path(__file__).parent.parent
+
+    def test_the_extends_default_names_a_stack_the_repo_ships(self):
+        from harnessed import launcher
+
+        name = launcher._EXTENDS_OPT.default
+        assert (self._repo() / "catalog" / "stacks" / name / "stack.yaml").is_file(), (
+            f"--extends defaults to {name!r}; the repo catalog must ship that stack or every "
+            f"default `--recipe` launch fails on a fresh install"
+        )
+
+    def test_the_default_stack_composes_the_default_recipe(self):
+        from ruamel.yaml import YAML
+
+        raw = YAML(typ="safe").load(
+            self._repo() / "catalog" / "stacks" / "default" / "stack.yaml"
+        )
+        assert raw["recipes"] == ["default"]
+
+    def test_the_default_recipe_ships_the_authoring_skill(self):
+        """The skill dir is the ONE copy; .agents/skills/ links to it. A move that breaks the link
+        or the recipe path leaves the shipped baseline delivering nothing."""
+        repo = self._repo()
+        skill = repo / "catalog" / "recipes" / "default" / "skills" / "harnessed-catalog"
+        assert (skill / "SKILL.md").is_file()
+        link = repo / ".agents" / "skills" / "harnessed-catalog"
+        assert link.is_symlink() and link.resolve() == skill.resolve()

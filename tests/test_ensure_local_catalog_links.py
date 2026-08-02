@@ -134,3 +134,82 @@ class TestEnsureLocalCatalogLinks:
             "must not create symlinks in an unrelated project's catalog/"
         )
         assert not (other / "catalog-local").exists()
+
+
+def _shipped_default_recipe(repo):
+    """The shipped baseline recipe the seed copies from."""
+    d = repo / "catalog" / "recipes" / "default"
+    (d / "skills" / "harnessed-catalog").mkdir(parents=True)
+    (d / "recipe.yaml").write_text("name: default\nskills:\n  - path: skills/harnessed-catalog\n")
+    (d / "skills" / "harnessed-catalog" / "SKILL.md").write_text("---\nname: x\n---\n")
+    return d
+
+
+class TestSeedUserDefaultRecipe:
+    """`default` is what every dynamic stack inherits, so it is the recipe a user most wants to
+    edit — and the hardest one to start from a blank overlay dir."""
+
+    def test_seeds_a_real_copy_on_first_run(self, monkeypatch, tmp_path):
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+
+        launcher._ensure_local_catalog_links()
+
+        seeded = user_catalog / "recipes" / "default"
+        assert (seeded / "recipe.yaml").is_file()
+        assert (seeded / "skills" / "harnessed-catalog" / "SKILL.md").is_file()
+        assert not (seeded / "skills").is_symlink(), (
+            "the seed must dereference — a link into an installation the user later replaces "
+            "leaves a dangling baseline"
+        )
+
+    def test_the_copy_says_it_shadows_the_shipped_one(self, monkeypatch, tmp_path):
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+
+        launcher._ensure_local_catalog_links()
+
+        text = (user_catalog / "recipes" / "default" / "recipe.yaml").read_text()
+        assert "SEEDED BY HARNESSED" in text
+        assert "name: default" in text, "the banner must PREPEND, never replace, the manifest"
+
+    def test_never_overwrites_an_existing_default(self, monkeypatch, tmp_path):
+        """Idempotent AND non-destructive: the whole value of the seed is that it is the user's."""
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+        mine = user_catalog / "recipes" / "default"
+        mine.mkdir(parents=True)
+        (mine / "recipe.yaml").write_text("name: default\n# hand-authored\n")
+
+        launcher._ensure_local_catalog_links()
+        launcher._ensure_local_catalog_links()
+
+        assert (mine / "recipe.yaml").read_text() == "name: default\n# hand-authored\n"
+
+    def test_no_shipped_default_is_not_an_error(self, monkeypatch, tmp_path):
+        """A catalog root without the baseline (a fixture tree, an old install) must still run."""
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        _fake_checkout(monkeypatch, tmp_path)
+
+        launcher._ensure_local_catalog_links()
+
+        assert not (user_catalog / "recipes" / "default").exists()
+
+    def test_leaves_no_partial_dir_behind(self, monkeypatch, tmp_path):
+        """Seeding stages under a temp name and renames, so a crash cannot leave a half copy at
+        the real name — where the exists() guard would treat it as complete forever."""
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        _shipped_default_recipe(repo)
+        monkeypatch.setattr(
+            launcher.shutil, "copytree", lambda *a, **k: (_ for _ in ()).throw(OSError("boom"))
+        )
+
+        with pytest.raises(OSError):
+            launcher._ensure_local_catalog_links()
+
+        assert not (user_catalog / "recipes" / "default").exists()
+        assert list((user_catalog / "recipes").iterdir()) == []

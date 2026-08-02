@@ -121,6 +121,27 @@ variety does not rebuild stacks using another. Sibling varieties are **implicitl
 exclusive**: a stack listing two of them fails at assemble time, so do not list them in each other's
 `conflicts:`. Worked example: `catalog/recipes/beads/`.
 
+### The `default` recipe and stack (the shipped baseline)
+
+`catalog/stacks/default` is the stack `--extends` resolves to for every dynamic (`--recipe`) launch,
+and it composes exactly one recipe, `catalog/recipes/default`. Together they are the baseline every
+install inherits without configuring anything.
+
+Two rules follow:
+
+- **Keep the default recipe small and universal.** Everyone pays for what it carries. No MCP servers
+  (each costs a hatago child or a proxied endpoint), no Dockerfile (it forces a derived-image build
+  on stacks that would otherwise need none), no `persist:`, no `egress:`. A capability only some
+  projects want gets its own recipe, opted into by name.
+- **Keep the default stack policy-free.** A shipped baseline that set `permissions:` or turned on
+  credential forwarding would silently apply that policy to every dynamic stack on every install.
+
+harnessed **seeds a copy** of the default recipe into `~/.config/harnessed/catalog/recipes/default`
+on first run (`launcher._seed_user_default_recipe`) so the baseline is the user's to edit. The
+overlay wins on a name clash, which is the feature and also the cost: once seeded, changes you make
+to the shipped recipe do not reach that user until they delete their copy. Say so in the PR when you
+change it.
+
 ## Add an agent or a service
 
 - **agent** → `catalog/agents/<name>/agent.yaml` (`harness`, `image`, `dockerfile`) + the Dockerfile

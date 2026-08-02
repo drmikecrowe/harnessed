@@ -333,6 +333,8 @@ def _ensure_local_catalog_links() -> None:
     for kind in ("agents", "recipes", "services", "stacks"):
         (user_catalog_root / kind).mkdir(parents=True, exist_ok=True)
 
+    _seed_user_default_recipe()
+
     checkout = paths.source_checkout()
     if checkout is None:
         return
@@ -368,6 +370,54 @@ def _ensure_local_catalog_links() -> None:
             raise typer.Exit(1)
         else:
             target.symlink_to(dest)
+
+
+_SEEDED_DEFAULT_BANNER = """\
+# ---------------------------------------------------------------------------------------------
+# SEEDED BY HARNESSED on first run — this copy is YOURS. Edit it freely.
+#
+# The user overlay is searched FIRST and wins on a name clash, so this file now SHADOWS the
+# `default` recipe shipped in harnessed's own catalog. That is the point (a baseline you control)
+# and also the one cost: improvements to the shipped default recipe will never reach this copy.
+# Delete this directory to fall back to the shipped one; harnessed re-seeds it on the next run.
+# ---------------------------------------------------------------------------------------------
+"""
+
+
+def _seed_user_default_recipe() -> None:
+    """Copy the shipped `default` recipe into the user's overlay, once, on first run.
+
+    `default` is what `--extends` resolves to for every dynamic (`--recipe`) stack, so it is the
+    baseline a user is most likely to want to change — and the least discoverable place to start
+    from a blank directory. Seeding a working copy turns "author a recipe from nothing" into "edit
+    the one that is already in effect".
+
+    First-run only, and never destructive: any existing `recipes/default` (seeded earlier, or
+    hand-authored) is left exactly as it is. The copy dereferences symlinks, so the overlay holds
+    real content rather than links back into an installation the user may later replace.
+    """
+    dest = paths.user_catalog() / "recipes" / "default"
+    if dest.exists():
+        return
+
+    src = paths.harnessed_home() / "catalog" / "recipes" / "default"
+    if not (src / "recipe.yaml").is_file():
+        return  # nothing to seed (a catalog root without the shipped baseline)
+
+    tmp = dest.with_name(".default.seeding")
+    shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        # symlinks=False: dereference. A link into site-packages breaks the moment harnessed is
+        # upgraded or removed, and the whole point of the seed is a copy the user owns outright.
+        shutil.copytree(src, tmp, symlinks=False)
+        manifest = tmp / "recipe.yaml"
+        manifest.write_text(_SEEDED_DEFAULT_BANNER + manifest.read_text(), encoding="utf-8")
+        # Rename last so an interrupted seed never leaves a half-copied recipe at the real name,
+        # where the `if dest.exists()` guard above would then treat it as complete forever.
+        tmp.rename(dest)
+    except OSError:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
 
 
 def _ensure_docs_wiki_clone() -> None:
@@ -5460,6 +5510,13 @@ def _resolve_stack(
     manifest, making it the caller's to remove if a later build fails. An authored stack and a
     dynamic one whose manifest already existed both yield None — neither is ours to delete.
     """
+    # First-run overlay bootstrap. It belongs HERE rather than in either verb: resolution is the
+    # step that needs the shipped baseline to exist (a `--recipe` set mints `extends: default`),
+    # and one shared call site is what keeps the two backends in step — `container-run` and
+    # `host-run` differ in backend, never in how a stack is chosen. Only the seed runs; the
+    # catalog-local symlinks are a source-checkout DX convenience a launch should not assert.
+    _seed_user_default_recipe()
+
     if stack and recipe:
         _err.print("[bold red]error:[/bold red] provide either --stack or --recipe, not both")
         raise typer.Exit(1)
