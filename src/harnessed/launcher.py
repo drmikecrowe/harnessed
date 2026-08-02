@@ -5482,15 +5482,23 @@ def _host_native_mcp(stack: str) -> Optional[dict]:
     return out or None
 
 
-def _aoe_register(verb: str, stack: str, harness: str, project_path: Path, *, only: bool) -> None:
+def _aoe_register(
+    verb: str, stack: str, harness: str, project_path: Path, *, only: bool,
+    group: Optional[str] = None, title: Optional[str] = None,
+) -> None:
     """Mirror this launch into Agent of Empires, and stop here under `--create-aoe-only`.
 
     Two different contracts share one call. On a normal launch the mirror is passive: fire the
     write detached (`aoe add` takes ~12s) and carry on regardless of outcome — a dashboard is not
     worth blocking or failing a launch for. Under `--create-aoe-only` registering IS the command,
     so it blocks, reports, and propagates an exit status the user can script against.
+
+    `group`/`title` are the `--aoe-group`/`--aoe-title` overrides; passing both also switches how an
+    existing row is recognised. See `aoe.sync_session`.
     """
-    registered = aoe.sync_session(verb, stack, harness, project_path, background=not only)
+    registered = aoe.sync_session(
+        verb, stack, harness, project_path, background=not only, group=group, title=title
+    )
     if not only:
         return
     if not registered:
@@ -5502,10 +5510,10 @@ def _aoe_register(verb: str, stack: str, harness: str, project_path: Path, *, on
         raise typer.Exit(1)
     _out.print(
         f"[bold green]Registered[/bold green] aoe session "
-        f"[bold]{aoe.title_for(verb, stack, harness, project_path)}[/bold]\n"
+        f"[bold]{aoe.title_for(verb, stack, harness, project_path, title=title)}[/bold]\n"
         f"  profile:  {aoe.PROFILE}\n"
-        f"  group:    {aoe._group_for(project_path)}\n"
-        f"  command:  {aoe.command_for(verb, stack, harness, project_path)}\n"
+        f"  group:    {aoe.group_for(project_path, group=group)}\n"
+        f"  command:  {aoe.command_for(verb, stack, harness, project_path, group=group, title=title)}\n"
         f"  [dim]not launched (--create-aoe-only); start it with `aoe` or `aoe session start`[/dim]",
         highlight=False,
     )
@@ -5516,6 +5524,7 @@ def _launch_host(
     stack: str, harness: str, path: Optional[str], *, rm: bool = False,
     extra: Optional[list[str]] = None, create_aoe_only: bool = False,
     no_strict_mcp: bool = False,
+    aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
 ) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
@@ -5564,7 +5573,10 @@ def _launch_host(
     # a launch that then died on a renamed recipe, and that row would fail identically every time it
     # was started from the dashboard. It costs `--create-aoe-only` one assembly, which is
     # sub-second, emit-only and container-free on this path.
-    _aoe_register("host-run", stack, harness, project_path, only=create_aoe_only)
+    _aoe_register(
+        "host-run", stack, harness, project_path, only=create_aoe_only,
+        group=aoe_group, title=aoe_title,
+    )
 
     # Launch-time secrets — the host half of the container path's `--env-file` (see
     # _resolve_launch_secrets). Set on THIS process for the same reason as the recipe env below:
@@ -5822,6 +5834,17 @@ _NO_STRICT_MCP_OPT = typer.Option(
          "project's .mcp.json, your user config) on top of the stack's. Default is strict — the "
          "stack's MCP surface is exactly what it declares.",
 )
+_AOE_GROUP_OPT = typer.Option(
+    None, "--aoe-group",
+    help="Agent of Empires group for this session's row, instead of the repo name it is derived "
+         "from. Created if it does not exist. With --aoe-title, also identifies the row to reuse.",
+)
+_AOE_TITLE_OPT = typer.Option(
+    None, "--aoe-title",
+    help="Agent of Empires title for this session's row, instead of the derived "
+         "'<folder> [<harness>/<backend>] <stack>'. With --aoe-group, also identifies the row to "
+         "reuse — the pair is how an existing or hand-written row is adopted rather than duplicated.",
+)
 
 
 @app.command("host-run")
@@ -5837,6 +5860,8 @@ def host_run(
         False, "--rm", help="Stop host daemons this launch started when the session exits"
     ),
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
+    aoe_group: Optional[str] = _AOE_GROUP_OPT,
+    aoe_title: Optional[str] = _AOE_TITLE_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -5878,6 +5903,7 @@ def host_run(
         _launch_host(
             stack_name, harness, path, rm=rm, extra=_passthrough,
             create_aoe_only=create_aoe_only, no_strict_mcp=no_strict_mcp_config,
+            aoe_group=aoe_group, aoe_title=aoe_title,
         )
     except typer.Exit as exc:
         # typer.Exit(0) is a SUCCESS that unwinds like a failure, and it must not clean up:
@@ -5929,6 +5955,8 @@ def container_run(
         help="Open an interactive bash shell in the container instead of starting the agent",
     ),
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
+    aoe_group: Optional[str] = _AOE_GROUP_OPT,
+    aoe_title: Optional[str] = _AOE_TITLE_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -6033,7 +6061,10 @@ def container_run(
     # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
     # launch that is about to fail never leaves a row behind, and before the podman work so the row
     # exists even if the container half goes wrong. No-op when aoe is absent; never raises.
-    _aoe_register("container-run", stack, harness, project_path, only=create_aoe_only)
+    _aoe_register(
+        "container-run", stack, harness, project_path, only=create_aoe_only,
+        group=aoe_group, title=aoe_title,
+    )
 
     try:
         stk = load_stack(stack_dir)

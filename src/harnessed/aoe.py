@@ -27,6 +27,14 @@ variants of one recipe set are two different things to run and two different row
 components are encoded in the recorded command, which is what we match on; titles stay purely
 cosmetic so a user renaming a row cannot break identity.
 
+UNLESS THE USER NAMES THE ROW. `--aoe-group` and `--aoe-title` (see `sync_session`) override the
+derived group and title, and supplying BOTH also replaces the identity key: the row is matched on
+(group, title) instead of the recorded command. That is the only way to adopt a row harnessed did
+not write — a hand-placed or hand-edited one whose command carries flags `command_for` does not
+emit, which under command matching is invisible and gets a duplicate added beside it. Both are
+required because either alone is far too coarse to be an identity: every session in a group shares
+its group, and a title is unique only within one. Neither alone changes matching.
+
 READS ARE SYNCHRONOUS, WRITES ARE NOT. Measured against aoe on 2026-08-01: `list --json`,
 `group list` and `profile list` all return in ~0.01s, but `aoe add` takes ~12s (it brings the
 daemon up). Blocking a launch for twelve seconds to populate a dashboard is not a trade worth
@@ -74,6 +82,12 @@ _GROUP_LINE = re.compile(r"^\s*[•*-]\s+(\S+)\s+\(")
 # the stack sits at a keyword rather than a fixed index — `command_for` writes it and
 # `forget_stack` reads it back, and they must not drift.
 _STACK_FLAG = ["--stack"]
+
+# The two overrides, recorded on the command so a restart from the dashboard re-asserts them. Left
+# off it, a restarted row would sync itself back under the DERIVED group and title and add a second
+# row beside the one the user placed — the exact duplicate the flags exist to prevent.
+_GROUP_FLAG = "--aoe-group"
+_TITLE_FLAG = "--aoe-title"
 
 
 def _bin() -> str | None:
@@ -154,7 +168,10 @@ def _apply(
     return True
 
 
-def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
+def command_for(
+    verb: str, stack: str, harness: str, project_path: Path,
+    *, group: str | None = None, title: str | None = None,
+) -> str:
     """The harnessed invocation recorded on the session — both the identity key and what aoe runs.
 
     Always the RESOLVED stack name and an absolute path, never the user's original argv. A dynamic
@@ -174,13 +191,21 @@ def command_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
     Half of a pair: this delivers the flags to the agent, and the `--tool` label in `sync_session`
     decides WHICH agent's flags aoe generates. Without that label they are always claude's, and
     forwarding them to a non-claude agent kills the pane on every restart.
+
+    `group`/`title` are echoed back as `--aoe-group`/`--aoe-title` so the placement the user asked
+    for survives a restart from the dashboard; see those flags' note above.
     """
-    return shlex.join(
-        ["harnessed", verb, harness, str(project_path), *_STACK_FLAG, stack, "--"]
-    )
+    args = ["harnessed", verb, harness, str(project_path), *_STACK_FLAG, stack]
+    if group is not None:
+        args += [_GROUP_FLAG, group]
+    if title is not None:
+        args += [_TITLE_FLAG, title]
+    return shlex.join([*args, "--"])
 
 
-def title_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
+def title_for(
+    verb: str, stack: str, harness: str, project_path: Path, *, title: str | None = None
+) -> str:
     """The dashboard label — and, unavoidably, half of aoe's own uniqueness key.
 
     aoe deduplicates an `add` on (title, path): a second session with both the same is refused with
@@ -192,9 +217,18 @@ def title_for(verb: str, stack: str, harness: str, project_path: Path) -> str:
 
     Observed against aoe 2026-08-01: with the backend omitted, `host-run` registrations silently
     vanished behind their `launch` twin.
+
+    An explicit `title` is returned verbatim — the caller owns the collision risk described above.
     """
+    if title is not None:
+        return title
     backend = "host" if verb == "host-run" else "container"
     return f"{project_path.name} [{harness}/{backend}] {stack}"
+
+
+def group_for(project_path: Path, *, group: str | None = None) -> str:
+    """The group a row belongs in: the user's `--aoe-group` when given, else the derived one."""
+    return group if group is not None else _group_for(project_path)
 
 
 def _group_for(project_path: Path) -> str:
@@ -238,9 +272,28 @@ def _sessions(exe: str) -> list[dict]:
     return [s for s in data if isinstance(s, dict)] if isinstance(data, list) else []
 
 
-def _registered(exe: str, command: str, project_path: Path) -> bool:
-    """Whether this exact (path, stack, harness, verb) already has a row."""
-    for session in _sessions(exe):
+def _registered(
+    exe: str, command: str, project_path: Path,
+    *, group: str | None = None, title: str | None = None,
+) -> bool:
+    """Whether this exact (path, stack, harness, verb) already has a row.
+
+    With BOTH `group` and `title` supplied the user has named the row, and (group, title) becomes
+    the key instead — the only match that can find a row harnessed did not write, whose command
+    therefore need not be one `command_for` could produce. Either flag alone is ignored here: a
+    group holds many sessions and a title is unique only inside one, so neither identifies a row.
+
+    Matched against `group`, which is what `aoe list --json` calls the field it stores on disk as
+    `group_path`; both names are accepted so a rename upstream degrades to the command match (a
+    duplicate row) rather than to an exception.
+    """
+    sessions = _sessions(exe)
+    if group is not None and title is not None:
+        return any(
+            (s.get("group") or s.get("group_path")) == group and s.get("title") == title
+            for s in sessions
+        )
+    for session in sessions:
         if session.get("command") != command:
             continue
         recorded = session.get("path")
@@ -252,12 +305,17 @@ def _registered(exe: str, command: str, project_path: Path) -> bool:
 
 
 def sync_session(
-    verb: str, stack: str, harness: str, project_path: Path, *, background: bool = True
+    verb: str, stack: str, harness: str, project_path: Path, *, background: bool = True,
+    group: str | None = None, title: str | None = None,
 ) -> bool:
     """Register this launch with aoe, creating the profile and repo group on the way.
 
     Idempotent by (path, command): relaunching the same stack+harness in the same folder finds the
     existing row instead of stacking duplicates. Never raises.
+
+    `group` (--aoe-group) and `title` (--aoe-title) override the derived placement and label. Given
+    BOTH, the row is instead matched on (group, title) — how an existing, possibly hand-written row
+    is adopted rather than duplicated. See `_registered` and the module note on identity.
 
     Returns True when the row exists or its creation was dispatched, False when aoe is unavailable
     or a blocking write failed. Callers on the passive mirror path ignore this; `--create-aoe-only`
@@ -273,21 +331,21 @@ def sync_session(
         # Canonicalize once: the resolved path is both what we record and what we compare against,
         # so two routes to the same directory cannot register two rows.
         project_path = Path(project_path).resolve()
-        command = command_for(verb, stack, harness, project_path)
-        if _registered(exe, command, project_path):
+        command = command_for(verb, stack, harness, project_path, group=group, title=title)
+        if _registered(exe, command, project_path, group=group, title=title):
             return True
 
         batch: list[list[str]] = []
         if not _has_profile(exe):
             batch.append(["profile", "create", PROFILE])
-        group = _group_for(project_path)
-        if not _has_group(exe, group):
-            batch.append(["group", "create", group, "-p", PROFILE])
+        group_name = group_for(project_path, group=group)
+        if not _has_group(exe, group_name):
+            batch.append(["group", "create", group_name, "-p", PROFILE])
         add = [
             "add", str(project_path),
             "-p", PROFILE,
-            "-g", group,
-            "-t", title_for(verb, stack, harness, project_path),
+            "-g", group_name,
+            "-t", title_for(verb, stack, harness, project_path, title=title),
             # `--cmd-override`, NOT `--cmd`. `--cmd` is validated against aoe's own tool list and
             # SILENTLY substitutes the configured default for anything it does not recognise, so a
             # harnessed invocation came back stored as `claude-with-env` — losing both the replay
