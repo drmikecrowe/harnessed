@@ -35,6 +35,7 @@ from harnessed.schema import (
     validate_no_claude_writes,
 )
 from support import patch_all
+from harnessed import setupenv
 
 CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 
@@ -147,7 +148,7 @@ class TestEnvContract:
     def test_recipe_dir_agrees_with_the_setup_script_mount(self):
         """`$HARNESSED_RECIPE_DIR` must name ONE container path whether the recipe dir arrived by
         install's build-time COPY or setup's runtime bind-mount."""
-        assert launcher._CTR_RECIPE_DIR == emit.CTR_RECIPE_DIR
+        assert setupenv._CTR_RECIPE_DIR == emit.CTR_RECIPE_DIR
 
 
 class TestContainerExecutor:
@@ -162,7 +163,7 @@ class TestContainerExecutor:
     def _argv(self, tmp_path, recipes, monkeypatch):
         """Capture the podman command lines the executor would run."""
         calls: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         monkeypatch.setattr(
             launcher.paths, "install_cache_dir",
             lambda name, key: tmp_path / "cache" / name / key,
@@ -532,7 +533,7 @@ class TestPrecedence:
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
                     env='env:\n  HARNESSED_MODE: "recipe-tried-to-win"\n')
         calls: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
             "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
         )

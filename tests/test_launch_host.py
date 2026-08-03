@@ -640,7 +640,7 @@ class TestHostCliRouting:
         ran: list = []
 
         patch_all(monkeypatch, "_service_refs", lambda _s: [])
-        monkeypatch.setattr(launcher, "_host_run_inits", lambda *a, **k: ran.append(a[0]))
+        patch_all(monkeypatch, "_host_run_inits", lambda *a, **k: ran.append(a[0]))
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
@@ -921,8 +921,7 @@ class TestSecondLaunchSkipsInstalls:
     def _launch(self, tmp_path, monkeypatch, calls):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
-        monkeypatch.setattr(
-            launcher, "_host_run_installs",
+        patch_all(monkeypatch, "_host_run_installs",
             lambda stack, project_path, *, harness, home: calls.append(stack),
         )
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
@@ -1013,7 +1012,7 @@ class TestFailedInstallDoesNotStamp:
             if install_fails:
                 raise SystemExit(1)  # what _host_run_installs does on a failed script
 
-        monkeypatch.setattr(launcher, "_host_run_installs", _installs)
+        patch_all(monkeypatch, "_host_run_installs", _installs)
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
         return runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
@@ -1028,8 +1027,7 @@ class TestFailedInstallDoesNotStamp:
     def test_the_next_launch_retries_after_a_failure(self, monkeypatch, tmp_path):
         self._launch(tmp_path, monkeypatch, install_fails=True)
         calls: list[str] = []
-        monkeypatch.setattr(
-            launcher, "_host_run_installs",
+        patch_all(monkeypatch, "_host_run_installs",
             lambda stack, project_path, *, harness, home: calls.append(stack),
         )
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))

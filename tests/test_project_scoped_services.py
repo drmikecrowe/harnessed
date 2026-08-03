@@ -466,7 +466,7 @@ class TestNeverHealthyAbortsTheLaunch:
         monkeypatch.setattr("time.sleep", lambda _s: None)
 
     def _health(self, monkeypatch, rc: int, out: bytes = b"", err: bytes = b"", status="running"):
-        monkeypatch.setattr(launcher, "_service_container_status", lambda *a: status)
+        patch_all(monkeypatch, "_service_container_status", lambda *a: status)
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(a, rc, stdout=out, stderr=err),
@@ -495,7 +495,7 @@ class TestNeverHealthyAbortsTheLaunch:
         """709's abort must survive: a container that died gets the container LOG, not a 60s wait."""
         self._health(monkeypatch, rc=1, status="exited")
         called = []
-        monkeypatch.setattr(launcher, "_abort_dead_service",
+        patch_all(monkeypatch, "_abort_dead_service",
                             lambda *a: called.append(a) or (_ for _ in ()).throw(typer.Exit(1)))
         with pytest.raises(typer.Exit):
             launcher._wait_service_healthy("podman", "c", svc, timeout=5)
@@ -561,14 +561,14 @@ class TestInRepoServiceGetsTheRemoteGitSurface:
         monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
         # `_run` is stubbed, so no container is ever created — liveness is not what this asserts.
-        monkeypatch.setattr(launcher, "_assert_service_running", lambda *a, **k: None)
+        patch_all(monkeypatch, "_assert_service_running", lambda *a, **k: None)
         monkeypatch.setattr(
             launcher.subprocess,
             "run",
             lambda *a, **k: subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
         )
         captured: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, **k: captured.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, **k: captured.append(cmd))
         launcher._ensure_service(
             "podman", "beads-server", stack="any", project_path=project, mount_path=project
         )
@@ -633,14 +633,14 @@ class TestServiceDataDirPathPreservingMount:
         patch_all(monkeypatch, "_container_running", lambda _rt, _c: False)
         monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
-        monkeypatch.setattr(launcher, "_assert_service_running", lambda *a, **k: None)
+        patch_all(monkeypatch, "_assert_service_running", lambda *a, **k: None)
         monkeypatch.setattr(
             launcher.subprocess,
             "run",
             lambda *a, **k: subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
         )
         captured: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, **k: captured.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, **k: captured.append(cmd))
         mount_path = project if location == "in_repo" else None
         launcher._ensure_service(
             "podman", "beads-server", stack="any", project_path=project, mount_path=mount_path
@@ -981,7 +981,7 @@ class TestServiceConfigHashDetectsStaleContainers:
         patch_all(monkeypatch, "_container_config_hash", lambda _rt, _c: label)
         monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
-        monkeypatch.setattr(launcher, "_assert_service_running", lambda *a, **k: None)
+        patch_all(monkeypatch, "_assert_service_running", lambda *a, **k: None)
         # Headless: the recreate confirm is skipped, so the decision itself is what's under test.
         monkeypatch.setenv("HARNESSED_HEADLESS", "true")
         calls: list[list[str]] = []
@@ -994,7 +994,7 @@ class TestServiceConfigHashDetectsStaleContainers:
             )[1],
         )
         created: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, **k: created.append(list(cmd)))
+        patch_all(monkeypatch, "_run", lambda cmd, **k: created.append(list(cmd)))
         launcher._ensure_service(
             "podman", "beads-server", stack="any", project_path=project, mount_path=project,
             force_recreate=force,
@@ -1341,7 +1341,7 @@ class TestSvcMigrate:
     def _wire(self, monkeypatch, host_dir, location="in_repo"):
         patch_all(monkeypatch, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), location)
         )
-        monkeypatch.setattr(launcher, "_host_process_in_dir", lambda exe, d: None)
+        patch_all(monkeypatch, "_host_process_in_dir", lambda exe, d: None)
 
     def test_migrates_and_leaves_the_source_in_place(self, tmp_path, monkeypatch):
         host_dir = tmp_path / "data"
@@ -1388,7 +1388,7 @@ class TestSvcMigrate:
         src = _dolt_db_at(tmp_path / "elsewhere" / "proj")
         patch_all(monkeypatch, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), "in_repo")
         )
-        monkeypatch.setattr(launcher, "_host_process_in_dir", lambda exe, d: (999, "dolt sql-server"))
+        patch_all(monkeypatch, "_host_process_in_dir", lambda exe, d: (999, "dolt sql-server"))
         with pytest.raises(typer.Exit):
             launcher._svc_migrate(self._svc(tmp_path), "stk", tmp_path, str(src), assume_yes=True)
         assert not (host_dir / "dolt" / "proj").exists()

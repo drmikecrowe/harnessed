@@ -27,6 +27,7 @@ import pytest
 
 from harnessed import emit
 from harnessed.schema import load_recipe, validate_install_script, validate_no_raw_npm, validate_pin
+from support import patch_all
 
 CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 
@@ -181,7 +182,7 @@ class TestCatalogWideInvariants:
 
         recipes = [_recipe(n) for n in CONTENT_RECIPES]
         calls: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
             "podman", "s", "claude", "img", recipes, "cfgvol", "toolsvol",
         )

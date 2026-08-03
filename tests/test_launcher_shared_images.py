@@ -22,7 +22,7 @@ def podman(monkeypatch):
         return None
 
     monkeypatch.setattr(launcher, "_SHARED_IMAGES_BUILT", set())
-    monkeypatch.setattr(launcher, "_run", fake_run)
+    patch_all(monkeypatch, "_run", fake_run)
     monkeypatch.setattr(launcher, "_ensure_extra_tools", lambda: None)
     monkeypatch.setattr(launcher, "_corp_proxy_ca_secret_args", lambda: [])
     patch_all(monkeypatch, "_image_exists", lambda rt, image: True)

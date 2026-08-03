@@ -14,6 +14,7 @@ import pytest
 from typer.testing import CliRunner
 
 from harnessed import launcher, paths
+from support import patch_all
 
 runner = CliRunner()
 
@@ -29,8 +30,8 @@ class TestContainerAttach:
     @pytest.fixture
     def captured(self, monkeypatch):
         calls: dict = {}
-        monkeypatch.setattr(launcher, "_init_shell_prologue", lambda *a, **k: "")
-        monkeypatch.setattr(launcher, "_keyring_init", lambda *a, **k: "")
+        patch_all(monkeypatch, "_init_shell_prologue", lambda *a, **k: "")
+        patch_all(monkeypatch, "_keyring_init", lambda *a, **k: "")
         monkeypatch.setattr(launcher, "_touch_attach_marker", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_acknowledge_warnings", lambda *a, **k: None)
         monkeypatch.setattr(launcher.paths, "container_mcp_config", lambda: "/mcp.json")

@@ -154,7 +154,7 @@ class TestTheRootStepStaysInTheDockerfile:
 
         r = _tmp_recipe(tmp_path, install="install:\n  system: 'needs root'\n", with_script=False)
         calls: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
             "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
         )

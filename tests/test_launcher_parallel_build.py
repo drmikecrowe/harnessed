@@ -18,6 +18,7 @@ import typer
 
 from harnessed import launcher
 from support import patch_all
+from harnessed import proc
 
 
 @pytest.fixture
@@ -161,15 +162,15 @@ class TestReconcileParallel:
 class TestBuildTag:
     def test_untagged_output_is_unprefixed(self, capsys):
         launcher._say("hello")
-        assert launcher._BUILD_TAG.get() is None
+        assert proc._BUILD_TAG.get() is None
         assert "│" not in capsys.readouterr().out
 
     def test_tagged_output_carries_label_and_colour(self, capsys):
-        token = launcher._BUILD_TAG.set(("mystack(omp)", "cyan"))
+        token = proc._BUILD_TAG.set(("mystack(omp)", "cyan"))
         try:
             launcher._say("hello")
         finally:
-            launcher._BUILD_TAG.reset(token)
+            proc._BUILD_TAG.reset(token)
         out = capsys.readouterr().out
         assert "mystack(omp)" in out
         assert "│" in out
@@ -177,29 +178,29 @@ class TestBuildTag:
 
     def test_tagged_run_streams_each_line_prefixed(self, capsys):
         """`podman build` output must land in its OWN lane, or N concurrent logs are unreadable."""
-        token = launcher._BUILD_TAG.set(("s(claude)", "green"))
+        token = proc._BUILD_TAG.set(("s(claude)", "green"))
         try:
             launcher._run(["printf", "one\\ntwo\\n"])
         finally:
-            launcher._BUILD_TAG.reset(token)
+            proc._BUILD_TAG.reset(token)
         lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
         assert len(lines) == 2
         assert all("s(claude)" in ln and "│" in ln for ln in lines)
         assert "one" in lines[0] and "two" in lines[1]
 
     def test_tagged_run_raises_on_failure(self):
-        token = launcher._BUILD_TAG.set(("s(claude)", "green"))
+        token = proc._BUILD_TAG.set(("s(claude)", "green"))
         try:
             with pytest.raises(Exception):
                 launcher._run(["sh", "-c", "exit 3"])
         finally:
-            launcher._BUILD_TAG.reset(token)
+            proc._BUILD_TAG.reset(token)
 
     def test_capturing_callers_are_not_hijacked(self):
         """A caller that captures output wants the bytes back, not printed — tag or no tag."""
-        token = launcher._BUILD_TAG.set(("s(claude)", "green"))
+        token = proc._BUILD_TAG.set(("s(claude)", "green"))
         try:
             result = launcher._run(["printf", "payload"], capture_output=True, text=True)
         finally:
-            launcher._BUILD_TAG.reset(token)
+            proc._BUILD_TAG.reset(token)
         assert result.stdout == "payload"

@@ -380,7 +380,7 @@ class TestBuildMountArgs:
     """The path-mirror `-v` targets the mount root (project by default, a parent via --mount-folder)."""
 
     def test_mirrors_the_mount_path(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        patch_all(monkeypatch, "_catalog_base", lambda name: tmp_path / name)
         parent = tmp_path / "harnessed"
         parent.mkdir()
         args = launcher._build_mount_args("claude", tmp_path / "prof", parent)
@@ -400,7 +400,7 @@ class TestBuildMountArgs:
         The config tree is now one composed volume, so assert no mount lands *inside* `.claude`
         except the deeper rw history dirs, which are meant to layer on top.
         """
-        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        patch_all(monkeypatch, "_catalog_base", lambda name: tmp_path / name)
         prof = tmp_path / "prof"
         for sub in ("skills", "commands", "rules"):
             (prof / ".claude" / sub).mkdir(parents=True)
@@ -423,7 +423,7 @@ class TestBuildMountArgs:
         return prof
 
     def test_opencode_persona_mounts_config_and_prompts(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        patch_all(monkeypatch, "_catalog_base", lambda name: tmp_path / name)
         prof = self._prof_with_opencode_persona(tmp_path)
         ctr = launcher._CONTAINER_HOME_STR
         args = launcher._build_mount_args("opencode", prof, tmp_path)
@@ -433,7 +433,7 @@ class TestBuildMountArgs:
         assert f"{prompts}:{ctr}/.config/opencode/prompts:ro" in args
 
     def test_opencode_without_persona_no_config_mount(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        patch_all(monkeypatch, "_catalog_base", lambda name: tmp_path / name)
         prof = tmp_path / "prof"
         prof.mkdir()
         args = launcher._build_mount_args("opencode", prof, tmp_path)
@@ -447,7 +447,7 @@ class TestBuildMountArgs:
         return prof
 
     def test_antigravity_identity_mounts_settings_and_gemini_md(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        patch_all(monkeypatch, "_catalog_base", lambda name: tmp_path / name)
         prof = self._prof_with_antigravity_identity(tmp_path)
         ctr = launcher._CONTAINER_HOME_STR
         args = launcher._build_mount_args("antigravity", prof, tmp_path)
@@ -457,14 +457,14 @@ class TestBuildMountArgs:
         assert f"{identity}:{ctr}/.gemini/GEMINI.md:ro" in args
 
     def test_antigravity_without_identity_no_gemini_mount(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        patch_all(monkeypatch, "_catalog_base", lambda name: tmp_path / name)
         prof = tmp_path / "prof"
         prof.mkdir()
         args = launcher._build_mount_args("antigravity", prof, tmp_path)
         assert not any(".gemini" in a for a in args)
 
     def test_codex_identity_mounts_agents_md(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        patch_all(monkeypatch, "_catalog_base", lambda name: tmp_path / name)
         prof = tmp_path / "prof"
         (prof / ".codex").mkdir(parents=True)
         (prof / ".codex" / "AGENTS.md").write_text("identity")
@@ -474,14 +474,14 @@ class TestBuildMountArgs:
         assert f"{agents}:{ctr}/.codex/AGENTS.md:ro" in args
 
     def test_codex_without_identity_no_agents_mount(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        patch_all(monkeypatch, "_catalog_base", lambda name: tmp_path / name)
         prof = tmp_path / "prof"
         prof.mkdir()
         args = launcher._build_mount_args("codex", prof, tmp_path)
         assert not any(".codex" in a for a in args)
 
     def test_claude_unaffected_by_identity_branches(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(launcher, "_catalog_base", lambda name: tmp_path / name)
+        patch_all(monkeypatch, "_catalog_base", lambda name: tmp_path / name)
         prof = self._prof_with_antigravity_identity(tmp_path)
         (prof / ".codex").mkdir(parents=True)
         (prof / ".codex" / "AGENTS.md").write_text("identity")

@@ -17,6 +17,7 @@ import pytest
 
 from harnessed import launcher, paths
 from harnessed.schema import Recipe, load_recipe
+from support import patch_all
 
 # recipe name → the tool spec it must declare, and the fetch that must no longer be in its install.sh
 MIGRATED = {
@@ -140,7 +141,7 @@ class TestContainerExecutorInstallsToolsBeforeInstallScripts:
     def _steps(self, recipes, monkeypatch):
         """The flattened command lines the container executor would run, in order."""
         calls: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
             "podman", "s", "claude", "img", list(recipes), "cfgvol", "toolsvol",
         )
@@ -203,7 +204,7 @@ class TestNpmToolsResolveThroughPnpmNotAube:
     def test_the_container_executor_sets_it_on_the_tools_step(self, tmp_path, monkeypatch):
         r = Recipe(name="a", root=tmp_path, tools=["npm:context-mode@1.0.169"])
         calls: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
             "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
         )

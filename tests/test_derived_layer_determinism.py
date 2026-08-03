@@ -11,21 +11,23 @@ harnessed-8px.21.3 stable for an unchanged stack.
 """
 from __future__ import annotations
 
-from harnessed import launcher
+from harnessed import launcher, volumes
 from harnessed.schema import Recipe
 
 
 def _tools_line(tmp_path, recipes, stack="s", monkeypatch=None):
     """The single `mise use -g …` command the container executor would run."""
     calls: list[list[str]] = []
-    orig = launcher._run
-    launcher._run = lambda cmd, *a, **k: calls.append(cmd)
+    # Patched on `volumes`, not `launcher`: `_run_container_installs` lives there now and resolves
+    # `_run` in its OWN module globals, so patching the launcher re-export would run real podman.
+    orig = volumes._run
+    volumes._run = lambda cmd, *a, **k: calls.append(cmd)
     try:
         launcher._run_container_installs(
             "podman", stack, "claude", "img", list(recipes), "cfgvol", "toolsvol",
         )
     finally:
-        launcher._run = orig
+        volumes._run = orig
     lines = [a for c in calls for a in c if "mise use -g" in a]
     assert len(lines) == 1, f"expected exactly one merged tool step, got {lines}"
     return lines[0]

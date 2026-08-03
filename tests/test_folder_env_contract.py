@@ -13,6 +13,7 @@ import pytest
 from harnessed import launcher, paths
 from harnessed.schema import load_recipe
 from support import patch_all
+from harnessed import setupenv
 
 
 CONTRACT_KEYS = {
@@ -78,7 +79,7 @@ class TestHarnessedEnv:
         ctr = launcher.harnessed_env("s", tmp_path, harness="claude", mode="container",
                                      recipe=r, sockets=False)
         assert host["HARNESSED_RECIPE_DIR"] == str(r.root)
-        assert ctr["HARNESSED_RECIPE_DIR"] == f"{launcher._CTR_RECIPE_DIR}/rr"
+        assert ctr["HARNESSED_RECIPE_DIR"] == f"{setupenv._CTR_RECIPE_DIR}/rr"
 
     def test_recipe_dir_absent_when_not_recipe_scoped(self, tmp_path, monkeypatch):
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
@@ -95,7 +96,7 @@ class TestHarnessedEnv:
         (d / "setup.sh").write_text("#!/usr/bin/env bash\ntrue\n")
         r = load_recipe(d, strict=True)
         args = launcher._setup_script_mounts([r])
-        assert f"{r.root}:{launcher._CTR_RECIPE_DIR}/rr:ro" in args
+        assert f"{r.root}:{setupenv._CTR_RECIPE_DIR}/rr:ro" in args
 
 
 class TestConditionEvalSeesTheContract:
