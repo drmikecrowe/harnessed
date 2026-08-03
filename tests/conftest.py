@@ -10,7 +10,7 @@ import pytest
 _REAL_XDG_CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
 
 # MODULE LEVEL, NOT A FIXTURE — and that is the whole point. `rich` reads FORCE_COLOR when a
-# `Console` is CONSTRUCTED, and launcher.py builds `_out`/`_err` at module import. An autouse
+# `Console` is CONSTRUCTED, and console.py builds `_out`/`_err` at module import. An autouse
 # fixture runs after that import and is therefore too late; it was tried and did not work.
 # conftest.py is imported before any test module, so popping it here is early enough.
 #
