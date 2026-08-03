@@ -72,12 +72,13 @@ class TestHostRunSetupsExecutesTheScript:
     the launcher invoked bash without the script or with the wrong cwd.
     """
 
-    def _recipe(self, tmp_path, body_script: str):
+    def _recipe(self, tmp_path, body_script: str, *, confirm: str | None = None):
         d = tmp_path / "cat" / "r"
         d.mkdir(parents=True, exist_ok=True)
-        (d / "recipe.yaml").write_text(
-            "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n"
-        )
+        body = "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n"
+        if confirm:
+            body += f"  confirm: {confirm!r}\n"
+        (d / "recipe.yaml").write_text(body)
         (d / "setup.sh").write_text(body_script)
         return load_recipe(d, strict=True)
 
@@ -106,6 +107,33 @@ class TestHostRunSetupsExecutesTheScript:
         r = self._recipe(tmp_path, "#!/usr/bin/env bash\npwd > cwd.txt\n")
         self._run(tmp_path, monkeypatch, r, proj)
         assert (proj / "cwd.txt").read_text().strip() == str(proj)
+
+    def test_a_declined_confirm_skips_the_script(self, tmp_path, monkeypatch):
+        """The confirm gate has to be wired into THIS function, not merely exist.
+
+        `setup.confirm` is what keeps a repo-changing step (`bd init` commits 18 files) the user's
+        decision. Dropping the `_confirm_setup` call from `_host_run_setups` passed the whole suite
+        before this test: the gate was only ever exercised in isolation.
+        """
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        stamp = tmp_path / "ran"
+        r = self._recipe(tmp_path, f"#!/usr/bin/env bash\ntouch {stamp}\n", confirm="ok?")
+        monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: False)
+        self._run(tmp_path, monkeypatch, r, proj)
+        assert not stamp.exists(), "declining the confirm must not run the script"
+
+    def test_an_accepted_confirm_runs_the_script(self, tmp_path, monkeypatch):
+        """The other half — otherwise a gate that always refused would pass the test above."""
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        stamp = tmp_path / "ran"
+        r = self._recipe(tmp_path, f"#!/usr/bin/env bash\ntouch {stamp}\n", confirm="ok?")
+        monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: True)
+        self._run(tmp_path, monkeypatch, r, proj)
+        assert stamp.exists()
 
     def test_a_failing_script_aborts_the_launch(self, tmp_path, monkeypatch):
         """Exit non-zero must stop the launch — continuing would hand the user an agent whose

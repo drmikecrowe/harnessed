@@ -639,13 +639,16 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
         )
     config = _parse_setup_config(raw_setup.get("config"))
 
+    # `run` is deliberately absent here: it is rejected by name above, which fires first and says
+    # what to use instead. Listing it as valid would advertise a removed field to anyone who
+    # mistyped a DIFFERENT one and landed on this message.
     unknown = sorted(
-        set(raw_setup) - {"summary", "reference", "condition", "run", "script", "config", "confirm"}
+        set(raw_setup) - {"summary", "reference", "condition", "script", "config", "confirm"}
     )
     if unknown:
         raise SchemaError(
             f"recipe 'setup': unknown field(s) {unknown} — valid fields: "
-            "summary, reference, condition, run, script, config, confirm"
+            "summary, reference, condition, script, config, confirm"
         )
     return SetupSpec(
         summary=summary.strip(),

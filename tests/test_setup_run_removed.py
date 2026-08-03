@@ -63,6 +63,18 @@ class TestDeclaringItIsAnError:
         with pytest.raises(SchemaError, match="has been removed"):
             load_recipe(d, strict=True)
 
+    def test_the_valid_fields_list_no_longer_advertises_run(self, tmp_path):
+        """The unknown-field error is a DIFFERENT message from the removal error, and it enumerates
+        the valid fields. Leaving `run` in that list tells an author who mistyped some other field
+        that `run` is available — sending them to write the one thing that is rejected."""
+        d = _recipe(tmp_path, _BASE + "  script_path: setup.sh\n")
+        with pytest.raises(SchemaError) as exc:
+            load_recipe(d, strict=True)
+        assert "unknown field" in str(exc.value)
+        valid = str(exc.value).split("valid fields:")[1]
+        assert "run" not in valid, f"the valid-fields list still offers 'run': {valid}"
+        assert "script" in valid
+
     def test_a_script_only_recipe_still_loads(self, tmp_path):
         """The guard must reject `run`, not executable setup in general."""
         d = _recipe(tmp_path, _BASE + "  script: setup.sh\n")

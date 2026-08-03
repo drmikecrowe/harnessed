@@ -228,7 +228,8 @@ def _subst(template: str, values: dict[str, str]) -> str:
 
 def _resolve_setup_config(setup, primitives: dict[str, str], *, interactive: bool) -> dict[str, str]:
     """Resolve each `setup.config` item → value: derive (silent) or prompt (asked; default when
-    non-interactive). Returns primitives + {config.<key>: value}, ready for _subst into `run`."""
+    non-interactive). Returns primitives + {config.<key>: value}, which `_script_env` turns into the
+    HARNESSED_CFG_<KEY> vars a `setup.script` reads."""
     values = dict(primitives)
     for item in setup.config:
         if item.derive is not None:
