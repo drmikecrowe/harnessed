@@ -24,6 +24,7 @@ import typer
 
 from harnessed import launcher, paths
 from harnessed.schema import PersistEntry, PersistSpec, Recipe, SchemaError, load_service
+from support import patch_all
 
 
 def _svc_yaml(tmp_path: Path, body: str, name: str = "beads-server") -> Path:
@@ -135,8 +136,7 @@ class TestServiceDataDir:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         project = tmp_path / "repo"
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
         host_dir, agent_dir, location = launcher._service_data_dir(svc, "any", project)
         assert location == "in_repo"
@@ -151,8 +151,7 @@ class TestServiceDataDir:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         bare = tmp_path / "checkout" / ".bare"
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: bare)
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
         host_dir, _, _ = launcher._service_data_dir(svc, "any", tmp_path / "checkout" / "main")
         assert host_dir == bare / ".beads"
@@ -161,8 +160,7 @@ class TestServiceDataDir:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
         monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
         )
         project = tmp_path / "repo"
         host_dir, agent_dir, location = launcher._service_data_dir(svc, "any", project)
@@ -173,7 +171,7 @@ class TestServiceDataDir:
     def test_missing_persist_entry_is_a_schema_error(self, tmp_path, monkeypatch):
         # A stack that attaches beads-server but has no beads recipe cannot say where the data lives.
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _r, _s: (None, []))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, []))
         with pytest.raises(SchemaError, match="data.persist"):
             launcher._service_data_dir(svc, "no-beads-stack", tmp_path)
 
@@ -185,8 +183,7 @@ class TestServiceDataDir:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
         monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
         )
         project = tmp_path / "repo"
         host_dir, agent_dir, _ = launcher._service_data_dir(svc, "any", project, "host")
@@ -197,8 +194,7 @@ class TestServiceDataDir:
         # `location: in_repo` is mounted path-preserving, so there is nothing to switch on.
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         monkeypatch.setattr(paths, "git_common_dir", lambda p: Path(p) / ".git")
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
         project = tmp_path / "repo"
         ctr = launcher._service_data_dir(svc, "any", project, "container")
@@ -218,10 +214,9 @@ class TestClientVisibleSocketPath:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         project = tmp_path / "repo"
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
-        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
-        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
+        patch_all(monkeypatch, "_service_refs", lambda _s: ["beads-server"])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
         sock = launcher.svc_socket_env("any", project)["HARNESSED_BEADS_SERVER_SOCKET"]
         assert sock == f"{project}/.beads/run/mysql.sock"
@@ -236,10 +231,9 @@ class TestClientVisibleSocketPath:
         project = tmp_path / "repo"
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
-        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
-        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
+        patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
+        patch_all(monkeypatch, "_service_refs", lambda _s: ["beads-server"])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("host")])
         )
         sock = launcher.svc_socket_env("any", project, "host")["HARNESSED_BEADS_SERVER_SOCKET"]
         assert sock.startswith(str(tmp_path / "persist"))
@@ -253,18 +247,17 @@ class TestSocketEnvExport:
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         project = tmp_path / "repo"
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
-        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
-        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
+        patch_all(monkeypatch, "_service_refs", lambda _s: ["beads-server"])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
         env = launcher.svc_socket_env("any", project)
         assert env == {"HARNESSED_BEADS_SERVER_SOCKET": f"{project}/.beads/run/mysql.sock"}
 
     def test_global_services_export_nothing(self, tmp_path, monkeypatch):
         root = _svc_yaml(tmp_path, "name: ping\nimage: harnessed-ping:latest\nport: 8080\n", name="ping")
-        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: load_service(root, "ping"))
-        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["ping"])
+        patch_all(monkeypatch, "load_service", lambda _r, _n: load_service(root, "ping"))
+        patch_all(monkeypatch, "_service_refs", lambda _s: ["ping"])
         assert launcher.svc_socket_env("any", tmp_path) == {}
 
 
@@ -349,10 +342,10 @@ class TestClientEnvResolution:
         project = tmp_path / "repo"
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         monkeypatch.setattr(paths, "xdg_state_home", lambda: tmp_path / "state")
-        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
-        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
-        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
-        monkeypatch.setattr(launcher, "_svc_published_port", lambda *a: 49183)
+        patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
+        patch_all(monkeypatch, "_service_refs", lambda _s: ["beads-server"])
+        patch_all(monkeypatch, "_runtime", lambda: "podman")
+        patch_all(monkeypatch, "_svc_published_port", lambda *a: 49183)
         return project
 
     def test_host_mode_dials_loopback(self, wired):
@@ -380,7 +373,7 @@ class TestClientEnvResolution:
     def test_unreadable_port_exports_nothing_for_that_service(self, wired, monkeypatch):
         """No plausible-looking default. A wrong port is the 2026-07-19 shape: the client cannot
         reach the server, and the auto-start that would normally paper over it is disabled."""
-        monkeypatch.setattr(launcher, "_svc_published_port", lambda *a: 0)
+        patch_all(monkeypatch, "_svc_published_port", lambda *a: 0)
         assert launcher.svc_client_env("any", wired, "host") == {}
 
 
@@ -560,12 +553,11 @@ class TestInRepoServiceGetsTheRemoteGitSurface:
         project.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(Path, "home", staticmethod(lambda: home))
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
-        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
-        monkeypatch.setattr(launcher, "_image_exists", lambda _rt, _img: True)
-        monkeypatch.setattr(launcher, "_container_running", lambda _rt, _c: False)
+        patch_all(monkeypatch, "_image_exists", lambda _rt, _img: True)
+        patch_all(monkeypatch, "_container_running", lambda _rt, _c: False)
         monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
         # `_run` is stubbed, so no container is ever created — liveness is not what this asserts.
@@ -633,13 +625,12 @@ class TestServiceDataDirPathPreservingMount:
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         # Route persist_root inside tmp_path so the test never writes outside it.
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
-        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes",
+        patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
+        patch_all(monkeypatch, "load_stack_with_recipes",
             lambda _r, _s: (None, [_beads_recipe(location)]),
         )
-        monkeypatch.setattr(launcher, "_image_exists", lambda _rt, _img: True)
-        monkeypatch.setattr(launcher, "_container_running", lambda _rt, _c: False)
+        patch_all(monkeypatch, "_image_exists", lambda _rt, _img: True)
+        patch_all(monkeypatch, "_container_running", lambda _rt, _c: False)
         monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_assert_service_running", lambda *a, **k: None)
@@ -707,14 +698,13 @@ class TestSvcEntryPointUsesTheSameMountAsALaunch:
         project = checkout / "main"
         project.mkdir(parents=True)
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
-        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
-        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
+        patch_all(monkeypatch, "_runtime", lambda: "podman")
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: checkout / ".bare")
         # The bare + linked-worktree layout: the widened mount is the dir CONTAINING the bare repo.
         monkeypatch.setattr(paths, "bare_worktree_container", lambda _p: checkout)
-        monkeypatch.setattr(launcher, "_svc_container_stack", lambda _rt, _c: label)
-        monkeypatch.setattr(
-            launcher, "_svc_stacks_from_instances", lambda _rt, _p: list(instances or [])
+        patch_all(monkeypatch, "_svc_container_stack", lambda _rt, _c: label)
+        patch_all(monkeypatch, "_svc_stacks_from_instances", lambda _rt, _p: list(instances or [])
         )
         seen: dict = {}
         monkeypatch.setattr(launcher, "_ensure_service", lambda *a, **k: seen.update(k))
@@ -848,7 +838,7 @@ class TestReadingTheStackOutOfInstanceNames:
         """`names` is either plain names (treated as stopped) or (name, state) pairs."""
         rows = [n if isinstance(n, tuple) else (n, "exited") for n in names]
         monkeypatch.setattr(paths, "list_catalog", lambda _kind: list(harnesses))
-        monkeypatch.setattr(launcher, "_repo_project_hashes", lambda _p: hashes)
+        patch_all(monkeypatch, "_repo_project_hashes", lambda _p: hashes)
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(
@@ -982,14 +972,13 @@ class TestServiceConfigHashDetectsStaleContainers:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
-        monkeypatch.setattr(launcher, "load_service", lambda _r, _n: svc)
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(monkeypatch, "load_service", lambda _r, _n: svc)
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
-        monkeypatch.setattr(launcher, "_image_exists", lambda _rt, _img: True)
-        monkeypatch.setattr(launcher, "_container_running", lambda _rt, _c: running)
-        monkeypatch.setattr(launcher, "_container_stale", lambda _rt, _c, _i: False)
-        monkeypatch.setattr(launcher, "_container_config_hash", lambda _rt, _c: label)
+        patch_all(monkeypatch, "_image_exists", lambda _rt, _img: True)
+        patch_all(monkeypatch, "_container_running", lambda _rt, _c: running)
+        patch_all(monkeypatch, "_container_stale", lambda _rt, _c, _i: False)
+        patch_all(monkeypatch, "_container_config_hash", lambda _rt, _c: label)
         monkeypatch.setattr(launcher, "_install_corp_proxy_ca_in_container", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_wait_service_healthy", lambda *a, **k: None)
         monkeypatch.setattr(launcher, "_assert_service_running", lambda *a, **k: None)
@@ -1073,8 +1062,7 @@ class TestServiceConfigHashDetectsStaleContainers:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "home"))
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
         base = launcher._svc_run_cmd("podman", svc, "c", "any", project, project)
         widened = launcher._svc_run_cmd("podman", svc, "c", "any", project, project.parent)
@@ -1100,8 +1088,7 @@ class TestServiceConfigHashDetectsStaleContainers:
         monkeypatch.setattr(paths, "git_common_dir", lambda _p: project / ".git")
         monkeypatch.setattr(paths, "persist_root", lambda: tmp_path / "persist")
         monkeypatch.setattr(paths, "xdg_state_home", lambda: state)
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [_beads_recipe("in_repo")])
         )
         launcher._svc_run_cmd("podman", svc, "c", "any", project, project)
         assert not paths.persist_in_repo_dir(project, ".beads").exists(), (
@@ -1352,8 +1339,7 @@ class TestSvcMigrate:
         )
 
     def _wire(self, monkeypatch, host_dir, location="in_repo"):
-        monkeypatch.setattr(
-            launcher, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), location)
+        patch_all(monkeypatch, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), location)
         )
         monkeypatch.setattr(launcher, "_host_process_in_dir", lambda exe, d: None)
 
@@ -1400,8 +1386,7 @@ class TestSvcMigrate:
         host_dir.mkdir()
         (host_dir / "metadata.json").write_text(json.dumps({"dolt_database": "proj"}))
         src = _dolt_db_at(tmp_path / "elsewhere" / "proj")
-        monkeypatch.setattr(
-            launcher, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), "in_repo")
+        patch_all(monkeypatch, "_service_data_dir", lambda svc, stack, project: (host_dir, str(host_dir), "in_repo")
         )
         monkeypatch.setattr(launcher, "_host_process_in_dir", lambda exe, d: (999, "dolt sql-server"))
         with pytest.raises(typer.Exit):

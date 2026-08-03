@@ -15,6 +15,7 @@ from pathlib import Path
 from harnessed import launcher, paths
 from harnessed.assemble import compute_recipe_hash
 from harnessed.schema import Recipe
+from support import patch_all
 
 
 def _write_recipe(root: Path, name: str, *, dockerfile: str = "RUN echo hi\n") -> Recipe:
@@ -195,8 +196,7 @@ class TestReconcileStacks:
             launcher.subprocess, "run",
             lambda *a, **k: _subprocess.CompletedProcess(a, 0, stdout=image_list),
         )
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes",
+        patch_all(monkeypatch, "load_stack_with_recipes",
             lambda root, name, strict=False: (None, [r1]),
         )
 

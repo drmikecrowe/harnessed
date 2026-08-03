@@ -16,13 +16,14 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 from harnessed import launcher
+from support import patch_all
 
 runner = CliRunner()
 
 
 def _stub_build(monkeypatch, calls: dict):
     """Let the build 'succeed', recording its arguments. Stops nothing by itself."""
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    patch_all(monkeypatch, "_runtime", lambda: "podman")
     monkeypatch.setattr(
         launcher, "_build_stack",
         lambda _rt, stack, harness, *_a, **_kw: calls.__setitem__("built", (stack, harness)),
@@ -78,7 +79,7 @@ def test_neither_stack_nor_recipe_runs_the_extends_baseline(monkeypatch, tmp_pat
     RESOLVED name rather than inferring it from a nonzero exit that any earlier gate could produce.
     """
     monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    patch_all(monkeypatch, "_runtime", lambda: "podman")
 
     def boom(*_a, **_kw):
         raise AssertionError("_build_stack must not run for the baseline stack")
@@ -130,7 +131,7 @@ def test_stack_and_recipe_are_mutually_exclusive(monkeypatch, tmp_path):
 def test_an_authored_stack_is_not_built(monkeypatch, tmp_path):
     """`--stack` names something that already assembled; only the minted form needs a build."""
     monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    patch_all(monkeypatch, "_runtime", lambda: "podman")
 
     def boom(*_a, **_kw):
         raise AssertionError("_build_stack must not run for an authored stack")
@@ -153,7 +154,7 @@ def test_failed_build_removes_a_manifest_this_run_created(monkeypatch, tmp_path)
     sit in `harnessed list` forever. (`dynstack` does `from . import paths`, so patching
     `dynstack.paths` patches the one shared module object that launcher sees too.)"""
     monkeypatch.setattr(launcher.dynstack.paths, "generated_catalog_root", lambda: tmp_path)
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    patch_all(monkeypatch, "_runtime", lambda: "podman")
 
     def boom(*_a, **_kw):
         raise RuntimeError("build failed")

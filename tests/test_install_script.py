@@ -34,6 +34,7 @@ from harnessed.schema import (
     validate_install_script,
     validate_no_claude_writes,
 )
+from support import patch_all
 
 CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 
@@ -255,7 +256,7 @@ class TestContainerExecutor:
 class TestHostExecutor:
     def _run(self, tmp_path, recipe, monkeypatch, home=None):
         home = home or tmp_path / "home"
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [recipe]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [recipe]))
         launcher._host_run_installs("s", tmp_path, harness="claude", home=home)
         return home
 
@@ -346,7 +347,7 @@ class TestOrderingAfterMaterialize:
             script_body='set -eu\nmkdir -p "$HARNESSED_CONFIG_DIR/skills"\n'
                         'touch "$HARNESSED_CONFIG_DIR/skills/from-install"\n',
         )
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [r]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         launcher._materialize_host_home(prof, home)
         launcher._host_run_installs("s", tmp_path, harness="claude", home=home)
         assert (home / "skills" / "from-install").exists()   # the install's own output
@@ -374,7 +375,7 @@ class TestCache:
     def test_miss_then_hit_across_launches(self, tmp_path, monkeypatch):
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
         r = _recipe(tmp_path, install=self.INSTALL, script_body=self.BODY)
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [r]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         home = tmp_path / "home"
         home.mkdir()
 
@@ -406,13 +407,13 @@ class TestCache:
         r = _recipe(tmp_path, install=self.INSTALL,
                     script_body='set -eu\ntest ! -d "$HARNESSED_INSTALL_CACHE"\n'
                                 'test -d "$(dirname "$HARNESSED_INSTALL_CACHE")"\n')
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [r]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         launcher._host_run_installs("s", tmp_path, harness="claude", home=tmp_path / "home")
 
     def test_no_cache_declared_hands_the_script_an_empty_string(self, tmp_path, monkeypatch):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
                     script_body='test -z "$HARNESSED_INSTALL_CACHE"\n')
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [r]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         launcher._host_run_installs("s", tmp_path, harness="claude", home=tmp_path / "home")
 
 
@@ -486,7 +487,7 @@ class TestSystemLevelHostPolicy:
 
     def _capture(self, tmp_path, monkeypatch, capsys, body="true\n"):
         r = _recipe(tmp_path, "sysrecipe", install=self.INSTALL, script_body=body)
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [r]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         launcher._host_run_installs("s", tmp_path, harness="claude", home=tmp_path / "home")
         return _plain(capsys.readouterr().err)
 
@@ -505,7 +506,7 @@ class TestSystemLevelHostPolicy:
 
     def test_no_warning_when_nothing_needs_root(self, tmp_path, monkeypatch, capsys):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [r]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         launcher._host_run_installs("s", tmp_path, harness="claude", home=tmp_path / "home")
         assert "WARNING" not in capsys.readouterr().err
 
@@ -549,7 +550,7 @@ class TestPrecedence:
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
                     env='env:\n  HARNESSED_MODE: "recipe-tried-to-win"\n',
                     script_body='set -eu\necho "$HARNESSED_MODE" > "$HARNESSED_CONFIG_DIR/mode"\n')
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [r]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         home = tmp_path / "home"
         launcher._host_run_installs("s", tmp_path, harness="claude", home=home)
         assert (home / "mode").read_text().strip() == "host"
@@ -559,7 +560,7 @@ class TestPrecedence:
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n",
                     env='env:\n  RECIPE_DECLARED: "from-the-recipe"\n',
                     script_body='set -eu\necho "$RECIPE_DECLARED" > "$HARNESSED_CONFIG_DIR/v"\n')
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [r]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [r]))
         home = tmp_path / "home"
         launcher._host_run_installs("s", tmp_path, harness="claude", home=home)
         assert (home / "v").read_text().strip() == "from-the-recipe"

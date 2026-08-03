@@ -22,6 +22,7 @@ import pytest
 from harnessed import launcher, paths
 from harnessed.persist import PersistNotAllowlistedError
 from harnessed.schema import PersistEntry, PersistSpec, Recipe
+from support import patch_all
 
 
 def _entry(**kw) -> PersistEntry:
@@ -39,7 +40,7 @@ def _recipe(name: str, entries=None) -> Recipe:
 
 
 def _patch_recipes(monkeypatch, recipes) -> None:
-    monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, stack: (None, recipes))
+    patch_all(monkeypatch, "load_stack_with_recipes", lambda root, stack: (None, recipes))
 
 
 # --- Layer 1: mount emission (fast, no podman) -----------------------------------------------

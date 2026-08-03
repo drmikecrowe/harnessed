@@ -13,6 +13,7 @@ from pathlib import Path
 
 from harnessed import launcher
 from harnessed.schema import McpServer, Recipe, Stack
+from support import patch_all
 
 
 def _recipe(name: str, *servers: McpServer) -> Recipe:
@@ -21,12 +22,12 @@ def _recipe(name: str, *servers: McpServer) -> Recipe:
 
 def _patch_recipes(monkeypatch, recipes: list[Recipe]) -> None:
     """Make _service_refs see exactly `recipes`, regardless of the stack name passed."""
-    monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _root, _stack: (None, recipes))
+    patch_all(monkeypatch, "load_stack_with_recipes", lambda _root, _stack: (None, recipes))
 
 
 def _patch(monkeypatch, stack: Stack, recipes: list[Recipe]) -> None:
     """Make _service_refs see exactly `stack` + `recipes`, regardless of the name passed."""
-    monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _root, _stack: (stack, recipes))
+    patch_all(monkeypatch, "load_stack_with_recipes", lambda _root, _stack: (stack, recipes))
 
 
 def test_collects_referenced_service_names(monkeypatch):

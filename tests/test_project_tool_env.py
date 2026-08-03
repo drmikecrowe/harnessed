@@ -16,15 +16,15 @@ import tomllib
 import pytest
 
 from harnessed import launcher, paths
+from support import patch_all
 
 
 @pytest.fixture
 def project(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "xdg_state_home", lambda: tmp_path / "state")
-    monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, stack: (None, []))
+    patch_all(monkeypatch, "load_stack_with_recipes", lambda root, stack: (None, []))
     monkeypatch.setattr(launcher, "_recipe_env", lambda *a, **k: {"BEADS_DIR": "/p/.beads"})
-    monkeypatch.setattr(
-        launcher, "svc_client_env",
+    patch_all(monkeypatch, "svc_client_env",
         lambda *a, **k: {"BEADS_DOLT_SERVER_PORT": "41234", "BEADS_DOLT_PASSWORD": "s3cret-token"},
     )
     proj = tmp_path / "proj"
@@ -141,7 +141,7 @@ class TestHousekeeping:
         """No env to point at is no reason to withhold the shortcut — and the `[env]` table must be
         omitted rather than written empty, so a later launch that does have values can add it."""
         monkeypatch.setattr(launcher, "_recipe_env", lambda *a, **k: {})
-        monkeypatch.setattr(launcher, "svc_client_env", lambda *a, **k: {})
+        patch_all(monkeypatch, "svc_client_env", lambda *a, **k: {})
         _write(project)
         data = _toml(project)
         assert "env" not in data
@@ -149,7 +149,7 @@ class TestHousekeeping:
 
     def test_the_env_pointer_is_added_by_a_later_launch_that_has_one(self, project, tmp_path, monkeypatch):
         monkeypatch.setattr(launcher, "_recipe_env", lambda *a, **k: {})
-        monkeypatch.setattr(launcher, "svc_client_env", lambda *a, **k: {})
+        patch_all(monkeypatch, "svc_client_env", lambda *a, **k: {})
         _write(project)
         monkeypatch.setattr(launcher, "_recipe_env", lambda *a, **k: {"BEADS_DIR": "/p/.beads"})
         _write(project)
@@ -158,8 +158,7 @@ class TestHousekeeping:
     def test_values_are_refreshed_on_every_launch(self, project, tmp_path, monkeypatch):
         """The env file is harnessed's, not the user's: a changed port must not need a manual edit."""
         _write(project)
-        monkeypatch.setattr(
-            launcher, "svc_client_env", lambda *a, **k: {"BEADS_DOLT_SERVER_PORT": "50000"}
+        patch_all(monkeypatch, "svc_client_env", lambda *a, **k: {"BEADS_DOLT_SERVER_PORT": "50000"}
         )
         _write(project)
         assert "BEADS_DOLT_SERVER_PORT=50000" in _env_file(tmp_path).read_text()

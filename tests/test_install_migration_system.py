@@ -37,6 +37,7 @@ from harnessed.schema import (
     validate_container_only_declared,
     validate_install_script,
 )
+from support import patch_all
 
 CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 RECIPES = CATALOG / "recipes"
@@ -97,7 +98,7 @@ class TestHostLaunchWarnsInsteadOfSkippingSilently:
     """THE test of this batch: every recipe declaring `system:` is audible on a host launch."""
 
     def _run(self, tmp_path, recipe, monkeypatch, capsys):
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, s: (None, [recipe]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, s: (None, [recipe]))
         launcher._host_run_installs("s", tmp_path, harness="claude", home=tmp_path / "home")
         return _plain(capsys.readouterr().err)
 

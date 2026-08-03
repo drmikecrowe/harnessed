@@ -17,13 +17,14 @@ import pytest
 import typer
 
 from harnessed import launcher
+from support import patch_all
 
 
 @pytest.fixture
 def quiet(monkeypatch):
     """No real podman, no real shared-image builds; reset the once-per-process guard."""
     monkeypatch.setattr(launcher, "_SHARED_IMAGES_BUILT", set())
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    patch_all(monkeypatch, "_runtime", lambda: "podman")
 
 
 class TestBuildSharedOnce:

@@ -8,6 +8,7 @@ same `podman build` N times — cache-backed, but each one still tars up the who
 import pytest
 
 from harnessed import launcher
+from support import patch_all
 
 
 @pytest.fixture
@@ -24,7 +25,7 @@ def podman(monkeypatch):
     monkeypatch.setattr(launcher, "_run", fake_run)
     monkeypatch.setattr(launcher, "_ensure_extra_tools", lambda: None)
     monkeypatch.setattr(launcher, "_corp_proxy_ca_secret_args", lambda: [])
-    monkeypatch.setattr(launcher, "_image_exists", lambda rt, image: True)
+    patch_all(monkeypatch, "_image_exists", lambda rt, image: True)
     return targets
 
 
@@ -44,7 +45,7 @@ def test_agent_image_built_once_per_harness(podman):
 
 def test_build_images_cmd_registers_what_it_built(podman, monkeypatch):
     """`harnessed build` runs _build_images_cmd first; the per-stack rebuild must not repeat it."""
-    monkeypatch.setattr(launcher, "_image_exists", lambda rt, image: False)  # take the build branch
+    patch_all(monkeypatch, "_image_exists", lambda rt, image: False)  # take the build branch
     launcher._build_images_cmd("podman")
     assert podman == [launcher._BASE_IMAGE, launcher._CLAUDE_IMAGE]
 

@@ -13,6 +13,7 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 
 from harnessed import launcher
+from support import patch_all
 
 
 def _home(monkeypatch, tmp_path):
@@ -80,8 +81,7 @@ class TestOauthTokenDetection:
         proj.mkdir()
         (proj / ".env.schema").write_text("")  # triggers the varlock branch
         monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
-        monkeypatch.setattr(
-            launcher, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": "secret-token"}
+        patch_all(monkeypatch, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": "secret-token"}
         )
         assert launcher._claude_oauth_token_configured("claude", proj) is True
 
@@ -95,7 +95,7 @@ class TestOauthTokenDetection:
         proj.mkdir()
         (proj / ".env.schema").write_text("")
         monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
-        monkeypatch.setattr(launcher, "_varlock_resolve", lambda d: None)  # varlock failure
+        patch_all(monkeypatch, "_varlock_resolve", lambda d: None)  # varlock failure
 
         before = launcher._err.warnings
         result = launcher._claude_oauth_token_configured("claude", proj)
@@ -120,7 +120,7 @@ class TestOauthTokenDetection:
         proj.mkdir()
         (proj / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=from-project\n")  # ...project does not
         monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
-        monkeypatch.setattr(launcher, "_varlock_resolve", lambda d: None)  # global varlock fails
+        patch_all(monkeypatch, "_varlock_resolve", lambda d: None)  # global varlock fails
 
         before = launcher._err.warnings
         assert launcher._claude_oauth_token_configured("claude", proj) is True
@@ -137,7 +137,7 @@ class TestOauthTokenDetection:
         proj.mkdir()
         (proj / ".env.schema").write_text("")
         monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
-        monkeypatch.setattr(launcher, "_varlock_resolve", lambda d: None)
+        patch_all(monkeypatch, "_varlock_resolve", lambda d: None)
 
         before = launcher._err.warnings
         assert launcher._claude_oauth_token_configured("claude", proj) is False
@@ -160,8 +160,7 @@ class TestOauthTokenDetection:
         proj.mkdir()
         (proj / ".env.schema").write_text("")
         monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
-        monkeypatch.setattr(
-            launcher, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": ""}
+        patch_all(monkeypatch, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": ""}
         )
         assert launcher._claude_oauth_token_configured("claude", proj) is False
 

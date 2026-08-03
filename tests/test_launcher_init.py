@@ -14,6 +14,7 @@ import typer
 
 from harnessed import launcher, paths
 from harnessed.schema import InitSpec, PersistSpec, Recipe, Stack
+from support import patch_all
 
 
 # ---------------------------------------------------------------------------
@@ -27,7 +28,7 @@ def _recipe(name: str, run: "str | None" = None) -> Recipe:
 
 def _stub_recipes(monkeypatch, recipes: list[Recipe]) -> None:
     stk = Stack(name="s", recipes=[r.name for r in recipes])
-    monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, stack: (stk, recipes))
+    patch_all(monkeypatch, "load_stack_with_recipes", lambda root, stack: (stk, recipes))
 
 
 # ---------------------------------------------------------------------------

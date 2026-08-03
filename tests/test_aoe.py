@@ -21,6 +21,7 @@ from typer.testing import CliRunner
 
 from harnessed import aoe, launcher
 from harnessed.schema import SchemaError
+from support import patch_all
 
 
 PROFILE_LIST_EMPTY = "Profiles:\n  * default (default)\n\nTotal: 1 profiles\n"
@@ -747,7 +748,7 @@ class TestLaunchFlagsReachTheRow:
 
     def _container_run(self, monkeypatch, tmp_path, argv: list[str]) -> dict:
         seen = self._seen(monkeypatch, tmp_path)
-        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        patch_all(monkeypatch, "_runtime", lambda: "podman")
         monkeypatch.setattr(launcher, "is_built", lambda *a: True)
         monkeypatch.setattr(launcher.staleness, "check_profile_fresh", lambda *a: None)
         project = tmp_path / "proj"

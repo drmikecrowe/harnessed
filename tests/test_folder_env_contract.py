@@ -12,6 +12,7 @@ import pytest
 
 from harnessed import launcher, paths
 from harnessed.schema import load_recipe
+from support import patch_all
 
 
 CONTRACT_KEYS = {
@@ -112,8 +113,8 @@ class TestConditionEvalSeesTheContract:
         resolves the stack's services, and a `setup.condition` may reference what it exports (the
         beads recipes' guard now reads $BEADS_DOLT_SERVER_PORT, which comes from exactly there).
         """
-        monkeypatch.setattr(launcher, "svc_socket_env", lambda *a, **k: {})
-        monkeypatch.setattr(launcher, "svc_client_env", lambda *a, **k: {})
+        patch_all(monkeypatch, "svc_socket_env", lambda *a, **k: {})
+        patch_all(monkeypatch, "svc_client_env", lambda *a, **k: {})
 
     def _repo(self, tmp_path, monkeypatch, *, marker: bool):
         common = tmp_path / "bare"
@@ -139,7 +140,7 @@ class TestConditionEvalSeesTheContract:
         proj = self._repo(tmp_path, monkeypatch, marker=marker)
         stamp = tmp_path / "ran"
         r = _recipe(tmp_path / "cat", "r", condition=self.COND, run=f"touch {stamp}")
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _c, _s: (None, [r]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _c, _s: (None, [r]))
         monkeypatch.setattr(paths, "xdg_data_home", lambda: tmp_path / "xdg")
         launcher._host_run_setups("s", proj, harness="claude")
         assert stamp.exists() is ran

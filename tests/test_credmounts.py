@@ -17,6 +17,7 @@ import pytest
 
 from harnessed import credmounts
 from harnessed.paths import CONTAINER_HOME
+from support import patch_all
 
 
 class TestModuleBoundary:
@@ -222,7 +223,7 @@ class TestHostOsGatedBuilders:
     def test_yubikey_passthrough_is_linux_only(self, monkeypatch, os_name):
         """macOS runs the container in a Linux VM with no /dev/bus/usb, so USB passthrough is not
         possible there — it must not even shell out to lsusb."""
-        monkeypatch.setattr(credmounts, "_host_os", lambda: os_name)
+        patch_all(monkeypatch, "_host_os", lambda: os_name)
         ran: list[int] = []
         monkeypatch.setattr(credmounts.subprocess, "run", lambda *a, **k: ran.append(1))
 
@@ -230,7 +231,7 @@ class TestHostOsGatedBuilders:
         assert ran == []
 
     def test_op_agent_socket_path_is_os_aware(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(credmounts, "_host_os", lambda: "macos")
+        patch_all(monkeypatch, "_host_os", lambda: "macos")
         assert "Group Containers" in str(credmounts._op_agent_socket(tmp_path))
-        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
+        patch_all(monkeypatch, "_host_os", lambda: "linux")
         assert credmounts._op_agent_socket(tmp_path) == tmp_path / ".1password" / "agent.sock"

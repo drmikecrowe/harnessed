@@ -26,6 +26,7 @@ from harnessed.schema import (
     load_recipe,
     resolve_recipe_env,
 )
+from support import patch_all
 
 
 def _entry(name: str, scope: str = "workspace", location: str = "host") -> PersistEntry:
@@ -281,9 +282,8 @@ class TestHostLaunchDelivery:
             persist=PersistSpec(entries=[_entry(".beads", scope="project")]),
         )
         # A real Stack, not None: _launch_host reads stk.permissions to resolve settings.json.
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes",
-            lambda root, stack: (Stack(name="hostspike"), [r]),
+        patch_all(monkeypatch, "load_stack_with_recipes",
+            lambda root, stack, **kw: (Stack(name="hostspike"), [r]),
         )
 
         captured: dict = {}

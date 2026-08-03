@@ -10,6 +10,7 @@ import typer
 
 from harnessed import launcher, paths
 from harnessed.schema import Recipe, SetupSpec
+from support import patch_all
 
 
 def _r(name, *, condition=None):
@@ -46,8 +47,8 @@ class TestCollectSetupNotices:
         """A conditional notice builds the folder-env contract, which resolves the stack's sockets —
         and these use a synthetic stack name with no manifest. Stub it: the subject here is notice
         polarity and the dismiss flag, not socket wiring."""
-        monkeypatch.setattr(launcher, "svc_socket_env", lambda *a, **k: {})
-        monkeypatch.setattr(launcher, "svc_client_env", lambda *a, **k: {})
+        patch_all(monkeypatch, "svc_socket_env", lambda *a, **k: {})
+        patch_all(monkeypatch, "svc_client_env", lambda *a, **k: {})
 
     def test_unconditional_shown_then_gated_by_flag(self, state):
         recipes = [_r("caveman")]

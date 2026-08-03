@@ -61,3 +61,5 @@ harnessed = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# tests/support.py holds helpers shared across test modules; make it importable as `support`.
+pythonpath = ["tests"]

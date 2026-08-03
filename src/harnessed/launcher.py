@@ -43,6 +43,64 @@ from . import paths
 from . import persist
 from . import staleness
 from .console import _err, _out
+from .ctrquery import (
+    _container_exists,
+    _container_running,
+    _container_stale,
+    _image_exists,
+    _img_differs,
+    _inspect_id,
+    _pod_exists,
+    _rt_uses_pods,
+    _runtime,
+    _stopped_leftover,
+)
+from .hosthome import (
+    _DAEMON_STATE_MARKERS,
+    _HOST_SHARED_STATE,
+    _HOST_STACK_FINGERPRINT,
+    _LEGACY_PROJECT_DIR_RE,
+    _OAUTH_TOKEN_VAR,
+    _clear_host_home_except_runtime,
+    _credentials_are_usable,
+    _host_claude_source,
+    _host_home_lock,
+    _host_oauth_token_configured,
+    _host_stack_fingerprint,
+    _is_daemon_state,
+    _materialize_host_home,
+    _migrate_legacy_host_homes,
+    _propagate_host_settings,
+    _relink,
+    _rescue_host_credentials,
+    _scrub_host_home,
+    _share_host_claude_state,
+    _stamp_host_home,
+)
+from .jsonmerge import _deep_merge_json, _merge_host_claude_settings
+from .svcstate import (
+    _STABLE_PORT_RANGE,
+    _SVC_CONFIG_HASH_LABEL,
+    _SVC_STACK_LABEL,
+    _container_config_hash,
+    _container_label,
+    _port_is_free,
+    _repo_project_hashes,
+    _service_data_dir,
+    _service_refs,
+    _stack_from_instance_name,
+    _svc_config_hash,
+    _svc_container,
+    _svc_container_stack,
+    _svc_drift_reason,
+    _svc_password,
+    _svc_project_key,
+    _svc_published_port,
+    _svc_stable_port,
+    _svc_stacks_from_instances,
+    svc_client_env,
+    svc_socket_env,
+)
 from .credmounts import (
     _gh_hosts_missing_plaintext_token,
     _git_identity_config_mount,
@@ -152,51 +210,6 @@ def _opencode_attach_cmd(prof: Path, stack_name: str) -> str:
     return _HARNESS_ATTACH_CMD["opencode"]
 
 
-def _runtime() -> str:
-    """Return 'podman' or 'docker', whichever is on PATH (prefer podman)."""
-    for rt in ("podman", "docker"):
-        if shutil.which(rt):
-            return rt
-    _err.print("[bold red]error:[/bold red] neither podman nor docker found on PATH")
-    raise typer.Exit(1)
-
-
-def _image_exists(rt: str, image: str) -> bool:
-    return subprocess.run(
-        [rt, "image", "inspect", image],
-        capture_output=True,
-    ).returncode == 0
-
-
-def _container_running(rt: str, name: str) -> bool:
-    result = subprocess.run(
-        [rt, "container", "inspect", "-f", "{{.State.Running}}", name],
-        capture_output=True, text=True,
-    )
-    return result.returncode == 0 and result.stdout.strip() == "true"
-
-
-def _container_exists(rt: str, name: str) -> bool:
-    """True if a container named `name` exists in any state (running, exited, created)."""
-    return subprocess.run(
-        [rt, "container", "inspect", name], capture_output=True,
-    ).returncode == 0
-
-
-def _pod_exists(rt: str, pod: str) -> bool:
-    """True if a podman pod named `pod` exists in any state (created/running/exited)."""
-    return subprocess.run([rt, "pod", "inspect", pod], capture_output=True).returncode == 0
-
-
-def _stopped_leftover(rt: str, inst: str, pod: str) -> bool:
-    """True if a prior (non-ephemeral) session left a stopped instance/pod that would block a fresh
-    `pod create` with "name already in use". A *running* instance is re-attached, never torn down
-    here — only genuinely stopped leftovers qualify."""
-    if _container_running(rt, inst):
-        return False
-    return _container_exists(rt, inst) or (_rt_uses_pods(rt) and _pod_exists(rt, pod))
-
-
 def _resolve_start_dir(project_path: Path, agent_start_folder: Optional[str]) -> Path:
     """Resolve the agent's working directory.
 
@@ -261,32 +274,6 @@ def _resolve_mount_path(project_path: Path, mount_folder: Optional[str]) -> Path
         )
         raise typer.Exit(1)
     return mount_path
-
-
-def _inspect_id(rt: str, kind: str, ref: str, fmt: str) -> str:
-    r = subprocess.run([rt, kind, "inspect", "-f", fmt, ref], capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else ""
-
-
-def _img_differs(current: str, used: str) -> bool:
-    """True iff two image IDs are both known and differ (sha256: prefix normalized).
-
-    Either side empty (image/container gone, inspect failed) → can't tell → not stale.
-    """
-    norm = lambda s: s.strip().removeprefix("sha256:")  # noqa: E731
-    cur, prev = norm(current), norm(used)
-    return bool(cur and prev and cur != prev)
-
-
-def _container_stale(rt: str, name: str, image: str) -> bool:
-    """True if the running container was created from a different image than current `image:latest`
-    (i.e. the image was rebuilt since the container started — a re-attach would run the old build)."""
-    return _img_differs(_inspect_id(rt, "image", image, "{{.Id}}"),
-                        _inspect_id(rt, "container", name, "{{.Image}}"))
-
-
-def _rt_uses_pods(rt: str) -> bool:
-    return rt == "podman"
 
 
 def _harnessed_dir() -> Path:
@@ -1263,68 +1250,6 @@ def _merge_baked_settings(
         emit.warn_duplicate_hooks(merged, harness, warn=_warn)
 
 
-def _deep_merge_json(base: object, overlay: object) -> object:
-    """Recursively merge two JSON-like trees, preferring values from `overlay`.
-
-    Dicts merge by key (recurse on matching keys). Non-dicts (including lists/scalars) are
-    replaced wholesale by `overlay` so host-authored arrays preserve order exactly.
-    """
-    if isinstance(base, dict) and isinstance(overlay, dict):
-        out = dict(base)
-        for key, val in overlay.items():
-            if key in out:
-                out[key] = _deep_merge_json(out[key], val)
-            else:
-                out[key] = val
-        return out
-    return overlay
-
-
-def _merge_host_claude_settings(prof: Path, required: dict, harness: str = "") -> None:
-    """Apply host ~/.claude/settings.json into the profile settings for launch-time parity.
-
-    The profile's settings.json is the file mounted into the container. Merge host preferences into
-    that file at launch, then re-apply harnessed-required grants/hooks so host customizations do not
-    disable the MCP hub.
-    """
-    host = Path.home() / ".claude" / "settings.json"
-    target = prof / "settings.json"
-    if not (host.is_file() and target.is_file()):
-        return
-
-    def _warn(msg: str) -> None:
-        _out.print(f"[yellow]⚠ settings:[/yellow] {msg}")
-
-    try:
-        target_raw = json.loads(target.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        target_raw = {}
-    target_obj = target_raw if isinstance(target_raw, dict) else {}
-
-    try:
-        host_text = host.read_text(encoding="utf-8")
-    except OSError:
-        return
-    host_obj = emit.read_baked_settings(host_text, warn=_warn)
-    if host_obj is None:
-        return
-
-    # `statusLine.command` is a host-absolute path (e.g. /home/<hostuser>/.local/share/mise/shims/…)
-    # that can never resolve inside the container (home is /home/harnessed). The ccstatusline recipe
-    # bakes a container-correct statusLine into the profile; letting the host's version win here would
-    # point Claude Code's status line at a nonexistent binary → it silently renders nothing. Drop the
-    # host statusLine so the baked (or absent) profile value survives the merge.
-    host_obj.pop("statusLine", None)
-
-    merged = _deep_merge_json(target_obj, host_obj)
-    if not isinstance(merged, dict):
-        merged = host_obj
-    final = emit.merge_settings(merged, required, warn=_warn)
-    target.write_text(json.dumps(final, indent=2) + "\n", encoding="utf-8")
-    if harness:
-        emit.warn_duplicate_hooks(final, harness, warn=_warn)
-
-
 def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None:
     """Wire the stack's identity into opencode's config POST-BUILD (bd main-rlw).
 
@@ -1913,9 +1838,6 @@ def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
         encoding="utf-8",
     )
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
-
-
-_OAUTH_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"
 
 
 def _claude_oauth_token_args(harness: str) -> list[str]:
@@ -2532,270 +2454,6 @@ def _persist_mounts(stack: str, project_path: Path) -> list[str]:
 # container. Services are host-published and outlive any instance, so they are started idempotently
 # (skip if already running) and are NOT torn down by `--fresh` (only the pod is).
 
-def _svc_container(name: str, project_key: str = "") -> str:
-    """Container name for a service. Project-scoped services are keyed so one runs PER project."""
-    if project_key:
-        return f"harnessed-svc-{name}-{project_key}"
-    return f"harnessed-svc-{name}"
-
-
-def _svc_project_key(svc: "ServiceDef", project_path: Path | None) -> str:
-    """Per-project key for a project-scoped service — git-common-dir keyed (cross-worktree).
-
-    Every worktree of one checkout resolves to the SAME key, so they share ONE server container
-    (which is the whole point: a dolt sql-server holds an exclusive lock on its data dir, and the
-    worktrees all resolve to the same in-repo `.beads`). Global services get no key.
-    """
-    if svc.scope != "project" or project_path is None:
-        return ""
-    gcd = paths.git_common_dir(project_path)
-    return paths.project_hash(gcd if gcd is not None else project_path)
-
-
-def _service_data_dir(
-    svc: "ServiceDef", stack: str, project_path: Path, mode: str = "container"
-) -> tuple[Path, str, str]:
-    """Resolve a project-scoped service's data dir → (host_dir, agent_path, location).
-
-    The service does NOT choose where its bytes live — the RECIPE does. The service names a persist
-    entry (`data.persist`), the launcher finds the recipe in this stack that declares it, and
-    follows that entry's placement:
-
-      * location: in_repo → host dir is the checkout-root-anchored dir (paths.persist_in_repo_dir),
-        and agents see it at the SAME path (the workspace is mounted path-preserving).
-      * location: host    → host dir is the persist dir keyed per that entry's scope, and agents
-        see it at $HOME/<name> (exactly where _persist_mounts puts it).
-
-    That is the single knob: `beads/team` declares `.beads` in_repo, `beads/stealth` declares it
-    host, and the same service manifest follows either one.
-    """
-    _, recipes = load_stack_with_recipes(None, stack)
-    for recipe in recipes:
-        for entry in recipe.persist.entries:
-            if entry.name is None or entry.name != svc.data_persist:
-                continue
-            if entry.location == "in_repo":
-                host_dir = paths.persist_in_repo_dir(project_path, entry.name)
-                return host_dir, str(host_dir), "in_repo"
-            if entry.scope == "project":
-                host_dir = paths.persist_project_dir(recipe.name, project_path, entry.name)
-            else:
-                host_dir = paths.persist_workspace_dir(recipe.name, project_path, entry.name)
-            # The AGENT-visible path genuinely differs by mode, and only for `location: host`: in a
-            # pod the entry is bind-mounted at $CONTAINER_HOME/<name>, while a host launch has no
-            # mount at all and the agent sees the real persist dir. Returning the container path
-            # unconditionally (bd harnessed-5ek) meant any host-mode consumer got
-            # `/home/harnessed/<name>` — a path that does not exist on the machine it would be used
-            # on. Same two-modes-disagree problem `{persist:<name>}` solves for recipe `env:`.
-            agent_dir = str(host_dir) if mode == "host" else f"{_CONTAINER_HOME_STR}/{entry.name}"
-            return host_dir, agent_dir, "host"
-
-    raise SchemaError(
-        f"service '{svc.name}' declares data.persist: '{svc.data_persist}', but no recipe in stack "
-        f"'{stack}' declares a persist entry with that name"
-    )
-
-
-def svc_socket_env(stack: str, project_path: Path, mode: str = "container") -> dict[str, str]:
-    """Container-side socket path for each socket-backed project-scoped service in the stack.
-
-    Exported into the attach shell (see _init_shell_prologue) as HARNESSED_<NAME>_SOCKET so a
-    recipe's `setup:` can reference the socket without recomputing the launcher's path arithmetic —
-    e.g. `bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"`. A service
-    reached over a published port uses `client_env` (svc_client_env) instead — the port is not a
-    path, and it is not known until the container is running.
-    """
-    env: dict[str, str] = {}
-    for name in _service_refs(stack):
-        svc = load_service(None, name)
-        if not (svc.scope == "project" and svc.is_socket_only):
-            continue
-        _, agent_dir, _ = _service_data_dir(svc, stack, project_path, mode)
-        var = "HARNESSED_" + svc.name.upper().replace("-", "_") + "_SOCKET"
-        env[var] = f"{agent_dir}/{svc.socket}"
-    return env
-
-
-def _svc_password(svc: ServiceDef, project_path: Path | None) -> str:
-    """Machine-local shared secret for a published service — created once, reused thereafter.
-
-    Stored under XDG state, NEVER in the service's data dir. For `location: in_repo` that dir is
-    the user's repo: a secret written there is one `git add -A` from the remote, and bd's own
-    `.beads/.gitignore` covers the files bd knows about, not ours. Same reasoning as D6 — the
-    machine-local value stays machine-local.
-
-    Why a password at all: `publish: ephemeral` binds the port to 127.0.0.1, which stops the LAN
-    but not other local processes and other users on the box. The socket form got its access
-    control from filesystem permissions on the data dir; a TCP port has none, so it has to
-    authenticate instead. 0600, and the parent dir 0700.
-    """
-    key = _svc_project_key(svc, project_path) or "global"
-    store = paths.xdg_state_home() / "harnessed" / "svc-secrets"
-    store.mkdir(parents=True, exist_ok=True)
-    store.chmod(0o700)
-    secret = store / f"{svc.name}-{key}"
-    if not secret.is_file():
-        # token_urlsafe, not a hash of the project path: the path is guessable, a secret must not be.
-        secret.write_text(secrets.token_urlsafe(24), encoding="utf-8")
-        secret.chmod(0o600)
-    return secret.read_text(encoding="utf-8").strip()
-
-
-# High ports, above everything IANA-registered and above the usual container-runtime scratch, so a
-# stable allocation is unlikely to sit where something else later wants a fixed port.
-_STABLE_PORT_RANGE = (20000, 59999)
-
-
-def _port_is_free(port: int) -> bool:
-    """Can we bind 127.0.0.1:<port> right now? Only ever used to REJECT a candidate."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            s.bind(("127.0.0.1", port))
-        except OSError:
-            return False
-    return True
-
-
-def _svc_stable_port(svc: "ServiceDef", project_path: Path | None) -> int:
-    """The permanent host port for a `publish: stable` service — allocated once, reused forever.
-
-    This is the difference between a port harnessed knows and a port the PROJECT knows. An ephemeral
-    publish is re-read from `podman port` at every launch and deliberately never written down, so
-    nothing outside a harnessed launch can be configured with it: a plain `bd` in the repo, a
-    `claude` the user started themselves, a hook. Persisting the port is what lets the project's own
-    mise.local.toml carry a beads config that is still correct after a reboot or a `--fresh`.
-
-    ONE machine-wide registry (paths.svc_ports_file), taken under an exclusive lock, because two
-    launches racing in different projects must not be handed the same number. An entry is kept even
-    when the port is momentarily unbindable — that is the normal case, since OUR OWN sidecar is
-    usually holding it. It is only re-allocated when the recorded port is unusable AND no container
-    of ours is listening on it, which is the "something else moved in while we were away" case.
-    """
-    key = f"{svc.name}-{_svc_project_key(svc, project_path) or 'global'}"
-    registry_path = paths.svc_ports_file()
-    registry_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = registry_path.with_suffix(".lock")
-    with open(lock_path, "w") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        try:
-            try:
-                registry = json.loads(registry_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                registry = {}
-            existing = registry.get(key)
-            if isinstance(existing, int):
-                return existing
-            taken = {p for p in registry.values() if isinstance(p, int)}
-            for _ in range(200):
-                candidate = secrets.randbelow(_STABLE_PORT_RANGE[1] - _STABLE_PORT_RANGE[0] + 1)
-                candidate += _STABLE_PORT_RANGE[0]
-                if candidate in taken or not _port_is_free(candidate):
-                    continue
-                registry[key] = candidate
-                registry_path.write_text(json.dumps(registry, indent=2, sort_keys=True), "utf-8")
-                return candidate
-            raise SchemaError(
-                f"could not allocate a free host port for service '{svc.name}' after 200 tries "
-                f"in {_STABLE_PORT_RANGE[0]}-{_STABLE_PORT_RANGE[1]}"
-            )
-        finally:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-
-
-def _svc_published_port(rt: str, cname: str, ctr_port: int) -> int:
-    """Host port the runtime chose for `ctr_port`, via `podman port` — 0 if it cannot be read.
-
-    The single source of truth for an ephemeral publish. Deliberately not cached anywhere: the
-    port changes whenever the container is recreated, and a stale copy in a file or an env var is
-    exactly the failure the socket design was avoiding when it refused to persist its own path.
-    """
-    result = subprocess.run(
-        [rt, "port", cname, str(ctr_port)], capture_output=True, text=True, check=False
-    )
-    if result.returncode != 0:
-        return 0
-    # `podman port <c> 3307` prints e.g. "127.0.0.1:49183"; may print several lines (one per
-    # published address family). Take the first that parses.
-    for line in result.stdout.splitlines():
-        _, _, tail = line.strip().rpartition(":")
-        if tail.isdigit():
-            return int(tail)
-    return 0
-
-
-def svc_client_env(stack: str, project_path: Path, mode: str = "container") -> dict[str, str]:
-    """Resolve each project-scoped service's `client_env` for this launch.
-
-    The service declares what its clients need (`BEADS_DOLT_SERVER_PORT: "{port}"`); this fills in
-    the values that only exist once the container is running. Templated rather than hard-coded in
-    the launcher so `launcher` knows "a service declares client env", not "beads wants
-    BEADS_DOLT_SERVER_PORT" — the same separation `data.persist` gives placement.
-
-    `{host}` differs by mode and that is the entire reason this is resolved per launch rather than
-    baked: a host agent dials 127.0.0.1, a containerized agent dials host.containers.internal, and
-    both mean the same published port.
-    """
-    env: dict[str, str] = {}
-    for name in _service_refs(stack):
-        svc = load_service(None, name)
-        if svc.scope != "project" or not svc.client_env:
-            continue
-        values = {
-            "host": "127.0.0.1" if mode == "host" else "host.containers.internal",
-            "password": _svc_password(svc, project_path) if svc.wants_password else "",
-        }
-        if svc.is_socket_only:
-            _, agent_dir, _ = _service_data_dir(svc, stack, project_path, mode)
-            values["socket"] = f"{agent_dir}/{svc.socket}"
-        if svc.is_stable_port:
-            # No `podman port` round-trip: harnessed chose this number, so it already knows it —
-            # and it stays knowable when the container is stopped, which is exactly when a plain
-            # `bd` in the project still needs a configured environment.
-            values["port"] = str(_svc_stable_port(svc, project_path))
-        if svc.is_ephemeral_port:
-            cname = _svc_container(svc.name, _svc_project_key(svc, project_path))
-            port = _svc_published_port(_runtime(), cname, svc.port)
-            if not port:
-                # No silent fallback to a plausible-looking default. A wrong port here is the
-                # 2026-07-19 shape: the client cannot reach the server, bd's auto-start is what
-                # would normally paper over it, and auto-start is exactly what we disable.
-                _err.print(
-                    f"[yellow][WARNING][/yellow] service '{svc.name}': could not read the "
-                    f"published port for {cname}; clients will not be configured"
-                )
-                continue
-            values["port"] = str(port)
-        for key, template in svc.client_env.items():
-            env[key] = template.format(**values)
-    return env
-
-
-def _service_refs(stack: str) -> list[str]:
-    """Distinct service names a stack requires as host-published sidecars.
-
-    Three sources, unioned (first-seen order, de-duped): (1) recipe `service:` MCP-server refs
-    (the assembler proxies these by URL), (2) recipe `services:` — sidecars a RECIPE requires that
-    have no MCP surface, and (3) the stack's own `services:` list. (2) is what lets a bare recipe
-    list describe a working stack: a `dolt sql-server` speaks MySQL, not MCP, so it can never be a
-    `service:` MCP ref, and before harnessed-7rx.1 only a stack could attach it. All three feed
-    `_ensure_services`, which starts each one idempotently at launch.
-    """
-    stk, recipes = load_stack_with_recipes(None, stack)
-    names: list[str] = []
-    for recipe in recipes:
-        for server in recipe.servers:
-            if server.service and server.service not in names:
-                names.append(server.service)
-        for name in recipe.services:
-            if name not in names:
-                names.append(name)
-    for name in (stk.services if stk else []):
-        if name not in names:
-            names.append(name)
-    return names
-
-
 def _build_service_image(rt: str, name: str) -> None:
     """Build a service image (layer-cached: no-op when the Dockerfile is unchanged).
 
@@ -2831,8 +2489,6 @@ def _build_service_image(rt: str, name: str) -> None:
     _build_shared_once(svc.image, build)
 
 
-_SVC_CONFIG_HASH_LABEL = "harnessed.svc-config-hash"
-_SVC_STACK_LABEL = "harnessed.svc-stack"
 # One list, used to validate the action AND to spell the choices in the error — so a new action can
 # never be accepted by the dispatch while the error still calls it unknown.
 _SVC_ACTIONS = ("up", "down", "recreate", "sync", "migrate")
@@ -2940,145 +2596,6 @@ def _svc_run_cmd(
 
     run_cmd.append(svc.image)
     return run_cmd
-
-
-def _svc_config_hash(run_cmd: list[str]) -> str:
-    """Fingerprint of a sidecar's create-time configuration, stamped on the container as
-    `harnessed.svc-config-hash` and re-derived at every launch to detect drift.
-
-    Same idea as the derived image's `harnessed.recipe-hash`, applied to the one thing a container
-    can NEVER pick up later: `podman restart` re-runs the existing container, so mounts, ports and
-    env stay frozen at whatever the code emitted the day it was created. Without this label a
-    sidecar drifts arbitrarily far from the code that would create it today and nothing notices —
-    which is exactly how five beads-servers ran for days without the mount that makes dolt_backup
-    work (bd harnessed-ku9), each failing every backup silently.
-    """
-    return hashlib.sha256("\0".join(run_cmd).encode("utf-8")).hexdigest()[:12]
-
-
-def _container_label(rt: str, cname: str, label: str) -> str | None:
-    """One label off a container (running or stopped), or None if absent."""
-    value = _inspect_id(
-        rt, "container", cname,
-        '{{if .Config.Labels}}{{index .Config.Labels "' + label + '"}}{{end}}',
-    )
-    return value or None
-
-
-def _container_config_hash(rt: str, cname: str) -> str | None:
-    """The `harnessed.svc-config-hash` label on a container, or None if it predates the label."""
-    return _container_label(rt, cname, _SVC_CONFIG_HASH_LABEL)
-
-
-def _svc_container_stack(rt: str, cname: str) -> str | None:
-    """The stack a sidecar was created for, read back off the container itself.
-
-    A `scope: project` sidecar's data dir is chosen by the STACK (which recipe declares the persist
-    entry), so rebuilding one needs to know which stack made it. Recording it on the container means
-    `svc recreate` does not have to ask: the answer is already there, and it is the exact stack the
-    container was built from rather than a guess about which stack this folder "means". Nothing else
-    on the machine records project → stack for a service.
-    """
-    return _container_label(rt, cname, _SVC_STACK_LABEL)
-
-
-def _repo_project_hashes(project_path: Path) -> set[str]:
-    """`project_hash` for this folder AND every sibling worktree of the same repo.
-
-    A sidecar is keyed by git-common-dir, so ONE of them serves every worktree of a bare+worktree
-    checkout — while agent instances are keyed per worktree. The stack that owns the sidecar may
-    therefore be running from a sibling, not from where you are standing.
-    """
-    hashes = {paths.project_hash(project_path)}
-    result = subprocess.run(
-        ["git", "-C", str(project_path), "worktree", "list", "--porcelain"],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        return hashes
-    for line in result.stdout.splitlines():
-        if line.startswith("worktree "):
-            hashes.add(paths.project_hash(Path(line[len("worktree "):].strip())))
-    return hashes
-
-
-def _stack_from_instance_name(name: str, harnesses: list[str], hashes: set[str]) -> str | None:
-    """`<stack>` out of `harnessed-<harness>-<stack>-<project_hash>`, or None if it is not one.
-
-    Both ends are stripped against KNOWN values rather than split on a delimiter, because stack
-    names routinely contain dashes — a generated one looks like
-    `default.beads-team.serena.superpowers-f6eb0941`, which `split("-")` would truncate to
-    `default.beads`.
-
-    LONGEST harness first: with agents `claude` and `claude-extended` in the catalog, the container
-    `harnessed-claude-extended-mystack-<hash>` matches both prefixes, and the shorter one yields the
-    plausible-but-wrong stack `extended-mystack`. Longest-match-wins is the only reading that can be
-    right, and stopping at the first match keeps one container from contributing two candidates.
-    """
-    for harness in sorted(harnesses, key=len, reverse=True):
-        prefix = f"harnessed-{harness}-"
-        if not name.startswith(prefix):
-            continue
-        for project_hash in hashes:
-            suffix = f"-{project_hash}"
-            if name.endswith(suffix) and len(name) > len(prefix) + len(suffix):
-                return name[len(prefix):-len(suffix)]
-        return None
-    return None
-
-
-def _svc_stacks_from_instances(rt: str, project_path: Path) -> list[str]:
-    """Stacks that have an agent instance for THIS repo, read out of instance container names.
-
-    The fallback for a sidecar created before `harnessed.svc-stack` existed — which is every sidecar
-    predating this code, i.e. exactly the population that most needs recreating. Without it the
-    first recreate on any existing machine demands a flag for something harnessed already knows.
-
-    RUNNING instances win outright: a stopped one is a stack you used once, and `harnessed stop`
-    leaves it lying around indefinitely, so a stale instance from a stack you have moved on from
-    could otherwise be the only candidate and quietly decide which persist entry the rebuilt sidecar
-    serves. Stopped instances are still consulted when nothing is running, because the common case
-    for this command is a plain shell with no agent up — dropping them would fail the very use it
-    exists for.
-    """
-    result = subprocess.run(
-        [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}\t{{.State}}"],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        return []
-    hashes = _repo_project_hashes(project_path)
-    harnesses = paths.list_catalog("agents")
-    running: set[str] = set()
-    stopped: set[str] = set()
-    for line in result.stdout.splitlines():
-        name, _, state = line.partition("\t")
-        stack = _stack_from_instance_name(name.strip(), harnesses, hashes)
-        if stack is None:
-            continue
-        (running if state.strip() == "running" else stopped).add(stack)
-    return sorted(running) if running else sorted(stopped)
-
-
-def _svc_drift_reason(rt: str, cname: str, svc: "ServiceDef", want_hash: str) -> str | None:
-    """Why a RUNNING sidecar needs recreating, or None if it is current.
-
-    Two independent kinds of staleness: the image was rebuilt under it (`_container_stale`), or its
-    create-time configuration no longer matches what this code would emit (`_svc_config_hash`).
-    A missing label is the second kind — the container was created before harnessed recorded any
-    configuration, so it cannot be shown to match and by construction predates every fix since.
-    """
-    if _container_stale(rt, cname, svc.image):
-        return f"the image {svc.image} was rebuilt since this container started"
-    have = _container_config_hash(rt, cname)
-    if have is None:
-        return ("it was created before harnessed stamped service configuration, so it may predate "
-                "fixes to how the container is built (mounts, ports, env)")
-    if have != want_hash:
-        return (f"its create-time configuration no longer matches this code "
-                f"({have} != {want_hash}) — mounts, ports or env changed, and a restart cannot "
-                "pick those up")
-    return None
 
 
 def _ensure_service(
@@ -3775,416 +3292,6 @@ def _acknowledge_warnings() -> None:
 _HOST_HARNESS = "claude"  # spike scope: only claude consumes CLAUDE_CONFIG_DIR directly here.
 
 # Breadcrumb written into every host config dir so orphan detection can reverse the project_hash.
-
-
-def _host_stack_fingerprint(stack: str, recipes: list) -> str:
-    """What the host config dir's content is a function of: the stack's recipe closure, plus
-    harnessed's own version.
-
-    The version is in there because a host launch has no image build to force a refresh. Change what
-    `emit` writes into settings.json and the recipe closure is byte-identical, so without the version
-    every existing config dir would keep serving the old output forever.
-    """
-    stack_dir = paths.find_in_catalog("stacks", stack)
-    return f"{__version__}:{compute_recipe_hash(stack_dir / 'stack.yaml', recipes)}"
-
-
-# Written INSIDE the config dir, deliberately: the stamp must die with the content it describes, so
-# a hand-deleted or half-written dir reads as "no fingerprint" and rebuilds rather than being trusted.
-_HOST_STACK_FINGERPRINT = ".harnessed-stack"
-# `<project_hash>` dirs from the pre-8px.12 layout, now nested inside the config dir itself.
-_LEGACY_PROJECT_DIR_RE = re.compile(r"^[0-9a-f]{8}$")
-
-
-def _migrate_legacy_host_homes(home: Path) -> None:
-    """Scrub pre-8px.12 per-project config dirs that are now nested INSIDE the config dir.
-
-    The old key was `<stack>/<harness>/<project_hash>`; the new config dir IS `<stack>/<harness>`, so
-    every old per-project dir became a child of it. They must be SCRUBBED rather than swept away by
-    the rmtree below: after bd harnessed-8px.10 any of them that saw a token refresh holds a real
-    `.credentials.json`, and a bare rmtree would leave that token recoverable on disk.
-
-    Matched narrowly — an 8-hex name AND something that actually looks like a config dir — so a
-    recipe that ever ships an 8-hex-named directory is not silently deleted.
-    """
-    if not home.is_dir():
-        return
-    for child in sorted(home.iterdir()):
-        if not (child.is_dir() and not child.is_symlink()):
-            continue
-        if not _LEGACY_PROJECT_DIR_RE.match(child.name):
-            continue
-        if not ((child / "settings.json").is_file() or (child / ".credentials.json").exists()):
-            continue  # 8-hex name but not a config dir — leave it alone
-        _err.print(
-            f"[blue][INFO][/blue] Migrating away a pre-8px.12 per-project config dir "
-            f"({child.name}); its credential file is scrubbed, not just unlinked."
-        )
-        _scrub_host_home(child)
-
-
-@contextmanager
-def _host_home_lock(home: Path) -> Generator[None, None, None]:
-    """Serialize fingerprint-check + wipe + rebuild + install for one (stack, harness).
-
-    The window this closes is narrow by construction: with the wipe gated on the fingerprint
-    (bd harnessed-8px.12), an unchanged stack never rebuilds, so two launches only contend when both
-    observe a CHANGED fingerprint. Compare the behaviour it replaces, where every launch was
-    destructive and a second launch could wipe a running session's config dir outright.
-
-    Held across the installs too, not just the materialize: releasing after the rebuild would let a
-    second launch see a matching stamp, skip installs, and exec the agent while the first launch's
-    install scripts were still writing into the same dir.
-
-    The lock file is a SIBLING of the config dir — anything inside it dies in the rmtree.
-    `<harness>.lock` is a file, so host-gc's `is_dir()` scan skips it.
-    """
-    lock_path = home.parent / f"{home.name}.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    fh = open(lock_path, "w")
-    try:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
-        yield
-    finally:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-        fh.close()
-
-
-# Files Claude Code's daemon keeps in its per-project state dir. Presence of ANY of these marks a
-# directory as live daemon state rather than recipe content.
-_DAEMON_STATE_MARKERS = (
-    "daemon.json", "daemon.log", "daemon-auth-status.json", "daemon-auth-cooldown",
-)
-
-
-def _is_daemon_state(entry: Path) -> bool:
-    """True when `entry` is Claude Code's own daemon/runtime state, which a rebuild must NOT delete.
-
-    Identified by CONTENT, not by name. The daemon's per-project state dirs are opaque 8-hex-char
-    keys (`51ba83b8`, `d8551d86`); matching that shape would be guesswork, and a recipe is free to
-    ship a directory with any name. A directory holding `daemon.json`/`daemon.log`/`daemon-auth-*`
-    is unambiguously the daemon's.
-    """
-    if not entry.is_dir() or entry.is_symlink():
-        return False
-    if entry.name == "daemon":
-        return True
-    return any((entry / marker).exists() for marker in _DAEMON_STATE_MARKERS)
-
-
-def _clear_host_home_except_runtime(home: Path) -> None:
-    """Empty the config dir the way the wholesale rmtree did — but spare live daemon state.
-
-    bd harnessed-8px.20. `_materialize_host_home` used to `shutil.rmtree(home)`. That is right for
-    RECIPE CONTENT: the wipe is what stops a recipe dropped from the stack leaving files behind
-    (8px.12). It is wrong for Claude Code's own runtime state, which lives in the same directory and
-    belongs to a process that may be RUNNING.
-
-    Observed (2026-07-21): a rebuild deleted `daemon.json`/`daemon.log` out from under a daemon alive
-    13h53m. ~200ms after losing its state the daemon wrote `{"status":"auth_required"}` and the
-    credential file was gutted; the orphaned daemon then held `control.sock` with nothing valid
-    behind it, so the next launch timed out reaching the background service. One rmtree, both bugs.
-
-    Selective deletion rather than move-aside-and-restore: an interrupted rebuild can then never
-    strand the preserved state somewhere the next launch will not look for it.
-    """
-    for entry in home.iterdir():
-        if _is_daemon_state(entry):
-            continue
-        if entry.is_dir() and not entry.is_symlink():
-            shutil.rmtree(entry)
-        else:
-            entry.unlink()  # covers files AND symlinks (never follow one into ~/.claude)
-
-
-def _materialize_host_home(prof: Path, home: Path, *, fingerprint: str | None = None) -> bool:
-    """Copy the assembled profile's CONTENT layer into a host CLAUDE_CONFIG_DIR (`home`).
-
-    Content-only: the `.claude/*` tree (skills/commands/rules/agents + CLAUDE.md) plus the
-    settings.json floor — exactly what the container bind-mounts onto ~/.claude, minus the
-    container-only artifacts (.mcp.json, hatago.config.json, the derived Dockerfile) which wire the
-    MCP hub that does not exist host-side.
-
-    Returns True if it (re)built, False if an up-to-date home was left untouched.
-
-    GATED on `fingerprint` (bd harnessed-8px.12). The rebuild is still WHOLESALE — the dir stays a
-    pure function of (profile + installs), so a recipe removed from the stack still cannot leave
-    files behind — but it now happens only when the stack actually changed, instead of on every
-    launch. That wipe-every-time was the root of three separate problems: it forced the project into
-    the config-dir key (to stop one launch wiping another's live dir), it made install scripts re-run
-    per project per launch (with `install.cache` existing purely to make that affordable), and it
-    reset `.claude.json` — so MCP approvals and folder trust never persisted.
-
-    Passing `fingerprint=None` keeps the old unconditional-rebuild behaviour, which is what the
-    materialize-only tests want.
-    """
-    if fingerprint is not None:
-        stamp = home / _HOST_STACK_FINGERPRINT
-        if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == fingerprint:
-            return False
-    # BEFORE the rmtree: it would delete a legacy per-project dir without scrubbing its credential.
-    _migrate_legacy_host_homes(home)
-    if home.exists():
-        _clear_host_home_except_runtime(home)
-    home.mkdir(parents=True, exist_ok=True)
-    src_claude = prof / ".claude"
-    if src_claude.is_dir():
-        # Contents of .claude/ become the config-dir root: .claude/skills -> <home>/skills, etc.
-        shutil.copytree(src_claude, home, dirs_exist_ok=True)
-    settings = prof / "settings.json"
-    if settings.is_file():
-        shutil.copy2(settings, home / "settings.json")
-    return True
-
-
-def _stamp_host_home(home: Path, fingerprint: str) -> None:
-    """Record the fingerprint — the LAST step of a successful build, after the installs.
-
-    Deliberately NOT written by `_materialize_host_home`: the content it certifies is not complete
-    until every `install.script` has run. Stamping at the end of the copy instead meant a FAILED
-    install left a matching stamp behind, so the next launch saw "unchanged", skipped both the
-    rebuild and the installs, and started the agent against a permanently half-installed stack —
-    silently. Seen for real: a host launch died on context-mode's install with the stamp already on
-    disk (bd harnessed-8px.15).
-    """
-    (home / _HOST_STACK_FINGERPRINT).write_text(fingerprint + "\n", encoding="utf-8")
-
-
-def _host_claude_source() -> Path:
-    """The host's live claude config dir — source for auth seeding. Honors a CLAUDE_CONFIG_DIR the
-    host may already run under; else the ~/.claude default."""
-    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
-
-
-# Session-state subdirs SHARED with the real ~/.claude — the host analog of the container's
-# bind-mounts (projects/file-history/tasks/session-env/todos), plus shell-snapshots.
-_HOST_SHARED_STATE = ("projects", "file-history", "todos", "tasks", "session-env", "shell-snapshots")
-
-
-def _relink(link: Path, target: Path) -> None:
-    """Point `link` at `target`, replacing whatever is there (a prior symlink, file, or dir)."""
-    if link.is_symlink() or link.exists():
-        if link.is_dir() and not link.is_symlink():
-            shutil.rmtree(link)
-        else:
-            link.unlink()
-    link.symlink_to(target)
-
-
-def _scrub_host_home(home: Path) -> None:
-    """Remove a host config dir, overwriting any real .credentials.json before deletion.
-
-    Overwrites the credential file with null bytes and fsync's before unlinking, then removes the
-    entire directory tree. This reduces the window in which a stranded token is recoverable from
-    disk. LIMITATION: on SSDs with wear-leveling firmware the controller may have already remapped
-    the underlying flash blocks, so overwrite does not guarantee physical erasure — it is better
-    than a bare unlink and is the level of assurance available without raw device access.
-    """
-    cred = home / ".credentials.json"
-    if cred.is_file() and not cred.is_symlink():
-        size = max(cred.stat().st_size, 1)
-        with cred.open("r+b") as fh:
-            fh.write(b"\x00" * size)
-            fh.flush()
-            os.fsync(fh.fileno())
-        cred.unlink()
-    shutil.rmtree(home)
-
-
-def _credentials_are_usable(path: Path) -> bool:
-    """True when this credentials file actually holds a token worth propagating.
-
-    Observed failure (real logout, 2026-07-21): `~/.claude/.credentials.json` and a stack home both
-    held a GUTTED credential — the envelope intact (scopes, subscriptionType, rateLimitTier,
-    refreshTokenExpiresAt) but `accessToken` and `refreshToken` empty strings and `expiresAt` 0.
-    `_rescue_host_credentials` promoted it anyway, because its only guard was mtime: an emptied file
-    that happens to be NEWEST overwrites a perfectly good shared token, and every stack sourcing
-    from shared is then logged out. One stack going empty poisoned all of them.
-
-    So freshness is necessary but NOT sufficient — a credential must also be usable. Unreadable or
-    unparseable counts as unusable: this gate only ever decides whether to COPY a file over a
-    working one, so refusing on doubt costs nothing and prevents exactly the poisoning above.
-
-    Deliberately NOT checked: whether `expiresAt` is in the future. An expired ACCESS token is the
-    normal, healthy state of a credential whose refresh token is still good — that is the case the
-    whole refresh mechanism exists to serve. Rejecting it would throw away the token we most need to
-    keep. Only a MISSING/EMPTY token or a zeroed expiry marks the gutted file.
-    """
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return False
-    oauth = data.get("claudeAiOauth", data)
-    if not isinstance(oauth, dict):
-        return False
-    if not (oauth.get("accessToken") or "").strip():
-        return False
-    if not (oauth.get("refreshToken") or "").strip():
-        return False
-    # expiresAt 0 accompanied the gutted file; a real credential always carries a real stamp.
-    return bool(oauth.get("expiresAt"))
-
-
-def _host_oauth_token_configured() -> bool:
-    """True when a `CLAUDE_CODE_OAUTH_TOKEN` will reach the host agent, so the credentials file is
-    dead weight and must not be maintained, shared or rescued.
-
-    `os.environ` alone is sufficient HERE.  The container twin
-    `_claude_oauth_token_configured` calls `_varlock_resolve` directly for the
-    same reason this function only reads `os.environ`: both check the authoritative
-    structured source rather than scanning a serialised file.  `_launch_host`
-    applies `_resolve_launch_env` (varlock / `.env`) to this process at
-    launcher.py:5209 BEFORE `_host_launch_plan` runs, so any token from those
-    sources is already in `os.environ` by the time the credential wiring fires.
-    Keep that ordering if either function moves.
-
-    Empty is NOT configured — `export CLAUDE_CODE_OAUTH_TOKEN=` is how a shell profile turns it off,
-    and reading the bare name as "configured" would retire a load-bearing credential file and log
-    the user out with no way back.
-    """
-    return bool(os.environ.get(_OAUTH_TOKEN_VAR))
-
-
-def _rescue_host_credentials() -> None:
-    """Promote the newest refreshed token found in ANY host home into the shared `~/.claude` copy.
-
-    Must run BEFORE `_materialize_host_home`, which `shutil.rmtree`s the home being launched —
-    otherwise that home's copy of the token is deleted before it can be rescued.
-
-    Scans EVERY home, not just the one being launched, because a config dir is keyed
-    `<stack>/<harness>/<project>`: one stack open in three projects has three of them. Rescuing only
-    the launching home would converge lazily — a token refreshed in project A would not reach the
-    shared copy until project A itself relaunched, so launching project B first would still restore
-    a stale token and force a login. Scanning all of them is what makes "one login everywhere" true
-    across stacks and projects rather than only within one.
-
-    `_share_host_claude_state` symlinks `home/.credentials.json` at the real `~/.claude` one so a
-    refresh propagates and one login serves everywhere. That holds only while the symlink survives.
-    Claude Code rewrites this file on token refresh, and the rewrite REPLACES the symlink with a
-    regular file: the refreshed token lands in the stack's config dir and the shared copy never sees
-    it. The next launch then wipes the config dir and re-links to the now-stale shared copy — so the
-    user is logged out roughly every time the token would have refreshed (bd harnessed-8px.10).
-
-    Evidence it is a replace and not a write-through: the shared file's mtime stayed hours behind the
-    per-stack regular files that had superseded it.
-
-    So: if the symlink is gone and what replaced it is NEWER than the shared copy, copy it back
-    before the wipe. Self-healing — no exit hook, which matters because `_launch_host` hands the
-    process to `os.execvpe` and never regains control.
-    """
-    # Under a token nothing reads this file, so promoting a copy is pure downside: the rescue exists
-    # to keep a credential alive, and its worst failure mode is writing a bad candidate over the
-    # user's real login. Skip it rather than run it for a file the harness ignores.
-    if _host_oauth_token_configured():
-        return
-    root = paths.host_homes_root()
-    if not root.is_dir():
-        return
-    # Explicit depths, never `**`: a config dir contains SYMLINKED state dirs (projects/, tasks/, …)
-    # pointing back into ~/.claude, and a recursive walk risks following them out of the tree.
-    # `*/*/*` is the current <stack>/<harness>/<project> layout; `*/*` catches pre-project-keying
-    # homes still on disk.
-    newest: Path | None = None
-    for cand in (*root.glob("*/*/*/.credentials.json"), *root.glob("*/*/.credentials.json")):
-        # A surviving symlink means that home's refresh propagated live — it IS the shared copy.
-        if cand.is_symlink() or not cand.is_file():
-            continue
-        # Freshness alone is not enough: a GUTTED credential (empty tokens, expiresAt 0) is often
-        # the newest file on disk, and promoting it overwrites a working shared token and logs
-        # every other stack out. Never let one become the winner.
-        if not _credentials_are_usable(cand):
-            continue
-        if newest is None or cand.stat().st_mtime > newest.stat().st_mtime:
-            newest = cand
-    if newest is None:
-        return
-    real = _host_claude_source() / ".credentials.json"
-    # A shared copy that is already gutted must be HEALED even though it is newer — that is exactly
-    # the state a previous poisoning leaves behind, and the mtime guard alone would preserve it
-    # forever while every stack that sources from it starts logged out.
-    if real.is_file() and _credentials_are_usable(real):
-        if real.stat().st_mtime >= newest.stat().st_mtime:
-            return  # shared copy is usable AND at least as fresh — never move a token backwards
-    real.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(newest, real)
-    real.chmod(0o600)
-
-
-def _share_host_claude_state(home: Path) -> None:
-    """Wire the stack home to the real ~/.claude for the pieces that should be SHARED — the host
-    analog of the container's bind-mounts:
-      * session state (projects/file-history/todos/tasks/session-env/shell-snapshots) → SYMLINKED, so
-        transcripts, todos, and resumable sessions persist and also show up in your normal claude;
-      * the auth token (.credentials.json) → SYMLINKED, so a refresh in either place propagates —
-        one login everywhere, no stale copy.
-    The account snapshot (.claude.json) is COPIED (skips onboarding) so the stack's own writes don't
-    leak back into your global claude state. Config (skills/commands/rules/agents/CLAUDE.md/settings/
-    .mcp.json) stays isolated per-stack (copied from the profile by _materialize_host_home)."""
-    real = _host_claude_source()
-    if real.resolve() == home.resolve():
-        return
-    real.mkdir(parents=True, exist_ok=True)
-    for name in _HOST_SHARED_STATE:
-        src = real / name
-        src.mkdir(parents=True, exist_ok=True)  # ensure it exists so the symlink resolves
-        _relink(home / name, src)
-    # A configured CLAUDE_CODE_OAUTH_TOKEN takes precedence over the credentials file, so linking one
-    # in maintains state nothing reads — while carrying the entire 8px.10 failure mode, because a
-    # refresh replaces the symlink with a regular file and the next launch restores a stale copy.
-    # The container path has refused to mount a credential file under a token since it was added
-    # (`_claude_creds_seed_mount`); this is the host's missing half.
-    #
-    # Retire a copy an earlier no-token launch left behind, or the stale file this gate exists to
-    # eliminate simply outlives the switch. ONLY the per-stack copy: `real` is the user's own login,
-    # outside any stack, and deleting it would log them out of plain `claude` too.
-    cred = real / ".credentials.json"
-    stack_cred = home / ".credentials.json"
-    if _host_oauth_token_configured():
-        if stack_cred.is_symlink() or stack_cred.exists():
-            stack_cred.unlink(missing_ok=True)
-    elif cred.exists():
-        _relink(stack_cred, cred)  # live token, shared
-    # .claude.json (account/onboarding) lives NEXT TO the config dir, not inside it: at
-    # $CLAUDE_CONFIG_DIR/.claude.json when that's set, else $HOME/.claude.json — NOT ~/.claude/.claude.json.
-    env_ccd = os.environ.get("CLAUDE_CONFIG_DIR")
-    acct = (Path(env_ccd) if env_ccd else Path.home()) / ".claude.json"
-    if acct.is_file():
-        shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
-
-
-def _propagate_host_settings(profile_settings: Path, live: Path) -> None:
-    """Write the freshly-computed profile settings.json over the live one WITHOUT dropping keys an
-    install script wrote into it.
-
-    Resolves a collision between two gates. `install:` scripts write into $HARNESSED_CONFIG_DIR —
-    the LIVE home, not the profile — e.g. ccstatusline's `statusLine` block. Those installs are
-    skipped when the stack fingerprint matches (bd harnessed-8px.12), while settings.json is
-    re-propagated on every launch (bd harnessed-8px.18). A plain copy therefore deleted the
-    installer's output with nothing left to put it back: the status line survived the first launch
-    after a stack change and vanished on every restart after it.
-
-    Profile keys always WIN — that is 8px.18's whole point (the host's live ~/.claude preferences
-    and harnessed's required grants are recomputed each launch). ONLY keys the profile does not
-    define at all are carried over. This is the host-side analogue of `emit.merge_settings` carrying
-    every non-required baked key through verbatim container-side.
-    """
-    try:
-        fresh = json.loads(profile_settings.read_text() or "{}")
-        prior = json.loads(live.read_text() or "{}") if live.is_file() else {}
-    except (OSError, ValueError):
-        # Unparseable/unreadable on either side → fall back to the plain copy. A settings file the
-        # user hand-edited into invalid JSON must not take the whole launch down with it.
-        shutil.copy2(profile_settings, live)
-        return
-    carried = (
-        {k: v for k, v in prior.items() if k not in fresh}
-        if isinstance(fresh, dict) and isinstance(prior, dict)
-        else {}
-    )
-    if not carried:
-        shutil.copy2(profile_settings, live)  # nothing to preserve → byte-identical propagation
-        return
-    live.write_text(json.dumps({**fresh, **carried}, indent=2) + "\n")
 
 
 def _host_launch_plan(
