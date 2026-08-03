@@ -248,7 +248,9 @@ class TestLauncherDelivery:
         pod and lose on the host — silent host/container drift, the exact class of bug this epic exists
         to remove. Assert the ORDER, not just the values.
         """
-        source = inspect.getsource(launcher.container_run)
+        # The `podman run` argv is composed by the container backend's apply_isolation — that single
+        # call is both the isolation boundary and the only way env crosses it (bd harnessed-0tk.1).
+        source = inspect.getsource(launcher.ContainerBackend.apply_isolation)
         pos = {name: source.index(f"*{name},") for name in ("recipe_env", "socket_env", "setup_env")}
         assert pos["recipe_env"] < pos["socket_env"], (
             "recipe env: must be passed BEFORE the folder-env contract so the contract wins"

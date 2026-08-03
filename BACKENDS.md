@@ -70,9 +70,19 @@ Every backend implements the same seam so a composed stack can run on any of the
 | **wire services** | Stand up service-backed dependencies and route the harness to them (pod netns, compose, or N/A). |
 | **apply isolation** | Enforce the backend's isolation level (none / landlock / container / VM). |
 
-`launcher._launch_host` is today's ad-hoc implementation of this seam for the host backend;
-the container `launch` path is the implementation for the podman backend. The work is to name the
-seam explicitly and make both (plus future backends) conform.
+The seam is `harnessed.backend.ExecutionBackend` (bd harnessed-0tk.1). `launcher.HostBackend` and
+`launcher.ContainerBackend` are the two conforming implementations; `_launch_host` and
+`container_run` are their sequencers.
+
+**Sequencing is backend-owned.** The contract is a capability set, not a pipeline — there is no
+shared driver calling the six in a fixed order, because the two implementations do not agree on one
+and cannot be made to without changing behavior. The host backend materializes before it provisions
+(materializing rmtree's the dir installs write into); the container backend provisions before it
+materializes (podman's copy-up populates the volume the mount set then delivers). Two capabilities
+are two-phase for the same kind of reason and take a phase argument: *provision tools* runs
+`install:` at first start and `setup.script` at attach, and *apply isolation* stands the boundary up
+before setup scripts run and closes egress after, since a first-run setup is the step that needs the
+network. A backend implements the capabilities and orders its own launch.
 
 ## 4. Recipe-capability × backend matrix
 

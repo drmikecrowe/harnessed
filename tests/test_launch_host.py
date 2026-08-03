@@ -790,7 +790,7 @@ class TestStackFingerprintGate:
 
     def test_stamp_is_written_after_the_installs(self, tmp_path):
         """The stamp certifies content that is not complete until every install.script has run."""
-        src = inspect.getsource(launcher._launch_host)
+        src = inspect.getsource(launcher.HostBackend.provision_tools)
         assert src.index("_host_run_installs(") < src.index("_stamp_host_home(")
 
     def test_no_fingerprint_keeps_unconditional_rebuild(self, tmp_path):
@@ -991,10 +991,18 @@ class TestHostHomeLock:
         """Releasing after the rebuild would let a second launch see a matching stamp, skip
         installs, and exec the agent while the first launch's scripts were still writing."""
         src = inspect.getsource(launcher._launch_host)
-        # Match the CALL sites, not the prose — an earlier comment names _host_launch_plan too.
+        # Match the CALL sites, not the prose — an earlier comment names the operations too.
+        # Both operations are the backend seam's (HostBackend.materialize_config runs the plan,
+        # provision_tools(FIRST_START) runs the installs); the lock stays in the sequencer because
+        # it spans BOTH, and neither op can re-acquire it (flock on a second fd would deadlock).
         lock_at = src.index("with _host_home_lock(")
-        assert lock_at < src.index("_host_launch_plan(")
-        assert lock_at < src.index("_host_run_installs(")
+        assert lock_at < src.index("backend.materialize_config(")
+        assert lock_at < src.index("backend.provision_tools(spec, FIRST_START)")
+        # ...and the attach phase is OUTSIDE it: a setup script can prompt, and holding an
+        # exclusive flock across a TTY prompt would hang any concurrent launch of the same stack.
+        assert src.index("backend.provision_tools(spec, ATTACH)") > src.index(
+            "backend.provision_tools(spec, FIRST_START)"
+        )
 
 
 class TestFailedInstallDoesNotStamp:

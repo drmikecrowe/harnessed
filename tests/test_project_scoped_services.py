@@ -1639,10 +1639,12 @@ class TestServicesAreEnsuredOnEveryLaunchPath:
         return inspect.getsource(launcher.container_run)
 
     def test_services_are_ensured_before_any_attach_returns(self):
+        # `wire_services` is the contract operation that ensures them (bd harnessed-0tk.1); the
+        # ORDER against the re-attach branch is the sequencer's, which is what this pins.
         src = self._launch_source()
-        ensure_at = src.find("_ensure_services(")
+        ensure_at = src.find("backend.wire_services(")
         attach_at = src.find("_attach(")
-        assert ensure_at != -1, "launch() no longer calls _ensure_services at all"
+        assert ensure_at != -1, "launch() no longer wires services at all"
         assert attach_at != -1, "launch() no longer has an attach path — revisit this guard"
         assert ensure_at < attach_at, (
             "_ensure_services must run BEFORE the re-attach branch, or a dead sidecar is never "
@@ -1651,4 +1653,8 @@ class TestServicesAreEnsuredOnEveryLaunchPath:
 
     def test_services_are_ensured_exactly_once(self):
         """Hoisting it above the attach branch must not leave the create-path call behind."""
-        assert self._launch_source().count("_ensure_services(") == 1
+        assert self._launch_source().count("backend.wire_services(") == 1
+        import inspect
+
+        wire = inspect.getsource(launcher.ContainerBackend.wire_services)
+        assert wire.count("_ensure_services(") == 1

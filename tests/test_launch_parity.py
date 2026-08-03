@@ -31,6 +31,7 @@ import inspect
 import textwrap
 
 from harnessed import launcher
+from harnessed.backend import ExecutionBackend
 
 # Container-only by NATURE, with the reason each cannot apply to a host-native launch. Grouped by
 # why, because the reason is the part a future reader needs — a bare list of 39 names would just be
@@ -125,14 +126,42 @@ def _stack_helpers(fn) -> set[str]:
             continue
         obj = getattr(launcher, name, None)
         module = getattr(obj, "__module__", None) or ""
+        # The backend class each path constructs is the SEAM, not a capability: `container-run`
+        # naming ContainerBackend and `_launch_host` naming HostBackend is the contract working, and
+        # counting it would report a permanent, meaningless asymmetry.
+        if isinstance(obj, type) and issubclass(obj, ExecutionBackend):
+            continue
         if callable(obj) and (module == "harnessed" or module.startswith("harnessed.")):
             found.add(name)
     return found
 
 
+def _launch_path(fn, backend_cls) -> set[str]:
+    """Every harnessed helper a launch path calls: the sequencer PLUS the backend it drives.
+
+    Same reasoning as `_stack_helpers`' package-wide scope, one seam later. The contract operations
+    moved out of the Typer command and into `ExecutionBackend` implementations (bd harnessed-0tk.1),
+    so scanning the command alone stopped seeing the work — and this lint would have decayed to
+    nothing while reporting green, which is the decay this module's docstring exists to prevent.
+    """
+    names = _stack_helpers(fn)
+    for op in vars(backend_cls).values():
+        if callable(op):
+            names |= _stack_helpers(op)
+    return names
+
+
+def _container_path() -> set[str]:
+    return _launch_path(launcher.container_run, launcher.ContainerBackend)
+
+
+def _host_path() -> set[str]:
+    return _launch_path(launcher._launch_host, launcher.HostBackend)
+
+
 class TestLaunchAndHostRunStayInStep:
     def test_no_unexplained_container_only_capability(self):
-        container_only = _stack_helpers(launcher.container_run) - _stack_helpers(launcher._launch_host)
+        container_only = _container_path() - _host_path()
         unexplained = sorted(container_only - set(CONTAINER_ONLY))
         assert not unexplained, (
             "these are called by `container-run` but not by `_launch_host`:\n  "
@@ -145,13 +174,13 @@ class TestLaunchAndHostRunStayInStep:
     def test_the_ledger_has_no_stale_entries(self):
         """A name that `container-run` no longer calls is a licence nobody needs — and, worse, it would
         silently pre-authorise a FUTURE helper that happens to reuse the name."""
-        stale = sorted(set(CONTAINER_ONLY) - _stack_helpers(launcher.container_run))
+        stale = sorted(set(CONTAINER_ONLY) - _container_path())
         assert not stale, f"CONTAINER_ONLY lists helpers `container-run` no longer calls: {stale}"
 
     def test_the_five_known_misses_are_wired_into_the_host_path(self):
         """Regression pin for the specific bugs, independent of the diff above: the ledger could be
         edited to silence the general test, but these five were real and must stay fixed."""
-        host = _stack_helpers(launcher._launch_host)
+        host = _host_path()
         for helper in ("_ensure_services", "_host_run_inits", "_prompt_setup_notices"):
             assert helper in host, f"{helper} must run on a host launch too"
         # The other two are values rather than calls: the socket export is no longer gated on mode,
