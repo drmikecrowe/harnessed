@@ -66,7 +66,7 @@ Every backend implements the same seam so a composed stack can run on any of the
 | **materialize config** | Deliver the assembled `.claude/*` profile (skills/commands/rules/CLAUDE.md/settings) to where the harness reads it (bind-mount, copy, or symlink). |
 | **provision tools** | Make tools resolvable to the harness: `install:` scripts run on first start (fingerprint-gated), `setup.script` at attach time. Container: baked into the image or run via `podman exec`; host: written to the stack's `$HARNESSED_BIN_DIR`. |
 | **wire MCP** | Present the stack's MCP servers to the harness (native `.mcp.json`, or hatago hub). |
-| **seed auth** | Give the harness the host's credentials (mount, symlink, or copy). |
+| **seed auth** | Give the harness the host's credentials **by reference** — bind-mount or symlink the live store, never a copy or snapshot (CLAUDE.md non-negotiable). A backend that cannot reference the live store must fail rather than replicate it. |
 | **wire services** | Stand up service-backed dependencies and route the harness to them (pod netns, compose, or N/A). |
 | **apply isolation** | Enforce the backend's isolation level (none / landlock / container / VM). |
 
