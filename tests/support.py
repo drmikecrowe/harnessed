@@ -27,6 +27,16 @@ def patch_all(monkeypatch, name: str, value: Any) -> None:
 
     Raises if nothing binds the name, so a typo or a rename fails loudly instead of silently
     patching nothing — which is the exact failure this helper exists to prevent.
+
+    DO NOT USE IT FOR A NAME WHOSE DEFINING MODULE ALSO CALLS IT INTERNALLY, unless you mean to
+    replace those internal calls too. "Every module" includes the definition site. `assemble()` calls
+    `load_stack_with_recipes` itself, so patch_all'ing that name hands assemble the test's fake stack
+    instead of letting it do a real load — which is how a fake `Recipe` (whose `root` defaults to
+    `.`) reached `validate_no_raw_npm` and made it scan every vendored package.json under the CWD.
+
+    That one is worth remembering for how it FAILED: only a checkout containing the gitignored trees
+    sees it, so it passed in a task worktree and broke on main. When a test wants to fake what ONE
+    caller loads, patch that caller's module directly.
     """
     patched = [
         module
