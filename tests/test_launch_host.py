@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from harnessed import launcher, paths
 from harnessed.assemble import assemble
+from support import patch_all
 
 runner = CliRunner()
 
@@ -614,15 +615,15 @@ class TestHostCliRouting:
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
         ensured: list = []
 
-        monkeypatch.setattr(launcher, "_service_refs", lambda _s: ["beads-server"])
-        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        patch_all(monkeypatch, "_service_refs", lambda _s: ["beads-server"])
+        patch_all(monkeypatch, "_runtime", lambda: "podman")
         monkeypatch.setattr(
             launcher, "_ensure_services", lambda rt, stack, **kw: ensured.append((rt, stack))
         )
         # hostspike declares no beads recipe, so resolving beads-server's data dir against it is a
         # genuine SchemaError — the fake service ref above is only here to prove the CALL happens.
         # Socket resolution has its own coverage in test_project_scoped_services.py.
-        monkeypatch.setattr(launcher, "svc_socket_env", lambda *_a, **_k: {})
+        patch_all(monkeypatch, "svc_socket_env", lambda *_a, **_k: {})
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
@@ -638,8 +639,8 @@ class TestHostCliRouting:
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
         ran: list = []
 
-        monkeypatch.setattr(launcher, "_service_refs", lambda _s: [])
-        monkeypatch.setattr(launcher, "_host_run_inits", lambda *a, **k: ran.append(a[0]))
+        patch_all(monkeypatch, "_service_refs", lambda _s: [])
+        patch_all(monkeypatch, "_host_run_inits", lambda *a, **k: ran.append(a[0]))
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
@@ -654,12 +655,12 @@ class TestHostCliRouting:
 
         marker = tmp_path / "ran"
         ok = Recipe(name="r-ok", init=InitSpec(run=f"touch {marker}"))
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _r, _s: (None, [ok]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [ok]))
         launcher._host_run_inits("s", tmp_path, harness="claude")
         assert marker.is_file()
 
         bad = Recipe(name="r-bad", init=InitSpec(run="exit 3"))
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda _r, _s: (None, [bad]))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, [bad]))
         with pytest.raises(typer.Exit):  # an agent must not start on a half-initialized tool
             launcher._host_run_inits("s", tmp_path, harness="claude")
 
@@ -672,8 +673,8 @@ class TestHostCliRouting:
         def boom():
             raise AssertionError("_runtime() must not be called for a service-less stack")
 
-        monkeypatch.setattr(launcher, "_service_refs", lambda _s: [])
-        monkeypatch.setattr(launcher, "_runtime", boom)
+        patch_all(monkeypatch, "_service_refs", lambda _s: [])
+        patch_all(monkeypatch, "_runtime", boom)
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
 
@@ -824,8 +825,7 @@ class TestLegacyPerProjectMigration:
         legacy = self._legacy(home, "a1b2c3d4")
         scrubbed = []
         real_scrub = launcher._scrub_host_home
-        monkeypatch.setattr(
-            launcher, "_scrub_host_home",
+        patch_all(monkeypatch, "_scrub_host_home",
             lambda p: (scrubbed.append(p.name), real_scrub(p))[1],
         )
         launcher._materialize_host_home(prof, home, fingerprint="fp-1")
@@ -909,7 +909,7 @@ class TestHostGC:
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         self._home("deleted-stack-xyz", cred="a-real-token")
         scrubbed = []
-        monkeypatch.setattr(launcher, "_scrub_host_home", lambda p: scrubbed.append(p))
+        patch_all(monkeypatch, "_scrub_host_home", lambda p: scrubbed.append(p))
         self._run(monkeypatch, tmp_path, "--prune")
         assert len(scrubbed) == 1, "removal must go through the scrub path, never a bare rmtree"
 
@@ -921,8 +921,7 @@ class TestSecondLaunchSkipsInstalls:
     def _launch(self, tmp_path, monkeypatch, calls):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
-        monkeypatch.setattr(
-            launcher, "_host_run_installs",
+        patch_all(monkeypatch, "_host_run_installs",
             lambda stack, project_path, *, harness, home: calls.append(stack),
         )
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
@@ -1013,7 +1012,7 @@ class TestFailedInstallDoesNotStamp:
             if install_fails:
                 raise SystemExit(1)  # what _host_run_installs does on a failed script
 
-        monkeypatch.setattr(launcher, "_host_run_installs", _installs)
+        patch_all(monkeypatch, "_host_run_installs", _installs)
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
         monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
         return runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
@@ -1028,8 +1027,7 @@ class TestFailedInstallDoesNotStamp:
     def test_the_next_launch_retries_after_a_failure(self, monkeypatch, tmp_path):
         self._launch(tmp_path, monkeypatch, install_fails=True)
         calls: list[str] = []
-        monkeypatch.setattr(
-            launcher, "_host_run_installs",
+        patch_all(monkeypatch, "_host_run_installs",
             lambda stack, project_path, *, harness, home: calls.append(stack),
         )
         monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
@@ -1055,7 +1053,7 @@ class TestSettingsPropagateWithoutARebuild:
         prof = paths.profile_dir("s", "claude")
         prof.mkdir(parents=True)
         _fake_profile(prof)
-        monkeypatch.setattr(launcher, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
+        patch_all(monkeypatch, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
 
         home, _a, _c, rebuilt = launcher._host_launch_plan("s", "claude", tmp_path, recipes=[])
         assert rebuilt is True
@@ -1083,7 +1081,7 @@ class TestSettingsPropagateWithoutARebuild:
         prof = paths.profile_dir("s-ccsl", "claude")
         prof.mkdir(parents=True)
         _fake_profile(prof)
-        monkeypatch.setattr(launcher, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
+        patch_all(monkeypatch, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
 
         home, _a, _c, rebuilt = launcher._host_launch_plan("s-ccsl", "claude", tmp_path, recipes=[])
         assert rebuilt is True
@@ -1112,7 +1110,7 @@ class TestSettingsPropagateWithoutARebuild:
         prof = paths.profile_dir("s-win", "claude")
         prof.mkdir(parents=True)
         _fake_profile(prof)
-        monkeypatch.setattr(launcher, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
+        patch_all(monkeypatch, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
 
         home, _a, _c, _r = launcher._host_launch_plan("s-win", "claude", tmp_path, recipes=[])
         launcher._stamp_host_home(home, "fp-1")
@@ -1131,7 +1129,7 @@ class TestSettingsPropagateWithoutARebuild:
         prof = paths.profile_dir("s2", "claude")
         prof.mkdir(parents=True)
         _fake_profile(prof)
-        monkeypatch.setattr(launcher, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
+        patch_all(monkeypatch, "_host_stack_fingerprint", lambda stack, recipes: "fp-1")
         home, *_ = launcher._host_launch_plan("s2", "claude", tmp_path, recipes=[])
         launcher._stamp_host_home(home, "fp-1")
         (prof / ".claude" / "skills" / "late-skill").mkdir(parents=True)

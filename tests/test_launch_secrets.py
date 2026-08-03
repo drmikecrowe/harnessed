@@ -19,6 +19,7 @@ from pathlib import Path
 
 from harnessed import emit, launcher
 from harnessed.schema import McpServer
+from support import patch_all
 
 
 # ---------------------------------------------------------------------------
@@ -425,16 +426,14 @@ class TestHostLaunchAppliesSecrets:
         # A stale export in the invoking shell — the schema must beat it.
         monkeypatch.setenv("SNYK_TOKEN", "stale-from-shell")
 
-        monkeypatch.setattr(
-            launcher, "_resolve_launch_env",
+        patch_all(monkeypatch, "_resolve_launch_env",
             lambda project_path=None: {"SNYK_TOKEN": "from-schema", "RECIPE_OWNED": "from-schema"},
         )
         # A recipe declaring the same name must still win — mirroring `podman run -e` beating
         # --env-file in container mode.
         r = Recipe(name="envy", env={"RECIPE_OWNED": "from-recipe"})
-        monkeypatch.setattr(
-            launcher, "load_stack_with_recipes",
-            lambda root, stack: (Stack(name="hostspike"), [r]),
+        patch_all(monkeypatch, "load_stack_with_recipes",
+            lambda root, stack, **kw: (Stack(name="hostspike"), [r]),
         )
 
         captured: dict = {}

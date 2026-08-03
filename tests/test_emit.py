@@ -25,6 +25,7 @@ from harnessed.emit import (
 )
 from harnessed.paths import container_project_path
 from harnessed.schema import HookCommand, McpServer, Recipe
+from support import patch_all
 
 _GRANT = f"mcp__{HATAGO_MCP_KEY}"
 # Every container defaults to auto-accept-edits; the grant rides alongside it when a stack has servers.
@@ -89,7 +90,7 @@ class TestWriteDerivedDockerfile:
         assert "recipe tools (mise)" not in body
 
         calls: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
             "podman", "time", "claude", "img", [r1, r2], "cfgvol", "toolsvol",
         )

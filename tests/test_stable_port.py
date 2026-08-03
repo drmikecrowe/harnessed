@@ -20,6 +20,7 @@ import pytest
 from harnessed import launcher, paths
 from harnessed.schema import SchemaError, ServiceDef, load_service
 from tests.test_project_scoped_services import _svc_yaml
+from support import patch_all
 
 
 @pytest.fixture(autouse=True)
@@ -84,15 +85,13 @@ class TestPublishing:
     def test_client_env_uses_the_registry_not_podman(self, tmp_path, monkeypatch):
         """`podman port` can only answer while the container is running. A plain `bd` in the repo
         needs a configured environment when it is NOT."""
-        monkeypatch.setattr(
-            launcher, "_service_refs", lambda stack: ["beads-server"]
+        patch_all(monkeypatch, "_service_refs", lambda stack: ["beads-server"]
         )
-        monkeypatch.setattr(launcher, "load_service", lambda root, name: _svc())
-        monkeypatch.setattr(
-            launcher, "_svc_published_port",
+        patch_all(monkeypatch, "load_service", lambda root, name: _svc())
+        patch_all(monkeypatch, "_svc_published_port",
             lambda *a, **k: pytest.fail("stable ports must not consult podman"),
         )
-        monkeypatch.setattr(launcher, "_svc_password", lambda *a, **k: "pw")
+        patch_all(monkeypatch, "_svc_password", lambda *a, **k: "pw")
         env = launcher.svc_client_env("s", tmp_path, "host")
         expected = launcher._svc_stable_port(_svc(), tmp_path)
         assert env["BEADS_DOLT_SERVER_PORT"] == str(expected)

@@ -12,6 +12,7 @@ import pytest
 
 from harnessed import launcher, paths
 from harnessed.schema import Stack
+from support import patch_all
 
 CONTAINER_HOME = launcher._CONTAINER_HOME_STR
 
@@ -40,7 +41,7 @@ class TestAttachShell:
 
     def _shell_cmd(self, monkeypatch, tmp_path, harness: str) -> str:
         stk = Stack(name="s", recipes=[])
-        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda root, stack: (stk, []))
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda root, stack: (stk, []))
         monkeypatch.setattr(paths, "git_common_dir", lambda p: None)
 
         captured: dict = {}

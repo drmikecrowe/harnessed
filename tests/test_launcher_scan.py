@@ -17,6 +17,7 @@ import pytest
 from typer.testing import CliRunner
 
 from harnessed import launcher
+from support import patch_all
 
 runner = CliRunner()
 
@@ -80,7 +81,7 @@ def scanned(monkeypatch):
         return True
 
     monkeypatch.setattr(launcher, "_scan_image", fake_scan_image)
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    patch_all(monkeypatch, "_runtime", lambda: "podman")
     return calls
 
 
@@ -142,6 +143,6 @@ class TestScanCommand:
     def test_scan_failure_exits_nonzero(self, stack, monkeypatch):
         _mark_built(monkeypatch, {(stack, "claude")})
         monkeypatch.setattr(launcher, "_scan_image", lambda rt, run_env, image: False)
-        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        patch_all(monkeypatch, "_runtime", lambda: "podman")
         result = runner.invoke(launcher.app, ["scan", stack, "claude"])
         assert result.exit_code == 1

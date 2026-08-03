@@ -17,6 +17,7 @@ import pytest
 from harnessed import paths
 from harnessed.emit import write_derived_dockerfile
 from harnessed.schema import InstallSpec, Recipe
+from support import patch_all
 
 _PODMAN = os.environ.get("HARNESSED_PODMAN") == "1"
 podman = pytest.mark.skipif(not _PODMAN, reason="set HARNESSED_PODMAN=1 for live podman tests")
@@ -150,7 +151,7 @@ class TestContainerExecutorCachesDownloads:
         r = Recipe(name="r", root=recipe, tools=["npm:context-mode@1.0.169"])
         r.install = InstallSpec(script="install.sh")
         calls: list[list[str]] = []
-        monkeypatch.setattr(launcher, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
             "podman", stack, "claude", "img", [r], "cfgvol", "toolsvol",
         )

@@ -201,6 +201,7 @@ from harnessed import launcher
 from harnessed import launcher  # noqa: E402
 from harnessed.launcher import _merge_baked_settings, _runtime  # noqa: E402
 from harnessed.paths import CONTAINER_HOME  # noqa: E402
+from support import patch_all
 
 # Pinned base (project hygiene — no floating tags), small + cached after first pull.
 _TEST_BASE = "docker.io/library/alpine:3.20"
@@ -442,7 +443,7 @@ def test_a_hung_scan_is_killed_and_its_container_reclaimed(tmp_path, monkeypatch
                           capture_output=True).returncode == 0
 
     monkeypatch.setattr(launcher, "_SCAN_CONTAINER_TIMEOUT", 5)
-    monkeypatch.setattr(launcher, "_resolve_launch_secrets", lambda project_path=None: ([], []))
+    patch_all(monkeypatch, "_resolve_launch_secrets", lambda project_path=None: ([], []))
     try:
         ok = launcher._scan_image_in_container(rt, tag)
         # Nothing from this image may still be running: the whole point is that a hang is reclaimed.

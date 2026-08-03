@@ -14,6 +14,7 @@ import pytest
 from typer.testing import CliRunner
 
 from harnessed import launcher, launchenv
+from support import patch_all
 
 runner = CliRunner()
 
@@ -41,7 +42,7 @@ def podman(monkeypatch):
         return subprocess.CompletedProcess(cmd, rc, stdout=stdout, stderr="")
 
     monkeypatch.setattr(launcher.subprocess, "run", fake_run)
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    patch_all(monkeypatch, "_runtime", lambda: "podman")
     return calls
 
 
@@ -82,7 +83,7 @@ class TestCredentialedContainerScan:
     def test_resolved_env_files_are_passed_and_harnessed_scan_is_the_command(self, monkeypatch, tmp_path):
         envf = tmp_path / "resolved.env"
         envf.write_text("SNYK_TOKEN=t\nSOCKET_CLI_API_TOKEN=s\n")
-        monkeypatch.setattr(launcher, "_resolve_launch_secrets", lambda project_path=None: ([envf], []))
+        patch_all(monkeypatch, "_resolve_launch_secrets", lambda project_path=None: ([envf], []))
 
         seen: list[list[str]] = []
 
@@ -103,7 +104,7 @@ class TestCredentialedContainerScan:
         """Resolved secrets must never outlive the scan — including on a non-zero exit."""
         secret = tmp_path / "secret.env"
         secret.write_text("SNYK_TOKEN=t\n")
-        monkeypatch.setattr(launcher, "_resolve_launch_secrets", lambda project_path=None: ([secret], [secret]))
+        patch_all(monkeypatch, "_resolve_launch_secrets", lambda project_path=None: ([secret], [secret]))
         monkeypatch.setattr(
             launcher.subprocess, "run", lambda cmd, *a, **kw: subprocess.CompletedProcess(cmd, 1)
         )
@@ -112,7 +113,7 @@ class TestCredentialedContainerScan:
 
     def test_no_schema_still_scans_and_says_snyk_socket_are_skipped(self, monkeypatch, capsys):
         """The original complaint: a tokenless run must SAY the token-gated scanners sat out."""
-        monkeypatch.setattr(launcher, "_resolve_launch_secrets", lambda project_path=None: ([], []))
+        patch_all(monkeypatch, "_resolve_launch_secrets", lambda project_path=None: ([], []))
         seen: list[list[str]] = []
         monkeypatch.setattr(
             launcher.subprocess,
@@ -156,7 +157,7 @@ class TestGlobalScannerTokenSources:
         # Patched on `launchenv`, not `launcher`: `_resolve_launch_secrets` lives there now and
         # resolves this name in its OWN module globals, so patching the launcher re-export would
         # leave the real varlock call in place.
-        monkeypatch.setattr(launchenv, "_varlock_resolve_env_file", lambda d: resolved)
+        patch_all(monkeypatch, "_varlock_resolve_env_file", lambda d: resolved)
 
         env_files, _ = launcher._resolve_launch_secrets(project_path=None)
         assert env_files == [resolved]

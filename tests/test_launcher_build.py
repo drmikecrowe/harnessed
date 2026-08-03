@@ -15,6 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from harnessed import launcher
+from support import patch_all
 
 runner = CliRunner()
 
@@ -50,7 +51,7 @@ def built(monkeypatch):
     )
     monkeypatch.setattr(launcher, "_ensure_local_catalog_links", lambda: None)
     monkeypatch.setattr(launcher, "_ensure_docs_wiki_clone", lambda: None)
-    monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+    patch_all(monkeypatch, "_runtime", lambda: "podman")
     return calls
 
 

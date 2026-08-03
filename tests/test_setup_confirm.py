@@ -17,6 +17,7 @@ import pytest
 from harnessed import launcher
 from harnessed.schema import PersistSpec, Recipe, SchemaError, SetupSpec, load_recipe
 from harnessed.paths import harnessed_home
+from support import patch_all
 
 TEAM = harnessed_home() / "catalog" / "recipes" / "beads" / "team"
 
@@ -100,7 +101,7 @@ class TestGate:
     def _no_stack_lookup(self, monkeypatch):
         """`condition` runs with the folder-env contract, which resolves the stack's services. The
         gate's behaviour is what is under test, not catalog resolution."""
-        monkeypatch.setattr(launcher, "harnessed_env", lambda *a, **k: {})
+        patch_all(monkeypatch, "harnessed_env", lambda *a, **k: {})
 
     def test_a_satisfied_condition_asks_nothing(self, tmp_path, monkeypatch, _no_stack_lookup):
         """`setup.script` runs every launch by contract, so without this the user would authorize a
