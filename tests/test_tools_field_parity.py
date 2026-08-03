@@ -125,7 +125,7 @@ class TestHostLaunchHonoursTools:
         # so the tool layer must land first.
         import inspect
 
-        src = inspect.getsource(launcher._launch_host)
+        src = inspect.getsource(launcher.HostBackend.provision_tools)
         assert src.index("_host_install_tools") < src.index("_host_run_installs")
 
 

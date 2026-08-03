@@ -26,7 +26,7 @@ def test_container_env_trusts_the_projects_mise_config():
 
     from harnessed import launcher
 
-    src = inspect.getsource(launcher.container_run)
+    src = inspect.getsource(launcher.ContainerBackend.apply_isolation)
     assert "MISE_TRUSTED_CONFIG_PATHS" in src, "the project's mise config is not trusted"
     assert "*mise_trust_env," in src, (
         "MISE_TRUSTED_CONFIG_PATHS is built but never spliced into the container's `podman run`"

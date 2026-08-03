@@ -329,12 +329,20 @@ class TestOrderingAfterMaterialize:
         assert not (home / "installed-too-early").exists()
 
     def test_launch_host_installs_after_materialize_and_before_setup(self):
+        # The ordering now lives in the backend seam: the sequencer orders the contract operations,
+        # and HostBackend.provision_tools orders the two phases against each other.
         src = inspect.getsource(launcher._launch_host)
-        assert src.index("_host_launch_plan(") < src.index("_host_run_installs("), (
-            "installs must run AFTER _materialize_host_home (via _host_launch_plan) or their "
+        assert src.index("backend.materialize_config(") < src.index(
+            "backend.provision_tools(spec, FIRST_START)"
+        ), (
+            "installs must run AFTER _materialize_host_home (via materialize_config) or their "
             "output is rmtree'd"
         )
-        assert src.index("_host_run_installs(") < src.index("_host_run_setups("), (
+        assert src.index("backend.provision_tools(spec, FIRST_START)") < src.index(
+            "backend.provision_tools(spec, ATTACH)"
+        ), "install bakes the content that setup then configures"
+        phases = inspect.getsource(launcher.HostBackend.provision_tools)
+        assert phases.index("_host_run_installs(") < phases.index("_host_run_setups("), (
             "install bakes the content that setup then configures"
         )
 

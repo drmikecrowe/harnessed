@@ -24,6 +24,7 @@ SRC = Path(__file__).parent.parent / "src" / "harnessed"
 # Extracted out of launcher.py. Add every new one here — that is the whole cost of the rule.
 EXTRACTED = [
     "attachcmd.py",
+    "backend.py",
     "catalogseed.py",
     "console.py",
     "credmounts.py",

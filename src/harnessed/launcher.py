@@ -42,6 +42,19 @@ from . import emit
 from . import paths
 from . import persist
 from . import staleness
+from .backend import (
+    ATTACH,
+    BOUNDARY,
+    EGRESS,
+    FIRST_START,
+    ISOLATION_CONTAINER,
+    ISOLATION_NONE,
+    ExecutionBackend,
+    IsolationPhase,
+    LaunchSpec,
+    ProvisionPhase,
+    register,
+)
 from .console import _err, _out
 from .ctrquery import (
     _container_exists,
@@ -1644,9 +1657,15 @@ _HOST_HARNESS = "claude"  # spike scope: only claude consumes CLAUDE_CONFIG_DIR 
 def _host_launch_plan(
     stack: str, harness: str, project_path: Path, *, recipes: list | None = None
 ) -> tuple[Path, list[str], Path, bool]:
-    """Materialize the host home (+ seed auth) and return (home, argv, cwd, rebuilt) WITHOUT exec'ing.
+    """Materialize the host home and return (home, argv, cwd, rebuilt) WITHOUT exec'ing.
 
     Split out from _launch_host so the plan is verifiable in tests without handing over the TTY.
+
+    Materialization only: this is `HostBackend.materialize_config`'s whole body. Seeding auth is
+    the separate contract operation `HostBackend.seed_auth` (`_share_host_claude_state`), called
+    immediately after this returns and inside the same home lock — the credential RESCUE below
+    stays here because it exists to survive the rmtree two lines under it, which is this
+    function's own hazard rather than a step in wiring auth up.
 
     `rebuilt` is False when the stack fingerprint matched and the existing home was left alone; the
     caller uses it to skip the install scripts, which have nothing to do (bd harnessed-8px.12).
@@ -1670,7 +1689,6 @@ def _host_launch_plan(
     settings = prof / "settings.json"
     if settings.is_file():
         _propagate_host_settings(settings, home / "settings.json")
-    _share_host_claude_state(home)
     # Content-only: no --mcp-config / --strict-mcp-config — that flag wires the (absent) hub.
     argv = ["claude"]
     return home, argv, project_path, rebuilt
@@ -1733,6 +1751,138 @@ def _aoe_register(
         highlight=False,
     )
     raise typer.Exit(0)
+
+
+@register
+class HostBackend(ExecutionBackend):
+    """The host backend: no podman, the agent runs as a process on this machine (BACKENDS.md §2).
+
+    Isolation is `none` by declaration, so `apply_isolation` does nothing in either phase — see the
+    method. Everything else is the code `_launch_host` has always run, in the order it has always
+    run it; `_launch_host` is now the sequencer that calls these in that order.
+
+    State the operations hand each other (the config dir, whether it was rebuilt, the agent's argv)
+    lives on the instance rather than in `LaunchSpec`: it is backend-specific, and a spec field only
+    one backend can honor is the fixed-order driver this contract deliberately does not have.
+    """
+
+    name = "host"
+    isolation = ISOLATION_NONE
+
+    def __init__(self, recipes: list) -> None:
+        #: This stack's resolved recipe closure — the fingerprint gate reads it.
+        self.recipes = recipes
+        self.home: Path | None = None
+        self.cwd: Path | None = None
+        self.rebuilt = False
+        self.argv: list[str] = []
+
+    def materialize_config(self, spec: LaunchSpec) -> None:
+        """Rebuild the host CLAUDE_CONFIG_DIR from the assembled profile (fingerprint-gated).
+
+        The caller holds the home lock across this and `provision_tools(FIRST_START)` — see
+        `_host_home_lock` for why releasing between them would let a second launch skip installs
+        that are still running.
+        """
+        self.home, _argv, self.cwd, self.rebuilt = _host_launch_plan(
+            spec.stack, spec.harness, spec.project_path, recipes=self.recipes
+        )
+
+    def seed_auth(self, spec: LaunchSpec) -> None:
+        """Symlink the host's live `~/.claude` credential/session state into the config dir.
+
+        Reference, never a copy (CLAUDE.md): the agent refreshes the host's own token in place, so
+        a host session and every container session stay one login. `_rescue_host_credentials`,
+        which runs inside `materialize_config`, is what keeps that true across the rmtree when a
+        previous session's refresh replaced the symlink with a regular file (bd harnessed-8px.10).
+        """
+        assert self.home is not None, "seed_auth before materialize_config"
+        _share_host_claude_state(self.home)
+
+    def provision_tools(self, spec: LaunchSpec, phase: ProvisionPhase) -> None:
+        """`tools:` + `install:` on first start; each recipe's `setup.script` at attach.
+
+        FIRST_START runs under the caller's home lock and is skipped when the fingerprint matched
+        (bd harnessed-8px.12) — an install is logically once per STACK, not once per launch. ATTACH
+        must run OUTSIDE that lock: a setup script can prompt, and holding an exclusive flock across
+        a TTY prompt would hang any concurrent launch of the same stack.
+        """
+        if phase == FIRST_START:
+            assert self.home is not None, "provision_tools(FIRST_START) before materialize_config"
+            if self.rebuilt:
+                # `tools:` BEFORE `install:` — the same order as the derived image, and load-bearing:
+                # an install.sh now configures a binary that tools: provides (serena init -b LSP).
+                _host_install_tools(spec.stack, self.recipes)
+                _host_run_installs(
+                    spec.stack, spec.project_path, harness=spec.harness, home=self.home
+                )
+                # ONLY now is the build complete. _host_run_installs exits non-zero on failure, so a
+                # failed install never reaches this line and the next launch rebuilds and retries
+                # instead of trusting a stamp that certifies content which was never finished.
+                _stamp_host_home(self.home, _host_stack_fingerprint(spec.stack, self.recipes))
+            else:
+                _say(f"[blue][INFO][/blue] Stack unchanged — reusing {self.home} (installs skipped)")
+            return
+        # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd
+        # owns the shared-server daemon lifecycle — harnessed no longer manages any beads process.
+        _host_run_setups(spec.stack, spec.project_path, harness=spec.harness)
+        # Recipe `init:` — the host half of the attach shell's init prologue. After setups, since a
+        # setup script may install the very binary init invokes.
+        _host_run_inits(spec.stack, spec.project_path, harness=spec.harness)
+
+    def wire_mcp(self, spec: LaunchSpec) -> None:
+        """Write the stack's `.mcp.json` and build the agent argv that points claude at it.
+
+        Native stdio servers, no hatago hub on this backend. Resolved after PATH is set so the
+        stdio-command presence check sees just-provisioned tools AND anything an install/setup
+        script put in the stack bin dir.
+        """
+        assert self.home is not None, "wire_mcp before materialize_config"
+        mcp_servers = _host_native_mcp(spec.stack)
+        # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude
+        # load ONLY this file, so the copied .claude.json's global mcpServers never leak into an
+        # isolated stack (content-only included). With servers → the stack's set; without → an empty
+        # set. --no-strict-mcp-config opts OUT of that isolation: the file is still passed, but
+        # claude also reads the project's `.mcp.json` and the user config.
+        mcp_path = self.home / ".mcp.json"
+        mcp_path.write_text(json.dumps({"mcpServers": mcp_servers or {}}, indent=2), encoding="utf-8")
+        self.argv = ["claude", "--mcp-config", str(mcp_path)]
+        if not spec.no_strict_mcp:
+            self.argv.append("--strict-mcp-config")
+        self.argv += list(spec.extra)
+
+    def wire_services(self, spec: LaunchSpec) -> None:
+        """Start the SAME sidecars the container backend ensures (bd harnessed-2sm).
+
+        A `services:` entry is a property of the STACK, not of the backend: host mode makes the
+        AGENT host-native, it does not remove the service the stack says it needs. Omitting this
+        left every beads stack under `host-run` with no server, no socket and no data dir.
+
+        A socket-backed sidecar composes with a host agent for free: the socket is a filesystem
+        object inside the persist dir the service bind-mounts, so the host process dials exactly the
+        path the container serves it on. No port, no netns to bridge, nothing mode-specific.
+
+        Guarded on the stack actually declaring services, so a host launch of a service-less stack
+        still needs no container runtime at all.
+        """
+        if not _service_refs(spec.stack):
+            return
+        # _resolve_mount_path, not project_path (bd harnessed-wnf): the sidecar must get the same
+        # git surface whichever entry point starts it. Otherwise the create-time config — and so the
+        # `harnessed.svc-config-hash` label — differs by entry point, and alternating host-run with
+        # a container launch would flag drift and recreate the container every single time.
+        _ensure_services(
+            _runtime(), spec.stack, project_path=spec.project_path,
+            mount_path=_resolve_mount_path(spec.project_path, None),
+        )
+
+    def apply_isolation(self, spec: LaunchSpec, phase: IsolationPhase) -> None:
+        """Nothing, in either phase — `isolation` is `none` on this backend (BACKENDS.md §2).
+
+        This is the contract honored, not skipped. A host launch is deliberately the escape hatch
+        with the host's own auth, filesystem and network; §4's matrix records host egress control as
+        `landlock/proxy`, i.e. the bwrap backend's job (harnessed-0tk.3), not this one's.
+        """
 
 
 def _launch_host(
@@ -1806,28 +1956,19 @@ def _launch_host(
     #     that is hardest to see from inside a session.
     os.environ.update(_resolve_launch_env(project_path))
 
-    # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). A `services:` entry is a property
-    # of the STACK, not of the backend: host mode makes the AGENT host-native, it does not remove the
-    # service the stack says it needs. Omitting this left every beads stack under `host-run` with no
-    # server, no socket and no data dir, and an agent that reported "no beads database" — with
-    # nothing in the launch output saying a declared service had been skipped.
-    #
-    # A socket-backed sidecar composes with a host agent for free: the socket is a filesystem object
-    # inside the persist dir the service bind-mounts, so the host process dials exactly the path the
-    # container serves it on. No port, no netns to bridge, nothing mode-specific.
-    #
-    # Ahead of the recipe env and setup scripts below, which is what needs the socket to already
-    # exist. Guarded on the stack actually declaring services, so a host launch of a service-less
-    # stack still needs no container runtime at all.
-    if _service_refs(stack):
-        # _resolve_mount_path, not project_path (bd harnessed-wnf): the sidecar must get the same
-        # git surface whichever entry point starts it. Otherwise the create-time config — and so the
-        # `harnessed.svc-config-hash` label — differs by entry point, and alternating host-run with
-        # a container launch would flag drift and recreate the container every single time.
-        _ensure_services(
-            _runtime(), stack, project_path=project_path,
-            mount_path=_resolve_mount_path(project_path, None),
-        )
+    # The recipe closure, hoisted above the sidecars so the backend can be constructed with it.
+    # Inert as a reordering: `assemble(..., strict=True)` above already resolved and validated every
+    # recipe this reads, so there is no failure left here for the sidecars to have preceded.
+    host_stk, host_recipes = load_stack_with_recipes(None, stack)
+    backend = HostBackend(host_recipes)
+    spec = LaunchSpec(
+        stack=stack, harness=harness, project_path=project_path,
+        extra=tuple(extra or []), no_strict_mcp=no_strict_mcp, ephemeral=rm,
+    )
+
+    # Sidecars — the SAME ones `launch` ensures (bd harnessed-2sm). Ahead of the recipe env and setup
+    # scripts below, which is what needs the socket to already exist.
+    backend.wire_services(spec)
 
     # Hand the PROJECT the same tool env we are about to hand the agent, so a plain `bd` in this
     # repo is configured too. After services, because the client env includes their connection.
@@ -1842,7 +1983,6 @@ def _launch_host(
     # from here inherits it, and so does claude itself — `env = dict(os.environ)` at the exec below
     # is what actually delivers it to the running agent, the row that was broken before.
     # Recipe declarations win over an inherited value, mirroring `podman run -e` in container mode.
-    host_stk, host_recipes = load_stack_with_recipes(None, stack)
     os.environ.update(_recipe_env(host_recipes, project_path, mode="host"))
 
     # Put the stack bin dir on PATH BEFORE recipe setups + native MCP check. install.sh may put tools
@@ -1892,35 +2032,17 @@ def _launch_host(
             harness,
         )
     # Lock spans the rebuild AND the installs — see _host_home_lock for why releasing earlier would
-    # let a second launch skip installs that are still running.
+    # let a second launch skip installs that are still running. `seed_auth` joins them inside it,
+    # exactly where `_host_launch_plan` used to perform it.
     with _host_home_lock(paths.host_home(stack, harness)):
-        home, argv, cwd, rebuilt = _host_launch_plan(
-            stack, harness, project_path, recipes=host_recipes
-        )
-    # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content a
-    # Dockerfile RUN used to deliver to containers only.
-    #
-    # SKIPPED when the home was not rebuilt (bd harnessed-8px.12). An install is logically once per
-    # STACK, not once per launch: it only ever ran every time because the materialize wiped its
-    # output every time. With the wipe gated on the stack fingerprint, the output is still there, so
-    # re-running would re-download and re-extract to produce the bytes already on disk.
-        if rebuilt:
-            # `tools:` BEFORE `install:` — the same order as the derived image, and load-bearing:
-            # an install.sh now configures a binary that tools: provides (serena init -b LSP).
-            _host_install_tools(stack, host_recipes)
-            _host_run_installs(stack, project_path, harness=harness, home=home)
-            # ONLY now is the build complete. _host_run_installs exits non-zero on failure, so a
-            # failed install never reaches this line and the next launch rebuilds and retries
-            # instead of trusting a stamp that certifies content which was never finished.
-            _stamp_host_home(home, _host_stack_fingerprint(stack, host_recipes))
-        else:
-            _say(f"[blue][INFO][/blue] Stack unchanged — reusing {home} (installs skipped)")
-    # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd owns
-    # the shared-server daemon lifecycle — harnessed no longer manages any beads process itself.
-    _host_run_setups(stack, project_path, harness=harness)
-    # Recipe `init:` — the host half of the attach shell's init prologue. After setups, since a
-    # setup script may install the very binary init invokes.
-    _host_run_inits(stack, project_path, harness=harness)
+        backend.materialize_config(spec)
+        backend.seed_auth(spec)
+        # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content
+        # a Dockerfile RUN used to deliver to containers only.
+        backend.provision_tools(spec, FIRST_START)
+    # setup.script — outside the lock, because a setup can prompt (see provision_tools).
+    backend.provision_tools(spec, ATTACH)
+    home, cwd = backend.home, backend.cwd
 
     # Pending `setup:` notices, and BLOCK on them — the host half of what `launch` does at its own
     # line. This was container-only too, so a host launch printed nothing and started the agent
@@ -1931,19 +2053,12 @@ def _launch_host(
     _prompt_setup_notices(host_recipes, project_path, stack, harness, allow_terminal=False)
     # Native MCP (hatago deferred): resolve after PATH is set so the stdio-command presence check
     # sees just-provisioned tools AND anything an install/setup script put in the stack bin dir.
-    mcp_servers = _host_native_mcp(stack)
-
-    # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude load
-    # ONLY this file, so the copied .claude.json's global mcpServers never leak into an isolated
-    # stack (content-only included). With servers → the stack's set; without → an empty set.
-    # --no-strict-mcp-config opts OUT of that isolation: the file is still passed, but claude also
-    # reads the project's `.mcp.json` and the user config.
-    mcp_path = home / ".mcp.json"
-    mcp_path.write_text(json.dumps({"mcpServers": mcp_servers or {}}, indent=2), encoding="utf-8")
-    argv = ["claude", "--mcp-config", str(mcp_path)]
-    if not no_strict_mcp:
-        argv.append("--strict-mcp-config")
-    argv += extra or []
+    backend.wire_mcp(spec)
+    argv = backend.argv
+    # No-ops on this backend (isolation: none) — called so the host path exercises the whole
+    # contract rather than quietly implementing five sixths of it. See HostBackend.apply_isolation.
+    backend.apply_isolation(spec, BOUNDARY)
+    backend.apply_isolation(spec, EGRESS)
 
     _err.print(
         f"[green]host-native[/green]: CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
@@ -2146,6 +2261,328 @@ def host_run(
         raise
 
 
+@register
+class ContainerBackend(ExecutionBackend):
+    """The podman backend: the agent runs in a rootless pod (BACKENDS.md §2).
+
+    Same contract as `HostBackend`, sequenced differently — and the difference is the reason this
+    contract is a capability set rather than a pipeline. This backend provisions BEFORE it
+    materializes, because podman's copy-up is what lifts the image's `~/.claude` into the volume
+    that the mount set then delivers; the host backend must do the reverse, because materializing
+    rmtree's the very dir installs write into.
+
+    `container_run` is the sequencer. State the operations hand each other lives on the instance.
+    """
+
+    name = "container"
+    isolation = ISOLATION_CONTAINER
+
+    def __init__(
+        self, rt: str, inst: str, pod: str, prof: Path, harness_image: str, mount_path: Path,
+        recipes: list, servers: list, stk, *, stack_from_overlay: bool, headless: bool,
+    ) -> None:
+        self.rt = rt
+        self.inst = inst
+        self.pod = pod
+        self.prof = prof
+        self.harness_image = harness_image
+        self.mount_path = mount_path
+        self.recipes = recipes
+        #: The stack's resolved MCP server set. Computed once by the sequencer and shared, so
+        #: `wire_mcp` and the settings merge cannot drift apart on what this stack's servers are.
+        self.servers = servers
+        self.stk = stk
+        self.stack_from_overlay = stack_from_overlay
+        self.headless = headless
+        self.config_volume: str | None = None
+        self.tools_volume: str | None = None
+        self.mount_args: list[str] = []
+        self.member_mounts: list[str] = []
+        self.pending_setups: list = []
+        # Set by seed_auth; initialized here so apply_isolation reads an empty list rather than
+        # raising AttributeError if a future sequencer ever skips the operation.
+        self.secrets_env_files: list = []
+        self.secrets_temp_files: list = []
+
+    def provision_tools(self, spec: LaunchSpec, phase: ProvisionPhase) -> None:
+        """Compose the per-stack volumes on first start; run each `setup.script` at attach.
+
+        FIRST_START is the container mirror of the host path's `rebuilt` gate — fingerprint-gated,
+        so an unchanged stack pays nothing, and a CHANGED stack reinstalls here with no podman
+        build at all (bd harnessed-8px.21: a one-line recipe edit used to cost a 307s layer
+        rebuild). It composes BOTH volumes in one call because podman's copy-up populates them
+        together; `materialize_config` is what then delivers the config volume to the harness.
+
+        ATTACH runs the setup scripts via `podman exec`, so it necessarily follows
+        `apply_isolation(BOUNDARY)` — and precedes `apply_isolation(EGRESS)`, since a first-run
+        setup is exactly the step that downloads things.
+        """
+        if phase == FIRST_START:
+            # Uses `harness_image` — the derived image when one exists, else the plain agent image —
+            # because podman's copy-up is what lifts that image's `~/.claude` into the volume.
+            self.config_volume, self.tools_volume = _ensure_stack_volumes(
+                self.rt, spec.stack, spec.harness, self.prof, self.harness_image, self.recipes
+            )
+            return
+        _run_container_setups(
+            self.rt, self.inst, self.pending_setups, spec.stack, spec.project_path,
+            harness=spec.harness,
+        )
+
+    def materialize_config(self, spec: LaunchSpec) -> None:
+        """Compose the mount set that delivers the assembled profile into the pod.
+
+        NOTE — a known imprecision in this slice, tracked as harnessed-0tk.1.1: several CREDENTIAL
+        mounts are composed here rather than in `seed_auth`. They are emitted as one ordered block
+        today, and this repo's suite runs no `podman run` at all (CLAUDE.md), so regrouping podman
+        `-v` arguments would be an unverifiable change to the one path no test exercises. The block
+        moves verbatim; splitting it is its own change with its own evidence. `seed_auth` owns the
+        part that is already contiguous and deliberately last.
+        """
+        assert self.config_volume and self.tools_volume, "materialize_config before provision_tools"
+        # Build mount args.
+        self.mount_args = _build_mount_args(
+            spec.harness, self.prof, self.mount_path, self.config_volume, self.tools_volume
+        )
+        # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the token/credential).
+        self.mount_args += _claude_config_seed_mount(spec.harness, self.inst)
+        # NB: the Claude credential fallback mount is appended AFTER secrets resolve (see seed_auth)
+        # — whether it is needed at all depends on a CLAUDE_CODE_OAUTH_TOKEN that may arrive via
+        # --env-file.
+        # Persist agy's in-pod keyring store (rw) so its Google-OAuth token survives recreates (antigravity).
+        self.mount_args += _keyring_state_mount(spec.harness, self.inst)
+        # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
+        self.mount_args += _omp_agent_mount(spec.harness)
+        # Point omp at the in-container hatago hub (nested ro mount shadowing the agent dir's
+        # mcp.json), so a stack's assembled MCP servers reach omp — mirrors claude's --mcp-config
+        # wiring. Emitted here, immediately after the dir mount it shadows, because the ORDER of
+        # this block is load-bearing (see the note above); `wire_mcp` owns the hub itself.
+        self.mount_args += _omp_mcp_seed_mount(spec.harness, self.inst)
+        # Forward the host's ccstatusline config (ro) so the baked statusLine matches the host layout.
+        self.mount_args += _ccstatusline_settings_mount()
+        # Bind-mount the corporate proxy CA (ro) so _install_corp_proxy_ca_in_container can register it.
+        self.mount_args += _corp_proxy_ca_mount_args()
+        # Persist recipe-declared project-scoped folders (rw) so their state survives --fresh.
+        self.mount_args += _persist_mounts(spec.stack, spec.project_path)
+        # Forward the host's git signing + push credentials (1Password/GPG/YubiKey agent, git config,
+        # ssh config/known_hosts/pubkeys + opt-in private keys) so the agent can push and sign — no
+        # secret baked into an image. Private keys (ssh_keys) are honored ONLY from the user's own overlay
+        # catalog — a shared repo-catalog stack must not mount your private key.
+        if self.stk.forward_git_credentials:
+            trusted_keys = _trusted_ssh_keys(self.stk.ssh_keys, self.stack_from_overlay, spec.stack)
+            self.mount_args += _credential_forward_args(ssh_keys=trusted_keys, rt=self.rt)
+        else:
+            # Even without the full opt-in, auto-forward the SSH signing/auth agent (1Password/gpg) +
+            # ro git config whenever the agent socket is live on the host: "1Password available → wired
+            # up". The agent gates every use behind a host approval/touch and exposes no key material, so
+            # this is safe as a default; the secret-bearing surface (gh oauth token, private keys) still
+            # requires forward_git_credentials.
+            self.mount_args += _ssh_agent_auto_forward_args(rt=self.rt)
+
+        # Forward host AWS credentials via the aws-sso ECS server (opt-in per stack). Injects the AWS SDK's
+        # ECS-task-role endpoint + bearer token as env only — no aws-sso binary/store/token enters the
+        # container. No-op unless the host token file exists (written by `harnessed aws-sso serve`).
+        if self.stk.forward_aws_sso:
+            aws_args = _aws_sso_ecs_forward_args()
+            if aws_args and not _aws_sso_server_reachable():
+                # This host has a bearer token, so the operator uses AWS SSO — but the server isn't live
+                # (never started this session, or no role loaded). Wiring the dead endpoint would fail
+                # only when the SDK first calls AWS, a silent trap. Surface it now, and don't inject the
+                # dead endpoint if they choose to proceed. (Token ABSENT → this host never set AWS SSO
+                # up; stay a silent no-op so `forward_aws_sso` is safe to commit in a shared catalog.)
+                _err.print(
+                    "[bold yellow]warning:[/bold yellow] this stack sets [bold]forward_aws_sso[/bold] but "
+                    "the aws-sso ECS server isn't reachable (not running, or no role loaded).\n"
+                    "  Start it:   [cyan]harnessed aws-sso serve[/cyan]   (leave running)\n"
+                    "  Load role:  [cyan]aws-sso ecs load[/cyan]\n"
+                    "Without it, AWS calls inside the container will fail to find credentials."
+                )
+                if self.headless or not sys.stdin.isatty() or not typer.confirm(
+                    "Continue launching without AWS credentials?", default=False
+                ):
+                    raise typer.Exit(1)
+            elif aws_args:
+                self.mount_args += aws_args
+
+    def seed_auth(self, spec: LaunchSpec) -> None:
+        """Resolve launch-time secrets and append the Claude credential mount, which must be LAST.
+
+        Referenced, never baked (CLAUDE.md): the credential file is mounted from the host's live
+        store, and a long-lived CLAUDE_CODE_OAUTH_TOKEN supersedes it — in which case nothing is
+        mounted at all. Returns the ordered `--env-file` list and the temp files the caller must
+        unlink once podman has ingested them; resolved secrets must not linger on disk (T-05-06).
+        """
+        # Layered global → project (project wins on conflict). Stays AFTER the aborting checks in
+        # materialize_config so an early exit can't strand resolved secrets on disk.
+        secrets_env_files, secrets_temp_files = _resolve_launch_secrets(spec.project_path)
+        # Claude auth, last of the mounts: a long-lived CLAUDE_CODE_OAUTH_TOKEN (host env, varlock,
+        # or plain .env) supersedes the credential file, so nothing is mounted in that case.
+        self.mount_args += _claude_creds_seed_mount(
+            spec.harness, self.inst, _claude_oauth_token_configured(spec.harness, spec.project_path)
+        )
+        self.secrets_env_files = secrets_env_files
+        self.secrets_temp_files = secrets_temp_files
+
+    def wire_mcp(self, spec: LaunchSpec) -> None:
+        """Regenerate this instance's hatago config and mount it (ro) into the harness container.
+
+        Every assembled MCP server is fronted by the hub, so wiring MCP on this backend is wiring
+        hatago. Written per-instance with each stdio child's cwd pinned to the mirrored project path
+        (bd main-u5d): the committed profile config is project-agnostic (built before any project is
+        known — path mirroring makes the container project path per-launch), so serena/repowise
+        would otherwise resolve the container home instead of the project root. Per-instance so two
+        projects on the same stack never race on one shared cwd.
+
+        Waiting for the hub to come up is a readiness gate, not wiring — the sequencer does it after
+        the container starts, the same way a service sidecar's health check sits outside
+        `wire_services`.
+        """
+        inst_cfg_dir = self.prof / ".instances" / self.inst
+        inst_cfg_dir.mkdir(parents=True, exist_ok=True)
+        hatago_cfg_host = emit.write_hatago_config(inst_cfg_dir, self.servers, spec.project_path)
+        hatago_cfg_ctr = str(paths.hatago_config_container())
+        # Filter out --userns=keep-id from member (pod-level property). Mount the hatago config (ro)
+        # into the HARNESS container — after the hatago-consolidation, hatago runs IN this container
+        # (not a separate pod member), so the hub and the stdio children it spawns share this
+        # container's home and see the project bind-mount.
+        self.member_mounts = [a for a in self.mount_args if a != "--userns=keep-id"]
+        self.member_mounts += ["-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro"]
+        self.member_mounts += _setup_script_mounts(self.recipes)
+
+    def wire_services(self, spec: LaunchSpec) -> None:
+        """Start any service sidecars this stack's recipes reference. Idempotent.
+
+        Global services are host-published (reached from the pod via host.containers.internal:<port>);
+        project-scoped ones bind-mount this project's persist dir and are reached through a unix
+        socket inside it, so they need the project/mount context.
+
+        The sequencer calls this BEFORE the re-attach branch, deliberately: a long-lived agent
+        container outlives its sidecars. This used to sit after the create path only, so once an
+        instance was running, every subsequent launch took the attach branch and never looked at
+        services again — a sidecar that died stayed dead for the life of the container, long after
+        whatever killed it was gone (observed 2026-07-21: a sidecar dead for 3h, revived by nothing,
+        while `bd` failed every session). Reviving it is exactly what "idempotent" already promised.
+        """
+        _ensure_services(
+            self.rt, spec.stack, project_path=spec.project_path, mount_path=self.mount_path
+        )
+
+    def apply_isolation(self, spec: LaunchSpec, phase: IsolationPhase) -> None:
+        """Stand the pod up (BOUNDARY), then close egress once setups have had the network (EGRESS).
+
+        BOUNDARY is also what DELIVERS everything the earlier operations composed: on this backend
+        the single `podman run` is both the isolation boundary and the only way mounts and env cross
+        it, which is why the env assembly lives here rather than in `materialize_config`. The setup
+        env is resolved here too because a `setup.config` item may prompt, and that must happen
+        before the container starts.
+        """
+        if phase == EGRESS:
+            # Recipe-declared egress: union the extra allowlist hosts across this stack's recipes so
+            # the firewall opens them ONLY when a recipe that needs them is present (default-DROP
+            # otherwise).
+            egress_domains = sorted({d for r in self.recipes for d in r.egress})
+            _apply_firewall(self.rt, self.inst, egress_domains)
+            return
+
+        # Pod network.
+        net = os.environ.get("HARNESSED_NET", "")
+
+        # Create pod.
+        if _rt_uses_pods(self.rt):
+            # --hostname explicitly: without it podman uses the pod NAME, which crun rejects past
+            # HOST_NAME_MAX (see paths.container_hostname). Set on the POD, not the member — pod
+            # members share the pod's UTS namespace, so this is the one that governs.
+            pod_cmd = [
+                self.rt, "pod", "create", "--name", self.pod,
+                "--hostname", paths.container_hostname(self.pod), "--userns=keep-id",
+            ]
+            if net:
+                pod_cmd += ["--network", net]
+            _run(pod_cmd, capture_output=True)
+
+        # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
+        # export: `_init_shell_prologue` reaches the interactive shell and nothing else, so a `podman
+        # exec`, a hook, or any subprocess saw $HARNESSED_BEADS_SERVER_SOCKET unset — and bd silently
+        # accepts an EMPTY --server-socket, falling back to its old TCP config instead of failing. Set it
+        # on the container so every process in it agrees.
+        # (Now the whole folder-env contract, not just the sockets — `_init_shell_prologue` still
+        # exports it for the attach shell, but a hook or a `podman exec` never sees that shell.)
+        socket_env = [arg for var, val in harnessed_env(
+            spec.stack, spec.project_path, harness=spec.harness, mode="container",
+            mount_path=self.mount_path,
+        ).items() for arg in ("-e", f"{var}={val}")]
+        # Same rationale as socket_env: a recipe's setup env belongs to the CONTAINER, not to one exec,
+        # so hooks and later execs see what the setup script saw. Resolved here because a `setup.config`
+        # item may prompt, which must happen before the container starts.
+        self.pending_setups = _pending_setup_scripts(spec.project_path, self.recipes)
+        setup_env = [arg for var, val in _container_setup_env(
+                         spec.stack, spec.project_path, self.pending_setups,
+                         harness=spec.harness).items()
+                     for arg in ("-e", f"{var}={val}")]
+        # Recipe `env:` — set on the CONTAINER for the third time and the same reason. The image already
+        # carries the build-resolvable subset as real ENV (emit.write_derived_dockerfile), but that is
+        # not sufficient: a value templated on the PROJECT (`{project_dir}`, an in_repo persist dir) is
+        # unknowable at build. Setting the resolved values here makes the running agent's env complete
+        # and identical to what the host mode gives it.
+        recipe_env = [arg for var, val in _recipe_env(self.recipes, spec.project_path, mode="container").items()
+                      for arg in ("-e", f"{var}={val}")]
+        # bd harnessed-8px.27. `_write_project_tool_env` puts a `mise.local.toml` in EVERY project, and
+        # mise refuses an untrusted config file. The image trusts configs via `mise trust -a` in
+        # ~/.bashrc and /etc/profile.d — both of which only run for a LOGIN or interactive shell. Setup
+        # scripts run as `podman exec … bash <script>`, which is neither, so any setup invoking a mise
+        # shim died with "Config files in …/mise.local.toml are not trusted". serena hit this: its
+        # binary IS a mise shim (`tools: pipx:serena-agent`), so merely running it loads the project
+        # config.
+        #
+        # Set on the CONTAINER, not the exec, for the same reason as socket_env above: hooks and later
+        # execs must agree with what the setup script saw. Preferred over `bash -lc`, which would fix
+        # the trust as a side effect of sourcing profile.d while also re-ordering PATH and pulling in
+        # every other login-shell behaviour — a much wider change than the bug warrants.
+        mise_trust_env = ["-e", f"MISE_TRUSTED_CONFIG_PATHS={self.mount_path}"]
+        harness_run = [
+            self.rt, "run", "-d",
+            # No --hostname in the pod branch: a member inherits the pod's UTS namespace, and the pod
+            # create above already set it. The pod-less runtime has no infra container to inherit from,
+            # so it needs its own bound (same EINVAL, from the container's own name).
+            *(["--pod", self.pod] if _rt_uses_pods(self.rt)
+              else [f"--network=container:{self.pod}", "--hostname", paths.container_hostname(self.inst)]),
+            "--name", self.inst,
+            *[arg for f in self.secrets_env_files for arg in ("--env-file", str(f))],
+            # ORDER IS PRECEDENCE: podman applies `-e` left-to-right, so the LAST wins. Recipe `env:` goes
+            # FIRST — it is catalog-authored and must not be able to clobber harnessed-owned values. That
+            # matches host mode, where _launch_host applies _recipe_env to os.environ and THEN overwrites
+            # with harnessed_env. Reversing these two silently inverts precedence between modes (caught
+            # merging harnessed-0tk.7 and harnessed-8px.2, each of which was self-consistent alone).
+            *recipe_env,
+            # Long-lived subscription token from the host env (bare `-e NAME` → podman reads the value
+            # from its own env, keeping the secret off the command line). No-op when unset or supplied
+            # via --env-file above.
+            *_claude_oauth_token_args(spec.harness),
+            *socket_env,
+            *setup_env,
+            *mise_trust_env,
+            *self.member_mounts,
+            # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
+            # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
+            # hard-failing on a missing binary. Once the base image is rebuilt, the entrypoint runs
+            # hatago automatically and this shell one-liner is a no-op (exec replaces it immediately).
+            self.harness_image, "bash", "-c",
+            "exec /usr/local/bin/harnessed-start 2>/dev/null || exec sleep infinity",
+        ]
+        try:
+            _run(harness_run, capture_output=True)
+        finally:
+            # Unlink the temp env-files as soon as podman has ingested them into the container's env —
+            # resolved secret values must not linger on disk (T-05-06). Always runs (success or failure).
+            # Every env-file is a generated temp (the user's own .env is copied, never handed to podman).
+            for f in self.secrets_temp_files:
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+            self.secrets_temp_files = []
+
+
 @app.command("container-run")
 def container_run(
     harness: str = typer.Argument(..., help="Harness to use (claude|omp|opencode|antigravity|codex)"),
@@ -2311,6 +2748,17 @@ def container_run(
     _, launch_recipes = load_stack_with_recipes(None, stack)
     shell = _prompt_setup_notices(launch_recipes, project_path, stack, harness) or shell
 
+    launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
+    backend = ContainerBackend(
+        rt, inst, pod, prof, harness_image, mount_path, launch_recipes, launch_servers, stk,
+        stack_from_overlay=stack_from_overlay,
+        headless=os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true",
+    )
+    spec = LaunchSpec(
+        stack=stack, harness=harness, project_path=project_path,
+        extra=tuple(_passthrough), no_strict_mcp=no_strict_mcp_config, ephemeral=rm,
+    )
+
     # --fresh: tear down existing pod.
     if fresh:
         _out.print(f"[blue][INFO][/blue] --fresh: tearing down existing pod/instance for {inst}")
@@ -2319,18 +2767,9 @@ def container_run(
         # keyring dir deliberately survives a normal recreate, so this is the one place it is cleared.
         _keyring_fresh_wipe(harness, inst)
 
-    # Start any service sidecars this stack's recipes reference. Idempotent — skips services already
-    # running. Global services are host-published (reached from the pod via
-    # host.containers.internal:<port>); project-scoped ones bind-mount this project's persist dir and
-    # are reached through a unix socket inside it, so they need the project/mount context.
-    #
-    # BEFORE the re-attach branch below, deliberately: a long-lived agent container outlives its
-    # sidecars. This used to sit after the create path only, so once an instance was running, every
-    # subsequent launch took the attach branch and never looked at services again — a sidecar that
-    # died stayed dead for the life of the container, long after whatever killed it was gone
-    # (observed 2026-07-21: a sidecar dead for 3h, revived by nothing, while `bd` failed every
-    # session). Reviving it is exactly what "idempotent" already promised.
-    _ensure_services(rt, stack, project_path=project_path, mount_path=mount_path)
+    # Idempotent — skips services already running. BEFORE the re-attach branch below, deliberately:
+    # see ContainerBackend.wire_services for why.
+    backend.wire_services(spec)
 
     # Same as the host path: the project gets a config of its own, not just the agent we launch.
     _write_project_tool_env(
@@ -2340,7 +2779,7 @@ def container_run(
 
     # Re-attach to a running instance (interactive only) — but if it was built from an older image
     # (rebuilt since it started), a re-attach would silently run the stale build. Offer to recreate.
-    headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
+    headless = backend.headless
     if not headless and _container_running(rt, inst):
         if _container_stale(rt, inst, harness_image):
             if sys.stdin.isatty() and typer.confirm(
@@ -2378,217 +2817,32 @@ def container_run(
     if anchor_path != project_path:
         _out.print(f"[blue][INFO][/blue] Agent start folder: {project_path} (launched from {anchor_path})")
 
-    launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
     required = emit.required_settings(launch_servers, launch_recipes, stk.permissions, harness)
     if harness in ("claude", "omp", "opencode"):
+        # Folds the host's live preferences into the assembled PROFILE — a backend-independent
+        # artifact, and the last step of assembly rather than a backend operation, which is why
+        # both sequencers do it identically before handing off to their backend.
         _merge_host_claude_settings(prof, required, harness)
 
-    # Compose the agent-config volume BEFORE the mounts reference it (bd harnessed-8px.21.2). Uses
-    # `harness_image` — the derived image when one exists, else the plain agent image — because
-    # podman's copy-up is what lifts that image's `~/.claude` into the volume in the first place.
-    # Fingerprint-gated, so an unchanged stack pays nothing: the install output is still in the
-    # volume from last time. A CHANGED stack reinstalls here with no podman build at all, which is
-    # the point of harnessed-8px.21 — a one-line recipe edit used to cost a 307s layer rebuild.
-    config_volume, tools_volume = _ensure_stack_volumes(
-        rt, stack, harness, prof, harness_image, launch_recipes
-    )
-
-    # Build mount args.
-    mount_args = _build_mount_args(harness, prof, mount_path, config_volume, tools_volume)
-    # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the token/credential).
-    mount_args += _claude_config_seed_mount(harness, inst)
-    # NB: the Claude credential fallback mount is appended AFTER secrets resolve (below) — whether
-    # it is needed at all depends on a CLAUDE_CODE_OAUTH_TOKEN that may arrive via --env-file.
-    # Persist agy's in-pod keyring store (rw) so its Google-OAuth token survives recreates (antigravity).
-    mount_args += _keyring_state_mount(harness, inst)
-    # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
-    mount_args += _omp_agent_mount(harness)
-    # Point omp at the in-container hatago hub (nested ro mount shadowing the agent dir's mcp.json),
-    # so a stack's assembled MCP servers reach omp — mirrors claude's --mcp-config wiring.
-    mount_args += _omp_mcp_seed_mount(harness, inst)
-    # Forward the host's ccstatusline config (ro) so the baked statusLine matches the host layout.
-    mount_args += _ccstatusline_settings_mount()
-    # Bind-mount the corporate proxy CA (ro) so _install_corp_proxy_ca_in_container can register it.
-    mount_args += _corp_proxy_ca_mount_args()
-    # Persist recipe-declared project-scoped folders (rw) so their state survives --fresh.
-    mount_args += _persist_mounts(stack, project_path)
-    # Forward the host's git signing + push credentials (1Password/GPG/YubiKey agent, git config,
-    # ssh config/known_hosts/pubkeys + opt-in private keys) so the agent can push and sign — no
-    # secret baked into an image. Private keys (ssh_keys) are honored ONLY from the user's own overlay
-    # catalog — a shared repo-catalog stack must not mount your private key.
-    if stk.forward_git_credentials:
-        trusted_keys = _trusted_ssh_keys(stk.ssh_keys, stack_from_overlay, stack)
-        mount_args += _credential_forward_args(ssh_keys=trusted_keys, rt=rt)
-    else:
-        # Even without the full opt-in, auto-forward the SSH signing/auth agent (1Password/gpg) +
-        # ro git config whenever the agent socket is live on the host: "1Password available → wired
-        # up". The agent gates every use behind a host approval/touch and exposes no key material, so
-        # this is safe as a default; the secret-bearing surface (gh oauth token, private keys) still
-        # requires forward_git_credentials.
-        mount_args += _ssh_agent_auto_forward_args(rt=rt)
-
-    # Forward host AWS credentials via the aws-sso ECS server (opt-in per stack). Injects the AWS SDK's
-    # ECS-task-role endpoint + bearer token as env only — no aws-sso binary/store/token enters the
-    # container. No-op unless the host token file exists (written by `harnessed aws-sso serve`).
-    if stk.forward_aws_sso:
-        aws_args = _aws_sso_ecs_forward_args()
-        if aws_args and not _aws_sso_server_reachable():
-            # This host has a bearer token, so the operator uses AWS SSO — but the server isn't live
-            # (never started this session, or no role loaded). Wiring the dead endpoint would fail
-            # only when the SDK first calls AWS, a silent trap. Surface it now, and don't inject the
-            # dead endpoint if they choose to proceed. (Token ABSENT → this host never set AWS SSO
-            # up; stay a silent no-op so `forward_aws_sso` is safe to commit in a shared catalog.)
-            _err.print(
-                "[bold yellow]warning:[/bold yellow] this stack sets [bold]forward_aws_sso[/bold] but "
-                "the aws-sso ECS server isn't reachable (not running, or no role loaded).\n"
-                "  Start it:   [cyan]harnessed aws-sso serve[/cyan]   (leave running)\n"
-                "  Load role:  [cyan]aws-sso ecs load[/cyan]\n"
-                "Without it, AWS calls inside the container will fail to find credentials."
-            )
-            if headless or not sys.stdin.isatty() or not typer.confirm(
-                "Continue launching without AWS credentials?", default=False
-            ):
-                raise typer.Exit(1)
-        elif aws_args:
-            mount_args += aws_args
-
-    # Resolve launch-time secrets, layered global → project (project wins on conflict). Returns the
-    # ordered --env-file list and the subset of temp files to unlink after launch. Stays AFTER the
-    # aborting checks above so an early exit can't strand resolved secrets on disk.
-    secrets_env_files, secrets_temp_files = _resolve_launch_secrets(project_path)
-
-    # Claude auth, last of the mounts: a long-lived CLAUDE_CODE_OAUTH_TOKEN (host env, varlock, or
-    # plain .env) supersedes the credential file, so nothing is mounted in that case.
-    mount_args += _claude_creds_seed_mount(
-        harness, inst, _claude_oauth_token_configured(harness, project_path)
-    )
-
-    # Pod network.
-    net = os.environ.get("HARNESSED_NET", "")
-
-    # Create pod.
-    if _rt_uses_pods(rt):
-        # --hostname explicitly: without it podman uses the pod NAME, which crun rejects past
-        # HOST_NAME_MAX (see paths.container_hostname). Set on the POD, not the member — pod members
-        # share the pod's UTS namespace, so this is the one that governs.
-        pod_cmd = [
-            rt, "pod", "create", "--name", pod,
-            "--hostname", paths.container_hostname(pod), "--userns=keep-id",
-        ]
-        if net:
-            pod_cmd += ["--network", net]
-        _run(pod_cmd, capture_output=True)
-
-    # Regenerate hatago.config.json with each stdio child's cwd pinned to the mirrored project path
-    # (bd main-u5d). The committed profile config is project-agnostic (built before any project is
-    # known — path mirroring makes the container project path per-launch), so serena/repowise would
-    # otherwise resolve the container home instead of the project root. Written per-instance so two
-    # projects on the same stack never race on one shared cwd.
-    inst_cfg_dir = prof / ".instances" / inst
-    inst_cfg_dir.mkdir(parents=True, exist_ok=True)
-    hatago_cfg_host = emit.write_hatago_config(inst_cfg_dir, launch_servers, project_path)
-    hatago_cfg_ctr = str(paths.hatago_config_container())
-
-    # Filter out --userns=keep-id from member (pod-level property). Mount the hatago config (ro) into
-    # the HARNESS container — after the hatago-consolidation, hatago runs IN this container (not a
-    # separate pod member), so the hub and the stdio children it spawns share this container's home
-    # and see the project bind-mount.
-    member_mounts = [a for a in mount_args if a != "--userns=keep-id"]
-    member_mounts += ["-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro"]
-    member_mounts += _setup_script_mounts(launch_recipes)
-    # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
-    # export: `_init_shell_prologue` reaches the interactive shell and nothing else, so a `podman
-    # exec`, a hook, or any subprocess saw $HARNESSED_BEADS_SERVER_SOCKET unset — and bd silently
-    # accepts an EMPTY --server-socket, falling back to its old TCP config instead of failing. Set it
-    # on the container so every process in it agrees.
-    # (Now the whole folder-env contract, not just the sockets — `_init_shell_prologue` still
-    # exports it for the attach shell, but a hook or a `podman exec` never sees that shell.)
-    socket_env = [arg for var, val in harnessed_env(
-        stack, project_path, harness=harness, mode="container", mount_path=mount_path
-    ).items() for arg in ("-e", f"{var}={val}")]
-    # Same rationale as socket_env: a recipe's setup env belongs to the CONTAINER, not to one exec,
-    # so hooks and later execs see what the setup script saw. Resolved here because a `setup.config`
-    # item may prompt, which must happen before the container starts.
-    pending_setups = _pending_setup_scripts(project_path, launch_recipes)
-    setup_env = [arg for var, val in _container_setup_env(
-                     stack, project_path, pending_setups, harness=harness).items()
-                 for arg in ("-e", f"{var}={val}")]
-    # Recipe `env:` — set on the CONTAINER for the third time and the same reason. The image already
-    # carries the build-resolvable subset as real ENV (emit.write_derived_dockerfile), but that is
-    # not sufficient: a value templated on the PROJECT (`{project_dir}`, an in_repo persist dir) is
-    # unknowable at build. Setting the resolved values here makes the running agent's env complete
-    # and identical to what the host mode gives it.
-    recipe_env = [arg for var, val in _recipe_env(launch_recipes, project_path, mode="container").items()
-                  for arg in ("-e", f"{var}={val}")]
-    # bd harnessed-8px.27. `_write_project_tool_env` puts a `mise.local.toml` in EVERY project, and
-    # mise refuses an untrusted config file. The image trusts configs via `mise trust -a` in
-    # ~/.bashrc and /etc/profile.d — both of which only run for a LOGIN or interactive shell. Setup
-    # scripts run as `podman exec … bash <script>`, which is neither, so any setup invoking a mise
-    # shim died with "Config files in …/mise.local.toml are not trusted". serena hit this: its
-    # binary IS a mise shim (`tools: pipx:serena-agent`), so merely running it loads the project
-    # config.
-    #
-    # Set on the CONTAINER, not the exec, for the same reason as socket_env above: hooks and later
-    # execs must agree with what the setup script saw. Preferred over `bash -lc`, which would fix
-    # the trust as a side effect of sourcing profile.d while also re-ordering PATH and pulling in
-    # every other login-shell behaviour — a much wider change than the bug warrants.
-    mise_trust_env = ["-e", f"MISE_TRUSTED_CONFIG_PATHS={mount_path}"]
-    harness_run = [
-        rt, "run", "-d",
-        # No --hostname in the pod branch: a member inherits the pod's UTS namespace, and the pod
-        # create above already set it. The pod-less runtime has no infra container to inherit from,
-        # so it needs its own bound (same EINVAL, from the container's own name).
-        *(["--pod", pod] if _rt_uses_pods(rt)
-          else [f"--network=container:{pod}", "--hostname", paths.container_hostname(inst)]),
-        "--name", inst,
-        *[arg for f in secrets_env_files for arg in ("--env-file", str(f))],
-        # ORDER IS PRECEDENCE: podman applies `-e` left-to-right, so the LAST wins. Recipe `env:` goes
-        # FIRST — it is catalog-authored and must not be able to clobber harnessed-owned values. That
-        # matches host mode, where _launch_host applies _recipe_env to os.environ and THEN overwrites
-        # with harnessed_env. Reversing these two silently inverts precedence between modes (caught
-        # merging harnessed-0tk.7 and harnessed-8px.2, each of which was self-consistent alone).
-        *recipe_env,
-        # Long-lived subscription token from the host env (bare `-e NAME` → podman reads the value
-        # from its own env, keeping the secret off the command line). No-op when unset or supplied
-        # via --env-file above.
-        *_claude_oauth_token_args(harness),
-        *socket_env,
-        *setup_env,
-        *mise_trust_env,
-        *member_mounts,
-        # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
-        # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
-        # hard-failing on a missing binary. Once the base image is rebuilt, the entrypoint runs
-        # hatago automatically and this shell one-liner is a no-op (exec replaces it immediately).
-        harness_image, "bash", "-c",
-        "exec /usr/local/bin/harnessed-start 2>/dev/null || exec sleep infinity",
-    ]
-    try:
-        _run(harness_run, capture_output=True)
-    finally:
-        # Unlink the temp env-files as soon as podman has ingested them into the container's env —
-        # resolved secret values must not linger on disk (T-05-06). Always runs (success or failure).
-        # Every env-file is a generated temp (the user's own .env is copied, never handed to podman).
-        for f in secrets_temp_files:
-            try:
-                f.unlink()
-            except OSError:
-                pass
-        secrets_temp_files = []
+    # Compose the agent-config volume BEFORE the mounts reference it (bd harnessed-8px.21.2).
+    backend.provision_tools(spec, FIRST_START)
+    backend.materialize_config(spec)
+    backend.seed_auth(spec)
+    backend.wire_mcp(spec)
+    # Creating the pod is also what delivers the mounts and env across the boundary — see
+    # ContainerBackend.apply_isolation.
+    backend.apply_isolation(spec, BOUNDARY)
 
     # Install the corp proxy CA into the container's trust store (no-op when cert absent).
     # Runs before the egress firewall: update-ca-certificates is local-only and needs no network,
     # but placing it here keeps all post-start container setup before the firewall guard.
     _install_corp_proxy_ca_in_container(rt, inst)
 
-    # Recipe-declared egress: union the extra allowlist hosts across this stack's recipes so the
     # Recipe setup scripts run here: after the CA is trusted, before the firewall closes egress —
     # a first-run setup is the step most likely to need the network.
-    _run_container_setups(rt, inst, pending_setups, stack, project_path, harness=harness)
+    backend.provision_tools(spec, ATTACH)
 
-    # firewall opens them ONLY when a recipe that needs them is present (default-DROP otherwise).
-    egress_domains = sorted({d for r in launch_recipes for d in r.egress})
-    _apply_firewall(rt, inst, egress_domains)
+    backend.apply_isolation(spec, EGRESS)
 
     # hatago starts automatically via /usr/local/bin/harnessed-start (the container entrypoint).
     # No exec -d needed — the entrypoint script starts it in the background before exec-ing sleep.
