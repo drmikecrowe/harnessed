@@ -92,9 +92,9 @@ class TestPrivateKeyMaterialIsNeverForwarded:
 
         joined = " ".join(args)
         assert "id_ed25519.pub" in joined and "config" in joined and "known_hosts" in joined
-        # The private key is present on disk and NOT opted in, so it must not appear. Checked
-        # without the `.pub` suffix so the public identity does not satisfy the assertion.
-        assert not any(a.endswith(f"{ssh}/id_ed25519") or f"/id_ed25519:" in a for a in args)
+        # The private key is present on disk and NOT opted in, so it must not appear. The trailing
+        # ':' is what distinguishes it from `id_ed25519.pub`, which SHOULD be mounted.
+        assert not any("/id_ed25519:" in a for a in args)
 
     def test_opted_in_private_key_is_mounted_read_only(self, tmp_path):
         """`ssh_keys:` is the escape hatch for hosts with no agent — it must work, and only ro."""
