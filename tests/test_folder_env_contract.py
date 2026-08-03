@@ -27,14 +27,17 @@ CONTRACT_KEYS = {
 }
 
 
-def _recipe(tmp_path, name, *, condition=None, run=None):
+def _recipe(tmp_path, name, *, condition=None, script=None, confirm=None):
     d = tmp_path / name
     d.mkdir(parents=True, exist_ok=True)
     body = f"name: {name}\nsetup:\n  summary: s\n  reference: http://x\n"
     if condition:
         body += f"  condition: {condition!r}\n"
-    if run:
-        body += f"  run: {run!r}\n"
+    if script:
+        body += f"  script: {script!r}\n"
+        (d / script).write_text("#!/usr/bin/env bash\n")
+    if confirm:
+        body += f"  confirm: {confirm!r}\n"
     (d / "recipe.yaml").write_text(body)
     return load_recipe(d, strict=True)
 
@@ -136,15 +139,26 @@ class TestConditionEvalSeesTheContract:
         got = launcher._collect_setup_notices([r], proj, "s", "claude")
         assert [x.name for x in got] == expected
 
-    @pytest.mark.parametrize("marker,ran", [(False, True), (True, False)])
-    def test_host_run_site(self, tmp_path, monkeypatch, marker, ran):
+    @pytest.mark.parametrize("marker,proceeds", [(False, True), (True, False)])
+    def test_confirm_gate_site(self, tmp_path, monkeypatch, marker, proceeds):
+        """The second host-side condition eval, and the one that survives.
+
+        `_host_run_setups` used to evaluate `condition` here too, but only to gate the host-only
+        `setup.run`, which was removed in bd harnessed-0tk.9 — a `setup.script` ignores `condition`
+        by contract (see `_pending_setup_scripts`). `_confirm_setup` still evaluates it, so that the
+        user is not asked to authorize a repo-changing step that is already done, and it must see
+        the same contract the notice site does.
+        """
         proj = self._repo(tmp_path, monkeypatch, marker=marker)
-        stamp = tmp_path / "ran"
-        r = _recipe(tmp_path / "cat", "r", condition=self.COND, run=f"touch {stamp}")
-        patch_all(monkeypatch, "load_stack_with_recipes", lambda _c, _s: (None, [r]))
+        r = _recipe(tmp_path / "cat", "r", condition=self.COND,
+                    script="setup.sh", confirm="ok?")
         monkeypatch.setattr(paths, "xdg_data_home", lambda: tmp_path / "xdg")
-        launcher._host_run_setups("s", proj, harness="claude")
-        assert stamp.exists() is ran
+        # Past the condition gate the real code prompts; make the answer deterministic so this test
+        # measures the GATE, not the prompt.
+        monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: True)
+        got = launcher._confirm_setup(r, "s", proj, harness="claude")
+        assert got is proceeds
 
     def test_env_less_eval_would_have_passed_falsely(self, tmp_path, monkeypatch):
         """Documents the bug: with no env, ${MAIN_REPO_DIR} is empty, `-f /.beads/metadata.json` is
