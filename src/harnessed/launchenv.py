@@ -39,6 +39,11 @@ from .console import _err
 # bypasses this entirely) or call `_varlock_cache_clear()`.
 _VARLOCK_CACHE: dict[Path, dict[str, str] | None] = {}
 
+# Generous enough for a real 1Password unlock the user is actually present for (biometric or
+# password prompt), short enough that an unattended launch — CI, a cron-fired agent, a machine whose
+# desktop app is not running — fails with a message instead of hanging forever. bd harnessed-prf.
+_VARLOCK_TIMEOUT = 60
+
 
 def _varlock_cache_clear() -> None:
     """Drop the `_varlock_resolve` memo. For tests that resolve the same dir across differing state."""
@@ -66,12 +71,27 @@ def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
     if cache_key in _VARLOCK_CACHE:
         return _VARLOCK_CACHE[cache_key]
 
-    result = subprocess.run(
-        ["varlock", "load", "--format", "json"],
-        capture_output=True,
-        text=True,
-        cwd=str(schema_dir),
-    )
+    try:
+        result = subprocess.run(
+            ["varlock", "load", "--format", "json"],
+            capture_output=True,
+            text=True,
+            cwd=str(schema_dir),
+            timeout=_VARLOCK_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        # Same degradation as a non-zero exit: a launch must not hang forever on secrets it may not
+        # even need. Without the timeout this blocks indefinitely — `varlock load` authenticates
+        # against a secrets manager, so it waits on a 1Password approval nobody is there to give, or
+        # on a network fault with no deadline of its own. Every launch runs this on the critical
+        # path, so the failure mode is "harnessed hangs", with no output explaining why.
+        _err.print(
+            f"[bold red]error:[/bold red] varlock load timed out after {_VARLOCK_TIMEOUT}s in "
+            f"{schema_dir} — is it waiting on a 1Password approval? Secrets from this schema will "
+            f"not be available to this launch."
+        )
+        _VARLOCK_CACHE[cache_key] = None
+        return None
     if result.returncode != 0:
         _err.print(
             f"[bold red]error:[/bold red] varlock load failed in {schema_dir} "
@@ -108,13 +128,29 @@ def _varlock_resolve_env_file(schema_dir: Path) -> Path | None:
     reads an env-file value to end-of-line — so no quoting or escaping is needed for the
     single-line values this carries (API keys/tokens). Returns None when resolution fails, so the
     launch degrades gracefully rather than hard-failing.
+
+    A value containing a newline is SKIPPED with a warning rather than written. The format cannot
+    represent one: podman reads to end-of-line, so a PEM block or SSH private key would arrive
+    truncated at its first line and every following line would be parsed as its own KEY=VALUE (or
+    rejected). Truncated key material fails later, somewhere that gives no hint it was truncated
+    here — so omitting it and saying so is strictly better than corrupting it. bd harnessed-4gk.
     """
     resolved = _varlock_resolve(schema_dir)
     if resolved is None:
         return None
 
     # podman env-file is KEY=VALUE with the value literal to end-of-line — no quoting needed.
-    lines = "".join(f"{k}={v}\n" for k, v in resolved.items())
+    writable = {}
+    for k, v in resolved.items():
+        if "\n" in v or "\r" in v:
+            _err.print(
+                f"[yellow]warning:[/yellow] secret '{k}' spans multiple lines and cannot be passed "
+                f"through a podman --env-file — skipping it rather than truncating it. (A "
+                f"host-native launch has no such limit.)"
+            )
+            continue
+        writable[k] = v
+    lines = "".join(f"{k}={v}\n" for k, v in writable.items())
 
     fd, tmp = tempfile.mkstemp(prefix="harnessed-env.", suffix=".env")
     try:

@@ -172,3 +172,98 @@ class TestNormalizePlainEnvFile:
         with pytest.raises(OSError):
             launchenv._normalize_plain_env_file(src)
         assert leaked and not os.path.exists(leaked[0])
+
+
+class TestVarlockTimeout:
+    """`varlock load` authenticates against a secrets manager, so it can wait forever on an
+    approval nobody is there to give. Every launch runs it on the critical path (bd harnessed-prf).
+    """
+
+    def test_a_hanging_varlock_degrades_instead_of_blocking(self, tmp_path, monkeypatch):
+        launchenv._varlock_cache_clear()
+        (tmp_path / ".env.schema").write_text("SNYK_TOKEN=op(op://v/i/f)\n")
+
+        seen: dict = {}
+
+        def fake_run(cmd, **kw):
+            seen.update(kw)
+            raise launchenv.subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+
+        monkeypatch.setattr(launchenv.subprocess, "run", fake_run)
+
+        # Degrades to None, exactly like a non-zero exit — a launch must not hard-fail (or hang)
+        # on secrets it may not even need.
+        assert launchenv._varlock_resolve(tmp_path) is None
+        assert seen.get("timeout"), "varlock load must be given a deadline, or it can block forever"
+
+    def test_the_timeout_result_is_cached_like_any_other_failure(self, tmp_path, monkeypatch):
+        """Otherwise every caller in one launch pays the full timeout again."""
+        launchenv._varlock_cache_clear()
+        (tmp_path / ".env.schema").write_text("SNYK_TOKEN=op(op://v/i/f)\n")
+        calls: list[int] = []
+
+        def fake_run(cmd, **kw):
+            calls.append(1)
+            raise launchenv.subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+
+        monkeypatch.setattr(launchenv.subprocess, "run", fake_run)
+        launchenv._varlock_resolve(tmp_path)
+        launchenv._varlock_resolve(tmp_path)
+        assert len(calls) == 1
+
+
+class TestMultiLineSecretsAreNotCorrupted:
+    """podman reads an --env-file value to end-of-line, so a PEM block or SSH key cannot be carried
+    through it. Truncated key material fails later, somewhere that gives no hint it was truncated
+    here — so it is skipped with a warning instead (bd harnessed-4gk).
+    """
+
+    def _resolve(self, monkeypatch, values):
+        launchenv._varlock_cache_clear()
+        monkeypatch.setattr(launchenv, "_varlock_resolve", lambda d: values)
+
+    def test_a_pem_block_is_skipped_not_truncated(self, tmp_path, monkeypatch):
+        pem = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----"
+        self._resolve(monkeypatch, {"SSH_KEY": pem, "TOKEN": "single-line"})
+
+        out = launchenv._varlock_resolve_env_file(tmp_path)
+        assert out is not None
+        try:
+            written = out.read_text()
+            # The single-line secret still gets through — this is a skip, not a bail-out.
+            assert written == "TOKEN=single-line\n"
+            # Nothing from the key leaks in, in whole or in part.
+            assert "BEGIN PRIVATE KEY" not in written
+            assert "MIIEvQIBADANBg" not in written
+            # And crucially: no line of the key was reparsed as its own KEY=VALUE.
+            assert len(written.splitlines()) == 1
+        finally:
+            out.unlink()
+
+    def test_a_carriage_return_counts_too(self, tmp_path, monkeypatch):
+        self._resolve(monkeypatch, {"CRLF": "first\r\nsecond", "OK": "fine"})
+        out = launchenv._varlock_resolve_env_file(tmp_path)
+        assert out is not None
+        try:
+            assert out.read_text() == "OK=fine\n"
+        finally:
+            out.unlink()
+
+    def test_the_skip_is_announced(self, tmp_path, monkeypatch, capsys):
+        """A silently dropped credential is as hard to diagnose as a truncated one."""
+        self._resolve(monkeypatch, {"SSH_KEY": "a\nb"})
+        before = launcher._err.warnings
+        out = launchenv._varlock_resolve_env_file(tmp_path)
+        assert out is not None
+        out.unlink()
+        assert launcher._err.warnings > before
+        assert "SSH_KEY" in capsys.readouterr().err
+
+    def test_single_line_values_are_untouched(self, tmp_path, monkeypatch):
+        self._resolve(monkeypatch, {"A": "1", "B": "2"})
+        out = launchenv._varlock_resolve_env_file(tmp_path)
+        assert out is not None
+        try:
+            assert out.read_text() == "A=1\nB=2\n"
+        finally:
+            out.unlink()
