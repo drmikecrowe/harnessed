@@ -282,8 +282,15 @@ class TestHostLaunchDelivery:
             persist=PersistSpec(entries=[_entry(".beads", scope="project")]),
         )
         # A real Stack, not None: _launch_host reads stk.permissions to resolve settings.json.
-        patch_all(monkeypatch, "load_stack_with_recipes",
-            lambda root, stack, **kw: (Stack(name="hostspike"), [r]),
+        # `launcher` ONLY, deliberately not patch_all: this fakes what `_launch_host` LOADS, while
+        # `assemble` must keep doing a real load. patch_all would also replace the binding in
+        # `harnessed.assemble`, handing it this in-memory Recipe — whose `root` defaults to `.`, so
+        # `validate_no_raw_npm` would then scan every vendored package.json under the CWD. That
+        # fails only in a checkout that HAS those gitignored trees, which is why it passed in a
+        # worktree and broke on main.
+        monkeypatch.setattr(
+            launcher, "load_stack_with_recipes",
+            lambda root, stack: (Stack(name="hostspike"), [r]),
         )
 
         captured: dict = {}
