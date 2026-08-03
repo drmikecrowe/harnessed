@@ -10,6 +10,7 @@ What must hold under concurrency:
   * each build's log is prefixed with its own tag, so N interleaved podman logs stay readable.
 """
 
+import subprocess
 import threading
 import time
 
@@ -191,7 +192,10 @@ class TestBuildTag:
     def test_tagged_run_raises_on_failure(self):
         token = proc._BUILD_TAG.set(("s(claude)", "green"))
         try:
-            with pytest.raises(Exception):
+            # The concrete type, not a blind Exception (ruff B017): a bare `raises(Exception)`
+            # would also pass if the call failed for an unrelated reason — a NameError from a
+            # botched import, say, which is exactly the failure mode this split can introduce.
+            with pytest.raises(subprocess.CalledProcessError):
                 launcher._run(["sh", "-c", "exit 3"])
         finally:
             proc._BUILD_TAG.reset(token)

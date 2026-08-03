@@ -23,13 +23,21 @@ SRC = Path("src/harnessed")
 
 
 def _defs(source: str, origin: str) -> dict[str, tuple[str, str]]:
-    """{name: (source_text, origin)} for every top-level def/class."""
+    """{name: (source_text, origin)} for every top-level def/class, DECORATORS INCLUDED.
+
+    `ast.get_source_segment` starts at the `def`/`class` line, so decorators sit outside the segment
+    it returns. Comparing only that segment would call a definition byte-identical after its
+    decorator changed or vanished — and the 20 `@app.command(...)` decorators are what wire the CLI
+    together, so exactly the change that would silently unregister a command is the one it would
+    miss. Slice from the first decorator instead.
+    """
+    lines = source.splitlines(keepends=True)
     out: dict[str, tuple[str, str]] = {}
     for node in ast.parse(source).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            segment = ast.get_source_segment(source, node)
-            if segment is not None:
-                out[node.name] = (segment, origin)
+            start = node.decorator_list[0].lineno - 1 if node.decorator_list else node.lineno - 1
+            assert node.end_lineno is not None
+            out[node.name] = ("".join(lines[start:node.end_lineno]).rstrip("\n"), origin)
     return out
 
 
