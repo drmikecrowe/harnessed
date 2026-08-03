@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import typer
 
-from harnessed import launcher, paths
+from harnessed import credmounts, launcher, paths
 
 
 def _stub_catalog(monkeypatch, tmp_path, *, exists: bool):
@@ -638,7 +638,7 @@ class TestCredentialForwarding:
         # Force the host-os branch to linux so _op_agent_socket resolves ~/.1password/agent.sock,
         # matching the test socket we create here. CI runs on Linux; this makes the test portable
         # to macOS where the default path is the Group Containers dir.
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         self._mksock(home / ".1password" / "agent.sock", socks)
         args = launcher._ssh_agent_args(home, home / "nogpg.sock")
         ctr_sock = f"{self.CTR}/.1password/agent.sock"
@@ -647,7 +647,7 @@ class TestCredentialForwarding:
 
     def test_1password_wins_over_gpg(self, cred_home, monkeypatch):
         home, socks = cred_home
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         self._mksock(home / ".1password" / "agent.sock", socks)
         gpg = home / "gpg.sock"
         self._mksock(gpg, socks)
@@ -659,7 +659,7 @@ class TestCredentialForwarding:
 
     def test_gpg_fallback_when_no_1password(self, cred_home, monkeypatch):
         home, socks = cred_home
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         gpg = home / "gpg.sock"
         self._mksock(gpg, socks)
         args = launcher._ssh_agent_args(home, gpg)
@@ -670,16 +670,16 @@ class TestCredentialForwarding:
     def test_auto_forward_noop_without_agent(self, cred_home, monkeypatch):
         # No agent socket on the host → nothing forwarded, even though a git config exists.
         home, _ = cred_home
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
-        monkeypatch.setattr(launcher, "_gpg_ssh_socket", lambda: None)
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_gpg_ssh_socket", lambda: None)
         (home / ".gitconfig").write_text("[user]\n  name = t\n")
         assert launcher._ssh_agent_auto_forward_args(home) == []
 
     def test_auto_forward_mounts_agent_and_gitconfig(self, cred_home, monkeypatch):
         # 1Password socket live → agent + ro git identity config forwarded with no opt-in flag.
         home, socks = cred_home
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
-        monkeypatch.setattr(launcher, "_gpg_ssh_socket", lambda: None)
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_gpg_ssh_socket", lambda: None)
         self._mksock(home / ".1password" / "agent.sock", socks)
         (home / ".gitconfig").write_text("[commit]\n  gpgsign = true\n")
         args = launcher._ssh_agent_auto_forward_args(home)
@@ -689,8 +689,8 @@ class TestCredentialForwarding:
     def test_auto_forward_omits_gh_token_and_private_keys(self, cred_home, monkeypatch):
         # The secret-bearing surface (gh oauth token, ~/.ssh) stays behind forward_git_credentials.
         home, socks = cred_home
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
-        monkeypatch.setattr(launcher, "_gpg_ssh_socket", lambda: None)
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_gpg_ssh_socket", lambda: None)
         self._mksock(home / ".1password" / "agent.sock", socks)
         gh_hosts = home / ".config" / "gh" / "hosts.yml"
         gh_hosts.parent.mkdir(parents=True)
@@ -705,7 +705,7 @@ class TestCredentialForwarding:
 
     def test_yubikey_present_adds_device(self, monkeypatch):
         from types import SimpleNamespace
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 003 Device 004: ID 1050:0407 Yubico.com\n"),
@@ -719,7 +719,7 @@ class TestCredentialForwarding:
 
     def test_yubikey_absent_returns_empty(self, monkeypatch):
         from types import SimpleNamespace
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         monkeypatch.setattr(
             launcher.subprocess, "run",
             lambda *a, **k: SimpleNamespace(returncode=0, stdout="Bus 001 Device 002: ID 8087:0029 Intel Corp.\n"),
@@ -810,7 +810,7 @@ class TestCredentialForwarding:
     def test_yubikey_no_lsusb_is_clean(self, monkeypatch):
         def boom(*a, **k):
             raise FileNotFoundError("lsusb")
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         monkeypatch.setattr(launcher.subprocess, "run", boom)
         assert launcher._yubikey_device_args() == []
 
@@ -819,7 +819,7 @@ class TestCredentialForwarding:
         # line like "Device 1050: ID 1234:5678 Acme" must NOT be selected for --device passthrough.
         from types import SimpleNamespace
         real_exists = Path.exists
-        monkeypatch.setattr(launcher, "_host_os", lambda: "linux")
+        monkeypatch.setattr(credmounts, "_host_os", lambda: "linux")
         monkeypatch.setattr(
             launcher.Path, "exists",
             lambda self: True if str(self) == "/dev/bus/usb/005/1050" else real_exists(self),
