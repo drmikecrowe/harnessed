@@ -193,6 +193,12 @@ class TestSyncSession:
         aoe.sync_session("container-run", "default", "claude", tmp_path, title="my-row")
         assert _flag(rec.added()[0], "-t") == "my-row"
 
+    def test_group_naming_flag_alone_overrules_the_skip(self, rec, tmp_path):
+        aoe.sync_session(
+            "container-run", "default", "claude", tmp_path, group="general"
+        )
+        assert _flag(rec.added()[0], "-g") == "general"
+
     def test_title_carries_folder_harness_and_stack(self, rec, tmp_path):
         aoe.sync_session("container-run", "serena", "omp", tmp_path)
         assert _flag(rec.added()[0], "-t") == f"{tmp_path.name} [omp/container] serena"
