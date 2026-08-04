@@ -142,8 +142,12 @@ class TestTheBuildTreeIsHermetic:
     def test_mise_config_is_excluded_from_the_build_copy(self, tmp_path):
         # Literal filenames, NOT a loop over `_MISE_CONFIG`: iterating the constant means emptying
         # it satisfies this test vacuously, which a mutation run caught doing exactly that.
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mise.toml").write_text("")
+        (src / "mise.local.toml").write_text("")
         dst = tmp_path / "copy"
-        shutil.copytree(REPO, dst, symlinks=True, ignore=_COPY_IGNORE)
+        shutil.copytree(src, dst, symlinks=True, ignore=_COPY_IGNORE)
         assert not (dst / "mise.toml").exists(), "mise.toml copied into the build tree"
         assert not (dst / "mise.local.toml").exists(), "mise.local.toml copied into the build tree"
 
