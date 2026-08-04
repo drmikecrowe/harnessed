@@ -238,3 +238,63 @@ class TestAllGapsPerRecipeAreReported:
     def test_the_real_matrix_is_restored_afterwards(self):
         """monkeypatch.setitem must not leak into the conformance tests above."""
         assert capmatrix.MATRIX["host"]["services"] == capmatrix.SUPPORTED
+
+
+class TestFindingsFromAdversarialReview:
+    """Three holes an independent reviewer found in the first cut of this module."""
+
+    def test_every_degraded_cell_has_a_detail(self):
+        """CONFIRMED finding. The three conformance tests above check the MATRIX and say nothing
+        about `_DETAIL`, so adding a DEGRADED cell without a detail string passed every one of them
+        and then produced a bare KeyError at launch. The cell and its explanation are one unit."""
+        missing = [
+            (backend, primitive)
+            for backend, column in capmatrix.MATRIX.items()
+            for primitive, level in column.items()
+            if level == capmatrix.DEGRADED and (backend, primitive) not in capmatrix._DETAIL
+        ]
+        assert missing == [], (
+            f"DEGRADED cells with no explanation: {missing} — a warning that cannot say what the "
+            "user loses is not worth emitting"
+        )
+
+    def test_a_missing_detail_never_aborts_a_launch(self, tmp_path, monkeypatch):
+        """The other half of the same finding. The test above catches it in CI; this guarantees the
+        runtime consequence is a vaguer warning, not a dead launch. Killing someone's launch because
+        the WARNING about their launch is incomplete inverts the whole point of the feature."""
+        monkeypatch.setitem(capmatrix.MATRIX["host"], "tools", capmatrix.DEGRADED)
+        monkeypatch.delitem(capmatrix._DETAIL, ("host", "tools"), raising=False)
+        r = _recipe(tmp_path, "toolsy", "tools:\n  - ripgrep@14.1.1\n")
+        found = capmatrix.gaps("host", [r])  # must not raise
+        assert [g.primitive for g in found] == ["tools"]
+        assert "tools" in found[0].detail and "host" in found[0].detail
+
+    def test_a_service_reached_only_by_an_mcp_ref_counts_as_services(self, tmp_path):
+        """`svcstate._service_refs` unions THREE sources, and an `mcp.servers[].service` ref is one
+        of them — `catalog/recipes/ping` declares its sidecar that way and has no `services:` list
+        at all. Checking only `recipe.services` made this module disagree with the launcher about
+        the same recipe: harmless while services is SUPPORTED everywhere, wrong the moment it is
+        not."""
+        r = _recipe(
+            tmp_path, "pingy",
+            "mcp:\n  servers:\n    - name: ping\n      service: ping\n      transport: http\n",
+        )
+        assert not r.services, "fixture must declare the service ONLY via the mcp ref"
+        assert "services" in capmatrix.declared_primitives(r)
+
+    def test_the_real_ping_recipe_is_detected_as_needing_a_service(self):
+        """The fixture above proves the rule; the shipped recipe proves the rule has a subject."""
+        from pathlib import Path
+
+        from harnessed.schema import load_recipe
+
+        ping = load_recipe(Path("catalog/recipes/ping"), strict=True)
+        assert "services" in capmatrix.declared_primitives(ping)
+
+    def test_the_container_warning_precedes_the_setup_prompt(self):
+        """_prompt_setup_notices can BLOCK on a user answer. Being asked to approve setup before
+        being told what the backend will not honor is the wrong order to learn things in."""
+        import inspect
+
+        src = inspect.getsource(launcher.container_run)
+        assert src.index("_warn_capability_gaps(") < src.index("_prompt_setup_notices(")

@@ -2807,11 +2807,12 @@ def container_run(
     # and the [O]k/[T]erminal/[D]ismiss/[Q]uit prompt live in _prompt_setup_notices; reuse
     # launch_recipes below. [T]erminal is equivalent to having passed --shell on this launch.
     _, launch_recipes = load_stack_with_recipes(None, stack)
-    shell = _prompt_setup_notices(launch_recipes, project_path, stack, harness) or shell
-
     # Same check, same reason, other backend — silent today (every container cell is SUPPORTED), and
     # called anyway so a future DEGRADED cell reaches the user without anyone remembering to wire it.
+    # BEFORE _prompt_setup_notices: that prompt can block, and a user should not answer it without
+    # having seen what this backend will not honor.
     _warn_capability_gaps(ContainerBackend.name, launch_recipes)
+    shell = _prompt_setup_notices(launch_recipes, project_path, stack, harness) or shell
 
     launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
     backend = ContainerBackend(

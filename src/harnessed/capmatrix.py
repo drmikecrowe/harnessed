@@ -95,7 +95,14 @@ def declared_primitives(recipe) -> set[str]:
         declared.add("setup_script")
     if recipe.servers:
         declared.add("servers")
-    if recipe.services:
+    # TWO sources, matching `svcstate._service_refs`, which is the authority on what a stack
+    # actually needs started: an MCP `service:` ref requires the sidecar just as surely as a bare
+    # `services:` entry does, and `catalog/recipes/ping` declares one that way and nothing else.
+    # Checking only `recipe.services` would disagree with the launcher about the same recipe.
+    # (_service_refs has a third source — the STACK's own `services:` — which is out of reach here
+    # by signature: this function is per-recipe. Noted so the omission is not mistaken for the bug
+    # above.)
+    if recipe.services or any(getattr(s, "service", None) for s in recipe.servers):
         declared.add("services")
     if recipe.egress:
         declared.add("egress")
@@ -124,6 +131,14 @@ def gaps(backend: str, recipes) -> list[Gap]:
                 found.append(Gap(
                     recipe=recipe.name,
                     primitive=primitive,
-                    detail=_DETAIL[(backend, primitive)],
+                    # `.get`, not `[...]`. A DEGRADED cell whose detail nobody wrote is a developer
+                    # error, and `test_every_degraded_cell_has_a_detail` fails the build for it —
+                    # but it must not raise HERE. This is a diagnostic: aborting someone's launch
+                    # because the warning about their launch is incomplete would be a strictly
+                    # worse outcome than the gap it was trying to describe.
+                    detail=_DETAIL.get(
+                        (backend, primitive),
+                        f"{primitive!r} is not honored on the {backend} backend",
+                    ),
                 ))
     return found
