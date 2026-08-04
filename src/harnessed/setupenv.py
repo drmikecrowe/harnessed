@@ -407,6 +407,41 @@ def _upsert_mise_task(mise_local: Path, harness: str, block: str) -> bool:
     return True
 
 
+def _trust_mise_local(mise_local: Path) -> None:
+    """Trust the `mise.local.toml` we just wrote, so a plain shell in this project can load it.
+
+    mise refuses to parse an untrusted config that can affect the environment. A `[tools]`/`[tasks]`
+    only file is exempt — nothing in it executes at load time — but ours carries `[env] _.file`,
+    which is exactly the shape that requires trust. So without this, the file we write to make `bd`
+    work in a plain terminal is the one thing mise declines to read, and the user gets
+    "Config files … are not trusted" until they run `mise trust` themselves.
+
+    Every other surface already compensates: the container gets `MISE_TRUSTED_CONFIG_PATHS`
+    (launcher), and the base image runs `mise trust -a` from `.bashrc` and `/etc/profile.d`. The
+    host write was the one place that generated a config and left it untrusted.
+
+    Trust records a hash of the CONTENT, so this must run after the last write — trusting a file we
+    then rewrite trusts bytes that no longer exist.
+
+    Best-effort by design: mise is not a harnessed dependency and may be absent, and a launch must
+    not fail because a convenience could not be applied. A failure here costs the user one
+    `mise trust`, which is exactly where they were before.
+    """
+    try:
+        proc = subprocess.run(
+            ["mise", "trust", str(mise_local)], check=False, capture_output=True, text=True,
+        )
+    except OSError:
+        # mise absent entirely. Not an error: a host without mise never loads this file anyway, so
+        # there is nothing to trust and nothing for the user to fix.
+        return
+    if proc.returncode != 0:
+        _say(
+            f"[yellow]note:[/yellow] could not `mise trust` {mise_local.name} — run it yourself if "
+            f"a plain shell here reports an untrusted config"
+        )
+
+
 def _write_project_tool_env(
     stack: str, project_path: Path, *, harness: str, verb: str,
     no_strict_mcp: bool = False, aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
@@ -507,6 +542,11 @@ def _write_project_tool_env(
         )
     elif _upsert_mise_task(mise_local, harness, block):
         _say(f"[blue][INFO][/blue] `mise run {harness}` in this repo now starts {stack}")
+    # AFTER every write above — trust hashes the content (see _trust_mise_local) — and only for a
+    # file carrying our marker. Vouching for someone else's config is their call, by the same rule
+    # that stops us editing it.
+    if _MISE_MARKER in mise_local.read_text(encoding="utf-8"):
+        _trust_mise_local(mise_local)
     _ensure_gitignore_entry(project_path, "mise.local.toml")
 
 
