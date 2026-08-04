@@ -57,6 +57,11 @@
       "type": "boolean",
       "default": false
     },
+    "isolated_auth": {
+      "description": "Opt-in (default false): give this stack its OWN Claude identity instead of the host's, so it can run as a DIFFERENT account (a client's). The host CLAUDE_CODE_OAUTH_TOKEN is withheld (env forward AND --env-file) and no host credential file is seeded; the stack gets a per-instance credentials file it logs into itself, persisted across recreates and cleared by `--fresh`. Does not breach 'credentials referenced, never replicated' — nothing is copied, so there is no second copy to diverge. Simpler alternative when the client hands you a token outright: put CLAUDE_CODE_OAUTH_TOKEN in <project>/.env.schema, which takes precedence. claude only.",
+      "type": "boolean",
+      "default": false
+    },
     "state": {
       "description": "State and lifecycle options. Default persistent; `--fresh` overrides at runtime.",
       "type": "object",

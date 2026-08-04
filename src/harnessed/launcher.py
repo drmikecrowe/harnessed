@@ -122,6 +122,9 @@ from .mounts import (
     _claude_config_seed_mount,
     _claude_creds_expired,
     _claude_creds_seed_mount,
+    _claude_isolated_auth_mount,
+    _env_files_value,
+    _isolated_auth_fresh_wipe,
     _claude_oauth_token_args,
     _claude_oauth_token_configured,
     _credential_forward_args,
@@ -239,6 +242,7 @@ from .launchenv import (
     _plain_env_values,
     _resolve_launch_env,
     _resolve_launch_secrets,
+    _strip_var_from_env_files,
     _varlock_cache_clear,
     _varlock_resolve,
     _varlock_resolve_env_file,
@@ -2345,7 +2349,13 @@ class ContainerBackend(ExecutionBackend):
             spec.harness, self.prof, self.mount_path, self.config_volume, self.tools_volume
         )
         # Seed a token-free ~/.claude.json stub so Claude skips onboarding (auth = the token/credential).
-        self.mount_args += _claude_config_seed_mount(spec.harness, self.inst)
+        self.mount_args += _claude_config_seed_mount(
+            spec.harness, self.inst,
+            # Same gate as seed_auth: an isolated stack gets the onboarding fields WITHOUT the host
+            # account's email/uuid/organization, which have no business in a container that
+            # authenticates as someone else.
+            isolated_auth=self.stk.isolated_auth and spec.harness == "claude",
+        )
         # NB: the Claude credential fallback mount is appended AFTER secrets resolve (see seed_auth)
         # — whether it is needed at all depends on a CLAUDE_CODE_OAUTH_TOKEN that may arrive via
         # --env-file.
@@ -2415,11 +2425,33 @@ class ContainerBackend(ExecutionBackend):
         # Layered global → project (project wins on conflict). Stays AFTER the aborting checks in
         # materialize_config so an early exit can't strand resolved secrets on disk.
         secrets_env_files, secrets_temp_files = _resolve_launch_secrets(spec.project_path)
-        # Claude auth, last of the mounts: a long-lived CLAUDE_CODE_OAUTH_TOKEN (host env, varlock,
-        # or plain .env) supersedes the credential file, so nothing is mounted in that case.
-        self.mount_args += _claude_creds_seed_mount(
-            spec.harness, self.inst, _claude_oauth_token_configured(spec.harness, spec.project_path)
-        )
+        if self.stk.isolated_auth and spec.harness == "claude":
+            # This stack has its OWN identity: neither the host's token nor the host's credential
+            # file may reach it, or it would come up as the WRONG ACCOUNT — the one failure this
+            # field exists to prevent. `_build_pod_args` suppresses the token forward off the same
+            # condition; here the seed mount is simply not built.
+            self.mount_args += _claude_isolated_auth_mount(spec.harness, self.inst)
+            # ...and the env-file route too: --env-file is passed unconditionally, so a token in the
+            # user-global .env.schema would otherwise walk straight past both suppressions above.
+            _strip_var_from_env_files(_OAUTH_TOKEN_VAR, secrets_env_files)
+        else:
+            if self.stk.isolated_auth:
+                # Gated on the harness, NOT just the flag: omp authenticates from the SAME
+                # CLAUDE_CODE_OAUTH_TOKEN this branch would otherwise strip, so suppressing it here
+                # would leave an omp launch with no auth at all — while the warning below promised
+                # the opposite. Every non-claude harness therefore falls through to the normal path.
+                _err.print(
+                    "[bold yellow]warning:[/bold yellow] this stack sets [bold]isolated_auth[/bold] but "
+                    f"[bold]{spec.harness}[/bold] keeps its credentials outside "
+                    "~/.claude/.credentials.json, so the flag does nothing here — this launch uses "
+                    "the host identity.\n"
+                    "  Isolated auth is claude-only today."
+                )
+            # Claude auth, last of the mounts: a long-lived CLAUDE_CODE_OAUTH_TOKEN (host env, varlock,
+            # or plain .env) supersedes the credential file, so nothing is mounted in that case.
+            self.mount_args += _claude_creds_seed_mount(
+                spec.harness, self.inst, _claude_oauth_token_configured(spec.harness, spec.project_path)
+            )
         self.secrets_env_files = secrets_env_files
         self.secrets_temp_files = secrets_temp_files
 
@@ -2556,8 +2588,13 @@ class ContainerBackend(ExecutionBackend):
             *recipe_env,
             # Long-lived subscription token from the host env (bare `-e NAME` → podman reads the value
             # from its own env, keeping the secret off the command line). No-op when unset or supplied
-            # via --env-file above.
-            *_claude_oauth_token_args(spec.harness),
+            # via --env-file above. Withheld from an `isolated_auth` CLAUDE stack: forwarding the
+            # HOST's token into a stack that exists to run as someone else is the exact
+            # wrong-account failure that flag prevents (see seed_auth). The harness gate matches
+            # seed_auth's — omp reads this same variable, so withholding it there would break auth
+            # the flag never claimed to touch.
+            *([] if self.stk.isolated_auth and spec.harness == "claude"
+              else _claude_oauth_token_args(spec.harness, self.secrets_env_files)),
             *socket_env,
             *setup_env,
             *mise_trust_env,
@@ -2766,6 +2803,11 @@ def container_run(
         # Also wipe the persisted agy keyring (antigravity only) so --fresh forces a re-login — the
         # keyring dir deliberately survives a normal recreate, so this is the one place it is cleared.
         _keyring_fresh_wipe(harness, inst)
+        # Same contract for an isolated_auth stack's own login (claude): it survives a normal
+        # recreate on purpose, so --fresh is the only way back to a logged-out agent. Not gated on
+        # the flag — the store exists only for stacks that set it, so this is a no-op otherwise, and
+        # leaving it ungated also clears a stale login from a stack that has since turned it off.
+        _isolated_auth_fresh_wipe(harness, inst)
 
     # Idempotent — skips services already running. BEFORE the re-attach branch below, deliberately:
     # see ContainerBackend.wire_services for why.

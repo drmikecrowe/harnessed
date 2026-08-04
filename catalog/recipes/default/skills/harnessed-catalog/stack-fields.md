@@ -5,7 +5,7 @@ Stack manifests are **strict**: any key outside this set is rejected with a did-
 
 ```text
 name extends recipes services harnesses permissions instructions
-forward_git_credentials ssh_keys forward_aws_sso state hatago
+forward_git_credentials ssh_keys forward_aws_sso isolated_auth state hatago
 ```
 
 Strictness is deliberate. Parsing used to be tolerant, and an `extends:` written before the feature
@@ -32,6 +32,7 @@ state:
 forward_git_credentials: false   # opt-in: gh token + opted-in private SSH keys
 ssh_keys: []                     # private key basenames under ~/.ssh — overlay stacks only
 forward_aws_sso: false           # opt-in: AWS creds via the aws-sso ECS server
+isolated_auth: false             # opt-in: this stack logs in as its OWN Claude account
 extends: base-stack
 ```
 
@@ -54,6 +55,26 @@ concatenated with recipe `rules:`, which fan into `.claude/rules/` separately.
 extends) may list key names, but the launcher drops them — the key owner, not a third-party stack
 author, must consent to mounting a private key. Declare it in the overlay stack you actually launch.
 
+**`isolated_auth:` is for running a stack as a DIFFERENT Claude account** — a client's, typically —
+while every other stack keeps using yours. Reach for it only when you must *log in* as them. If the
+client simply hands you a token, you do not need this field at all:
+
+| The client gives you… | Do this |
+| --- | --- |
+| a token (`claude setup-token` output) | put `CLAUDE_CODE_OAUTH_TOKEN` in `<project>/.env.schema` (1Password/varlock). Nothing to log into and no credential file to refresh; rotate it before it ages out (~1 year). Beats a token exported in your shell. |
+| a login to use interactively | `isolated_auth: true` on the stack, then `/login` inside the agent |
+
+With the flag on, your own token is withheld from the container — both the env forward and the
+`--env-file` route, so a token in your user-global `~/.config/harnessed/.env.schema` cannot leak in —
+and no host credential file is seeded. The agent therefore starts **logged out**; that is expected.
+The login it writes is per-instance (stack + project), survives ordinary recreates, and is cleared
+by `--fresh`, which is how you get back to logged-out.
+
+This does not breach *credentials referenced, never replicated*: that rule bans copying the host
+store, because a copy rots on refresh. Nothing is copied here — the store is minted by its own login
+and is the only copy of that credential, so there is nothing to diverge from. claude only; on other
+harnesses the launcher warns and uses the host identity.
+
 ## `extends:` — the answer for several stacks that share a base
 
 ```yaml
@@ -74,7 +95,7 @@ permissions: yolo          # → yolo (child wins)
 | --- | --- |
 | `recipes`, `services`, `harnesses`, `ssh_keys` | **union**: base's entries in base order, then the child's, de-duped |
 | `permissions`, `instructions`, `state` | child wins **whole**, when set; otherwise inherited. `state` replaces — no per-key merge. |
-| `forward_git_credentials`, `forward_aws_sso` | inherited; a child may set either back to `false` |
+| `forward_git_credentials`, `forward_aws_sso`, `isolated_auth` | inherited; a child may set any of them back to `false` |
 | `name` | never inherited; must match the directory name |
 
 - `extends:` takes a **single** name — no multiple inheritance, no diamonds. Chains are allowed and

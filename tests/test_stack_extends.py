@@ -125,7 +125,21 @@ class TestStrictStackFields:
             "s",
             "recipes: [a]\nservices: [b]\nharnesses: [claude]\npermissions: auto\n"
             "instructions: hi\nforward_git_credentials: true\nforward_aws_sso: true\n"
-            "ssh_keys: [id_ed25519]\nstate: {k: v}\n",
+            "isolated_auth: true\nssh_keys: [id_ed25519]\nstate: {k: v}\n",
         )
         stk = load_stack(d)
         assert stk.recipes == ["a"] and stk.services == ["b"] and stk.permissions == "auto"
+        assert stk.isolated_auth is True
+
+    def test_isolated_auth_defaults_off(self, tmp_path):
+        """Opt-in: a stack that says nothing keeps using the host identity."""
+        assert load_stack(_stack(tmp_path, "s", "recipes: [a]\n")).isolated_auth is False
+
+    def test_isolated_auth_inherits_and_a_child_can_switch_it_back_off(self, tmp_path):
+        """A client's base stack carries the isolated identity to everything extending it — and a
+        stack that should go back to the host identity can say so explicitly."""
+        _stack(tmp_path, "client-base", "isolated_auth: true\n")
+        heir = _stack(tmp_path, "heir", "extends: client-base\nrecipes: [x]\n")
+        optout = _stack(tmp_path, "optout", "extends: client-base\nisolated_auth: false\n")
+        assert load_stack(heir).isolated_auth is True
+        assert load_stack(optout).isolated_auth is False

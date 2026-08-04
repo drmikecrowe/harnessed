@@ -276,6 +276,33 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
     return env_files, temp_files
 
 
+def _strip_var_from_env_files(var: str, env_files: list[Path]) -> None:
+    """Delete every assignment of `var` from already-resolved env-files, in place.
+
+    For `isolated_auth` stacks (see `_claude_isolated_auth_mount`). Suppressing the `-e` forward is
+    not enough on its own: `--env-file` is handed to podman unconditionally, so a
+    CLAUDE_CODE_OAUTH_TOKEN declared in the USER-GLOBAL `~/.config/harnessed/.env.schema` — the
+    normal way to hold your own token — would still reach a stack whose entire purpose is to run as
+    somebody else. Stripping the variable is what makes the isolation actually hold.
+
+    Rewriting these files in place is safe precisely because none of them is the user's: every path
+    `_resolve_launch_secrets` returns is a mode-0600 temp it generated (a plain `.env` is COPIED,
+    never handed to podman directly) and the caller unlinks them after launch. Passing a
+    non-generated path here would corrupt user data — do not.
+
+    Preferred over `-e VAR=` (which does beat `--env-file`) because that would depend on the harness
+    reading an empty token as "absent", which is unverified. Absent is unambiguous.
+    """
+    for f in env_files:
+        try:
+            lines = f.read_text().splitlines()
+        except OSError:
+            continue
+        kept = [ln for ln in lines if (pair := _parse_plain_env_line(ln)) is None or pair[0] != var]
+        if len(kept) != len(lines):
+            f.write_text("".join(f"{ln}\n" for ln in kept))
+
+
 def _resolve_launch_env(project_path: Path | None = None) -> dict[str, str]:
     """The host-native twin of `_resolve_launch_secrets`: the same sources and the same
     global → project precedence (project wins), returned as a `KEY -> value` map instead of a list

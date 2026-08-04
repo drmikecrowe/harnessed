@@ -968,6 +968,21 @@ class Stack:
     # unlike the agent auto-forward. No-op when the host token file is absent. See
     # _aws_sso_ecs_forward_args and docs/guides/aws-sso.md.
     forward_aws_sso: bool = False
+    # Opt-in (default OFF): give this stack its OWN Claude identity instead of the host's. The host
+    # CLAUDE_CODE_OAUTH_TOKEN is not forwarded and the host credential file is not seeded; the stack
+    # gets a per-instance credentials file it logs into itself (`/login` in-agent), so it can run as
+    # a DIFFERENT account — a client's, say — while every other stack keeps using yours.
+    #
+    # This does NOT breach "credentials referenced, never replicated" (ARCHITECTURE.md §Constraints).
+    # That SOP bans COPYING the host store, because a copy rots the moment either side refreshes.
+    # Nothing is copied here: the store is minted in-container by its own login and is the only copy
+    # of that credential in existence, so there is no second copy to diverge from.
+    #
+    # An env-file-supplied token is the SIMPLER answer when the client hands you one outright
+    # (`CLAUDE_CODE_OAUTH_TOKEN` in `<project>/.env.schema` — no file, no expiry, nothing to log
+    # into) and takes precedence when both are configured. This field is for the case where the
+    # client wants you to log in interactively as them.
+    isolated_auth: bool = False
     state: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
 
@@ -1414,7 +1429,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
 
 KNOWN_STACK_FIELDS = frozenset({
     "name", "extends", "recipes", "services", "harnesses", "permissions", "instructions",
-    "forward_git_credentials", "ssh_keys", "forward_aws_sso", "hatago", "state",
+    "forward_git_credentials", "ssh_keys", "forward_aws_sso", "isolated_auth", "hatago", "state",
 })
 # `hatago` stays in the KNOWN set deliberately after its removal (bd harnessed-1t4.1): it must reach
 # `_reject_removed_hatago_override`, whose message says what replaced it, rather than dying in the
@@ -1562,6 +1577,7 @@ def load_stack(stack_dir: Path) -> Stack:
         forward_git_credentials=bool(raw.get("forward_git_credentials", False)),
         ssh_keys=ssh_keys,
         forward_aws_sso=bool(raw.get("forward_aws_sso", False)),
+        isolated_auth=bool(raw.get("isolated_auth", False)),
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
     )

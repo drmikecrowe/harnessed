@@ -61,6 +61,15 @@ CONTAINER_ONLY: dict[str, str] = {
     "_claude_creds_seed_mount": "seeds credentials INTO a container; the host already has them",
     "_keyring_state_mount": "bind mount",
     "_keyring_fresh_wipe": "resets container-side keyring state",
+    # `isolated_auth` (a stack running as a DIFFERENT Claude account) is container-only for now, by
+    # decision rather than by nature — a host-native launch COULD hold a second identity, but not
+    # this way: _materialize_host_home rmtree's the per-stack home on every launch, so the store
+    # would need a home outside it plus its own rescue path, and host mode's auth is a symlink to
+    # the user's live store rather than a mount that can be swapped. Tracked separately; the host
+    # backend is deliberately the maintained-secondary that gets no new investment.
+    "_claude_isolated_auth_mount": "bind mounts a per-instance credentials file over the config volume",
+    "_isolated_auth_fresh_wipe": "resets the container-side isolated-auth store",
+    "_strip_var_from_env_files": "scrubs the token from podman --env-file temps; host mode has no env-file",
     "_omp_agent_mount": "bind mount",
     "_omp_mcp_seed_mount": "bind mount",
     # --- credential/socket forwarding: the host reaches these natively ---
