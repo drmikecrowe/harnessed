@@ -180,6 +180,25 @@ class TestSyncSession:
         aoe.sync_session("container-run", "default", "claude", tmp_path)
         assert rec.calls == []
 
+    def test_default_stack_is_registered_when_the_row_is_named(self, rec, tmp_path):
+        # The skip suppresses a row nobody asked for. `--aoe-group`/`--aoe-title` is asking, so it
+        # must win — it used to be read only after the skip had already returned, which accepted
+        # both flags and silently registered nothing.
+        aoe.sync_session("container-run", "default", "claude", tmp_path, group="general", title="my-row")
+        assert _flag(rec.added()[0], "-g") == "general"
+        assert _flag(rec.added()[0], "-t") == "my-row"
+
+    def test_either_naming_flag_alone_overrules_the_skip(self, rec, tmp_path):
+        # One flag places a row without identifying one, which is enough to mean "I want this row".
+        aoe.sync_session("container-run", "default", "claude", tmp_path, title="my-row")
+        assert _flag(rec.added()[0], "-t") == "my-row"
+
+    def test_group_naming_flag_alone_overrules_the_skip(self, rec, tmp_path):
+        aoe.sync_session(
+            "container-run", "default", "claude", tmp_path, group="general"
+        )
+        assert _flag(rec.added()[0], "-g") == "general"
+
     def test_title_carries_folder_harness_and_stack(self, rec, tmp_path):
         aoe.sync_session("container-run", "serena", "omp", tmp_path)
         assert _flag(rec.added()[0], "-t") == f"{tmp_path.name} [omp/container] serena"
