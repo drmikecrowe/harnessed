@@ -17,6 +17,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tomllib
 
 from pathlib import Path
 from typing import Optional
@@ -407,6 +408,63 @@ def _upsert_mise_task(mise_local: Path, harness: str, block: str) -> bool:
     return True
 
 
+def _project_env_file(project_path: Path) -> Path:
+    """Where THIS project's dotenv lives. A pure function of the project, so the ownership check
+    can name the only pointer value harnessed would ever write, without depending on whether this
+    particular launch happened to have values to write."""
+    gcd = paths.git_common_dir(project_path)
+    return (
+        paths.xdg_state_home() / "harnessed" / "project-env"
+        / f"{paths.project_hash(gcd or project_path)}.env"
+    )
+
+
+def _fully_harnessed_owned(mise_local: Path, project_path: Path) -> bool:
+    """Whether EVERY directive in this file is one harnessed wrote.
+
+    `_MISE_MARKER` cannot answer this. It is a public comment string, so a `mise.local.toml` that
+    arrived with a CLONED REPO can carry it — the marker proves the text was copied, not that we
+    wrote it. That is tolerable for deciding whether to upsert our own task table (the existing
+    rule, unchanged), and not tolerable for deciding to TRUST: trust is what lets mise apply the
+    file's `[env]` to every process whose cwd is under the project, and mise's prompt exists
+    precisely to stop a config that came with a checkout from doing that silently. Auto-trusting on
+    a copyable marker would hand that decision to whoever wrote the repo (CWE-345).
+
+    So this checks the CONTENT and fails closed — anything unrecognised means we do not vouch for
+    the file:
+
+      * nothing but `[env]` and `[tasks]` at the top level (a `[tools]` table is the user's, and a
+        tools-only file needs no trust anyway),
+      * `[env]` holding only the `_.file` pointer, and pointing at THIS project's dotenv — not an
+        arbitrary path someone else chose,
+      * every task being a harnessed launch task (`run` is `aoe.command_for`, which always starts
+        with the `harnessed` binary).
+
+    A file we would refuse to trust still works; the user gets mise's normal prompt, which is the
+    correct outcome for a file harnessed did not fully author.
+    """
+    try:
+        data = tomllib.loads(mise_local.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # ValueError covers tomllib.TOMLDecodeError. Unparseable is not ours.
+        return False
+    if set(data) - {"env", "tasks"}:
+        return False
+    env = data.get("env") or {}
+    if set(env) - {"_"}:
+        return False
+    pointer = env.get("_") or {}
+    if set(pointer) - {"file"}:
+        return False
+    if "file" in pointer and Path(str(pointer["file"])) != _project_env_file(project_path):
+        return False
+    for task in (data.get("tasks") or {}).values():
+        run = task.get("run") if isinstance(task, dict) else None
+        if not isinstance(run, str) or not run.startswith("harnessed "):
+            return False
+    return True
+
+
 def _trust_mise_local(mise_local: Path) -> None:
     """Trust the `mise.local.toml` we just wrote, so a plain shell in this project can load it.
 
@@ -543,9 +601,9 @@ def _write_project_tool_env(
     elif _upsert_mise_task(mise_local, harness, block):
         _say(f"[blue][INFO][/blue] `mise run {harness}` in this repo now starts {stack}")
     # AFTER every write above — trust hashes the content (see _trust_mise_local) — and only for a
-    # file carrying our marker. Vouching for someone else's config is their call, by the same rule
-    # that stops us editing it.
-    if _MISE_MARKER in mise_local.read_text(encoding="utf-8"):
+    # file whose every directive is ours. NOT the marker: see _fully_harnessed_owned for why a
+    # copyable comment cannot authorize trust even though it authorizes the upsert above.
+    if _fully_harnessed_owned(mise_local, project_path):
         _trust_mise_local(mise_local)
     _ensure_gitignore_entry(project_path, "mise.local.toml")
 

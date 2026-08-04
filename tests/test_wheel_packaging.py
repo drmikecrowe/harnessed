@@ -140,17 +140,28 @@ class TestTheBuildTreeIsHermetic:
     """
 
     def test_mise_config_is_excluded_from_the_build_copy(self, tmp_path):
-        # Literal filenames, NOT a loop over `_MISE_CONFIG`: iterating the constant means emptying
-        # it satisfies this test vacuously, which a mutation run caught doing exactly that.
+        """Copies a SYNTHETIC source carrying both filenames, not the checkout.
+
+        Two vacuity traps, both hit for real: iterating `_MISE_CONFIG` meant emptying the constant
+        satisfied the assertion (caught by mutation), and `mise.local.toml` is host-local — absent
+        from a fresh worktree — so asserting against the real checkout passed whether or not the
+        exclusion named it (caught by CodeRabbit on PR #208). Planting both removes both traps.
+        """
         src = tmp_path / "src"
-        src.mkdir()
-        (src / "mise.toml").write_text("")
-        (src / "mise.local.toml").write_text("")
+        (src / "sub").mkdir(parents=True)
+        for name in ("mise.toml", "mise.local.toml"):
+            (src / name).write_text("# planted\n")
+        (src / "keep.txt").write_text("packaging input\n")
+
         dst = tmp_path / "copy"
         shutil.copytree(src, dst, symlinks=True, ignore=_COPY_IGNORE)
+
         assert not (dst / "mise.toml").exists(), "mise.toml copied into the build tree"
         assert not (dst / "mise.local.toml").exists(), "mise.local.toml copied into the build tree"
+        assert (dst / "keep.txt").is_file(), "the ignore list must not swallow real content"
 
-    def test_the_repo_really_has_the_config_being_excluded(self):
-        """Otherwise the test above passes vacuously the day mise.toml is renamed or removed."""
+    def test_the_real_checkout_carries_the_config_being_excluded(self):
+        """The synthetic test above proves the RULE; this proves the rule still has a subject.
+        `mise.local.toml` is deliberately not asserted — it is host-local and absent in a fresh
+        worktree, which is exactly why the test above cannot use the real checkout."""
         assert (REPO / "mise.toml").is_file(), "mise.toml gone — revisit the exclusion and its test"
