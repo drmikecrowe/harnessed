@@ -11,9 +11,11 @@ instances permanently logged out, curable only by deleting the state dir by hand
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from pathlib import Path
 
 from harnessed import launcher
+from harnessed.backend import LaunchSpec
 from support import patch_all
 
 
@@ -329,13 +331,14 @@ class TestEnvFileBeatsShellExport:
         env_file.write_text("SOMETHING_ELSE=1\n")
         assert launcher._claude_oauth_token_args("claude", [env_file]) == ["-e", "CLAUDE_CODE_OAUTH_TOKEN"]
 
-    def test_blank_env_file_value_is_not_supplied(self, monkeypatch, tmp_path):
-        """Empty is how a source turns the token OFF; it must not suppress the host forward with
-        nothing to replace it (same semantics as _claude_oauth_token_configured)."""
+    def test_a_blank_env_file_value_also_suppresses_the_host_forward(self, monkeypatch, tmp_path):
+        """An explicit blank is a declaration too — it means "declared, and turned off". Forwarding
+        the host value over the top would override the very intent that declared it, since `-e`
+        beats `--env-file`. The credential-file fallback is what covers the launch from there."""
         monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "mine-from-shell")
         env_file = tmp_path / "resolved.env"
         env_file.write_text("CLAUDE_CODE_OAUTH_TOKEN=\n")
-        assert launcher._claude_oauth_token_args("claude", [env_file]) == ["-e", "CLAUDE_CODE_OAUTH_TOKEN"]
+        assert launcher._claude_oauth_token_args("claude", [env_file]) == []
 
     def test_missing_env_file_does_not_break_the_launch(self, monkeypatch, tmp_path):
         monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "mine-from-shell")
@@ -442,3 +445,147 @@ class TestIsolatedAuthStripsTheEnvFileToken:
 
     def test_missing_file_is_tolerated(self, tmp_path):
         launcher._strip_var_from_env_files("CLAUDE_CODE_OAUTH_TOKEN", [tmp_path / "gone.env"])
+
+
+class TestEffectiveTokenAcrossEnvFiles:
+    """Presence must agree with the precedence the VALUES follow (bd harnessed-7bk).
+
+    `_resolve_launch_secrets` orders env-files global → project and `--env-file` is last-wins, so a
+    project-level `VAR=` written to disable a global token really does reach the container empty.
+    Answering from the first hit meant no `-e` forward AND no credential file: logged out, with no
+    recovery path from inside the pod.
+    """
+
+    def test_project_blank_overrides_a_global_token(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "mine-from-shell")
+        glob = tmp_path / "global.env"
+        glob.write_text("CLAUDE_CODE_OAUTH_TOKEN=global-token\n")
+        proj = tmp_path / "project.env"
+        proj.write_text("CLAUDE_CODE_OAUTH_TOKEN=\n")
+        # Declared-and-disabled: the host value must NOT be forwarded over the top, because `-e`
+        # would beat the --env-file that expressed the intent.
+        assert launcher._claude_oauth_token_args("claude", [glob, proj]) == []
+        assert launcher._env_files_value("CLAUDE_CODE_OAUTH_TOKEN", [glob, proj]) == ""
+
+    def test_project_token_overrides_a_global_one(self, tmp_path):
+        glob = tmp_path / "global.env"
+        glob.write_text("CLAUDE_CODE_OAUTH_TOKEN=global-token\n")
+        proj = tmp_path / "project.env"
+        proj.write_text("CLAUDE_CODE_OAUTH_TOKEN=clients-token\n")
+        assert launcher._env_files_value("CLAUDE_CODE_OAUTH_TOKEN", [glob, proj]) == "clients-token"
+
+    def test_unassigned_reads_as_none_not_empty(self, tmp_path):
+        f = tmp_path / "e.env"
+        f.write_text("OTHER=1\n")
+        assert launcher._env_files_value("CLAUDE_CODE_OAUTH_TOKEN", [f]) is None
+
+    def test_configured_honors_a_project_blank_over_a_global_token(self, monkeypatch, tmp_path):
+        """The credential-file decision half: with the token disabled at project level, the legacy
+        credentials mount must come BACK, or the container has neither."""
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        home = _home(monkeypatch, tmp_path)
+        cfg = home / ".config" / "harnessed"
+        cfg.mkdir(parents=True)
+        (cfg / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=global-token\n")
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=\n")
+
+        assert launcher._claude_oauth_token_configured("claude", proj) is False
+
+    def test_a_global_token_still_counts_when_the_project_is_silent(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        home = _home(monkeypatch, tmp_path)
+        cfg = home / ".config" / "harnessed"
+        cfg.mkdir(parents=True)
+        (cfg / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=global-token\n")
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env").write_text("SOMETHING=1\n")
+
+        assert launcher._claude_oauth_token_configured("claude", proj) is True
+
+
+class TestIsolatedAuthDoesNotLeakHostAccountMetadata:
+    """`oauthAccount` carries the host account's email/uuid/organization and `userID` its account
+    id. Seeding them into a stack that authenticates as somebody ELSE hands your account metadata
+    to a client-facing container and pairs a stub identifying you with their credentials."""
+
+    def _host_config(self, monkeypatch, tmp_path):
+        home = _home(monkeypatch, tmp_path)
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        (home / ".claude.json").write_text(json.dumps({
+            "oauthAccount": {"emailAddress": "me@example.com", "organizationName": "Mine"},
+            "userID": "host-user-id",
+        }))
+
+    def test_isolated_seed_omits_account_identity(self, monkeypatch, tmp_path):
+        self._host_config(monkeypatch, tmp_path)
+        args = launcher._claude_config_seed_mount("claude", "inst-i", isolated_auth=True)
+        stub = json.loads(Path(args[1].split(":")[0]).read_text())
+
+        assert stub["oauthAccount"] == {} and stub["userID"] == ""
+        assert "me@example.com" not in json.dumps(stub)
+        # The onboarding half is the whole point of the stub and must survive.
+        assert stub["hasCompletedOnboarding"] is True
+
+    def test_shared_identity_still_seeds_it(self, monkeypatch, tmp_path):
+        """The default path is unchanged — this stub exists to skip the login-method screen."""
+        self._host_config(monkeypatch, tmp_path)
+        args = launcher._claude_config_seed_mount("claude", "inst-j")
+        stub = json.loads(Path(args[1].split(":")[0]).read_text())
+
+        assert stub["oauthAccount"]["emailAddress"] == "me@example.com"
+        assert stub["userID"] == "host-user-id"
+
+
+class TestIsolatedAuthIsGatedOnTheHarness:
+    """`isolated_auth` warns that non-claude harnesses keep the host identity — the code must
+    actually honor that. omp authenticates from the SAME CLAUDE_CODE_OAUTH_TOKEN, so suppressing
+    the forward and stripping it from the env-files left an omp launch with no auth at all while
+    the warning promised the opposite.
+    """
+
+    def _backend(self, tmp_path, isolated: bool):
+        stk = SimpleNamespace(isolated_auth=isolated)
+        b = launcher.ContainerBackend(
+            "podman", "inst-x", "pod-x", tmp_path, "img", tmp_path,
+            [], [], stk, stack_from_overlay=False, headless=True,
+        )
+        b.mount_args = []  # stand in for materialize_config having run
+        return b
+
+    def _env_file(self, tmp_path, name="resolved.env"):
+        f = tmp_path / name
+        f.write_text("CLAUDE_CODE_OAUTH_TOKEN=host-token\n")
+        return f
+
+    def test_omp_keeps_its_token_when_a_claude_stack_field_is_set(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        _home(monkeypatch, tmp_path)
+        env_file = self._env_file(tmp_path)
+        monkeypatch.setattr(
+            launcher, "_resolve_launch_secrets", lambda p: ([env_file], [env_file]),
+        )
+        b = self._backend(tmp_path, isolated=True)
+
+        b.seed_auth(LaunchSpec(stack="s", harness="omp", project_path=tmp_path))
+
+        assert "CLAUDE_CODE_OAUTH_TOKEN=host-token" in env_file.read_text(), (
+            "omp's token was stripped by a claude-only flag"
+        )
+        assert not any("isolated-auth" in a for a in b.mount_args)
+
+    def test_claude_still_gets_the_isolated_treatment(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        _home(monkeypatch, tmp_path)
+        env_file = self._env_file(tmp_path)
+        monkeypatch.setattr(
+            launcher, "_resolve_launch_secrets", lambda p: ([env_file], [env_file]),
+        )
+        b = self._backend(tmp_path, isolated=True)
+
+        b.seed_auth(LaunchSpec(stack="s", harness="claude", project_path=tmp_path))
+
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in env_file.read_text()
+        assert any("isolated-auth" in a for a in b.mount_args)

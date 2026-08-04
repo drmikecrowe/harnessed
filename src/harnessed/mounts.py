@@ -139,7 +139,7 @@ def _build_mount_args(
     return args
 
 
-def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
+def _claude_config_seed_mount(harness: str, inst: str, isolated_auth: bool = False) -> list[str]:
     """Mount a minimal, token-free ~/.claude.json stub so Claude Code skips first-run onboarding.
 
     The real OAuth token lives in the rw ~/.claude/.credentials.json mount (see
@@ -148,6 +148,12 @@ def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
     onboarding. We seed ONLY onboarding + identity fields (never the token), copied from the host
     ~/.claude.json, written to a per-instance state dir and mounted rw so Claude's runtime writes
     never touch the host file. (design §4b; ports lib/harnessed-isolated-config.sh.)
+
+    `isolated_auth` DROPS the identity half. `oauthAccount` carries the host account's email, uuid
+    and organization, and `userID` its account id — copying them into a stack that authenticates as
+    somebody ELSE would both hand your account metadata to a client-facing container and pair a
+    stub identifying you with credentials belonging to them. The onboarding fields are all that
+    branch needs; the client's own login repopulates the rest.
     """
     if harness not in ("claude", "omp"):
         return []
@@ -155,7 +161,7 @@ def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
     oauth_account: object = {}
     user_id: object = ""
     host_json = Path.home() / ".claude.json"
-    if host_json.is_file():
+    if host_json.is_file() and not isolated_auth:
         try:
             data = json.loads(host_json.read_text(encoding="utf-8"))
             oauth_account = data.get("oauthAccount", {})
@@ -207,30 +213,41 @@ def _claude_oauth_token_args(harness: str, env_files: Sequence[Path] = ()) -> li
     """
     if harness not in ("claude", "omp"):
         return []
-    if _env_files_supply(_OAUTH_TOKEN_VAR, env_files):
+    # ANY explicit assignment in an env-file wins, empty included. A non-empty one supplies the
+    # token, so the forward is redundant; an empty one is how a source turns the token OFF, and
+    # since `-e` beats `--env-file` a forward there would override the very intent that declared it.
+    if _env_files_value(_OAUTH_TOKEN_VAR, env_files) is not None:
         return []
     if os.environ.get(_OAUTH_TOKEN_VAR):
         return ["-e", _OAUTH_TOKEN_VAR]
     return []
 
 
-def _env_files_supply(var: str, env_files: Sequence[Path]) -> bool:
-    """True when any resolved `--env-file` gives `var` a non-empty value.
+def _env_files_value(var: str, env_files: Sequence[Path]) -> str | None:
+    """The value `var` ends up with across resolved `--env-file`s, or None when none assigns it.
 
-    Every path here is a generated temp written by `_resolve_launch_secrets` (clean `KEY=VALUE`,
-    values literal to end-of-line), never the user's own file — but `_plain_env_values` is reused
-    rather than a bare `split('=')` so the normalization stays in one place. Empty is NOT supplied,
-    matching `_claude_oauth_token_configured`: an explicitly-blank value is how a source turns the
-    token OFF, and treating it as supplied would suppress the host forward with nothing to replace
-    it. Unreadable files are skipped — a launch must not hard-fail here.
+    LAST assignment wins, matching podman: `_resolve_launch_secrets` orders the files global →
+    project precisely so the project overrides the global, and `--env-file` is last-wins. Returning
+    on the first hit instead would let a global token mask a project-level `VAR=` written to
+    disable it — the container would then receive the empty value while every caller believed a
+    token was configured (bd harnessed-7bk; `_claude_oauth_token_configured` has the same shape for
+    the same reason).
+
+    An explicit empty string is a REAL answer, distinct from None: it means "declared, and turned
+    off". Every path here is a generated temp written by `_resolve_launch_secrets` (clean
+    `KEY=VALUE`, values literal to end-of-line), never the user's own file — but `_plain_env_values`
+    is reused rather than a bare `split('=')` so the normalization stays in one place. Unreadable
+    files are skipped: a launch must not hard-fail here.
     """
+    value: str | None = None
     for f in env_files:
         try:
-            if _plain_env_values(f).get(var):
-                return True
+            values = _plain_env_values(f)
         except OSError:
             continue
-    return False
+        if var in values:
+            value = values[var]
+    return value
 
 
 def _claude_oauth_token_configured(harness: str, project_path: Path | None = None) -> bool:
@@ -251,6 +268,16 @@ def _claude_oauth_token_configured(harness: str, project_path: Path | None = Non
     profile disables a token, and treating the bare name as "configured" would
     retire the credential file and silently log the user out with no recovery path
     (same semantics as ``_host_oauth_token_configured``).
+
+    Dirs are resolved in full and the LAST answer wins, rather than returning on the
+    first hit (bd harnessed-7bk).  Presence has to agree with the precedence the
+    VALUES actually follow: ``_resolve_launch_secrets`` orders the env-files global →
+    project and ``--env-file`` is last-wins, so a project-level ``VAR=`` written to
+    disable a global token really does reach the container as empty.  Returning True
+    on the global hit meant no credential file was mounted either — a container with
+    no usable token AND no credentials, logged out with no recovery path from inside
+    the pod.  Resolving every dir is cheap: ``_varlock_resolve`` memoises, and these
+    same dirs were already resolved for the env-file list.
 
     Emits a warning when ``_varlock_resolve`` itself fails (returns ``None``): the
     token may be configured but is unreachable at launch time (e.g. via a runtime
@@ -277,6 +304,8 @@ def _claude_oauth_token_configured(harness: str, project_path: Path | None = Non
     # never happens. Deferring to the return-False path also means ONE warning per launch listing
     # every failed dir, instead of one per dir.
     unresolved: list[Path] = []
+    # None until some dir declares the variable; then the LAST declaration, empty included.
+    declared: str | None = None
 
     for d in dirs:
         schema = d / ".env.schema"
@@ -285,16 +314,20 @@ def _claude_oauth_token_configured(harness: str, project_path: Path | None = Non
             resolved = _varlock_resolve(d)
             if resolved is None:
                 unresolved.append(d)
-            elif resolved.get(_OAUTH_TOKEN_VAR):  # empty string is NOT configured
-                return True
+            elif _OAUTH_TOKEN_VAR in resolved:
+                declared = resolved[_OAUTH_TOKEN_VAR]
         else:
             plain = d / ".env"
             if plain.is_file():
                 # Route 3: plain .env — _plain_env_values strips export / surrounding quotes.
-                if _plain_env_values(plain).get(_OAUTH_TOKEN_VAR):
-                    return True
+                values = _plain_env_values(plain)
+                if _OAUTH_TOKEN_VAR in values:
+                    declared = values[_OAUTH_TOKEN_VAR]
 
-    if unresolved:
+    if declared:  # empty string is NOT configured — the token was declared and turned off
+        return True
+
+    if declared is None and unresolved:
         # No source produced a token AND varlock failed somewhere, so we genuinely cannot tell
         # "no token" from "token we could not reach". Say so before the credential file is mounted.
         where = ", ".join(str(d) for d in unresolved)

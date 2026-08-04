@@ -61,7 +61,7 @@ client simply hands you a token, you do not need this field at all:
 
 | The client gives you… | Do this |
 | --- | --- |
-| a token (`claude setup-token` output) | put `CLAUDE_CODE_OAUTH_TOKEN` in `<project>/.env.schema` (1Password/varlock). Nothing to log into, no expiry, and it beats a token exported in your shell. |
+| a token (`claude setup-token` output) | put `CLAUDE_CODE_OAUTH_TOKEN` in `<project>/.env.schema` (1Password/varlock). Nothing to log into and no credential file to refresh; rotate it before it ages out (~1 year). Beats a token exported in your shell. |
 | a login to use interactively | `isolated_auth: true` on the stack, then `/login` inside the agent |
 
 With the flag on, your own token is withheld from the container — both the env forward and the

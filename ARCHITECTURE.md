@@ -458,8 +458,13 @@ stack is the point, and those files are not subject to the replace-on-refresh ha
    onboarding stub so Claude skips the interactive setup screen.
    **A token from an `--env-file` outranks one exported in the shell**, in both backends: `podman
    run -e` beats `--env-file`, so the launcher withholds the host forward when a resolved env-file
-   already supplies the variable. Without that, a stale export outranks every declared source and a
+   already declares the variable. Without that, a stale export outranks every declared source and a
    per-project token can never take effect.
+   Among the declared sources the **last** one wins, matching the global → project order the
+   env-files are built in — and an explicit empty value is a declaration meaning *off*, not an
+   absence. A project-level `CLAUDE_CODE_OAUTH_TOKEN=` therefore disables a user-global token and
+   correctly falls back to the credential file; answering from the first source instead left the
+   container with no token *and* no credentials (harnessed-7bk).
 2. **Per-instance credential seed (legacy fallback — NOT mechanism 1).** When no OAuth token is
    configured, the launcher seeds a per-instance copy of `~/.claude/.credentials.json`, mounted
    **rw** so the container can refresh it. This is acknowledged replication — it violates the SOP
