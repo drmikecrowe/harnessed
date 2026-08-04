@@ -41,13 +41,13 @@ class TestTheFieldIsGone:
 class TestDeclaringItIsAnError:
     def test_run_alone_is_rejected(self, tmp_path):
         d = _recipe(tmp_path, _BASE + "  run: bd init --shared-server\n")
-        with pytest.raises(SchemaError, match="'setup.run' has been removed"):
+        with pytest.raises(SchemaError, match=r"'setup\.run' has been removed"):
             load_recipe(d, strict=True)
 
     def test_the_error_names_the_replacement(self, tmp_path):
         """A removal message that does not say what to use instead just relocates the confusion."""
         d = _recipe(tmp_path, _BASE + "  run: echo hi\n")
-        with pytest.raises(SchemaError, match="setup.script"):
+        with pytest.raises(SchemaError, match=r"setup\.script"):
             load_recipe(d, strict=True)
 
     def test_run_is_rejected_when_empty_string(self, tmp_path):
