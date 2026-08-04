@@ -456,6 +456,10 @@ stack is the point, and those files are not subject to the replace-on-refresh ha
    `--env-file` (varlock / 1Password). When present, no credential file is mounted at all — the
    copy-divergence problem does not arise. Also mounted in all cases: a token-free `~/.claude.json`
    onboarding stub so Claude skips the interactive setup screen.
+   **A token from an `--env-file` outranks one exported in the shell**, in both backends: `podman
+   run -e` beats `--env-file`, so the launcher withholds the host forward when a resolved env-file
+   already supplies the variable. Without that, a stale export outranks every declared source and a
+   per-project token can never take effect.
 2. **Per-instance credential seed (legacy fallback — NOT mechanism 1).** When no OAuth token is
    configured, the launcher seeds a per-instance copy of `~/.claude/.credentials.json`, mounted
    **rw** so the container can refresh it. This is acknowledged replication — it violates the SOP
@@ -464,6 +468,20 @@ stack is the point, and those files are not subject to the replace-on-refresh ha
    rotation is undocumented. The launcher re-seeds from the host file when the copy has expired,
    which addresses the "permanently logged out" failure mode of the original design; the underlying
    race remains. Migrate with `claude setup-token`.
+
+**A third path exists for a different *identity*, not a different mechanism: `isolated_auth: true`
+(stack).** Both paths above answer "how does the container get **your** login". This one answers
+"how does a stack run as **someone else's**" — a client's account. The host token is withheld (env
+forward *and* `--env-file`, so a user-global declaration cannot leak in), no host credential file is
+seeded, and the stack gets a per-instance `.credentials.json` it logs into itself. Persisted across
+recreates, cleared by `--fresh`; container backend, claude only.
+
+It is **not** a fourth violation of the SOP. The rule bans *copying* the host store, because a copy
+rots the moment either side refreshes. Nothing is copied here: the store is minted in-container by
+its own login and is the only copy of that credential in existence, so there is no second copy to
+diverge from. The store lives on the host rather than in the `~/.claude` config volume because
+`_ensure_config_volume` destroys that volume whenever the profile fingerprint changes — its own
+"safe to destroy: credentials are bind-mounted over it" invariant is what this relies on.
 
 **`host-run` applies the same order.** Without a token it symlinks the per-stack `.credentials.json`
 at the host `CLAUDE_CONFIG_DIR`'s (default `~/.claude`; mechanism 1, subject to the replace-on-refresh hazard above — hence the rescue

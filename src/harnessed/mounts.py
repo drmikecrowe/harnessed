@@ -16,6 +16,7 @@ import shutil
 import socket
 import subprocess
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -179,7 +180,7 @@ def _claude_config_seed_mount(harness: str, inst: str) -> list[str]:
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude.json:rw"]
 
 
-def _claude_oauth_token_args(harness: str) -> list[str]:
+def _claude_oauth_token_args(harness: str, env_files: Sequence[Path] = ()) -> list[str]:
     """Pass a long-lived `CLAUDE_CODE_OAUTH_TOKEN` through to the container when one is configured.
 
     This is the SUPPORTED way to authenticate a containerized Claude Code against a subscription
@@ -189,17 +190,47 @@ def _claude_oauth_token_args(harness: str) -> list[str]:
     _claude_creds_seed_mount for the legacy fallback.
 
     Two supply routes, in order:
-      * the host environment — forwarded as a bare `-e NAME` so podman reads the value from its
-        own env instead of putting the secret on the command line (visible in `ps`);
       * a resolved `--env-file` (varlock/1Password or a project `.env`) — already handed to the
         container by the caller, so nothing extra is emitted here. This is the recommended route:
         the token is long-lived, so it belongs in a secret store, not a shell profile.
+      * the host environment — forwarded as a bare `-e NAME` so podman reads the value from its
+        own env instead of putting the secret on the command line (visible in `ps`).
+
+    The env-file route WINS (bd harnessed-36l, extended to the container path). `podman run -e`
+    beats `--env-file`, so forwarding the host value unconditionally made a shell export outrank
+    every declared source — and a per-project token for a DIFFERENT account (a client's, resolved
+    from 1Password into `<project>/.env.schema`) could then never take effect, silently
+    authenticating that project as whoever the shell was exported for. Host mode already resolves
+    this the other way at `_launch_host`: "letting a stale export in the invoking shell silently
+    beat it is the failure mode that is hardest to see from inside a session." Skipping the `-e`
+    here makes the two backends agree.
     """
     if harness not in ("claude", "omp"):
+        return []
+    if _env_files_supply(_OAUTH_TOKEN_VAR, env_files):
         return []
     if os.environ.get(_OAUTH_TOKEN_VAR):
         return ["-e", _OAUTH_TOKEN_VAR]
     return []
+
+
+def _env_files_supply(var: str, env_files: Sequence[Path]) -> bool:
+    """True when any resolved `--env-file` gives `var` a non-empty value.
+
+    Every path here is a generated temp written by `_resolve_launch_secrets` (clean `KEY=VALUE`,
+    values literal to end-of-line), never the user's own file — but `_plain_env_values` is reused
+    rather than a bare `split('=')` so the normalization stays in one place. Empty is NOT supplied,
+    matching `_claude_oauth_token_configured`: an explicitly-blank value is how a source turns the
+    token OFF, and treating it as supplied would suppress the host forward with nothing to replace
+    it. Unreadable files are skipped — a launch must not hard-fail here.
+    """
+    for f in env_files:
+        try:
+            if _plain_env_values(f).get(var):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _claude_oauth_token_configured(harness: str, project_path: Path | None = None) -> bool:
@@ -318,6 +349,68 @@ def _claude_creds_seed_mount(harness: str, inst: str, token_configured: bool = F
         "  That token lasts ~1 year, needs no refresh, and this mount disappears."
     )
     return ["-v", f"{stub}:{_CONTAINER_HOME_STR}/.claude/.credentials.json:rw"]
+
+
+def _isolated_auth_store(inst: str) -> Path:
+    """Host path of an isolated-auth stack's own credentials file (single source of truth)."""
+    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
+    return state_root / "harnessed" / inst / "isolated-auth" / "credentials.json"
+
+
+def _claude_isolated_auth_mount(harness: str, inst: str) -> list[str]:
+    """Give a stack its OWN Claude identity: a per-instance credentials file it logs into itself.
+
+    For `isolated_auth: true` (Stack) — running a stack as a DIFFERENT account (a client's) while
+    every other stack keeps using the host's. Nothing is seeded from the host and no host token is
+    forwarded, so the agent comes up logged OUT and `/login` writes the client's credentials here.
+
+    Contrast with the two shared-identity paths this REPLACES:
+      * `_claude_creds_seed_mount` copies the host's credentials — wrong account, and a copy that
+        rots on refresh;
+      * `_claude_oauth_token_args` forwards the host's token — wrong account.
+    Both are suppressed by the caller when this is active. Because nothing is copied, the SOP in
+    ARCHITECTURE.md §Constraints is satisfied rather than bent: this file is the ONLY copy of the
+    credential it holds, so there is no second copy to diverge from and no refresh race.
+
+    WHY A HOST FILE AND NOT THE CONFIG VOLUME. `~/.claude` is the per-stack config volume, which
+    `_ensure_config_volume` DESTROYS whenever the profile fingerprint changes (`fresh=not
+    unchanged`) — its docstring's "safe to destroy: credentials are bind-mounted over it and live on
+    the host" is exactly the invariant relied on here. A login stored in the volume would be wiped
+    by the next recipe edit. The mount shape (single file, rw, over the volume) is the one
+    `_claude_creds_seed_mount` already uses, so in-container refresh behaves the same way it does
+    today; only the SOURCE policy differs.
+
+    Seeded as `{}` when absent because podman bind-mounts a MISSING source as a new empty DIRECTORY,
+    which Claude cannot read as a credentials file. `{}` parses as "no `claudeAiOauth`" — logged
+    out — which is precisely the desired first-run state. Never re-seeded and never expiry-checked
+    (unlike the legacy path): expiry here means "the client's own token should refresh in place",
+    and rewriting the file would throw their login away. `--fresh` is the way back to logged-out.
+
+    Empty for every harness without a `~/.claude/.credentials.json` surface — see the caller's
+    warning, which tells the author the field did nothing rather than failing silently.
+    """
+    if harness != "claude":
+        return []
+    store = _isolated_auth_store(inst)
+    store.parent.mkdir(parents=True, exist_ok=True)
+    if not store.is_file():
+        store.write_text("{}", encoding="utf-8")
+        store.chmod(0o600)
+    return ["-v", f"{store}:{_CONTAINER_HOME_STR}/.claude/.credentials.json:rw"]
+
+
+def _isolated_auth_fresh_wipe(harness: str, inst: str) -> None:
+    """`--fresh` drops an isolated-auth login so the next launch re-prompts (mirrors
+    `_keyring_fresh_wipe`).
+
+    The store deliberately SURVIVES an ordinary recreate — persisting the client's login across pod
+    teardowns is the whole point — and neither `_persist_mounts` nor the per-instance state dir is
+    wiped on `--fresh`. So "start clean" needs the removal spelled out here, exactly as antigravity's
+    keyring does. No-op for every harness the mount does not apply to.
+    """
+    if harness != "claude":
+        return
+    shutil.rmtree(_isolated_auth_store(inst).parent, ignore_errors=True)
 
 
 def _claude_creds_expired(creds: Path) -> bool:

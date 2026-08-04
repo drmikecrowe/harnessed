@@ -11,6 +11,7 @@ instances permanently logged out, curable only by deleting the state dir by hand
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from harnessed import launcher
 from support import patch_all
@@ -304,3 +305,140 @@ class TestVarlockResolveMemo:
         launcher._varlock_resolve(tmp_path)
 
         assert len(calls) == 2
+
+
+class TestEnvFileBeatsShellExport:
+    """A token supplied by an --env-file outranks one exported in the invoking shell.
+
+    `podman run -e` beats `--env-file`, so forwarding the host value unconditionally made a stale
+    shell export outrank every declared source — and a per-project token for a DIFFERENT account
+    (a client's, resolved into <project>/.env.schema) could never take effect. Host mode already
+    resolved this the other way (bd harnessed-36l); this is the container half.
+    """
+
+    def test_env_file_token_suppresses_the_host_forward(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "mine-from-shell")
+        env_file = tmp_path / "resolved.env"
+        env_file.write_text("CLAUDE_CODE_OAUTH_TOKEN=clients-token\n")
+        # No `-e`, so podman applies only the env-file → the client's token is what lands.
+        assert launcher._claude_oauth_token_args("claude", [env_file]) == []
+
+    def test_host_forward_survives_an_env_file_without_the_token(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "mine-from-shell")
+        env_file = tmp_path / "resolved.env"
+        env_file.write_text("SOMETHING_ELSE=1\n")
+        assert launcher._claude_oauth_token_args("claude", [env_file]) == ["-e", "CLAUDE_CODE_OAUTH_TOKEN"]
+
+    def test_blank_env_file_value_is_not_supplied(self, monkeypatch, tmp_path):
+        """Empty is how a source turns the token OFF; it must not suppress the host forward with
+        nothing to replace it (same semantics as _claude_oauth_token_configured)."""
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "mine-from-shell")
+        env_file = tmp_path / "resolved.env"
+        env_file.write_text("CLAUDE_CODE_OAUTH_TOKEN=\n")
+        assert launcher._claude_oauth_token_args("claude", [env_file]) == ["-e", "CLAUDE_CODE_OAUTH_TOKEN"]
+
+    def test_missing_env_file_does_not_break_the_launch(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "mine-from-shell")
+        assert launcher._claude_oauth_token_args("claude", [tmp_path / "gone.env"]) == [
+            "-e", "CLAUDE_CODE_OAUTH_TOKEN",
+        ]
+
+    def test_default_argument_preserves_the_old_call_shape(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "x")
+        assert launcher._claude_oauth_token_args("claude") == ["-e", "CLAUDE_CODE_OAUTH_TOKEN"]
+
+
+class TestIsolatedAuthStore:
+    """`isolated_auth: true` — a stack with its OWN Claude identity (a client's account).
+
+    Nothing is seeded from the host and no host token reaches the container, so the agent comes up
+    logged out and `/login` writes the client's credentials into a per-instance host file.
+    """
+
+    def test_store_is_seeded_logged_out_and_mounted_rw(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        args = launcher._claude_isolated_auth_mount("claude", "inst-a")
+        assert args[0] == "-v"
+        src, dst, mode = args[1].split(":")
+        assert dst.endswith("/.claude/.credentials.json")
+        assert mode == "rw", "a ro mount would block the in-container login this exists for"
+        # `{}` parses as "no claudeAiOauth" — logged out. A MISSING source would make podman create
+        # an empty directory Claude cannot read.
+        assert json.loads(Path(src).read_text()) == {}
+        assert Path(src).stat().st_mode & 0o777 == 0o600
+
+    def test_nothing_is_copied_from_the_host(self, monkeypatch, tmp_path):
+        """The SOP bans copying the host store; this path must not touch it even when it exists."""
+        home = _home(monkeypatch, tmp_path)
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+        (home / ".claude").mkdir()
+        (home / ".claude" / ".credentials.json").write_text(_creds(timedelta(hours=5)))
+
+        args = launcher._claude_isolated_auth_mount("claude", "inst-b")
+        src = Path(args[1].split(":")[0])
+        assert json.loads(src.read_text()) == {}, "host credentials must never be seeded here"
+
+    def test_an_existing_login_is_never_overwritten(self, monkeypatch, tmp_path):
+        """Unlike the legacy path, an EXPIRED store is not re-seeded: expiry means the client's own
+        token should refresh in place, and rewriting it would throw their login away."""
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        launcher._claude_isolated_auth_mount("claude", "inst-c")
+        store = Path(launcher._claude_isolated_auth_mount("claude", "inst-c")[1].split(":")[0])
+        store.write_text(_creds(timedelta(hours=-5)))
+
+        launcher._claude_isolated_auth_mount("claude", "inst-c")
+        assert json.loads(store.read_text()) != {}, "an expired client login must survive relaunch"
+
+    def test_fresh_wipes_the_login(self, monkeypatch, tmp_path):
+        """The store survives a normal recreate on purpose, so --fresh is the only way back to
+        logged-out (mirrors _keyring_fresh_wipe)."""
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        store = Path(launcher._claude_isolated_auth_mount("claude", "inst-d")[1].split(":")[0])
+        store.write_text(_creds(timedelta(hours=5)))
+
+        launcher._isolated_auth_fresh_wipe("claude", "inst-d")
+        assert not store.exists()
+
+    def test_fresh_wipe_is_a_noop_for_other_harnesses_and_missing_stores(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        launcher._isolated_auth_fresh_wipe("codex", "inst-e")
+        launcher._isolated_auth_fresh_wipe("claude", "never-launched")
+
+    def test_other_harnesses_get_no_mount(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        for harness in ("codex", "omp", "opencode", "antigravity"):
+            assert launcher._claude_isolated_auth_mount(harness, "inst-f") == []
+
+
+class TestIsolatedAuthStripsTheEnvFileToken:
+    """Suppressing the `-e` forward is not enough: --env-file is passed unconditionally, so a token
+    in the user-global ~/.config/harnessed/.env.schema would walk straight past it."""
+
+    def test_token_assignment_is_removed_and_the_rest_survives(self, tmp_path):
+        f = tmp_path / "resolved.env"
+        f.write_text("KEEP=1\nCLAUDE_CODE_OAUTH_TOKEN=mine\n# a comment\nALSO=2\n")
+
+        launcher._strip_var_from_env_files("CLAUDE_CODE_OAUTH_TOKEN", [f])
+
+        body = f.read_text()
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in body
+        assert "KEEP=1" in body and "ALSO=2" in body and "# a comment" in body
+
+    def test_export_prefixed_and_quoted_forms_are_caught(self, tmp_path):
+        f = tmp_path / "resolved.env"
+        f.write_text('export CLAUDE_CODE_OAUTH_TOKEN="mine"\nKEEP=1\n')
+
+        launcher._strip_var_from_env_files("CLAUDE_CODE_OAUTH_TOKEN", [f])
+
+        assert "CLAUDE_CODE_OAUTH_TOKEN" not in f.read_text()
+
+    def test_a_name_that_merely_contains_the_var_is_left_alone(self, tmp_path):
+        f = tmp_path / "resolved.env"
+        f.write_text("MY_CLAUDE_CODE_OAUTH_TOKEN_BACKUP=x\n")
+
+        launcher._strip_var_from_env_files("CLAUDE_CODE_OAUTH_TOKEN", [f])
+
+        assert "MY_CLAUDE_CODE_OAUTH_TOKEN_BACKUP=x" in f.read_text()
+
+    def test_missing_file_is_tolerated(self, tmp_path):
+        launcher._strip_var_from_env_files("CLAUDE_CODE_OAUTH_TOKEN", [tmp_path / "gone.env"])
