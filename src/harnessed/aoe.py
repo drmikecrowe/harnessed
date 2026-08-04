@@ -67,7 +67,9 @@ PROFILE = "harnessed"
 _CONFIG_DIRNAME = "agent-of-empires"
 
 # `default` is the baseline every dynamic stack extends. It is not a thing the user composed, so a
-# row for it is noise in a dashboard whose whole point is showing the stacks they built.
+# row for it is noise in a dashboard whose whole point is showing the stacks they built. A guess
+# about what the user wants, though — so `--aoe-group`/`--aoe-title` overrule it (see
+# `sync_session`), since naming a row is stating that this one is wanted.
 _SKIP_STACKS = frozenset({"default"})
 
 # Reads are ~0.01s; this only has to be long enough that a cold page-in is not mistaken for a hang.
@@ -363,6 +365,11 @@ def sync_session(
     BOTH, the row is instead matched on (group, title) — how an existing, possibly hand-written row
     is adopted rather than duplicated. See `_registered` and the module note on identity.
 
+    EITHER of them also overrules `_SKIP_STACKS`. That skip suppresses a row the user never asked
+    for; asking for one by name is the case it was guarding against being wrong about, and without
+    this a `--aoe-group`/`--aoe-title` on the `default` stack was accepted and silently dropped.
+    Unlike the identity switch above, one flag is enough: placing a row is not identifying one.
+
     `no_strict_mcp` (--no-strict-mcp-config) is recorded on the command so a restart brings the
     agent up with the MCP surface this launch had. See `command_for`.
 
@@ -371,7 +378,7 @@ def sync_session(
     reports it.
     """
     try:
-        if stack in _SKIP_STACKS:
+        if stack in _SKIP_STACKS and group is None and title is None:
             return False
         exe = _bin()
         if exe is None:
