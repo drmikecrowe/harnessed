@@ -17,6 +17,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tomllib
 
 from pathlib import Path
 from typing import Optional
@@ -407,6 +408,98 @@ def _upsert_mise_task(mise_local: Path, harness: str, block: str) -> bool:
     return True
 
 
+def _project_env_file(project_path: Path) -> Path:
+    """Where THIS project's dotenv lives. A pure function of the project, so the ownership check
+    can name the only pointer value harnessed would ever write, without depending on whether this
+    particular launch happened to have values to write."""
+    gcd = paths.git_common_dir(project_path)
+    return (
+        paths.xdg_state_home() / "harnessed" / "project-env"
+        / f"{paths.project_hash(gcd or project_path)}.env"
+    )
+
+
+def _fully_harnessed_owned(mise_local: Path, project_path: Path) -> bool:
+    """Whether EVERY directive in this file is one harnessed wrote.
+
+    `_MISE_MARKER` cannot answer this. It is a public comment string, so a `mise.local.toml` that
+    arrived with a CLONED REPO can carry it — the marker proves the text was copied, not that we
+    wrote it. That is tolerable for deciding whether to upsert our own task table (the existing
+    rule, unchanged), and not tolerable for deciding to TRUST: trust is what lets mise apply the
+    file's `[env]` to every process whose cwd is under the project, and mise's prompt exists
+    precisely to stop a config that came with a checkout from doing that silently. Auto-trusting on
+    a copyable marker would hand that decision to whoever wrote the repo (CWE-345).
+
+    So this checks the CONTENT and fails closed — anything unrecognised means we do not vouch for
+    the file:
+
+      * nothing but `[env]` and `[tasks]` at the top level (a `[tools]` table is the user's, and a
+        tools-only file needs no trust anyway),
+      * `[env]` holding only the `_.file` pointer, and pointing at THIS project's dotenv — not an
+        arbitrary path someone else chose,
+      * every task being a harnessed launch task (`run` is `aoe.command_for`, which always starts
+        with the `harnessed` binary).
+
+    A file we would refuse to trust still works; the user gets mise's normal prompt, which is the
+    correct outcome for a file harnessed did not fully author.
+    """
+    try:
+        data = tomllib.loads(mise_local.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # ValueError covers tomllib.TOMLDecodeError. Unparseable is not ours.
+        return False
+    if set(data) - {"env", "tasks"}:
+        return False
+    env = data.get("env") or {}
+    if set(env) - {"_"}:
+        return False
+    pointer = env.get("_") or {}
+    if set(pointer) - {"file"}:
+        return False
+    if "file" in pointer and Path(str(pointer["file"])) != _project_env_file(project_path):
+        return False
+    for task in (data.get("tasks") or {}).values():
+        run = task.get("run") if isinstance(task, dict) else None
+        if not isinstance(run, str) or not run.startswith("harnessed "):
+            return False
+    return True
+
+
+def _trust_mise_local(mise_local: Path) -> None:
+    """Trust the `mise.local.toml` we just wrote, so a plain shell in this project can load it.
+
+    mise refuses to parse an untrusted config that can affect the environment. A `[tools]`/`[tasks]`
+    only file is exempt — nothing in it executes at load time — but ours carries `[env] _.file`,
+    which is exactly the shape that requires trust. So without this, the file we write to make `bd`
+    work in a plain terminal is the one thing mise declines to read, and the user gets
+    "Config files … are not trusted" until they run `mise trust` themselves.
+
+    Every other surface already compensates: the container gets `MISE_TRUSTED_CONFIG_PATHS`
+    (launcher), and the base image runs `mise trust -a` from `.bashrc` and `/etc/profile.d`. The
+    host write was the one place that generated a config and left it untrusted.
+
+    Trust records a hash of the CONTENT, so this must run after the last write — trusting a file we
+    then rewrite trusts bytes that no longer exist.
+
+    Best-effort by design: mise is not a harnessed dependency and may be absent, and a launch must
+    not fail because a convenience could not be applied. A failure here costs the user one
+    `mise trust`, which is exactly where they were before.
+    """
+    try:
+        proc = subprocess.run(
+            ["mise", "trust", str(mise_local)], check=False, capture_output=True, text=True,
+        )
+    except OSError:
+        # mise absent entirely. Not an error: a host without mise never loads this file anyway, so
+        # there is nothing to trust and nothing for the user to fix.
+        return
+    if proc.returncode != 0:
+        _say(
+            f"[yellow]note:[/yellow] could not `mise trust` {mise_local.name} — run it yourself if "
+            f"a plain shell here reports an untrusted config"
+        )
+
+
 def _write_project_tool_env(
     stack: str, project_path: Path, *, harness: str, verb: str,
     no_strict_mcp: bool = False, aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
@@ -507,6 +600,11 @@ def _write_project_tool_env(
         )
     elif _upsert_mise_task(mise_local, harness, block):
         _say(f"[blue][INFO][/blue] `mise run {harness}` in this repo now starts {stack}")
+    # AFTER every write above — trust hashes the content (see _trust_mise_local) — and only for a
+    # file whose every directive is ours. NOT the marker: see _fully_harnessed_owned for why a
+    # copyable comment cannot authorize trust even though it authorizes the upsert above.
+    if _fully_harnessed_owned(mise_local, project_path):
+        _trust_mise_local(mise_local)
     _ensure_gitignore_entry(project_path, "mise.local.toml")
 
 

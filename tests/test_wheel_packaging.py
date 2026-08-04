@@ -31,6 +31,11 @@ pytestmark = pytest.mark.skipif(
 
 _KINDS = ("agents", "recipes", "services", "stacks")
 
+_MISE_CONFIG = ("mise.toml", "mise.local.toml")
+_COPY_IGNORE = shutil.ignore_patterns(
+    ".git", "build", "*.egg-info", ".venv", "node_modules", *_MISE_CONFIG,
+)
+
 
 @pytest.fixture(scope="module")
 def wheel_names(tmp_path_factory):
@@ -39,7 +44,17 @@ def wheel_names(tmp_path_factory):
     src = tmp_path_factory.mktemp("src") / "harnessed"
     shutil.copytree(
         REPO, src, symlinks=True,
-        ignore=shutil.ignore_patterns(".git", "build", "*.egg-info", ".venv", "node_modules"),
+        # mise config is EXCLUDED, and not for tidiness. `uv` here is whatever is on PATH, and a
+        # harnessed stack whose `tools:` include uv puts a mise SHIM there — the shim IS mise
+        # (…/mise/shims/uv -> …/bin/mise), so `uv build` re-enters mise with cwd inside this copy.
+        # mise then loads the copied config from a path it has never trusted and refuses; and once
+        # trusted it evaluates `mise.toml`'s `{{exec(command="git branch --show-current")}}`, which
+        # exits 128 because `.git` is deliberately not copied. Neither failure has anything to do
+        # with packaging, and both present as an unexplained "wheel build failed".
+        # Excluded rather than worked around: mise config is developer tooling, it is not packaging
+        # input, and a build that consults it would not be reproducing what a user's `pip install`
+        # does. With no config in the copy mise finds nothing to load and the shim is harmless.
+        ignore=_COPY_IGNORE,
     )
 
     # A private overlay the `.local` symlinks point at — if packaged, this file is the smoking gun.
@@ -107,3 +122,46 @@ class TestWheelExcludesHostLocalContent:
     def test_no_resolved_extra_tools(self, wheel_names):
         leaked = [n for n in wheel_names if n.endswith("catalog/base/extra-tools.txt")]
         assert leaked == [], f"the user's resolved extra-tools.txt must not be packaged: {leaked}"
+
+
+class TestTheBuildTreeIsHermetic:
+    """The build copy must carry no mise config — a guard the wheel assertions cannot provide.
+
+    `uv` in the fixture is whatever is on PATH. A harnessed stack whose `tools:` include uv puts a
+    mise SHIM there, and the shim IS mise (`…/mise/shims/uv -> …/bin/mise`), so `uv build` re-enters
+    mise with its cwd inside the copy. mise then refuses the never-trusted copied config, and once
+    trusted dies evaluating `mise.toml`'s `{{exec(command="git branch --show-current")}}` because
+    `.git` is deliberately not copied. Both surface only as "wheel build failed".
+
+    That condition depends on the AMBIENT stack, so the wheel tests above cannot catch a regression
+    here: with a stack that ships no uv shim they pass either way. This asserts the property
+    directly instead, so removing the exclusion fails a test rather than lying dormant until
+    someone launches the wrong stack.
+    """
+
+    def test_mise_config_is_excluded_from_the_build_copy(self, tmp_path):
+        """Copies a SYNTHETIC source carrying both filenames, not the checkout.
+
+        Two vacuity traps, both hit for real: iterating `_MISE_CONFIG` meant emptying the constant
+        satisfied the assertion (caught by mutation), and `mise.local.toml` is host-local — absent
+        from a fresh worktree — so asserting against the real checkout passed whether or not the
+        exclusion named it (caught by CodeRabbit on PR #208). Planting both removes both traps.
+        """
+        src = tmp_path / "src"
+        (src / "sub").mkdir(parents=True)
+        for name in ("mise.toml", "mise.local.toml"):
+            (src / name).write_text("# planted\n")
+        (src / "keep.txt").write_text("packaging input\n")
+
+        dst = tmp_path / "copy"
+        shutil.copytree(src, dst, symlinks=True, ignore=_COPY_IGNORE)
+
+        assert not (dst / "mise.toml").exists(), "mise.toml copied into the build tree"
+        assert not (dst / "mise.local.toml").exists(), "mise.local.toml copied into the build tree"
+        assert (dst / "keep.txt").is_file(), "the ignore list must not swallow real content"
+
+    def test_the_real_checkout_carries_the_config_being_excluded(self):
+        """The synthetic test above proves the RULE; this proves the rule still has a subject.
+        `mise.local.toml` is deliberately not asserted — it is host-local and absent in a fresh
+        worktree, which is exactly why the test above cannot use the real checkout."""
+        assert (REPO / "mise.toml").is_file(), "mise.toml gone — revisit the exclusion and its test"
