@@ -549,7 +549,7 @@ class SetupConfigItem:
     Exactly one of `derive` / `prompt` drives it:
       * derive — a template over repo-identity primitives ({repo}, {gcd_db}, …), resolved silently.
       * prompt — asked on first launch (default is a template too); non-interactive → uses default.
-    The resolved value is referenced in `setup.run` as {config.<key>}."""
+    The resolved value reaches `setup.script` as the env var HARNESSED_CFG_<KEY>."""
     key: str
     derive: str | None = None
     prompt: str | None = None
@@ -572,15 +572,14 @@ class SetupSpec:
     summary: str
     reference: str
     condition: str | None = None
-    # Executable, config-driven first-run setup (host-native). `config` items are resolved on first
-    # launch (derived from repo-identity primitives, or prompted), then substituted into `run`, which
-    # is executed once (gated by `condition`). See launcher._host_run_setups.
+    # Executable, config-driven first-run setup. `config` items are resolved on first launch
+    # (derived from repo-identity primitives, or prompted) and handed to the script as env.
     config: list["SetupConfigItem"] = field(default_factory=list)
-    run: str | None = None
-    # BOTH-MODE replacement for `run` (and for `provision:`): a bash script in the recipe dir, run
-    # host-side by the launcher AND inside the container before attach. Unlike `run` it receives the
+    # The ONE executable setup mechanism (it also replaces `provision:`): a bash script in the recipe
+    # dir, run host-side by the launcher AND inside the container before attach. It receives the
     # resolved config as HARNESSED_CFG_<KEY> env vars rather than {config.<key>} substitution, so the
-    # same file works in both modes with no templating. Mutually exclusive with `run`.
+    # same file works on every backend with no templating. The host-only `setup.run` it replaced was
+    # removed in bd harnessed-0tk.9 — see _parse_setup, which rejects it by name.
     # The script is expected to be idempotent — it runs on every launch, and self-gates.
     script: str | None = None
     # A warning the user must accept BEFORE `run`/`script` executes, for setup whose side effects
@@ -609,17 +608,24 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
     if condition is not None and (not isinstance(condition, str) or not condition.strip()):
         raise SchemaError("recipe 'setup.condition', if set, must be a non-empty string")
 
-    run = raw_setup.get("run")
-    if run is not None and (not isinstance(run, str) or not run.strip()):
-        raise SchemaError("recipe 'setup.run', if set, must be a non-empty string")
+    # `setup.run` is REMOVED, and rejected loudly rather than ignored (bd harnessed-0tk.9). Recipes
+    # tolerate unknown keys by design (the D-14 forward-field policy), so dropping the field on its
+    # own would leave a `run:` recipe parsing clean and then doing nothing at all — which is the
+    # exact failure this removal exists to end. It was host-only: `_host_run_setups` executed it and
+    # the container path never selected it, so the same recipe behaved differently per backend.
+    # Keyed on PRESENCE, not truthiness: a bare `run:` parses to None in YAML, and `.get(...) is not
+    # None` would wave it through as "not declared" — silently ignoring a key whose author believed
+    # it did something, which is the precise failure this rejection exists to prevent.
+    if "run" in raw_setup:
+        raise SchemaError(
+            "recipe 'setup.run' has been removed — use 'setup.script'. `run` executed only on the "
+            "host, so a recipe declaring it silently did nothing in a container. A script runs on "
+            "every backend and receives the resolved config as HARNESSED_CFG_<KEY> environment "
+            "variables instead of {config.<key>} substitution, so one file works in both."
+        )
     script = raw_setup.get("script")
     if script is not None and (not isinstance(script, str) or not script.strip()):
         raise SchemaError("recipe 'setup.script', if set, must be a non-empty string")
-    if script and run:
-        raise SchemaError(
-            "recipe 'setup': 'script' and 'run' are mutually exclusive — 'script' is the "
-            "both-mode replacement for 'run'"
-        )
     if script and (Path(script).is_absolute() or ".." in Path(script).parts):
         raise SchemaError(
             f"recipe 'setup.script' {script!r} must be a relative path inside the recipe dir"
@@ -627,25 +633,27 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
     confirm = raw_setup.get("confirm")
     if confirm is not None and (not isinstance(confirm, str) or not confirm.strip()):
         raise SchemaError("recipe 'setup.confirm', if set, must be a non-empty string")
-    if confirm and not (run or script):
+    if confirm and not script:
         raise SchemaError(
-            "recipe 'setup.confirm' gates 'run'/'script' — it means nothing without one of them"
+            "recipe 'setup.confirm' gates 'script' — it means nothing without one"
         )
     config = _parse_setup_config(raw_setup.get("config"))
 
+    # `run` is deliberately absent here: it is rejected by name above, which fires first and says
+    # what to use instead. Listing it as valid would advertise a removed field to anyone who
+    # mistyped a DIFFERENT one and landed on this message.
     unknown = sorted(
-        set(raw_setup) - {"summary", "reference", "condition", "run", "script", "config", "confirm"}
+        set(raw_setup) - {"summary", "reference", "condition", "script", "config", "confirm"}
     )
     if unknown:
         raise SchemaError(
             f"recipe 'setup': unknown field(s) {unknown} — valid fields: "
-            "summary, reference, condition, run, script, config, confirm"
+            "summary, reference, condition, script, config, confirm"
         )
     return SetupSpec(
         summary=summary.strip(),
         reference=reference.strip(),
         condition=condition.strip() if condition else None,
-        run=run.strip() if run else None,
         script=script.strip() if script else None,
         config=config,
         confirm=confirm.strip() if confirm else None,

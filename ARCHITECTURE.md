@@ -308,8 +308,8 @@ surface — container and `--host` alike. Single definition: `launcher.harnessed
 
 Injected at every place catalog-authored content runs: the container attach shell
 (`_init_shell_prologue`), the container itself (`podman run -e`, so hooks and later `podman exec`s
-agree), **both** `setup.condition` eval sites (`_collect_setup_notices`, `_host_run_setups`),
-`setup.run` / `setup.script` (`_script_env`, which additionally carries the `HARNESSED_MODE` /
+agree), **both** `setup.condition` eval sites (`_collect_setup_notices`, `_confirm_setup`),
+`setup.script` (`_script_env`, which additionally carries the `HARNESSED_MODE` /
 `HARNESSED_CFG_*` / repo-identity vars), and the **host agent process** (`os.environ` in
 `_launch_host` — on the host there is no container to set env on, so `os.environ` is the box).
 

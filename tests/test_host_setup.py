@@ -1,5 +1,5 @@
 """Tests for host-native first-run setup: the git-common-dir → database-name algorithm, repo-identity
-primitives, the {…} substitution engine, `setup.config`/`run` resolution, and the codified
+primitives, the {…} substitution engine, `setup.config`/`script` resolution, and the codified
 `beads/team` recipe. Also covers native-MCP emission (moved here when the daemon supervisor was
 removed)."""
 
@@ -7,6 +7,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import typer
+
+from support import patch_all
 
 from harnessed import launcher
 from harnessed.schema import (
@@ -59,6 +62,92 @@ class TestSubst:
         assert out == "db=x repo=harnessed keep={unknown}"
 
 
+class TestHostRunSetupsExecutesTheScript:
+    """`_host_run_setups` actually runs a recipe's `setup.script`.
+
+    This coverage existed only through `setup.run` (tests/test_folder_env_contract.py's old
+    `test_host_run_site`), so removing that field in bd harnessed-0tk.9 deleted the sole end-to-end
+    exercise of this function — a mutation making it skip every recipe passed the whole suite.
+    Asserted on the script's observable side effect, not on a call count, so it would still fail if
+    the launcher invoked bash without the script or with the wrong cwd.
+    """
+
+    def _recipe(self, tmp_path, body_script: str, *, confirm: str | None = None):
+        d = tmp_path / "cat" / "r"
+        d.mkdir(parents=True, exist_ok=True)
+        body = "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n"
+        if confirm:
+            body += f"  confirm: {confirm!r}\n"
+        (d / "recipe.yaml").write_text(body)
+        (d / "setup.sh").write_text(body_script)
+        return load_recipe(d, strict=True)
+
+    def _run(self, tmp_path, monkeypatch, recipe, proj):
+        # patch_all, NOT setattr(launcher, …): `_host_run_setups` lives in hostrun.py and resolves
+        # this name in hostrun's globals, so patching launcher's binding would silently do nothing
+        # and the real catalog lookup would run (see tests/support.py).
+        patch_all(monkeypatch, "load_stack_with_recipes", lambda _c, _s: (None, [recipe]))
+        monkeypatch.setattr(launcher.paths, "xdg_data_home", lambda: tmp_path / "xdg")
+        monkeypatch.setattr(launcher.paths, "git_common_dir", lambda _p: None)
+        launcher._host_run_setups("s", proj, harness="claude")
+
+    def test_the_script_runs(self, tmp_path, monkeypatch):
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        stamp = tmp_path / "ran"
+        r = self._recipe(tmp_path, f"#!/usr/bin/env bash\ntouch {stamp}\n")
+        self._run(tmp_path, monkeypatch, r, proj)
+        assert stamp.exists(), "_host_run_setups did not execute the recipe's setup.script"
+
+    def test_it_runs_in_the_project_directory(self, tmp_path, monkeypatch):
+        """cwd is the contract a setup script is written against — `bd init` must land in the
+        project, not in harnessed's own tree."""
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        r = self._recipe(tmp_path, "#!/usr/bin/env bash\npwd > cwd.txt\n")
+        self._run(tmp_path, monkeypatch, r, proj)
+        assert (proj / "cwd.txt").read_text().strip() == str(proj)
+
+    def test_a_declined_confirm_skips_the_script(self, tmp_path, monkeypatch):
+        """The confirm gate has to be wired into THIS function, not merely exist.
+
+        `setup.confirm` is what keeps a repo-changing step (`bd init` commits 18 files) the user's
+        decision. Dropping the `_confirm_setup` call from `_host_run_setups` passed the whole suite
+        before this test: the gate was only ever exercised in isolation.
+        """
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        stamp = tmp_path / "ran"
+        r = self._recipe(tmp_path, f"#!/usr/bin/env bash\ntouch {stamp}\n", confirm="ok?")
+        monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: False)
+        self._run(tmp_path, monkeypatch, r, proj)
+        assert not stamp.exists(), "declining the confirm must not run the script"
+
+    def test_an_accepted_confirm_runs_the_script(self, tmp_path, monkeypatch):
+        """The other half — otherwise a gate that always refused would pass the test above."""
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        stamp = tmp_path / "ran"
+        r = self._recipe(tmp_path, f"#!/usr/bin/env bash\ntouch {stamp}\n", confirm="ok?")
+        monkeypatch.setattr(launcher.sys.stdin, "isatty", lambda: True)
+        monkeypatch.setattr(launcher.typer, "confirm", lambda *a, **k: True)
+        self._run(tmp_path, monkeypatch, r, proj)
+        assert stamp.exists()
+
+    def test_a_failing_script_aborts_the_launch(self, tmp_path, monkeypatch):
+        """Exit non-zero must stop the launch — continuing would hand the user an agent whose
+        first-run setup silently failed."""
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        r = self._recipe(tmp_path, "#!/usr/bin/env bash\nexit 3\n")
+        # typer.Exit specifically — a bare `Exception` here would also be satisfied by the launch
+        # blowing up for an unrelated reason, which is how this test first passed while the script
+        # was never reached at all.
+        with pytest.raises(typer.Exit):
+            self._run(tmp_path, monkeypatch, r, proj)
+
+
 class TestBeadsTeamIsNotAutoInitialized:
     """beads/team must NEVER self-initialize. This replaces two tests that pinned the opposite, and
     the behaviour they pinned is the origin of the 2026-07-19 incident.
@@ -80,13 +169,18 @@ class TestBeadsTeamIsNotAutoInitialized:
     def test_team_never_initializes_without_asking(self):
         """Team DOES automate `bd init` now — behind `setup.confirm`, which is what keeps the
         decision the user's (see tests/test_setup_confirm.py). What must never come back is
-        executable setup that runs unattended: `run:` is host-only and ungated by a confirm prompt,
-        and it is the field the 2026-07-19 shared-server command lived in."""
+        executable setup that runs unattended.
+
+        The `run:` field the 2026-07-19 shared-server command lived in no longer exists — it was
+        removed outright in bd harnessed-0tk.9, so a recipe cannot declare it and `_parse_setup`
+        rejects it by name. That half of this guard is now structural rather than asserted here;
+        tests/test_setup_run_removed.py pins the rejection. What is still worth asserting is the
+        property that outlives the field: team's executable setup must be confirm-gated.
+        """
         r = load_recipe(CATALOG / "recipes" / "beads" / "team", strict=True)
         assert r.setup is not None, "the user-facing notice must survive"
-        assert not r.setup.run, "team must not self-initialize"
-        if r.setup.script:
-            assert r.setup.confirm, "team's setup script must be gated by a confirm"
+        assert r.setup.script, "team's automation is a setup script"
+        assert r.setup.confirm, "team's setup script must be gated by a confirm"
 
     def test_team_init_never_runs_bd(self):
         """`init:` runs on every launch, so anything that touches the DATABASE there is the same
@@ -99,9 +193,15 @@ class TestBeadsTeamIsNotAutoInitialized:
         assert "bd " not in r.init.run, "team must not self-initialize"
 
     def test_no_beads_recipe_reaches_bds_shared_server(self):
+        """The hazard followed the field. With `setup.run` removed (bd harnessed-0tk.9) the only
+        place an executable setup command can live is the SCRIPT FILE, so scan its contents —
+        scanning the recipe yaml alone would now pass vacuously no matter what the script did."""
         for variety in ("team", "stealth"):
             r = load_recipe(CATALOG / "recipes" / "beads" / variety, strict=True)
-            blob = f"{(r.setup.run or '') if r.setup else ''} {r.init.run if r.init else ''}"
+            parts = [r.init.run if r.init else ""]
+            if r.setup and r.setup.script:
+                parts.append((r.root / r.setup.script).read_text())
+            blob = " ".join(parts)
             assert "--shared-server" not in blob, f"beads/{variety} must not use bd's shared server"
 
     def test_both_placements_gate_on_beads_dir_not_raw_git(self):
@@ -162,12 +262,14 @@ class TestSetupScriptSchema:
         d = self._recipe(tmp_path, "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n")
         assert load_recipe(d, strict=True).setup.script == "setup.sh"
 
-    def test_script_and_run_mutually_exclusive(self, tmp_path):
+    def test_declaring_run_alongside_script_is_rejected(self, tmp_path):
+        """`run` used to be merely mutually exclusive with `script`; it is now removed outright, so
+        declaring it is an error whether or not a script is present (bd harnessed-0tk.9)."""
         d = self._recipe(
             tmp_path,
             "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n  run: echo hi\n",
         )
-        with pytest.raises(SchemaError, match="mutually exclusive"):
+        with pytest.raises(SchemaError, match="has been removed"):
             load_recipe(d, strict=True)
 
     def test_script_escaping_recipe_dir_rejected(self, tmp_path):

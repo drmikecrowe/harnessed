@@ -75,7 +75,7 @@ def harnessed_env(
 
     One definition, injected everywhere a catalog-authored string or file can run: the container
     attach shell (`_init_shell_prologue`), both `setup.condition` eval sites
-    (`_collect_setup_notices` host-side, `_host_run_setups`), `setup.script`/`setup.run`, the
+    (`_collect_setup_notices` host-side, `_host_run_setups`), `setup.script`, the
     container itself (`podman run -e`), and the host agent process (`os.environ` in `_launch_host`).
     A recipe author writes `${MAIN_REPO_DIR}` once and it resolves the same in all of them.
 
@@ -228,7 +228,8 @@ def _subst(template: str, values: dict[str, str]) -> str:
 
 def _resolve_setup_config(setup, primitives: dict[str, str], *, interactive: bool) -> dict[str, str]:
     """Resolve each `setup.config` item → value: derive (silent) or prompt (asked; default when
-    non-interactive). Returns primitives + {config.<key>: value}, ready for _subst into `run`."""
+    non-interactive). Returns primitives + {config.<key>: value}, which `_script_env` turns into the
+    HARNESSED_CFG_<KEY> vars a `setup.script` reads."""
     values = dict(primitives)
     for item in setup.config:
         if item.derive is not None:
@@ -264,10 +265,11 @@ def _script_env(
 ) -> dict[str, str]:
     """The env a recipe's `setup.script` sees — IDENTICAL keys in host and container mode.
 
-    This is the whole point of `setup.script` over `setup.run`: `run` received its inputs by
-    `{config.<key>}` string substitution, which only works host-side where the launcher can template
-    the command. A script file cannot be templated, so every input arrives as an env var instead,
-    and the same file is then runnable in both modes.
+    Env, not templating, is what makes one file runnable on every backend — and the reason the
+    host-only `setup.run` it replaced could be removed outright (bd harnessed-0tk.9). `run` received
+    its inputs by `{config.<key>}` string substitution, which only works host-side where the
+    launcher can template the command; a script file cannot be templated, so every input arrives as
+    an env var instead and the same file runs unchanged in a container.
 
     `HARNESSED_PROJECT_DIR` is mode-invariant for free: _build_mount_args bind-mounts the project at
     its own host path (`-v {mount_path}:{mount_path}`, MNT2-02), so the absolute path is the same

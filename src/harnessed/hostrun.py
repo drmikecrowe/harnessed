@@ -34,7 +34,6 @@ from .setupenv import (
     _resolve_setup_config,
     _script_env,
     _stack_tools_dirs,
-    _subst,
     harnessed_env,
 )
 
@@ -316,11 +315,15 @@ def _host_run_inits(stack: str, project_path: Path, *, harness: str) -> None:
 
 
 def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
-    """Run each recipe's executable setup (host-native) whose `condition` is satisfied — either the
-    both-mode `setup.script` (preferred) or the legacy host-only `setup.run`.
+    """Run each recipe's `setup.script` host-side — the host half of the both-mode executable setup.
 
-    This REPLACES per-launch daemon management: for beads, `run` is `bd init --shared-server …` and
-    bd itself auto-manages the shared dolt server — harnessed only supplies the project identity
+    `condition` is deliberately not consulted (see `_pending_setup_scripts`): a script is idempotent
+    and self-gating by contract, so it runs every launch and converges. The container half is
+    `_run_container_setups`, and both are reached through the same contract operation,
+    `provision_tools(ATTACH)`.
+
+    This REPLACES per-launch daemon management: for beads the script runs `bd init --shared-server …`
+    and bd itself auto-manages the shared dolt server — harnessed only supplies the project identity
     (unique database, chosen prefix)."""
     _, recipes = load_stack_with_recipes(None, stack)
     _, bin_dir, uv_tool_dir = _stack_tools_dirs(stack)
@@ -330,17 +333,7 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
     primitives: dict[str, str] | None = None
     for recipe in recipes:
         setup = recipe.setup
-        if not (setup and (setup.run or setup.script)):
-            continue
-        # condition gates first-run for `run` ONLY: exit 0 == still needed; non-zero == already done.
-        # A `setup.script` ignores it and runs every launch — see _pending_setup_scripts for why
-        # (a first-run gate can never correct state that exists but is wrong).
-        if setup.run and setup.condition and subprocess.run(
-            ["bash", "-lc", setup.condition], cwd=str(project_path), capture_output=True,
-            env={**os.environ, **harnessed_env(
-                stack, project_path, harness=harness, mode="host", recipe=recipe
-            ), **cfg_env},
-        ).returncode != 0:
+        if not (setup and setup.script):
             continue
         # Before `config` resolution, which may prompt: asking for values the user is about to
         # decline to use is backwards.
@@ -349,26 +342,19 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
         if primitives is None:
             primitives = _repo_primitives(project_path)
         values = _resolve_setup_config(setup, primitives, interactive=sys.stdin.isatty())
-        if setup.script:
-            script = recipe.root / setup.script
-            bin_dir.mkdir(parents=True, exist_ok=True)
-            env = dict(os.environ)
-            env.update(_script_env(stack, project_path, values, mode="host",
-                                   harness=harness, recipe=recipe, bin_dir=bin_dir))
-            # Host-only: point uv/npm at the stack-scoped tree so a script's install lands in
-            # bin_dir rather than the user's global tool dir. In-container these stay unset — the
-            # image already baked the tool via its Dockerfile.
-            env["UV_TOOL_DIR"] = str(uv_tool_dir)
-            env["UV_TOOL_BIN_DIR"] = str(bin_dir)
-            env["npm_config_prefix"] = str(bin_dir.parent)
-            env.update(cfg_env)
-            argv, label = ["bash", str(script)], f"{setup.script} (host)"
-        else:
-            cmd = _subst(setup.run, values)
-            env = {**os.environ, **harnessed_env(
-                stack, project_path, harness=harness, mode="host", recipe=recipe
-            ), **cfg_env}
-            argv, label = ["bash", "-lc", cmd], cmd
+        script = recipe.root / setup.script
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ)
+        env.update(_script_env(stack, project_path, values, mode="host",
+                               harness=harness, recipe=recipe, bin_dir=bin_dir))
+        # Host-only: point uv/npm at the stack-scoped tree so a script's install lands in
+        # bin_dir rather than the user's global tool dir. In-container these stay unset — the
+        # image already baked the tool via its Dockerfile.
+        env["UV_TOOL_DIR"] = str(uv_tool_dir)
+        env["UV_TOOL_BIN_DIR"] = str(bin_dir)
+        env["npm_config_prefix"] = str(bin_dir.parent)
+        env.update(cfg_env)
+        argv, label = ["bash", str(script)], f"{setup.script} (host)"
         _err.print(f"[blue][INFO][/blue] setup ({recipe.name}): {label}")
         if subprocess.run(argv, cwd=str(project_path), env=env).returncode != 0:
             _err.print(f"[bold red]error:[/bold red] setup for '{recipe.name}' failed")
