@@ -86,23 +86,32 @@ network. A backend implements the capabilities and orders its own launch.
 
 ## 4. Recipe-capability × backend matrix
 
-Not every recipe primitive is honorable on every backend. The assembler should **warn or refuse**
-when a stack uses a primitive its target backend cannot satisfy (build on the existing
-capability-test oracle). This gate is not built yet — it is tracked as harnessed-0tk.2.
+Not every recipe primitive is honorable on every backend. Where one is not, the launch still
+**succeeds** and the declaration is simply inert — silence, not breakage — so the launcher names the
+gap (bd harnessed-0tk.2).
 
-| Recipe primitive | host | bwrap | container | devcontainer |
-|---|:-:|:-:|:-:|:-:|
-| `.claude` profile (skills/commands/rules) | ✅ | ✅ | ✅ | ✅ |
-| `install:` / `setup.script` (PATH tools) | ✅ | ✅ | bake in image / exec | → Feature |
-| Dockerfile recipe layer | ✗ | ✗ | ✅ | ✅ |
-| native `.mcp.json` (stdio) | ✅ | ✅ | ✅ / hatago | ✅ |
-| service sidecars | ✗ (yet) | ✗ (yet) | ✅ pod | ✅ compose |
-| egress control | landlock/proxy | landlock/proxy | netns iptables | init-firewall.sh |
-| supply-chain scan | scan provision set | scan provision set | scan image | scan image/features |
+**The matrix lives in `harnessed.capmatrix`, not here.** This section is a pointer on purpose. The
+table below used to be the matrix, and it went stale without anyone noticing: it recorded
+`service sidecars — host: ✗ (yet)` long after `HostBackend.wire_services` began calling
+`_ensure_services`. A table no test reads rots. `capmatrix.MATRIX` is read by conformance tests that
+fail if a registered backend has no column or a primitive has no cell, so bwrap (harnessed-0tk.3)
+and devcontainer (harnessed-0tk.4) must each fill theirs deliberately.
 
-Once this matrix exists, today's open questions become cells, not ad-hoc gaps:
-- "What happens to Dockerfile recipes host-side?" → the cell says *unsupported; warn*.
-- "Does `--host` support services?" → *not yet; tracked per backend*.
+As of harnessed-0tk.2 exactly one cell is DEGRADED: **`egress:` on `host`**, because
+`HostBackend.isolation` is `none` and `apply_isolation` does nothing — the allowlist is not
+enforced. Everything else the two built backends can do, they both do.
+
+Two gaps that look like matrix cells are handled better elsewhere, and `capmatrix` deliberately
+stays out of their way:
+
+- **The container-only half of `install:`** — `install.system` is an author-written reason for what
+  a host launch does not get. `schema.validate_container_only_declared` refuses to let a recipe with
+  an `install:` leave a Dockerfile `RUN` undeclared, and the host launcher prints the reason
+  verbatim. That is strictly more informative than a generic "unsupported" line.
+- **Supply-chain scan** — a property of what is scanned, not of what a recipe declares.
+
+Aspirational columns for the unbuilt backends are kept out of the code table for the same reason
+this section stopped being the matrix: a cell nothing can verify is a claim, not a fact.
 
 ## 5. How the three headline props redistribute
 

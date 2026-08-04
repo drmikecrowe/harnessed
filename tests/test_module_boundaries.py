@@ -25,6 +25,7 @@ SRC = Path(__file__).parent.parent / "src" / "harnessed"
 EXTRACTED = [
     "attachcmd.py",
     "backend.py",
+    "capmatrix.py",
     "catalogseed.py",
     "console.py",
     "credmounts.py",
