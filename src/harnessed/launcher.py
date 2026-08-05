@@ -1733,18 +1733,33 @@ def _aoe_register(
     existing row is recognised. `no_strict_mcp` is recorded so a restart reproduces this launch's
     MCP surface. See `aoe.sync_session`.
     """
+    drift: list[str] = []
+
+    def _on_drift(message: str) -> None:
+        # ESCAPED: a title carries `[<harness>/<backend>]`, which rich would eat as markup.
+        drift.append(message)
+        _err.print(f"[bold yellow]warning:[/bold yellow] {escape(message)}", highlight=False)
+
     registered = aoe.sync_session(
         verb, stack, harness, project_path, background=not only,
-        group=group, title=title, no_strict_mcp=no_strict_mcp,
+        group=group, title=title, no_strict_mcp=no_strict_mcp, on_drift=_on_drift,
     )
     if not only:
         return
     if not registered:
-        _err.print(
-            "[bold red]error:[/bold red] --create-aoe-only: could not register the session. "
-            "Is Agent of Empires (`aoe`) installed and initialized "
-            f"({paths.xdg_config_home() / 'agent-of-empires'})?"
-        )
+        if drift:
+            # The row was found and reported just above; repeating the install hint would send
+            # the user looking for a broken aoe when aoe answered fine.
+            _err.print(
+                "[bold red]error:[/bold red] --create-aoe-only: left the existing row as it is; "
+                "nothing was registered."
+            )
+        else:
+            _err.print(
+                "[bold red]error:[/bold red] --create-aoe-only: could not register the session. "
+                "Is Agent of Empires (`aoe`) installed and initialized "
+                f"({paths.xdg_config_home() / 'agent-of-empires'})?"
+            )
         raise typer.Exit(1)
     _out.print(
         f"[bold green]Registered[/bold green] aoe session "

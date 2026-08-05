@@ -54,6 +54,7 @@ import shlex
 import shutil
 import subprocess
 
+from collections.abc import Callable
 from pathlib import Path
 
 from . import paths
@@ -99,6 +100,13 @@ _TITLE_FLAG = "--aoe-title"
 # is different: dropped, claude also loads the project's `.mcp.json` and the user's config, so a row
 # that forgets it comes back with a different MCP surface than the one the user registered.
 _NO_STRICT_MCP_FLAG = "--no-strict-mcp-config"
+
+# Every command shape harnessed has ever recorded on a row, as a leading token run. `_is_ours`
+# matches against these to decide whether a drifted row may be REMOVED and rewritten; nothing else
+# in this module is destructive, so this list is the blast radius. Keep it exhaustive-and-no-wider:
+# `harnessed` is the raw invocation `command_for` emits, `mise run` the task shape `mise_command`
+# records now. Adding a third shape here licenses deleting rows that carry it.
+_OUR_COMMAND_HEADS = (["harnessed"], ["mise", "run"])
 
 
 def _bin() -> str | None:
@@ -321,10 +329,13 @@ def _sessions(exe: str) -> list[dict]:
 
 
 def _registered(
-    exe: str, command: str, project_path: Path,
+    sessions: list[dict], command: str, project_path: Path,
     *, group: str | None = None, title: str | None = None,
 ) -> bool:
     """Whether this (path, harness) already has a row.
+
+    Takes the session list rather than reading it, because the caller also hands it to
+    `_drifted_row` and a launch should pay for one `list --json`, not two.
 
     With BOTH `group` and `title` supplied the user has named the row, and (group, title) becomes
     the key instead — the only match that can find a row harnessed did not write, whose command
@@ -335,7 +346,6 @@ def _registered(
     `group_path`; both names are accepted so a rename upstream degrades to the command match (a
     duplicate row) rather than to an exception.
     """
-    sessions = _sessions(exe)
     if group is not None and title is not None:
         return any(
             (s.get("group") or s.get("group_path")) == group and s.get("title") == title
@@ -352,9 +362,88 @@ def _registered(
     return False
 
 
+def _is_ours(command: str) -> bool:
+    """Whether a stored command is a shape THIS module emits — the licence to delete the row.
+
+    Repairing drift means `aoe remove` (aoe 1.13.2 has no way to rewrite a session's command), and
+    that takes the row's resume target, favourite, colour, snooze state and `created_at` with it.
+    Irreversible from here, so the predicate is deliberately narrow: only the two shapes harnessed
+    has ever written — the raw invocation `command_for` produces, and the `mise run <harness> --`
+    task `mise_command` records now. Everything else is somebody else's row, reported and left
+    alone.
+
+    Narrow in a way that costs us, on purpose: a row storing an ABSOLUTE path to harnessed
+    (`/home/u/.local/bin/harnessed host-run ...`) reads as foreign and is only reported. A missed
+    repair is one warning; a wrong repair is a destroyed session.
+    """
+    try:
+        tokens = shlex.split(command or "")
+    except ValueError:  # an unbalanced quote is not a command we wrote
+        return False
+    return any(tokens[:len(head)] == head for head in _OUR_COMMAND_HEADS)
+
+
+def _drifted_row(sessions: list[dict], command: str, project_path: Path, title: str) -> dict | None:
+    """The row `aoe add` would be silently refused against, if there is one.
+
+    THE TWO KEYS ARE NOT THE SAME KEY, which is the whole of bd harnessed-cn9. We decide whether to
+    write by matching (command, path) in `_registered`; aoe decides whether to accept by matching
+    (title, path), and refuses a duplicate with exit status ZERO. So a row that agrees on title and
+    path but not on command is invisible to the check, swallows the `add` without an error, and —
+    because a launch fires that write detached and never looks — keeps replaying its stored command
+    forever. A row titled for one stack launching another, with no signal anywhere.
+
+    Returns the first such row. Everything is `.get`-guarded and the path comparison is wrapped:
+    this runs on the launch path, and aoe's JSON is not our schema to trust.
+    """
+    for session in sessions:
+        if session.get("title") != title or session.get("command") == command:
+            continue
+        recorded = session.get("path")
+        if not recorded:
+            continue
+        try:
+            if Path(recorded).resolve() != project_path:
+                continue
+        except (OSError, TypeError, ValueError):
+            continue
+        return session
+    return None
+
+
+def _drift_message(row: dict, ours: str, *, repairing: bool) -> str:
+    """One report naming the row and both commands. Never silent, whichever way it resolves."""
+    sid = row.get("id") or "?"
+    lines = [
+        f"aoe row {row.get('title') or '?'} ({sid}) records a different command than this launch:",
+        f"  stored: {row.get('command') or ''}",
+        f"  ours:   {ours}",
+    ]
+    if repairing:
+        lines.append("  repairing it (remove + re-add); its resume target and aoe-side flags are lost.")
+    else:
+        lines += [
+            "  NOT repaired: that is not a command harnessed writes, so the row is left as it is.",
+            "  aoe refuses our registration at exit 0, so the dashboard keeps replaying the stored one.",
+            f"  fix: aoe remove {sid} -p {PROFILE}   then relaunch",
+        ]
+    return "\n".join(lines)
+
+
+def _report(on_drift: Callable[[str], None] | None, message: str) -> None:
+    """Hand the report to the caller. A reporter that explodes is not the launch's problem."""
+    if on_drift is None:
+        return
+    try:
+        on_drift(message)
+    except Exception:  # noqa: BLE001 — see the module docstring: never fail a launch.
+        return
+
+
 def sync_session(
     verb: str, stack: str, harness: str, project_path: Path, *, background: bool = True,
     group: str | None = None, title: str | None = None, no_strict_mcp: bool = False,
+    on_drift: Callable[[str], None] | None = None,
 ) -> bool:
     """Register this launch with aoe, creating the profile and repo group on the way.
 
@@ -388,8 +477,27 @@ def sync_session(
         # so two routes to the same directory cannot register two rows.
         project_path = Path(project_path).resolve()
         command = mise_command(harness)
-        if _registered(exe, command, project_path, group=group, title=title):
+        sessions = _sessions(exe)
+        if _registered(sessions, command, project_path, group=group, title=title):
             return True
+
+        row_title = title_for(
+            verb, stack, harness, project_path, title=title, no_strict_mcp=no_strict_mcp
+        )
+
+        # No row matched, so we are about to `add`. If a row already holds (title, path) with a
+        # different command, aoe will refuse that add at exit 0 and the stale row survives — bd
+        # harnessed-cn9. Say so either way; rewrite it only if it is a row we wrote.
+        repair: list[str] | None = None
+        stale = _drifted_row(sessions, command, project_path, row_title)
+        if stale is not None:
+            sid = stale.get("id")
+            repairing = bool(sid) and _is_ours(stale.get("command") or "")
+            _report(on_drift, _drift_message(stale, command, repairing=repairing))
+            if not repairing:
+                # Issuing the add anyway would be refused at exit 0 — the silence this fixes.
+                return False
+            repair = ["remove", str(sid), "-p", PROFILE]
 
         batch: list[list[str]] = []
         if not _has_profile(exe):
@@ -397,13 +505,14 @@ def sync_session(
         group_name = group_for(project_path, group=group)
         if not _has_group(exe, group_name):
             batch.append(["group", "create", group_name, "-p", PROFILE])
+        if repair is not None:
+            # After the group exists, before the re-add: the row aoe would otherwise refuse.
+            batch.append(repair)
         add = [
             "add", str(project_path),
             "-p", PROFILE,
             "-g", group_name,
-            "-t", title_for(
-                verb, stack, harness, project_path, title=title, no_strict_mcp=no_strict_mcp
-            ),
+            "-t", row_title,
             # `--cmd-override`, NOT `--cmd`. `--cmd` is validated against aoe's own tool list and
             # SILENTLY substitutes the configured default for anything it does not recognise, so a
             # harnessed invocation came back stored as `claude-with-env` — losing both the replay

@@ -9,6 +9,7 @@ No test shells out to a real `aoe`; `_run` is the seam.
 """
 from __future__ import annotations
 
+import json
 import shlex
 import subprocess
 
@@ -636,14 +637,16 @@ class TestCreateAoeOnly:
     once rather than three times through the CLI.
     """
 
-    def _register(self, monkeypatch, *, ok: bool, only: bool) -> dict:
+    def _register(self, monkeypatch, *, ok: bool, only: bool, drift: str | None = None) -> dict:
         seen: dict = {}
 
         def fake_sync(
             verb, stack, harness, project_path, *, background=True, group=None, title=None,
-            no_strict_mcp=False,
+            no_strict_mcp=False, on_drift=None,
         ):
             seen.update(verb=verb, stack=stack, harness=harness, background=background)
+            if drift is not None and on_drift is not None:
+                on_drift(drift)
             return ok
 
         monkeypatch.setattr(launcher.aoe, "sync_session", fake_sync)
@@ -676,6 +679,24 @@ class TestCreateAoeOnly:
         # An explicit request, unlike the passive mirror: failing silently would be a lie.
         seen = self._register(monkeypatch, ok=False, only=True)
         assert seen["exit"] == 1
+
+    def test_normal_launch_prints_drift_and_continues(self, monkeypatch, capsys):
+        # bd harnessed-cn9: a silent exit 0 is what made the stale row cost hours. The launch
+        # still proceeds — a dashboard is not worth failing a launch for — but it SAYS so.
+        seen = self._register(monkeypatch, ok=False, only=False, drift="drift [claude/host] abc123")
+        assert seen["exit"] is None, "the mirror still must not abort a launch"
+        err = capsys.readouterr().err
+        assert "abc123" in err
+        # The title carries `[harness/backend]`; unescaped, rich would eat it as markup.
+        assert "[claude/host]" in err
+
+    def test_create_aoe_only_fails_on_unrepairable_drift(self, monkeypatch, capsys):
+        seen = self._register(monkeypatch, ok=False, only=True, drift="drift [claude/host] abc123")
+        assert seen["exit"] == 1
+        err = capsys.readouterr().err
+        assert "abc123" in err
+        # Not the "is aoe installed?" hint: aoe answered fine, the row is the problem.
+        assert "initialized" not in err
 
     @pytest.mark.parametrize("verb", ["container-run", "host-run"])
     def test_every_launch_verb_accepts_the_flag(self, verb):
@@ -828,3 +849,203 @@ class TestCommandFor:
         # a `--recipe` invocation and a `--stack` one record the same shape.
         cmd = aoe.command_for("container-run", "default.serena.superpowers", "claude", Path("/p"))
         assert cmd == "harnessed container-run claude /p --stack default.serena.superpowers --"
+
+
+class TestCommandDrift:
+    """bd harnessed-cn9: the row aoe silently refuses to overwrite.
+
+    `_registered` matches on (command, path); aoe deduplicates an `add` on (title, path) and
+    refuses a duplicate with exit status ZERO. Those are different keys, so a row whose title and
+    path match ours but whose command does not is invisible to us, swallows our `add` without an
+    error, and keeps replaying its stored command forever. That is how a row titled for one stack
+    came to launch another.
+
+    Repair means `aoe remove` — there is no `session update` in aoe 1.13.2 — which takes the row's
+    resume target, favourite, colour and created_at with it. So the destructive half is bounded to
+    command shapes THIS module emits; anything else is reported and left alone.
+    """
+
+    TITLE = "proj [claude/host] serena"
+    OURS = "mise run claude --"
+
+    def _sessions(self, tmp_path: Path, command: str, *, title: str | None = None,
+                  path: str | None = None, sid: str | None = "abc123") -> str:
+        row: dict = {"title": self.TITLE if title is None else title,
+                     "path": str(tmp_path) if path is None else path,
+                     "command": command}
+        if sid is not None:
+            row["id"] = sid
+        return json.dumps([row])
+
+    def _rec(self, monkeypatch, tmp_path, command: str, **kw) -> Recorder:
+        return Recorder(sessions=self._sessions(tmp_path, command, **kw)).install(monkeypatch)
+
+    def _sync(self, tmp_path, **kw):
+        return aoe.sync_session("host-run", "serena", "claude", tmp_path, **kw)
+
+    @pytest.fixture
+    def proj(self, tmp_path):
+        # The title carries the folder name, so the folder must be named for TITLE to match.
+        p = tmp_path / "proj"
+        p.mkdir()
+        return p
+
+    # ---- repair path: the stored command is one harnessed writes ----
+
+    def test_drifted_row_is_removed_before_the_add(self, monkeypatch, proj):
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
+        self._sync(proj)
+        verbs = [a[0] for a in rec.calls if a[0] in ("remove", "add")]
+        assert verbs == ["remove", "add", "add"], "the stale row must go before the re-add"
+
+    def test_repair_removes_only_the_matched_row_in_our_profile(self, monkeypatch, proj):
+        rows = json.loads(self._sessions(proj, "harnessed host-run claude /proj --"))
+        rows.append({"id": "other", "title": "someone else", "path": str(proj),
+                     "command": "harnessed host-run claude /elsewhere --"})
+        rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        self._sync(proj)
+        [remove] = [a for a in rec.calls if a[0] == "remove"]
+        assert remove == ["remove", "abc123", "-p", aoe.PROFILE]
+
+    def test_repair_reports_the_mismatch(self, monkeypatch, proj):
+        seen: list[str] = []
+        self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
+        self._sync(proj, on_drift=seen.append)
+        assert len(seen) == 1
+        assert "abc123" in seen[0]
+        assert self.TITLE in seen[0]
+        assert "harnessed host-run claude /proj --" in seen[0]
+        assert self.OURS in seen[0]
+
+    def test_repair_returns_true(self, monkeypatch, proj):
+        self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
+        assert self._sync(proj) is True
+
+    def test_mise_shaped_drift_is_also_ours(self, monkeypatch, proj):
+        # The row records another harness's task at our title: still a shape we wrote.
+        rec = self._rec(monkeypatch, proj, "mise run omp --")
+        self._sync(proj)
+        assert [a[0] for a in rec.calls if a[0] == "remove"] == ["remove"]
+
+    # ---- report-only path: the stored command is not ours ----
+
+    def test_foreign_row_is_never_removed(self, monkeypatch, proj):
+        rec = self._rec(monkeypatch, proj, "claude --dangerously-skip-permissions")
+        self._sync(proj)
+        assert [a for a in rec.calls if a[0] == "remove"] == []
+
+    def test_foreign_row_suppresses_the_add(self, monkeypatch, proj):
+        # aoe would refuse it at exit 0 anyway; issuing it only hides the problem again.
+        rec = self._rec(monkeypatch, proj, "claude --dangerously-skip-permissions")
+        self._sync(proj)
+        assert rec.added() == []
+
+    def test_foreign_row_returns_false(self, monkeypatch, proj):
+        self._rec(monkeypatch, proj, "claude --dangerously-skip-permissions")
+        assert self._sync(proj) is False
+
+    def test_foreign_row_reports_the_manual_fix(self, monkeypatch, proj):
+        seen: list[str] = []
+        self._rec(monkeypatch, proj, "claude --dangerously-skip-permissions")
+        self._sync(proj, on_drift=seen.append)
+        assert f"aoe remove abc123 -p {aoe.PROFILE}" in seen[0]
+
+    # ---- not drift: existing behaviour must not change ----
+
+    def test_adopted_row_is_never_drift_checked(self, monkeypatch, proj):
+        # Both flags switch identity to (group, title) precisely so a row whose command
+        # `command_for` could not produce is ADOPTED. Its command is the user's business.
+        rows = [{"id": "abc123", "group": "g", "title": "t", "path": str(proj),
+                 "command": "anything at all"}]
+        rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        seen: list[str] = []
+        assert self._sync(proj, group="g", title="t", on_drift=seen.append) is True
+        assert seen == []
+        assert [a for a in rec.calls if a[0] == "remove"] == []
+
+    def test_drift_matches_on_resolved_paths(self, monkeypatch, proj, tmp_path):
+        link = tmp_path / "link"
+        link.symlink_to(proj)
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --", path=str(link))
+        self._sync(proj)
+        assert [a[0] for a in rec.calls if a[0] == "remove"] == ["remove"]
+
+    def test_same_path_different_title_is_not_drift(self, monkeypatch, proj):
+        seen: list[str] = []
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
+                        title="proj [omp/host] serena")
+        self._sync(proj, on_drift=seen.append)
+        assert [a for a in rec.calls if a[0] == "remove"] == []
+        assert seen == []
+        assert len(rec.registrations()) == 1
+
+    def test_same_title_different_path_is_not_drift(self, monkeypatch, proj):
+        seen: list[str] = []
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
+                        path=str(proj.parent))
+        self._sync(proj, on_drift=seen.append)
+        assert [a for a in rec.calls if a[0] == "remove"] == []
+        assert seen == []
+        assert len(rec.registrations()) == 1
+
+    def test_matching_command_is_not_drift(self, monkeypatch, proj):
+        seen: list[str] = []
+        rec = self._rec(monkeypatch, proj, self.OURS)
+        assert self._sync(proj, on_drift=seen.append) is True
+        assert seen == []
+        assert rec.added() == []
+        assert [a for a in rec.calls if a[0] == "remove"] == []
+
+    @pytest.mark.parametrize("command", [
+        "", "   ", "unclosed 'quote", "echo harnessed", "/usr/bin/harnessedx run",
+        "harnessedx foo", "mise-en-place run", "sudo harnessed host-run x",
+        "claude", "npm run mise", "run mise", "MISE run claude",
+    ])
+    def test_is_ours_rejects_hostile_commands(self, command):
+        assert aoe._is_ours(command) is False
+
+    @pytest.mark.parametrize("command", [
+        "harnessed host-run claude /p --stack s --",
+        "harnessed launch omp /p --stack s --",
+        "mise run claude --",
+        "mise run omp",
+    ])
+    def test_is_ours_accepts_the_shapes_we_write(self, command):
+        assert aoe._is_ours(command) is True
+
+    # ---- never-raise invariants ----
+
+    def test_drift_survives_malformed_sessions(self, monkeypatch, proj):
+        rows = [
+            "not a dict",
+            {"title": self.TITLE, "path": None, "command": "harnessed x --"},
+            {"title": self.TITLE, "path": str(proj)},
+            {"title": self.TITLE, "path": str(proj), "command": "harnessed host-run x --"},
+        ]
+        rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        self._sync(proj)  # must not raise
+        assert [a for a in rec.calls if a[0] == "remove"] == [], "no id, nothing safe to remove"
+
+    def test_drift_survives_unresolvable_path(self, monkeypatch, proj):
+        rows = [{"id": "abc123", "title": self.TITLE, "path": {"not": "a path"},
+                 "command": "harnessed host-run claude /p --"}]
+        rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        # `is True` on purpose: a bare "did not raise" would be satisfied by the blanket
+        # `except Exception` swallowing a TypeError, which is a broken scan, not a survived one.
+        assert self._sync(proj) is True
+        assert [a for a in rec.calls if a[0] == "remove"] == []
+        assert len(rec.registrations()) == 1
+
+    def test_on_drift_exception_never_breaks_sync(self, monkeypatch, proj):
+        def blow_up(_msg):
+            raise RuntimeError("the reporter is not the launch's problem")
+
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
+        assert self._sync(proj, on_drift=blow_up) is True
+        assert [a[0] for a in rec.calls if a[0] == "remove"] == ["remove"]
+
+    def test_drift_check_adds_no_extra_reads(self, monkeypatch, proj):
+        # The scan reuses the session list `_registered` already read. A launch pays for one read.
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
+        self._sync(proj)
+        assert [a[:2] for a in rec.calls].count(["list", "--json"]) == 1
