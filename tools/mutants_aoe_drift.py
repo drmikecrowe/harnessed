@@ -37,24 +37,48 @@ MUTANTS = [
     # The report: a launch that repairs silently is half the defect (the hours were lost to
     # silence, not to the stale row).
     ("drift is repaired but never reported", AOE,
-     "            _report(on_drift, _drift_message(stale, command, repairing=repairing))",
+     "            _report(\n                on_drift,\n                _drift_message(stale, command, renamed_to=stale_title),\n                repairing=repairing,\n            )",
      "            pass"),
 
-    # THE DESTRUCTIVE GATE. Loosened, a row harnessed never wrote gets deleted on a launch.
-    ("ownership gate always true (deletes foreign rows)", AOE,
-     "    return any(tokens[:len(head)] == head for head in _OUR_COMMAND_HEADS)",
-     "    return True"),
+    # The launcher branch the adversarial review found: a repair whose rename lands and whose
+    # re-add fails must not be reported as "left the existing row as it is".
+    ("failed repair reported as if the row were untouched", "src/harnessed/launcher.py",
+     "        if any(drift):",
+     "        if False:"),
 
-    # Off-by-one on the same gate: a prefix compare of the wrong width matches `mise` alone, and
-    # `mise-en-place`-style neighbours stop being excluded by the second token.
+    # THE OWNERSHIP GATE. Loosened, a row harnessed never wrote gets rewritten on a launch.
+    ("ownership gate always true (rewrites foreign rows)", AOE,
+     '    if tokens[:1] == ["harnessed"]:',
+     "    if True:"),
+
+    # The gate's precise half: `mise run` alone is the prefix of EVERY mise task anyone wrote, so
+    # dropping the harness check licenses rewriting a user's own `mise run dev` row.
+    ("ownership gate stops checking the harness registry", AOE,
+     '    return tokens[:2] == ["mise", "run"] and len(tokens) > 2 and tokens[2] in HARNESS_CONFIG_DIR',
+     '    return tokens[:2] == ["mise", "run"]'),
+
+    # Off-by-one on the same gate: matching `mise` alone stops excluding `mise-en-place`.
     ("ownership gate compares only the first token", AOE,
-     "    return any(tokens[:len(head)] == head for head in _OUR_COMMAND_HEADS)",
-     "    return any(tokens[:1] == head[:1] for head in _OUR_COMMAND_HEADS)"),
+     '    return tokens[:2] == ["mise", "run"] and len(tokens) > 2 and tokens[2] in HARNESS_CONFIG_DIR',
+     '    return tokens[:1] == ["mise"]'),
 
-    # Wrong row removed: the id is what scopes the destruction to the row we matched.
-    ("repair removes a row that was not the matched one", AOE,
-     '            repair = ["remove", str(sid), "-p", PROFILE]',
-     '            repair = ["remove", "0", "-p", PROFILE]'),
+    # Wrong row renamed: the id is what scopes the edit to the row we matched.
+    ("repair renames a row that was not the matched one", AOE,
+     '            repair = ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]',
+     '            repair = ["session", "rename", "0", "-t", stale_title or "", "-p", PROFILE]'),
+
+    # THE REGRESSION GUARD for what real execution found: `remove` trashes the row, and a trashed
+    # row still holds aoe's (title, path) key, so the replacement add is refused at exit 0 too.
+    # Reverting to remove loses the row AND fails to replace it.
+    ("repair reverts to `remove` (row trashed, replacement refused)", AOE,
+     '            repair = ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]',
+     '            repair = ["remove", str(sid), "-p", PROFILE]'),
+
+    # The stale title must stay unique, or a second repair at the same path collides and the
+    # rename fails silently on the detached path.
+    ("stale title drops the row id, so repairs can collide", AOE,
+     '_STALE_SUFFIX = "(stale {sid})"',
+     '_STALE_SUFFIX = "(stale)"'),
 
     # Unrepairable drift must BLOCK the write, so `--create-aoe-only` fails and the user is not
     # told a registration happened that aoe silently threw away.

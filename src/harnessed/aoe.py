@@ -42,8 +42,16 @@ recorded command and path; aoe decides whether to accept by matching TITLE and p
 duplicate at exit status ZERO. A row that agrees on aoe's key but not ours is invisible to the
 check and silently eats the `add` — forever, since the write is detached and unexamined. So every
 registration that is about to add scans for that row first (`_drifted_row`) and reports it. It is
-rewritten only when its stored command is one this module emits (`_is_ours`), because rewriting
-means `aoe remove` and there is no in-place command update in aoe 1.13.2. See bd harnessed-cn9.
+repaired only when its stored command is one this module emits (`_is_ours`).
+
+REPAIR IS A RENAME, WHICH LOOKS INDIRECT UNTIL YOU TRY THE OBVIOUS THING. aoe 1.13.2 cannot rewrite
+a session's command, so the obvious repair is remove-then-add — and it does not work: `aoe remove`
+only moves the row to the TRASH, a trashed row is still returned by `aoe list --json`, and it still
+holds the (title, path) key, so the replacement `add` is refused at exit 0 exactly like the first
+one. The row would be lost and nothing written in its place. `aoe session rename` frees the key
+without destroying anything, so the stale row survives beside the corrected one, keeping its id,
+resume target and flags. `--purge` would also work and is rejected on purpose: it is irreversible
+and this runs unattended on a launch. All verified against aoe 1.13.2. See bd harnessed-cn9.
 
 READS ARE SYNCHRONOUS, WRITES ARE NOT. Measured against aoe on 2026-08-01: `list --json`,
 `group list` and `profile list` all return in ~0.01s, but `aoe add` takes ~12s (it brings the
@@ -66,6 +74,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import paths
+from .schema import HARNESS_CONFIG_DIR
 
 # The dedicated aoe workspace. Everything this module does is scoped to it, so a user's own
 # sessions in `default` are never touched, reordered, or removed.
@@ -109,12 +118,11 @@ _TITLE_FLAG = "--aoe-title"
 # that forgets it comes back with a different MCP surface than the one the user registered.
 _NO_STRICT_MCP_FLAG = "--no-strict-mcp-config"
 
-# Every command shape harnessed has ever recorded on a row, as a leading token run. `_is_ours`
-# matches against these to decide whether a drifted row may be REMOVED and rewritten; nothing else
-# in this module is destructive, so this list is the blast radius. Keep it exhaustive-and-no-wider:
-# `harnessed` is the raw invocation `command_for` emits, `mise run` the task shape `mise_command`
-# records now. Adding a third shape here licenses deleting rows that carry it.
-_OUR_COMMAND_HEADS = (["harnessed"], ["mise", "run"])
+# What a drifted row is renamed to. Carries the row id so the new title cannot collide with
+# anything — including a second `(stale)` row from an earlier repair. A rename that collides would
+# fail on the detached path, silently, which is the exact failure class this whole change exists to
+# remove.
+_STALE_SUFFIX = "(stale {sid})"
 
 
 def _bin() -> str | None:
@@ -371,24 +379,28 @@ def _registered(
 
 
 def _is_ours(command: str) -> bool:
-    """Whether a stored command is a shape THIS module emits — the licence to delete the row.
+    """Whether a stored command is a shape THIS module emits — the licence to rewrite the row.
 
-    Repairing drift means `aoe remove` (aoe 1.13.2 has no way to rewrite a session's command), and
-    that takes the row's resume target, favourite, colour, snooze state and `created_at` with it.
-    Irreversible from here, so the predicate is deliberately narrow: only the two shapes harnessed
-    has ever written — the raw invocation `command_for` produces, and the `mise run <harness> --`
-    task `mise_command` records now. Everything else is somebody else's row, reported and left
-    alone.
+    Only the two shapes harnessed has ever written: the raw invocation `command_for` produces, and
+    the `mise run <harness> --` task `mise_command` records now. Everything else belongs to
+    somebody else and is reported without being touched.
+
+    THE THIRD TOKEN IS CHECKED AGAINST THE HARNESS REGISTRY, not merely present. `mise run` alone
+    is not our shape — it is the prefix of every mise task anyone has ever written, so a user's own
+    `mise run dev --` row would have been eligible for rewriting. Only a task named for a real
+    harness can be one of ours.
 
     Narrow in a way that costs us, on purpose: a row storing an ABSOLUTE path to harnessed
     (`/home/u/.local/bin/harnessed host-run ...`) reads as foreign and is only reported. A missed
-    repair is one warning; a wrong repair is a destroyed session.
+    repair is one warning the user can act on; a wrong repair edits a row that was never ours.
     """
     try:
         tokens = shlex.split(command or "")
     except ValueError:  # an unbalanced quote is not a command we wrote
         return False
-    return any(tokens[:len(head)] == head for head in _OUR_COMMAND_HEADS)
+    if tokens[:1] == ["harnessed"]:
+        return True
+    return tokens[:2] == ["mise", "run"] and len(tokens) > 2 and tokens[2] in HARNESS_CONFIG_DIR
 
 
 def _drifted_row(sessions: list[dict], command: str, project_path: Path, title: str) -> dict | None:
@@ -419,7 +431,7 @@ def _drifted_row(sessions: list[dict], command: str, project_path: Path, title: 
     return None
 
 
-def _drift_message(row: dict, ours: str, *, repairing: bool) -> str:
+def _drift_message(row: dict, ours: str, *, renamed_to: str | None) -> str:
     """One report naming the row and both commands. Never silent, whichever way it resolves."""
     sid = row.get("id") or "?"
     lines = [
@@ -427,23 +439,35 @@ def _drift_message(row: dict, ours: str, *, repairing: bool) -> str:
         f"  stored: {row.get('command') or ''}",
         f"  ours:   {ours}",
     ]
-    if repairing:
-        lines.append("  repairing it (remove + re-add); its resume target and aoe-side flags are lost.")
+    if renamed_to is not None:
+        lines += [
+            f"  renamed it to {renamed_to} and registered a correct row beside it.",
+            "  Nothing was deleted: the old row keeps its id, resume target and flags.",
+        ]
     else:
         lines += [
             "  NOT repaired: that is not a command harnessed writes, so the row is left as it is.",
             "  aoe refuses our registration at exit 0, so the dashboard keeps replaying the stored one.",
-            f"  fix: aoe remove {sid} -p {PROFILE}   then relaunch",
+            # NOT `aoe remove`: that only moves the row to the trash, where it still holds the
+            # (title, path) key and still comes back from `aoe list --json`. Relaunching after a
+            # bare remove is refused exactly the same way. Verified against aoe 1.13.2.
+            f"  fix: aoe session rename {sid} -t '<any other title>' -p {PROFILE}   then relaunch",
         ]
     return "\n".join(lines)
 
 
-def _report(on_drift: Callable[[str], None] | None, message: str) -> None:
-    """Hand the report to the caller. A reporter that explodes is not the launch's problem."""
+def _report(on_drift: Callable[[str, bool], None] | None, message: str, *, repairing: bool) -> None:
+    """Hand the report to the caller. A reporter that explodes is not the launch's problem.
+
+    `repairing` travels with the message because the caller has to describe the outcome of a write
+    that has not happened yet: a repair whose rename lands and whose add then fails leaves the row
+    RENAMED, and reporting that as "left as it is" would send the user looking for a row under its
+    old title.
+    """
     if on_drift is None:
         return
     try:
-        on_drift(message)
+        on_drift(message, repairing)
     except Exception:  # noqa: BLE001 — see the module docstring: never fail a launch.
         return
 
@@ -451,7 +475,7 @@ def _report(on_drift: Callable[[str], None] | None, message: str) -> None:
 def sync_session(
     verb: str, stack: str, harness: str, project_path: Path, *, background: bool = True,
     group: str | None = None, title: str | None = None, no_strict_mcp: bool = False,
-    on_drift: Callable[[str], None] | None = None,
+    on_drift: Callable[[str, bool], None] | None = None,
 ) -> bool:
     """Register this launch with aoe, creating the profile and repo group on the way.
 
@@ -473,10 +497,12 @@ def sync_session(
     DRIFT IS REPORTED, NEVER SWALLOWED (bd harnessed-cn9). Finding no row does not mean aoe will
     accept our `add`: it dedupes on (title, path), we match on (command, path), and a row that
     agrees on the first key but not the second silently absorbs the add at exit 0. `_drifted_row`
-    finds it; `on_drift` is handed one message naming the row and both commands. A row whose
-    stored command is a shape we write is repaired (`remove` + re-add) — everything else is left
-    alone and reported, and this returns False so `--create-aoe-only` can fail on it. `on_drift`
-    is called at most once and may raise; the launch does not care.
+    finds it; `on_drift` is handed one message naming the row and both commands, plus a flag saying
+    whether a repair was attempted. A row whose stored command is a shape we write is repaired by
+    RENAMING it aside (`session rename`, never `remove` — a trashed row keeps the key) and adding
+    the correct row beside it; everything else is left alone and reported, and this returns False
+    so `--create-aoe-only` can fail on it. `on_drift` is called at most once and may raise; the
+    launch does not care.
 
     Not on the adopt path: with BOTH `group` and `title`, a matched row returns True above and its
     command is never examined, which is the point of adopting one.
@@ -512,11 +538,20 @@ def sync_session(
         if stale is not None:
             sid = stale.get("id")
             repairing = bool(sid) and _is_ours(stale.get("command") or "")
-            _report(on_drift, _drift_message(stale, command, repairing=repairing))
+            stale_title = f"{row_title} {_STALE_SUFFIX.format(sid=sid)}" if repairing else None
+            _report(
+                on_drift,
+                _drift_message(stale, command, renamed_to=stale_title),
+                repairing=repairing,
+            )
             if not repairing:
                 # Issuing the add anyway would be refused at exit 0 — the silence this fixes.
                 return False
-            repair = ["remove", str(sid), "-p", PROFILE]
+            # RENAMED, NOT REMOVED. `aoe remove` only trashes the row, and a trashed row still
+            # holds the (title, path) key aoe dedupes on — so remove-then-add loses the row AND
+            # has its replacement refused at exit 0. Renaming frees the key without destroying
+            # anything. Verified against aoe 1.13.2; see bd harnessed-cn9.
+            repair = ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]
 
         batch: list[list[str]] = []
         if not _has_profile(exe):

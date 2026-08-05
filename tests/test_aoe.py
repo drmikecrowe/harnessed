@@ -637,7 +637,8 @@ class TestCreateAoeOnly:
     once rather than three times through the CLI.
     """
 
-    def _register(self, monkeypatch, *, ok: bool, only: bool, drift: str | None = None) -> dict:
+    def _register(self, monkeypatch, *, ok: bool, only: bool, drift: str | None = None,
+                  repairing: bool = False) -> dict:
         seen: dict = {}
 
         def fake_sync(
@@ -646,7 +647,7 @@ class TestCreateAoeOnly:
         ):
             seen.update(verb=verb, stack=stack, harness=harness, background=background)
             if drift is not None and on_drift is not None:
-                on_drift(drift)
+                on_drift(drift, repairing)
             return ok
 
         monkeypatch.setattr(launcher.aoe, "sync_session", fake_sync)
@@ -697,6 +698,18 @@ class TestCreateAoeOnly:
         assert "abc123" in err
         # Not the "is aoe installed?" hint: aoe answered fine, the row is the problem.
         assert "initialized" not in err
+        assert "left the existing row" in err
+
+    def test_a_failed_repair_does_not_claim_the_row_was_left_alone(self, monkeypatch, capsys):
+        # The report fires BEFORE the blocking write. If the rename lands and the re-add then
+        # fails, the row has already moved — saying "left the existing row as it is" would send
+        # the user looking for it under its old title.
+        seen = self._register(monkeypatch, ok=False, only=True, drift="drift abc123",
+                              repairing=True)
+        assert seen["exit"] == 1
+        err = capsys.readouterr().err
+        assert "left the existing row" not in err
+        assert "renamed aside" in err
 
     @pytest.mark.parametrize("verb", ["container-run", "host-run"])
     def test_every_launch_verb_accepts_the_flag(self, verb):
@@ -867,6 +880,10 @@ class TestCommandDrift:
 
     TITLE = "proj [claude/host] serena"
     OURS = "mise run claude --"
+    STALE_TITLE = "proj [claude/host] serena (stale abc123)"
+
+    def _renames(self, rec: Recorder) -> list[list[str]]:
+        return [a for a in rec.calls if a[:2] == ["session", "rename"]]
 
     def _sessions(self, tmp_path: Path, command: str, *, title: str | None = None,
                   path: str | None = None, sid: str | None = "abc123") -> str:
@@ -892,46 +909,70 @@ class TestCommandDrift:
 
     # ---- repair path: the stored command is one harnessed writes ----
 
-    def test_drifted_row_is_removed_before_the_add(self, monkeypatch, proj):
+    def test_drifted_row_is_renamed_before_the_add(self, monkeypatch, proj):
         rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
         self._sync(proj)
-        verbs = [a[0] for a in rec.calls if a[0] in ("remove", "add")]
-        assert verbs == ["remove", "add", "add"], "the stale row must go before the re-add"
+        verbs = [a[0] for a in rec.calls if a[0] in ("session", "add")]
+        assert verbs == ["session", "add", "add"], "the key must be freed before the re-add"
 
-    def test_repair_removes_only_the_matched_row_in_our_profile(self, monkeypatch, proj):
+    def test_repair_renames_only_the_matched_row_in_our_profile(self, monkeypatch, proj):
         rows = json.loads(self._sessions(proj, "harnessed host-run claude /proj --"))
         rows.append({"id": "other", "title": "someone else", "path": str(proj),
                      "command": "harnessed host-run claude /elsewhere --"})
         rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         self._sync(proj)
-        [remove] = [a for a in rec.calls if a[0] == "remove"]
-        assert remove == ["remove", "abc123", "-p", aoe.PROFILE]
+        [rename] = self._renames(rec)
+        assert rename == [
+            "session", "rename", "abc123", "-t", self.STALE_TITLE, "-p", aoe.PROFILE
+        ]
+
+    def test_the_stale_title_carries_the_row_id(self, monkeypatch, proj):
+        # A bare "(stale)" suffix would collide with an earlier repair's leftover at the same
+        # path, and a failed rename is silent on the detached path — the failure class this
+        # whole change exists to remove.
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
+        self._sync(proj)
+        assert "abc123" in self._renames(rec)[0][4]
+
+    def test_repair_never_removes_anything(self, monkeypatch, proj):
+        # `aoe remove` only trashes the row, and a trashed row STILL holds aoe's (title, path)
+        # key — so remove-then-add loses the row and has its replacement refused at exit 0.
+        # Verified against the real aoe 1.13.2.
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
+        self._sync(proj)
+        assert [a for a in rec.calls if a[0] in ("remove", "rm")] == []
 
     def test_repair_reports_the_mismatch(self, monkeypatch, proj):
-        seen: list[str] = []
+        seen: list[tuple[str, bool]] = []
         self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
-        self._sync(proj, on_drift=seen.append)
+        self._sync(proj, on_drift=lambda m, r: seen.append((m, r)))
         assert len(seen) == 1
-        assert "abc123" in seen[0]
-        assert self.TITLE in seen[0]
-        assert "harnessed host-run claude /proj --" in seen[0]
-        assert self.OURS in seen[0]
+        message, repairing = seen[0]
+        assert repairing is True
+        assert "abc123" in message
+        assert self.TITLE in message
+        assert "harnessed host-run claude /proj --" in message
+        assert self.OURS in message
 
-    def test_repair_returns_true(self, monkeypatch, proj):
-        self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
+    def test_repair_returns_true_having_issued_the_rename(self, monkeypatch, proj):
+        # `is True` alone was vacuous: before any of this existed the add was dispatched and
+        # `_spawn` returned True. The rename is what makes the assertion about the repair.
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
         assert self._sync(proj) is True
+        assert len(self._renames(rec)) == 1
 
     def test_mise_shaped_drift_is_also_ours(self, monkeypatch, proj):
         # The row records another harness's task at our title: still a shape we wrote.
         rec = self._rec(monkeypatch, proj, "mise run omp --")
         self._sync(proj)
-        assert [a[0] for a in rec.calls if a[0] == "remove"] == ["remove"]
+        assert len(self._renames(rec)) == 1
 
     # ---- report-only path: the stored command is not ours ----
 
-    def test_foreign_row_is_never_removed(self, monkeypatch, proj):
+    def test_foreign_row_is_never_touched(self, monkeypatch, proj):
         rec = self._rec(monkeypatch, proj, "claude --dangerously-skip-permissions")
         self._sync(proj)
+        assert self._renames(rec) == []
         assert [a for a in rec.calls if a[0] == "remove"] == []
 
     def test_foreign_row_suppresses_the_add(self, monkeypatch, proj):
@@ -945,10 +986,15 @@ class TestCommandDrift:
         assert self._sync(proj) is False
 
     def test_foreign_row_reports_the_manual_fix(self, monkeypatch, proj):
-        seen: list[str] = []
+        # NOT `aoe remove`: a trashed row keeps the (title, path) key, so relaunching after one
+        # is refused exactly the same way. Advising it would send the user in a circle.
+        seen: list[tuple[str, bool]] = []
         self._rec(monkeypatch, proj, "claude --dangerously-skip-permissions")
-        self._sync(proj, on_drift=seen.append)
-        assert f"aoe remove abc123 -p {aoe.PROFILE}" in seen[0]
+        self._sync(proj, on_drift=lambda m, r: seen.append((m, r)))
+        message, repairing = seen[0]
+        assert repairing is False
+        assert "aoe session rename abc123" in message
+        assert "aoe remove abc123" not in message
 
     # ---- not drift: existing behaviour must not change ----
 
@@ -959,23 +1005,23 @@ class TestCommandDrift:
                  "command": "anything at all"}]
         rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
         seen: list[str] = []
-        assert self._sync(proj, group="g", title="t", on_drift=seen.append) is True
+        assert self._sync(proj, group="g", title="t", on_drift=lambda m, r: seen.append(m)) is True
         assert seen == []
-        assert [a for a in rec.calls if a[0] == "remove"] == []
+        assert self._renames(rec) == []
 
     def test_drift_matches_on_resolved_paths(self, monkeypatch, proj, tmp_path):
         link = tmp_path / "link"
         link.symlink_to(proj)
         rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --", path=str(link))
         self._sync(proj)
-        assert [a[0] for a in rec.calls if a[0] == "remove"] == ["remove"]
+        assert len(self._renames(rec)) == 1
 
     def test_same_path_different_title_is_not_drift(self, monkeypatch, proj):
         seen: list[str] = []
         rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
                         title="proj [omp/host] serena")
-        self._sync(proj, on_drift=seen.append)
-        assert [a for a in rec.calls if a[0] == "remove"] == []
+        self._sync(proj, on_drift=lambda m, r: seen.append(m))
+        assert self._renames(rec) == []
         assert seen == []
         assert len(rec.registrations()) == 1
 
@@ -983,18 +1029,18 @@ class TestCommandDrift:
         seen: list[str] = []
         rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
                         path=str(proj.parent))
-        self._sync(proj, on_drift=seen.append)
-        assert [a for a in rec.calls if a[0] == "remove"] == []
+        self._sync(proj, on_drift=lambda m, r: seen.append(m))
+        assert self._renames(rec) == []
         assert seen == []
         assert len(rec.registrations()) == 1
 
     def test_matching_command_is_not_drift(self, monkeypatch, proj):
         seen: list[str] = []
         rec = self._rec(monkeypatch, proj, self.OURS)
-        assert self._sync(proj, on_drift=seen.append) is True
+        assert self._sync(proj, on_drift=lambda m, r: seen.append(m)) is True
         assert seen == []
         assert rec.added() == []
-        assert [a for a in rec.calls if a[0] == "remove"] == []
+        assert self._renames(rec) == []
 
     @pytest.mark.parametrize("command", [
         "", "   ", "unclosed 'quote", "echo harnessed", "/usr/bin/harnessedx run",
@@ -1004,6 +1050,9 @@ class TestCommandDrift:
         # somebody else's row, and classifying it as ours would license DELETING it. Found by
         # mutants_aoe_drift.py M4, which survived until these three existed.
         "mise", "mise exec -- claude", "mise watch test",
+        # `mise run` is the prefix of EVERY mise task anyone ever wrote. Only a task named for a
+        # real harness is one of ours; a user's own `mise run dev` row is not ours to rewrite.
+        "mise run dev --", "mise run test", "mise run build --",
     ])
     def test_is_ours_rejects_hostile_commands(self, command):
         assert aoe._is_ours(command) is False
@@ -1027,8 +1076,9 @@ class TestCommandDrift:
             {"title": self.TITLE, "path": str(proj), "command": "harnessed host-run x --"},
         ]
         rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
-        self._sync(proj)  # must not raise
-        assert [a for a in rec.calls if a[0] == "remove"] == [], "no id, nothing safe to remove"
+        # A drifted row with no id cannot be repaired, so the write is blocked and reported.
+        assert self._sync(proj) is False
+        assert self._renames(rec) == [], "no id, nothing safe to rename"
 
     def test_drift_survives_unresolvable_path(self, monkeypatch, proj):
         rows = [{"id": "abc123", "title": self.TITLE, "path": {"not": "a path"},
@@ -1041,12 +1091,12 @@ class TestCommandDrift:
         assert len(rec.registrations()) == 1
 
     def test_on_drift_exception_never_breaks_sync(self, monkeypatch, proj):
-        def blow_up(_msg):
+        def blow_up(_msg, _repairing):
             raise RuntimeError("the reporter is not the launch's problem")
 
         rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
         assert self._sync(proj, on_drift=blow_up) is True
-        assert [a[0] for a in rec.calls if a[0] == "remove"] == ["remove"]
+        assert len(self._renames(rec)) == 1
 
     def test_drift_check_adds_no_extra_reads(self, monkeypatch, proj):
         # The scan reuses the session list `_registered` already read. A launch pays for one read.
