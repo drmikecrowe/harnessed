@@ -364,7 +364,7 @@ def _registered(
     """
     if group is not None and title is not None:
         return any(
-            (s.get("group") or s.get("group_path")) == group and s.get("title") == title
+            (s.get("group") or s.get("group_path")) == group and _same_title(s.get("title"), title)
             for s in sessions
         )
     for session in sessions:
@@ -376,6 +376,18 @@ def _registered(
         if recorded and Path(recorded).resolve() == project_path:
             return True
     return False
+
+
+def _same_title(a: str | None, b: str | None) -> bool:
+    """Compare two titles the way aoe's own dedupe does: trimmed at the ends.
+
+    Verified against aoe 1.13.2. With `Row A` present, adding ` Row A` or `Row A ` is refused as a
+    duplicate, while `row a` and `Row  A` are both accepted — the key is case-sensitive and
+    inner-whitespace-sensitive, but trimmed. Comparing exactly here would let precisely the rows
+    aoe refuses slip past the scan, which is the silent exit-0 failure this module now exists to
+    prevent. Reachable in practice through `--aoe-title ' foo '`.
+    """
+    return (a or "").strip() == (b or "").strip()
 
 
 def _is_ours(command: str) -> bool:
@@ -417,7 +429,7 @@ def _drifted_row(sessions: list[dict], command: str, project_path: Path, title: 
     this runs on the launch path, and aoe's JSON is not our schema to trust.
     """
     for session in sessions:
-        if session.get("title") != title or session.get("command") == command:
+        if not _same_title(session.get("title"), title) or session.get("command") == command:
             continue
         recorded = session.get("path")
         if not recorded:

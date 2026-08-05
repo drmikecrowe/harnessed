@@ -86,6 +86,12 @@ MUTANTS = [
      "            if not repairing:\n                # Issuing the add anyway would be refused at exit 0 — the silence this fixes.\n                return False",
      "            if not repairing:\n                pass"),
 
+    # aoe trims a title's ends before deduping (verified 1.13.2: ' Row A' collides with 'Row A',
+    # 'row a' and 'Row  A' do not). Comparing exactly lets exactly the rows aoe refuses slip past.
+    ("title compare stops matching aoe's trimming", AOE,
+     '    return (a or "").strip() == (b or "").strip()',
+     '    return a == b'),
+
     # Title is half of aoe's dedupe key. Drop it from the match and every row at the path looks
     # drifted — including the ones for other harnesses that are legitimately distinct.
     ("drift matches on path alone, ignoring the title", AOE,

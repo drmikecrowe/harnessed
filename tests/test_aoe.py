@@ -1016,6 +1016,29 @@ class TestCommandDrift:
         self._sync(proj)
         assert len(self._renames(rec)) == 1
 
+    def test_a_title_differing_only_by_surrounding_space_is_still_drift(self, monkeypatch, proj):
+        """aoe trims a title's ends before deduping; an exact compare here would miss the row.
+
+        Verified against aoe 1.13.2: with 'Row A' present, adding ' Row A' or 'Row A ' is refused
+        as a duplicate, while 'row a' and 'Row  A' are accepted. So the key is case- and
+        inner-whitespace-sensitive but trimmed at the ends. Comparing exactly would let exactly
+        the rows aoe refuses slip past the scan — the silent exit-0 failure this all exists to
+        stop. Reachable through `--aoe-title ' foo '`.
+        """
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
+                        title=f"  {self.TITLE} ")
+        self._sync(proj)
+        assert len(self._renames(rec)) == 1
+
+    def test_an_adopted_row_matches_despite_surrounding_space(self, monkeypatch, proj):
+        # Same trimming, on the (group, title) identity: aoe stored the trimmed form, so an
+        # untrimmed --aoe-title must still recognise its own row instead of adding a second.
+        rows = [{"id": "abc123", "group": "g", "title": "t", "path": str(proj),
+                 "command": "anything at all"}]
+        rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        assert self._sync(proj, group="g", title="  t  ") is True
+        assert rec.added() == []
+
     def test_same_path_different_title_is_not_drift(self, monkeypatch, proj):
         seen: list[str] = []
         rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
