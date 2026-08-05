@@ -440,9 +440,12 @@ def _drift_message(row: dict, ours: str, *, renamed_to: str | None) -> str:
         f"  ours:   {ours}",
     ]
     if renamed_to is not None:
+        # PRESENT TENSE, DELIBERATELY. On a launch the batch is fired detached and its outcome is
+        # never examined, so claiming the rename HAPPENED would be asserting something this
+        # process cannot know. Only `--create-aoe-only` blocks long enough to find out.
         lines += [
-            f"  renamed it to {renamed_to} and registered a correct row beside it.",
-            "  Nothing was deleted: the old row keeps its id, resume target and flags.",
+            f"  renaming it to {renamed_to} and registering a correct row beside it.",
+            "  Nothing is deleted: the old row keeps its id, resume target and flags.",
         ]
     else:
         lines += [
