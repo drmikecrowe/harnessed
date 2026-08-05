@@ -63,9 +63,38 @@ def restore(rel: str) -> None:
     subprocess.run(["git", "checkout", "--", rel], cwd=ROOT, check=True)
 
 
+def dirty() -> bool:
+    """True when any TRACKED file differs from HEAD, staged or not.
+
+    `git diff --quiet` was the wrong instrument: it compares the worktree to the INDEX, so a staged
+    modification reads as clean, and then the "restored clean" line at the end would be a claim
+    about nothing. `-uno` keeps untracked files — a stray `.coverage` — from blocking a run they
+    cannot corrupt.
+    """
+    proc = subprocess.run(
+        ["git", "status", "--porcelain", "-uno"], cwd=ROOT, capture_output=True, text=True
+    )
+    return bool(proc.stdout.strip())
+
+
+def current_branch() -> str:
+    proc = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ROOT, capture_output=True, text=True
+    )
+    return proc.stdout.strip()
+
+
 def main() -> int:
-    if subprocess.run(["git", "diff", "--quiet"], cwd=ROOT).returncode != 0:
-        print("refusing to run: working tree is dirty, restores would be unverifiable")
+    branch = current_branch()
+    if branch in ("main", "master"):
+        print(
+            f"refusing to run on '{branch}': this rewrites tracked files in place, and an "
+            "interrupted run would leave the canonical checkout dirty. Run it in a worktree."
+        )
+        return 2
+
+    if dirty():
+        print("refusing to run: tracked files differ from HEAD, so restores would be unverifiable")
         return 2
 
     print("baseline: ", end="", flush=True)
@@ -83,15 +112,18 @@ def main() -> int:
             survivors.append(label + " (anchor stale)")
             continue
         target.write_text(original.replace(find, replace), encoding="utf-8")
-        killed = not run_suite()
-        restore(rel)
-        assert target.read_text(encoding="utf-8") == original, f"restore failed for {rel}"
+        # finally, not a plain sequence: a KeyboardInterrupt or a crash inside the suite must not
+        # leave a deliberately broken source file behind in someone's checkout.
+        try:
+            killed = not run_suite()
+        finally:
+            restore(rel)
+            assert target.read_text(encoding="utf-8") == original, f"restore failed for {rel}"
         print(f"{'KILLED' if killed else 'SURVIVED'}  {label}")
         if not killed:
             survivors.append(label)
 
-    dirty = subprocess.run(["git", "diff", "--quiet"], cwd=ROOT).returncode != 0
-    if dirty:
+    if dirty():
         print("ERROR: tree left dirty after restore")
         return 2
 
