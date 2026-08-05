@@ -23,7 +23,51 @@ dev = [
     "pytest>=8",
     "pytest-cov",
     "jsonschema>=4",
+    # Analysis tooling, declared HERE rather than relied on from a developer's PATH: a check that
+    # only runs where someone happens to have the binary installed produces evidence nobody else
+    # can reproduce, and CI cannot run it at all. Each entry below replaces something that was
+    # otherwise hand-rolled as a one-off script, or a gauntlet layer previously reported as
+    # unavailable because nothing here declared a tool to run.
+    "ruff>=0.16",     # lint; its `S` rules ARE flake8-bandit, so no separate bandit dependency
+    "mutmut",         # mutation testing generated from the AST — no hand-written mutants to rot
+    "diff-cover",     # coverage restricted to the lines a branch changed
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# Correctness and security, not style. Formatting is deliberately NOT enforced: this codebase's
+# layout is hand-tuned and reformatting it would bury real findings under thousands of diffs.
+#   E9  syntax and IO errors        F    pyflakes (undefined names, unused imports)
+#   B   bugbear (real bug shapes)   S    flake8-bandit — this IS bandit
+#   PLE pylint errors only          RUF  ruff's own correctness rules
+#   BLE blind `except Exception`
+#
+# BLE is here for a reason worth writing down: this codebase already marks its deliberate blind
+# excepts with `# noqa: BLE001`. Leaving BLE out of `select` does not make those comments harmless
+# — it makes RUF100 report them as UNUSED, and "fixing" that would strip the markers before the
+# rule they document was ever switched on. Enabling it costs 2 findings and keeps 3 deliberate
+# suppressions meaningful.
+select = ["E9", "F", "B", "S", "PLE", "RUF", "BLE"]
+ignore = [
+    # This tool's entire job is driving podman, git and mise as subprocesses. Both rules fire on
+    # every such call and neither describes a defect here; silencing them project-wide keeps the
+    # remaining `S` findings meaningful instead of drowning them 226-to-1.
+    "S603",  # subprocess call without shell=True
+    "S607",  # partial executable path — binaries are resolved from PATH on purpose
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # `assert` is what a test suite is made of (2464 of them)
+
+[tool.pyright]
+include = ["src", "tests", "tools"]
+pythonVersion = "3.13"
+# `basic`, not `strict`: basic reports 14 errors on src/ today, which is a gate that can be
+# adopted now. `strict` would report far more and become a number nobody looks at.
+typeCheckingMode = "basic"
 
 [tool.setuptools.packages.find]
 where = ["src"]

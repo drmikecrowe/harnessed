@@ -1,3 +1,11 @@
+# Analysis tools that are not Python packages, so they cannot live in pyproject's dev extra.
+# Declared and pinned here rather than assumed present: a check that only runs on a machine where
+# someone happened to install the binary is not a check this project has. Versions are the ones
+# verified against this tree, not guesses.
+[tools]
+shellcheck = "0.11.0"
+"npm:pyright" = "1.1.411"
+
 [env]
 # Keep the venv outside the repo: `uv` running inside a podman container that
 # bind-mounts this repo can corrupt a .venv/ living under the mount. One venv
