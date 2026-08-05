@@ -140,7 +140,13 @@ class TestMatrixConformance:
 
 class TestTheWarningReachesTheUser:
     """A helper that exists but is never called warns nobody. These pin the wiring, which is the
-    part a user actually experiences."""
+    part a user actually experiences.
+
+    An independent adversarial review showed the first version of these tests could not tell the
+    difference: they matched source TEXT, so `if False:` around either call site left all 33 tests
+    green while the feature was off. Fixed from both ends — one test now EXECUTES the host
+    sequencer, and both call sites are checked for reachability rather than for a substring.
+    """
 
     def test_the_host_launcher_prints_the_gap(self, tmp_path, capsys):
         r = _recipe(tmp_path, "netty", "egress:\n  - api.example.com\n")
@@ -154,18 +160,92 @@ class TestTheWarningReachesTheUser:
         launcher._warn_capability_gaps("container", [r])
         assert capsys.readouterr().err == ""
 
-    def test_both_sequencers_call_it(self):
-        """One sequencer wired and the other forgotten is the likely regression, and it would be
-        invisible: the container backend has no DEGRADED cell today, so a missing call there
-        produces identical output until the day someone adds one."""
-        import inspect
+    def test_the_host_sequencer_really_prints_the_gap(self, tmp_path, monkeypatch, capsys):
+        """EXECUTES `_launch_host` far enough to prove the warning actually reaches stderr.
 
-        for fn in (launcher._launch_host, launcher.container_run):
-            src = inspect.getsource(fn)
-            assert "_warn_capability_gaps(" in src, f"{fn.__name__} does not warn about capability gaps"
+        This is the test that a source-text assertion cannot be: wrapping the call site in
+        `if False:` leaves every `inspect.getsource` check below green while the user sees nothing
+        (measured — the whole file passed 33/33 with the host call dead). Only genuine BOUNDARIES
+        are stubbed: catalog lookup, assembly, the aoe mirror, launch-env resolution, and the stack
+        load. `_warn_capability_gaps`, `capmatrix`, and the sequencer itself all run for real, so
+        this is not a test of its own mocks.
+
+        `load_stack_with_recipes` is patched on `launcher` ONLY, never with `patch_all`: `assemble`
+        calls the same name internally, and handing it a fake stack is a known way to break other
+        things (tests/support.py).
+        """
+        r = _recipe(tmp_path, "netty", "egress:\n  - api.example.com\n")
+        stack_dir = tmp_path / "stk"
+        stack_dir.mkdir()
+        (stack_dir / "stack.yaml").write_text("name: stk\n", encoding="utf-8")
+
+        class _ReachedTheBoundary(Exception):
+            """The first thing after the warning. Raised to stop the launch there."""
+
+        def _boundary(self, spec):
+            raise _ReachedTheBoundary
+
+        monkeypatch.setattr(launcher.paths, "find_in_catalog", lambda *a, **k: stack_dir)
+        monkeypatch.setattr(launcher, "assemble", lambda *a, **k: None)
+        monkeypatch.setattr(launcher, "_aoe_register", lambda *a, **k: None)
+        monkeypatch.setattr(launcher, "_resolve_launch_env", lambda *a, **k: {})
+        monkeypatch.setattr(launcher, "load_stack_with_recipes", lambda *a, **k: (None, [r]))
+        monkeypatch.setattr(launcher.HostBackend, "wire_services", _boundary)
+
+        with pytest.raises(_ReachedTheBoundary):
+            launcher._launch_host("stk", "claude", str(tmp_path))
+
+        err = capsys.readouterr().err
+        assert "netty" in err and "egress" in err, err
+        assert "not enforced" in err.lower(), err
+
+    @pytest.mark.parametrize("fn_name", ["_launch_host", "container_run"])
+    def test_the_call_is_live_not_dead_code(self, fn_name):
+        """Both call sites, checked for reachability rather than for the presence of a string.
+
+        Strictly stronger than the `"_warn_capability_gaps(" in src` assertion it replaces: that one
+        passed on `if False:`-guarded code. This parses the sequencer and rejects a call sitting
+        under a constant-false guard.
+
+        `container_run` gets only this static check, and the reason is structural, not laziness: NO
+        test in this repo executes `container_run` — all nine files that mention it either read its
+        source or stub it out — because reaching its body means faking podman, the runtime probe and
+        the image checks, at which point the test would only exercise its own mocks. So the
+        container call site is protected against deletion and against dead-code guards, and NOT
+        against a runtime condition that skips it. That limit is real and is recorded in EVIDENCE.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        tree = ast.parse(textwrap.dedent(inspect.getsource(getattr(launcher, fn_name))))
+        found: list[bool] = []
+
+        def scan(node, dead: bool) -> None:
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_warn_capability_gaps":
+                found.append(dead)
+            if isinstance(node, ast.If):
+                unreachable = isinstance(node.test, ast.Constant) and not node.test.value
+                scan(node.test, dead)
+                for stmt in node.body:
+                    scan(stmt, dead or unreachable)
+                for stmt in node.orelse:
+                    scan(stmt, dead)
+                return
+            for child in ast.iter_child_nodes(node):
+                scan(child, dead)
+
+        scan(tree, False)
+        assert found, f"{fn_name} never calls _warn_capability_gaps"
+        assert not any(found), f"{fn_name} calls _warn_capability_gaps inside a constant-false guard"
 
     def test_the_host_warning_precedes_materialization(self):
-        """Told while the user can still switch to `container-run`, not after the agent is up."""
+        """Told while the user can still switch to `container-run`, not after the agent is up.
+
+        SOURCE ORDER ONLY. That the call actually runs is
+        `test_the_host_sequencer_really_prints_the_gap`; this pins where it sits relative to
+        materialization, which that test does not reach.
+        """
         import inspect
 
         src = inspect.getsource(launcher._launch_host)
@@ -293,7 +373,12 @@ class TestFindingsFromAdversarialReview:
 
     def test_the_container_warning_precedes_the_setup_prompt(self):
         """_prompt_setup_notices can BLOCK on a user answer. Being asked to approve setup before
-        being told what the backend will not honor is the wrong order to learn things in."""
+        being told what the backend will not honor is the wrong order to learn things in.
+
+        SOURCE ORDER ONLY, and unlike the host path there is no behavioral counterpart — nothing in
+        this suite executes `container_run`. `test_the_call_is_live_not_dead_code` adds reachability
+        on top of this; a runtime condition that skipped the call would still pass both.
+        """
         import inspect
 
         src = inspect.getsource(launcher.container_run)
