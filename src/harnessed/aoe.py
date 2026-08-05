@@ -37,6 +37,14 @@ emit, which under command matching is invisible and gets a duplicate added besid
 required because either alone is far too coarse to be an identity: every session in a group shares
 its group, and a title is unique only within one. Neither alone changes matching.
 
+TWO DIFFERENT KEYS, WHICH IS A HAZARD AND NOT A DESIGN. We decide whether to write by matching the
+recorded command and path; aoe decides whether to accept by matching TITLE and path, and refuses a
+duplicate at exit status ZERO. A row that agrees on aoe's key but not ours is invisible to the
+check and silently eats the `add` — forever, since the write is detached and unexamined. So every
+registration that is about to add scans for that row first (`_drifted_row`) and reports it. It is
+rewritten only when its stored command is one this module emits (`_is_ours`), because rewriting
+means `aoe remove` and there is no in-place command update in aoe 1.13.2. See bd harnessed-cn9.
+
 READS ARE SYNCHRONOUS, WRITES ARE NOT. Measured against aoe on 2026-08-01: `list --json`,
 `group list` and `profile list` all return in ~0.01s, but `aoe add` takes ~12s (it brings the
 daemon up). Blocking a launch for twelve seconds to populate a dashboard is not a trade worth
@@ -462,9 +470,20 @@ def sync_session(
     `no_strict_mcp` (--no-strict-mcp-config) is recorded on the command so a restart brings the
     agent up with the MCP surface this launch had. See `command_for`.
 
-    Returns True when the row exists or its creation was dispatched, False when aoe is unavailable
-    or a blocking write failed. Callers on the passive mirror path ignore this; `--create-aoe-only`
-    reports it.
+    DRIFT IS REPORTED, NEVER SWALLOWED (bd harnessed-cn9). Finding no row does not mean aoe will
+    accept our `add`: it dedupes on (title, path), we match on (command, path), and a row that
+    agrees on the first key but not the second silently absorbs the add at exit 0. `_drifted_row`
+    finds it; `on_drift` is handed one message naming the row and both commands. A row whose
+    stored command is a shape we write is repaired (`remove` + re-add) — everything else is left
+    alone and reported, and this returns False so `--create-aoe-only` can fail on it. `on_drift`
+    is called at most once and may raise; the launch does not care.
+
+    Not on the adopt path: with BOTH `group` and `title`, a matched row returns True above and its
+    command is never examined, which is the point of adopting one.
+
+    Returns True when the row exists or its creation was dispatched, False when aoe is unavailable,
+    a blocking write failed, or unrepairable drift blocked the write. Callers on the passive mirror
+    path ignore this; `--create-aoe-only` reports it.
     """
     try:
         if stack in _SKIP_STACKS and group is None and title is None:
