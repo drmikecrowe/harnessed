@@ -3,10 +3,7 @@
 Audit of all 86 test files using `.agents/prompts/test-intent-audit.md`, run by 23 agents.
 Per-file reports are in `.old-coder/audit/` (gitignored, local to the audit worktree).
 
-**Coverage: 81 of 86 files, 74 findings.** One Tier B group of 5 low-density files
-(`test_ensure_local_catalog_links`, `test_folder_env_contract`, `test_harnessed_home`, and the two
-`test_install_migration_*` files) did not report; its per-file reports are absent from
-`.old-coder/audit/`. Rerun that group to close the gap — the conclusions below do not depend on it.
+**Coverage: 86 of 86 files, 76 findings, 27 reports.** Complete.
 
 ## Why this was run
 
@@ -42,12 +39,12 @@ skip in CI forever, exactly like the other 22.
 | Class | What it is | Count |
 |---|---|---|
 | 4 | asserts on source TEXT — passes when code is present but disabled | **37** |
-| 2 | argv assertion with no pinning test behind it | 13 |
-| 1 | mock encoding an unverified belief about an external system | 10 |
+| 2 | argv assertion with no pinning test behind it | 14 |
+| 1 | mock encoding an unverified belief about an external system | 11 |
 | 3 | vacuous — passes if the feature were deleted | 7 |
 | 6 | asserts existence/naming rather than behaviour | 6 |
 | 7 | over-mocking — bypasses the unit under test | 1 |
-| | **total** | **74** |
+| | **total** | **76** |
 
 Class 4 alone is half of everything found.
 
@@ -73,6 +70,8 @@ the suite stays green.
 | mise `trust` | command syntax | trust silently not applied |
 | claude `--strict-mcp-config` | that the flag suppresses global MCP | wrong MCP surface |
 | omp | mount + session-dir argv | (class 2, same shape) |
+| rtk | argv contract | (class 1) |
+| pnpm | stubbed behaviour | (class 2) |
 
 Tracked in **harnessed-rwt**, which also carries the four aoe contracts (remove permanence,
 `--tool` retry protocol, create-idempotency exit codes, add-flag compatibility).
