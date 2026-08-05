@@ -63,6 +63,25 @@ def restore(rel: str) -> None:
     subprocess.run(["git", "checkout", "--", rel], cwd=ROOT, check=True)
 
 
+class GuardFailed(RuntimeError):
+    """A safety check could not be evaluated, so it must not be treated as having passed."""
+
+
+def _git(*args: str) -> str:
+    """Run a read-only git command, FAILING CLOSED.
+
+    A guard that reports "looks fine" when git itself failed is worse than no guard at all: a
+    failing `git status` normally writes nothing to stdout, so an empty result would have read as
+    "clean" and the run would have proceeded to rewrite tracked files with no verified way back.
+    """
+    proc = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise GuardFailed(
+            f"`git {' '.join(args)}` exited {proc.returncode}: {proc.stderr.strip() or '(no stderr)'}"
+        )
+    return proc.stdout
+
+
 def dirty() -> bool:
     """True when any TRACKED file differs from HEAD, staged or not.
 
@@ -71,30 +90,32 @@ def dirty() -> bool:
     about nothing. `-uno` keeps untracked files — a stray `.coverage` — from blocking a run they
     cannot corrupt.
     """
-    proc = subprocess.run(
-        ["git", "status", "--porcelain", "-uno"], cwd=ROOT, capture_output=True, text=True
-    )
-    return bool(proc.stdout.strip())
+    return bool(_git("status", "--porcelain", "-uno").strip())
 
 
 def current_branch() -> str:
-    proc = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ROOT, capture_output=True, text=True
-    )
-    return proc.stdout.strip()
+    return _git("rev-parse", "--abbrev-ref", "HEAD").strip()
 
 
 def main() -> int:
-    branch = current_branch()
-    if branch in ("main", "master"):
-        print(
-            f"refusing to run on '{branch}': this rewrites tracked files in place, and an "
-            "interrupted run would leave the canonical checkout dirty. Run it in a worktree."
-        )
-        return 2
+    # Both guards evaluated BEFORE the baseline run and before any source write. A GuardFailed here
+    # aborts rather than falling through to a default, which is the whole point of failing closed.
+    try:
+        branch = current_branch()
+        if branch in ("main", "master"):
+            print(
+                f"refusing to run on '{branch}': this rewrites tracked files in place, and an "
+                "interrupted run would leave the canonical checkout dirty. Run it in a worktree."
+            )
+            return 2
 
-    if dirty():
-        print("refusing to run: tracked files differ from HEAD, so restores would be unverifiable")
+        if dirty():
+            print(
+                "refusing to run: tracked files differ from HEAD, so restores would be unverifiable"
+            )
+            return 2
+    except GuardFailed as exc:
+        print(f"refusing to run: cannot verify the tree is safe to mutate — {exc}")
         return 2
 
     print("baseline: ", end="", flush=True)
@@ -111,10 +132,11 @@ def main() -> int:
             print(f"SKIP  {label}: anchor matched {original.count(find)} times, not 1")
             survivors.append(label + " (anchor stale)")
             continue
-        target.write_text(original.replace(find, replace), encoding="utf-8")
-        # finally, not a plain sequence: a KeyboardInterrupt or a crash inside the suite must not
-        # leave a deliberately broken source file behind in someone's checkout.
+        # The WRITE is inside the try, not before it: `write_text` truncates before it fills, so a
+        # failure mid-write (disk full, Ctrl-C) would otherwise leave a corrupted tracked source
+        # file with no restore on the way out. Everything that can damage the tree is in scope.
         try:
+            target.write_text(original.replace(find, replace), encoding="utf-8")
             killed = not run_suite()
         finally:
             restore(rel)
