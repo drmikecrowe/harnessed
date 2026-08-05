@@ -873,9 +873,12 @@ class TestCommandDrift:
     error, and keeps replaying its stored command forever. That is how a row titled for one stack
     came to launch another.
 
-    Repair means `aoe remove` — there is no `session update` in aoe 1.13.2 — which takes the row's
-    resume target, favourite, colour and created_at with it. So the destructive half is bounded to
-    command shapes THIS module emits; anything else is reported and left alone.
+    Repair is a RENAME. aoe 1.13.2 cannot rewrite a session's command, and the obvious
+    remove-then-add does not work: `aoe remove` only trashes the row, a trashed row still comes
+    back from `aoe list --json`, and it still holds the (title, path) key — so the replacement add
+    is refused at exit 0 too, leaving the row lost and nothing in its place. `aoe session rename`
+    frees the key while destroying nothing. Even so, only command shapes THIS module emits are
+    rewritten; anything else is reported and left alone.
     """
 
     TITLE = "proj [claude/host] serena"
@@ -1045,6 +1048,15 @@ class TestCommandDrift:
         assert rec.added() == []
         assert self._renames(rec) == [], "nothing is touched when the add cannot land anyway"
         assert len(seen) == 2, "both rows are named, not just the one that blocks"
+        # THE PROPERTY, not the mechanics: nothing was written, so no message may say a rename
+        # is happening and nothing may tell the launcher a repair was attempted. Reporting per
+        # row while still discovering whether a later row blocks is how this went wrong once.
+        assert not any(repairing for _, repairing in seen)
+        assert not any("renaming it to" in message for message, _ in seen)
+        # And the owned row must say why it was spared, not claim it is foreign.
+        owned = next(m for m, _ in seen if "harnessed host-run claude /a --" in m)
+        assert "another row" in owned
+        assert "not a command harnessed writes" not in owned
 
     def test_a_title_differing_only_by_surrounding_space_is_still_drift(self, monkeypatch, proj):
         """aoe trims a title's ends before deduping; an exact compare here would miss the row.

@@ -41,8 +41,10 @@ TWO DIFFERENT KEYS, WHICH IS A HAZARD AND NOT A DESIGN. We decide whether to wri
 recorded command and path; aoe decides whether to accept by matching TITLE and path, and refuses a
 duplicate at exit status ZERO. A row that agrees on aoe's key but not ours is invisible to the
 check and silently eats the `add` — forever, since the write is detached and unexamined. So every
-registration that is about to add scans for that row first (`_drifted_row`) and reports it. It is
-repaired only when its stored command is one this module emits (`_is_ours`).
+registration that is about to add scans for those rows first (`_drifted_rows`) and reports every
+one of them. A row is repaired only when its stored command is one this module emits (`_is_ours`),
+and a single row we may not touch blocks the registration outright — it keeps the key whatever we
+do to its neighbours.
 
 REPAIR IS A RENAME, WHICH LOOKS INDIRECT UNTIL YOU TRY THE OBVIOUS THING. aoe 1.13.2 cannot rewrite
 a session's command, so the obvious repair is remove-then-add — and it does not work: `aoe remove`
@@ -351,7 +353,7 @@ def _registered(
     """Whether this (path, harness) already has a row.
 
     Takes the session list rather than reading it, because the caller also hands it to
-    `_drifted_row` and a launch should pay for one `list --json`, not two.
+    `_drifted_rows` and a launch should pay for one `list --json`, not two.
 
     With BOTH `group` and `title` supplied the user has named the row, and (group, title) becomes
     the key instead — the only match that can find a row harnessed did not write, whose command
@@ -449,14 +451,26 @@ def _drifted_rows(sessions: list[dict], command: str, project_path: Path, title:
     return found
 
 
-def _drift_message(row: dict, ours: str, *, renamed_to: str | None) -> str:
-    """One report naming the row and both commands. Never silent, whichever way it resolves."""
+def _drift_message(row: dict, ours: str, *, renamed_to: str | None, blocked: bool = False) -> str:
+    """One report naming the row and both commands. Never silent, whichever way it resolves.
+
+    THREE OUTCOMES, not two. A row can be left alone because it is not ours to touch, or because
+    some OTHER row at this key is not ours to touch and the registration cannot land whatever we
+    do here. Telling a user their own row "is not a command harnessed writes" when the truth is
+    "its neighbour blocked us" sends them to inspect the wrong row.
+    """
     sid = row.get("id") or "?"
     lines = [
         f"aoe row {row.get('title') or '?'} ({sid}) records a different command than this launch:",
         f"  stored: {row.get('command') or ''}",
         f"  ours:   {ours}",
     ]
+    if blocked:
+        return "\n".join(lines + [
+            "  NOT repaired: another row at this title and path is not one harnessed writes, so",
+            "  the registration cannot land whatever we do here. Nothing was changed.",
+            f"  fix: aoe session rename {sid} -t '<any other title>' -p {PROFILE}   then relaunch",
+        ])
     if renamed_to is not None:
         # PRESENT TENSE, DELIBERATELY. On a launch the batch is fired detached and its outcome is
         # never examined, so claiming the rename HAPPENED would be asserting something this
@@ -517,13 +531,14 @@ def sync_session(
 
     DRIFT IS REPORTED, NEVER SWALLOWED (bd harnessed-cn9). Finding no row does not mean aoe will
     accept our `add`: it dedupes on (title, path), we match on (command, path), and a row that
-    agrees on the first key but not the second silently absorbs the add at exit 0. `_drifted_row`
-    finds it; `on_drift` is handed one message naming the row and both commands, plus a flag saying
-    whether a repair was attempted. A row whose stored command is a shape we write is repaired by
-    RENAMING it aside (`session rename`, never `remove` — a trashed row keeps the key) and adding
-    the correct row beside it; everything else is left alone and reported, and this returns False
-    so `--create-aoe-only` can fail on it. `on_drift` is called at most once and may raise; the
-    launch does not care.
+    agrees on the first key but not the second silently absorbs the add at exit 0. `_drifted_rows`
+    finds every one of them; `on_drift` is handed one message PER ROW, naming it and both commands,
+    plus a flag saying whether a repair is being attempted for it. A row whose stored command is a
+    shape we write is repaired by RENAMING it aside (`session rename`, never `remove` — a trashed
+    row keeps the key) and adding the correct row beside it; everything else is left alone and
+    reported, and this returns False so `--create-aoe-only` can fail on it. One row we may not
+    touch blocks the whole registration, so nothing is renamed in that case either. `on_drift` is
+    called once per drifted row and may raise; the launch does not care.
 
     Not on the adopt path: with BOTH `group` and `title`, a matched row returns True above and its
     command is never examined, which is the point of adopting one.
@@ -558,26 +573,32 @@ def sync_session(
         # the (title, path) key aoe dedupes on — so remove-then-add loses the row AND has its
         # replacement refused at exit 0. Renaming frees the key without destroying anything.
         # Verified against aoe 1.13.2; see bd harnessed-cn9.
+        # DECIDE EVERY ROW BEFORE REPORTING ANY OF THEM. One row we may not touch is enough to
+        # keep the key, so the add cannot land whatever we do to the others — and that verdict is
+        # not known until the last row has been examined. Reporting inside the discovery loop
+        # announced a rename for an owned row and then wrote nothing when a later row blocked,
+        # which is this bug's own failure mode: a message asserting what did not happen.
+        drifted = [
+            (stale, stale.get("id"), bool(stale.get("id")) and _is_ours(stale.get("command") or ""))
+            for stale in _drifted_rows(sessions, command, project_path, row_title)
+        ]
+        blocked = any(not repairable for _, _, repairable in drifted)
+
         repairs: list[list[str]] = []
-        blocked = False
-        for stale in _drifted_rows(sessions, command, project_path, row_title):
-            sid = stale.get("id")
-            repairing = bool(sid) and _is_ours(stale.get("command") or "")
-            stale_title = f"{row_title} {_STALE_SUFFIX.format(sid=sid)}" if repairing else None
+        for stale, sid, repairable in drifted:
+            renaming = repairable and not blocked
+            stale_title = f"{row_title} {_STALE_SUFFIX.format(sid=sid)}" if renaming else None
             _report(
                 on_drift,
-                _drift_message(stale, command, renamed_to=stale_title),
-                repairing=repairing,
+                _drift_message(
+                    stale, command, renamed_to=stale_title, blocked=blocked and repairable
+                ),
+                repairing=renaming,
             )
-            if repairing:
+            if renaming:
                 repairs.append(
                     ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]
                 )
-            else:
-                # One row we may not touch is enough to keep the key, so the add cannot land
-                # whatever we do to the others. Report every row first — naming one and hiding
-                # the rest is how this bug stayed invisible — then write nothing.
-                blocked = True
         if blocked:
             return False
 

@@ -6,13 +6,15 @@ Run: tools/mutants_aoe_drift.py
 Each mutant is a real bug a future edit could plausibly introduce. The suite must FAIL on every one
 of them; a mutant that survives means the tests covering it assert nothing.
 
-This file exists because five of the tests in `TestCommandDrift` PASSED before the feature was
-written — they assert that something bad does NOT happen (no `remove` issued, no extra read, no
-exception), which is trivially true of code that does nothing at all. A green suite is not evidence
-for that shape of test. These mutants are.
+This file exists because several tests in `TestCommandDrift` PASSED before the feature was written
+— they assert that something bad does NOT happen (no row rewritten, no extra read, no exception),
+which is trivially true of code that does nothing at all. A green suite is not evidence for that
+shape of test. These mutants are.
 
-Two of them (M3, M5) target the destructive half specifically: `_is_ours` is the only thing standing
-between a drifted row and `aoe remove`, and `remove` cannot be undone from harnessed's side.
+Several target the ownership gate specifically: `_is_ours` is the only thing standing between a
+drifted row and harnessed rewriting a row it does not own. One mutant guards the repair verb
+itself — reverting `session rename` to `remove` looks like a simplification and silently breaks
+the repair, because a trashed row keeps aoe's dedupe key.
 
 Restores every file it touches and verifies the tree came back clean with `git diff`.
 """
@@ -121,7 +123,10 @@ def run_suite() -> int:
 
 def main() -> int:
     dirty = subprocess.run(
-        ["git", "diff", "--name-only"], cwd=ROOT, capture_output=True, text=True
+        # --porcelain, not `diff --name-only`: the latter sees only UNSTAGED changes, so a staged
+        # edit to the file under mutation slips past the guard and past the restore check.
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=ROOT, capture_output=True, text=True,
     ).stdout.strip()
     if dirty:
         print(f"refusing to run with a dirty tree; commit or stash first:\n{dirty}")
@@ -145,7 +150,10 @@ def main() -> int:
             survivors.append(label)
 
     restored = subprocess.run(
-        ["git", "diff", "--name-only"], cwd=ROOT, capture_output=True, text=True
+        # --porcelain, not `diff --name-only`: the latter sees only UNSTAGED changes, so a staged
+        # edit to the file under mutation slips past the guard and past the restore check.
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=ROOT, capture_output=True, text=True,
     ).stdout.strip()
     if restored:
         print(f"\nFAILED TO RESTORE — tree is dirty:\n{restored}")

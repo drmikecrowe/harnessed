@@ -11,7 +11,9 @@
 #   - integration-tree rerun  : must be run by hand from the main checkout
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+# Guarded: the script runs without `set -e`, so an unguarded cd would run every layer below in
+# whatever directory the caller happened to be in.
+cd "$(dirname "$0")/.." || { echo "cannot reach repo root" >&2; exit 2; }
 LOGDIR="${1:-.old-coder/logs}"
 mkdir -p "$LOGDIR"
 # Keep coverage's own dotfile out of the repo root; it is a byproduct, not a result.
