@@ -14,6 +14,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 LOGDIR="${1:-.old-coder/logs}"
 mkdir -p "$LOGDIR"
+# Keep coverage's own dotfile out of the repo root; it is a byproduct, not a result.
+export COVERAGE_FILE="$LOGDIR/.coverage"
 rc=0
 
 run() { # run <label> <logfile> <cmd...>
