@@ -1000,6 +1000,10 @@ class TestCommandDrift:
         "", "   ", "unclosed 'quote", "echo harnessed", "/usr/bin/harnessedx run",
         "harnessedx foo", "mise-en-place run", "sudo harnessed host-run x",
         "claude", "npm run mise", "run mise", "MISE run claude",
+        # `mise` is not the key — `mise run` is. A hand-written row driving mise any other way is
+        # somebody else's row, and classifying it as ours would license DELETING it. Found by
+        # mutants_aoe_drift.py M4, which survived until these three existed.
+        "mise", "mise exec -- claude", "mise watch test",
     ])
     def test_is_ours_rejects_hostile_commands(self, command):
         assert aoe._is_ours(command) is False
