@@ -31,8 +31,14 @@ MUTANTS = [
     # The scan itself: skip it, and we are back to the bug — the add is issued, aoe refuses it at
     # exit 0, the stale row survives unmentioned.
     ("drift scan disabled (the original bug restored)", AOE,
-     "        stale = _drifted_row(sessions, command, project_path, row_title)",
-     "        stale = None"),
+     "        for stale in _drifted_rows(sessions, command, project_path, row_title):",
+     "        for stale in []:"),
+
+    # Repairing only the first row leaves the second holding aoe's key, so the add is still
+    # refused at exit 0 -- the same silence, one row further along.
+    ("only the first drifted row is repaired", AOE,
+     "        for stale in _drifted_rows(sessions, command, project_path, row_title):",
+     "        for stale in _drifted_rows(sessions, command, project_path, row_title)[:1]:"),
 
     # The report: a launch that repairs silently is half the defect (the hours were lost to
     # silence, not to the stale row).
@@ -64,15 +70,15 @@ MUTANTS = [
 
     # Wrong row renamed: the id is what scopes the edit to the row we matched.
     ("repair renames a row that was not the matched one", AOE,
-     '            repair = ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]',
-     '            repair = ["session", "rename", "0", "-t", stale_title or "", "-p", PROFILE]'),
+     '                    ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]',
+     '                    ["session", "rename", "0", "-t", stale_title or "", "-p", PROFILE]'),
 
     # THE REGRESSION GUARD for what real execution found: `remove` trashes the row, and a trashed
     # row still holds aoe's (title, path) key, so the replacement add is refused at exit 0 too.
     # Reverting to remove loses the row AND fails to replace it.
     ("repair reverts to `remove` (row trashed, replacement refused)", AOE,
-     '            repair = ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]',
-     '            repair = ["remove", str(sid), "-p", PROFILE]'),
+     '                    ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]',
+     '                    ["remove", str(sid), "-p", PROFILE]'),
 
     # The stale title must stay unique, or a second repair at the same path collides and the
     # rename fails silently on the detached path.
@@ -83,8 +89,8 @@ MUTANTS = [
     # Unrepairable drift must BLOCK the write, so `--create-aoe-only` fails and the user is not
     # told a registration happened that aoe silently threw away.
     ("unrepairable drift falls through and adds anyway", AOE,
-     "            if not repairing:\n                # Issuing the add anyway would be refused at exit 0 — the silence this fixes.\n                return False",
-     "            if not repairing:\n                pass"),
+     "        if blocked:\n            return False",
+     "        if False:\n            return False"),
 
     # aoe trims a title's ends before deduping (verified 1.13.2: ' Row A' collides with 'Row A',
     # 'row a' and 'Row  A' do not). Comparing exactly lets exactly the rows aoe refuses slip past.
@@ -101,8 +107,8 @@ MUTANTS = [
     # The one read the scan is allowed to cost. A second `_sessions` call is a second subprocess
     # on every launch — the reason `_registered` takes the list instead of the exe.
     ("scan re-reads the session list instead of reusing it", AOE,
-     "        stale = _drifted_row(sessions, command, project_path, row_title)",
-     "        stale = _drifted_row(_sessions(exe), command, project_path, row_title)"),
+     "        for stale in _drifted_rows(sessions, command, project_path, row_title):",
+     "        for stale in _drifted_rows(_sessions(exe), command, project_path, row_title):"),
 ]
 
 

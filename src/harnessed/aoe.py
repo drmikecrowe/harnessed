@@ -415,8 +415,8 @@ def _is_ours(command: str) -> bool:
     return tokens[:2] == ["mise", "run"] and len(tokens) > 2 and tokens[2] in HARNESS_CONFIG_DIR
 
 
-def _drifted_row(sessions: list[dict], command: str, project_path: Path, title: str) -> dict | None:
-    """The row `aoe add` would be silently refused against, if there is one.
+def _drifted_rows(sessions: list[dict], command: str, project_path: Path, title: str) -> list[dict]:
+    """Every row `aoe add` would be silently refused against.
 
     THE TWO KEYS ARE NOT THE SAME KEY, which is the whole of bd harnessed-cn9. We decide whether to
     write by matching (command, path) in `_registered`; aoe decides whether to accept by matching
@@ -425,9 +425,15 @@ def _drifted_row(sessions: list[dict], command: str, project_path: Path, title: 
     because a launch fires that write detached and never looks — keeps replaying its stored command
     forever. A row titled for one stack launching another, with no signal anywhere.
 
-    Returns the first such row. Everything is `.get`-guarded and the path comparison is wrapped:
-    this runs on the launch path, and aoe's JSON is not our schema to trust.
+    ALL of them, not just the first. aoe should hold (title, path) unique, but "should" is not a
+    guarantee we get to rely on — an externally edited session store, or an earlier repair that
+    half-landed, can leave two. Repair only the first and the second still holds the key, so the
+    add is still refused at exit 0: the same silence, one row further along.
+
+    Everything is `.get`-guarded and the path comparison is wrapped: this runs on the launch path,
+    and aoe's JSON is not our schema to trust.
     """
+    found: list[dict] = []
     for session in sessions:
         if not _same_title(session.get("title"), title) or session.get("command") == command:
             continue
@@ -439,8 +445,8 @@ def _drifted_row(sessions: list[dict], command: str, project_path: Path, title: 
                 continue
         except (OSError, TypeError, ValueError):
             continue
-        return session
-    return None
+        found.append(session)
+    return found
 
 
 def _drift_message(row: dict, ours: str, *, renamed_to: str | None) -> str:
@@ -548,9 +554,13 @@ def sync_session(
         # No row matched, so we are about to `add`. If a row already holds (title, path) with a
         # different command, aoe will refuse that add at exit 0 and the stale row survives — bd
         # harnessed-cn9. Say so either way; rewrite it only if it is a row we wrote.
-        repair: list[str] | None = None
-        stale = _drifted_row(sessions, command, project_path, row_title)
-        if stale is not None:
+        # RENAMED, NOT REMOVED. `aoe remove` only trashes the row, and a trashed row still holds
+        # the (title, path) key aoe dedupes on — so remove-then-add loses the row AND has its
+        # replacement refused at exit 0. Renaming frees the key without destroying anything.
+        # Verified against aoe 1.13.2; see bd harnessed-cn9.
+        repairs: list[list[str]] = []
+        blocked = False
+        for stale in _drifted_rows(sessions, command, project_path, row_title):
             sid = stale.get("id")
             repairing = bool(sid) and _is_ours(stale.get("command") or "")
             stale_title = f"{row_title} {_STALE_SUFFIX.format(sid=sid)}" if repairing else None
@@ -559,14 +569,17 @@ def sync_session(
                 _drift_message(stale, command, renamed_to=stale_title),
                 repairing=repairing,
             )
-            if not repairing:
-                # Issuing the add anyway would be refused at exit 0 — the silence this fixes.
-                return False
-            # RENAMED, NOT REMOVED. `aoe remove` only trashes the row, and a trashed row still
-            # holds the (title, path) key aoe dedupes on — so remove-then-add loses the row AND
-            # has its replacement refused at exit 0. Renaming frees the key without destroying
-            # anything. Verified against aoe 1.13.2; see bd harnessed-cn9.
-            repair = ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]
+            if repairing:
+                repairs.append(
+                    ["session", "rename", str(sid), "-t", stale_title or "", "-p", PROFILE]
+                )
+            else:
+                # One row we may not touch is enough to keep the key, so the add cannot land
+                # whatever we do to the others. Report every row first — naming one and hiding
+                # the rest is how this bug stayed invisible — then write nothing.
+                blocked = True
+        if blocked:
+            return False
 
         batch: list[list[str]] = []
         if not _has_profile(exe):
@@ -574,9 +587,8 @@ def sync_session(
         group_name = group_for(project_path, group=group)
         if not _has_group(exe, group_name):
             batch.append(["group", "create", group_name, "-p", PROFILE])
-        if repair is not None:
-            # After the group exists, before the re-add: the row aoe would otherwise refuse.
-            batch.append(repair)
+        # After the group exists, before the re-add: the rows aoe would otherwise refuse against.
+        batch.extend(repairs)
         add = [
             "add", str(project_path),
             "-p", PROFILE,

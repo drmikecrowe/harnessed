@@ -1016,6 +1016,36 @@ class TestCommandDrift:
         self._sync(proj)
         assert len(self._renames(rec)) == 1
 
+    def test_every_drifted_row_at_the_key_is_repaired_not_just_the_first(self, monkeypatch, proj):
+        # Repairing only the first leaves the second holding (title, path), so aoe refuses the add
+        # at exit 0 anyway — the silence this whole change exists to remove, reintroduced one row
+        # further along. Needs an already-odd aoe state to reach, which is exactly when a launch
+        # should still behave.
+        rows = [
+            {"id": "first", "title": self.TITLE, "path": str(proj),
+             "command": "harnessed host-run claude /a --"},
+            {"id": "second", "title": self.TITLE, "path": str(proj),
+             "command": "mise run omp --"},
+        ]
+        rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        assert self._sync(proj) is True
+        assert [r[2] for r in self._renames(rec)] == ["first", "second"]
+
+    def test_one_unrepairable_row_blocks_the_add_even_if_another_is_ours(self, monkeypatch, proj):
+        # The foreign row keeps the key whatever we do to the other, so the add cannot land.
+        rows = [
+            {"id": "ours", "title": self.TITLE, "path": str(proj),
+             "command": "harnessed host-run claude /a --"},
+            {"id": "theirs", "title": self.TITLE, "path": str(proj),
+             "command": "claude --dangerously-skip-permissions"},
+        ]
+        rec = Recorder(sessions=json.dumps(rows)).install(monkeypatch)
+        seen: list[tuple[str, bool]] = []
+        assert self._sync(proj, on_drift=lambda m, r: seen.append((m, r))) is False
+        assert rec.added() == []
+        assert self._renames(rec) == [], "nothing is touched when the add cannot land anyway"
+        assert len(seen) == 2, "both rows are named, not just the one that blocks"
+
     def test_a_title_differing_only_by_surrounding_space_is_still_drift(self, monkeypatch, proj):
         """aoe trims a title's ends before deduping; an exact compare here would miss the row.
 
