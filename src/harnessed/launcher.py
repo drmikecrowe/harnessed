@@ -42,6 +42,7 @@ from . import emit
 from . import paths
 from . import persist
 from . import staleness
+from . import capmatrix
 from .backend import (
     ATTACH,
     BOUNDARY,
@@ -1757,6 +1758,25 @@ def _aoe_register(
     raise typer.Exit(0)
 
 
+def _warn_capability_gaps(backend: str, recipes) -> None:
+    """Name every declaration this backend will not honor (BACKENDS.md §4, bd harnessed-0tk.2).
+
+    A stack runs on any backend; that does not mean every primitive in it is honored there. Where it
+    is not, the launch SUCCEEDS and the declaration is inert — so the user's only signal is this
+    line. Today the one such cell is `egress:` on a backend whose isolation is `none`, which matters
+    most for a credential-bearing recipe whose allowlist silently stops applying.
+
+    Emitted at launch rather than in `assemble()` because this is where a concrete backend exists:
+    `harnessed assemble` has a harness, not a backend, so the same check there could only ever
+    answer "nothing to report" (see `capmatrix.gaps`, which refuses to say that about a backend it
+    has no column for).
+    """
+    for gap in capmatrix.gaps(backend, recipes):
+        _err.print(
+            f"[bold yellow]WARNING[/bold yellow] {gap.primitive} ({gap.recipe}): {gap.detail}"
+        )
+
+
 @register
 class HostBackend(ExecutionBackend):
     """The host backend: no podman, the agent runs as a process on this machine (BACKENDS.md §2).
@@ -1965,6 +1985,10 @@ def _launch_host(
     # recipe this reads, so there is no failure left here for the sidecars to have preceded.
     host_stk, host_recipes = load_stack_with_recipes(None, stack)
     backend = HostBackend(host_recipes)
+    # Before anything is materialized: a declaration this backend cannot honor is worth knowing
+    # about while there is still a choice to make (rerun under `container-run`), not after the
+    # agent is already up.
+    _warn_capability_gaps(HostBackend.name, host_recipes)
     spec = LaunchSpec(
         stack=stack, harness=harness, project_path=project_path,
         extra=tuple(extra or []), no_strict_mcp=no_strict_mcp, ephemeral=rm,
@@ -2783,6 +2807,11 @@ def container_run(
     # and the [O]k/[T]erminal/[D]ismiss/[Q]uit prompt live in _prompt_setup_notices; reuse
     # launch_recipes below. [T]erminal is equivalent to having passed --shell on this launch.
     _, launch_recipes = load_stack_with_recipes(None, stack)
+    # Same check, same reason, other backend — silent today (every container cell is SUPPORTED), and
+    # called anyway so a future DEGRADED cell reaches the user without anyone remembering to wire it.
+    # BEFORE _prompt_setup_notices: that prompt can block, and a user should not answer it without
+    # having seen what this backend will not honor.
+    _warn_capability_gaps(ContainerBackend.name, launch_recipes)
     shell = _prompt_setup_notices(launch_recipes, project_path, stack, harness) or shell
 
     launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
