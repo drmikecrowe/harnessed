@@ -368,7 +368,11 @@ class TestFindingsFromAdversarialReview:
 
         from harnessed.schema import load_recipe
 
-        ping = load_recipe(Path("catalog/recipes/ping"), strict=True)
+        # Anchored to THIS file, not to the CWD. `Path("catalog/...")` only resolved because
+        # tools/run-tests.sh happens to run from the repo root; from anywhere else the test died on
+        # a missing directory instead of asserting anything.
+        repo_root = Path(__file__).resolve().parents[1]
+        ping = load_recipe(repo_root / "catalog" / "recipes" / "ping", strict=True)
         assert "services" in capmatrix.declared_primitives(ping)
 
     def test_the_container_warning_precedes_the_setup_prompt(self):

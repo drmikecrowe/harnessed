@@ -86,7 +86,7 @@ network. A backend implements the capabilities and orders its own launch.
 
 ## 4. Recipe-capability × backend matrix
 
-Not every recipe primitive is honorable on every backend. Where one is not, the launch still
+Not every recipe primitive is honored on every backend. Where one is not, the launch still
 **succeeds** and the declaration is simply inert — silence, not breakage — so the launcher names the
 gap (bd harnessed-0tk.2).
 
