@@ -95,7 +95,7 @@ MUTANTS = [
     # Title is half of aoe's dedupe key. Drop it from the match and every row at the path looks
     # drifted — including the ones for other harnesses that are legitimately distinct.
     ("drift matches on path alone, ignoring the title", AOE,
-     '        if session.get("title") != title or session.get("command") == command:',
+     '        if not _same_title(session.get("title"), title) or session.get("command") == command:',
      '        if session.get("command") == command:'),
 
     # The one read the scan is allowed to cost. A second `_sessions` call is a second subprocess
