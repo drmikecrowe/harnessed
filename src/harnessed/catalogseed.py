@@ -23,6 +23,58 @@ from .proc import _run
 from .console import _err, _out
 
 
+def _points_at_a_harnessed_overlay(link: Path, kind: str) -> bool:
+    """True when `link`'s destination is one WE wrote: an absolute `<xdg>/harnessed/catalog/<kind>`.
+
+    The discriminator between a link of ours gone stale (re-point it) and one the user made by hand
+    (leave it, and abort). Deliberately reads the RAW target with `readlink` rather than resolving:
+    the destination of a stale link is routinely already deleted, and a resolved dangling path tells
+    you nothing about what it used to point at.
+
+    The shape alone is not enough — two near misses have to be excluded, both found by review:
+
+      * ABSOLUTE ONLY. `../../harnessed/catalog/agents` has the same three trailing components, and
+        we only ever write `user_catalog()/<kind>`, which is absolute. A relative link is therefore
+        by construction not ours.
+      * NOT A CHECKOUT'S SHIPPED CATALOG. `<x>/harnessed/catalog/<kind>` is also the layout of the
+        catalog shipped inside any checkout whose directory is named `harnessed` — the ordinary
+        shape of a clone. Told apart by the two markers `paths.source_checkout` already uses, and
+        deliberately by BOTH of them: keying on `pyproject.toml` alone would make any XDG root that
+        happens to contain one look like a checkout, and the build would go back to aborting.
+
+    NOTHING HERE MAY RAISE. Both filesystem calls are guarded, and they fail in OPPOSITE directions
+    because the two failures mean opposite things:
+
+      * `readlink` fails -> the LINK itself is gone or unreadable (a concurrent build in the same
+        checkout can delete it between `is_symlink()` and here). We cannot claim as ours something
+        we cannot read, so return False and let the caller print its ordinary message. A confusing
+        abort beats a stack trace.
+      * the MARKER checks fail -> the link is fine, its target tree is unreadable. Undecidable
+        resolves to "ours": re-point rather than abort. Being wrong costs one convenience symlink to
+        re-make; the alternative is the hard abort this function exists to stop doing.
+
+    Nothing is ever deleted either way: only a symlink is unlinked, never its target.
+
+    What is left uncovered, deliberately, in BOTH directions:
+      * a hand-made link at `<x>/harnessed/catalog/<kind>` where `<x>/harnessed` is neither a
+        checkout nor an overlay still reads as ours and is re-pointed;
+      * a link into a real checkout is refused even when it WAS ours — an `$XDG_CONFIG_HOME` whose
+        `harnessed/` subdirectory is itself a checkout gets the old abort. Recoverable by removing
+        the link, and no configuration in this repo produces it.
+    """
+    try:
+        target = Path(os.readlink(link))
+    except OSError:
+        return False
+    if not target.is_absolute() or target.parts[-3:] != ("harnessed", "catalog", kind):
+        return False
+    root = target.parent.parent
+    try:
+        return not ((root / "pyproject.toml").is_file() and (root / "src" / "harnessed").is_dir())
+    except OSError:
+        return True
+
+
 def _ensure_local_catalog_links() -> None:
     """Ensure the user's overlay dirs exist; symlink them into `catalog-local/` in a source checkout.
 
@@ -63,8 +115,31 @@ def _ensure_local_catalog_links() -> None:
         target = links_dir / kind
         dest = user_catalog_root / kind
         if target.is_symlink():
-            if target.resolve() == dest.resolve():
+            try:
+                already_correct = target.resolve() == dest.resolve()
+            except OSError:
+                # `resolve()` READS THE LINK, so it fails when the link does — and on Python 3.12 it
+                # propagates that, while 3.13 swallows it. `requires-python` is >=3.12 and CI pins
+                # 3.12, so guarding only the `readlink` inside the discriminator below left the
+                # "never traceback" contract broken on the version this project actually ships
+                # against. Undecidable here means "not known to be correct": fall through and let
+                # the discriminator (which returns False when it cannot read the link) reach the
+                # ordinary message instead of a stack trace.
+                already_correct = False
+            if already_correct:
                 continue  # already correct — no-op
+            if _points_at_a_harnessed_overlay(target, kind):
+                # STALE, NOT FOREIGN (bd harnessed-ng5). This is a link harnessed itself wrote, at a
+                # `harnessed/catalog/<kind>` that is no longer the overlay $XDG_CONFIG_HOME selects —
+                # the env var moved, or the old root was a temp dir that has since been deleted.
+                # Telling the user to hand-remove our own artifact was never a real choice, and it
+                # made the podman-gated suite unrunnable: every test gets a fresh tmp
+                # $XDG_CONFIG_HOME, the live tests shell out to the real `harnessed build` in the
+                # real checkout, so the first one aborted all the rest — and the links it left,
+                # pointing into a deleted tmp tree, aborted every later run too.
+                target.unlink()
+                target.symlink_to(dest)
+                continue
             _err.print(
                 f"[bold red]error:[/bold red] {target} is a symlink pointing at the wrong destination "
                 f"(expected -> {dest}). Remove it manually to proceed."

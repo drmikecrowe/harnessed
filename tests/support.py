@@ -34,6 +34,11 @@ def podman(func):
     return pytest.mark.live_podman(gated)
 
 
+# `catalog_local_restored` deliberately lives in conftest.py, not here (bd harnessed-ng5): the
+# gate-accounting tests copy the SHIPPED conftest verbatim into a `pytester` sandbox where `support`
+# is not importable, so conftest must stay self-contained.
+
+
 def patch_all(monkeypatch, name: str, value: Any) -> None:
     """Replace `name` in every loaded `harnessed.*` module that binds it.
 
