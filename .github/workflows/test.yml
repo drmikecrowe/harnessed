@@ -12,10 +12,17 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      # PINNED TO COMMIT SHAs, not tags, matching `live.yml` — a git tag is mutable, so whoever
+      # controls the action can repoint `v5` at different code that then runs with a token on this
+      # runner. "Pin every download" (CLAUDE.md) applies here too: an action is a download that
+      # executes. Comments carry the human-readable version so the pins can be refreshed
+      # deliberately. `persist-credentials: false` because no later step needs git auth.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
 
       - name: Setup uv (+ Python 3.12)
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           python-version: "3.12"
 
@@ -25,5 +32,27 @@ jobs:
       # triggers remain disabled until `harnessed-ng5` is fixed. Before it existed they ran nowhere
       # at all, and this job's skip count was the only trace of it (bd harnessed-3x1).
       # The run now prints a "live verification" section naming what did not execute.
+      - name: Run tests
+        run: uv run --extra dev pytest
+
+  # The declared range is `requires-python = ">=3.12"`, so 3.12 alone only proves the floor.
+  # 3.13 changed pathlib, dict/asyncio and warnings behaviour under us at least once already
+  # (bd harnessed-925), and it is what a contributor gets by default if their box has it.
+  #
+  # A second job rather than a matrix on `pytest`: a matrix renames the check to
+  # `pytest (3.12)`, and `pytest` is a required status check on this repo — renaming it
+  # silently leaves the branch protection waiting on a context that never reports again.
+  pytest-py313:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      - name: Setup uv (+ Python 3.13)
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          python-version: "3.13"
+
       - name: Run tests
         run: uv run --extra dev pytest
