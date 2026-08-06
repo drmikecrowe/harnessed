@@ -2,6 +2,8 @@
 
 import os
 import re
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -142,6 +144,60 @@ _REAL_XDG_CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / 
 # NOT `NO_COLOR`: that would suppress color the tests never asked about, diverging from CI in the
 # other direction. The goal is parity with a plain environment, not forced monochrome.
 os.environ.pop("FORCE_COLOR", None)
+
+
+_LINK_KINDS = ("agents", "recipes", "services", "stacks")
+
+
+@contextmanager
+def catalog_local_restored(checkout: Path) -> Generator[None, None, None]:
+    """Leave `<checkout>/catalog-local/` exactly as it was found (bd harnessed-ng5).
+
+    `harnessed build` maintains DX symlinks there against whatever `$XDG_CONFIG_HOME` is set when it
+    runs, and `_isolated_user_catalog` below hands every test a fresh tmp one. The live tests shell
+    out to the real binary in the real checkout, so without this a run ends with the developer's
+    overlay links pointing into a `/tmp` tree pytest has already deleted — and nothing says so,
+    because `catalog-local/` is gitignored and `git status` stays clean.
+
+    Only ever unlinks a SYMLINK. A real file or directory at `catalog-local/<kind>` is content
+    somebody put there on purpose; this helper's job is to be invisible, not tidy.
+
+    LIVES HERE, NOT IN `support.py`, and uses nothing but the stdlib: `test_live_gate_accounting`
+    copies this file verbatim into a `pytester` sandbox where `support` is not importable, so any
+    import from it would break four unrelated tests. (It did — caught by the full suite.)
+    """
+    links = Path(checkout) / "catalog-local"
+    existed = links.is_dir()
+    # The RAW target, not the resolved one: what must go back is the link as it was written, and a
+    # stale link's destination is routinely already deleted.
+    before = {k: (os.readlink(links / k) if (links / k).is_symlink() else None) for k in _LINK_KINDS}
+    try:
+        yield
+    finally:
+        for kind, original in before.items():
+            path = links / kind
+            if path.is_symlink():
+                path.unlink()
+            elif path.exists():
+                continue  # real content — not ours to remove, and not ours to overwrite
+            if original is not None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.symlink_to(original)
+        if not existed and links.is_dir() and not any(links.iterdir()):
+            links.rmdir()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _restore_catalog_local():
+    """Apply `catalog_local_restored` to this checkout for the whole session.
+
+    SESSION-SCOPED AND AUTOUSE ON PURPOSE. Per-module opt-in would be a rule the next live test can
+    forget, and policing it needs a test asserting a `usefixtures` declaration — mechanics, not the
+    property. This removes the failure mode instead. The cost is that the links do churn between tmp
+    roots DURING a run; `catalogseed._points_at_a_harnessed_overlay` is what makes that safe.
+    """
+    with catalog_local_restored(Path(__file__).resolve().parents[1]):
+        yield
 
 
 @pytest.fixture(autouse=True)

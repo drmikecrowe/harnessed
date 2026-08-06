@@ -23,6 +23,17 @@ from .proc import _run
 from .console import _err, _out
 
 
+def _points_at_a_harnessed_overlay(link: Path, kind: str) -> bool:
+    """True when `link`'s destination has the shape this function writes: `.../harnessed/catalog/<kind>`.
+
+    The discriminator between a link of OURS gone stale (re-point it) and one the user made by hand
+    (leave it, and abort). Deliberately reads the RAW target with `readlink` rather than resolving:
+    the destination of a stale link is routinely deleted, and a resolved dangling path tells you
+    nothing about what it was pointing at.
+    """
+    return Path(os.readlink(link)).parts[-3:] == ("harnessed", "catalog", kind)
+
+
 def _ensure_local_catalog_links() -> None:
     """Ensure the user's overlay dirs exist; symlink them into `catalog-local/` in a source checkout.
 
@@ -65,6 +76,18 @@ def _ensure_local_catalog_links() -> None:
         if target.is_symlink():
             if target.resolve() == dest.resolve():
                 continue  # already correct — no-op
+            if _points_at_a_harnessed_overlay(target, kind):
+                # STALE, NOT FOREIGN (bd harnessed-ng5). This is a link harnessed itself wrote, at a
+                # `harnessed/catalog/<kind>` that is no longer the overlay $XDG_CONFIG_HOME selects —
+                # the env var moved, or the old root was a temp dir that has since been deleted.
+                # Telling the user to hand-remove our own artifact was never a real choice, and it
+                # made the podman-gated suite unrunnable: every test gets a fresh tmp
+                # $XDG_CONFIG_HOME, the live tests shell out to the real `harnessed build` in the
+                # real checkout, so the first one aborted all the rest — and the links it left,
+                # pointing into a deleted tmp tree, aborted every later run too.
+                target.unlink()
+                target.symlink_to(dest)
+                continue
             _err.print(
                 f"[bold red]error:[/bold red] {target} is a symlink pointing at the wrong destination "
                 f"(expected -> {dest}). Remove it manually to proceed."

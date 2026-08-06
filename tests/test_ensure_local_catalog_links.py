@@ -7,6 +7,10 @@ Two invariants:
     They point at the user's private overlay, and setuptools follows symlinks into the wheel.
 """
 
+import os
+
+from pathlib import Path
+
 import pytest
 import typer
 
@@ -134,6 +138,92 @@ class TestEnsureLocalCatalogLinks:
             "must not create symlinks in an unrelated project's catalog/"
         )
         assert not (other / "catalog-local").exists()
+
+
+class TestStaleLinkIsRepointed:
+    """bd harnessed-ng5 — a link left behind by a DIFFERENT `$XDG_CONFIG_HOME` is stale, not foreign.
+
+    `catalog-local/<kind>` is an artifact harnessed creates and owns. Aborting the build because it
+    points at another `.../harnessed/catalog/<kind>` told the user to hand-fix a link harnessed had
+    written itself, and made the podman-gated suite unrunnable: every test gets a fresh tmp
+    `$XDG_CONFIG_HOME` (conftest `_isolated_user_catalog`), and the live tests shell out to the real
+    `harnessed build` in the real checkout — so the first one poisoned all the rest, and the leftover
+    links (pointing into a deleted tmp tree) poisoned every later RUN.
+
+    Re-pointing is confined to destinations shaped like a harnessed overlay. Anything else still
+    aborts, because then the link is not ours to move.
+    """
+
+    def _link(self, repo, kind, dest):
+        links = repo / "catalog-local"
+        links.mkdir(parents=True, exist_ok=True)
+        (links / kind).symlink_to(dest)
+        return links / kind
+
+    def test_repoints_a_link_left_by_another_xdg_root(self, monkeypatch, tmp_path):
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        other = tmp_path / "other-xdg" / "harnessed" / "catalog"
+        (other / "agents").mkdir(parents=True)
+        self._link(repo, "agents", other / "agents")
+
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        launcher._ensure_local_catalog_links()
+
+        for kind in _KINDS:
+            link = repo / "catalog-local" / kind
+            assert link.is_symlink()
+            assert Path(os.readlink(link)) == user_catalog / kind
+
+    def test_two_calls_under_different_xdg_roots(self, monkeypatch, tmp_path):
+        """The bead's 'two live tests in one session', at unit speed."""
+        repo = _fake_checkout(monkeypatch, tmp_path)
+
+        _setup_xdg(monkeypatch, tmp_path / "first")
+        launcher._ensure_local_catalog_links()
+        second = _setup_xdg(monkeypatch, tmp_path / "second")
+        launcher._ensure_local_catalog_links()  # must not raise
+
+        for kind in _KINDS:
+            assert Path(os.readlink(repo / "catalog-local" / kind)) == second / kind
+
+    def test_repoints_a_dangling_link_from_a_deleted_run(self, monkeypatch, tmp_path):
+        """The cross-RUN case: the previous run's tmp XDG tree no longer exists at all."""
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        gone = tmp_path / "pytest-of-x" / "pytest-24" / "xdg0" / "harnessed" / "catalog"
+        link = self._link(repo, "recipes", gone / "recipes")
+        assert not link.exists(), "precondition: the link is dangling"
+
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        launcher._ensure_local_catalog_links()
+
+        assert Path(os.readlink(link)) == user_catalog / "recipes"
+
+    def test_a_foreign_symlink_still_aborts_and_is_left_alone(self, monkeypatch, tmp_path):
+        """A link into something that is NOT a harnessed overlay is the user's, not ours to move."""
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        mine = tmp_path / "my-own-recipes"
+        mine.mkdir()
+        link = self._link(repo, "recipes", mine)
+
+        _setup_xdg(monkeypatch, tmp_path)
+        with pytest.raises(typer.Exit) as exc:
+            launcher._ensure_local_catalog_links()
+
+        assert exc.value.exit_code == 1
+        assert Path(os.readlink(link)) == mine, "the user's own link must survive the abort"
+
+    def test_a_correct_link_is_left_untouched(self, monkeypatch, tmp_path):
+        """Idempotence is a NO-OP, not an unlink-and-recreate: same inode, same ctime."""
+        _setup_xdg(monkeypatch, tmp_path)
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        launcher._ensure_local_catalog_links()
+        link = repo / "catalog-local" / "agents"
+        before = os.lstat(link)
+
+        launcher._ensure_local_catalog_links()
+
+        after = os.lstat(link)
+        assert (after.st_ino, after.st_ctime_ns) == (before.st_ino, before.st_ctime_ns)
 
 
 def _shipped_default_recipe(repo):
