@@ -43,22 +43,30 @@ FLOATING_RECIPE_DOCKERFILE = ROOT / "catalog" / "recipes" / "floating-recipe" / 
 
 # Illustrative templates that ASSEMBLE but point at a placeholder URL — covered by the fast
 # assembly/oracle sweep, but skipped by the live connect test (no real endpoint to reach).
-NO_LIVE_CONNECT = {"claude_openbrain-example", "claude_hindsight"}
+#
+# These are matched against `catalog/stacks/<name>`, so they must be BARE stack names. They were
+# written in an older `claude_<recipe>` scheme under which no stack has been named for some time —
+# every entry in both sets silently matched nothing, so the exclusions they document were not in
+# force. `openbrain-example` is the one that still exists, and its own stack.yaml says it is
+# "intentionally excluded from the live capability sweep". `hindsight` has no stack at all
+# (bd harnessed-5wm).
+NO_LIVE_CONNECT = {"openbrain-example"}
 
 # CLI-only recipes with no skill/command/mcp/plugin surface at all, by design — the agent shells
 # out to the binary directly and there is no `expect:` kind for "a binary is on PATH" (see e.g.
 # catalog/recipes/rtk/PLAN.md "Risks / checks", or the beads recipes' recipe.yaml headers). The
 # assembler-driven oracle is
 # structurally empty for these; verified manually, not by this fast sweep.
+#
+# The four `claude_beads-team` / `claude_beads-stealth` / `claude_rtk` / `claude_solidspec` entries
+# that used to sit here are gone for the reason given above NO_LIVE_CONNECT: they are stack names
+# in a scheme this catalog no longer uses, so they excluded nothing. No stack is named for those
+# recipes today. Dropping them changes no test outcome — it only stops the set from claiming a
+# coverage decision that was never in effect.
 NO_CAPABILITY_ORACLE = {
-    "claude_beads-team",
-    "claude_beads-stealth",
-    "claude_rtk",
-    "claude_solidspec",
     # host-native beads-daemon tracer stacks (spike): beads is CLI+hook+service only, no oracle surface.
     "hostbeads",
     "hostbeads_stealth",
-
 }
 
 
@@ -171,9 +179,16 @@ def _run_cli(*args: str, timeout: int = 600) -> subprocess.CompletedProcess:
 @pytest.mark.parametrize("stack", [s for s in REAL_STACKS if s not in NO_LIVE_CONNECT])
 def test_live_capabilities_present_in_container(stack):
     """build + test the stack; every declared skill/command/plugin/mcp is present in the container."""
-    assert _run_cli("build", stack).returncode == 0, f"{stack}: build failed"
-    result = _run_cli("test", stack, "--json")
-    assert result.returncode == 0, f"{stack}: capability test exited non-zero\n{result.stdout}"
+    # `claude` explicitly, matching the fast layer's `assemble(..., "claude")` above. Since 980d06c
+    # both verbs REQUIRE a harness, and no catalog stack declares a `harnesses:` list, so the bare
+    # two-word form these calls used to take is a usage error that fails before podman does any
+    # work at all (bd harnessed-lxw).
+    build = _run_cli("build", stack, "claude")
+    assert build.returncode == 0, f"{stack}: build failed\n{build.stderr}"
+    result = _run_cli("test", stack, "claude", "--json")
+    assert result.returncode == 0, (
+        f"{stack}: capability test exited non-zero\n{result.stdout}\n{result.stderr}"
+    )
     report = json.loads(result.stdout)
     assert report["ok"] is True, f"{stack}: not green → {report}"
 
