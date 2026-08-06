@@ -6,6 +6,15 @@ _BRANCH = "{{exec(command=\"git branch --show-current\")}}"
 UV_PROJECT_ENVIRONMENT = "{{env.HOME}}/.local/share/harnessed/venvs/{{env._BRANCH}}/.venv"
 _.source = "{{env.UV_PROJECT_ENVIRONMENT}}/bin/activate"
 
+# Pin the local venv to the FLOOR of requires-python (>=3.12), which is also what CI's default
+# job runs. Left unpinned, uv picks the newest interpreter on the box (3.13 here), so no local
+# run exercises the version CI uses or the version the project claims to support -- and any
+# behavioural difference between the two is invisible by construction. That is not theoretical:
+# `Path.resolve()` raises on a failing readlink under 3.12 and swallows it under 3.13, which hid
+# a real crash in catalogseed through a full local review (bd harnessed-925). CI covers the top
+# of the range with a 3.13 matrix leg; local covers the floor.
+UV_PYTHON = "3.12"
+
 # docs/ is a live clone of the GitHub wiki, which publishes pages under a FLAT namespace
 # (guides/beads.md is served at /wiki/beads). Relative links therefore look correct on disk and
 # break once rendered on the wiki -- so the rewrite is a task, not a habit. Run `docs` after

@@ -27,3 +27,23 @@ jobs:
       # The run now prints a "live verification" section naming what did not execute.
       - name: Run tests
         run: uv run --extra dev pytest
+
+  # The declared range is `requires-python = ">=3.12"`, so 3.12 alone only proves the floor.
+  # 3.13 changed pathlib, dict/asyncio and warnings behaviour under us at least once already
+  # (bd harnessed-925), and it is what a contributor gets by default if their box has it.
+  #
+  # A second job rather than a matrix on `pytest`: a matrix renames the check to
+  # `pytest (3.12)`, and `pytest` is a required status check on this repo — renaming it
+  # silently leaves the branch protection waiting on a context that never reports again.
+  pytest-py313:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup uv (+ Python 3.13)
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+
+      - name: Run tests
+        run: uv run --extra dev pytest
