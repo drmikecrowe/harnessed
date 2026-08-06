@@ -100,6 +100,28 @@ def test_never_touches_real_content(tmp_path):
     assert (repo / "catalog-local" / "stacks" / "also-keep.txt").read_text() == "mine too\n"
 
 
+def test_real_content_the_body_created_outranks_restoring_the_link(tmp_path):
+    """The two invariants collide here, and NEVER-DELETE wins. Deliberate, and pinned.
+
+    Adversarial review, finding B1: if the body replaces a snapshotted symlink with a real
+    directory, restoring the link would mean deleting that directory. It is not this helper's to
+    delete — a test that leaves real content behind has done something surprising, and destroying
+    it is worse than leaving it. So the content stays and the link is NOT restored.
+    """
+    repo = tmp_path / "repo"
+    links = repo / "catalog-local"
+    links.mkdir(parents=True)
+    (links / "agents").symlink_to(_overlay(tmp_path / "real-xdg", "agents"))
+
+    with catalog_local_restored(repo):
+        (links / "agents").unlink()
+        (links / "agents").mkdir()
+        (links / "agents" / "surprise.txt").write_text("body wrote this\n")
+
+    assert (links / "agents" / "surprise.txt").read_text() == "body wrote this\n"
+    assert not (links / "agents").is_symlink()
+
+
 def test_restores_even_when_the_body_raises(tmp_path):
     repo = tmp_path / "repo"
     links = repo / "catalog-local"

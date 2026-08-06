@@ -212,6 +212,42 @@ class TestStaleLinkIsRepointed:
         assert exc.value.exit_code == 1
         assert Path(os.readlink(link)) == mine, "the user's own link must survive the abort"
 
+    def test_a_relative_link_is_not_ours(self, monkeypatch, tmp_path):
+        """`../../harnessed/catalog/agents` has our SHAPE but we only ever write absolute links.
+
+        Adversarial review, finding A2: matching on the last three path components alone accepts a
+        relative target, which by construction cannot be one of ours.
+        """
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        link = self._link(repo, "agents", Path("../../harnessed/catalog/agents"))
+
+        _setup_xdg(monkeypatch, tmp_path)
+        with pytest.raises(typer.Exit) as exc:
+            launcher._ensure_local_catalog_links()
+
+        assert exc.value.exit_code == 1
+        assert os.readlink(link) == "../../harnessed/catalog/agents"
+
+    def test_another_checkouts_shipped_catalog_is_not_ours(self, monkeypatch, tmp_path):
+        """The NEAR MISS: a second clone in a dir named `harnessed` has exactly our shape.
+
+        Adversarial review, finding A1: `<x>/harnessed/catalog/agents` is the shipped catalog of any
+        checkout whose directory is called `harnessed` — the common case for a clone — not an
+        overlay. Told apart by the `pyproject.toml` a checkout has and an XDG root does not.
+        """
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        other = tmp_path / "second-clone" / "harnessed"
+        (other / "catalog" / "agents").mkdir(parents=True)
+        (other / "pyproject.toml").write_text("[project]\nname = 'harnessed'\n")
+        link = self._link(repo, "agents", other / "catalog" / "agents")
+
+        _setup_xdg(monkeypatch, tmp_path)
+        with pytest.raises(typer.Exit) as exc:
+            launcher._ensure_local_catalog_links()
+
+        assert exc.value.exit_code == 1
+        assert Path(os.readlink(link)) == other / "catalog" / "agents"
+
     def test_a_correct_link_is_left_untouched(self, monkeypatch, tmp_path):
         """Idempotence is a NO-OP, not an unlink-and-recreate: same inode, same ctime."""
         _setup_xdg(monkeypatch, tmp_path)

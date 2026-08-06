@@ -162,6 +162,17 @@ def catalog_local_restored(checkout: Path) -> Generator[None, None, None]:
     Only ever unlinks a SYMLINK. A real file or directory at `catalog-local/<kind>` is content
     somebody put there on purpose; this helper's job is to be invisible, not tidy.
 
+    THE TWO INVARIANTS COLLIDE in one case, and never-delete wins: if the body replaced a
+    snapshotted symlink with a real directory, restoring the link would mean deleting that
+    directory, so the content stays and the link is NOT put back. Found by adversarial review as an
+    unstated gap; the behaviour was already this and is now pinned by
+    `test_real_content_the_body_created_outranks_restoring_the_link`. Nothing in `harnessed build`
+    can produce that state — only a test doing something surprising, which is exactly when
+    destroying its output would be worst.
+
+    Scope is the four kinds `harnessed build` maintains. A fifth name under `catalog-local/` is not
+    snapshotted and not cleaned; nothing writes one.
+
     LIVES HERE, NOT IN `support.py`, and uses nothing but the stdlib: `test_live_gate_accounting`
     copies this file verbatim into a `pytester` sandbox where `support` is not importable, so any
     import from it would break four unrelated tests. (It did — caught by the full suite.)

@@ -24,14 +24,30 @@ from .console import _err, _out
 
 
 def _points_at_a_harnessed_overlay(link: Path, kind: str) -> bool:
-    """True when `link`'s destination has the shape this function writes: `.../harnessed/catalog/<kind>`.
+    """True when `link`'s destination is one WE wrote: an absolute `<xdg>/harnessed/catalog/<kind>`.
 
-    The discriminator between a link of OURS gone stale (re-point it) and one the user made by hand
+    The discriminator between a link of ours gone stale (re-point it) and one the user made by hand
     (leave it, and abort). Deliberately reads the RAW target with `readlink` rather than resolving:
-    the destination of a stale link is routinely deleted, and a resolved dangling path tells you
-    nothing about what it was pointing at.
+    the destination of a stale link is routinely already deleted, and a resolved dangling path tells
+    you nothing about what it used to point at.
+
+    The shape alone is not enough — two near misses have to be excluded, both found by review:
+
+      * ABSOLUTE ONLY. `../../harnessed/catalog/agents` has the same three trailing components, and
+        we only ever write `user_catalog()/<kind>`, which is absolute. A relative link is therefore
+        by construction not ours.
+      * NOT A CHECKOUT'S SHIPPED CATALOG. `<x>/harnessed/catalog/<kind>` is also the layout of the
+        catalog shipped inside any checkout whose directory is named `harnessed` — the ordinary
+        shape of a clone. An overlay root holds no `pyproject.toml`; a checkout does.
+
+    What is left uncovered, deliberately: a hand-made link at `<x>/harnessed/catalog/<kind>` where
+    `<x>/harnessed` is neither a checkout nor an overlay still reads as ours and gets re-pointed.
+    The cost of that is one convenience symlink to re-make; the target's content is never touched.
     """
-    return Path(os.readlink(link)).parts[-3:] == ("harnessed", "catalog", kind)
+    target = Path(os.readlink(link))
+    if not target.is_absolute() or target.parts[-3:] != ("harnessed", "catalog", kind):
+        return False
+    return not (target.parent.parent / "pyproject.toml").is_file()
 
 
 def _ensure_local_catalog_links() -> None:
