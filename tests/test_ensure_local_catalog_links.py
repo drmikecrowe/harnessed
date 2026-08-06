@@ -239,6 +239,7 @@ class TestStaleLinkIsRepointed:
         other = tmp_path / "second-clone" / "harnessed"
         (other / "catalog" / "agents").mkdir(parents=True)
         (other / "pyproject.toml").write_text("[project]\nname = 'harnessed'\n")
+        (other / "src" / "harnessed").mkdir(parents=True)
         link = self._link(repo, "agents", other / "catalog" / "agents")
 
         _setup_xdg(monkeypatch, tmp_path)
@@ -247,6 +248,47 @@ class TestStaleLinkIsRepointed:
 
         assert exc.value.exit_code == 1
         assert Path(os.readlink(link)) == other / "catalog" / "agents"
+
+    def test_a_stray_pyproject_alone_does_not_make_it_a_checkout(self, monkeypatch, tmp_path):
+        """"Is a checkout" must mean what `paths.source_checkout` means: BOTH markers, not one.
+
+        Adversarial review round 2, findings 2 and 6: keying only on `pyproject.toml` makes any XDG
+        root that happens to contain one look like a checkout, and the build goes back to aborting —
+        the original P1 shape. `source_checkout()` requires `pyproject.toml` AND `src/harnessed`, and
+        so must this.
+        """
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        stale = tmp_path / "old-xdg" / "harnessed"
+        (stale / "catalog" / "agents").mkdir(parents=True)
+        (stale / "pyproject.toml").write_text("[project]\nname = 'something-else'\n")
+        link = self._link(repo, "agents", stale / "catalog" / "agents")
+
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        launcher._ensure_local_catalog_links()  # must not raise
+
+        assert Path(os.readlink(link)) == user_catalog / "agents"
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+    def test_an_unreadable_target_tree_does_not_crash_the_build(self, monkeypatch, tmp_path):
+        """`is_file()` raises PermissionError on a mode-000 ancestor; a build must not traceback.
+
+        Adversarial review round 2, finding 1. Undecidable resolves to "ours": we cannot read the
+        markers, and re-pointing costs at most one convenience symlink, while the alternative is the
+        hard abort this whole change exists to remove. Nothing is deleted either way — only a
+        symlink is ever unlinked.
+        """
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        walled = tmp_path / "walled"
+        (walled / "harnessed" / "catalog" / "agents").mkdir(parents=True)
+        link = self._link(repo, "agents", walled / "harnessed" / "catalog" / "agents")
+
+        user_catalog = _setup_xdg(monkeypatch, tmp_path)
+        walled.chmod(0o000)
+        try:
+            launcher._ensure_local_catalog_links()  # must not raise PermissionError
+            assert Path(os.readlink(link)) == user_catalog / "agents"
+        finally:
+            walled.chmod(0o755)
 
     def test_a_correct_link_is_left_untouched(self, monkeypatch, tmp_path):
         """Idempotence is a NO-OP, not an unlink-and-recreate: same inode, same ctime."""

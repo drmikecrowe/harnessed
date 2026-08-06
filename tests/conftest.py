@@ -186,16 +186,27 @@ def catalog_local_restored(checkout: Path) -> Generator[None, None, None]:
         yield
     finally:
         for kind, original in before.items():
-            path = links / kind
-            if path.is_symlink():
-                path.unlink()
-            elif path.exists():
-                continue  # real content — not ours to remove, and not ours to overwrite
-            if original is not None:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.symlink_to(original)
-        if not existed and links.is_dir() and not any(links.iterdir()):
-            links.rmdir()
+            # PER-KIND, AND NEVER RAISING. This runs in a `finally`, so an exception here would
+            # REPLACE whatever the body raised — the developer would be shown a teardown error
+            # instead of their failing assertion — and would abandon the remaining kinds
+            # half-restored. Found by adversarial review; a test that fails for the wrong reason is
+            # worse than one that fails.
+            try:
+                path = links / kind
+                if path.is_symlink():
+                    path.unlink()
+                elif path.exists():
+                    continue  # real content — not ours to remove, and not ours to overwrite
+                if original is not None:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.symlink_to(original)
+            except OSError:
+                continue
+        try:
+            if not existed and links.is_dir() and not any(links.iterdir()):
+                links.rmdir()
+        except OSError:
+            pass
 
 
 @pytest.fixture(scope="session", autouse=True)

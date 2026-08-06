@@ -122,16 +122,57 @@ def test_real_content_the_body_created_outranks_restoring_the_link(tmp_path):
     assert not (links / "agents").is_symlink()
 
 
-def test_restores_even_when_the_body_raises(tmp_path):
+def test_restores_every_kind_even_when_the_body_raises(tmp_path):
+    """All four kinds, not just the first.
+
+    Adversarial review round 2, finding 4: snapshotting only `agents` here let a restore that
+    skipped every other kind on the exception path pass.
+    """
     repo = tmp_path / "repo"
     links = repo / "catalog-local"
     links.mkdir(parents=True)
-    mine = _overlay(tmp_path / "real-xdg", "agents")
-    (links / "agents").symlink_to(mine)
+    mine = {k: _overlay(tmp_path / "real-xdg", k) for k in _KINDS}
+    for kind in _KINDS:
+        (links / kind).symlink_to(mine[kind])
 
     with pytest.raises(_Boom):
         with catalog_local_restored(repo):
-            (links / "agents").unlink()
+            for kind in _KINDS:
+                (links / kind).unlink()
             raise _Boom
 
-    assert Path(os.readlink(links / "agents")) == mine
+    for kind in _KINDS:
+        assert Path(os.readlink(links / kind)) == mine[kind]
+
+
+def test_a_failure_restoring_one_kind_neither_masks_the_body_nor_stops_the_rest(tmp_path, monkeypatch):
+    """Teardown must never become the error the developer sees.
+
+    Adversarial review round 2, finding 3: the restore loop had no per-item handler, so an OSError
+    on the first kind propagated out of the `finally` — replacing the body's real exception with a
+    teardown one, and leaving the remaining three kinds unrestored. A test that fails for the wrong
+    reason is worse than one that fails.
+    """
+    repo = tmp_path / "repo"
+    links = repo / "catalog-local"
+    links.mkdir(parents=True)
+    mine = {k: _overlay(tmp_path / "real-xdg", k) for k in _KINDS}
+    for kind in _KINDS:
+        (links / kind).symlink_to(mine[kind])
+
+    real_unlink = Path.unlink
+
+    def exploding_unlink(self, *a, **kw):
+        if self.name == "agents":
+            raise PermissionError("simulated: cannot unlink agents")
+        return real_unlink(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "unlink", exploding_unlink)
+
+    with pytest.raises(_Boom):  # the BODY's exception, not the teardown's
+        with catalog_local_restored(repo):
+            raise _Boom
+
+    monkeypatch.undo()
+    for kind in _KINDS:
+        assert Path(os.readlink(links / kind)) == mine[kind], f"{kind} not restored"

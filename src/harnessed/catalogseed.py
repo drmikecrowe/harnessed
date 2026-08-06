@@ -38,16 +38,31 @@ def _points_at_a_harnessed_overlay(link: Path, kind: str) -> bool:
         by construction not ours.
       * NOT A CHECKOUT'S SHIPPED CATALOG. `<x>/harnessed/catalog/<kind>` is also the layout of the
         catalog shipped inside any checkout whose directory is named `harnessed` — the ordinary
-        shape of a clone. An overlay root holds no `pyproject.toml`; a checkout does.
+        shape of a clone. Told apart by the two markers `paths.source_checkout` already uses, and
+        deliberately by BOTH of them: keying on `pyproject.toml` alone would make any XDG root that
+        happens to contain one look like a checkout, and the build would go back to aborting.
 
-    What is left uncovered, deliberately: a hand-made link at `<x>/harnessed/catalog/<kind>` where
-    `<x>/harnessed` is neither a checkout nor an overlay still reads as ours and gets re-pointed.
-    The cost of that is one convenience symlink to re-make; the target's content is never touched.
+    UNDECIDABLE RESOLVES TO "OURS". If the markers cannot be read at all — an unreadable ancestor
+    raises from `is_file()` — re-point rather than crash the build with a traceback. Being wrong
+    costs one convenience symlink to re-make; the alternative is the hard abort this whole function
+    exists to stop doing. Nothing is ever deleted either way: only a symlink is unlinked, never its
+    target.
+
+    What is left uncovered, deliberately, in BOTH directions:
+      * a hand-made link at `<x>/harnessed/catalog/<kind>` where `<x>/harnessed` is neither a
+        checkout nor an overlay still reads as ours and is re-pointed;
+      * a link into a real checkout is refused even when it WAS ours — an `$XDG_CONFIG_HOME` whose
+        `harnessed/` subdirectory is itself a checkout gets the old abort. Recoverable by removing
+        the link, and no configuration in this repo produces it.
     """
     target = Path(os.readlink(link))
     if not target.is_absolute() or target.parts[-3:] != ("harnessed", "catalog", kind):
         return False
-    return not (target.parent.parent / "pyproject.toml").is_file()
+    root = target.parent.parent
+    try:
+        return not ((root / "pyproject.toml").is_file() and (root / "src" / "harnessed").is_dir())
+    except OSError:
+        return True
 
 
 def _ensure_local_catalog_links() -> None:
