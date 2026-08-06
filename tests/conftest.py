@@ -186,7 +186,13 @@ def catalog_local_restored(checkout: Path) -> Generator[None, None, None]:
     existed = links.is_dir()
     # The RAW target, not the resolved one: what must go back is the link as it was written, and a
     # stale link's destination is routinely already deleted.
-    before = {k: (os.readlink(links / k) if (links / k).is_symlink() else None) for k in _LINK_KINDS}
+    def _snapshot(path: Path) -> str | None:
+        try:
+            return os.readlink(path) if path.is_symlink() else None
+        except OSError:
+            return None
+
+    before = {k: _snapshot(links / k) for k in _LINK_KINDS}
     try:
         yield
     finally:
