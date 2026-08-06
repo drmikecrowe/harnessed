@@ -12,10 +12,17 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      # PINNED TO COMMIT SHAs, not tags, matching `live.yml` — a git tag is mutable, so whoever
+      # controls the action can repoint `v5` at different code that then runs with a token on this
+      # runner. "Pin every download" (CLAUDE.md) applies here too: an action is a download that
+      # executes. Comments carry the human-readable version so the pins can be refreshed
+      # deliberately. `persist-credentials: false` because no later step needs git auth.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
 
       - name: Setup uv (+ Python 3.12)
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           python-version: "3.12"
 
@@ -38,10 +45,12 @@ jobs:
   pytest-py313:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
 
       - name: Setup uv (+ Python 3.13)
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
         with:
           python-version: "3.13"
 
