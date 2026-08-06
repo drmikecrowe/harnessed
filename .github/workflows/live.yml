@@ -38,6 +38,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Setup uv (+ Python 3.12)
         uses: astral-sh/setup-uv@v7
