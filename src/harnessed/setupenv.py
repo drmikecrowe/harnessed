@@ -388,9 +388,11 @@ def _write_project_tool_env(
 
       * the task was what the aoe dashboard row invoked; the row now runs
         `harnessed <verb>-run <harness> --last --` and reads its flags from `lastrun`
-      * the pointer moves to ONE line in the user's own global mise config, which reaches every
-        project instead of one — see `harnessed project-env-path`, which computes the path below
-        for an arbitrary directory precisely so that line can be generic
+      * the pointer is not replaced by default. Configuring a plain shell was always OPT-IN
+        territory — harnessed configures the agent it launches, and this reached past that — so it
+        is now the user's own one-time choice of loader (mise, direnv, a shell function) pointed at
+        `harnessed project-env-path`. Referenced, never copied: the file holds live credentials and
+        is regenerated every launch.
 
     Why it had to go: mise keys trust per config FILE and trust does not cascade from a trusted
     ancestor, so a file harnessed dropped into each repo re-prompted in every new worktree.
@@ -440,8 +442,8 @@ def _warn_if_stale_mise_local(project_path: Path) -> None:
         return
     _say(
         f"[blue][INFO][/blue] {stale.name} is left over from an older harnessed and is no longer "
-        f"read — the project env moved to your global mise config (`harnessed project-env-path`) "
-        f"and the launch shortcut to `--last`. Safe to delete."
+        f"read — the launch shortcut it held is now `--last`. Safe to delete. If you relied on it "
+        f"to configure `bd` and friends in a plain shell here, see `harnessed project-env-path`."
     )
 
 

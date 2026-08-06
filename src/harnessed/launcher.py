@@ -4299,25 +4299,28 @@ def svc(
 def project_env_path_cmd(
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
 ) -> None:
-    """Print the tool-env dotenv path for a project, for your global mise config.
+    """Print where this project's tool-env dotenv lives.
 
-    ONE line in your OWN `~/.config/mise/config.toml` gives every harnessed project its tool env in
-    a plain shell, with nothing written into any repo (bd harnessed-7mt):
+    A launch already gives the agent it starts this env. This is for the OTHER audience — a `bd`
+    you run in a terminal, a `claude` you started yourself, a hook — which harnessed does not
+    configure and never has. Wiring that up is OPT-IN and yours to choose (bd harnessed-7mt);
+    harnessed writes nothing into your repo and nothing into your shell or mise config.
 
-        [env]
-        _.file = "{{ exec(command='harnessed project-env-path ' ~ cwd) }}"
+    REFERENCE THIS FILE, NEVER COPY IT. It holds real service credentials and is regenerated on
+    every launch, so a copy is both a secret replicated into wherever you put it and a value that
+    goes stale at the next container recreate. Whatever you use, point it at this path:
 
-    `cwd` is passed EXPLICITLY because mise runs `exec()` relative to the config file's directory,
-    not the directory you are in — `{{ cwd }}` is the invocation directory and is what makes one
-    global line behave per-project.
+        mise, one line, every project:   _.file = "{{ exec(command='harnessed project-env-path ' ~ cwd) }}"
+        direnv, per project:             dotenv $(harnessed project-env-path)
+        a shell function, on demand:     set -a; . "$(harnessed project-env-path)"; set +a
 
-    Prints the path whether or not it exists: mise tolerates a missing `_.file` silently, so a
-    directory with no harnessed env costs nothing. That is what makes the line safe to apply
-    globally rather than per-repo.
+    The mise form passes `cwd` EXPLICITLY because mise runs `exec()` relative to the config file's
+    directory, not the directory you are in; `{{ cwd }}` is the invocation directory and is what
+    makes one global line behave per-project.
 
-    harnessed does NOT write this line for you. Your global mise config may be managed (chezmoi,
-    dotfiles, whatever) and writing into it would be the same intrusion this change removed from
-    your repos — printing what to paste is the whole of the setup.
+    Prints the path whether or not it exists, so a directory that was never launched in is not an
+    error — mise and direnv both tolerate a missing env file silently, which is what makes the
+    one-line forms safe to apply everywhere rather than per-repo.
     """
     # BUILTIN print, NOT `_out.print`. This output is consumed as a filename by mise, and the rich
     # console mangles it two ways: it hard-wraps at the terminal width, so a path longer than the
