@@ -9,11 +9,16 @@ Here the flags live in harnessed's own state directory instead, and the stable c
 `harnessed <verb>-run <harness> --last --`. Same property, one writer and one reader, both inside
 harnessed, and nothing written into anybody's repo.
 
-KEYED PER WORKTREE, deliberately NOT per checkout. `paths.git_common_dir` is the right key for the
-project TOOL ENV — every worktree of a repo wants the same tools — and its docstring says so. It is
-the wrong key for "what did I last launch here": worktrees routinely run different stacks, and
-sharing the key would let a launch in one worktree become the replay target in another. That is the
-stale-replay failure this feature has to avoid, not cause.
+KEYED PER CHECKOUT via `paths.git_common_dir`, the same key the project tool env uses — one record
+for a repo, shared by all of its worktrees.
+
+The alternative (key on the worktree path) was implemented first and rejected: it multiplies records
+per repo. The cost of sharing is real and worth writing down — two worktrees running DIFFERENT
+stacks overwrite each other's record, so `--last` in one can replay what the other launched. The aoe
+row is unaffected either way; rows are keyed by (command, path) and a worktree launch already
+records its own path.
+
+Falls back to the given path when there is no git dir, so a non-git project still gets a record.
 
 NEVER FATAL ON WRITE. A launch that got as far as recording state has already done the useful work;
 losing the shortcut is not worth killing it. Read failures are loud, because a `--last` that cannot
@@ -34,11 +39,14 @@ _VERSION = 1
 
 
 def _store(project_path: Path) -> Path:
-    """The record for a project. `project_hash` normalizes the path, so `/p` and `/p/` agree."""
-    return (
-        paths.xdg_state_home() / "harnessed" / "last-run"
-        / f"{paths.project_hash(project_path)}.json"
-    )
+    """The record for a checkout. `project_hash` normalizes, so `/p` and `/p/` agree.
+
+    Keyed on the git common dir, so every worktree of a repo reads and writes one record — the same
+    key `setupenv._write_project_tool_env` uses for the project dotenv, and for the same reason: one
+    checkout, one answer. Non-git projects fall back to their own path.
+    """
+    key = paths.git_common_dir(project_path) or project_path
+    return paths.xdg_state_home() / "harnessed" / "last-run" / f"{paths.project_hash(key)}.json"
 
 
 def _key(verb: str, harness: str) -> str:

@@ -80,19 +80,38 @@ class TestNothingToReplay:
         assert lastrun.load("host-run", "claude", proj) is None
 
 
-class TestWorktreeKeying:
-    def test_two_worktrees_of_one_repo_do_not_share(self, tmp_path):
-        """THE keying decision (bd harnessed-7mt). The project TOOL ENV keys off git_common_dir so
-        every worktree gets the same tools. "What did I last launch here" must NOT: worktrees run
-        different stacks, and sharing would let one worktree's launch become another's replay
-        target — the stale-replay failure this feature exists to avoid."""
+class TestCheckoutKeying:
+    """THE keying decision (bd harnessed-7mt): ONE record per checkout, shared by every worktree —
+    the same key the project tool env uses. Keying per worktree was implemented first and rejected
+    for multiplying records per repo."""
+
+    def test_worktrees_of_one_repo_share_a_record(self, tmp_path, monkeypatch):
         a, b = tmp_path / "wt-a", tmp_path / "wt-b"
+        a.mkdir()
+        b.mkdir()
+        # One checkout, two worktrees: git_common_dir is the same for both.
+        monkeypatch.setattr(lastrun.paths, "git_common_dir", lambda _p: tmp_path / "repo.git")
+        lastrun.record("host-run", "stack-a", "claude", a)
+        assert lastrun.load("host-run", "claude", b)["stack"] == "stack-a"
+
+    def test_the_last_launch_wins_across_worktrees(self, tmp_path, monkeypatch):
+        """The accepted cost of sharing, pinned so it is a decision and not a surprise: a worktree
+        running a different stack overwrites the record the other one would replay."""
+        a, b = tmp_path / "wt-a", tmp_path / "wt-b"
+        a.mkdir()
+        b.mkdir()
+        monkeypatch.setattr(lastrun.paths, "git_common_dir", lambda _p: tmp_path / "repo.git")
+        lastrun.record("host-run", "stack-a", "claude", a)
+        lastrun.record("host-run", "stack-b", "claude", b)
+        assert lastrun.load("host-run", "claude", a)["stack"] == "stack-b"
+
+    def test_separate_repos_do_not_share(self, tmp_path):
+        a, b = tmp_path / "repo-a", tmp_path / "repo-b"
         a.mkdir()
         b.mkdir()
         lastrun.record("host-run", "stack-a", "claude", a)
         lastrun.record("host-run", "stack-b", "claude", b)
         assert lastrun.load("host-run", "claude", a)["stack"] == "stack-a"
-        assert lastrun.load("host-run", "claude", b)["stack"] == "stack-b"
 
 
 class TestNeverFatal:

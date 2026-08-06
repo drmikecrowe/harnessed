@@ -145,7 +145,6 @@ from .setupenv import (
     _ensure_gitignore_entry,
     _gcd_db_name,
     _init_shell_prologue,
-    _mise_task_block,
     _pending_setup_scripts,
     _recipe_env,
     _repo_primitives,
@@ -154,9 +153,9 @@ from .setupenv import (
     _setup_script_mounts,
     _stack_tools_dirs,
     _subst,
-    _upsert_mise_task,
     _write_project_tool_env,
     harnessed_env,
+    project_env_path as setupenv_project_env_path,
 )
 from .svcguards import (
     _abort_dead_service,
@@ -4294,6 +4293,38 @@ def svc(
         _out.print(f"[green][SUCCESS][/green] Service '{name}' synced")
     elif action == "migrate":
         _svc_migrate(svc_def, stack, project_path, from_, assume_yes)
+
+
+@app.command("project-env-path")
+def project_env_path_cmd(
+    path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
+) -> None:
+    """Print the tool-env dotenv path for a project, for your global mise config.
+
+    ONE line in your OWN `~/.config/mise/config.toml` gives every harnessed project its tool env in
+    a plain shell, with nothing written into any repo (bd harnessed-7mt):
+
+        [env]
+        _.file = "{{ exec(command='harnessed project-env-path ' ~ cwd) }}"
+
+    `cwd` is passed EXPLICITLY because mise runs `exec()` relative to the config file's directory,
+    not the directory you are in — `{{ cwd }}` is the invocation directory and is what makes one
+    global line behave per-project.
+
+    Prints the path whether or not it exists: mise tolerates a missing `_.file` silently, so a
+    directory with no harnessed env costs nothing. That is what makes the line safe to apply
+    globally rather than per-repo.
+
+    harnessed does NOT write this line for you. Your global mise config may be managed (chezmoi,
+    dotfiles, whatever) and writing into it would be the same intrusion this change removed from
+    your repos — printing what to paste is the whole of the setup.
+    """
+    # BUILTIN print, NOT `_out.print`. This output is consumed as a filename by mise, and the rich
+    # console mangles it two ways: it hard-wraps at the terminal width, so a path longer than the
+    # window comes back with a newline in the middle of it, and it reads `[...]` as markup, so a
+    # path containing a bracket loses the bracketed span. Both fail SILENTLY — mise tolerates a
+    # missing `_.file`, so the project env would simply never load and nothing would say why.
+    print(setupenv_project_env_path(Path(path).resolve() if path else Path.cwd()))
 
 
 @app.command("aws-sso")
