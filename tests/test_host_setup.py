@@ -17,6 +17,7 @@ from harnessed.schema import (
     RecipeLintError,
     SchemaError,
     load_recipe,
+    load_stack_with_recipes,
     validate_setup_script,
 )
 
@@ -243,7 +244,14 @@ class TestNativeMcp:
         servers = launcher._host_native_mcp("hostmcp")  # [time] → uvx mcp-server-time
         assert servers is not None
         assert servers["time"]["command"] == "uvx"
-        assert "mcp-server-time" in servers["time"]["args"]
+        # Pass-through is the contract: whatever argv the recipe declares reaches the host config
+        # verbatim. Asserted against the recipe rather than a literal — the old
+        # `"mcp-server-time" in args` was exact membership, so pinning the ref (harnessed-2c4)
+        # broke it while the behaviour it guards never changed.
+        _stk, recipes = load_stack_with_recipes(None, "hostmcp")
+        declared = next(s for r in recipes for s in r.servers if s.name == "time")
+        assert servers["time"]["args"] == list(declared.args)
+        assert any(a.startswith("mcp-server-time") for a in servers["time"]["args"])
         assert "url" not in servers["time"]
 
 

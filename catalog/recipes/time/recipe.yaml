@@ -16,11 +16,18 @@ description: Time and timezone queries via the network-free uvx mcp-server-time 
 # `transport: stdio` is explicit (RESEARCH Pitfall B): a stdio server is wrapped by hatago as a
 # child (stdio→HTTP). The harness never speaks to this command directly — it reaches hatago's
 # single Streamable-HTTP endpoint, and hatago spawns this command.
+#
+# BOTH the server and the SDK are pinned, and the second one is not optional. `uvx mcp-server-time`
+# floated, and mcp 2.0.0 renamed `McpError` to `MCPError` — which mcp-server-time 2026.7.10 still
+# imports under the old name, so the server died at import with an ImportError and hatago reported
+# `time` as "not connected". Pinning only the server would not have helped: the break is in a
+# transitive dependency it resolves loosely. Verified in a live container, both directions
+# (bd harnessed-2c4).
 mcp:
   servers:
     - name: time
       command: uvx
-      args: [mcp-server-time]
+      args: ["--with", "mcp==1.29.0", "mcp-server-time@2026.7.10"]
       transport: stdio
 
 # --- File-extension layer (Claude-canonical) ---

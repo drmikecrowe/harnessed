@@ -396,7 +396,13 @@ def launch_headless(
     env = {**os.environ, "HARNESSED_HEADLESS": "true"}
     try:
         proc = subprocess.run(
-            [bin_path, stack_name, harness, project_path, "--fresh"],
+            # `container-run <harness> <path> --stack <name>`, the current grammar. The bare
+            # `harnessed <stack> <harness> <path>` form this used to invoke stopped existing when
+            # the CLI split into the two run verbs, and typer rejected it as `No such command
+            # '<stack>'` — so EVERY container-path `harnessed test` failed, not just the tests
+            # that call this directly. Nothing caught it because the only callers are the
+            # podman-gated layer that was never running (bd harnessed-1o4, harnessed-3x1).
+            [bin_path, "container-run", harness, project_path, "--stack", stack_name, "--fresh"],
             capture_output=True,
             text=True,
             env=env,

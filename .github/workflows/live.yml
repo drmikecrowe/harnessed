@@ -12,25 +12,31 @@ name: live verification
 # inspect/port/images output formats, and everything in bd harnessed-rwt) within a day, which is
 # the timescale those actually change on.
 #
-# MANUAL-ONLY FOR NOW, AND THAT IS NOT THE INTENDED END STATE.
+# NO LONGER MANUAL-ONLY. The automatic triggers below were held back because opening the gate for
+# the first time showed the live layer did not pass, and scheduling a nightly job against a suite
+# that is red from day one produces a check people mute within a week — which verifies exactly as
+# much as the skip it was meant to replace. Four defects stood in the way, all now fixed:
 #
-# Opening the gate for the first time showed the live layer does not currently pass: the tests
-# link the repo's `catalog-local/` at their own tmp catalog and leave the links behind, so every
-# test after the first fails, in the same run and in every later one (bd harnessed-ng5).
+#   harnessed-ng5  tests linked the repo's `catalog-local/` at their own tmp catalog and left the
+#                  links behind, failing every test after the first (PR #213)
+#   harnessed-lxw  the capability sweep called `build`/`test` with no harness — a usage error, so
+#                  all 7 parametrizations failed in 27s without podman doing any work
+#   harnessed-1o4  the persist round-trip built `claude_context-mode`, a stack that has never
+#                  existed under any naming scheme, and called `launch_headless` without a harness
+#   harnessed-2c4  `uvx mcp-server-time` floated onto mcp 2.0.0, which renamed `McpError` — the
+#                  shipped `time` recipe's server died at import in every container
 #
-# Scheduling a nightly job against a suite that is red from day one produces a check people mute
-# within a week — which verifies exactly as much as the skip it was meant to replace, and is the
-# defect this whole effort exists to remove. So the automatic triggers stay off until ng5 lands.
+# Measured on a real podman before enabling these: `HARNESSED_PODMAN=1 pytest` → 2166 passed,
+# 1 skipped (the one remaining skip needs a dolt binary, bd harnessed-3x1 note).
 #
-# WHEN harnessed-ng5 IS FIXED, uncomment these — that is the step that closes harnessed-3x1:
-#   push:
-#     branches: [main]
-#   schedule:
-#     - cron: "0 4 * * *"     # 04:00 UTC: contract drift found next morning, not by a user
-# Adding `pull_request:` on top makes it a pre-merge gate; the trade is PR latency, since these
-# tests run real `podman build`.
+# Still NOT on `pull_request`, deliberately — see the paragraph above. Post-merge plus nightly
+# catches external-contract drift within a day without adding `podman build` minutes to every PR.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * *"     # 04:00 UTC: contract drift found next morning, not by a user
 
 jobs:
   live:

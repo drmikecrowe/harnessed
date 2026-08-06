@@ -181,15 +181,34 @@ class TestPersistMountsInRepo:
 
 from support import podman  # the one gate definition
 _ROOT = Path(__file__).resolve().parents[1]
-_STACK = "claude_context-mode"
+_HARNESS = "claude"
+_RECIPES = ["context-mode"]
+_EXTENDS = "default"
 
 
-def _build_context_mode() -> None:
+def _build_context_mode() -> str:
+    """Mint the `context-mode` dynamic stack, build it, and return its name.
+
+    These tests used to hard-code `claude_context-mode` and build it directly. No such stack has
+    ever existed: it is neither authored in `catalog/stacks/` nor derivable, because the readable
+    join is `.` and the base is the `default` baseline, not a harness — the real name is
+    `default.context-mode`. Nothing minted it either, so both tests died at `unknown stack` before
+    podman started (bd harnessed-1o4).
+
+    Deriving it through `dynstack.mint` rather than restoring a literal is what keeps that from
+    recurring: this is the same call `container-run --recipe context-mode` makes, so if the naming
+    scheme moves again the test follows it instead of rotting into a second stale constant.
+    """
+    from harnessed import dynstack
+
+    name, _stack_dir = dynstack.mint(_RECIPES, _EXTENDS)
     bin_path = Path(sys.executable).parent / "harnessed"
     r = subprocess.run(
-        [str(bin_path), "build", _STACK], cwd=str(_ROOT), capture_output=True, text=True, timeout=600
+        [str(bin_path), "build", name, _HARNESS],
+        cwd=str(_ROOT), capture_output=True, text=True, timeout=600,
     )
-    assert r.returncode == 0, f"build {_STACK} failed:\n{r.stderr}"
+    assert r.returncode == 0, f"build {name} {_HARNESS} failed:\n{r.stderr}"
+    return name
 
 
 @podman
@@ -197,17 +216,17 @@ def test_live_sentinel_survives_fresh_relaunch(tmp_path):
     """A marker the tool writes to ~/.context-mode survives a `--fresh` relaunch of the SAME project."""
     from harnessed import capability
 
-    _build_context_mode()
+    stack = _build_context_mode()
     proj = tmp_path / "projA"
     proj.mkdir()
 
-    inst = capability.launch_headless(_ROOT, _STACK, project_path=str(proj))
+    inst = capability.launch_headless(_ROOT, stack, _HARNESS, project_path=str(proj))
     try:
         capability._exec(inst, "mkdir -p ~/.context-mode && echo SENTINEL-T6 > ~/.context-mode/marker")
     finally:
         capability.teardown(inst)
 
-    inst2 = capability.launch_headless(_ROOT, _STACK, project_path=str(proj))
+    inst2 = capability.launch_headless(_ROOT, stack, _HARNESS, project_path=str(proj))
     try:
         out = capability._exec(inst2, "cat ~/.context-mode/marker 2>/dev/null")
     finally:
@@ -220,19 +239,19 @@ def test_live_data_does_not_bleed_across_projects(tmp_path):
     """A marker written in project A must NOT be visible to project B (per-project isolation)."""
     from harnessed import capability
 
-    _build_context_mode()
+    stack = _build_context_mode()
     proj_a = tmp_path / "projA"
     proj_a.mkdir()
     proj_b = tmp_path / "projB"
     proj_b.mkdir()
 
-    inst_a = capability.launch_headless(_ROOT, _STACK, project_path=str(proj_a))
+    inst_a = capability.launch_headless(_ROOT, stack, _HARNESS, project_path=str(proj_a))
     try:
         capability._exec(inst_a, "mkdir -p ~/.context-mode && echo ONLY-A > ~/.context-mode/marker")
     finally:
         capability.teardown(inst_a)
 
-    inst_b = capability.launch_headless(_ROOT, _STACK, project_path=str(proj_b))
+    inst_b = capability.launch_headless(_ROOT, stack, _HARNESS, project_path=str(proj_b))
     try:
         out = capability._exec(inst_b, "cat ~/.context-mode/marker 2>/dev/null || echo ABSENT")
     finally:
