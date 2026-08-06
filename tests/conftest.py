@@ -30,6 +30,12 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "live: exercises a real external binary; skipped unless its gate is open"
     )
+    config.addinivalue_line(
+        "markers",
+        "live_podman: governed by HARNESSED_PODMAN=1. Applied by `support.podman`, and the thing "
+        "the fail-closed check below counts — do not apply it by hand to a test the gate does not "
+        "actually open, or an honest run will fail.",
+    )
 
 
 def _all_skips(terminalreporter) -> list[str]:
@@ -52,30 +58,28 @@ def _live_skips(terminalreporter) -> list[str]:
     return [r for r in _all_skips(terminalreporter) if _LIVE_SKIP_RE.search(r)]
 
 
-# Gates that HARNESSED_PODMAN does not open. A podman run must not fail because one of these is
-# shut — failing for an unrelated missing tool would train people to ignore the guard, which is
-# worse than not having one.
-_UNRELATED_GATE_RE = re.compile(r"needs the \w+ binary|is not installed", re.IGNORECASE)
-
-
 def _podman_skips(terminalreporter) -> list[str]:
-    """With the gate open, every skip is suspect unless it is a gate podman does not control.
+    """Skips of tests the podman gate GOVERNS — identified by marker, never by wording.
 
-    AN ALLOWLIST, NOT A MATCHLIST, and that is the whole point. The first version of this asked
-    "does the reason mention HARNESSED_PODMAN?" and therefore missed the image-precondition skips
-    in `test_live_verification_debt.py` — `"<image> not built — run `harnessed build` first"`,
-    which only fires WHEN the gate is open. A run could set HARNESSED_PODMAN=1, skip those, and
-    exit green: exactly the fail-open this guard exists to prevent, reintroduced by the guard.
+    This asks the only question that matters when the gate is open: did the tests it governs
+    actually run? A marker answers that exactly. Two earlier versions tried to answer it from skip
+    reasons and both were wrong in opposite directions:
 
-    Matching on known-bad reasons fails open on every reason nobody thought of. Matching on
-    known-unrelated ones fails closed instead: a skip reason this file has never seen now fails
-    the run and someone decides what it is. That is noisier and it is the correct direction — the
-    cost of a wrong failure is a conversation, the cost of a wrong pass is what happened here.
+      - matching reasons containing "HARNESSED_PODMAN" missed the image-precondition skips
+        ("<image> not built"), which fire only when the gate is OPEN — so a run could ask for live
+        verification, skip them, and exit green. Fail-open, in the guard against fail-open.
+      - inverting it to "anything not on an allowlist" caught those, and would also have failed
+        the run for a platform skip, an optional-dependency skip, or a quarantined flaky test —
+        none of which have anything to do with podman. Every false failure would have been
+        answered by widening the allowlist, decaying it back into the first version.
+
+    The marker has neither failure mode. Tests behind other gates (dolt, aoe) are not marked, so
+    they are irrelevant here by construction rather than by exemption — there is no list to keep.
     """
     return [
-        reason
-        for reason in _all_skips(terminalreporter)
-        if not _UNRELATED_GATE_RE.search(reason)
+        report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
+        for report in terminalreporter.stats.get("skipped", [])
+        if "live_podman" in getattr(report, "keywords", {})
     ]
 
 

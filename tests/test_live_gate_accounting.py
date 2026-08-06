@@ -38,9 +38,18 @@ def live_session(pytester, monkeypatch):
     return run
 
 
-PODMAN_SKIP = '''
+# Mirrors `support.podman`: the gate marks what it governs, so the guard can count markers rather
+# than read wording.
+_GATED = '''
 import pytest
-@pytest.mark.skipif(True, reason="set HARNESSED_PODMAN=1 for live podman tests")
+def podman(func):
+    return pytest.mark.live_podman(
+        pytest.mark.skipif(True, reason="set HARNESSED_PODMAN=1 for live podman tests")(func)
+    )
+'''
+
+PODMAN_SKIP = _GATED + '''
+@podman
 def test_needs_podman():
     assert False, "must not run"
 
@@ -66,10 +75,22 @@ def test_ordinary():
 # The shape that slipped past the first version of this guard: a precondition skip that only fires
 # WHEN the gate is open, whose reason mentions neither the gate nor any known pattern. Real example
 # from tests/test_live_verification_debt.py.
-IMAGE_PRECONDITION_SKIP = '''
-import pytest
+IMAGE_PRECONDITION_SKIP = _GATED + '''
+@podman
 @pytest.mark.skipif(True, reason="harnessed-base:local not built — run `harnessed build` first")
 def test_needs_an_image():
+    assert False, "must not run"
+
+def test_ordinary():
+    assert True
+'''
+
+# A skip that has nothing to do with podman. The allowlist design would have failed the run on
+# this; the marker design must not even notice it.
+UNRELATED_SKIP = '''
+import pytest
+@pytest.mark.skipif(True, reason="only meaningful on macOS")
+def test_platform_specific():
     assert False, "must not run"
 
 def test_ordinary():
@@ -110,16 +131,25 @@ class TestGateOpen:
         assert result.ret == 0
         result.stdout.fnmatch_lines(["*gate open, no live tests skipped*"])
 
-    def test_an_unrecognised_skip_reason_still_fails(self, live_session):
+    def test_a_gated_test_skipped_for_another_reason_still_fails(self, live_session):
         """The hole the first version of this guard had, found in review of PR #212.
 
-        `test_live_verification_debt.py` skips with "<image> not built — run `harnessed build`
-        first", a reason that fires ONLY when the gate is open and matches no known pattern. The
-        guard asked "does the reason mention HARNESSED_PODMAN?", so it did not, and the run exited
-        green having verified nothing — the exact fail-open the guard exists to prevent.
+        `test_live_verification_debt.py` stacks a second skipif on a gated test — "<image> not
+        built" — which fires ONLY when the gate is open, and whose wording mentions no gate. The
+        guard read reasons, so it missed them, and the run exited green having verified nothing.
 
-        The rule is now an allowlist: with the gate open, a reason this file has never seen fails
-        the run rather than passing it.
+        The marker travels with the test regardless of which decorator does the skipping, so the
+        wording is no longer load-bearing.
         """
         result = live_session(gate_open=True, test_body=IMAGE_PRECONDITION_SKIP)
-        assert result.ret != 0, "an unknown skip with the gate open must fail, not pass"
+        assert result.ret != 0, "a governed test that skipped for ANY reason must fail the run"
+
+    def test_a_skip_the_gate_does_not_govern_is_ignored(self, live_session):
+        """The failure mode of the fix I nearly shipped instead.
+
+        Inverting to "anything not on an allowlist fails" would catch the case above and also fail
+        this run — a platform skip has nothing to do with podman. Every such false failure gets
+        answered by widening the allowlist, which decays it back into reason-matching.
+        """
+        result = live_session(gate_open=True, test_body=UNRELATED_SKIP)
+        assert result.ret == 0, "an unrelated skip must not fail a podman run"

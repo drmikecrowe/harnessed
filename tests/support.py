@@ -2,9 +2,36 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from typing import Any
+
+import pytest
+
+
+# THE ONE DEFINITION OF THE PODMAN GATE (bd harnessed-3x1). Four test modules used to declare this
+# themselves, identically, which is how the accounting in conftest.py came to match on skip REASON
+# strings — there was no single thing to point at.
+PODMAN_REQUESTED = os.environ.get("HARNESSED_PODMAN") == "1"
+
+
+def podman(func):
+    """Gate a test on `HARNESSED_PODMAN=1` and mark it as one the gate governs.
+
+    The `live_podman` marker is what lets the run's accounting be honest. `conftest.py` asks a
+    precise question — "did the tests this gate governs actually run?" — and a marker answers it
+    where a skip reason cannot. The first version of that guard matched reasons and missed the
+    image-precondition skips (`"<image> not built"`), which fire only when the gate is OPEN: a run
+    could ask for live verification, skip them, and exit green. Broadening the pattern instead
+    would have failed runs on unrelated skips. The marker has neither failure mode, and it travels
+    with the test whichever decorator ends up doing the skipping — verified against pytest: a test
+    skipped by a SECOND `skipif` stacked above still reports this marker.
+    """
+    gated = pytest.mark.skipif(
+        not PODMAN_REQUESTED, reason="set HARNESSED_PODMAN=1 for live podman tests"
+    )(func)
+    return pytest.mark.live_podman(gated)
 
 
 def patch_all(monkeypatch, name: str, value: Any) -> None:

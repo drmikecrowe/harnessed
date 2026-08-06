@@ -179,8 +179,7 @@ class TestPersistMountsInRepo:
 
 # --- Layer 2: live round-trip + isolation (podman-gated) -------------------------------------
 
-_PODMAN = os.environ.get("HARNESSED_PODMAN") == "1"
-podman = pytest.mark.skipif(not _PODMAN, reason="set HARNESSED_PODMAN=1 for live persist round-trip")
+from support import podman  # the one gate definition
 _ROOT = Path(__file__).resolve().parents[1]
 _STACK = "claude_context-mode"
 

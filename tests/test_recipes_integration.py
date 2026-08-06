@@ -155,9 +155,8 @@ def test_context_mode_hooks_are_skipped_on_omp_only():
 
 # --- Layer 2: live container check (podman-gated) -------------------------------------------------
 
-_PODMAN = os.environ.get("HARNESSED_PODMAN") == "1"
+from support import podman  # the one gate definition
 _HARNESSED_BIN = Path(sys.executable).parent / "harnessed"
-podman = pytest.mark.skipif(not _PODMAN, reason="set HARNESSED_PODMAN=1 for live podman tests")
 
 
 def _run_cli(*args: str, timeout: int = 600) -> subprocess.CompletedProcess:
