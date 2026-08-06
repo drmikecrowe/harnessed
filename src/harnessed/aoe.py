@@ -466,7 +466,8 @@ def _drift_message(row: dict, ours: str, *, renamed_to: str | None, blocked: boo
         f"  ours:   {ours}",
     ]
     if blocked:
-        return "\n".join(lines + [
+        return "\n".join([
+            *lines,
             "  NOT repaired: another row at this title and path is not one harnessed writes, so",
             "  the registration cannot land whatever we do here. Nothing was changed.",
             f"  fix: aoe session rename {sid} -t '<any other title>' -p {PROFILE}   then relaunch",
