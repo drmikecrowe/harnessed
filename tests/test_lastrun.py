@@ -187,6 +187,87 @@ class TestReplayCommandIsAStableKey:
         assert aoe._is_ours("mise run claude --")
 
 
+class TestForgetStackStillFindsRows:
+    """`harnessed rm <stack>` must still clear the dashboard (found by CodeRabbit on PR #218).
+
+    `forget_stack` matched rows by the `--stack <name>` pair in the stored command. `replay_command`
+    carries no `--stack` — deliberately, since a stack in the command would re-key every row when
+    the flag set changed — so the cleanup matched NOTHING and left every current row behind. The
+    stack is resolved through the `lastrun` record instead: the same record the row replays, so a
+    row is removed exactly when it would have started the stack being removed.
+    """
+
+    def _row(self, tmp_path, command, sid="s1"):
+        return f'[{{"id": "{sid}", "path": "{tmp_path}", "command": "{command}"}}]'
+
+    def _removals(self, rec):
+        return [c for c in rec.calls if c[:1] == ["remove"]]
+
+    def test_a_replay_row_for_the_stack_is_removed(self, proj, monkeypatch):
+        from tests.test_aoe import Recorder
+
+        lastrun.record("container-run", "doomed", "claude", proj)
+        rec = Recorder(sessions=self._row(proj, "harnessed container-run claude --last --"))
+        rec.install(monkeypatch)
+        aoe.forget_stack("container-run", "doomed", background=False)
+        assert self._removals(rec), "the row that replays this stack must be removed"
+
+    def test_a_replay_row_for_a_different_stack_is_kept(self, proj, monkeypatch):
+        from tests.test_aoe import Recorder
+
+        lastrun.record("container-run", "keeper", "claude", proj)
+        rec = Recorder(sessions=self._row(proj, "harnessed container-run claude --last --"))
+        rec.install(monkeypatch)
+        aoe.forget_stack("container-run", "doomed", background=False)
+        assert self._removals(rec) == []
+
+    def test_a_replay_row_with_no_record_is_kept(self, proj, monkeypatch):
+        """Unattributable rows are left alone — `harnessed rm` is destructive and unattended."""
+        from tests.test_aoe import Recorder
+
+        rec = Recorder(sessions=self._row(proj, "harnessed container-run claude --last --"))
+        rec.install(monkeypatch)
+        aoe.forget_stack("container-run", "doomed", background=False)
+        assert self._removals(rec) == []
+
+    def test_the_legacy_stack_flag_shape_still_matches(self, proj, monkeypatch):
+        """Rows written before the switch carry `--stack` inline and must still be cleaned up."""
+        from tests.test_aoe import Recorder
+
+        rec = Recorder(sessions=self._row(
+            proj, "harnessed container-run claude /p --stack doomed --"
+        ))
+        rec.install(monkeypatch)
+        aoe.forget_stack("container-run", "doomed", background=False)
+        assert self._removals(rec)
+
+    def test_the_other_verb_is_untouched(self, proj, monkeypatch):
+        """`harnessed rm` is container-scoped; a host row owns no container."""
+        from tests.test_aoe import Recorder
+
+        lastrun.record("host-run", "doomed", "claude", proj)
+        rec = Recorder(sessions=self._row(proj, "harnessed host-run claude --last --"))
+        rec.install(monkeypatch)
+        aoe.forget_stack("container-run", "doomed", background=False)
+        assert self._removals(rec) == []
+
+
+class TestCorruptRecordsNeverRaise:
+    def test_a_non_dict_runs_reads_as_absent(self, proj):
+        """`{"version": 1, "runs": []}` used to reach `.get` on a list and raise AttributeError out
+        of a function documented to treat a corrupt record as absent (found by CodeRabbit)."""
+        lastrun.record("host-run", "serena", "claude", proj)
+        lastrun._store(proj).write_text('{"version": 1, "runs": []}', encoding="utf-8")
+        assert lastrun.load("host-run", "claude", proj) is None
+
+    def test_a_non_dict_entry_reads_as_absent(self, proj):
+        lastrun.record("host-run", "serena", "claude", proj)
+        lastrun._store(proj).write_text(
+            '{"version": 1, "runs": {"host-run/claude": "nope"}}', encoding="utf-8"
+        )
+        assert lastrun.load("host-run", "claude", proj) is None
+
+
 class TestUpgradeFromTheMiseRow:
     """THE upgrade path, pinned end to end (bd harnessed-7mt).
 

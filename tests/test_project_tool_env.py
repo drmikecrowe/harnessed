@@ -173,3 +173,18 @@ class TestStaleFileFromAnOlderHarnessed:
         (project / "mise.local.toml").write_text('[tools]\nnode = "22"\n')
         _write(project)
         assert "older harnessed" not in capsys.readouterr().out
+
+    def test_a_non_utf8_file_does_not_abort_the_launch(self, project):
+        """UnicodeDecodeError is a ValueError, not an OSError, so it needed naming separately
+        (found by CodeRabbit). The file is the user's and may be in any encoding; an advisory
+        notice that cannot read it must stay silent rather than kill the launch."""
+        (project / "mise.local.toml").write_bytes(b"\xff\xfe not utf-8 at all")
+        _write(project)  # must not raise
+
+    def test_the_notice_says_what_deleting_costs(self, project, capsys):
+        """"Safe to delete" alone was wrong for both audiences: `mise run <harness>` stops
+        existing, and a shell fed by the pointer goes unconfigured. Both losses are silent."""
+        (project / "mise.local.toml").write_text("# managed by harnessed\n")
+        _write(project)
+        out = capsys.readouterr().out
+        assert "--last" in out and "project-env-path" in out

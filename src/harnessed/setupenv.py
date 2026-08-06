@@ -411,7 +411,12 @@ def _write_project_tool_env(
 
     if values:
         env_file = project_env_path(project_path)
-        env_file.parent.mkdir(parents=True, exist_ok=True)
+        # mode ON the mkdir, not only the chmod after it. The file is written after the chmod, so
+        # no unprivileged process can open it by PATH either way — but a directory created 0755 can
+        # be opened in that window and the descriptor held, and an fd survives the later chmod
+        # (openat() relative to it is not re-checked against the new mode). Creating it restricted
+        # closes that. The chmod stays for directories an older harnessed already made 0755.
+        env_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         env_file.parent.chmod(0o700)
         body = "".join(f"{k}={v}\n" for k, v in sorted(values.items()))
         env_file.write_text(
@@ -438,7 +443,10 @@ def _warn_if_stale_mise_local(project_path: Path) -> None:
     try:
         if not stale.is_file() or _MISE_MARKER not in stale.read_text(encoding="utf-8"):
             return
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # UnicodeDecodeError is a ValueError, NOT an OSError, so it needs naming separately. The
+        # file belongs to the user and may be in any encoding; an advisory notice that cannot read
+        # it must stay silent, never abort the launch it is only commenting on.
         return
     # SAYS WHAT DELETING COSTS, not just that it is allowed. "Safe to delete" alone was wrong for
     # the two audiences who were using it: `mise run <harness>` stops existing, and a shell that

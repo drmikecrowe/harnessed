@@ -75,6 +75,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from . import lastrun
 from . import paths
 from .schema import HARNESS_CONFIG_DIR
 
@@ -664,6 +665,25 @@ def sync_session(
         return False
 
 
+def _replays_stack(tokens: list[str], recorded_path: str | None, verb: str, stack: str) -> bool:
+    """Whether a `--last` row would start `stack` — the stack a replay row does not carry.
+
+    Only for the shape `replay_command` writes (`harnessed <verb> <harness> --last --`); the caller
+    handles the older `--stack <name>` shape itself. Everything is guarded because this runs inside
+    `harnessed rm`'s best-effort cleanup, over aoe's JSON, which is not our schema to trust.
+
+    Returns False when the record is missing — see `forget_stack` on why an unattributable row is
+    left alone rather than removed.
+    """
+    if len(tokens) < 4 or "--last" not in tokens or not recorded_path:
+        return False
+    try:
+        entry = lastrun.load(verb, tokens[2], Path(recorded_path))
+    except (OSError, TypeError, ValueError):
+        return False
+    return bool(entry) and entry.get("stack") == stack
+
+
 def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
     """Drop the sessions for a stack after its instances are torn down. Never raises.
 
@@ -671,9 +691,24 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
     instance of a stack across harnesses and projects, and leaves host-native sessions — which own
     no container — alone. Removing by session id, not title, so a user-renamed row still matches.
 
-    Matched on the `--stack <name>` PAIR rather than a token index. The stack used to be the third
-    token, which a prefix compare could check; it is now a flag value that sits after the harness
-    and path, so its position varies with whether a project path was recorded.
+    TWO ROW SHAPES, because the stack is no longer IN the command (bd harnessed-7mt):
+
+      * `--stack <name>` pair — the raw `command_for` shape. Matched on the PAIR rather than a token
+        index: the stack used to be the third token, which a prefix compare could check; it is a
+        flag value sitting after the harness and path, so its position varies with whether a project
+        path was recorded.
+      * `<harness> --last --` — what `replay_command` writes now. It names NO stack, deliberately:
+        putting one back would re-key every row whenever the flag set changed, which is the identity
+        property the switch away from `mise run` was protecting. The stack is instead resolved from
+        the `lastrun` record for that row's (path, verb, harness) — the same record the row replays,
+        so a row matches this cleanup exactly when it would have started the stack being removed.
+
+    NOT matched by title. `--aoe-title` overrides the derived title, so a titled row would escape
+    cleanup and a coincidentally-titled foreign row could be caught by it.
+
+    A replay row whose record is missing or names another stack is LEFT ALONE. Removing rows we
+    cannot positively attribute to this stack is the one failure mode worse than leaving a stale
+    one — `harnessed rm` is destructive and unattended.
     """
     try:
         exe = _bin()
@@ -687,8 +722,9 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
                 continue
             if tokens[:2] != ["harnessed", verb]:
                 continue
-            if not any(
-                a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(tokens)
+            if not (
+                any(a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(tokens))
+                or _replays_stack(tokens, session.get("path"), verb, stack)
             ):
                 continue
             sid = session.get("id")

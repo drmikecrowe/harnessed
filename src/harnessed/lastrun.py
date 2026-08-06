@@ -81,7 +81,9 @@ def record(
     }
     try:
         store = _store(project_path)
-        store.parent.mkdir(parents=True, exist_ok=True)
+        # Restricted at creation, not only after — see the same call in
+        # `setupenv._write_project_tool_env` for why a 0755 window matters even briefly.
+        store.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         store.parent.chmod(0o700)
         data = _read(store)
         data["version"] = _VERSION
@@ -115,6 +117,12 @@ def _read(store: Path) -> dict:
     except (OSError, ValueError):
         return {}
     if not isinstance(data, dict) or data.get("version") != _VERSION:
+        return {}
+    # `runs` is checked too, not just the envelope. `load` does `.get("runs", {}).get(...)`, so a
+    # same-version file holding a non-dict — `{"version": 1, "runs": []}` — would raise
+    # AttributeError out of a function whose contract is "a corrupt record reads as absent", and
+    # turn `--last` into a traceback. Anything unexpected here means "no record", never a crash.
+    if not isinstance(data.get("runs", {}), dict):
         return {}
     return data
 
