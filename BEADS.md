@@ -145,9 +145,9 @@ That dissolves the conflict, because the machine-local value never has to be per
 | `metadata.json` `dolt_mode` | `server` | no — safe to track |
 | `BEADS_DOLT_SERVER_SOCKET` | absolute socket path | yes — **environment only, never written** |
 
-- **harnessed users** get the variable from the recipe's `env:` (container) and from the mise config
-  above the checkout (host shells harnessed did not launch), so every `bd` call is in socket mode and
-  auto-start is impossible.
+- **harnessed users** get the variable from the recipe's `env:` (container) and, for host shells
+  harnessed did not launch, from the project dotenv once they have opted a loader into it
+  (`harnessed project-env-path`), so every `bd` call is in socket mode and auto-start is impossible.
 - **Teammates without harnessed** simply do not have the variable, fall through to bd's ordinary
   behaviour, and are never handed a path that does not exist on their machine. Requirement 2 holds.
 
@@ -263,7 +263,7 @@ Settled 2026-07-25. Each is a choice, not a discovery — revisit deliberately, 
 | D10 | A published service **authenticates**; the secret lives in XDG state, never the data dir | A TCP port has no filesystem ACL. For `in_repo` placement the data dir is the user's repo |
 | D11 | A `bd` **shim leads PATH** and re-resolves the workspace from `$PWD` per invocation | One harness process hosts sessions in several projects (Claude Code's switcher); launch-time env is a fallback, not the answer. §12 |
 | D12 | The sidecar's port is **stable per project** (`publish: stable`), not ephemeral | An ephemeral port cannot be written anywhere a non-harnessed client would find it, so every such client stays unconfigured. §12 |
-| D13 | The **project** carries its own tool env (`mise.local.toml` → a dotenv in XDG state) | harnessed configuring only the agent it launches is what left plain `bd` blind. Covers INTERACTIVE shells only (mise activation is a `precmd` hook) — agents are covered by D11 instead. §12 |
+| D13 | The **project** carries its own tool env (a dotenv in XDG state; opt-in to load, see `harnessed project-env-path`) | harnessed configuring only the agent it launches is what left plain `bd` blind. Covers INTERACTIVE shells only (mise activation is a `precmd` hook) — agents are covered by D11 instead. The `mise.local.toml` that originally delivered it was retired in bd harnessed-7mt. §12 |
 | D14 | A retarget **removes** the old project's connection, it does not merely add the new one | `BEADS_DOLT_SERVER_SOCKET` outranks every port variable, so a launch-era socket silently wins. §12 |
 
 ---
@@ -462,8 +462,11 @@ every client it exists to serve.
   password existed — it was that the password was discoverable only by harnessed.
 * The port becomes **stable per project** (D12), because a value that changes on every container
   recreate cannot be written anywhere a non-harnessed client would look.
-* The project gets **its own env** (D13): a gitignored `mise.local.toml` pointing at a 0600 dotenv
-  in XDG state, so the secret stays out of the source tree.
+* The project gets **its own env** (D13): a 0600 dotenv in XDG state, so the secret stays out of the
+  source tree. Originally reached through a gitignored `mise.local.toml` harnessed wrote into each
+  project; since bd harnessed-7mt that file is gone and wiring a shell up to the dotenv is **opt-in**,
+  via `harnessed project-env-path` and whichever loader the user already runs. See §"Per-repo
+  binding" in ARCHITECTURE.md for why the file had to go.
 
   **Scope, measured rather than assumed.** mise applies per-directory env through an activation
   hook (`precmd`), which fires in **interactive shells only**. Verified: a variable that exists
@@ -473,6 +476,10 @@ every client it exists to serve.
   is precisely the population that failed here. Those are covered by D11's shim instead. Two
   mechanisms, two audiences; neither one covers both, and claiming otherwise was an early draft of
   this section.
+
+  That scope limit is also why removing the file costs less than it looks: it never reached the
+  population that failed, and the audience it did serve is the one best placed to choose its own
+  loader.
 
 **The lesson under all three.** harnessed configured the agent it launched and assumed that was the
 population. It is not: the same repo is used by terminals, by agents the user starts, and by

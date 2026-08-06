@@ -44,8 +44,8 @@
 # `claude` the user started themselves, a hook. Those clients are not an edge case — on 2026-07-27
 # every live agent in a project had zero BEADS_ variables, so bd fell back to auto-start, hit the
 # sidecar's exclusive lock, and told the user to run `bd bootstrap`. A port that survives a reboot
-# is what lets the PROJECT hold its own beads config (mise.local.toml) instead of that config
-# existing only inside a harnessed process. The loopback trap the socket avoided is handled by
+# is what lets those clients be configured at all: the value lands in the project dotenv
+# (`harnessed project-env-path`) instead of existing only inside a harnessed process. The loopback trap the socket avoided is handled by
 # `client_env` `{host}`,
 # which resolves per mode — 127.0.0.1 for a host agent, host.containers.internal for a container.
 #

@@ -200,18 +200,25 @@ user's own overlay. That is correct rather than unfortunate: `ssh_keys` is per-s
 stack is shared across repos, so it cannot express "the key for *this* repo". Per-repo SSH
 identity comes from the forwarded agent plus your own `~/.ssh/config` (bd harnessed-ji6).
 
-**Per-repo binding.** A project records its recipe set as a mise task:
+**Per-repo binding.** A launch records its resolved stack in harnessed's own state, and `--last`
+replays it:
 
-```toml
-[tasks.start-harness]
-run = "harnessed container-run claude --recipe superpowers --recipe serena"
+```console
+$ harnessed container-run claude --recipe superpowers --recipe serena   # once
+$ harnessed container-run claude --last                                 # thereafter
 ```
 
-No env var, no discovery, no precedence rules — and the trust question answers itself, because
-`mise run` refuses an untrusted config, so a cloned repo's task cannot select anything until you
-`mise trust` it. Rejected alternatives are recorded in bd harnessed-7rx: an unknown top-level
-`[harnessed]` table warns on every mise invocation, and `[env] HARNESSED_RECIPES` is live only when
-mise is activated, failing silently and expensively when it is not.
+No env var, no discovery, no precedence rules, and nothing written into the repo. `--last` is a
+flag rather than the bare verb because bare is already the `default` baseline; with no record it
+fails loudly instead of falling back to one.
+
+This replaced a `mise.local.toml` task table harnessed wrote into each project (bd harnessed-7mt).
+mise keys trust per config *file* and trust does not cascade from a trusted ancestor, so that file
+re-prompted in every new worktree; automating the trust was rejected, since a mise config can carry
+`_.source` and trusting one grants code execution. Rejected alternatives from bd harnessed-7rx still
+stand: an unknown top-level `[harnessed]` table warns on every mise invocation, and
+`[env] HARNESSED_RECIPES` is live only when mise is activated, failing silently and expensively when
+it is not.
 
 ## Agent of Empires mirror (optional)
 
