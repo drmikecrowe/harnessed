@@ -440,10 +440,16 @@ def _warn_if_stale_mise_local(project_path: Path) -> None:
             return
     except OSError:
         return
+    # SAYS WHAT DELETING COSTS, not just that it is allowed. "Safe to delete" alone was wrong for
+    # the two audiences who were using it: `mise run <harness>` stops existing, and a shell that
+    # got its BEADS_/service vars from the pointer goes back to unconfigured. Both are silent
+    # losses — mise reports a missing task as its own generic error, and an unconfigured `bd`
+    # falls back to auto-start rather than complaining.
     _say(
         f"[blue][INFO][/blue] {stale.name} is left over from an older harnessed and is no longer "
-        f"read — the launch shortcut it held is now `--last`. Safe to delete. If you relied on it "
-        f"to configure `bd` and friends in a plain shell here, see `harnessed project-env-path`."
+        f"read. Before deleting it: `mise run <harness>` here stops working — use "
+        f"`harnessed <verb>-run <harness> --last` instead — and if a plain shell in this repo got "
+        f"its `bd`/service vars from it, re-point one at `harnessed project-env-path`."
     )
 
 

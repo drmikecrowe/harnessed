@@ -1986,6 +1986,20 @@ def _launch_host(
     # a launch that then died on a renamed recipe, and that row would fail identically every time it
     # was started from the dashboard. It costs `--create-aoe-only` one assembly, which is
     # sub-second, emit-only and container-free on this path.
+    # BEFORE the row, because the row's command is `--last` and `--last` reads this. `_aoe_register`
+    # EXITS under `--create-aoe-only`, so recording afterwards would write a row whose one job is to
+    # replay a launch that was never recorded — dead on arrival, failing "nothing to replay" every
+    # time it is started. That is the same class of dead row the comment above avoids by
+    # registering after assembly.
+    lastrun.record(
+        "host-run", stack, harness, project_path,
+        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+    )
+    # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue of
+    # `launch`'s is_built/staleness checks — so registering ahead of it would leave a row behind for
+    # a launch that then died on a renamed recipe, and that row would fail identically every time it
+    # was started from the dashboard. It costs `--create-aoe-only` one assembly, which is
+    # sub-second, emit-only and container-free on this path.
     _aoe_register(
         "host-run", stack, harness, project_path, only=create_aoe_only,
         group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
@@ -2027,13 +2041,6 @@ def _launch_host(
     _write_project_tool_env(
         stack, project_path, harness=harness, verb="host-run",
         no_strict_mcp=no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
-    )
-    # What `--last` replays and what the aoe row invokes (bd harnessed-7mt). Same argument set as
-    # the call above, deliberately: both answer "what was this launch", and recording a different
-    # shape than the one the row was written for is the drift the mise task was built to prevent.
-    lastrun.record(
-        "host-run", stack, harness, project_path,
-        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
     )
 
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
@@ -2200,7 +2207,7 @@ def _resolve_stack(
 
 def _resolve_last(
     verb: str, harness: str, path: Optional[str],
-    stack: Optional[str], recipe: list[str],
+    stack: Optional[str], recipe: list[str], extends: str, no_extends: bool, service: list[str],
     *, no_strict_mcp: bool, aoe_group: Optional[str], aoe_title: Optional[str],
 ) -> tuple[str, bool, Optional[str], Optional[str]]:
     """Replay the last launch in this folder — the `--last` path (bd harnessed-7mt).
@@ -2216,14 +2223,27 @@ def _resolve_last(
     reporting success is worse than not starting at all.
 
     Explicit flags still win. `--last --aoe-title x` replays the stack and takes the new title; the
-    record only fills what the user did not say. `--stack`/`--recipe` are the exception — they
-    select a DIFFERENT stack, so pairing them with "replay the last one" is a contradiction rather
-    than an override, and is rejected instead of silently resolved one way.
+    record only fills what the user did not say.
+
+    EVERY STACK-SELECTION INPUT IS REJECTED, not just `--stack`/`--recipe`. They each feed
+    `_resolve_stack`, which `--last` skips entirely, so any of them left merely "allowed" would be
+    accepted and then silently dropped — `--last --service redis` would start no redis and say
+    nothing. Rejecting is not an inconvenience here: pairing "replay the last launch" with an
+    instruction to compose a different one is a contradiction, and picking a winner silently is how
+    you get a launch nobody asked for. Lifecycle flags (`--fresh`, `--rm`) are deliberately NOT in
+    this set — they say what you want THIS time and apply to a replay exactly as they would to any
+    other launch.
     """
-    if stack or recipe:
+    conflicting = [
+        name for name, given in (
+            ("--stack", bool(stack)), ("--recipe", bool(recipe)), ("--service", bool(service)),
+            ("--extends", extends != _EXTENDS_DEFAULT), ("--no-extends", no_extends),
+        ) if given
+    ]
+    if conflicting:
         _err.print(
-            "[bold red]error:[/bold red] --last replays the last launch here; "
-            "--stack/--recipe select a different one. Provide one or the other."
+            f"[bold red]error:[/bold red] --last replays the last launch here; "
+            f"{', '.join(conflicting)} compose a different one. Provide one or the other."
         )
         raise typer.Exit(1)
 
@@ -2256,8 +2276,11 @@ _RECIPE_OPT = typer.Option(
     help="Recipe to include; repeat for each. Order is irrelevant — the set is sorted. "
          "Mutually exclusive with --stack.",
 )
+# The baseline `--extends` names when the user does not. Named because `_resolve_last` compares
+# against it to tell "user asked for a different baseline" from "user said nothing".
+_EXTENDS_DEFAULT = "default"
 _EXTENDS_OPT = typer.Option(
-    "default", "--extends",
+    _EXTENDS_DEFAULT, "--extends",
     help="Stack to inherit from (baseline recipes, permissions, credential forwarding). "
          "With neither --stack nor --recipe, this baseline is itself the stack that runs.",
 )
@@ -2352,7 +2375,7 @@ def host_run(
         # minted by the launch that recorded it), so there is nothing to create and nothing to
         # clean up if the launch fails. Hence minted_dir stays None.
         stack_name, no_strict_mcp_config, aoe_group, aoe_title = _resolve_last(
-            "host-run", harness, path, stack, recipe,
+            "host-run", harness, path, stack, recipe, extends, no_extends, service,
             no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
         )
         minted_dir = None
@@ -2798,7 +2821,7 @@ def container_run(
         # nothing minted here and nothing to clean up. `recipe` stays empty, which also keeps the
         # rebuild below off — a replay runs what is already assembled.
         stack, no_strict_mcp_config, aoe_group, aoe_title = _resolve_last(
-            "container-run", harness, path, stack, recipe,
+            "container-run", harness, path, stack, recipe, extends, no_extends, service,
             no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
         )
         minted_dir = None
@@ -2884,6 +2907,13 @@ def container_run(
         _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack} {harness}")
         raise typer.Exit(1)
 
+    # BEFORE the row, for the reason spelled out at the host-run call site: the row's command is
+    # `--last`, `_aoe_register` EXITS under `--create-aoe-only`, and a row recorded afterwards
+    # would have nothing to replay.
+    lastrun.record(
+        "container-run", stack, harness, project_path,
+        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
+    )
     # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
     # launch that is about to fail never leaves a row behind, and before the podman work so the row
     # exists even if the container half goes wrong. No-op when aoe is absent; never raises.
@@ -2956,11 +2986,6 @@ def container_run(
     _write_project_tool_env(
         stack, project_path, harness=harness, verb="container-run",
         no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
-    )
-    # See the host-run call site: what `--last` replays and what the aoe row invokes.
-    lastrun.record(
-        "container-run", stack, harness, project_path,
-        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
     )
 
     # Re-attach to a running instance (interactive only) — but if it was built from an older image
@@ -4308,19 +4333,27 @@ def project_env_path_cmd(
 
     REFERENCE THIS FILE, NEVER COPY IT. It holds real service credentials and is regenerated on
     every launch, so a copy is both a secret replicated into wherever you put it and a value that
-    goes stale at the next container recreate. Whatever you use, point it at this path:
+    goes stale at the next container recreate. Run this command IN the project and quote the result:
 
-        mise, one line, every project:   _.file = "{{ exec(command='harnessed project-env-path ' ~ cwd) }}"
-        direnv, per project:             dotenv $(harnessed project-env-path)
-        a shell function, on demand:     set -a; . "$(harnessed project-env-path)"; set +a
+        direnv, per project (.envrc):   dotenv "$(harnessed project-env-path)"
+        a shell function, on demand:    set -a; . "$(harnessed project-env-path)"; set +a
 
-    The mise form passes `cwd` EXPLICITLY because mise runs `exec()` relative to the config file's
-    directory, not the directory you are in; `{{ cwd }}` is the invocation directory and is what
-    makes one global line behave per-project.
+    Both forms invoke this command from inside the directory it is asking about, so the path never
+    passes through a shell as text.
+
+    NOT DOCUMENTED, DELIBERATELY: mise's `[env] _.file` with
+    `{{ exec(command='harnessed project-env-path ' ~ cwd) }}`. mise runs `exec()` relative to the
+    CONFIG file's directory rather than yours, so the only way to make one global line
+    per-project is to concatenate `cwd` into a string that mise hands to a shell — and tera's `~`
+    is string concatenation, not argv construction. VERIFIED on mise 2026.8.2: from a directory
+    literally named `$(echo INJECTED)`, the substitution ran. A cloned repo or extracted archive
+    carrying a crafted directory name would execute code on `cd` alone. Double quotes do not help
+    (`$(...)` expands inside them in sh) and tera has no shell-quoting filter. That is the same
+    class of hazard `mise.local.toml` was retired for (bd harnessed-7mt); replacing it with a
+    worse one would be a poor trade.
 
     Prints the path whether or not it exists, so a directory that was never launched in is not an
-    error — mise and direnv both tolerate a missing env file silently, which is what makes the
-    one-line forms safe to apply everywhere rather than per-repo.
+    error — direnv tolerates a missing env file silently.
     """
     # BUILTIN print, NOT `_out.print`. This output is consumed as a filename by mise, and the rich
     # console mangles it two ways: it hard-wraps at the terminal width, so a path longer than the

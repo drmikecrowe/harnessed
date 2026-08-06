@@ -89,7 +89,19 @@ def record(
         data.setdefault("runs", {})[_key(verb, harness)] = entry
         # Whole-file rewrite through a temp sibling: two launches racing in one project must not
         # leave a half-written record that reads as "no record" on the next --last.
+        #
+        # Not a full lock. Two launches with DIFFERENT (verb, harness) keys can still race
+        # read-modify-write and lose one entry — the loser's next `--last` reports "nothing to
+        # replay", which is loud and recoverable by launching explicitly once. A lock is not worth
+        # it for a file whose worst failure is one re-typed command.
+        #
+        # chmod BEFORE the write and on the TEMP file: `replace()` keeps the source's mode, so
+        # chmod-ing after the rename would leave a window at the umask default, and chmod-ing the
+        # destination would not touch what we actually wrote. The 0700 parent already bars other
+        # users; this is the same defence-in-depth `_write_project_tool_env` gives its dotenv.
         tmp = store.with_suffix(".json.tmp")
+        tmp.touch(mode=0o600, exist_ok=True)
+        tmp.chmod(0o600)
         tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         tmp.replace(store)
     except OSError:
