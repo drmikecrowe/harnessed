@@ -30,8 +30,7 @@ import pytest
 
 from harnessed import launcher, paths
 
-_PODMAN = os.environ.get("HARNESSED_PODMAN") == "1"
-podman = pytest.mark.skipif(not _PODMAN, reason="set HARNESSED_PODMAN=1 for live podman tests")
+from support import PODMAN_REQUESTED as _PODMAN, podman  # the one gate definition
 
 # NOTE: this module used to restore the real XDG_CONFIG_HOME itself so podman could find its
 # storage.conf. `conftest._isolated_user_catalog` now symlinks `containers/` into the isolated root

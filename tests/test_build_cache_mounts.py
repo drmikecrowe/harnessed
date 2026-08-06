@@ -8,7 +8,6 @@ podman build that proves the emitted syntax actually caches under rootless podma
 """
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 
@@ -19,8 +18,7 @@ from harnessed.emit import write_derived_dockerfile
 from harnessed.schema import InstallSpec, Recipe
 from support import patch_all
 
-_PODMAN = os.environ.get("HARNESSED_PODMAN") == "1"
-podman = pytest.mark.skipif(not _PODMAN, reason="set HARNESSED_PODMAN=1 for live podman tests")
+from support import podman  # the one gate definition
 
 # The downloaders every build path uses, and the cache each one must be given. Paths verified by
 # probing the built base image (`pnpm store path`, `uv cache dir`, ~/.cache) — not assumed defaults.
