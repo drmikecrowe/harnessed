@@ -115,7 +115,18 @@ def _ensure_local_catalog_links() -> None:
         target = links_dir / kind
         dest = user_catalog_root / kind
         if target.is_symlink():
-            if target.resolve() == dest.resolve():
+            try:
+                already_correct = target.resolve() == dest.resolve()
+            except OSError:
+                # `resolve()` READS THE LINK, so it fails when the link does — and on Python 3.12 it
+                # propagates that, while 3.13 swallows it. `requires-python` is >=3.12 and CI pins
+                # 3.12, so guarding only the `readlink` inside the discriminator below left the
+                # "never traceback" contract broken on the version this project actually ships
+                # against. Undecidable here means "not known to be correct": fall through and let
+                # the discriminator (which returns False when it cannot read the link) reach the
+                # ordinary message instead of a stack trace.
+                already_correct = False
+            if already_correct:
                 continue  # already correct — no-op
             if _points_at_a_harnessed_overlay(target, kind):
                 # STALE, NOT FOREIGN (bd harnessed-ng5). This is a link harnessed itself wrote, at a
