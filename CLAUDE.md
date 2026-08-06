@@ -10,6 +10,7 @@ repo-blind. Open `src/` only with a specific question the docs did not answer, o
 | --- | --- |
 | What do *agent / recipe / service / stack / catalog* mean? How does build/launch work? | **[ARCHITECTURE.md](ARCHITECTURE.md) — first, always.** The vocabulary is precise. The words are not interchangeable. |
 | Where does code live? What calls what? | [docs/codebase/](docs/codebase/) — STRUCTURE, ARCHITECTURE, INTEGRATIONS |
+| Who calls this symbol? What does a change reach? Show me one function. | `codebase-memory-mcp` — see [AGENTS.md](AGENTS.md) §Codebase graph for the tools **and their warnings**. Beats `rg` + `Read`. |
 | How is code written? What is tested or known-weak? | [docs/codebase/](docs/codebase/) — CONVENTIONS, TESTING, CONCERNS |
 | How do I author a recipe/service/stack? Set up a dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
 | *Why* is it built this way? | [docs/harnessed-design.md](docs/harnessed-design.md) |

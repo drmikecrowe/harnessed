@@ -87,6 +87,32 @@ See [CLAUDE.md](CLAUDE.md) for the non-negotiable constraints: host-native CLI, 
 canonical, recipes harness-independent, pnpm everywhere, pinned downloads, credentials referenced
 (never replicated), Streamable-HTTP MCP.
 
+## Codebase graph: codebase-memory-mcp
+
+For any structural question — what a symbol is, who calls it, what a change reaches — query the
+graph. Do not `rg` + `Read`. The project name is derived from your checkout path, so it differs per
+machine — read it from `list_projects` rather than assuming one. Re-run `index_repository` after
+substantial edits (~14s on this repo); a stale index gives stale answers.
+
+| Need | Call | Notes |
+| --- | --- | --- |
+| Read one symbol | `get_code_snippet` | Returns source, docstring, complexity, callers/callees. Replaces `Read`. Get `qualified_name` from `search_graph` first — never guess it. |
+| Find code | `search_graph` `query:` | BM25. Returns exact line ranges; follow with a ranged `Read` for surrounding context. |
+| Callers, callees, impact | `trace_path` | `depth` 1–2. Leave `include_tests` false. |
+| Hot paths, fan-in, outliers | `query_graph` | Cypher. |
+
+Warnings — all hit on this repo, not copied from the tool's docs:
+
+- `detect_changes` at `depth: 2` is a context bomb: `HEAD~5` over 19 files returned 607 symbols /
+  53KB and blew the token cap. Use `depth: 1` or `scope`.
+- `semantic_query` without a companion `query:` fills `results` with the whole graph as noise.
+  Read `semantic_results`; ignore `results`.
+- `get_architecture`: skip `layers` and `clusters`. URLs in Markdown and `catalog/` register as HTTP
+  routes, and nearly every cluster is mislabelled `tests`. `hotspots` and `entry_points` are sound.
+- The complexity property is `complexity`. The tool's own Cypher example says `cyclomatic`, which
+  returns empty for every row.
+- Ignore the `fp`/`sp` blobs and the duplicated docstring in `get_code_snippet` output.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:970c3bf2 -->
 ## Beads Issue Tracker
 
