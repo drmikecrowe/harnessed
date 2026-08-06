@@ -162,6 +162,10 @@ def catalog_local_restored(checkout: Path) -> Generator[None, None, None]:
     Only ever unlinks a SYMLINK. A real file or directory at `catalog-local/<kind>` is content
     somebody put there on purpose; this helper's job is to be invisible, not tidy.
 
+    WHAT IS SNAPSHOTTED IS LINKS, NOT BYTES. A real file or directory present beforehand is recorded
+    as "not a symlink" and nothing more. If the body DESTROYS it, this helper has nothing to put
+    back and does not pretend otherwise — "as you found it" is a promise about symlinks only.
+
     THE TWO INVARIANTS COLLIDE in one case, and never-delete wins: if the body replaced a
     snapshotted symlink with a real directory, restoring the link would mean deleting that
     directory, so the content stays and the link is NOT put back. Found by adversarial review as an
@@ -171,7 +175,8 @@ def catalog_local_restored(checkout: Path) -> Generator[None, None, None]:
     destroying its output would be worst.
 
     Scope is the four kinds `harnessed build` maintains. A fifth name under `catalog-local/` is not
-    snapshotted and not cleaned; nothing writes one.
+    snapshotted and not cleaned, and a `catalog-local` that the body creates as a SYMLINK rather
+    than a directory is left in place (the `rmdir` fails and is swallowed). Nothing writes either.
 
     LIVES HERE, NOT IN `support.py`, and uses nothing but the stdlib: `test_live_gate_accounting`
     copies this file verbatim into a `pytester` sandbox where `support` is not importable, so any

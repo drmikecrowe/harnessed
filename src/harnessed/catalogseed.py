@@ -42,11 +42,18 @@ def _points_at_a_harnessed_overlay(link: Path, kind: str) -> bool:
         deliberately by BOTH of them: keying on `pyproject.toml` alone would make any XDG root that
         happens to contain one look like a checkout, and the build would go back to aborting.
 
-    UNDECIDABLE RESOLVES TO "OURS". If the markers cannot be read at all — an unreadable ancestor
-    raises from `is_file()` — re-point rather than crash the build with a traceback. Being wrong
-    costs one convenience symlink to re-make; the alternative is the hard abort this whole function
-    exists to stop doing. Nothing is ever deleted either way: only a symlink is unlinked, never its
-    target.
+    NOTHING HERE MAY RAISE. Both filesystem calls are guarded, and they fail in OPPOSITE directions
+    because the two failures mean opposite things:
+
+      * `readlink` fails -> the LINK itself is gone or unreadable (a concurrent build in the same
+        checkout can delete it between `is_symlink()` and here). We cannot claim as ours something
+        we cannot read, so return False and let the caller print its ordinary message. A confusing
+        abort beats a stack trace.
+      * the MARKER checks fail -> the link is fine, its target tree is unreadable. Undecidable
+        resolves to "ours": re-point rather than abort. Being wrong costs one convenience symlink to
+        re-make; the alternative is the hard abort this function exists to stop doing.
+
+    Nothing is ever deleted either way: only a symlink is unlinked, never its target.
 
     What is left uncovered, deliberately, in BOTH directions:
       * a hand-made link at `<x>/harnessed/catalog/<kind>` where `<x>/harnessed` is neither a
@@ -55,7 +62,10 @@ def _points_at_a_harnessed_overlay(link: Path, kind: str) -> bool:
         `harnessed/` subdirectory is itself a checkout gets the old abort. Recoverable by removing
         the link, and no configuration in this repo produces it.
     """
-    target = Path(os.readlink(link))
+    try:
+        target = Path(os.readlink(link))
+    except OSError:
+        return False
     if not target.is_absolute() or target.parts[-3:] != ("harnessed", "catalog", kind):
         return False
     root = target.parent.parent

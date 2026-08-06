@@ -268,6 +268,34 @@ class TestStaleLinkIsRepointed:
 
         assert Path(os.readlink(link)) == user_catalog / "agents"
 
+    def test_a_link_that_vanishes_mid_check_does_not_crash_the_build(self, monkeypatch, tmp_path):
+        """`readlink` can fail too, and it sat OUTSIDE the guard that promises not to traceback.
+
+        Adversarial review round 3, finding A1: a concurrent `harnessed build` in the same checkout
+        can remove the link between `is_symlink()` and `readlink()`. The build died with a raw
+        `FileNotFoundError` — precisely the outcome this function's contract rules out. A failed
+        `readlink` means the link is gone or unreadable, so we cannot claim it as ours: fall through
+        to the ordinary abort, which is a message rather than a stack trace.
+        """
+        repo = _fake_checkout(monkeypatch, tmp_path)
+        other = tmp_path / "other-xdg" / "harnessed" / "catalog"
+        (other / "agents").mkdir(parents=True)
+        self._link(repo, "agents", other / "agents")
+
+        real_readlink = os.readlink
+
+        def vanishing_readlink(path, *a, **kw):
+            if str(path).endswith("catalog-local/agents"):
+                raise FileNotFoundError(2, "No such file or directory", str(path))
+            return real_readlink(path, *a, **kw)
+
+        monkeypatch.setattr(os, "readlink", vanishing_readlink)
+        _setup_xdg(monkeypatch, tmp_path)
+
+        with pytest.raises(typer.Exit) as exc:  # NOT FileNotFoundError
+            launcher._ensure_local_catalog_links()
+        assert exc.value.exit_code == 1
+
     @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
     def test_an_unreadable_target_tree_does_not_crash_the_build(self, monkeypatch, tmp_path):
         """`is_file()` raises PermissionError on a mode-000 ancestor; a build must not traceback.

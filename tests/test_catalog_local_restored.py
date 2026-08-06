@@ -15,6 +15,7 @@ not importable — so conftest may not import from it.
 from __future__ import annotations
 
 import os
+import shutil
 
 from pathlib import Path
 
@@ -122,6 +123,67 @@ def test_real_content_the_body_created_outranks_restoring_the_link(tmp_path):
     assert not (links / "agents").is_symlink()
 
 
+def test_real_content_is_never_even_written_over(tmp_path, monkeypatch):
+    """The property is "don't TOUCH real content", not "real content happens to survive".
+
+    Adversarial review round 3, findings B2/C1: the assertions above pass with the
+    `elif path.exists(): continue` guard DELETED, because `symlink_to` then raises FileExistsError
+    and the round-2 `except OSError` swallows it — same end state, no test can tell. That made a
+    guard added in round 1 undetectable by a fix added in round 2, which is how a protection quietly
+    becomes decoration.
+
+    So assert the thing the swallow cannot fake: no attempt is made at all.
+    """
+    repo = tmp_path / "repo"
+    links = repo / "catalog-local"
+    links.mkdir(parents=True)
+    (links / "agents").symlink_to(_overlay(tmp_path / "real-xdg", "agents"))
+
+    attempted: list[Path] = []
+    real_symlink_to = Path.symlink_to
+
+    def recording_symlink_to(self, target, *a, **kw):
+        attempted.append(self)
+        return real_symlink_to(self, target, *a, **kw)
+
+    monkeypatch.setattr(Path, "symlink_to", recording_symlink_to)
+
+    with catalog_local_restored(repo):
+        (links / "agents").unlink()
+        (links / "agents").mkdir()
+
+    monkeypatch.undo()
+    assert (links / "agents") not in attempted, (
+        "teardown tried to symlink over real content and relied on the error being swallowed"
+    )
+
+
+def test_real_content_destroyed_by_the_body_is_not_recoverable(tmp_path):
+    """The snapshot is of LINKS, not of content — so this is a limit, pinned rather than implied.
+
+    Adversarial review round 3, finding B1: a real directory present before the session is recorded
+    as `None` (not a symlink). If the body deletes it and puts a symlink there, teardown removes the
+    symlink — correctly, it is not ours to keep — and has nothing to put back. The directory is gone,
+    destroyed by the BODY, not by this helper, which never copied its contents and could not.
+
+    "Leave it as you found it" therefore means links, not bytes. Nothing in `harnessed build`
+    produces this state; a test that does has already done something surprising.
+    """
+    repo = tmp_path / "repo"
+    links = repo / "catalog-local"
+    links.mkdir(parents=True)
+    real = links / "agents"
+    real.mkdir()
+    (real / "user-content.txt").write_text("mine\n")
+
+    with catalog_local_restored(repo):
+        shutil.rmtree(real)
+        real.symlink_to(_overlay(tmp_path / "tmp-xdg", "agents"))
+
+    assert not real.exists(), "the body destroyed it; the helper cannot and does not resurrect it"
+    assert not real.is_symlink(), "but the helper does remove the link the body left"
+
+
 def test_restores_every_kind_even_when_the_body_raises(tmp_path):
     """All four kinds, not just the first.
 
@@ -137,8 +199,11 @@ def test_restores_every_kind_even_when_the_body_raises(tmp_path):
 
     with pytest.raises(_Boom):
         with catalog_local_restored(repo):
+            # RE-POINT rather than merely delete: if the body left the links untouched, a teardown
+            # that did nothing at all would pass this test (review round 3, finding C3).
             for kind in _KINDS:
                 (links / kind).unlink()
+                (links / kind).symlink_to(_overlay(tmp_path / "tmp-xdg", kind))
             raise _Boom
 
     for kind in _KINDS:
