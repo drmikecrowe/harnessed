@@ -16,13 +16,13 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from uuid import uuid4
 
 import pytest
 
 from harnessed import aoe
 
 
-SCRATCH = "harnessed-cn9-realexec"
 STALE_COMMAND = "harnessed host-run claude /some/old/path --"
 
 pytestmark = pytest.mark.skipif(
@@ -34,9 +34,9 @@ def _aoe(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["aoe", *args], capture_output=True, text=True, check=False)
 
 
-def _rows() -> list[dict]:
+def _rows(profile: str) -> list[dict]:
     try:
-        return json.loads(_aoe("list", "--json", "-p", SCRATCH).stdout)
+        return json.loads(_aoe("list", "--json", "-p", profile).stdout)
     except json.JSONDecodeError:
         return []
 
@@ -44,17 +44,20 @@ def _rows() -> list[dict]:
 @pytest.fixture
 def drifted(tmp_path, monkeypatch):
     """A real aoe profile holding one row whose stored command has drifted."""
-    monkeypatch.setattr(aoe, "PROFILE", SCRATCH)
+    # Generate a unique name so parallel test workers and a developer's own aoe workspace
+    # cannot share or clobber this fixture's profile.
+    profile = f"harnessed-cn9-realexec-{uuid4().hex[:8]}"
+    monkeypatch.setattr(aoe, "PROFILE", profile)
     project = tmp_path / "cn9proj"
     project.mkdir()
-    _aoe("profile", "create", SCRATCH)
+    _aoe("profile", "create", profile)
     title = aoe.title_for("host-run", "serena", "claude", project)
-    _aoe("add", str(project), "-p", SCRATCH, "-g", "grp", "-t", title,
+    _aoe("add", str(project), "-p", profile, "-g", "grp", "-t", title,
          "--cmd-override", STALE_COMMAND)
     try:
-        yield project, title
+        yield project, title, profile
     finally:
-        subprocess.run(["bash", "-c", f"yes | aoe profile delete {SCRATCH}"],
+        subprocess.run(["bash", "-c", f"yes | aoe profile delete {profile}"],
                        capture_output=True, text=True, check=False)
 
 
@@ -67,38 +70,38 @@ def _sync(project, reports):
 
 def test_aoe_refuses_a_duplicate_title_and_path_at_exit_zero(drifted):
     """The premise the whole fix rests on. If this ever stops holding, the fix is pointless."""
-    project, title = drifted
-    result = _aoe("add", str(project), "-p", SCRATCH, "-g", "grp", "-t", title,
+    project, title, profile = drifted
+    result = _aoe("add", str(project), "-p", profile, "-g", "grp", "-t", title,
                   "--cmd-override", aoe.mise_command("claude"))
     assert result.returncode == 0, "a refused duplicate exits ZERO — that is what hid the bug"
     assert "already exists" in result.stdout + result.stderr
-    assert [r["command"] for r in _rows()] == [STALE_COMMAND], "the stale row survived"
+    assert [r["command"] for r in _rows(profile)] == [STALE_COMMAND], "the stale row survived"
 
 
 def test_repair_registers_the_correct_row_and_keeps_the_old_one(drifted):
-    project, title = drifted
+    project, title, profile = drifted
     reports: list[tuple[str, bool]] = []
 
     assert _sync(project, reports) is True
     assert len(reports) == 1 and reports[0][1] is True
 
-    commands = [r["command"] for r in _rows()]
+    commands = [r["command"] for r in _rows(profile)]
     assert commands.count(aoe.mise_command("claude")) == 1, "the correct row was registered"
     assert commands.count(STALE_COMMAND) == 1, "the stale row was kept, not deleted"
-    assert any(r["command"] == STALE_COMMAND and r["title"] != title for r in _rows()), \
+    assert any(r["command"] == STALE_COMMAND and r["title"] != title for r in _rows(profile)), \
         "the stale row was renamed aside rather than removed"
 
 
 def test_relaunching_after_a_repair_converges(drifted):
     """No second warning, no duplicate row — the repair has to be a fixed point."""
-    project, _ = drifted
+    project, _, profile = drifted
     reports: list[tuple[str, bool]] = []
 
     _sync(project, reports)
     _sync(project, reports)
 
     assert len(reports) == 1, "the second launch must find nothing to report"
-    assert len(_rows()) == 2, "and must not add a third row"
+    assert len(_rows(profile)) == 2, "and must not add a third row"
 
 
 def test_remove_would_not_have_worked(drifted):
@@ -107,13 +110,14 @@ def test_remove_would_not_have_worked(drifted):
     A docstring saying "remove does not work here" rots silently. This fails the day aoe changes
     its trash semantics, which is exactly when the repair strategy should be revisited.
     """
-    project, title = drifted
-    row_id = _rows()[0]["id"]
+    project, title, profile = drifted
+    row_id = _rows(profile)[0]["id"]
 
-    assert _aoe("remove", row_id, "-p", SCRATCH).returncode == 0
-    assert any(r["id"] == row_id for r in _rows()), "a trashed row still comes back from list --json"
+    assert _aoe("remove", row_id, "-p", profile).returncode == 0
+    assert any(r["id"] == row_id for r in _rows(profile)), "a trashed row still comes back from list --json"
 
-    refused = _aoe("add", str(project), "-p", SCRATCH, "-g", "grp", "-t", title,
+    refused = _aoe("add", str(project), "-p", profile, "-g", "grp", "-t", title,
                    "--cmd-override", aoe.mise_command("claude"))
+    assert refused.returncode == 0, "aoe refuses a duplicate at exit zero — that is what makes it silent"
     assert "already exists" in refused.stdout + refused.stderr, \
         "a trashed row still holds the (title, path) key, so remove+add loses the row entirely"
