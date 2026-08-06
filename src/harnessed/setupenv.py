@@ -521,11 +521,16 @@ def _write_project_tool_env(
         (`[env] _.file`) and the launch task below. mise loads it for any process whose CWD is under
         the project, which is exactly the audience that was missing.
       * a `[tasks.<harness>]` table, so `mise run claude` in this repo replays THIS launch. The
-        `run` line is `aoe.command_for` verbatim — the same string the dashboard row records —
-        because a launcher that drifts from the row purporting to restart it is worse than no
-        shortcut at all. It carries every flag that shapes the session (`--stack`,
-        `--no-strict-mcp-config`, `--aoe-group`, `--aoe-title`) and, like the row, omits the
+        `run` line is `aoe.command_for` verbatim. It carries every flag that shapes the session
+        (`--stack`, `--no-strict-mcp-config`, `--aoe-group`, `--aoe-title`) and omits the
         per-invocation lifecycle flags (`--fresh`, `--rm`) that are yours to re-decide each time.
+
+        NO LONGER WHAT THE DASHBOARD ROW RUNS (bd harnessed-7mt). The row used to invoke this task
+        — that indirection is why the table exists — but it now invokes
+        `harnessed <verb>-run <harness> --last --` and reads its flags from `lastrun`, so the
+        replay no longer depends on a file in the user's repo. This table is kept for the plain
+        `mise run claude` shortcut only, and is next to go when the `[env]` pointer above moves out
+        of the repo too; `lastrun`, not this, is what a restart follows.
 
     NEVER WRITES A FILE THAT IS NOT OURS. A `mise.local.toml` without our marker comment is the
     user's: we print what to add and change nothing. Silently reformatting someone's config — TOML

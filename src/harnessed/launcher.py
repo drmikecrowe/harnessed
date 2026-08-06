@@ -39,6 +39,7 @@ from . import __version__
 from . import aoe
 from . import dynstack
 from . import emit
+from . import lastrun
 from . import paths
 from . import persist
 from . import staleness
@@ -2028,6 +2029,13 @@ def _launch_host(
         stack, project_path, harness=harness, verb="host-run",
         no_strict_mcp=no_strict_mcp, aoe_group=aoe_group, aoe_title=aoe_title,
     )
+    # What `--last` replays and what the aoe row invokes (bd harnessed-7mt). Same argument set as
+    # the call above, deliberately: both answer "what was this launch", and recording a different
+    # shape than the one the row was written for is the drift the mise task was built to prevent.
+    lastrun.record(
+        "host-run", stack, harness, project_path,
+        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+    )
 
     # Recipe `env:` — the host half of what the derived image's ENV does for a container launch.
     # Set on THIS process (same reasoning as the PATH mutation below: the process is dedicated to
@@ -2191,6 +2199,54 @@ def _resolve_stack(
     return name, None if preexisting else stack_dir
 
 
+def _resolve_last(
+    verb: str, harness: str, path: Optional[str],
+    stack: Optional[str], recipe: list[str],
+    *, no_strict_mcp: bool, aoe_group: Optional[str], aoe_title: Optional[str],
+) -> tuple[str, bool, Optional[str], Optional[str]]:
+    """Replay the last launch in this folder — the `--last` path (bd harnessed-7mt).
+
+    This is what the aoe dashboard row invokes (`aoe.replay_command`), and what a human types to get
+    the same thing back without retyping a recipe set. It is deliberately a FLAG rather than the
+    bare `harnessed <verb>-run <harness>` form: bare is documented as the `default` baseline, and
+    redefining it would silently change the most-typed command in a folder whose record names a
+    different stack — the wrong-stack-at-exit-0 class this module keeps paying to avoid.
+
+    FAILS LOUDLY with no record. Falling back to the baseline is precisely the silent wrong launch
+    above, one layer down: the row says "restart what was here", and starting something else while
+    reporting success is worse than not starting at all.
+
+    Explicit flags still win. `--last --aoe-title x` replays the stack and takes the new title; the
+    record only fills what the user did not say. `--stack`/`--recipe` are the exception — they
+    select a DIFFERENT stack, so pairing them with "replay the last one" is a contradiction rather
+    than an override, and is rejected instead of silently resolved one way.
+    """
+    if stack or recipe:
+        _err.print(
+            "[bold red]error:[/bold red] --last replays the last launch here; "
+            "--stack/--recipe select a different one. Provide one or the other."
+        )
+        raise typer.Exit(1)
+
+    project_path = Path(path).resolve() if path else Path.cwd()
+    entry = lastrun.load(verb, harness, project_path)
+    if entry is None:
+        _err.print(
+            f"[bold red]error:[/bold red] no recorded {verb} launch for {harness} in "
+            f"{project_path} — nothing to replay.\n"
+            f"Start one explicitly first (e.g. `harnessed {verb} {harness}` for the default "
+            f"baseline, or with --stack/--recipe), and --last will replay it after that."
+        )
+        raise typer.Exit(1)
+
+    return (
+        entry["stack"],
+        no_strict_mcp or bool(entry.get("no_strict_mcp")),
+        aoe_group if aoe_group is not None else entry.get("aoe_group"),
+        aoe_title if aoe_title is not None else entry.get("aoe_title"),
+    )
+
+
 # Shared by both run verbs so the two grammars cannot drift apart.
 _STACK_OPT = typer.Option(
     None, "--stack", "-s",
@@ -2230,6 +2286,13 @@ _AOE_TITLE_OPT = typer.Option(
          "'<folder> [<harness>/<backend>] <stack>'. With --aoe-group, also identifies the row to "
          "reuse — the pair is how an existing or hand-written row is adopted rather than duplicated.",
 )
+_LAST_OPT = typer.Option(
+    False, "--last",
+    help="Replay the last launch of this harness in this folder — its stack and flags, without "
+         "retyping them. This is what an Agent of Empires row runs. Errors if nothing was launched "
+         "here yet; it never falls back to the default baseline. Not combinable with "
+         "--stack/--recipe, which select a different stack.",
+)
 
 
 @app.command("host-run")
@@ -2247,6 +2310,7 @@ def host_run(
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
+    last: bool = _LAST_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -2263,6 +2327,7 @@ def host_run(
         harnessed host-run <harness> [path]                        # the `default` baseline
         harnessed host-run <harness> [path] --stack <name>
         harnessed host-run <harness> [path] --recipe r1 --recipe r2
+        harnessed host-run <harness> [path] --last                 # replay what ran here last
 
     ONE grammar for both stack sources, and the harness leads. An earlier design put the stack in
     the first positional slot, which made it indistinguishable from the project path under
@@ -2283,7 +2348,17 @@ def host_run(
     every launch.
     """
     _require_supported_harness(harness)
-    stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
+    if last:
+        # No mint on this path — the record already names a RESOLVED stack (a `--recipe` set was
+        # minted by the launch that recorded it), so there is nothing to create and nothing to
+        # clean up if the launch fails. Hence minted_dir stays None.
+        stack_name, no_strict_mcp_config, aoe_group, aoe_title = _resolve_last(
+            "host-run", harness, path, stack, recipe,
+            no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
+        )
+        minted_dir = None
+    else:
+        stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
     try:
         _launch_host(
             stack_name, harness, path, rm=rm, extra=_passthrough,
@@ -2697,6 +2772,7 @@ def container_run(
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
+    last: bool = _LAST_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -2706,6 +2782,7 @@ def container_run(
 ) -> None:
     """Run a stack in an isolated container against a project directory (container backend).
 
+        harnessed container-run <harness> [path] --last                 # replay what ran here last
         harnessed container-run <harness> [path]                        # the `default` baseline
         harnessed container-run <harness> [path] --stack <name>
         harnessed container-run <harness> [path] --recipe r1 --recipe r2
@@ -2717,7 +2794,17 @@ def container_run(
     collapses proliferation rather than relocating it.
     """
     _require_supported_harness(harness)
-    stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
+    if last:
+        # See the same branch in `host_run`: the record names an already-resolved stack, so there is
+        # nothing minted here and nothing to clean up. `recipe` stays empty, which also keeps the
+        # rebuild below off — a replay runs what is already assembled.
+        stack, no_strict_mcp_config, aoe_group, aoe_title = _resolve_last(
+            "container-run", harness, path, stack, recipe,
+            no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
+        )
+        minted_dir = None
+    else:
+        stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
 
     if recipe:
         # A freshly minted stack has no assembled profile, and everything below hard-errors without
@@ -2870,6 +2957,11 @@ def container_run(
     _write_project_tool_env(
         stack, project_path, harness=harness, verb="container-run",
         no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
+    )
+    # See the host-run call site: what `--last` replays and what the aoe row invokes.
+    lastrun.record(
+        "container-run", stack, harness, project_path,
+        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
     )
 
     # Re-attach to a running instance (interactive only) — but if it was built from an older image

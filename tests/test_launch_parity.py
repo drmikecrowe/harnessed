@@ -109,6 +109,8 @@ CONTAINER_ONLY: dict[str, str] = {
     # --- called by the host VERB rather than by _launch_host ---
     "_require_supported_harness": "`host_run` calls it itself, before delegating",
     "_resolve_stack": "`host_run` calls it itself — shared --stack/--recipe resolution",
+    "_resolve_last": "`host_run` calls it itself — shared --last replay resolution, and it must run "
+                     "BEFORE the sequencer, since it is what decides which stack the launch is",
 }
 
 

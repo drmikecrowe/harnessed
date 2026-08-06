@@ -205,23 +205,29 @@ def _apply(
     return True
 
 
-def mise_command(harness: str) -> str:
-    """What the row runs: the project's own `mise run <harness>` task.
+def replay_command(verb: str, harness: str) -> str:
+    """What the row runs: harnessed's own replay of the last launch in that folder.
 
-    That task's `run` line is `command_for` verbatim, written by the launch
-    (`launcher._write_project_tool_env`), so this is the same launch command by reference instead of
-    by copy — one place to edit it, and a dashboard command a human can read.
+    The flags live in `lastrun`'s state file, not in this string, so this stays STABLE across
+    launches — the identity property the old `mise run <harness> --` had, and the reason a flag
+    added to `command_for` is free rather than re-keying every existing row. See `command_for`'s
+    note on identity.
 
-    Terminated with `--` for the reason spelled out in `command_for`, plus one of its own: `mise run`
-    parses its own flags until `--`, so aoe's appended `--resume <id>` needs the separator to reach
-    the task at all. mise appends task args to the run script, where they land after the `--` that
-    command already ends with and reach the agent exactly as before.
+    Replaced the mise task (bd harnessed-7mt). That task lived in a `mise.local.toml` harnessed
+    wrote into the user's repo, which forced a `mise trust` prompt in every new worktree — trust is
+    keyed per config FILE and does not cascade from an ancestor, so every fresh worktree path
+    re-prompted. Owning both sides here removes the file and the prompt with it.
 
-    No cwd is pinned — mise walks up from the working directory to find `mise.local.toml`, and the
-    row's path is the project. If that ever stops holding the failure is loud (`mise: no such
-    task`), not silent.
+    NOT `--last --stack <name>`: naming the stack would put a launch flag back in the identity key.
+
+    Terminated with `--` for the reason spelled out in `command_for` — aoe appends the recorded
+    tool's resume flags on restart, and they have to sail past harnessed's own option parsing to
+    reach the agent. Unlike `mise run`, harnessed needs no separator of its own to see `--last`.
+
+    No cwd is pinned; the row's path is the project, and `--last` reads the record for that folder.
+    A folder with no record fails LOUDLY (see `lastrun.load`), never as a baseline launch.
     """
-    return shlex.join(["mise", "run", harness, "--"])
+    return shlex.join(["harnessed", verb, harness, "--last", "--"])
 
 
 def command_for(
@@ -395,9 +401,16 @@ def _same_title(a: str | None, b: str | None) -> bool:
 def _is_ours(command: str) -> bool:
     """Whether a stored command is a shape THIS module emits — the licence to rewrite the row.
 
-    Only the two shapes harnessed has ever written: the raw invocation `command_for` produces, and
-    the `mise run <harness> --` task `mise_command` records now. Everything else belongs to
+    Every shape harnessed has ever written: the raw invocation `command_for` produces, the
+    `harnessed <verb>-run <harness> --last --` replay `replay_command` records now, and the
+    `mise run <harness> --` task that preceded it (bd harnessed-7mt). Everything else belongs to
     somebody else and is reported without being touched.
+
+    THE MISE SHAPE IS STILL ACCEPTED THOUGH NOTHING WRITES IT. Rows created before the switch are
+    ours, and reading them as foreign would strand every one of them: drift against a foreign row is
+    only reported, so a user's existing rows would never be repaired onto the new command and the
+    launch would keep warning forever. Retiring the shape means we stop WRITING it, not that we
+    forget we wrote it.
 
     THE THIRD TOKEN IS CHECKED AGAINST THE HARNESS REGISTRY, not merely present. `mise run` alone
     is not our shape — it is the prefix of every mise task anyone has ever written, so a user's own
@@ -558,7 +571,7 @@ def sync_session(
         # Canonicalize once: the resolved path is both what we record and what we compare against,
         # so two routes to the same directory cannot register two rows.
         project_path = Path(project_path).resolve()
-        command = mise_command(harness)
+        command = replay_command(verb, harness)
         sessions = _sessions(exe)
         if _registered(sessions, command, project_path, group=group, title=title):
             return True
