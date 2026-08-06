@@ -1,0 +1,68 @@
+name: live verification
+
+# The home for the live layer (bd harnessed-3x1).
+#
+# `tests.yml` is hermetic by design — no podman on the runner, so every HARNESSED_PODMAN-gated test
+# skips. That was the whole defect: the live-verification tests existed, ran nowhere, and each run
+# printed a reassuring skip count while nothing exercised a real container. A skip is not a pass.
+#
+# NOT on pull_request, deliberately. These tests run `podman build`; adding minutes to every PR
+# would get the job disabled within a week, and a disabled check verifies exactly as much as a
+# skipped one. Post-merge plus a nightly run catches drift in the external contracts (podman's
+# inspect/port/images output formats, and everything in bd harnessed-rwt) within a day, which is
+# the timescale those actually change on.
+#
+# MANUAL-ONLY FOR NOW, AND THAT IS NOT THE INTENDED END STATE.
+#
+# Opening the gate for the first time showed the live layer does not currently pass: the tests
+# link the repo's `catalog-local/` at their own tmp catalog and leave the links behind, so every
+# test after the first fails, in the same run and in every later one (bd harnessed-ng5).
+#
+# Scheduling a nightly job against a suite that is red from day one produces a check people mute
+# within a week — which verifies exactly as much as the skip it was meant to replace, and is the
+# defect this whole effort exists to remove. So the automatic triggers stay off until ng5 lands.
+#
+# WHEN harnessed-ng5 IS FIXED, uncomment these — that is the step that closes harnessed-3x1:
+#   push:
+#     branches: [main]
+#   schedule:
+#     - cron: "0 4 * * *"     # 04:00 UTC: contract drift found next morning, not by a user
+# Adding `pull_request:` on top makes it a pre-merge gate; the trade is PR latency, since these
+# tests run real `podman build`.
+on:
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup uv (+ Python 3.12)
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      # Verified, not assumed: this job's entire value is that podman is really here. If the
+      # runner image ever drops it, this step fails loudly rather than letting the suite skip its
+      # way to a green tick.
+      - name: Ensure podman is available
+        run: |
+          podman --version || {
+            sudo apt-get update
+            sudo apt-get install -y podman
+          }
+          podman --version
+          podman info >/dev/null
+
+      # The suite's own guard (tests/conftest.py) fails the run if HARNESSED_PODMAN=1 is set and
+      # the podman-gated tests skip anyway — so a broken podman cannot masquerade as success here.
+      - name: Run the live-verification layer
+        env:
+          HARNESSED_PODMAN: "1"
+        run: uv run --extra dev pytest -v
+
+      - name: Report what ran
+        if: always()
+        run: echo "Live layer ran with HARNESSED_PODMAN=1; see the 'live verification' section in the log."

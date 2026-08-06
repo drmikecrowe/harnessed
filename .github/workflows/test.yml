@@ -20,5 +20,9 @@ jobs:
           python-version: "3.12"
 
       # Hermetic: no podman on the runner, so the HARNESSED_PODMAN-gated integration tests skip.
+      # That is deliberate and it is NOT the whole story — those tests have a home in `live.yml`,
+      # which runs them post-merge and nightly with podman installed. Before that existed they ran
+      # nowhere at all, and this job's skip count was the only trace of it (bd harnessed-3x1).
+      # The run now prints a "live verification" section naming what did not execute.
       - name: Run tests
         run: uv run --extra dev pytest

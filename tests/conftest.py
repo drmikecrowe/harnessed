@@ -1,9 +1,97 @@
-"""Shared pytest fixtures."""
+"""Shared pytest fixtures, and the accounting that keeps the live layer honest."""
 
 import os
+import re
 from pathlib import Path
 
 import pytest
+
+# WHY THIS EXISTS (bd harnessed-3x1). This suite carries a live-verification layer — tests that run
+# real podman, real binaries — behind env gates. For a long time it ran NOWHERE: `tools/run-tests.sh`
+# never set the gate and CI deliberately does not ("Hermetic: no podman on the runner"). Every run
+# reported `N passed, 22 skipped`, which reads as healthy, and the 22 WERE the entire live layer.
+#
+# A skip count is not neutral information. It is the number of things nobody checked, and it looked
+# identical whether the layer was thoughtfully deferred or silently broken. So the run now says, in
+# words, what did not happen — and refuses to exit green when someone ASKED for live verification
+# and did not get it.
+#
+# Matched on skip reason rather than a marker because the gates predate this and live in seven
+# files, each declaring its own `skipif`. New live tests should keep saying "live", "HARNESSED_
+# PODMAN", or "needs <thing>" in the reason, or carry the registered `live` marker.
+_LIVE_SKIP_RE = re.compile(
+    r"HARNESSED_PODMAN|live |needs the \w+ binary|is not installed", re.IGNORECASE
+)
+
+_PODMAN_REQUESTED = os.environ.get("HARNESSED_PODMAN") == "1"
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "live: exercises a real external binary; skipped unless its gate is open"
+    )
+
+
+def _live_skips(terminalreporter) -> list[str]:
+    """Reasons of every skipped test that was gating on a real external system."""
+    reasons = []
+    for report in terminalreporter.stats.get("skipped", []):
+        # For a skip, longrepr is (path, lineno, "Skipped: <reason>").
+        reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
+        if _LIVE_SKIP_RE.search(reason) or "live" in getattr(report, "keywords", {}):
+            reasons.append(reason)
+    return reasons
+
+
+def _podman_skips(terminalreporter) -> list[str]:
+    """Only the skips that HARNESSED_PODMAN=1 was supposed to open.
+
+    Deliberately narrower than `_live_skips`. Other gates exist — the dolt binary, `aoe` — and
+    failing a podman run because an unrelated tool is absent would train people to ignore this
+    guard, which is worse than not having it.
+    """
+    return [r for r in _live_skips(terminalreporter) if "HARNESSED_PODMAN" in r]
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Say plainly whether anything was verified against a real system this run."""
+    skipped = _live_skips(terminalreporter)
+    if not skipped:
+        if _PODMAN_REQUESTED:
+            terminalreporter.write_line("LIVE VERIFICATION: gate open, no live tests skipped.", green=True)
+        return
+
+    terminalreporter.write_sep("=", "live verification", red=_PODMAN_REQUESTED)
+    terminalreporter.write_line(
+        f"{len(skipped)} live test(s) did NOT run — nothing in this run exercised a real "
+        f"podman, container, or external binary."
+    )
+    for reason in sorted(set(skipped)):
+        terminalreporter.write_line(f"  - {reason}")
+    if _PODMAN_REQUESTED and _podman_skips(terminalreporter):
+        terminalreporter.write_line(
+            "HARNESSED_PODMAN=1 was set, so the podman-gated tests above were expected to RUN. "
+            "Failing this run: being asked for live verification and silently delivering none is "
+            "the exact failure this guard exists to prevent."
+        )
+    else:
+        terminalreporter.write_line(
+            "Set HARNESSED_PODMAN=1 (with podman installed) to run them. See bd harnessed-3x1."
+        )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Fail closed: asking for the live layer and not getting it is not a pass.
+
+    Without this, `HARNESSED_PODMAN=1 pytest` on a machine with no usable podman is
+    indistinguishable from a clean run — the tests skip, the suite is green, and the CI job that
+    exists specifically to exercise podman reports success having exercised nothing.
+    """
+    if not _PODMAN_REQUESTED or exitstatus != 0:
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None and _podman_skips(reporter):
+        session.exitstatus = 1
 
 # The REAL user config dir, captured before any fixture monkeypatches XDG_CONFIG_HOME away. Used to
 # re-expose podman's own config inside the isolated root — see `_isolated_user_catalog`.
