@@ -63,6 +63,19 @@ def test_ordinary():
     assert True
 '''
 
+# The shape that slipped past the first version of this guard: a precondition skip that only fires
+# WHEN the gate is open, whose reason mentions neither the gate nor any known pattern. Real example
+# from tests/test_live_verification_debt.py.
+IMAGE_PRECONDITION_SKIP = '''
+import pytest
+@pytest.mark.skipif(True, reason="harnessed-base:local not built — run `harnessed build` first")
+def test_needs_an_image():
+    assert False, "must not run"
+
+def test_ordinary():
+    assert True
+'''
+
 
 class TestGateClosed:
     """Deferring the live layer is legitimate — say so loudly, do not fail."""
@@ -96,3 +109,17 @@ class TestGateOpen:
         result = live_session(gate_open=True, test_body=NO_SKIPS)
         assert result.ret == 0
         result.stdout.fnmatch_lines(["*gate open, no live tests skipped*"])
+
+    def test_an_unrecognised_skip_reason_still_fails(self, live_session):
+        """The hole the first version of this guard had, found in review of PR #212.
+
+        `test_live_verification_debt.py` skips with "<image> not built — run `harnessed build`
+        first", a reason that fires ONLY when the gate is open and matches no known pattern. The
+        guard asked "does the reason mention HARNESSED_PODMAN?", so it did not, and the run exited
+        green having verified nothing — the exact fail-open the guard exists to prevent.
+
+        The rule is now an allowlist: with the gate open, a reason this file has never seen fails
+        the run rather than passing it.
+        """
+        result = live_session(gate_open=True, test_body=IMAGE_PRECONDITION_SKIP)
+        assert result.ret != 0, "an unknown skip with the gate open must fail, not pass"
