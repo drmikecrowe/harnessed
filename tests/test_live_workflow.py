@@ -16,6 +16,7 @@ A one-line edit could undo any of these. These tests are the guard.
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -160,10 +161,20 @@ class TestItProvisionsTheLiveGates:
         A step would open the gate for CI alone. The binary was already present on the author's
         machine and the test skipped there too, because `tools/run-tests.sh` runs under mise and
         mise only exposes what the project declares. The manifest fixes both at once, and is the
-        reason `shellcheck` and `pyright` are pinned there rather than assumed."""
-        mise = (ROOT / "mise.toml").read_text()
-        assert re.search(r'"aqua:dolthub/dolt"\s*=\s*"\d+\.\d+\.\d+"', mise), (
-            "dolt is not declared+pinned in mise.toml, so the suite cannot see it"
+        reason `shellcheck` and `pyright` are pinned there rather than assumed.
+
+        PARSED, not text-matched (CodeRabbit). A regex over the file passes on a commented-out
+        entry, or one that drifted into `[tasks]` — the same vacuity that let an earlier assertion
+        in this branch be satisfied by a comment. Reading `[tools]` structurally means only a real,
+        effective declaration counts.
+        """
+        tools = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))["tools"]
+        assert "aqua:dolthub/dolt" in tools, (
+            f"dolt is not an effective entry in mise.toml [tools], so the suite cannot see it; "
+            f"[tools] holds {sorted(tools)}"
+        )
+        assert re.fullmatch(r"\d+\.\d+\.\d+", str(tools["aqua:dolthub/dolt"])), (
+            "dolt must be pinned to an exact version — CLAUDE.md: pin every download"
         )
 
     def test_the_base_image_is_built_before_the_suite(self, job):
@@ -172,12 +183,24 @@ class TestItProvisionsTheLiveGates:
         `test_live_verification_debt.py` skips two `@podman` tests unless
         `localhost/harnessed-base:latest` exists, and evaluates that at COLLECTION time. A later
         test building the image does not help — the skip decision is already made. So the image must
-        exist before pytest starts."""
+        exist before pytest starts.
+
+        The command must be BARE `harnessed build`, and the anchored pattern is what enforces that.
+        `harnessed build <stack> <harness>` also builds the agent and derived images, runs the
+        credentialed supply-chain rescan, and creates the stack's podman volumes — including volumes
+        for the very tests that exercise volume creation. This test therefore pins the narrow form
+        rather than merely "a build happens".
+        """
         steps = _steps(job)
         build = next(
-            (i for i, st in enumerate(steps) if "harnessed build" in _commands(st)), None
+            (i for i, st in enumerate(steps)
+             if re.search(r"harnessed build[ \t]*$", _commands(st), re.M)),
+            None,
         )
-        assert build is not None, "nothing builds the base image, so its live tests skip forever"
+        assert build is not None, (
+            "no step runs a bare `harnessed build`; either nothing builds the base image, or it "
+            "was widened to `build <stack> <harness>`, which does far more than this step needs"
+        )
         assert build < steps.index(_suite_step(job)), (
             "the image must exist before pytest collects, not merely before the tests run"
         )
