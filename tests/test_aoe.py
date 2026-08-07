@@ -138,7 +138,7 @@ class TestSyncSession:
         [add] = rec.registrations()
         assert add[1] == str(tmp_path)
         assert _flag(add, "-p") == aoe.PROFILE
-        assert _flag(add, "--cmd-override") == "mise run claude --"
+        assert _flag(add, "--cmd-override") == "harnessed container-run claude --last --"
 
     def test_uses_cmd_override_not_cmd(self, rec, tmp_path):
         # `--cmd` is validated against aoe's tool list and silently substitutes its configured
@@ -309,14 +309,21 @@ class TestTitleUniqueness:
 
 
 class TestIdentity:
-    """(path, harness) — the key that decides duplicate vs distinct.
+    """(path, verb, harness) — the key that decides duplicate vs distinct.
 
-    The recorded command is `mise run <harness>`, which names no stack and no verb, so everything
-    those two used to split now shares one row. Which stack that row starts is whatever the
-    project's `[tasks.<harness>]` currently says; the launch rewrites it.
+    The recorded command is `harnessed <verb>-run <harness> --last --`, which names no STACK, so two
+    stacks in one folder still share a row: which one it starts is whatever `lastrun` recorded, and
+    the launch rewrites that. The VERB is named, so host and container launches no longer collapse
+    together (bd harnessed-7mt) — they did under `mise run <harness> --`, which named neither.
+
+    That collapse was not free: one row cannot restart two backends, so a folder used both ways had
+    a row whose meaning depended on which launch ran last. Naming the verb costs one extra row per
+    folder-used-both-ways and buys a row that restarts what it says it restarts.
     """
 
-    def _existing(self, tmp_path: Path, command: str = "mise run claude --") -> str:
+    def _existing(
+        self, tmp_path: Path, command: str = "harnessed container-run claude --last --"
+    ) -> str:
         return f'[{{"id": "s1", "path": "{tmp_path}", "command": "{command}"}}]'
 
     def test_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
@@ -340,11 +347,21 @@ class TestIdentity:
         aoe.sync_session("container-run", "other-stack", "claude", tmp_path)
         assert rec.added() == []
 
-    def test_both_verbs_share_one_row(self, monkeypatch, tmp_path):
+    def test_each_verb_gets_its_own_row(self, monkeypatch, tmp_path):
+        """The deliberate SPLIT (bd harnessed-7mt), and the one identity change of that switch.
+
+        A container row cannot restart a host-native session: the two differ in backend, not in
+        label. Under `mise run <harness> --` they shared a row and the survivor was whichever
+        launch wrote the mise task last — a row that silently restarted the other mode. The verb is
+        in the command now, so `host-run` here does NOT match the container row above and registers
+        its own.
+        """
         rec = Recorder(sessions=self._existing(tmp_path))
         rec.install(monkeypatch)
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
-        assert rec.added() == []
+        assert len(rec.registrations()) == 1
+        [add] = rec.registrations()
+        assert _flag(add, "--cmd-override") == "harnessed host-run claude --last --"
 
     def test_an_open_mcp_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
         rec = Recorder(sessions=self._existing(tmp_path))
@@ -586,7 +603,8 @@ class TestWriteDispatch:
 
     def test_already_registered_is_success_without_writing(self, monkeypatch, tmp_path):
         rec = Recorder(
-            sessions=f'[{{"id": "s1", "path": "{tmp_path}", "command": "mise run claude --"}}]'
+            sessions=f'[{{"id": "s1", "path": "{tmp_path}", '
+                     f'"command": "harnessed container-run claude --last --"}}]'
         ).install(monkeypatch)
         assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
         assert rec.spawned == []
@@ -882,7 +900,7 @@ class TestCommandDrift:
     """
 
     TITLE = "proj [claude/host] serena"
-    OURS = "mise run claude --"
+    OURS = "harnessed host-run claude --last --"
     STALE_TITLE = "proj [claude/host] serena (stale abc123)"
 
     def _renames(self, rec: Recorder) -> list[list[str]]:

@@ -2,8 +2,8 @@
 
 A recipe can declare `setup:`, `install:` and `init:` scripts plus `env:`. Everything those need in
 order to run — the substituted config values, the derived project primitives, the env map, the
-mount list, the `.mise.local.toml` task block, the project tool-env file — is derived here from the
-stack, its recipes and the project path.
+mount list, the project tool-env file — is derived here from the stack, its recipes and the project
+path.
 
 Shared by both launch modes: the container path hands these to podman, the host path (hostrun.py)
 applies them in-process. That is exactly why they live in one module instead of one per mode.
@@ -11,20 +11,17 @@ applies them in-process. That is exactly why they live in one module instead of 
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import shlex
 import subprocess
 import sys
-import tomllib
 
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-from . import aoe
 from . import emit
 from . import paths
 from rich.markup import escape
@@ -351,67 +348,17 @@ _MISE_MARKER = "# managed by harnessed"
 # The comment that marks a `[tasks.<harness>]` table as OURS to regenerate. Ownership has to be
 # per-table, not per-file: the file as a whole is shared with the user the moment they add a task of
 # their own, and `_MISE_MARKER` at the top of it says nothing about who wrote the table at line 40.
-_MISE_TASK_MARKER = f"{_MISE_MARKER} — regenerated every launch; rename the task to make it yours."
+def project_env_path(project_path: Path) -> Path:
+    """Where THIS project's dotenv lives. The one path `harnessed project-env-path` prints.
 
+    A pure function of the project, and PUBLIC since bd harnessed-7mt: the user's global mise config
+    calls the CLI wrapper on every directory it visits, so this has to be answerable for a directory
+    that has no env — and answerable without side effects. mise tolerates a missing `_.file`
+    silently, which is what makes one global line safe everywhere instead of one file per repo.
 
-def _mise_task_block(harness: str, stack: str, verb: str, command: str) -> str:
-    """One `[tasks.<harness>]` table, marked as ours, ending in a newline.
-
-    Named for the HARNESS alone — `mise run claude`, `mise run omp` — because that is the thing a
-    user types from muscle memory. The consequence is that a project's last launch of a given
-    harness owns that task name: launching a second stack with claude rewrites `[tasks.claude]`
-    rather than adding a second table. That is the same last-launch-wins rule the env file next to
-    it already follows, and the description records which stack the current one replays.
+    Keyed on `git_common_dir`, so every worktree of a checkout shares one env: worktrees differ in
+    what they are building, never in which tools the project needs.
     """
-    # ensure_ascii=False — TOML is UTF-8 by definition, and the default would render the em dash
-    # (and any non-ASCII in a project path) as a `\uXXXX` escape nobody wants to read.
-    return (
-        f"\n{_MISE_TASK_MARKER}\n"
-        f"[tasks.{harness}]\n"
-        f"description = {json.dumps(f'harnessed {verb} — {stack}', ensure_ascii=False)}\n"
-        f"run = {json.dumps(command, ensure_ascii=False)}\n"
-    )
-
-
-def _upsert_mise_task(mise_local: Path, harness: str, block: str) -> bool:
-    """Add or refresh our `[tasks.<harness>]` table in place. True when the file changed.
-
-    Only ever called on a file we own (see `_write_project_tool_env`). Appending `[tasks.claude]` at
-    EOF is valid TOML — a table header closes whatever table preceded it — so this appends when the
-    table is absent and rewrites in place when it is ours.
-
-    "Ours" is the marker comment on the line directly above the header. A user who deletes that
-    comment, or writes their own `[tasks.claude]` into our file, has taken the name — we never touch
-    it again and never silently lose their `run` line to a relaunch. Renaming the task is therefore
-    the documented way to take ownership of one.
-    """
-    text = mise_local.read_text(encoding="utf-8")
-    header = f"[tasks.{harness}]"
-    lines = text.splitlines(keepends=True)
-    start = next((i for i, ln in enumerate(lines) if ln.strip() == header), None)
-
-    if start is None:
-        mise_local.write_text(text.rstrip("\n") + "\n" + block, encoding="utf-8")
-        return True
-    if start == 0 or _MISE_TASK_MARKER not in lines[start - 1]:
-        return False
-
-    # Our block runs from the marker to the next table header. Ours never contains a multi-line
-    # array, so "a line starting with `[` at column 0" cannot be anything but the next table.
-    end = next(
-        (i for i in range(start + 1, len(lines)) if lines[i].startswith("[")), len(lines)
-    )
-    rebuilt = "".join(lines[: start - 1]) + block.lstrip("\n") + "".join(lines[end:])
-    if rebuilt == text:
-        return False
-    mise_local.write_text(rebuilt, encoding="utf-8")
-    return True
-
-
-def _project_env_file(project_path: Path) -> Path:
-    """Where THIS project's dotenv lives. A pure function of the project, so the ownership check
-    can name the only pointer value harnessed would ever write, without depending on whether this
-    particular launch happened to have values to write."""
     gcd = paths.git_common_dir(project_path)
     return (
         paths.xdg_state_home() / "harnessed" / "project-env"
@@ -419,120 +366,39 @@ def _project_env_file(project_path: Path) -> Path:
     )
 
 
-def _fully_harnessed_owned(mise_local: Path, project_path: Path) -> bool:
-    """Whether EVERY directive in this file is one harnessed wrote.
-
-    `_MISE_MARKER` cannot answer this. It is a public comment string, so a `mise.local.toml` that
-    arrived with a CLONED REPO can carry it — the marker proves the text was copied, not that we
-    wrote it. That is tolerable for deciding whether to upsert our own task table (the existing
-    rule, unchanged), and not tolerable for deciding to TRUST: trust is what lets mise apply the
-    file's `[env]` to every process whose cwd is under the project, and mise's prompt exists
-    precisely to stop a config that came with a checkout from doing that silently. Auto-trusting on
-    a copyable marker would hand that decision to whoever wrote the repo (CWE-345).
-
-    So this checks the CONTENT and fails closed — anything unrecognised means we do not vouch for
-    the file:
-
-      * nothing but `[env]` and `[tasks]` at the top level (a `[tools]` table is the user's, and a
-        tools-only file needs no trust anyway),
-      * `[env]` holding only the `_.file` pointer, and pointing at THIS project's dotenv — not an
-        arbitrary path someone else chose,
-      * every task being a harnessed launch task (`run` is `aoe.command_for`, which always starts
-        with the `harnessed` binary).
-
-    A file we would refuse to trust still works; the user gets mise's normal prompt, which is the
-    correct outcome for a file harnessed did not fully author.
-    """
-    try:
-        data = tomllib.loads(mise_local.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        # ValueError covers tomllib.TOMLDecodeError. Unparseable is not ours.
-        return False
-    if set(data) - {"env", "tasks"}:
-        return False
-    env = data.get("env") or {}
-    if set(env) - {"_"}:
-        return False
-    pointer = env.get("_") or {}
-    if set(pointer) - {"file"}:
-        return False
-    if "file" in pointer and Path(str(pointer["file"])) != _project_env_file(project_path):
-        return False
-    for task in (data.get("tasks") or {}).values():
-        run = task.get("run") if isinstance(task, dict) else None
-        if not isinstance(run, str) or not run.startswith("harnessed "):
-            return False
-    return True
-
-
-def _trust_mise_local(mise_local: Path) -> None:
-    """Trust the `mise.local.toml` we just wrote, so a plain shell in this project can load it.
-
-    mise refuses to parse an untrusted config that can affect the environment. A `[tools]`/`[tasks]`
-    only file is exempt — nothing in it executes at load time — but ours carries `[env] _.file`,
-    which is exactly the shape that requires trust. So without this, the file we write to make `bd`
-    work in a plain terminal is the one thing mise declines to read, and the user gets
-    "Config files … are not trusted" until they run `mise trust` themselves.
-
-    Every other surface already compensates: the container gets `MISE_TRUSTED_CONFIG_PATHS`
-    (launcher), and the base image runs `mise trust -a` from `.bashrc` and `/etc/profile.d`. The
-    host write was the one place that generated a config and left it untrusted.
-
-    Trust records a hash of the CONTENT, so this must run after the last write — trusting a file we
-    then rewrite trusts bytes that no longer exist.
-
-    Best-effort by design: mise is not a harnessed dependency and may be absent, and a launch must
-    not fail because a convenience could not be applied. A failure here costs the user one
-    `mise trust`, which is exactly where they were before.
-    """
-    try:
-        proc = subprocess.run(
-            ["mise", "trust", str(mise_local)], check=False, capture_output=True, text=True,
-        )
-    except OSError:
-        # mise absent entirely. Not an error: a host without mise never loads this file anyway, so
-        # there is nothing to trust and nothing for the user to fix.
-        return
-    if proc.returncode != 0:
-        _say(
-            f"[yellow]note:[/yellow] could not `mise trust` {mise_local.name} — run it yourself if "
-            f"a plain shell here reports an untrusted config"
-        )
-
-
 def _write_project_tool_env(
     stack: str, project_path: Path, *, harness: str, verb: str,
     no_strict_mcp: bool = False, aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
 ) -> None:
-    """Give the PROJECT the same tool env harnessed gives the agent, via mise.
+    """Give the PROJECT the same tool env harnessed gives the agent.
 
     The gap this closes: harnessed configures the agent it launches and nothing else. Everything
     else in that repo — a `bd` you run in a terminal, a `claude` you started yourself, a hook — sees
     none of it. On 2026-07-27 that meant three live agents in one project with zero BEADS_
     variables, each falling back to bd's auto-start, each hitting the sidecar's exclusive lock.
 
-    Two files, and which value lives in which is the whole design:
+    ONE FILE, AND IT IS NOT IN THE REPO. A dotenv under $XDG_STATE_HOME (0600) holds the values,
+    INCLUDING the service password. Credentials are referenced, never replicated — a secret copied
+    into the source tree is one `git add -f`, one backup, one tree-walking tool away from leaving
+    the machine. Keyed on `git_common_dir`, so every worktree of a checkout reads one env.
 
-      * A dotenv OUTSIDE the repo ($XDG_STATE_HOME, 0600) holds the values, INCLUDING the service
-        password. Credentials are referenced, never replicated — a secret copied into the source
-        tree is one `git add -f`, one backup, one tree-walking tool away from leaving the machine,
-        and `mise.local.toml` being gitignored is not the same guarantee as not being there.
-      * `mise.local.toml` in the repo holds NO VALUES — only a POINTER to that dotenv
-        (`[env] _.file`) and the launch task below. mise loads it for any process whose CWD is under
-        the project, which is exactly the audience that was missing.
-      * a `[tasks.<harness>]` table, so `mise run claude` in this repo replays THIS launch. The
-        `run` line is `aoe.command_for` verbatim — the same string the dashboard row records —
-        because a launcher that drifts from the row purporting to restart it is worse than no
-        shortcut at all. It carries every flag that shapes the session (`--stack`,
-        `--no-strict-mcp-config`, `--aoe-group`, `--aoe-title`) and, like the row, omits the
-        per-invocation lifecycle flags (`--fresh`, `--rm`) that are yours to re-decide each time.
+    NOTHING IS WRITTEN INTO THE PROJECT (bd harnessed-7mt). This used to also write a
+    `mise.local.toml` holding a `[env] _.file` pointer at the dotenv and a `[tasks.<harness>]`
+    launch task. Both are gone:
 
-    NEVER WRITES A FILE THAT IS NOT OURS. A `mise.local.toml` without our marker comment is the
-    user's: we print what to add and change nothing. Silently reformatting someone's config — TOML
-    round-trips lose comments and ordering, and a second `[env]` table is a parse error outright —
-    is a worse bug than the one this fixes. Inside a file we DO own, the task table may be refreshed
-    (see `_upsert_mise_task`), because a launch flag that changed has to reach the shortcut that
-    claims to replay the launch; the user can still claim the name by renaming the task.
+      * the task was what the aoe dashboard row invoked; the row now runs
+        `harnessed <verb>-run <harness> --last --` and reads its flags from `lastrun`
+      * the pointer is not replaced by default. Configuring a plain shell was always OPT-IN
+        territory — harnessed configures the agent it launches, and this reached past that — so it
+        is now the user's own one-time choice of loader (mise, direnv, a shell function) pointed at
+        `harnessed project-env-path`. Referenced, never copied: the file holds live credentials and
+        is regenerated every launch.
+
+    Why it had to go: mise keys trust per config FILE and trust does not cascade from a trusted
+    ancestor, so a file harnessed dropped into each repo re-prompted in every new worktree.
+    Automating that away was rejected — a mise config can carry `_.source`, so trusting one grants
+    code execution, and auto-trusting on directory entry would hand that to any repo you walk into.
+    Not writing the file removes the prompt instead of defeating it.
 
     Requires every value to be stable — a `publish: ephemeral` port would be written down and be
     wrong after the next container recreate, which is why beads-server is `publish: stable`.
@@ -543,14 +409,14 @@ def _write_project_tool_env(
         **svc_client_env(stack, project_path, "host"),
     }
 
-    env_file = None
     if values:
-        gcd = paths.git_common_dir(project_path)
-        env_file = (
-            paths.xdg_state_home() / "harnessed" / "project-env"
-            / f"{paths.project_hash(gcd or project_path)}.env"
-        )
-        env_file.parent.mkdir(parents=True, exist_ok=True)
+        env_file = project_env_path(project_path)
+        # mode ON the mkdir, not only the chmod after it. The file is written after the chmod, so
+        # no unprivileged process can open it by PATH either way — but a directory created 0755 can
+        # be opened in that window and the descriptor held, and an fd survives the later chmod
+        # (openat() relative to it is not re-checked against the new mode). Creating it restricted
+        # closes that. The chmod stays for directories an older harnessed already made 0755.
+        env_file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         env_file.parent.chmod(0o700)
         body = "".join(f"{k}={v}\n" for k, v in sorted(values.items()))
         env_file.write_text(
@@ -558,54 +424,41 @@ def _write_project_tool_env(
         )
         env_file.chmod(0o600)
 
-    mise_local = project_path / "mise.local.toml"
-    if not mise_local.exists():
-        mise_local.write_text(
-            f"{_MISE_MARKER}: this file is NOT committed (see .gitignore). It points mise at the\n"
-            f"# tool env for this project, so `bd` and friends work in a plain terminal too, and\n"
-            f"# gives you `mise run <harness>` to start this stack again.\n",
-            encoding="utf-8",
-        )
-        _say(f"[blue][INFO][/blue] wrote {mise_local.name} — `bd` now works in a plain shell here")
+    # NOTHING IS WRITTEN INTO THE PROJECT. The dotenv above is the whole of what a launch records,
+    # and it lives in the state dir. See this function's docstring for what replaced the file.
+    _warn_if_stale_mise_local(project_path)
 
-    text = mise_local.read_text(encoding="utf-8")
-    if env_file is not None and str(env_file) not in text:
-        pointer = f'[env]\n_.file = "{env_file}"\n'
-        # Appending `[env]` is safe here and only here: a file carrying our marker has no `[env]` of
-        # its own yet (this is the only code that adds one), and a file that is not ours we do not
-        # touch at all. The reachable case is a project whose first launch had no tool env to write.
-        if _MISE_MARKER in text:
-            mise_local.write_text(text.rstrip("\n") + "\n" + pointer, encoding="utf-8")
-        else:
-            _say(
-                f"[blue][INFO][/blue] {mise_local.name} exists and is yours to edit; to configure "
-                f"this project's tools for a plain shell, add:\n    {pointer.rstrip()}"
-            )
 
-    command = aoe.command_for(
-        verb, stack, harness, Path(project_path).resolve(),
-        group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+def _warn_if_stale_mise_local(project_path: Path) -> None:
+    """Point out a `mise.local.toml` an OLDER harnessed wrote, once per launch.
+
+    Not deleted. It is in the user's repo, it may since have been edited, and silently removing a
+    file from someone's working tree to complete our own migration is exactly the "harnessed does
+    not write your mise config" guarantee running backwards. Say what it is and let them decide.
+
+    Only OUR marker qualifies. A `mise.local.toml` that was always the user's gets no message —
+    they never had our file and have nothing to clean up.
+    """
+    stale = project_path / "mise.local.toml"
+    try:
+        if not stale.is_file() or _MISE_MARKER not in stale.read_text(encoding="utf-8"):
+            return
+    except (OSError, UnicodeDecodeError):
+        # UnicodeDecodeError is a ValueError, NOT an OSError, so it needs naming separately. The
+        # file belongs to the user and may be in any encoding; an advisory notice that cannot read
+        # it must stay silent, never abort the launch it is only commenting on.
+        return
+    # SAYS WHAT DELETING COSTS, not just that it is allowed. "Safe to delete" alone was wrong for
+    # the two audiences who were using it: `mise run <harness>` stops existing, and a shell that
+    # got its BEADS_/service vars from the pointer goes back to unconfigured. Both are silent
+    # losses — mise reports a missing task as its own generic error, and an unconfigured `bd`
+    # falls back to auto-start rather than complaining.
+    _say(
+        f"[blue][INFO][/blue] {stale.name} is left over from an older harnessed and is no longer "
+        f"read. Before deleting it: `mise run <harness>` here stops working — use "
+        f"`harnessed <verb>-run <harness> --last` instead — and if a plain shell in this repo got "
+        f"its `bd`/service vars from it, re-point one at `harnessed project-env-path`."
     )
-    block = _mise_task_block(harness, stack, verb, command)
-    if _MISE_MARKER not in mise_local.read_text(encoding="utf-8"):
-        # Someone else's file. Same rule as the pointer above: we offer, we do not edit. Appending a
-        # table would be TOML-safe, but "harnessed does not write your mise config" is a guarantee
-        # worth more than the convenience, and a task named for a harness is exactly the name they
-        # are most likely to want for something of their own.
-        # escape() — a TOML table header is `[tasks.claude]`, which rich reads as markup and eats,
-        # printing an instruction with the one line the user has to copy missing from it.
-        _say(
-            f"[blue][INFO][/blue] to get `mise run {harness}` for this stack, add to "
-            f"{mise_local.name}:\n{escape(block.strip())}"
-        )
-    elif _upsert_mise_task(mise_local, harness, block):
-        _say(f"[blue][INFO][/blue] `mise run {harness}` in this repo now starts {stack}")
-    # AFTER every write above — trust hashes the content (see _trust_mise_local) — and only for a
-    # file whose every directive is ours. NOT the marker: see _fully_harnessed_owned for why a
-    # copyable comment cannot authorize trust even though it authorizes the upsert above.
-    if _fully_harnessed_owned(mise_local, project_path):
-        _trust_mise_local(mise_local)
-    _ensure_gitignore_entry(project_path, "mise.local.toml")
 
 
 def _recipe_env(recipes, project_path: Path, *, mode: str) -> dict[str, str]:

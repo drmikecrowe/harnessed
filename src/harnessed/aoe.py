@@ -75,6 +75,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from . import lastrun
 from . import paths
 from .schema import HARNESS_CONFIG_DIR
 
@@ -205,23 +206,29 @@ def _apply(
     return True
 
 
-def mise_command(harness: str) -> str:
-    """What the row runs: the project's own `mise run <harness>` task.
+def replay_command(verb: str, harness: str) -> str:
+    """What the row runs: harnessed's own replay of the last launch in that folder.
 
-    That task's `run` line is `command_for` verbatim, written by the launch
-    (`launcher._write_project_tool_env`), so this is the same launch command by reference instead of
-    by copy — one place to edit it, and a dashboard command a human can read.
+    The flags live in `lastrun`'s state file, not in this string, so this stays STABLE across
+    launches — the identity property the old `mise run <harness> --` had, and the reason a flag
+    added to `command_for` is free rather than re-keying every existing row. See `command_for`'s
+    note on identity.
 
-    Terminated with `--` for the reason spelled out in `command_for`, plus one of its own: `mise run`
-    parses its own flags until `--`, so aoe's appended `--resume <id>` needs the separator to reach
-    the task at all. mise appends task args to the run script, where they land after the `--` that
-    command already ends with and reach the agent exactly as before.
+    Replaced the mise task (bd harnessed-7mt). That task lived in a `mise.local.toml` harnessed
+    wrote into the user's repo, which forced a `mise trust` prompt in every new worktree — trust is
+    keyed per config FILE and does not cascade from an ancestor, so every fresh worktree path
+    re-prompted. Owning both sides here removes the file and the prompt with it.
 
-    No cwd is pinned — mise walks up from the working directory to find `mise.local.toml`, and the
-    row's path is the project. If that ever stops holding the failure is loud (`mise: no such
-    task`), not silent.
+    NOT `--last --stack <name>`: naming the stack would put a launch flag back in the identity key.
+
+    Terminated with `--` for the reason spelled out in `command_for` — aoe appends the recorded
+    tool's resume flags on restart, and they have to sail past harnessed's own option parsing to
+    reach the agent. Unlike `mise run`, harnessed needs no separator of its own to see `--last`.
+
+    No cwd is pinned; the row's path is the project, and `--last` reads the record for that folder.
+    A folder with no record fails LOUDLY (see `lastrun.load`), never as a baseline launch.
     """
-    return shlex.join(["mise", "run", harness, "--"])
+    return shlex.join(["harnessed", verb, harness, "--last", "--"])
 
 
 def command_for(
@@ -395,9 +402,16 @@ def _same_title(a: str | None, b: str | None) -> bool:
 def _is_ours(command: str) -> bool:
     """Whether a stored command is a shape THIS module emits — the licence to rewrite the row.
 
-    Only the two shapes harnessed has ever written: the raw invocation `command_for` produces, and
-    the `mise run <harness> --` task `mise_command` records now. Everything else belongs to
+    Every shape harnessed has ever written: the raw invocation `command_for` produces, the
+    `harnessed <verb>-run <harness> --last --` replay `replay_command` records now, and the
+    `mise run <harness> --` task that preceded it (bd harnessed-7mt). Everything else belongs to
     somebody else and is reported without being touched.
+
+    THE MISE SHAPE IS STILL ACCEPTED THOUGH NOTHING WRITES IT. Rows created before the switch are
+    ours, and reading them as foreign would strand every one of them: drift against a foreign row is
+    only reported, so a user's existing rows would never be repaired onto the new command and the
+    launch would keep warning forever. Retiring the shape means we stop WRITING it, not that we
+    forget we wrote it.
 
     THE THIRD TOKEN IS CHECKED AGAINST THE HARNESS REGISTRY, not merely present. `mise run` alone
     is not our shape — it is the prefix of every mise task anyone has ever written, so a user's own
@@ -558,7 +572,7 @@ def sync_session(
         # Canonicalize once: the resolved path is both what we record and what we compare against,
         # so two routes to the same directory cannot register two rows.
         project_path = Path(project_path).resolve()
-        command = mise_command(harness)
+        command = replay_command(verb, harness)
         sessions = _sessions(exe)
         if _registered(sessions, command, project_path, group=group, title=title):
             return True
@@ -651,6 +665,25 @@ def sync_session(
         return False
 
 
+def _replays_stack(tokens: list[str], recorded_path: str | None, verb: str, stack: str) -> bool:
+    """Whether a `--last` row would start `stack` — the stack a replay row does not carry.
+
+    Only for the shape `replay_command` writes (`harnessed <verb> <harness> --last --`); the caller
+    handles the older `--stack <name>` shape itself. Everything is guarded because this runs inside
+    `harnessed rm`'s best-effort cleanup, over aoe's JSON, which is not our schema to trust.
+
+    Returns False when the record is missing — see `forget_stack` on why an unattributable row is
+    left alone rather than removed.
+    """
+    if len(tokens) < 5 or tokens[3:5] != ["--last", "--"] or not recorded_path:
+        return False
+    try:
+        entry = lastrun.load(verb, tokens[2], Path(recorded_path))
+    except (OSError, TypeError, ValueError):
+        return False
+    return bool(entry) and entry.get("stack") == stack
+
+
 def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
     """Drop the sessions for a stack after its instances are torn down. Never raises.
 
@@ -658,9 +691,24 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
     instance of a stack across harnesses and projects, and leaves host-native sessions — which own
     no container — alone. Removing by session id, not title, so a user-renamed row still matches.
 
-    Matched on the `--stack <name>` PAIR rather than a token index. The stack used to be the third
-    token, which a prefix compare could check; it is now a flag value that sits after the harness
-    and path, so its position varies with whether a project path was recorded.
+    TWO ROW SHAPES, because the stack is no longer IN the command (bd harnessed-7mt):
+
+      * `--stack <name>` pair — the raw `command_for` shape. Matched on the PAIR rather than a token
+        index: the stack used to be the third token, which a prefix compare could check; it is a
+        flag value sitting after the harness and path, so its position varies with whether a project
+        path was recorded.
+      * `<harness> --last --` — what `replay_command` writes now. It names NO stack, deliberately:
+        putting one back would re-key every row whenever the flag set changed, which is the identity
+        property the switch away from `mise run` was protecting. The stack is instead resolved from
+        the `lastrun` record for that row's (path, verb, harness) — the same record the row replays,
+        so a row matches this cleanup exactly when it would have started the stack being removed.
+
+    NOT matched by title. `--aoe-title` overrides the derived title, so a titled row would escape
+    cleanup and a coincidentally-titled foreign row could be caught by it.
+
+    A replay row whose record is missing or names another stack is LEFT ALONE. Removing rows we
+    cannot positively attribute to this stack is the one failure mode worse than leaving a stale
+    one — `harnessed rm` is destructive and unattended.
     """
     try:
         exe = _bin()
@@ -674,8 +722,9 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
                 continue
             if tokens[:2] != ["harnessed", verb]:
                 continue
-            if not any(
-                a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(tokens)
+            if not (
+                any(a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(tokens))
+                or _replays_stack(tokens, session.get("path"), verb, stack)
             ):
                 continue
             sid = session.get("id")
