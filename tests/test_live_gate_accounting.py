@@ -106,6 +106,19 @@ class TestGateClosed:
         assert result.ret == 0, "a deliberately closed gate must not fail the suite"
         result.stdout.fnmatch_lines(["*live test(s) did NOT run*"])
 
+    def test_a_marker_only_skip_is_listed_even_with_the_gate_closed(self, live_session):
+        """Found by adversarial review of the harnessed-ln7 change: the new marker-driven listing
+        was only exercised with the gate OPEN.
+
+        A governed test whose reason matches no pattern ("<image> not built") is invisible to
+        `_LIVE_SKIP_RE`. With the gate closed it cannot fail the run, but it must still be NAMED —
+        "N live test(s) did NOT run" followed by a list that omits one of the N is the same
+        misdirection this change exists to remove, just without the red.
+        """
+        result = live_session(gate_open=False, test_body=IMAGE_PRECONDITION_SKIP)
+        assert result.ret == 0, "a closed gate must not fail the suite"
+        result.stdout.fnmatch_lines(["*not built*"])
+
     def test_it_names_the_way_to_open_the_gate(self, live_session):
         result = live_session(gate_open=False, test_body=PODMAN_SKIP)
         result.stdout.fnmatch_lines(["*HARNESSED_PODMAN=1*"])
