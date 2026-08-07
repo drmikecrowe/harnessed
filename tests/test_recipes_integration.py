@@ -201,14 +201,13 @@ def test_live_capabilities_present_in_container(stack):
         | {("plugin", n) for n in caps.plugins}
     )
     missing = expected - present
-    # The hatago log rides along on an MCP miss (bd harnessed-rv2.2). live.yml failed six runs
-    # reporting `not connected (checked hatago://servers)` with nothing in the log to say whether the
-    # child had died or never spawned; the assertion message is where a CI reader will actually see
-    # it, so it belongs here rather than only in the JSON.
-    log = report.get("hatago_log", "")
+    # The failing capability's own `detail` carries the remediation pointer (T-02-07: the report
+    # never quotes container output — see capability.MCP_MISS_REMEDIATION). Surface the details of
+    # the missing capabilities so a CI reader gets the pointer without a second round trip.
+    details = [f"{r['kind']}/{r['name']}: {r['detail']}" for r in report["results"] if not r["present"]]
     assert not missing, (
-        f"{stack}: capabilities missing from the container: {missing}"
-        + (f"\n--- hatago log ---\n{log}" if log else "")
+        f"{stack}: capabilities missing from the container: {missing}\n  "
+        + "\n  ".join(details)
     )
 
 

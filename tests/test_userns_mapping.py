@@ -61,9 +61,14 @@ class TestNoCallSiteRegresses:
     """
 
     def test_no_bare_keep_id_remains_in_src(self):
+        """`paths.py` is exempt: it OWNS the mapping, so it both builds `USERNS_ARG` and PARSES it
+        (`pod_host_uid` needs `startswith("--userns=keep-id")` to tell keep-id modes from `auto`).
+        Parsing the literal is not emitting it. Every other module must go through the constant, and
+        that is what this sweep enforces — the same exemption `test_the_sweep_is_not_vacuous` makes."""
         offenders = {
             f"{path.name}:{i}": line.strip()
             for path in sorted(SRC.rglob("*.py"))
+            if path.name != "paths.py"
             for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
             if _BARE_KEEP_ID.search(line)
         }

@@ -144,13 +144,24 @@ def guard_ownership(path: Path) -> None:
     dir, so the check passed, while the pod (bare `keep-id`, so still uid 1000 on the host) owned
     nothing and the beads-server entrypoint died on `mkdir -p /data/dolt` (bd harnessed-rv2.1).
     """
+    mapping = paths.USERNS_ARG.removeprefix("--userns=")
+    writer = paths.pod_host_uid()
+    # BEFORE the absent-path early return, deliberately: an unresolved mapping is a problem even for
+    # a dir harnessed is about to create, because the pod will write to it as a uid nobody can name.
+    # Checking after the return let the unresolved case escape on the common path (CodeRabbit).
+    if writer is None:
+        raise PersistOwnershipError(
+            f"harnessed cannot determine which host uid the pod writes as under `{mapping}`, so it "
+            f"will not risk a silent permission error on {path}. Only `keep-id:uid="
+            f"{paths.CONTAINER_UID}` (the invoking user maps onto the image uid) and `host` are "
+            "resolvable; bare `keep-id`, `auto` and `nomap` draw the image's uid from the subuid "
+            "range, where the resulting owner is not predictable from the argument."
+        )
     try:
         st = path.stat()
     except OSError:
-        return  # absent → created later as the caller; nothing to guard
-    writer = paths.pod_host_uid()
+        return  # absent → created later as the caller; nothing left to guard
     if st.st_uid != writer:
-        mapping = paths.USERNS_ARG.removeprefix("--userns=")
         raise PersistOwnershipError(
             f"persist dir {path} is owned by uid {st.st_uid}, but harnessed's pod writes as host "
             f"uid {writer} (you are uid {os.getuid()}; the pod runs `{mapping}`). The tool would "

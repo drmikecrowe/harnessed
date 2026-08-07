@@ -65,19 +65,27 @@ def test_without_userns_is_idempotent(args):
 
 @given(st.integers(min_value=0, max_value=65535))
 def test_only_a_mapping_onto_the_image_uid_makes_the_pod_the_caller(mapped):
-    """The single invariant the guard rests on: the pod writes as the CALLER exactly when the
-    mapping names the image's uid, and as the IMAGE's uid in every other case — including the bare
-    `keep-id` that caused the CI failure."""
+    """The invariant the guard rests on: the pod writes as the CALLER exactly when the mapping names
+    the image's uid. Every other keep-id mapping is UNRESOLVED — the image's uid then comes from the
+    subuid range, so the host owner is not computable from the argument, and answering a number
+    would be fail-open (CodeRabbit)."""
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(paths, "USERNS_ARG", f"--userns=keep-id:uid={mapped},gid={mapped}")
-        expected = os.getuid() if mapped == paths.CONTAINER_UID else paths.CONTAINER_UID
+        expected = os.getuid() if mapped == paths.CONTAINER_UID else None
         assert paths.pod_host_uid() == expected
 
 
 @given(st.text(max_size=40).filter(lambda s: "uid=" not in s))
-def test_a_mapping_that_names_no_uid_falls_back_to_the_image_uid(tail):
-    """Fail SAFE: an unrecognized mapping must resolve to the image uid, which makes
-    `guard_ownership` fire, not to the caller, which would make it wave the launch through."""
+def test_a_keep_id_mapping_that_names_no_uid_is_unresolved(tail):
+    """Fail SAFE means REFUSING, not guessing: bare `keep-id` and its variants must resolve to None
+    so `guard_ownership` raises, rather than to a uid that might wave a bad launch through."""
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(paths, "USERNS_ARG", f"--userns=keep-id{tail}")
-        assert paths.pod_host_uid() == paths.CONTAINER_UID
+        assert paths.pod_host_uid() is None
+
+
+@given(st.sampled_from(["auto", "nomap", "private", "container:abc", ""]))
+def test_non_keep_id_modes_are_unresolved(mode):
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(paths, "USERNS_ARG", f"--userns={mode}")
+        assert paths.pod_host_uid() is None

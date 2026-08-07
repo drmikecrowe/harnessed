@@ -200,50 +200,61 @@ class TestThePollWaits:
         assert capability.introspect_mcp(INSTANCE, "claude")[0] == {"time": "connected"}
 
 
-class TestTheHatagoLogIsSurfaced:
-    """`live.yml` captures no hatago log, so rv2.2's runner-side cause was inferred from code shape
-    rather than observed. Whatever the cause turns out to be, the next run must show it."""
+class TestTheReportCarriesNoChildProcessOutput:
+    """T-02-07, restated: the report carries capability NAMES + STATUS only, never config values or
+    secrets. `capability.py` says so three times — the module docstring, the `detail` field comment,
+    and `_TEST_DETAIL_MAX`, which caps recipe-test output at 120 chars because "a stray secret could
+    ride along".
 
-    def test_a_missing_expected_server_captures_the_log(self, monkeypatch):
-        captured: list[tuple[str, str]] = []
+    An earlier version of this change put a 200-line, unbounded, unredacted tail of
+    `/tmp/hatago.log` into the same report. hatago's children are MCP servers that take credentials
+    from the environment, and a crashing one prints exactly that — into a report that `--json` feeds
+    to a PUBLIC CI log. CodeRabbit caught it. The log is now POINTED AT rather than copied.
 
-        def _fake_exec(instance, script, **_kw):
-            captured.append((instance, script))
-            return "hatago: child 'time' exited 1: ModuleNotFoundError\n"
+    These tests are the guard that it does not come back.
+    """
 
-        monkeypatch.setattr(capability, "_exec", _fake_exec)
-
-        log = capability.read_hatago_log(INSTANCE)
-
-        assert "ModuleNotFoundError" in log
-        assert [i for i, _s in captured] == [INSTANCE], f"read the wrong container: {captured}"
-        assert any(capability.HATAGO_LOG in s for _i, s in captured), (
-            f"the probe did not read {capability.HATAGO_LOG}: {captured}"
+    def test_the_report_has_no_field_for_child_output(self):
+        """Structural: there must be nowhere to put it."""
+        fields = set(capability.CapabilityReport(stack="s").to_dict())
+        assert fields == {"stack", "ok", "results"}, (
+            f"the report grew a field beyond names+status: {fields}"
         )
 
-    def test_an_unreadable_log_is_empty_not_an_exception(self, monkeypatch):
-        """Best-effort: a teardown race must not turn a capability failure into a crash."""
-        monkeypatch.setattr(capability, "_exec", lambda *_a, **_k: "")
-        assert capability.read_hatago_log(INSTANCE) == ""
+    def test_nothing_reads_the_hub_log_into_the_process(self):
+        """`read_hatago_log` existed to copy the log out of the container. It must not come back:
+        a helper that returns the bytes is one refactor away from a field that publishes them."""
+        assert not hasattr(capability, "read_hatago_log")
 
-    def test_the_report_carries_the_log_when_present(self):
-        report = capability.CapabilityReport(stack="s", hatago_log="boom")
-        assert report.to_dict()["hatago_log"] == "boom"
+    def test_a_missing_server_points_at_the_log_instead_of_quoting_it(self):
+        """The diagnosability rv2.2 asked for, without the egress. The detail names WHERE to look
+        and how to keep the instance alive long enough to look."""
+        expected = schema.Capabilities(mcp_servers=["time"], skills=[], commands=[], plugins=[])
+        report = capability.build_report("s", expected, capability.LiveCapabilities(mcp={}))
 
-    def test_a_green_report_does_not_carry_an_empty_log_key(self):
-        """Adding a permanently-empty key to every JSON report would be noise in every green run."""
-        assert "hatago_log" not in capability.CapabilityReport(stack="s").to_dict()
+        detail = report.results[0].detail
+        assert "hatago.log" in detail, f"the miss does not say where to look: {detail!r}"
+        assert "--keep" in detail, (
+            f"teardown removes the instance, so a pointer that omits --keep is not actionable: "
+            f"{detail!r}"
+        )
 
-    def test_the_human_readable_report_shows_it_too(self):
-        """`harnessed test` without --json is what a person runs; the log has to reach them there,
-        not only in the CI-facing JSON."""
+    def test_a_present_server_gets_no_remediation_noise(self):
+        expected = schema.Capabilities(mcp_servers=["time"], skills=[], commands=[], plugins=[])
+        live = capability.LiveCapabilities(mcp={"time": "connected"}, mcp_source="src")
+        detail = capability.build_report("s", expected, live).results[0].detail
+        assert "hatago.log" not in detail
+
+    def test_the_markdown_report_quotes_no_log_either(self):
+        """`--json` is not the only egress; `harnessed test` without it renders markdown."""
+        expected = schema.Capabilities(mcp_servers=["time"], skills=[], commands=[], plugins=[])
         rendered = report_mod.render_markdown(
-            capability.CapabilityReport(stack="s", hatago_log="child 'time' exited 1")
+            capability.build_report("s", expected, capability.LiveCapabilities(mcp={}))
         )
-        assert "child 'time' exited 1" in rendered
-
-    def test_a_green_run_renders_no_log_section(self):
-        assert "hatago log" not in report_mod.render_markdown(capability.CapabilityReport(stack="s"))
+        assert "hatago.log" in rendered          # the pointer survives
+        assert "```" not in rendered, (          # ...and no fenced block quoting container output
+            f"the markdown report grew a quoted block: {rendered}"
+        )
 
 
 class TestIntrospectForwardsTheExpectation:
@@ -270,17 +281,12 @@ class TestIntrospectForwardsTheExpectation:
         assert live.mcp == {"time": "connected"}
 
 
-class TestTheWiringFromTheTestVerbToTheLog:
-    """S13 as specified is about `run_capability_test`, not about `read_hatago_log` in isolation.
+class TestTheTestVerbPublishesNothingFromTheContainer:
+    """The end-to-end shape of T-02-07 for this change: drive `run_capability_test` with a stack
+    whose MCP server never connects, and assert the report it returns carries the POINTER and no
+    container bytes. Every podman-facing call is stubbed; the data flow is what is under test."""
 
-    The seam that actually matters is ORDERING: the log must be read while the instance is alive.
-    Teardown runs in a `finally` before the report is built, so capturing it a few lines later —
-    the obvious place — silently yields "" on every real run, and the CI log stays as useless as it
-    was. Every podman-facing call is stubbed; what is under test is the sequence, not podman.
-    """
-
-    def _run(self, monkeypatch, *, declared: set[str], connected: set[str]) -> tuple:
-        events: list[str] = []
+    def _report(self, monkeypatch, *, declared: set[str], connected: set[str]):
         expected = schema.Capabilities(
             mcp_servers=sorted(declared), skills=[], commands=[], plugins=[],
         )
@@ -292,29 +298,21 @@ class TestTheWiringFromTheTestVerbToTheLog:
             capability, "introspect",
             lambda *a, **k: capability.LiveCapabilities(mcp={n: "connected" for n in connected}),
         )
+        monkeypatch.setattr(capability, "teardown", lambda *a, **k: None)
+        # If anything tried to shell into the container for output, this would fire.
+        monkeypatch.setattr(capability, "_exec", lambda *a, **k: pytest.fail(
+            "run_capability_test read from the container after introspection — T-02-07"
+        ))
+        return capability.run_capability_test(".", "s", "claude", run_tests=False)
 
-        def _read_log(_instance, **_kw):
-            events.append("read_log")
-            return "hatago: child died"
+    def test_a_missing_server_yields_a_pointer_and_no_container_bytes(self, monkeypatch):
+        report = self._report(monkeypatch, declared={"time"}, connected=set())
+        assert report.ok is False
+        detail = report.results[0].detail
+        assert "hatago.log" in detail and "--keep" in detail
+        assert set(report.to_dict()) == {"stack", "ok", "results"}
 
-        monkeypatch.setattr(capability, "read_hatago_log", _read_log)
-        monkeypatch.setattr(capability, "teardown", lambda *a, **k: events.append("teardown"))
-        report = capability.run_capability_test(".", "s", "claude", run_tests=False)
-        return report, events
-
-    def test_a_missing_server_captures_the_log_before_teardown(self, monkeypatch):
-        report, events = self._run(monkeypatch, declared={"time"}, connected=set())
-        assert report.hatago_log == "hatago: child died"
-        assert events == ["read_log", "teardown"], (
-            f"the log must be read while the instance is alive, got {events}"
-        )
-        assert report.to_dict()["hatago_log"] == "hatago: child died"
-
-    def test_a_green_run_reads_no_log(self, monkeypatch):
-        report, events = self._run(monkeypatch, declared={"time"}, connected={"time"})
-        assert report.hatago_log == ""
-        assert "read_log" not in events
-
-    def test_a_stack_declaring_no_mcp_reads_no_log(self, monkeypatch):
-        _report, events = self._run(monkeypatch, declared=set(), connected=set())
-        assert "read_log" not in events
+    def test_a_green_run_says_nothing_about_the_log(self, monkeypatch):
+        report = self._report(monkeypatch, declared={"time"}, connected={"time"})
+        assert report.ok is True
+        assert "hatago.log" not in report.results[0].detail

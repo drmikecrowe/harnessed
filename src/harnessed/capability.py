@@ -68,17 +68,25 @@ CONTAINER_HOME = os.environ.get("CONTAINER_HOME", "/home/harnessed")
 # hatago's HTTP port inside the pod (the readiness signal: bound ⇒ children connected).
 HATAGO_PORT = paths.hatago_port()
 
-# Where the hub writes its log INSIDE the instance. Authoritative source is the redirect in
-# `catalog/base/harnessed-start` (`hatago serve ... >/tmp/hatago.log 2>&1`); `launcher._wait_hatago`
-# names the same path in its own "hub never came up" error.
+# Where the hub writes its log INSIDE the instance (the redirect in `catalog/base/harnessed-start`).
 #
-# The suppression below is for ruff's S108 (insecure /tmp usage). That rule is about CREATING
-# predictable temp files on a shared HOST filesystem, where another user can win a symlink race.
-# This is a container-internal path in an ephemeral pod harnessed just launched, harnessed only ever
-# READS it, and the name is hatago's choice rather than ours. Suppressed with a reason instead of
-# moved, because moving it would mean changing where hatago writes.
-# (Do not spell the directive token in prose — ruff reads it as a real blanket directive.)
-HATAGO_LOG = "/tmp/hatago.log"  # noqa: S108
+# harnessed POINTS AT this file and never reads it. T-02-07: the report carries capability names and
+# status only, never config values or secrets. hatago's children are MCP servers that take
+# credentials from the environment, so a crashing child prints exactly the thing this report must
+# not carry — and `--json` feeds that report to a public CI log. An earlier version of this module
+# copied a 200-line tail of it into `CapabilityReport`; that was a T-02-07 violation added ~60 lines
+# below the constant (`_TEST_DETAIL_MAX`) that exists to prevent the same mistake for recipe tests.
+#
+# The cost is real and accepted: a runner-only MCP failure is not self-diagnosing from the CI log.
+# The remediation below is what makes it reachable in one step instead.
+#
+# The suppression below is for ruff S108 (insecure /tmp usage): that rule is about CREATING
+# predictable temp files on a shared HOST filesystem. This is a container-internal path harnessed
+# only ever names. (Do not spell the directive token in prose — ruff reads it as a real directive.)
+_HATAGO_LOG_PATH = "/tmp/hatago.log"  # noqa: S108
+MCP_MISS_REMEDIATION = (
+    f"re-run with --keep, then `podman exec <instance> cat {_HATAGO_LOG_PATH}`"
+)
 
 # How long to wait for hatago's stdio CHILDREN after its own port is up, and how often to re-ask.
 # `wait_ready` covers the port; these cover the gap between the port binding and the children
@@ -114,9 +122,6 @@ class CapabilityReport:
 
     stack: str
     results: list[CapabilityResult] = field(default_factory=list)
-    #: Tail of the instance's hatago log, captured ONLY when an expected MCP server was absent.
-    #: Empty on a green run — see `read_hatago_log`.
-    hatago_log: str = ""
 
     @property
     def ok(self) -> bool:
@@ -129,16 +134,12 @@ class CapabilityReport:
         return 0 if self.ok else 1
 
     def to_dict(self) -> dict:
-        out: dict = {
+        # names + status ONLY (T-02-07). Do not add a field here that carries container output.
+        return {
             "stack": self.stack,
             "ok": self.ok,
             "results": [r.to_dict() for r in self.results],
         }
-        # Only when there is something to say. A permanently-empty key in every green run's JSON is
-        # noise that trains readers to skip the one run where it is populated.
-        if self.hatago_log:
-            out["hatago_log"] = self.hatago_log
-        return out
 
 
 @dataclass
@@ -175,7 +176,8 @@ def build_report(
             detail = live.mcp.get(name) or live.mcp_source or "connected"
         else:
             checked = live.mcp_source or f"{HATAGO_SERVERS_URI} / claude mcp list"
-            detail = f"not connected (checked {checked})"
+            # Names where to look; never quotes what is there (T-02-07, bd harnessed-rv2.2).
+            detail = f"not connected (checked {checked}) — {MCP_MISS_REMEDIATION}"
         results.append(CapabilityResult(name=name, kind=MCP, present=present, detail=detail))
 
     for name in expected.skills:
@@ -701,8 +703,13 @@ def introspect_mcp(
     # call at roughly 2x `timeout` instead of 1x; across the MCP-declaring stacks that is a few
     # minutes against live.yml's 60, and it is only ever paid on a run that is already failing.
     deadline = time.monotonic() + timeout
-    while expected and not expected <= servers.keys() and time.monotonic() < deadline:
-        time.sleep(MCP_POLL_INTERVAL)
+    while expected and not expected <= servers.keys():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        # Never sleep PAST the deadline: with a small `timeout` a full-interval sleep would both
+        # overshoot the budget and buy one probe the caller did not ask for (CodeRabbit).
+        time.sleep(min(MCP_POLL_INTERVAL, remaining))
         servers = _mcp_from_hatago(instance)
     if servers:
         # Deliberately returned even when INCOMPLETE: `build_report` marks the absent names
@@ -712,17 +719,6 @@ def introspect_mcp(
     if servers:
         return servers, f"{harness} -p (strict isolated config)"
     return {}, HATAGO_SERVERS_URI
-
-
-def read_hatago_log(instance: str, *, lines: int = 200) -> str:
-    """Best-effort tail of the hub's log from a running instance; "" when unreadable.
-
-    Nothing read this file before, so a runner-only MCP failure was undiagnosable from the CI log:
-    the report said `not connected (checked hatago://servers)` and there was no way to tell a child
-    that spawned-and-died from one that never spawned. Best-effort by design — a teardown race must
-    downgrade the report, never crash it.
-    """
-    return _exec(instance, f"tail -n {lines} {HATAGO_LOG} 2>/dev/null || true").strip()
 
 
 # --- Skill / command introspection: mounted profile filesystem → headless JSON backstop ----------
@@ -814,7 +810,6 @@ def run_capability_test(
     if own_project:
         project_path = tempfile.mkdtemp(prefix=f"harnessed-test-{stack_name}-")
     test_results: list[CapabilityResult] = []
-    hatago_log = ""
     try:
         instance = launch_headless(
             root, stack_name, harness, project_path=project_path, harnessed_bin=harnessed_bin
@@ -822,10 +817,6 @@ def run_capability_test(
         try:
             wait_ready(instance)
             live = introspect(instance, harness, expect_mcp=expected.mcp_servers)
-            # Captured HERE, not after the report is built: teardown runs in the `finally` below, and
-            # a torn-down instance has no log to read. Only on a miss — see `read_hatago_log`.
-            if set(expected.mcp_servers) - set(live.mcp):
-                hatago_log = read_hatago_log(instance)
             if run_tests:
                 test_results = run_recipe_tests(
                     instance,
@@ -842,5 +833,4 @@ def run_capability_test(
             shutil.rmtree(project_path, ignore_errors=True)
     report = build_report(stack_name, expected, live)
     report.results.extend(test_results)
-    report.hatago_log = hatago_log
     return report

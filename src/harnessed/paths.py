@@ -42,35 +42,42 @@ CONTAINER_GID = 1000
 USERNS_ARG = f"--userns=keep-id:uid={CONTAINER_UID},gid={CONTAINER_GID}"
 
 
-def pod_host_uid() -> int:
-    """The HOST uid the pod's process writes as — READ OFF `USERNS_ARG`, never assumed.
+def pod_host_uid() -> int | None:
+    """The HOST uid the pod's process writes as, or None when the mapping does not determine it.
 
     A bind-mounted host dir is writable from inside the pod exactly when it is owned by this uid, so
     this is the number every ownership check must compare against (`persist.guard_ownership`).
 
-    Deriving it from the argument instead of hardcoding either answer is the point. `guard_ownership`
-    exists so that a wrong assumption about the mapping surfaces as a named pre-launch error rather
-    than a silent EACCES deep inside a container — and a guard that assumes the mapping is correct
-    cannot catch the mapping being wrong. That circularity is why the guard passed on six
-    consecutive red CI runs while `mkdir -p /data/dolt` failed inside the beads-server sidecar
-    (bd harnessed-rv2.1). Un-pin `USERNS_ARG` and this function follows it, the guard fires, and the
-    failure is named before launch instead of after.
+    Read off `USERNS_ARG` rather than assumed. `guard_ownership` exists so that a wrong assumption
+    about the mapping surfaces as a named pre-launch error rather than a silent EACCES deep inside a
+    container — and a guard that assumes the mapping is correct cannot catch the mapping being
+    wrong. That circularity is why the guard passed on six consecutive red CI runs while
+    `mkdir -p /data/dolt` failed inside the beads-server sidecar (bd harnessed-rv2.1).
 
-      pinned to CONTAINER_UID → the invoking user IS the pod's uid-1000 process → os.getuid()
-      anything else (incl. bare `keep-id`, which names no uid) → the pod writes as CONTAINER_UID
+      keep-id pinned to CONTAINER_UID → the invoking user IS the pod's uid-1000 process → os.getuid()
+      host                            → no user namespace, so container CONTAINER_UID IS host CONTAINER_UID
+      anything else                   → None
 
-    SCOPE, precisely — an adversarial review caught the first draft of this docstring overclaiming.
-    With `USERNS_ARG` as shipped, the first branch always wins and this returns `os.getuid()`; the
-    second exists for the edit that un-pins the constant, and is reached only by tests that patch
-    it. So this catches *the declared mapping being un-pinned*. It CANNOT observe what podman
-    actually did — a rootful daemon, a missing subuid range, or a runtime that ignores the flag all
-    still produce a silent EACCES, and only the runner's
-    `podman info --format '{{.Host.IDMappings}}'` (bd harnessed-rv2.3) shows that.
+    **None means UNRESOLVED, and callers must refuse rather than guess.** An earlier version
+    answered `CONTAINER_UID` here and called it fail-safe. It is not (CodeRabbit): under bare
+    `keep-id` on a host whose user is 1001, podman maps host 1001 → container 1001 and the image's
+    uid 1000 is drawn from the SUBUID range, so the pod's writes land as ~100999 on the host, not as
+    1000. Answering "1000" would ACCEPT a persist dir owned by host uid 1000 that the pod cannot
+    write — fail-OPEN, in precisely the state the original bug produces.
+
+    SCOPE: this reasons about the DECLARED argument only. It cannot observe what podman actually
+    did — a rootful daemon or a missing subuid range still yields a silent EACCES, and only the
+    runner's `podman info --format '{{.Host.IDMappings}}'` (bd harnessed-rv2.3) shows that.
     """
+    if USERNS_ARG == "--userns=host":
+        return CONTAINER_UID
+    if not USERNS_ARG.startswith("--userns=keep-id"):
+        return None
     mapped = re.search(r"\buid=(\d+)", USERNS_ARG)
     if mapped and int(mapped.group(1)) == CONTAINER_UID:
         return os.getuid()
-    return CONTAINER_UID
+    return None
+
 
 # Default port the hatago hub listens on (design D-04).
 HATAGO_PORT = 3535

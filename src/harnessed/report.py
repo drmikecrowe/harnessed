@@ -42,12 +42,10 @@ def render_markdown(report: CapabilityReport) -> str:
         lines.append(f"| {result.name} | {result.kind} | {_status_cell(result)} |")
     if not report.results:
         lines.append("| _(none)_ | | the manifest declares no capabilities |")
-    if report.hatago_log:
-        # Populated only when an expected MCP server was absent. Without it the reader sees
-        # `not connected (checked hatago://servers)` and has no way to tell a child that spawned and
-        # died from one that never spawned at all (bd harnessed-rv2.2).
-        lines += ["", "### hatago log (an expected MCP server was absent)", "", "```",
-                  report.hatago_log, "```"]
+    # NO container output here. The per-capability `detail` carries a POINTER to the hub log
+    # (`capability.MCP_MISS_REMEDIATION`); quoting the log itself would put child-process output —
+    # which for MCP servers means credentials from the environment — into a report that `--json`
+    # feeds to a public CI log. T-02-07; see the note on `capability._HATAGO_LOG_PATH`.
     return "\n".join(lines)
 
 

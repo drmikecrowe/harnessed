@@ -177,46 +177,61 @@ class TestTheGuardFollowsTheMappingInsteadOfAssumingIt:
         """Pinned: the image's uid is mapped onto the invoking user, so the pod writes as us."""
         assert paths.pod_host_uid() == os.getuid()
 
-    def test_pod_host_uid_follows_an_unpinned_mapping(self, monkeypatch):
-        """Bare `keep-id` names no uid: the invoking uid maps to itself and the pod's process stays
-        the image's uid, so on the host it writes as 1000 no matter who launched it."""
+    def test_pod_host_uid_is_none_for_an_unpinned_mapping(self, monkeypatch):
+        """Bare `keep-id` maps the image's uid out of the SUBUID range, so the host uid the pod
+        writes as is not computable from the argument. None, not a guess."""
         monkeypatch.setattr(paths, "USERNS_ARG", "--userns=keep-id")
-        assert paths.pod_host_uid() == paths.CONTAINER_UID
-
-    def test_a_mapping_onto_some_other_uid_is_not_treated_as_ours(self, monkeypatch):
-        """Only a mapping onto the IMAGE's uid makes the pod write as the caller."""
-        monkeypatch.setattr(paths, "USERNS_ARG", "--userns=keep-id:uid=1234,gid=1234")
-        assert paths.pod_host_uid() == paths.CONTAINER_UID
+        assert paths.pod_host_uid() is None
 
     @pytest.mark.parametrize(
-        "mapping, pod_is_the_caller",
+        "mapping, expected",
         [
-            # An adversarial reviewer asked whether the `\buid=(\d+)` scan really holds up. It does,
-            # and these are the cases that decide it — pinned so a "simplification" of that regex
-            # cannot quietly break the guard.
-            ("--userns=keep-id:uid=1000,gid=1000", True),   # the pinned form
-            ("--userns=keep-id:gid=1000,uid=1000", True),   # REVERSED order — `\b` matches after `,`
-            ("--userns=keep-id:uid=01000,gid=1000", True),  # zero-padded
-            ("--userns=keep-id", False),                    # bare: the bug this bead fixes
-            ("--userns=keep-id:uid=1001,gid=1001", False),  # mapped onto somebody else
-            ("--userns=keep-id:uid=10000,gid=1000", False), # 1000 is a PREFIX of 10000, not a match
-            ("--userns=keep-id:subuid=1000", False),        # `uid=` inside a longer word: no `\b`
-            ("--userns=host", False),                       # no userns → container 1000 IS host 1000
-            ("--userns=auto", False),                       # private range → fail SAFE, guard fires
+            # RESOLVED — the mapping tells us exactly which host uid the pod writes as.
+            ("--userns=keep-id:uid=1000,gid=1000", "caller"),   # the pinned form
+            ("--userns=keep-id:gid=1000,uid=1000", "caller"),   # reversed — `\b` matches after `,`
+            ("--userns=keep-id:uid=01000,gid=1000", "caller"),  # zero-padded
+            ("--userns=host", "image"),                         # no namespace: container 1000 IS host 1000
+            # UNRESOLVED — the pod writes as a uid this function cannot compute.
+            ("--userns=keep-id", None),                         # the bug: image uid maps to a SUBUID
+            ("--userns=keep-id:uid=1001,gid=1001", None),       # mapped onto somebody else
+            ("--userns=keep-id:uid=10000,gid=1000", None),      # 1000 is a PREFIX of 10000, not a match
+            ("--userns=keep-id:subuid=1000", None),             # `uid=` inside a longer word: no `\b`
+            ("--userns=auto", None),                            # private range
+            ("--userns=nomap", None),                           # host user excluded entirely
         ],
     )
-    def test_the_mapping_is_parsed_not_guessed(self, monkeypatch, mapping, pod_is_the_caller):
-        monkeypatch.setattr(paths, "USERNS_ARG", mapping)
-        expected = os.getuid() if pod_is_the_caller else paths.CONTAINER_UID
-        assert paths.pod_host_uid() == expected, f"{mapping} resolved wrong"
+    def test_the_mapping_is_parsed_not_guessed(self, monkeypatch, mapping, expected):
+        """CodeRabbit's finding: returning CONTAINER_UID for an UNRESOLVED mapping is not fail-safe.
 
-    def test_an_unrecognized_mapping_fails_safe(self, monkeypatch):
-        """`--userns=auto` maps the image uid into a PRIVATE range — neither the caller nor 1000.
-        `pod_host_uid` cannot know the answer, so it must return the value that makes the guard
-        REFUSE the launch rather than the one that waves it through. Refusing a launch that might
-        have worked is recoverable; a silent EACCES inside a container is the bug this bead is."""
+        Under bare `keep-id` on a host whose user is 1001, podman maps host 1001 -> container 1001
+        and the image's uid 1000 comes from the SUBUID range — so files the pod writes land as
+        ~100999 on the host, not as 1000. Answering "1000" would then ACCEPT a persist dir owned by
+        host uid 1000 that the pod cannot actually write: fail-open, in exactly the state the
+        original bug produces. Unresolved must be None, and the guard must refuse.
+        """
+        monkeypatch.setattr(paths, "USERNS_ARG", mapping)
+        want = {"caller": os.getuid(), "image": paths.CONTAINER_UID, None: None}[expected]
+        assert paths.pod_host_uid() == want, f"{mapping} resolved wrong"
+
+    def test_an_unresolved_mapping_refuses_even_a_caller_owned_dir(self, tmp_path, monkeypatch):
+        """The fail-OPEN case, driven rather than asserted by name.
+
+        A previous version returned CONTAINER_UID here and called it "fail-safe". It is not: a dir
+        owned by uid 1000 would sail through while the pod wrote as a subuid. The guard must refuse
+        whenever it cannot say who the pod writes as."""
+        d = tmp_path / "beads"
+        d.mkdir()
         monkeypatch.setattr(paths, "USERNS_ARG", "--userns=auto")
-        assert paths.pod_host_uid() == paths.CONTAINER_UID
+        with pytest.raises(PersistOwnershipError) as ei:
+            persist.guard_ownership(d)
+        assert "auto" in str(ei.value)
+
+    def test_an_unresolved_mapping_refuses_before_the_dir_even_exists(self, tmp_path, monkeypatch):
+        """An ABSENT dir used to return early, before the mapping was ever consulted — so the
+        unresolved case escaped entirely on the common path (harnessed creates the dir itself)."""
+        monkeypatch.setattr(paths, "USERNS_ARG", "--userns=keep-id")
+        with pytest.raises(PersistOwnershipError):
+            persist.guard_ownership(tmp_path / "does-not-exist-yet")
 
     def test_the_guard_would_have_caught_the_ci_failure(self, tmp_path, monkeypatch):
         """Run 31170180149's situation, which the guard waved through.
@@ -242,8 +257,10 @@ class TestTheGuardFollowsTheMappingInsteadOfAssumingIt:
             persist.guard_ownership(d)
 
         msg = str(ei.value)
-        assert str(paths.CONTAINER_UID) in msg  # names the uid that actually cannot write
-        assert "chown" in msg                   # and what to do about it
+        # The refusal now comes from the mapping being UNRESOLVED rather than from a uid comparison:
+        # under bare keep-id the image's uid is drawn from the subuid range, so there is no host uid
+        # to compare against and guessing one was the fail-open bug CodeRabbit found.
+        assert "keep-id" in msg and "subuid" in msg
 
     def test_the_same_dir_is_fine_once_the_mapping_is_pinned(self, tmp_path, monkeypatch):
         """The other half of the pair, and the one that proves the fix UNBLOCKS rather than merely

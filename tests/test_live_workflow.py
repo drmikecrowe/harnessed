@@ -35,10 +35,6 @@ def _steps(job) -> list[dict]:
     return job["steps"]
 
 
-def _run_bodies(job) -> str:
-    return "\n".join(s.get("run", "") for s in _steps(job))
-
-
 def _commands(step: dict) -> str:
     """A step's run body with comment lines stripped.
 
@@ -49,6 +45,16 @@ def _commands(step: dict) -> str:
     return "\n".join(
         line for line in step.get("run", "").splitlines() if not line.strip().startswith("#")
     )
+
+
+def _run_bodies(job) -> str:
+    """Every step's EXECUTED commands, joined — comments excluded.
+
+    Including comments made these assertions satisfiable by prose: this workflow's comments mention
+    `id -u`, `IDMappings` and `mise` by name, so deleting the commands while leaving the comments
+    that explain them would have kept every diagnostics test green (CodeRabbit).
+    """
+    return "\n".join(_commands(step) for step in _steps(job))
 
 
 def _suite_step(job) -> dict:
