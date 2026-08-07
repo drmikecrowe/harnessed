@@ -100,7 +100,10 @@ class TestHostLaunchHonoursTools:
         launcher._host_install_tools("s", [Recipe(name="a", root=tmp_path, tools=["pipx:x@1"])])
         env = calls[0][1]
         stack_root = str(launcher._stack_tools_dirs("s")[0])
-        for var in ("MISE_DATA_DIR", "MISE_CONFIG_DIR", "MISE_STATE_DIR"):
+        # NOT MISE_STATE_DIR. It holds mise's TRUST store, which is a fact about the user and a
+        # config file rather than about a stack, and scoping it here threw the user's trust away on
+        # every launch — see TestHostLaunchKeepsTheUsersMiseTrustStore.
+        for var in ("MISE_DATA_DIR", "MISE_CONFIG_DIR"):
             assert env.get(var, "").startswith(stack_root), f"{var}={env.get(var)!r} escapes the stack"
 
     def test_no_tools_means_no_mise_invocation(self, tmp_path, monkeypatch):
