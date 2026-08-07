@@ -704,12 +704,14 @@ def introspect_mcp(
     # minutes against live.yml's 60, and it is only ever paid on a run that is already failing.
     deadline = time.monotonic() + timeout
     while expected and not expected <= servers.keys():
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
+        # The deadline bounds when a probe may START, not merely when a sleep may end. `_exec` shells
+        # into the container with its own subprocess timeout, so a probe begun AT the deadline can run
+        # for another 60s entirely outside the caller's budget. Stopping when the next interval would
+        # reach the deadline covers both halves at once — no probe after it, and no sleep past it
+        # (CodeRabbit, two rounds: the first fix stopped the oversleep but kept the late probe).
+        if time.monotonic() + MCP_POLL_INTERVAL >= deadline:
             break
-        # Never sleep PAST the deadline: with a small `timeout` a full-interval sleep would both
-        # overshoot the budget and buy one probe the caller did not ask for (CodeRabbit).
-        time.sleep(min(MCP_POLL_INTERVAL, remaining))
+        time.sleep(MCP_POLL_INTERVAL)
         servers = _mcp_from_hatago(instance)
     if servers:
         # Deliberately returned even when INCOMPLETE: `build_report` marks the absent names

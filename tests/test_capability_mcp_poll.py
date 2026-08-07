@@ -191,6 +191,44 @@ class TestThePollWaits:
         )
         assert source == HATAGO_SERVERS_URI
 
+    def test_no_probe_starts_after_the_deadline(self, monkeypatch):
+        """CodeRabbit, second round. The first fix stopped the loop SLEEPING past the deadline but
+        still let it PROBE once afterwards — and `_mcp_from_hatago` shells into the container, so
+        that probe can then run for its own 60s subprocess timeout, entirely outside the budget the
+        caller asked for. The deadline has to bound when a probe STARTS, not just when a sleep ends.
+        """
+        clock = [0.0]
+        monkeypatch.setattr(capability.time, "monotonic", lambda: clock[0])
+        monkeypatch.setattr(capability.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+
+        timeout = 4.5  # deliberately NOT a multiple of MCP_POLL_INTERVAL
+        starts: list[float] = []
+
+        def _never_ready(_instance):
+            starts.append(clock[0])
+            return {}
+
+        monkeypatch.setattr(capability, "_mcp_from_hatago", _never_ready)
+        _llm_returning(monkeypatch, {})
+
+        capability.introspect_mcp(INSTANCE, expect={"time"}, timeout=timeout)
+
+        deadline = starts[0] + timeout  # the deadline starts after the first probe
+        late = [t for t in starts[1:] if t >= deadline]
+        assert not late, f"probes started at/after the deadline {deadline}: {late} (all: {starts})"
+
+    def test_the_poll_never_oversleeps_its_budget(self, monkeypatch):
+        """The other half: the loop must not burn wall-clock past the deadline either."""
+        clock = [0.0]
+        monkeypatch.setattr(capability.time, "monotonic", lambda: clock[0])
+        monkeypatch.setattr(capability.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+        monkeypatch.setattr(capability, "_mcp_from_hatago", lambda _i: {})
+        _llm_returning(monkeypatch, {})
+
+        capability.introspect_mcp(INSTANCE, expect={"time"}, timeout=4.5)
+
+        assert clock[0] <= 4.5, f"the poll ran {clock[0]}s against a 4.5s budget"
+
     def test_the_old_call_shape_still_works(self, monkeypatch):
         """`introspect_mcp(inst, harness)` is called positionally elsewhere; the new parameters are
         keyword-only with defaults so that call site is untouched."""
