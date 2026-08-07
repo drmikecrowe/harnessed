@@ -87,12 +87,24 @@ def _host_mise_env(stack: str) -> dict[str, str]:
     }
 
 
-# Variables a PREVIOUS harnessed release exported and this one must actively remove, not merely stop
-# setting. Both consumers of `_host_mise_env` merge it over an inherited environment, and launching
-# one stack from inside another stack's host session is routine — so a stale MISE_STATE_DIR from the
-# outer session would survive the merge and keep the empty trust store alive in the inner one. Same
-# shape as the CLAUDE_CONFIG_DIR inheritance trap documented further down this module.
-_HOST_MISE_UNSET = ("MISE_STATE_DIR",)
+def _is_a_harnessed_stack_state_dir(value: str) -> bool:
+    """Whether `value` is a MISE_STATE_DIR a PREVIOUS harnessed release exported.
+
+    `<xdg_data_home>/harnessed/tools/<stack>/mise/state` — the shape `_host_mise_env` used to
+    return, for ANY stack. The stack name is matched as "one path segment", not against a list:
+    the value we have to recognise belongs to the OUTER session, whose stack this process has no
+    way to know.
+
+    NARROW ON PURPOSE. `MISE_STATE_DIR` is an ordinary mise variable a user may set for their own
+    reasons, and blanket-removing it would drop them onto mise's default state dir — a DIFFERENT
+    trust store than the one they chose. That is precisely the bug this module now exists to
+    prevent, aimed at a different victim, so only the value we ourselves wrote is eligible.
+    """
+    try:
+        relative = Path(value).relative_to(paths.xdg_data_home() / "harnessed" / "tools")
+    except (ValueError, TypeError, OSError):
+        return False
+    return relative.parts[1:] == ("mise", "state")
 
 
 def _apply_host_mise_env(env: MutableMapping[str, str], stack: str) -> None:
@@ -100,9 +112,15 @@ def _apply_host_mise_env(env: MutableMapping[str, str], stack: str) -> None:
 
     One function so install time and run time cannot drift: they redirect the same instance, and a
     variable cleared on one side only is the same broken-shim class `_host_mise_env` guards against.
+
+    MISE_STATE_DIR has to be actively REMOVED, not merely no longer set. Both consumers merge over
+    an inherited environment, and launching one stack from inside another stack's host session is
+    routine — so a stale value from the outer session would survive the merge and keep the empty
+    trust store alive in the inner one. Same shape as the CLAUDE_CONFIG_DIR inheritance trap
+    documented further down this module. Only OUR value is removed; see the predicate.
     """
-    for var in _HOST_MISE_UNSET:
-        env.pop(var, None)
+    if _is_a_harnessed_stack_state_dir(env.get("MISE_STATE_DIR", "")):
+        del env["MISE_STATE_DIR"]
     env.update(_host_mise_env(stack))
 
 

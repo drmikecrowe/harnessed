@@ -38,18 +38,45 @@ class TestHostLaunchKeepsTheUsersMiseTrustStore:
         env = hostrun._host_mise_env("s")
         assert set(env) == {"MISE_DATA_DIR", "MISE_CONFIG_DIR"}
 
-    def test_an_inherited_state_dir_is_actively_removed(self):
+    def test_a_state_dir_inherited_from_another_stack_is_actively_removed(self):
         """Not setting it is not enough — a previous release DID set it.
 
         Launching a stack from inside another stack's host session is routine, and both consumers
         merge this over an inherited environment. Left in place, the outer session's redirect keeps
         the empty trust store alive in the inner one and the bug survives the release that fixed it.
+
+        The value is the OUTER stack's, which this process cannot name — so the removal has to
+        recognise the shape, not a known stack.
         """
-        env = {"MISE_STATE_DIR": "/some/stale/stack/mise/state", "PATH": "/usr/bin"}
+        outer = paths.xdg_data_home() / "harnessed" / "tools" / "some-other-stack" / "mise" / "state"
+        env = {"MISE_STATE_DIR": str(outer), "PATH": "/usr/bin"}
         hostrun._apply_host_mise_env(env, "s")
         assert "MISE_STATE_DIR" not in env
         assert env["PATH"] == "/usr/bin", "unrelated variables must be left alone"
         assert env["MISE_DATA_DIR"] == hostrun._host_mise_env("s")["MISE_DATA_DIR"]
+
+    def test_a_state_dir_the_user_set_themselves_is_left_alone(self):
+        """The removal must not reach past what harnessed itself wrote.
+
+        MISE_STATE_DIR is an ordinary mise variable. Dropping a user's own value puts them on
+        mise's DEFAULT state dir — a different trust store than the one they picked, which is this
+        module's own bug pointed at a different victim.
+        """
+        env = {"MISE_STATE_DIR": "/srv/shared/mise-state"}
+        hostrun._apply_host_mise_env(env, "s")
+        assert env["MISE_STATE_DIR"] == "/srv/shared/mise-state"
+
+    def test_a_harnessed_looking_path_that_is_not_a_state_dir_is_left_alone(self):
+        # The tools root itself, and a stack dir without the mise/state tail, are not values we
+        # ever wrote — matching them would be the same over-reach with a narrower blast radius.
+        for value in (
+            str(paths.xdg_data_home() / "harnessed" / "tools"),
+            str(paths.xdg_data_home() / "harnessed" / "tools" / "s"),
+            str(paths.xdg_data_home() / "harnessed" / "tools" / "s" / "mise"),
+        ):
+            env = {"MISE_STATE_DIR": value}
+            hostrun._apply_host_mise_env(env, "s")
+            assert env["MISE_STATE_DIR"] == value, f"{value} is not a state dir harnessed wrote"
 
 
 class TestTheSuiteWritesNoStateIntoTheDevelopersHome:
