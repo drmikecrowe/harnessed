@@ -693,8 +693,14 @@ def introspect_mcp(
     declares no MCP servers — most of them — pays no latency for this.
     """
     expected = set(expect)
-    deadline = time.monotonic() + timeout
     servers = _mcp_from_hatago(instance)
+    # The deadline starts AFTER the first probe, deliberately. `_exec` carries its own subprocess
+    # timeout of the same order as this one, so a `podman exec` that hangs would otherwise consume
+    # the whole window before the loop is entered even once — zero retries, silently, on exactly the
+    # cold/slow runner where the children are also slow to connect (bd harnessed-rv2.2). Bounds the
+    # call at roughly 2x `timeout` instead of 1x; across the MCP-declaring stacks that is a few
+    # minutes against live.yml's 60, and it is only ever paid on a run that is already failing.
+    deadline = time.monotonic() + timeout
     while expected and not expected <= servers.keys() and time.monotonic() < deadline:
         time.sleep(MCP_POLL_INTERVAL)
         servers = _mcp_from_hatago(instance)

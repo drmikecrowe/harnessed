@@ -152,6 +152,45 @@ class TestThePollWaits:
         assert probed == [INSTANCE], f"expected a single-shot read, got {len(probed)} reads"
         assert naps == [], "an MCP-free stack must not sleep at all"
 
+    def test_a_slow_first_probe_does_not_eat_the_retry_window(self, monkeypatch):
+        """An adversarial reviewer's finding, and a real defect in the first implementation.
+
+        `_exec` carries its own 60s subprocess timeout — the same number as `MCP_CONNECT_TIMEOUT`.
+        The deadline used to start BEFORE the first `_mcp_from_hatago` call, so a `podman exec` that
+        hung to its own timeout left the poll deadline already expired on first entry to the loop:
+        zero retries, silently. A cold runner spawning uvx for the first time is exactly where a
+        slow exec and a slow child connect happen together — so the fix for rv2.2 degraded precisely
+        in the situation rv2.2 is about.
+
+        The clock is faked rather than slept: the deadline arithmetic is what is under test.
+        """
+        clock = [0.0]
+        monkeypatch.setattr(capability.time, "monotonic", lambda: clock[0])
+        monkeypatch.setattr(capability.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+
+        rounds = [{}, {}, {"time": "connected"}]
+        calls = [0]
+
+        def _slow_then_ready(_instance):
+            i = min(calls[0], len(rounds) - 1)
+            # The FIRST probe burns the entire timeout, as a hung `podman exec` would.
+            clock[0] += capability.MCP_CONNECT_TIMEOUT if calls[0] == 0 else 0.0
+            calls[0] += 1
+            return dict(rounds[i])
+
+        monkeypatch.setattr(capability, "_mcp_from_hatago", _slow_then_ready)
+        _llm_returning(monkeypatch, {})
+
+        servers, source = capability.introspect_mcp(
+            INSTANCE, expect={"time"}, timeout=capability.MCP_CONNECT_TIMEOUT
+        )
+
+        assert servers == {"time": "connected"}, (
+            f"the poll gave up after {calls[0]} probe(s); a slow first probe must not consume the "
+            "retry window"
+        )
+        assert source == HATAGO_SERVERS_URI
+
     def test_the_old_call_shape_still_works(self, monkeypatch):
         """`introspect_mcp(inst, harness)` is called positionally elsewhere; the new parameters are
         keyword-only with defaults so that call site is untouched."""

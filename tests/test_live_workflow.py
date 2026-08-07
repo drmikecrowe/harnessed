@@ -39,6 +39,23 @@ def _run_bodies(job) -> str:
     return "\n".join(s.get("run", "") for s in _steps(job))
 
 
+def _commands(step: dict) -> str:
+    """A step's run body with comment lines stripped.
+
+    Matching steps by a bare substring is too loose: a COMMENT mentioning `tools/run-tests.sh`
+    inside the diagnostics step made `_suite_step` select the wrong step and broke two tests that
+    were otherwise correct. What identifies a step is what it EXECUTES, not what it mentions.
+    """
+    return "\n".join(
+        line for line in step.get("run", "").splitlines() if not line.strip().startswith("#")
+    )
+
+
+def _suite_step(job) -> dict:
+    """The step that actually invokes the project's test script."""
+    return next(s for s in _steps(job) if "tools/run-tests.sh" in _commands(s))
+
+
 class TestItPrintsEnoughToDiagnoseAFailure:
     def test_the_runner_identity_is_printed(self, job):
         """rv2.1 is a claim about a NUMBER — the runner's uid — that no log has ever carried."""
@@ -52,9 +69,9 @@ class TestItPrintsEnoughToDiagnoseAFailure:
 
     def test_the_identity_is_printed_before_the_suite_runs(self, job):
         """A diagnostic that only runs after a passing suite diagnoses nothing."""
-        bodies = [s.get("run", "") for s in _steps(job)]
-        identity = next(i for i, b in enumerate(bodies) if "id -u" in b)
-        suite = next(i for i, b in enumerate(bodies) if "run-tests.sh" in b)
+        steps = _steps(job)
+        identity = next(i for i, s in enumerate(steps) if "id -u" in _commands(s))
+        suite = steps.index(_suite_step(job))
         assert identity < suite
 
     def test_the_identity_step_is_unconditional(self, job):
@@ -63,7 +80,7 @@ class TestItPrintsEnoughToDiagnoseAFailure:
         would satisfy both while diagnosing nothing — and the failure modes that most need a uid
         (a timeout kill, a setup failure before the suite) are exactly the ones where a conditional
         step would not have run yet."""
-        step = next(s for s in _steps(job) if "id -u" in s.get("run", ""))
+        step = next(s for s in _steps(job) if "id -u" in _commands(s))
         assert "if" not in step, (
             f"the runner-identity step is conditional ({step.get('if')!r}); it must run on every "
             "job, or the log it exists to produce is missing precisely when it is needed"
@@ -72,21 +89,20 @@ class TestItPrintsEnoughToDiagnoseAFailure:
 
 class TestItRunsWhatDevelopersRun:
     def test_the_suite_goes_through_the_project_script(self, job):
-        assert "tools/run-tests.sh" in _run_bodies(job), (
+        assert "tools/run-tests.sh" in _commands(_suite_step(job)), (
             "CI is bypassing the sanctioned entry point, so a local green and a CI green are not "
             "evidence about the same thing"
         )
 
     def test_it_does_not_hand_compose_pytest(self, job):
-        assert not re.search(r"uv run .*pytest", _run_bodies(job)), (
+        assert not re.search(r"uv run .*pytest", "\n".join(_commands(s) for s in _steps(job))), (
             "a hand-composed pytest line is exactly what tools/run-tests.sh exists to replace"
         )
 
     def test_the_suite_step_still_sets_the_live_gate(self, job):
         """Without HARNESSED_PODMAN=1 every live test skips and the job goes green having run
         nothing — the defect this whole workflow was created to fix."""
-        step = next(s for s in _steps(job) if "run-tests.sh" in s.get("run", ""))
-        assert step.get("env", {}).get("HARNESSED_PODMAN") in ("1", 1)
+        assert _suite_step(job).get("env", {}).get("HARNESSED_PODMAN") in ("1", 1)
 
 
 class TestItProvisionsWhatTheScriptNeeds:

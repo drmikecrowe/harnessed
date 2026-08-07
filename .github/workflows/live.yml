@@ -94,6 +94,13 @@ jobs:
           id -u
           id -g
           podman info --format '{{.Host.IDMappings}}'
+          # `tools/run-tests.sh` resolves its venv through mise's `_BRANCH`, which is
+          # `git branch --show-current`. Whether actions/checkout leaves a local branch or a
+          # detached HEAD decides whether that is "main" or "" — and an adversarial review and I
+          # reached opposite conclusions from documentation alone. Neither of us can settle it
+          # without a run, so print it and let the run settle it. Empty is not a failure: the venv
+          # path just collapses to a shared one (bd harnessed-rv2.3).
+          echo "branch=$(git branch --show-current) UV_PROJECT_ENVIRONMENT=${UV_PROJECT_ENVIRONMENT:-<unset>}"
 
       # THROUGH tools/run-tests.sh, not a hand-composed pytest line. CLAUDE.md: the script "absorbs
       # three traps that fail locally while CI stays green" (per-branch venv outside the repo, the

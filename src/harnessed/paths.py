@@ -58,6 +58,14 @@ def pod_host_uid() -> int:
 
       pinned to CONTAINER_UID → the invoking user IS the pod's uid-1000 process → os.getuid()
       anything else (incl. bare `keep-id`, which names no uid) → the pod writes as CONTAINER_UID
+
+    SCOPE, precisely — an adversarial review caught the first draft of this docstring overclaiming.
+    With `USERNS_ARG` as shipped, the first branch always wins and this returns `os.getuid()`; the
+    second exists for the edit that un-pins the constant, and is reached only by tests that patch
+    it. So this catches *the declared mapping being un-pinned*. It CANNOT observe what podman
+    actually did — a rootful daemon, a missing subuid range, or a runtime that ignores the flag all
+    still produce a silent EACCES, and only the runner's
+    `podman info --format '{{.Host.IDMappings}}'` (bd harnessed-rv2.3) shows that.
     """
     mapped = re.search(r"\buid=(\d+)", USERNS_ARG)
     if mapped and int(mapped.group(1)) == CONTAINER_UID:
