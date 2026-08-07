@@ -54,10 +54,20 @@ def _all_skips(terminalreporter) -> list[str]:
 def _live_skips(terminalreporter) -> list[str]:
     """Skips that look like a gate on a real external system — used for the REPORT only.
 
-    Pattern-matching is acceptable here because the cost of missing one is an incomplete listing.
-    The fail-closed decision below must not be built on it; see `_podman_skips`.
+    Pattern-matching is acceptable for DISCOVERY because the cost of missing one is an incomplete
+    listing. The fail-closed decision must not be built on it; see `_podman_skips`.
+
+    A governed skip is included whatever its wording, because the failure message points at "the
+    tests above" and the pattern cannot see an image-precondition reason. On run 31205617563 the one
+    skip that failed the run was the one reason not printed, so the listing showed only the
+    unrelated gates (aoe, dolt) and sent the reader to the wrong problem (bd harnessed-ln7).
     """
-    return [r for r in _all_skips(terminalreporter) if _LIVE_SKIP_RE.search(r)]
+    out: list[str] = []
+    for report in terminalreporter.stats.get("skipped", []):
+        reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
+        if _LIVE_SKIP_RE.search(reason) or "live_podman" in getattr(report, "keywords", {}):
+            out.append(reason)
+    return out
 
 
 def _podman_skips(terminalreporter) -> list[str]:

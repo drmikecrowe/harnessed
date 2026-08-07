@@ -153,3 +153,24 @@ class TestGateOpen:
         """
         result = live_session(gate_open=True, test_body=UNRELATED_SKIP)
         assert result.ret == 0, "an unrelated skip must not fail a podman run"
+
+    def test_the_reason_that_failed_the_run_is_printed(self, live_session):
+        """bd harnessed-ln7. The guard failed the run correctly and then described it wrongly.
+
+        The failure line says the podman-gated tests "above" were expected to run, but the listing
+        above it is built by pattern-matching skip REASONS. An image-precondition reason matches no
+        pattern, so the one skip that actually failed the run was the one reason not shown. A reader
+        saw the unrelated gates that were listed (aoe, dolt) and blamed those — which is exactly
+        what happened on run 31205617563, to the author of this test.
+
+        Whatever fails the run must appear in the list the failure message points at.
+        """
+        result = live_session(gate_open=True, test_body=IMAGE_PRECONDITION_SKIP)
+        assert result.ret != 0
+        result.stdout.fnmatch_lines(["*not built*"])
+
+    def test_an_unrelated_skip_is_still_not_listed_as_a_failure_cause(self, live_session):
+        """The other half: widening the listing must not widen the FAILURE. A platform skip is
+        reported when it looks live, but it never fails a podman run."""
+        result = live_session(gate_open=True, test_body=UNRELATED_SKIP)
+        assert result.ret == 0

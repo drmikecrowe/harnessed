@@ -142,3 +142,42 @@ class TestTheTimeoutHasHeadroom:
         assert job["timeout-minutes"] >= 45, (
             f"timeout-minutes={job['timeout-minutes']} is thin against a 23:47 worst case"
         )
+
+
+class TestItProvisionsTheLiveGates:
+    """bd harnessed-ln7. The job is named "live verification", so a gate it can satisfy and does
+    not is a gap between the name and the work.
+
+    `aoe` is deliberately NOT provisioned. ARCHITECTURE.md and `src/harnessed/aoe.py` both state
+    that harnessed "neither requires nor installs" it, and `test_aoe_real.py` says it is "free in CI
+    and real on a developer machine". Its tests carry no `live_podman` marker, so they are reported
+    and never fail the run. That skip is a declared choice, not an oversight.
+    """
+
+    def test_dolt_is_declared_in_the_manifest(self):
+        """Declared in `mise.toml`, not installed by a step here.
+
+        A step would open the gate for CI alone. The binary was already present on the author's
+        machine and the test skipped there too, because `tools/run-tests.sh` runs under mise and
+        mise only exposes what the project declares. The manifest fixes both at once, and is the
+        reason `shellcheck` and `pyright` are pinned there rather than assumed."""
+        mise = (ROOT / "mise.toml").read_text()
+        assert re.search(r'"aqua:dolthub/dolt"\s*=\s*"\d+\.\d+\.\d+"', mise), (
+            "dolt is not declared+pinned in mise.toml, so the suite cannot see it"
+        )
+
+    def test_the_base_image_is_built_before_the_suite(self, job):
+        """The actual cause of the red run on 31205617563.
+
+        `test_live_verification_debt.py` skips two `@podman` tests unless
+        `localhost/harnessed-base:latest` exists, and evaluates that at COLLECTION time. A later
+        test building the image does not help — the skip decision is already made. So the image must
+        exist before pytest starts."""
+        steps = _steps(job)
+        build = next(
+            (i for i, st in enumerate(steps) if "harnessed build" in _commands(st)), None
+        )
+        assert build is not None, "nothing builds the base image, so its live tests skip forever"
+        assert build < steps.index(_suite_step(job)), (
+            "the image must exist before pytest collects, not merely before the tests run"
+        )
