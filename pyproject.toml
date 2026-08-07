@@ -39,6 +39,35 @@ dev = [
                            # visible by inspection.
 ]
 
+[tool.mutmut]
+# Mutation testing: does a test FAIL when the code is broken, or does it merely execute the line?
+# Coverage cannot tell those apart, which is why a 100%-covered change can still be untested.
+# Declared here rather than passed ad hoc so the layer is reproducible by CI and by the next agent
+# — `mutmut run` with no arguments mutates everything; scope a single change with
+# `mutmut run "src.harnessed.<module>.<function>*"`, and read results with `mutmut results`.
+paths_to_mutate = ["src/harnessed/"]
+tests_dir = ["tests/"]
+# The suite imports `support` and `conftest` as top-level modules from tests/, so the whole dir has
+# to land in the mutants tree — a file-by-file `also_copy` fails, since mutmut does not create the
+# parent dirs. The suite is podman-GATED, not podman-driven (tests/conftest.py): a mutant must be
+# killed by a test that runs WITHOUT a container, or the score measures the gate, not the tests.
+#
+# The list is wider than it looks like it should be because this suite asserts against REPO ASSETS,
+# not only against `src/`: workflow YAML, the catalog, the shell scripts under tools/. Those tests
+# resolve paths relative to the tree root, so anything they read has to exist in the mutants tree or
+# they error at collection and every mutant reports "survived" for want of a runnable suite.
+also_copy = ["tests/", ".github/", "catalog/", "tools/", "schemas/", "mise.toml", "README.md"]
+#
+# TWO KNOWN LIMITATIONS, both found by running this (bd harnessed-rv2), both affecting only the
+# asset-asserting tests and not the mutation score of any function:
+#
+#  1. `harnessed_home()` resolves through the `src/harnessed/catalog` SYMLINK, which does not exist
+#     in the mutants tree. Export `HARNESSED_DIR=$PWD` when running mutmut.
+#  2. mutmut's copy DEREFERENCES symlinks, so `catalog/*.local` arrive as real dirs and the few
+#     tests that assert a link IS a link fail there. Scope a run past them by narrowing `tests_dir`
+#     to the test files covering the change — which is the right scoping for a targeted run anyway:
+#       HARNESSED_DIR=$PWD mise exec -- uv run --extra dev mutmut run "*<function>*"
+
 [tool.ruff]
 line-length = 100
 # The FLOOR of requires-python, not the newest interpreter around. target-version tells ruff which
