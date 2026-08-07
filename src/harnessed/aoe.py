@@ -675,7 +675,7 @@ def _replays_stack(tokens: list[str], recorded_path: str | None, verb: str, stac
     Returns False when the record is missing — see `forget_stack` on why an unattributable row is
     left alone rather than removed.
     """
-    if len(tokens) < 4 or "--last" not in tokens or not recorded_path:
+    if len(tokens) < 5 or tokens[3:5] != ["--last", "--"] or not recorded_path:
         return False
     try:
         entry = lastrun.load(verb, tokens[2], Path(recorded_path))
