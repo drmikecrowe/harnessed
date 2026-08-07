@@ -106,6 +106,19 @@ class TestGateClosed:
         assert result.ret == 0, "a deliberately closed gate must not fail the suite"
         result.stdout.fnmatch_lines(["*live test(s) did NOT run*"])
 
+    def test_a_marker_only_skip_is_listed_even_with_the_gate_closed(self, live_session):
+        """Found by adversarial review of the harnessed-ln7 change: the new marker-driven listing
+        was only exercised with the gate OPEN.
+
+        A governed test whose reason matches no pattern ("<image> not built") is invisible to
+        `_LIVE_SKIP_RE`. With the gate closed it cannot fail the run, but it must still be NAMED —
+        "N live test(s) did NOT run" followed by a list that omits one of the N is the same
+        misdirection this change exists to remove, just without the red.
+        """
+        result = live_session(gate_open=False, test_body=IMAGE_PRECONDITION_SKIP)
+        assert result.ret == 0, "a closed gate must not fail the suite"
+        result.stdout.fnmatch_lines(["*not built*"])
+
     def test_it_names_the_way_to_open_the_gate(self, live_session):
         result = live_session(gate_open=False, test_body=PODMAN_SKIP)
         result.stdout.fnmatch_lines(["*HARNESSED_PODMAN=1*"])
@@ -153,3 +166,24 @@ class TestGateOpen:
         """
         result = live_session(gate_open=True, test_body=UNRELATED_SKIP)
         assert result.ret == 0, "an unrelated skip must not fail a podman run"
+
+    def test_the_reason_that_failed_the_run_is_printed(self, live_session):
+        """bd harnessed-ln7. The guard failed the run correctly and then described it wrongly.
+
+        The failure line says the podman-gated tests "above" were expected to run, but the listing
+        above it is built by pattern-matching skip REASONS. An image-precondition reason matches no
+        pattern, so the one skip that actually failed the run was the one reason not shown. A reader
+        saw the unrelated gates that were listed (aoe, dolt) and blamed those — which is exactly
+        what happened on run 31205617563, to the author of this test.
+
+        Whatever fails the run must appear in the list the failure message points at.
+        """
+        result = live_session(gate_open=True, test_body=IMAGE_PRECONDITION_SKIP)
+        assert result.ret != 0
+        result.stdout.fnmatch_lines(["*not built*"])
+
+    def test_an_unrelated_skip_is_still_not_listed_as_a_failure_cause(self, live_session):
+        """The other half: widening the listing must not widen the FAILURE. A platform skip is
+        reported when it looks live, but it never fails a podman run."""
+        result = live_session(gate_open=True, test_body=UNRELATED_SKIP)
+        assert result.ret == 0

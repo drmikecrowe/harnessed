@@ -82,6 +82,33 @@ jobs:
           podman --version
           podman info >/dev/null
 
+      # `aoe` is deliberately NOT provisioned. ARCHITECTURE.md and src/harnessed/aoe.py both say
+      # harnessed "neither requires nor installs" it, and its tests carry no `live_podman` marker,
+      # so they are reported and never fail the run. That skip is a declared choice, not a gap.
+      #
+      # `dolt` IS provisioned, by `mise.toml` rather than by a step here — see the note there. It
+      # was installed on the author's machine but undeclared, so the suite skipped its test even
+      # where the binary existed (bd harnessed-ln7).
+
+      # BEFORE pytest STARTS, not merely before those tests run. `test_live_verification_debt.py`
+      # skips two `@podman` tests unless `localhost/harnessed-base:latest` exists, and evaluates
+      # that at COLLECTION time. The capability sweep later in the suite does build the image, which
+      # is why this looked like it should already work — but by then the skip decision is made. Both
+      # tests therefore skipped on every run this workflow has ever done, and because they carry the
+      # `live_podman` marker they are what failed run 31205617563, not the aoe and dolt gates that
+      # the report listed (bd harnessed-ln7).
+      # BARE `build`, not `build default claude`. Adversarial review caught the first version doing
+      # far more than its own name: `build <stack> <harness>` also builds the agent and derived
+      # images, runs the credentialed supply-chain rescan, and creates the stack's podman volumes —
+      # work the capability sweep does again inside pytest, in a separate process where the
+      # build-once cache cannot deduplicate it. Creating stack volumes before the tests that
+      # exercise volume creation would also mask a cold-start failure.
+      #
+      # `_build_images_cmd` (what bare `build` runs) builds exactly the base and agent images and
+      # then reconciles stacks, which is a no-op on a fresh runner.
+      - name: Build the base image the live tests require
+        run: mise exec -- uv run --extra dev harnessed build
+
       # WHY THIS EXISTS: the two bugs that kept this job red for six consecutive runs were both
       # claims about the runner's environment that no log here could confirm or refute.
       # harnessed-rv2.1 turned on the runner's uid — never printed — and harnessed-rv2.2 on whether
