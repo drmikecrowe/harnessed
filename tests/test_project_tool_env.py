@@ -119,7 +119,7 @@ class TestProjectEnvPath:
         """Keyed on git_common_dir: worktrees differ in what they build, never in which tools the
         project needs."""
         monkeypatch.setattr(paths, "xdg_state_home", lambda: tmp_path / "state")
-        monkeypatch.setattr(paths, "git_common_dir", lambda _p: tmp_path / "repo.git")
+        monkeypatch.setattr(paths, "git_common_dir_checked", lambda _p: tmp_path / "repo.git")
         a, b = tmp_path / "wt-a", tmp_path / "wt-b"
         assert setupenv.project_env_path(a) == setupenv.project_env_path(b)
 
