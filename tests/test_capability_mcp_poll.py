@@ -166,7 +166,7 @@ class TestTheHatagoLogIsSurfaced:
     rather than observed. Whatever the cause turns out to be, the next run must show it."""
 
     def test_a_missing_expected_server_captures_the_log(self, monkeypatch):
-        captured: list[str] = []
+        captured: list[tuple[str, str]] = []
 
         def _fake_exec(instance, script, **_kw):
             captured.append((instance, script))

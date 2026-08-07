@@ -19,7 +19,6 @@ constant and nothing here.
 
 from __future__ import annotations
 
-import inspect
 import os
 import re
 import subprocess
