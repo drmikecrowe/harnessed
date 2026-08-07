@@ -9,16 +9,21 @@ Here the flags live in harnessed's own state directory instead, and the stable c
 `harnessed <verb>-run <harness> --last --`. Same property, one writer and one reader, both inside
 harnessed, and nothing written into anybody's repo.
 
-KEYED PER CHECKOUT via `paths.git_common_dir`, the same key the project tool env uses — one record
-for a repo, shared by all of its worktrees.
+KEYED PER WORKTREE, deliberately NOT per checkout — and deliberately NOT the same key the project
+tool env uses.
 
-The alternative (key on the worktree path) was implemented first and rejected: it multiplies records
-per repo. The cost of sharing is real and worth writing down — two worktrees running DIFFERENT
-stacks overwrite each other's record, so `--last` in one can replay what the other launched. The aoe
-row is unaffected either way; rows are keyed by (command, path) and a worktree launch already
-records its own path.
+The two want opposite things. `project_env_path` keys on `git_common_dir` because every worktree of
+a checkout needs the SAME tools; sharing is the point. "What did I last launch here" is the
+opposite: worktrees routinely run different stacks, which is what worktrees are for. Sharing that
+key lets a launch in one worktree silently become the replay target in another — `--last` in the
+worktree you are standing in starts what you ran somewhere else, and reports success.
 
-Falls back to the given path when there is no git dir, so a non-git project still gets a record.
+It was briefly keyed on `git_common_dir` on the theory that per-worktree keying multiplies aoe rows.
+It does not: rows are keyed by (command, path) and a worktree launch already records its own path,
+so the row count is identical either way. The keying decides only WHICH stack `--last` replays.
+
+Falls back to the given path when there is no git dir, which for this key is not really a fallback —
+a non-git directory is its own worktree by definition.
 
 NEVER FATAL ON WRITE. A launch that got as far as recording state has already done the useful work;
 losing the shortcut is not worth killing it. Read failures are loud, because a `--last` that cannot
@@ -39,14 +44,13 @@ _VERSION = 1
 
 
 def _store(project_path: Path) -> Path:
-    """The record for a checkout. `project_hash` normalizes, so `/p` and `/p/` agree.
+    """The record for a WORKTREE. `project_hash` normalizes, so `/p` and `/p/` agree.
 
-    Keyed on the git common dir, so every worktree of a repo reads and writes one record — the same
-    key `setupenv._write_project_tool_env` uses for the project dotenv, and for the same reason: one
-    checkout, one answer. Non-git projects fall back to their own path.
+    The project path itself, NOT `paths.git_common_dir` — see the module docstring. Sibling
+    worktrees of one checkout get separate records, because they routinely run different stacks and
+    replaying the wrong one is silent.
     """
-    key = paths.git_common_dir(project_path) or project_path
-    return paths.xdg_state_home() / "harnessed" / "last-run" / f"{paths.project_hash(key)}.json"
+    return paths.xdg_state_home() / "harnessed" / "last-run" / f"{paths.project_hash(project_path)}.json"
 
 
 def _key(verb: str, harness: str) -> str:
