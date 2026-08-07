@@ -201,7 +201,14 @@ def test_live_capabilities_present_in_container(stack):
         | {("plugin", n) for n in caps.plugins}
     )
     missing = expected - present
-    assert not missing, f"{stack}: capabilities missing from the container: {missing}"
+    # The failing capability's own `detail` carries the remediation pointer (T-02-07: the report
+    # never quotes container output — see capability.MCP_MISS_REMEDIATION). Surface the details of
+    # the missing capabilities so a CI reader gets the pointer without a second round trip.
+    details = [f"{r['kind']}/{r['name']}: {r['detail']}" for r in report["results"] if not r["present"]]
+    assert not missing, (
+        f"{stack}: capabilities missing from the container: {missing}\n  "
+        + "\n  ".join(details)
+    )
 
 
 # --- Layer 2b: settings.json post-build merge (podman-gated) ---------------------------------------
@@ -372,7 +379,7 @@ def test_merge_baked_settings_reads_the_VOLUME_not_the_image(tmp_path):
         # mapping is unreadable by the agent (bd harnessed-8px.21.1), so mirroring harnessed here
         # is part of what the test asserts, not incidental setup.
         subprocess.run(
-            [rt, "run", "--rm", "-i", "--userns=keep-id",
+            [rt, "run", "--rm", "-i", paths.USERNS_ARG,
              "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
              "sh", "-c", f"cat > {CONTAINER_HOME}/.claude/settings.json"],
             input=json.dumps(installed), text=True, check=True, capture_output=True,
@@ -411,14 +418,14 @@ def test_a_removed_recipes_content_does_not_linger_in_the_volume(tmp_path):
         subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
         # Content from a recipe that is about to be dropped from the stack.
         subprocess.run(
-            [rt, "run", "--rm", "--userns=keep-id", "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+            [rt, "run", "--rm", paths.USERNS_ARG, "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
              "sh", "-c", f"mkdir -p {CONTAINER_HOME}/.claude/skills/departed && "
                          f"touch {CONTAINER_HOME}/.claude/skills/departed/SKILL.md"],
             check=True, capture_output=True,
         )
         launcher._ensure_config_volume(rt, stack, harness, prof, tag, fresh=True)
         out = subprocess.run(
-            [rt, "run", "--rm", "--userns=keep-id", "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+            [rt, "run", "--rm", paths.USERNS_ARG, "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
              "sh", "-c", f"ls {CONTAINER_HOME}/.claude/skills 2>/dev/null | wc -l"],
             capture_output=True, text=True,
         )

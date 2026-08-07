@@ -41,7 +41,11 @@ on:
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30 was thin: observed runtimes 15:03, 14:41 and 23:47, so run 31133464515 came within six
+    # minutes of being killed — and a timeout kill presents as an unrelated failure, which is the
+    # worst way for this job to go red. mise now also provisions shellcheck and pyright on a cold
+    # runner, widening the gap further (bd harnessed-rv2.3).
+    timeout-minutes: 60
     steps:
       # PINNED TO COMMIT SHAs, not tags. A git tag is mutable — whoever controls the action can
       # repoint `v5` at different code, and this job runs with a token on a runner that has just
@@ -57,6 +61,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      # `tools/run-tests.sh` shells out to mise on its first line, so without this the job dies with
+      # "is mise installed and on PATH?" having run nothing.
+      - name: Setup mise
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654  # v4.2.4
+        with:
+          # Pinned, per CLAUDE.md. This is the version this change was verified against locally
+          # (`mise --version` → 2026.8.2 linux-x64); bump it deliberately, not by drifting to latest.
+          version: 2026.8.2
+
       # Verified, not assumed: this job's entire value is that podman is really here. If the
       # runner image ever drops it, this step fails loudly rather than letting the suite skip its
       # way to a green tick.
@@ -69,12 +82,37 @@ jobs:
           podman --version
           podman info >/dev/null
 
+      # WHY THIS EXISTS: the two bugs that kept this job red for six consecutive runs were both
+      # claims about the runner's environment that no log here could confirm or refute.
+      # harnessed-rv2.1 turned on the runner's uid — never printed — and harnessed-rv2.2 on whether
+      # hatago's child servers spawned at all. One `id -u` settles the first; the report now carries
+      # the hatago log for the second. Before the suite, deliberately: a diagnostic that only runs
+      # after a passing suite diagnoses nothing.
+      - name: Runner identity
+        run: |
+          echo "uid=$(id -u) gid=$(id -g) user=$(id -un)"
+          id -u
+          id -g
+          podman info --format '{{.Host.IDMappings}}'
+          # `tools/run-tests.sh` resolves its venv through mise's `_BRANCH`, which is
+          # `git branch --show-current`. Whether actions/checkout leaves a local branch or a
+          # detached HEAD decides whether that is "main" or "" — and an adversarial review and I
+          # reached opposite conclusions from documentation alone. Neither of us can settle it
+          # without a run, so print it and let the run settle it. Empty is not a failure: the venv
+          # path just collapses to a shared one (bd harnessed-rv2.3).
+          echo "branch=$(git branch --show-current) UV_PROJECT_ENVIRONMENT=${UV_PROJECT_ENVIRONMENT:-<unset>}"
+
+      # THROUGH tools/run-tests.sh, not a hand-composed pytest line. CLAUDE.md: the script "absorbs
+      # three traps that fail locally while CI stays green" (per-branch venv outside the repo, the
+      # mandatory `--extra dev`, and mise's untrusted-config refusal). Invoking pytest directly meant
+      # CI and a developer's box were not running the same thing by construction — bd harnessed-rv2.3.
+      #
       # The suite's own guard (tests/conftest.py) fails the run if HARNESSED_PODMAN=1 is set and
       # the podman-gated tests skip anyway — so a broken podman cannot masquerade as success here.
       - name: Run the live-verification layer
         env:
           HARNESSED_PODMAN: "1"
-        run: uv run --extra dev pytest -v
+        run: tools/run-tests.sh -v
 
       - name: Report what ran
         if: always()

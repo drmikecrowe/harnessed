@@ -59,10 +59,11 @@ def _ensure_config_volume(
        exactly ONCE — thereafter volume content wins and image updates are invisible, which is why
        the gate in harnessed-8px.21.3 must key on image identity and not only the recipe hash.
 
-    2. USERNS. The pod is created `--userns=keep-id` and the agent inherits it as a pod member, so
-       this populate step MUST use keep-id too. A volume first populated under the DEFAULT userns
-       is unusable by the agent: uid 1000 inside reads the files as owner 999 and every write
-       EACCESes. Verified in both directions.
+    2. USERNS. The pod is created with `paths.USERNS_ARG` and the agent inherits it as a pod member,
+       so this populate step MUST use the SAME mapping. A volume first populated under the DEFAULT
+       userns is unusable by the agent: uid 1000 inside reads the files as owner 999 and every write
+       EACCESes. Verified in both directions. The mapping is pinned to the image uid rather than left
+       as bare `keep-id` — see paths.USERNS_ARG and bd harnessed-rv2.1.
 
     The profile is copied in on every launch, deliberately: that preserves today's semantics where
     the profile always wins over baked content. It is a local copy of small trees, not the
@@ -93,7 +94,7 @@ def _ensure_config_volume(
         "fi"
     )
     _run([
-        rt, "run", "--rm", "--userns=keep-id",
+        rt, "run", "--rm", paths.USERNS_ARG,
         "-v", f"{vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{prof}:{_CTR_PROFILE_DIR}:ro",
         "--entrypoint", "sh", image, "-c", compose,
@@ -160,7 +161,7 @@ def _volume_read(rt: str, volume: str, image: str, rel: str) -> str | None:
     (keep the floor) from "empty file".
     """
     out = subprocess.run(
-        [rt, "run", "--rm", "--userns=keep-id",
+        [rt, "run", "--rm", paths.USERNS_ARG,
          "-v", f"{volume}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image,
          "-c", f"cat {_CONTAINER_HOME_STR}/.claude/{rel}"],
         capture_output=True, text=True,
@@ -185,11 +186,11 @@ def _run_container_installs(
     passing it with `-e` avoids hand-quoting a script whose failure mode is silent and
     arbitrary-code-shaped.
 
-    `--userns=keep-id` on every step, matching the pod the agent inherits. A volume written under
+    `paths.USERNS_ARG` on every step, matching the pod the agent inherits. A volume written under
     any other mapping is unreadable by the agent (harnessed-8px.21.1).
     """
     common = [
-        "--userns=keep-id",
+        paths.USERNS_ARG,
         "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
         # The download cache, and the direct successor to the build's `--mount=type=cache` (bd
@@ -290,7 +291,7 @@ def _ensure_stack_volumes(
         return cfg_vol, tools_vol
 
     _run_container_installs(rt, stack, harness, image, recipes, cfg_vol, tools_vol)
-    _run([rt, "run", "--rm", "--userns=keep-id",
+    _run([rt, "run", "--rm", paths.USERNS_ARG,
           "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image, "-c",
           f"printf %s {shlex.quote(want)} > {_CONTAINER_HOME_STR}/.claude/{_HOST_STACK_FINGERPRINT}"],
          capture_output=True)

@@ -11,9 +11,10 @@ Two independent checks resolve a global entry, both DEFAULT-DENY:
      listed (or when the file is absent) is refused with a message naming the exact
      file and the line to add.
 
-Plus an ownership guard (T5): under `--userns=keep-id` harnessed runs as the invoking
-user, so a dir it CREATES maps 1:1 into the pod. A PRE-EXISTING dir owned by a different
-uid silently EACCESes inside the pod — caught here, before launch, with a remediation.
+Plus an ownership guard (T5): under `paths.USERNS_ARG` the pod's uid-1000 process IS the
+invoking user, so a dir harnessed CREATES is writable inside the pod by construction. A
+PRE-EXISTING dir owned by a different uid silently EACCESes inside the pod — caught here,
+before launch, with a remediation.
 """
 
 from __future__ import annotations
@@ -39,7 +40,8 @@ class PersistNotAllowlistedError(SchemaError):
 class PersistOwnershipError(SchemaError):
     """A persist target dir exists but is owned by a different uid than the caller (T5).
 
-    Under `--userns=keep-id` that uid maps 1:1 into the pod, so the tool would hit EACCES.
+    Under `paths.USERNS_ARG` only the INVOKING user is mapped onto the pod's uid 1000; a foreign
+    owner maps to an unrelated subuid with no write access, so the tool would hit EACCES.
     """
 
 
@@ -128,21 +130,41 @@ def _allowlisted(real: Path) -> bool:
 def guard_ownership(path: Path) -> None:
     """Raise if `path` exists but is owned by a different uid than the caller (T5).
 
-    harnessed runs the pod with `--userns=keep-id`, mapping the invoking uid 1:1 inside, so a
-    dir harnessed CREATES is owned correctly by construction. A PRE-EXISTING dir owned by a
-    different uid maps to a uid with no write access inside the pod → silent EACCES. Caught
-    here, before launch, naming the cause and the remediation. Absent dirs are fine (harnessed
-    creates them as the caller).
+    harnessed runs the pod with `paths.USERNS_ARG`, which maps the INVOKING user — whatever their
+    host uid — onto the image's uid 1000. So the pod's process is the caller, and a dir harnessed
+    CREATES is owned correctly by construction. A PRE-EXISTING dir owned by a different uid maps to
+    an unrelated subuid with no write access inside the pod → silent EACCES. Caught here, before
+    launch, naming the cause and the remediation. Absent dirs are fine (harnessed creates them as
+    the caller).
+
+    The comparison is against `paths.pod_host_uid()`, NOT against `os.getuid()` directly. Under the
+    pinned mapping those are the same number — but only reading it off the mapping makes this guard
+    able to catch the mapping being WRONG, which is the one thing it is here for. Compared against
+    `os.getuid()`, it waved through six consecutive red CI runs: the runner owned its own persist
+    dir, so the check passed, while the pod (bare `keep-id`, so still uid 1000 on the host) owned
+    nothing and the beads-server entrypoint died on `mkdir -p /data/dolt` (bd harnessed-rv2.1).
     """
+    mapping = paths.USERNS_ARG.removeprefix("--userns=")
+    writer = paths.pod_host_uid()
+    # BEFORE the absent-path early return, deliberately: an unresolved mapping is a problem even for
+    # a dir harnessed is about to create, because the pod will write to it as a uid nobody can name.
+    # Checking after the return let the unresolved case escape on the common path (CodeRabbit).
+    if writer is None:
+        raise PersistOwnershipError(
+            f"harnessed cannot determine which host uid the pod writes as under `{mapping}`, so it "
+            f"will not risk a silent permission error on {path}. Only `keep-id:uid="
+            f"{paths.CONTAINER_UID}` (the invoking user maps onto the image uid) and `host` are "
+            "resolvable; bare `keep-id`, `auto` and `nomap` draw the image's uid from the subuid "
+            "range, where the resulting owner is not predictable from the argument."
+        )
     try:
         st = path.stat()
     except OSError:
-        return  # absent → created later as the caller; nothing to guard
-    me = os.getuid()
-    if st.st_uid != me:
+        return  # absent → created later as the caller; nothing left to guard
+    if st.st_uid != writer:
         raise PersistOwnershipError(
-            f"persist dir {path} is owned by uid {st.st_uid}, but harnessed runs as uid {me}. "
-            "Under --userns=keep-id that uid maps 1:1 into the pod, so the tool would hit a "
-            "silent permission error (EACCES) writing here. Fix the owner "
-            f"(e.g. `sudo chown -R {me} {path}`) or remove the stale dir and re-run."
+            f"persist dir {path} is owned by uid {st.st_uid}, but harnessed's pod writes as host "
+            f"uid {writer} (you are uid {os.getuid()}; the pod runs `{mapping}`). The tool would "
+            "hit a silent permission error (EACCES) writing here. Fix the owner "
+            f"(e.g. `sudo chown -R {writer} {path}`) or remove the stale dir and re-run."
         )

@@ -624,7 +624,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     _, build_recipes = load_stack_with_recipes(root, stack)
     cfg_vol, tools_vol = _ensure_stack_volumes(rt, stack, harness, prof, derived, build_recipes)
     vol_args = [
-        "--userns=keep-id",
+        paths.USERNS_ARG,
         "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
     ]
@@ -1092,6 +1092,18 @@ def _surface_scan_report(
 
 # --- Pod / container lifecycle helpers -----------------------------------------
 
+def _without_userns(args: list[str]) -> list[str]:
+    """Drop every `--userns=…` from an argv fragment.
+
+    `--userns` is a POD-level property; podman rejects it on a member, so the mount args the pod was
+    created with cannot be handed to the member verbatim. This used to be an inline
+    inequality against the bare `keep-id` spelling, which silently stopped matching once it was pinned
+    (bd harnessed-rv2.1) — a filter keyed to a literal is a filter that breaks when the literal
+    moves. Matching the FLAG covers every spelling of the value.
+    """
+    return [a for a in args if not a.startswith("--userns")]
+
+
 def _pod_teardown(rt: str, instance: str, pod: str) -> None:
     if _rt_uses_pods(rt):
         subprocess.run([rt, "pod", "rm", "-f", pod], capture_output=True)
@@ -1274,9 +1286,11 @@ def _svc_run_cmd(
     if svc.scope == "project":
         assert project_path is not None  # guarded by the caller
         host_dir, _, location = _service_data_dir(svc, stack, project_path)
-        # keep-id: the service writes as the invoking user, so bind-mounted bytes stay host-owned
-        # (a dolt data dir written by a foreign uid would EACCES for every agent container).
-        run_cmd += ["--userns=keep-id", "-v", f"{host_dir}:/data:rw"]
+        # keep-id, pinned to the image uid: the service writes as the invoking user, so bind-mounted
+        # bytes stay host-owned (a dolt data dir written by a foreign uid would EACCES for every
+        # agent container). Unpinned, this was the loudest symptom of bd harnessed-rv2.1 — the
+        # entrypoint's `mkdir -p /data/dolt` died with EACCES on any host whose uid is not 1000.
+        run_cmd += [paths.USERNS_ARG, "-v", f"{host_dir}:/data:rw"]
         # Path-preserving mirror: a host-side client (e.g. `bd`) that passes its absolute path to
         # the containerised Dolt server (e.g. via `CALL dolt_backup('add', ..., '<abs-path>')`)
         # will have Dolt resolve that path against the CONTAINER filesystem. Without this second
@@ -2621,11 +2635,11 @@ class ContainerBackend(ExecutionBackend):
         inst_cfg_dir.mkdir(parents=True, exist_ok=True)
         hatago_cfg_host = emit.write_hatago_config(inst_cfg_dir, self.servers, spec.project_path)
         hatago_cfg_ctr = str(paths.hatago_config_container())
-        # Filter out --userns=keep-id from member (pod-level property). Mount the hatago config (ro)
-        # into the HARNESS container — after the hatago-consolidation, hatago runs IN this container
-        # (not a separate pod member), so the hub and the stdio children it spawns share this
-        # container's home and see the project bind-mount.
-        self.member_mounts = [a for a in self.mount_args if a != "--userns=keep-id"]
+        # Filter --userns out of the member args (it is a pod-level property). Mount the hatago
+        # config (ro) into the HARNESS container — after the hatago-consolidation, hatago runs IN
+        # this container (not a separate pod member), so the hub and the stdio children it spawns
+        # share this container's home and see the project bind-mount.
+        self.member_mounts = _without_userns(self.mount_args)
         self.member_mounts += ["-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro"]
         self.member_mounts += _setup_script_mounts(self.recipes)
 
@@ -2674,7 +2688,7 @@ class ContainerBackend(ExecutionBackend):
             # members share the pod's UTS namespace, so this is the one that governs.
             pod_cmd = [
                 self.rt, "pod", "create", "--name", self.pod,
-                "--hostname", paths.container_hostname(self.pod), "--userns=keep-id",
+                "--hostname", paths.container_hostname(self.pod), paths.USERNS_ARG,
             ]
             if net:
                 pod_cmd += ["--network", net]

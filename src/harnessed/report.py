@@ -42,6 +42,10 @@ def render_markdown(report: CapabilityReport) -> str:
         lines.append(f"| {result.name} | {result.kind} | {_status_cell(result)} |")
     if not report.results:
         lines.append("| _(none)_ | | the manifest declares no capabilities |")
+    # NO container output here. The per-capability `detail` carries a POINTER to the hub log
+    # (`capability.MCP_MISS_REMEDIATION`); quoting the log itself would put child-process output —
+    # which for MCP servers means credentials from the environment — into a report that `--json`
+    # feeds to a public CI log. T-02-07; see the note on `capability._HATAGO_LOG_PATH`.
     return "\n".join(lines)
 
 
