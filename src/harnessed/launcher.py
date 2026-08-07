@@ -175,6 +175,7 @@ from .svcguards import (
     _service_container_status,
 )
 from .hostrun import (
+    _apply_host_mise_env,
     _harness_config_env,
     _host_install_tools,
     _host_mise_env,
@@ -2066,7 +2067,9 @@ def _launch_host(
     # stack installed nothing, and every shim on the PATH entry above fails with "not a valid
     # shim". Set on os.environ (not a private dict) for the same reason as PATH: installs, setups,
     # the agent, and everything the agent spawns all need it, and os.environ IS the host's box.
-    os.environ.update(_host_mise_env(stack))
+    # CLEARS as well as sets — see `_HOST_MISE_UNSET`. Launching a stack from inside another stack's
+    # host session inherits that session's MISE_STATE_DIR, and only a removal gets rid of it.
+    _apply_host_mise_env(os.environ, stack)
     # Folder-env contract into THIS process's env, for the same reason (and with the same precedent)
     # as the PATH mutation above: a container launch sets the contract box-wide (`podman run -e`) so
     # every process agrees, and the host has no box — os.environ IS the box. Without this the agent

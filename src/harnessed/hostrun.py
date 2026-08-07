@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 from pathlib import Path
-from typing import Optional
+from typing import MutableMapping, Optional
 
 import typer
 
@@ -57,13 +57,53 @@ def _host_mise_env(stack: str) -> dict[str, str]:
 
     So _launch_host exports this alongside the PATH entry for `_host_tool_shims_dir`: a shims dir
     on PATH without this env is a dir of guaranteed-broken symlinks.
+
+    MISE_STATE_DIR IS DELIBERATELY NOT REDIRECTED. mise keeps its TRUST STORE in the state dir, and
+    trust is a fact about the user and a config FILE — never about which stack happens to be
+    running. Redirecting it gave every stack an empty trust store, so every project `mise.toml` the
+    user had already trusted read as untrusted inside every harnessed session, and each new stack
+    (or a rebuilt tools dir) re-broke one the user had just repaired. mise reports that as
+
+        mise ERROR error parsing config file: <path>
+
+    which reads as a TOML syntax error and is not one — the real reason is on the NEXT line. The
+    file is then not loaded at all, so a project whose `[env]` carries e.g. `BEADS_DIR` comes up
+    unconfigured for reasons nothing on screen explains.
+
+    The state dir holds `trusted-configs` and `tracked-configs` and nothing else. Neither is
+    stack-scoped, so sharing the user's costs no isolation: the stack's own `config.toml` lives
+    under MISE_CONFIG_DIR and is trusted implicitly for being there — verified against mise
+    2026.8.2 with this exact split.
+
+    NOT fixed by auto-trusting instead. `MISE_TRUSTED_CONFIG_PATHS` (what the container path sets,
+    where the only config present is the one we put there) would make harnessed grant trust the user
+    never granted, and a mise config can carry `_.source` — so that is code execution. Keeping the
+    user's own store means harnessed grants no trust at all and simply stops discarding theirs.
     """
     mise_root = _stack_tools_dirs(stack)[0] / "mise"
     return {
         "MISE_DATA_DIR": str(mise_root),
         "MISE_CONFIG_DIR": str(mise_root / "config"),
-        "MISE_STATE_DIR": str(mise_root / "state"),
     }
+
+
+# Variables a PREVIOUS harnessed release exported and this one must actively remove, not merely stop
+# setting. Both consumers of `_host_mise_env` merge it over an inherited environment, and launching
+# one stack from inside another stack's host session is routine — so a stale MISE_STATE_DIR from the
+# outer session would survive the merge and keep the empty trust store alive in the inner one. Same
+# shape as the CLAUDE_CONFIG_DIR inheritance trap documented further down this module.
+_HOST_MISE_UNSET = ("MISE_STATE_DIR",)
+
+
+def _apply_host_mise_env(env: MutableMapping[str, str], stack: str) -> None:
+    """Put `_host_mise_env` onto `env` and clear what a previous release left behind.
+
+    One function so install time and run time cannot drift: they redirect the same instance, and a
+    variable cleared on one side only is the same broken-shim class `_host_mise_env` guards against.
+    """
+    for var in _HOST_MISE_UNSET:
+        env.pop(var, None)
+    env.update(_host_mise_env(stack))
 
 
 def _host_install_tools(stack: str, recipes) -> None:
@@ -95,7 +135,6 @@ def _host_install_tools(stack: str, recipes) -> None:
     mise_root.mkdir(parents=True, exist_ok=True)
     env = {
         **os.environ,
-        **_host_mise_env(stack),
         # NOT redirected: the download cache is a cache. Sharing the user's means a host launch and a
         # container build (which mounts the same kind of cache) both stop re-downloading.
         #
@@ -107,6 +146,9 @@ def _host_install_tools(stack: str, recipes) -> None:
         # default a user cannot usefully countermand: with `auto` the install simply fails.
         "MISE_NPM_PACKAGE_MANAGER": "pnpm",
     }
+    # After the splat, because it CLEARS as well as sets: an inherited MISE_STATE_DIR has to lose to
+    # the removal, not be reinstated by `**os.environ`.
+    _apply_host_mise_env(env, stack)
     _err.print(f"[blue][INFO][/blue] tools: mise use -g {' '.join(specs)} (host)")
     if subprocess.run(
         ["mise", "use", "-g", *specs], env=env, cwd=str(mise_root)
