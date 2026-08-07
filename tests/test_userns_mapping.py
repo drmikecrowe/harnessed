@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 
 from harnessed import launcher, paths
+from harnessed.backend import LaunchSpec
 from harnessed.schema import load_recipe
 from support import patch_all
 
@@ -128,11 +129,31 @@ class TestPodMembersCarryNoUserns:
         assert not any(a.startswith("--userns") for a in kept)
         assert kept == ["-v", "a:b"]
 
-    def test_the_member_wiring_uses_the_strip(self):
-        """Guards the seam: an inline `!= "<literal>"` filter is what broke when the literal moved."""
-        src = inspect.getsource(launcher.ContainerBackend.wire_mcp)
-        assert "_without_userns(" in src
-        assert '"--userns=keep-id"' not in src
+    def test_the_member_wiring_really_strips_it(self, tmp_path):
+        """The REAL `member_mounts`, not a source scan.
+
+        This replaced an `inspect.getsource(...)` assertion that an adversarial reviewer defeated in
+        one line: replacing the call with `list(self.mount_args)  # _without_userns(` left the
+        substring in a comment, so the scan passed while `--userns` bled straight through onto the
+        pod member. No other test caught that mutation either.
+
+        `wire_mcp` needs no podman — it writes a config file and computes a list — so the earlier
+        justification for leaving it to a structural guard was simply wrong.
+        """
+        backend = launcher.ContainerBackend(
+            "podman", "inst", "pod", tmp_path / "prof", "img", tmp_path / "proj",
+            [], [], None, stack_from_overlay=False, headless=True,
+        )
+        backend.mount_args = [paths.USERNS_ARG, "-v", "/host/a:/ctr/a", "-e", "FOO=1"]
+
+        backend.wire_mcp(LaunchSpec(stack="s", harness="claude", project_path=tmp_path / "proj"))
+
+        assert not any(a.startswith("--userns") for a in backend.member_mounts), (
+            f"--userns leaked onto the pod member, which podman rejects: {backend.member_mounts}"
+        )
+        # ...and it stripped ONLY that: everything else the pod was given must still be delivered.
+        assert "-v" in backend.member_mounts and "/host/a:/ctr/a" in backend.member_mounts
+        assert "FOO=1" in backend.member_mounts
 
 
 @pytest.mark.skipif(

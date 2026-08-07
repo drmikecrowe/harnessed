@@ -188,6 +188,36 @@ class TestTheGuardFollowsTheMappingInsteadOfAssumingIt:
         monkeypatch.setattr(paths, "USERNS_ARG", "--userns=keep-id:uid=1234,gid=1234")
         assert paths.pod_host_uid() == paths.CONTAINER_UID
 
+    @pytest.mark.parametrize(
+        "mapping, pod_is_the_caller",
+        [
+            # An adversarial reviewer asked whether the `\buid=(\d+)` scan really holds up. It does,
+            # and these are the cases that decide it — pinned so a "simplification" of that regex
+            # cannot quietly break the guard.
+            ("--userns=keep-id:uid=1000,gid=1000", True),   # the pinned form
+            ("--userns=keep-id:gid=1000,uid=1000", True),   # REVERSED order — `\b` matches after `,`
+            ("--userns=keep-id:uid=01000,gid=1000", True),  # zero-padded
+            ("--userns=keep-id", False),                    # bare: the bug this bead fixes
+            ("--userns=keep-id:uid=1001,gid=1001", False),  # mapped onto somebody else
+            ("--userns=keep-id:uid=10000,gid=1000", False), # 1000 is a PREFIX of 10000, not a match
+            ("--userns=keep-id:subuid=1000", False),        # `uid=` inside a longer word: no `\b`
+            ("--userns=host", False),                       # no userns → container 1000 IS host 1000
+            ("--userns=auto", False),                       # private range → fail SAFE, guard fires
+        ],
+    )
+    def test_the_mapping_is_parsed_not_guessed(self, monkeypatch, mapping, pod_is_the_caller):
+        monkeypatch.setattr(paths, "USERNS_ARG", mapping)
+        expected = os.getuid() if pod_is_the_caller else paths.CONTAINER_UID
+        assert paths.pod_host_uid() == expected, f"{mapping} resolved wrong"
+
+    def test_an_unrecognized_mapping_fails_safe(self, monkeypatch):
+        """`--userns=auto` maps the image uid into a PRIVATE range — neither the caller nor 1000.
+        `pod_host_uid` cannot know the answer, so it must return the value that makes the guard
+        REFUSE the launch rather than the one that waves it through. Refusing a launch that might
+        have worked is recoverable; a silent EACCES inside a container is the bug this bead is."""
+        monkeypatch.setattr(paths, "USERNS_ARG", "--userns=auto")
+        assert paths.pod_host_uid() == paths.CONTAINER_UID
+
     def test_the_guard_would_have_caught_the_ci_failure(self, tmp_path, monkeypatch):
         """Run 31170180149's situation, which the guard waved through.
 

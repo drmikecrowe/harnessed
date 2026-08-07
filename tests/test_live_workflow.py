@@ -57,6 +57,18 @@ class TestItPrintsEnoughToDiagnoseAFailure:
         suite = next(i for i, b in enumerate(bodies) if "run-tests.sh" in b)
         assert identity < suite
 
+    def test_the_identity_step_is_unconditional(self, job):
+        """An adversarial reviewer's finding: the two assertions above read a FLAT JOIN of every
+        step's `run` body, so an `if: failure()`-guarded step containing the same three commands
+        would satisfy both while diagnosing nothing — and the failure modes that most need a uid
+        (a timeout kill, a setup failure before the suite) are exactly the ones where a conditional
+        step would not have run yet."""
+        step = next(s for s in _steps(job) if "id -u" in s.get("run", ""))
+        assert "if" not in step, (
+            f"the runner-identity step is conditional ({step.get('if')!r}); it must run on every "
+            "job, or the log it exists to produce is missing precisely when it is needed"
+        )
+
 
 class TestItRunsWhatDevelopersRun:
     def test_the_suite_goes_through_the_project_script(self, job):
