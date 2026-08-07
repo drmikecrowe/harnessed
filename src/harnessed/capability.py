@@ -674,7 +674,7 @@ def introspect_mcp(
     harness: str = "claude",
     *,
     expect: Collection[str] = (),
-    timeout: int = MCP_CONNECT_TIMEOUT,
+    timeout: float = MCP_CONNECT_TIMEOUT,
 ) -> tuple[dict[str, str], str]:
     """Return ({connected server -> status}, source-label), preferring machine-readable sources.
 
