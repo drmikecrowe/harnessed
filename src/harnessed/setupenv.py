@@ -358,8 +358,15 @@ def project_env_path(project_path: Path) -> Path:
 
     Keyed on `git_common_dir`, so every worktree of a checkout shares one env: worktrees differ in
     what they are building, never in which tools the project needs.
+
+    RAISES `paths.GitLookupFailed` rather than falling back when the lookup cannot complete (bd
+    harnessed-654). The fallback is only correct for a directory that genuinely has no repo; used
+    after a timeout or a permission error it returns a DIFFERENT path than the launch wrote, and
+    every consumer of that path fails silently — mise and direnv both ignore a missing env file, so
+    the tools simply come up unconfigured with nothing to explain why. An exception is the only
+    outcome here that anyone notices.
     """
-    gcd = paths.git_common_dir(project_path)
+    gcd = paths.git_common_dir_checked(project_path)
     return (
         paths.xdg_state_home() / "harnessed" / "project-env"
         / f"{paths.project_hash(gcd or project_path)}.env"
@@ -410,7 +417,19 @@ def _write_project_tool_env(
     }
 
     if values:
-        env_file = project_env_path(project_path)
+        try:
+            env_file = project_env_path(project_path)
+        except paths.GitLookupFailed as exc:
+            # The LAUNCH is not what breaks here — the agent gets this env directly, and always
+            # did. Only the plain-shell copy is lost. Writing it to the fallback path instead would
+            # be worse than skipping: a later healthy lookup reads the git-keyed path, finds
+            # nothing, and the stale file sits somewhere no one looks.
+            _say(
+                f"[yellow][WARN][/yellow] could not determine this project's git dir, so the "
+                f"tool env for plain shells was not written ({exc}). The agent this launch starts "
+                f"is unaffected."
+            )
+            return
         # mode ON the mkdir, not only the chmod after it. The file is written after the chmod, so
         # no unprivileged process can open it by PATH either way — but a directory created 0755 can
         # be opened in that window and the descriptor held, and an fd survives the later chmod

@@ -392,23 +392,73 @@ def persist_root() -> Path:
     return xdg_data_home() / "harnessed" / "persist"
 
 
-def git_common_dir(project_path: str | Path) -> Path | None:
-    """Return the git common dir for project_path (shared across all worktrees), or None.
+class GitLookupFailed(Exception):
+    """A git lookup could not be COMPLETED — distinct from completing and finding no repository.
 
-    Uses `git rev-parse --path-format=absolute --git-common-dir`. This is the same path
-    for every worktree of a given checkout, so it is the correct key for cross-worktree
-    persistence. Returns None for non-git directories or when git is not available.
+    The distinction matters wherever the answer keys something persistent (bd harnessed-654). A
+    caller that treats both as "no repo" falls back to the project path, so a transient failure
+    silently produces a DIFFERENT key than the one written when git was healthy. Nothing errors;
+    the wrong location is simply used and found empty.
+
+    "Not a repository" and "git is not installed" are answers, not failures: both are stable across
+    calls, so the fallback they trigger is stable too. A timeout, a permission error or an
+    unrecognised git failure are not stable, and are what this reports.
     """
+
+
+def git_common_dir_checked(project_path: str | Path) -> Path | None:
+    """The git common dir, None if genuinely not a repository, raising on an incomplete lookup.
+
+    Use this when the result keys something durable. Use `git_common_dir` when a fallback is
+    harmless and you would rather not handle an exception.
+
+    Timed out rather than trusted to return: this can be called per-directory by a shell hook, and
+    a stalled filesystem must not hang the shell that asked.
+    """
+    # A directory that is not there is an ANSWER, not a failure: `git -C` cannot chdir into it, and
+    # it will not be able to next time either. Checked here rather than pattern-matched out of
+    # git's stderr, which says "cannot change to" and never mentions a repository at all.
+    if not Path(project_path).is_dir():
+        return None
     try:
         result = subprocess.run(
             ["git", "-C", str(project_path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
             capture_output=True,
             text=True,
             check=True,
+            timeout=5,
         )
-        p = Path(result.stdout.strip())
-        return p if p.exists() else None
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+    except FileNotFoundError:
+        return None  # git absent — stable, so the caller's fallback is stable too
+    except subprocess.CalledProcessError as exc:
+        if "not a git repository" in (exc.stderr or "").lower():
+            return None  # a real answer: this directory is not in a repo
+        raise GitLookupFailed(f"git rev-parse failed in {project_path}: {exc.stderr}") from exc
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        raise GitLookupFailed(f"git rev-parse could not run in {project_path}: {exc}") from exc
+
+    p = Path(result.stdout.strip())
+    if not p.exists():
+        # git named a common dir that is not there. Not "no repo" — something is wrong underneath,
+        # and keying on the fallback would be a guess.
+        raise GitLookupFailed(f"git reported a common dir that does not exist: {p}")
+    return p
+
+
+def git_common_dir(project_path: str | Path) -> Path | None:
+    """Return the git common dir for project_path (shared across all worktrees), or None.
+
+    Uses `git rev-parse --path-format=absolute --git-common-dir`. This is the same path
+    for every worktree of a given checkout, so it is the correct key for cross-worktree
+    persistence. Returns None for non-git directories or when git is not available.
+
+    LOSSY BY DESIGN, and kept that way so the fifteen-odd callers that only want "a repo root if
+    there is one" need no error handling. A caller keying something durable on the answer wants
+    `git_common_dir_checked` instead — see `GitLookupFailed`.
+    """
+    try:
+        return git_common_dir_checked(project_path)
+    except GitLookupFailed:
         return None
 
 

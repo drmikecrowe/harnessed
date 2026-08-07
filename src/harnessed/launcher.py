@@ -4355,12 +4355,22 @@ def project_env_path_cmd(
     Prints the path whether or not it exists, so a directory that was never launched in is not an
     error — direnv tolerates a missing env file silently.
     """
+    # PRINT NOTHING ON A FAILED LOOKUP, and exit non-zero. The caller is a shell substitution in
+    # someone's env loader, so a path printed here is used without question — and a fallback path
+    # computed after a failed git lookup is a plausible-looking wrong answer that loads no env and
+    # explains nothing. Empty stdout makes the loader load nothing too, but the message on stderr
+    # says why (bd harnessed-654).
+    try:
+        env_path = setupenv_project_env_path(Path(path).resolve() if path else Path.cwd())
+    except paths.GitLookupFailed as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
     # BUILTIN print, NOT `_out.print`. This output is consumed as a filename by mise, and the rich
     # console mangles it two ways: it hard-wraps at the terminal width, so a path longer than the
     # window comes back with a newline in the middle of it, and it reads `[...]` as markup, so a
     # path containing a bracket loses the bracketed span. Both fail SILENTLY — mise tolerates a
     # missing `_.file`, so the project env would simply never load and nothing would say why.
-    print(setupenv_project_env_path(Path(path).resolve() if path else Path.cwd()))
+    print(env_path)
 
 
 @app.command("aws-sso")
