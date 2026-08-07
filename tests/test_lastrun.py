@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from harnessed import aoe, lastrun, launcher
+from harnessed import aoe, lastrun, launcher, paths
 
 runner = CliRunner()
 
@@ -80,30 +80,48 @@ class TestNothingToReplay:
         assert lastrun.load("host-run", "claude", proj) is None
 
 
-class TestCheckoutKeying:
-    """THE keying decision (bd harnessed-7mt): ONE record per checkout, shared by every worktree —
-    the same key the project tool env uses. Keying per worktree was implemented first and rejected
-    for multiplying records per repo."""
+class TestWorktreeKeying:
+    """THE keying decision: one record per WORKTREE, NOT per checkout.
 
-    def test_worktrees_of_one_repo_share_a_record(self, tmp_path, monkeypatch):
+    The two keys in play want opposite things. `project_env_path` keys on git_common_dir because
+    every worktree needs the same tools. "What did I last launch here" is the opposite: worktrees
+    exist precisely to run different things, so sharing the key makes `--last` replay a stack from
+    a directory you are not in, and report success.
+    """
+
+    def test_worktrees_of_one_checkout_do_not_share(self, tmp_path, monkeypatch):
+        """The regression this exists to prevent. With a shared key, wt-b's launch overwrote wt-a's
+        record and `--last` in wt-a silently started stack-b."""
         a, b = tmp_path / "wt-a", tmp_path / "wt-b"
         a.mkdir()
         b.mkdir()
-        # One checkout, two worktrees: git_common_dir is the same for both.
-        monkeypatch.setattr(lastrun.paths, "git_common_dir", lambda _p: tmp_path / "repo.git")
-        lastrun.record("host-run", "stack-a", "claude", a)
-        assert lastrun.load("host-run", "claude", b)["stack"] == "stack-a"
-
-    def test_the_last_launch_wins_across_worktrees(self, tmp_path, monkeypatch):
-        """The accepted cost of sharing, pinned so it is a decision and not a surprise: a worktree
-        running a different stack overwrites the record the other one would replay."""
-        a, b = tmp_path / "wt-a", tmp_path / "wt-b"
-        a.mkdir()
-        b.mkdir()
+        # One checkout, two worktrees: git_common_dir is identical for both, and must NOT be used.
         monkeypatch.setattr(lastrun.paths, "git_common_dir", lambda _p: tmp_path / "repo.git")
         lastrun.record("host-run", "stack-a", "claude", a)
         lastrun.record("host-run", "stack-b", "claude", b)
-        assert lastrun.load("host-run", "claude", a)["stack"] == "stack-b"
+        assert lastrun.load("host-run", "claude", a)["stack"] == "stack-a"
+        assert lastrun.load("host-run", "claude", b)["stack"] == "stack-b"
+
+    def test_a_sibling_worktree_has_nothing_to_replay(self, tmp_path, monkeypatch):
+        """A worktree that was never launched in reports "nothing to replay" rather than inheriting
+        its sibling's stack. Failing loudly beats starting the wrong thing."""
+        a, b = tmp_path / "wt-a", tmp_path / "wt-b"
+        a.mkdir()
+        b.mkdir()
+        monkeypatch.setattr(lastrun.paths, "git_common_dir", lambda _p: tmp_path / "repo.git")
+        lastrun.record("host-run", "stack-a", "claude", a)
+        assert lastrun.load("host-run", "claude", b) is None
+
+    def test_the_tool_env_still_shares_across_worktrees(self, tmp_path, monkeypatch):
+        """The other half of the decision, pinned in the same place so the two cannot drift into
+        agreeing: the ENV is shared per checkout even though the last-run record is not."""
+        from harnessed import setupenv
+
+        monkeypatch.setattr(paths, "xdg_state_home", lambda: tmp_path / "state")
+        monkeypatch.setattr(paths, "git_common_dir", lambda _p: tmp_path / "repo.git")
+        a, b = tmp_path / "wt-a", tmp_path / "wt-b"
+        assert setupenv.project_env_path(a) == setupenv.project_env_path(b)
+        assert lastrun._store(a) != lastrun._store(b)
 
     def test_separate_repos_do_not_share(self, tmp_path):
         a, b = tmp_path / "repo-a", tmp_path / "repo-b"
