@@ -144,3 +144,82 @@ class TestOwnershipGuard:
         with pytest.raises(PersistOwnershipError) as ei:
             persist.guard_ownership(d)
         assert "keep-id" in str(ei.value)  # names the cause + remediation
+
+    def test_the_message_names_the_pinned_mapping(self, tmp_path, monkeypatch):
+        """bd harnessed-rv2.1. The guard's premise — "the invoking uid maps 1:1 inside" — was only
+        true on a host whose uid happened to be 1000, which is why it rubber-stamped the CI failure
+        it exists to catch. The pinned `keep-id:uid=1000` mapping is what MAKES that premise true,
+        so the remediation text must name the mapping it is actually reasoning about."""
+        d = tmp_path / "theirs"
+        d.mkdir()
+        owner = os.stat(d).st_uid
+        monkeypatch.setattr(os, "getuid", lambda: owner + 1)
+        with pytest.raises(PersistOwnershipError) as ei:
+            persist.guard_ownership(d)
+        msg = str(ei.value)
+        assert f"keep-id:uid={paths.CONTAINER_UID}" in msg, (
+            f"the guard still describes the stale unpinned mapping: {msg}"
+        )
+        assert f"chown -R {owner + 1}" in msg  # remediation targets the CALLER, who can write
+
+
+class TestTheGuardFollowsTheMappingInsteadOfAssumingIt:
+    """bd harnessed-rv2.1. The guard exists (T5) so that a wrong assumption about the userns mapping
+    surfaces as a named PRE-LAUNCH error instead of `mkdir: cannot create directory '/data/dolt':
+    Permission denied` twenty layers down — which is exactly how live.yml failed six runs running.
+
+    A guard that derives its answer from `os.getuid()` directly is assuming the mapping is what it
+    hopes; it cannot catch the mapping being wrong, which is the one thing it is for. So it asks
+    `paths.pod_host_uid()`, which READS `USERNS_ARG`. The two can then never drift apart.
+    """
+
+    def test_pod_host_uid_follows_the_pinned_mapping(self):
+        """Pinned: the image's uid is mapped onto the invoking user, so the pod writes as us."""
+        assert paths.pod_host_uid() == os.getuid()
+
+    def test_pod_host_uid_follows_an_unpinned_mapping(self, monkeypatch):
+        """Bare `keep-id` names no uid: the invoking uid maps to itself and the pod's process stays
+        the image's uid, so on the host it writes as 1000 no matter who launched it."""
+        monkeypatch.setattr(paths, "USERNS_ARG", "--userns=keep-id")
+        assert paths.pod_host_uid() == paths.CONTAINER_UID
+
+    def test_a_mapping_onto_some_other_uid_is_not_treated_as_ours(self, monkeypatch):
+        """Only a mapping onto the IMAGE's uid makes the pod write as the caller."""
+        monkeypatch.setattr(paths, "USERNS_ARG", "--userns=keep-id:uid=1234,gid=1234")
+        assert paths.pod_host_uid() == paths.CONTAINER_UID
+
+    def test_the_guard_would_have_caught_the_ci_failure(self, tmp_path, monkeypatch):
+        """Run 31170180149's situation, which the guard waved through.
+
+        The runner OWNS its own persist dir, so `st_uid == os.getuid()` and the old comparison
+        passed. Under the bare mapping the pod still wrote as the image's uid, owned nothing, and
+        the beads-server entrypoint died on `mkdir -p /data/dolt`.
+
+        The runner condition is "the host user's uid differs from the image's uid". This dev box is
+        uid 1000 and the image is uid 1000, so the condition is unreachable here by holding the host
+        fixed — which is the whole reason six CI runs failed while every local run passed. It is
+        reachable by moving the image's uid instead: the two-differ relation is what matters, not
+        which side moved. `CONTAINER_UID` is patched rather than `os.getuid()` because `tmp_path` is
+        really owned by the real uid, and a lie about ownership would test the lie.
+        """
+        d = tmp_path / "beads"
+        d.mkdir()
+        assert os.stat(d).st_uid == os.getuid(), "premise: the caller owns its own persist dir"
+        monkeypatch.setattr(paths, "CONTAINER_UID", os.getuid() + 1)  # host uid != image uid
+        monkeypatch.setattr(paths, "USERNS_ARG", "--userns=keep-id")  # ...and the mapping is bare
+
+        with pytest.raises(PersistOwnershipError) as ei:
+            persist.guard_ownership(d)
+
+        msg = str(ei.value)
+        assert str(paths.CONTAINER_UID) in msg  # names the uid that actually cannot write
+        assert "chown" in msg                   # and what to do about it
+
+    def test_the_same_dir_is_fine_once_the_mapping_is_pinned(self, tmp_path, monkeypatch):
+        """The other half of the pair, and the one that proves the fix UNBLOCKS rather than merely
+        relocating the refusal: same dir, same non-1000 host, mapping pinned → launch proceeds."""
+        d = tmp_path / "beads"
+        d.mkdir()
+        monkeypatch.setattr(paths, "CONTAINER_UID", os.getuid() + 1)
+        monkeypatch.setattr(paths, "USERNS_ARG", f"--userns=keep-id:uid={os.getuid() + 1},gid=0")
+        persist.guard_ownership(d)  # no raise

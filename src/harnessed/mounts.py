@@ -723,7 +723,7 @@ def _persist_mounts(stack: str, project_path: Path) -> list[str]:
         ensures the project .gitignore contains the entry name (idempotent).
 
     Ownership (T5): every host-side target dir is ownership-guarded — a pre-existing dir owned
-    by another uid would silently EACCES under `--userns=keep-id`, rejected with a remediation.
+    by another uid would silently EACCES under `paths.USERNS_ARG`, rejected with a remediation.
     """
     _, recipes = load_stack_with_recipes(None, stack)
     args: list[str] = []

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -20,6 +21,48 @@ class HomeNotFoundError(RuntimeError):
 
 # Container home — the legible session-slug root (design §15 / D-06).
 CONTAINER_HOME = Path("/home/harnessed")
+
+# The uid/gid the `harnessed` user is baked as in every image (catalog/base/Dockerfile.harnessed-base,
+# catalog/services/*/Dockerfile — ubuntu:24.04 ships its `ubuntu` user at 1000 and the images keep it).
+CONTAINER_UID = 1000
+CONTAINER_GID = 1000
+
+# THE userns argument, for every `podman run` / `pod create` harnessed issues.
+#
+# Bare `--userns=keep-id` maps the invoking host uid to the SAME NUMBER inside the container, while
+# the container process is the image's uid 1000. So a bind-mounted host dir is writable from inside
+# only when the invoking user *happens to be* uid 1000 — true on many dev boxes, false on a GitHub
+# `ubuntu-latest` runner, where `live.yml` failed six runs in a row with
+#     mkdir: cannot create directory '/data/dolt': Permission denied
+# (bd harnessed-rv2.1).
+#
+# Pinning the mapping to the image's uid makes the container's uid-1000 process BE the invoking host
+# user whatever that user's host uid is, so ownership stops depending on a numeric coincidence. It is
+# a no-op where the host uid is already 1000, which is why it cannot regress those boxes.
+USERNS_ARG = f"--userns=keep-id:uid={CONTAINER_UID},gid={CONTAINER_GID}"
+
+
+def pod_host_uid() -> int:
+    """The HOST uid the pod's process writes as — READ OFF `USERNS_ARG`, never assumed.
+
+    A bind-mounted host dir is writable from inside the pod exactly when it is owned by this uid, so
+    this is the number every ownership check must compare against (`persist.guard_ownership`).
+
+    Deriving it from the argument instead of hardcoding either answer is the point. `guard_ownership`
+    exists so that a wrong assumption about the mapping surfaces as a named pre-launch error rather
+    than a silent EACCES deep inside a container — and a guard that assumes the mapping is correct
+    cannot catch the mapping being wrong. That circularity is why the guard passed on six
+    consecutive red CI runs while `mkdir -p /data/dolt` failed inside the beads-server sidecar
+    (bd harnessed-rv2.1). Un-pin `USERNS_ARG` and this function follows it, the guard fires, and the
+    failure is named before launch instead of after.
+
+      pinned to CONTAINER_UID → the invoking user IS the pod's uid-1000 process → os.getuid()
+      anything else (incl. bare `keep-id`, which names no uid) → the pod writes as CONTAINER_UID
+    """
+    mapped = re.search(r"\buid=(\d+)", USERNS_ARG)
+    if mapped and int(mapped.group(1)) == CONTAINER_UID:
+        return os.getuid()
+    return CONTAINER_UID
 
 # Default port the hatago hub listens on (design D-04).
 HATAGO_PORT = 3535

@@ -31,6 +31,12 @@ dev = [
     "ruff>=0.16",     # lint; its `S` rules ARE flake8-bandit, so no separate bandit dependency
     "mutmut",         # mutation testing generated from the AST — no hand-written mutants to rot
     "diff-cover",     # coverage restricted to the lines a branch changed
+    # Added for bd harnessed-rv2, each closing a gauntlet layer that was being reported UNAVAILABLE
+    # for want of a declared tool — the same reason the three above exist.
+    "hypothesis>=6",       # property-based tests: invariants over inputs nobody thought to enumerate
+    "pytest-randomly>=3",  # randomized test order. Every count this suite reports rests on it being
+                           # deterministic, and 2200 tests is well past where order-dependence stays
+                           # visible by inspection.
 ]
 
 [tool.ruff]

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -573,6 +574,25 @@ class TestInRepoServiceGetsTheRemoteGitSurface:
             "podman", "beads-server", stack="any", project_path=project, mount_path=project
         )
         return " ".join(captured[0])
+
+    def test_the_data_mount_pins_the_userns_to_the_image_uid(self, tmp_path, monkeypatch):
+        """bd harnessed-rv2.1. Plain `--userns=keep-id` maps the invoking host uid to the SAME
+        number inside, while the image runs as uid 1000 — so the bind-mounted `/data` is writable
+        only when the host user happens to BE 1000. On a GitHub runner it is not, and the service
+        dies at startup with `mkdir: cannot create directory '/data/dolt': Permission denied`.
+        The emitted argument must carry an explicit uid mapping, not the bare form."""
+        home = tmp_path / "home"
+        home.mkdir(parents=True)
+
+        cmd = self._capture_run_cmd(tmp_path, monkeypatch, home)
+
+        assert paths.USERNS_ARG in cmd.split(), (
+            f"the service run does not pin the userns mapping: {cmd}"
+        )
+        assert not re.search(r"--userns=keep-id(?![:\w])", cmd), (
+            "an unpinned --userns=keep-id survives; it EACCESes on any host whose uid is not "
+            f"{paths.CONTAINER_UID}"
+        )
 
     def test_ssh_config_pubkeys_and_xdg_git_config_are_mounted(self, tmp_path, monkeypatch):
         home = tmp_path / "home"

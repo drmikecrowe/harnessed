@@ -50,6 +50,7 @@ CONTAINER_ONLY: dict[str, str] = {
     "_stopped_leftover": "removes a dead container",
     "_pod_teardown": "tears down a pod",
     "_rt_uses_pods": "asks the container runtime about pods",
+    "_without_userns": "strips a pod-level --userns; a host-native launch has no user namespace",
     "_run": "shells out to podman/docker",
     "_attach": "attaches to a container's TTY; the host execs the harness directly",
     # --- bind mounts: the host already has these paths, so there is nothing to map in ---

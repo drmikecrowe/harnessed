@@ -42,6 +42,12 @@ def render_markdown(report: CapabilityReport) -> str:
         lines.append(f"| {result.name} | {result.kind} | {_status_cell(result)} |")
     if not report.results:
         lines.append("| _(none)_ | | the manifest declares no capabilities |")
+    if report.hatago_log:
+        # Populated only when an expected MCP server was absent. Without it the reader sees
+        # `not connected (checked hatago://servers)` and has no way to tell a child that spawned and
+        # died from one that never spawned at all (bd harnessed-rv2.2).
+        lines += ["", "### hatago log (an expected MCP server was absent)", "", "```",
+                  report.hatago_log, "```"]
     return "\n".join(lines)
 
 

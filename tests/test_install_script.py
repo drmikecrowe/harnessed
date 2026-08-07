@@ -240,12 +240,16 @@ class TestContainerExecutor:
         assert not self._argv(tmp_path, [_recipe(tmp_path)], monkeypatch)
 
     def test_every_step_uses_keep_id(self, tmp_path, monkeypatch):
-        """bd harnessed-8px.21.1. The pod is created `--userns=keep-id` and the agent inherits it as
-        a pod member. A volume populated under any OTHER mapping is unreadable by the agent: uid
-        1000 sees the files as owner 999 and every write EACCESes."""
+        """bd harnessed-8px.21.1. The pod is created with `paths.USERNS_ARG` and the agent inherits
+        it as a pod member. A volume populated under any OTHER mapping is unreadable by the agent:
+        uid 1000 sees the files as owner 999 and every write EACCESes.
+
+        The mapping the pod uses is pinned to the image uid (bd harnessed-rv2.1), so the assertion
+        is that this step MATCHES THE POD — which is what it always meant — rather than that it
+        carries one particular spelling."""
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n", extra='tools: ["npm:x@1"]\n')
         for cmd in self._argv(tmp_path, [r], monkeypatch):
-            assert "--userns=keep-id" in cmd
+            assert paths.USERNS_ARG in cmd
 
     def test_both_volumes_are_mounted_on_every_step(self, tmp_path, monkeypatch):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")

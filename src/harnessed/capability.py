@@ -34,6 +34,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -67,6 +68,25 @@ CONTAINER_HOME = os.environ.get("CONTAINER_HOME", "/home/harnessed")
 # hatago's HTTP port inside the pod (the readiness signal: bound ⇒ children connected).
 HATAGO_PORT = paths.hatago_port()
 
+# Where the hub writes its log INSIDE the instance. Authoritative source is the redirect in
+# `catalog/base/harnessed-start` (`hatago serve ... >/tmp/hatago.log 2>&1`); `launcher._wait_hatago`
+# names the same path in its own "hub never came up" error.
+#
+# The suppression below is for ruff's S108 (insecure /tmp usage). That rule is about CREATING
+# predictable temp files on a shared HOST filesystem, where another user can win a symlink race.
+# This is a container-internal path in an ephemeral pod harnessed just launched, harnessed only ever
+# READS it, and the name is hatago's choice rather than ours. Suppressed with a reason instead of
+# moved, because moving it would mean changing where hatago writes.
+# (Do not spell the directive token in prose — ruff reads it as a real blanket directive.)
+HATAGO_LOG = "/tmp/hatago.log"  # noqa: S108
+
+# How long to wait for hatago's stdio CHILDREN after its own port is up, and how often to re-ask.
+# `wait_ready` covers the port; these cover the gap between the port binding and the children
+# finishing their connect (measured at 0.3s on a warm box, unbounded on a cold one — bd
+# harnessed-rv2.2). Only paid by stacks that actually declare MCP servers.
+MCP_CONNECT_TIMEOUT = 60
+MCP_POLL_INTERVAL = 1.0
+
 
 class CapabilityError(Exception):
     """The capability test could not be run (launch failed, instance not found, etc.)."""
@@ -94,6 +114,9 @@ class CapabilityReport:
 
     stack: str
     results: list[CapabilityResult] = field(default_factory=list)
+    #: Tail of the instance's hatago log, captured ONLY when an expected MCP server was absent.
+    #: Empty on a green run — see `read_hatago_log`.
+    hatago_log: str = ""
 
     @property
     def ok(self) -> bool:
@@ -106,11 +129,16 @@ class CapabilityReport:
         return 0 if self.ok else 1
 
     def to_dict(self) -> dict:
-        return {
+        out: dict = {
             "stack": self.stack,
             "ok": self.ok,
             "results": [r.to_dict() for r in self.results],
         }
+        # Only when there is something to say. A permanently-empty key in every green run's JSON is
+        # noise that trains readers to skip the one run where it is populated.
+        if self.hatago_log:
+            out["hatago_log"] = self.hatago_log
+        return out
 
 
 @dataclass
@@ -639,21 +667,56 @@ def _names_from_llm_json(raw: str) -> set[str]:
     return {str(item) for item in arr if isinstance(item, (str,))}
 
 
-def introspect_mcp(instance: str, harness: str = "claude") -> tuple[dict[str, str], str]:
+def introspect_mcp(
+    instance: str,
+    harness: str = "claude",
+    *,
+    expect: Collection[str] = (),
+    timeout: int = MCP_CONNECT_TIMEOUT,
+) -> tuple[dict[str, str], str]:
     """Return ({connected server -> status}, source-label), preferring machine-readable sources.
 
     hatago's `hatago://servers` resource is the machine-readable primary (auth-free; lists the
     connected child servers) and is harness-INDEPENDENT. `claude mcp list` / `omp` parity is
     intentionally NOT the primary — the hatago resource is authoritative. The harness-specific
     headless LLM probe (`_mcp_from_llm`) is the backstop; `harness` only routes that fallback.
+
+    `expect` is the set of server names the manifest declares, and it turns this from a single-shot
+    read into a deadline poll. `wait_ready` returns as soon as hatago's OWN port accepts a
+    connection — it does not wait for the stdio children hatago spawns to finish connecting, and
+    that gap was measured at 0.3s on a warm box. A single read into that gap reports a perfectly
+    healthy server as `not connected`, which is what `live.yml` did for every MCP-bearing stack
+    (bd harnessed-rv2.2). Polling until the declared names appear removes the race instead of
+    winning it by luck.
+
+    With no `expect` there is nothing to wait FOR, so the read stays single-shot and a stack that
+    declares no MCP servers — most of them — pays no latency for this.
     """
+    expected = set(expect)
+    deadline = time.monotonic() + timeout
     servers = _mcp_from_hatago(instance)
+    while expected and not expected <= servers.keys() and time.monotonic() < deadline:
+        time.sleep(MCP_POLL_INTERVAL)
+        servers = _mcp_from_hatago(instance)
     if servers:
+        # Deliberately returned even when INCOMPLETE: `build_report` marks the absent names
+        # individually, which says more than discarding a partial answer and asking the LLM.
         return servers, HATAGO_SERVERS_URI
     servers = _mcp_from_llm(instance, harness)
     if servers:
         return servers, f"{harness} -p (strict isolated config)"
     return {}, HATAGO_SERVERS_URI
+
+
+def read_hatago_log(instance: str, *, lines: int = 200) -> str:
+    """Best-effort tail of the hub's log from a running instance; "" when unreadable.
+
+    Nothing read this file before, so a runner-only MCP failure was undiagnosable from the CI log:
+    the report said `not connected (checked hatago://servers)` and there was no way to tell a child
+    that spawned-and-died from one that never spawned. Best-effort by design — a teardown race must
+    downgrade the report, never crash it.
+    """
+    return _exec(instance, f"tail -n {lines} {HATAGO_LOG} 2>/dev/null || true").strip()
 
 
 # --- Skill / command introspection: mounted profile filesystem → headless JSON backstop ----------
@@ -685,14 +748,19 @@ def _skills_from_llm(instance: str, harness: str = "claude") -> set[str]:
     return _names_from_llm_json(raw)
 
 
-def introspect(instance: str, harness: str = "claude") -> LiveCapabilities:
+def introspect(
+    instance: str, harness: str = "claude", *, expect_mcp: Collection[str] = (),
+) -> LiveCapabilities:
     """Gather the live instance's actual capabilities (MCP + skills + commands).
 
     `harness` only routes the LLM fallback (`_mcp_from_llm`/`_skills_from_llm`); the primary
     checks — hatago's `hatago://servers` resource and the mounted-profile filesystem listing —
     are harness-independent (plan 04-03). Defaults to claude so the historical call path is intact.
+
+    `expect_mcp` is the manifest's declared server set, forwarded to `introspect_mcp` so it can wait
+    for late-connecting hatago children instead of racing them (bd harnessed-rv2.2).
     """
-    mcp, mcp_source = introspect_mcp(instance, harness)
+    mcp, mcp_source = introspect_mcp(instance, harness, expect=expect_mcp)
 
     skills = _fileext_from_filesystem(instance, "skills")
     skills_source = "mounted profile filesystem"
@@ -740,13 +808,18 @@ def run_capability_test(
     if own_project:
         project_path = tempfile.mkdtemp(prefix=f"harnessed-test-{stack_name}-")
     test_results: list[CapabilityResult] = []
+    hatago_log = ""
     try:
         instance = launch_headless(
             root, stack_name, harness, project_path=project_path, harnessed_bin=harnessed_bin
         )
         try:
             wait_ready(instance)
-            live = introspect(instance, harness)
+            live = introspect(instance, harness, expect_mcp=expected.mcp_servers)
+            # Captured HERE, not after the report is built: teardown runs in the `finally` below, and
+            # a torn-down instance has no log to read. Only on a miss — see `read_hatago_log`.
+            if set(expected.mcp_servers) - set(live.mcp):
+                hatago_log = read_hatago_log(instance)
             if run_tests:
                 test_results = run_recipe_tests(
                     instance,
@@ -763,4 +836,5 @@ def run_capability_test(
             shutil.rmtree(project_path, ignore_errors=True)
     report = build_report(stack_name, expected, live)
     report.results.extend(test_results)
+    report.hatago_log = hatago_log
     return report
