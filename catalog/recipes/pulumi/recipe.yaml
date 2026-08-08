@@ -16,7 +16,7 @@ description: "Pulumi CLI (pinned via mise) + egress to Pulumi Cloud. Auth by for
 
 tools:
   # Pinned per the repo pin policy (no @latest). Bump this to update. mise resolves via aqua:pulumi/pulumi.
-  - pulumi@3.254.0
+  - pulumi@3.255.0
 
 egress:
   - api.pulumi.com   # Pulumi Cloud state backend + REST API
