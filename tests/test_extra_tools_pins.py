@@ -27,6 +27,37 @@ from harnessed.schema import PinValidationError, normalize_extra_tools, parse_ex
 # The shipped template, resolved from the repo rather than a fixture: the point of S6 is to hold
 # the REAL file to the rule, so a fixture copy would defeat the test.
 DEFAULT_LIST = Path(__file__).resolve().parents[1] / "catalog" / "base" / "extra-tools.default.txt"
+DOCKERFILE = Path(__file__).resolve().parents[1] / "catalog" / "base" / "Dockerfile.harnessed-base"
+
+
+def extract_extra_tools_filter(dockerfile_text: str) -> str:
+    """Pull the extra-tools filter pipeline out of the real Dockerfile, reading stdin.
+
+    Anchored on the `/tmp/extra-tools.txt` argument and cut at `xargs`, so what runs in the test is
+    what the image runs. Raises if it cannot find the step: a silent fallback would hand every test
+    below a pipeline nobody verified, which is exactly the failure this extraction exists to stop.
+    """
+    joined = dockerfile_text.replace("\\\n", " ")          # undo Dockerfile line continuations
+    for line in joined.splitlines():
+        # Not a temp file this test creates — it is the literal path the Dockerfile COPYs to, and
+        # matching on it is the whole point of reading the step out of the real file.
+        if "/tmp/extra-tools.txt" not in line or "xargs" not in line:  # noqa: S108
+            continue
+        pipeline = line.split("xargs", 1)[0].rstrip().rstrip("|").strip()
+        # Strip `RUN` and its BuildKit `--mount=` flags off the front, so what is left starts at the
+        # first real command. Done by token, not by command name, so swapping grep/awk for something
+        # else still extracts correctly.
+        head, sep, rest = pipeline.partition("|")
+        tokens = head.split()
+        while tokens and (tokens[0] == "RUN" or tokens[0].startswith("--mount=")):
+            tokens.pop(0)
+        pipeline = " ".join(tokens) + sep + rest
+        # Drop the filename so the same commands read stdin instead.
+        return pipeline.replace(" /tmp/extra-tools.txt", "").strip()
+    raise AssertionError(
+        "could not find the extra-tools filter step in Dockerfile.harnessed-base — it was reshaped, "
+        "so re-derive this extraction deliberately instead of letting the tests drift from the build"
+    )
 
 
 class TestParseExtraTools:
@@ -129,11 +160,17 @@ class TestGuardAgreesWithTheDockerfile:
     """
 
     def _dockerfile_pipeline(self, raw: bytes) -> list[bytes]:
-        """Byte-for-byte what catalog/base/Dockerfile.harnessed-base pipes into `mise use -g`."""
+        """Run the filter READ OUT OF the Dockerfile, not a copy of it pasted here.
+
+        A hardcoded copy is the same defect one level up: edit the Dockerfile and every test below
+        keeps passing while the guard it protects quietly diverges from the build. So the command is
+        extracted from the real file, and extraction failing is a test failure — if the RUN step is
+        reshaped, this must be re-derived deliberately rather than drifting.
+        """
         import subprocess
+        filt = extract_extra_tools_filter(DOCKERFILE.read_text(encoding="utf-8"))
         out = subprocess.run(
-            ["bash", "-c", r"""grep -v '^\s*#' | grep -v '^\s*$' | awk '{print $1}'"""],
-            input=raw, capture_output=True,
+            ["/bin/bash", "-c", filt], input=raw, capture_output=True,
         ).stdout
         return [line for line in out.split(b"\n") if line]
 
@@ -309,6 +346,23 @@ class TestStagedBuildContextRejectsUnpinned:
                 pass
         assert "delete it and rebuild" in str(exc.value)
 
+    def test_a_bom_and_non_ascii_comment_stage_as_utf8_whatever_the_locale(self, monkeypatch,
+                                                                          tmp_path):
+        """Read and write are pinned to UTF-8, so the locale cannot change what the build receives.
+
+        Under a non-UTF-8 locale the default decode turns a BOM into 'ï»¿', which survives the
+        strip and gets the file refused with a message about control characters — naming the wrong
+        problem entirely. The staged bytes must also be UTF-8, because that is what the build reads.
+        """
+        from harnessed import launcher
+
+        self._home(monkeypatch, tmp_path)
+        f = self._user_file(monkeypatch, tmp_path, "")
+        f.write_bytes("\ufeff# réglages\ndua@2.41.1\n".encode())
+        with launcher._staged_build_context() as ctx:
+            staged = Path(ctx) / "catalog" / "base" / "extra-tools.txt"
+            assert staged.read_bytes() == "# réglages\ndua@2.41.1\n".encode()
+
     def test_a_pinned_user_file_still_stages(self, monkeypatch, tmp_path):
         """N1/N2 — the guard must not break the staging it guards."""
         from harnessed import launcher
@@ -364,6 +418,22 @@ class TestExtraToolsDiscovery:
         f = tmp_path / "extra-tools.default.txt"
         f.write_text("dua\n")
         assert pinupdate.discover_extra_tools_pins(f) == []
+
+    def test_one_bad_entry_skips_that_entry_and_not_the_whole_file(self, tmp_path):
+        """A bad ENTRY, never a bad FILE.
+
+        Discarding the file left `--check` green while the other fourteen pins rotted — the exact
+        outcome the sweep was added to prevent, and the docstring claimed it did not happen.
+        """
+        f = tmp_path / "extra-tools.default.txt"
+        f.write_text("bat@0.26.1\ndua\neza@0.23.5\n")
+        assert [p.name for p in pinupdate.discover_extra_tools_pins(f)] == ["bat", "eza"]
+
+    def test_an_undecodable_byte_inside_an_entry_skips_only_that_entry(self, tmp_path):
+        """`errors="replace"` yields U+FFFD, which the ASCII rule refuses — for that record alone."""
+        f = tmp_path / "extra-tools.default.txt"
+        f.write_bytes(b"bat@0.26.1\n\xffdua@2.41.1\neza@0.23.5\n")
+        assert [p.name for p in pinupdate.discover_extra_tools_pins(f)] == ["bat", "eza"]
 
 
 class TestExtraToolsInReport:
@@ -480,6 +550,22 @@ class TestExtraToolsRewrite:
         written = manifest.read_text()
         assert "dua@2.42.0" in written
         assert "# du replacement" in written
+
+    def test_apply_skips_a_file_neither_rewriter_owns(self, tmp_path):
+        """Allow-list, not an else-branch: an unrecognised file must not get a naive line-edit.
+
+        No resolvable pin reaches `apply` from such a file today, so this pins the fail-closed
+        posture BEFORE the next resolvable pin type inherits a rewriter nobody chose for it.
+        """
+        from harnessed.update import Finding, Pin
+
+        script = tmp_path / "install.sh"
+        original = "FOO=dua@2.41.1\n"
+        script.write_text(original)
+        pin = Pin(recipe="demo", file=script, spec="dua@2.41.1", name="dua",
+                  current="2.41.1", backend="mise")
+        assert pinupdate.apply([Finding(pin=pin, latest="2.42.0")]) == []
+        assert script.read_text() == original
 
     def test_apply_reports_nothing_when_the_entry_is_no_longer_there(self, tmp_path):
         """A bump it could not make must not be reported as made, and must not rewrite the file.

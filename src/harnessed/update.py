@@ -44,7 +44,7 @@ from typing import Callable
 from ruamel.yaml import YAML
 
 from . import paths
-from .schema import SchemaError, load_recipe, load_stack, parse_extra_tools
+from .schema import SchemaError, load_recipe, load_stack, valid_extra_tools
 
 __all__ = [
     "Pin", "Finding", "Release", "Report", "ResolveError",
@@ -484,19 +484,18 @@ def discover_extra_tools_pins(path) -> list[Pin]:
     `dua@2.41.1` here resolves through exactly the same backend path as a recipe `tools:` entry.
 
     Never raises, matching `discover_pins`' own rule: `update` sweeps the whole catalog, and one
-    missing or malformed file must not blind the command to every other pin. An UNPINNED entry is
-    therefore skipped rather than fatal here — refusing it is the BUILD's job, where a human is
-    holding the thing that broke; a crash in the sweep would just hide the recipes.
+    missing or malformed file must not blind the command to every other pin. An unpinned entry is
+    skipped ENTRY BY ENTRY — refusing it is the BUILD's job, where a human is holding the thing that
+    broke. Skipping the whole FILE instead (which is what calling `parse_extra_tools` here used to
+    do, since it raises on the first bad record) left `--check` green while the other fourteen pins
+    rotted, which is precisely what this function exists to prevent.
     """
     path = Path(path)
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
-    try:
-        specs = parse_extra_tools(text)
-    except SchemaError:
-        return []
+    specs = valid_extra_tools(text)
 
     pins: list[Pin] = []
     for spec in specs:
@@ -701,8 +700,18 @@ def apply(findings) -> list[Finding]:
         # Dispatch on the file being written, not on the pin's label: `_rewrite_tools_entry` is a
         # YAML round-tripper and the extra-tools list is plain text. Sending one to the other is
         # not a near miss, it is a corrupted catalog file.
-        rewrite = (_rewrite_tools_entry if f.pin.file.suffix in (".yaml", ".yml")
-                   else _rewrite_extra_tools_entry)
+        #
+        # ALLOW-LIST, not an else-branch. Today only recipe.yaml and the extra-tools list can carry
+        # a resolvable pin, so a fallback to the text rewriter was safe by accident; the next
+        # resolvable pin type would have inherited a naive line-edit of a file nobody chose. An
+        # unrecognised file is skipped instead — the same fail-closed posture `_IMMUTABLE_LITERAL_RE`
+        # already takes, and it costs a bump nobody asked for rather than a corrupted file.
+        if f.pin.file.suffix in (".yaml", ".yml"):
+            rewrite = _rewrite_tools_entry
+        elif f.pin.file.name.startswith("extra-tools"):
+            rewrite = _rewrite_extra_tools_entry
+        else:
+            continue
         if rewrite(f.pin.file, f.pin.spec, new_spec):
             done.append(f)
     return done

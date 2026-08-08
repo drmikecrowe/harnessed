@@ -331,7 +331,14 @@ def _staged_build_context() -> Generator[str]:
             # string and shipping a different one is how a guard blesses a file the build then
             # chokes on — a CRLF entry reaches awk as `bat@0.26.1\r`, and a BOM rides on the first
             # spec. See schema.normalize_extra_tools.
-            content = normalize_extra_tools(user_file.read_text())
+            # `encoding="utf-8"` on BOTH sides, never the locale default. The BOM defence in
+            # `normalize_extra_tools` strips U+FEFF, which only exists if the bytes decoded as
+            # UTF-8; under a non-UTF-8 locale the same bytes arrive as "ï»¿", survive the strip, and
+            # the file is then refused with a message about control characters that names the wrong
+            # problem. The write is the mirror: the staged bytes must be the bytes the build reads,
+            # and the build reads UTF-8. `update.discover_extra_tools_pins` already pinned its
+            # encoding, so leaving these unpinned also made two readers of one format disagree.
+            content = normalize_extra_tools(user_file.read_text(encoding="utf-8"))
             # Validate on the HOST, before podman is ever invoked. An unpinned entry used to
             # surface as `exit status 123` from inside a RUN layer (xargs' "a child exited 1-125"),
             # which names neither the tool nor the file — see bd harnessed-2o9. Raising here names
@@ -352,7 +359,9 @@ def _staged_build_context() -> Generator[str]:
                     f"re-seeded from the shipped template, which is pinned. Otherwise add an "
                     f"explicit version to each entry."
                 ) from exc
-            (ctx_path / "catalog" / "base" / "extra-tools.txt").write_text(content)
+            (ctx_path / "catalog" / "base" / "extra-tools.txt").write_text(
+                content, encoding="utf-8"
+            )
         yield str(ctx_path)
 
 

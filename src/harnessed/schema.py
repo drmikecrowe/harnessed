@@ -1277,6 +1277,69 @@ def normalize_extra_tools(text: str) -> str:
 _EXTRA_TOOLS_SPEC_RE = re.compile(r"\A[!-~]+\Z")
 
 
+def extra_tools_records(text: str) -> list[str]:
+    """Every entry the Dockerfile pipeline would extract, in order, WITHOUT validating any of them.
+
+    One definition of "what an entry is", shared by the build guard and the staleness sweep, because
+    two definitions is how they drift apart.
+
+    `split("\\n")`, NOT `splitlines()`, and `[ \\t]`, NOT `str.split()`. Both Python defaults break on
+    characters awk does not: vertical tab, form feed, the file/group/record separators, NEL, U+2028
+    and U+2029. `bat@0.26.1\\x0bdua@2.41.1` therefore read as TWO clean specs here while awk saw one
+    line and handed mise the whole concatenated string. awk's record separator is `\\n` and its
+    default field separator is space and tab — so split exactly there and nowhere else. (Third
+    instance of one class, found by adversarial review: Python's idea of "a line" is not the
+    pipeline's. CRLF and the BOM were the first two.)
+    """
+    out: list[str] = []
+    for record in normalize_extra_tools(text).split("\n"):
+        stripped = record.strip(" \t")
+        if not stripped or stripped.startswith("#"):
+            continue
+        out.append(re.split(r"[ \t]", stripped, maxsplit=1)[0])  # awk '{print $1}'
+    return out
+
+
+def _validate_extra_tools_spec(spec: str) -> None:
+    """Raise `PinValidationError` unless `spec` is a pinned mise spec the build can consume."""
+    # Fail CLOSED on anything that could make this check and the build disagree. Every divergence in
+    # that class needs a character one side treats as a break and the other does not, so a spec
+    # restricted to printable non-space ASCII cannot diverge at all — and a leftover BOM (a second
+    # one, past the one `normalize_extra_tools` strips) is refused here by the same rule instead of
+    # travelling on inside a tool name.
+    if not _EXTRA_TOOLS_SPEC_RE.match(spec):
+        raise PinValidationError(
+            f"extra-tools entry {spec!r} contains a character that the base-image build would "
+            "read differently from this check (a control character, a byte-order mark, or a "
+            "unicode line separator). Entries must be printable ASCII with no spaces."
+        )
+    if _FLOATING_REF_RE.search(spec) or "@" not in spec:
+        raise PinValidationError(
+            f"extra-tools entry {spec!r} must be pinned to an explicit version "
+            "(e.g. 'dua@2.41.1' — no '@latest' and no bare tool name). An unpinned entry "
+            "resolves @latest during the base-image build, which is how bd harnessed-2o9 "
+            "broke every container build."
+        )
+
+
+def valid_extra_tools(text: str) -> list[str]:
+    """The specs that validate, skipping the ones that do not — a bad ENTRY, not a bad FILE.
+
+    For the staleness sweep, which must degrade one entry at a time. `parse_extra_tools` is
+    all-or-nothing on purpose (the build has to refuse the whole file), but reusing it in the sweep
+    meant one malformed entry discarded all fifteen pins and left `--check` green while every
+    remaining pin rotted — the exact outcome the sweep was added to prevent.
+    """
+    out: list[str] = []
+    for spec in extra_tools_records(text):
+        try:
+            _validate_extra_tools_spec(spec)
+        except PinValidationError:
+            continue
+        out.append(spec)
+    return out
+
+
 def parse_extra_tools(text: str) -> list[str]:
     """Parse `extra-tools.txt` into pinned mise specs, rejecting any entry that is not pinned.
 
@@ -1291,36 +1354,8 @@ def parse_extra_tools(text: str) -> list[str]:
     is. `mise use -g dua` resolves @latest at build time and the image is no longer reproducible.
     """
     out: list[str] = []
-    # `split("\n")`, NOT `splitlines()`, and `[ \t]`, NOT `str.split()`. Both Python defaults break
-    # on characters awk does not: vertical tab, form feed, the file/group/record separators, NEL,
-    # U+2028 and U+2029. `bat@0.26.1\x0bdua@2.41.1` therefore read as TWO clean specs here while
-    # awk saw one line and handed mise the whole concatenated string. awk's record separator is
-    # `\n` and its default field separator is space and tab — so split exactly there and nowhere
-    # else. (Third instance of one class, found by adversarial review: Python's idea of "a line"
-    # is not the pipeline's. CRLF and the BOM were the first two.)
-    for record in normalize_extra_tools(text).split("\n"):
-        stripped = record.strip(" \t")
-        if not stripped or stripped.startswith("#"):
-            continue
-        spec = re.split(r"[ \t]", stripped, maxsplit=1)[0]  # awk '{print $1}'
-        # Fail CLOSED on anything that could still make the two disagree. Every divergence in this
-        # class needs a character that one side treats as a break and the other does not, so a spec
-        # restricted to printable non-space ASCII cannot diverge at all — and a leftover BOM (a
-        # second one, past the one `normalize_extra_tools` strips) is refused here by the same rule
-        # instead of travelling on inside a tool name.
-        if not _EXTRA_TOOLS_SPEC_RE.match(spec):
-            raise PinValidationError(
-                f"extra-tools entry {spec!r} contains a character that the base-image build would "
-                "read differently from this check (a control character, a byte-order mark, or a "
-                "unicode line separator). Entries must be printable ASCII with no spaces."
-            )
-        if _FLOATING_REF_RE.search(spec) or "@" not in spec:
-            raise PinValidationError(
-                f"extra-tools entry {spec!r} must be pinned to an explicit version "
-                "(e.g. 'dua@2.41.1' — no '@latest' and no bare tool name). An unpinned entry "
-                "resolves @latest during the base-image build, which is how bd harnessed-2o9 "
-                "broke every container build."
-            )
+    for spec in extra_tools_records(text):
+        _validate_extra_tools_spec(spec)
         out.append(spec)
     return out
 
