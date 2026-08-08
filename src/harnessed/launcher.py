@@ -1672,7 +1672,7 @@ def _collect_setup_notices(
 
     A recipe qualifies when:
       - it declares a `setup.condition` that, run host-side in the project dir, exits 0 — i.e. the
-        manual step is STILL needed (unchanged polarity; e.g. `! bd list` is 0 until beads is set
+        manual step is STILL needed (unchanged polarity; e.g. `! mytool status` is 0 until it is set
         up). A non-zero exit means "already satisfied → suppress"; OR
       - it declares `setup:` with no `condition` and the user has not dismissed this stack's
         notices for this project (`paths.setup_dismissed_flag`).
@@ -2025,7 +2025,7 @@ class HostBackend(ExecutionBackend):
             else:
                 _say(f"[blue][INFO][/blue] Stack unchanged — reusing {self.home} (installs skipped)")
             return
-        # Run each recipe's executable first-run setup (e.g. beads `bd init --shared-server …`). bd
+        # Run each recipe's executable first-run setup (e.g. `mytool init --shared-server …`). The tool
         # owns the shared-server daemon lifecycle — harnessed no longer manages any beads process.
         _host_run_setups(spec.stack, spec.project_path, harness=spec.harness)
         # Recipe `init:` — the host half of the attach shell's init prologue. After setups, since a
@@ -4340,8 +4340,8 @@ def svc(
     rt = _runtime()
     project_path = Path.cwd().resolve()
     # BEFORE the scope/stack guard below, which interpolates `action` into the command it suggests:
-    # reaching that guard first answers `svc restart beads-server` with "pass --stack ... e.g.
-    # harnessed svc restart beads-server --stack my-stack", sending the user to a second failure
+    # reaching that guard first answers `svc restart <name>` with "pass --stack ... e.g.
+    # harnessed svc restart <name> --stack my-stack", sending the user to a second failure
     # instead of the real one. `restart` is exactly the wrong verb someone will try here.
     if action not in _SVC_ACTIONS:
         _err.print(
