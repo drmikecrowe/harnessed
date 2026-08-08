@@ -7,10 +7,6 @@
 # PROJECT_DIR and friends are absent by design — a build has no project mounted.
 set -euo pipefail
 
-# Pin = the release tag mise resolves against. `cargo install rtk` is deliberately NOT used: another
-# "rtk" ("Rust Type Kit") on crates.io would fetch the wrong package.
-RTK_VERSION="0.43.0"
-
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 
 # --- 1. the binary: NOT here ----------------------------------------------------------------------
@@ -19,7 +15,10 @@ RTK_VERSION="0.43.0"
 # run container-side. It now runs on a host launch too: harnessed points mise at the STACK's own
 # config/data dir, so the reason this section refused to install host-side — 'mise's global config
 # and data dir belong to you' — no longer applies, and the shims dir is on the launch PATH.
-# Keep RTK_VERSION in lockstep with that pin.
+#
+# The pin lives in that `tools:` entry and nowhere else. `cargo install rtk` is deliberately NOT an
+# option: a different "rtk" ("Rust Type Kit") on crates.io would fetch the wrong package. This
+# `--version` call is the guard — it fails the install if `tools:` delivered nothing runnable.
 rtk --version
 
 # --- 2. the global wiring ------------------------------------------------------------------------
