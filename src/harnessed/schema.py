@@ -837,7 +837,7 @@ def _parse_services(raw_services) -> list[str]:
     For a service with no MCP surface, which therefore cannot be referenced through
     `mcp.servers[].service`: a `dolt sql-server` speaks MySQL, not MCP. Before this field the
     dependency could only be declared by the STACK, so a recipe list alone could not describe a
-    working stack and the beads recipes had to fail at runtime telling the user to edit one.
+    working stack and such a recipe had to fail at runtime telling the user to edit one.
     Unioned with the stack's own `services:` in `launcher._service_refs`.
     """
     # `is None`, NOT a falsy test — deliberately diverging from the neighbouring _parse_conflicts.

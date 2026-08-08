@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 import typer
 
-from harnessed import launcher, paths
+from harnessed import launcher, paths, svcguards
 from harnessed.schema import PersistEntry, PersistSpec, Recipe, SchemaError, load_service
 from support import patch_all
 
@@ -1087,7 +1087,7 @@ class TestExclusiveLockPreflight:
         """Matches on cwd, which is what identifies the contended resource."""
         proc = subprocess.Popen(["sleep", "30"], cwd=tmp_path)
         try:
-            found = launcher._host_process_in_dir("sleep", tmp_path.resolve())
+            found = svcguards._host_process_in_dir("sleep", tmp_path.resolve())
             assert found is not None, "host process in the data dir was not detected"
             assert found[0] == proc.pid
         finally:
@@ -1097,7 +1097,7 @@ class TestExclusiveLockPreflight:
     def test_ignores_a_process_of_another_name(self, tmp_path):
         proc = subprocess.Popen(["sleep", "30"], cwd=tmp_path)
         try:
-            assert launcher._host_process_in_dir("dolt", tmp_path.resolve()) is None
+            assert svcguards._host_process_in_dir("dolt", tmp_path.resolve()) is None
         finally:
             proc.kill()
             proc.wait()
@@ -1109,7 +1109,7 @@ class TestExclusiveLockPreflight:
         data_dir.mkdir()
         proc = subprocess.Popen(["sleep", "30"], cwd=elsewhere)
         try:
-            assert launcher._host_process_in_dir("sleep", data_dir.resolve()) is None
+            assert svcguards._host_process_in_dir("sleep", data_dir.resolve()) is None
         finally:
             proc.kill()
             proc.wait()

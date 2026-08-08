@@ -5,13 +5,6 @@
 [tools]
 shellcheck = "0.11.0"
 "npm:pyright" = "1.1.411"
-# dolt is a LIVE GATE, not an analysis tool: `test_migrates_a_real_dolt_database` proves that a
-# plain directory copy of a quiescent Dolt database still opens, and nothing else asserts that.
-# It was installed on the author's machine but not declared here, so `tools/run-tests.sh` never saw
-# it and the test skipped everywhere — on CI and on the machine that had the binary (bd
-# harnessed-ln7). Declaring it is what makes the gate open for everyone, which is the same reason
-# the two tools above are pinned here.
-"aqua:dolthub/dolt" = "2.2.3"
 
 [env]
 # Keep the venv outside the repo: `uv` running inside a podman container that

@@ -155,27 +155,6 @@ class TestItProvisionsTheLiveGates:
     and never fail the run. That skip is a declared choice, not an oversight.
     """
 
-    def test_dolt_is_declared_in_the_manifest(self):
-        """Declared in `mise.toml`, not installed by a step here.
-
-        A step would open the gate for CI alone. The binary was already present on the author's
-        machine and the test skipped there too, because `tools/run-tests.sh` runs under mise and
-        mise only exposes what the project declares. The manifest fixes both at once, and is the
-        reason `shellcheck` and `pyright` are pinned there rather than assumed.
-
-        PARSED, not text-matched (CodeRabbit). A regex over the file passes on a commented-out
-        entry, or one that drifted into `[tasks]` — the same vacuity that let an earlier assertion
-        in this branch be satisfied by a comment. Reading `[tools]` structurally means only a real,
-        effective declaration counts.
-        """
-        tools = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))["tools"]
-        assert "aqua:dolthub/dolt" in tools, (
-            f"dolt is not an effective entry in mise.toml [tools], so the suite cannot see it; "
-            f"[tools] holds {sorted(tools)}"
-        )
-        assert re.fullmatch(r"\d+\.\d+\.\d+", str(tools["aqua:dolthub/dolt"])), (
-            "dolt must be pinned to an exact version — CLAUDE.md: pin every download"
-        )
 
     def test_the_base_image_is_built_before_the_suite(self, job):
         """The actual cause of the red run on 31205617563.

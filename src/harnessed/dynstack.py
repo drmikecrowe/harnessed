@@ -93,7 +93,7 @@ def derive_name(recipes: list[str], extends: str | None, services: list[str] | N
 
     Readable join by default. A hash is appended when the readable form is not a faithful encoding
     of the input — because a ref had to be sanitized (lossy: `fam/var` and `fam-var` both
-    flatten to `beads-team`), because the join exceeded NAME_MAX, or because explicit `services`
+    flatten to `fam-var`), because the join exceeded NAME_MAX, or because explicit `services`
     were selected.
 
     `services` MUST be passed by every caller that will hand the same list to `mint`. They are not
