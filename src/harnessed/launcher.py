@@ -137,7 +137,7 @@ from .mounts import (
     _omp_mcp_seed_mount,
     _persist_mounts,
 )
-from .proc import _BUILD_TAG, _run, _run_tagged, _say
+from .proc import _BUILD_TAG, _TIMEOUT_RC, _bounded, _run, _run_tagged, _say
 from .setupenv import (
     _CTR_SETUP_DIR,
     _confirm_setup,
@@ -279,6 +279,22 @@ app = typer.Typer(
 _BASE_IMAGE = "harnessed-base:latest"
 _CLAUDE_IMAGE = "harnessed-claude:latest"
 _CONTAINER_HOME_STR = str(CONTAINER_HOME)
+
+# --- podman deadlines (bd harnessed-1ao) ------------------------------------------------------
+#
+# An unresponsive podman — a network partition mid-pull, a runc deadlock, a wedged image store —
+# blocks an unbounded subprocess.run forever, and only the user or the OS ends it. So every call
+# below goes through `_bounded`, which turns "hung" into "failed" rather than into "hangs".
+#
+# The numbers are generous on purpose: they are not performance budgets, they are the point past
+# which podman is not slow but STUCK. Sized by what the command does, since a `rm -f` racing a
+# shutting-down container is legitimately slower than an `inspect`. The suite runs no real podman
+# (see CLAUDE.md), so nothing here proves these are right under load — only that the mechanism
+# fires. Raise one if a real workload trips it; that is a tuning bug, not a design failure.
+_PODMAN_QUERY_TIMEOUT = 30      # read-only metadata: inspect, ps, images, volume ls, top, exists
+_PODMAN_WRITE_TIMEOUT = 120     # state changes: create, rm -f, stop, pod rm, volume rm, cp
+_PODMAN_EXEC_TIMEOUT = 120      # exec of a bounded in-container command (firewall, CA install)
+_PODMAN_PROBE_TIMEOUT = 10      # an exec'd readiness probe inside a poll loop
 # Distinct, readable on both light and dark terminals. Cycled, so >8 concurrent builds reuse colours
 # (the label still disambiguates).
 _TAG_COLORS = (
@@ -375,7 +391,7 @@ def _install_corp_proxy_ca_in_container(rt: str, container: str, *, best_effort:
         " && update-ca-certificates",
     ]
     if best_effort:
-        subprocess.run(cmd, capture_output=True)
+        _bounded(cmd, timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True)
     else:
         _run(cmd, capture_output=True)
 
@@ -675,12 +691,13 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
 def _built_image_hash(rt: str, stack: str, harness: str) -> str | None:
     """The `harnessed.recipe-hash` label baked into stack's derived image, or None if the image
     doesn't exist yet or was built before this label existed."""
-    result = subprocess.run(
+    result = _bounded(
         [
             rt, "inspect", "--format",
             '{{if .Config.Labels}}{{index .Config.Labels "harnessed.recipe-hash"}}{{end}}',
             _derived_image(stack, harness),
         ],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True, text=True,
     )
     if result.returncode != 0:
@@ -744,8 +761,9 @@ def _stale_pairs(rt: str, root: Path | None, *, strict: bool) -> list[tuple[str,
     baked into its image (or the image is absent). Fresh/unchanged pairs are dropped."""
     pairs: list[tuple[str, str]] = _declared_pairs(root)  # (stack, harness)
 
-    result = subprocess.run(
+    result = _bounded(
         [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}"],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True, text=True,
     )
     if result.returncode == 0:
@@ -909,13 +927,17 @@ def _with_image_container(rt: str, image: str, fn: Callable[[str], _T]) -> _T | 
     Unifies the three post-build passes (extensions / settings / scan-report) onto a single
     create/rm instead of one apiece — same podman commands, one container.
     """
-    cid = subprocess.run([rt, "create", image], capture_output=True, text=True).stdout.strip()
+    cid = _bounded(
+        [rt, "create", image], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True, text=True
+    ).stdout.strip()
     if not cid:
         return None
     try:
         return fn(cid)
     finally:
-        subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+        # `_bounded` cannot raise, which is load-bearing here: a TimeoutExpired thrown from this
+        # `finally` would replace whatever `fn` raised with a complaint about the cleanup.
+        _bounded([rt, "rm", "-f", cid], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
 
 
 def _merge_baked_settings(
@@ -952,8 +974,9 @@ def _merge_baked_settings(
     def _copy(cid: str) -> str | None:
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "settings.json"
-            cp = subprocess.run(
+            cp = _bounded(
                 [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.claude/settings.json", str(dest)],
+                timeout=_PODMAN_WRITE_TIMEOUT,
                 capture_output=True,
             )
             # cp of a missing file exits non-zero → return None (distinct from malformed).
@@ -1007,9 +1030,10 @@ def _merge_baked_opencode(rt: str, image: str, prof: Path, stack: Stack) -> None
     def _copy(cid: str) -> str | None:
         with tempfile.TemporaryDirectory() as td:
             dest = Path(td) / "opencode.json"
-            cp = subprocess.run(
+            cp = _bounded(
                 [rt, "cp",
                  f"{cid}:{_CONTAINER_HOME_STR}/.config/opencode/opencode.json", str(dest)],
+                timeout=_PODMAN_WRITE_TIMEOUT,
                 capture_output=True,
             )
             if cp.returncode == 0 and dest.is_file():
@@ -1057,8 +1081,9 @@ def _surface_scan_report(
     dest = prof / "scan-report.json"
 
     def _copy(cid: str) -> bool:
-        subprocess.run(
+        _bounded(
             [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.harnessed/scan-report.json", str(dest)],
+            timeout=_PODMAN_WRITE_TIMEOUT,
             capture_output=True,
         )
         return True
@@ -1106,11 +1131,11 @@ def _without_userns(args: list[str]) -> list[str]:
 
 def _pod_teardown(rt: str, instance: str, pod: str) -> None:
     if _rt_uses_pods(rt):
-        subprocess.run([rt, "pod", "rm", "-f", pod], capture_output=True)
+        _bounded([rt, "pod", "rm", "-f", pod], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
     else:
         # Single flat container now — hatago runs in-container (hatago-consolidation), not a
         # separate `{instance}-hatago` member.
-        subprocess.run([rt, "rm", "-f", instance], capture_output=True)
+        _bounded([rt, "rm", "-f", instance], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
 
 
 def _attach_marker(inst: str) -> Path:
@@ -1141,7 +1166,9 @@ def _session_active(rt: str, inst: str) -> bool | None:
     NOTE (podman-gated): the exact idle/attached tty strings must be confirmed against live
     `<rt> top <inst> tty` output — this is the hatago-consolidation's main verification point.
     """
-    result = subprocess.run([rt, "top", inst, "tty"], capture_output=True, text=True)
+    result = _bounded(
+        [rt, "top", inst, "tty"], timeout=_PODMAN_QUERY_TIMEOUT, capture_output=True, text=True
+    )
     if result.returncode != 0:
         return None  # couldn't determine — caller must not treat this as idle
     # Drop the header row; a process owning a real terminal (pts/N) is the attached session. Infra
@@ -1156,10 +1183,10 @@ def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None) ->
     # egress-firewall.sh is mounted at /usr/local/sbin/egress-firewall by _build_mount_args. Extra
     # domains (recipe-declared `egress:`) are appended to the script's allowlist — it takes them as
     # positional args and resolves each to its current IPs.
-    subprocess.run([
+    _bounded([
         rt, "exec", instance, "bash", "/usr/local/sbin/egress-firewall",
         *(domains or []),
-    ], capture_output=True)
+    ], timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True)
 
 
 def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> bool:
@@ -1174,15 +1201,26 @@ def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int =
     if port is None:
         port = paths.hatago_port()  # honor the HATAGO_PORT env override (single source: paths)
     _out.print(f"[blue][INFO][/blue] Waiting for hatago hub on :{port} ...")
-    for _ in range(timeout):
-        result = subprocess.run(
+    # Deadline-driven, not `for _ in range(timeout)`. The in-container `timeout 1` bounds the SHELL,
+    # not the `podman exec` wrapping it, so a wedged podman used to park here forever. Giving the
+    # probe its own deadline fixes that but makes the count-based loop lie — N iterations of
+    # (probe + sleep) is up to N*(probe+1) seconds, while the message below still says N. So the
+    # loop, the probe and the sleep all measure against one deadline, and the promise stays true.
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        result = _bounded(
             [rt, "exec", instance, "bash", "-lc",
              f"timeout 1 bash -c 'echo > /dev/tcp/127.0.0.1/{port}' 2>/dev/null"],
+            timeout=min(_PODMAN_PROBE_TIMEOUT, remaining),
             capture_output=True,
+            warn=False,  # one line per second would bury the single actionable error below
         )
         if result.returncode == 0:
             return True
-        time.sleep(1)
+        time.sleep(min(1, max(0.0, deadline - time.monotonic())))
     _err.print(
         f"[bold red]error:[/bold red] hatago hub never came up on :{port} after {timeout}s — "
         f"MCP tools will be unavailable. Inspect the hub log: {rt} exec {instance} cat /tmp/hatago.log"
@@ -1422,7 +1460,7 @@ def _ensure_service(
                 raise typer.Exit(1)
         # fall through to start below
     # Remove the running container we just decided against, or any stopped leftover of the same name.
-    subprocess.run([rt, "rm", "-f", cname], capture_output=True)
+    _bounded([rt, "rm", "-f", cname], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
     if svc.is_socket_only:
         where = f"socket {svc.socket}"
     elif svc.is_ephemeral_port:
@@ -1506,10 +1544,18 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
         return
 
     result = None
-    for _ in range(timeout):
-        result = subprocess.run(
+    # Deadline-driven for the reason spelled out in `_wait_hatago`: the error below names `timeout`
+    # seconds, so a per-probe deadline on its own would multiply the real wait by the probe length.
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        result = _bounded(
             [rt, "exec", cname, "bash", "-c", svc.healthcheck],
+            timeout=min(_PODMAN_PROBE_TIMEOUT, remaining),
             capture_output=True,
+            warn=False,
         )
         if result.returncode == 0:
             return
@@ -1519,7 +1565,7 @@ def _wait_service_healthy(rt: str, cname: str, svc: "ServiceDef", timeout: int =
         # died in its first second still burns the whole timeout before a warning nobody can act on.
         if _service_container_status(rt, cname) != "running":
             _abort_dead_service(rt, cname, svc)
-        time.sleep(1)
+        time.sleep(min(1, max(0.0, deadline - time.monotonic())))
 
     _err.print(
         f"[bold red]error:[/bold red] service '{svc.name}' started but never became healthy "
@@ -1544,6 +1590,13 @@ def _ensure_services(
 ) -> None:
     for name in _service_refs(stack):
         _ensure_service(rt, name, stack=stack, project_path=project_path, mount_path=mount_path)
+
+
+# Catalog-authored shell, run on the host, on the launch critical path, once per recipe per launch.
+# Conditions are meant to be cheap probes (`[ ! -f … ]`, `bd list`), so 30s is far past "slow" and
+# well into "this will never answer" — a recipe author's typo must not be able to wedge every
+# launch of every stack that includes it.
+_SETUP_CONDITION_TIMEOUT = 30
 
 
 def _collect_setup_notices(
@@ -1571,8 +1624,9 @@ def _collect_setup_notices(
         if recipe.setup is None:
             continue
         if recipe.setup.condition:
-            proc = subprocess.run(
+            proc = _bounded(
                 ["bash", "-lc", recipe.setup.condition],
+                timeout=_SETUP_CONDITION_TIMEOUT,
                 cwd=str(project_path),
                 env={**os.environ, **harnessed_env(
                     stack, project_path, harness=harness, mode="host", recipe=recipe
@@ -1580,7 +1634,12 @@ def _collect_setup_notices(
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            if proc.returncode != 0:
+            # A timeout must NOT fall into the suppress branch. The polarity here is "non-zero =
+            # already satisfied = say nothing", so treating a condition that never answered as
+            # non-zero would silently drop a setup step the user still has to perform — and the
+            # notice existing at all means nothing else is going to tell them. A redundant notice
+            # is recoverable; a missing one is not. `_bounded` already warned.
+            if proc.returncode != 0 and proc.returncode != _TIMEOUT_RC:
                 continue  # condition satisfied → suppress
         elif dismissed:
             continue
@@ -2157,6 +2216,9 @@ def _launch_host(
         # execvpe REPLACES this process — clean TTY handoff to claude on the host.
         os.execvpe(argv[0], argv, env)  # never returns
     # --rm: supervise (fork claude, wait). No host daemons to tear down — bd owns its shared server.
+    # unbounded: this IS the agent session. Its duration is however long the user works; any
+    # deadline here kills a live session mid-thought. The non---rm branch above execvpe's for the
+    # same reason.
     subprocess.run(argv, env=env)
 
 
@@ -3166,6 +3228,8 @@ def _attach(
 
     # Keep this process alive so we can reap the pod once the interactive session exits.
     try:
+        # unbounded: the interactive container session — same reasoning as `_launch_host`. The
+        # teardown in the `finally` below is the part that must not hang, and it is bounded.
         subprocess.run(exec_argv)
     finally:
         _out.print(f"[blue][INFO][/blue] --rm: tearing down pod {pod or inst}")
@@ -3297,18 +3361,19 @@ def list_stacks() -> None:
     # visible (they linger until `prune` reaps them). The Status column shows the real state — do not
     # label this "Running", or exited containers read as live.
     _out.print("[bold]Instances (Status column shows running vs stopped):[/bold]")
-    subprocess.run([
+    _bounded([
         rt, "ps", "-a", "--filter", "name=harnessed-",
         "--format", "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}",
-    ])
+    ], timeout=_PODMAN_QUERY_TIMEOUT)
 
 
 @app.command("stop")
 def stop(stack: str = typer.Argument(..., help="Stack name")) -> None:
     """Stop every running instance of a stack (all harnesses)."""
     rt = _runtime()
-    result = subprocess.run(
+    result = _bounded(
         [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True, text=True,
     )
     # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
@@ -3316,7 +3381,7 @@ def stop(stack: str = typer.Argument(..., help="Stack name")) -> None:
     names = [n for n in all_names if re.search(rf"-{re.escape(stack)}-[0-9a-f]{{8}}$", n)]
     for name in names:
         _out.print(f"[blue][INFO][/blue] Stopping {name}")
-        subprocess.run([rt, "stop", name], capture_output=True)
+        _bounded([rt, "stop", name], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
     if not names:
         _out.print(f"No running instances for stack '{stack}'")
 
@@ -3325,8 +3390,9 @@ def stop(stack: str = typer.Argument(..., help="Stack name")) -> None:
 def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
     """Remove every instance (stopped or running) of a stack (all harnesses)."""
     rt = _runtime()
-    result = subprocess.run(
+    result = _bounded(
         [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}"],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True, text=True,
     )
     # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
@@ -3334,7 +3400,7 @@ def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
     names = [n for n in all_names if re.search(rf"-{re.escape(stack)}-[0-9a-f]{{8}}$", n)]
     for name in names:
         _out.print(f"[blue][INFO][/blue] Removing {name}")
-        subprocess.run([rt, "rm", "-f", name], capture_output=True)
+        _bounded([rt, "rm", "-f", name], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
     if not names:
         _out.print(f"No instances found for stack '{stack}'")
 
@@ -3363,8 +3429,9 @@ def prune(
     import time
 
     rt = _runtime()
-    result = subprocess.run(
+    result = _bounded(
         [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}\t{{.State}}"],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True, text=True,
     )
     # hatago no longer runs as a separate `{inst}-hatago` member (hatago-consolidation), so every
@@ -3610,6 +3677,9 @@ def test_stack(
     if as_json:
         cmd.append("--json")
 
+    # unbounded: the capability suite, which brings containers up and exercises them. The child
+    # bounds its own work (capability.DEFAULT_TEST_TIMEOUT per test); a second deadline out here
+    # would only cut off a run that is legitimately still going.
     result = subprocess.run(cmd, env=run_env)
     raise typer.Exit(result.returncode)
 
@@ -3700,6 +3770,13 @@ def uninstall_stack(
 # per-scanner bound: several scanners run in sequence and a thorough scan must not be cut off.
 _SCAN_CONTAINER_TIMEOUT = 900
 
+# The ONLINE archive scan (`harnessed rescan`, fired by a systemd timer). Larger again: it contacts
+# osv.dev over the network and `uv run` may resolve a dependency first. Bounded despite that, and
+# for a reason the interactive commands do not share — nobody is watching. An unattended hang here
+# wedges the timer silently and the nightly re-scan simply stops happening, which looks exactly
+# like a nightly that keeps finding nothing (scan.py's Pitfall 6 warning sign).
+_SCAN_ONLINE_TIMEOUT = 1800
+
 
 def _scan_image_in_container(
     rt: str, image: str, *, report_dest: "Path | None" = None, extra_args: list[str] | None = None
@@ -3772,9 +3849,10 @@ def _scan_image_in_container(
             cid = cidfile.read_text().strip() if cidfile.is_file() else ""
         if report_dest is not None and cid:
             report_dest.parent.mkdir(parents=True, exist_ok=True)
-            subprocess.run(
+            _bounded(
                 [rt, "cp", f"{cid}:{_CONTAINER_HOME_STR}/.harnessed/scan-report.json",
                  str(report_dest)],
+                timeout=_PODMAN_WRITE_TIMEOUT,
                 capture_output=True,
             )
         # Return means "the scan ran cleanly" — NOT "a report was persisted". `_scan_image` calls
@@ -3783,7 +3861,7 @@ def _scan_image_in_container(
         return res.returncode == 0
     finally:
         if cid:
-            subprocess.run([rt, "rm", "-f", cid], capture_output=True)
+            _bounded([rt, "rm", "-f", cid], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
         for f in temp_files:
             Path(f).unlink(missing_ok=True)
 
@@ -3804,9 +3882,10 @@ def _scan_image(rt: str, run_env: dict, image: str) -> bool:
         tar_path = tf.name
     try:
         _run([rt, "save", image, "-o", tar_path])
-        res = subprocess.run(
+        res = _bounded(
             ["uv", "run", "--no-project", "--quiet", "--with", "ruamel.yaml",
              "python", "-m", "harnessed.cli", "scan-image-online", tar_path],
+            timeout=_SCAN_ONLINE_TIMEOUT,
             env=run_env,
         )
         return scanned and res.returncode == 0
@@ -3890,7 +3969,9 @@ def rescan(
     """
     rt = _runtime()
     if image:
-        exists = subprocess.run([rt, "image", "exists", image], capture_output=True)
+        exists = _bounded(
+            [rt, "image", "exists", image], timeout=_PODMAN_QUERY_TIMEOUT, capture_output=True
+        )
         if exists.returncode != 0:
             _err.print(
                 f"[bold red]error:[/bold red] no such image '{image}' "
@@ -3899,8 +3980,9 @@ def rescan(
             raise typer.Exit(1)
         images = [image]
     else:
-        result = subprocess.run(
+        result = _bounded(
             [rt, "images", "--filter", "label=harnessed=true", "--format", "{{.Repository}}:{{.Tag}}"],
+            timeout=_PODMAN_QUERY_TIMEOUT,
             capture_output=True, text=True,
         )
         images = [i.strip() for i in result.stdout.splitlines() if i.strip()]
@@ -4152,9 +4234,10 @@ def volume_gc(
     can be temporarily unresolvable because a catalog overlay is not mounted.
     """
     rt = _runtime()
-    out = subprocess.run(
+    out = _bounded(
         [rt, "volume", "ls", "--filter", f"label={_VOL_LABEL}",
          "--format", "{{.Name}}\t{{.Labels}}"],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True, text=True,
     )
     rows: list[tuple[str, str, str, str, bool]] = []
@@ -4202,7 +4285,7 @@ def volume_gc(
             _out.print(f"[yellow]would remove[/yellow] {name} (stack '{stack}' no longer resolves)")
             continue
         _out.print(f"[blue][INFO][/blue] Removing {name} (stack '{stack}' no longer resolves)")
-        subprocess.run([rt, "volume", "rm", "-f", name], capture_output=True)
+        _bounded([rt, "volume", "rm", "-f", name], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
     if not dry_run:
         _out.print(f"[green][SUCCESS][/green] Removed {len(orphans)} orphan volume(s)")
 
@@ -4318,7 +4401,7 @@ def svc(
         verb = "recreated" if action == "recreate" else "is up"
         _out.print(f"[green][SUCCESS][/green] Service '{name}' {verb} ({cname})")
     elif action == "down":
-        subprocess.run([rt, "rm", "-f", cname], capture_output=True)
+        _bounded([rt, "rm", "-f", cname], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
         _out.print(f"[green][SUCCESS][/green] Service '{name}' is down ({cname})")
     elif action == "sync":
         sync_cmd = (svc_def.raw.get("sync") or "").strip()
@@ -4328,6 +4411,8 @@ def svc(
         if not _container_running(rt, cname):
             _err.print(f"[bold red]error:[/bold red] service '{name}' is not running ({cname})")
             raise typer.Exit(1)
+        # unbounded: a catalog-authored `sync:` is arbitrary work the user explicitly asked for and
+        # is watching — a database import legitimately runs for many minutes. Ctrl-C is the control.
         result = subprocess.run([rt, "exec", cname, "bash", "-lc", sync_cmd])
         if result.returncode != 0:
             _err.print(f"[bold red]error:[/bold red] sync failed for service '{name}'")
@@ -4436,6 +4521,8 @@ def aws_sso(
     else:
         token = _secrets.token_hex(32)
         _out.print("Generating a new ECS-server bearer token and loading it into the aws-sso secure store…")
+        # unbounded: interactive — this prompts for credentials and waits for the human at the
+        # keyboard. A deadline here fails the setup of anyone who pauses to find their phone.
         res = subprocess.run(["aws-sso", "setup", "ecs", "auth", "--bearer-token", token])
         if res.returncode != 0:
             _err.print("[bold red]error:[/bold red] `aws-sso setup ecs auth` failed — see output above.")
@@ -4462,6 +4549,8 @@ def aws_sso(
     )
 
     try:
+        # unbounded: a foreground daemon. The message above literally says "leave this running.
+        # Ctrl-C to stop" — running until interrupted is the feature, not a hang.
         subprocess.run(["aws-sso", "ecs", "server", "--bind-ip", bind_ip, "--port", str(port)])
     except KeyboardInterrupt:
         _out.print("\n[dim]aws-sso ecs server stopped.[/dim]")
