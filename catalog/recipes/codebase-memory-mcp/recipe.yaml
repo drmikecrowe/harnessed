@@ -45,3 +45,54 @@ mcp:
     - name: codebase-memory-mcp
       command: codebase-memory-mcp
       transport: stdio
+
+# --- hooks ---
+# The half of upstream's wiring the binary-extract step deliberately skips. `install.sh` refuses to
+# run cbm's own installer (it rewrites .mcp.json/skills/AGENTS.md for 11 agents), but that installer
+# ALSO configures three Claude Code hooks — and without them the MCP server is merely *present*, not
+# *reached*: nothing steers the agent to it, and Grep/Glob stay graph-blind. Declared here so the
+# assembler renders them into settings.json instead, which is the harnessed-owned surface.
+#
+# Upstream writes these as generated scripts under $CLAUDE_CONFIG_DIR/hooks/ with the binary path
+# baked in absolute. Inlined instead (as context-mode does): the recipe ships no files, and the
+# command resolves through the same PATH the stdio server above resolves through — mise shims in a
+# container, the stack bin dir on a host launch.
+hooks:
+  # Graph-augments text search. Despite upstream's legacy script name ("gate") this NEVER blocks a
+  # call — it only prepends matching graph symbols as additionalContext, so the agent gets the
+  # structural answer alongside the textual one. `command -v` + `exit 0` keep it silent-and-passing
+  # on a stack where the binary somehow did not land; a PreToolUse hook that errors is noise on
+  # every single Grep.
+  PreToolUse:
+    - matcher: Grep|Glob
+      command: >-
+        sh -c 'command -v codebase-memory-mcp >/dev/null 2>&1 &&
+        codebase-memory-mcp hook-augment 2>/dev/null; exit 0'
+
+  # No `matcher:` — an absent matcher fires on every SessionStart source (startup, resume, clear,
+  # compact), which is exactly the four upstream enumerates one-by-one.
+  SessionStart:
+    - command: |
+        cat <<'CBM_REMINDER'
+        CRITICAL - Code Discovery Protocol:
+        1. ALWAYS use codebase-memory-mcp tools FIRST for ANY code exploration:
+           - search_graph(name_pattern/label/qn_pattern) to find functions/classes/routes
+           - trace_path(function_name, mode=calls|data_flow|cross_service) for call chains
+           - get_code_snippet(qualified_name) for exact symbol source (precise ranges)
+           - query_graph(query) for complex Cypher patterns
+           - get_architecture(aspects) for project structure
+           - search_code(pattern) for text search (graph-augmented grep)
+        2. Use Grep/Glob/Read freely for text, configs, non-code files, and
+           always Read a file before editing it.
+        3. If a project is not indexed yet, run index_repository FIRST.
+        CBM_REMINDER
+
+  # Subagents inherit the tool list but not the session-start context, so they re-derive their own
+  # search habits. SubagentStart injects via JSON `additionalContext`, NOT plain stdout — the raw
+  # object is upstream's, emitted verbatim.
+  SubagentStart:
+    - matcher: "*"
+      command: |
+        cat <<'CBM_SUBAGENT'
+        {"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"Code discovery: prefer codebase-memory-mcp tools (search_graph, trace_path, get_code_snippet, query_graph, get_architecture, search_code) over grep/file-read for navigating code. Use Grep/Glob/Read for text, configs, and non-code files."}}
+        CBM_SUBAGENT
