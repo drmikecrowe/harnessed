@@ -16,6 +16,7 @@ pins to a staleness sweep so pinning does not simply trade a broken build for a 
 """
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
@@ -147,9 +148,10 @@ class TestGuardAgreesWithTheDockerfile:
 
     # Every character `str.splitlines()` breaks on that awk's record separator does not. Enumerated
     # rather than sampled: this is the whole class, and the class already produced three defects.
-    PYTHON_ONLY_BREAKS = ["\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85",
-                          "\u2028", "\u2029"]
-    _SEP_IDS = [f"U+{ord(c):04X}" for c in PYTHON_ONLY_BREAKS]
+    PYTHON_ONLY_BREAKS: ClassVar[tuple[str, ...]] = (
+        "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029",
+    )
+    _SEP_IDS: ClassVar[list[str]] = [f"U+{ord(c):04X}" for c in PYTHON_ONLY_BREAKS]
 
     @pytest.mark.parametrize("sep", PYTHON_ONLY_BREAKS, ids=_SEP_IDS)
     def test_a_separator_only_python_honours_is_refused(self, sep):

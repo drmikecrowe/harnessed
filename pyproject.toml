@@ -46,7 +46,7 @@ dev = [
 # — `mutmut run` with no arguments mutates everything; scope a single change with
 # `mutmut run "src.harnessed.<module>.<function>*"`, and read results with `mutmut results`.
 paths_to_mutate = ["src/harnessed/"]
-tests_dir = ["tests/"]
+tests_dir = ["tests/test_extra_tools_pins.py", "tests/test_staged_build_context.py"]
 # The suite imports `support` and `conftest` as top-level modules from tests/, so the whole dir has
 # to land in the mutants tree — a file-by-file `also_copy` fails, since mutmut does not create the
 # parent dirs. The suite is podman-GATED, not podman-driven (tests/conftest.py): a mutant must be
