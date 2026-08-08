@@ -74,13 +74,17 @@ say "7. mutation on the timeout seam"
 python3 - <<'PY'
 import pathlib
 p = pathlib.Path("pyproject.toml")
+# The narrowed set must include EVERY file that can kill a mutant in the targeted functions, or the
+# survivor count is an artefact of the narrowing rather than a fact about the tests: mutating the
+# firewall argv to None "survived" until test_launcher_install (which asserts that argv) was added.
 p.write_text(p.read_text().replace(
     'tests_dir = ["tests/"]',
-    'tests_dir = ["tests/test_launcher_timeouts.py", "tests/test_subprocess_timeout_audit.py"]',
+    'tests_dir = ["tests/test_launcher_timeouts.py", "tests/test_subprocess_timeout_audit.py",'
+    ' "tests/test_launcher_install.py", "tests/test_setup_notice.py"]',
 ))
 PY
-HARNESSED_DIR="$PWD" mise exec -- uv run --extra dev mutmut run "*_bounded*" "*_run_tagged*" \
-  >"$LOGDIR/mutmut.log" 2>&1
+HARNESSED_DIR="$PWD" mise exec -- uv run --extra dev mutmut run \
+  "*_bounded*" "*_run_tagged*" "*_listing*" "*_apply_firewall*" >"$LOGDIR/mutmut.log" 2>&1
 git checkout HEAD -- pyproject.toml
 printf 'killed:   %s\n' "$(grep -c '🎉 harnessed' "$LOGDIR/mutmut.log")"
 printf 'survived: %s\n' "$(grep -c '🙁 harnessed' "$LOGDIR/mutmut.log")"
@@ -92,7 +96,7 @@ chmod +x "$HANG/podman"
 start=$SECONDS
 PATH="$HANG:$PATH" mise exec -- uv run --extra dev python -m harnessed.launcher list \
   >"$LOGDIR/real-exec-hang.log" 2>&1
-printf 'exit=%s elapsed=%ss (expect ~30s and a `warning:` line, NOT a hang)\n' \
+printf 'exit=%s elapsed=%ss (expect ~30s and a "warning:" line, NOT a hang)\n' \
   "$?" "$((SECONDS - start))"
 grep -c 'warning:' "$LOGDIR/real-exec-hang.log"
 rm -r "$HANG"

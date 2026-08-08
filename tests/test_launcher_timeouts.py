@@ -450,6 +450,28 @@ class TestAnUnansweredQueryIsNeverReportedAsEmpty:
         assert exc.value.exit_code == 1
         assert "No harnessed-labelled images" not in err.text
 
+    @pytest.mark.parametrize("rc", [1, 125, proc._TIMEOUT_RC])
+    def test_any_failed_listing_aborts_not_only_a_timeout(self, monkeypatch, err, rc):
+        """The guard is on ANY non-zero, and that is the claim under test. A listing that failed for
+        any reason is equally unable to say 'there are none', so guarding only the deadline would
+        leave the identical false-success one exit code away — which is exactly what a mutation
+        changing `!= 0` to `!= 1` proved."""
+        monkeypatch.setattr(
+            launcher, "_bounded",
+            lambda cmd, **kw: subprocess.CompletedProcess(cmd, rc, "", ""),
+        )
+        with pytest.raises(typer.Exit):
+            launcher.stop("somestack")
+
+    def test_a_successful_empty_listing_still_reports_none(self, monkeypatch, err):
+        """The other half: a runtime that genuinely answers 'no instances' must still get the
+        friendly message and exit 0. Failing closed on a real empty result would be its own bug."""
+        monkeypatch.setattr(
+            launcher, "_bounded",
+            lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "", ""),
+        )
+        launcher.stop("somestack")  # must not raise
+
 
 class TestTheEgressFirewallFailsClosed:
     """The script installs a default-DROP policy, so "did not run" means NO firewall, not a weaker
