@@ -264,6 +264,7 @@ from .schema import (
     load_service,
     load_stack,
     load_stack_with_recipes,
+    normalize_extra_tools,
     parse_extra_tools,
     resolve_recipe_env,
 )
@@ -326,7 +327,11 @@ def _staged_build_context() -> Generator[str]:
         )
         user_file = paths.extra_tools_path()
         if user_file.exists():
-            content = user_file.read_text()
+            # Normalise BEFORE validating, and stage the SAME normalised text. Validating one
+            # string and shipping a different one is how a guard blesses a file the build then
+            # chokes on — a CRLF entry reaches awk as `bat@0.26.1\r`, and a BOM rides on the first
+            # spec. See schema.normalize_extra_tools.
+            content = normalize_extra_tools(user_file.read_text())
             # Validate on the HOST, before podman is ever invoked. An unpinned entry used to
             # surface as `exit status 123` from inside a RUN layer (xargs' "a child exited 1-125"),
             # which names neither the tool nor the file — see bd harnessed-2o9. Raising here names

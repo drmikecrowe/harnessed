@@ -21,7 +21,7 @@ import pytest
 from hypothesis import given, strategies as st
 
 from harnessed import update as pinupdate
-from harnessed.schema import PinValidationError, parse_extra_tools
+from harnessed.schema import PinValidationError, normalize_extra_tools, parse_extra_tools
 
 # The shipped template, resolved from the repo rather than a fixture: the point of S6 is to hold
 # the REAL file to the rule, so a fixture copy would defeat the test.
@@ -95,6 +95,46 @@ class TestParseExtraToolsProperties:
         assert parse_extra_tools(f"{name}@{ver}  # note\n") == parse_extra_tools(f"{name}@{ver}\n")
 
 
+class TestGuardAgreesWithTheDockerfile:
+    """The invariant the whole guard rests on: it must see what `mise use -g` will see.
+
+    Found by adversarial review. Python hides two byte-level details from the validator that awk
+    does not hide from the build, so a file could pass every check and still kill the image — the
+    exact failure mode bd harnessed-2o9 is about, reintroduced by its own fix.
+    """
+
+    def _dockerfile_pipeline(self, raw: bytes) -> list[bytes]:
+        """Byte-for-byte what catalog/base/Dockerfile.harnessed-base pipes into `mise use -g`."""
+        import subprocess
+        out = subprocess.run(
+            ["bash", "-c", r"""grep -v '^\s*#' | grep -v '^\s*$' | awk '{print $1}'"""],
+            input=raw, capture_output=True,
+        ).stdout
+        return [line for line in out.split(b"\n") if line]
+
+    @pytest.mark.parametrize("raw", [
+        b"bat@0.26.1\ndua@2.41.1\n",                    # plain LF
+        b"bat@0.26.1\r\ndua@2.41.1\r\n",                # CRLF
+        "﻿bat@0.26.1\ndua@2.41.1\n".encode(),      # UTF-8 BOM
+        b"bat@0.26.1   # cat\r\ndua@2.41.1  # du\r\n",  # CRLF with trailing comments
+        b"\tbat@0.26.1\ndua@2.41.1",                    # leading tab, no trailing newline
+    ], ids=["lf", "crlf", "bom", "crlf-comments", "tab-no-eol"])
+    def test_the_parsed_specs_match_what_the_build_pipeline_extracts(self, raw):
+        """Whatever the guard blesses must be exactly what mise is handed."""
+        parsed = parse_extra_tools(raw.decode("utf-8"))
+        staged = normalize_extra_tools(raw.decode("utf-8")).encode("utf-8")
+        assert [s.encode("utf-8") for s in parsed] == self._dockerfile_pipeline(staged)
+
+    def test_a_crlf_entry_does_not_reach_mise_with_a_carriage_return(self):
+        """awk does not treat \\r as a field separator, so a CRLF file used to yield 'bat@0.26.1\\r'."""
+        staged = normalize_extra_tools("bat@0.26.1\r\n")
+        assert self._dockerfile_pipeline(staged.encode()) == [b"bat@0.26.1"]
+
+    def test_a_bom_does_not_ride_on_the_first_spec(self):
+        """It carries an '@' and no floating marker, so every check passed it straight through."""
+        assert parse_extra_tools("﻿bat@0.26.1\n") == ["bat@0.26.1"]
+
+
 class TestShippedDefaultIsPinned:
     """S6 — the permanent regression gate on the real template."""
 
@@ -103,8 +143,14 @@ class TestShippedDefaultIsPinned:
         assert entries, "the template must still list tools"
         assert all("@" in e for e in entries)
 
-    def test_dua_is_pinned_to_a_version_whose_asset_exists(self):
-        """The pin that broke the build. 2.41.1 verified installing from a cold registry cache."""
+    def test_dua_is_pinned_to_the_version_that_broke_under_at_latest(self):
+        """Asserts the LITERAL pin only — that this version installs is not checkable here.
+
+        Deliberately narrow after adversarial review: the earlier name promised "a version whose
+        asset exists", which no assertion in this process can establish. That a cold registry
+        cache installs dua@2.41.1 was verified by a real container build; it belongs in the
+        evidence report, not in a docstring over a text-membership check.
+        """
         entries = parse_extra_tools(DEFAULT_LIST.read_text())
         assert "dua@2.41.1" in entries
 

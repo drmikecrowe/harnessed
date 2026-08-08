@@ -1246,6 +1246,27 @@ def _parse_tools(raw_tools, manifest: Path) -> tuple[list[str], dict[str, str]]:
     return out, holds
 
 
+def normalize_extra_tools(text: str) -> str:
+    """Strip a UTF-8 BOM and fold CRLF to LF, so the validator and the build see the same bytes.
+
+    The Dockerfile pipeline is byte-oriented and Python is not, which is enough to let a guard
+    bless a file the build then chokes on:
+
+      * CRLF — `str.splitlines()` drops the `\\r`, so the validator reads a clean `bat@0.26.1`.
+        awk does NOT treat `\\r` as a field separator, so `$1` is `bat@0.26.1\\r` and that is what
+        reaches `mise use -g`.
+      * BOM — `read_text()` on UTF-8 keeps `\\ufeff`, so the first entry is `\\ufeffbat@0.26.1`.
+        It contains an `@` and carries no floating marker, so it passes every check, and mise is
+        handed a tool name no registry has.
+
+    Normalising ONCE and using the result for BOTH validation and staging is what makes "the guard
+    sees what the build sees" a mechanism instead of a promise. Fixing the file is deliberately
+    preferred to rejecting it: a CRLF checkout is not a mistake the user can usefully be scolded
+    for, and the normalised text is what the build wanted anyway.
+    """
+    return text.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def parse_extra_tools(text: str) -> list[str]:
     """Parse `extra-tools.txt` into pinned mise specs, rejecting any entry that is not pinned.
 
@@ -1260,7 +1281,7 @@ def parse_extra_tools(text: str) -> list[str]:
     is. `mise use -g dua` resolves @latest at build time and the image is no longer reproducible.
     """
     out: list[str] = []
-    for line in text.splitlines():
+    for line in normalize_extra_tools(text).splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
