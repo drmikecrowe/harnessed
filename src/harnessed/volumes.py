@@ -222,6 +222,7 @@ def _run_container_installs(
             continue  # root-only install: the whole step is a system layer in the recipe Dockerfile
         cache_host = paths.install_cache_dir(recipe.name, inst.cache) if inst.cache else None
         ctr_cache = f"{emit.CTR_INSTALL_CACHE}/{recipe.name}/{inst.cache}" if cache_host else ""
+        ctr_cache_parent = f"{emit.CTR_INSTALL_CACHE}/{recipe.name}" if cache_host else ""
         env = emit.install_env(
             recipe, mode="container", harness=harness,
             config_dir=f"{_CONTAINER_HOME_STR}/.claude",
@@ -238,8 +239,16 @@ def _run_container_installs(
         args = [rt, "run", "--rm", *common,
                 "-v", f"{recipe.root}:{emit.CTR_RECIPE_DIR}/{recipe.name}:ro"]
         if cache_host is not None:
+            # Mount the PARENT, never the leaf. A cache MISS is "the leaf does not exist" (see
+            # paths.install_cache_dir), and podman statfs's a bind source before the script ever
+            # runs — so mounting the leaf turns every miss into `statfs …: no such file or
+            # directory`, i.e. the first build of any new recipe or bumped pin. Mounting the parent
+            # also keeps the scripts' populate-a-sibling-then-rename idiom atomic: `<leaf>.partial`
+            # lands on the same mount as `<leaf>`, which a leaf mount would have made a
+            # cross-device rename onto a busy mountpoint. `install.cache` is schema-guaranteed to
+            # be a bare ref, so the parent is exactly one level up on both sides.
             cache_host.parent.mkdir(parents=True, exist_ok=True)
-            args += ["-v", f"{cache_host}:{ctr_cache}:rw"]
+            args += ["-v", f"{cache_host.parent}:{ctr_cache_parent}:rw"]
         for k, v in merged.items():
             args += ["-e", f"{k}={v}"]
         args += ["--entrypoint", "bash", image,

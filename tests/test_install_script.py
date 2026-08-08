@@ -21,7 +21,7 @@ Four properties carry the whole design, and each has its own class below:
 
 import inspect
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -220,9 +220,41 @@ class TestContainerExecutor:
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n  cache: v6.0.3\n")
         cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
         ctr = f"{emit.CTR_INSTALL_CACHE}/r/v6.0.3"
-        assert f"{tmp_path / 'cache' / 'r' / 'v6.0.3'}:{ctr}:rw" in cmd
+        assert f"{tmp_path / 'cache' / 'r'}:{emit.CTR_INSTALL_CACHE}/r:rw" in cmd
         assert f"HARNESSED_INSTALL_CACHE={ctr}" in cmd
         assert not any("rm -rf" in a for a in cmd)
+
+    def test_cache_MISS_still_mounts_an_existing_source(self, tmp_path, monkeypatch):
+        """bd harnessed-5ie. A miss is "the leaf does not exist" (paths.install_cache_dir), and that
+        is the state of EVERY new recipe and every bumped pin. podman statfs's a bind source before
+        the script runs, so mounting the leaf failed the build outright:
+
+            Error: statfs …/.cache/harnessed/install/r/v6.0.3: no such file or directory
+
+        Mounting the PARENT fixes it without touching the miss semantics — and mkdir-ing the leaf
+        would NOT have, since every shipped cache script uses `[ ! -d "$leaf" ]` as its miss test
+        and an empty leaf would read as a permanent hit that installs nothing."""
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n  cache: v6.0.3\n")
+        cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
+        leaf = tmp_path / "cache" / "r" / "v6.0.3"
+        assert not leaf.exists(), "the leaf must stay absent — its absence IS the cache miss"
+        sources = [a.split(":")[0] for a in cmd if a.count(":") == 2 and a.endswith(":rw")]
+        assert str(leaf.parent) in sources
+        for src in sources:
+            assert Path(src).is_dir(), f"podman would statfs-fail on a missing bind source: {src}"
+
+    def test_cache_partial_sibling_lands_on_the_same_mount_as_the_leaf(self, tmp_path, monkeypatch):
+        """The scripts populate `<leaf>.partial.$$` and rename it onto `<leaf>` so an interrupted
+        fetch can never be mistaken for a populated cache. That rename is only atomic while both
+        paths sit on one mount — a leaf mount would have made it a cross-device rename onto a busy
+        mountpoint."""
+        r = _recipe(tmp_path, install="install:\n  script: install.sh\n  cache: v6.0.3\n")
+        cmd = self._install_argv(tmp_path, [r], monkeypatch)[0]
+        ctr_leaf = f"{emit.CTR_INSTALL_CACHE}/r/v6.0.3"
+        targets = [a.split(":")[1] for a in cmd if a.count(":") == 2 and a.endswith(":rw")]
+        assert any(
+            t == str(PurePosixPath(ctr_leaf).parent) for t in targets
+        ), "the leaf's parent must be the mount point, so leaf and `<leaf>.partial` share it"
 
     def test_no_cache_declared_means_empty_cache_var_and_no_mount(self, tmp_path, monkeypatch):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
