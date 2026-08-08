@@ -52,7 +52,6 @@ __pycache__/
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
-.beads-credential-key
 mise.local.toml
 
 # Gauntlet artifacts (bd harnessed-rv2 declared these tools; these are what they leave behind).

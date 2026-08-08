@@ -15,7 +15,7 @@ repo-blind. Open `src/` only with a specific question the docs did not answer, o
 | How do I author a recipe/service/stack? Set up a dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
 | *Why* is it built this way? | [docs/harnessed-design.md](docs/harnessed-design.md) |
 | What must I not do operationally? | [AGENTS.md](AGENTS.md) |
-| What work is open or decided? | `bd list`, `bd show <id>` — never a markdown TODO |
+| What work is open or decided? | GitHub Issues — never a markdown TODO |
 
 - **`docs/codebase/` is generated** (`/map-codebase`) and reproduces stale claims across
   regenerations. Code wins on conflict — fix the map. Re-running does not fix it.
@@ -108,12 +108,10 @@ A green run is not end-to-end proof: the suite runs no `podman build` and no `ha
 `.agents/skills/`.
 
 
-## Issue tracking: beads
+## Issue tracking
 
-`bd` is the tracker — never TodoWrite or a markdown TODO. `bd remember`, not a MEMORY.md.
+Durable work lives in GitHub Issues. The working rules ship as a rule, not from here.
 
-`bd prime` runs as a SessionStart hook (`.claude/settings.json`) and already delivers the command
-reference, session-close protocol, and stored memories. Run it by hand after a compact or `/clear`.
-
-Beads guidance never authorizes a commit, push, or `bd dolt push` — the git workflow above governs,
-and outward-facing actions still need an explicit yes.
+Beads was retired 2026-08-08; its recipes, service and stacks are gone from the catalog. Comments
+across the tree still cite bead IDs (`bd harnessed-8px.10`) as historical provenance — breadcrumbs
+to old decisions, not a live tracker. The 93 open beads became issues #232–#324.

@@ -26,9 +26,8 @@ For the whole picture — how git resolves hooks, and why worktrees share one ho
 [Git hooks guide](https://github.com/drmikecrowe/harnessed/wiki/guides/git-hooks).
 
 **Do not set `core.hooksPath`.** Set locally *or* globally, it makes the repo's own `.git/hooks` be
-ignored entirely — which is how tools silently disable each other. (`bd init` sets a local one. In
-harnessed, beads is **container-only**, so nothing should be setting it on your host. If something
-did: `git config --unset core.hooksPath`, adding `--global` if needed.)
+ignored entirely — which is how tools silently disable each other. Nothing in harnessed sets it; if
+something on your host did: `git config --unset core.hooksPath`, adding `--global` if needed.
 
 ## `catalog/` is a published artifact
 
@@ -84,8 +83,8 @@ download** (no `@latest` / `--branch main` — the build rejects floating refs).
 **A `setup.config` item with a `prompt:` must refuse to run without a TTY.** Today every config
 item in the catalog is `derive:`-only, which resolves fine headlessly — so no guard exists yet. If
 you add a *prompted* item, add the refusal with it: a headless launch (`CI`, a script) takes the
-default silently, and some defaults are forever-values. The beads issue prefix is the motivating
-case — it appears in every issue ID and is expensive to change, so it must never be set by silence.
+default silently, and some defaults are forever-values. The motivating case was a tracker's issue-ID
+prefix — it appears in every ID minted and is expensive to change, so it must never be set by silence.
 Abort with the recipe name and the interactive command to run once. A `setup.condition` then keeps
 later headless launches unaffected.
 
@@ -104,22 +103,26 @@ When the same tool needs several mutually-exclusive wirings, ship them as a reci
 whose children are each a complete recipe. A stack names one with a ref.
 
 ```
-catalog/recipes/beads/          # family — no recipe.yaml of its own, NOT a usable ref
+catalog/recipes/<family>/       # family — no recipe.yaml of its own, NOT a usable ref
   README.md                     # shared docs: how to choose, shared setup
-  stealth/{recipe.yaml,Dockerfile,README.md}        # → `beads/stealth`
-  team/{recipe.yaml,Dockerfile,README.md}           # → `beads/team`
+  <variety-a>/{recipe.yaml,Dockerfile,README.md}    # → `<family>/<variety-a>`
+  <variety-b>/{recipe.yaml,Dockerfile,README.md}    # → `<family>/<variety-b>`
 ```
 
 ```yaml
 # catalog/stacks/<stack>/stack.yaml
-recipes: [beads/team]
+recipes: [<family>/<variety-a>]
 ```
 
 The ref is the variety's path under `catalog/recipes/`. A family is exactly one dir deep. Each variety is
 self-contained (own `recipe.yaml`, `Dockerfile`, `tests/`) and is hashed independently — editing one
 variety does not rebuild stacks using another. Sibling varieties are **implicitly mutually
 exclusive**: a stack listing two of them fails at assemble time, so do not list them in each other's
-`conflicts:`. Worked example: `catalog/recipes/beads/`.
+`conflicts:`.
+
+The catalog currently ships **no** family — `catalog/recipes/beads/{team,stealth}` was the worked
+example until beads was retired (2026-08-08). The variety-ref resolution in `paths.py` is unchanged
+and still supported; there is simply nothing shipped to point at.
 
 ### The `default` recipe and stack (the shipped baseline)
 

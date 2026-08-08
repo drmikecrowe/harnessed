@@ -122,7 +122,7 @@ A stack may declare which harnesses it is built for:
 
 ```yaml
 name: my-stack
-recipes: [beads, serena]
+recipes: [superpowers, serena]
 harnesses: [claude, omp]   # build-time only — the harness is still a run-time argument
 ```
 
@@ -222,7 +222,6 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 - [ ] **[caveman](https://github.com/JuliusBrussee/caveman)** — concise-output / token-compression skill · *skills recipe*
 - [ ] **[hindsight](https://hindsight.vectorize.io)** — memory/recall sidecar (multi-container Postgres stack) · *existing service*
 - [ ] **[hyperpowers](https://github.com/withzombies/hyperpowers)** — workflow guidance (task tracking, plan management, TDD) · *skills + hooks recipe*
-- [ ] **[beads](https://github.com/steveyegge/beads)** — git-backed, dependency-aware issue tracker / persistent memory for coding agents (`bd` CLI, Dolt-backed) · *CLI + skills recipe*
 - [ ] **[Superpowers](https://github.com/obra/Superpowers)** — composable software-development methodology skill suite (TDD, code review, subagent-driven dev) · *skills recipe*
 - [ ] **[rtk](https://github.com/rtk-ai/rtk)** — Rust Token Killer: CLI proxy that compresses dev-command output to cut LLM tokens 60–90% · *CLI + hooks recipe*
 - [x] **[OB1 / Open Brain](https://github.com/NateBJones-Projects/OB1)** — personal knowledge infrastructure: shared persistent memory + vector search across AI tools (MCP + Supabase/Postgres backend) · *service + recipe*

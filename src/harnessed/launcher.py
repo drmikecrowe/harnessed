@@ -159,17 +159,9 @@ from .setupenv import (
 )
 from .svcguards import (
     _abort_dead_service,
-    _assert_data_dir_not_self_served,
     _assert_data_dir_unlocked,
-    _assert_named_database_present,
-    _assert_placement_matches,
     _assert_placement_unchanged,
     _assert_service_running,
-    _beads_metadata,
-    _dir_size,
-    _dolt_migration_sources,
-    _ensure_dolt_autostart_disabled,
-    _ensure_no_stale_socket_key,
     _host_process_in_dir,
     _placement_marker,
     _service_container_status,
@@ -1338,7 +1330,7 @@ def _build_service_image(rt: str, name: str) -> None:
 
 # One list, used to validate the action AND to spell the choices in the error — so a new action can
 # never be accepted by the dispatch while the error still calls it unknown.
-_SVC_ACTIONS = ("up", "down", "recreate", "sync", "migrate")
+_SVC_ACTIONS = ("up", "down", "recreate", "sync")
 
 
 def _svc_run_cmd(
@@ -1486,13 +1478,6 @@ def _ensure_service(
     if not _image_exists(rt, svc.image):
         _build_service_image(rt, name)
     cname = _svc_container(name, _svc_project_key(svc, project_path))
-    if svc.scope == "project":
-        assert project_path is not None  # guarded above
-        # BEFORE the running-container check below, not with the other workspace guards further
-        # down: a HEALTHY running sidecar returns early from that check, and this migration has to
-        # run for exactly the workspace that has one. It is also cheap and idempotent — after the
-        # first launch the key is gone and this is a dict lookup.
-        _ensure_no_stale_socket_key(svc, _service_data_dir(svc, stack, project_path)[0])
     # The two allocate-once values, resolved HERE rather than inside the pure builder: each creates
     # machine-local state on a miss (a port registry entry, a secret file), and the builder also runs
     # against containers we are only inspecting. Resolving them is idempotent — after the first
@@ -1544,11 +1529,7 @@ def _ensure_service(
         persist.guard_ownership(host_dir)
         host_dir.mkdir(parents=True, exist_ok=True)
         _assert_data_dir_unlocked(svc, host_dir)
-        _assert_data_dir_not_self_served(svc, host_dir)
-        _assert_placement_matches(svc, location, project_path)
         _assert_placement_unchanged(svc, location, project_path)
-        _assert_named_database_present(svc, host_dir)
-        _ensure_dolt_autostart_disabled(svc, host_dir)
 
     # `want_cmd` (built above) is exactly what we run — the same argv the hash was taken over, so
     # the label a container carries always describes the argv that created it. Labels go in last,
@@ -4244,101 +4225,6 @@ def host_gc(
         _out.print(f"\n[green][SUCCESS][/green] Removed {removed} orphan(s).")
 
 
-def _svc_migrate(
-    svc_def: "ServiceDef", stack: str, project_path: Path, from_path: str, assume_yes: bool
-) -> None:
-    """Move an existing database INTO this service's data dir, with the user's confirmation.
-
-    The gap this fills: the sidecar re-asserts socket mode in `metadata.json` on every startup, but
-    re-pointing the metadata does not move the bytes. A workspace that bd adopted onto its own
-    multi-project server therefore comes up correctly configured and still empty, and every client
-    fails with errno 1049 — which `_assert_named_database_present` now catches at launch and sends
-    here.
-
-    Deliberately a separate, explicit command rather than something `launch` does for you: it copies
-    a database between directories, and the recipes already hold the line that first-time beads setup
-    is a deliberate user action rather than a side effect of launching.
-
-    Copies, never moves. A failed or half-finished migration must leave the source exactly as it was,
-    so the old location stays usable as a fallback until the user removes it themselves.
-    """
-    if svc_def.exclusive_lock != "dolt":
-        _err.print(f"[bold red]error:[/bold red] service '{svc_def.name}' defines no migration")
-        raise typer.Exit(1)
-    host_dir, _, _ = _service_data_dir(svc_def, stack, project_path)
-    meta = _beads_metadata(host_dir)
-    db = str((meta or {}).get("dolt_database") or "")
-    if not db:
-        _err.print(
-            f"[bold red]error:[/bold red] no workspace to migrate: {host_dir / 'metadata.json'} "
-            "does not name a database"
-        )
-        raise typer.Exit(1)
-
-    dest = host_dir / "dolt" / db
-    if dest.is_dir():
-        _out.print(f"[blue][INFO][/blue] '{db}' is already in {host_dir / 'dolt'} — nothing to do")
-        return
-
-    # Copying into a data dir that an engine has open risks a torn copy, and the flock makes the
-    # result unusable anyway. Same check the launch path runs before starting the sidecar.
-    holder = _host_process_in_dir("dolt", host_dir.resolve())
-    if holder is not None:
-        pid, cmdline = holder
-        _err.print(f"[bold red]error:[/bold red] a host 'dolt' holds {host_dir} — stop it first")
-        _err.print(f"  PID {pid}: {cmdline}")
-        raise typer.Exit(1)
-
-    if from_path:
-        src = Path(from_path).expanduser().resolve()
-        if not (src / ".dolt" / "repo_state.json").is_file():
-            _err.print(f"[bold red]error:[/bold red] {src} is not a Dolt database (no .dolt/repo_state.json)")
-            raise typer.Exit(1)
-        sources = [src]
-    else:
-        sources = _dolt_migration_sources(host_dir, db)
-
-    if not sources:
-        _err.print(f"[bold red]error:[/bold red] found no database '{db}' to migrate")
-        _err.print("  Looked in ~/.beads/shared-server/dolt/ and any quarantined <data>/dolt.*/")
-        _err.print("  Point at it explicitly with --from <dir>, or run 'bd bootstrap' if the Dolt")
-        _err.print("  remote has data.")
-        raise typer.Exit(1)
-    if len(sources) > 1:
-        _err.print(f"[bold red]error:[/bold red] more than one database '{db}' found — pick one with --from:")
-        for cand in sources:
-            _err.print(f"    --from {cand}")
-        raise typer.Exit(1)
-
-    src = sources[0]
-    # persist_gc's formatter, not a hardcoded MiB: a small database rounds to "0.0 MiB", which reads
-    # as "there is nothing here" in the one prompt whose job is to tell the user what they are about
-    # to copy (a real 40 KiB database printed exactly that in the 2026-07-25 end-to-end run).
-    size = _fmt_size(_dir_size(src))
-    mtime = datetime.fromtimestamp((src / ".dolt").stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-    _out.print(f"[blue][INFO][/blue] migrate database '{db}'")
-    _out.print(f"           from  {src}  ({size}, last written {mtime})")
-    _out.print(f"           into  {dest}")
-    _out.print("           the source is COPIED, not moved — it stays where it is")
-    if not assume_yes:
-        if not sys.stdin.isatty():
-            _err.print("[bold red]error:[/bold red] not a terminal — re-run with --yes to confirm")
-            raise typer.Exit(1)
-        if not typer.confirm("Proceed?"):
-            _out.print("[blue][INFO][/blue] aborted, nothing was written")
-            raise typer.Exit(1)
-
-    # Stage beside the destination and rename, so an interrupted copy never leaves a partial
-    # database where the server would find one and serve it.
-    staging = dest.with_name(dest.name + ".migrating")
-    shutil.rmtree(staging, ignore_errors=True)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, staging, symlinks=True)
-    staging.rename(dest)
-    if not (dest / ".dolt" / "repo_state.json").is_file():
-        _err.print(f"[bold red]error:[/bold red] migration landed at {dest} but is not a Dolt database")
-        raise typer.Exit(1)
-    _out.print(f"[green][SUCCESS][/green] '{db}' migrated into {host_dir / 'dolt'}")
 
 
 @app.command("volume-gc")
@@ -4433,10 +4319,8 @@ def svc(
         "", "--stack",
         help="Stack context (required for scope: project; recreate reads it off the container)",
     ),
-    from_: str = typer.Option("", "--from", help="migrate: source database dir (skips discovery)"),
-    assume_yes: bool = typer.Option(False, "--yes", help="migrate: skip the confirmation prompt"),
 ) -> None:
-    """Manage a service sidecar (build+start, stop+remove, recreate, sync, or migrate its data in).
+    """Manage a service sidecar (build+start, stop+remove, recreate, or sync).
 
     `up`/`down`/`recreate` on a `scope: project` service act on THIS project's container
     (git-common-dir keyed), so they need `--stack` to resolve which persist entry holds the data.
@@ -4451,14 +4335,10 @@ def svc(
     only way a running sidecar picks up a change to how harnessed builds it. Data (the bind-mounted
     or named-volume /data) is untouched.
 
-    `sync` execs the service's own sync command in its container. It exists because a `dolt
-    sql-server`'s git sync (`bd dolt push` → refs/dolt/data) shells out to the dolt CLI, which only
-    routes to a server on its OWN loopback — so the push can only run inside the service container,
-    never in an agent container. Sync pushes to your git remote, so it is explicit, never automatic.
-
-    `migrate` copies an existing database INTO this service's data dir — the half that re-asserting
-    socket mode cannot do, since re-pointing `metadata.json` does not move the bytes. It is what the
-    launch-time "names database X, which is not in ..." abort tells you to run.
+    `sync` execs the service's own sync command in its container. It exists for a server whose git
+    sync shells out to a CLI that only routes to a server on its OWN loopback — so the push can only
+    run inside the service container, never in an agent container. Sync pushes to your git remote,
+    so it is explicit, never automatic.
     """
     rt = _runtime()
     project_path = Path.cwd().resolve()
@@ -4553,8 +4433,6 @@ def svc(
             _err.print(f"[bold red]error:[/bold red] sync failed for service '{name}'")
             raise typer.Exit(result.returncode)
         _out.print(f"[green][SUCCESS][/green] Service '{name}' synced")
-    elif action == "migrate":
-        _svc_migrate(svc_def, stack, project_path, from_, assume_yes)
 
 
 @app.command("project-env-path")

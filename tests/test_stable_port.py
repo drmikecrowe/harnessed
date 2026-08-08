@@ -98,13 +98,17 @@ class TestPublishing:
 
 
 class TestSchema:
-    def test_stable_is_accepted(self):
-        assert load_service(None, "beads-server").publish == "stable"
+    def test_stable_is_accepted(self, tmp_path):
+        """`publish: stable` parses and classifies as stable, not ephemeral.
 
-    def test_beads_server_is_stable_now(self):
-        """Pinned deliberately: reverting this to ephemeral silently un-configures every non-
-        harnessed bd in every project, which is not a change anyone would notice in a diff."""
-        svc = load_service(None, "beads-server")
+        Synthetic rather than catalog-loaded: `beads-server` was the ONLY shipped service declaring
+        `publish: stable`, and it was removed with beads (2026-08-08). No catalog service declares
+        `publish:` at all now, so there is nothing real left to assert against — but the schema
+        support is unchanged and has to keep holding for the next service that wants it.
+        """
+        body = "name: s\nimage: i\nport: 3307\npublish: stable\n"
+        svc = load_service(_svc_yaml(tmp_path, body, name="s"), "s")
+        assert svc.publish == "stable"
         assert svc.is_stable_port and not svc.is_ephemeral_port
 
     def test_an_unknown_publish_is_rejected(self, tmp_path):

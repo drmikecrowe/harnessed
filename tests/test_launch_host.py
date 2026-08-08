@@ -615,12 +615,12 @@ class TestHostCliRouting:
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
         ensured: list = []
 
-        patch_all(monkeypatch, "_service_refs", lambda _s: ["beads-server"])
+        patch_all(monkeypatch, "_service_refs", lambda _s: ["ping"])
         patch_all(monkeypatch, "_runtime", lambda: "podman")
         monkeypatch.setattr(
             launcher, "_ensure_services", lambda rt, stack, **kw: ensured.append((rt, stack))
         )
-        # hostspike declares no beads recipe, so resolving beads-server's data dir against it is a
+        # hostspike declares no recipe owning ping's data dir, so resolving it against that stack is a
         # genuine SchemaError — the fake service ref above is only here to prove the CALL happens.
         # Socket resolution has its own coverage in test_project_scoped_services.py.
         patch_all(monkeypatch, "svc_socket_env", lambda *_a, **_k: {})

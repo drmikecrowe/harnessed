@@ -152,22 +152,24 @@ Both are worth having; describe them honestly per backend.
 
 ## 7. Decisions (2026-07-19) and remaining open questions
 
-Decided (recorded on the beads named below):
+Decided (recorded on the bead IDs named below — beads itself was retired 2026-08-08):
 
 - **Audience** (`0tk.5`, closed): **product-for-others, container-primary.** Containers/
   devcontainers get the investment; the host backend stays as a maintained secondary (fast local
   path + auth escape hatch), no new feature investment; bwrap deferred.
 - **Container auth** (`harnessed-nym`, P1): host token proxy over a bind-mounted unix socket — not
   per-instance copies, not a shared rw mount.
-- **beads dolt-server placement** (`0tk.6`, closed): per-project `beads-server` sidecar is the
+- ~~**beads dolt-server placement** (`0tk.6`, closed): per-project `beads-server` sidecar is the
   PRIMARY placement; the host shared-server survives only as what `harnessed host-run` uses today.
-  `0tk.6` detect+abort guards the seam between them.
+  `0tk.6` detect+abort guards the seam between them.~~ **SUPERSEDED 2026-08-08** — beads was
+  retired; its recipes, service, stacks and the dolt guards are removed. Kept as a record of what
+  was decided on 2026-07-19, not as current design.
 - **Unified folder-env contract** (`0tk.7`, closed): recipe `env:` with `{persist:…}` references
   resolves to the mode-correct path (bind-mount target in a container, host persist dir on
   `harnessed host-run`) — one declaration, both modes. Static container-only `ENV` entries in
   Dockerfiles replaced.
 - **Non-TTY first-run setup** (`0tk.8`, closed): refuse with guidance when a prompted config item
-  has no TTY — a forever-value (e.g. the beads issue prefix) is never set by silence.
+  has no TTY — a forever-value (e.g. a tracker issue-ID prefix) is never set by silence.
 
 Still open:
 
