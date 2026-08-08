@@ -510,6 +510,31 @@ class TestTheEgressFirewallFailsClosed:
         launcher._apply_firewall("podman", "inst", [])
         assert err.text == ""
 
+    def test_it_runs_the_firewall_script_with_the_recipe_domains_and_a_deadline(
+        self, monkeypatch, err
+    ):
+        """Failing closed is worth nothing if the thing being run is not the firewall. Every other
+        test here stubs `_bounded` and ignores what it was handed, so mutating the argv to None or
+        dropping the timeout went unnoticed — both survived mutation until this asserted them."""
+        seen = {}
+
+        def spy(cmd, **kw):
+            seen["cmd"] = cmd
+            seen.update(kw)
+            return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+        monkeypatch.setattr(launcher, "_bounded", spy)
+        launcher._apply_firewall("podman", "inst", ["api.example.com", "get.example.com"])
+
+        assert seen["cmd"][:5] == [
+            "podman", "exec", "inst", "bash", "/usr/local/sbin/egress-firewall",
+        ]
+        # Recipe-declared `egress:` hosts are positional args the script appends to its allowlist —
+        # lose them and a recipe that needs the network is silently cut off.
+        assert seen["cmd"][-2:] == ["api.example.com", "get.example.com"]
+        assert seen["timeout"] == launcher._PODMAN_EXEC_TIMEOUT
+
     def test_the_documented_opt_out_still_skips_it(self, monkeypatch, err):
         """The error tells the user to set NO_FIREWALL=true, so that escape hatch must work — or
         failing closed becomes a wall rather than a gate."""
