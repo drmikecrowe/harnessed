@@ -81,8 +81,13 @@ _MUTMUT_SAFE = settings(suppress_health_check=[HealthCheck.differing_executors])
 class TestParseExtraToolsProperties:
     """Invariants over inputs nobody enumerated by hand."""
 
+    # ASCII only, deliberately narrowed when the printable-ASCII rule landed (SPEC amendment 2).
+    # The previous generator drew from the whole Ll/Nd Unicode categories, so hypothesis promptly
+    # produced names the new rule refuses — correctly. Narrowing the GENERATOR to the spec is the
+    # honest fix; widening the RULE to admit unicode would give back the separators (U+2028/U+2029)
+    # the rule exists to exclude.
     _names = st.text(
-        alphabet=st.characters(whitelist_categories=("Ll", "Nd"), whitelist_characters="-_"),
+        alphabet=st.characters(min_codepoint=97, max_codepoint=122) | st.sampled_from("0123456789-_"),
         min_size=1, max_size=12,
     ).filter(lambda s: not s.startswith("#"))
 
@@ -139,6 +144,49 @@ class TestGuardAgreesWithTheDockerfile:
         """awk does not treat \\r as a field separator, so a CRLF file used to yield 'bat@0.26.1\\r'."""
         staged = normalize_extra_tools("bat@0.26.1\r\n")
         assert self._dockerfile_pipeline(staged.encode()) == [b"bat@0.26.1"]
+
+    # Every character `str.splitlines()` breaks on that awk's record separator does not. Enumerated
+    # rather than sampled: this is the whole class, and the class already produced three defects.
+    PYTHON_ONLY_BREAKS = ["\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85",
+                          "\u2028", "\u2029"]
+    _SEP_IDS = [f"U+{ord(c):04X}" for c in PYTHON_ONLY_BREAKS]
+
+    @pytest.mark.parametrize("sep", PYTHON_ONLY_BREAKS, ids=_SEP_IDS)
+    def test_a_separator_only_python_honours_is_refused(self, sep):
+        """These used to parse as two clean specs while awk handed mise the concatenation.
+
+        Refused rather than folded: awk would read `bat@0.26.1<sep>dua@2.41.1` as ONE tool name, so
+        there is no reading of the file both sides agree on. Failing closed is the only answer that
+        cannot silently install the wrong thing.
+        """
+        with pytest.raises(PinValidationError):
+            parse_extra_tools(f"bat@0.26.1{sep}dua@2.41.1\n")
+
+    @pytest.mark.parametrize("sep", PYTHON_ONLY_BREAKS, ids=_SEP_IDS)
+    def test_the_guard_never_disagrees_with_the_build_on_these(self, sep):
+        """The invariant restated as a property: agree, or refuse. Never diverge."""
+        text = f"bat@0.26.1{sep}dua@2.41.1\n"
+        try:
+            parsed = parse_extra_tools(text)
+        except PinValidationError:
+            return  # refused — cannot diverge
+        staged = normalize_extra_tools(text).encode("utf-8")
+        assert [s.encode("utf-8") for s in parsed] == self._dockerfile_pipeline(staged)
+
+    def test_a_non_ascii_tool_name_is_refused(self):
+        """A deliberate restriction, not an oversight — see SPEC amendment 2.
+
+        Admitting unicode would mean admitting U+2028/U+2029, which are exactly the separators this
+        rule exists to keep out. No mise tool in the registry needs a non-ASCII name, so the cost of
+        the restriction is nil and it makes the guard/build agreement total rather than probable.
+        """
+        with pytest.raises(PinValidationError):
+            parse_extra_tools("café@1.0.0\n")
+
+    def test_a_second_bom_is_refused_rather_than_carried_into_a_tool_name(self):
+        """normalize strips ONE leading BOM; a second must not ride along inside the spec."""
+        with pytest.raises(PinValidationError):
+            parse_extra_tools("\ufeff\ufeffbat@0.26.1\n")
 
     def test_a_lone_carriage_return_is_a_line_break_too(self):
         """Classic-Mac line endings. Rare, but the fold is one `replace` away and free to get right."""
