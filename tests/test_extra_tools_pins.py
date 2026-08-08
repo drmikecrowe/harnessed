@@ -18,7 +18,7 @@ pins to a staleness sweep so pinning does not simply trade a broken build for a 
 from pathlib import Path
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import HealthCheck, given, settings, strategies as st
 
 from harnessed import update as pinupdate
 from harnessed.schema import PinValidationError, normalize_extra_tools, parse_extra_tools
@@ -71,6 +71,13 @@ class TestParseExtraTools:
         assert "dua" in str(exc.value)
 
 
+# mutmut runs the suite across several worker processes, which trips hypothesis'
+# `differing_executors` health check and aborts its stats phase — so the mutation layer cannot run
+# at all while these properties are collected. Suppressed rather than deleted: the properties are
+# worth more than the health check, which is warning about replay determinism we do not rely on.
+_MUTMUT_SAFE = settings(suppress_health_check=[HealthCheck.differing_executors])
+
+
 class TestParseExtraToolsProperties:
     """Invariants over inputs nobody enumerated by hand."""
 
@@ -79,16 +86,19 @@ class TestParseExtraToolsProperties:
         min_size=1, max_size=12,
     ).filter(lambda s: not s.startswith("#"))
 
+    @_MUTMUT_SAFE
     @given(name=_names, ver=st.from_regex(r"\A[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\Z"))
     def test_any_pinned_entry_round_trips(self, name, ver):
         assert parse_extra_tools(f"{name}@{ver}\n") == [f"{name}@{ver}"]
 
+    @_MUTMUT_SAFE
     @given(name=_names)
     def test_any_bare_name_is_rejected(self, name):
         """The general form of the bug: no '@' anywhere is always unpinned."""
         with pytest.raises(PinValidationError):
             parse_extra_tools(f"{name}\n")
 
+    @_MUTMUT_SAFE
     @given(name=_names, ver=st.from_regex(r"\A[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\Z"))
     def test_a_trailing_comment_never_changes_the_parsed_spec(self, name, ver):
         """Comment text must never leak into the spec handed to mise."""
@@ -115,7 +125,7 @@ class TestGuardAgreesWithTheDockerfile:
     @pytest.mark.parametrize("raw", [
         b"bat@0.26.1\ndua@2.41.1\n",                    # plain LF
         b"bat@0.26.1\r\ndua@2.41.1\r\n",                # CRLF
-        "﻿bat@0.26.1\ndua@2.41.1\n".encode(),      # UTF-8 BOM
+        "\ufeffbat@0.26.1\ndua@2.41.1\n".encode(),      # UTF-8 BOM
         b"bat@0.26.1   # cat\r\ndua@2.41.1  # du\r\n",  # CRLF with trailing comments
         b"\tbat@0.26.1\ndua@2.41.1",                    # leading tab, no trailing newline
     ], ids=["lf", "crlf", "bom", "crlf-comments", "tab-no-eol"])
@@ -130,9 +140,17 @@ class TestGuardAgreesWithTheDockerfile:
         staged = normalize_extra_tools("bat@0.26.1\r\n")
         assert self._dockerfile_pipeline(staged.encode()) == [b"bat@0.26.1"]
 
+    def test_a_lone_carriage_return_is_a_line_break_too(self):
+        """Classic-Mac line endings. Rare, but the fold is one `replace` away and free to get right."""
+        assert parse_extra_tools("bat@0.26.1\rdua@2.41.1\r") == ["bat@0.26.1", "dua@2.41.1"]
+
+    def test_a_leading_letter_is_never_mistaken_for_a_bom(self):
+        """`lstrip` takes a character SET; a tool starting with the stripped letter would lose it."""
+        assert parse_extra_tools("Xvfb@1.0.0\n") == ["Xvfb@1.0.0"]
+
     def test_a_bom_does_not_ride_on_the_first_spec(self):
         """It carries an '@' and no floating marker, so every check passed it straight through."""
-        assert parse_extra_tools("﻿bat@0.26.1\n") == ["bat@0.26.1"]
+        assert parse_extra_tools("\ufeffbat@0.26.1\n") == ["bat@0.26.1"]
 
 
 class TestShippedDefaultIsPinned:

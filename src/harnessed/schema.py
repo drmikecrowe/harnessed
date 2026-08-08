@@ -1264,7 +1264,11 @@ def normalize_extra_tools(text: str) -> str:
     preferred to rejecting it: a CRLF checkout is not a mistake the user can usefully be scolded
     for, and the normalised text is what the build wanted anyway.
     """
-    return text.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
+    # Written as an escape, never as the literal character: a BOM in source is invisible in every
+    # editor and diff, so the one place that handles it must be the one place you can SEE it.
+    # `removeprefix`, NOT `lstrip`: lstrip takes a SET of characters and would strip any leading
+    # run of them, so a tool whose name happened to start with one would lose that letter.
+    return text.removeprefix("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
 
 
 def parse_extra_tools(text: str) -> list[str]:
