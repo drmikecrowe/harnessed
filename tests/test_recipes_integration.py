@@ -64,9 +64,6 @@ NO_LIVE_CONNECT = {"openbrain-example"}
 # recipes today. Dropping them changes no test outcome — it only stops the set from claiming a
 # coverage decision that was never in effect.
 NO_CAPABILITY_ORACLE = {
-    # host-native beads-daemon tracer stacks (spike): beads is CLI+hook+service only, no oracle surface.
-    "hostbeads",
-    "hostbeads_stealth",
 }
 
 
@@ -139,7 +136,6 @@ def test_all_catalog_recipes_pass_strict():
             if (sub / "recipe.yaml").is_file()
         ]
     assert names, "no catalog recipes found"
-    assert "beads/stealth" in names, "variety refs must be enumerated, not skipped"
     for name in names:
         load_recipe(recipes_dir / paths.catalog_relpath(name), strict=True)  # raises on unknown field
 

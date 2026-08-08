@@ -17,7 +17,7 @@ port: 8080                      # the port INSIDE the container
 publish: ephemeral              # ephemeral | stable — how `port` reaches the host (loopback only)
 socket: run/<name>.sock         # unix socket relative to the data dir; excludes `publish`
 client_env: {VAR: "{host}:{port}"}   # env a CLIENT needs; templated on {host} {port} {socket} {password}
-data: {persist: .beads}         # scope: project — names a recipe `persist:` entry as the data dir
+data: {persist: .mydata}        # scope: project — names a recipe `persist:` entry as the data dir
 volume: <name>-data             # service-scoped named volume (default `<name>-data`, at /data)
 healthcheck: "<cmd>"            # readiness probe `svc up` polls
 exclusive_lock: dolt            # basename of a process that flocks the data dir
@@ -66,6 +66,6 @@ the sidecar dead on arrival.
 Manage by name: `harnessed svc up|down|list|sync <name>`.
 
 Worked examples: `catalog/services/ping/` (smallest possible) and
-`catalog/services/beads-server/` (project scope, socket, `data.persist`, `client_env`,
+`catalog/services/agentmemory/` (host-published, own image/volume,
 `exclusive_lock` — and comments explaining each choice). Long form:
 `docs/guides/service-authoring.md`.

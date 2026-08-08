@@ -67,7 +67,7 @@ def _service_data_dir(
       * location: host    → host dir is the persist dir keyed per that entry's scope, and agents
         see it at $HOME/<name> (exactly where _persist_mounts puts it).
 
-    That is the single knob: `beads/team` declares `.beads` in_repo, `beads/stealth` declares it
+    That is the single knob: one variety declares its data dir in_repo, a sibling declares it
     host, and the same service manifest follows either one.
     """
     _, recipes = load_stack_with_recipes(None, stack)
@@ -102,7 +102,7 @@ def svc_socket_env(stack: str, project_path: Path, mode: str = "container") -> d
 
     Exported into the attach shell (see _init_shell_prologue) as HARNESSED_<NAME>_SOCKET so a
     recipe's `setup:` can reference the socket without recomputing the launcher's path arithmetic —
-    e.g. `bd init --server --external --server-socket "$HARNESSED_BEADS_SERVER_SOCKET"`. A service
+    e.g. `mytool init --server --external --server-socket "$HARNESSED_MYSVC_SOCKET"`. A service
     reached over a published port uses `client_env` (svc_client_env) instead — the port is not a
     path, and it is not known until the container is running.
     """

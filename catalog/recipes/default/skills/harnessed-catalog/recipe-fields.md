@@ -94,7 +94,7 @@ persist:
   - name: .context-mode      # harnessed-managed dir, bind-mounted at ~/.context-mode
     scope: workspace         # workspace (launch path) | project (git-common-dir) | global
     location: host           # host | in_repo
-  - name: .beads
+  - name: .mydata
     scope: workspace
     location: in_repo        # inside the already-mounted workspace; no extra mount
     vcs: tracked             # REQUIRED for in_repo: tracked | ignored (ignored → .gitignore entry)
@@ -181,7 +181,7 @@ harnessed install contract (the contract always wins).
 tools: [pulumi@3.140.0]     # pinned mise tools, installed as a `mise use -g` layer. No Dockerfile.
 egress: [api.pulumi.com]    # opens the default-DROP egress firewall for these hosts, ONLY when this
                             # recipe is in the stack. Bare hostnames — no scheme, path, or port.
-services: [beads-server]    # sidecars this recipe needs that have NO MCP surface, so they cannot be
+services: [my-server]      # sidecars this recipe needs that have NO MCP surface, so they cannot be
                             # declared through mcp.servers[].service. Unioned with the stack's list.
 conflicts: [other-recipe]   # mutually exclusive recipes; checked symmetrically at parse time
 hooks:                      # native Claude Code hook shape, merged into the profile settings.json
@@ -215,5 +215,5 @@ RUN git init -q ~/x && cd ~/x && git remote add origin https://github.com/o/r.gi
 ## Recipe varieties
 
 `catalog/recipes/<family>/<variety>/recipe.yaml` is referenced as `family/variety` (e.g.
-`beads/team`, `beads/stealth`). Sibling varieties of one family are implicitly exclusive — a stack
+`fam/a`, `fam/b`). Sibling varieties of one family are implicitly exclusive — a stack
 cannot carry two.

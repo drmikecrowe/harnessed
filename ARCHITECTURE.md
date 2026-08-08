@@ -84,7 +84,7 @@ Two consequences worth knowing:
     `host.containers.internal:<port>`; outlives any instance.
   - `scope: project` — ONE container **per project** (git-common-dir keyed), for a service that holds
     an **exclusive lock over per-project data** and so cannot be shared (a `dolt sql-server` is the
-    motivating case — see `catalog/services/beads-server/`). Its data dir is a bind mount of a
+    motivating case). Its data dir is a bind mount of a
     persist entry declared by a recipe in the stack (`data.persist`), so the **service follows the
     recipe's placement** (`in_repo` vs `host`) instead of owning a named volume. It is reached
     through a **unix socket** inside that same dir (`socket:`), which publishes no port at all: a
@@ -156,7 +156,7 @@ top of the baseline is a legitimate launch, so the bare form needs no flags at a
 ```bash
 harnessed host-run      claude .                    # the `default` baseline, nothing composed
 harnessed container-run claude .       --stack gsd-core
-harnessed container-run omp   ~/proj   --recipe superpowers --recipe beads/team
+harnessed container-run omp   ~/proj   --recipe superpowers --recipe serena
 harnessed host-run      claude .       --recipe superpowers
 ```
 
@@ -308,10 +308,10 @@ surface — container and `--host` alike. Single definition: `launcher.harnessed
 | `HARNESSED_GIT_COMMON_DIR` | Same value as `MAIN_REPO_DIR`, under an explicit name. A bare `GIT_COMMON_DIR` is **never** exported: git itself consumes that variable and it hijacks common-dir resolution the moment the agent `cd`s into another repo. |
 | `HOST_WORKSPACE_DIR` / `CONTAINER_WORKSPACE_DIR` | The mounted workspace root (auto-widened to the bare-repo container so sibling worktrees are visible). Identical strings — the project is bind-mounted at its own host path. |
 | `HOST_HOME` | The **host** `$HOME`, which is not the container's (`/home/harnessed`). A `scope: global` persist entry is mounted path-preserving, so a recipe pointing a tool at e.g. `~/.pulumi` must write `$HOST_HOME/.pulumi`. |
-| `HARNESSED_BIN_DIR` | The dir an `install.script` lands executables in — the same value the install contract hands that script, so a recipe can install a wrapper at build time and put it on PATH at attach time (`init: run: export PATH="${HARNESSED_BIN_DIR:?}/…:$PATH"`, beads' `bd-shim`). Container: `/home/harnessed/.local/bin`. Host: the stack's own `tools/<stack>/bin`. |
+| `HARNESSED_BIN_DIR` | The dir an `install.script` lands executables in — the same value the install contract hands that script, so a recipe can install a wrapper at build time and put it on PATH at attach time (`init: run: export PATH="${HARNESSED_BIN_DIR:?}/…:$PATH"`, e.g. a CLI shim). Container: `/home/harnessed/.local/bin`. Host: the stack's own `tools/<stack>/bin`. |
 | `HARNESSED_RECIPE_DIR` | *(recipe-scoped surfaces only)* The recipe's own source dir — a setup script does `cp` where a Dockerfile did `COPY`. Host: the catalog dir. Container: `/opt/harnessed/recipes/<recipe>` (bind-mounted `:ro`). |
-| `HARNESSED_<SERVICE>_SOCKET` | Agent-side socket path for each socket-backed project-scoped service (e.g. `HARNESSED_BEADS_SERVER_SOCKET`). Resolved per mode, so a host launch gets the host path, not the container's. |
-| *(a service's own `client_env`)* | Whatever a project-scoped service declares its clients need — resolved per launch and injected under the service's chosen names, not a `HARNESSED_*` one. This is how a `publish: ephemeral` service hands over a host/port that does not exist until the container is running; `{host}` resolves to `127.0.0.1` on the host and `host.containers.internal` in a container. See `services/beads-server/service.yaml`. |
+| `HARNESSED_<SERVICE>_SOCKET` | Agent-side socket path for each socket-backed project-scoped service (`HARNESSED_<NAME>_SOCKET`). Resolved per mode, so a host launch gets the host path, not the container's. |
+| *(a service's own `client_env`)* | Whatever a project-scoped service declares its clients need — resolved per launch and injected under the service's chosen names, not a `HARNESSED_*` one. This is how a `publish: ephemeral` service hands over a host/port that does not exist until the container is running; `{host}` resolves to `127.0.0.1` on the host and `host.containers.internal` in a container. |
 
 Injected at every place catalog-authored content runs: the container attach shell
 (`_init_shell_prologue`), the container itself (`podman run -e`, so hooks and later `podman exec`s
@@ -321,7 +321,7 @@ agree), **both** `setup.condition` eval sites (`_collect_setup_notices`, `_confi
 `_launch_host` — on the host there is no container to set env on, so `os.environ` is the box).
 
 This is why a condition may be written against a real path — `[ ! -f
-"${MAIN_REPO_DIR}/.beads/metadata.json" ]`. Under an env-less eval that expanded to the empty string
+"${MAIN_REPO_DIR}/.sometool/metadata.json" ]`. Under an env-less eval that expanded to the empty string
 and the test passed falsely.
 
 ## Recipe scripts: `install:` vs `setup.script`

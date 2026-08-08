@@ -31,7 +31,7 @@ def _resolve_dir(root: Path | None, kind: str, name: str) -> Path:
     fixture trees. `root` None → resolve across the catalog roots (user overlay first), the
     production path.
 
-    `name` may be a variety ref (`beads/stealth`) — see paths.catalog_relpath.
+    `name` may be a variety ref (`<family>/<variety>`) — see paths.catalog_relpath.
     """
     if root is None:
         return paths.find_in_catalog(kind, name)
@@ -837,7 +837,7 @@ def _parse_services(raw_services) -> list[str]:
     For a service with no MCP surface, which therefore cannot be referenced through
     `mcp.servers[].service`: a `dolt sql-server` speaks MySQL, not MCP. Before this field the
     dependency could only be declared by the STACK, so a recipe list alone could not describe a
-    working stack and the beads recipes had to fail at runtime telling the user to edit one.
+    working stack and such a recipe had to fail at runtime telling the user to edit one.
     Unioned with the stack's own `services:` in `launcher._service_refs`.
     """
     # `is None`, NOT a falsy test — deliberately diverging from the neighbouring _parse_conflicts.
@@ -909,7 +909,7 @@ class Recipe:
     # Distinct from McpServer.env, which is per-MCP-server.
     env: dict[str, str] = field(default_factory=dict)
     root: Path = field(default_factory=Path)  # the recipe dir (for resolving relative paths)
-    # The catalog ref a stack used to load this recipe — `beads/stealth` for a variety, else the
+    # The catalog ref a stack used to load this recipe — `<family>/<variety>` for a variety, else the
     # plain name. Carries the FAMILY (the part before the slash), which _check_recipe_conflicts uses
     # to make sibling varieties implicitly exclusive. Defaults to `name` when loaded directly.
     ref: str = ""
@@ -1901,7 +1901,7 @@ def _check_recipe_conflicts(stack_name: str, recipes: list[Recipe]) -> None:
 
     * DECLARED — a recipe lists the other in its `conflicts:`. Checked symmetrically: only one side
       needs to declare it.
-    * IMPLICIT — two varieties of the same recipe family (`beads/stealth` + `beads/team`). They are
+    * IMPLICIT — two varieties of the same recipe family (`<family>/<a>` + `<family>/<b>`). They are
       the same tool wired differently, so they are always mutually exclusive; no `conflicts:` entry
       needed (and none should be written — the family is the source of truth).
     """

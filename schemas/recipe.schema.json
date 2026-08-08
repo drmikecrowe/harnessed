@@ -120,10 +120,10 @@
       "properties": {
         "summary": { "description": "One-line, harness-agnostic setup note (what the user needs to do).", "type": "string", "minLength": 1 },
         "reference": { "description": "Upstream docs/GitHub URL the user can consult for details.", "type": "string", "format": "uri", "minLength": 1 },
-        "condition": { "description": "Optional shell command that exits 0 when the manual step is STILL needed (e.g. `! bd list`). Evaluated host-side in the project directory on every launch: exit 0 shows the notice, non-zero (satisfied) suppresses it. A recipe with no condition shows once per project until the user dismisses it; the dismiss flag gates only unconditional notices, conditional ones always follow their condition.", "type": "string", "minLength": 1 },
-        "run": { "description": "Executable first-run setup command (host-native `launch --host`). Resolved with repo-identity primitives ({repo}, {gcd_db}, …) and {config.<key>} values, then run once when `condition` is satisfied. Use for setup harnessed CAN automate (e.g. `bd init --shared-server --database {config.database} --prefix {config.prefix}`).", "type": "string", "minLength": 1 },
+        "condition": { "description": "Optional shell command that exits 0 when the manual step is STILL needed (e.g. `! mytool status`). Evaluated host-side in the project directory on every launch: exit 0 shows the notice, non-zero (satisfied) suppresses it. A recipe with no condition shows once per project until the user dismisses it; the dismiss flag gates only unconditional notices, conditional ones always follow their condition.", "type": "string", "minLength": 1 },
+        "run": { "description": "Executable first-run setup command (host-native `launch --host`). Resolved with repo-identity primitives ({repo}, {gcd_db}, …) and {config.<key>} values, then run once when `condition` is satisfied. Use for setup harnessed CAN automate (e.g. `mytool init --database {config.database}`).", "type": "string", "minLength": 1 },
         "script": { "description": "Path (relative to the recipe dir) of a bash script run in BOTH host and container mode — the both-mode replacement for `run` and for `provision:`. Mutually exclusive with `run`. Unlike `run` it is a FILE, so it cannot be templated: every input arrives as env instead (HARNESSED_MODE, HARNESSED_STACK, HARNESSED_PROJECT_DIR, HARNESSED_HOST_HOME, HARNESSED_BIN_DIR, the repo-identity primitives as HARNESSED_REPO/_GCD_DB/_GCD_HASH/_PROJECT_HASH, and each `config` key as HARNESSED_CFG_<KEY>). Runs on every launch, so it MUST be idempotent and self-gating. Host mode: run by the launcher with HARNESSED_BIN_DIR leading PATH, so it can install a tool then immediately configure it. Container mode: mounted read-only and run via `podman exec` after start and before the egress firewall closes, with the same vars set as real container env.", "type": "string", "minLength": 1 },
-        "confirm": { "description": "Warning the user must accept BEFORE `run`/`script` executes. Declare it when the setup's side effects land in the USER'S repo rather than in harnessed's own state — beads/team's `bd init` creates and COMMITS 18 files into a shared checkout. The launcher prints this text, requires an explicit yes, and NEVER runs the setup without a TTY (a headless launch cannot consent). Declining skips only that launch; `condition` brings the offer back next time, and the confirm is not even shown when `condition` reports the work is already done. Meaningless without `run` or `script`, and rejected on its own.", "type": "string", "minLength": 1 },
+        "confirm": { "description": "Warning the user must accept BEFORE `run`/`script` executes. Declare it when the setup's side effects land in the USER'S repo rather than in harnessed's own state — e.g. a first-run init that creates and COMMITS files into a shared checkout. The launcher prints this text, requires an explicit yes, and NEVER runs the setup without a TTY (a headless launch cannot consent). Declining skips only that launch; `condition` brings the offer back next time, and the confirm is not even shown when `condition` reports the work is already done. Meaningless without `run` or `script`, and rejected on its own.", "type": "string", "minLength": 1 },
         "config": {
           "description": "Config values `run`/`script` needs, resolved on first launch. Each is either derived (silent, from repo-identity primitives) or prompted (asked once; non-interactive uses the default). Referenced in `run` as {config.<key>}, and exposed to `script` as HARNESSED_CFG_<KEY>.",
           "type": "array",
@@ -174,13 +174,13 @@
       "type": ["array", "object"]
     },
     "conflicts": {
-      "description": "Names of other recipes this recipe must never be combined with in the same stack (e.g. two recipes that both claim to be the agent's sole cross-session memory store). Checked symmetrically across a stack's recipe list — declaring it on either side is enough. Do NOT list sibling varieties of the same family here: two varieties of one recipe (beads/stealth + beads/team) are ALREADY implicitly exclusive.",
+      "description": "Names of other recipes this recipe must never be combined with in the same stack (e.g. two recipes that both claim to be the agent's sole cross-session memory store). Checked symmetrically across a stack's recipe list — declaring it on either side is enough. Do NOT list sibling varieties of the same family here: two varieties of one recipe (`<family>/<a>` + `<family>/<b>`) are ALREADY implicitly exclusive.",
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
     "services": {
       "type": "array",
-      "description": "Sidecar services this recipe requires that have no MCP surface (e.g. beads-server, which speaks MySQL). Unioned with the stack's own services: at launch.",
+      "description": "Sidecar services this recipe requires that have no MCP surface (e.g. a database server speaking its own wire protocol). Unioned with the stack's own services: at launch.",
       "items": { "type": "string", "minLength": 1 }
     },
     "persist": {
@@ -194,7 +194,7 @@
       "additionalProperties": false,
       "required": ["run"],
       "properties": {
-        "run": { "description": "Shell command sourced in the attach shell on every launch. MUST self-gate cheaply (e.g. `bd list >/dev/null 2>&1 || bd init`); a non-zero exit aborts the attach before the harness starts. Use `return`/short-circuits, never a bare `exit`. No secrets are available.", "type": "string", "minLength": 1 }
+        "run": { "description": "Shell command sourced in the attach shell on every launch. MUST self-gate cheaply (e.g. `mytool status >/dev/null 2>&1 || mytool init`); a non-zero exit aborts the attach before the harness starts. Use `return`/short-circuits, never a bare `exit`. No secrets are available.", "type": "string", "minLength": 1 }
       }
     }
   },

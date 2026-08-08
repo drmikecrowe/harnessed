@@ -35,7 +35,6 @@ from harnessed.schema import (
     SchemaError,
     load_recipe,
     validate_container_only_declared,
-    validate_install_script,
 )
 from support import patch_all
 
@@ -44,7 +43,7 @@ RECIPES = CATALOG / "recipes"
 
 # The catalog recipes this batch migrated, by shape.
 ROOT_ONLY = ["solidspec", "tokensave"]
-USER_LEVEL = ["beads/team", "beads/stealth"]
+USER_LEVEL = ["mikes-universal-setup"]
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -249,38 +248,6 @@ class TestHomeShimRecipesRewriteRecordedPaths:
         )
 
 
-class TestMigratedBeadsRecipes:
-    @pytest.mark.parametrize("ref", USER_LEVEL)
-    def test_install_script_exists_and_lints(self, ref):
-        r = _catalog_recipe(ref)
-        assert r.install.script == "install.sh"
-        assert (r.root / "install.sh").is_file()
-        validate_install_script(r)  # raises on raw npm/npx or a floating ref
-
-    @pytest.mark.parametrize("ref", USER_LEVEL)
-    def test_script_pins_the_version_the_recipe_documents(self, ref):
-        """The pin lives in the script now, where `validate_pin` (Dockerfile text only) cannot see
-        it — `validate_install_script` is the gate, and this asserts the pin is actually there."""
-        body = (_catalog_recipe(ref).root / "install.sh").read_text()
-        assert "github:gastownhall/beads@${BEADS_VERSION}" in body
-        assert 'BEADS_VERSION="1.1.0"' in body
-
-    @pytest.mark.parametrize("ref", USER_LEVEL)
-    def test_script_is_idempotent_across_the_per_launch_rerun(self, ref):
-        """The host home is rmtree'd every launch, so this script runs every launch. Without a
-        short-circuit it would rewrite the user's global mise config each time."""
-        body = (_catalog_recipe(ref).root / "install.sh").read_text()
-        assert "command -v bd" in body
-
-    @pytest.mark.parametrize("ref", USER_LEVEL)
-    def test_readme_documents_removal_of_out_of_bounds_writes(self, ref):
-        """bd harnessed-8px.6: these recipes write `.beads/` and (via `bd setup`) `CLAUDE.md` +
-        `.claude/settings.json` INTO the project — outside every harnessed-owned dir. A user who
-        drops the recipe must be able to find the undo."""
-        readme = (_catalog_recipe(ref).root / "README.md").read_text()
-        assert "## Footprint and removal" in readme
-        for expected in (".beads", "CLAUDE.md", ".claude/settings.json", "mise unuse"):
-            assert expected in readme, f"{ref}: README does not document removing {expected}"
 
 
 def test_every_recipe_with_a_root_dockerfile_step_declares_it():

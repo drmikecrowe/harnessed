@@ -18,7 +18,7 @@
       "minLength": 1
     },
     "scope": {
-      "description": "global (default): ONE shared container, host-published, reached at host.containers.internal:<port>. project: one container PER PROJECT (keyed by git-common-dir), whose data dir is the project's own persist entry — used when a service holds an exclusive on-disk lock over per-project data (e.g. a dolt sql-server).",
+      "description": "global (default): ONE shared container, host-published, reached at host.containers.internal:<port>. project: one container PER PROJECT (keyed by git-common-dir), whose data dir is the project's own persist entry — used when a service holds an exclusive on-disk lock over per-project data (e.g. a SQL server that locks its data dir).",
       "type": "string",
       "enum": ["global", "project"],
       "default": "global"
@@ -51,7 +51,7 @@
       "required": ["persist"],
       "properties": {
         "persist": {
-          "description": "Name of the persist entry (declared by a recipe in the stack) whose host dir is bind-mounted as this service's data dir at /data (e.g. .beads).",
+          "description": "Name of the persist entry (declared by a recipe in the stack) whose host dir is bind-mounted as this service's data dir at /data.",
           "type": "string",
           "minLength": 1
         }
@@ -71,7 +71,7 @@
       "minLength": 1
     },
     "sync": {
-      "description": "Shell command run INSIDE the service container by `harnessed svc sync <name>`. For a dolt sql-server this is `bd dolt push`: bd's git sync shells out to the dolt CLI, which only routes to a server on its own loopback, so the push cannot run from an agent container. Never automatic — it writes to your git remote.",
+      "description": "Shell command run INSIDE the service container by `harnessed svc sync <name>`. For a server whose git sync shells out to a CLI that only routes to a server on its OWN loopback, the push cannot run from an agent container — so it runs here instead. Never automatic: it writes to your git remote. No service in the catalog currently declares one.",
       "type": "string"
     }
   }

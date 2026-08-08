@@ -122,26 +122,3 @@ class TestGate:
         ) is True
 
 
-class TestBeadsTeamWiring:
-    def test_team_gates_its_init_behind_a_confirm(self):
-        r = load_recipe(TEAM, strict=True)
-        assert r.setup is not None and r.setup.script, "team now automates bd init"
-        assert r.setup.confirm, "…and must never do it without asking — it COMMITS to a shared repo"
-
-    def test_the_confirm_names_the_actual_side_effect(self):
-        """'Proceed?' with no stated consequence is not informed consent. The one fact a user needs
-        is that this commits files into a repo their teammates share."""
-        confirm = load_recipe(TEAM, strict=True).setup.confirm.lower()
-        assert "commit" in confirm
-        assert "repository" in confirm or "repo" in confirm
-
-    def test_the_script_never_reaches_bds_shared_server(self):
-        """The 2026-07-19 incident (BEADS.md §10) in one line: no --external, auto-start live,
-        pointed at the global ~/.beads/shared-server."""
-        body = (TEAM / "setup.sh").read_text()
-        assert "--shared-server" not in body
-        assert "--external" in body
-
-    def test_the_script_self_gates(self):
-        """A `setup.script` runs on every launch by contract, confirm or not."""
-        assert 'metadata.json' in (TEAM / "setup.sh").read_text()

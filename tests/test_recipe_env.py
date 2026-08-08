@@ -355,14 +355,13 @@ class TestDockerfileEmission:
 
 
 class TestShippedRecipesUseTheField:
-    """The three recipes that proved the design — each `ENV` line is now one `env:` declaration."""
+    """The recipes that proved the design — each `ENV` line is now one `env:` declaration."""
 
     @pytest.mark.parametrize(
         "ref,var,expected_ctr",
         [
             ("superpowers", "SUPERPOWERS_DISABLE_TELEMETRY", "1"),
             ("context-mode", "CONTEXT_MODE_DIR", f"{paths.CONTAINER_HOME}/.context-mode"),
-            ("beads/stealth", "BEADS_DIR", f"{paths.CONTAINER_HOME}/.beads"),
         ],
     )
     def test_declares_env_and_no_longer_hardcodes_it_in_the_dockerfile(
@@ -376,7 +375,7 @@ class TestShippedRecipesUseTheField:
         body = dockerfile.read_text() if dockerfile.is_file() else ""
         assert not any(ln.startswith(f"ENV {var}") for ln in body.splitlines())
 
-    @pytest.mark.parametrize("ref,var", [("context-mode", "CONTEXT_MODE_DIR"), ("beads/stealth", "BEADS_DIR")])
+    @pytest.mark.parametrize("ref,var", [("context-mode", "CONTEXT_MODE_DIR")])
     def test_path_valued_ones_leave_the_pod_home_behind_on_host(self, ref, var, tmp_path, monkeypatch):
         """The regression this whole field exists to prevent: a host launch must never be handed
         /home/harnessed/... , which does not exist there."""
