@@ -255,6 +255,7 @@ from .assemble import assemble, compute_recipe_hash, _merge_servers, _resolve_se
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
+    PinValidationError,
     Recipe,
     SchemaError,
     ServiceDef,
@@ -263,6 +264,8 @@ from .schema import (
     load_service,
     load_stack,
     load_stack_with_recipes,
+    normalize_extra_tools,
+    parse_extra_tools,
     resolve_recipe_env,
 )
 
@@ -324,7 +327,41 @@ def _staged_build_context() -> Generator[str]:
         )
         user_file = paths.extra_tools_path()
         if user_file.exists():
-            (ctx_path / "catalog" / "base" / "extra-tools.txt").write_text(user_file.read_text())
+            # Normalise BEFORE validating, and stage the SAME normalised text. Validating one
+            # string and shipping a different one is how a guard blesses a file the build then
+            # chokes on — a CRLF entry reaches awk as `bat@0.26.1\r`, and a BOM rides on the first
+            # spec. See schema.normalize_extra_tools.
+            # `encoding="utf-8"` on BOTH sides, never the locale default. The BOM defence in
+            # `normalize_extra_tools` strips U+FEFF, which only exists if the bytes decoded as
+            # UTF-8; under a non-UTF-8 locale the same bytes arrive as "ï»¿", survive the strip, and
+            # the file is then refused with a message about control characters that names the wrong
+            # problem. The write is the mirror: the staged bytes must be the bytes the build reads,
+            # and the build reads UTF-8. `update.discover_extra_tools_pins` already pinned its
+            # encoding, so leaving these unpinned also made two readers of one format disagree.
+            content = normalize_extra_tools(user_file.read_text(encoding="utf-8"))
+            # Validate on the HOST, before podman is ever invoked. An unpinned entry used to
+            # surface as `exit status 123` from inside a RUN layer (xargs' "a child exited 1-125"),
+            # which names neither the tool nor the file — see bd harnessed-2o9. Raising here names
+            # the USER's file, which is the one they must edit: the shipped default is marked
+            # "TEMPLATE — do not edit for personal use", so pointing at it would send them wrong.
+            #
+            # The message has to carry the REMEDY, not just the complaint. Every user who built
+            # before this change has a copy of the old unpinned template sitting at this path
+            # (it is seeded once, then never touched again), so this fires on the first build
+            # after upgrading — for people who did nothing wrong. An error that only says "not
+            # pinned" turns that into a support question.
+            try:
+                parse_extra_tools(content)
+            except PinValidationError as exc:
+                raise PinValidationError(
+                    f"{user_file}: {exc}\n"
+                    f"If you have not customised that file, delete it and rebuild — it is "
+                    f"re-seeded from the shipped template, which is pinned. Otherwise add an "
+                    f"explicit version to each entry."
+                ) from exc
+            (ctx_path / "catalog" / "base" / "extra-tools.txt").write_text(
+                content, encoding="utf-8"
+            )
         yield str(ctx_path)
 
 
@@ -3503,6 +3540,9 @@ def update_pins(
     # future offline mode) can swap `update.resolve_latest` and have it take effect here.
     report = pinupdate.build_report(
         dirs,
+        # The base image's extra-tools pins rot exactly like recipe pins do, and used not to be
+        # swept at all — which is how bd harnessed-2o9 reached CI.
+        extra_tools=pinupdate.extra_tools_default_path(),
         resolve=lambda backend, name: pinupdate.resolve_releases(backend, name),
         minimum_release_age_minutes=(
             pinupdate.DEFAULT_MINIMUM_RELEASE_AGE_MINUTES

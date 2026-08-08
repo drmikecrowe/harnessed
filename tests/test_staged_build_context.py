@@ -44,7 +44,7 @@ class TestStagedBuildContext:
     def test_context_contains_catalog_at_its_root(self, monkeypatch, tmp_path):
         """The Dockerfiles' COPY paths are context-relative (`COPY catalog/base/...`)."""
         _fake_home(monkeypatch, tmp_path)
-        _user_extra_tools(monkeypatch, tmp_path, "ripgrep\n")
+        _user_extra_tools(monkeypatch, tmp_path, "ripgrep@14.1.1\n")
 
         with launcher._staged_build_context() as ctx:
             root = Path(ctx)
@@ -54,16 +54,16 @@ class TestStagedBuildContext:
     def test_stages_resolved_extra_tools_into_the_context(self, monkeypatch, tmp_path):
         """Dockerfile.harnessed-base does `COPY catalog/base/extra-tools.txt`."""
         _fake_home(monkeypatch, tmp_path)
-        _user_extra_tools(monkeypatch, tmp_path, "ripgrep\nfd\n")
+        _user_extra_tools(monkeypatch, tmp_path, "ripgrep@14.1.1\nfd@10.2.0\n")
 
         with launcher._staged_build_context() as ctx:
             staged = Path(ctx) / "catalog" / "base" / "extra-tools.txt"
-            assert staged.read_text() == "ripgrep\nfd\n"
+            assert staged.read_text() == "ripgrep@14.1.1\nfd@10.2.0\n"
 
     def test_never_writes_into_the_shipped_catalog(self, monkeypatch, tmp_path):
         """THE POINT: in a wheel this dir is site-packages. It must come out untouched."""
         home = _fake_home(monkeypatch, tmp_path)
-        _user_extra_tools(monkeypatch, tmp_path, "ripgrep\n")
+        _user_extra_tools(monkeypatch, tmp_path, "ripgrep@14.1.1\n")
 
         before = sorted(p.relative_to(home).as_posix() for p in home.rglob("*"))
         with launcher._staged_build_context():
@@ -76,7 +76,7 @@ class TestStagedBuildContext:
     def test_context_excludes_repo_cruft(self, monkeypatch, tmp_path):
         """In a checkout, home is the repo root — only catalog/ should reach podman."""
         _fake_home(monkeypatch, tmp_path, checkout=True)
-        _user_extra_tools(monkeypatch, tmp_path, "ripgrep\n")
+        _user_extra_tools(monkeypatch, tmp_path, "ripgrep@14.1.1\n")
 
         with launcher._staged_build_context() as ctx:
             entries = {p.name for p in Path(ctx).iterdir()}
@@ -98,7 +98,7 @@ class TestStagedBuildContext:
 
     def test_context_is_cleaned_up(self, monkeypatch, tmp_path):
         _fake_home(monkeypatch, tmp_path)
-        _user_extra_tools(monkeypatch, tmp_path, "ripgrep\n")
+        _user_extra_tools(monkeypatch, tmp_path, "ripgrep@14.1.1\n")
 
         with launcher._staged_build_context() as ctx:
             assert Path(ctx).is_dir()
@@ -107,7 +107,7 @@ class TestStagedBuildContext:
     def test_stale_local_symlinks_never_enter_the_context(self, monkeypatch, tmp_path):
         """An un-migrated checkout still has catalog/<kind>.local → must not be copied/followed."""
         home = _fake_home(monkeypatch, tmp_path, checkout=True)
-        _user_extra_tools(monkeypatch, tmp_path, "ripgrep\n")
+        _user_extra_tools(monkeypatch, tmp_path, "ripgrep@14.1.1\n")
         overlay = tmp_path / "private"
         overlay.mkdir()
         (overlay / "secret-recipe.yaml").write_text("name: secret\n")

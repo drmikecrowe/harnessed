@@ -1246,6 +1246,120 @@ def _parse_tools(raw_tools, manifest: Path) -> tuple[list[str], dict[str, str]]:
     return out, holds
 
 
+def normalize_extra_tools(text: str) -> str:
+    """Strip a UTF-8 BOM and fold CRLF to LF, so the validator and the build see the same bytes.
+
+    The Dockerfile pipeline is byte-oriented and Python is not, which is enough to let a guard
+    bless a file the build then chokes on:
+
+      * CRLF — `str.splitlines()` drops the `\\r`, so the validator reads a clean `bat@0.26.1`.
+        awk does NOT treat `\\r` as a field separator, so `$1` is `bat@0.26.1\\r` and that is what
+        reaches `mise use -g`.
+      * BOM — `read_text()` on UTF-8 keeps `\\ufeff`, so the first entry is `\\ufeffbat@0.26.1`.
+        It contains an `@` and carries no floating marker, so it passes every check, and mise is
+        handed a tool name no registry has.
+
+    Normalising ONCE and using the result for BOTH validation and staging is what makes "the guard
+    sees what the build sees" a mechanism instead of a promise. Fixing the file is deliberately
+    preferred to rejecting it: a CRLF checkout is not a mistake the user can usefully be scolded
+    for, and the normalised text is what the build wanted anyway.
+    """
+    # Written as an escape, never as the literal character: a BOM in source is invisible in every
+    # editor and diff, so the one place that handles it must be the one place you can SEE it.
+    # `removeprefix`, NOT `lstrip`: lstrip takes a SET of characters and would strip any leading
+    # run of them, so a tool whose name happened to start with one would lose that letter.
+    return text.removeprefix("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+
+
+# A spec awk and Python cannot read differently: printable ASCII, no space, no tab. Every member of
+# this bug's class needs a character one side treats as a separator and the other does not, and
+# every such character is outside this range.
+_EXTRA_TOOLS_SPEC_RE = re.compile(r"\A[!-~]+\Z")
+
+
+def extra_tools_records(text: str) -> list[str]:
+    """Every entry the Dockerfile pipeline would extract, in order, WITHOUT validating any of them.
+
+    One definition of "what an entry is", shared by the build guard and the staleness sweep, because
+    two definitions is how they drift apart.
+
+    `split("\\n")`, NOT `splitlines()`, and `[ \\t]`, NOT `str.split()`. Both Python defaults break on
+    characters awk does not: vertical tab, form feed, the file/group/record separators, NEL, U+2028
+    and U+2029. `bat@0.26.1\\x0bdua@2.41.1` therefore read as TWO clean specs here while awk saw one
+    line and handed mise the whole concatenated string. awk's record separator is `\\n` and its
+    default field separator is space and tab — so split exactly there and nowhere else. (Third
+    instance of one class, found by adversarial review: Python's idea of "a line" is not the
+    pipeline's. CRLF and the BOM were the first two.)
+    """
+    out: list[str] = []
+    for record in normalize_extra_tools(text).split("\n"):
+        stripped = record.strip(" \t")
+        if not stripped or stripped.startswith("#"):
+            continue
+        out.append(re.split(r"[ \t]", stripped, maxsplit=1)[0])  # awk '{print $1}'
+    return out
+
+
+def _validate_extra_tools_spec(spec: str) -> None:
+    """Raise `PinValidationError` unless `spec` is a pinned mise spec the build can consume."""
+    # Fail CLOSED on anything that could make this check and the build disagree. Every divergence in
+    # that class needs a character one side treats as a break and the other does not, so a spec
+    # restricted to printable non-space ASCII cannot diverge at all — and a leftover BOM (a second
+    # one, past the one `normalize_extra_tools` strips) is refused here by the same rule instead of
+    # travelling on inside a tool name.
+    if not _EXTRA_TOOLS_SPEC_RE.match(spec):
+        raise PinValidationError(
+            f"extra-tools entry {spec!r} contains a character that the base-image build would "
+            "read differently from this check (a control character, a byte-order mark, or a "
+            "unicode line separator). Entries must be printable ASCII with no spaces."
+        )
+    if _FLOATING_REF_RE.search(spec) or "@" not in spec:
+        raise PinValidationError(
+            f"extra-tools entry {spec!r} must be pinned to an explicit version "
+            "(e.g. 'dua@2.41.1' — no '@latest' and no bare tool name). An unpinned entry "
+            "resolves @latest during the base-image build, which is how bd harnessed-2o9 "
+            "broke every container build."
+        )
+
+
+def valid_extra_tools(text: str) -> list[str]:
+    """The specs that validate, skipping the ones that do not — a bad ENTRY, not a bad FILE.
+
+    For the staleness sweep, which must degrade one entry at a time. `parse_extra_tools` is
+    all-or-nothing on purpose (the build has to refuse the whole file), but reusing it in the sweep
+    meant one malformed entry discarded all fifteen pins and left `--check` green while every
+    remaining pin rotted — the exact outcome the sweep was added to prevent.
+    """
+    out: list[str] = []
+    for spec in extra_tools_records(text):
+        try:
+            _validate_extra_tools_spec(spec)
+        except PinValidationError:
+            continue
+        out.append(spec)
+    return out
+
+
+def parse_extra_tools(text: str) -> list[str]:
+    """Parse `extra-tools.txt` into pinned mise specs, rejecting any entry that is not pinned.
+
+    Reads the file the way the base-image Dockerfile does, and it must KEEP reading it that way:
+    `grep -v '^\\s*#' | grep -v '^\\s*$' | awk '{print $1}'`. If this parser and that pipeline ever
+    disagree about what an entry is, the guard stops guarding the thing that actually runs.
+
+    The rule is `_parse_tools`' rule, deliberately reused rather than restated: an entry is floating
+    if it carries a floating MARKER *or* if it carries no version at all. That second clause is the
+    one bd harnessed-2o9 was about — a bare `dua` has no marker for `_FLOATING_REF_RE` to find, so a
+    marker-hunting check reads it as "nothing to validate" when it is the most floating form there
+    is. `mise use -g dua` resolves @latest at build time and the image is no longer reproducible.
+    """
+    out: list[str] = []
+    for spec in extra_tools_records(text):
+        _validate_extra_tools_spec(spec)
+        out.append(spec)
+    return out
+
+
 # --- Recipe `env:` — environment for the RUNNING agent (bd harnessed-8px.2) --------------------
 #
 # The one recipe deliverable that cannot become a bash script: a script's `export` dies with the

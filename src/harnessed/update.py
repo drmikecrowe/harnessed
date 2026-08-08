@@ -44,11 +44,12 @@ from typing import Callable
 from ruamel.yaml import YAML
 
 from . import paths
-from .schema import SchemaError, load_recipe, load_stack
+from .schema import SchemaError, load_recipe, load_stack, valid_extra_tools
 
 __all__ = [
     "Pin", "Finding", "Release", "Report", "ResolveError",
-    "discover_pins", "build_report", "apply", "resolve_releases", "version_key",
+    "discover_pins", "discover_extra_tools_pins", "build_report", "apply", "resolve_releases",
+    "version_key", "extra_tools_default_path", "EXTRA_TOOLS_LABEL",
     "mise_repo", "affected_stacks", "verify_commands",
     "DEFAULT_MINIMUM_RELEASE_AGE_MINUTES",
 ]
@@ -460,7 +461,54 @@ def _select(pin: Pin, releases: list[Release], now: datetime, min_age_minutes: f
     return "cooling", f
 
 
+# The `recipe` label for extra-tools pins. Not a real recipe — it is what the report prints next to
+# a bump, so it has to say where the pin lives or the human cannot tell what a bump would touch.
+EXTRA_TOOLS_LABEL = "base/extra-tools"
+
+
+def extra_tools_default_path() -> Path:
+    """The SHIPPED template that the sweep reads.
+
+    Deliberately the tracked template, not `paths.extra_tools_path()` (the user's host file). A
+    bump has to land as a reviewable diff in a PR, and pin-check.yml sweeps the catalog; the user's
+    `~/.config/harnessed/extra-tools.txt` is host-local and is nobody's to rewrite.
+    """
+    return paths.harnessed_home() / "catalog" / "base" / "extra-tools.default.txt"
+
+
+def discover_extra_tools_pins(path) -> list[Pin]:
+    """Every pin in `catalog/base/extra-tools.default.txt`, as resolvable mise pins.
+
+    Pinning this file (bd harnessed-2o9) stopped the build breaking and started it rotting: 15 pins
+    that nothing was watching. This is what watches them, and it reuses `_split_spec` so a
+    `dua@2.41.1` here resolves through exactly the same backend path as a recipe `tools:` entry.
+
+    Never raises, matching `discover_pins`' own rule: `update` sweeps the whole catalog, and one
+    missing or malformed file must not blind the command to every other pin. An unpinned entry is
+    skipped ENTRY BY ENTRY — refusing it is the BUILD's job, where a human is holding the thing that
+    broke. Skipping the whole FILE instead (which is what calling `parse_extra_tools` here used to
+    do, since it raises on the first bad record) left `--check` green while the other fourteen pins
+    rotted, which is precisely what this function exists to prevent.
+    """
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    specs = valid_extra_tools(text)
+
+    pins: list[Pin] = []
+    for spec in specs:
+        backend, name, current = _split_spec(spec)
+        pins.append(Pin(
+            recipe=EXTRA_TOOLS_LABEL, file=path, spec=spec, name=name,
+            current=current, backend=backend,
+        ))
+    return pins
+
+
 def build_report(recipe_dirs, *,
+                 extra_tools: Path | None = None,
                  resolve: Callable[[str, str], list[Release]] | None = None,
                  now: datetime | None = None,
                  minimum_release_age_minutes: float = DEFAULT_MINIMUM_RELEASE_AGE_MINUTES
@@ -475,34 +523,40 @@ def build_report(recipe_dirs, *,
             return resolve_releases(backend, name)
     now = now or datetime.now(timezone.utc)
 
-    report = Report()
-    for d in recipe_dirs:
-        for pin in discover_pins(Path(d)):
-            # Held first: a held pin is never something the user is being asked to act on, so it
-            # must not also appear as unresolved noise.
-            if not pin.resolvable:
-                f = Finding(pin=pin, error=pin.note or "not machine-resolvable")
-                (report.held if pin.hold else report.unresolved).append(f)
-                continue
-            try:
-                releases = resolve(pin.backend, pin.name) or []
-            except ResolveError as exc:
-                report.unresolved.append(Finding(pin=pin, error=str(exc)))
-                continue
-            if not releases:
-                report.unresolved.append(
-                    Finding(pin=pin, error=f"{pin.backend} knows no version for {pin.name}")
-                )
-                continue
+    # The extra-tools pins ride the same classification path as recipe pins — same cooldown, same
+    # hold semantics, same buckets. Anything less and `--check` would report them differently from
+    # every other pin, which is how a check stops being believed.
+    discovered = [pin for d in recipe_dirs for pin in discover_pins(Path(d))]
+    if extra_tools is not None:
+        discovered += discover_extra_tools_pins(extra_tools)
 
-            kind, f = _select(pin, releases, now, minimum_release_age_minutes)
-            # The hold outranks the age gate: a held pin is never offered whatever its age, but it
-            # is still LISTED with whatever newer version exists.
-            if pin.hold and kind != "current":
-                f.cooling = False
-                report.held.append(f)
-            else:
-                getattr(report, kind).append(f)
+    report = Report()
+    for pin in discovered:
+        # Held first: a held pin is never something the user is being asked to act on, so it
+        # must not also appear as unresolved noise.
+        if not pin.resolvable:
+            f = Finding(pin=pin, error=pin.note or "not machine-resolvable")
+            (report.held if pin.hold else report.unresolved).append(f)
+            continue
+        try:
+            releases = resolve(pin.backend, pin.name) or []
+        except ResolveError as exc:
+            report.unresolved.append(Finding(pin=pin, error=str(exc)))
+            continue
+        if not releases:
+            report.unresolved.append(
+                Finding(pin=pin, error=f"{pin.backend} knows no version for {pin.name}")
+            )
+            continue
+
+        kind, f = _select(pin, releases, now, minimum_release_age_minutes)
+        # The hold outranks the age gate: a held pin is never offered whatever its age, but it
+        # is still LISTED with whatever newer version exists.
+        if pin.hold and kind != "current":
+            f.cooling = False
+            report.held.append(f)
+        else:
+            getattr(report, kind).append(f)
     return report
 
 
@@ -601,6 +655,33 @@ def _rewrite_tools_entry(manifest: Path, old_spec: str, new_spec: str) -> bool:
     return True
 
 
+def _rewrite_extra_tools_entry(path: Path, old_spec: str, new_spec: str) -> bool:
+    """Swap one entry in the plain-text extra-tools list, preserving everything else on the line.
+
+    A separate rewriter from `_rewrite_tools_entry` because that one is a ruamel round-tripper:
+    handing it a text file would fail or corrupt it. Same motive though — the trailing
+    `# du replacement` comments are where the WHY lives, so only the FIRST FIELD is replaced and
+    the remainder of the line is copied verbatim.
+
+    Matching is on the whole first field, never a substring: a substring swap would rewrite the
+    `dua` inside a neighbouring `dua-cli@1.0.0` and silently corrupt a pin nobody asked to bump.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    changed = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.split()[0] != old_spec:
+            continue
+        lines[i] = line.replace(old_spec, new_spec, 1)
+        changed = True
+    if not changed:
+        return False
+    path.write_text("".join(lines), encoding="utf-8")
+    return True
+
+
 def apply(findings) -> list[Finding]:
     """Write the accepted bumps. Returns the findings actually rewritten.
 
@@ -616,6 +697,21 @@ def apply(findings) -> list[Finding]:
         new_spec = f.pin.spec.replace(f"@{f.pin.current}", f"@{_match_v_prefix(f.pin.current, f.latest)}")
         if new_spec == f.pin.spec:
             continue
-        if _rewrite_tools_entry(f.pin.file, f.pin.spec, new_spec):
+        # Dispatch on the file being written, not on the pin's label: `_rewrite_tools_entry` is a
+        # YAML round-tripper and the extra-tools list is plain text. Sending one to the other is
+        # not a near miss, it is a corrupted catalog file.
+        #
+        # ALLOW-LIST, not an else-branch. Today only recipe.yaml and the extra-tools list can carry
+        # a resolvable pin, so a fallback to the text rewriter was safe by accident; the next
+        # resolvable pin type would have inherited a naive line-edit of a file nobody chose. An
+        # unrecognised file is skipped instead — the same fail-closed posture `_IMMUTABLE_LITERAL_RE`
+        # already takes, and it costs a bump nobody asked for rather than a corrupted file.
+        if f.pin.file.suffix in (".yaml", ".yml"):
+            rewrite = _rewrite_tools_entry
+        elif f.pin.file.name.startswith("extra-tools"):
+            rewrite = _rewrite_extra_tools_entry
+        else:
+            continue
+        if rewrite(f.pin.file, f.pin.spec, new_spec):
             done.append(f)
     return done
