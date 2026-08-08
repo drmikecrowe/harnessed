@@ -782,6 +782,17 @@ def _stale_pairs(rt: str, root: Path | None, *, strict: bool) -> list[tuple[str,
                     if stack_name and (stack_name, harness_candidate) not in pairs:
                         pairs.append((stack_name, harness_candidate))
                     break
+    else:
+        # Cannot use `_listing` here: unlike the CLI listings, this one is ADDITIVE — declared pairs
+        # are still worth reconciling, so aborting would be an overreaction. But saying nothing is
+        # the same lie in a quieter voice: previously-built-but-no-longer-declared stacks are
+        # silently dropped from the sweep, and the caller goes on to print
+        # "[SUCCESS] All stacks up to date" over a reconciliation that never looked at them.
+        _err.print(
+            f"[bold red]warning:[/bold red] could not list built images (runtime exited "
+            f"{result.returncode}) — reconciling only the {len(pairs)} DECLARED stack(s). A stale "
+            "image that is no longer declared will not be found on this run."
+        )
     if not pairs:
         _out.print("[blue][INFO][/blue] No declared or previously-built stacks found to reconcile.")
         return []
@@ -2793,11 +2804,17 @@ class ContainerBackend(ExecutionBackend):
             egress_domains = sorted({d for r in self.recipes for d in r.egress})
             try:
                 _apply_firewall(self.rt, self.inst, egress_domains)
-            except typer.Exit:
+            except BaseException:
                 # By this phase BOUNDARY has already started the pod, so simply propagating would
                 # hand the user their shell back and leave a container running with UNRESTRICTED
                 # egress — quieter than the old unbounded hang, and no safer. Failing closed has to
                 # mean the thing we could not confine does not survive, so tear it down first.
+                #
+                # BaseException, not typer.Exit: `_bounded` catches only TimeoutExpired, so an OSError
+                # from `subprocess.run` (podman missing, permission denied) would skip a narrower
+                # handler and leave exactly the unconfined container this exists to prevent. Ctrl-C
+                # belongs here too — an interrupted launch must not strand one either. Nothing is
+                # swallowed: every path re-raises.
                 _err.print(
                     f"[bold red]error:[/bold red] tearing down {self.inst} — it cannot be left "
                     "running without the egress firewall it was launched with."
@@ -3427,10 +3444,18 @@ def list_stacks() -> None:
     # visible (they linger until `prune` reaps them). The Status column shows the real state — do not
     # label this "Running", or exited containers read as live.
     _out.print("[bold]Instances (Status column shows running vs stopped):[/bold]")
-    _bounded([
+    # Streams straight to the terminal, so there is no stdout to guard with `_listing` — but the
+    # same lie is available: a failed query prints the heading above and then nothing, which reads
+    # as "no instances". Only the return code tells the two apart.
+    listed = _bounded([
         rt, "ps", "-a", "--filter", "name=harnessed-",
         "--format", "table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}",
     ], timeout=_PODMAN_QUERY_TIMEOUT)
+    if listed.returncode != 0:
+        _err.print(
+            f"[bold red]warning:[/bold red] the instance list above is INCOMPLETE — the container "
+            f"runtime exited {listed.returncode}. An empty list here does not mean there are none."
+        )
 
 
 @app.command("stop")

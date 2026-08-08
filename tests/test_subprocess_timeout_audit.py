@@ -96,6 +96,18 @@ def _is_guarded_call(node: ast.Call) -> bool:
     return False
 
 
+def _is_real_deadline(kw: ast.keyword) -> bool:
+    """True for `timeout=<something that is not literally None>`.
+
+    `timeout=None` is not a deadline — `subprocess.run` treats it exactly as an omitted argument —
+    but the presence of the keyword alone used to satisfy this audit. That is the worst shape of
+    bypass, because it LOOKS bounded at the call site and in review.
+    """
+    if kw.arg != "timeout":
+        return False
+    return not (isinstance(kw.value, ast.Constant) and kw.value.value is None)
+
+
 def _has_marker(lines: list[str], lineno: int) -> bool:
     """The `# unbounded:` marker sits on the call's own first line, or anywhere in the contiguous
     comment block directly above it — a real reason usually needs more than one line, and the
@@ -126,7 +138,7 @@ def _audit(filename: str) -> tuple[list[tuple[str, int, str]], list[tuple[str, s
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not _is_guarded_call(node):
             continue
-        if any(kw.arg == "timeout" for kw in node.keywords):
+        if any(_is_real_deadline(kw) for kw in node.keywords):
             continue
         fn = owner.get(node.lineno, "<module>")
         if _has_marker(lines, node.lineno):
@@ -168,11 +180,44 @@ class TestEveryCallIsBoundedOrJustified:
                         "deadline audit — import it plainly"
                     )
             elif isinstance(node, ast.ImportFrom) and node.module == "subprocess":
+                # `import *` first: it binds every name in one go, so it defeats the audit more
+                # thoroughly than any single name below, while matching none of them.
+                assert not any(a.name == "*" for a in node.names), (
+                    f"{filename}: `from subprocess import *` makes every blocking call invisible to "
+                    "the deadline audit — import the module and call `subprocess.<name>`"
+                )
                 bad = [a.name for a in node.names if a.name in _BLOCKING]
                 assert not bad, (
                     f"{filename}: `from subprocess import {', '.join(bad)}` hides calls from the "
                     "deadline audit — call it as `subprocess.<name>` instead"
                 )
+
+    def test_run_tagged_really_does_bound_its_wait(self):
+        """`_run_tagged`'s exemption is conditional, and this is the condition.
+
+        Its `Popen` is exempt on the grounds that starting a process does not block and the deadline
+        lives on `wait(timeout=…)`. Nothing checked that. Delete the timeout from that wait and the
+        exemption becomes a licence for an unbounded call that the audit reports as justified —
+        precisely the shape of hole this whole file exists to prevent, sitting inside the file's own
+        exemption list.
+        """
+        tree = ast.parse((_SRC / "proc.py").read_text(encoding="utf-8"))
+        fn = next(
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.FunctionDef) and n.name == "_run_tagged"
+        )
+        bounded_waits = [
+            n for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "wait"
+            and any(_is_real_deadline(kw) for kw in n.keywords)
+        ]
+        assert bounded_waits, (
+            "_run_tagged is exempt from the deadline audit ONLY because it bounds its own "
+            "`wait(timeout=…)`. No such call is left, so its Popen is now unbounded with the "
+            "audit's blessing."
+        )
 
     def test_the_audit_actually_finds_calls(self):
         """A parse that matches nothing reports zero defects and passes. Guard against the audit

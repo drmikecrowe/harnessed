@@ -581,6 +581,30 @@ class TestTheEgressFirewallFailsClosed:
             backend.apply_isolation(spec, launcher.EGRESS)
         assert torn == [("inst", "pod")], "the unconfined container was left running"
 
+    @pytest.mark.parametrize(
+        "boom",
+        [typer.Exit(1), FileNotFoundError("podman"), PermissionError("nft"), KeyboardInterrupt()],
+    )
+    def test_any_failure_tears_the_pod_down_not_just_a_clean_exit(self, monkeypatch, err, boom):
+        """`_bounded` catches only TimeoutExpired, so an OSError from subprocess.run — podman gone,
+        permission denied — would skip a handler that only caught typer.Exit and strand exactly the
+        unconfined container this guard exists to prevent. Ctrl-C must not strand one either."""
+        torn: list = []
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+        monkeypatch.setattr(
+            launcher, "_apply_firewall",
+            lambda *a, **k: (_ for _ in ()).throw(boom),
+        )
+        monkeypatch.setattr(launcher, "_pod_teardown", lambda rt, inst, pod: torn.append(inst))
+
+        backend = launcher.ContainerBackend.__new__(launcher.ContainerBackend)
+        backend.rt, backend.inst, backend.pod, backend.recipes = "podman", "inst", "pod", []
+        spec = launcher.LaunchSpec(stack="s", harness="claude", project_path=Path("/nonexistent"))
+
+        with pytest.raises(type(boom)):
+            backend.apply_isolation(spec, launcher.EGRESS)
+        assert torn == ["inst"], f"{type(boom).__name__} left the unconfined container running"
+
     def test_the_documented_opt_out_still_skips_it(self, monkeypatch, err):
         """The error tells the user to set NO_FIREWALL=true, so that escape hatch must work — or
         failing closed becomes a wall rather than a gate."""
