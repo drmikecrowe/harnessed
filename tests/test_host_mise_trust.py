@@ -12,7 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from hypothesis import given, strategies as st
+# `differing_executors` is suppressed on the properties below: mutmut re-runs one test method across
+# several executors, which trips the check without saying anything about the property. It guards
+# reproducibility of hypothesis's own replay database, not any assertion here.
+from hypothesis import HealthCheck, given, settings, strategies as st
 
 from harnessed import hostrun, paths
 
@@ -288,6 +291,7 @@ class TestTheTrustedPathMergeHoldsForAnyUserConfig:
     rewrite of the merge that happens to satisfy the examples still has to satisfy the rule.
     """
 
+    @settings(suppress_health_check=[HealthCheck.differing_executors])
     @given(st.lists(st.text(alphabet=_PATH_CHARS, min_size=1), max_size=6))
     def test_every_emitted_path_came_from_the_user(self, wanted):
         """harnessed invents nothing: the emitted set is a subset of what the user's config held."""
@@ -297,6 +301,7 @@ class TestTheTrustedPathMergeHoldsForAnyUserConfig:
         emitted = [p for p in (_trusted(env) or "").split(":") if p]
         assert set(emitted) <= set(wanted)
 
+    @settings(suppress_health_check=[HealthCheck.differing_executors])
     @given(st.lists(st.text(alphabet=_PATH_CHARS, min_size=1), max_size=6))
     def test_the_merge_is_idempotent_and_order_preserving(self, wanted):
         """Nested host launches re-apply this. Twice must equal once, and first-seen order stands."""
