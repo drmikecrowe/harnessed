@@ -124,7 +124,14 @@ def _is_a_harnessed_stack_dir(value: str, tail: str) -> bool:
 
     The stack name stays "one path segment" rather than a known list: the value belongs to the OUTER
     session, whose stack this process has no way to name.
+
+    EMPTY IS NEVER OURS, and it has to be rejected before the resolve: callers pass
+    `env.get(VAR, "")`, so an UNSET variable arrives here as `""` — and `Path("").resolve()` is the
+    CWD, which under a process sitting in a stack's own dir made an absent variable match. The
+    invariant is "only a value harnessed itself wrote is eligible"; nobody wrote an absent one.
     """
+    if not value:
+        return False
     try:
         relative = Path(value).resolve().relative_to(
             (paths.xdg_data_home() / "harnessed" / "tools").resolve()
@@ -213,13 +220,18 @@ def _apply_host_mise_env(env: MutableMapping[str, str], stack: str) -> None:
     Carrying it is NOT harnessed granting trust, the thing `_host_mise_env` is careful never to do:
     every entry comes from the user's own config or from the environment we were handed. Read BEFORE
     the redirect lands, or `_user_mise_config_file` would resolve to the dir we just overwrote.
+
+    INHERITED ENTRIES ARE DEDUPED TOO, not just the user's. Seeding the list from the inherited
+    value unfiltered let a duplicate already present there survive every later launch — stable, so
+    the merge stayed idempotent, but "each path once" is the property, and a property that holds for
+    one source and not the other is the one a reader will assume holds for both.
     """
     if _is_a_harnessed_stack_state_dir(env.get("MISE_STATE_DIR", "")):
         del env["MISE_STATE_DIR"]
     inherited = env.get("MISE_TRUSTED_CONFIG_PATHS", "").split(_TRUSTED_PATHS_DELIMITER)
-    trusted = [entry for entry in inherited if entry]
-    for entry in _user_trusted_config_paths(env):
-        if entry not in trusted:
+    trusted: list[str] = []
+    for entry in (*inherited, *_user_trusted_config_paths(env)):
+        if entry and entry not in trusted:
             trusted.append(entry)
     env.update(_host_mise_env(stack))
     if trusted:

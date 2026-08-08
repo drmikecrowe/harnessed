@@ -97,6 +97,24 @@ class TestHostLaunchKeepsTheUsersMiseTrustStore:
         assert env["PATH"] == "/usr/bin", "unrelated variables must be left alone"
         assert env["MISE_DATA_DIR"] == hostrun._host_mise_env("s")["MISE_DATA_DIR"]
 
+    def test_an_absent_state_dir_is_not_mistaken_for_one_harnessed_wrote(self, monkeypatch):
+        """An UNSET variable reaches the predicate as `env.get(..., "")`, and `Path("").resolve()`
+        is the CWD — so with the process sitting in a stack's own state dir, an empty value matched
+        and `del env[...]` raised KeyError on a key that was never there, aborting the launch.
+
+        The invariant the match must satisfy: only a value HARNESSED ITSELF WROTE is eligible. An
+        absent variable was written by nobody, so it can never qualify however the CWD is placed.
+        Regression introduced by resolving the path; caught before it shipped.
+        """
+        stack_state = paths.xdg_data_home() / "harnessed" / "tools" / "s" / "mise" / "state"
+        stack_state.mkdir(parents=True, exist_ok=True)
+        monkeypatch.chdir(stack_state)
+
+        assert hostrun._is_a_harnessed_stack_state_dir("") is False
+        env = {"PATH": "/usr/bin"}  # MISE_STATE_DIR deliberately absent
+        hostrun._apply_host_mise_env(env, "s")  # must not raise
+        assert "MISE_STATE_DIR" not in env
+
     def test_a_state_dir_the_user_set_themselves_is_left_alone(self):
         """The removal must not reach past what harnessed itself wrote.
 
@@ -342,17 +360,27 @@ class TestTheTrustedPathMergeHoldsForAnyUserConfig:
         assert set(emitted) <= set(wanted) | set(inherited)
 
     @settings(suppress_health_check=[HealthCheck.differing_executors])
-    @given(st.lists(st.text(alphabet=_PATH_CHARS, min_size=1), max_size=6))
-    def test_the_merge_is_idempotent_and_order_preserving(self, wanted):
-        """Nested host launches re-apply this. Twice must equal once, and first-seen order stands."""
+    @given(
+        st.lists(st.text(alphabet=_PATH_CHARS, min_size=1), max_size=6),
+        st.lists(st.text(alphabet=_PATH_CHARS, min_size=1), max_size=3),
+    )
+    def test_the_merge_is_idempotent_and_order_preserving(self, wanted, inherited):
+        """Nested host launches re-apply this. Twice must equal once, and first-seen order stands.
+
+        `inherited` is generated for the reason the second review gave: starting only from an empty
+        env demonstrated idempotency for the populate-then-reread path alone, leaving the
+        already-populated case to a single example-based test.
+        """
         _write_user_mise_config(_toml_trusted_config_paths(wanted))
-        env: dict[str, str] = {}
+        env = {"MISE_TRUSTED_CONFIG_PATHS": ":".join(inherited)} if inherited else {}
         hostrun._apply_host_mise_env(env, "s")
         once = _trusted(env)
         hostrun._apply_host_mise_env(env, "s")
         assert _trusted(env) == once
         emitted = [p for p in (once or "").split(":") if p]
-        assert emitted == list(dict.fromkeys(wanted)), "deduped, in the user's own order"
+        assert emitted == list(dict.fromkeys([*inherited, *wanted])), (
+            "deduped, inherited first, then the user's config, each in its own order"
+        )
 
 
 class TestTheSuiteWritesNoStateIntoTheDevelopersHome:
