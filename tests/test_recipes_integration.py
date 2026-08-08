@@ -195,8 +195,8 @@ def test_codebase_memory_mcp_hooks_reach_settings():
     # The reminder heredoc must close before the indexing shell below it, or the whole tail is
     # swallowed as heredoc body and the hook silently degrades to "print some text".
     sess_body = sess["hooks"][0]["command"]
-    assert "\nCBM_REMINDER\n" in sess_body
-
+    reminder_end = sess_body.index("\nCBM_REMINDER\n")
+    assert reminder_end < sess_body.index("if cbm_root=")
     # The binary guard must come BEFORE the reminder, not just before the index. An unguarded
     # reminder on a stack where install.sh failed injects "ALWAYS use codebase-memory-mcp tools
     # FIRST" while the MCP server is absent, aiming the agent at tools that do not exist.
