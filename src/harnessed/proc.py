@@ -131,12 +131,27 @@ def _run_tagged(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, errors="replace", bufsize=1, **kwargs,
     )
-    expired = threading.Event()
+    # The watchdog and this thread race for the same child, and `timer.cancel()` cannot win that
+    # race on its own: a timer that has ALREADY entered its callback is not cancellable, so between
+    # `wait()` returning and the `cancel()` below there is a window where a successful build gets
+    # killed and reported as a timeout. Worse, the pid is reaped by then, so the `kill()` lands on
+    # whatever the OS has since given that number.
+    #
+    # One lock decides the outcome exactly once. Whoever gets there first wins: the watchdog claims
+    # the kill only while the child is still running, and this thread closes the door the moment
+    # `wait()` returns. `kill()` stays INSIDE the lock so it cannot straddle that door.
+    verdict = threading.Lock()
+    finished = False
+    expired = False
     timer: threading.Timer | None = None
     if timeout is not None:
         def _expire() -> None:
-            expired.set()
-            proc.kill()  # closes the pipe, so the read loop below ends instead of blocking
+            nonlocal expired
+            with verdict:
+                if finished:
+                    return  # the child already exited on its own — nothing to kill, nothing to report
+                expired = True
+                proc.kill()  # closes the pipe, so the read loop below ends instead of blocking
 
         timer = threading.Timer(timeout, _expire)
         timer.daemon = True
@@ -146,11 +161,13 @@ def _run_tagged(
         for line in proc.stdout:
             _say(escape(line.rstrip()))
         returncode = proc.wait()
+        with verdict:
+            finished = True
     finally:
-        # Cancel before anything else can raise: a timer left armed kills whatever inherits the pid.
+        # Belt to the lock's braces: stops a still-armed timer from waking up for nothing.
         if timer is not None:
             timer.cancel()
-    if timeout is not None and expired.is_set():
+    if expired and timeout is not None:  # the second half is for the type checker; expired implies it
         raise subprocess.TimeoutExpired(cmd, timeout)
     if check and returncode != 0:
         raise subprocess.CalledProcessError(returncode, cmd)

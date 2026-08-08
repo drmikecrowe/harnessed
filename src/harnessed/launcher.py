@@ -1183,10 +1183,28 @@ def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None) ->
     # egress-firewall.sh is mounted at /usr/local/sbin/egress-firewall by _build_mount_args. Extra
     # domains (recipe-declared `egress:`) are appended to the script's allowlist — it takes them as
     # positional args and resolves each to its current IPs.
-    _bounded([
+    res = _bounded([
         rt, "exec", instance, "bash", "/usr/local/sbin/egress-firewall",
         *(domains or []),
     ], timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True)
+    # FAIL CLOSED. The script installs a default-DROP policy, so "it did not run" is not a degraded
+    # firewall — it is NO firewall, and the container gets unrestricted egress for the whole session.
+    # This return value used to be discarded, which was survivable only because an unbounded hang
+    # stopped the launch by never finishing; bd harnessed-1ao's deadline removed that accident and
+    # would have turned a wedged runtime into a silently unconfined agent. Refusing to continue is
+    # the only answer that keeps the isolation harnessed advertises, and NO_FIREWALL=true above is
+    # the supported way to say "I do not want one" — so nobody is stuck, they are just asked to
+    # say so out loud.
+    if res.returncode != 0:
+        detail = (res.stderr or b"").decode(errors="replace").strip()
+        _err.print(
+            f"[bold red]error:[/bold red] could not apply the egress firewall in {instance} "
+            f"(exit {res.returncode}) — refusing to continue, because the container would run with "
+            "UNRESTRICTED network access. Set NO_FIREWALL=true to launch without one deliberately."
+        )
+        if detail:
+            _err.print(f"[dim]{escape(detail)}[/dim]")
+        raise typer.Exit(1)
 
 
 def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> bool:
@@ -1599,6 +1617,28 @@ def _ensure_services(
 _SETUP_CONDITION_TIMEOUT = 30
 
 
+def _listing(result: subprocess.CompletedProcess, what: str) -> str:
+    """The stdout of a runtime LISTING query, or abort if the runtime did not answer.
+
+    "podman says there are none" and "podman never replied" are the same empty string, and every
+    caller here turns that into a cheerful "No instances found" and exits 0 — so a script wrapping
+    the command reads success, and a human reads a completed cleanup that never happened. The
+    returncode is the only thing separating the two, so reading a listing without consulting it is
+    the bug, not the timeout.
+
+    Guards every non-zero, not only `_TIMEOUT_RC`: a listing that failed for any reason is equally
+    unable to say "none", and fixing only the deadline case would leave the same lie one line away.
+    """
+    if result.returncode != 0:
+        _err.print(
+            f"[bold red]error:[/bold red] could not list {what} — the container runtime exited "
+            f"{result.returncode}. Refusing to report an empty result, which would read as "
+            "'nothing to do' when the truth is 'we do not know'."
+        )
+        raise typer.Exit(1)
+    return result.stdout
+
+
 def _collect_setup_notices(
     recipes: list[Recipe], project_path: Path, stack: str, harness: str
 ) -> list[Recipe]:
@@ -1627,6 +1667,13 @@ def _collect_setup_notices(
             proc = _bounded(
                 ["bash", "-lc", recipe.setup.condition],
                 timeout=_SETUP_CONDITION_TIMEOUT,
+                # warn=False because the argv IS the condition — catalog-authored shell, which the
+                # schema does not restrict and which may legitimately resolve a secret to do its job
+                # (`… -p$(op read op://…)`). `_bounded`'s warning prints the whole command, so it
+                # would put that secret on stderr and into any CI log capturing it. The same reason
+                # the two healthcheck probes pass warn=False. The hang is still reported below, by
+                # RECIPE NAME rather than by command text.
+                warn=False,
                 cwd=str(project_path),
                 env={**os.environ, **harnessed_env(
                     stack, project_path, harness=harness, mode="host", recipe=recipe
@@ -1639,7 +1686,14 @@ def _collect_setup_notices(
             # non-zero would silently drop a setup step the user still has to perform — and the
             # notice existing at all means nothing else is going to tell them. A redundant notice
             # is recoverable; a missing one is not. `_bounded` already warned.
-            if proc.returncode != 0 and proc.returncode != _TIMEOUT_RC:
+            if proc.returncode == _TIMEOUT_RC:
+                _err.print(
+                    f"[bold red]warning:[/bold red] the `setup.condition` for recipe "
+                    f"'{recipe.name}' did not finish within {_SETUP_CONDITION_TIMEOUT}s and was "
+                    "killed. Showing its notice, since whether the step is still needed is now "
+                    "unknown."
+                )
+            elif proc.returncode != 0:
                 continue  # condition satisfied → suppress
         elif dismissed:
             continue
@@ -3377,7 +3431,7 @@ def stop(stack: str = typer.Argument(..., help="Stack name")) -> None:
         capture_output=True, text=True,
     )
     # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
-    all_names = [n.strip() for n in result.stdout.splitlines() if n.strip()]
+    all_names = [n.strip() for n in _listing(result, "instances").splitlines() if n.strip()]
     names = [n for n in all_names if re.search(rf"-{re.escape(stack)}-[0-9a-f]{{8}}$", n)]
     for name in names:
         _out.print(f"[blue][INFO][/blue] Stopping {name}")
@@ -3396,7 +3450,7 @@ def remove(stack: str = typer.Argument(..., help="Stack name")) -> None:
         capture_output=True, text=True,
     )
     # Match harnessed-<harness>-<stack>-<hash> — filter for this stack across all harnesses.
-    all_names = [n.strip() for n in result.stdout.splitlines() if n.strip()]
+    all_names = [n.strip() for n in _listing(result, "instances").splitlines() if n.strip()]
     names = [n for n in all_names if re.search(rf"-{re.escape(stack)}-[0-9a-f]{{8}}$", n)]
     for name in names:
         _out.print(f"[blue][INFO][/blue] Removing {name}")
@@ -3438,7 +3492,7 @@ def prune(
     # `harnessed-` container listed here is a prunable instance. Carry each container's State so
     # non-running ones can be reaped without the (running-only) tty probe.
     members = []
-    for line in result.stdout.splitlines():
+    for line in _listing(result, "instances").splitlines():
         name, _, state = line.strip().partition("\t")
         if name.strip():
             members.append((name.strip(), state.strip()))
@@ -3985,7 +4039,11 @@ def rescan(
             timeout=_PODMAN_QUERY_TIMEOUT,
             capture_output=True, text=True,
         )
-        images = [i.strip() for i in result.stdout.splitlines() if i.strip()]
+        # Especially load-bearing here: `rescan` is what the systemd timer fires, so an unanswered
+        # listing would print "nothing to rescan", exit 0, and silently skip the whole nightly
+        # vulnerability scan — indistinguishable from a nightly that keeps finding nothing, which is
+        # exactly scan.py's Pitfall 6 warning sign.
+        images = [i.strip() for i in _listing(result, "images").splitlines() if i.strip()]
         if not images:
             _out.print("No harnessed-labelled images found to rescan")
             return
@@ -4241,7 +4299,7 @@ def volume_gc(
         capture_output=True, text=True,
     )
     rows: list[tuple[str, str, str, str, bool]] = []
-    for line in out.stdout.splitlines():
+    for line in _listing(out, "volumes").splitlines():
         name, _, labels = line.strip().partition("\t")
         if not name:
             continue

@@ -416,6 +416,88 @@ class TestWedgedPodmanDoesNotCrashTeardown:
         assert wedged and wedged[0]["timeout"]
 
 
+class TestAnUnansweredQueryIsNeverReportedAsEmpty:
+    """"podman says there are none" and "podman never replied" are the same empty stdout. Every
+    listing command here turned that into a cheerful "No instances found" and exit 0 — so a wrapping
+    script reads success and a human reads a cleanup that never happened. Adversarial review found
+    this on `stop`/`rm`/`prune`/`volume-gc`; `rescan` is the same shape and the worst case, since a
+    systemd timer fires it and a false "nothing to scan" silently skips the nightly CVE scan."""
+
+    @pytest.fixture(autouse=True)
+    def _wedged_listing(self, monkeypatch):
+        monkeypatch.setattr(launcher, "_runtime", lambda: "podman")
+        monkeypatch.setattr(
+            launcher, "_bounded",
+            lambda cmd, **kw: subprocess.CompletedProcess(cmd, proc._TIMEOUT_RC, "", ""),
+        )
+
+    def test_stop_aborts_rather_than_claiming_no_instances(self, err):
+        with pytest.raises(typer.Exit) as exc:
+            launcher.stop("somestack")
+        assert exc.value.exit_code == 1
+        assert "No running instances" not in err.text
+
+    def test_rm_aborts_rather_than_claiming_no_instances(self, err):
+        with pytest.raises(typer.Exit) as exc:
+            launcher.remove("somestack")
+        assert exc.value.exit_code == 1
+        assert "No instances found" not in err.text
+
+    def test_rescan_aborts_rather_than_silently_scanning_nothing(self, err):
+        """The nightly security scan must not report success having scanned zero images."""
+        with pytest.raises(typer.Exit) as exc:
+            launcher.rescan(None)
+        assert exc.value.exit_code == 1
+        assert "No harnessed-labelled images" not in err.text
+
+
+class TestTheEgressFirewallFailsClosed:
+    """The script installs a default-DROP policy, so "did not run" means NO firewall, not a weaker
+    one. This return value was discarded, which only survived because an unbounded hang stopped the
+    launch by never finishing — adding a deadline would otherwise have converted a wedged runtime
+    into a silently unconfined agent."""
+
+    def test_a_timed_out_firewall_aborts_the_launch(self, monkeypatch, err):
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+        monkeypatch.setattr(
+            launcher, "_bounded",
+            lambda cmd, **kw: subprocess.CompletedProcess(cmd, proc._TIMEOUT_RC, b"", b""),
+        )
+        with pytest.raises(typer.Exit) as exc:
+            launcher._apply_firewall("podman", "inst", ["example.com"])
+        assert exc.value.exit_code == 1
+        assert "unrestricted" in err.text.lower()
+
+    def test_a_failing_firewall_also_aborts(self, monkeypatch, err):
+        """Same invariant, other cause. Guarding only the deadline would leave the identical
+        silently-unconfined agent one exit code away."""
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+        monkeypatch.setattr(
+            launcher, "_bounded",
+            lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, b"", b"nft: permission denied"),
+        )
+        with pytest.raises(typer.Exit):
+            launcher._apply_firewall("podman", "inst", [])
+
+    def test_a_successful_firewall_is_silent(self, monkeypatch, err):
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+        monkeypatch.setattr(
+            launcher, "_bounded",
+            lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, b"", b""),
+        )
+        launcher._apply_firewall("podman", "inst", [])
+        assert err.text == ""
+
+    def test_the_documented_opt_out_still_skips_it(self, monkeypatch, err):
+        """The error tells the user to set NO_FIREWALL=true, so that escape hatch must work — or
+        failing closed becomes a wall rather than a gate."""
+        monkeypatch.setenv("NO_FIREWALL", "true")
+        called = []
+        monkeypatch.setattr(launcher, "_bounded", lambda cmd, **kw: called.append(cmd))
+        launcher._apply_firewall("podman", "inst", [])
+        assert called == [] and err.text == ""
+
+
 class TestSetupConditionsCannotHangALaunch:
     """Catalog-authored shell, run host-side on the launch critical path, every launch."""
 
@@ -453,6 +535,12 @@ class TestSetupConditionsCannotHangALaunch:
         assert time.monotonic() - start < 5, "a hanging condition blocked the launch"
         assert [r.name for r in shown] == ["needs-setup"]
         assert "warning:" in err.text.lower(), "a condition that never answered must say so"
+        # Named by RECIPE, never by command text: the condition is catalog-authored shell the schema
+        # does not restrict, so it may resolve a secret to do its job. Printing the argv — which is
+        # `_bounded`'s default — would put that secret on stderr and into any CI log. Found by the
+        # security lens of adversarial review.
+        assert "needs-setup" in err.text
+        assert "sleep 999" not in err.text, "the warning echoed the condition's shell back out"
 
     def test_a_prompt_nonzero_condition_is_still_suppressed(self, monkeypatch, err):
         """The existing polarity is unchanged for every condition that actually answers."""

@@ -73,7 +73,13 @@ def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
 
 
 def _is_guarded_call(node: ast.Call) -> bool:
-    """True for the call shapes this audit governs: `subprocess.run(...)` and `_bounded(...)`."""
+    """True for the call shapes this audit governs: `subprocess.run(...)` and `_bounded(...)`.
+
+    Matching is deliberately literal, which leaves two ways to spell the same call that this would
+    not see — `import subprocess as sp; sp.run(...)` and `from subprocess import run; run(...)`.
+    Rather than chase aliases through the AST, `test_subprocess_is_never_aliased` forbids both import
+    forms outright, so the literal match is exhaustive by construction.
+    """
     func = node.func
     if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
         return func.value.id == "subprocess" and func.attr == "run"
@@ -135,6 +141,30 @@ class TestEveryCallIsBoundedOrJustified:
             + f". Pass timeout=, or put a `{_MARKER} <why>` comment on the line above "
             "(bd harnessed-1ao — an unresponsive podman otherwise hangs forever)."
         )
+
+    @pytest.mark.parametrize("filename", _AUDITED)
+    def test_subprocess_is_never_aliased(self, filename):
+        """Close the audit's only blind spot: it matches `subprocess.run` literally, so any other
+        spelling of the same call is invisible to it. Both alternatives are banned here instead —
+        a one-line rule that cannot drift, where alias resolution through the AST could.
+
+        Without this, `from subprocess import run; run(cmd)` reaches a real podman with no deadline
+        and the audit above still reports every call bounded.
+        """
+        tree = ast.parse((_SRC / filename).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert not (alias.name == "subprocess" and alias.asname), (
+                        f"{filename}: `import subprocess as {alias.asname}` hides calls from the "
+                        "deadline audit — import it plainly"
+                    )
+            elif isinstance(node, ast.ImportFrom) and node.module == "subprocess":
+                bad = [a.name for a in node.names if a.name in ("run", "Popen", "call", "check_output")]
+                assert not bad, (
+                    f"{filename}: `from subprocess import {', '.join(bad)}` hides calls from the "
+                    "deadline audit — call it as `subprocess.<name>` instead"
+                )
 
     def test_the_audit_actually_finds_calls(self):
         """A parse that matches nothing reports zero defects and passes. Guard against the audit
