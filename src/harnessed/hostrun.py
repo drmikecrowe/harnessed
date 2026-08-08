@@ -134,11 +134,18 @@ def _user_mise_config_file(env: MutableMapping[str, str]) -> Path:
 
     Their own MISE_CONFIG_DIR is honoured — it is their choice, same narrowness rule the state-dir
     removal follows. Only a value matching our own shape is disregarded.
+
+    RESOLVED FROM `env`, not from the process. This function's whole subject is the environment it
+    was handed, so reading XDG_CONFIG_HOME off `os.environ` instead lets the env being BUILT and the
+    config being CONSULTED disagree. The two coincide for both production callers, which is exactly
+    why no unit test could see it — the real-execution check handed the constructed env to a live
+    mise and got a different user's config back.
     """
     configured = env.get("MISE_CONFIG_DIR", "")
     if configured and not _is_a_harnessed_stack_config_dir(configured):
         return Path(configured) / "config.toml"
-    return paths.xdg_config_home() / "mise" / "config.toml"
+    xdg = env.get("XDG_CONFIG_HOME", "")
+    return (Path(xdg) if xdg else paths.xdg_config_home()) / "mise" / "config.toml"
 
 
 def _user_trusted_config_paths(env: MutableMapping[str, str]) -> list[str]:

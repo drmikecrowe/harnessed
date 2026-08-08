@@ -237,6 +237,24 @@ class TestHostLaunchCarriesTheUsersOwnTrustedConfigPaths:
         hostrun._apply_host_mise_env(env, "s")
         assert _trusted(env) == "/from/chosen"
 
+    def test_the_config_is_resolved_from_the_env_it_was_handed(self, tmp_path, monkeypatch):
+        """The whole function takes an `env` mapping, so it must READ that mapping — resolving
+        XDG_CONFIG_HOME from the process instead means the env being built and the config being
+        consulted can disagree. Found by the real-execution check, which handed the constructed env
+        to a live mise and got the wrong user's config back.
+        """
+        handed = tmp_path / "handed"
+        (handed / "mise").mkdir(parents=True)
+        (handed / "mise" / "config.toml").write_text(
+            '[settings]\ntrusted_config_paths = ["/from/handed"]\n', encoding="utf-8"
+        )
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "process"))
+        _write_user_mise_config('[settings]\ntrusted_config_paths = ["/from/process"]\n')
+
+        env = {"XDG_CONFIG_HOME": str(handed)}
+        hostrun._apply_host_mise_env(env, "s")
+        assert _trusted(env) == "/from/handed"
+
     def test_no_path_is_invented_by_harnessed(self):
         """Every entry traces to the user's config or the inherited env. Nothing else qualifies —
         not the stack dir, not the tools root, not a repo or project path."""
