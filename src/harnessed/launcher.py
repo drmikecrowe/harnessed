@@ -332,10 +332,21 @@ def _staged_build_context() -> Generator[str]:
             # which names neither the tool nor the file — see bd harnessed-2o9. Raising here names
             # the USER's file, which is the one they must edit: the shipped default is marked
             # "TEMPLATE — do not edit for personal use", so pointing at it would send them wrong.
+            #
+            # The message has to carry the REMEDY, not just the complaint. Every user who built
+            # before this change has a copy of the old unpinned template sitting at this path
+            # (it is seeded once, then never touched again), so this fires on the first build
+            # after upgrading — for people who did nothing wrong. An error that only says "not
+            # pinned" turns that into a support question.
             try:
                 parse_extra_tools(content)
             except PinValidationError as exc:
-                raise PinValidationError(f"{user_file}: {exc}") from exc
+                raise PinValidationError(
+                    f"{user_file}: {exc}\n"
+                    f"If you have not customised that file, delete it and rebuild — it is "
+                    f"re-seeded from the shipped template, which is pinned. Otherwise add an "
+                    f"explicit version to each entry."
+                ) from exc
             (ctx_path / "catalog" / "base" / "extra-tools.txt").write_text(content)
         yield str(ctx_path)
 

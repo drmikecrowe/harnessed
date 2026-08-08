@@ -149,6 +149,21 @@ class TestStagedBuildContextRejectsUnpinned:
                 pass
         assert str(user_file) in str(exc.value)
 
+    def test_the_error_tells_the_user_how_to_recover(self, monkeypatch, tmp_path):
+        """This fires on the first build after upgrading, for users who did nothing wrong.
+
+        Their `extra-tools.txt` is a copy of the OLD unpinned template, seeded once and never
+        touched since. Naming the remedy is what stops that being a support question.
+        """
+        from harnessed import launcher
+
+        self._home(monkeypatch, tmp_path)
+        self._user_file(monkeypatch, tmp_path, "dua\n")
+        with pytest.raises(PinValidationError) as exc:
+            with launcher._staged_build_context():
+                pass
+        assert "delete it and rebuild" in str(exc.value)
+
     def test_a_pinned_user_file_still_stages(self, monkeypatch, tmp_path):
         """N1/N2 — the guard must not break the staging it guards."""
         from harnessed import launcher
