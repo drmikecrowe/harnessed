@@ -104,6 +104,35 @@ def _run(recipe: str, tmp_path: Path, *, mode: str, harness: str, cache: Path | 
     )
 
 
+def _pinned_version(recipe, prefix: str) -> str:
+    """The version a recipe pins for `prefix` in `tools:`, e.g. 'npm:ccstatusline@' -> '2.2.27'."""
+    pins = [t for t in recipe.tools if t.startswith(prefix)]
+    assert len(pins) == 1, f"expected exactly one {prefix!r} pin in {recipe.name}, got {pins}"
+    version = pins[0][len(prefix):]
+    # A floating ref would make the lockstep check below vacuous — two channels can agree on
+    # "latest" and still install different builds an hour apart. validate_pin enforces this
+    # repo-wide; asserting it here keeps THIS test honest about what it just derived.
+    assert re.fullmatch(r"[0-9]+(\.[0-9]+)*", version), f"{recipe.name} pin is not a version: {version!r}"
+    return version
+
+
+def _assert_channels_agree(recipe, prefix: str, script_var: str) -> None:
+    """A recipe with two install channels must ship ONE version through both.
+
+    Derived from the recipe's own pin rather than restated as a literal, deliberately: a test that
+    hard-codes the version has to be edited on every dependency bump, which trains people to edit
+    tests to make them pass. It also tests nothing extra — the number in the test is just a second
+    copy of the number in the recipe. What actually matters is that the container channel (`tools:`)
+    and the host channel (install.sh) never drift apart, and that survives any bump untouched.
+    """
+    version = _pinned_version(recipe, prefix)
+    script = _script(recipe.name).read_text()
+    assert f'{script_var}="{version}"' in script, (
+        f"{recipe.name}: install.sh {script_var} disagrees with the `tools:` pin ({version}) — the "
+        "host and container channels would install different versions"
+    )
+
+
 # --- catalog shape --------------------------------------------------------------------------------
 
 class TestMigratedRecipesDeclareInstall:
@@ -136,16 +165,13 @@ class TestMigratedRecipesDeclareInstall:
         # stack-scoped tree, which already outlives the wipe — so a cache here would be dead state.
         r = _recipe("ccstatusline")
         assert r.install.cache is None
-        assert "npm:ccstatusline@2.2.25" in r.tools
-        assert 'CCSTATUSLINE_VERSION="2.2.25"' in _script("ccstatusline").read_text()
+        _assert_channels_agree(r, "npm:ccstatusline@", "CCSTATUSLINE_VERSION")
 
     def test_context_mode_pin_matches_its_install_channels(self):
         # Two channels for the CLI: `tools:` (container, via mise npm backend) and install.sh
         # (host, via PNPM_HOME-redirected pnpm — bd harnessed-zi6.1 retired `provision:`).
         # The omp plugin in install.sh must also match. Drift means different versions across modes.
-        r = _recipe("context-mode")
-        assert 'CONTEXT_MODE_VERSION="1.0.169"' in _script("context-mode").read_text()
-        assert "npm:context-mode@1.0.169" in r.tools
+        _assert_channels_agree(_recipe("context-mode"), "npm:context-mode@", "CONTEXT_MODE_VERSION")
 
 
 # --- context-mode: harness-conditional, container-only ---------------------------------------------
