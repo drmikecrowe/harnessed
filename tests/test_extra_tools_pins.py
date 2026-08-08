@@ -176,6 +176,25 @@ class TestExtraToolsDiscovery:
         f.write_text("dua@2.41.1\n")
         assert pinupdate.discover_extra_tools_pins(f)[0].backend == "mise"
 
+    def test_pins_carry_a_label_saying_where_a_bump_would_land(self, tmp_path):
+        """The report prints this next to an offered bump; without it the human cannot tell
+        which file `harnessed update` is about to rewrite."""
+        f = tmp_path / "extra-tools.default.txt"
+        f.write_text("dua@2.41.1\n")
+        assert pinupdate.discover_extra_tools_pins(f)[0].recipe == pinupdate.EXTRA_TOOLS_LABEL
+
+    def test_a_non_utf8_file_yields_no_pins_rather_than_raising(self, tmp_path):
+        """Same class as bd harnessed-l8p: a decode blowing up in a sweep hides every other pin.
+
+        This is what `errors="replace"` buys, and it is only observable on undecodable bytes.
+        """
+        f = tmp_path / "extra-tools.default.txt"
+        # The undecodable bytes sit in a COMMENT, so the only thing under test is the decode:
+        # put them in an entry instead and the parser rejects it for being unpinned, which would
+        # pass for the wrong reason.
+        f.write_bytes(b"# \xff\xfe comment\ndua@2.41.1\n")
+        assert [p.name for p in pinupdate.discover_extra_tools_pins(f)] == ["dua"]
+
     def test_a_missing_file_yields_no_pins_rather_than_raising(self, tmp_path):
         """N7 — one bad input must never blind the sweep to the recipes."""
         assert pinupdate.discover_extra_tools_pins(tmp_path / "nope.txt") == []
@@ -259,6 +278,61 @@ class TestExtraToolsRewrite:
         f.write_text("# header\nbat@0.26.1\ndua@2.41.1\neza@0.23.5\n")
         pinupdate.apply([self._stale(f)])
         assert f.read_text() == "# header\nbat@0.26.1\ndua@2.42.0\neza@0.23.5\n"
+
+    def test_apply_handles_the_real_template_shape(self, tmp_path):
+        """Blank lines and section comments, exactly as the shipped template is laid out.
+
+        Not decoration: the rewriter indexes `stripped.split()[0]`, which raises IndexError on a
+        blank line if the skip above it is ever weakened. The real file is full of blank lines, so
+        a bump would crash on the first section break.
+        """
+        f = tmp_path / "extra-tools.default.txt"
+        f.write_text("# Modern CLI replacements\nbat@0.26.1   # cat\n\n# Data\ndua@2.41.1   # du\n")
+        assert pinupdate.apply([self._stale(f)])
+        assert f.read_text() == (
+            "# Modern CLI replacements\nbat@0.26.1   # cat\n\n# Data\ndua@2.42.0   # du\n"
+        )
+
+    def test_apply_does_not_rewrite_the_spec_where_it_recurs_in_the_comment(self, tmp_path):
+        """Only the ENTRY is a pin; the same text in the comment is prose and must survive."""
+        f = tmp_path / "extra-tools.default.txt"
+        f.write_text("dua@2.41.1   # pinned at dua@2.41.1 after bd harnessed-2o9\n")
+        pinupdate.apply([self._stale(f)])
+        assert f.read_text() == (
+            "dua@2.42.0   # pinned at dua@2.41.1 after bd harnessed-2o9\n"
+        )
+
+    @pytest.mark.parametrize("suffix", [".yaml", ".yml"])
+    def test_a_yaml_manifest_still_goes_through_the_yaml_rewriter(self, tmp_path, suffix):
+        """N6 — dispatch must send YAML to the round-tripper, whichever spelling it uses.
+
+        Asserted via a comment surviving the write: the text rewriter would leave the file's
+        structure alone but is not what should be handling a manifest, and the round-tripper is
+        the only one of the two that preserves a comment inside a YAML mapping.
+        """
+        from harnessed.update import Finding, Pin
+
+        manifest = tmp_path / f"recipe{suffix}"
+        manifest.write_text("name: demo\ntools:\n  - dua@2.41.1   # du replacement\n")
+        pin = Pin(recipe="demo", file=manifest, spec="dua@2.41.1", name="dua",
+                  current="2.41.1", backend="mise")
+        assert pinupdate.apply([Finding(pin=pin, latest="2.42.0")])
+        written = manifest.read_text()
+        assert "dua@2.42.0" in written
+        assert "# du replacement" in written
+
+    def test_apply_reports_nothing_when_the_entry_is_no_longer_there(self, tmp_path):
+        """A bump it could not make must not be reported as made, and must not rewrite the file.
+
+        Reachable for real: the report is built before the prompt, so a concurrent edit (or a second
+        `harnessed update`) can remove the entry between classification and the write.
+        """
+        f = tmp_path / "extra-tools.default.txt"
+        f.write_text("dua@2.41.1\n")
+        finding = self._stale(f)
+        f.write_text("# someone removed it\n")
+        assert pinupdate.apply([finding]) == []
+        assert f.read_text() == "# someone removed it\n"
 
     def test_apply_does_not_match_a_different_tool_with_a_shared_prefix(self, tmp_path):
         """`dua` must not rewrite `dua-cli`; a substring swap here corrupts a neighbour."""
