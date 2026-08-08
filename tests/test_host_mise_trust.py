@@ -229,6 +229,37 @@ class TestHostLaunchCarriesTheUsersOwnTrustedConfigPaths:
         hostrun._apply_host_mise_env(env, "s")
         assert _trusted(env) == "/from/user"
 
+    def test_a_symlink_to_a_stack_config_dir_is_not_treated_as_the_users(self, tmp_path):
+        """The predicate matched path TEXT, so a symlink pointing into a stack's config dir read as
+        "not harnessed's" and its trust was propagated as though the user had chosen it. Adversarial
+        review found it; the shape check has to run on the RESOLVED path.
+        """
+        outer = paths.xdg_data_home() / "harnessed" / "tools" / "other-stack" / "mise" / "config"
+        outer.mkdir(parents=True, exist_ok=True)
+        (outer / "config.toml").write_text(
+            '[settings]\ntrusted_config_paths = ["/from/stack"]\n', encoding="utf-8"
+        )
+        _write_user_mise_config('[settings]\ntrusted_config_paths = ["/from/user"]\n')
+
+        disguise = tmp_path / "innocent-looking"
+        disguise.symlink_to(outer, target_is_directory=True)
+
+        env = {"MISE_CONFIG_DIR": str(disguise)}
+        hostrun._apply_host_mise_env(env, "s")
+        assert _trusted(env) == "/from/user", "a symlink must not launder a stack's own trust"
+
+    def test_a_symlinked_state_dir_harnessed_wrote_is_still_removed(self, tmp_path):
+        """Same class, sibling predicate: the state-dir removal matched text too, so a symlinked
+        MISE_STATE_DIR kept the empty trust store alive that the removal exists to kill."""
+        outer = paths.xdg_data_home() / "harnessed" / "tools" / "other-stack" / "mise" / "state"
+        outer.mkdir(parents=True, exist_ok=True)
+        disguise = tmp_path / "looks-like-mine"
+        disguise.symlink_to(outer, target_is_directory=True)
+
+        env = {"MISE_STATE_DIR": str(disguise)}
+        hostrun._apply_host_mise_env(env, "s")
+        assert "MISE_STATE_DIR" not in env
+
     def test_a_user_chosen_config_dir_is_honoured(self, tmp_path):
         """Same narrowness rule as the state dir: only values harnessed itself wrote are ignored."""
         chosen = tmp_path / "my-mise"
@@ -292,14 +323,23 @@ class TestTheTrustedPathMergeHoldsForAnyUserConfig:
     """
 
     @settings(suppress_health_check=[HealthCheck.differing_executors])
-    @given(st.lists(st.text(alphabet=_PATH_CHARS, min_size=1), max_size=6))
-    def test_every_emitted_path_came_from_the_user(self, wanted):
-        """harnessed invents nothing: the emitted set is a subset of what the user's config held."""
+    @given(
+        st.lists(st.text(alphabet=_PATH_CHARS, min_size=1), max_size=6),
+        st.lists(st.text(alphabet=_PATH_CHARS, min_size=1), max_size=3),
+    )
+    def test_every_emitted_path_came_from_the_user(self, wanted, inherited):
+        """harnessed invents nothing: every emitted entry traces to the user's config or to what was
+        already in the environment — and to NOTHING else.
+
+        `inherited` is generated rather than always empty. Adversarial review caught that starting
+        from `env = {}` left the whole inherited-env half of this claim untested by any property,
+        which is exactly the half where an invented path would be hardest to spot.
+        """
         _write_user_mise_config(_toml_trusted_config_paths(wanted))
-        env: dict[str, str] = {}
+        env = {"MISE_TRUSTED_CONFIG_PATHS": ":".join(inherited)} if inherited else {}
         hostrun._apply_host_mise_env(env, "s")
         emitted = [p for p in (_trusted(env) or "").split(":") if p]
-        assert set(emitted) <= set(wanted)
+        assert set(emitted) <= set(wanted) | set(inherited)
 
     @settings(suppress_health_check=[HealthCheck.differing_executors])
     @given(st.lists(st.text(alphabet=_PATH_CHARS, min_size=1), max_size=6))

@@ -76,10 +76,17 @@ def _host_mise_env(stack: str) -> dict[str, str]:
     under MISE_CONFIG_DIR and is trusted implicitly for being there — verified against mise
     2026.8.2 with this exact split.
 
-    NOT fixed by auto-trusting instead. `MISE_TRUSTED_CONFIG_PATHS` (what the container path sets,
-    where the only config present is the one we put there) would make harnessed grant trust the user
-    never granted, and a mise config can carry `_.source` — so that is code execution. Keeping the
-    user's own store means harnessed grants no trust at all and simply stops discarding theirs.
+    NOT fixed by auto-trusting instead. Harnessed NAMING a path in `MISE_TRUSTED_CONFIG_PATHS` (what
+    the container path does, where the only config present is the one we put there) would grant
+    trust the user never granted, and a mise config can carry `_.source` — so that is code
+    execution. Keeping the user's own store means harnessed grants no trust at all and simply stops
+    discarding theirs.
+
+    The distinction is INVENTING versus CARRYING, not the variable. `_apply_host_mise_env` does set
+    MISE_TRUSTED_CONFIG_PATHS on a host launch (bd harnessed-67u) — from entries read out of the
+    user's OWN config, which the MISE_CONFIG_DIR redirect below would otherwise hide from them.
+    Every entry there traces to the user or to the environment we were handed; harnessed still names
+    none of its own, which is what this paragraph forbids.
     """
     mise_root = _stack_tools_dirs(stack)[0] / "mise"
     return {
@@ -101,11 +108,30 @@ def _is_a_harnessed_stack_state_dir(value: str) -> bool:
     trust store than the one they chose. That is precisely the bug this module now exists to
     prevent, aimed at a different victim, so only the value we ourselves wrote is eligible.
     """
+    return _is_a_harnessed_stack_dir(value, "state")
+
+
+def _is_a_harnessed_stack_dir(value: str, tail: str) -> bool:
+    """Whether `value` is `<xdg_data_home>/harnessed/tools/<stack>/mise/<tail>` — a dir WE wrote.
+
+    RESOLVED ON BOTH SIDES, not compared as text. A purely lexical check reads a symlink pointing
+    into a stack's own dir as "not harnessed's", which let an inherited MISE_CONFIG_DIR launder that
+    stack's `trusted_config_paths` into the next launch as though the user had chosen them — an
+    over-grant, and `trusted_config_paths` decides which configs mise will EXECUTE via `_.source`.
+    Found by adversarial review. Resolving both sides also keeps the comparison honest where the
+    data dir itself sits behind a symlink, which is why the base is resolved too rather than only
+    the candidate.
+
+    The stack name stays "one path segment" rather than a known list: the value belongs to the OUTER
+    session, whose stack this process has no way to name.
+    """
     try:
-        relative = Path(value).relative_to(paths.xdg_data_home() / "harnessed" / "tools")
-    except (ValueError, TypeError, OSError):
+        relative = Path(value).resolve().relative_to(
+            (paths.xdg_data_home() / "harnessed" / "tools").resolve()
+        )
+    except (ValueError, TypeError, OSError, RuntimeError):
         return False
-    return relative.parts[1:] == ("mise", "state")
+    return relative.parts[1:] == ("mise", tail)
 
 
 # mise splits MISE_TRUSTED_CONFIG_PATHS on THIS and nothing else — verified against 2026.8.3, where
@@ -122,11 +148,7 @@ def _is_a_harnessed_stack_config_dir(value: str) -> bool:
     Reading that one as "the user's config" would propagate stack-level trust as though the user had
     chosen it — an over-grant, which is the one failure this whole path exists to avoid.
     """
-    try:
-        relative = Path(value).relative_to(paths.xdg_data_home() / "harnessed" / "tools")
-    except (ValueError, TypeError, OSError):
-        return False
-    return relative.parts[1:] == ("mise", "config")
+    return _is_a_harnessed_stack_dir(value, "config")
 
 
 def _user_mise_config_file(env: MutableMapping[str, str]) -> Path:
