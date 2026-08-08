@@ -1,9 +1,8 @@
 """Refuse to start a shared service that would corrupt or silently shadow existing data.
 
 A service (design §3/§9) owns a data directory on the host. These guards run BEFORE it starts and
-abort the launch when starting would be destructive: another process already serving that directory,
-a lock held, a stale socket key, a database that is not the one the manifest names, or a placement
-that changed since the data was written.
+abort the launch when starting would be destructive: a host process already holding the directory's
+exclusive lock, or a data placement that changed since the data was written.
 
 Each is an assertion about host state, not an action — they read the filesystem and raise. Starting,
 stopping and health-checking the container stays in launcher.py.
@@ -12,7 +11,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 
 from pathlib import Path
@@ -22,6 +20,7 @@ import typer
 from . import paths
 from .console import _err
 from .schema import ServiceDef
+
 
 def _host_process_in_dir(exe: str, host_dir: Path) -> tuple[int, str] | None:
     """Find a HOST process named `exe` whose cwd is inside `host_dir`. None if there is none.
@@ -71,22 +70,13 @@ def _assert_data_dir_unlocked(svc: "ServiceDef", host_dir: Path) -> None:
     raise typer.Exit(1)
 
 
-
-
-
-
-
-
-
-
-
-
 def _placement_marker(project_path: Path) -> Path | None:
     """Where the active placement is recorded — inside the git COMMON dir, or None outside a repo.
 
     The git dir is deliberate on both counts: it is shared by every worktree of the checkout (so the
     record cannot disagree between them), and git never tracks its own internals, so this stays
-    invisible — which `beads/stealth`, whose entire purpose is invisibility, requires.
+    invisible — which a `location: host` placement, whose whole point is leaving no trace in the
+    user's repo, requires.
     """
     gcd = paths.git_common_dir(project_path)
     return None if gcd is None else gcd / "harnessed-placement.json"
@@ -95,15 +85,20 @@ def _placement_marker(project_path: Path) -> Path | None:
 def _assert_placement_unchanged(svc: "ServiceDef", location: str, project_path: Path) -> None:
     """Abort when this service's data was last placed somewhere else, and record it when it was not.
 
-    `_assert_placement_matches` catches only stealth-over-team, because the team dir sits at a known
-    recipe-independent path while a stealth dir is keyed by recipe name plus a project hash — a team
-    launch cannot enumerate where a stealth workspace might be. Recording the placement closes the
-    other direction: whichever ran first leaves a note, and a later launch in the other placement is
-    refused instead of silently starting a second, EMPTY workspace whose missing issues read as data
-    loss.
+    A `data.persist` entry can be placed IN the repo (`location: in_repo`) or on the host
+    (`location: host`), and the two do not notice each other: launching the host placement over a
+    checkout that already holds an in-repo workspace would silently start a second, EMPTY data dir,
+    whose missing contents read to the user as data loss rather than as a misconfiguration.
+    Recording the placement is what makes the second launch refuse instead.
 
     Deliberately not self-healing. Both placements may hold real data by the time they disagree, and
     picking one would discard the other; the user has to say which they meant.
+
+    NOTE (2026-08-08): this guard, and `_assert_data_dir_unlocked`, run only under
+    `if svc.scope == "project"`. Every service currently in the catalog defaults to
+    `scope: global`, so neither fires today. They are kept as the generic contract for the next
+    project-scoped service, not because anything shipped exercises them — beads-server, which did,
+    was removed.
     """
     marker = _placement_marker(project_path)
     if marker is None:
@@ -117,9 +112,10 @@ def _assert_placement_unchanged(svc: "ServiceDef", location: str, project_path: 
             f"[bold red]error:[/bold red] service '{svc.name}' was last used with "
             f"'{seen}' placement, but this stack wants '{location}'"
         )
-        _err.print("  Launching would start a second, empty workspace — your issues would simply")
-        _err.print("  not appear. Use the stack matching the placement above, or, once you are sure")
-        _err.print(f"  which copy you want, delete the record: rm {marker}")
+        _err.print("  Launching would start a second, EMPTY data dir — the contents you expect")
+        _err.print("  would simply not appear. Use the stack matching the placement above, or,")
+        _err.print("  once you are sure which copy you want, delete the record:")
+        _err.print(f"    rm {marker}")
         raise typer.Exit(1)
     if seen == location:
         return
@@ -137,12 +133,6 @@ def _assert_placement_unchanged(svc: "ServiceDef", location: str, project_path: 
         marker.write_text(json.dumps(current, indent=2), encoding="utf-8")
     except OSError:
         pass
-
-
-
-
-
-
 
 
 def _service_container_status(rt: str, cname: str) -> str:

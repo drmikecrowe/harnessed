@@ -60,7 +60,7 @@ _RESERVED = frozenset({"", ".", ".."})
 
 
 def _sanitize(ref: str) -> str:
-    """A catalog ref reduced to one legal path component (`beads/team` -> `beads-team`).
+    """A catalog ref reduced to one legal path component (`fam/var` -> `fam-var`).
 
     LOSSY BY DESIGN: it lowercases and folds every unsafe character to `-`, so `Foo`/`foo` and
     `foo bar`/`foo-bar` collapse together. `derive_name` detects that loss and appends a digest —
@@ -92,7 +92,7 @@ def derive_name(recipes: list[str], extends: str | None, services: list[str] | N
     """The deterministic stack name for this recipe set.
 
     Readable join by default. A hash is appended when the readable form is not a faithful encoding
-    of the input — because a ref had to be sanitized (lossy: `beads/team` and `beads-team` both
+    of the input — because a ref had to be sanitized (lossy: `fam/var` and `fam-var` both
     flatten to `beads-team`), because the join exceeded NAME_MAX, or because explicit `services`
     were selected.
 

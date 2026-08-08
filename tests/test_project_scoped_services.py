@@ -362,7 +362,7 @@ class TestClientEnvResolution:
         assert env["BEADS_DOLT_SERVER_PORT"] == "49183"
 
     def test_autostart_interlock_is_exported(self, wired):
-        """BEADS.md D1 got this from socket mode; it now comes from the environment. Losing it is
+        """This once came from socket mode; it now comes from the environment. Losing it is
         how a client that cannot reach the server initializes the data dir as a database (§10)."""
         assert launcher.svc_client_env("any", wired, "host")["BEADS_DOLT_AUTO_START"] == "false"
 

@@ -35,7 +35,6 @@ from harnessed.schema import (
     SchemaError,
     load_recipe,
     validate_container_only_declared,
-    validate_install_script,
 )
 from support import patch_all
 

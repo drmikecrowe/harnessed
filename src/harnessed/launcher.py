@@ -161,7 +161,6 @@ from .svcguards import (
     _assert_data_dir_unlocked,
     _assert_placement_unchanged,
     _assert_service_running,
-    _host_process_in_dir,
     _placement_marker,
     _service_container_status,
 )
@@ -241,7 +240,6 @@ from .launchenv import (
     _varlock_resolve_env_file,
 )
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
-from .persist_gc import _fmt_size
 from .assemble import assemble, compute_recipe_hash, _merge_servers, _resolve_service_servers
 from .synclinks import CollisionError
 from .schema import (
@@ -1396,7 +1394,7 @@ def _svc_run_cmd(
         run_cmd += ["-v", f"{host_dir}:{host_dir}:rw"]
         # No HARNESSED_SOCKET_PATH: it existed solely so the beads-server entrypoint could stamp the
         # client-visible socket into .beads/metadata.json, and that writer is gone (metadata.json is
-        # tracked, the socket path is machine-local — BEADS.md §4). Clients now learn the socket from
+        # tracked, the socket path is machine-local). Clients now learn the socket from
         # their own environment, which the recipes resolve through the same persist entry, so nothing
         # has to be passed into the server for the clients' benefit.
         if location == "in_repo" and mount_path is not None:

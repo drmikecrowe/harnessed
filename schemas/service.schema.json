@@ -51,7 +51,7 @@
       "required": ["persist"],
       "properties": {
         "persist": {
-          "description": "Name of the persist entry (declared by a recipe in the stack) whose host dir is bind-mounted as this service's data dir at /data (e.g. .beads).",
+          "description": "Name of the persist entry (declared by a recipe in the stack) whose host dir is bind-mounted as this service's data dir at /data.",
           "type": "string",
           "minLength": 1
         }
