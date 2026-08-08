@@ -150,7 +150,7 @@ def _run_tagged(
         # Cancel before anything else can raise: a timer left armed kills whatever inherits the pid.
         if timer is not None:
             timer.cancel()
-    if expired.is_set():
+    if timeout is not None and expired.is_set():
         raise subprocess.TimeoutExpired(cmd, timeout)
     if check and returncode != 0:
         raise subprocess.CalledProcessError(returncode, cmd)

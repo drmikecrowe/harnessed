@@ -19,7 +19,19 @@ from pathlib import Path
 
 import pytest
 
-_SRC = Path(__file__).parent.parent / "src" / "harnessed"
+_ROOT = Path(__file__).resolve().parent.parent
+_SRC = _ROOT / "src" / "harnessed"
+
+# This module asserts against SOURCE TEXT, which makes it one of the repo-asset tests [tool.mutmut]
+# warns about. Under `mutmut run` the tree is a rewritten copy where every function has become
+# `x_<name>__mutmut_N` variants, so the audit reads dozens of deliberately-broken call sites and
+# fails — not as a killed mutant but as a collection-time error that aborts the stats pass and takes
+# the whole mutation layer down with it. Standing down there keeps that layer working; the audit
+# still runs on every real invocation, which is the tree it is making a claim about.
+pytestmark = pytest.mark.skipif(
+    _ROOT.name == "mutants",
+    reason="source-text audit: the mutants tree is instrumented source, not the source under test",
+)
 
 # The files this audit governs: launcher.py is where the bead counted the calls, and proc.py holds
 # `_run`/`_run_tagged` — the seam every other module reaches podman through. Auditing the launcher

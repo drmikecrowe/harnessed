@@ -10,7 +10,7 @@ Three properties, and they are not the same property:
    build tag happened to be set — the seam defect the bead names.
 3. A function that advertises a deadline in its own output honours it. Bounding the probe inside
    `for _ in range(timeout)` without making the loop deadline-driven would push worst-case elapsed
-   to `timeout × (probe + 1)` while the message still claims `timeout` — a fix that reads correct
+   to `timeout * (probe + 1)` while the message still claims `timeout` — a fix that reads correct
    and lies at runtime.
 
 The suite runs no real podman (CLAUDE.md), so these use sleeping stand-in processes: they prove the
@@ -26,6 +26,9 @@ import time
 
 import pytest
 import typer
+
+from hypothesis import given, settings
+from hypothesis.strategies import floats
 
 from harnessed import launcher, proc
 from harnessed.schema import Recipe, SetupSpec
@@ -80,10 +83,20 @@ class TestBoundedDegradesInsteadOfHanging:
         proc._bounded(_sleeper(30), timeout=0.3, capture_output=True, text=True)
         assert time.monotonic() - start < 5, "the deadline did not actually cut the call short"
 
-    def test_text_mode_gets_empty_str_output(self, err):
-        """Callers do `res.stdout.strip()`. Handing them None would crash the degradation path."""
-        res = proc._bounded(_sleeper(30), timeout=0.3, capture_output=True, text=True)
+    @pytest.mark.parametrize(
+        "kwarg", [{"text": True}, {"encoding": "utf-8"}, {"universal_newlines": True}]
+    )
+    def test_every_way_of_asking_for_str_gets_str_back(self, err, kwarg):
+        """Callers do `res.stdout.strip()` and compare against str. `text=` is the common spelling
+        but `encoding=` and `universal_newlines=` mean the same thing to `subprocess`, and handing
+        one of those callers bytes turns the degradation path into a silently wrong comparison."""
+        res = proc._bounded(_sleeper(30), timeout=0.3, capture_output=True, **kwarg)
         assert res.stdout == "" and res.stderr == ""
+
+    def test_the_result_names_the_command_that_was_run(self, err):
+        """`CompletedProcess.args` is part of the contract callers and tracebacks read."""
+        cmd = _sleeper(30)
+        assert proc._bounded(cmd, timeout=0.3, capture_output=True).args == cmd
 
     def test_byte_mode_gets_empty_bytes_output(self, err):
         """`_wait_service_healthy` does `result.stdout.decode(...)` on the last probe — a str there
@@ -125,6 +138,16 @@ class TestBoundedDegradesInsteadOfHanging:
             "counter matches, so _acknowledge_warnings surfaces it before the TTY handoff"
         )
 
+    def test_the_warning_says_which_command_hung_and_for_how_long(self, err):
+        """'something timed out' sends the user hunting. Naming the command and the deadline is
+        the difference between an actionable warning and a note that something went wrong."""
+        cmd = [sys.executable, "-c", "import time; time.sleep(30)"]
+        proc._bounded(cmd, timeout=0.3, capture_output=True)
+        # Rendered the way the user would type it, so the warning can be copied into a shell to
+        # reproduce — not as a Python list repr.
+        assert " ".join(cmd) in err.text, "the warning does not say WHAT hung"
+        assert "0.3" in err.text, "the warning does not say what deadline was exceeded"
+
     def test_warn_false_stays_quiet_for_poll_loops(self, err):
         """A loop that probes every second would otherwise print one warning per iteration, burying
         the single actionable error the loop prints at the end."""
@@ -137,8 +160,14 @@ class TestRunTaggedAcceptsATimeout:
 
     def test_it_raises_timeoutexpired_when_the_deadline_passes(self):
         """Matching `subprocess.run`, so the two shapes stay interchangeable for callers."""
-        with pytest.raises(subprocess.TimeoutExpired):
-            proc._run_tagged(_sleeper(30), timeout=0.3)
+        cmd = _sleeper(30)
+        with pytest.raises(subprocess.TimeoutExpired) as exc:
+            proc._run_tagged(cmd, timeout=0.3)
+        # A caller that catches this and logs `exc.cmd` must learn which build hung — during a
+        # parallel build that is the only thing distinguishing one wedged stack from another. The
+        # deadline rides along because TimeoutExpired's own message quotes it.
+        assert exc.value.cmd == cmd
+        assert exc.value.timeout == 0.3
 
     def test_it_returns_within_the_deadline(self):
         start = time.monotonic()
@@ -154,8 +183,24 @@ class TestRunTaggedAcceptsATimeout:
         assert not marker.exists()
 
     def test_a_command_inside_the_deadline_is_unaffected(self):
-        res = proc._run_tagged([sys.executable, "-c", "print('ok')"], timeout=30)
+        cmd = [sys.executable, "-c", "print('ok')"]
+        res = proc._run_tagged(cmd, timeout=30)
         assert res.returncode == 0
+        assert res.args == cmd
+
+    def test_a_failing_command_still_raises_by_default(self):
+        """Adding `timeout` to this signature must not disturb `check`: callers rely on a non-zero
+        build exit aborting rather than being returned quietly."""
+        cmd = [sys.executable, "-c", "import sys; sys.exit(2)"]
+        with pytest.raises(subprocess.CalledProcessError) as exc:
+            proc._run_tagged(cmd, timeout=30)
+        assert exc.value.cmd == cmd and exc.value.returncode == 2
+
+    def test_check_false_returns_the_failure_instead_of_raising(self):
+        res = proc._run_tagged(
+            [sys.executable, "-c", "import sys; sys.exit(2)"], check=False, timeout=30
+        )
+        assert res.returncode == 2
 
     def test_the_watchdog_does_not_fire_after_a_fast_success(self):
         """A watchdog left armed kills whatever reuses the pid, and a stray raise would turn a
@@ -297,6 +342,30 @@ class TestAdvertisedDeadlinesAreHonest:
         assert elapsed < 5, f"advertised 2s, took {elapsed:.1f}s"
 
 
+class TestDeadlineHonestyHoldsForAnyTimeout:
+    """The scenarios above pin one timeout value. The arithmetic — a clamp, a subtraction and a
+    loop guard — is where an off-by-one hides, so sample it instead of trusting one example."""
+
+    @settings(max_examples=6, deadline=None)
+    @given(budget=floats(min_value=0.1, max_value=1.0))
+    def test_wait_hatago_returns_within_its_budget_for_any_budget(self, budget):
+        # A per-example MonkeyPatch context, not the fixture: a function-scoped fixture is set up
+        # once and reused across every generated input, which hypothesis rightly flags.
+        def probe(cmd, *, timeout, warn=True, **kwargs):
+            time.sleep(timeout)  # a wedged podman: burns exactly the deadline it was handed
+            return subprocess.CompletedProcess(cmd, proc._TIMEOUT_RC, b"", b"")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(launcher._out, "print", lambda *a, **k: None)
+            mp.setattr(launcher, "_bounded", probe)
+            start = time.monotonic()
+            assert launcher._wait_hatago("podman", "i", port=1, timeout=budget) is False
+            elapsed = time.monotonic() - start
+        # One probe may be in flight when the deadline passes, so the bound is budget + one probe,
+        # never budget * probes. The slack absorbs scheduling, not a second full poll cycle.
+        assert elapsed <= budget + 1.5, f"budget {budget:.2f}s overran to {elapsed:.2f}s"
+
+
 class TestATimeoutNeverMasksTheRealFailure:
     def test_teardown_timeout_does_not_swallow_the_bodys_exception(self, monkeypatch, err):
         """`_with_image_container` removes its throwaway container in a `finally`. If that removal
@@ -312,6 +381,39 @@ class TestATimeoutNeverMasksTheRealFailure:
 
         with pytest.raises(ValueError, match="the real failure"):
             launcher._with_image_container("podman", "img", boom)
+
+
+class TestWedgedPodmanDoesNotCrashTeardown:
+    """Teardown runs when something has ALREADY gone wrong. Turning a hung `podman rm` into a
+    traceback there replaces the fault the user needs to see with one about the cleanup — so these
+    paths must absorb a timeout and carry on. They also check the call shape: the podman-driving
+    branches are never executed by this suite (no real podman, per CLAUDE.md), so a mis-typed
+    kwarg would otherwise reach a user before it reached a test."""
+
+    @pytest.fixture
+    def wedged(self, monkeypatch):
+        """Every `_bounded` reports a killed-on-deadline child, and records what it was asked."""
+        seen: list[dict] = []
+
+        def stub(cmd, **kw):
+            seen.append({"cmd": cmd, **kw})
+            return subprocess.CompletedProcess(cmd, proc._TIMEOUT_RC, b"", b"")
+
+        monkeypatch.setattr(launcher, "_bounded", stub)
+        return seen
+
+    @pytest.mark.parametrize("uses_pods", [True, False])
+    def test_pod_teardown_survives_a_hung_runtime(self, monkeypatch, wedged, uses_pods):
+        monkeypatch.setattr(launcher, "_rt_uses_pods", lambda _rt: uses_pods)
+        launcher._pod_teardown("podman", "inst", "pod")  # must not raise
+        assert wedged and wedged[0]["timeout"], "teardown ran without a deadline"
+
+    def test_best_effort_ca_install_survives_a_hung_exec(self, monkeypatch, wedged, tmp_path):
+        ca = tmp_path / "corp.crt"
+        ca.write_text("x")
+        monkeypatch.setattr(launcher.paths, "corp_proxy_ca_path", lambda: ca)
+        launcher._install_corp_proxy_ca_in_container("podman", "c", best_effort=True)
+        assert wedged and wedged[0]["timeout"]
 
 
 class TestSetupConditionsCannotHangALaunch:
