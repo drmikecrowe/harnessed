@@ -161,6 +161,47 @@ def test_context_mode_hooks_are_skipped_on_omp_only():
         assert set(hooks) == {"PreToolUse", "SessionStart", "PostToolUse", "PreCompact"}, harness
 
 
+def test_codebase_memory_mcp_hooks_reach_settings():
+    """The real catalog recipe: an MCP server that is present but never reached is the failure.
+
+    `install.sh` deliberately refuses to run cbm's own installer, and that installer is also what
+    upstream uses to configure these three hooks — so declaring them in recipe.yaml is the ONLY
+    thing standing between the binary being on PATH and the agent actually consulting the graph.
+    Asserted here rather than via `expect:`, which has no hooks kind (Expect = skills/commands/
+    plugins/mcp), so nothing else in the suite would notice them silently disappearing.
+
+    No `skip_harnesses`: unlike context-mode, cbm has no native delivery on any harness.
+    """
+    recipe = load_recipe(ROOT / "catalog" / "recipes" / "codebase-memory-mcp", strict=True)
+    assert recipe.hooks_skip_harnesses == []
+
+    for harness in ("claude", "opencode", "codex", "antigravity", "omp"):
+        hooks = required_settings([], [recipe], harness=harness).get("hooks", {})
+        assert set(hooks) == {"PreToolUse", "SessionStart", "SubagentStart"}, harness
+
+    hooks = required_settings([], [recipe], harness="claude")["hooks"]
+    # Graph-augments text search only — anchored to the tool names, since a matcher that stopped
+    # covering Grep would leave the hook installed and permanently silent.
+    [pre] = hooks["PreToolUse"]
+    assert pre["matcher"] == "Grep|Glob"
+    assert "hook-augment" in pre["hooks"][0]["command"]
+    # `command -v` + `exit 0`: a PreToolUse hook that errors is noise on every single Grep.
+    assert "command -v codebase-memory-mcp" in pre["hooks"][0]["command"]
+
+    # No matcher → fires on every SessionStart source (startup/resume/clear/compact).
+    [sess] = hooks["SessionStart"]
+    assert "matcher" not in sess
+
+    # SubagentStart injects via JSON additionalContext, NOT plain stdout — a malformed body is
+    # dropped silently by the hook runner, so parse it rather than substring-matching.
+    [sub] = hooks["SubagentStart"]
+    assert sub["matcher"] == "*"
+    body = sub["hooks"][0]["command"]
+    payload = json.loads(body.split("\n", 1)[1].rsplit("\n", 1)[0])
+    assert payload["hookSpecificOutput"]["hookEventName"] == "SubagentStart"
+    assert "search_graph" in payload["hookSpecificOutput"]["additionalContext"]
+
+
 # --- Layer 2: live container check (podman-gated) -------------------------------------------------
 
 from support import podman  # the one gate definition
