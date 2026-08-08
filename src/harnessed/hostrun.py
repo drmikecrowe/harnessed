@@ -218,8 +218,17 @@ def _apply_host_mise_env(env: MutableMapping[str, str], stack: str) -> None:
     since the trust STORE is keyed per config file while this is a path PREFIX.
 
     Carrying it is NOT harnessed granting trust, the thing `_host_mise_env` is careful never to do:
-    every entry comes from the user's own config or from the environment we were handed. Read BEFORE
-    the redirect lands, or `_user_mise_config_file` would resolve to the dir we just overwrote.
+    every entry comes from the user's own config or from the environment we were handed.
+
+    Read BEFORE the redirect lands — but NOT because reading late would over-grant. Read late,
+    MISE_CONFIG_DIR is the stack's own dir, which `_is_a_harnessed_stack_config_dir` recognises and
+    skips, so it falls back to the XDG config and still reads the user's. What breaks is the user
+    who set their OWN MISE_CONFIG_DIR: the redirect has already replaced it, so the config dir they
+    chose is silently passed over for the default. The ordering protects THEM.
+
+    Measured, not reasoned: moving `env.update` above the loop fails exactly one test,
+    `test_a_user_chosen_config_dir_is_honoured`, and the over-grant test
+    `test_an_inherited_stack_config_dir_is_not_treated_as_the_users` still passes.
 
     INHERITED ENTRIES ARE DEDUPED TOO, not just the user's. Seeding the list from the inherited
     value unfiltered let a duplicate already present there survive every later launch — stable, so
