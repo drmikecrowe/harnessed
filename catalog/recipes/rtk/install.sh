@@ -7,10 +7,6 @@
 # PROJECT_DIR and friends are absent by design — a build has no project mounted.
 set -euo pipefail
 
-# Pin = the release tag mise resolves against. `cargo install rtk` is deliberately NOT used: another
-# "rtk" ("Rust Type Kit") on crates.io would fetch the wrong package.
-RTK_VERSION="0.43.0"
-
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 
 # --- 1. the binary: NOT here ----------------------------------------------------------------------
@@ -19,26 +15,28 @@ RTK_VERSION="0.43.0"
 # run container-side. It now runs on a host launch too: harnessed points mise at the STACK's own
 # config/data dir, so the reason this section refused to install host-side — 'mise's global config
 # and data dir belong to you' — no longer applies, and the shims dir is on the launch PATH.
-# Keep RTK_VERSION in lockstep with that pin.
+#
+# The pin lives in that `tools:` entry and nowhere else. `cargo install rtk` is deliberately NOT an
+# option: a different "rtk" ("Rust Type Kit") on crates.io would fetch the wrong package. This
+# `--version` call is the guard — it fails the install if `tools:` delivered nothing runnable.
 rtk --version
 
 # --- 2. the global wiring ------------------------------------------------------------------------
-# `rtk init -g --auto-patch` bakes RTK.md + the PreToolUse hook so the agent does not have to
-# discover the surface from `rtk --help` alone. It targets $HOME/.claude.
+# `rtk init -g` bakes RTK.md + the CLAUDE.md `@RTK.md` include so the agent does not have to discover
+# the surface from `rtk --help` alone. DOCS ONLY — the PreToolUse hook that actually makes rtk fire
+# is declared in recipe.yaml `hooks:`, where the assembler emits it into the generated settings.json.
 #
-# Container-side $HOME/.claude IS $HARNESSED_CONFIG_DIR, so it is called directly — byte-identical to
-# the `RUN rtk init -g --auto-patch` it replaces. Host-side $HOME is the USER'S home and
-# $HARNESSED_CONFIG_DIR is the stack's own materialized CLAUDE_CONFIG_DIR, so a throwaway $HOME whose
-# .claude symlinks to it makes "global" mean the stack's config dir. Without this a host launch would
-# patch the user's real ~/.claude/settings.json — a write outside $HARNESSED_CONFIG_DIR, which a host
-# launch must not do.
+# Deliberately NOT `--auto-patch`. That flag also patches settings.json, and the patch does not
+# survive: the assembler owns that file and regenerates it after install.sh runs, silently dropping
+# the installer-written hook. `rtk init -g` without the flag leaves settings.json untouched and just
+# prints the snippet, so the two mechanisms no longer fight over one file.
 #
-# $HARNESSED_HOME_SHIM is a harnessed-owned dir whose .claude IS $HARNESSED_CONFIG_DIR, so "global"
-# means the stack's config dir in BOTH modes and this needs no branch. Container-side it is simply
-# the image home (where $HOME/.claude already is the config dir), so the line is byte-equivalent to
-# the `RUN rtk init -g --auto-patch` it replaces.
-#
-# It is also STABLE across launches. That matters because --auto-patch records a hook path in
-# settings.json: under the old `mktemp -d` shim any absolute path the installer wrote died with the
-# temp dir on exit (bd harnessed-8px.9, which cost gsd-core 12 broken hooks).
-HOME="$HARNESSED_HOME_SHIM" rtk init -g --auto-patch
+# Both env vars are pinned rather than inherited, because rtk resolves its target config dir from
+# $CLAUDE_CONFIG_DIR FIRST and only falls back to $HOME/.claude — so setting $HOME alone does not
+# steer it. Pinning both makes "global" mean the stack's config dir in BOTH modes with no branch:
+#   - CLAUDE_CONFIG_DIR: the direct target, correct even if the ambient value is unset or foreign.
+#   - HOME=$HARNESSED_HOME_SHIM: a harnessed-owned dir whose .claude IS $HARNESSED_CONFIG_DIR, held
+#     for the fallback path. Without it a host launch could write into the USER'S real ~/.claude —
+#     outside $HARNESSED_CONFIG_DIR, which a host launch must not do. The shim is also STABLE across
+#     launches, unlike the old `mktemp -d` (bd harnessed-8px.9, which cost gsd-core 12 broken hooks).
+HOME="$HARNESSED_HOME_SHIM" CLAUDE_CONFIG_DIR="$HARNESSED_CONFIG_DIR" rtk init -g

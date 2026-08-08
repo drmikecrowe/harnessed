@@ -12,7 +12,7 @@ description: rtk (Rust Token Killer) — compress dev-command output 60-90% befo
 # setup: none needed — rtk init -g runs in install.sh
 
 # Both former Dockerfile RUN layers, as one bash file run by BOTH executors (bd harnessed-8px.5):
-# the mise `github:` binary install and `rtk init -g --auto-patch`.
+# the mise `github:` binary install and `rtk init -g`.
 #
 # No `cache:` — mise owns its own download cache container-side, and the host branch installs no
 # binary at all (see install.sh: an install.sh cannot put an executable on the host agent's PATH;
@@ -23,6 +23,23 @@ description: rtk (Rust Token Killer) — compress dev-command output 60-90% befo
 # mise at the STACK's own config/data dir instead of the user's global one.
 tools:
   - github:rtk-ai/rtk@0.43.0
+
+# The hook is what makes rtk actually fire. Without it the agent reads RTK.md's "all other commands
+# are automatically rewritten by the Claude Code hook", correctly types a plain `git status`, and
+# nothing rewrites it — the doc describes wiring that is not there.
+#
+# Declared HERE rather than left to `rtk init -g --auto-patch` because the assembler owns
+# settings.json and regenerates it AFTER install.sh runs, so an installer-written hook is silently
+# dropped. Measured on a live stack: RTK.md written 06:39, settings.json regenerated 07:36 with zero
+# rtk entries, and 0.06% of 41.6k Bash calls over 14 days reached rtk as a result. Same pattern as
+# context-mode. `rtk` is on PATH via `tools:` above, which is what the hook runner needs.
+#
+# No `skip_harnesses`: unlike context-mode, rtk ships no harness-native plugin, so there is no
+# harness where replaying this would double-fire.
+hooks:
+  PreToolUse:
+    - command: rtk hook claude
+      matcher: Bash
 
 install:
   script: install.sh

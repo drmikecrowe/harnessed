@@ -209,7 +209,21 @@ class TestRtkInstall:
         r = _run("rtk", tmp_path, mode="container", harness="claude",
                  home=home, config_dir=home / ".claude")
         assert r.returncode == 0
-        assert rtk_log.read_text().splitlines() == ["--version", "init -g --auto-patch"]
+        # `init -g`, deliberately WITHOUT `--auto-patch`: that flag also patches settings.json, and
+        # the assembler regenerates that file after install.sh runs, so the patch was silently
+        # dropped. The hook now comes from recipe.yaml `hooks:` instead.
+        assert rtk_log.read_text().splitlines() == ["--version", "init -g"]
+
+    def test_the_pretooluse_hook_is_declared_in_the_recipe_not_left_to_the_installer(self):
+        # The hook is the whole capability: without it nothing rewrites the agent's commands and rtk
+        # never fires, however healthy the binary is. It has to live in `hooks:` because the
+        # assembler owns settings.json and regenerates it AFTER install.sh runs, silently dropping
+        # anything the installer patched in. The live capability test (catalog/recipes/rtk/tests/
+        # rtk-runs.sh) checks the ASSEMBLED result, but that one is podman-gated and skipped by
+        # default — so the source of truth is asserted here, where it always runs.
+        recipe = load_recipe(CATALOG / "recipes" / "rtk")
+        entries = recipe.hooks.get("PreToolUse", [])
+        assert [(e.command, e.matcher) for e in entries] == [("rtk hook claude", "Bash")]
 
     def test_a_missing_binary_fails_loudly_rather_than_wiring_nothing(self, tmp_path):
         # If `tools:` did not deliver rtk, wiring hooks that shell out to it would produce a config
@@ -217,12 +231,15 @@ class TestRtkInstall:
         assert _run("rtk", tmp_path, mode="host", harness="claude").returncode != 0
 
     def test_host_with_rtk_present_wires_into_the_stack_config_dir_not_the_user_home(self, tmp_path):
-        # `rtk init -g` targets $HOME/.claude. Host-side that would be the user's REAL home, so the
-        # script redirects $HOME at the stack's config dir. Assert on where the tool actually wrote.
+        # `rtk init -g` resolves its target from $CLAUDE_CONFIG_DIR FIRST, falling back to
+        # $HOME/.claude — so redirecting $HOME alone does NOT steer it. Host-side the fallback would
+        # be the user's REAL home, so the script pins BOTH. The stub mirrors that precedence exactly,
+        # which is what makes this a regression test rather than a restatement of the old assumption.
         _stub(
             tmp_path / "bin", "rtk",
             'if [ "$1" = "init" ]; then\n'
-            '  mkdir -p "$HOME/.claude"; echo rtk > "$HOME/.claude/RTK.md"\n'
+            '  target="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"\n'
+            '  mkdir -p "$target"; echo rtk > "$target/RTK.md"\n'
             'fi\n',
         )
         r = _run("rtk", tmp_path, mode="host", harness="claude")

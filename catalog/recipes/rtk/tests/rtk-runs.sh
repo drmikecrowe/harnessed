@@ -32,4 +32,21 @@ if ! rtk gain >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "rtk binary runs correctly"
+# 4. The PreToolUse hook must be present in the ASSEMBLED settings.json. A working binary is not
+#    enough: RTK.md tells the agent commands are rewritten automatically, so if the hook is missing
+#    the agent types plain `git status` and rtk never runs — the failure is silent and total
+#    (measured once at 0.06% of 41.6k Bash calls). This is a post-assembly check on purpose: the
+#    regression it guards is `rtk init --auto-patch` writing a hook that the assembler, which owns
+#    settings.json and regenerates it after install.sh, then drops. recipe.yaml `hooks:` is what
+#    puts it in the generated file.
+settings="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/settings.json"
+if [[ ! -f "${settings}" ]]; then
+    echo "settings.json not found at ${settings}" >&2
+    exit 1
+fi
+if ! grep -q 'rtk hook claude' "${settings}"; then
+    echo "rtk PreToolUse hook missing from ${settings} — rtk will never fire" >&2
+    exit 1
+fi
+
+echo "rtk binary runs correctly and its PreToolUse hook is wired"
