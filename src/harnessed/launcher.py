@@ -27,7 +27,6 @@ from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime, timezone
 from itertools import cycle
 from pathlib import Path
 from typing import Callable, Optional, TypeVar

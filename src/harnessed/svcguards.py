@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 
@@ -21,7 +20,7 @@ from pathlib import Path
 import typer
 
 from . import paths
-from .console import _err, _out
+from .console import _err
 from .schema import ServiceDef
 
 def _host_process_in_dir(exe: str, host_dir: Path) -> tuple[int, str] | None:
