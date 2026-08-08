@@ -1246,6 +1246,36 @@ def _parse_tools(raw_tools, manifest: Path) -> tuple[list[str], dict[str, str]]:
     return out, holds
 
 
+def parse_extra_tools(text: str) -> list[str]:
+    """Parse `extra-tools.txt` into pinned mise specs, rejecting any entry that is not pinned.
+
+    Reads the file the way the base-image Dockerfile does, and it must KEEP reading it that way:
+    `grep -v '^\\s*#' | grep -v '^\\s*$' | awk '{print $1}'`. If this parser and that pipeline ever
+    disagree about what an entry is, the guard stops guarding the thing that actually runs.
+
+    The rule is `_parse_tools`' rule, deliberately reused rather than restated: an entry is floating
+    if it carries a floating MARKER *or* if it carries no version at all. That second clause is the
+    one bd harnessed-2o9 was about — a bare `dua` has no marker for `_FLOATING_REF_RE` to find, so a
+    marker-hunting check reads it as "nothing to validate" when it is the most floating form there
+    is. `mise use -g dua` resolves @latest at build time and the image is no longer reproducible.
+    """
+    out: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        spec = stripped.split()[0]  # `awk '{print $1}'` — a trailing `# comment` is not the spec
+        if _FLOATING_REF_RE.search(spec) or "@" not in spec:
+            raise PinValidationError(
+                f"extra-tools entry {spec!r} must be pinned to an explicit version "
+                "(e.g. 'dua@2.41.1' — no '@latest' and no bare tool name). An unpinned entry "
+                "resolves @latest during the base-image build, which is how bd harnessed-2o9 "
+                "broke every container build."
+            )
+        out.append(spec)
+    return out
+
+
 # --- Recipe `env:` — environment for the RUNNING agent (bd harnessed-8px.2) --------------------
 #
 # The one recipe deliverable that cannot become a bash script: a script's `export` dies with the

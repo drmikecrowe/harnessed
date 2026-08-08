@@ -255,6 +255,7 @@ from .assemble import assemble, compute_recipe_hash, _merge_servers, _resolve_se
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
+    PinValidationError,
     Recipe,
     SchemaError,
     ServiceDef,
@@ -263,6 +264,7 @@ from .schema import (
     load_service,
     load_stack,
     load_stack_with_recipes,
+    parse_extra_tools,
     resolve_recipe_env,
 )
 
@@ -324,7 +326,17 @@ def _staged_build_context() -> Generator[str]:
         )
         user_file = paths.extra_tools_path()
         if user_file.exists():
-            (ctx_path / "catalog" / "base" / "extra-tools.txt").write_text(user_file.read_text())
+            content = user_file.read_text()
+            # Validate on the HOST, before podman is ever invoked. An unpinned entry used to
+            # surface as `exit status 123` from inside a RUN layer (xargs' "a child exited 1-125"),
+            # which names neither the tool nor the file — see bd harnessed-2o9. Raising here names
+            # the USER's file, which is the one they must edit: the shipped default is marked
+            # "TEMPLATE — do not edit for personal use", so pointing at it would send them wrong.
+            try:
+                parse_extra_tools(content)
+            except PinValidationError as exc:
+                raise PinValidationError(f"{user_file}: {exc}") from exc
+            (ctx_path / "catalog" / "base" / "extra-tools.txt").write_text(content)
         yield str(ctx_path)
 
 
@@ -3503,6 +3515,9 @@ def update_pins(
     # future offline mode) can swap `update.resolve_latest` and have it take effect here.
     report = pinupdate.build_report(
         dirs,
+        # The base image's extra-tools pins rot exactly like recipe pins do, and used not to be
+        # swept at all — which is how bd harnessed-2o9 reached CI.
+        extra_tools=pinupdate.extra_tools_default_path(),
         resolve=lambda backend, name: pinupdate.resolve_releases(backend, name),
         minimum_release_age_minutes=(
             pinupdate.DEFAULT_MINIMUM_RELEASE_AGE_MINUTES

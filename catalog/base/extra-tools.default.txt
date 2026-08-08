@@ -2,26 +2,32 @@
 # To customize: edit ~/.config/harnessed/extra-tools.txt (seeded from this file on first build),
 # then rebuild with: container --build
 # One tool per line. Note: fd and ripgrep are already installed in the base image.
+#
+# EVERY ENTRY MUST CARRY AN EXPLICIT VERSION (`tool@version`). A bare name is not "unversioned",
+# it is `@latest` resolved at build time — the most floating form the file can hold, and the one
+# that broke every container build in bd harnessed-2o9. `schema.parse_extra_tools` rejects an
+# unpinned entry before podman is invoked, so a bare name fails fast instead of as `exit 123`
+# from inside a RUN layer. `harnessed update` sweeps these pins for staleness like any other.
 
 # Modern CLI replacements
-bat           # cat replacement
-eza           # ls replacement
-sd            # sed replacement
-dua           # du replacement
-gping         # ping with graph
+bat@0.26.1         # cat replacement
+eza@0.23.5         # ls replacement
+sd@1.1.0           # sed replacement
+dua@2.41.1         # du replacement
+gping@1.20.4       # ping with graph
 
 # Data viewing/processing
-jq            # JSON processor
-jless         # JSON viewer
-glow          # markdown viewer
-hexyl         # hex viewer
-yq            # YAML/JSON processor
+jq@1.8.2           # JSON processor
+jless@0.9.0        # JSON viewer
+glow@2.1.2         # markdown viewer
+hexyl@0.17.0       # hex viewer
+yq@4.53.3          # YAML/JSON processor
 
 # Git tools
-lazygit       # git TUI
+lazygit@0.64.0     # git TUI
 
 # Dev/code tools
-ast-grep      # AST-based code search
-ruff          # Python linter/formatter
-stylua        # Lua formatter
-markdownlint-cli2  # markdown linter
+ast-grep@0.45.0    # AST-based code search
+ruff@0.16.1        # Python linter/formatter
+stylua@2.5.2       # Lua formatter
+markdownlint-cli2@0.23.2  # markdown linter
