@@ -31,7 +31,7 @@ from hypothesis import given, settings
 from hypothesis.strategies import floats
 
 from harnessed import launcher, proc
-from harnessed.schema import Recipe, SetupSpec
+from harnessed.schema import Recipe, ServiceDef, SetupSpec
 from support import patch_all
 
 
@@ -329,11 +329,11 @@ class TestAdvertisedDeadlinesAreHonest:
         self._hanging_probe(monkeypatch, calls)
         monkeypatch.setattr(launcher, "_service_container_status", lambda *a, **k: "running")
 
-        svc = type(
-            "Svc", (),
-            {"healthcheck": "true", "is_socket_only": True, "name": "db", "port": None,
-             "is_ephemeral_port": False},
-        )()
+        # A real ServiceDef, not a stand-in object: `socket` makes it socket-only, which skips the
+        # TCP pre-probe and lands directly in the healthcheck loop under test.
+        svc = ServiceDef(
+            name="db", image="i", scope="project", socket="/run/db.sock", healthcheck="true"
+        )
 
         start = time.monotonic()
         with pytest.raises(typer.Exit):
