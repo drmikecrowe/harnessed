@@ -188,6 +188,41 @@ def test_codebase_memory_mcp_hooks_reach_settings():
     [sess] = hooks["SessionStart"]
     assert "matcher" not in sess
 
+    # The reminder heredoc must close before the indexing shell below it, or the whole tail is
+    # swallowed as heredoc body and the hook silently degrades to "print some text".
+    sess_body = sess["hooks"][0]["command"]
+    reminder_end = sess_body.index("\nCBM_REMINDER\n")
+    assert reminder_end < sess_body.index("if cbm_root=")
+    # The binary guard must come BEFORE the reminder, not just before the index. An unguarded
+    # reminder on a stack where install.sh failed injects "ALWAYS use codebase-memory-mcp tools
+    # FIRST" while the MCP server is absent, aiming the agent at tools that do not exist.
+    guard = "command -v codebase-memory-mcp >/dev/null 2>&1 || exit 0"
+    assert guard in sess_body
+    assert sess_body.index(guard) < sess_body.index("cat <<'CBM_REMINDER'")
+
+    # Indexes the current checkout, because cbm ships `auto_index = false` — without this every
+    # git worktree opens graph-blind while the reminder above insists the graph tools come first.
+    assert "cli index_repository" in sess_body
+    # Keyed to the git toplevel, NOT $PWD: a worktree must get its own branch-accurate graph, and a
+    # non-git cwd must get nothing. `--repo-path "$PWD"` would index a subdirectory as a project.
+    assert "--repo-path \"$cbm_root\"" in sess_body
+    assert "git rev-parse --show-toplevel" in sess_body
+    # Unconditional — NOT guarded on the project already existing. A re-index is 1.6s against 2.1s
+    # for a first index, so such a guard buys ~0.5s and pays with a permanently stale graph. If
+    # someone reintroduces one, this is the assertion that should stop them.
+    assert "cli list_projects" not in sess_body
+    # Detached and fully redirected on BOTH streams: a SessionStart hook's stdout is injected into
+    # the agent as context, so a stray progress line would read as instructions, and a foreground
+    # index would stall every session start behind a full walk.
+    #
+    # Asserted against the whole index invocation, NOT a bare `">/dev/null 2>&1 &" in sess_body` —
+    # that substring is also present in the `command -v ... >/dev/null 2>&1 &&` guard above, so it
+    # passes even when the index call is left in the foreground, unredirected. Verified by mutation:
+    # this form fails when the trailing `>/dev/null 2>&1 & )` is stripped; the bare form did not.
+    assert (
+        'cli index_repository --repo-path "$cbm_root" >/dev/null 2>&1 & )' in sess_body
+    )
+
     # SubagentStart injects via JSON additionalContext, NOT plain stdout — a malformed body is
     # dropped silently by the hook runner, so parse it rather than substring-matching.
     [sub] = hooks["SubagentStart"]

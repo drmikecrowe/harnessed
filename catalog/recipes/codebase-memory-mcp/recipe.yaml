@@ -38,8 +38,14 @@ expect:
 # `transport: stdio` (default): hatago runs `codebase-memory-mcp` as a child, wrapping stdio→HTTP.
 # The command resolves through the mise shims on PATH in a container, and through the stack bin dir
 # on a host launch (install.sh, which uses mise's github: backend — NOT /usr/local/bin — in both
-# modes). No args: upstream's own stdio config is `"args": []`; cbm
-# detects the repo from the child's cwd and auto-indexes, so `--project-root` is not needed here.
+# modes). No args: upstream's own stdio config is `"args": []`, and cbm derives the project name
+# from the child's cwd, so `--project-root` is not needed here.
+#
+# It does NOT index that project on its own: cbm ships `auto_index = false` (verified via
+# `codebase-memory-mcp config list` at 0.9.0). Turning it on is a `config set`, which persists to
+# `~/.cache/codebase-memory-mcp/` — the user's REAL home, shared by every stack — so it is the same
+# global-state mutation `install.sh` refuses `mise use -g` for. The SessionStart hook below indexes
+# the current checkout instead, which keeps the write stack-scoped.
 mcp:
   servers:
     - name: codebase-memory-mcp
@@ -73,6 +79,13 @@ hooks:
   # compact), which is exactly the four upstream enumerates one-by-one.
   SessionStart:
     - command: |
+        # One guard for the whole hook, matching the `command -v` the PreToolUse hook already uses.
+        # Without it the reminder below is unconditional: on a stack where install.sh failed or the
+        # binary was removed, every session start would inject "ALWAYS use codebase-memory-mcp tools
+        # FIRST" while the MCP server is absent, steering the agent at tools that do not exist. The
+        # reminder and the index are worth exactly as much as the binary, so they share its guard.
+        command -v codebase-memory-mcp >/dev/null 2>&1 || exit 0
+
         cat <<'CBM_REMINDER'
         CRITICAL - Code Discovery Protocol:
         1. ALWAYS use codebase-memory-mcp tools FIRST for ANY code exploration:
@@ -86,6 +99,33 @@ hooks:
            always Read a file before editing it.
         3. If a project is not indexed yet, run index_repository FIRST.
         CBM_REMINDER
+
+        # Index this checkout, because cbm will not (`auto_index = false`, see the mcp: comment).
+        # Without this, only whatever checkout someone indexed by hand has a graph — every git
+        # worktree opens graph-blind while the text above insists the graph tools come first.
+        #
+        # Keyed on `git rev-parse --show-toplevel`, NOT $PWD: a worktree's toplevel is its own dir,
+        # which is the per-branch granularity wanted — a worktree's graph must reflect its branch,
+        # not main's. Non-git cwd => no toplevel => nothing indexed, right answer for a scratch dir.
+        #
+        # UNCONDITIONAL, deliberately. An "only if missing" guard was measured and rejected: at
+        # 0.9.0 a re-index costs 1.6s against 2.1s for a first index, so the guard buys ~0.5s and
+        # pays with a graph that is right once and stale forever — precisely the failure AGENTS.md
+        # warns about, made worse by the reminder above telling the agent to trust it. SessionStart
+        # also fires on resume/clear/compact, which is exactly when a re-index is wanted.
+        #
+        # Not serialized against a concurrent index of the same project, deliberately. Concurrent
+        # runs neither error nor corrupt the DB: node/edge counts are self-consistent within a burst
+        # and drift slightly between bursts whether or not the runs overlap (cbm indexes multi-
+        # threaded and its store is shared across projects), so a lock buys no determinism. The only
+        # cost of an overlap is a duplicated ~2s index, which does not justify lockfile machinery.
+        #
+        # Detached and redirected on both streams: a SessionStart hook's stdout is injected into the
+        # agent as context, so a stray progress line would read as instructions, and a foreground
+        # index would stall every session start.
+        if cbm_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+          ( codebase-memory-mcp cli index_repository --repo-path "$cbm_root" >/dev/null 2>&1 & )
+        fi
 
   # Subagents inherit the tool list but not the session-start context, so they re-derive their own
   # search habits. SubagentStart injects via JSON `additionalContext`, NOT plain stdout — the raw

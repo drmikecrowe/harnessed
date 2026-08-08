@@ -37,7 +37,17 @@ else
     # UV_TOOL_BIN_DIR is the stack bin dir (_host_run_installs). It is not part of the documented
     # install env contract — it is set alongside it, host-only — hence the hard `:?` rather than a
     # silent fallback that would drop the binary somewhere the launcher never looks.
-    mise install "$CBM_TOOL"
+    #
+    # MISE_LOG_LEVEL=error suppresses mise's "installed but not activated — it is not in any config
+    # file" WARN. mise describes the state above correctly and calls it a problem wrongly: it fires
+    # on EVERY host launch (not only the first — verified by re-running an already-installed tool),
+    # and the remedy it suggests is the `mise use -g` this branch exists to avoid.
+    #
+    # On `mise install` ONLY. `mise which` was measured and does not emit this WARN, so raising its
+    # log floor would suppress nothing that exists while blinding the script to any WARN mise adds
+    # there later. Install failures are unaffected either way — they report at ERROR, which this
+    # floor still lets through (verified against an unresolvable bin name).
+    MISE_LOG_LEVEL=error mise install "$CBM_TOOL"
     ln -sf "$(mise which --tool="$CBM_TOOL" codebase-memory-mcp)" \
         "${UV_TOOL_BIN_DIR:?install.sh (host): UV_TOOL_BIN_DIR unset}/codebase-memory-mcp"
 fi
