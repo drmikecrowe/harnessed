@@ -197,7 +197,13 @@ def test_codebase_memory_mcp_hooks_reach_settings():
     [sub] = hooks["SubagentStart"]
     assert sub["matcher"] == "*"
     body = sub["hooks"][0]["command"]
-    payload = json.loads(body.split("\n", 1)[1].rsplit("\n", 1)[0])
+    # splitlines(), not rsplit("\n"): the YAML block scalar ends with a newline that survives only
+    # until _parse_hooks' `.strip()`, and this assertion should not be coupled to that staying true.
+    # splitlines() yields the same three lines either way, and pins the terminator besides — an
+    # unterminated heredoc would make the hook emit nothing at all.
+    _, payload_line, terminator = body.splitlines()
+    assert terminator == "CBM_SUBAGENT"
+    payload = json.loads(payload_line)
     assert payload["hookSpecificOutput"]["hookEventName"] == "SubagentStart"
     assert "search_graph" in payload["hookSpecificOutput"]["additionalContext"]
 
