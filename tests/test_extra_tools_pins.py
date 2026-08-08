@@ -39,10 +39,19 @@ class TestParseExtraTools:
         assert "dua" in str(exc.value)
 
     def test_rejection_says_a_version_is_required(self):
-        """A build failure that names nothing cost a day; this message must name the fix."""
+        """A build failure that names nothing cost a day; this message must name the fix.
+
+        Asserts the message's WORKING PARTS, not its prose: the shape to copy, why it matters, and
+        the bead to read. Each is load-bearing for someone who hit this on a red build and has no
+        other context.
+        """
         with pytest.raises(PinValidationError) as exc:
             parse_extra_tools("dua\n")
-        assert "version" in str(exc.value).lower()
+        msg = str(exc.value)
+        assert "version" in msg.lower()
+        assert "dua@2.41.1" in msg          # a concrete example of the accepted shape
+        assert "@latest" in msg             # names what an unpinned entry actually becomes
+        assert "harnessed-2o9" in msg       # where to read the history
 
     def test_explicit_latest_is_rejected(self):
         with pytest.raises(PinValidationError):
@@ -174,6 +183,28 @@ class TestGuardAgreesWithTheDockerfile:
             return  # refused — cannot diverge
         staged = normalize_extra_tools(text).encode("utf-8")
         assert [s.encode("utf-8") for s in parsed] == self._dockerfile_pipeline(staged)
+
+    @pytest.mark.parametrize("sep", PYTHON_ONLY_BREAKS, ids=_SEP_IDS)
+    def test_a_trailing_separator_only_python_honours_is_refused(self, sep):
+        """Trailing, not between entries — `strip(" \\t")` must not quietly absorb it.
+
+        Stripping all whitespace instead would drop it here and leave it in the staged file, so the
+        guard would bless `bat@0.26.1` while mise received `bat@0.26.1<sep>`.
+        """
+        with pytest.raises(PinValidationError):
+            parse_extra_tools(f"bat@0.26.1{sep}\n")
+
+    def test_the_refusal_says_what_is_wrong_and_what_is_allowed(self):
+        """A message that just says "invalid" sends the user to the source; this one must not.
+
+        The whole reason this guard exists is that `exit status 123` from inside a RUN layer named
+        nothing. A refusal here that also names nothing would repeat the original sin.
+        """
+        with pytest.raises(PinValidationError) as exc:
+            parse_extra_tools("bat@0.26.1\x0bdua@2.41.1\n")
+        msg = str(exc.value)
+        assert "printable ASCII" in msg
+        assert "base-image build" in msg
 
     def test_a_non_ascii_tool_name_is_refused(self):
         """A deliberate restriction, not an oversight — see SPEC amendment 2.
