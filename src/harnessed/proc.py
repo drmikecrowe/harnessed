@@ -13,7 +13,7 @@ from __future__ import annotations
 import subprocess
 import threading
 
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 
 from rich.markup import escape
 
@@ -123,52 +123,44 @@ def _run_tagged(
     `timeout` exists so `_run(cmd, timeout=…)` means the same thing on both paths. It cannot be
     forwarded to `Popen`, which has no such parameter — before bd harnessed-1ao that call raised
     TypeError, so whether a deadline worked depended on whether a parallel build tag happened to be
-    set. A blocking `readline` cannot take a deadline either, so the enforcement is a watchdog that
-    kills the child; `TimeoutExpired` then matches what `subprocess.run` would have raised, keeping
-    the two shapes interchangeable.
+    set. It is enforced by `wait(timeout=…)` instead (see below), and the `TimeoutExpired` that
+    escapes is the stdlib's own, keeping the two shapes interchangeable for callers.
     """
+    # unbounded: `Popen` HAS no timeout parameter — starting a process does not block. This call's
+    # deadline is enforced on the `wait(timeout=…)` below, which is the only part that waits.
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, errors="replace", bufsize=1, **kwargs,
     )
-    # The watchdog and this thread race for the same child, and `timer.cancel()` cannot win that
-    # race on its own: a timer that has ALREADY entered its callback is not cancellable, so between
-    # `wait()` returning and the `cancel()` below there is a window where a successful build gets
-    # killed and reported as a timeout. Worse, the pid is reaped by then, so the `kill()` lands on
-    # whatever the OS has since given that number.
+    # NO WATCHDOG TIMER. The obvious design — a threading.Timer that kills the child — cannot be made
+    # correct here, and a first attempt at it shipped the bug: whatever flag the timer and this
+    # thread share, there is a window between `wait()` returning and this thread claiming that flag
+    # in which the timer fires, decides the child is late, and reports a timeout for a build that
+    # SUCCEEDED. Narrowing the window with a lock does not close it; it just makes the false timeout
+    # rarer and harder to reproduce, which is worse.
     #
-    # One lock decides the outcome exactly once. Whoever gets there first wins: the watchdog claims
-    # the kill only while the child is still running, and this thread closes the door the moment
-    # `wait()` returns. `kill()` stays INSIDE the lock so it cannot straddle that door.
-    verdict = threading.Lock()
-    finished = False
-    expired = False
-    timer: threading.Timer | None = None
-    if timeout is not None:
-        def _expire() -> None:
-            nonlocal expired
-            with verdict:
-                if finished:
-                    return  # the child already exited on its own — nothing to kill, nothing to report
-                expired = True
-                proc.kill()  # closes the pipe, so the read loop below ends instead of blocking
+    # So the deadline goes where the stdlib already implements it correctly: `wait(timeout=…)`. That
+    # needs the pipe drained by someone else, because a full pipe blocks the child and `wait` would
+    # deadlock — hence the pump thread. `copy_context()` carries `_BUILD_TAG` across the thread
+    # boundary; a ContextVar is NOT inherited by a bare `threading.Thread`, and without this every
+    # line of a parallel build would lose its tag and come out unprefixed.
+    assert proc.stdout is not None
+    stdout = proc.stdout
 
-        timer = threading.Timer(timeout, _expire)
-        timer.daemon = True
-        timer.start()
-    try:
-        assert proc.stdout is not None
-        for line in proc.stdout:
+    def _pump() -> None:
+        for line in stdout:
             _say(escape(line.rstrip()))
-        returncode = proc.wait()
-        with verdict:
-            finished = True
-    finally:
-        # Belt to the lock's braces: stops a still-armed timer from waking up for nothing.
-        if timer is not None:
-            timer.cancel()
-    if expired and timeout is not None:  # the second half is for the type checker; expired implies it
-        raise subprocess.TimeoutExpired(cmd, timeout)
+
+    pump = threading.Thread(target=copy_context().run, args=(_pump,), daemon=True)
+    pump.start()
+    try:
+        returncode = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()          # closes the pipe, which ends the pump
+        proc.wait()          # reap, so no zombie outlives the call
+        pump.join(timeout=5)
+        raise
+    pump.join(timeout=5)     # let the tail of the output land before the caller moves on
     if check and returncode != 0:
         raise subprocess.CalledProcessError(returncode, cmd)
     return subprocess.CompletedProcess(cmd, returncode)

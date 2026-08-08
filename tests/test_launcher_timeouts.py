@@ -24,6 +24,8 @@ import subprocess
 import sys
 import time
 
+from pathlib import Path
+
 import pytest
 import typer
 
@@ -202,12 +204,35 @@ class TestRunTaggedAcceptsATimeout:
         )
         assert res.returncode == 2
 
-    def test_the_watchdog_does_not_fire_after_a_fast_success(self):
-        """A watchdog left armed kills whatever reuses the pid, and a stray raise would turn a
-        successful build into a spurious timeout."""
-        for _ in range(3):
-            assert proc._run_tagged([sys.executable, "-c", "pass"], timeout=5).returncode == 0
-        time.sleep(0.3)
+    def test_a_success_is_never_reported_as_a_timeout(self):
+        """The defect a watchdog design cannot avoid, and the reason there is no longer one here.
+
+        With a timer and a shared flag, a child that finishes just before the deadline can still be
+        flagged late in the window between `wait()` returning and this thread claiming the flag — so
+        a build that SUCCEEDED raises TimeoutExpired. Adversarial review demonstrated it surviving a
+        lock. The deadline now lives on `wait(timeout=…)`, where no such window exists: repeat a
+        command that completes right at the boundary and it must come back clean every time.
+        """
+        for _ in range(25):
+            res = proc._run_tagged(
+                [sys.executable, "-c", "import time; time.sleep(0.05)"], timeout=0.35
+            )
+            assert res.returncode == 0
+
+    def test_output_still_reaches_the_tagged_log(self):
+        """The deadline moved the read loop onto a pump thread, and a ContextVar is NOT inherited by
+        a bare thread — without `copy_context()` every line of a parallel build silently loses its
+        tag and comes out unprefixed."""
+        seen: list[str] = []
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(proc, "_out", type("C", (), {"print": lambda self, m, **k: seen.append(m)})())
+            token = proc._BUILD_TAG.set(("mystack(omp)", "cyan"))
+            try:
+                proc._run_tagged([sys.executable, "-c", "print('hello-from-build')"], timeout=30)
+            finally:
+                proc._BUILD_TAG.reset(token)
+        assert any("hello-from-build" in line for line in seen), "build output was lost"
+        assert any("mystack(omp)" in line for line in seen), "output lost its build tag"
 
     def test_popen_never_receives_a_timeout_kwarg(self, monkeypatch):
         """`Popen` has no `timeout` parameter — forwarding it is the TypeError this bead fixes."""
@@ -534,6 +559,27 @@ class TestTheEgressFirewallFailsClosed:
         # lose them and a recipe that needs the network is silently cut off.
         assert seen["cmd"][-2:] == ["api.example.com", "get.example.com"]
         assert seen["timeout"] == launcher._PODMAN_EXEC_TIMEOUT
+
+    def test_an_unconfinable_container_is_torn_down_not_left_running(self, monkeypatch, err):
+        """EGRESS runs AFTER the pod is up, so raising alone would return the user to a shell with a
+        container still running unrestricted — quieter than the old hang and no safer. The whole
+        point of failing closed is that the thing we could not confine does not survive."""
+        torn: list = []
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+        monkeypatch.setattr(
+            launcher, "_apply_firewall",
+            lambda *a, **k: (_ for _ in ()).throw(typer.Exit(1)),
+        )
+        monkeypatch.setattr(launcher, "_pod_teardown", lambda rt, inst, pod: torn.append((inst, pod)))
+
+        backend = launcher.ContainerBackend.__new__(launcher.ContainerBackend)
+        backend.rt, backend.inst, backend.pod, backend.recipes = "podman", "inst", "pod", []
+
+        # project_path is never read on the EGRESS branch; it only has to satisfy the dataclass.
+        spec = launcher.LaunchSpec(stack="s", harness="claude", project_path=Path("/nonexistent"))
+        with pytest.raises(typer.Exit):
+            backend.apply_isolation(spec, launcher.EGRESS)
+        assert torn == [("inst", "pod")], "the unconfined container was left running"
 
     def test_the_documented_opt_out_still_skips_it(self, monkeypatch, err):
         """The error tells the user to set NO_FIREWALL=true, so that escape hatch must work — or

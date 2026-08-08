@@ -13,6 +13,19 @@
 # Usage: tools/gauntlet-1ao.sh [logdir]
 set -uo pipefail
 
+# Two steps below deliberately mutate TRACKED files — step 5 reverts src/ to the branch point to
+# measure a lint baseline, step 7 narrows mutmut's tests_dir. Both restore with `git checkout`, but
+# only if they are reached: a Ctrl-C in between would otherwise leave the working tree holding
+# baseline source or a rewritten pyproject, which the next `git add .` would quietly commit. The
+# trap makes the restore unconditional. It is idempotent and harmless when nothing was touched.
+_RESTORE=""
+_cleanup() {
+  # shellcheck disable=SC2086
+  [ -n "$_RESTORE" ] && git checkout HEAD -- pyproject.toml $_RESTORE 2>/dev/null
+  return 0
+}
+trap _cleanup EXIT INT TERM
+
 LOGDIR="${1:-.old-coder/gauntlet-1ao-$(date -u +%Y%m%d-%H%M%S)}"
 mkdir -p "$LOGDIR"
 echo "logs -> $LOGDIR"
@@ -44,6 +57,7 @@ say "5. baselines at $BASE, for layers 3 and 4"
 CHANGED_SRC=$(git diff --name-only "$BASE...HEAD" -- 'src/**/*.py')
 NEW_TESTS=$(git diff --name-only --diff-filter=A "$BASE...HEAD" -- 'tests/**/*.py')
 STASHDIR=$(mktemp -d)
+_RESTORE="$CHANGED_SRC"   # arm the trap BEFORE the tree is touched, not after
 # shellcheck disable=SC2086
 [ -n "$CHANGED_SRC" ] && git checkout "$BASE" -- $CHANGED_SRC
 for f in $NEW_TESTS; do mv "$f" "$STASHDIR/$(basename "$f")"; done

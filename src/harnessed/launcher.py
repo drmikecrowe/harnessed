@@ -2791,7 +2791,19 @@ class ContainerBackend(ExecutionBackend):
             # the firewall opens them ONLY when a recipe that needs them is present (default-DROP
             # otherwise).
             egress_domains = sorted({d for r in self.recipes for d in r.egress})
-            _apply_firewall(self.rt, self.inst, egress_domains)
+            try:
+                _apply_firewall(self.rt, self.inst, egress_domains)
+            except typer.Exit:
+                # By this phase BOUNDARY has already started the pod, so simply propagating would
+                # hand the user their shell back and leave a container running with UNRESTRICTED
+                # egress — quieter than the old unbounded hang, and no safer. Failing closed has to
+                # mean the thing we could not confine does not survive, so tear it down first.
+                _err.print(
+                    f"[bold red]error:[/bold red] tearing down {self.inst} — it cannot be left "
+                    "running without the egress firewall it was launched with."
+                )
+                _pod_teardown(self.rt, self.inst, self.pod or self.inst)
+                raise
             return
 
         # Pod network.

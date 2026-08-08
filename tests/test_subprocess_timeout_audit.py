@@ -50,9 +50,10 @@ _EXPECTED_EXEMPT = {
     ("launcher.py", "svc"),            # catalog-authored `sync:`; a DB import is legitimately long
     ("launcher.py", "aws_sso"),        # `aws-sso setup ecs auth` + `aws-sso ecs server`
     ("proc.py", "_run"),               # imposes no policy; callers opt in via timeout=
+    ("proc.py", "_run_tagged"),        # Popen does not block; its deadline is on wait(timeout=…)
 }
 
-_EXPECTED_EXEMPT_CALL_COUNT = 7  # 6 functions, with aws_sso contributing two
+_EXPECTED_EXEMPT_CALL_COUNT = 8  # 7 functions, with aws_sso contributing two
 
 
 def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
@@ -72,17 +73,24 @@ def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
     return owner
 
 
-def _is_guarded_call(node: ast.Call) -> bool:
-    """True for the call shapes this audit governs: `subprocess.run(...)` and `_bounded(...)`.
+# EVERY subprocess entry point that blocks, not just `run`. An earlier version of this audit matched
+# `subprocess.run` alone, so `subprocess.Popen(cmd)` — which blocks just as thoroughly the moment
+# anyone waits on it — was invisible while the audit still reported every call guarded. Adversarial
+# review found that hole; the lesson is that the audit must enumerate the API, not the habit.
+_BLOCKING = ("run", "Popen", "call", "check_call", "check_output")
 
-    Matching is deliberately literal, which leaves two ways to spell the same call that this would
-    not see — `import subprocess as sp; sp.run(...)` and `from subprocess import run; run(...)`.
-    Rather than chase aliases through the AST, `test_subprocess_is_never_aliased` forbids both import
-    forms outright, so the literal match is exhaustive by construction.
+
+def _is_guarded_call(node: ast.Call) -> bool:
+    """True for the call shapes this audit governs: any blocking `subprocess.<fn>(...)`, `_bounded`.
+
+    Matching is literal, which leaves the aliased spellings invisible —
+    `import subprocess as sp; sp.run(...)` and `from subprocess import run; run(...)`. Rather than
+    chase aliases through the AST, `test_subprocess_is_never_aliased` forbids those import forms
+    outright, which is what makes the literal match exhaustive.
     """
     func = node.func
     if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-        return func.value.id == "subprocess" and func.attr == "run"
+        return func.value.id == "subprocess" and func.attr in _BLOCKING
     if isinstance(func, ast.Name):
         return func.id == "_bounded"
     return False
@@ -160,7 +168,7 @@ class TestEveryCallIsBoundedOrJustified:
                         "deadline audit — import it plainly"
                     )
             elif isinstance(node, ast.ImportFrom) and node.module == "subprocess":
-                bad = [a.name for a in node.names if a.name in ("run", "Popen", "call", "check_output")]
+                bad = [a.name for a in node.names if a.name in _BLOCKING]
                 assert not bad, (
                     f"{filename}: `from subprocess import {', '.join(bad)}` hides calls from the "
                     "deadline audit — call it as `subprocess.<name>` instead"
