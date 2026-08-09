@@ -482,6 +482,7 @@ change. **S7** exists to make that visible rather than accidental.
 - **AC-10 — `harnessed update` resolves agent pins**, or they are `hold:`-marked with a reason.
   **Owned by Phase A scenario A7** (added in review of PR #331 — AC-10 previously had no scenario
   implementing it, so it would have passed review as a criterion nobody built). Concretely:
+  Note A7 opens with a **schema prerequisite**: `build_args` has no slot for a `hold:` reason today.
   `update.py` gains an agent-manifest source beside its recipe sources — read `catalog/agents/*/agent.yaml`,
   take each `build_args` entry whose Dockerfile `ARG` it feeds, resolve it through the SAME backend
   machinery as `tools:` (the mise spec in `Dockerfile.harnessed-omp` is `github:can1357/oh-my-pi@…`,
@@ -528,11 +529,42 @@ change. **S7** exists to make that visible rather than accidental.
 - A5. `omp`: delete `"pinned v16"` prose (AC-11); land or revert the pending 17.2.11 bump — do not
   leave the tree split.
 - A6. Extend the lint (AC-9). This is the guard that stops A1–A4 regressing.
-- A7. **Teach `harnessed update` to see agents** (AC-10): an agent-manifest pin source beside the
-  recipe ones, resolving `build_args` through the existing backend machinery, honouring `hold:`, and
-  reporting `UNPINNABLE` distinctly. Without A7, A1–A5 move pins into `agent.yaml` where `update`
-  still cannot read them — the migration would be cosmetic. Touches `src/harnessed/update.py` and
-  `src/harnessed/schema.py`.
+- A7. **Teach `harnessed update` to see agents** (AC-10). Without A7, A1–A5 move pins into
+  `agent.yaml` where `update` still cannot read them — the migration would be cosmetic and AC-10
+  would be met on paper only.
+
+  **Blocking prerequisite found while specifying this** (review of PR #331, second pass):
+  **`agent.yaml` has nowhere to put a `hold:` reason.** `agent.schema.json` types `build_args` as
+  `additionalProperties: {type: [string, number]}` — a bare scalar, `OMP_VERSION: "17.2.11"`. There
+  is no slot for a hold, and AC-10 plus the AC-8 `UNPINNABLE` status both require one (claude and
+  antigravity are the likely holders, per NC-9). So A7 begins with a schema change, and A7 must
+  therefore land BEFORE A2–A4, not after them.
+
+  1. **`agent.schema.json`** — a `build_args` value becomes `oneOf`: the existing scalar, **or** a
+     mapping `{value, hold}`, mirroring exactly what `tools:` already does with `{spec, hold}`.
+     Reusing that shape rather than inventing a second one is the point: one hold concept, one
+     reader, one set of semantics. Backward compatible per NC-10 — every existing scalar still
+     validates, and no field becomes required.
+  2. **`src/harnessed/schema.py`** — parse and validate the new form; a `hold` must be a non-empty
+     reason string, and (as with `tools:`) a hold does **not** license an unpinned value.
+  3. **`src/harnessed/update.py`** — an agent-manifest pin source beside the recipe sources: walk
+     `catalog/agents/*/agent.yaml`, take each `build_args` entry that feeds a Dockerfile `ARG`,
+     and resolve it through the SAME backend machinery as `tools:`. `Dockerfile.harnessed-omp`
+     already carries a mise spec (`github:can1357/oh-my-pi@${OMP_VERSION}`), so `_github_releases`
+     applies unchanged — the work is discovery and reporting, not a new resolver.
+  4. **`src/harnessed/emit.py` / launcher** — confirm the `--build-arg` path reads `.value` from
+     the mapping form. **This is the regression risk of the whole scenario**: a reader that gets a
+     dict where it expected a string either crashes the build or, worse, stringifies the dict into
+     the `ARG`. A test must pin the mapping form end-to-end to `--build-arg`, not just through the
+     schema.
+
+  **Tests** (each named because "add tests" is how a criterion goes unbuilt):
+  - a scalar `build_args` pin resolves and is offered for bump;
+  - a `{value, hold}` pin is listed informationally and **never** offered;
+  - a `hold` with an empty/missing reason is a schema error;
+  - an `UNPINNABLE` agent (AC-8) reports under that status, not as unresolved;
+  - the mapping form reaches `podman build` as `--build-arg NAME=<value>`, with no dict leakage;
+  - every existing scalar-only `agent.yaml` in `catalog/agents/` still validates (NC-10).
 
 **Phase 1 — literal deletions** (no behaviour change): ccstatusline (closes #323), serena,
 context-mode (fed from `tools:`).
@@ -591,6 +623,9 @@ or held (S8 decides which).
   - `src/harnessed/emit.py`
   - `src/harnessed/capability.py` _(host test path, AC-6a)_
   - `src/harnessed/update.py` _(again, in Phase A: agent-manifest pin source, A7/AC-10)_
+  - `schemas/agent.schema.json` _(Phase A/A7: `build_args` value gains the `{value, hold}` form)_
+  - `src/harnessed/emit.py` _(again, Phase A/A7: `--build-arg` must read `.value`, not the mapping)_
+  - `tests/test_agent_pins.py` _(new — the six A7 tests)_
   - `tests/test_recipe_pin_hygiene.py` _(new — AC-1, AC-4)_
 - **Tracker**: `tracker = "allow"`; roll-up to #329.
 
