@@ -27,6 +27,14 @@
 > `spec:`; `UNPINNABLE` promoted to a first-class outcome with defined behaviour at every gate;
 > Phase 0 and Phase A file lists split.
 >
+> **REVISION 7** (2026-08-09) — **spikes S1, S2, S3, S5, S6 run and reported.** Three contradict the
+> spec and are corrected here rather than worked around: `ubi:` is deprecated and fails NC-7, so
+> tokensave moves to `github:` and Phase 2 inherits a lockfile question (S1); claude's installer DOES
+> take a version, so A3 drops from `UNPINNABLE` to a `hold:` (S5); antigravity has no selector AND
+> self-updates at runtime, so A4's `UNPINNABLE` is confirmed with a stronger reason (S6). S2 and S3
+> confirmed their targets as specced. **S7 and S9 remain unrun** — both need a container build or CI,
+> which this environment cannot do. No implementation file is touched by this revision.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -82,9 +90,9 @@ Inventory taken 2026-08-08 across all 22 recipes in `catalog/recipes/`.
 | **context-mode**        | `tools:` **+** `CONTEXT_MODE_VERSION="1.0.169"`                                            | feed it from `tools:`                                    | literal **is load-bearing**: `omp plugin install context-mode@$VER`                                                                                           |
 | **serena**              | `tools:` **+** `SERENA_VERSION="1.6.1"`                                                    | delete the literal                                       | literal is **unused** (`serena init -b LSP` only)                                                                                                             |
 | **codebase-memory-mcp** | `CBM_VERSION="0.9.0"` + hand-rolled `mise use -g`/`mise install` in shell; **no `tools:`** | `tools: github:DeusData/codebase-memory-mcp@0.9.0`       | already uses the mise `github:` backend, just in shell. Host branch symlinks into `$UV_TOOL_BIN_DIR` — must confirm `tools:` reproduces that on a host launch |
-| **tokensave**           | Dockerfile `ARG TOKENSAVE_VERSION=7.0.2` + curl + hard-coded per-arch sha256               | `tools: ubi:…` **(UNVERIFIED — S1)**                     | if `ubi:` resolves, the Dockerfile deletes and both sha256 literals go with it                                                                                |
-| **solidspec**           | Dockerfile `ARG SOLIDSPEC_REF=v0.3.0` + `cargo install --git … --tag`                      | `tools: cargo:…` **(UNVERIFIED — S2)**                   | Dockerfile **cannot fully vanish**: it also `apt-get install`s `cmake pkg-config` as root. Target = system deps only, zero version literals                   |
-| **gsd-core**            | `GSD_CORE_VERSION="1.6.1"` + `pnpm dlx @opengsd/gsd-core@$VER`                             | `tools: npm:…` then invoke the bin **(UNVERIFIED — S3)** | only if the package ships a `bin`                                                                                                                             |
+| **tokensave**           | Dockerfile `ARG TOKENSAVE_VERSION=7.0.2` + curl + hard-coded per-arch sha256               | `tools: github:aovestdipaperino/tokensave@7.0.2` **(VERIFIED — S1)** | S1 measured 2026-08-09: **not `ubi:`** — that backend is deprecated. Both linux arches resolve; the Dockerfile deletes and both sha256 literals go with it   |
+| **solidspec**           | Dockerfile `ARG SOLIDSPEC_REF=v0.3.0` + `cargo install --git … --tag`                      | `tools: cargo:https://github.com/jyjeanne/solidspec@tag:v0.3.0` **(VERIFIED — S2)** | Dockerfile **cannot fully vanish**: it also `apt-get install`s `cmake pkg-config` as root. Target = system deps only, zero version literals                   |
+| **gsd-core**            | `GSD_CORE_VERSION="1.6.1"` + `pnpm dlx @opengsd/gsd-core@$VER`                             | `tools: npm:@opengsd/gsd-core@1.6.1` then invoke the bin **(VERIFIED — S3)** | the package ships three bins; the default `gsd-core` **is** the installer `pnpm dlx` runs today                                                              |
 
 ### Family B — content recipes (mise CANNOT own the pin)
 
@@ -210,7 +218,8 @@ Now measured rather than argued:
 
 The mise `github:`/`ubi:`/`aqua:` backends are **release-asset installers** — they resolve through
 the GitHub _releases_ API (`_REPO_BACKENDS`, `_github_releases`; `src/harnessed/update.py:306,329`),
-download an arch-matched asset, and put an **executable on PATH**. Queried 2026-08-08:
+download an arch-matched asset, and put an **executable on PATH**. (Of the three, use `github:`:
+S1 measured `ubi:` as deprecated in mise 2026.8.3, removed in 2027.1.0.) Queried 2026-08-08:
 
 | Repo                    | Releases | Assets on latest    |
 | ----------------------- | -------- | ------------------- |
@@ -580,8 +589,11 @@ Per gate:
 - **NC-6** — baseline test count must not drop. Re-measure before starting (per #250 the suite
   currently reports `2120 passed, 22 skipped`).
 - **NC-7** — tokensave's supply-chain posture must not regress. It verifies a **sha256 per arch**
-  today. `ubi:` must offer equal or better integrity or the migration is refused and the Dockerfile
-  stays.
+  today. The backend must offer equal or better integrity or the migration is refused and the
+  Dockerfile stays. **S1 settled this 2026-08-09**: `ubi:` FAILS the constraint (deprecated, and it
+  only generates a trust-on-first-use checksum); `github:` PASSES it (attestation + SLSA provenance
+  at install, sha256 per platform in `mise.lock`) **provided the lockfile is committed**. NC-7 is
+  therefore the constraint that makes `mise.lock` mandatory rather than optional — see Phase 2.
 - **NC-8** — **rtk** and **omp** are the reference implementations and do not change mechanically.
   (omp's stale `description:` prose is in scope; its `build_args`/`ARG` arrangement is not.)
 - **NC-9** — antigravity's sha512 manifest verification, and claude's official installer integrity,
@@ -615,8 +627,12 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
   its default. _Pure relocation — no RED test; use the byte-identity + mutation substitute._
 - A2. `codex`: `npm:@openai/codex` → `@<pinned>` from `build_args`. **Not a relocation** — the image
   is currently whatever `@latest` was at its last build. Record which version and why (S7).
-- A3. `claude`: pin `claude.ai/install.sh` (S5), under NC-9.
-- A4. `antigravity`: same (S6), under NC-9.
+- A3. `claude`: pin `claude.ai/install.sh` — **S5 says yes**, pass the version as the installer's
+  positional argument (`bash -s -- "$CLAUDE_VERSION"`) and mark it `hold:` (pinnable, unqueryable).
+  NC-9 is preserved: the manifest sha256 check is untouched.
+- A4. `antigravity`: **S6 says no.** Declare `unpinnable:` with the two-part reason and leave the
+  installer invocation exactly as it is. NC-9 forbids trading its sha512 check for a version string,
+  and there is no version string to trade for.
 - A5. `omp`: delete `"pinned v16"` prose (AC-11); land or revert the pending 17.2.11 bump — do not
   leave the tree split.
 - A6. Extend the lint (AC-9). This is the guard that stops A1–A4 regressing.
@@ -659,7 +675,10 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
     OMP_VERSION: { value: "17.2.11", spec: "github:can1357/oh-my-pi" }
     OPENCODE_VERSION: { value: "1.17.9", spec: "github:sst/opencode" }
     CODEX_VERSION: { value: "0.0.0", spec: "npm:@openai/codex" }
-    CLAUDE_VERSION: { unpinnable: "official installer verifies its own download; offers no version selector" }
+    # S5 corrected this line: claude's installer DOES take a version. It is pinnable, just not
+    # resolvable — no `spec:`, because the script names no upstream to query.
+    CLAUDE_VERSION: { value: "2.1.88", hold: "unqueryable: official installer takes a version but names no upstream repo or registry; downloads.claude.ai publishes only `latest`" }
+    AGY_VERSION: { unpinnable: "installer offers no version selector and its manifest exposes only the current release; the CLI also self-updates in the background, so a build-time pin does not hold" }
   ```
 
   Per-source-type coverage for A1–A5:
@@ -668,8 +687,8 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
   | --- | --- | --- | --- |
   | A1 | opencode | `github:sst/opencode` | **RESOLVED** — installer takes `--version`, so value and spec agree |
   | A2 | codex | `npm:@openai/codex` | **RESOLVED** — npm registry; value chosen by S7 |
-  | A3 | claude | *(none)* | **UNPINNABLE** unless S5 finds a version selector |
-  | A4 | antigravity | *(none)* | **UNPINNABLE** unless S6 finds one, under NC-9 |
+  | A3 | claude | *(none)* | **HELD** — S5 (2026-08-09) found the version selector: `install.sh [stable\|latest\|VERSION]`. Pinnable via `value:`, not resolvable, so `hold:` with the unqueryable reason |
+  | A4 | antigravity | *(none)* | **UNPINNABLE** — S6 (2026-08-09) confirmed: `--dir`/`--help` only, single-version manifest, and the CLI self-updates in the background |
   | A5 | omp | `github:can1357/oh-my-pi` | **RESOLVED** — already the reference shape |
 
   A `spec:` is a *resolver hint*, never a second installer. It names where the version comes from; the
@@ -707,8 +726,16 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
 **Phase 1 — literal deletions** (no behaviour change): ccstatusline (closes #323), serena,
 context-mode (fed from `tools:`).
 
-**Phase 2 — Family A onto `tools:`**: codebase-memory-mcp; tokensave (after S1, under NC-7);
-solidspec (after S2 — Dockerfile keeps only its `apt-get` layer); gsd-core (after S3).
+**Phase 2 — Family A onto `tools:`**: codebase-memory-mcp; tokensave (S1 done — `github:`, **not**
+`ubi:`, under NC-7); solidspec (S2 done — `cargo:…@tag:v0.3.0`; Dockerfile keeps only its `apt-get`
+layer); gsd-core (S3 done — `npm:@opengsd/gsd-core@1.6.1`, then invoke the `gsd-core` bin).
+
+**New scope Phase 2 inherits from S1, flagged rather than assumed.** NC-7 is met by `mise.lock`, so
+Phase 2 must decide **where a lockfile lives for a catalog-assembled tool set and whether it is
+committed**. Today no `mise.lock` exists anywhere in the repo. Without one, `tools:
+github:…@7.0.2` still resolves both arches but the sha256 the Dockerfile deletes has no successor —
+which is precisely the regression NC-7 forbids. This is a design question for Phase 2's spec, not
+something to improvise mid-phase; it may warrant its own issue under #329.
 
 **Phase 3 — Family B onto `install.refs:`**: caveman, superpowers, hyperpowers, gstack,
 mikes-universal-setup. Acceptance is per **ref**, not per recipe: all **seven** declared refs end
@@ -722,20 +749,66 @@ or held (S8 decides which).
 
 ### Spikes (do these first; they change §3)
 
-- **S1** — can mise resolve `ubi:aovestdipaperino/tokensave@7.0.2` for x86_64 _and_ aarch64, and what
-  integrity does it give (NC-7)?
-- **S2** — does mise's `cargo:` backend accept a git URL + tag? If not, solidspec has no `tools:`
-  target.
-- **S3** — does `@opengsd/gsd-core@1.6.1` ship a `bin`, and does invoking it behave like `pnpm dlx`?
+**Status 2026-08-09**: S1, S2, S3, S5, S6 **answered** (below). S4, S8 answered earlier. **S7 and S9
+are BLOCKED on a container build / CI** — neither can be run from a host session with no `podman
+build`, and neither may be guessed: S7 exists specifically to stop A2 silently upgrading users, and
+S9 gates Phase 4. They stay open.
+
+- ~~**S1**~~ — **ANSWERED 2026-08-09. Yes, but not through `ubi:`.** Measured on mise 2026.8.3.
+  `ubi:aovestdipaperino/tokensave@7.0.2` installs and runs (`tokensave 7.0.2`), but mise prints
+  `deprecated [ubi]: The ubi backend is deprecated. Use the github backend instead … removed in mise
+  2027.1.0`, and its only integrity step is `checksum generate` — a trust-on-first-use hash of
+  whatever it just downloaded. **That is a regression against NC-7 and the `ubi:` target is
+  withdrawn.**
+  `github:aovestdipaperino/tokensave@7.0.2` is the replacement and is **strictly better than today**:
+  the install verifies **GitHub artifact attestations and SLSA provenance**, and `mise lock` records a
+  **sha256 per platform** — linux-x64 `d35519fe…`, linux-arm64 `69c88d06…` — pinned to the exact
+  release asset URLs (`tokensave-v7.0.2-{x86_64,aarch64}-linux.tar.gz`, both present on the release).
+  So NC-7 is met by the lockfile, not by hand-written literals, and both arches resolve.
+  **Consequence for Phase 2:** the migration must adopt `mise.lock` alongside `tools:`, or the
+  per-arch sha256 the Dockerfile deletes has no successor. That is new scope — see the note below.
+- ~~**S2**~~ — **ANSWERED 2026-08-09. Yes, with a mandatory `tag:` prefix.**
+  `cargo:https://github.com/jyjeanne/solidspec@tag:v0.3.0` resolves, compiles, and installs
+  `solidspec v0.3.0 (…?tag=v0.3.0#f954057)`. The bare form `@v0.3.0` is **rejected** —
+  `Invalid cargo git version: v0.3.0`. So solidspec HAS a `tools:` target and the version literal
+  leaves the Dockerfile; the `apt-get cmake pkg-config` layer stays, as §1 already said.
+- ~~**S3**~~ — **ANSWERED 2026-08-09. Yes to both.** `@opengsd/gsd-core@1.6.1` declares three bins:
+  `gsd-core` → `bin/install.js`, `gsd_run`, `gsd-tools`. The default `gsd-core` bin **is** the
+  installer that `pnpm dlx "@opengsd/gsd-core@${VER}" --claude --global` runs today, so a `tools:`
+  entry plus `gsd-core --claude --global` is behaviour-preserving and removes the version literal.
+  Cost of the migration, stated so Phase 2 is not surprised: `tools:` installs the package
+  **persistently** and puts all three bins on PATH, where `pnpm dlx` fetched it for one invocation.
 - ~~**S4**~~ — **ANSWERED 2026-08-08** (D1a). `emit.install_env` (`src/harnessed/emit.py:727`) is a
   flat `dict[str, str]` applied last, winning over the inherited env and the recipe's own `env:`
   (`test_install_env_precedence`, both modes). Derived `HARNESSED_REF_*`/`HARNESSED_REPO_*` keys fit
   without changing its shape. Its "identical KEYS in host and container mode" docstring invariant
   still holds (ref keys vary by recipe, never by mode) and is **already covered** by an ungated,
   mode-parametrized test — `test_live_verification_debt.py::TestHostHomeShim::test_the_install_env_exports_both_vars_in_both_modes`.
-- **S5** — does `claude.ai/install.sh` accept a version argument (opencode's does:
-  `bash -s -- --version "$VER"`)? If not, is there a pinnable alternative preserving integrity (NC-9)?
-- **S6** — same for `antigravity.google/cli/install.sh`, whose sha512 verification must survive.
+- ~~**S5**~~ — **ANSWERED 2026-08-09. YES — claude is PINNABLE, and A3 is no longer `UNPINNABLE`.**
+  `claude.ai/install.sh` takes a positional argument and validates it:
+  `Usage: $0 [stable|latest|VERSION]`, `VERSION` matching `^[0-9]+\.[0-9]+\.[0-9]+(-…)?$`.
+  Mechanically the script always downloads the **latest bootstrap binary** — sha256 taken from
+  `$BASE/$version/manifest.json` and verified before use — and then runs
+  `"$binary_path" install ${TARGET:+"$TARGET"}`, so the argument selects the version that is actually
+  installed. **NC-9 survives**: nothing about the integrity path is bypassed; the pin is expressed
+  through the installer's own supported interface, exactly as opencode's is.
+  **Consequence:** A3 becomes `CLAUDE_VERSION: { value: "<pin>" }` with **no `spec:`** — the version
+  is pinnable but not *resolvable*, because the script names no upstream repo or registry
+  (`downloads.claude.ai` publishes only `latest`). That is a `hold:`, not an `unpinnable:`. See the
+  §3/A7 table, corrected below.
+- ~~**S6**~~ — **ANSWERED 2026-08-09. NO — A4 stays `UNPINNABLE`, and for a second reason as well.**
+  `antigravity.google/cli/install.sh` accepts exactly two options, `-d|--dir` and `-h|--help`; any
+  other argument is `[ERROR] Unknown parameter` + exit 1. It reads
+  `$BASE/manifests/<platform>.json`, which exposes **only the current version** (measured: 1.1.11 for
+  both `linux_amd64` and `linux_arm64`) with its `url` and `sha512`. There is no versioned manifest
+  path, and the asset URL embeds an opaque build id (`1.1.11-4956531888881664`) that cannot be
+  derived from a version string — so no alternative selector exists that keeps the sha512 check.
+  **Second, independent reason** (found while reading the script, not asked for by S6): the installer
+  **refuses to run at all when the binary already exists** (`Notice: 'agy' is already installed …`,
+  exit 0) and states that *"The Antigravity CLI automatically self-updates in the background during
+  regular runs."* A version pinned at build time therefore does not stay pinned at runtime. This is a
+  fact about the tool, not about our schema — record it in the `unpinnable:` reason so a future
+  reader does not re-litigate it.
 - **S7** — what is the _currently resolved_ version of `npm:@openai/codex` in the built image
   (`mise ls` inside it), so A2 pins what already ships rather than silently upgrading users?
 - **S8** _(from D1; partially ANSWERED 2026-08-09, see §1 Family B)_ — resolvability is measured for
