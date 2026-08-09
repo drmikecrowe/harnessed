@@ -42,6 +42,14 @@
 > declaration to a **top-level `unpinnable:` mapping** and adds **AC-12** plus two A7 tests. D8 rules
 > S8's Class C per-repo rather than as a class, adding a short assessment step before Phase 3.
 >
+> **REVISION 8a** (2026-08-09) — four CodeRabbit findings on PR #333, all verified against the code
+> and all valid: the `unpinnable:` key namespace defined (it was two namespaces, making the
+> "declared in both" rule vacuous); the outcome table's stale `{unpinnable: …}` `build_args` form
+> corrected and "fourth status" retired for **third outcome**; AC-12 given the `--check` semantics it
+> lacked (sixth `Report` bucket, `check_exit_code()` untouched); and the `--build-arg` owner
+> corrected from `emit.py` to **`launcher.py:587-589`** — `emit.py` has no `build_args` handling at
+> all, so A7 would have been sent to a file with nothing to change.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -502,23 +510,42 @@ this."*
   installer's interface, not a token we introduce, and the gate is untouched.
 - **The `hold:` rule** (`src/harnessed/schema.py:1236`) is explicit that a hold must never license a
   floating pin, *"otherwise `hold:` becomes the escape hatch that reintroduces `@latest`."* D7 does
-  not touch that rule. `UNPINNABLE` is the separate fourth status REVISION 5 introduced precisely
+  not touch that rule. `UNPINNABLE` is the separate **third outcome** REVISION 5 introduced precisely
   because `hold:` could not express this case, and its reason string must name the integrity
   mechanism that blocks pinning — which is what keeps it from becoming the same escape hatch.
 
 **Where the declaration lives — follows from the ruling.** There is no version, so nothing reaches
 `--build-arg`; by the ruling's own logic it is not a build argument. It is a **top-level `unpinnable:`
-mapping** on `agent.yaml`, sibling to `build_args`, keyed by a short agent-local name with the reason
-as its value:
+mapping** on `agent.yaml`, sibling to `build_args`:
 
 ```yaml
 # catalog/agents/antigravity/agent.yaml
 unpinnable:
-  agy: >-
+  AGY_VERSION: >-
     installer offers no version selector (--dir/--help only) and its manifest exposes only the
     current release behind an opaque build id; the CLI also self-updates in the background, so a
     build-time pin would not hold
 ```
+
+#### The `unpinnable:` key namespace — settled here, not left to the implementation
+
+Raised in review of PR #333: the first draft used a short agent-local label (`agy`) while
+`build_args` uses `ARG` names (`OMP_VERSION`), which left three questions open and made the
+"declared in both is an error" rule nearly vacuous — two different namespaces cannot collide. That is
+the same defect the `install.refs` contract deleted rule 3 for, written in again. Settled:
+
+1. **One namespace.** An `unpinnable:` key is drawn from the **same space as a `build_args` key**:
+   `^[A-Z][A-Z0-9_]*$`, the name the `ARG` *would* have carried. `AGY_VERSION` names no `ARG` today
+   and is not required to — it is an identifier, not a build input, which is exactly why it lives
+   outside `build_args`.
+2. **Comparison is exact YAML keys**, within one agent manifest. No normalisation, no case folding —
+   the charset admits no variants, so a clever comparison could only introduce a way to be wrong.
+3. **Keys are agent-scoped.** The same key MAY appear in different agents; two agents both declaring
+   `CLI_VERSION` is not a collision, because nothing is ever merged across manifests. The
+   "declared in both is an error" rule therefore means *within one agent's `build_args` and
+   `unpinnable:`* — now a reachable case, and a test asserts it rather than trusting it.
+4. **The report identifies `<agent>/<KEY>`** — `antigravity/AGY_VERSION` — the same shape a resolved
+   agent pin gets, so UNPINNABLE rows read as peers of pinned ones rather than as a separate species.
 
 This keeps `build_args` meaning exactly "things that become `--build-arg`" — the property A7 item 4
 already has to test — and gives A6's lint the machine-readable marker that separates *declared*
@@ -586,7 +613,11 @@ four different answers for one agent. An implementer could not tell whether Phas
 | --- | --- | --- |
 | **RESOLVED** | pinned, and a registry can answer "is there a newer one" | `{value, spec}` |
 | **HELD** | pinned; bumping is deliberately manual | `{value, spec?, hold: "<reason>"}` |
-| **UNPINNABLE** | **not pinned**, because no version selector exists that preserves integrity (NC-9) | `{unpinnable: "<reason naming the integrity mechanism>"}` |
+| **UNPINNABLE** | **not pinned**, because no version selector exists that preserves integrity (NC-9) | a **top-level `unpinnable:`** entry (D7), never a `build_args` value — `unpinnable: { AGY_VERSION: "<reason naming the integrity mechanism>" }` |
+
+**Naming**: these are the three *outcomes*, and UNPINNABLE is the **third**. Earlier revisions called
+it "a fourth status" (it was the fourth answer across four disagreeing gates, which is the problem
+this table solved, not a fourth row). That phrasing is retired — say *third outcome*.
 
 `UNPINNABLE` is **not** a flavour of HELD. HELD is pinned and chosen; UNPINNABLE is unpinned and
 conceded. Collapsing them would let an unpinned installer inherit HELD's "this is fine" reading —
@@ -615,9 +646,13 @@ Per gate:
 - **AC-8 — no unpinned download in any agent image.** codex, claude, antigravity each acquire their
   CLI at a version named in `agent.yaml`.
   - **Settled 2026-08-09 by S5/S6 + D7**: codex and claude satisfy this (claude via the installer's
-    own positional version argument); **antigravity does not and cannot**, so it takes outcome 2
-    below — `UNPINNABLE`, declared, reported, and documented per AC-12. Two of three, with the third
-    an honest recorded gap, is the intended end state of this AC — not a partial failure to fix later.
+    own positional version argument); **antigravity does not and cannot**, so it takes **step 2 of
+    the ordered procedure below** and lands on the **third pin outcome, `UNPINNABLE`** — declared,
+    reported, and documented per AC-12. (Two numbered lists meet here and PR #333's review read them
+    as contradicting: the procedure below is *what to do, in order*; the outcome table above is
+    *what an agent ends up being*. Step 2 of the first produces the third of the second.) Two of
+    three agents pinned, with the third an honest recorded gap, is the intended end state of this
+    AC — not a partial failure to fix later.
   - **Conflict with NC-9, resolved here** (raised in review of PR #331). AC-8 demands a version;
     NC-9 forbids buying one by bypassing a verifying installer. If S5/S6 finds an installer that
     cannot take a version without losing its signature check, those are not both satisfiable, and
@@ -627,7 +662,7 @@ Per gate:
   - The required outcome, in strict order:
     1. **Find a versioned, integrity-preserving source.** A pinned release asset with a published
        checksum, or the installer's own version flag if it has one. This satisfies both.
-    2. **If none exists, the agent FAILS AC-8** and is recorded with a fourth status —
+    2. **If none exists, the agent FAILS AC-8** and is recorded with the third pin outcome —
        `UNPINNABLE (<installer>, verifies <mechanism>, offers no version selector)`. It is not
        `PASSED`, not `held`, and not quietly excluded. It appears in the update report as a known
        unpinnable surface with its integrity mechanism named.
@@ -665,6 +700,15 @@ Per gate:
   section and in **no** bump offer, and the AC-11 prose lint accepts "tracks upstream" wording while
   still rejecting a restated version literal. Without (b) this AC is satisfiable by a silent
   data structure, which is the failure mode D7's third commitment names.
+  - **`--check` must stay green** (raised in review of PR #333, and the existing code already argues
+    it). `Report` today has five buckets — `stale`, `held`, `current`, `unresolved`, `cooling`
+    (`src/harnessed/update.py:169`) — and `check_exit_code()` returns `1 if self.stale else 0`
+    (`:177`), whose docstring reasons that unresolved and cooling pins must not fail because *"a
+    permanently-red check is one nobody reads."* An UNPINNABLE agent is permanently unpinnable, so
+    that argument applies to it with full force. Concretely: UNPINNABLE gets a **sixth bucket**, is
+    excluded from `stale`, from bump offers, and from the non-zero condition — `check_exit_code()`
+    is left untouched, which is the cheapest possible proof. A test asserts `--check` exits 0 on a
+    catalog whose only finding is an UNPINNABLE agent.
 
 ### Negative constraints (must NOT change)
 
@@ -774,11 +818,12 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
     CLAUDE_VERSION: { value: "2.1.88", hold: "unqueryable: official installer takes a version but names no upstream repo or registry; downloads.claude.ai publishes only `latest`" }
   ```
 
-  **`unpinnable:` is NOT a `build_args` member** (D7). An earlier draft of this section showed an
-  `AGY_VERSION: { unpinnable: … }` entry; that name was invented for the illustration and no such
-  `ARG` exists. D7 moved the concept to a top-level `unpinnable:` mapping, so `build_args` keeps the
-  single meaning "becomes `--build-arg`" — which is exactly the property item 4 below has to test.
-  `unpinnable` is therefore dropped from the `build_args` value schema in step 1.
+  **`unpinnable:` is NOT a `build_args` member** (D7). An earlier draft showed an
+  `AGY_VERSION: { unpinnable: … }` entry *inside* `build_args`. D7 moved the concept to a top-level
+  `unpinnable:` mapping, so `build_args` keeps the single meaning "becomes `--build-arg`" — exactly
+  the property item 4 below has to test. `unpinnable` is therefore dropped from the `build_args`
+  value schema in step 1. The **key** `AGY_VERSION` survives as the identifier (D7 §namespace);
+  what it never becomes is a `--build-arg`, and no `ARG` of that name exists in the Dockerfile.
 
   Per-source-type coverage for A1–A5:
 
@@ -812,11 +857,15 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
      and resolve it through the SAME backend machinery as `tools:`. `Dockerfile.harnessed-omp`
      already carries a mise spec (`github:can1357/oh-my-pi@${OMP_VERSION}`), so `_github_releases`
      applies unchanged — the work is discovery and reporting, not a new resolver.
-  4. **`src/harnessed/emit.py` / launcher** — confirm the `--build-arg` path reads `.value` from
-     the mapping form. **This is the regression risk of the whole scenario**: a reader that gets a
-     dict where it expected a string either crashes the build or, worse, stringifies the dict into
-     the `ARG`. A test must pin the mapping form end-to-end to `--build-arg`, not just through the
-     schema.
+  4. **`src/harnessed/launcher.py`** — `_build_agent_image()` at **`:587-589`** is the single place
+     `--build-arg` is composed from an agent manifest:
+     `for key, val in agent.build_args.items(): build_args += ["--build-arg", f"{key}={val}"]`.
+     It must read `.value` from the mapping form. **This is the regression risk of the whole
+     scenario**: that `f"{key}={val}"` will happily stringify a dict into the `ARG` rather than
+     crash, so the build succeeds and ships garbage. A test must pin the mapping form end-to-end to
+     the build argv, not just through the schema.
+     _(Earlier revisions named `emit.py` for this. Corrected in review of PR #333 — `emit.py` has no
+     `build_args` handling; sending the A7 session there would have found nothing to change.)_
 
   **Tests** (each named because "add tests" is how a criterion goes unbuilt):
   - a scalar `build_args` pin resolves and is offered for bump;
@@ -944,9 +993,13 @@ S9 gates Phase 4. They stay open.
     `unpinnable:` mapping** per D7)_
   - `src/harnessed/schema.py` _(parse/validate the mapping form and `unpinnable:`; reject a name
     declared in both)_
-  - `src/harnessed/update.py` _(agent-manifest pin source; four-outcome reporting incl. UNPINNABLE)_
-  - `src/harnessed/emit.py` _(`--build-arg` must read `.value`, not the mapping, and must emit
-    **nothing** for an `unpinnable:` member)_
+  - `src/harnessed/update.py` _(agent-manifest pin source; UNPINNABLE as a sixth `Report` bucket,
+    excluded from `stale` and from `check_exit_code()`)_
+  - **`src/harnessed/launcher.py`** _(`_build_agent_image()`, **`:587-589`** — the `--build-arg`
+    reader must take `.value` from the mapping form and emit **nothing** for an `unpinnable:` member.
+    Corrected in review of PR #333: earlier revisions named `emit.py` here, which is **wrong** —
+    measured 2026-08-09, `emit.py` contains no `build_args` handling at all and this loop is the only
+    place `--build-arg` is composed from an agent manifest.)_
   - `catalog/base/Dockerfile.harnessed-*` _(A1–A3: opencode's `ARG` loses its default; claude and
     codex **gain** an `ARG` — measured 2026-08-09, neither has one today. Antigravity gains none.)_
   - `catalog/agents/*/agent.yaml` _(A1–A5: pins move here; antigravity gets `unpinnable:`)_
