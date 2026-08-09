@@ -27,7 +27,9 @@ FROM harnessed-base:latest
 # Install a pinned, working opencode via the vendor installer into ~/.opencode/bin (a real platform
 # binary, not the npm wrapper). --no-modify-path: we add the dir to PATH explicitly in .bashrc so the
 # login-shell attach (`bash -l -c "... opencode"`) and the headless capability backstop resolve it.
-ARG OPENCODE_VERSION=1.17.9
+# No default: the pin lives in catalog/agents/opencode/agent.yaml (AC-7), which is the one place
+# `harnessed update` looks. A default here would be a second copy, free to drift from the first.
+ARG OPENCODE_VERSION
 RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}" --no-modify-path && \
     echo 'export PATH="$HOME/.opencode/bin:$PATH"' >> /home/harnessed/.bashrc
 
