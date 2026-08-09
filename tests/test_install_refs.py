@@ -79,6 +79,55 @@ class TestRule1KeySyntax:
             assert key in str(exc.value), "the error must name the offending key"
 
 
+    def test_a_duplicate_key_is_a_SchemaError_not_a_yaml_crash(self, tmp_path):
+        """Rule 1 says keys are UNIQUE, and the contract says to assert it rather than trust it.
+
+        Found by adversarial review: ruamel raises `DuplicateKeyError` at PARSE time, before any
+        of this module's validation runs. Every production caller catches `SchemaError` (or
+        `(SchemaError, CollisionError)`), so the ruamel exception escaped all of them and reached
+        the user as an unhandled traceback from the launcher — the exact failure mode rule 1 exists
+        to prevent, since a YAML editor does not warn on a repeated key.
+        """
+        body = ("name: r\ninstall:\n  script: install.sh\n  refs:\n"
+                "    foo:\n      repo: o/r1\n      ref: v1.0.0\n"
+                "    foo:\n      repo: o/r2\n      ref: v2.0.0\n")
+        with pytest.raises(SchemaError) as exc:
+            load_recipe(_recipe(tmp_path, body))
+        assert "foo" in str(exc.value), "the error must name the duplicated key"
+
+    def test_a_duplicate_key_anywhere_in_a_manifest_is_a_SchemaError(self, tmp_path):
+        """The fix is in `_load_yaml`, so it covers every manifest, not only `refs:`. Asserted
+        here because a narrower fix would leave the same traceback reachable one field over."""
+        body = "name: r\ndescription: a\ndescription: b\n"
+        with pytest.raises(SchemaError, match="description"):
+            load_recipe(_recipe(tmp_path, body))
+
+
+class TestRule3NamespaceReservation:
+    """`HARNESSED_REF_*` / `HARNESSED_REPO_*` belong exclusively to `refs:`.
+
+    The contract commits to this test by name, and adversarial review found it missing — neither
+    written nor deferred, falling in the gap between "rules 1/4/6/7 implemented" and "rules 2/5
+    deferred". It passes trivially today. Its job is to fail the day someone adds a general-purpose
+    launcher variable in that namespace, which would silently shadow a recipe's ref and hand the
+    install script an empty value.
+    """
+
+    def test_install_env_reserves_no_key_in_the_ref_namespace(self, tmp_path):
+        import re as _re
+
+        from harnessed.emit import install_env
+
+        recipe = load_recipe(_recipe(tmp_path, "name: r\ninstall:\n  script: install.sh\n"))
+        env = install_env(recipe, mode="container", harness="claude", config_dir="/c",
+                          cache_dir="/x", bin_dir="/b", home_shim="/h")
+        offenders = [k for k in env if _re.match(r"^HARNESSED_(REF|REPO)_", k)]
+        assert not offenders, (
+            f"{offenders} collide with the namespace `install.refs:` owns — a recipe ref of that "
+            f"name would be silently shadowed"
+        )
+
+
 class TestRefFieldsAreImmutable:
     """D1a: `ref` is a tag or a FULL SHA; floating is rejected exactly as for `tools:`."""
 
@@ -102,6 +151,14 @@ class TestRefFieldsAreImmutable:
         body = ("name: r\ninstall:\n  script: install.sh\n  refs:\n    k:\n"
                 "      repo: https://github.com/o/r.git\n      ref: v1.0.0\n")
         with pytest.raises(SchemaError, match="repo"):
+            load_recipe(_recipe(tmp_path, body))
+
+    @pytest.mark.parametrize("script", ["''", "'   '", "123"])
+    def test_an_empty_or_non_string_script_is_an_error(self, tmp_path, script):
+        """Pre-existing branch, untested until now: this change's line shifts pulled it into the
+        changed set, and the honest way to clear that is to test it rather than to explain it."""
+        body = f"name: r\ninstall:\n  script: {script}\n"
+        with pytest.raises(SchemaError, match=r"install\.script"):
             load_recipe(_recipe(tmp_path, body))
 
     def test_refs_must_be_a_mapping_not_a_list(self, tmp_path):
@@ -235,10 +292,25 @@ class TestRule6DerivedCacheKey:
         the original keyed the third ref `aminglg` and published that string's digest."""
         assert _install(tmp_path, _THREE_REFS).cache == self.GOLDEN
 
-    def test_the_canonical_input_is_what_the_spec_says(self, tmp_path):
-        """Pins the INPUT, not just the output. A digest alone cannot tell you which of the four
-        stated properties (sort, render, join, no trailing newline) an implementation got wrong."""
-        assert hashlib.sha256(self.CANONICAL.encode("utf-8")).hexdigest()[:16] == self.GOLDEN
+    def test_the_code_builds_the_canonical_input_the_spec_specifies(self):
+        """Binds the CODE's canonical construction to the spec's stated string.
+
+        The first version of this test hashed `CANONICAL` and compared it to `GOLDEN` — two
+        hardcoded class attributes, never touching `derived_cache_key`. Adversarial review pointed
+        out it therefore asserted the spec's self-consistency, not the implementation, while its
+        docstring claimed to pin the input. It now runs the real function over the real refs, so a
+        wrong delimiter, sort, or trailing newline fails HERE rather than only through the digest.
+        """
+        refs = {
+            "oakoss": InstallRef(repo="oakoss/agent-skills",
+                                 ref="0283bed313563d5677a0838f4bf921b03296cf6c"),
+            "blader": InstallRef(repo="blader/humanizer",
+                                 ref="1b48564898e999219882660237fde01bf4843a0f"),
+            "aminblg": InstallRef(repo="AminBlg/SimpleEnglish",
+                                  ref="379728b51981b6d2ee1de0f201164483a9648972"),
+        }
+        assert derived_cache_key(refs) == hashlib.sha256(self.CANONICAL.encode("utf-8")).hexdigest()[:16]
+        assert derived_cache_key(refs) == self.GOLDEN
 
     def test_the_key_is_16_lowercase_hex_characters(self, tmp_path):
         key = _install(tmp_path, _THREE_REFS).cache

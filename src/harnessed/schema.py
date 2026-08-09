@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ruamel.yaml import YAML
+from ruamel.yaml.error import MarkedYAMLError
 
 from . import paths
 
@@ -79,8 +80,18 @@ def _load_yaml(path: Path) -> dict:
     # once; a shared instance interleaves and yields nonsense (marks from one file reported against
     # another, or a half-built mapping that "loads" with fields missing). One instance per load.
     yaml = YAML(typ="safe", pure=True)
-    with path.open("r", encoding="utf-8") as fh:
-        data = yaml.load(fh)
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data = yaml.load(fh)
+    except MarkedYAMLError as exc:
+        # ruamel raises at PARSE time — before any validation in this module runs — and every
+        # caller catches `SchemaError` (launcher, update, assemble). Left unwrapped, a duplicate
+        # key or a tab-indent reached the user as an unhandled traceback from the launcher rather
+        # than the one-line rejection those callers are written to print. A duplicate key is the
+        # motivating case: `install.refs:` requires unique keys, and no YAML editor warns about a
+        # repeated one. Found by adversarial review of the refs work; fixed here rather than in the
+        # refs parser because parsing fails before the refs parser is ever reached.
+        raise SchemaError(f"{path}: invalid YAML — {exc}") from exc
     if data is None:
         return {}
     if not isinstance(data, dict):
