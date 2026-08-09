@@ -304,7 +304,22 @@ def discover_pins(recipe_dir: Path) -> list[Pin]:
     # inside the script alike, since they are bumped as a unit after a human diff review.
     install_hold = recipe.install.hold if recipe.install else None
 
-    if recipe.install and recipe.install.cache:
+    # Rule 2/5 — a declared ref IS resolvable: `repo` names the upstream and `ref` is the pin, so
+    # this is the first Family B pin `update` can actually answer a question about. `hold` is
+    # per-REF, so a recipe with three refs may hold one and auto-bump two — which is exactly what
+    # the recipe-wide `install.hold` above cannot express.
+    refs = recipe.install.refs if recipe.install else {}
+    for key, ref in refs.items():
+        pins.append(Pin(
+            recipe=recipe.name, file=manifest, spec=f"{ref.repo}@{ref.ref}", name=ref.repo,
+            current=ref.ref, backend="github", hold=ref.hold or install_hold, key=key,
+        ))
+
+    # A DERIVED cache is not an upstream pin. Reporting it would double-count the refs it is
+    # computed from, and offer a bump against a digest no human can act on. A hand-written
+    # `cache:` still reports exactly as before (NC-5) — the two cannot co-occur, so this is a
+    # clean either/or rather than a precedence rule.
+    if recipe.install and recipe.install.cache and not refs:
         pins.append(Pin(
             recipe=recipe.name, file=manifest, spec=recipe.install.cache,
             name="install.cache", current=recipe.install.cache, backend="opaque",
