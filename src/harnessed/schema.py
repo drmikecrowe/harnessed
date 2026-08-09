@@ -2341,6 +2341,8 @@ _MISE_ACQUIRE_RE = re.compile(
 _SPEC_TOKEN_RE = re.compile(r"^(?:\"[^\"]+\"|'[^']+'|[A-Za-z0-9][^\s]*)$")
 # `curl … | bash` / `wget … | sh` — the shape that runs an installer nobody has pinned.
 _PIPED_INSTALLER_RE = re.compile(r"\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?sh\b")
+# Command separators — NOT `|`, which is the pipe INTO the shell that defines the installer shape.
+_SHELL_COMMAND_SPLIT_RE = re.compile(r"&&|\|\||;")
 # What counts as a version on a mise spec: a shell variable (the pin lives in build_args) or a
 # version-like literal. Deliberately narrow — an unrecognised shape fails closed rather than being
 # guessed at, matching `_IMMUTABLE_REF_RE`'s posture.
@@ -2358,10 +2360,23 @@ _SPEC_VERSION_RE = re.compile(
 # `VERSION|VER|REF|TAG` is not a guess: every pin in the catalog is `<TOOL>_VERSION`, and D7 fixes
 # that same namespace for `unpinnable:` keys. A pin passed under some other name is reported as
 # unversioned — false alarm rather than false clearance, which is the direction this gate must err.
-_VERSION_EVIDENCE_RE = re.compile(
-    r"--version\b|\$\{?[A-Za-z_]\w*(?:VERSION|VER|REF|TAG)\}?\b",
-    re.IGNORECASE,
-)
+_SHELL_VAR_RE = re.compile(r"\$\{?([A-Za-z_]\w*)\}?")
+# A name is version-ish only if a WHOLE underscore-separated segment says so. Matching a mere
+# SUFFIX let `$SERVER`, `$DRIVER` and `$driver` read as pins — they end in "VER" — which is a false
+# CLEARANCE, the one direction this gate must never err. Raised in review of PR #335.
+_VERSION_NAME_RE = re.compile(r"(?:^|_)(?:VERSION|VER|REF|TAG)$", re.IGNORECASE)
+_EXPLICIT_VERSION_FLAG_RE = re.compile(r"--version\b")
+
+
+def _has_version_evidence(command: str) -> bool:
+    """Does this ONE shell command show a version — an explicit flag, or a version-named variable?
+
+    Scoped to a single command on purpose. Checking the whole logical line meant a `--version` in
+    `curl A | bash -s -- --version 1.2.3 && curl B | bash` vouched for B as well.
+    """
+    if _EXPLICIT_VERSION_FLAG_RE.search(command):
+        return True
+    return any(_VERSION_NAME_RE.search(m.group(1)) for m in _SHELL_VAR_RE.finditer(command))
 
 
 # `FROM harnessed-base:latest` is not a floating UPSTREAM ref — it names a first-party image built
@@ -2375,8 +2390,12 @@ _VERSION_EVIDENCE_RE = re.compile(
 # `AS <alias>` is the standard multi-stage form and must stay exempt — anchoring at `:latest` alone
 # rejected `FROM harnessed-base:latest AS builder`, failing a legitimate Dockerfile with a rule that
 # exists to catch upstream drift. Found by adversarial review of 659cea2.
+# `--platform=…` sits between FROM and the image on any multi-arch build, and omitting it broke the
+# exemption exactly as the missing `AS` alias did. Raised in review of PR #335 — the same class,
+# found twice, because the first fix was not swept across the rest of the FROM grammar.
 _FIRST_PARTY_FROM_RE = re.compile(
-    r"^\s*FROM\s+harnessed-(?:\$\{[A-Za-z_]\w*\}|[a-z0-9][\w.-]*):latest"
+    r"^\s*FROM\s+(?:--[a-z-]+=\S+\s+)*"
+    r"harnessed-(?:\$\{[A-Za-z_]\w*\}|[a-z0-9][\w.-]*):latest"
     r"(?:\s+AS\s+\w+)?\s*$",
     re.IGNORECASE,
 )
@@ -2456,10 +2475,15 @@ def _unversioned_acquisitions(dockerfile_body: str) -> list[str]:
         for key, desc in _mise_specs(line):
             if desc:
                 record(key, desc)
-        if _PIPED_INSTALLER_RE.search(line) and not _VERSION_EVIDENCE_RE.search(line):
-            m = re.search(r"https?://\S+", line)
-            target = m.group(0) if m else line.strip()
-            record(f"pipe:{target}", f"piped installer {target!r}")
+        # Split into COMMANDS before looking for piped installers. A single `search` per line found
+        # only the first, so `curl A | bash && curl B | bash` counted once and one `unpinnable:`
+        # entry excused B — the same one-match-per-line class as the multi-spec `mise` defect.
+        # Splitting also scopes the evidence check, so A's `--version` cannot vouch for B.
+        for command in _SHELL_COMMAND_SPLIT_RE.split(line):
+            if _PIPED_INSTALLER_RE.search(command) and not _has_version_evidence(command):
+                m = re.search(r"https?://\S+", command)
+                target = m.group(0) if m else command.strip()
+                record(f"pipe:{target}", f"piped installer {target!r}")
     return out
 
 

@@ -56,8 +56,10 @@
 > unpinned, so wiring the agent lint in would fail their builds while A2/A3 are deferred. The
 > dependency diagram's "A6 — independent, any time" is therefore wrong: A6's *enforcement* depends on
 > A2 and A3, even though its *detection* does not. **Ruled by the human**: land the detection
-> function and its tests now with `assemble()` untouched; wire the call in with A2/A3, when nothing
-> fails it. A3 also **stays deferred** — pinning claude means choosing the version every user gets.
+> function and its tests now with `assemble()` untouched; wire the call in once nothing fails it.
+> A3 also **stays deferred** — pinning claude means choosing the version every user gets.
+> **Part 2 is blocked on THREE things, not two** (corrected in review of PR #335): A2, A3, and
+> **A5b — pinning omp's `bun`**, an unpinned acquisition the lint discovered on its first real run.
 >
 > One stated exception falls out of building it: **`FROM harnessed-<name>:latest` is exempt from the
 > floating-ref rule.** It names a first-party image built by this same pipeline — `emit.py` GENERATES
@@ -790,7 +792,16 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
 - A5. `omp`: delete `"pinned v16"` prose (AC-11); land or revert the pending 17.2.11 bump — do not
   leave the tree split.
 - A6. Extend the lint (AC-9). This is the guard that stops A1–A4 regressing. **Lands in two parts
-  (REVISION 9): the detection function and its tests now; the `assemble()` call with A2/A3.**
+  (REVISION 9): the detection function and its tests now; the `assemble()` call once nothing fails
+  it.** Part 2 has **three** prerequisites, not two — A2 (codex), A3 (claude), **and pinning omp's
+  `bun`**, which A6 itself discovered (`Dockerfile.harnessed-omp:27`, see A5b). A5 does not cover it:
+  A5 is the prose deletion and the 17.2.11 bump. Raised in review of PR #335, where the revision text
+  named only A2/A3 and would have left part 2 breaking the omp build.
+- A5b. **`omp`: pin `bun`.** Found by A6's real-execution pass, not by inspection — the shipped line
+  is `mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" bun`, and the trailing `bun` has resolved
+  to whatever was current at each build since it was written. Same class as bd harnessed-2o9. Pinning
+  it changes what the omp image ships, so it is a deliberate version choice like A2/A3 — not a
+  drive-by fix — and it blocks A6 part 2.
 - A7. **Teach `harnessed update` to see agents** (AC-10). Without A7, A1–A5 move pins into
   `agent.yaml` where `update` still cannot read them — the migration would be cosmetic and AC-10
   would be met on paper only.

@@ -102,7 +102,13 @@ class TestAbsentIsRejected:
         with pytest.raises(PinValidationError, match="no version"):
             validate_agent_pin("claude", body, unpinnable={})
 
-    @pytest.mark.parametrize("var", ["$HOME", "${HOME}", "${TARGETARCH}", "$INSTALL_DIR", "${PATH}"])
+    @pytest.mark.parametrize("var", [
+        "$HOME", "${HOME}", "${TARGETARCH}", "$INSTALL_DIR", "${PATH}",
+        # A name that merely ENDS in a suffix token is not a version. Raised in review of PR #335:
+        # the alternation runs case-insensitively, so `SERVER`, `DRIVER` and `driver` all end in
+        # `VER` and were read as pins — a false CLEARANCE, the direction this gate must never err.
+        "$SERVER", "${DRIVER}", "$driver", "$WHATEVER", "${SEMVER_LIKE_NAME}",
+    ])
     def test_an_irrelevant_variable_is_not_version_evidence(self, var):
         """A `$VAR` is only a pin if it plausibly NAMES a version.
 
@@ -350,6 +356,22 @@ class TestMultiStageBaseIsExempt:
     def test_the_alias_form_is_exempt(self):
         validate_agent_pin("x", "FROM harnessed-base:latest AS builder\nRUN true\n", unpinnable={})
 
+    @pytest.mark.parametrize("line", [
+        "FROM --platform=$TARGETPLATFORM harnessed-base:latest",
+        "FROM --platform=linux/amd64 harnessed-base:latest AS builder",
+    ])
+    def test_a_platform_flag_does_not_break_the_exemption(self, line):
+        """Raised in review of PR #335 — the same defect class as `AS builder`, which adversarial
+        review had already found: a legitimate first-party line failed a rule that exists to catch
+        upstream drift. Multi-arch builds make `--platform` likely. Finding the class once should
+        have meant sweeping the diff for its other instances; it did not, so here is the sweep."""
+        validate_agent_pin("x", line + "\nRUN true\n", unpinnable={})
+
+    def test_a_platform_flag_does_not_smuggle_a_third_party_image(self):
+        with pytest.raises(PinValidationError, match="floating"):
+            validate_agent_pin("x", "FROM --platform=linux/amd64 ubuntu:latest\nRUN true\n",
+                               unpinnable={})
+
     def test_the_alias_form_of_a_third_party_image_still_fails(self):
         with pytest.raises(PinValidationError, match="floating"):
             validate_agent_pin("x", "FROM ubuntu:latest AS builder\nRUN true\n", unpinnable={})
@@ -401,11 +423,30 @@ class TestUnpinnableSuppresses:
         with pytest.raises(PinValidationError, match="2 unversioned"):
             validate_agent_pin("x", "RUN mise use -g bun deno\n", unpinnable={"ONE": "reason"})
 
-    def test_two_distinct_piped_installers_owe_two_declarations(self):
-        body = ("RUN curl -fsSL https://a.example/install.sh | bash\n"
-                "RUN curl -fsSL https://b.example/install.sh | bash\n")
+    @pytest.mark.parametrize("body", [
+        # separate RUN lines
+        ("RUN curl -fsSL https://a.example/install.sh | bash\n"
+         "RUN curl -fsSL https://b.example/install.sh | bash\n"),
+        # ...and both on ONE line, which the per-line `search` could not reach. Raised in review of
+        # PR #335: this is the same defect class as the multi-spec `mise` bug — one match per line,
+        # so the second installer was invisible and an unrelated `unpinnable:` entry excused it.
+        ("RUN curl -fsSL https://a.example/install.sh | bash && "
+         "curl -fsSL https://b.example/install.sh | bash\n"),
+    ])
+    def test_two_distinct_piped_installers_owe_two_declarations(self, body):
         with pytest.raises(PinValidationError, match="2 unversioned"):
             validate_agent_pin("x", body, unpinnable={"ONE": "reason"})
+
+    def test_version_evidence_does_not_leak_across_commands_on_one_line(self):
+        """A `--version` belonging to the FIRST command must not excuse the second.
+
+        The evidence check ran over the whole logical line, so any pinned installer anywhere on it
+        vouched for every other. Same scoping error as the count itself.
+        """
+        body = ("RUN curl -fsSL https://a.example/i.sh | bash -s -- --version 1.2.3 && "
+                "curl -fsSL https://b.example/i.sh | bash\n")
+        with pytest.raises(PinValidationError, match=r"b\.example"):
+            validate_agent_pin("x", body, unpinnable={})
 
     def test_two_declarations_cover_two_acquisitions(self):
         body = ("RUN curl -fsSL https://antigravity.google/cli/install.sh | bash\n"
