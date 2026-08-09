@@ -3693,8 +3693,13 @@ def update_pins(
     from . import update as pinupdate
 
     dirs = _update_recipe_dirs()
-    if not dirs:
-        _err.print("[yellow]warning:[/yellow] no recipes found in the active catalog")
+    # Both sources are gathered BEFORE the empty check. The recipe-only guard predates agents
+    # having pins at all; left in front of the agent scan it would make a catalog of agents and no
+    # recipes report nothing — including its unpinnable ones — and keep `--check` green over pins
+    # nobody had looked at.
+    agent_dirs = _update_agent_dirs()
+    if not dirs and not agent_dirs:
+        _err.print("[yellow]warning:[/yellow] no recipes or agents found in the active catalog")
         raise typer.Exit(0)
 
     # Resolve THROUGH the module attribute rather than importing the function, so a test (or a
@@ -3703,7 +3708,7 @@ def update_pins(
         dirs,
         # A7: agent manifests own their pins too, and used not to be swept at all — which is how
         # three agents reached main with genuinely unpinned downloads.
-        agent_dirs=_update_agent_dirs(),
+        agent_dirs=agent_dirs,
         # The base image's extra-tools pins rot exactly like recipe pins do, and used not to be
         # swept at all — which is how bd harnessed-2o9 reached CI.
         extra_tools=pinupdate.extra_tools_default_path(),

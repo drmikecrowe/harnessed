@@ -14,6 +14,8 @@ the build boundary, and two of the three are new. What is being defended:
   * `--check` must not go red over an agent that is unpinnable by nature, or it is red forever.
 """
 
+from pathlib import Path
+
 import pytest
 
 from harnessed.schema import SchemaError, load_agent
@@ -36,6 +38,19 @@ class TestBuildArgShapes:
         """NC-10: the shape every agent.yaml uses today must survive untouched."""
         _write(tmp_path, "omp", _HEAD + 'build_args:\n  OMP_VERSION: "16.4.6"\n')
         assert load_agent("omp", root=tmp_path).build_args == {"OMP_VERSION": "16.4.6"}
+
+    @pytest.mark.parametrize("scalar", ["", " null", ' ""', " '   '", " true"])
+    def test_a_scalar_with_no_version_is_an_error(self, tmp_path, scalar):
+        """The scalar branch is held to the mapping branch's standard, because they are one rule.
+
+        Missed on the first pass and caught in review of PR #334: bare `OMP_VERSION:` is YAML null,
+        `str(None)` is `"None"`, and it reached the argv as `--build-arg OMP_VERSION=None`. Nothing
+        downstream catches that any more — the Dockerfile ARGs no longer carry defaults, which is
+        the whole point of A1.
+        """
+        _write(tmp_path, "omp", _HEAD + f"build_args:\n  OMP_VERSION:{scalar}\n")
+        with pytest.raises(SchemaError, match="OMP_VERSION"):
+            load_agent("omp", root=tmp_path)
 
     def test_mapping_pin_exposes_value_not_the_mapping(self, tmp_path):
         _write(tmp_path, "omp", _HEAD + (
@@ -202,13 +217,80 @@ class TestUpdateSeesAgents:
         assert report.check_exit_code() == 0
 
 
+class TestApplyWritesAgentPins:
+    """The round trip, not just the report.
+
+    Missed on the first pass and caught in review of PR #334. Every A7 acceptance criterion
+    described a STATE ("the pin lives in agent.yaml", "update resolves agent pins"), and none
+    described the round trip report -> apply -> file changed. So `update` grew the ability to OFFER
+    an agent bump it had no ability to WRITE, and every state-shaped test passed.
+    """
+
+    def _findings(self, agent_dir, latest="17.2.11"):
+        return pinupdate.build_report(
+            [], agent_dirs=[agent_dir],
+            resolve=lambda _b, _n: [pinupdate.Release(version=latest, published=None)],
+            minimum_release_age_minutes=0,
+        ).stale
+
+    def test_a_mapping_form_pin_is_actually_rewritten(self, tmp_path):
+        d = _write(tmp_path, "omp", _HEAD + (
+            'build_args:\n'
+            '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }\n'
+        ))
+        applied = pinupdate.apply(self._findings(d))
+        assert len(applied) == 1
+        assert '17.2.11' in (d / "agent.yaml").read_text()
+        assert load_agent("omp", root=tmp_path).build_args == {"OMP_VERSION": "17.2.11"}
+
+    def test_the_rewrite_keeps_the_spec_and_its_comments(self, tmp_path):
+        """A bump must be a one-line diff, or a reviewer cannot see what changed."""
+        d = _write(tmp_path, "omp", _HEAD + (
+            "# why this pin exists\n"
+            'build_args:\n'
+            '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }\n'
+        ))
+        pinupdate.apply(self._findings(d))
+        text = (d / "agent.yaml").read_text()
+        assert "# why this pin exists" in text
+        assert "github:can1357/oh-my-pi" in text
+
+    def test_an_explicit_bump_of_a_held_pin_keeps_its_hold(self, tmp_path):
+        """`hold` blocks the OFFER, not the WRITE — `apply` is also reachable from an explicit
+        single-pin bump, so a held pin handed to it is rewritten deliberately. The obligation is
+        that the rewrite must not flatten the mapping and drop the hold on the way through. This
+        mirrors `test_update_pins.py::test_the_mapping_form_is_rewritten_in_place_keeping_its_hold`
+        for recipes; the agent rewriter is a different function and inherits none of its guarantees.
+        """
+        d = _write(tmp_path, "omp", _HEAD + (
+            "build_args:\n"
+            '  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi", hold: "v16 by choice" }\n'
+        ))
+        report = pinupdate.build_report(
+            [], agent_dirs=[d],
+            resolve=lambda _b, _n: [pinupdate.Release(version="17.2.11", published=None)],
+            minimum_release_age_minutes=0,
+        )
+        assert not report.stale, "a held pin must never be OFFERED"
+        pinupdate.apply(report.held)
+        agent = load_agent("omp", root=tmp_path)
+        assert agent.build_args == {"OMP_VERSION": "17.2.11"}
+        assert agent.build_arg_holds["OMP_VERSION"] == "v16 by choice"
+        assert agent.build_arg_specs["OMP_VERSION"] == "github:can1357/oh-my-pi"
+
+
 class TestShippedManifestsStillLoad:
     def test_every_catalog_agent_validates(self):
-        """NC-10, against the real catalog rather than a fixture."""
-        from harnessed import paths
+        """NC-10, against THIS REPOSITORY's catalog rather than a fixture.
 
-        agents = sorted(p.name for p in (paths.harnessed_home() / "catalog" / "agents").iterdir()
-                        if (p / "agent.yaml").is_file())
-        assert agents, "no agents found — the test is not exercising anything"
-        for name in agents:
-            load_agent(name)
+        The root is resolved from this file, not from `paths.catalog_roots()`. Going through the
+        roots would put the developer's `~/.config/harnessed/catalog` overlay first — so on a
+        machine with a populated overlay, a broken shipped manifest could sail through while the
+        test validated somebody's local copy instead. That is the exact inverse of the job.
+        """
+        repo_catalog = Path(__file__).resolve().parent.parent / "catalog"
+        agents_dir = repo_catalog / "agents"
+        names = sorted(p.name for p in agents_dir.iterdir() if (p / "agent.yaml").is_file())
+        assert names, f"no agents found under {agents_dir} — the test is not exercising anything"
+        for name in names:
+            load_agent(name, root=repo_catalog)

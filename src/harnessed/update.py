@@ -720,6 +720,37 @@ def _rewrite_tools_entry(manifest: Path, old_spec: str, new_spec: str) -> bool:
     return True
 
 
+def _rewrite_agent_build_arg(manifest: Path, key: str, new_value: str) -> bool:
+    """Set `build_args.<KEY>` to a new version in an agent.yaml, in place.
+
+    A third rewriter, because an agent pin does not live where the other two look. A recipe's
+    version is INSIDE its spec string (`npm:x@1.0.0`), so bumping it is a string swap; an agent's
+    version is a separate field, and its `spec:` never carries a version at all. That difference is
+    what made this silently do nothing before it existed: `apply` computed a new spec string, found
+    it identical to the old one, and skipped the finding — so `harnessed update` would offer an
+    agent bump, accept it, report success, and change no file.
+
+    Handles both declared shapes, since either may be the one carrying the pin.
+    """
+    yaml = YAML()  # round-trip — agent manifests are mostly comment, same as recipes
+    yaml.preserve_quotes = True
+    yaml.width = 4096
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    with manifest.open("r", encoding="utf-8") as fh:
+        data = yaml.load(fh)
+    args = data.get("build_args") if isinstance(data, dict) else None
+    if not isinstance(args, dict) or key not in args:
+        return False
+    entry = args[key]
+    if isinstance(entry, dict):
+        entry["value"] = new_value    # in place: `spec`, `hold` and their comments stay put
+    else:
+        args[key] = new_value
+    with manifest.open("w", encoding="utf-8") as fh:
+        yaml.dump(data, fh)
+    return True
+
+
 def _rewrite_extra_tools_entry(path: Path, old_spec: str, new_spec: str) -> bool:
     """Swap one entry in the plain-text extra-tools list, preserving everything else on the line.
 
@@ -758,6 +789,14 @@ def apply(findings) -> list[Finding]:
     done: list[Finding] = []
     for f in findings:
         if not f.pin.resolvable or not f.latest or f.cooling:
+            continue
+        # Agent pins first. Their version lives in `build_args.<KEY>.value`, not inside the spec
+        # string, so the spec swap below cannot reach it — it produced an unchanged string and hit
+        # the `continue`, which meant a bump was offered, accepted, and silently never written.
+        if f.pin.key and f.pin.file.name == "agent.yaml":
+            new_value = _match_v_prefix(f.pin.current, f.latest)
+            if new_value != f.pin.current and _rewrite_agent_build_arg(f.pin.file, f.pin.key, new_value):
+                done.append(f)
             continue
         new_spec = f.pin.spec.replace(f"@{f.pin.current}", f"@{_match_v_prefix(f.pin.current, f.latest)}")
         if new_spec == f.pin.spec:

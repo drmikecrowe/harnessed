@@ -1972,6 +1972,18 @@ def _parse_agent_build_args(raw_args, manifest: Path
         if not isinstance(val, dict):
             # podman --build-arg takes NAME=value strings; stringify scalars (e.g. an unquoted
             # version, which YAML hands us as a str only because it has two dots).
+            #
+            # Validated to the SAME standard as the mapping branch below, deliberately. The two
+            # branches express one rule — "a build_arg carries a version" — and an asymmetry
+            # between them is not a smaller bug, it is the same bug with a quieter failure: bare
+            # `OMP_VERSION:` is YAML null, `str(None)` is the literal "None", and it would have
+            # shipped as `--build-arg OMP_VERSION=None`. Nothing downstream catches it now that
+            # the Dockerfile ARGs carry no defaults.
+            if val is None or isinstance(val, bool) or not str(val).strip():
+                raise SchemaError(
+                    f"{manifest}: build_args {key!r} has no value — a build_arg must carry the "
+                    f"version it pins (got {val!r})"
+                )
             values[key] = str(val)
             continue
         if "unpinnable" in val:

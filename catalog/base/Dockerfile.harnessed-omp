@@ -11,7 +11,9 @@
 FROM harnessed-base:latest
 
 # Install omp via mise (mirrors the host install; the base has mise + shims on PATH).
-# Pinned to the verified v16 line. `mise use -g` lands `omp` on the mise shim PATH.
+# `mise use -g` lands `omp` on the mise shim PATH. The version itself is NOT named here (AC-11):
+# agent.yaml owns it, and a comment restating "the v16 line" is the same drift in prose form —
+# it outlived the pin it described once already.
 # Supply-chain (T-04-09): omp is the host harness (first-party, MIT-class); scanned on
 # build (BLD-02 via build_stack's image-scan path when an omp stack is assembled).
 # No default: the launcher supplies OMP_VERSION via --build-arg from catalog/agents/omp/agent.yaml
