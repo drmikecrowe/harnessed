@@ -14,14 +14,13 @@
 #   HARNESS  HARNESSED_MODE  HARNESSED_RECIPE_DIR  HARNESSED_CONFIG_DIR  HARNESSED_INSTALL_CACHE
 set -euo pipefail
 
-# Exact PyPI pin (upstream's canonical install path). No `install.cache` in recipe.yaml: the cache
-# keys a CONTENT clone, and uv already caches wheels itself — there is nothing for harnessed to hold.
-SERENA_VERSION="1.6.1"
+# No `install.cache` in recipe.yaml: the cache keys a CONTENT clone, and uv already caches wheels
+# itself — there is nothing for harnessed to hold.
 
 # The CLI itself is `tools: [pipx:serena-agent@…]` in recipe.yaml (bd harnessed-1t4.3) — the same
 # pinned wheel install in both modes, resolved by mise's pipx backend through uv, into the merged
 # and cached tool layer. What stays here is the CONFIGURATION half, which mise cannot express.
-# Keep SERENA_VERSION in lockstep with that pin.
+# The version is NOT repeated here: `tools:` is the one place it is written (AC-1).
 
 # `serena init` writes the global config that selects the code-intelligence backend. Without it
 # `start-mcp-server` comes up with no LSP backend. `-b LSP` is the current default, stated

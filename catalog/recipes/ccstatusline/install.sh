@@ -12,8 +12,6 @@
 # into the settings.json of whichever config dir this run is installing into.
 set -euo pipefail
 
-CCSTATUSLINE_VERSION="2.2.27"
-
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 
 # --- 1. the binary: NOT here ----------------------------------------------------------------------
@@ -21,7 +19,8 @@ CCSTATUSLINE_VERSION="2.2.27"
 # collapses the two branches this section used to carry: a container `mise use -g` and a host
 # `pnpm add` into the install cache, each yielding a DIFFERENT absolute path. mise's shims dir is
 # on PATH in both modes and outlives the per-launch config-dir wipe, so the path statusLine records
-# is simply where the tool resolves. Keep CCSTATUSLINE_VERSION in lockstep with that pin.
+# is simply where the tool resolves. The version is NOT repeated here: `tools:` is the one place
+# it is written (AC-1), and the lockstep comment this replaces is what let #323 drift unnoticed.
 bin="$(command -v ccstatusline)"
 # ...but NOT the shim, if that is what resolved. A mise shim is a symlink to the mise binary that
 # re-resolves the tool by argv[0] against MISE_DATA_DIR every time it runs. statusLine.command is a

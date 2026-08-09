@@ -165,7 +165,11 @@ class TestMigratedRecipesDeclareInstall:
         # stack-scoped tree, which already outlives the wipe — so a cache here would be dead state.
         r = _recipe("ccstatusline")
         assert r.install.cache is None
-        _assert_channels_agree(r, "npm:ccstatusline@", "CCSTATUSLINE_VERSION")
+        # The script no longer carries a second copy of the version to agree WITH (AC-1): it
+        # resolves the binary through `command -v`, so `tools:` is the only place the pin is
+        # written. Asserting the absence is the stronger property — agreement between two copies
+        # can only ever be maintained, never guaranteed.
+        assert "CCSTATUSLINE_VERSION" not in (r.root / "install.sh").read_text(encoding="utf-8")
 
     def test_context_mode_pin_matches_its_install_channels(self):
         # Two channels for the CLI: `tools:` (container, via mise npm backend) and install.sh

@@ -56,5 +56,6 @@ Nothing else is written outside the stack's config dir; your own
 
 ## Version
 
-Pinned by `CCSTATUSLINE_VERSION` in `install.sh`, which must stay equal to `install.cache` in
-`recipe.yaml` (the cache key). Bump both together, deliberately.
+Pinned once, by the `tools:` entry in `recipe.yaml`. `install.sh` carries no copy of the version —
+it resolves the binary through `command -v`, so there is nothing to keep in lockstep and nothing
+to drift. Bump the `tools:` pin and you are done.
