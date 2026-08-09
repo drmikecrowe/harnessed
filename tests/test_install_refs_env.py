@@ -10,8 +10,9 @@ makes it load-bearing:
   rule 5  `hold:` scope is the single ref — a recipe with three refs may hold one and auto-bump two.
 
 The contract calls out rule 2 specifically as the one "an implementer is most likely to satisfy
-'close enough'", and asks for a test over a real multi-ref recipe's generated environment. That is
-`TestTheGeneratedEnvironment` below.
+'close enough'", and asks for a test over a multi-ref recipe's generated environment. That is
+`TestTheGeneratedEnvironmentForAMultiRefRecipe` below (synthetic fixture — no recipe
+declares `install.refs:` yet).
 """
 
 import pytest
@@ -90,9 +91,15 @@ class TestRule2KeyToEnvIsDeterministicAndTotal:
                 assert container[k] == host[k]
 
 
-class TestTheGeneratedEnvironmentForARealMultiRefRecipe:
+class TestTheGeneratedEnvironmentForAMultiRefRecipe:
     """The contract asks for this by name — rule 2 is the one most likely to be satisfied
-    'close enough', and a whole-environment assertion is what catches close-enough."""
+    'close enough', and a whole-environment assertion is what catches close-enough.
+
+    The fixture is SYNTHETIC, not the real `mikes-universal-setup`, because no recipe declares
+    `install.refs:` yet. Renamed from ...ForARealMultiRefRecipe after adversarial review pointed
+    out the name claimed more than the body delivers. The contract's own obligation stands: when
+    that recipe migrates in Phase 3, this assertion should be re-derived from the real manifest.
+    """
 
     def test_the_full_ref_namespace_is_exactly_what_the_manifest_declares(self, tmp_path):
         env = _env(tmp_path)
@@ -133,6 +140,38 @@ class TestRule5HoldIsPerRef:
         report = self._report(tmp_path)
         reasons = [f.pin.hold for f in report.held if f.pin.hold]
         assert any("no releases or tags" in r for r in reasons)
+
+    _WITH_RECIPE_WIDE_HOLD = """\
+name: caveman
+install:
+  script: install.sh
+  hold: 'skill content — a human must read the diff'
+  refs:
+    caveman:
+      repo: JuliusBrussee/caveman
+      ref: v1.9.0
+    oakoss:
+      repo: oakoss/agent-skills
+      ref: v1.0.0
+      hold: 'structural: repo publishes no releases or tags'
+"""
+
+    def test_a_recipe_wide_hold_covers_every_ref(self, tmp_path):
+        """`install.hold` means "every pin fetched BY this script is manual-upgrade-only", and a
+        ref IS fetched by the script — so it is a ceiling no ref escapes. Raised in adversarial
+        review as an untested cross-product; the behaviour is intended, and now stated.
+        """
+        report = self._report(tmp_path, self._WITH_RECIPE_WIDE_HOLD)
+        assert not report.stale, "a recipe-wide hold leaves nothing to offer"
+        assert {f.pin.name for f in report.held} == {"JuliusBrussee/caveman", "oakoss/agent-skills"}
+
+    def test_the_more_specific_per_ref_reason_wins(self, tmp_path):
+        """Both holds apply; the reason shown is the ref's own, because that is the one that
+        explains THIS pin to whoever decides whether to lift it."""
+        report = self._report(tmp_path, self._WITH_RECIPE_WIDE_HOLD)
+        reasons = {f.pin.name: f.pin.hold for f in report.held}
+        assert reasons["oakoss/agent-skills"] == "structural: repo publishes no releases or tags"
+        assert reasons["JuliusBrussee/caveman"] == "skill content — a human must read the diff"
 
     def test_refs_resolve_against_their_repo_not_the_recipe_name(self, tmp_path):
         """The resolver must ask GitHub about `JuliusBrussee/caveman`, not about `caveman`."""
