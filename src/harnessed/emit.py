@@ -743,7 +743,24 @@ def install_env(
     preceding `ENV` lines; host mode from `env.update(install_env(...))` running after
     `env.update(_recipe_env(...))`. Same winner both ways — the defect the 8px.2 merge exposed.
     """
+    # Rule 2 — `install.refs:` keys become env, deterministically and TOTALLY: `oakoss` yields
+    # exactly HARNESSED_REF_OAKOSS and HARNESSED_REPO_OAKOSS. The transformation is `.upper()` and
+    # nothing cleverer, which is the whole reason rule 1 restricts the key charset — anything
+    # cleverer would be a second place for the mapping to be wrong.
+    #
+    # REPO carries `owner/repo`, not a URL: the script composes the URL, so a recipe moving from a
+    # `git clone` to a tarball fetch needs no manifest change for a decision that is the script's.
+    #
+    # These keys VARY BY RECIPE but never by mode, which is what keeps this function's standing
+    # "identical KEYS in host and container" invariant intact.
+    refs = recipe.install.refs if recipe.install else {}
+    ref_env: dict[str, str] = {}
+    for key, ref in refs.items():
+        ref_env[f"HARNESSED_REF_{key.upper()}"] = ref.ref
+        ref_env[f"HARNESSED_REPO_{key.upper()}"] = ref.repo
+
     return {
+        **ref_env,
         "HARNESS": harness,
         "HARNESSED_MODE": mode,
         # Source dir for the `cp` a script does where a Dockerfile did `COPY`.
