@@ -50,6 +50,22 @@
 > corrected from `emit.py` to **`launcher.py:587-589`** — `emit.py` has no `build_args` handling at
 > all, so A7 would have been sent to a file with nothing to change.
 >
+> **REVISION 9** (2026-08-09) — **A6 is not independent, and the spec said it was.** Measured while
+> starting it: `validate_pin` is enforced at assembly (`assemble.py:195`), and AC-9 REJECTS an
+> unversioned acquisition. claude (`Dockerfile.harnessed-claude:7`) and codex (`:22`) still acquire
+> unpinned, so wiring the agent lint in would fail their builds while A2/A3 are deferred. The
+> dependency diagram's "A6 — independent, any time" is therefore wrong: A6's *enforcement* depends on
+> A2 and A3, even though its *detection* does not. **Ruled by the human**: land the detection
+> function and its tests now with `assemble()` untouched; wire the call in with A2/A3, when nothing
+> fails it. A3 also **stays deferred** — pinning claude means choosing the version every user gets.
+>
+> One stated exception falls out of building it: **`FROM harnessed-<name>:latest` is exempt from the
+> floating-ref rule.** It names a first-party image built by this same pipeline — `emit.py` GENERATES
+> that exact form for derived stack images — so there is no upstream for it to float against. Recipe
+> Dockerfiles never needed the carve-out because the assembler prepends their `FROM`. Narrow by
+> construction and by test: `FROM ubuntu:latest`, `FROM harnessedfoo:latest`, a registry-qualified
+> name, and `:latest` anywhere off a `FROM` line all still fail.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -748,7 +764,7 @@ dependency is:
 
 ```text
 A7  (schema + update.py: hold:, spec:, UNPINNABLE)   <- FIRST, blocks A2-A4
-A6  (lint)                                            <- independent, any time
+A6  (lint)                                            <- NOT independent; see REVISION 9
 A1  (opencode relocation)                             <- independent of A7 (scalar form suffices)
 A5  (omp prose + land/revert the pending bump)        <- independent
      |
@@ -773,7 +789,8 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
   only on a human rebuild; AC-12 is what makes that visible instead of silent.
 - A5. `omp`: delete `"pinned v16"` prose (AC-11); land or revert the pending 17.2.11 bump — do not
   leave the tree split.
-- A6. Extend the lint (AC-9). This is the guard that stops A1–A4 regressing.
+- A6. Extend the lint (AC-9). This is the guard that stops A1–A4 regressing. **Lands in two parts
+  (REVISION 9): the detection function and its tests now; the `assemble()` call with A2/A3.**
 - A7. **Teach `harnessed update` to see agents** (AC-10). Without A7, A1–A5 move pins into
   `agent.yaml` where `update` still cannot read them — the migration would be cosmetic and AC-10
   would be met on paper only.

@@ -2324,14 +2324,21 @@ def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
 _LINE_CONTINUATION_RE = re.compile(r"\\\s*\n\s*")
 
 # `mise use -g <spec>` / `mise install <spec>` — the spec may be quoted.
-# The spec must START like a tool spec — a letter, digit, or quote. Without that constraint a bare
-# `mise install` (which installs what the config ALREADY declares, acquiring nothing new) swallows
-# the following shell operator: `mise use -g X && mise install` reported the spec as '&&'. Found by
-# running this against the real omp Dockerfile, which is the only place that shape appears.
+# `mise use -g A B C` installs THREE tools, so the match must capture the whole argument TAIL and
+# every spec in it — not one spec per `mise` keyword. Matching only the first is how the shipped omp
+# line (`mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" bun && …`) passed while installing an
+# unversioned `bun`: the first spec was pinned, so the gate went green and stopped looking.
+# Found by adversarial review of 659cea2.
+# The tail stops AT the next shell operator rather than running to end-of-line. Consuming the rest
+# of the line made `mise use -g node@20 && mise use -g python` a single match, so `finditer` never
+# saw the second command and its unversioned `python` was invisible. Found by a test written to kill
+# a surviving mutant — the mutant was cosmetic, the bug it pointed at was not.
 _MISE_ACQUIRE_RE = re.compile(
-    r"\bmise\s+(?:use|install)\b(?P<flags>(?:\s+-{1,2}[A-Za-z][\w-]*)*)"
-    r"\s+(?P<spec>\"[^\"]+\"|'[^']+'|[A-Za-z0-9][^\s]*)"
+    r"\bmise\s+(?:use|install)\b(?P<tail>(?:(?!&&|\|\||;|\||>|<)[^\n])*)"
 )
+# A spec must START like one — a letter, digit, or quote. That also excludes the shell operator a
+# bare `mise install` is followed by: `mise use -g X && mise install` once reported the spec as '&&'.
+_SPEC_TOKEN_RE = re.compile(r"^(?:\"[^\"]+\"|'[^']+'|[A-Za-z0-9][^\s]*)$")
 # `curl … | bash` / `wget … | sh` — the shape that runs an installer nobody has pinned.
 _PIPED_INSTALLER_RE = re.compile(r"\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?sh\b")
 # What counts as a version on a mise spec: a shell variable (the pin lives in build_args) or a
@@ -2353,8 +2360,12 @@ _VERSION_EVIDENCE_RE = re.compile(r"\$\{[A-Za-z_]\w*\}|\$[A-Za-z_]\w*|--version\
 #
 # Deliberately narrow: ONLY a `harnessed-`-prefixed image, ONLY on a FROM line. `FROM ubuntu:latest`
 # still fails, and so does a `:latest` anywhere else in the body.
+# `AS <alias>` is the standard multi-stage form and must stay exempt — anchoring at `:latest` alone
+# rejected `FROM harnessed-base:latest AS builder`, failing a legitimate Dockerfile with a rule that
+# exists to catch upstream drift. Found by adversarial review of 659cea2.
 _FIRST_PARTY_FROM_RE = re.compile(
-    r"^\s*FROM\s+harnessed-(?:\$\{[A-Za-z_]\w*\}|[a-z0-9][\w.-]*):latest\s*$",
+    r"^\s*FROM\s+harnessed-(?:\$\{[A-Za-z_]\w*\}|[a-z0-9][\w.-]*):latest"
+    r"(?:\s+AS\s+\w+)?\s*$",
     re.IGNORECASE,
 )
 
@@ -2365,26 +2376,69 @@ def _agent_logical_lines(dockerfile_body: str) -> list[str]:
     Comments are dropped for the reason `validate_pin` already documents — prose explaining the
     rule must not trip the rule.
     """
-    joined = _LINE_CONTINUATION_RE.sub(" ", dockerfile_body)
-    return [
-        ln for ln in joined.splitlines()
-        if not ln.lstrip().startswith("#") and not _FIRST_PARTY_FROM_RE.match(ln)
-    ]
+    # ORDER IS LOAD-BEARING: drop comments FIRST, then join continuations.
+    #
+    # Docker does not continue a comment line — a trailing `\` on a `#` line is literal text. Joining
+    # first therefore let a comment ending in `\` absorb the following physical line, and the joined
+    # result still began with `#`, so the whole thing was dropped and a real acquisition vanished
+    # from the lint's view while Docker went on to execute it. Reached by ordinary editing: delete a
+    # RUN out of a continuation block and leave the backslash on the comment above it.
+    # Found by adversarial review of 659cea2.
+    uncommented = "\n".join(
+        ln for ln in dockerfile_body.splitlines() if not ln.lstrip().startswith("#")
+    )
+    joined = _LINE_CONTINUATION_RE.sub(" ", uncommented)
+    return [ln for ln in joined.splitlines() if not _FIRST_PARTY_FROM_RE.match(ln)]
 
 
-def _unversioned_acquisition(dockerfile_body: str) -> str | None:
-    """The first acquisition line carrying no visible version, or None. ABSENT detection only."""
-    for line in _agent_logical_lines(dockerfile_body):
-        for m in _MISE_ACQUIRE_RE.finditer(line):
-            spec = m.group("spec").strip("\"'")
+def _mise_specs(line: str):
+    """Every spec token a `mise use`/`mise install` on this line acquires.
+
+    Yields `(key, description_or_None)` — description is None when the spec IS versioned. A `mise
+    use -g A B C` installs three tools, so this walks the whole argument tail; matching only the
+    first spec is how an unversioned `bun` sat unnoticed behind a pinned `oh-my-pi`.
+    """
+    for m in _MISE_ACQUIRE_RE.finditer(line):
+        for token in m.group("tail").split():
+            if token.startswith("-"):
+                continue                       # a flag, not a spec
+            if not _SPEC_TOKEN_RE.match(token):
+                # Unrecognised shape — e.g. `mise use -g $(cat tools.txt)`. FAIL CLOSED, the same
+                # posture `_IMMUTABLE_REF_RE` takes: a token this cannot read is a token whose
+                # version it cannot verify, and staying silent would be indistinguishable from
+                # having verified it.
+                yield f"mise:{token}", f"mise acquires {token!r}, which this lint cannot verify"
+                continue
+            spec = token.strip("\"'")
             # A bare tool name (`mise use -g node`) is as unpinned as a specless backend ref; both
             # resolve @latest at build time, which is what bd harnessed-2o9 was about.
-            if not _SPEC_VERSION_RE.search(spec):
-                return f"mise acquires {spec!r}"
+            yield f"mise:{spec}", None if _SPEC_VERSION_RE.search(spec) else f"mise acquires {spec!r}"
+
+
+def _unversioned_acquisitions(dockerfile_body: str) -> list[str]:
+    """Every DISTINCT acquisition carrying no visible version, in file order.
+
+    One list serves both callers — the message wants the first, the `unpinnable:` rule wants the
+    count. They were two near-identical scanners until mutation testing made the duplication
+    obvious: every survivor in one had a twin in the other.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def record(key: str, desc: str) -> None:
+        if key not in seen:
+            seen.add(key)
+            out.append(desc)
+
+    for line in _agent_logical_lines(dockerfile_body):
+        for key, desc in _mise_specs(line):
+            if desc:
+                record(key, desc)
         if _PIPED_INSTALLER_RE.search(line) and not _VERSION_EVIDENCE_RE.search(line):
             m = re.search(r"https?://\S+", line)
-            return f"piped installer {m.group(0) if m else line.strip()!r}"
-    return None
+            target = m.group(0) if m else line.strip()
+            record(f"pipe:{target}", f"piped installer {target!r}")
+    return out
 
 
 def validate_agent_pin(agent_name: str, dockerfile_body: str, *,
@@ -2421,12 +2475,27 @@ def validate_agent_pin(agent_name: str, dockerfile_body: str, *,
             f"agent '{agent_name}': Dockerfile downloads a source archive at a moving ref {ref}."
         )
 
-    absent = _unversioned_acquisition(stripped)
-    if absent and not unpinnable:
+    found = _unversioned_acquisitions(stripped)
+    if not found:
+        return
+    # ONE declared entry per conceded acquisition. `if absent and not unpinnable` was the first
+    # spelling, and adversarial review showed a single entry then excused every OTHER unversioned
+    # acquisition in the same file, silently. A per-acquisition MAPPING is not expressible — a
+    # genuinely unpinnable install references no ARG, so there is nothing here to match a key
+    # against — but the COUNT is, and it keeps each exception explicit and diff-visible.
+    absent, count = found[0], len(found)
+    if len(unpinnable) < count:
+        detail = (
+            "declares no `unpinnable:` reason"
+            if not unpinnable else
+            f"declares {len(unpinnable)} `unpinnable:` entr{'y' if len(unpinnable) == 1 else 'ies'} "
+            f"for {count} unversioned acquisitions"
+        )
         raise PinValidationError(
-            f"agent '{agent_name}': {absent} with no version, and the manifest declares no "
-            f"`unpinnable:` reason. Either pin it from `build_args` (and reference the ARG here), "
-            f"or declare why it cannot be pinned in catalog/agents/{agent_name}/agent.yaml."
+            f"agent '{agent_name}': {absent} with no version, and the manifest {detail}. "
+            f"Either pin it from `build_args` (and reference the ARG here), or declare why it "
+            f"cannot be pinned in catalog/agents/{agent_name}/agent.yaml — one entry per "
+            f"acquisition that genuinely cannot carry a version."
         )
 
 

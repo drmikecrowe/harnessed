@@ -22,7 +22,11 @@ from pathlib import Path
 
 import pytest
 
-from harnessed.schema import PinValidationError, validate_agent_pin
+from harnessed.schema import (
+    PinValidationError,
+    _unversioned_acquisitions,
+    validate_agent_pin,
+)
 
 REPO = Path(__file__).resolve().parent.parent
 AGENT_DOCKERFILES = REPO / "catalog" / "base"
@@ -193,10 +197,170 @@ class TestBareMiseInstallAcquiresNothing:
             validate_agent_pin("codex", body, unpinnable={})
 
 
+class TestEverySpecOnALineIsExamined:
+    """`mise use -g A B C` installs THREE tools. All three must be checked.
+
+    Found by adversarial review of 659cea2, and it was not hypothetical: the shipped omp Dockerfile
+    reads `mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" bun && …`. The old pattern matched
+    once per `mise` keyword, saw only the first spec, and passed — so the lint certified a file that
+    installs `bun` at whatever version happened to be current. A gate whose blind spot is "the
+    second argument" is worse than no gate, because the green result is believed.
+    """
+
+    def test_a_bare_second_spec_is_caught(self):
+        with pytest.raises(PinValidationError, match="no version"):
+            validate_agent_pin("x", "RUN mise use -g node@20 python\n", unpinnable={})
+
+    def test_a_bare_third_spec_is_caught(self):
+        with pytest.raises(PinValidationError, match="no version"):
+            validate_agent_pin("x", "RUN mise use -g node@20 python@3.12 bun\n", unpinnable={})
+
+    def test_the_error_names_the_offending_spec_not_the_first_one(self):
+        with pytest.raises(PinValidationError) as exc:
+            validate_agent_pin("x", "RUN mise use -g node@20 python\n", unpinnable={})
+        assert "python" in str(exc.value)
+        assert "node" not in str(exc.value)
+
+    def test_all_specs_versioned_passes(self):
+        validate_agent_pin("x", "RUN mise use -g node@20 python@3.12 bun@1.1.0\n", unpinnable={})
+
+    def test_scanning_stops_at_a_shell_operator(self):
+        """`&& mise install` and `&& omp …` are not specs of the preceding `mise use`."""
+        body = 'RUN mise use -g "github:o/r@${VER}" && mise install && omp tiny-models download\n'
+        validate_agent_pin("x", body, unpinnable={})
+
+    def test_a_flag_after_the_specs_is_not_a_spec(self):
+        validate_agent_pin("x", "RUN mise use -g node@20 --yes\n", unpinnable={})
+
+    def test_a_second_mise_command_on_the_same_line_is_still_scanned(self):
+        """`break` must end THIS command's arguments, not abandon the whole line.
+
+        Mutation testing: swapping the `break` for a `return` survived, because no test put two
+        `mise use` invocations on one line — and `A && B` on one RUN is the most ordinary shell
+        there is. The second command's specs would simply never have been examined.
+        """
+        body = 'RUN mise use -g node@20 && mise use -g python\n'
+        with pytest.raises(PinValidationError, match="python"):
+            validate_agent_pin("x", body, unpinnable={})
+
+    def test_a_spec_AFTER_a_flag_is_still_scanned(self):
+        """Mutation testing: `continue` → `break` on a flag survived, because every test put its
+        flag last. `mise use -g node@20 --yes python` would then have hidden `python`."""
+        with pytest.raises(PinValidationError, match="python"):
+            validate_agent_pin("x", "RUN mise use -g node@20 --yes python\n", unpinnable={})
+
+    def test_the_same_unversioned_spec_twice_counts_once(self):
+        """The count drives how many `unpinnable:` entries are owed, so double-counting a repeated
+        acquisition would demand a second declaration for a single real concession. Mutation
+        testing found the dedup key unasserted."""
+        body = "RUN mise use -g bun\nRUN mise use -g bun\n"
+        validate_agent_pin("x", body, unpinnable={"BUN_VERSION": "one concession, one entry"})
+
+    @pytest.mark.parametrize("token", ["$(cat tools.txt)", "@scope/pkg", '"unterminated'])
+    def test_a_token_this_cannot_read_fails_CLOSED(self, token):
+        """An unreadable token is one whose version cannot be verified, so it must be reported.
+
+        The first spelling skipped it, which is indistinguishable from having verified it. Caught
+        by the changed-line coverage gap it left, and corrected to the posture `_IMMUTABLE_REF_RE`
+        states for exactly this situation: an unrecognised shape fails closed rather than being
+        guessed at.
+        """
+        with pytest.raises(PinValidationError, match="cannot verify"):
+            validate_agent_pin("x", f"RUN mise use -g {token}\n", unpinnable={})
+
+    def test_an_unreadable_token_does_not_stop_the_scan(self):
+        """Mutation testing: `continue` → `break` after an unreadable token survived, because every
+        such test made the bad token the only one. One unreadable spec must not blind the gate to
+        everything after it — that would turn a fail-closed report into a fail-open one."""
+        with pytest.raises(PinValidationError, match="2 unversioned"):
+            validate_agent_pin("x", "RUN mise use -g @scope/pkg bun\n", unpinnable={"ONE": "reason"})
+
+    def test_a_substitution_containing_spaces_over_reports_rather_than_under_reports(self):
+        """`$(cat x)` is split on whitespace like any other token, so it is reported as more than
+        one unreadable acquisition. Imprecise, and deliberately left that way: the error is in the
+        fail-CLOSED direction (too many concessions demanded, never too few), and teaching this
+        lint to parse shell quoting would be a shell parser — the thing `update.py`'s docstring
+        already refuses to write.
+        """
+        found = _unversioned_acquisitions("RUN mise use -g $(cat x) bun\n")
+        assert len(found) >= 2
+        assert any("bun" in f for f in found)
+
+
+class TestMultiStageBaseIsExempt:
+    """`FROM harnessed-base:latest AS builder` — the standard multi-stage alias form.
+
+    Found by adversarial review: the carve-out's `$` anchor rejected it, so a legitimate
+    multi-stage agent Dockerfile would have been failed by a rule that exists to catch upstream
+    drift. No agent uses this form yet, which is exactly why it would have been discovered by
+    whoever first tried, as an undocumented quirk.
+    """
+
+    def test_the_alias_form_is_exempt(self):
+        validate_agent_pin("x", "FROM harnessed-base:latest AS builder\nRUN true\n", unpinnable={})
+
+    def test_the_alias_form_of_a_third_party_image_still_fails(self):
+        with pytest.raises(PinValidationError, match="floating"):
+            validate_agent_pin("x", "FROM ubuntu:latest AS builder\nRUN true\n", unpinnable={})
+
+
+class TestACommentCannotSwallowTheNextLine:
+    """A `#` line is a comment in Docker even when it ends with a backslash.
+
+    Found by adversarial review. The continuation join ran BEFORE the comment filter, so a comment
+    ending in `\\` absorbed the following physical line and the whole thing was then dropped as a
+    comment — hiding a real acquisition Docker would go on to execute. Reached by ordinary editing:
+    delete a RUN from a continuation block, leave the trailing backslash above it.
+    """
+
+    def test_a_comment_ending_in_a_backslash_does_not_hide_the_next_line(self):
+        body = "# Install tools \\\nRUN mise use -g npm:@openai/codex\n"
+        with pytest.raises(PinValidationError, match="no version"):
+            validate_agent_pin("x", body, unpinnable={})
+
+    def test_a_genuine_continuation_is_still_joined(self):
+        """The fix must not break the joining that opencode's real body depends on."""
+        body = 'RUN curl -fsSL https://opencode.ai/install | bash -s -- \\\n    --version "${V}"\n'
+        validate_agent_pin("x", body, unpinnable={})
+
+
 class TestUnpinnableSuppresses:
     def test_a_declaration_suppresses_the_error(self):
         body = "RUN curl -fsSL https://antigravity.google/cli/install.sh | bash\n"
         validate_agent_pin("antigravity", body, unpinnable={"AGY_VERSION": "no version selector"})
+
+    def test_one_declaration_does_not_excuse_a_SECOND_unversioned_acquisition(self):
+        """Raised by adversarial review: the check was `if absent and not unpinnable`, so a single
+        entry opened the gate for every other unversioned acquisition in the same file, silently.
+
+        A per-acquisition MAPPING is not expressible — a genuinely unpinnable install references no
+        ARG, so there is nothing in the Dockerfile to match a key against. What IS expressible is
+        the count: each conceded acquisition costs one declared, reviewable entry. That keeps the
+        exception explicit and diff-visible, which is the property AC-9 asks of it.
+        """
+        body = ("RUN curl -fsSL https://antigravity.google/cli/install.sh | bash\n"
+                "RUN mise use -g npm:@openai/codex\n")
+        with pytest.raises(PinValidationError, match="2 unversioned"):
+            validate_agent_pin("antigravity", body, unpinnable={"AGY_VERSION": "one reason"})
+
+    def test_two_distinct_mise_specs_owe_two_declarations(self):
+        """Mutation testing: blanking the dedup KEY survived, because every count test mixed one
+        mise spec with one piped installer — so collapsing all mise keys into one still totalled
+        two. Two unversioned specs of the SAME kind is the case that distinguishes them."""
+        with pytest.raises(PinValidationError, match="2 unversioned"):
+            validate_agent_pin("x", "RUN mise use -g bun deno\n", unpinnable={"ONE": "reason"})
+
+    def test_two_distinct_piped_installers_owe_two_declarations(self):
+        body = ("RUN curl -fsSL https://a.example/install.sh | bash\n"
+                "RUN curl -fsSL https://b.example/install.sh | bash\n")
+        with pytest.raises(PinValidationError, match="2 unversioned"):
+            validate_agent_pin("x", body, unpinnable={"ONE": "reason"})
+
+    def test_two_declarations_cover_two_acquisitions(self):
+        body = ("RUN curl -fsSL https://antigravity.google/cli/install.sh | bash\n"
+                "RUN mise use -g npm:@openai/codex\n")
+        validate_agent_pin("antigravity", body,
+                           unpinnable={"AGY_VERSION": "reason one", "CODEX_VERSION": "reason two"})
 
     def test_the_declaration_is_what_suppresses_it(self):
         """AC-9 names this explicitly: an UNDECLARED unpinned agent must still fail. Without this
@@ -238,9 +402,24 @@ class TestAgainstTheRealBodies:
             validate_agent_pin("antigravity", body, unpinnable={})
         validate_agent_pin("antigravity", body, unpinnable={"AGY_VERSION": "declared"})
 
-    @pytest.mark.parametrize("harness", ["omp", "opencode"])
-    def test_the_migrated_agents_pass(self, harness):
-        validate_agent_pin(harness, _body(harness), unpinnable={})
+    def test_opencode_passes(self):
+        validate_agent_pin("opencode", _body("opencode"), unpinnable={})
+
+    def test_omp_fails_on_an_unpinned_bun_nobody_had_noticed(self):
+        """A6's first real find, and the reason the multi-spec defect mattered.
+
+        `Dockerfile.harnessed-omp:27` reads `mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}"
+        bun && …`. The `bun` has no version, so it resolves to whatever is current at build time —
+        the same class as bd harnessed-2o9. An earlier version of this test asserted omp PASSED,
+        because the lint stopped after the first spec; adversarial review found both the lint bug
+        and the live defect it was hiding.
+
+        This asserts the CURRENT state. Pinning `bun` changes what the omp image ships, so it is a
+        deliberate decision (which version?) rather than a drive-by fix — the same reason A2 and A3
+        are deferred. When it is pinned, this test flips to asserting a pass.
+        """
+        with pytest.raises(PinValidationError, match="bun"):
+            validate_agent_pin("omp", _body("omp"), unpinnable={})
 
     def test_every_agent_is_covered_by_this_file(self):
         """If someone adds a sixth agent, this file must be updated rather than silently not
