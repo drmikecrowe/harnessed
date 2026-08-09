@@ -102,6 +102,32 @@ class TestAbsentIsRejected:
         with pytest.raises(PinValidationError, match="no version"):
             validate_agent_pin("claude", body, unpinnable={})
 
+    @pytest.mark.parametrize("var", ["$HOME", "${HOME}", "${TARGETARCH}", "$INSTALL_DIR", "${PATH}"])
+    def test_an_irrelevant_variable_is_not_version_evidence(self, var):
+        """A `$VAR` is only a pin if it plausibly NAMES a version.
+
+        Found by adversarial review round 2: the evidence pattern accepted any `$VAR` anywhere on
+        the line, so `curl … | bash -s -- --dir $HOME/bin` was read as pinned. That is the worst
+        possible failure for this gate — not a missed check, but a positive assertion of pinnedness
+        over an installer that takes whatever upstream currently serves.
+        """
+        body = f"RUN curl -fsSL https://bun.sh/install | bash -s -- --dir {var}/bin\n"
+        with pytest.raises(PinValidationError, match="no version"):
+            validate_agent_pin("x", body, unpinnable={})
+
+    @pytest.mark.parametrize("var", ["${OPENCODE_VERSION}", "$CLAUDE_VERSION", "${TOOL_REF}",
+                                     "${PKG_TAG}", "$AGY_VER"])
+    def test_a_version_named_variable_is_evidence(self, var):
+        """The naming convention is the signal, and it is the one `build_args` already uses —
+        every pin in the catalog is `<TOOL>_VERSION` (D7 fixes that namespace for `unpinnable:`
+        too). A variable named for a version is the only kind that can be carrying one."""
+        validate_agent_pin("x", f'RUN curl -fsSL https://x.example/i.sh | bash -s -- "{var}"\n',
+                           unpinnable={})
+
+    def test_an_explicit_version_flag_is_still_evidence(self):
+        validate_agent_pin("x", "RUN curl -fsSL https://x.example/i.sh | bash -s -- --version 1.2.3\n",
+                           unpinnable={})
+
     def test_the_error_names_the_agent_and_the_installer_url(self):
         """A gate that says 'something is unpinned' sends the reader hunting; this one must not.
 
@@ -125,6 +151,11 @@ class TestPinnedIsAccepted:
 
     @pytest.mark.parametrize("body", [
         'RUN mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}"\n',
+        # BALANCED single quotes must not read as an unbalanced-quote truncation. Mutation testing
+        # found the `% 2` on the single-quote count unasserted in the passing direction — every
+        # existing quoted-spec test used double quotes, so a `'`-quoted pin would have been
+        # reported as unverifiable: a false alarm on a correctly pinned line.
+        "RUN mise use -g 'github:can1357/oh-my-pi@${OMP_VERSION}'\n",
         'RUN curl -fsSL https://opencode.ai/install | bash -s -- --version "${OPENCODE_VERSION}"\n',
         "RUN mise use -g npm:@openai/codex@0.139.0\n",
     ])
@@ -274,6 +305,26 @@ class TestEverySpecOnALineIsExamined:
         everything after it — that would turn a fail-closed report into a fail-open one."""
         with pytest.raises(PinValidationError, match="2 unversioned"):
             validate_agent_pin("x", "RUN mise use -g @scope/pkg bun\n", unpinnable={"ONE": "reason"})
+
+    def test_a_pipe_inside_a_quoted_spec_does_not_hide_what_follows(self):
+        """Found by adversarial review round 2: the tail stops at any `|`, including one inside
+        quotes, so `mise use -g "a|b" node` reported only the truncated `"a` and `node` vanished.
+
+        Fail-closed matters more than precision here: `|` is not valid mise spec syntax, so the
+        realistic case is a typo — but the miscount was in the UNSAFE direction (one declared
+        `unpinnable:` entry would have excused the invisible `node` too).
+        """
+        found = _unversioned_acquisitions('RUN mise use -g "a|b" node\n')
+        assert any("cannot verify" in f for f in found)
+        assert len(found) >= 2, f"everything after the pipe must still be accounted for: {found}"
+
+    def test_the_same_holds_for_SINGLE_quotes(self):
+        """Mutation testing: every mutant of the single-quote half of the balance check survived,
+        because the tests only ever used double quotes. One finding, two instances — the skill's
+        'each finding is a class' rule, caught by the tool rather than by remembering it."""
+        found = _unversioned_acquisitions("RUN mise use -g 'a|b' node\n")
+        assert any("cannot verify" in f for f in found)
+        assert len(found) >= 2, f"everything after the pipe must still be accounted for: {found}"
 
     def test_a_substitution_containing_spaces_over_reports_rather_than_under_reports(self):
         """`$(cat x)` is split on whitespace like any other token, so it is reported as more than

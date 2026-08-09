@@ -2347,9 +2347,21 @@ _PIPED_INSTALLER_RE = re.compile(r"\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:b
 _SPEC_VERSION_RE = re.compile(
     r"@(?:\$\{[A-Za-z_]\w*\}|\$[A-Za-z_]\w*|v?\d[\w.+-]*)\s*$"
 )
-# A variable reference anywhere in the logical line, or an explicit --version flag: the two ways a
-# piped installer can be carrying a pin.
-_VERSION_EVIDENCE_RE = re.compile(r"\$\{[A-Za-z_]\w*\}|\$[A-Za-z_]\w*|--version\b")
+# The two ways a piped installer can be carrying a pin: an explicit `--version` flag, or a variable
+# whose NAME says it holds a version.
+#
+# The name test is the load-bearing part. Accepting any `$VAR` meant `$HOME`, `${PATH}` and
+# `${TARGETARCH}` all read as pins, so `curl … | bash -s -- --dir $HOME/bin` was positively
+# certified as versioned while installing whatever upstream currently serves — a gate asserting the
+# opposite of the truth, which is worse than no gate. Found by adversarial review round 2.
+#
+# `VERSION|VER|REF|TAG` is not a guess: every pin in the catalog is `<TOOL>_VERSION`, and D7 fixes
+# that same namespace for `unpinnable:` keys. A pin passed under some other name is reported as
+# unversioned — false alarm rather than false clearance, which is the direction this gate must err.
+_VERSION_EVIDENCE_RE = re.compile(
+    r"--version\b|\$\{?[A-Za-z_]\w*(?:VERSION|VER|REF|TAG)\}?\b",
+    re.IGNORECASE,
+)
 
 
 # `FROM harnessed-base:latest` is not a floating UPSTREAM ref — it names a first-party image built
@@ -2399,7 +2411,17 @@ def _mise_specs(line: str):
     first spec is how an unversioned `bun` sat unnoticed behind a pinned `oh-my-pi`.
     """
     for m in _MISE_ACQUIRE_RE.finditer(line):
-        for token in m.group("tail").split():
+        tail = m.group("tail")
+        # The tail stops at any `|`, including one inside quotes, so an unbalanced quote means the
+        # argument list was cut mid-token and whatever followed is unaccounted for. Report the
+        # truncation rather than silently under-counting: a missing acquisition would be excused by
+        # somebody else's `unpinnable:` entry. Found by adversarial review round 2.
+        if tail.count('"') % 2 or tail.count("'") % 2:
+            yield f"mise:{tail.strip()}", (
+                f"mise arguments {tail.strip()!r} have an unbalanced quote, so this lint "
+                f"cannot verify what follows on that command"
+            )
+        for token in tail.split():
             if token.startswith("-"):
                 continue                       # a flag, not a spec
             if not _SPEC_TOKEN_RE.match(token):
