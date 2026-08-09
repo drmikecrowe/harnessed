@@ -44,7 +44,7 @@ from typing import Callable
 from ruamel.yaml import YAML
 
 from . import paths
-from .schema import SchemaError, load_recipe, load_stack, valid_extra_tools
+from .schema import SchemaError, load_agent, load_recipe, load_stack, valid_extra_tools
 
 __all__ = [
     "Pin", "Finding", "Release", "Report", "ResolveError",
@@ -122,6 +122,9 @@ class Pin:
     backend: str         # npm | pipx | github | mise | opaque
     hold: str | None = None
     note: str = ""       # where an opaque pin came from, for the human reading the report
+    # Agent pins only: the `build_args`/`unpinnable:` key this came from, so the report can say
+    # `<agent>/<KEY>` and an UNPINNABLE row reads as a peer of a pinned one (D7 §namespace).
+    key: str = ""
 
     @property
     def resolvable(self) -> bool:
@@ -173,6 +176,11 @@ class Report:
     # Newer, but too young to trust yet. Its own bucket rather than a silent drop: the user is
     # entitled to know a release exists and is being waited out, not just see nothing.
     cooling: list[Finding] = field(default_factory=list)
+    # Declared non-pins (D7): an agent whose installer offers no version selector that preserves
+    # integrity. Its own bucket, NOT `unresolved` — "cannot be pinned, and we said so" is a
+    # different claim from "the resolver could not answer", and collapsing them would let a real
+    # resolver outage hide inside a permanent, expected condition.
+    unpinnable: list[Finding] = field(default_factory=list)
 
     def check_exit_code(self) -> int:
         """`--check`: non-zero ONLY for a stale, unheld, resolvable, past-cooldown pin.
@@ -180,7 +188,9 @@ class Report:
         Unresolved pins do not fail — every recipe with a Dockerfile has one, and a permanently-red
         check is one nobody reads. Cooling pins do not fail either: you cannot act on a release you
         are deliberately waiting for, so failing would keep CI red for a week through no fault of
-        the repo.
+        the repo. UNPINNABLE agents are the limiting case of the same argument — they are
+        permanently unpinnable by definition — which is why this method needs no change to exclude
+        them, and why a test pins that it exits 0 rather than trusting the omission.
         """
         return 1 if self.stale else 0
 
@@ -220,6 +230,52 @@ def _opaque_pins_from_text(text: str, *, recipe: str, path: Path, note: str,
             current=value, backend="opaque", hold=hold, note=note,
         ))
     return out
+
+
+def discover_agent_pins(agent_dir: Path) -> list[Pin]:
+    """Every pin an AGENT manifest declares — `build_args` pins, plus its declared non-pins (A7).
+
+    The resolver reads the MANIFEST, never the Dockerfile. That is deliberate and this module's
+    docstring already refuses the alternative: extraction works for 2 of the 5 agents and is
+    silently blind for the 3 that matter, because their Dockerfiles name no upstream at all (a
+    piped `curl … | bash` identifies nothing). So a `build_args` entry is resolvable only when it
+    declares a `spec:`, and one without a spec is reported UNRESOLVED rather than guessed at.
+
+    Never raises for a manifest that fails validation, for the same reason `discover_pins` does not:
+    one bad agent must not blind the command to the other four.
+    """
+    agent_dir = Path(agent_dir)
+    try:
+        agent = load_agent(agent_dir.name, root=agent_dir.parent.parent)
+    except (SchemaError, OSError):
+        return []
+
+    manifest = agent_dir / "agent.yaml"
+    pins: list[Pin] = []
+
+    for key, value in agent.build_args.items():
+        spec = agent.build_arg_specs.get(key)
+        hold = agent.build_arg_holds.get(key)
+        if spec:
+            backend, name, _ = _split_spec(spec)
+        else:
+            # No spec means no upstream to query. Opaque — carried into the report rather than
+            # dropped at discovery, where it would become invisible.
+            backend, name = "opaque", key
+        pins.append(Pin(
+            recipe=agent.name, file=manifest, spec=spec or f"{key}={value}", name=name,
+            current=value, backend=backend, hold=hold, key=key,
+            note="" if spec else "agent build_arg declares no 'spec:' — no upstream to query",
+        ))
+
+    for key, reason in agent.unpinnable.items():
+        # An UNPINNABLE entry is a Pin with no version on purpose: it must travel into the report
+        # so the human can SEE which agents track upstream, which is what AC-12 exists for.
+        pins.append(Pin(
+            recipe=agent.name, file=manifest, spec=key, name=key, current="",
+            backend="unpinnable", hold=None, key=key, note=reason,
+        ))
+    return pins
 
 
 def discover_pins(recipe_dir: Path) -> list[Pin]:
@@ -508,6 +564,7 @@ def discover_extra_tools_pins(path) -> list[Pin]:
 
 
 def build_report(recipe_dirs, *,
+                 agent_dirs=None,
                  extra_tools: Path | None = None,
                  resolve: Callable[[str, str], list[Release]] | None = None,
                  now: datetime | None = None,
@@ -527,12 +584,20 @@ def build_report(recipe_dirs, *,
     # hold semantics, same buckets. Anything less and `--check` would report them differently from
     # every other pin, which is how a check stops being believed.
     discovered = [pin for d in recipe_dirs for pin in discover_pins(Path(d))]
+    # Agent pins ride the same classification path as recipe pins, for the same reason the
+    # extra-tools pins do: a pin reported differently from every other pin is a pin nobody trusts.
+    discovered += [pin for d in (agent_dirs or []) for pin in discover_agent_pins(Path(d))]
     if extra_tools is not None:
         discovered += discover_extra_tools_pins(extra_tools)
 
     report = Report()
     for pin in discovered:
-        # Held first: a held pin is never something the user is being asked to act on, so it
+        # Declared non-pins first — before the resolvable check, which would otherwise sort them
+        # into `unresolved` and turn "we said this cannot be pinned" into "the resolver failed".
+        if pin.backend == "unpinnable":
+            report.unpinnable.append(Finding(pin=pin, error=pin.note))
+            continue
+        # Held next: a held pin is never something the user is being asked to act on, so it
         # must not also appear as unresolved noise.
         if not pin.resolvable:
             f = Finding(pin=pin, error=pin.note or "not machine-resolvable")

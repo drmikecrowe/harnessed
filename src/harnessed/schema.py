@@ -1940,9 +1940,87 @@ class Agent:
     image: str
     dockerfile: str = ""
     description: str = ""
+    # NAME -> value. ONLY these become `--build-arg` (see launcher._agent_build_arg_flags). The
+    # mapping form is flattened to its `.value` HERE, so every downstream reader sees one shape.
     build_args: dict[str, str] = field(default_factory=dict)
+    # NAME -> mise spec. A resolver hint for `harnessed update`, never a second installer: it says
+    # where the version comes from, while the Dockerfile still performs the install.
+    build_arg_specs: dict[str, str] = field(default_factory=dict)
+    build_arg_holds: dict[str, str] = field(default_factory=dict)
+    # NAME -> reason. Declared NON-pins (D7): no version selector exists that preserves integrity,
+    # so the agent tracks upstream and moves only on a human rebuild. Deliberately NOT in
+    # `build_args` — there is no version, so nothing may reach `--build-arg`.
+    unpinnable: dict[str, str] = field(default_factory=dict)
     root: Path = field(default_factory=Path)
     raw: dict = field(default_factory=dict)
+
+
+# `build_args` keys are Dockerfile ARG names, and `unpinnable:` keys are drawn from the SAME
+# namespace (D7 §namespace) — the name the ARG *would* have carried. One namespace is what makes
+# "declared in both" a reachable rule rather than a vacuous one.
+_ARG_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def _parse_agent_build_args(raw_args, manifest: Path
+                            ) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Split `build_args` into (values, specs, holds), accepting a scalar or a mapping per key."""
+    values: dict[str, str] = {}
+    specs: dict[str, str] = {}
+    holds: dict[str, str] = {}
+    for raw_key, val in raw_args.items():
+        key = str(raw_key)
+        if not isinstance(val, dict):
+            # podman --build-arg takes NAME=value strings; stringify scalars (e.g. an unquoted
+            # version, which YAML hands us as a str only because it has two dots).
+            values[key] = str(val)
+            continue
+        if "unpinnable" in val:
+            raise SchemaError(
+                f"{manifest}: build_args {key!r} declares 'unpinnable' — that moved to the "
+                f"top-level 'unpinnable:' mapping, because an unpinnable entry has no version and "
+                f"must never reach --build-arg"
+            )
+        if "value" not in val or val["value"] is None or str(val["value"]) == "":
+            raise SchemaError(
+                f"{manifest}: build_args {key!r} is a mapping without a 'value' — a 'hold' or "
+                f"'spec' freezes or explains a pin, neither replaces one"
+            )
+        values[key] = str(val["value"])
+        if "spec" in val:
+            spec = str(val["spec"] or "")
+            if not spec:
+                raise SchemaError(f"{manifest}: build_args {key!r} has an empty 'spec'")
+            specs[key] = spec
+        if "hold" in val:
+            hold = str(val["hold"] or "") if val["hold"] is not None else ""
+            if not hold.strip():
+                raise SchemaError(
+                    f"{manifest}: build_args {key!r} has a 'hold' with no reason — a hold without "
+                    f"a stated reason is an unauditable escape hatch"
+                )
+            holds[key] = hold
+    return values, specs, holds
+
+
+def _parse_agent_unpinnable(raw_unpinnable, manifest: Path) -> dict[str, str]:
+    if not isinstance(raw_unpinnable, dict):
+        raise SchemaError(f"{manifest}: 'unpinnable' must be a mapping of NAME: reason")
+    out: dict[str, str] = {}
+    for raw_key, reason in raw_unpinnable.items():
+        key = str(raw_key)
+        if not _ARG_NAME_RE.match(key):
+            raise SchemaError(
+                f"{manifest}: 'unpinnable' key {key!r} must match {_ARG_NAME_RE.pattern} — the "
+                f"same namespace as a build_args key (the ARG name it would have carried)"
+            )
+        text = "" if reason is None else str(reason)
+        if not text.strip():
+            raise SchemaError(
+                f"{manifest}: 'unpinnable' entry {key!r} has no reason — the reason must name the "
+                f"integrity mechanism that blocks pinning, or this is just an unpinned download"
+            )
+        out[key] = text
+    return out
 
 
 def load_agent(name: str, root: Path | None = None) -> Agent:
@@ -1958,8 +2036,14 @@ def load_agent(name: str, root: Path | None = None) -> Agent:
     raw_args = raw.get("build_args") or {}
     if not isinstance(raw_args, dict):
         raise SchemaError(f"{manifest}: 'build_args' must be a mapping of NAME: value")
-    # podman --build-arg takes NAME=value strings; stringify scalars (e.g. an unquoted version).
-    build_args = {str(k): str(v) for k, v in raw_args.items()}
+    build_args, specs, holds = _parse_agent_build_args(raw_args, manifest)
+    unpinnable = _parse_agent_unpinnable(raw.get("unpinnable") or {}, manifest)
+    both = sorted(set(build_args) & set(unpinnable))
+    if both:
+        raise SchemaError(
+            f"{manifest}: {', '.join(both)} declared in BOTH 'build_args' and 'unpinnable' — an "
+            f"agent is either pinned or it is conceded to be unpinnable, never both"
+        )
     return Agent(
         name=name,
         harness=raw["harness"],
@@ -1967,6 +2051,9 @@ def load_agent(name: str, root: Path | None = None) -> Agent:
         dockerfile=raw.get("dockerfile", ""),
         description=raw.get("description", ""),
         build_args=build_args,
+        build_arg_specs=specs,
+        build_arg_holds=holds,
+        unpinnable=unpinnable,
         root=agent_dir,
         raw=raw,
     )

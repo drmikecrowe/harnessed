@@ -3,9 +3,18 @@ type: agent
 harness: antigravity
 image: harnessed-antigravity
 dockerfile: catalog/base/Dockerfile.harnessed-antigravity
-# No build_args: the official installer exposes no version-pin flag (agy self-updates from
-# Google's signed manifest) — see Dockerfile.harnessed-antigravity for the detail.
+# No build_args: there is no version to pass. Declared as UNPINNABLE instead (D7) so `harnessed
+# update` reports it under its own status rather than as a resolver failure, and so the lint can
+# tell a conceded non-pin from a forgotten one. Measured 2026-08-09 (spike S6).
+unpinnable:
+  AGY_VERSION: >-
+    the official installer accepts only --dir/--help, and its manifest exposes only the current
+    release behind an opaque build id, so no version selector exists that keeps the sha512
+    verification; the agy CLI additionally self-updates in the background, so a build-time pin
+    would not hold even if one could be expressed
 description: >
   Antigravity (agy, Google) harness. FROM harnessed-base + the agy CLI via Google's official
-  installer (sha512-verified native binary). Reaches hatago via a baked global MCP config
+  installer (sha512-verified native binary). UNPINNABLE — it installs whatever the installer
+  currently offers and tracks upstream, so it moves when you rebuild the image, not on a bump.
+  Reaches hatago via a baked global MCP config
   (~/.gemini/config/mcp_config.json); does NOT natively consume Claude skills/commands.

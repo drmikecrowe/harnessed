@@ -25,9 +25,40 @@
       "type": "string"
     },
     "build_args": {
-      "description": "Build arguments passed to `podman build` for this agent's image (each as --build-arg NAME=value). The single source of truth for pinned tool versions (e.g. OMP_VERSION); the agent Dockerfile's matching ARG carries no default. Keys must match the Dockerfile ARG names.",
+      "description": "Build arguments passed to `podman build` for this agent's image (each as --build-arg NAME=value). The single source of truth for pinned tool versions (e.g. OMP_VERSION); the agent Dockerfile's matching ARG carries no default. Keys must match the Dockerfile ARG names. A value may be a bare scalar, or a mapping carrying the resolver hint and hold reason alongside it.",
       "type": "object",
-      "additionalProperties": { "type": ["string", "number"] }
+      "additionalProperties": {
+        "oneOf": [
+          { "type": ["string", "number"] },
+          {
+            "type": "object",
+            "required": ["value"],
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "description": "The pinned version. This — and only this — becomes --build-arg NAME=<value>.",
+                "type": ["string", "number"]
+              },
+              "spec": {
+                "description": "A mise spec naming where the version comes from (e.g. github:can1357/oh-my-pi), so `harnessed update` can ask for a newer one. A resolver hint, never a second installer: the Dockerfile still performs the install. Omit it when no upstream can be queried — the pin is then reported UNRESOLVED rather than guessed at.",
+                "type": "string",
+                "minLength": 1
+              },
+              "hold": {
+                "description": "Freeze this pin: it is listed for information and never offered for bump. Must state WHY. A hold does not license an unpinned value.",
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        ]
+      }
+    },
+    "unpinnable": {
+      "description": "Declared NON-pins: acquisitions with no version selector that preserves integrity, so the agent takes whatever its installer gives and moves only on a deliberate rebuild. Keys use the same namespace as build_args (the ARG name the pin would have carried) and must NOT also appear there. Each reason must name the integrity mechanism that blocks pinning — this is the audited exception to 'pin every download', not a way around it.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]*$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
     },
     "description": {
       "description": "Human-readable summary of the agent.",

@@ -286,3 +286,23 @@ def _update_recipe_dirs() -> list[Path]:
             seen.add(ref)
             dirs.append(manifest.parent)
     return dirs
+
+
+def _update_agent_dirs() -> list[Path]:
+    """Every agent dir across the active catalog roots, deduped by ref (A7).
+
+    Same overlay precedence as `_update_recipe_dirs`. Agents do not nest, so one level is enough.
+    """
+    seen: set[str] = set()
+    dirs: list[Path] = []
+    for root in paths.catalog_roots():
+        agents = root / "agents"
+        if not agents.is_dir():
+            continue
+        for manifest in sorted(agents.glob("*/agent.yaml")):
+            ref = manifest.parent.name
+            if ref in seen:
+                continue
+            seen.add(ref)
+            dirs.append(manifest.parent)
+    return dirs

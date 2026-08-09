@@ -3,8 +3,11 @@ type: agent
 harness: opencode
 image: harnessed-opencode
 dockerfile: catalog/base/Dockerfile.harnessed-opencode
-# No build_args: the Dockerfile's ARG OPENCODE_VERSION already carries a default (1.17.9);
-# bump it there directly to repin.
+# Pinned tool versions for the image build (passed as --build-arg). Single source of truth — the
+# Dockerfile's matching ARG carries no default. `spec:` names the upstream `harnessed update`
+# queries; the Dockerfile still performs the install (the vendor installer takes --version).
+build_args:
+  OPENCODE_VERSION: { value: "1.17.9", spec: "github:sst/opencode" }
 description: >
   opencode (sst/opencode) harness. FROM harnessed-base + a pinned opencode via the official
   installer (real Bun binary, not the blocked npm postinstall wrapper). Reads .claude/skills/**

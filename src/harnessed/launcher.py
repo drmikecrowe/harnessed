@@ -104,6 +104,7 @@ from .catalogseed import (
     _ensure_local_catalog_links,
     _seed_user_default_recipe,
     _update_recipe_dirs,
+    _update_agent_dirs,
 )
 from .jsonmerge import _deep_merge_json, _merge_host_claude_settings
 from .layout import (
@@ -565,6 +566,24 @@ def _build_base_image(rt: str) -> None:
     _build_shared_once(_BASE_IMAGE, build)
 
 
+def _agent_build_arg_flags(agent) -> list[str]:
+    """The `--build-arg` flags for an agent image — the boundary the manifest's shapes collapse at.
+
+    Two properties this owes, both invisible from the schema alone (A7):
+      * a mapping-form pin contributes its VALUE. `schema.load_agent` already flattened it, so this
+        loop sees plain strings — but the f-string below would happily stringify a dict instead of
+        raising, shipping `--build-arg NAME={'value': '1.2.3'}` on a build that goes green.
+      * an `unpinnable:` entry contributes NOTHING. It names an ARG the Dockerfile does not declare
+        (that is what makes it unpinnable), so passing it would be an error at best and a silent
+        no-op at worst. It is absent from `build_args` by construction, which is the cheapest way
+        to be right — but the test asserts the absence rather than trusting the construction.
+    """
+    flags: list[str] = []
+    for key, val in agent.build_args.items():
+        flags += ["--build-arg", f"{key}={val}"]
+    return flags
+
+
 def _build_agent_image(rt: str, harness: str) -> None:
     """(Re)build the agent image from its agent.yaml Dockerfile (podman layer cache decides whether
     anything actually rebuilds). Build args from agent.yaml are the single source of truth for pinned
@@ -584,9 +603,7 @@ def _build_agent_image(rt: str, harness: str) -> None:
         if not _image_exists(rt, _BASE_IMAGE):
             _say("[yellow][WARNING][/yellow] harnessed-base not found. Building base first…")
             _build_images_cmd(rt, force=False)
-        build_args: list[str] = []
-        for key, val in agent.build_args.items():
-            build_args += ["--build-arg", f"{key}={val}"]
+        build_args = _agent_build_arg_flags(agent)
         _say(f"[blue][INFO][/blue] Building {image} ...")
         with _staged_build_context() as ctx:
             # agent.dockerfile is home-relative (e.g. catalog/agents/omp/Dockerfile) — and the staged
@@ -3636,6 +3653,14 @@ def _print_update_report(report) -> None:
         _out.print("[bold]Unresolved (could NOT be checked — review by hand):[/bold]")
         for f in report.unresolved:
             _out.print(f"  {where(f)}  {f.pin.spec}\n      [yellow]{f.error}[/yellow]")
+    if report.unpinnable:
+        # Its own section, never folded into `unresolved` (AC-12). These are not failures to
+        # check — they are agents we have looked at and conceded cannot be pinned, so they track
+        # upstream and move on a rebuild. Saying so here is half of what makes that a stated
+        # property rather than a surprise; the agent's own description says the other half.
+        _out.print("[bold]Unpinnable (tracks upstream — upgrade by rebuilding):[/bold]")
+        for f in report.unpinnable:
+            _out.print(f"  {f.pin.recipe}/{f.pin.key} ({f.pin.file.name})\n      [dim]{f.error}[/dim]")
 
 
 @app.command("update")
@@ -3676,6 +3701,9 @@ def update_pins(
     # future offline mode) can swap `update.resolve_latest` and have it take effect here.
     report = pinupdate.build_report(
         dirs,
+        # A7: agent manifests own their pins too, and used not to be swept at all — which is how
+        # three agents reached main with genuinely unpinned downloads.
+        agent_dirs=_update_agent_dirs(),
         # The base image's extra-tools pins rot exactly like recipe pins do, and used not to be
         # swept at all — which is how bd harnessed-2o9 reached CI.
         extra_tools=pinupdate.extra_tools_default_path(),
