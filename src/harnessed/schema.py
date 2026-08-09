@@ -2310,6 +2310,126 @@ def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
         )
 
 
+# --- A6 / AC-9: the pin lint reaches AGENT images, and sees ABSENT as well as FLOATING ----------
+# `validate_pin` reads recipe Dockerfiles only. Agent images were never linted, which is how three
+# agents reached main acquiring their CLI with no version at all. FLOATING has a token to match on
+# (`@latest`); ABSENT does not — the defect IS the missing token. So the rule below is stated
+# POSITIVELY, the same choice and for the same reason as `_IMMUTABLE_REF_RE` above: an acquisition
+# passes only if a version can be SEEN. A negative rule would admit every spelling nobody enumerated,
+# and "nothing was written" is the whole class here.
+
+# A Dockerfile RUN spans lines with trailing `\`. Joining them first is not cosmetic: the version
+# evidence for a piped installer (`bash -s -- --version "${X}"`) frequently sits on a different
+# physical line from the `curl` that starts it.
+_LINE_CONTINUATION_RE = re.compile(r"\\\s*\n\s*")
+
+# `mise use -g <spec>` / `mise install <spec>` — the spec may be quoted.
+# The spec must START like a tool spec — a letter, digit, or quote. Without that constraint a bare
+# `mise install` (which installs what the config ALREADY declares, acquiring nothing new) swallows
+# the following shell operator: `mise use -g X && mise install` reported the spec as '&&'. Found by
+# running this against the real omp Dockerfile, which is the only place that shape appears.
+_MISE_ACQUIRE_RE = re.compile(
+    r"\bmise\s+(?:use|install)\b(?P<flags>(?:\s+-{1,2}[A-Za-z][\w-]*)*)"
+    r"\s+(?P<spec>\"[^\"]+\"|'[^']+'|[A-Za-z0-9][^\s]*)"
+)
+# `curl … | bash` / `wget … | sh` — the shape that runs an installer nobody has pinned.
+_PIPED_INSTALLER_RE = re.compile(r"\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?sh\b")
+# What counts as a version on a mise spec: a shell variable (the pin lives in build_args) or a
+# version-like literal. Deliberately narrow — an unrecognised shape fails closed rather than being
+# guessed at, matching `_IMMUTABLE_REF_RE`'s posture.
+_SPEC_VERSION_RE = re.compile(
+    r"@(?:\$\{[A-Za-z_]\w*\}|\$[A-Za-z_]\w*|v?\d[\w.+-]*)\s*$"
+)
+# A variable reference anywhere in the logical line, or an explicit --version flag: the two ways a
+# piped installer can be carrying a pin.
+_VERSION_EVIDENCE_RE = re.compile(r"\$\{[A-Za-z_]\w*\}|\$[A-Za-z_]\w*|--version\b")
+
+
+# `FROM harnessed-base:latest` is not a floating UPSTREAM ref — it names a first-party image built
+# by this same pipeline moments earlier, and `emit.py` GENERATES the identical form for derived
+# stack images (`FROM harnessed-${HARNESS}:latest`). There is no upstream for it to float against.
+# Recipe Dockerfiles never hit this because they carry no FROM at all (the assembler prepends it),
+# which is why `validate_pin` never needed the carve-out and this one does.
+#
+# Deliberately narrow: ONLY a `harnessed-`-prefixed image, ONLY on a FROM line. `FROM ubuntu:latest`
+# still fails, and so does a `:latest` anywhere else in the body.
+_FIRST_PARTY_FROM_RE = re.compile(
+    r"^\s*FROM\s+harnessed-(?:\$\{[A-Za-z_]\w*\}|[a-z0-9][\w.-]*):latest\s*$",
+    re.IGNORECASE,
+)
+
+
+def _agent_logical_lines(dockerfile_body: str) -> list[str]:
+    """Comment-free logical lines: continuations joined, `#` lines dropped.
+
+    Comments are dropped for the reason `validate_pin` already documents — prose explaining the
+    rule must not trip the rule.
+    """
+    joined = _LINE_CONTINUATION_RE.sub(" ", dockerfile_body)
+    return [
+        ln for ln in joined.splitlines()
+        if not ln.lstrip().startswith("#") and not _FIRST_PARTY_FROM_RE.match(ln)
+    ]
+
+
+def _unversioned_acquisition(dockerfile_body: str) -> str | None:
+    """The first acquisition line carrying no visible version, or None. ABSENT detection only."""
+    for line in _agent_logical_lines(dockerfile_body):
+        for m in _MISE_ACQUIRE_RE.finditer(line):
+            spec = m.group("spec").strip("\"'")
+            # A bare tool name (`mise use -g node`) is as unpinned as a specless backend ref; both
+            # resolve @latest at build time, which is what bd harnessed-2o9 was about.
+            if not _SPEC_VERSION_RE.search(spec):
+                return f"mise acquires {spec!r}"
+        if _PIPED_INSTALLER_RE.search(line) and not _VERSION_EVIDENCE_RE.search(line):
+            m = re.search(r"https?://\S+", line)
+            return f"piped installer {m.group(0) if m else line.strip()!r}"
+    return None
+
+
+def validate_agent_pin(agent_name: str, dockerfile_body: str, *,
+                       unpinnable: dict[str, str]) -> None:
+    """AC-9: reject a floating ref OR an unversioned acquisition in an AGENT image.
+
+    `unpinnable` is the agent manifest's declared non-pins (D7). A non-empty mapping suppresses the
+    ABSENT error and NOTHING else — an agent that cannot express a version is a conceded, reviewable
+    exception; an agent that expresses one WRONGLY is a defect, and laundering the second through
+    the first is exactly what `hold:` was stopped from becoming for `tools:`.
+
+    Not called from `assemble()` yet: claude and codex still acquire unpinned, so switching the gate
+    on would fail their builds while A2/A3 are deferred (plan REVISION 9).
+    """
+    stripped = "\n".join(_agent_logical_lines(dockerfile_body))
+
+    match = _FLOATING_REF_RE.search(stripped)
+    if match:
+        raise PinValidationError(
+            f"agent '{agent_name}': Dockerfile contains a floating ref "
+            f"'{match.group(0).strip()}'. Pin to a tag or SHA. A declared `unpinnable:` does not "
+            f"excuse this — it concedes that no version selector exists, not that a wrong one is "
+            f"acceptable."
+        )
+    ref = _mutable_clone_ref(stripped)
+    if ref:
+        raise PinValidationError(
+            f"agent '{agent_name}': Dockerfile clones a moving ref {ref}. "
+            "A branch moves — clone a tag or a full commit SHA instead."
+        )
+    ref = _mutable_archive_ref(stripped)
+    if ref:
+        raise PinValidationError(
+            f"agent '{agent_name}': Dockerfile downloads a source archive at a moving ref {ref}."
+        )
+
+    absent = _unversioned_acquisition(stripped)
+    if absent and not unpinnable:
+        raise PinValidationError(
+            f"agent '{agent_name}': {absent} with no version, and the manifest declares no "
+            f"`unpinnable:` reason. Either pin it from `build_args` (and reference the ARG here), "
+            f"or declare why it cannot be pinned in catalog/agents/{agent_name}/agent.yaml."
+        )
+
+
 def validate_setup_script(recipe: Recipe) -> None:
     """Lint a recipe's `setup.script` FILE body (existence + npm/npx + floating refs).
 
