@@ -68,6 +68,14 @@
 > construction and by test: `FROM ubuntu:latest`, `FROM harnessedfoo:latest`, a registry-qualified
 > name, and `:latest` anywhere off a `FROM` line all still fail.
 >
+> **REVISION 10** (2026-08-09) — **the Phase 0 golden cache-key vector was wrong, and was caught by
+> recomputing it before any code was written against it.** The digest was correct for the string
+> printed, but that string keyed the third ref `aminglg` where the repo, D1a's own example, and
+> `install.sh` all say `aminblg`. Self-consistent and wrong is the worst shape a fixture can take:
+> an implementation asserting it "verbatim" would have passed its own test and then disagreed with
+> the real recipe at Phase 3, surfacing as a cache miss rather than a failure. Corrected to
+> `0f4325fc44aef2a1`, with a Phase 3 obligation to re-derive it from the manifest.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -365,13 +373,28 @@ test in Phase 0; **this list is the Phase 0 test plan**, not commentary.
 
      ```text
      canonical input (no trailing newline):
-     aminglg=AminBlg/SimpleEnglish@379728b51981b6d2ee1de0f201164483a9648972
+     aminblg=AminBlg/SimpleEnglish@379728b51981b6d2ee1de0f201164483a9648972
      blader=blader/humanizer@1b48564898e999219882660237fde01bf4843a0f
      oakoss=oakoss/agent-skills@0283bed313563d5677a0838f4bf921b03296cf6c
 
-     sha256   = efbbcb7c70f8e3912984eed2e7c50613848a93773a4c2e69a2040be1e73c8e88
-     cache key = efbbcb7c70f8e391
+     sha256   = 0f4325fc44aef2a140739245e06fe3423fcf74ef6d29dba34471da222da13707
+     cache key = 0f4325fc44aef2a1
      ```
+
+     **Corrected 2026-08-09, before Phase 0 wrote any code against it.** The first vector keyed the
+     third ref `aminglg` and published the digest of *that* string. The digest was arithmetically
+     right and the key was wrong: the repo is `AminBlg/SimpleEnglish`, D1a's own example above writes
+     `aminblg`, and `install.sh:24,41` uses `AMINBLG_SHA` / `"$tmp/aminblg"`. Rule 1's charset admits
+     both spellings, so nothing in the contract would have rejected the typo.
+     Left uncorrected it was the worst shape a fixture can take — **self-consistent and wrong**. A
+     Phase 0 implementation asserting it "verbatim" would pass its own test and then disagree with
+     the real recipe the moment Phase 3 migrated it with the correct key, and the mismatch would
+     surface as a cache miss rather than as a failing test. Recomputed from the corrected input.
+
+     **Phase 3 owes a re-check.** Until `mikes-universal-setup` actually declares `install.refs:`,
+     this vector is a hand-copied fixture, and a hand-copied fixture is what just failed. When that
+     recipe is migrated, one test must derive the canonical input from the **manifest** and assert
+     the same key — that is the only version of this check that cannot drift from the recipe.
 
    - Consequences that must be tested, because each has bitten this repo before: changing ANY ref
      changes the key (so a stale cache cannot be served); reordering the YAML does NOT (so a
