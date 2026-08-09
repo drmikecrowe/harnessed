@@ -15,6 +15,7 @@ running instance must expose. Keep the parse API clean and reusable.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -660,6 +661,90 @@ def _parse_setup(raw_setup) -> "SetupSpec | None":
     )
 
 
+# --- D1a: `install.refs:` — declare the pin, keep the fetch ---------------------------------------
+# Rule 1. The charset is restricted so rule 2's key -> env mapping can be TOTAL and deterministic
+# (`oakoss` -> HARNESSED_REF_OAKOSS) with no transformation cleverer than `.upper()`. Anything
+# cleverer is a second place for the mapping to be wrong.
+_REF_KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+# `owner/repo`, never a URL: the script composes the URL, so a recipe switching from `git clone` to
+# a tarball fetch needs no manifest change (rule 2).
+_REF_REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+
+
+@dataclass(frozen=True)
+class InstallRef:
+    """One declared upstream ref: what `update` queries, and what `install.sh` fetches."""
+
+    repo: str            # owner/repo
+    ref: str             # a version tag or a FULL 40-hex SHA — floating is rejected, as for tools:
+    hold: str | None = None   # rule 5: scope is THIS ref, not the recipe
+
+
+def derived_cache_key(refs: "dict[str, InstallRef]") -> str | None:
+    """Rule 6 — the cache identity derived from the declared refs, or None when there are none.
+
+    Fully specified in the plan because under-specifying it lets two implementations produce
+    different keys for identical inputs, which surfaces as a cache miss or, worse, a producer and a
+    consumer disagreeing about which entry is which:
+
+      canonical input : refs sorted by key (byte order), each `key=repo@ref`, joined with a single
+                        '\\n', NO trailing newline
+      encoding/digest : UTF-8, SHA-256
+      output          : lowercase hex, first 16 characters
+
+    16 hex is 64 bits against an ACCIDENTAL collision; this is not a security boundary, since the
+    refs themselves carry the integrity. The fixed length is also what stops the hand-mashed
+    `oak0283bed3-hum1b485648-…` pattern returning as an auto-generated version of itself.
+    """
+    if not refs:
+        return None
+    canonical = "\n".join(f"{k}={refs[k].repo}@{refs[k].ref}" for k in sorted(refs))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def _parse_install_refs(raw_refs, manifest_label: str) -> dict[str, InstallRef]:
+    """Rule 1 + ref immutability, rejected HERE — at schema validation, not at env-emit time.
+
+    The phase matters: a bad key must fail the build with a message naming the key, rather than
+    producing a silently missing environment variable that install.sh discovers three steps later.
+    """
+    if not isinstance(raw_refs, dict):
+        raise SchemaError(f"recipe '{manifest_label}.refs' must be a mapping of key: {{repo, ref}}")
+    out: dict[str, InstallRef] = {}
+    for raw_key, spec in raw_refs.items():
+        key = str(raw_key)
+        if not _REF_KEY_RE.match(key):
+            raise SchemaError(
+                f"recipe '{manifest_label}.refs' key {key!r} must match {_REF_KEY_RE.pattern} — "
+                f"the charset is restricted so the key -> HARNESSED_REF_* mapping stays total and "
+                f"needs no transformation beyond upper-casing"
+            )
+        if not isinstance(spec, dict):
+            raise SchemaError(f"recipe '{manifest_label}.refs' {key!r} must be a mapping")
+        repo = str(spec.get("repo") or "").strip()
+        if not _REF_REPO_RE.match(repo):
+            raise SchemaError(
+                f"recipe '{manifest_label}.refs' {key!r} needs 'repo' as 'owner/repo' (got "
+                f"{repo!r}) — NOT a URL. The script composes the URL, so a recipe switching from "
+                f"git clone to a tarball fetch needs no manifest change."
+            )
+        ref = str(spec.get("ref") or "").strip()
+        if not _IMMUTABLE_REF_RE.match(ref):
+            raise SchemaError(
+                f"recipe '{manifest_label}.refs' {key!r} has ref {ref!r}, which is not immutable — "
+                f"use a version tag (v1.2.3) or a FULL 40-character commit SHA. A branch moves, and "
+                f"an abbreviated SHA is not a stable identifier."
+            )
+        hold = spec.get("hold")
+        if hold is not None and (not isinstance(hold, str) or not hold.strip()):
+            raise SchemaError(
+                f"recipe '{manifest_label}.refs' {key!r} has a 'hold' with no reason — the reason "
+                f"is shown to whoever decides whether to lift it"
+            )
+        out[key] = InstallRef(repo=repo, ref=ref, hold=hold)
+    return out
+
+
 @dataclass
 class InstallSpec:
     """A recipe's `install:` — the BUILD-phase sibling of `setup.script` (bd harnessed-8px.3).
@@ -691,6 +776,10 @@ class InstallSpec:
     # "first launch only" is structurally wrong), but the SOURCE content can persist, keyed by a
     # ref that by policy never moves. Floating values are rejected — a moving key is a stale cache.
     cache: str | None = None
+    # Declared upstream refs (D1a). The pin is DATA and lives here; the FETCH stays in install.sh,
+    # because the five Family B installs are genuinely different and declaring them would mean
+    # inventing a DSL. When present, `cache` above is DERIVED from these, never hand-written.
+    refs: dict[str, InstallRef] = field(default_factory=dict)
     # Non-empty reason string ⇒ this recipe's install has a SYSTEM-LEVEL component (USER root,
     # apt-get, COPY into /usr/local/bin) that only a container build can perform. harnessed must
     # never sudo or mutate the user's system, so on a host launch that component is SKIPPED — but
@@ -729,7 +818,28 @@ def _parse_install(raw_install) -> "InstallSpec | None":
             raise SchemaError(
                 f"recipe 'install.script' {script!r} must be a relative path inside the recipe dir"
             )
+    refs = _parse_install_refs(raw_install.get("refs") or {}, "install")
     cache = raw_install.get("cache")
+    # Rule 7 / NC-5: two sources for one key is a schema ERROR, not a precedence rule. Picking a
+    # winner would mean one of the two declarations is silently dead, and nobody can see which.
+    if refs and cache is not None:
+        raise SchemaError(
+            "recipe declares BOTH 'install.refs' and a hand-written 'install.cache'. The cache key "
+            "is DERIVED from the refs — delete the 'cache:' line. Keeping both would leave one of "
+            "them silently ignored."
+        )
+    if refs and not script:
+        # Raised HERE rather than letting the derived cache trip the cache-without-script guard
+        # below: that guard's message names `install.cache`, a field a refs-only author never
+        # wrote. An error must name the declaration the author can edit.
+        raise SchemaError(
+            "recipe declares 'install.refs' without 'install.script' — the refs describe what a "
+            "script fetches, and the install env that carries them (HARNESSED_REF_*) exists only "
+            "for that script. Without one they are inert data that `harnessed update` would still "
+            "offer to bump."
+        )
+    if refs:
+        cache = derived_cache_key(refs)
     if cache is not None:
         if not isinstance(cache, str) or not cache.strip():
             raise SchemaError("recipe 'install.cache', if set, must be a non-empty string")
@@ -758,7 +868,7 @@ def _parse_install(raw_install) -> "InstallSpec | None":
             "recipe's pins are manual-upgrade-only (it is shown to whoever decides whether to "
             "lift the hold — a bare `hold: true` throws that away)"
         )
-    unknown = sorted(set(raw_install) - {"script", "cache", "system", "hold"})
+    unknown = sorted(set(raw_install) - {"script", "cache", "system", "hold", "refs"})
     if unknown:
         raise SchemaError(
             f"recipe 'install': unknown field(s) {unknown} — valid fields: script, cache, system, "
@@ -783,6 +893,7 @@ def _parse_install(raw_install) -> "InstallSpec | None":
     return InstallSpec(
         script=script,
         cache=cache,
+        refs=refs,
         system=system.strip() if system else None,
         hold=hold.strip() if hold else None,
     )
