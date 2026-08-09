@@ -735,6 +735,35 @@ def _rewrite_tools_entry(manifest: Path, old_spec: str, new_spec: str) -> bool:
     return True
 
 
+def _rewrite_install_ref(manifest: Path, key: str, new_ref: str) -> bool:
+    """Set `install.refs.<key>.ref` to a new value in a recipe.yaml, in place.
+
+    A fourth rewriter, and the third time this shape has been missed. A recipe's `tools:` version
+    is INSIDE its spec string, so bumping it is a string swap; an agent's and a ref's live in a
+    separate field. `apply` dispatched every `.yaml` to `_rewrite_tools_entry`, which searches
+    `tools:` and returns False for a refs-only recipe — so `update` OFFERED a ref bump, the user
+    accepted, and nothing was written.
+
+    The generalisation worth remembering: any pin whose version is a FIELD rather than part of a
+    spec string needs its own rewriter, and adding a pin kind without one produces a feature that
+    reports work it cannot do.
+    """
+    yaml = YAML()  # round-trip — recipes carry more comment than YAML, and that is where WHY lives
+    yaml.preserve_quotes = True
+    yaml.width = 4096
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    with manifest.open("r", encoding="utf-8") as fh:
+        data = yaml.load(fh)
+    install = data.get("install") if isinstance(data, dict) else None
+    refs = install.get("refs") if isinstance(install, dict) else None
+    if not isinstance(refs, dict) or key not in refs or not isinstance(refs[key], dict):
+        return False
+    refs[key]["ref"] = new_ref   # in place: `repo`, `hold` and their comments stay put
+    with manifest.open("w", encoding="utf-8") as fh:
+        yaml.dump(data, fh)
+    return True
+
+
 def _rewrite_agent_build_arg(manifest: Path, key: str, new_value: str) -> bool:
     """Set `build_args.<KEY>` to a new version in an agent.yaml, in place.
 
@@ -808,9 +837,16 @@ def apply(findings) -> list[Finding]:
         # Agent pins first. Their version lives in `build_args.<KEY>.value`, not inside the spec
         # string, so the spec swap below cannot reach it — it produced an unchanged string and hit
         # the `continue`, which meant a bump was offered, accepted, and silently never written.
-        if f.pin.key and f.pin.file.name == "agent.yaml":
+        # Field-valued pins, dispatched by the manifest they live in. Both keep their version in a
+        # FIELD rather than inside a spec string, so the spec swap below cannot reach either; each
+        # needs its own round-tripping rewriter. Adding a third such pin kind without one would
+        # again produce a bump that is offered, accepted, and never written.
+        if f.pin.key and f.pin.file.name in ("agent.yaml", "recipe.yaml"):
             new_value = _match_v_prefix(f.pin.current, f.latest)
-            if new_value != f.pin.current and _rewrite_agent_build_arg(f.pin.file, f.pin.key, new_value):
+            rewrite_field = (
+                _rewrite_agent_build_arg if f.pin.file.name == "agent.yaml" else _rewrite_install_ref
+            )
+            if new_value != f.pin.current and rewrite_field(f.pin.file, f.pin.key, new_value):
                 done.append(f)
             continue
         new_spec = f.pin.spec.replace(f"@{f.pin.current}", f"@{_match_v_prefix(f.pin.current, f.latest)}")

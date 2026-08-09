@@ -174,6 +174,103 @@ class TestTheRefPinCarriesItsIdentity:
         assert self._pin(tmp_path).resolvable
 
 
+class TestApplyActuallyWritesARefBump:
+    """The round trip, not just the offer.
+
+    `update` offered a ref bump and `apply()` wrote nothing: it dispatches on `pin.file.suffix`,
+    and every `.yaml` went to `_rewrite_tools_entry`, which only searches `tools:`. The manifest
+    was left untouched and the finding silently dropped from the applied set.
+
+    This is the THIRD instance of one class. CodeRabbit found it for agent `build_args` on #334;
+    the fix there was `_rewrite_agent_build_arg`, and I did not sweep the codebase for other pin
+    kinds with the same shape. `install.refs` is one.
+    """
+
+    def _stale(self, tmp_path, body: str = _TWO_REFS):
+        return pinupdate.build_report(
+            [_recipe(tmp_path, body)],
+            resolve=lambda _b, _n: [pinupdate.Release(version="v2.0.0", published=None)],
+            minimum_release_age_minutes=0,
+        ).stale
+
+    def test_the_manifest_is_actually_rewritten(self, tmp_path):
+        d = _recipe(tmp_path)
+        applied = pinupdate.apply(self._stale(tmp_path))
+        assert [f.pin.name for f in applied] == ["JuliusBrussee/caveman"]
+        text = (d / "recipe.yaml").read_text()
+        assert "v2.0.0" in text and "ref: v1.9.0" not in text
+
+    def test_the_bumped_ref_reloads_with_the_new_value(self, tmp_path):
+        d = _recipe(tmp_path)
+        pinupdate.apply(self._stale(tmp_path))
+        spec = load_recipe(d).install
+        assert spec is not None
+        assert spec.refs["caveman"].ref == "v2.0.0"
+
+    def test_the_other_refs_and_their_holds_survive_the_rewrite(self, tmp_path):
+        """A bump must be a one-line change — the held sibling and its reason stay put."""
+        d = _recipe(tmp_path)
+        pinupdate.apply(self._stale(tmp_path))
+        spec = load_recipe(d).install
+        assert spec is not None
+        assert spec.refs["oakoss"].ref == "v1.0.0"
+        assert spec.refs["oakoss"].hold == "structural: repo publishes no releases or tags"
+        assert spec.refs["caveman"].repo == "JuliusBrussee/caveman"
+
+    def test_the_rewrite_is_a_one_line_diff(self, tmp_path):
+        """`_rewrite_tools_entry` documents why its ruamel settings exist: a bump must produce a
+        ONE-LINE change or a reviewer cannot see it. This rewriter copies those settings, and
+        mutation testing showed every one of them unasserted — width, indent and preserve_quotes
+        could all drift and only the reviewer of some future bump would notice, as a diff that
+        reflowed every long description in the file.
+        """
+        d = _recipe(tmp_path)
+        before = (d / "recipe.yaml").read_text().splitlines()
+        pinupdate.apply(self._stale(tmp_path))
+        after = (d / "recipe.yaml").read_text().splitlines()
+        changed = [(b, a) for b, a in zip(before, after, strict=False) if b != a]
+        assert len(before) == len(after), "a bump must not add or remove lines"
+        assert len(changed) == 1, f"expected exactly one changed line, got {changed}"
+        assert "v1.9.0" in changed[0][0] and "v2.0.0" in changed[0][1]
+
+    def test_a_key_absent_from_the_manifest_is_refused_not_a_crash(self, tmp_path):
+        """The guard is `or`, not `and`: with `and`, a manifest that HAS refs but lacks this key
+        would fall through to `refs[key]` and raise KeyError. Mutation found it — every existing
+        refusal test used a manifest with no `refs:` at all, which short-circuits first."""
+        d = _recipe(tmp_path)
+        before = (d / "recipe.yaml").read_text()
+        assert pinupdate._rewrite_install_ref(d / "recipe.yaml", "nosuchkey", "v2.0.0") is False
+        assert (d / "recipe.yaml").read_text() == before
+
+    @pytest.mark.parametrize("body", [
+        "name: r\ntools:\n  - npm:x@1.0.0\n",                       # no install: at all
+        "name: r\ninstall:\n  script: install.sh\n  cache: v1.0.0\n",  # install, but no refs:
+    ])
+    def test_the_rewriter_refuses_a_manifest_that_has_no_such_ref(self, tmp_path, body):
+        """Fail closed and report it, rather than writing something invented.
+
+        Reachable through `apply`'s ALLOW-LIST posture: a caller that hands it the wrong bucket
+        must get `False` and an untouched file, not a manifest with a `refs:` block conjured into
+        existence. Covered because the branch was otherwise unreached.
+        """
+        d = _recipe(tmp_path, body)
+        before = (d / "recipe.yaml").read_text()
+        assert pinupdate._rewrite_install_ref(d / "recipe.yaml", "caveman", "v2.0.0") is False
+        assert (d / "recipe.yaml").read_text() == before
+
+    def test_the_derived_cache_key_changes_with_the_bump(self, tmp_path):
+        """Rule 6's whole point: change any ref and the cache identity changes, so a stale cache
+        cannot be served. The rewrite must therefore flow through to the derived key."""
+        d = _recipe(tmp_path)
+        before = load_recipe(d).install
+        assert before is not None
+        was = before.cache
+        pinupdate.apply(self._stale(tmp_path))
+        after = load_recipe(d).install
+        assert after is not None
+        assert after.cache != was
+
+
 class TestTheDerivedCacheIsNotReportedAsAnUpstreamPin:
     """With `refs:`, `install.cache` is DERIVED — reporting it would be a second entry for the
     same underlying pins, and a bump offer against a digest nobody can act on."""
