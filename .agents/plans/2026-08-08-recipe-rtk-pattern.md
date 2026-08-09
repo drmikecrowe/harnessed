@@ -35,6 +35,13 @@
 > confirmed their targets as specced. **S7 and S9 remain unrun** — both need a container build or CI,
 > which this environment cannot do. No implementation file is touched by this revision.
 >
+> **REVISION 8** (2026-08-09) — two human rulings recorded as **D7** and **D8**, both prompted by a
+> gap S6 exposed: claude, codex and antigravity have **no Dockerfile `ARG` at all**, so an
+> `unpinnable:` entry inside `build_args` would have nothing to bind to. D7 rules that an UNPINNABLE
+> agent takes current, never auto-bumps, and is documented as tracking upstream — which moves the
+> declaration to a **top-level `unpinnable:` mapping** and adds **AC-12** plus two A7 tests. D8 rules
+> S8's Class C per-repo rather than as a class, adding a short assessment step before Phase 3.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -463,6 +470,79 @@ regressing, before 20 recipe migrations start moving pins around.
 Against: A2/A3/A4 change which CLI version users get — a behaviour change disguised as a pinning
 change. **S7** exists to make that visible rather than accidental.
 
+**Reason (2) above is superseded and the conclusion still holds.** Phase A does need schema work —
+REVISION 6 added the `build_args` mapping form and D7 adds the top-level `unpinnable:` mapping. The
+ordering argument survives on reasons (1) and (3), which were always the load-bearing ones.
+
+### D7 — RESOLVED 2026-08-09 by the human. What `UNPINNABLE` actually *does* at build time.
+
+**Asked** (raised after S6, when reading the tree showed the gap): `Dockerfile.harnessed-claude`,
+`-codex` and `-antigravity` contain **no `ARG` at all** — only opencode (`ARG
+OPENCODE_VERSION=1.17.9`) and omp (`ARG OMP_VERSION`) have one. A7 says `update.py` walks "each
+`build_args` entry that feeds a Dockerfile `ARG`". An `unpinnable:` entry feeds nothing, and never
+will. So what is it, and where does it live?
+
+**Ruled**: *"it must upgrade to `@latest` or the equivalent. If we can't pin, then latest. But this
+will not trigger a rebuild and that's OK — it will require manual upgrades. We will need to document
+this."*
+
+**Read precisely, that is three commitments:**
+
+1. **Take current.** An UNPINNABLE agent installs whatever its installer gives. No synthetic pin, no
+   scraped build id, no bypass of the verifying installer. This is already the shipping behaviour —
+   antigravity's `curl … | bash` has always installed current.
+2. **No rebuild trigger.** `harnessed update` reports the agent as UNPINNABLE and **never offers a
+   bump**, because there is no version to compare against. Upgrading is a deliberate human rebuild.
+3. **Document it**, so "this agent silently moves" is a stated property rather than a surprise.
+
+**Why this does not breach "pin every download"** (checked against the code, not assumed):
+
+- **ASM-02** (`src/harnessed/schema.py:1982`) rejects a *literal* `@latest` / `--branch main` /
+  `:latest` in a Dockerfile body. Nothing here writes one. The float is a property of the upstream
+  installer's interface, not a token we introduce, and the gate is untouched.
+- **The `hold:` rule** (`src/harnessed/schema.py:1236`) is explicit that a hold must never license a
+  floating pin, *"otherwise `hold:` becomes the escape hatch that reintroduces `@latest`."* D7 does
+  not touch that rule. `UNPINNABLE` is the separate fourth status REVISION 5 introduced precisely
+  because `hold:` could not express this case, and its reason string must name the integrity
+  mechanism that blocks pinning — which is what keeps it from becoming the same escape hatch.
+
+**Where the declaration lives — follows from the ruling.** There is no version, so nothing reaches
+`--build-arg`; by the ruling's own logic it is not a build argument. It is a **top-level `unpinnable:`
+mapping** on `agent.yaml`, sibling to `build_args`, keyed by a short agent-local name with the reason
+as its value:
+
+```yaml
+# catalog/agents/antigravity/agent.yaml
+unpinnable:
+  agy: >-
+    installer offers no version selector (--dir/--help only) and its manifest exposes only the
+    current release behind an opaque build id; the CLI also self-updates in the background, so a
+    build-time pin would not hold
+```
+
+This keeps `build_args` meaning exactly "things that become `--build-arg`" — the property A7 item 4
+already has to test — and gives A6's lint the machine-readable marker that separates *declared*
+unpinnable from *someone forgot to pin*. **Today it has exactly one member: antigravity.** claude is
+`hold:` (S5 found its version selector) and codex is a normal pin once S7 measures the version.
+
+**Documentation this obliges** (AC-12, new — see §3):
+
+- the agent's own `README`/`description` states that it tracks upstream and when it last moved;
+- `harnessed update` output distinguishes UNPINNABLE from unresolved, so the human can see which
+  agents need a manual rebuild.
+
+### D8 — RESOLVED 2026-08-09 by the human. S8 Class C: decide per-repo.
+
+The two Class C refs (releases exist, but the pin is a SHA that cannot be ordered against them) are
+**not** settled as a class. §1 Family B recommended holding both; the ruling is to **look at each
+repo's tag hygiene individually and pick separately**.
+
+**This adds a step before Phase 3, not inside it**: a short per-repo assessment — does the repo tag
+releases consistently, does a tag exist whose tree matches the SHA currently shipping, and would
+moving to it change delivered content? Migrating is only free where the answer to the last question
+is no. Phase 3 therefore delivers **2, 3, or 4** auto-bumpable pins, resolved by that step rather
+than assumed here.
+
 ---
 
 ## 3. Executable acceptance criteria
@@ -534,6 +614,10 @@ Per gate:
   version in `build_args:`; the matching Dockerfile `ARG` carries **no default**.
 - **AC-8 — no unpinned download in any agent image.** codex, claude, antigravity each acquire their
   CLI at a version named in `agent.yaml`.
+  - **Settled 2026-08-09 by S5/S6 + D7**: codex and claude satisfy this (claude via the installer's
+    own positional version argument); **antigravity does not and cannot**, so it takes outcome 2
+    below — `UNPINNABLE`, declared, reported, and documented per AC-12. Two of three, with the third
+    an honest recorded gap, is the intended end state of this AC — not a partial failure to fix later.
   - **Conflict with NC-9, resolved here** (raised in review of PR #331). AC-8 demands a version;
     NC-9 forbids buying one by bypassing a verifying installer. If S5/S6 finds an installer that
     cannot take a version without losing its signature check, those are not both satisfiable, and
@@ -573,6 +657,14 @@ Per gate:
   `UNPINNABLE` agent (per AC-8) reported as such rather than as unresolved.
 - **AC-11 — no free-text copy of a pin.** No `description:` or comment restates a version
   `build_args` owns. (The live omp `"pinned v16"` vs `17.2.11` drift is the motivating case.)
+- **AC-12 — an UNPINNABLE agent says so where a human will read it** (added by D7). For every member
+  of the top-level `unpinnable:` mapping: (a) `harnessed update` lists it under the UNPINNABLE
+  status, distinct from *unresolved*, so "cannot be pinned" never reads as "the resolver broke";
+  (b) the agent's own `description:`/README states that it tracks upstream and moves on rebuild.
+  **Executable form**: a test asserts every `unpinnable:` key appears in `update`'s UNPINNABLE
+  section and in **no** bump offer, and the AC-11 prose lint accepts "tracks upstream" wording while
+  still rejecting a restated version literal. Without (b) this AC is satisfiable by a silent
+  data structure, which is the failure mode D7's third commitment names.
 
 ### Negative constraints (must NOT change)
 
@@ -630,9 +722,11 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
 - A3. `claude`: pin `claude.ai/install.sh` — **S5 says yes**, pass the version as the installer's
   positional argument (`bash -s -- "$CLAUDE_VERSION"`) and mark it `hold:` (pinnable, unqueryable).
   NC-9 is preserved: the manifest sha256 check is untouched.
-- A4. `antigravity`: **S6 says no.** Declare `unpinnable:` with the two-part reason and leave the
-  installer invocation exactly as it is. NC-9 forbids trading its sha512 check for a version string,
-  and there is no version string to trade for.
+- A4. `antigravity`: **S6 says no.** Declare it in the top-level `unpinnable:` mapping with the
+  two-part reason (D7) and leave the installer invocation exactly as it is — it adds no `ARG` and
+  contributes no `--build-arg`. NC-9 forbids trading its sha512 check for a version string, and
+  there is no version string to trade for. Per D7 the agent tracks upstream deliberately and moves
+  only on a human rebuild; AC-12 is what makes that visible instead of silent.
 - A5. `omp`: delete `"pinned v16"` prose (AC-11); land or revert the pending 17.2.11 bump — do not
   leave the tree split.
 - A6. Extend the lint (AC-9). This is the guard that stops A1–A4 regressing.
@@ -678,8 +772,13 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
     # S5 corrected this line: claude's installer DOES take a version. It is pinnable, just not
     # resolvable — no `spec:`, because the script names no upstream to query.
     CLAUDE_VERSION: { value: "2.1.88", hold: "unqueryable: official installer takes a version but names no upstream repo or registry; downloads.claude.ai publishes only `latest`" }
-    AGY_VERSION: { unpinnable: "installer offers no version selector and its manifest exposes only the current release; the CLI also self-updates in the background, so a build-time pin does not hold" }
   ```
+
+  **`unpinnable:` is NOT a `build_args` member** (D7). An earlier draft of this section showed an
+  `AGY_VERSION: { unpinnable: … }` entry; that name was invented for the illustration and no such
+  `ARG` exists. D7 moved the concept to a top-level `unpinnable:` mapping, so `build_args` keeps the
+  single meaning "becomes `--build-arg`" — which is exactly the property item 4 below has to test.
+  `unpinnable` is therefore dropped from the `build_args` value schema in step 1.
 
   Per-source-type coverage for A1–A5:
 
@@ -695,13 +794,17 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
   Dockerfile still performs the install. That separation is the same one `install.refs` makes for
   Family B (declare the pin, keep the fetch), and it is why neither needs a DSL.
 
-  1. **`agent.schema.json`** — a `build_args` value becomes `oneOf`: the existing scalar, **or** a
-     mapping `{value, spec?, hold?, unpinnable?}`, mirroring what `tools:` already does with
-     `{spec, hold}`. `unpinnable` is mutually exclusive with `value`/`spec` — an agent is either
-     pinned or it is not, and a manifest that claims both is a schema error.
-     Reusing that shape rather than inventing a second one is the point: one hold concept, one
-     reader, one set of semantics. Backward compatible per NC-10 — every existing scalar still
-     validates, and no field becomes required.
+  1. **`agent.schema.json`** — two changes, kept separate on purpose (D7):
+     - a `build_args` value becomes `oneOf`: the existing scalar, **or** a mapping
+       `{value, spec?, hold?}`, mirroring what `tools:` already does with `{spec, hold}`. Reusing
+       that shape rather than inventing a second one is the point: one hold concept, one reader,
+       one set of semantics.
+     - a **new top-level `unpinnable:`** mapping of `agent-local name → non-empty reason string`.
+       An agent name may appear in `build_args` **or** `unpinnable:`, never both — claiming a pin
+       and claiming pinning is impossible is a schema error, which is where the old
+       `unpinnable`-inside-`build_args` mutual exclusion moves to.
+     Backward compatible per NC-10 — every existing scalar still validates, and no field
+     becomes required.
   2. **`src/harnessed/schema.py`** — parse and validate the new form; a `hold` must be a non-empty
      reason string, and (as with `tools:`) a hold does **not** license an unpinned value.
   3. **`src/harnessed/update.py`** — an agent-manifest pin source beside the recipe sources: walk
@@ -721,6 +824,12 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
   - a `hold` with an empty/missing reason is a schema error;
   - an `UNPINNABLE` agent (AC-8) reports under that status, not as unresolved;
   - the mapping form reaches `podman build` as `--build-arg NAME=<value>`, with no dict leakage;
+  - **an `unpinnable:` member contributes NO `--build-arg` at all** (added by D7). This is the
+    other half of the previous test and it is the one that catches the plausible wrong
+    implementation: a reader that walks every manifest key looking for pins will happily emit
+    `--build-arg agy=<reason string>` against a Dockerfile that declares no such `ARG`. The
+    assertion is on the **absence** of the flag, not on the value;
+  - an agent declaring the same name in both `build_args` and `unpinnable:` is a schema error;
   - every existing scalar-only `agent.yaml` in `catalog/agents/` still validates (NC-10).
 
 **Phase 1 — literal deletions** (no behaviour change): ccstatusline (closes #323), serena,
@@ -814,8 +923,11 @@ S9 gates Phase 4. They stay open.
 - **S8** _(from D1; partially ANSWERED 2026-08-09, see §1 Family B)_ — resolvability is measured for
   all seven refs: **2 Class A** (tag-pinned, resolvable), **3 Class B** (no releases or tags —
   structurally unresolvable), **2 Class C** (releases exist but the pin is a SHA, so candidates
-  cannot be ordered against it). What REMAINS open in S8 is the Class C decision: migrate those two
-  pins to tags, or hold them with the not-orderable reason. Recommend holding — see §1 Family B. Determines whether Phase 3 delivers 4 auto-bumpable pins or 2.
+  cannot be ordered against it). The Class C decision is **RESOLVED 2026-08-09 by the human — see
+  D8**: decided per-repo, not as a class, via a short tag-hygiene assessment run before Phase 3.
+  Phase 3 therefore delivers 2, 3, or 4 auto-bumpable pins depending on that step's finding. The
+  earlier blanket "recommend holding" in §1 Family B is superseded as a *decision* and survives only
+  as the default where a repo's tags turn out not to match what its SHA ships.
 - **S9** _(from D3, gates Phase 4)_ — can a **host** assembly complete in CI (mise present, network,
   no podman)?
 
@@ -828,13 +940,17 @@ S9 gates Phase 4. They stay open.
 - **Commits**: `commit = "allow"`, signed (`git commit -S`) per `.claude/rules/signed-commits`.
 - **New dependencies**: **none proposed.** If a spike shows otherwise, it returns here for approval.
 - **Files touched — Phase A/A7** (agents; lands before Phase 0 per D6):
-  - `schemas/agent.schema.json` _(`build_args` value gains `{value, spec?, hold?, unpinnable?}`)_
-  - `src/harnessed/schema.py` _(parse/validate the mapping form)_
-  - `src/harnessed/update.py` _(agent-manifest pin source; three-outcome reporting)_
-  - `src/harnessed/emit.py` _(`--build-arg` must read `.value`, not the mapping)_
-  - `catalog/base/Dockerfile.harnessed-*` _(A1–A4: `ARG`s lose their defaults)_
-  - `catalog/agents/*/agent.yaml` _(A1–A5: pins move here)_
-  - `tests/test_agent_pins.py` _(new — the six A7 tests)_
+  - `schemas/agent.schema.json` _(`build_args` value gains `{value, spec?, hold?}`; **new top-level
+    `unpinnable:` mapping** per D7)_
+  - `src/harnessed/schema.py` _(parse/validate the mapping form and `unpinnable:`; reject a name
+    declared in both)_
+  - `src/harnessed/update.py` _(agent-manifest pin source; four-outcome reporting incl. UNPINNABLE)_
+  - `src/harnessed/emit.py` _(`--build-arg` must read `.value`, not the mapping, and must emit
+    **nothing** for an `unpinnable:` member)_
+  - `catalog/base/Dockerfile.harnessed-*` _(A1–A3: opencode's `ARG` loses its default; claude and
+    codex **gain** an `ARG` — measured 2026-08-09, neither has one today. Antigravity gains none.)_
+  - `catalog/agents/*/agent.yaml` _(A1–A5: pins move here; antigravity gets `unpinnable:`)_
+  - `tests/test_agent_pins.py` _(new — the eight A7 tests)_
 - **Files touched — Phase 0** (recipes; later phases add `tests/*.sh` under existing recipe dirs):
   - `schemas/recipe.schema.json` _(new `install.refs:`; `cache:` becomes derived)_
   - `src/harnessed/schema.py`
