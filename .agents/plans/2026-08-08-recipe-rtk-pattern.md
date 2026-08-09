@@ -15,6 +15,12 @@
 > top-level `content:`. Refs move to the manifest; the fetch/copy logic stays in `install.sh`. S4
 > answered by reading `emit.install_env`. See D1a.
 >
+> **REVISION 5** (2026-08-09) — five findings from CodeRabbit's review of PR #331, all valid, all
+> addressed: markdown lint; the Family B inventory reconciled across **all seven** refs (which
+> turned up a third resolvability class the review's binary framing had no slot for); AC-10 given
+> an owning scenario (A7) it previously lacked; the `install.refs` contract specified as a 7-rule
+> Phase 0 test plan; and the AC-8 / NC-9 conflict resolved with a fourth status, `UNPINNABLE`.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -47,7 +53,7 @@ The real invariant is not _"everything through mise"_:
 
 `tools:` is that field for anything that lands a binary on PATH — and it is **correct** there, rtk
 included. Content fetches need a sibling field that does not exist yet. That gap is the root cause of
-#261's Class 1/2, and it is Phase 0.
+issue #261's Class 1/2, and it is Phase 0.
 
 Agents obey the same invariant and are in worse shape (§1b): three of five are **unpinned outright**,
 and the lint CLAUDE.md says rejects unpinned downloads never runs on them.
@@ -87,6 +93,45 @@ Inventory taken 2026-08-08 across all 22 recipes in `catalog/recipes/`.
 The `cache:` duplication is **mandated by the current schema**, whose own description reads
 _"Keep it equal to the ref pinned inside the script."_ That instruction is #261's Class-3 defect
 written into the contract.
+
+#### Resolvability of all SEVEN Family B refs (measured 2026-08-09)
+
+Raised in review of PR #331: the earlier text classified four refs and left mikes-universal-setup's
+three unaccounted for, while AC-2 says *every* pin. Checking all seven turned up a **third class**
+that neither the review nor the original spec anticipated.
+
+| # | Ref | Repo | Releases | Tags | Pinned as | Class |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | caveman | JuliusBrussee/caveman | 17 | 17 | tag `v1.9.0` | **A** |
+| 2 | superpowers | obra/superpowers | 11 | 33 | tag `v6.0.3` | **A** |
+| 3 | hyperpowers | withzombies/hyperpowers | **0** | **0** | SHA | **B** |
+| 4 | gstack | garrytan/gstack | **0** | **0** | SHA | **B** |
+| 5 | `OAKOSS_SHA` | oakoss/agent-skills | **0** | **0** | SHA | **B** |
+| 6 | `BLADER_SHA` | blader/humanizer | 2 | 2 | SHA | **C** |
+| 7 | `AMINBLG_SHA` | AminBlg/SimpleEnglish | 1 | 1 | SHA | **C** |
+
+- **Class A — tag-pinned, releases exist.** `_github_releases` resolves them. Auto-bumpable in
+  mechanism; still `hold:` by the #240 policy, but the hold reason is *policy*, and it can be lifted
+  by decision alone.
+- **Class B — SHA-pinned, no releases and no tags.** There is nothing for any resolver to return.
+  `hold:` is **structural**, not policy: lifting the policy would change nothing. Reason string must
+  say so, or a future reader will "fix" a hold that is not fixable.
+- **Class C — SHA-pinned, but releases exist.** *This is the class the review's binary
+  auto-bumpable/held framing has no slot for.* The resolver CAN list candidate releases, but it
+  **cannot order a raw SHA against a tag** — it cannot tell whether the pinned commit is before or
+  after `v1.2.3`, so it cannot say whether an "upgrade" is an upgrade. Offering a bump here risks a
+  silent DOWNGRADE.
+  - **Decision required (part of S8, not deferrable past Phase 3)**: either (a) migrate the pin from
+    a SHA to a tag, making it Class A and losing the exact-commit guarantee #240 chose deliberately,
+    or (b) hold it with the reason *"SHA-pinned by design; releases exist but are not orderable
+    against a commit."* **Recommend (b)** — #240 picked SHA pinning because the vercel CLI's
+    tag/branch pinning was the exposure, and undoing that to gain a bump prompt trades a security
+    property for convenience.
+
+**So the honest S8 answer is 2 / 3 / 2, not 4-or-2.** Two auto-bumpable in mechanism, three
+structurally unresolvable, two resolvable-but-not-orderable. Every one of the seven ends with an
+explicit `hold:` and a reason naming which class it is — which is what AC-2 requires, and it is why
+AC-2 is satisfiable even though five of seven can never be auto-bumped.
 
 ### Family C — no pin at all
 
@@ -204,15 +249,62 @@ the least-tested code in the change. `install.sh` already does it, correctly, to
 
 **So: declare the refs, keep the script.**
 
+Multi-ref example, using the hardest real case — `mikes-universal-setup` declares **three**:
+
 ```yaml
 install:
   script: install.sh
   refs:
-    caveman:
-      repo: JuliusBrussee/caveman # owner/repo — what `update` queries
-      ref: v1.9.0 # tag or full SHA; floating values rejected as for tools:
-      hold: "skill pins are manual-upgrade-only" # optional; same semantics as tools:[].hold
+    oakoss: # ref KEY: ^[a-z][a-z0-9_]*$ (see contract below)
+      repo: oakoss/agent-skills # owner/repo — what `update` queries
+      ref: 0283bed313563d5677a0838f4bf921b03296cf6c # tag or FULL SHA; floating rejected as for tools:
+      hold: "structural: repo publishes no releases or tags" # class-naming reason, per AC-2
+    blader:
+      repo: blader/humanizer
+      ref: 1b48564898e999219882660237fde01bf4843a0f
+      hold: "not-orderable: SHA-pinned by design; releases exist but cannot be ordered against a commit"
+    aminblg:
+      repo: AminBlg/SimpleEnglish
+      ref: 379728b51981b6d2ee1de0f201164483a9648972
+      hold: "not-orderable: SHA-pinned by design; releases exist but cannot be ordered against a commit"
 ```
+
+#### The `install.refs` contract — settled BEFORE Phase 0 writes code
+
+Raised in review of PR #331: the first draft showed one ref and left the mechanics implied. Implied
+mechanics become whatever the first implementation happened to do. Each rule below gets an executable
+test in Phase 0; **this list is the Phase 0 test plan**, not commentary.
+
+1. **Ref key syntax**: `^[a-z][a-z0-9_]*$`, unique within a recipe. Rejected at schema validation,
+   not at env-emit time — a bad key must fail the build with a message naming the key, not produce a
+   silently missing variable.
+2. **Key → env mapping is deterministic and total**: key `oakoss` yields exactly
+   `HARNESSED_REF_OAKOSS` and `HARNESSED_REPO_OAKOSS` (uppercase; the key charset admits no other
+   transformation, which is why the charset is restricted rather than the mapping made clever).
+   `HARNESSED_REPO_*` carries `owner/repo`, NOT a URL — the script composes the URL, so a recipe
+   switching from `git clone` to a tarball fetch needs no manifest change.
+3. **Collisions**: two keys normalizing to one env var is impossible under rule 1, and a test asserts
+   that rather than trusting it. A ref key colliding with a reserved `HARNESSED_*` name from
+   `install_env` (`HARNESS`, `MODE`, `RECIPE_DIR`, `CONFIG_DIR`, `INSTALL_CACHE`, `BIN_DIR`,
+   `HOME_SHIM`) is a **schema error**. `install_env` keys are applied last and would win, so the
+   recipe's own ref would vanish — the exact silent-empty-variable failure the `install_env`
+   docstring exists to prevent.
+4. **Ordering is irrelevant to behaviour and must be proven so.** YAML mappings carry no meaningful
+   order; the emitted env is a dict. The one place order could leak is the derived cache key, which
+   rule 6 pins.
+5. **`hold:` scope is the single ref**, matching `tools:[].hold`. A recipe with three refs may hold
+   one and auto-bump two. A hold never licenses a floating ref (`tools:` already establishes this).
+6. **Cache identity is derived, deterministic, and order-independent**: sort refs by key, then hash
+   `key=repo@ref` joined by `\n`. Consequences that must be tested, because each has bitten this
+   repo before: changing ANY ref changes the key (so a stale cache cannot be served); reordering the
+   YAML does NOT (so a cosmetic edit does not force a refetch); and the key is a fixed-length digest,
+   which is what stops the `oak0283bed3-hum1b485648-ste379728b5` hand-mashing pattern from returning
+   as an auto-generated version of itself.
+7. **`refs:` and a hand-written `cache:` together is a schema error**, not a precedence rule (NC-5).
+
+Each of 1–7 gets a schema/update unit test. Rule 2 additionally needs a test asserting the generated
+environment for a real multi-ref recipe, since that is the rule an implementer is most likely to
+satisfy "close enough".
 
 `install.sh` then consumes what it used to declare — the Family B equivalent of rtk's `rtk --version`
 guard:
@@ -338,6 +430,12 @@ change. **S7** exists to make that visible rather than accidental.
   the value also appears in `recipe.yaml`, or appears nowhere in it.
 - **AC-2 — every pin is reachable.** `harnessed update --check` classifies every catalog pin as
   _resolvable_ or _held with a stated reason_. The **unresolved** list is empty.
+  - "Every pin" means **all seven** Family B refs (see §1 Family B), not one per recipe —
+    mikes-universal-setup declares three. A per-recipe count would pass while two refs went
+    unclassified.
+  - A `hold:` reason must name its class (policy / structural / not-orderable). "held" alone is not
+    a stated reason, and a structural hold mislabelled as policy invites a future reader to lift
+    something that cannot be lifted.
 - **AC-3 — `install.cache` is never reported as an upstream pin.** **Delegated to child #261.**
 - **AC-4 — `install.sh` performs no version-bearing download** whose version it declares itself.
 - **AC-5 — first line of defence is a guard.** Every recipe whose `tools:` delivers an executable has
@@ -357,12 +455,39 @@ change. **S7** exists to make that visible rather than accidental.
   version in `build_args:`; the matching Dockerfile `ARG` carries **no default**.
 - **AC-8 — no unpinned download in any agent image.** codex, claude, antigravity each acquire their
   CLI at a version named in `agent.yaml`.
+  - **Conflict with NC-9, resolved here** (raised in review of PR #331). AC-8 demands a version;
+    NC-9 forbids buying one by bypassing a verifying installer. If S5/S6 finds an installer that
+    cannot take a version without losing its signature check, those are not both satisfiable, and
+    **`hold:` does not rescue it**: a held unversioned installer is still unpinned, and recording it
+    as AC-8-compliant would be a fabricated pass (anti-gaming rule 6 — never label a property you
+    did not verify).
+  - The required outcome, in strict order:
+    1. **Find a versioned, integrity-preserving source.** A pinned release asset with a published
+       checksum, or the installer's own version flag if it has one. This satisfies both.
+    2. **If none exists, the agent FAILS AC-8** and is recorded with a fourth status —
+       `UNPINNABLE (<installer>, verifies <mechanism>, offers no version selector)`. It is not
+       `PASSED`, not `held`, and not quietly excluded. It appears in the update report as a known
+       unpinnable surface with its integrity mechanism named.
+    3. **Phase A ships anyway.** Blocking all five agents on the worst one would leave codex —
+       which is trivially pinnable and unambiguously broken — unpinned for longer. Partial
+       convergence with an honest gap beats a stalled phase.
+  - Reproducibility and integrity are different properties. An `UNPINNABLE` agent has integrity and
+    lacks reproducibility, and the report must say exactly that rather than averaging them into one
+    green tick.
 - **AC-9 — the lint reaches agents, and can see ABSENT as well as FLOATING.** Runs over
   `catalog/base/Dockerfile.harnessed-*`; rejects the existing floating patterns **and** unversioned
   acquisition (bare `mise use -g <backend>:<pkg>` with no `@`; piped installer with no version arg).
   _Test_: unit tests feeding it each of the three real pre-migration bodies — each must raise. A lint
   that passes on today's `catalog/base/` is not fixed.
 - **AC-10 — `harnessed update` resolves agent pins**, or they are `hold:`-marked with a reason.
+  **Owned by Phase A scenario A7** (added in review of PR #331 — AC-10 previously had no scenario
+  implementing it, so it would have passed review as a criterion nobody built). Concretely:
+  `update.py` gains an agent-manifest source beside its recipe sources — read `catalog/agents/*/agent.yaml`,
+  take each `build_args` entry whose Dockerfile `ARG` it feeds, resolve it through the SAME backend
+  machinery as `tools:` (the mise spec in `Dockerfile.harnessed-omp` is `github:can1357/oh-my-pi@…`,
+  so `_github_releases` already applies), and honour a `hold:` reason. Tests: one resolved agent pin
+  offered for bump, one held agent pin listed informationally and never offered, and one
+  `UNPINNABLE` agent (per AC-8) reported as such rather than as unresolved.
 - **AC-11 — no free-text copy of a pin.** No `description:` or comment restates a version
   `build_args` owns. (The live omp `"pinned v16"` vs `17.2.11` drift is the motivating case.)
 
@@ -403,6 +528,11 @@ change. **S7** exists to make that visible rather than accidental.
 - A5. `omp`: delete `"pinned v16"` prose (AC-11); land or revert the pending 17.2.11 bump — do not
   leave the tree split.
 - A6. Extend the lint (AC-9). This is the guard that stops A1–A4 regressing.
+- A7. **Teach `harnessed update` to see agents** (AC-10): an agent-manifest pin source beside the
+  recipe ones, resolving `build_args` through the existing backend machinery, honouring `hold:`, and
+  reporting `UNPINNABLE` distinctly. Without A7, A1–A5 move pins into `agent.yaml` where `update`
+  still cannot read them — the migration would be cosmetic. Touches `src/harnessed/update.py` and
+  `src/harnessed/schema.py`.
 
 **Phase 1 — literal deletions** (no behaviour change): ccstatusline (closes #323), serena,
 context-mode (fed from `tools:`).
@@ -411,7 +541,10 @@ context-mode (fed from `tools:`).
 solidspec (after S2 — Dockerfile keeps only its `apt-get` layer); gsd-core (after S3).
 
 **Phase 3 — Family B onto `install.refs:`**: caveman, superpowers, hyperpowers, gstack,
-mikes-universal-setup. For each: same files land in `$HARNESSED_CONFIG_DIR`, the derived
+mikes-universal-setup. Acceptance is per **ref**, not per recipe: all **seven** declared refs end
+with a resolver outcome or an explicit `hold:` naming its class, and mikes-universal-setup's three
+are asserted individually. The Class C decision (S8) is made in this phase, in writing, not left to
+the implementer. For each: same files land in `$HARNESSED_CONFIG_DIR`, the derived
 `install.cache` key still hits on a second launch, and `harnessed update` lists the pin as resolvable
 or held (S8 decides which).
 
@@ -435,8 +568,11 @@ or held (S8 decides which).
 - **S6** — same for `antigravity.google/cli/install.sh`, whose sha512 verification must survive.
 - **S7** — what is the _currently resolved_ version of `npm:@openai/codex` in the built image
   (`mise ls` inside it), so A2 pins what already ships rather than silently upgrading users?
-- **S8** _(from D1)_ — can `install.refs:` resolve a pin for **hyperpowers** and **gstack** (zero
-  releases, raw SHA pins)? Either the resolver learns tags/commits, or those two are `hold:`-only. Determines whether Phase 3 delivers 4 auto-bumpable pins or 2.
+- **S8** _(from D1; partially ANSWERED 2026-08-09, see §1 Family B)_ — resolvability is measured for
+  all seven refs: **2 Class A** (tag-pinned, resolvable), **3 Class B** (no releases or tags —
+  structurally unresolvable), **2 Class C** (releases exist but the pin is a SHA, so candidates
+  cannot be ordered against it). What REMAINS open in S8 is the Class C decision: migrate those two
+  pins to tags, or hold them with the not-orderable reason. Recommend holding — see §1 Family B. Determines whether Phase 3 delivers 4 auto-bumpable pins or 2.
 - **S9** _(from D3, gates Phase 4)_ — can a **host** assembly complete in CI (mise present, network,
   no podman)?
 
@@ -454,6 +590,7 @@ or held (S8 decides which).
   - `src/harnessed/update.py`
   - `src/harnessed/emit.py`
   - `src/harnessed/capability.py` _(host test path, AC-6a)_
+  - `src/harnessed/update.py` _(again, in Phase A: agent-manifest pin source, A7/AC-10)_
   - `tests/test_recipe_pin_hygiene.py` _(new — AC-1, AC-4)_
 - **Tracker**: `tracker = "allow"`; roll-up to #329.
 
@@ -513,7 +650,7 @@ Consequences:
   different failure mode (reproducibility / supply chain) from recipe drift. Phase A ships without
   the `install.refs:` schema change.
 
-```
+```text
 #329  epic: converge recipes AND agents on the rtk pattern
  ├─ #261  (narrowed)  update.py: stop reporting install.cache keys as unresolved pins   → AC-3
  ├─ #330              agents: 3 unpinned CLIs + the lint that never runs on them        → AC-7..AC-11, Phase A
