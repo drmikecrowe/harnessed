@@ -21,6 +21,12 @@
 > an owning scenario (A7) it previously lacked; the `install.refs` contract specified as a 7-rule
 > Phase 0 test plan; and the AC-8 / NC-9 conflict resolved with a fourth status, `UNPINNABLE`.
 >
+> **REVISION 6** (2026-08-09) — CodeRabbit third pass on PR #331, four findings, all valid:
+> A7 must run BEFORE A2–A4 (the list order was executable in the wrong sequence); Dockerfile
+> extraction cannot identify an upstream for 3 of 5 agents, so `build_args` gains a declared
+> `spec:`; `UNPINNABLE` promoted to a first-class outcome with defined behaviour at every gate;
+> Phase 0 and Phase A file lists split.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -479,6 +485,40 @@ change. **S7** exists to make that visible rather than accidental.
   - A recipe whose install differs between modes must be asserted in **both**. A single-mode pass for
     a two-mode recipe is `SUBSTITUTED`, not `PASSED`.
 
+### The three pin outcomes — one vocabulary, all gates
+
+Raised in review of PR #331 (third pass): AC-9 rejected every unversioned installer, AC-10 admitted
+only *resolved* or *held*, NC-9 said "hold it", and AC-8 said `hold:` does not apply. Four gates,
+four different answers for one agent. An implementer could not tell whether Phase A passes.
+
+**There are exactly three outcomes.** Every gate below uses these words and no others.
+
+| Outcome | Means | Declared as |
+| --- | --- | --- |
+| **RESOLVED** | pinned, and a registry can answer "is there a newer one" | `{value, spec}` |
+| **HELD** | pinned; bumping is deliberately manual | `{value, spec?, hold: "<reason>"}` |
+| **UNPINNABLE** | **not pinned**, because no version selector exists that preserves integrity (NC-9) | `{unpinnable: "<reason naming the integrity mechanism>"}` |
+
+`UNPINNABLE` is **not** a flavour of HELD. HELD is pinned and chosen; UNPINNABLE is unpinned and
+conceded. Collapsing them would let an unpinned installer inherit HELD's "this is fine" reading —
+the fabricated pass AC-8 exists to prevent.
+
+Per gate:
+
+- **Lint (AC-9)** — rejects an unversioned acquisition **unless** that agent's manifest declares
+  `unpinnable:` with a non-empty reason. The escape hatch is explicit and reviewable in the diff,
+  never inferred from the Dockerfile's shape. A bare `curl … | bash` with no declaration still fails.
+- **Update report (AC-10)** — three sections, not two. UNPINNABLE entries appear under their own
+  heading with the reason verbatim, never inside *unresolved* (which means "should have resolved and
+  did not" — an actionable defect) and never inside *held* (which means "resolvable, deliberately
+  frozen").
+- **Phase gate (Phase A)** — Phase A **passes** with UNPINNABLE agents present, provided each is
+  declared with a reason. It **fails** on any undeclared unpinned agent. Blocking the phase on the
+  worst agent would leave codex — trivially pinnable, unambiguously broken — unpinned for longer.
+- **EVIDENCE** — an UNPINNABLE agent is reported as a known limit, in the same register as the
+  podman blind spot. Reproducibility and integrity are different properties; a report that averages
+  them into one green tick is lying by aggregation.
+
 ### The pattern contract — AGENTS (#330)
 
 - **AC-7 — the pin lives in `agent.yaml`, never in the Dockerfile.** Every agent declares its CLI
@@ -506,7 +546,10 @@ change. **S7** exists to make that visible rather than accidental.
     green tick.
 - **AC-9 — the lint reaches agents, and can see ABSENT as well as FLOATING.** Runs over
   `catalog/base/Dockerfile.harnessed-*`; rejects the existing floating patterns **and** unversioned
-  acquisition (bare `mise use -g <backend>:<pkg>` with no `@`; piped installer with no version arg).
+  acquisition (bare `mise use -g <backend>:<pkg>` with no `@`; piped installer with no version arg)
+  — **unless** that agent declares `unpinnable:` with a reason (see the three-outcome table above).
+  A test asserts the declaration is what suppresses the error, so an undeclared unpinned agent still
+  fails.
   _Test_: unit tests feeding it each of the three real pre-migration bodies — each must raise. A lint
   that passes on today's `catalog/base/` is not fixed.
 - **AC-10 — `harnessed update` resolves agent pins**, or they are `hold:`-marked with a reason.
@@ -548,7 +591,25 @@ change. **S7** exists to make that visible rather than accidental.
 
 ### Scenarios
 
-**Phase A — agents (#330; runs FIRST per D6):**
+**Phase A — agents (#330; runs FIRST per D6).**
+
+**Intra-phase order is NOT the list order** (raised in review of PR #331, third pass). A7 changes
+`agent.schema.json` and the update path, and A2–A4 need the `{value, hold}` form and the `spec:`
+field it adds. Executing top-to-bottom would write pins into a schema that cannot hold them. The
+dependency is:
+
+```text
+A7  (schema + update.py: hold:, spec:, UNPINNABLE)   <- FIRST, blocks A2-A4
+A6  (lint)                                            <- independent, any time
+A1  (opencode relocation)                             <- independent of A7 (scalar form suffices)
+A5  (omp prose + land/revert the pending bump)        <- independent
+     |
+     +-- then A2 (codex), A3 (claude), A4 (antigravity)
+```
+
+A1 is listed first below because it is the simplest illustration of the target shape, not because it
+runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
+
 
 - A1. `opencode`: move `OPENCODE_VERSION=1.17.9` into `agent.yaml build_args`; Dockerfile `ARG` loses
   its default. _Pure relocation — no RED test; use the byte-identity + mutation substitute._
@@ -570,8 +631,55 @@ change. **S7** exists to make that visible rather than accidental.
   antigravity are the likely holders, per NC-9). So A7 begins with a schema change, and A7 must
   therefore land BEFORE A2–A4, not after them.
 
+  **How does `OPENCODE_VERSION` tell the resolver what to query?** (Raised in review of PR #331,
+  third pass — the first draft said "take each `build_args` entry that feeds a Dockerfile `ARG`",
+  which does not identify an upstream.) Measured across all five agent Dockerfiles:
+
+  | Agent | What the Dockerfile exposes | Resolvable by extraction? |
+  | --- | --- | --- |
+  | omp | `mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}"` | yes — a mise spec |
+  | codex | `mise use -g npm:@openai/codex` | yes, after A2 adds the version |
+  | opencode | `curl -fsSL https://opencode.ai/install \| bash -s -- --version "${OPENCODE_VERSION}"` | **no** — the URL does not name `sst/opencode` |
+  | claude | `curl -fsSL https://claude.ai/install.sh \| bash` | **no** — no upstream identifier at all |
+  | antigravity | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | **no** |
+
+  **So extraction is rejected: it works for 2 of 5 and cannot work for the rest.** A "precise, tested
+  Dockerfile extraction rule" would be a shell parser that is correct for the two easy cases and
+  silently blind for the three that matter — and `update.py`'s module docstring already refuses
+  exactly this (*"install.sh bodies, Dockerfiles, and install.cache are not that. They are shell and
+  text"*). Writing a Dockerfile parser to satisfy this epic would contradict the principle the epic
+  is built on.
+
+  **Declare instead.** The `build_args` mapping form carries an optional `spec:` — a mise spec in the
+  same vocabulary `tools:` already uses. The resolver never reads a Dockerfile; it reads the manifest,
+  exactly as it does for recipes:
+
+  ```yaml
+  build_args:
+    OMP_VERSION: { value: "17.2.11", spec: "github:can1357/oh-my-pi" }
+    OPENCODE_VERSION: { value: "1.17.9", spec: "github:sst/opencode" }
+    CODEX_VERSION: { value: "0.0.0", spec: "npm:@openai/codex" }
+    CLAUDE_VERSION: { unpinnable: "official installer verifies its own download; offers no version selector" }
+  ```
+
+  Per-source-type coverage for A1–A5:
+
+  | Scenario | Agent | `spec:` | Outcome |
+  | --- | --- | --- | --- |
+  | A1 | opencode | `github:sst/opencode` | **RESOLVED** — installer takes `--version`, so value and spec agree |
+  | A2 | codex | `npm:@openai/codex` | **RESOLVED** — npm registry; value chosen by S7 |
+  | A3 | claude | *(none)* | **UNPINNABLE** unless S5 finds a version selector |
+  | A4 | antigravity | *(none)* | **UNPINNABLE** unless S6 finds one, under NC-9 |
+  | A5 | omp | `github:can1357/oh-my-pi` | **RESOLVED** — already the reference shape |
+
+  A `spec:` is a *resolver hint*, never a second installer. It names where the version comes from; the
+  Dockerfile still performs the install. That separation is the same one `install.refs` makes for
+  Family B (declare the pin, keep the fetch), and it is why neither needs a DSL.
+
   1. **`agent.schema.json`** — a `build_args` value becomes `oneOf`: the existing scalar, **or** a
-     mapping `{value, hold}`, mirroring exactly what `tools:` already does with `{spec, hold}`.
+     mapping `{value, spec?, hold?, unpinnable?}`, mirroring what `tools:` already does with
+     `{spec, hold}`. `unpinnable` is mutually exclusive with `value`/`spec` — an agent is either
+     pinned or it is not, and a manifest that claims both is a schema error.
      Reusing that shape rather than inventing a second one is the point: one hold concept, one
      reader, one set of semantics. Backward compatible per NC-10 — every existing scalar still
      validates, and no field becomes required.
@@ -646,16 +754,20 @@ or held (S8 decides which).
   phase wrote only into the gitignored artifact dir in `main/`; no tracked file was touched.**
 - **Commits**: `commit = "allow"`, signed (`git commit -S`) per `.claude/rules/signed-commits`.
 - **New dependencies**: **none proposed.** If a spike shows otherwise, it returns here for approval.
-- **Files touched, Phase 0** (later phases add `tests/*.sh` under existing recipe dirs):
+- **Files touched — Phase A/A7** (agents; lands before Phase 0 per D6):
+  - `schemas/agent.schema.json` _(`build_args` value gains `{value, spec?, hold?, unpinnable?}`)_
+  - `src/harnessed/schema.py` _(parse/validate the mapping form)_
+  - `src/harnessed/update.py` _(agent-manifest pin source; three-outcome reporting)_
+  - `src/harnessed/emit.py` _(`--build-arg` must read `.value`, not the mapping)_
+  - `catalog/base/Dockerfile.harnessed-*` _(A1–A4: `ARG`s lose their defaults)_
+  - `catalog/agents/*/agent.yaml` _(A1–A5: pins move here)_
+  - `tests/test_agent_pins.py` _(new — the six A7 tests)_
+- **Files touched — Phase 0** (recipes; later phases add `tests/*.sh` under existing recipe dirs):
   - `schemas/recipe.schema.json` _(new `install.refs:`; `cache:` becomes derived)_
   - `src/harnessed/schema.py`
   - `src/harnessed/update.py`
   - `src/harnessed/emit.py`
   - `src/harnessed/capability.py` _(host test path, AC-6a)_
-  - `src/harnessed/update.py` _(again, in Phase A: agent-manifest pin source, A7/AC-10)_
-  - `schemas/agent.schema.json` _(Phase A/A7: `build_args` value gains the `{value, hold}` form)_
-  - `src/harnessed/emit.py` _(again, Phase A/A7: `--build-arg` must read `.value`, not the mapping)_
-  - `tests/test_agent_pins.py` _(new — the six A7 tests)_
   - `tests/test_recipe_pin_hygiene.py` _(new — AC-1, AC-4)_
 - **Tracker**: `tracker = "allow"`; roll-up to #329.
 
