@@ -283,23 +283,53 @@ test in Phase 0; **this list is the Phase 0 test plan**, not commentary.
    transformation, which is why the charset is restricted rather than the mapping made clever).
    `HARNESSED_REPO_*` carries `owner/repo`, NOT a URL — the script composes the URL, so a recipe
    switching from `git clone` to a tarball fetch needs no manifest change.
-3. **Collisions**: two keys normalizing to one env var is impossible under rule 1, and a test asserts
-   that rather than trusting it. A ref key colliding with a reserved `HARNESSED_*` name from
-   `install_env` (`HARNESS`, `MODE`, `RECIPE_DIR`, `CONFIG_DIR`, `INSTALL_CACHE`, `BIN_DIR`,
-   `HOME_SHIM`) is a **schema error**. `install_env` keys are applied last and would win, so the
-   recipe's own ref would vanish — the exact silent-empty-variable failure the `install_env`
-   docstring exists to prevent.
+3. **Collisions.** The first draft of this rule was **unreachable, and therefore untestable**
+   (caught in review of PR #331, second pass): it declared a schema error when a ref key collides
+   with `HARNESS` / `MODE` / `CONFIG_DIR` / …, but rule 2 prefixes every emitted name with
+   `HARNESSED_REF_` or `HARNESSED_REPO_`, so no valid key can ever produce one of those. A test for
+   it could only ever pass vacuously — the exact defect mutation testing exists to catch, written
+   directly into a spec. **Deleted.** What replaces it is the collision that IS reachable:
+   - **Key-to-key**: impossible under rule 1 (unique keys, restricted charset). One test asserts it
+     rather than trusting it, since rule 1 is what makes rule 2's mapping total.
+   - **Namespace reservation (the real risk, and it is forward-looking)**: `HARNESSED_REF_*` and
+     `HARNESSED_REPO_*` become a namespace owned exclusively by `refs:`. A test asserts that
+     `install_env`'s own fixed key set contains **no** key matching `^HARNESSED_(REF|REPO)_`. Today
+     it trivially passes; its job is to fail the day someone adds a general-purpose
+     `HARNESSED_REF_DIR`, which — because `install_env` keys are applied LAST and win — would
+     silently shadow a recipe's ref and hand the script an empty variable. That is the failure mode
+     the `install_env` docstring exists to prevent, and this is the version of the rule that can
+     actually detect it.
 4. **Ordering is irrelevant to behaviour and must be proven so.** YAML mappings carry no meaningful
    order; the emitted env is a dict. The one place order could leak is the derived cache key, which
    rule 6 pins.
 5. **`hold:` scope is the single ref**, matching `tools:[].hold`. A recipe with three refs may hold
    one and auto-bump two. A hold never licenses a floating ref (`tools:` already establishes this).
-6. **Cache identity is derived, deterministic, and order-independent**: sort refs by key, then hash
-   `key=repo@ref` joined by `\n`. Consequences that must be tested, because each has bitten this
-   repo before: changing ANY ref changes the key (so a stale cache cannot be served); reordering the
-   YAML does NOT (so a cosmetic edit does not force a refetch); and the key is a fixed-length digest,
-   which is what stops the `oak0283bed3-hum1b485648-ste379728b5` hand-mashing pattern from returning
-   as an auto-generated version of itself.
+6. **Cache identity is derived, deterministic, and order-independent.** Under-specifying this
+   (as the first draft did — "hash `key=repo@ref` joined by `\n`", with no algorithm named) lets two
+   implementations produce different keys for identical inputs, which surfaces as cache misses or,
+   worse, a producer and a consumer disagreeing about which cache entry is which. Fully specified:
+   - **Canonical input**: refs sorted by key (byte order; the rule-1 charset makes this unambiguous),
+     each rendered `key=repo@ref`, joined with a single `\n`. **No trailing newline.**
+   - **Encoding**: UTF-8. **Digest**: SHA-256. **Output**: lowercase hex, **truncated to the first 16
+     characters** — short enough to read in a path, and 64 bits of collision resistance against an
+     accidental collision (this is not a security boundary; the refs themselves carry the integrity).
+   - **Golden test vector**, from the real `mikes-universal-setup` refs, asserted verbatim in Phase 0:
+
+     ```text
+     canonical input (no trailing newline):
+     aminglg=AminBlg/SimpleEnglish@379728b51981b6d2ee1de0f201164483a9648972
+     blader=blader/humanizer@1b48564898e999219882660237fde01bf4843a0f
+     oakoss=oakoss/agent-skills@0283bed313563d5677a0838f4bf921b03296cf6c
+
+     sha256   = efbbcb7c70f8e3912984eed2e7c50613848a93773a4c2e69a2040be1e73c8e88
+     cache key = efbbcb7c70f8e391
+     ```
+
+   - Consequences that must be tested, because each has bitten this repo before: changing ANY ref
+     changes the key (so a stale cache cannot be served); reordering the YAML does NOT (so a
+     cosmetic edit does not force a refetch); and the key is a fixed-length digest, which is what
+     stops the `oak0283bed3-hum1b485648-ste379728b5` hand-mashing pattern from returning as an
+     auto-generated version of itself.
 7. **`refs:` and a hand-written `cache:` together is a schema error**, not a precedence rule (NC-5).
 
 Each of 1–7 gets a schema/update unit test. Rule 2 additionally needs a test asserting the generated
