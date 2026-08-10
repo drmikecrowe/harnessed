@@ -71,8 +71,12 @@ class TestNC7SupplyChainContinuity:
 
         Same bytes, verified by a different mechanism: `sha256sum -c` in a RUN layer became a
         lockfile mise refuses to install past. Equal-or-better is the bar the constraint sets, and
-        `github:` additionally verifies artifact attestations and SLSA provenance — which the
-        hand-rolled check never did.
+        an identical checksum enforced by the installer meets it on its own.
+
+        The `github:` backend also prints attestation and SLSA-provenance steps for this artifact.
+        That is NOT part of the claim: it runs only when upstream publishes the provenance, the
+        lockfile records none of it, and nothing here asserts it. Raised in review of PR #343 —
+        I had stated it as a property on the strength of having seen the log line once.
         """
         path = recipe_lock_path(recipe.root)
         assert path is not None
