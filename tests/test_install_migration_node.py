@@ -175,7 +175,13 @@ class TestMigratedRecipesDeclareInstall:
         # Two channels for the CLI: `tools:` (container, via mise npm backend) and install.sh
         # (host, via PNPM_HOME-redirected pnpm — bd harnessed-zi6.1 retired `provision:`).
         # The omp plugin in install.sh must also match. Drift means different versions across modes.
-        _assert_channels_agree(_recipe("context-mode"), "npm:context-mode@", "CONTEXT_MODE_VERSION")
+        # The script no longer restates the version to agree WITH (AC-1) — it derives it from
+        # mise, so `tools:` is the single source. Assert the absence of a second literal.
+        r = _recipe("context-mode")
+        assert "npm:context-mode@1.0.169" in r.tools
+        body = (r.root / "install.sh").read_text(encoding="utf-8")
+        assert 'CONTEXT_MODE_VERSION="1.0.169"' not in body
+        assert "mise current npm:context-mode" in body
 
 
 # --- context-mode: harness-conditional, container-only ---------------------------------------------
@@ -200,9 +206,35 @@ class TestContextModeOmpBranch:
     def test_omp_container_runs_the_pinned_plugin_install(self, tmp_path):
         log = tmp_path / "omp.log"
         _stub(tmp_path / "bin", "omp", f'printf "%s\\n" "$*" >> {log}\n')
+        # mise is now the SOURCE of the version, not a bystander: the script asks it rather than
+        # restating the pin. The stub answers as the real one does — the bare version on stdout.
+        _stub(tmp_path / "bin", "mise", 'echo 1.0.169\n')
         r = _run("context-mode", tmp_path, mode="container", harness="omp")
         assert r.returncode == 0
         assert log.read_text().strip() == "plugin install context-mode@1.0.169"
+
+    def test_the_version_comes_from_mise_not_from_a_literal(self, tmp_path):
+        """Change what mise reports and the install follows it — proving the derivation is live
+        rather than a hardcoded value that happens to match."""
+        log = tmp_path / "omp.log"
+        _stub(tmp_path / "bin", "omp", f'printf "%s\\n" "$*" >> {log}\n')
+        _stub(tmp_path / "bin", "mise", 'echo 9.9.9\n')
+        r = _run("context-mode", tmp_path, mode="container", harness="omp")
+        assert r.returncode == 0
+        assert log.read_text().strip() == "plugin install context-mode@9.9.9"
+
+    def test_an_empty_mise_answer_FAILS_rather_than_installing_an_empty_version(self, tmp_path):
+        """Fail closed. For a tool it does not know, mise warns to stderr, prints nothing, and
+        exits 0 — so an unguarded read would run `omp plugin install context-mode@`. Silence must
+        not become an empty version; that is the shape of every fail-open this epic has produced.
+        """
+        log = tmp_path / "omp.log"
+        _stub(tmp_path / "bin", "omp", f'printf "%s\\n" "$*" >> {log}\n')
+        _stub(tmp_path / "bin", "mise", 'echo "WARN no version set" >&2\nexit 0\n')
+        r = _run("context-mode", tmp_path, mode="container", harness="omp")
+        assert r.returncode != 0, "an unknown version must stop the install, not proceed empty"
+        assert "no installed version" in r.stderr
+        assert not log.exists(), "omp must never be invoked with an empty version"
 
     def test_omp_host_skips_the_plugin_install_loudly(self, tmp_path):
         # THE decision this recipe forced: `omp plugin install` writes ~/.omp/plugins, which is an

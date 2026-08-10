@@ -23,14 +23,10 @@ from harnessed.schema import load_recipe
 
 # A recipe may repeat a `tools:` version ONLY with a stated reason and a way out. Each entry is a
 # debt, not a policy — remove it when the recipe stops needing the second copy.
-_KNOWN_DUPLICATES = {
-    "context-mode": (
-        "CONTEXT_MODE_VERSION feeds `omp plugin install context-mode@$VER`, a SECOND install "
-        "channel that mise's `tools:` pin cannot reach. Deleting it would break the omp extension "
-        "rather than de-duplicate anything. Needs a mechanism that hands a `tools:` version to the "
-        "install env — tracked as Phase 1b, not fixable by deletion."
-    ),
-}
+# Empty, and that is the point: context-mode was the last entry, and Phase 1b removed the
+# duplication rather than the exemption. `test_the_allowlist_names_only_recipes_that_still_duplicate`
+# is what forced the entry out with the fix instead of letting it linger as a permanent excuse.
+_KNOWN_DUPLICATES: dict[str, str] = {}
 
 # `export`/`readonly`/`declare -r`/`local` all introduce the same assignment. Matching only the
 # bare form would let a recipe walk past the lint by writing the most ordinary shell there is.

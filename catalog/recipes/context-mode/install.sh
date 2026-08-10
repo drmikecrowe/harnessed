@@ -10,11 +10,10 @@
 #   HARNESSED_BIN_DIR  the stack bin dir (host) or base image ~/.local/bin (container)
 # PROJECT_DIR and friends are absent by design — a build has no project mounted.
 #
-# Keep CONTEXT_MODE_VERSION in lockstep with the `tools:` pin in recipe.yaml and the
-# `omp plugin install` version below — all three install the same upstream package.
+# The version is NOT declared in this file (AC-1). `tools:` in recipe.yaml owns it and the one use
+# below derives it from mise, so the "keep these in lockstep" comment this replaces is gone, and
+# with it the drift it invited — #323 is the same shape in another recipe.
 set -euo pipefail
-
-CONTEXT_MODE_VERSION="1.0.169"
 
 # --- CLI install: NOT here -----------------------------------------------------------------------
 # `tools: [npm:context-mode@…]` delivers the CLI in BOTH modes now (bd harnessed-1t4.3). It used to
@@ -49,10 +48,26 @@ fi
 # server and CLI (via install.sh above) but NOT the native omp extension, so the four omp-native
 # event handlers are absent in that combination. Run the stack in a container to get them.
 if [ "${HARNESSED_MODE:-}" != "container" ]; then
-    echo "WARNING install (context-mode): 'omp plugin install context-mode@${CONTEXT_MODE_VERSION}'" \
+    echo "WARNING install (context-mode): 'omp plugin install context-mode@<tools: pin>'" \
          "SKIPPED on a host launch — it writes into your own ~/.omp/plugins, which harnessed does" \
          "not own or mutate. Run this stack in a container to get the native omp extension." >&2
     exit 0
+fi
+
+# Derived HERE, at the ONLY point of use — not at the top of the script. Deriving it up front made
+# every harness and both modes depend on mise being present, including the two paths that never
+# install the plugin at all. The tests caught that immediately.
+#
+# `mise current <tool>` prints the resolved version alone: no jq (the base image ships none) and no
+# column parsing. FAIL CLOSED on empty — for a tool it does not know, mise warns to stderr, prints
+# NOTHING and exits 0, so an unguarded read would run `omp plugin install context-mode@` and leave
+# omp to interpret that. Silence must not become an empty version.
+CONTEXT_MODE_VERSION="$(mise current npm:context-mode 2>/dev/null || true)"
+if [ -z "${CONTEXT_MODE_VERSION}" ]; then
+    echo "error: install (context-mode): mise reports no installed version for npm:context-mode." \
+         "The 'tools:' entry in recipe.yaml is what installs it — the omp plugin cannot be pinned" \
+         "without it." >&2
+    exit 1
 fi
 
 omp plugin install "context-mode@${CONTEXT_MODE_VERSION}"

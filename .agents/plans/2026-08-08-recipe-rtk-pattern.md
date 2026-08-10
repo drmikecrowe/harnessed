@@ -76,6 +76,18 @@
 > the real recipe at Phase 3, surfacing as a cache miss rather than a failure. Corrected to
 > `0f4325fc44aef2a1`, with a Phase 3 obligation to re-derive it from the manifest.
 >
+> **REVISION 11** (2026-08-10) — Phase 1 split, and its unspecified mechanism chosen. "Literal
+> deletions (no behaviour change)" described two of the three recipes: ccstatusline and serena held
+> literals referenced **zero** times (deleted, #323 closed). context-mode's is load-bearing — it
+> feeds `omp plugin install context-mode@$VER`, a second install channel mise's `tools:` pin cannot
+> reach — so "fed from `tools:`" needed a mechanism the plan never named. **Ruled by the human**:
+> derive it at runtime rather than add an env namespace. Implemented as
+> `mise current npm:context-mode`, which prints the resolved version alone — no `jq`, which the base
+> image does not ship. It is derived at the single point of use, not at the top of the script:
+> deriving up front made every harness and both modes depend on mise, including the paths that never
+> install the plugin. **AC-1 also gained its first enforcement** (`tests/test_recipe_pin_hygiene.py`),
+> a file this plan listed under Phase 0 that the unit split had not delivered.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
