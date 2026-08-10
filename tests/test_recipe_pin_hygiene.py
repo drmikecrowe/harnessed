@@ -19,7 +19,7 @@ import re
 import pytest
 
 from harnessed import paths
-from harnessed.schema import SchemaError, load_recipe
+from harnessed.schema import load_recipe
 
 # A recipe may repeat a `tools:` version ONLY with a stated reason and a way out. Each entry is a
 # debt, not a policy — remove it when the recipe stops needing the second copy.
@@ -32,7 +32,13 @@ _KNOWN_DUPLICATES = {
     ),
 }
 
-_ASSIGN_RE = re.compile(r'^\s*([A-Z][A-Z0-9_]*)=["\']?([^"\'\s#]+)')
+# `export`/`readonly`/`declare -r`/`local` all introduce the same assignment. Matching only the
+# bare form would let a recipe walk past the lint by writing the most ordinary shell there is.
+# Raised in review of PR #339 for `export`; the siblings came from sweeping rather than patching.
+_ASSIGN_RE = re.compile(
+    r'^\s*(?:(?:export|readonly|local|declare|typeset)\s+(?:-\w+\s+)*)?'
+    r'([A-Z][A-Z0-9_]*)=["\']?([^"\'\s#]+)'
+)
 
 
 def _recipe_dirs():
@@ -42,10 +48,11 @@ def _recipe_dirs():
 
 def _duplicated_tool_versions(recipe_dir):
     """(var, value) pairs in install.sh whose value equals a version this recipe's `tools:` pins."""
-    try:
-        recipe = load_recipe(recipe_dir)
-    except (SchemaError, OSError):
-        return []
+    # NO try/except. Copying `update.discover_pins`' swallow was wrong here: there it is correct
+    # (one unloadable recipe must not blind the update command to the other forty), but in a LINT
+    # the identical code inverts the meaning — an unscanned recipe reports as a clean one. Raised
+    # in review of PR #339. Let the error surface and fail the parametrized case that owns it.
+    recipe = load_recipe(recipe_dir)
     pinned = {spec.rpartition("@")[2] for spec in recipe.tools if "@" in spec}
     script = recipe_dir / "install.sh"
     if not pinned or not script.is_file():
@@ -107,3 +114,41 @@ def test_the_lint_actually_detects_the_shape_it_claims_to(tmp_path):
 
     (d / "install.sh").write_text('#!/usr/bin/env bash\nTHING_VERSION="9.9.9"\n')
     assert _duplicated_tool_versions(d) == [], "a DIFFERENT version is not a duplicate of the pin"
+
+
+@pytest.mark.parametrize("decl", [
+    'THING_VERSION="1.2.3"',
+    'export THING_VERSION="1.2.3"',
+    "export THING_VERSION=1.2.3",
+    "readonly THING_VERSION=1.2.3",
+    "declare -r THING_VERSION=1.2.3",
+    '  export  THING_VERSION="1.2.3"',
+])
+def test_the_lint_sees_every_way_to_declare_the_literal(tmp_path, decl):
+    """A lint that only recognises one spelling is a lint you can walk past without meaning to.
+
+    Raised in review of PR #339 for `export`. Widened while fixing: `readonly` and `declare -r` are
+    the same evasion, and finding one spelling should mean sweeping for its siblings rather than
+    patching the reported one — a lesson this epic has now paid for three times.
+    """
+    d = tmp_path / "dup"
+    d.mkdir()
+    (d / "recipe.yaml").write_text("name: dup\ntools:\n  - npm:thing@1.2.3\ninstall:\n  script: install.sh\n")
+    (d / "install.sh").write_text(f"#!/usr/bin/env bash\n{decl}\necho \"$THING_VERSION\"\n")
+    assert _duplicated_tool_versions(d) == [("THING_VERSION", "1.2.3")], f"missed: {decl!r}"
+
+
+def test_a_recipe_that_cannot_be_LOADED_fails_rather_than_passing_unscanned(tmp_path):
+    """Fail closed. A scan error must not read as a clean result.
+
+    Raised in review of PR #339. The swallow was copied from `update.discover_pins`, where it is
+    CORRECT — one unloadable recipe must not blind the update command to the other forty. In a
+    LINT the same code inverts the meaning: the recipe is not scanned, and silence says it passed.
+    That is the third fail-open this epic has produced, so this one is asserted rather than trusted.
+    """
+    d = tmp_path / "broken"
+    d.mkdir()
+    (d / "recipe.yaml").write_text("name: broken\ntools: {not: a-list}\n")
+    (d / "install.sh").write_text('X_VERSION="1.2.3"\n')
+    with pytest.raises(Exception, match="broken"):
+        _duplicated_tool_versions(d)
