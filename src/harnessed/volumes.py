@@ -14,8 +14,10 @@ import subprocess
 
 from pathlib import Path
 
+import typer
+
 from . import emit
-from . import paths
+from . import paths, toollock
 from .console import _err, _out
 from .hosthome import _HOST_STACK_FINGERPRINT, _host_stack_fingerprint
 from .schema import resolve_recipe_env
@@ -213,8 +215,36 @@ def _run_container_installs(
         # enforces a tree-wide publisher-trust policy that hard-fails a correctly-pinned package
         # over an untrusted transitive dep. Sorted+deduped so the set, not the authoring order,
         # determines the work.
+        # Per-recipe checksums, merged (NC-7). The config dir is set EXPLICITLY so the lockfile
+        # and the config `mise use -g` writes land in the same place — mise enforces
+        # `$MISE_CONFIG_DIR/mise.lock` and silently ignores every other name, so guessing the
+        # default here would produce a file that verifies nothing.
+        #
+        # Passed by ENV and written by the shell, for the same reason MISE_NPM_PACKAGE_MANAGER is:
+        # interpolating a multi-line TOML body into the `-c` string means hand-quoting something
+        # whose failure mode is arbitrary-code-shaped. `printf %s` on an env var quotes nothing.
+        #
+        # Ephemeral by design: only ~/.claude and ~/.local are mounted, so this config dir dies
+        # with the container. That is fine — the lockfile only has to exist during `mise install`,
+        # and the INSTALLED tools are what persist in the volume.
+        # Same handling as the host path, so a conflict reads identically in both modes rather
+        # than as a traceback in one and a message in the other.
+        try:
+            lock_body = toollock.stack_lock_body(recipes)
+        except toollock.ToolLockError as exc:
+            _err.print(f"[bold red]error:[/bold red] tools: {exc}")
+            raise typer.Exit(1) from exc
+        lock_env = ["-e", f"HARNESSED_TOOL_LOCK={lock_body}"] if lock_body else []
+        write_lock = (
+            'mkdir -p "$MISE_CONFIG_DIR" && '
+            'printf %s "$HARNESSED_TOOL_LOCK" > "$MISE_CONFIG_DIR/mise.lock" && '
+        ) if lock_body else ""
+        if lock_body:
+            _say("[blue][INFO][/blue] tools: verifying checksums from the merged recipe lockfiles")
         _run([rt, "run", "--rm", *common, "-e", "MISE_NPM_PACKAGE_MANAGER=pnpm",
-              "--entrypoint", "sh", image, "-c", f"mise use -g {joined} && mise install"])
+              "-e", f"MISE_CONFIG_DIR={_CONTAINER_HOME_STR}/.config/mise", *lock_env,
+              "--entrypoint", "sh", image, "-c",
+              f"{write_lock}mise use -g {joined} && mise install"])
 
     for recipe in recipes:
         inst = recipe.install

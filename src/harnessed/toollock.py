@@ -144,6 +144,30 @@ def merge_locks(sources: dict[str, Path]) -> str:
     return header + "\n" + "\n".join(merged[spec] for spec in sorted(merged))
 
 
+def stack_lock_body(recipes) -> str:
+    """The merged lockfile body for a stack's recipes — `""` when none of them ships one."""
+    return merge_locks({
+        r.name: path for r in recipes if (path := recipe_lock_path(r.root)) is not None
+    })
+
+
+def write_stack_lock(config_dir: Path, body: str) -> Path | None:
+    """Place (or REMOVE) `mise.lock` in a mise config dir. Returns the path when one was written.
+
+    Removal is the half that is easy to omit and unsafe to skip. A stack's tool set changes when
+    its recipe list does, so a lockfile left over from a previous launch would keep verifying
+    against tools this stack no longer installs — and, worse, would keep asserting checksums for a
+    recipe that is gone. An empty body must therefore DELETE, not merely decline to write.
+    """
+    target = config_dir / "mise.lock"
+    if not body:
+        target.unlink(missing_ok=True)
+        return None
+    config_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(body, encoding="utf-8")
+    return target
+
+
 def recipe_lock_path(recipe_root: Path) -> Path | None:
     """A recipe's own lockfile, or None when it ships none.
 
