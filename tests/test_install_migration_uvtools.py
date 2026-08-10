@@ -109,11 +109,12 @@ class TestBinaryOnlyRecipesAreFullyDeclarative:
 class TestPinsStayInSyncWithTheRecipe:
     """A version living in two files drifts. Each assertion below is one such pair."""
 
-    def test_serena_script_pin_matches_the_tools_pin(self):
-        # The pin moved to `tools:` (bd harnessed-1t4.3); the script keeps the literal because it
-        # documents which version its `serena init` configures. Two files, so assert they agree.
+    def test_serena_pins_its_version_in_exactly_one_place(self):
+        # Was: assert the script literal and the `tools:` pin AGREE. The literal was never
+        # referenced by the script — it only documented the version — so AC-1 deleted it. A single
+        # source cannot drift, which is a stronger guarantee than two that match today.
         r = _recipe("serena")
-        assert 'SERENA_VERSION="1.6.1"' in _code(r.root / "install.sh")
+        assert "SERENA_VERSION" not in _code(r.root / "install.sh")
         assert "pipx:serena-agent@1.6.1" in r.tools
 
 

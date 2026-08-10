@@ -26,7 +26,8 @@ description: ccstatusline — bake the pinned status-line renderer + a Claude st
 # hold a host-side pnpm install somewhere durable, because $HARNESSED_CONFIG_DIR is rmtree'd on every
 # host launch while the statusLine command is an absolute path the agent execs for a whole session.
 # mise's stack-scoped shims dir is already durable and on PATH in both modes, so the path is simply
-# where the tool resolves. Keep this pin in lockstep with CCSTATUSLINE_VERSION in install.sh.
+# where the tool resolves. This is the ONLY place the version is written (AC-1) — install.sh
+# carries no copy to keep in lockstep.
 #
 # No `system:` — nothing here needs root, and neither half is skipped on a host launch.
 tools:
