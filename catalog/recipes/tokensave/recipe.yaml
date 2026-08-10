@@ -13,17 +13,26 @@
 name: tokensave
 description: tokensave — pre-indexed semantic code knowledge graph (80+ tools, 50+ languages, 100% local).
 
-# ROOT-ONLY install: `system:` with NO `script:`. The Dockerfile's download + sha256 verify half
-# would run fine unprivileged, but its DESTINATION is what needs root — `install -m 0755 …
-# /usr/local/bin/tokensave` under `USER root`. Splitting it would leave a script that fetches a
-# 24 MB binary and has nowhere on a host to put it: the install env contract (emit.install_env)
-# exposes HARNESSED_CONFIG_DIR and HARNESSED_INSTALL_CACHE, neither of which is on PATH, and no
-# bin dir. So the step stays whole in the Dockerfile, and this declaration is what makes the host
-# skip AUDIBLE — the launcher prints the reason below verbatim, naming the recipe.
-install:
-  system: >-
-    the tokensave release binary is verified and installed into /usr/local/bin under USER root, and
-    the install contract exposes no host-side PATH directory to install it into instead
+# `tools:` owns the binary in BOTH modes, so this recipe has no Dockerfile and no `install:` at all.
+#
+# It used to be ROOT-ONLY — the download ran fine unprivileged but its DESTINATION needed root
+# (`install -m 0755 … /usr/local/bin/tokensave` under `USER root`), which forced the whole step
+# into a Dockerfile and made a host launch skip it with an audible warning. mise removes the reason:
+# it installs into the stack's own tool tree, already on PATH in both modes, so there is nothing
+# left that needs privilege and nothing left to skip.
+#
+# NC-7 — the supply-chain posture must not regress — is met by `mise.lock` beside this file, which
+# records the SAME per-arch sha256 the deleted Dockerfile verified by hand:
+#   x86_64  d35519fe…b40460      aarch64  69c88d06…ad334
+# mise refuses the install on a mismatch (measured: exit 1, "Checksum mismatch"). That checksum is
+# the whole of the guarantee claimed here.
+#
+# The `github:` backend ALSO prints attestation and SLSA-provenance steps for this artifact, but
+# that is deliberately NOT claimed as a property: it runs only when upstream publishes the relevant
+# provenance, the lockfile records none of it, and no test here asserts it. Observing a log line
+# once is not evidence that verification is enforced when the provenance is absent.
+tools:
+  - github:aovestdipaperino/tokensave@7.0.2
 
 setup:
   summary: >-
