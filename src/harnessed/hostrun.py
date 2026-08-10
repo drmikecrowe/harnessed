@@ -22,7 +22,7 @@ from typing import MutableMapping, Optional
 import typer
 
 from . import emit
-from . import paths
+from . import paths, toollock
 from .assemble import _merge_servers
 from .hosthome import _relink
 from .schema import load_stack_with_recipes
@@ -290,6 +290,14 @@ def _host_install_tools(stack: str, recipes) -> None:
     # After the splat, because it CLEARS as well as sets: an inherited MISE_STATE_DIR has to lose to
     # the removal, not be reinstated by `**os.environ`.
     _apply_host_mise_env(env, stack)
+    # Per-recipe checksums, merged into the one lockfile mise reads (NC-7). Written BEFORE the
+    # install, into the same redirected config dir `mise use -g` writes — mise enforces
+    # `$MISE_CONFIG_DIR/mise.lock` and ignores every other spelling, which is measured in
+    # toollock's module docstring. An empty body REMOVES a stale file rather than leaving it to
+    # verify a tool set this stack no longer has.
+    lock = toollock.write_stack_lock(Path(env["MISE_CONFIG_DIR"]), toollock.stack_lock_body(recipes))
+    if lock is not None:
+        _err.print(f"[blue][INFO][/blue] tools: verifying checksums from {lock}")
     _err.print(f"[blue][INFO][/blue] tools: mise use -g {' '.join(specs)} (host)")
     if subprocess.run(
         ["mise", "use", "-g", *specs], env=env, cwd=str(mise_root)
