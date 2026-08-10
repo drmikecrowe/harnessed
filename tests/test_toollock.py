@@ -73,6 +73,95 @@ class TestReadingOneLockfile:
             read_lock(_write(tmp_path, "r", '[[tools."x"]]\nversion = "unclosed\n'))
 
 
+_BARE_AND_QUOTED = '''\
+# @generated
+
+[[tools."npm:ccstatusline"]]
+version = "2.2.27"
+backend = "npm:ccstatusline"
+
+[[tools.pulumi]]
+version = "3.255.0"
+backend = "pulumi"
+
+[tools.pulumi."platforms.linux-x64"]
+checksum = "sha256:pulumichecksum"
+url = "https://example/pulumi"
+'''
+
+
+class TestBareToolKeys:
+    """mise writes `[[tools.pulumi]]` — BARE, no quotes — for a registered tool.
+
+    Raised in review of PR #341 and reproduced against real `mise lock` output: the first pattern
+    required a quoted key, so `pulumi` and all seven of its platform checksums were DROPPED from
+    the merge. The merged lockfile would then omit the very tool it claims to verify, and mise
+    would install it unverified while every test here still passed.
+
+    `pulumi@3.255.0` is in the catalog today, so this was live, not theoretical — and it is a
+    fail-open inside the security mechanism itself, which is the worst place for one.
+    """
+
+    def test_a_bare_key_is_captured(self, tmp_path):
+        blocks = read_lock(_write(tmp_path, "r", _BARE_AND_QUOTED))
+        assert "pulumi" in blocks
+
+    def test_its_checksum_survives(self, tmp_path):
+        blocks = read_lock(_write(tmp_path, "r", _BARE_AND_QUOTED))
+        assert "sha256:pulumichecksum" in blocks["pulumi"]
+
+    def test_bare_and_quoted_keys_coexist(self, tmp_path):
+        assert set(read_lock(_write(tmp_path, "r", _BARE_AND_QUOTED))) == {
+            "npm:ccstatusline", "pulumi"}
+
+    def test_a_bare_key_merges_and_stays_valid_TOML(self, tmp_path):
+        merged = merge_locks({"a": _write(tmp_path, "a", _BARE_AND_QUOTED)})
+        parsed = tomllib.loads(merged)
+        assert parsed["tools"]["pulumi"][0]["platforms.linux-x64"]["checksum"] == "sha256:pulumichecksum"
+
+    def test_a_bare_key_conflict_still_fails_closed(self, tmp_path):
+        other = _BARE_AND_QUOTED.replace("sha256:pulumichecksum", "sha256:different")
+        with pytest.raises(ToolLockError, match="different content"):
+            merge_locks({
+                "a": _write(tmp_path, "a", _BARE_AND_QUOTED),
+                "b": _write(tmp_path, "b", other),
+            })
+
+
+class TestNonToolSections:
+    """A top-level table that is not a tool must not be swallowed into the preceding tool's block.
+
+    Raised in the same review. Swallowed, it would be duplicated once per recipe that ships one and
+    the merged file would contain two copies of the same top-level table — invalid TOML, which
+    fails at install time rather than here. I found no such table in real `mise lock` output today,
+    so this is defence against a format that is mise's to change, handled by the same rule as
+    tools: identical merges once, differing fails closed.
+    """
+
+    AUX = _BARE_AND_QUOTED + '\n[some-future-table]\nkey = "value"\n'
+
+    def test_it_is_its_own_block_not_part_of_the_tool_above_it(self, tmp_path):
+        blocks = read_lock(_write(tmp_path, "r", self.AUX))
+        assert "some-future-table" in blocks
+        assert "some-future-table" not in blocks["pulumi"]
+
+    def test_two_recipes_shipping_an_IDENTICAL_aux_table_merge_to_one(self, tmp_path):
+        merged = merge_locks({
+            "a": _write(tmp_path, "a", self.AUX),
+            "b": _write(tmp_path, "b", self.AUX),
+        })
+        assert merged.count("[some-future-table]") == 1
+        tomllib.loads(merged)  # must still parse — a duplicate table would not
+
+    def test_two_recipes_DISAGREEING_about_an_aux_table_fail_closed(self, tmp_path):
+        other = self.AUX.replace('key = "value"', 'key = "other"')
+        with pytest.raises(ToolLockError, match="different content"):
+            merge_locks({
+                "a": _write(tmp_path, "a", self.AUX),
+                "b": _write(tmp_path, "b", other),
+            })
+
+
 class TestMerging:
     def test_disjoint_recipes_union(self, tmp_path):
         merged = merge_locks({

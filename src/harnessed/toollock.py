@@ -33,9 +33,29 @@ class ToolLockError(Exception):
     """Two recipes in one stack disagree about a tool's locked bytes."""
 
 
-# A tool's section starts at `[[tools."spec"]]` (the array-of-tables entry) or at one of its
-# `[tools."spec"."platforms.x"]` tables. Both spellings carry the spec in the same position.
-_SECTION_RE = re.compile(r'^\[\[?tools\."(?P<spec>[^"]+)"')
+# ANY top-level section header, `[x]` or `[[x]]`. Deliberately not "tools sections only": a header
+# this pattern fails to recognise gets absorbed into whatever block precedes it, which is how the
+# first version silently swallowed things.
+_SECTION_RE = re.compile(r"^\[\[?(?P<path>[^\]]+)\]\]?")
+# The tool spec inside a `tools.…` path, either quoted (`tools."npm:x"`, needed for a spec
+# containing `:` or `/`) or BARE (`tools.pulumi`, which is what mise writes for a registered tool).
+# Requiring the quoted form dropped `pulumi` and all seven of its platform checksums — a fail-open
+# in the middle of the mechanism whose entire job is to fail closed. Found in review of PR #341,
+# reproduced against real `mise lock` output.
+_TOOL_PATH_RE = re.compile(r'^tools\.(?:"(?P<quoted>[^"]+)"|(?P<bare>[^."\s]+))')
+
+
+def _section_key(path: str) -> str:
+    """The block a section belongs to: its tool spec, or the section itself when it is not a tool.
+
+    A non-tool top-level table (should mise ever emit one) becomes its own block rather than part
+    of the tool above it. Merged under the same rule as tools — identical once, differing fails —
+    so it can never be emitted twice and turn the merged file into invalid TOML.
+    """
+    match = _TOOL_PATH_RE.match(path)
+    if not match:
+        return path.strip()
+    return str(match.group("quoted") or match.group("bare"))
 
 
 def _blocks(text: str) -> dict[str, str]:
@@ -49,9 +69,7 @@ def _blocks(text: str) -> dict[str, str]:
     for line in text.splitlines(keepends=True):
         match = _SECTION_RE.match(line)
         if match:
-            # str(): a named group in a matched pattern is always present, but typeshed types
-            # `group()` as `str | None` and the dict key must be a `str`.
-            current = str(match.group("spec"))
+            current = _section_key(str(match.group("path")))
             blocks.setdefault(current, [])
         if current is not None:
             blocks[current].append(line)
