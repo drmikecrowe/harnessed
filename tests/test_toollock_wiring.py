@@ -150,8 +150,11 @@ class TestARecipeConflictIsReportedNotRaised:
         errors: list[str] = []
         monkeypatch.setattr(volumes._err, "print", lambda m, *a, **k: errors.append(str(m)))
         recipes = [_recipe(tmp_path, "a", _CONFLICT_A), _recipe(tmp_path, "b", _CONFLICT_B)]
-        with pytest.raises(typer.Exit):
+        with pytest.raises(typer.Exit) as exc_info:
             volumes._run_container_installs("podman", "s", "claude", "img", recipes, "c", "t")
+        # `typer.Exit` alone is not enough: `typer.Exit(0)` is a SUCCESS exit, so the bare form
+        # would pass if a conflict ended the launch cleanly — the exact inverse of the contract.
+        assert exc_info.value.exit_code == 1
         assert any("a" in e and "b" in e for e in errors), "the message must name both recipes"
 
     def test_the_host_path_reports_and_exits(self, monkeypatch, tmp_path):
@@ -170,8 +173,9 @@ class TestARecipeConflictIsReportedNotRaised:
         errors: list[str] = []
         monkeypatch.setattr(hostrun._err, "print", lambda m, *a, **k: errors.append(str(m)))
         recipes = [_recipe(tmp_path, "a", _CONFLICT_A), _recipe(tmp_path, "b", _CONFLICT_B)]
-        with pytest.raises(typer.Exit):
+        with pytest.raises(typer.Exit) as exc_info:
             hostrun._host_install_tools("stack", recipes)
+        assert exc_info.value.exit_code == 1, "a conflict must be a FAILING exit, not Exit(0)"
         assert any("a" in e and "b" in e for e in errors)
 
 
