@@ -11,7 +11,7 @@ prints that reason verbatim, naming the recipe. Every test here is ultimately ab
 
 Two shapes, both real in the catalog after this migration:
 
-  * ROOT-ONLY (`system:`, no `script:`) — solidspec, tokensave. There is no user-level half to run
+  * ROOT-ONLY (`system:`, no `script:`) — solidspec. There is no user-level half to run
     in either mode; the declaration's whole job is the host warning. This shape is why `script` is
     optional: requiring it would force a root-only recipe to either invent an empty script or stay
     silent, and silence is the bug.
@@ -42,7 +42,11 @@ CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 RECIPES = CATALOG / "recipes"
 
 # The catalog recipes this batch migrated, by shape.
-ROOT_ONLY = ["solidspec", "tokensave"]
+# tokensave left this list when `tools:` took over its binary — the install needed root only
+# because its DESTINATION did (`/usr/local/bin` under `USER root`), and mise installs into the
+# stack's own tool tree instead. solidspec is still here: its `apt-get cmake pkg-config` genuinely
+# needs privilege, and no `tools:` backend can grant that.
+ROOT_ONLY = ["solidspec"]
 USER_LEVEL = ["mikes-universal-setup"]
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
