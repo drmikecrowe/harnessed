@@ -83,7 +83,7 @@ class TestWritingIntoTheConfigDir:
 
 
 class TestTheContainerCommand:
-    """Reads the argv `_install_tools_layer` builds. The suite runs no podman, so this is the
+    """Reads the argv `_run_container_installs` builds. The suite runs no podman, so this is the
     strongest honest claim available: the command we construct writes the lockfile where mise
     reads it."""
 
@@ -124,6 +124,55 @@ class TestTheContainerCommand:
         assert not any(a.startswith("HARNESSED_TOOL_LOCK=") for a in argv)
         assert "mise.lock" not in argv[-1]
         assert "mise install" in argv[-1], "the install itself must be unchanged"
+
+
+_CONFLICT_A = _LOCK
+_CONFLICT_B = _LOCK.replace("sha256:abc", "sha256:def")
+
+
+class TestARecipeConflictIsReportedNotRaised:
+    """Two recipes locking one spec differently is an AUTHORING mistake, not a crash.
+
+    Raised in review of PR #342, and confirmed before fixing: `provision_tools` has no try/except
+    and nothing above it catches `ToolLockError`, so the conflict reached the user as a Python
+    traceback while every other failure in these paths prints one line and exits 1.
+
+    The conflict is the one thing this whole mechanism exists to surface. Surfacing it as a
+    stacktrace buries the message that names the two recipes.
+    """
+
+    def test_the_container_path_reports_and_exits(self, monkeypatch, tmp_path):
+        import typer
+        from harnessed import volumes
+
+        monkeypatch.setattr(volumes, "_run", lambda *a, **k: None)
+        monkeypatch.setattr(volumes, "_say", lambda *a, **k: None)
+        errors: list[str] = []
+        monkeypatch.setattr(volumes._err, "print", lambda m, *a, **k: errors.append(str(m)))
+        recipes = [_recipe(tmp_path, "a", _CONFLICT_A), _recipe(tmp_path, "b", _CONFLICT_B)]
+        with pytest.raises(typer.Exit):
+            volumes._run_container_installs("podman", "s", "claude", "img", recipes, "c", "t")
+        assert any("a" in e and "b" in e for e in errors), "the message must name both recipes"
+
+    def test_the_host_path_reports_and_exits(self, monkeypatch, tmp_path):
+        import typer
+        from harnessed import hostrun
+
+        class _Ok:
+            returncode = 0
+
+        monkeypatch.setattr(hostrun.shutil, "which", lambda _n: "/usr/bin/mise")
+        monkeypatch.setattr(hostrun.subprocess, "run", lambda *a, **k: _Ok())
+        monkeypatch.setattr(hostrun, "_stack_tools_dirs", lambda _s: (tmp_path / "tools",))
+        monkeypatch.setattr(hostrun, "_apply_host_mise_env",
+                            lambda env, _s: env.__setitem__(
+                                "MISE_CONFIG_DIR", str(tmp_path / "tools" / "mise" / "config")))
+        errors: list[str] = []
+        monkeypatch.setattr(hostrun._err, "print", lambda m, *a, **k: errors.append(str(m)))
+        recipes = [_recipe(tmp_path, "a", _CONFLICT_A), _recipe(tmp_path, "b", _CONFLICT_B)]
+        with pytest.raises(typer.Exit):
+            hostrun._host_install_tools("stack", recipes)
+        assert any("a" in e and "b" in e for e in errors)
 
 
 class TestTheHostPath:

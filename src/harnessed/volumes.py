@@ -14,6 +14,8 @@ import subprocess
 
 from pathlib import Path
 
+import typer
+
 from . import emit
 from . import paths, toollock
 from .console import _err, _out
@@ -225,7 +227,13 @@ def _run_container_installs(
         # Ephemeral by design: only ~/.claude and ~/.local are mounted, so this config dir dies
         # with the container. That is fine — the lockfile only has to exist during `mise install`,
         # and the INSTALLED tools are what persist in the volume.
-        lock_body = toollock.stack_lock_body(recipes)
+        # Same handling as the host path, so a conflict reads identically in both modes rather
+        # than as a traceback in one and a message in the other.
+        try:
+            lock_body = toollock.stack_lock_body(recipes)
+        except toollock.ToolLockError as exc:
+            _err.print(f"[bold red]error:[/bold red] tools: {exc}")
+            raise typer.Exit(1) from exc
         lock_env = ["-e", f"HARNESSED_TOOL_LOCK={lock_body}"] if lock_body else []
         write_lock = (
             'mkdir -p "$MISE_CONFIG_DIR" && '

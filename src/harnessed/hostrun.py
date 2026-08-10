@@ -295,7 +295,16 @@ def _host_install_tools(stack: str, recipes) -> None:
     # `$MISE_CONFIG_DIR/mise.lock` and ignores every other spelling, which is measured in
     # toollock's module docstring. An empty body REMOVES a stale file rather than leaving it to
     # verify a tool set this stack no longer has.
-    lock = toollock.write_stack_lock(Path(env["MISE_CONFIG_DIR"]), toollock.stack_lock_body(recipes))
+    # A conflict here is a recipe-AUTHORING mistake — two recipes locking one spec to different
+    # bytes — and it is the single thing this mechanism exists to surface. Reported the way every
+    # other failure in this path is, because a traceback buries the message that names both
+    # recipes. Raised in review of PR #342, after confirming nothing above catches it.
+    try:
+        body = toollock.stack_lock_body(recipes)
+    except toollock.ToolLockError as exc:
+        _err.print(f"[bold red]error:[/bold red] tools: {exc}")
+        raise typer.Exit(1) from exc
+    lock = toollock.write_stack_lock(Path(env["MISE_CONFIG_DIR"]), body)
     if lock is not None:
         _err.print(f"[blue][INFO][/blue] tools: verifying checksums from {lock}")
     _err.print(f"[blue][INFO][/blue] tools: mise use -g {' '.join(specs)} (host)")
