@@ -26,9 +26,11 @@ description: >
 # Installed via mise's `npm:` backend (pinned) → a `context-mode` shim lands on PATH. Both the MCP
 # server and every hook command below invoke that same one binary.
 #
-# Keep this version in lockstep with install.sh's CONTEXT_MODE_VERSION. Two install channels for
-# the CLI/MCP binary: mise's npm backend here (container) and install.sh's pnpm section (host).
-# The omp extension version in install.sh is the third pin — same upstream package, different channel.
+# THIS is the only place the version is written (AC-1). The pin below installs the CLI/MCP binary in
+# BOTH modes — the host `pnpm add -g` branch this comment used to describe is gone, not a second
+# channel. install.sh installs the omp extension from the same upstream package, and asks
+# `mise current npm:context-mode` for the version rather than restating it, so there is nothing here
+# to keep in lockstep and nothing that can drift.
 tools:
   - npm:context-mode@1.0.169
 
