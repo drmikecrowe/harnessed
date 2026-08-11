@@ -88,6 +88,22 @@
 > install the plugin. **AC-1 also gained its first enforcement** (`tests/test_recipe_pin_hygiene.py`),
 > a file this plan listed under Phase 0 that the unit split had not delivered.
 >
+> **REVISION 12** (2026-08-11) — **`tools:` is a RUNTIME install, and solidspec's target assumed it
+> was a build-time one.** Measured while opening Phase 2's third unit, before any file was edited.
+> `emit.write_derived_dockerfile` emits neither `tools:` nor `install:` (`src/harnessed/emit.py`,
+> the comment at the top of the builder): both run at container **runtime**, into a per-stack
+> volume, gated on a fingerprint that includes the recipe set — and on the host via
+> `hostrun._host_install_tools`, which collects `recipe.tools` from every recipe in the stack with
+> no mode filter. That is right for a fetched artifact and is why tokensave, codebase-memory-mcp and
+> gsd-core migrate cleanly. solidspec is not a fetched artifact: `cargo:` **compiles it from
+> source**, so "Dockerfile keeps only its `apt-get` layer" moves a Rust build across the
+> build/runtime line and changes behaviour in three ways the one-line target did not weigh. **S2 is
+> still correct** — it measured that the spec resolves under mise, which it does; it did not measure
+> where in harnessed's lifecycle the resolution happens. **Ruled the same day by the human: (a) —
+> solidspec keeps its Dockerfile and leaves Phase 2 scope**, which now delivers three recipes, not
+> four. The capability gap it exposes is filed as **#345**. See D9. No implementation file was
+> touched.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -144,7 +160,7 @@ Inventory taken 2026-08-08 across all 22 recipes in `catalog/recipes/`.
 | **serena**              | `tools:` **+** `SERENA_VERSION="1.6.1"`                                                    | delete the literal                                       | literal is **unused** (`serena init -b LSP` only)                                                                                                             |
 | **codebase-memory-mcp** | `CBM_VERSION="0.9.0"` + hand-rolled `mise use -g`/`mise install` in shell; **no `tools:`** | `tools: github:DeusData/codebase-memory-mcp@0.9.0`       | already uses the mise `github:` backend, just in shell. Host branch symlinks into `$UV_TOOL_BIN_DIR` — must confirm `tools:` reproduces that on a host launch |
 | **tokensave**           | Dockerfile `ARG TOKENSAVE_VERSION=7.0.2` + curl + hard-coded per-arch sha256               | `tools: github:aovestdipaperino/tokensave@7.0.2` **(VERIFIED — S1)** | S1 measured 2026-08-09: **not `ubi:`** — that backend is deprecated. Both linux arches resolve; the Dockerfile deletes and both sha256 literals go with it   |
-| **solidspec**           | Dockerfile `ARG SOLIDSPEC_REF=v0.3.0` + `cargo install --git … --tag`                      | `tools: cargo:https://github.com/jyjeanne/solidspec@tag:v0.3.0` **(VERIFIED — S2)** | Dockerfile **cannot fully vanish**: it also `apt-get install`s `cmake pkg-config` as root. Target = system deps only, zero version literals                   |
+| **solidspec**           | Dockerfile `ARG SOLIDSPEC_REF=v0.3.0` + `cargo install --git … --tag`                      | `tools: cargo:https://github.com/jyjeanne/solidspec@tag:v0.3.0` **(VERIFIED — S2; target WITHDRAWN by D9)** | Dockerfile **cannot fully vanish**: it also `apt-get install`s `cmake pkg-config` as root. **D9 ruled (a)**: `tools:` installs at RUNTIME, so the target moved a source build to launch time and replaced the host warning with a host build. solidspec keeps its Dockerfile and its `ARG`; capability gap filed as #345 |
 | **gsd-core**            | `GSD_CORE_VERSION="1.6.1"` + `pnpm dlx @opengsd/gsd-core@$VER`                             | `tools: npm:@opengsd/gsd-core@1.6.1` then invoke the bin **(VERIFIED — S3)** | the package ships three bins; the default `gsd-core` **is** the installer `pnpm dlx` runs today                                                              |
 
 ### Family B — content recipes (mise CANNOT own the pin)
@@ -623,6 +639,73 @@ moving to it change delivered content? Migrating is only free where the answer t
 is no. Phase 3 therefore delivers **2, 3, or 4** auto-bumpable pins, resolved by that step rather
 than assumed here.
 
+### D9 — RESOLVED 2026-08-11 by the human: (a). solidspec keeps its Dockerfile.
+
+**Measured 2026-08-11**, opening Phase 2 unit 3, before editing anything:
+
+- `emit.write_derived_dockerfile` emits **neither** `tools:` **nor** `install:`. Its own comment
+  says so and gives the reason (bd harnessed-8px.21.4): baking them as layers cost 307s for a
+  one-line gsd-core edit against 4.3s executed natively. Both run at container **runtime** into the
+  per-stack `~/.local` volume, gated on `_container_stack_fingerprint` — which includes the recipe
+  set, so **any recipe edit re-runs them**.
+- On the host, `hostrun._host_install_tools` installs `recipe.tools` for **every** recipe in the
+  stack. There is no mode filter and no way for a recipe to declare `tools:` as container-only.
+
+For a fetched artifact this is exactly right, which is why tokensave, codebase-memory-mcp and
+gsd-core migrate cleanly. solidspec is the one Family A member that is **built, not fetched**, so
+`cargo:https://github.com/jyjeanne/solidspec@tag:v0.3.0` moves a Rust + libgit2 source build from
+build time to launch time. Three consequences, none of them in the Phase 2 target line:
+
+1. **First launch compiles.** Today the build is an image layer, subject to podman's layer cache.
+   After migration it is a volume write repeated on every fingerprint change, paid interactively
+   while the user waits for their agent, and not shared between stacks. The 307s-vs-4.3s
+   measurement that justified runtime installs assumed a cheap fetch; a source build inverts it.
+2. **The apt deps and the build land on opposite sides of the build/runtime line.** cmake and
+   pkg-config stay an image layer (root, Dockerfile); the cargo build becomes a runtime step. It
+   still works in a container — the image has cmake by the time the volume install runs — but the
+   dependency is now implicit across a boundary instead of adjacent lines in one file.
+3. **The host stops warning and starts building.** `install.system` exists for exactly one reason:
+   on `launch --host` the launcher prints its string verbatim instead of handing over a stack that
+   promises `solidspec` and has no binary. A `tools:` entry replaces that loud, correct skip with an
+   attempt to `cargo install --git` into the stack's mise tree — needing cargo, cmake and
+   pkg-config on the user's machine, and failing the launch where they are absent. recipe.yaml
+   already rejects this in writing: *"hard-failing the launch on any host without
+   cmake/pkg-config/cargo"*.
+
+**S2 stands.** It measured that the spec resolves, compiles and installs under mise, which it does.
+It did not measure *when* harnessed would run it. The gap is this spec's, not the spike's.
+
+**Also unmeasured**: whether `mise lock` records anything for a `cargo:` git build. There is no
+release asset to checksum, so solidspec may simply have no lockfile. That is not a regression (it
+has no checksum today either) but it must be stated rather than discovered.
+
+**Options as put to the human** (kept so the ruling can be read against what it chose between):
+
+- **(a) Leave solidspec on its Dockerfile.** Phase 2 delivers three of four. The version literal
+  stays an `ARG` and AC-1's reach over Dockerfile ARGs is deferred to its own unit. Cheapest, and
+  keeps the honest host warning.
+- **(b) Migrate and accept the runtime build.** Simplest rule ("every Family A recipe uses
+  `tools:`"), at the cost of a compile on first launch and a host launch that fails where the
+  toolchain is missing.
+- **(c) Migrate only where it is free — add a way for `tools:` to be container-only.** A new
+  capability (`tools:` gaining a mode, or a `system:`-adjacent declaration) so the host keeps its
+  warning while the container gets the declarative install. Largest change; it touches the schema
+  and `_host_install_tools`, and it is arguably a missing capability regardless of solidspec.
+
+**RULED: (a).** solidspec is one recipe with one literal, and the epic's goal is pins that
+`harnessed update` can see — buying that with a Rust compile at launch trades a large user-visible
+cost for a small hygiene win. Consequences, now binding:
+
+- **Phase 2 delivers three of four**: tokensave (#343), codebase-memory-mcp (#344), gsd-core.
+  solidspec is out of Phase 2 scope, not deferred within it.
+- `SOLIDSPEC_REF` stays a Dockerfile `ARG`. **AC-1's reach over Dockerfile ARGs is therefore not
+  delivered by this epic** — `tests/test_recipe_pin_hygiene.py` scopes itself to `install.sh`
+  literals and says so. Whoever widens it inherits solidspec as the first case.
+- **(c) is filed as [#345](https://github.com/drmikecrowe/harnessed/issues/345)** — `tools:` cannot
+  be declared container-only, which is a capability gap independent of solidspec: any future recipe
+  whose install is expensive or host-hostile hits the same wall, and "keep a Dockerfile" is the only
+  current answer. Related to #235 (a new capability row).
+
 ---
 
 ## 3. Executable acceptance criteria
@@ -947,9 +1030,11 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
 **Phase 1 — literal deletions** (no behaviour change): ccstatusline (closes #323), serena,
 context-mode (fed from `tools:`).
 
-**Phase 2 — Family A onto `tools:`**: codebase-memory-mcp; tokensave (S1 done — `github:`, **not**
-`ubi:`, under NC-7); solidspec (S2 done — `cargo:…@tag:v0.3.0`; Dockerfile keeps only its `apt-get`
-layer); gsd-core (S3 done — `npm:@opengsd/gsd-core@1.6.1`, then invoke the `gsd-core` bin).
+**Phase 2 — Family A onto `tools:`**: codebase-memory-mcp (**merged**, #344); tokensave (S1 done —
+`github:`, **not** `ubi:`, under NC-7; **merged**, #343); ~~solidspec~~ (**out of scope — D9**:
+`tools:` installs at runtime and this is the one member that compiles from source, so it keeps its
+Dockerfile; capability gap filed as #345); gsd-core (S3 done — `npm:@opengsd/gsd-core@1.6.1`, then
+invoke the `gsd-core` bin).
 
 **New scope Phase 2 inherits from S1, flagged rather than assumed.** NC-7 is met by `mise.lock`, so
 Phase 2 must decide **where a lockfile lives for a catalog-assembled tool set and whether it is
@@ -1168,6 +1253,7 @@ reference.
 - #254 — the `:latest` URL-path exemption test asserts nothing; NC-2 depends on which is true
 - #283 — shipped wrangler skill says `npm install -D wrangler@latest`
 - #319 — `Recipe.root` defaults to `.`; the AC-1 lint walks `Recipe.root`
+- #345 — `tools:` cannot be declared container-only (filed by D9; why solidspec keeps its Dockerfile)
 
 ---
 
