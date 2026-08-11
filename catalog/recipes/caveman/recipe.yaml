@@ -25,16 +25,29 @@ setup:
 # image, and by the launcher after the host home is materialized on `launch --host`. The Dockerfile
 # this replaced ran only in the former, so a host launch had 0 caveman skills (bd harnessed-8px.1).
 #
-# `cache:` MUST equal the CAVEMAN_REF pinned inside install.sh. It keys the host content cache
-# ($XDG_CACHE_HOME/harnessed/install/caveman/v1.9.0) so the per-launch re-run — mandatory, because
-# the host home is rebuilt from scratch every launch — clones once, not every time. The schema
-# rejects a floating key; bump both together to upgrade, which yields a fresh cache dir.
+# The pin is DATA and lives HERE, once (Phase 3 of #329). It used to be two literals kept in
+# lockstep by a comment — `CAVEMAN_REF` in install.sh and `cache: v1.9.0` here — which is the defect
+# that whole epic exists to delete. `install.refs:` replaces both: the script reads
+# `$HARNESSED_REF_CAVEMAN` / `$HARNESSED_REPO_CAVEMAN`, and `harnessed update` reads this block.
+#
+# `install.cache` is now DERIVED from these refs (sha256 of `key=repo@ref`, first 16 hex) rather than
+# declared — declaring both is a schema error, not a precedence rule. It still keys the host content
+# cache so the per-launch re-run — mandatory, because the host home is rebuilt from scratch every
+# launch — clones once, not every time. Bumping `ref:` changes the derived key, which yields a fresh
+# cache dir automatically; that used to require remembering to edit a second field.
+#
+# No `hold:` — the repo tags releases (17 of them) and `_github_releases` resolves this, so it is
+# AC-2 *resolvable* rather than held. #240's hold policy is about mikes-universal-setup's
+# hand-rolled third-party skill-fetch bridge, not about a recipe pinning its own upstream tag.
 #
 # No `system:` — nothing here needs root (pure Markdown/TOML written under the agent config dir),
 # so a host launch is fully equivalent to the container build.
 install:
   script: install.sh
-  cache: v1.9.0
+  refs:
+    caveman:
+      repo: JuliusBrussee/caveman
+      ref: v1.9.0
 
 # What the capability test must find in the running container after a successful build. caveman
 # lands 7 skills into ~/.claude/skills and 4 slash-commands into ~/.claude/commands; declare a
