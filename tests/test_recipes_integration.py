@@ -194,7 +194,7 @@ def test_codebase_memory_mcp_hooks_reach_settings():
     reminder_end = sess_body.index("\nCBM_REMINDER\n")
     assert reminder_end < sess_body.index("if cbm_root=")
     # The binary guard must come BEFORE the reminder, not just before the index. An unguarded
-    # reminder on a stack where install.sh failed injects "ALWAYS use codebase-memory-mcp tools
+    # reminder on a stack where the tool install failed injects "ALWAYS use codebase-memory-mcp tools
     # FIRST" while the MCP server is absent, aiming the agent at tools that do not exist.
     guard = "command -v codebase-memory-mcp >/dev/null 2>&1 || exit 0"
     assert guard in sess_body

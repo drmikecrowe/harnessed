@@ -28,8 +28,12 @@ CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 # The batch. bd harnessed-1t4.3 then split it in two: a recipe whose ONLY deliverable was the binary
 # now declares it in `tools:` and has no script left at all, while one with a configuration or
 # content half keeps `install.script` for that half.
-MIGRATED = ["serena", "codebase-memory-mcp"]
-TOOLS_ONLY = ["repowise", "agentmemory"]
+#
+# codebase-memory-mcp moved MIGRATED -> TOOLS_ONLY in Phase 2 of #329: its script was a hand-rolled
+# `mise use -g` / `mise install` and nothing else, so it had no configuration half to keep. serena
+# is the last member with both halves. See tests/test_cbm_migration.py.
+MIGRATED = ["serena"]
+TOOLS_ONLY = ["repowise", "agentmemory", "codebase-memory-mcp"]
 
 
 def _recipe(name):
@@ -157,27 +161,17 @@ class TestSerenaInstallSetupSplit:
         assert 'HARNESSED_MODE" = host' not in body, "the host-only branch is what install.sh replaced"
 
 
-class TestCodebaseMemoryHostDoesNotEditGlobalMiseConfig:
-    """`mise use -g` writes the USER's ~/.config/mise/config.toml, adding the tool to every shell
-    they open. That is fine for an image (whose global config IS the image) and not fine for a
-    stack-scoped host install — so the script branches, and the host branch must stay config-free."""
-
-    def test_the_script_branches_on_mode(self):
-        body = _code(_recipe("codebase-memory-mcp").root / "install.sh")
-        assert '"$HARNESSED_MODE" = container' in body
-
-    def test_use_g_is_confined_to_the_container_branch(self):
-        body = _code(_recipe("codebase-memory-mcp").root / "install.sh")
-        container_half, host_half = body.split("else", 1)
-        assert "mise use -g" in container_half
-        assert "mise use -g" not in host_half
-
-    def test_the_host_branch_targets_the_stack_bin_dir(self):
-        """UV_TOOL_BIN_DIR is the stack-scoped bin dir `_host_run_installs` puts first on PATH. It
-        is set alongside the install env contract rather than being part of it, so the script must
-        fail loudly if it is missing instead of dropping the binary somewhere unreachable."""
-        body = _code(_recipe("codebase-memory-mcp").root / "install.sh")
-        assert "${UV_TOOL_BIN_DIR:?" in body
+# `TestCodebaseMemoryHostDoesNotEditGlobalMiseConfig` lived here: three tests reading the script's
+# text to prove `mise use -g` stayed out of its host branch and that the host branch linked the
+# binary into the stack bin dir. The script is gone (Phase 2 of #329) and so are they — but the
+# PROPERTY they asserted is not, it moved to where it is now enforced for every recipe rather than
+# spelled out in one:
+#   * stack-scoped, never the user's global mise config
+#       -> tests/test_tools_field_parity.py::…::test_the_install_is_stack_scoped_not_the_users_global_mise
+#   * the installed binary is resolvable by the agent
+#       -> tests/test_tools_field_parity.py::…::test_the_tool_bin_dir_is_on_the_launch_path
+# Deleting a test whose subject no longer exists is correct; deleting it without naming its
+# successor is how a guarantee quietly stops being tested.
 
 
 class TestAgentmemoryInstallsTheAdapterNotTheStore:

@@ -7,8 +7,8 @@
 #
 # Like `time`, this is a stdio MCP server: hatago spawns it as a child (stdio→HTTP) and the harness
 # only ever talks to hatago's single Streamable-HTTP endpoint. Unlike `time` (uvx) the server is a
-# baked-in binary, so `install.sh` installs it (the assembler can't see a script's output, hence the
-# `expect:` below). The recipe ships no skill — upstream offers none.
+# baked-in binary, so `tools:` installs it (the assembler cannot see what a tool install puts on
+# PATH, hence the `expect:` below). The recipe ships no skill — upstream offers none.
 #
 # Contingent on the hatago consolidation (catalog/todos/2026-06-29-hatago-consolidation.md): until
 # hatago lands in the harness container the stdio child has no project to index, so the recipe is
@@ -17,35 +17,49 @@ name: codebase-memory-mcp
 description: 158-language codebase knowledge graph (tree-sitter) via a stdio MCP server.
 # setup: none needed — self-contained binary; MCP fully wired by recipe
 
-# The binary, as ONE bash file run by BOTH executors: `RUN bash install.sh` in the derived image,
-# and by the launcher after the host home is materialized on `launch --host`. The Dockerfile it
-# replaces was container-only, so a host launch had no `codebase-memory-mcp` on PATH at all and the
-# stdio child below silently resolved to nothing.
+# The binary, via `tools:` in BOTH modes. install.sh is gone: every line of it was a hand-rolled
+# `mise use -g` / `mise install`, which is precisely what `tools:` does — and it did so by branching
+# on HARNESSED_MODE, because a host `mise use -g` would have edited the USER's own
+# ~/.config/mise/config.toml and put cbm in every shell they open.
 #
-# No `cache:` — `install.cache` keys a pinned CONTENT clone, and mise already caches the release
-# asset it downloads. No `system:` — nothing here needs root; mise installs under the invoking
-# user's own dirs in both modes.
-install:
-  script: install.sh
+# harnessed removes that reason: the host tools path redirects MISE_CONFIG_DIR into the stack's own
+# tree (hostrun._apply_host_mise_env), so `mise use -g` there touches nothing of the user's. The
+# host branch's manual `ln -sf … "$UV_TOOL_BIN_DIR"` goes too — launcher puts the stack's mise SHIM
+# dir on the agent's PATH, which is how ccstatusline has always resolved. Verified by reading both,
+# not assumed: this recipe's own comments were the only place that claimed otherwise.
+#
+# `mise.lock` beside this file pins the release asset's sha256 per platform. The shell version
+# verified NO checksum at all, so this is a strict improvement rather than parity — mise refuses
+# the install on a mismatch (measured: exit 1, "Checksum mismatch").
+#
+# NC-7 has no old literal to compare against here (there was none), so the lockfile was checked
+# against the RELEASE ASSETS instead — downloaded and hashed independently of mise:
+#   linux-amd64  e2832a8d…6fc679      linux-arm64  68a345d9…93a680
+# The lockfile also records `provenance = "github-attestations"`. That is mise's field, not a
+# property claimed here: nothing in this repo asserts it and it is not part of the guarantee.
+tools:
+  - github:DeusData/codebase-memory-mcp@0.9.0
 
 # What the capability test must find after a successful build: the cbm MCP server connected through
-# the hatago hub. (The binary itself is installed by `install.sh`; `expect:` is the only way the
+# the hatago hub. (The binary itself comes from `tools:` above; `expect:` is the only way the
 # capability test learns about it.)
 expect:
   mcp: [codebase-memory-mcp]
 
 # --- MCP layer ---
 # `transport: stdio` (default): hatago runs `codebase-memory-mcp` as a child, wrapping stdio→HTTP.
-# The command resolves through the mise shims on PATH in a container, and through the stack bin dir
-# on a host launch (install.sh, which uses mise's github: backend — NOT /usr/local/bin — in both
-# modes). No args: upstream's own stdio config is `"args": []`, and cbm derives the project name
-# from the child's cwd, so `--project-root` is not needed here.
+# The command resolves through mise shims in BOTH modes — the image's global mise config in a
+# container, and the stack's own shims dir on a host launch, which `_launch_host` puts on PATH
+# (launcher.py, `_host_tool_shims_dir`). Never /usr/local/bin. No args: upstream's own stdio config
+# is `"args": []`, and cbm derives the project name from the child's cwd, so `--project-root` is
+# not needed here.
 #
 # It does NOT index that project on its own: cbm ships `auto_index = false` (verified via
 # `codebase-memory-mcp config list` at 0.9.0). Turning it on is a `config set`, which persists to
-# `~/.cache/codebase-memory-mcp/` — the user's REAL home, shared by every stack — so it is the same
-# global-state mutation `install.sh` refuses `mise use -g` for. The SessionStart hook below indexes
-# the current checkout instead, which keeps the write stack-scoped.
+# `~/.cache/codebase-memory-mcp/` — the user's REAL home, shared by every stack. Unlike mise, whose
+# config and data dirs the host launch redirects into the stack's own tree, cbm's cache dir is not
+# redirected, so that write would escape the stack. The SessionStart hook below indexes the current
+# checkout instead, which keeps the write stack-scoped.
 mcp:
   servers:
     - name: codebase-memory-mcp
@@ -53,16 +67,17 @@ mcp:
       transport: stdio
 
 # --- hooks ---
-# The half of upstream's wiring the binary-extract step deliberately skips. `install.sh` refuses to
-# run cbm's own installer (it rewrites .mcp.json/skills/AGENTS.md for 11 agents), but that installer
-# ALSO configures three Claude Code hooks — and without them the MCP server is merely *present*, not
-# *reached*: nothing steers the agent to it, and Grep/Glob stay graph-blind. Declared here so the
-# assembler renders them into settings.json instead, which is the harnessed-owned surface.
+# The half of upstream's wiring the binary-extract step deliberately skips. This recipe installs the
+# BINARY and nothing else — never cbm's own installer, which rewrites .mcp.json/skills/AGENTS.md for
+# 11 agents. But that installer ALSO configures three Claude Code hooks — and without them the MCP
+# server is merely *present*, not *reached*: nothing steers the agent to it, and Grep/Glob stay
+# graph-blind. Declared here so the assembler renders them into settings.json instead, which is the
+# harnessed-owned surface.
 #
 # Upstream writes these as generated scripts under $CLAUDE_CONFIG_DIR/hooks/ with the binary path
 # baked in absolute. Inlined instead (as context-mode does): the recipe ships no files, and the
-# command resolves through the same PATH the stdio server above resolves through — mise shims in a
-# container, the stack bin dir on a host launch.
+# command resolves through the same PATH the stdio server above resolves through — the mise shims
+# dir, in both modes.
 hooks:
   # Graph-augments text search. Despite upstream's legacy script name ("gate") this NEVER blocks a
   # call — it only prepends matching graph symbols as additionalContext, so the agent gets the
@@ -80,10 +95,11 @@ hooks:
   SessionStart:
     - command: |
         # One guard for the whole hook, matching the `command -v` the PreToolUse hook already uses.
-        # Without it the reminder below is unconditional: on a stack where install.sh failed or the
-        # binary was removed, every session start would inject "ALWAYS use codebase-memory-mcp tools
-        # FIRST" while the MCP server is absent, steering the agent at tools that do not exist. The
-        # reminder and the index are worth exactly as much as the binary, so they share its guard.
+        # Without it the reminder below is unconditional: on a stack where the tool install failed
+        # or the binary was removed, every session start would inject "ALWAYS use
+        # codebase-memory-mcp tools FIRST" while the MCP server is absent, steering the agent at
+        # tools that do not exist. The reminder and the index are worth exactly as much as the
+        # binary, so they share its guard.
         command -v codebase-memory-mcp >/dev/null 2>&1 || exit 0
 
         cat <<'CBM_REMINDER'

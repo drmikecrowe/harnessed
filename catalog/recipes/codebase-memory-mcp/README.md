@@ -6,22 +6,20 @@ the tree into context. 14 tools: `index_repository`, `search_graph`, `trace_path
 (Cypher), `get_architecture`, `detect_changes`, and more.
 
 Wired as a **stdio MCP server** — hatago spawns the binary as a child and wraps stdio→HTTP. The
-binary is installed by `install.sh` (both the container build and a `--host` launch) via mise's
-`github:` backend, and takes no arguments: it detects the repo from its working directory and
-auto-indexes.
+binary comes from the recipe's `tools:` entry (mise's `github:` backend, checksum-pinned by the
+`mise.lock` beside `recipe.yaml`) in both the container build and a `--host` launch. It takes no
+arguments: it detects the repo from its working directory. It does **not** index on its own
+(`auto_index = false` upstream); the recipe's `SessionStart` hook indexes the current checkout.
 
 ## Host footprint — what it writes outside harnessed, and how to remove it
 
-`install.sh` deliberately does **not** run `mise use -g` on the host — `mise use -g` adds cbm to your
-global mise config and to every shell you open. It installs the versioned tool and links the binary
-into the stack's own bin dir instead. What that leaves behind:
+Nothing. A host launch redirects mise's data and config dirs into the stack's own tree, so the
+install never touches your global mise config (which would put cbm in every shell you open) and
+never lands in `~/.local/share/mise`. Everything goes with the stack:
 
-| Path | Written by | Remove with |
-| --- | --- | --- |
-| `~/.local/share/mise/installs/…/codebase-memory-mcp/<version>/` | `mise install github:DeusData/codebase-memory-mcp@<version>` | `mise uninstall github:DeusData/codebase-memory-mcp@<version>` |
-
-The symlink itself lives in the stack tool tree and goes with the stack:
-`rm -r "${XDG_DATA_HOME:-$HOME/.local/share}/harnessed/tools/<stack>"`.
+```
+rm -r "${XDG_DATA_HOME:-$HOME/.local/share}/harnessed/tools/<stack>"
+```
 
 cbm's own SQLite index is written under the project it indexes. It goes with the project.
 
