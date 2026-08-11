@@ -664,6 +664,11 @@ build time to launch time. Three consequences, none of them in the Phase 2 targe
    pkg-config stay an image layer (root, Dockerfile); the cargo build becomes a runtime step. It
    still works in a container — the image has cmake by the time the volume install runs — but the
    dependency is now implicit across a boundary instead of adjacent lines in one file.
+   **This corrects the recipe, not just the spec**: `catalog/recipes/solidspec/recipe.yaml` reason 1
+   claimed an `install.sh` would run *before* the Dockerfile body and so break the build. That is
+   false under runtime installs, and it was the recipe's FIRST stated reason for keeping the cargo
+   step in the Dockerfile. Corrected in place (review of PR #346); the conclusion is unchanged
+   because reason 2 (host-side) is the load-bearing one and D9 adds a third.
 3. **The host stops warning and starts building.** `install.system` exists for exactly one reason:
    on `launch --host` the launcher prints its string verbatim instead of handing over a stack that
    promises `solidspec` and has no binary. A `tools:` entry replaces that loud, correct skip with an
@@ -716,6 +721,15 @@ cost for a small hygiene win. Consequences, now binding:
   `recipe.yaml`, `install.sh`, `Dockerfile`.
   _Test_: lint scanning each recipe dir for `*_VERSION=`/`*_REF=`/`ARG *_VERSION` literals; fails if
   the value also appears in `recipe.yaml`, or appears nowhere in it.
+  **SCOPE EXCEPTION (D9, 2026-08-11): `Dockerfile ARG` literals are NOT delivered by this epic.**
+  `tests/test_recipe_pin_hygiene.py` scans `install.sh` literals only, and says so in its own
+  docstring. The criterion above is the full target; what ships is the `install.sh` half. Raised in
+  review of PR #346, which was right that the criterion and the test had drifted apart the moment
+  D9 withdrew solidspec — `SOLIDSPEC_REF` is deliberately left as a `Dockerfile ARG` with no second
+  copy to lint against, and it is the only remaining case. Widening the lint to Dockerfile ARGs is
+  its own unit, and solidspec is its first input. Claiming AC-1 whole while testing half of it is
+  the fabricated-coverage failure this plan warns about, so the gap is named here rather than left
+  for a reader to infer from the test.
 - **AC-2 — every pin is reachable.** `harnessed update --check` classifies every catalog pin as
   _resolvable_ or _held with a stated reason_. The **unresolved** list is empty.
   - "Every pin" means **all seven** Family B refs (see §1 Family B), not one per recipe —
@@ -1245,7 +1259,8 @@ reference.
 
 - #240 — skill-fetch bridge; supplies the `hold:` policy and rules out the vercel CLI (D1a)
 - #235 — recipe-capability × backend matrix; `install.refs:` is a new capability row
-- #252 — derived-image layer order; deleting the tokensave/solidspec Dockerfiles changes composition
+- #252 — derived-image layer order; deleting the **tokensave** Dockerfile changes composition.
+  solidspec's stays (D9), so the epic deletes one recipe Dockerfile, not two
 - #243 — `mise.lock` advisory artifact; more `tools:` entries makes it more valuable
 - #248 — base-image `extra-tools.default.txt` pins nothing (D5)
 - #291 — `harnessed update` cannot resolve markdownlint-cli2

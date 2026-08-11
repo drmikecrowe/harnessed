@@ -12,12 +12,20 @@ description: solidspec — multi-methodology spec-driven development CLI (spec �
 # The Dockerfile's `cargo install --git --tag v0.3.0` looks user-level (it runs as `USER harnessed`),
 # but it is not separable:
 #   1. It only compiles because the preceding `USER root` apt-get put cmake + pkg-config on the
-#      image — libgit2-sys builds libgit2 from source. Container-side an `install.sh` would run
-#      BEFORE the recipe Dockerfile body, i.e. before that apt-get, so moving the cargo step into a
-#      script would break the build outright.
+#      image — libgit2-sys builds libgit2 from source. (This reason used to read "an `install.sh`
+#      would run BEFORE the Dockerfile body, i.e. before that apt-get". That is FALSE and was
+#      corrected in review of PR #346: `emit.write_derived_dockerfile` emits neither `install:` nor
+#      `tools:`, so both run at container RUNTIME, after the whole image — apt-get included — is
+#      built. The dependency would be satisfied; it would just be implicit across the build/runtime
+#      boundary instead of adjacent lines here.)
 #   2. Host-side it would compile a Rust binary into the user's own ~/.cargo/bin — mutating the
 #      machine outside every harnessed-owned dir, and hard-failing the launch on any host without
-#      cmake/pkg-config/cargo.
+#      cmake/pkg-config/cargo. THIS is the load-bearing reason, and it survives the correction
+#      above: `tools:`/`install:` have no container-only form (#345), so declaring either here
+#      reaches the host too.
+#   3. A runtime install would move the Rust + libgit2 compile out of a cached image layer and into
+#      launch, repeated on every fingerprint change and shared between no two stacks (D9 in
+#      `.agents/plans/2026-08-08-recipe-rtk-pattern.md`).
 # So the whole step stays in the Dockerfile and this declaration exists for exactly one reason: on
 # `launch --host` the launcher prints the string below verbatim, naming the recipe, instead of
 # handing the agent a stack that promises `solidspec` and has no such binary (bd harnessed-8px.1).
