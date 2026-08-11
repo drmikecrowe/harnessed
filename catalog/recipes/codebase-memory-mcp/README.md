@@ -15,11 +15,22 @@ arguments: it detects the repo from its working directory. It does **not** index
 
 Nothing. A host launch redirects mise's data and config dirs into the stack's own tree, so the
 install never touches your global mise config (which would put cbm in every shell you open) and
-never lands in `~/.local/share/mise`. Everything goes with the stack:
+never lands in `~/.local/share/mise`. Everything goes with the stack.
 
+**Do not delete the tools tree on its own.** A host launch reprovisions only when the stack's
+fingerprint changed, and the stamp recording it (`.harnessed-stack`) lives in the stack's *home*.
+Removing the tools tree alone leaves that stamp intact, so the next launch prints "Stack unchanged
+— reusing … (installs skipped)" and the `codebase-memory-mcp` binary never comes back — the stdio
+MCP child then resolves to nothing, which is the exact silent failure this recipe was migrated to
+fix. Remove the home too, since that is what forces the rebuild:
+
+```bash
+data="${XDG_DATA_HOME:-$HOME/.local/share}/harnessed"
+rm -r "$data/home/<stack>" "$data/tools/<stack>"
 ```
-rm -r "${XDG_DATA_HOME:-$HOME/.local/share}/harnessed/tools/<stack>"
-```
+
+If one of the two is already gone, `rm` still removes the other and reports the missing one — which
+is what you want here, since the most likely cause is a mistyped `<stack>`.
 
 cbm's own SQLite index is written under the project it indexes. It goes with the project.
 

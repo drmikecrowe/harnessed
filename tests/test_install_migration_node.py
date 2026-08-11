@@ -313,33 +313,69 @@ class TestRtkInstall:
 # --- gsd-core: fully host-capable content install ---------------------------------------------------
 
 class TestGsdCoreInstall:
-    def test_missing_pnpm_fails_loudly_rather_than_shipping_no_skills(self, tmp_path):
+    """Phase 2 of #329 moved the FETCH to `tools:` and left the INVOCATION here.
+
+    The package ships three bins and the default `gsd-core` one is the installer `pnpm dlx` used to
+    execute, so the script's job shrank to "run the bin that `tools:` already installed". What these
+    assert is unchanged in substance: fail loudly when the installer is missing, run it
+    non-interactively, and make "global" mean the stack's config dir rather than the user's home.
+    """
+
+    def test_a_missing_installer_fails_loudly_rather_than_shipping_no_skills(self, tmp_path):
+        """The guard moved from `pnpm` to `gsd-core` with the dependency itself. A guard naming the
+        wrong binary is worse than none: it sends whoever hits it to install pnpm, which is not the
+        problem — the problem is that `tools:` did not deliver the package."""
         r = _run("gsd-core", tmp_path, mode="host", harness="claude")
         assert r.returncode == 1
-        assert "gsd-core" in r.stderr and "pnpm" in r.stderr
+        assert "gsd-core" in r.stderr
+        assert "tools:" in r.stderr, "the error must name where the bin comes from"
 
-    def test_runs_the_pinned_installer_via_pnpm_dlx_not_npx(self, tmp_path):
-        log = tmp_path / "pnpm.log"
-        _stub(tmp_path / "bin", "pnpm", f'printf "%s\\n" "$*" >> {log}\n')
+    def test_it_invokes_the_installed_bin_with_the_documented_flags(self, tmp_path):
+        log = tmp_path / "gsd.log"
+        _stub(tmp_path / "bin", "gsd-core", f'printf "%s\\n" "$*" >> {log}\n')
         home = tmp_path / "ctrhome"
         r = _run("gsd-core", tmp_path, mode="container", harness="claude",
                  home=home, config_dir=home / ".claude")
         assert r.returncode == 0
-        # `store path` precedes the install in BOTH modes now: $HARNESSED_HOME_SHIM removed the
-        # host/container branch, so the store pin runs unconditionally. Container-side it is a no-op
-        # (the shim IS the real home, so it pins the store to where pnpm would have put it anyway) —
-        # one cheap extra call, in exchange for the two modes running byte-identical script.
-        assert log.read_text().splitlines() == [
-            "store path",
-            "dlx @opengsd/gsd-core@1.6.1 --claude --global",
-        ]
+        # ONE invocation, no package-manager call at all. The `pnpm store path` that used to precede
+        # this went with the `pnpm dlx` it protected — nothing here downloads any more.
+        assert log.read_text().splitlines() == ["--claude --global"]
+
+    def test_it_names_no_version_because_tools_owns_the_pin(self, tmp_path):
+        """AC-1. The literal is gone from the script, so the ONLY copy is the `tools:` spec. This is
+        the regression that matters: a version reintroduced here would drift silently against the
+        pin `harnessed update` actually reads."""
+        body = _script("gsd-core").read_text()
+        assert "GSD_CORE_VERSION" not in body
+        assert "1.6.1" not in body
+        assert "npm:@opengsd/gsd-core@1.6.1" in _recipe("gsd-core").tools
+
+    def test_it_no_longer_shells_out_to_a_package_manager(self, tmp_path):
+        """`pnpm dlx` WAS the install. Leaving any package-manager call behind would mean the fetch
+        happens twice, or happens unpinned beside a pinned `tools:` entry.
+
+        Matched at COMMAND POSITION, not as a bare substring: the error message legitimately names
+        the `npm:@opengsd/gsd-core` backend spec, and a substring check would read that mise backend
+        name as an invocation of npm. Asserting the wrong thing loudly is still asserting the wrong
+        thing.
+        """
+        body = "\n".join(
+            ln for ln in _script("gsd-core").read_text().splitlines()
+            if not ln.lstrip().startswith("#")
+        )
+        # `\s*` sits OUTSIDE the alternation on purpose. With it inside, the `^` branch consumed no
+        # leading indentation and the pattern missed the very line this test exists to catch — the
+        # deleted call was indented four spaces inside a subshell. Verified against that exact text
+        # before trusting the assertion; a guard that cannot catch the thing it replaced is worse
+        # than no guard, because it reads as coverage.
+        called = re.search(r"(?:^|[;&|(]|\$\()\s*(pnpm|npm|npx)\s", body, re.MULTILINE)
+        assert called is None, f"{called and called.group(1)} still invoked in gsd-core/install.sh"
 
     def test_host_global_install_lands_in_the_stack_config_dir(self, tmp_path):
         # The installer writes to os.homedir()/.claude. On a host launch that must NOT be the user's
         # real ~/.claude — the script points a throwaway $HOME at $HARNESSED_CONFIG_DIR.
         _stub(
-            tmp_path / "bin", "pnpm",
-            'if [ "$1" = "store" ]; then echo /tmp/fake-store; exit 0; fi\n'
+            tmp_path / "bin", "gsd-core",
             'mkdir -p "$HOME/.claude/skills/gsd-new-project"\n'
             'echo skill > "$HOME/.claude/skills/gsd-new-project/SKILL.md"\n',
         )

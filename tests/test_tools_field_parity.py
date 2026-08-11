@@ -64,7 +64,14 @@ class TestRecipesDeclareTheirBinary:
 
     def test_content_only_recipes_were_not_migrated(self):
         # mise has no clone backend: these deliver CONTENT into the config dir, not a binary.
-        for name in ("superpowers", "hyperpowers", "caveman", "gstack", "gsd-core"):
+        #
+        # gsd-core LEFT this list in Phase 2 of #329, and the removal is the point rather than an
+        # exception to it. It delivers content too, but it does not CLONE — the content arrives by
+        # running `@opengsd/gsd-core`, a published npm package with a `gsd-core` bin. `npm:` is a
+        # backend mise has, so the fetch is expressible where a clone is not. The recipe still keeps
+        # `install.script`: `tools:` fetches the installer, the script runs it. What this list is
+        # really about is "no backend can express the fetch", and gsd-core never met that.
+        for name in ("superpowers", "hyperpowers", "caveman", "gstack"):
             assert _recipe(name).tools == [], f"{name} must not be expressed as tools:"
 
 
