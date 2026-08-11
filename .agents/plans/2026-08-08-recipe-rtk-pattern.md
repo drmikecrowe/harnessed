@@ -648,9 +648,17 @@ unpinnable from *someone forgot to pin*. **Today it has exactly one member: anti
 
 ### D8 — RESOLVED 2026-08-09 by the human. S8 Class C: decide per-repo.
 
-The two Class C refs (releases exist, but the pin is a SHA that cannot be ordered against them) are
-**not** settled as a class. §1 Family B recommended holding both; the ruling is to **look at each
-repo's tag hygiene individually and pick separately**.
+The two Class C refs (releases exist, but the pin is a raw SHA) are **not** settled as a class. §1
+Family B recommended holding both; the ruling is to **look at each repo's tag hygiene individually
+and pick separately**.
+
+> This paragraph used to read *"a SHA that cannot be ordered against them"*, which is how the class
+> was framed when the human ruled on 2026-08-09. **The assessment below disproved it** — GitHub's
+> compare endpoint ordered both pins on the first call — so the description is corrected here while
+> the ruling itself stands unchanged: ordering is available, and what actually holds these refs is
+> that the nearest tag changes delivered content, which is a **policy** hold. Caught in review of
+> PR #351, where I had corrected the same claim in five other places and missed the one inside the
+> decision that motivated the assessment.
 
 **This adds a step before Phase 3, not inside it**: a short per-repo assessment — does the repo tag
 releases consistently, does a tag exist whose tree matches the SHA currently shipping, and would
@@ -1187,12 +1195,14 @@ S9 gates Phase 4. They stay open.
   (`mise ls` inside it), so A2 pins what already ships rather than silently upgrading users?
 - **S8** _(from D1; partially ANSWERED 2026-08-09, see §1 Family B)_ — resolvability is measured for
   all seven refs: **2 Class A** (tag-pinned, resolvable), **3 Class B** (no releases or tags —
-  structurally unresolvable), **2 Class C** (releases exist but the pin is a SHA, so candidates
-  cannot be ordered against it). The Class C decision is **RESOLVED 2026-08-09 by the human — see
-  D8**: decided per-repo, not as a class, via a short tag-hygiene assessment run before Phase 3.
-  Phase 3 therefore delivers 2, 3, or 4 auto-bumpable pins depending on that step's finding. The
-  earlier blanket "recommend holding" in §1 Family B is superseded as a *decision* and survives only
-  as the default where a repo's tags turn out not to match what its SHA ships.
+  structurally unresolvable), **2 Class C** (releases exist but the pin is a raw SHA — candidates
+  ARE orderable against it via GitHub's compare endpoint; REVISION 13 corrected the earlier claim
+  that they were not). The Class C decision is **RESOLVED 2026-08-09 by the human — see D8**:
+  decided per-repo, not as a class, via a short tag-hygiene assessment run before Phase 3. **That
+  assessment RAN 2026-08-11 and answered 2**: both repos began tagging after their pin was taken, so
+  no tag re-expresses the shipped tree and both hold on **policy**. The earlier blanket "recommend
+  holding" in §1 Family B is superseded as a *decision* and survives as the outcome the assessment
+  independently reached.
 - **S9** _(from D3, gates Phase 4)_ — can a **host** assembly complete in CI (mise present, network,
   no podman)?
 
