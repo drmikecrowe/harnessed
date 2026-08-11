@@ -24,10 +24,13 @@ Removing the tools tree alone leaves that stamp intact, so the next launch print
 MCP child then resolves to nothing, which is the exact silent failure this recipe was migrated to
 fix. Remove the home too, since that is what forces the rebuild:
 
-```
+```bash
 data="${XDG_DATA_HOME:-$HOME/.local/share}/harnessed"
 rm -r "$data/home/<stack>" "$data/tools/<stack>"
 ```
+
+If one of the two is already gone, `rm` still removes the other and reports the missing one — which
+is what you want here, since the most likely cause is a mistyped `<stack>`.
 
 cbm's own SQLite index is written under the project it indexes. It goes with the project.
 
