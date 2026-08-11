@@ -104,6 +104,17 @@
 > four. The capability gap it exposes is filed as **#345**. See D9. No implementation file was
 > touched.
 >
+> **REVISION 13** (2026-08-11) — **D8's pre-Phase-3 assessment run. Answer: 2, and Class C's stated
+> reason was wrong.** Both Class C refs stay SHA-pinned: neither repo has a tag matching the tree it
+> currently ships, because **both pins predate the first tag their repo ever cut** (humanizer's two
+> tags are 23 days younger than the pin; SimpleEnglish's only tag is 16 days younger). So "migrate
+> the pin to a tag" is a content bump wearing pin-hygiene clothes — and for humanizer a severe one,
+> since the single file the recipe delivers changes by +33/−243. Separately, the claim that a
+> resolver **cannot order a raw SHA against a tag** is FALSE: GitHub's compare endpoint returns
+> `ahead_by`/`behind_by` and answered for both refs immediately. Class C's hold is therefore
+> **policy**, not a third structural kind, and its reason string is corrected before Phase 3 could
+> ship the false one. S8's 2 / 3 / 2 count is unchanged. Phase 3 is unblocked.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -190,8 +201,8 @@ that neither the review nor the original spec anticipated.
 | 3 | hyperpowers | withzombies/hyperpowers | **0** | **0** | SHA | **B** |
 | 4 | gstack | garrytan/gstack | **0** | **0** | SHA | **B** |
 | 5 | `OAKOSS_SHA` | oakoss/agent-skills | **0** | **0** | SHA | **B** |
-| 6 | `BLADER_SHA` | blader/humanizer | 2 | 2 | SHA | **C** |
-| 7 | `AMINBLG_SHA` | AminBlg/SimpleEnglish | 1 | 1 | SHA | **C** |
+| 6 | `BLADER_SHA` | blader/humanizer | 2 | 2 | SHA | **C** — pin predates both tags (D8) |
+| 7 | `AMINBLG_SHA` | AminBlg/SimpleEnglish | 1 | 1 | SHA | **C** — pin predates the only tag (D8) |
 
 - **Class A — tag-pinned, releases exist.** `_github_releases` resolves them. Auto-bumpable in
   mechanism; still `hold:` by the #240 policy, but the hold reason is *policy*, and it can be lifted
@@ -200,19 +211,27 @@ that neither the review nor the original spec anticipated.
   `hold:` is **structural**, not policy: lifting the policy would change nothing. Reason string must
   say so, or a future reader will "fix" a hold that is not fixable.
 - **Class C — SHA-pinned, but releases exist.** *This is the class the review's binary
-  auto-bumpable/held framing has no slot for.* The resolver CAN list candidate releases, but it
-  **cannot order a raw SHA against a tag** — it cannot tell whether the pinned commit is before or
-  after `v1.2.3`, so it cannot say whether an "upgrade" is an upgrade. Offering a bump here risks a
-  silent DOWNGRADE.
-  - **Decision required (part of S8, not deferrable past Phase 3)**: either (a) migrate the pin from
-    a SHA to a tag, making it Class A and losing the exact-commit guarantee #240 chose deliberately,
-    or (b) hold it with the reason *"SHA-pinned by design; releases exist but are not orderable
-    against a commit."* **Recommend (b)** — #240 picked SHA pinning because the vercel CLI's
-    tag/branch pinning was the exposure, and undoing that to gain a bump prompt trades a security
-    property for convenience.
+  auto-bumpable/held framing has no slot for.*
+  - ~~The resolver **cannot order a raw SHA against a tag**~~ — **WRONG, corrected 2026-08-11 by
+    the D8 assessment (REVISION 13).** GitHub's compare endpoint orders them exactly:
+    `GET /repos/{repo}/compare/{sha}...{tag_sha}` returns `status` plus `ahead_by`/`behind_by`, and
+    it answered for both Class C refs on the first try. A "silent DOWNGRADE" is therefore
+    detectable, not unavoidable, and the reason string this class was going to ship would have been
+    false.
+  - **What actually holds them** is not orderability but that **no tag matches the shipped tree** —
+    both pins predate the first tag their repo ever cut, so every available tag is a content change
+    that wants review. That makes the hold **policy**, the same class as A, not a third kind.
+  - **RESOLVED by the assessment (D8, below)**: hold both, reason *"SHA-pinned by design; the
+    nearest tag is a content change, not a re-expression of this commit."* #240 picked SHA pinning
+    because the vercel CLI's tag/branch pinning was the exposure, and undoing that to gain a bump
+    prompt trades a security property for convenience.
+  - **Bonus the correction unlocks**: `harnessed update` can report Class C as *"pinned SHA is 4
+    commits behind v2.9.1"* rather than as unresolvable. That is strictly more useful than a bare
+    hold, and it needs no new pin format — see the note in D8.
 
 **So the honest S8 answer is 2 / 3 / 2, not 4-or-2.** Two auto-bumpable in mechanism, three
-structurally unresolvable, two resolvable-but-not-orderable. Every one of the seven ends with an
+structurally unresolvable, two resolvable-but-held-on-policy (REVISION 13 corrected that third
+label: they ARE orderable). Every one of the seven ends with an
 explicit `hold:` and a reason naming which class it is — which is what AC-2 requires, and it is why
 AC-2 is satisfiable even though five of seven can never be auto-bumped.
 
@@ -346,11 +365,11 @@ install:
     blader:
       repo: blader/humanizer
       ref: 1b48564898e999219882660237fde01bf4843a0f
-      hold: "not-orderable: SHA-pinned by design; releases exist but cannot be ordered against a commit"
+      hold: "policy: SHA-pinned by design; nearest tag is a content change, not this commit"
     aminblg:
       repo: AminBlg/SimpleEnglish
       ref: 379728b51981b6d2ee1de0f201164483a9648972
-      hold: "not-orderable: SHA-pinned by design; releases exist but cannot be ordered against a commit"
+      hold: "policy: SHA-pinned by design; nearest tag is a content change, not this commit"
 ```
 
 #### The `install.refs` contract — settled BEFORE Phase 0 writes code
@@ -629,15 +648,58 @@ unpinnable from *someone forgot to pin*. **Today it has exactly one member: anti
 
 ### D8 — RESOLVED 2026-08-09 by the human. S8 Class C: decide per-repo.
 
-The two Class C refs (releases exist, but the pin is a SHA that cannot be ordered against them) are
-**not** settled as a class. §1 Family B recommended holding both; the ruling is to **look at each
-repo's tag hygiene individually and pick separately**.
+The two Class C refs (releases exist, but the pin is a raw SHA) are **not** settled as a class. §1
+Family B recommended holding both; the ruling is to **look at each repo's tag hygiene individually
+and pick separately**.
+
+> This paragraph used to read *"a SHA that cannot be ordered against them"*, which is how the class
+> was framed when the human ruled on 2026-08-09. **The assessment below disproved it** — GitHub's
+> compare endpoint ordered both pins on the first call — so the description is corrected here while
+> the ruling itself stands unchanged: ordering is available, and what actually holds these refs is
+> that the nearest tag changes delivered content, which is a **policy** hold. Caught in review of
+> PR #351, where I had corrected the same claim in five other places and missed the one inside the
+> decision that motivated the assessment.
 
 **This adds a step before Phase 3, not inside it**: a short per-repo assessment — does the repo tag
 releases consistently, does a tag exist whose tree matches the SHA currently shipping, and would
 moving to it change delivered content? Migrating is only free where the answer to the last question
 is no. Phase 3 therefore delivers **2, 3, or 4** auto-bumpable pins, resolved by that step rather
 than assumed here.
+
+#### The assessment — RUN 2026-08-11. Answer: **2**. Neither Class C ref migrates.
+
+| Question | `blader/humanizer` (`BLADER_SHA`) | `AminBlg/SimpleEnglish` (`AMINBLG_SHA`) |
+| --- | --- | --- |
+| Pinned commit | `1b485648…`, authored **2026-06-29** | `379728b5…`, authored **2026-07-21** |
+| Tags in repo | 2 — `v2.9.0`, `v2.9.1`, **both cut 2026-07-22** | 1 — `v1.2.0`, **cut 2026-08-06** |
+| Tags consistent? | **No.** A repo at v2.9.x with two tags, both same-day: tagging started long after the versions did | **No.** One tag, 16 days after the pin |
+| Tag matching the shipped tree? | **None.** Pin is 3 commits before `v2.9.0`, 4 before `v2.9.1` | **None.** Pin is 9 commits before `v1.2.0` |
+| Moving changes delivered content? | **Yes, drastically.** The recipe delivers exactly one file, `SKILL.md`, and it is **+33 / −243** — a rewrite | **Yes.** `skills/simple-english/SKILL.md` **+24 / −11** and `references/checklist.md` **+1 / −1** |
+| Free to migrate? | **No** | **No** |
+
+Both pins **predate the first tag their repo ever cut**, which is the finding that decides it: there
+is no tag that re-expresses the commit currently shipping, so "migrate the pin from a SHA to a tag"
+is not a pin-hygiene change at all — it is a content bump wearing one. Those are separate decisions
+and only one of them is this epic's.
+
+**Ordering measured, not assumed** (and it is what disproved the Class C reason above):
+
+```text
+GET /repos/blader/humanizer/compare/1b485648…...523374de…       → status=ahead ahead=4 behind=0
+GET /repos/AminBlg/SimpleEnglish/compare/379728b5…...dfd0ca76… → status=ahead ahead=9 behind=0
+```
+
+**Consequences for Phase 3:**
+
+- **S8's count stands at 2 / 3 / 2** — the assessment did not move any ref between classes. What it
+  moved is Class C's *reason*, from "not orderable" (false) to "policy: nearest tag is a content
+  change" (measured).
+- Both Class C `hold:` reasons must say **policy**, not **not-orderable**. Shipping the original
+  string would have written a false claim into the manifest — the exact defect AC-2's
+  "a hold reason must name its class" clause exists to catch.
+- **Optional follow-on, NOT Phase 3 scope**: teach the resolver the compare call so Class C reports
+  distance-from-tag instead of a bare hold. Worth its own issue; it changes `update.py` reporting,
+  which is #261's territory, not `install.refs:`.
 
 ### D9 — RESOLVED 2026-08-11 by the human: (a). solidspec keeps its Dockerfile.
 
@@ -735,7 +797,7 @@ cost for a small hygiene win. Consequences, now binding:
   - "Every pin" means **all seven** Family B refs (see §1 Family B), not one per recipe —
     mikes-universal-setup declares three. A per-recipe count would pass while two refs went
     unclassified.
-  - A `hold:` reason must name its class (policy / structural / not-orderable). "held" alone is not
+  - A `hold:` reason must name its class (policy / structural). "held" alone is not
     a stated reason, and a structural hold mislabelled as policy invites a future reader to lift
     something that cannot be lifted.
 - **AC-3 — `install.cache` is never reported as an upstream pin.** **Delegated to child #261.**
@@ -1133,12 +1195,14 @@ S9 gates Phase 4. They stay open.
   (`mise ls` inside it), so A2 pins what already ships rather than silently upgrading users?
 - **S8** _(from D1; partially ANSWERED 2026-08-09, see §1 Family B)_ — resolvability is measured for
   all seven refs: **2 Class A** (tag-pinned, resolvable), **3 Class B** (no releases or tags —
-  structurally unresolvable), **2 Class C** (releases exist but the pin is a SHA, so candidates
-  cannot be ordered against it). The Class C decision is **RESOLVED 2026-08-09 by the human — see
-  D8**: decided per-repo, not as a class, via a short tag-hygiene assessment run before Phase 3.
-  Phase 3 therefore delivers 2, 3, or 4 auto-bumpable pins depending on that step's finding. The
-  earlier blanket "recommend holding" in §1 Family B is superseded as a *decision* and survives only
-  as the default where a repo's tags turn out not to match what its SHA ships.
+  structurally unresolvable), **2 Class C** (releases exist but the pin is a raw SHA — candidates
+  ARE orderable against it via GitHub's compare endpoint; REVISION 13 corrected the earlier claim
+  that they were not). The Class C decision is **RESOLVED 2026-08-09 by the human — see D8**:
+  decided per-repo, not as a class, via a short tag-hygiene assessment run before Phase 3. **That
+  assessment RAN 2026-08-11 and answered 2**: both repos began tagging after their pin was taken, so
+  no tag re-expresses the shipped tree and both hold on **policy**. The earlier blanket "recommend
+  holding" in §1 Family B is superseded as a *decision* and survives as the outcome the assessment
+  independently reached.
 - **S9** _(from D3, gates Phase 4)_ — can a **host** assembly complete in CI (mise present, network,
   no podman)?
 
