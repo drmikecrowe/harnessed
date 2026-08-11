@@ -10,18 +10,27 @@
 # is fully host-capable: nothing needs root, nothing needs to land on PATH.
 set -euo pipefail
 
-# Exact version pin, not a floating `@latest` (upstream ships no `stable` dist-tag beyond `latest`
-# itself). Bump deliberately.
-GSD_CORE_VERSION="1.6.1"
+# NO VERSION LITERAL HERE (AC-1, #329) — not even in a comment, which is why the sentence below
+# says `@<version>` instead of the number. The pin lives in recipe.yaml's `tools:` entry and nowhere
+# else, so there is no second copy to drift and `harnessed update` can see it. A comment that
+# repeats the version is the "kept in sync by a comment" failure this epic exists to delete; it just
+# fails more quietly than a shell variable. This file invokes whatever `tools:` installed.
 
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 
-# Upstream's install doc says `npx @opengsd/gsd-core@latest` — an interactive installer. We substitute
-# pnpm dlx (no raw npm/npx anywhere in harnessed) and pass the documented non-interactive flags
-# instead of relying on prompts, since there is no TTY during `podman build`.
-if ! command -v pnpm >/dev/null 2>&1; then
-    echo "error: install (gsd-core) needs 'pnpm' on PATH to run the upstream installer" \
-         "(@opengsd/gsd-core ${GSD_CORE_VERSION})." >&2
+# Upstream's install doc says `npx @opengsd/gsd-core@latest` — an interactive installer run through
+# a package-manager fetch. `tools:` does the fetch now, so this resolves the installed bin on PATH
+# instead: `@opengsd/gsd-core` ships `gsd-core` as its default bin, and that bin IS the installer
+# (bin/install.js) that `pnpm dlx` executed before. The documented non-interactive flags are still
+# passed rather than relying on prompts, since there is no TTY during `podman build`.
+#
+# The guard is on `gsd-core`, not on pnpm: pnpm is no longer this script's dependency, and a guard
+# naming the wrong binary sends whoever hits it to the wrong fix. Both executors install `tools:`
+# BEFORE any `install.script`, so reaching this line without the bin means the tools install failed
+# or was skipped — loud is right.
+if ! command -v gsd-core >/dev/null 2>&1; then
+    echo "error: install (gsd-core) needs the 'gsd-core' bin on PATH — it comes from this recipe's" \
+         "\`tools: npm:@opengsd/gsd-core@<version>\`, installed before this script runs." >&2
     exit 1
 fi
 
@@ -35,16 +44,15 @@ fi
 # under the previous `mktemp -d` shim those pointed into a dir deleted on exit, so all 12 hooks
 # failed from the next launch onward (bd harnessed-8px.9).
 #
-# Moving $HOME also moves pnpm's own default store (~/.local/share/pnpm/store), which would make this
-# re-download the package on every host launch. Pin the store back at the real one through pnpm's
-# `npm_config_*` config-env form rather than a CLI flag ON PURPOSE: if a pnpm version does not honour
-# the key it is ignored, costing a slow download — where an unsupported flag would abort the install
-# outright. Read BEFORE $HOME moves, and a no-op container-side where the shim is the real home.
-store="$(pnpm store path 2>/dev/null || true)"
+# The pnpm store pin that used to sit here is GONE with the `pnpm dlx` it protected. It existed for
+# one reason: moving $HOME moved pnpm's default store (~/.local/share/pnpm/store), so the dlx fetch
+# re-downloaded the package on every host launch. Nothing in this script downloads any more — mise
+# fetched the package during the `tools:` step, under the real $HOME, before this ran.
+#
+# Stated because it is NOT proven: if the upstream installer itself shells out to a package manager,
+# the moved $HOME would re-point that child's store the same way. Nothing observed suggests it does
+# (it writes skills/agents into ~/.claude), but confirming needs a real build — see the PR.
 (
     export HOME="$HARNESSED_HOME_SHIM"
-    if [ -n "$store" ]; then
-        export npm_config_store_dir="$store"
-    fi
-    pnpm dlx "@opengsd/gsd-core@${GSD_CORE_VERSION}" --claude --global
+    gsd-core --claude --global
 )

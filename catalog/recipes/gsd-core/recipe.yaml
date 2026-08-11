@@ -2,17 +2,29 @@
 name: gsd-core
 description: >-
   GSD Core (opengsd.net) — a spec-driven-development skill/agent/workflow suite
-  installed via its own upstream installer (npx @opengsd/gsd-core), pinned and run
-  as pnpm dlx.
+  installed by its own upstream installer, pinned via tools: and invoked by install.sh.
 # setup: none needed — install.sh runs the installer non-interactively, no external account required
 
-# The former Dockerfile's single RUN, as one bash file run by BOTH executors (bd harnessed-8px.5) —
-# so the skills/agents below now land on a host launch too, not just in the image.
+# `tools:` owns the PACKAGE; install.sh RUNS it. Same division as serena (`tools:` installs the CLI,
+# the script runs `serena init -b LSP`) — and the same reason it is safe: `_run_container_installs`
+# and `_host_run_installs` both do `tools:` first, then every `install.script`, deliberately and in
+# writing, so `gsd-core` is on PATH by the time the script below invokes it.
 #
-# No `cache:` — `pnpm dlx` fetches and executes in one step, with nowhere to point a
-# populate-if-empty content cache; pnpm's own store is what keeps the repeat cost down (install.sh
-# pins it back at the real store when it moves $HOME to redirect the installer's `--global`).
+# This recipe is NOT a binary delivery. `@opengsd/gsd-core` ships three bins, and the default
+# `gsd-core` one IS the installer that wrote the skills before (measured — S3 of the rtk-pattern
+# spec). So `tools:` here is not "put a tool on PATH for the agent"; it is "fetch and pin the
+# installer, once, declaratively", and the content it writes is still the deliverable.
+#
+# What this buys: the version literal leaves install.sh (AC-1), `harnessed update` can see the pin
+# like any other `npm:` spec, and the package is fetched by mise's pnpm-backed npm backend rather
+# than by a `pnpm dlx` inside the script.
+#
+# No `cache:` — `install.cache` keys a pinned CONTENT clone; the package comes from the npm
+# registry, which mise and pnpm already cache.
 # No `system:` — pure content under the agent config dir, nothing needs root, nothing is skipped.
+tools:
+  - npm:@opengsd/gsd-core@1.6.1
+
 install:
   script: install.sh
 
