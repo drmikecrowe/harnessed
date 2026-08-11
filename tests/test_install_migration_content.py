@@ -75,13 +75,61 @@ class TestDeclared:
         assert _recipe(name).install.cache, f"{name} re-downloads on every host launch"
 
     def test_cache_key_matches_the_ref_the_script_actually_fetches(self, name):
+        """The two-literal drift guard — for the recipes that still HAVE two literals.
+
+        Phase 3 of #329 retires this shape one recipe at a time. A recipe on `install.refs:` has a
+        DERIVED cache key and no pin literal in the script at all, so there is nothing to keep in
+        sync and this assertion would be checking for a hash inside a shell file. The successor
+        guarantee is asserted below, in `test_a_refs_recipe_carries_no_pin_literal_at_all` — strictly
+        stronger, because "the pin exists once" cannot drift, where "two copies agree" can.
+        """
         r = _recipe(name)
-        body = (r.root / r.install.script).read_text(encoding="utf-8")
-        assert f'"{r.install.cache}"' in body, (
-            f"{name}: install.cache {r.install.cache!r} does not appear as a pinned literal in "
-            f"{r.install.script} — the host cache would be keyed to a ref the script never fetches, "
+        inst = r.install
+        assert inst is not None and inst.script
+        if inst.refs:
+            pytest.skip(f"{name} is on install.refs: — see the refs test below")
+        body = (r.root / inst.script).read_text(encoding="utf-8")
+        assert f'"{inst.cache}"' in body, (
+            f"{name}: install.cache {inst.cache!r} does not appear as a pinned literal in "
+            f"{inst.script} — the host cache would be keyed to a ref the script never fetches, "
             "so it is populated once and never refreshed."
         )
+
+    def test_a_refs_recipe_carries_no_pin_literal_at_all(self, name):
+        """The successor to the drift guard: for a refs recipe, the pin exists in ONE place.
+
+        Asserted as "no ref value appears anywhere in the script", not merely "the old variable is
+        gone": a reader re-introducing the tag as a different variable name would satisfy the weaker
+        check while recreating exactly the drift `install.refs:` removes.
+
+        Checked against the RAW file, comments included. The first version of this test read the
+        comment-stripped body and passed while the very comment explaining the migration still spelled
+        out `v1.9.0` — caught in review of PR #352. A comment carrying the version is the "kept in
+        sync by a comment" failure this epic exists to delete; it just fails more quietly than a
+        shell variable, and a test that cannot see it is not guarding the property it claims.
+
+        `repo` gets the same treatment as `ref`. A script that reads the ref from env but hard-codes
+        `owner/repo` still ignores half the manifest, so changing `repo:` would move nothing.
+        """
+        r = _recipe(name)
+        inst = r.install
+        assert inst is not None and inst.script
+        if not inst.refs:
+            pytest.skip(f"{name} has not migrated to install.refs: yet")
+        raw = (r.root / inst.script).read_text(encoding="utf-8")
+        for key, ref in inst.refs.items():
+            for field, value in (("ref", ref.ref), ("repo", ref.repo)):
+                assert value not in raw, (
+                    f"{name}: {inst.script} still contains the literal {value!r} ({field} of ref "
+                    f"'{key}') — the pin must live only in install.refs, in comments too, or the "
+                    "two copies can drift again."
+                )
+            for var in (f"HARNESSED_REF_{key.upper()}", f"HARNESSED_REPO_{key.upper()}"):
+                assert var in raw, (
+                    f"{name}: {inst.script} never reads ${var}, so that half of the declared ref "
+                    f"'{key}' is inert data — `harnessed update` would rewrite the manifest and the "
+                    "script would keep fetching what it always did."
+                )
 
     def test_script_installs_into_the_contract_config_dir(self, name):
         # The whole mode-portability story: one env var names the destination in both modes.

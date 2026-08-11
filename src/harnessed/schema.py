@@ -2342,14 +2342,40 @@ def _unquote(token: str) -> str:
     return token
 
 
-def _mutable_clone_ref(body: str) -> str | None:
+def _declared_refs(recipe: "Recipe | None") -> dict[str, str]:
+    """`install.refs:` rendered as the env the script will actually see: name -> pinned ref value.
+
+    The second legitimate source of a pinned ref, alongside a literal assignment in the script.
+    Phase 3 of #329 moves Family B pins OUT of the script and into the manifest, so
+    `--branch "$HARNESSED_REF_CAVEMAN"` has no assignment to resolve against and the fail-closed
+    rule below would reject the very shape the epic exists to create.
+
+    Trusting the manifest here is not a weakening: `install.refs[].ref` is schema-validated as a tag
+    or full SHA before this runs, so the value returned is checked against `_IMMUTABLE_REF_RE` the
+    same as a literal would be. What changes is WHERE the proof lives, not whether there is one —
+    and the manifest is the more visible place, which is the point.
+
+    Empty for a Dockerfile or agent lint (no recipe context), so those keep the old behaviour
+    exactly: a variable they cannot resolve is still reported.
+    """
+    refs = recipe.install.refs if recipe is not None and recipe.install else {}
+    return {f"HARNESSED_REF_{key.upper()}": ref.ref for key, ref in (refs or {}).items()}
+
+
+def _mutable_clone_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
     """Return a human-readable description of the first NON-immutable `--branch` ref, else None.
 
     Comment-stripping is the caller's job (both call sites already do it for `_FLOATING_REF_RE`).
     Fail-closed: a ref this cannot prove immutable — including a variable with no literal assignment
-    in the same body — is reported, because "can't tell" and "moves" have the same build consequence.
+    in the same body AND no matching `install.refs:` entry — is reported, because "can't tell" and
+    "moves" have the same build consequence.
     """
-    assigns = {m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)}
+    # Manifest FIRST, literals SECOND — the script's own assignment wins, because at runtime it
+    # does. `HARNESSED_REF_X=main` in the body shadows the exported env for everything after it, so
+    # resolving to the manifest's immutable tag would bless a clone of `main`. Precedence here must
+    # mirror the shell's, not the author's intent. Caught in review of PR #352.
+    assigns = dict(_declared_refs(recipe))
+    assigns.update({m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)})
     for match in _CLONE_REF_RE.finditer(body):
         raw = _unquote(match.group("ref"))
         var = _SHELL_VAR_REF_RE.match(raw)
@@ -2368,14 +2394,19 @@ def _mutable_clone_ref(body: str) -> str | None:
     return None
 
 
-def _mutable_archive_ref(body: str) -> str | None:
+def _mutable_archive_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
     """Describe the first github/codeload ARCHIVE ref that cannot be shown immutable, else None.
 
     Same shape as `_mutable_clone_ref` — one-hop variable resolution against literal assignments in
-    the same body — with one deliberate difference: a positional parameter passes through instead
-    of failing closed. See `_POSITIONAL_PARAM_RE` for why.
+    the same body, plus the recipe's own `install.refs:` — with one deliberate difference: a
+    positional parameter passes through instead of failing closed. See `_POSITIONAL_PARAM_RE`.
     """
-    assigns = {m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)}
+    # Manifest FIRST, literals SECOND — the script's own assignment wins, because at runtime it
+    # does. `HARNESSED_REF_X=main` in the body shadows the exported env for everything after it, so
+    # resolving to the manifest's immutable tag would bless a clone of `main`. Precedence here must
+    # mirror the shell's, not the author's intent. Caught in review of PR #352.
+    assigns = dict(_declared_refs(recipe))
+    assigns.update({m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)})
     for match in _ARCHIVE_REF_RE.finditer(body):
         # `refs/tags/v1.2.3` is already self-describing as immutable-ish; `refs/heads/x` is a
         # branch by definition and must go through the same check as a bare ref.
@@ -2710,13 +2741,13 @@ def _lint_script_file(recipe: Recipe, field_name: str, rel_path: str) -> None:
             f"recipe '{recipe.name}': {field_name} '{rel_path}' contains a floating ref "
             f"'{match.group(0).strip()}'. Pin to an explicit tag, version, or SHA."
         )
-    ref = _mutable_clone_ref(body)
+    ref = _mutable_clone_ref(body, recipe)
     if ref:
         raise PinValidationError(
             f"recipe '{recipe.name}': {field_name} '{rel_path}' clones a moving ref {ref}. "
             "A branch moves — clone a tag (e.g. v1.2.3) or a full commit SHA instead."
         )
-    ref = _mutable_archive_ref(body)
+    ref = _mutable_archive_ref(body, recipe)
     if ref:
         raise PinValidationError(
             f"recipe '{recipe.name}': {field_name} '{rel_path}' downloads a source archive at a "

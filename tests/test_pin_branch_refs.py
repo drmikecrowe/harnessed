@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from harnessed.schema import (
+    InstallRef,
     InstallSpec,
     PinValidationError,
     Recipe,
@@ -102,16 +103,130 @@ class TestShellVariableRefs:
             validate_setup_script(_script_recipe(tmp_path, body, field="setup"))
 
 
+class TestInstallRefsAreASecondSourceOfProof:
+    """Phase 3 of #329: the pin may live in `install.refs:` instead of in the script.
+
+    The fail-closed rule above reads "no literal assignment in this file" as unprovable, which is
+    right while a script is self-contained — and wrong the moment the pin moves to the manifest by
+    design. These fix WHERE the proof may come from without loosening WHAT counts as proof: the
+    manifest value runs through the same immutability check a literal would.
+    """
+
+    def _with_refs(self, tmp_path: Path, body: str, refs: dict) -> Recipe:
+        r = _script_recipe(tmp_path, body)
+        assert r.install is not None
+        r.install.refs = refs
+        return r
+
+    def test_a_declared_ref_resolves_the_variable(self, tmp_path):
+        body = 'git clone --depth 1 --branch "$HARNESSED_REF_CAVEMAN" https://e.com/x.git /o\n'
+        recipe = self._with_refs(
+            tmp_path, body, {"caveman": InstallRef(repo="JuliusBrussee/caveman", ref="v1.9.0")}
+        )
+        validate_install_script(recipe)  # must not raise
+
+    def test_a_full_sha_in_the_manifest_also_resolves(self, tmp_path):
+        body = 'git clone --branch "$HARNESSED_REF_GSTACK" https://e.com/x.git /o\n'
+        recipe = self._with_refs(
+            tmp_path, body, {"gstack": InstallRef(repo="garrytan/gstack", ref=SHA)}
+        )
+        validate_install_script(recipe)
+
+    def test_a_ref_key_that_does_not_match_the_variable_still_fails_closed(self, tmp_path):
+        """The typo case, and the reason this is not a blanket exemption for `HARNESSED_REF_*`.
+
+        Declaring `caveman` while the script reads `$HARNESSED_REF_CAVEMEN` means the script gets an
+        EMPTY variable at build time and clones the default branch. Resolving by name is what makes
+        that a lint failure instead of a silent floating clone.
+        """
+        body = 'git clone --branch "$HARNESSED_REF_CAVEMEN" https://e.com/x.git /o\n'
+        recipe = self._with_refs(
+            tmp_path, body, {"caveman": InstallRef(repo="JuliusBrussee/caveman", ref="v1.9.0")}
+        )
+        with pytest.raises(PinValidationError, match="CAVEMEN"):
+            validate_install_script(recipe)
+
+    def test_a_recipe_without_refs_is_unaffected(self, tmp_path):
+        """The Dockerfile and agent gates pass no recipe at all, so their behaviour must not move."""
+        body = 'git clone --branch "$HARNESSED_REF_ANYTHING" https://e.com/x.git /o\n'
+        with pytest.raises(PinValidationError, match="HARNESSED_REF_ANYTHING"):
+            validate_install_script(_script_recipe(tmp_path, body))
+
+    def test_a_local_assignment_overrides_the_manifest_and_is_what_gets_checked(self, tmp_path):
+        """Precedence must mirror the SHELL's, not the author's intent.
+
+        `HARNESSED_REF_CAVEMAN=main` in the body shadows the exported env for everything after it,
+        so the script clones `main` no matter what the manifest says. Resolving manifest-last let
+        the lint bless that: it checked the immutable tag while the build took the branch. The hole
+        needs no malice — a leftover debugging line is enough.
+        """
+        body = (
+            'HARNESSED_REF_CAVEMAN="main"\n'
+            'git clone --branch "$HARNESSED_REF_CAVEMAN" https://e.com/x.git /o\n'
+        )
+        recipe = self._with_refs(
+            tmp_path, body, {"caveman": InstallRef(repo="JuliusBrussee/caveman", ref="v1.9.0")}
+        )
+        with pytest.raises(PinValidationError, match="main"):
+            validate_install_script(recipe)
+
+    def test_the_same_precedence_applies_to_archive_downloads(self, tmp_path):
+        """`_mutable_archive_ref` took the identical fix; asserting one and not the other would
+        leave half the hole open, and the archive path is the one Family B's tarball fetches use."""
+        body = (
+            'HARNESSED_REF_OAKOSS="main"\n'
+            'curl -sSL "https://codeload.github.com/o/r/tar.gz/$HARNESSED_REF_OAKOSS" -o a.tgz\n'
+        )
+        recipe = self._with_refs(
+            tmp_path, body, {"oakoss": InstallRef(repo="oakoss/agent-skills", ref=SHA)}
+        )
+        with pytest.raises(PinValidationError, match="main"):
+            validate_install_script(recipe)
+
+    def test_a_floating_value_in_the_manifest_is_still_rejected(self, tmp_path):
+        """Defence in depth. The schema rejects a floating `ref:` before this runs, so this asserts
+        the lint does not simply TRUST the manifest — it checks the value it was handed, exactly as
+        it checks a literal. If the schema guard were ever relaxed, this is what still fails."""
+        body = 'git clone --branch "$HARNESSED_REF_X" https://e.com/x.git /o\n'
+        recipe = self._with_refs(tmp_path, body, {"x": InstallRef(repo="o/r", ref="main")})
+        with pytest.raises(PinValidationError, match="main"):
+            validate_install_script(recipe)
+
+
 class TestShippedCatalogSatisfiesTheGate:
     """The rule only counts if the catalog we ship actually obeys it."""
 
     def test_every_catalog_install_and_setup_script_passes(self):
+        """Lint each script against its REAL manifest, not a fabricated one.
+
+        This used to build `Recipe(name=…, root=…)` + `InstallSpec(script=…)` from the file path
+        alone. That was equivalent while a script's pinnedness was decidable from its own text — and
+        it stopped being equivalent in Phase 3 of #329, when `install.refs:` moved Family B pins into
+        recipe.yaml. A synthetic recipe has no refs, so `--branch "$HARNESSED_REF_CAVEMAN"` looks
+        unresolvable and the gate rejects a recipe the catalog ships and the real gate accepts.
+
+        Loading the manifest is also the stronger test: it exercises the pairing that actually
+        ships, where the fabricated one exercised a combination that exists nowhere.
+        """
         from harnessed import paths
+        from harnessed.schema import load_recipe
 
         catalog = paths.harnessed_home() / "catalog" / "recipes"
         scripts = sorted(catalog.rglob("*.sh"))
         assert scripts, f"no recipe scripts found under {catalog}"
         for script in scripts:
-            recipe = Recipe(name=script.parent.name, root=script.parent)
-            recipe.install = InstallSpec(script=script.name)
+            manifest = script.parent / "recipe.yaml"
+            if manifest.is_file():
+                recipe = load_recipe(script.parent, strict=True)
+                if recipe.install is None:
+                    recipe.install = InstallSpec(script=script.name)
+                else:
+                    # Point the SAME InstallSpec at this file rather than building a new one: a
+                    # fresh InstallSpec would drop `refs`, which is the whole reason the manifest is
+                    # loaded here. Every .sh in the dir gets linted, including one the manifest does
+                    # not name — an unreferenced script is exactly where an unpinned clone hides.
+                    recipe.install.script = script.name
+            else:
+                recipe = Recipe(name=script.parent.name, root=script.parent)
+                recipe.install = InstallSpec(script=script.name)
             validate_install_script(recipe)
