@@ -22,9 +22,11 @@
 # Deliberately NOT available: PROJECT_DIR and friends — a build has no project mounted.
 set -euo pipefail
 
-# NO PIN LITERAL HERE (Phase 3 of #329). `CAVEMAN_REF="v1.9.0"` used to live on this line and be
-# kept equal to `cache: v1.9.0` in recipe.yaml by a comment asking the reader to bump both. The pin
-# now lives in `install.refs:` alone and arrives as env, so there is nothing to keep in lockstep and
+# NO PIN LITERAL HERE (Phase 3 of #329) — not even in a comment, which is why this paragraph
+# describes the old shape without naming the version. A `CAVEMAN_REF=` assignment used to sit on
+# this line, kept equal to `install.cache` in recipe.yaml by a comment asking the reader to bump
+# both; a comment repeating the value is the same defect, one step quieter. The pin now lives in
+# `install.refs:` alone and arrives as env, so there is nothing to keep in lockstep and
 # `harnessed update` has exactly one place to read and write.
 #
 # `:?` rather than a default: an unset ref means the manifest and this script disagree about the key

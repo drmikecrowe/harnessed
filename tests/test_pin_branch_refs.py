@@ -114,6 +114,7 @@ class TestInstallRefsAreASecondSourceOfProof:
 
     def _with_refs(self, tmp_path: Path, body: str, refs: dict) -> Recipe:
         r = _script_recipe(tmp_path, body)
+        assert r.install is not None
         r.install.refs = refs
         return r
 
@@ -150,6 +151,37 @@ class TestInstallRefsAreASecondSourceOfProof:
         body = 'git clone --branch "$HARNESSED_REF_ANYTHING" https://e.com/x.git /o\n'
         with pytest.raises(PinValidationError, match="HARNESSED_REF_ANYTHING"):
             validate_install_script(_script_recipe(tmp_path, body))
+
+    def test_a_local_assignment_overrides_the_manifest_and_is_what_gets_checked(self, tmp_path):
+        """Precedence must mirror the SHELL's, not the author's intent.
+
+        `HARNESSED_REF_CAVEMAN=main` in the body shadows the exported env for everything after it,
+        so the script clones `main` no matter what the manifest says. Resolving manifest-last let
+        the lint bless that: it checked the immutable tag while the build took the branch. The hole
+        needs no malice — a leftover debugging line is enough.
+        """
+        body = (
+            'HARNESSED_REF_CAVEMAN="main"\n'
+            'git clone --branch "$HARNESSED_REF_CAVEMAN" https://e.com/x.git /o\n'
+        )
+        recipe = self._with_refs(
+            tmp_path, body, {"caveman": InstallRef(repo="JuliusBrussee/caveman", ref="v1.9.0")}
+        )
+        with pytest.raises(PinValidationError, match="main"):
+            validate_install_script(recipe)
+
+    def test_the_same_precedence_applies_to_archive_downloads(self, tmp_path):
+        """`_mutable_archive_ref` took the identical fix; asserting one and not the other would
+        leave half the hole open, and the archive path is the one Family B's tarball fetches use."""
+        body = (
+            'HARNESSED_REF_OAKOSS="main"\n'
+            'curl -sSL "https://codeload.github.com/o/r/tar.gz/$HARNESSED_REF_OAKOSS" -o a.tgz\n'
+        )
+        recipe = self._with_refs(
+            tmp_path, body, {"oakoss": InstallRef(repo="oakoss/agent-skills", ref=SHA)}
+        )
+        with pytest.raises(PinValidationError, match="main"):
+            validate_install_script(recipe)
 
     def test_a_floating_value_in_the_manifest_is_still_rejected(self, tmp_path):
         """Defence in depth. The schema rejects a floating `ref:` before this runs, so this asserts

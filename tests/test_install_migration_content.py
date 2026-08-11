@@ -101,22 +101,35 @@ class TestDeclared:
         Asserted as "no ref value appears anywhere in the script", not merely "the old variable is
         gone": a reader re-introducing the tag as a different variable name would satisfy the weaker
         check while recreating exactly the drift `install.refs:` removes.
+
+        Checked against the RAW file, comments included. The first version of this test read the
+        comment-stripped body and passed while the very comment explaining the migration still spelled
+        out `v1.9.0` — caught in review of PR #352. A comment carrying the version is the "kept in
+        sync by a comment" failure this epic exists to delete; it just fails more quietly than a
+        shell variable, and a test that cannot see it is not guarding the property it claims.
+
+        `repo` gets the same treatment as `ref`. A script that reads the ref from env but hard-codes
+        `owner/repo` still ignores half the manifest, so changing `repo:` would move nothing.
         """
         r = _recipe(name)
         inst = r.install
         assert inst is not None and inst.script
         if not inst.refs:
             pytest.skip(f"{name} has not migrated to install.refs: yet")
-        body = _code(r.root / inst.script)
+        raw = (r.root / inst.script).read_text(encoding="utf-8")
         for key, ref in inst.refs.items():
-            assert ref.ref not in body, (
-                f"{name}: {inst.script} still contains the literal {ref.ref!r} for ref "
-                f"'{key}' — the pin must live only in install.refs, or the two can drift again."
-            )
-            assert f"HARNESSED_REF_{key.upper()}" in body, (
-                f"{name}: {inst.script} never reads $HARNESSED_REF_{key.upper()}, so the "
-                f"declared ref '{key}' is inert data that `harnessed update` would still bump."
-            )
+            for field, value in (("ref", ref.ref), ("repo", ref.repo)):
+                assert value not in raw, (
+                    f"{name}: {inst.script} still contains the literal {value!r} ({field} of ref "
+                    f"'{key}') — the pin must live only in install.refs, in comments too, or the "
+                    "two copies can drift again."
+                )
+            for var in (f"HARNESSED_REF_{key.upper()}", f"HARNESSED_REPO_{key.upper()}"):
+                assert var in raw, (
+                    f"{name}: {inst.script} never reads ${var}, so that half of the declared ref "
+                    f"'{key}' is inert data — `harnessed update` would rewrite the manifest and the "
+                    "script would keep fetching what it always did."
+                )
 
     def test_script_installs_into_the_contract_config_dir(self, name):
         # The whole mode-portability story: one env var names the destination in both modes.

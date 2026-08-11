@@ -2370,8 +2370,12 @@ def _mutable_clone_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
     in the same body AND no matching `install.refs:` entry — is reported, because "can't tell" and
     "moves" have the same build consequence.
     """
-    assigns = {m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)}
-    assigns.update(_declared_refs(recipe))
+    # Manifest FIRST, literals SECOND — the script's own assignment wins, because at runtime it
+    # does. `HARNESSED_REF_X=main` in the body shadows the exported env for everything after it, so
+    # resolving to the manifest's immutable tag would bless a clone of `main`. Precedence here must
+    # mirror the shell's, not the author's intent. Caught in review of PR #352.
+    assigns = dict(_declared_refs(recipe))
+    assigns.update({m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)})
     for match in _CLONE_REF_RE.finditer(body):
         raw = _unquote(match.group("ref"))
         var = _SHELL_VAR_REF_RE.match(raw)
@@ -2397,8 +2401,12 @@ def _mutable_archive_ref(body: str, recipe: "Recipe | None" = None) -> str | Non
     the same body, plus the recipe's own `install.refs:` — with one deliberate difference: a
     positional parameter passes through instead of failing closed. See `_POSITIONAL_PARAM_RE`.
     """
-    assigns = {m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)}
-    assigns.update(_declared_refs(recipe))
+    # Manifest FIRST, literals SECOND — the script's own assignment wins, because at runtime it
+    # does. `HARNESSED_REF_X=main` in the body shadows the exported env for everything after it, so
+    # resolving to the manifest's immutable tag would bless a clone of `main`. Precedence here must
+    # mirror the shell's, not the author's intent. Caught in review of PR #352.
+    assigns = dict(_declared_refs(recipe))
+    assigns.update({m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)})
     for match in _ARCHIVE_REF_RE.finditer(body):
         # `refs/tags/v1.2.3` is already self-describing as immutable-ish; `refs/heads/x` is a
         # branch by definition and must go through the same check as a bare ref.
