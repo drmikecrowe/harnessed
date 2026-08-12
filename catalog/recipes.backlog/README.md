@@ -23,16 +23,23 @@ that drift as part of promoting one, not before.
 | `headroom` | No `expect:` oracle at all. |
 | `hindsight` | No `expect:` oracle at all. |
 
-`hyperpowers`, `solidspec` and `tokensave` were considered and deliberately **left in place**: they
-are the subjects of the install-migration epic and are named directly by its tests
-(`CONTENT_RECIPES` in `tests/test_install_migration_content.py`, `ROOT_ONLY` in
-`tests/test_install_migration_system.py`). They are unexercised at runtime but heavily covered
-statically, so parking them would delete coverage rather than quarantine risk.
+`solidspec` and `tokensave` were considered and deliberately **left in place**: they are subjects of
+the install-migration epic and each is named directly by its own tests — `solidspec` by `ROOT_ONLY`
+in `tests/test_install_migration_system.py`, `tokensave` by the whole of
+`tests/test_tokensave_migration.py` (plus `tests/test_toollock.py`). Neither is in
+`CONTENT_RECIPES`; that list is the Family B content recipes, which these two are not. They are
+unexercised at runtime but heavily covered statically, so parking them would delete coverage rather
+than quarantine risk.
+
+`hyperpowers` was the third of that set. It is **deleted outright** rather than parked, by decision
+of the repo owner during #329 Phase 3 — so neither branch of the trade-off above applies to it any
+more. Note what its removal did NOT resolve: it was one of two recipes acquiring upstream by
+`git fetch <remote> <ref>`, and `gstack` is the other. See #329 for the pin gate that shape needed.
 
 PR #130 parked all three on `main` while this epic was in flight, and merging `main` in here
-deliberately reverts that for these three only — `gbrain`/`headroom`/`hindsight` stay parked, as
+deliberately reverts that for the two that remain — `gbrain`/`headroom`/`hindsight` stay parked, as
 both branches agreed. This is a deferral, not a disagreement about their fitness: the moment the
-migration epic lands, `ROOT_ONLY` and `CONTENT_RECIPES` must be repointed and the three parked for
+migration epic lands, `ROOT_ONLY` and `CONTENT_RECIPES` must be repointed and the rest parked for
 real. Do that as its own change, so the test edits are a decision rather than merge fallout.
 
 ## Promoting one back

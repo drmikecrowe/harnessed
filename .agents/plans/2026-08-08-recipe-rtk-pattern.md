@@ -115,6 +115,26 @@
 > **policy**, not a third structural kind, and its reason string is corrected before Phase 3 could
 > ship the false one. S8's 2 / 3 / 2 count is unchanged. Phase 3 is unblocked.
 >
+> **REVISION 14** (2026-08-12) — **hyperpowers is DELETED from the catalog, by the repo owner,
+> mid-Phase-3.** It was to be Phase 3 unit 3; instead the recipe, its README/backlog mentions and its
+> test-list entries are gone. Consequences this plan must carry, because they change what "done"
+> means rather than merely shrinking the work:
+>
+> - **§1 Family B is now SIX refs across FOUR recipes, not seven across five.** Ref #3
+>   (`withzombies/hyperpowers`) is struck. **S8's count moves from 2 / 3 / 2 to 2 / 2 / 2** — one
+>   Class B (structurally unresolvable: no tags, no releases, nothing for a resolver to return) is
+>   removed. AC-2 is stated per-ref, so every count downstream of it moves with this.
+> - **Phase 3's remaining units are gstack and mikes-universal-setup**, in that order.
+> - **What the deletion does NOT resolve.** Migrating hyperpowers exposed a hole in the pin gate,
+>   found by doing rather than by reading: `_CLONE_REF_RE` reads `--branch` and `_ARCHIVE_REF_RE`
+>   reads archive URLs, and **neither sees `git fetch <remote> <ref>`** — the shape a SHA-pinned
+>   recipe is forced into, since a raw commit SHA is not a branch name. `git fetch -q --depth 1
+>   origin main` passed every pin gate in the repo. hyperpowers was one of the two recipes fetching
+>   that way; **gstack is the other and still ships**, so the hole outlives the deletion and is
+>   closed in the same PR (`_mutable_fetch_ref`, wired into `validate_pin` and `_lint_script_file`).
+>   Recording it here because a later reader seeing unit 3 vanish would otherwise conclude nothing
+>   was learned from it.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -180,7 +200,7 @@ Inventory taken 2026-08-08 across all 22 recipes in `catalog/recipes/`.
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
 | caveman               | `CAVEMAN_REF="v1.9.0"` + `cache: v1.9.0` — **2 copies**                                                                                    | `skills/ commands/ agents/`               |
 | superpowers           | `SUPERPOWERS_REF="v6.0.3"` + `cache: v6.0.3` — **2 copies**                                                                                | `skills/`                                 |
-| hyperpowers           | `HYPERPOWERS_REF="7905547b…"` + `cache: 7905547b…` — **2 copies**                                                                          | `skills/ commands/ agents/`               |
+| ~~hyperpowers~~       | ~~`HYPERPOWERS_REF="7905547b…"` + `cache: 7905547b…`~~ — **recipe DELETED, REVISION 14**                                                    | —                                         |
 | gstack                | `GSTACK_REF="11de390b…"` + `cache: 11de390b…` — **2 copies**                                                                               | `skills/gstack` + runs upstream `./setup` |
 | mikes-universal-setup | `OAKOSS_SHA`, `BLADER_SHA`, `AMINBLG_SHA` + a **synthetic mashed** `cache: "oak0283bed3-hum1b485648-ste379728b5"` — **4 copies of 3 refs** | 7 third-party skills                      |
 
@@ -188,7 +208,7 @@ The `cache:` duplication is **mandated by the current schema**, whose own descri
 _"Keep it equal to the ref pinned inside the script."_ That instruction is #261's Class-3 defect
 written into the contract.
 
-#### Resolvability of all SEVEN Family B refs (measured 2026-08-09)
+#### Resolvability of all ~~SEVEN~~ **SIX** Family B refs (measured 2026-08-09; row 3 struck by REVISION 14)
 
 Raised in review of PR #331: the earlier text classified four refs and left mikes-universal-setup's
 three unaccounted for, while AC-2 says *every* pin. Checking all seven turned up a **third class**
@@ -198,7 +218,7 @@ that neither the review nor the original spec anticipated.
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | caveman | JuliusBrussee/caveman | 17 | 17 | tag `v1.9.0` | **A** |
 | 2 | superpowers | obra/superpowers | 11 | 33 | tag `v6.0.3` | **A** |
-| 3 | hyperpowers | withzombies/hyperpowers | **0** | **0** | SHA | **B** |
+| ~~3~~ | ~~hyperpowers~~ | ~~withzombies/hyperpowers~~ | — | — | — | **STRUCK — recipe deleted (REVISION 14)** |
 | 4 | gstack | garrytan/gstack | **0** | **0** | SHA | **B** |
 | 5 | `OAKOSS_SHA` | oakoss/agent-skills | **0** | **0** | SHA | **B** |
 | 6 | `BLADER_SHA` | blader/humanizer | 2 | 2 | SHA | **C** — pin predates both tags (D8) |
@@ -229,11 +249,12 @@ that neither the review nor the original spec anticipated.
     commits behind v2.9.1"* rather than as unresolvable. That is strictly more useful than a bare
     hold, and it needs no new pin format — see the note in D8.
 
-**So the honest S8 answer is 2 / 3 / 2, not 4-or-2.** Two auto-bumpable in mechanism, three
-structurally unresolvable, two resolvable-but-held-on-policy (REVISION 13 corrected that third
-label: they ARE orderable). Every one of the seven ends with an
+**So the honest S8 answer is ~~2 / 3 / 2~~ 2 / 2 / 2, not 4-or-2.** Two auto-bumpable in mechanism,
+~~three~~ **two** structurally unresolvable (hyperpowers was the third; REVISION 14 deletes it), two
+resolvable-but-held-on-policy (REVISION 13 corrected that third
+label: they ARE orderable). Every one of the ~~seven~~ **six** ends with an
 explicit `hold:` and a reason naming which class it is — which is what AC-2 requires, and it is why
-AC-2 is satisfiable even though five of seven can never be auto-bumped.
+AC-2 is satisfiable even though four of six can never be auto-bumped.
 
 ### Family C — no pin at all
 
@@ -691,9 +712,10 @@ GET /repos/AminBlg/SimpleEnglish/compare/379728b5…...dfd0ca76… → status=ah
 
 **Consequences for Phase 3:**
 
-- **S8's count stands at 2 / 3 / 2** — the assessment did not move any ref between classes. What it
-  moved is Class C's *reason*, from "not orderable" (false) to "policy: nearest tag is a content
-  change" (measured).
+- **S8's count stands at ~~2 / 3 / 2~~ 2 / 2 / 2** — the assessment did not move any ref between
+  classes. What it moved is Class C's *reason*, from "not orderable" (false) to "policy: nearest tag
+  is a content change" (measured). The Class B count later dropped from 3 to 2 for an unrelated
+  reason: REVISION 14 deleted hyperpowers.
 - Both Class C `hold:` reasons must say **policy**, not **not-orderable**. Shipping the original
   string would have written a false claim into the manifest — the exact defect AC-2's
   "a hold reason must name its class" clause exists to catch.
@@ -794,9 +816,9 @@ cost for a small hygiene win. Consequences, now binding:
   for a reader to infer from the test.
 - **AC-2 — every pin is reachable.** `harnessed update --check` classifies every catalog pin as
   _resolvable_ or _held with a stated reason_. The **unresolved** list is empty.
-  - "Every pin" means **all seven** Family B refs (see §1 Family B), not one per recipe —
+  - "Every pin" means **all ~~seven~~ six** Family B refs (see §1 Family B), not one per recipe —
     mikes-universal-setup declares three. A per-recipe count would pass while two refs went
-    unclassified.
+    unclassified. (Seven until REVISION 14 deleted hyperpowers.)
   - A `hold:` reason must name its class (policy / structural). "held" alone is not
     a stated reason, and a structural hold mislabelled as policy invites a future reader to lift
     something that cannot be lifted.
@@ -1119,8 +1141,9 @@ github:…@7.0.2` still resolves both arches but the sha256 the Dockerfile delet
 which is precisely the regression NC-7 forbids. This is a design question for Phase 2's spec, not
 something to improvise mid-phase; it may warrant its own issue under #329.
 
-**Phase 3 — Family B onto `install.refs:`**: caveman, superpowers, hyperpowers, gstack,
-mikes-universal-setup. Acceptance is per **ref**, not per recipe: all **seven** declared refs end
+**Phase 3 — Family B onto `install.refs:`**: caveman, superpowers, ~~hyperpowers~~ (deleted,
+REVISION 14), gstack,
+mikes-universal-setup. Acceptance is per **ref**, not per recipe: all **~~seven~~ six** declared refs end
 with a resolver outcome or an explicit `hold:` naming its class, and mikes-universal-setup's three
 are asserted individually. The Class C decision (S8) is made in this phase, in writing, not left to
 the implementer. For each: same files land in `$HARNESSED_CONFIG_DIR`, the derived
@@ -1194,8 +1217,8 @@ S9 gates Phase 4. They stay open.
 - **S7** — what is the _currently resolved_ version of `npm:@openai/codex` in the built image
   (`mise ls` inside it), so A2 pins what already ships rather than silently upgrading users?
 - **S8** _(from D1; partially ANSWERED 2026-08-09, see §1 Family B)_ — resolvability is measured for
-  all seven refs: **2 Class A** (tag-pinned, resolvable), **3 Class B** (no releases or tags —
-  structurally unresolvable), **2 Class C** (releases exist but the pin is a raw SHA — candidates
+  all ~~seven~~ six refs: **2 Class A** (tag-pinned, resolvable), **~~3~~ 2 Class B** (no releases
+  or tags — structurally unresolvable; hyperpowers was the third until REVISION 14), **2 Class C** (releases exist but the pin is a raw SHA — candidates
   ARE orderable against it via GitHub's compare endpoint; REVISION 13 corrected the earlier claim
   that they were not). The Class C decision is **RESOLVED 2026-08-09 by the human — see D8**:
   decided per-repo, not as a class, via a short tag-hygiene assessment run before Phase 3. **That

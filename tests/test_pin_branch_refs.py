@@ -20,6 +20,7 @@ from harnessed.schema import (
     PinValidationError,
     Recipe,
     SetupSpec,
+    _mutable_fetch_ref,
     validate_install_script,
     validate_pin,
     validate_setup_script,
@@ -191,6 +192,312 @@ class TestInstallRefsAreASecondSourceOfProof:
         recipe = self._with_refs(tmp_path, body, {"x": InstallRef(repo="o/r", ref="main")})
         with pytest.raises(PinValidationError, match="main"):
             validate_install_script(recipe)
+
+
+class TestFetchByShaIsGatedLikeAClone:
+    """`git fetch <remote> <ref>` acquires an upstream tree exactly as `git clone --branch` does.
+
+    Found in Phase 3 of #329, by migrating a recipe that uses it. Every pin gate keyed off
+    `--branch` or an archive URL, so the two Family B recipes that fetch by SHA — the ones that
+    CANNOT use `--branch`, because a raw SHA is not a branch name — passed the gate without any of
+    their refs ever being read. `git fetch origin main` was accepted.
+
+    That is unit 1's blocker in mirror image: there the gate REJECTED the migrated shape, here it
+    accepts anything. Same root cause — a gate built for one spelling of "acquire an upstream ref".
+
+    The recipe that exposed it (hyperpowers) was deleted rather than migrated, which is why these
+    fixtures name gstack: it is the OTHER fetch-by-SHA recipe, it still ships, and it is what keeps
+    this gate load-bearing rather than hypothetical.
+
+    These assert the requirement (which fetched refs may reach a build) through the public gates,
+    and deliberately reuse the clone gate's own guarantees: one-hop variable resolution, `refs:` as
+    a second source of proof, resolution BY NAME, and shell precedence on a local assignment. A
+    fetch gate that got any of those wrong would be a second, differently-broken copy of a rule the
+    repo already has one correct copy of.
+    """
+
+    def _fetch(self, ref: str) -> str:
+        # The catalog's real shape: init an empty repo, add the remote, fetch one ref, check out
+        # FETCH_HEAD. The ref is the LAST argument, which is what makes it invisible to a gate
+        # looking for a flag.
+        return (
+            'git init -q d\n'
+            'git -C d remote add origin https://e.com/x.git\n'
+            f'git -C d fetch -q --depth 1 origin {ref}\n'
+            'git -C d checkout -q FETCH_HEAD\n'
+        )
+
+    @pytest.mark.parametrize("ref", [SHA, '"' + SHA + '"', "v1.2.3", '"v2.0.0-rc.1"'])
+    def test_an_immutable_fetched_ref_passes(self, tmp_path, ref):
+        validate_install_script(_script_recipe(tmp_path, self._fetch(ref)))
+
+    @pytest.mark.parametrize("ref", ["main", '"develop"', "feat/wip", "HEAD"])
+    def test_a_moving_fetched_ref_is_rejected_and_named(self, tmp_path, ref):
+        with pytest.raises(PinValidationError) as exc:
+            validate_install_script(_script_recipe(tmp_path, self._fetch(ref)))
+        assert ref.strip('"') in str(exc.value)
+
+    def test_a_variable_with_a_literal_assignment_resolves(self, tmp_path):
+        body = f'X_REF="{SHA}"\n' + self._fetch('"$X_REF"')
+        validate_install_script(_script_recipe(tmp_path, body))
+
+    def test_an_unresolvable_variable_is_rejected_fail_closed(self, tmp_path):
+        with pytest.raises(PinValidationError) as exc:
+            validate_install_script(_script_recipe(tmp_path, self._fetch('"$MYSTERY_REF"')))
+        assert "MYSTERY_REF" in str(exc.value)
+
+    def test_a_declared_ref_resolves_the_variable(self, tmp_path):
+        r = _script_recipe(tmp_path, self._fetch('"$HARNESSED_REF_GSTACK"'))
+        assert r.install is not None
+        r.install.refs = {"gstack": InstallRef(repo="garrytan/gstack", ref=SHA)}
+        validate_install_script(r)  # must not raise
+
+    def test_a_ref_key_that_does_not_match_the_variable_still_fails_closed(self, tmp_path):
+        # The typo case. `refs: {gstack}` + `$HARNESSED_REF_GSTAK` hands the script an EMPTY
+        # variable, and `git fetch origin ''` is an error rather than a floating fetch — but the
+        # gate must not depend on git's behaviour to catch a manifest that names nothing.
+        r = _script_recipe(tmp_path, self._fetch('"$HARNESSED_REF_GSTAK"'))
+        assert r.install is not None
+        r.install.refs = {"gstack": InstallRef(repo="garrytan/gstack", ref=SHA)}
+        with pytest.raises(PinValidationError, match="GSTAK"):
+            validate_install_script(r)
+
+    def test_a_local_assignment_beats_the_manifest(self, tmp_path):
+        # Same precedence rule the clone gate took in PR #352: the shell's, not the author's intent.
+        body = 'HARNESSED_REF_GSTACK="main"\n' + self._fetch('"$HARNESSED_REF_GSTACK"')
+        r = _script_recipe(tmp_path, body)
+        assert r.install is not None
+        r.install.refs = {"gstack": InstallRef(repo="garrytan/gstack", ref=SHA)}
+        with pytest.raises(PinValidationError, match="main"):
+            validate_install_script(r)
+
+    def test_a_dockerfile_run_fetch_is_gated_too(self):
+        # A Dockerfile spelling the same acquisition is the identical hole; gating only the .sh half
+        # would move the problem rather than close it.
+        with pytest.raises(PinValidationError, match="main"):
+            validate_pin("r", "RUN git init d && git -C d fetch --depth 1 origin main")
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "git fetch",
+            "git fetch --all",
+            "git -C d fetch origin",
+            "git fetch --tags --prune",
+        ],
+    )
+    def test_a_fetch_that_names_no_ref_is_not_an_acquisition(self, tmp_path, line):
+        """A refresh is not a version-bearing download, and must not be rejected.
+
+        This is the false-positive half of the gate, and it is the half that decides whether authors
+        route around it. `git fetch origin` updates remote-tracking refs; nothing is checked out and
+        no pin is expressed, so there is no ref for the gate to have an opinion about. Rejecting it
+        would fail on ordinary shell and teach people to hide the acquisition instead.
+        """
+        validate_install_script(_script_recipe(tmp_path, f"set -e\n{line}\n"))
+
+    def test_a_named_remote_is_not_mistaken_for_the_ref(self, tmp_path):
+        """`git fetch upstream v1.2.3` fetches ref `v1.2.3` from remote `upstream`.
+
+        Reading the FIRST argument as the ref would reject every non-`origin` remote by name (a
+        remote name is not version-like), which is a false rejection that looks exactly like a
+        working gate until someone uses a second remote.
+        """
+        validate_install_script(
+            _script_recipe(tmp_path, "git -C d fetch --depth 1 upstream v1.2.3\n")
+        )
+
+    @pytest.mark.parametrize("opt", ["--multiple", "--stdin", "--porcelain", "--some-new-flag"])
+    def test_an_option_the_gate_cannot_interpret_fails_closed(self, tmp_path, opt):
+        """The gate must not GUESS which token is the ref when an option might have eaten it.
+
+        `git fetch --depth 1 origin main` and `git fetch --multiple origin upstream` have the same
+        SHAPE and different meanings: in the first, `1` is a value and `main` is the ref; in the
+        second there is no ref at all and both positionals are remotes. Nothing in the text says
+        which, so an option in neither the flag set nor the value set makes every later token
+        ambiguous — and a gate that guesses reports a confident wrong answer about what is pinned.
+
+        Caught by a mutant: replacing this branch with a pass-through left the whole suite green,
+        because every other test here feeds only options the gate already knows. That is the
+        "input the parser accepts but the tests never feed it" failure this module keeps hitting.
+        """
+        with pytest.raises(PinValidationError) as exc:
+            validate_install_script(
+                _script_recipe(tmp_path, f"git -C d fetch {opt} origin {SHA}\n")
+            )
+        assert opt in str(exc.value)
+
+    def test_an_option_value_joined_by_equals_consumes_no_positional(self, tmp_path):
+        """`--depth=1` is ONE token; `--depth 1` is two. Confusing them shifts every positional.
+
+        Read as if it took a separate value, `--depth=1 origin main` leaves positionals
+        `[main]` — one entry, read as the remote — and the floating fetch passes. Read correctly it
+        leaves `[origin, main]` and `main` is rejected.
+        """
+        with pytest.raises(PinValidationError, match="main"):
+            validate_install_script(
+                _script_recipe(tmp_path, "git -C d fetch --depth=1 origin main\n")
+            )
+
+    def test_the_equals_form_still_accepts_a_pinned_ref(self, tmp_path):
+        # The other half of the same boundary: reading it correctly must not create a false
+        # rejection either. Asserting only the rejection above would pass on a gate that rejects
+        # every `--depth=` fetch outright.
+        validate_install_script(
+            _script_recipe(tmp_path, f"git -C d fetch --depth=1 origin {SHA}\n")
+        )
+
+    def test_a_comment_describing_a_floating_fetch_does_not_trigger(self, tmp_path):
+        # Comment-stripping is the caller's job everywhere else in this module; assert it holds here
+        # too, or the recipes that explain their own pinning strategy fail their own gate.
+        #
+        # NOTE what this does and does not prove. `_lint_script_file` drops WHOLE-LINE comments
+        # before the gate runs, so this asserts that layer, not the gate's own handling. The inline
+        # case is a different question and is asserted separately below — a distinction an
+        # adversarial review had to point out, because reading this test alone suggests coverage it
+        # does not have.
+        body = "# never do: git fetch origin main\n" + self._fetch(SHA)
+        validate_install_script(_script_recipe(tmp_path, body))
+
+
+class TestTheFetchWalkSeesWhatGitSees:
+    """One invariant, five ways of breaking it: the walk must produce the token stream GIT does.
+
+    Every case here was a FALSE REJECTION — a legitimately pinned fetch that the gate refused —
+    found by adversarial review of the first implementation, and every one has the same root cause.
+    The walk modelled a token stream git does not actually produce, so tokens that are punctuation,
+    an option's value, or a refspec keyword to git were read as refs.
+
+    False rejections are the failure mode that decides whether a gate survives contact with real
+    authors. A gate that rejects `git fetch origin <sha> # why this commit` teaches people to delete
+    the comment, or to route around the gate entirely; it does not teach them to pin.
+
+    Asserted against `_mutable_fetch_ref` DIRECTLY rather than through `validate_install_script`,
+    because several of these interact with the caller's comment-stripping and going through it
+    would prove the wrong layer — the mistake the test above documents.
+    """
+
+    def test_an_inline_comment_after_a_pinned_ref_is_not_a_ref(self):
+        # `_lint_script_file` strips lines that BEGIN with `#`; nothing strips a trailing comment.
+        # The arg capture ran to end-of-line, so `#` and every following word were read as refs.
+        assert _mutable_fetch_ref(f"git fetch origin {SHA} # bump: fixes CVE-2026-1\n") is None
+
+    def test_an_inline_comment_cannot_hide_a_moving_ref(self):
+        # The other half of the boundary. Cutting at `#` must not become a way to smuggle one in.
+        assert _mutable_fetch_ref("git fetch origin main # looks innocent\n") == "'main'"
+
+    def test_a_commented_out_ref_is_not_fetched(self):
+        # `git fetch origin # main` fetches no ref at all — the shell never passes `main` to git.
+        assert _mutable_fetch_ref("git fetch origin # main\n") is None
+
+    def test_the_tag_refspec_keyword_is_not_the_ref(self):
+        # `git fetch <remote> tag <name>` is git's own shorthand for fetching one tag. The keyword
+        # sat in the ref's position, so the gate checked the word "tag" and never reached the tag.
+        assert _mutable_fetch_ref("git fetch origin tag v1.2.3\n") is None
+
+    def test_the_tag_refspec_keyword_does_not_wave_through_what_follows(self):
+        assert _mutable_fetch_ref("git fetch origin tag my-moving-tag\n") == "'my-moving-tag'"
+
+    @pytest.mark.parametrize("value", ["yes", "no", "on-demand"])
+    def test_recurse_submodules_does_not_eat_the_next_token(self, value):
+        """`--recurse-submodules`'s argument is OPTIONAL, which in getopt means `=` ONLY.
+
+        Verified against the real binary rather than assumed, because assuming is what put a false
+        accept here in the first place:
+
+            $ git fetch -n --recurse-submodules yes main
+            fatal: 'yes' does not appear to be a git repository
+
+        git reads `yes` as the REMOTE and `main` as the refspec. A round-1 review finding claimed
+        the opposite and called this shape a false rejection; the fix written for it consumed `yes`
+        as a value, which shifted every positional and let `main` through unchecked — a real false
+        accept introduced to fix a bug that did not exist. Round 2 caught it.
+
+        So the gate must do what git does: consume nothing, and check the tokens after the remote.
+        """
+        assert _mutable_fetch_ref(f"git fetch --recurse-submodules {value} main\n") == "'main'"
+
+    def test_recurse_submodules_leaves_the_remote_slot_where_git_leaves_it(self):
+        # The same rule from the other side: with `yes` as the remote, `origin` is a REFSPEC, and a
+        # branch named `origin` moves like any other. Rejecting it is correct, not over-eager.
+        assert _mutable_fetch_ref(f"git fetch --recurse-submodules yes origin {SHA}\n") == "'origin'"
+
+    def test_the_equals_form_of_recurse_submodules_consumes_nothing_either(self):
+        assert _mutable_fetch_ref("git fetch --recurse-submodules=yes origin main\n") == "'main'"
+
+    def test_recurse_submodules_without_a_value_still_works(self):
+        assert _mutable_fetch_ref(f"git fetch --recurse-submodules origin {SHA}\n") is None
+
+    def test_negotiate_only_is_a_flag_and_consumes_no_positional(self):
+        """`--negotiate-only` takes NO value; classifying it as value-taking let a branch through.
+
+        The THIRD option-set misclassification on this gate, and the second to reach a reviewer, so
+        the fix was not this one line — it was auditing every entry in both sets against the binary
+        (git 2.55.0), which is recorded beside the sets themselves. The pattern is stable: an option
+        wrongly marked value-taking eats the remote, which promotes the real ref into the remote's
+        slot, where nothing checks it.
+
+            $ git fetch --negotiate-only
+            fatal: must supply remote when using --negotiate-only   # not "requires a value"
+        """
+        assert _mutable_fetch_ref("git fetch --negotiate-only origin main\n") == "'main'"
+
+    def test_negotiate_only_still_accepts_a_pinned_ref(self):
+        # The other side of the boundary: correcting the classification must not start rejecting
+        # the legitimate use. Asserting only the rejection above would pass on a gate that refuses
+        # every `--negotiate-only` fetch outright.
+        assert _mutable_fetch_ref(f"git fetch --negotiate-only origin {SHA}\n") is None
+
+    def test_no_option_is_classified_as_both_a_flag_and_value_taking(self):
+        """A cheap structural guard the three misclassifications share a shape with.
+
+        It cannot catch a WRONG classification — only the binary can, which is why the audit
+        exists — but an option in both sets would make the walk's behaviour depend on which branch
+        is tested first, and that is worth failing on rather than discovering.
+        """
+        from harnessed.schema import _FETCH_FLAG_OPTS, _FETCH_VALUE_OPTS
+
+        assert not (_FETCH_FLAG_OPTS & _FETCH_VALUE_OPTS)
+
+    def test_a_remote_named_tag_does_not_swallow_the_ref(self):
+        """`git fetch tag tag` — remote `tag`, branch `tag`. Contrived, and it was a false accept.
+
+        The keyword strip fired on the only ref present and left nothing to check, so a moving ref
+        passed. `tag` is git's shorthand only when a NAME follows it; a trailing `tag` with nothing
+        after it is a refspec. Guarding on that distinction is what makes the strip safe.
+        """
+        assert _mutable_fetch_ref("git fetch tag tag\n") == "'tag'"
+
+    @pytest.mark.parametrize("bundle", ["-qv", "-vq", "-qf"])
+    def test_bundled_short_options_are_expanded(self, bundle):
+        # `-qv` is `-q -v`. Both are known flags, so this must behave exactly as the unbundled form.
+        # It previously hit the unknown-option branch: a rejection, so SAFE, but for a false reason
+        # that would send an author hunting a pin problem they do not have.
+        assert _mutable_fetch_ref(f"git fetch {bundle} origin {SHA}\n") is None
+        assert _mutable_fetch_ref(f"git fetch {bundle} origin main\n") == "'main'"
+
+    def test_a_bundle_containing_an_unknown_short_option_still_fails_closed(self):
+        # Expanding must not become a way to launder an option the gate cannot interpret.
+        assert "-Z" in (_mutable_fetch_ref(f"git fetch -qZ origin {SHA}\n") or "")
+
+    def test_a_bundle_ending_in_a_value_taking_option_consumes_its_value(self):
+        # `-qj 4` is `-q -j 4`; the `4` is a value, not the remote.
+        assert _mutable_fetch_ref(f"git fetch -qj 4 origin {SHA}\n") is None
+
+    def test_a_line_continuation_joins_before_the_walk(self):
+        # The capture stopped at the newline, so the trailing `\` became the ref. That rejected a
+        # pinned fetch — and it is why the moving case below cannot simply be left to the backslash.
+        assert _mutable_fetch_ref(f"git fetch origin \\\n    {SHA}\n") is None
+
+    def test_a_line_continuation_cannot_hide_a_moving_ref(self):
+        """The reason the fix is JOINING, not ignoring the backslash.
+
+        Before the fix this case was rejected — but by accident, because `\\` is not version-like,
+        not because anything read the ref. Dropping the backslash instead of joining would have
+        turned an accidental pass into a real FALSE ACCEPT: positionals would be `[origin]` alone,
+        which the gate correctly reads as "a remote, no ref" and waves through.
+        """
+        assert _mutable_fetch_ref("git fetch origin \\\n    main\n") == "'main'"
 
 
 class TestShippedCatalogSatisfiesTheGate:

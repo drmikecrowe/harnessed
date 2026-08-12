@@ -221,7 +221,6 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 - [ ] **[tokensave](https://github.com/aovestdipaperino/tokensave)** — pre-indexed semantic code knowledge graph (80+ MCP tools, Rust) · *MCP recipe*
 - [ ] **[caveman](https://github.com/JuliusBrussee/caveman)** — concise-output / token-compression skill · *skills recipe*
 - [ ] **[hindsight](https://hindsight.vectorize.io)** — memory/recall sidecar (multi-container Postgres stack) · *existing service*
-- [ ] **[hyperpowers](https://github.com/withzombies/hyperpowers)** — workflow guidance (task tracking, plan management, TDD) · *skills + hooks recipe*
 - [ ] **[Superpowers](https://github.com/obra/Superpowers)** — composable software-development methodology skill suite (TDD, code review, subagent-driven dev) · *skills recipe*
 - [ ] **[rtk](https://github.com/rtk-ai/rtk)** — Rust Token Killer: CLI proxy that compresses dev-command output to cut LLM tokens 60–90% · *CLI + hooks recipe*
 - [x] **[OB1 / Open Brain](https://github.com/NateBJones-Projects/OB1)** — personal knowledge infrastructure: shared persistent memory + vector search across AI tools (MCP + Supabase/Postgres backend) · *service + recipe*
