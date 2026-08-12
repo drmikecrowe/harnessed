@@ -71,7 +71,7 @@ class TestRecipesDeclareTheirBinary:
         # backend mise has, so the fetch is expressible where a clone is not. The recipe still keeps
         # `install.script`: `tools:` fetches the installer, the script runs it. What this list is
         # really about is "no backend can express the fetch", and gsd-core never met that.
-        for name in ("superpowers", "hyperpowers", "caveman", "gstack"):
+        for name in ("superpowers", "caveman", "gstack"):
             assert _recipe(name).tools == [], f"{name} must not be expressed as tools:"
 
 

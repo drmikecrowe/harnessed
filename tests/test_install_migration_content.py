@@ -33,10 +33,13 @@ CATALOG = Path(__file__).resolve().parents[1] / "catalog"
 
 # The batch. superpowers is the template the rest follow (migrated ahead of them); it is included
 # because "the template still obeys its own contract" is exactly what regresses unnoticed.
-CONTENT_RECIPES = ["superpowers", "hyperpowers", "caveman", "gstack"]
+# hyperpowers was a member until #329 Phase 3, when the repo owner deleted the recipe outright
+# rather than migrate it. Its removal is not a coverage loss for this file: every invariant here is
+# per-recipe, and the three that remain exercise all of them.
+CONTENT_RECIPES = ["superpowers", "caveman", "gstack"]
 
 # Recipes whose ENTIRE body was content — nothing needed root, so the Dockerfile is gone outright.
-PURE_CONTENT = ["superpowers", "hyperpowers", "caveman"]
+PURE_CONTENT = ["superpowers", "caveman"]
 
 # Anything that looks like a write into the agent config dir. A migrated recipe's Dockerfile must
 # not contain one: that is the half that a host launch cannot execute.
