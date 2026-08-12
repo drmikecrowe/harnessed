@@ -167,12 +167,20 @@
 > **S10**, and it is a *build-gated* spike like S7 and S9 — flag, do not attempt. Two ways forward,
 > the human's call:
 >
-> - **(a) Pin `stable` (2.1.221).** Defensible and self-describing: the image takes the vendor's own
->   stable channel at the moment of the bump. May be a small move for existing users if the binary's
->   unargumented default is in fact `latest`.
-> - **(b) Answer S10 first** under `HARNESSED_PODMAN=1` (`podman run harnessed-claude claude
->   --version`), pin exactly what ships today, and bump as a separate, visible change — the
->   discipline A2 already owes S7.
+> **Neither option may put the word `stable` in `CLAUDE_VERSION`.** `stable` and `latest` are
+> *channel pointers*: the installer accepts them, and they move. Passing one would re-introduce
+> exactly the floating acquisition this epic exists to remove — an image that installs a different
+> CLI on every rebuild while the manifest looks pinned. **The channel is a thing you RESOLVE ONCE to
+> get a value; it is never the value.** Both options below therefore end with a three-part literal
+> (`2.1.221`) in the manifest; they differ only in how that literal is chosen.
+>
+> - **(a) Resolve `stable` once, now, and pin the literal it returns** — today, `2.1.221`. Defensible
+>   and self-describing: the image takes the vendor's stable channel *as read at the moment of the
+>   bump*, frozen. May be a small move for existing users if the binary's unargumented default is in
+>   fact `latest`.
+> - **(b) Answer S10 first** (procedure in §S10 below — it requires a REBUILD, not a run against
+>   whatever `harnessed-claude:latest` happens to be), pin the literal that image reports, and bump
+>   as a separate, visible change — the discipline A2 already owes S7.
 >
 > A3 is otherwise ready: A7 landed the `{value, hold}` form, A6 landed the lint, and
 > `validate_agent_pin` is still not wired into `assemble()` because codex remains unpinned — so A3
@@ -1280,10 +1288,25 @@ it gates only which version A3 pins, not whether A3 can proceed.
 - **S10** _(from REVISION 15, gates A3's VALUE only — not A3 itself)_ — which version does the
   shipped `harnessed-claude` image actually carry today? The Dockerfile pipes the installer with no
   argument, so the version is whatever the downloaded bootstrap binary defaults to, and that default
-  is **not readable from the install script or the published manifests**. Needs a built image
-  (`podman run harnessed-claude claude --version`), so it is **build-gated like S7 and S9 — flag,
-  do not attempt.** Same question S7 asks for codex: pin what already ships, or accept a visible
-  move. Channel pointers measured 2026-08-12 for reference: `stable` 2.1.221, `latest` 2.1.228.
+  is **not readable from the install script or the published manifests**. It is **build-gated like
+  S7 and S9 — flag, do not attempt.** Same question S7 asks for codex: pin what already ships, or
+  accept a visible move. Channel pointers measured 2026-08-12 for reference: `stable` 2.1.221,
+  `latest` 2.1.228.
+
+  **Procedure — a REBUILD, not a run.** `podman run harnessed-claude claude --version` against the
+  existing tag answers a different question: `harnessed-claude:latest` may predate the current
+  `Dockerfile.harnessed-claude`, and it is `FROM harnessed-base:latest`, which may itself be stale.
+  S10 asks what *today's checkout* produces, so a stale tag returns a confident wrong answer — the
+  precise failure mode this revision exists to correct. Instead:
+
+  1. Rebuild both images from the current checkout with the cache disabled and the base forced —
+     `harnessed build <stack> claude --force --no-cache` (`--force` rebuilds the base, which the
+     agent image derives from; `--no-cache` stops a cached `RUN curl … | bash` layer from replaying
+     an old install). `launcher.py` builds `harnessed-base` before the agent image by design.
+  2. Record **what was measured**, not just the number: the image ID
+     (`podman image inspect --format '{{.Id}}' harnessed-claude:latest`) beside the observed
+     `podman run --rm harnessed-claude:latest claude --version`, plus the commit SHA built from.
+  3. Only then compare against the channel pointers to decide whether pinning moves users.
 
 ---
 
