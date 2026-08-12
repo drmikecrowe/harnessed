@@ -24,10 +24,12 @@ that drift as part of promoting one, not before.
 | `hindsight` | No `expect:` oracle at all. |
 
 `solidspec` and `tokensave` were considered and deliberately **left in place**: they are subjects of
-the install-migration epic and are named directly by its tests (`CONTENT_RECIPES` in
-`tests/test_install_migration_content.py`, `ROOT_ONLY` in
-`tests/test_install_migration_system.py`). They are unexercised at runtime but heavily covered
-statically, so parking them would delete coverage rather than quarantine risk.
+the install-migration epic and each is named directly by its own tests — `solidspec` by `ROOT_ONLY`
+in `tests/test_install_migration_system.py`, `tokensave` by the whole of
+`tests/test_tokensave_migration.py` (plus `tests/test_toollock.py`). Neither is in
+`CONTENT_RECIPES`; that list is the Family B content recipes, which these two are not. They are
+unexercised at runtime but heavily covered statically, so parking them would delete coverage rather
+than quarantine risk.
 
 `hyperpowers` was the third of that set. It is **deleted outright** rather than parked, by decision
 of the repo owner during #329 Phase 3 — so neither branch of the trade-off above applies to it any

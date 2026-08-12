@@ -2444,6 +2444,17 @@ def _mutable_archive_ref(body: str, recipe: "Recipe | None" = None) -> str | Non
 _GIT_FETCH_RE = re.compile(
     r'\bgit\b(?:\s+-{1,2}[A-Za-z][^\s]*(?:\s+[^-\s]\S*)?)*\s+fetch\b(?P<args>[^\n;&|)]*)'
 )
+# BOTH SETS BELOW WERE AUDITED AGAINST THE BINARY, not against memory or the man page's prose.
+# Misclassifying ONE option is a false ACCEPT, and it happened three times before the audit: an
+# option wrongly marked value-taking eats the remote, which promotes the real ref into the remote's
+# slot, where nothing checks it. Re-run this when adding an entry (git 2.55.0 when last run):
+#
+#   for o in <option>…; do printf '%-22s %s\n' "$o" "$(git fetch "$o" 2>&1 | head -1)"; done
+#
+# `error: option 'x' requires a value` ⇒ VALUE set. Anything else ⇒ FLAG set. The distinction is
+# not guessable: `--negotiate-only` reads like it takes one and does not, and `--recurse-submodules`
+# accepts one only in the `=` form, which consumes no separate token either way.
+#
 # Options taking NO value. An option in neither set fails the walk CLOSED (see `_mutable_fetch_ref`)
 # rather than being guessed at — the posture `_IMMUTABLE_REF_RE` takes for refs, applied to flags.
 _FETCH_FLAG_OPTS = frozenset({
@@ -2453,13 +2464,17 @@ _FETCH_FLAG_OPTS = frozenset({
     "--unshallow", "--update-shallow", "--refetch", "--atomic", "-k", "--keep",
     "--set-upstream", "--write-fetch-head", "--no-write-fetch-head",
     "--recurse-submodules", "--no-recurse-submodules", "--ipv4", "--ipv6",
+    # Reads like a value-taking option and is not: `git fetch --negotiate-only` answers
+    # "fatal: must supply remote when using --negotiate-only", not "requires a value". Listed as
+    # value-taking until review of PR #355, where it consumed `origin` and let `main` through.
+    "--negotiate-only",
 })
 # Options whose value is a SEPARATE token, so that token is not a positional. The `--opt=value`
 # spelling needs no entry here: it is one token either way.
 _FETCH_VALUE_OPTS = frozenset({
     "--depth", "--deepen", "--jobs", "-j", "--refmap", "--upload-pack",
     "--shallow-since", "--shallow-exclude", "--negotiation-tip",
-    "--server-option", "-o", "--filter", "--submodule-prefix", "--negotiate-only",
+    "--server-option", "-o", "--filter", "--submodule-prefix",
 })
 # `-qv` — ONE dash, two or more letters, so it is a bundle of short options rather than one option.
 # `--x` is excluded by the single leading dash; `-C` alone is excluded by the length.

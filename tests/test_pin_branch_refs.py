@@ -428,6 +428,37 @@ class TestTheFetchWalkSeesWhatGitSees:
     def test_recurse_submodules_without_a_value_still_works(self):
         assert _mutable_fetch_ref(f"git fetch --recurse-submodules origin {SHA}\n") is None
 
+    def test_negotiate_only_is_a_flag_and_consumes_no_positional(self):
+        """`--negotiate-only` takes NO value; classifying it as value-taking let a branch through.
+
+        The THIRD option-set misclassification on this gate, and the second to reach a reviewer, so
+        the fix was not this one line — it was auditing every entry in both sets against the binary
+        (git 2.55.0), which is recorded beside the sets themselves. The pattern is stable: an option
+        wrongly marked value-taking eats the remote, which promotes the real ref into the remote's
+        slot, where nothing checks it.
+
+            $ git fetch --negotiate-only
+            fatal: must supply remote when using --negotiate-only   # not "requires a value"
+        """
+        assert _mutable_fetch_ref("git fetch --negotiate-only origin main\n") == "'main'"
+
+    def test_negotiate_only_still_accepts_a_pinned_ref(self):
+        # The other side of the boundary: correcting the classification must not start rejecting
+        # the legitimate use. Asserting only the rejection above would pass on a gate that refuses
+        # every `--negotiate-only` fetch outright.
+        assert _mutable_fetch_ref(f"git fetch --negotiate-only origin {SHA}\n") is None
+
+    def test_no_option_is_classified_as_both_a_flag_and_value_taking(self):
+        """A cheap structural guard the three misclassifications share a shape with.
+
+        It cannot catch a WRONG classification — only the binary can, which is why the audit
+        exists — but an option in both sets would make the walk's behaviour depend on which branch
+        is tested first, and that is worth failing on rather than discovering.
+        """
+        from harnessed.schema import _FETCH_FLAG_OPTS, _FETCH_VALUE_OPTS
+
+        assert not (_FETCH_FLAG_OPTS & _FETCH_VALUE_OPTS)
+
     def test_a_remote_named_tag_does_not_swallow_the_ref(self):
         """`git fetch tag tag` — remote `tag`, branch `tag`. Contrived, and it was a false accept.
 
