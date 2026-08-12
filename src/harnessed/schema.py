@@ -2510,13 +2510,15 @@ def _mutable_fetch_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
                 positional.append(token)
                 continue
             name = token.split("=", 1)[0]
-            # `--recurse-submodules` takes an OPTIONAL value, so neither option set can classify it
-            # by name alone — only the following token says which form this is.
-            if name == "--recurse-submodules" and tokens[index:index + 1] and tokens[index] in (
-                "yes", "no", "on-demand"
-            ):
-                index += 1
-                continue
+            # NOTE on `--recurse-submodules`, which is in the FLAG set and stays there. Its argument
+            # is OPTIONAL, and an optional getopt argument may be given ONLY as `--opt=value` — the
+            # next token is never consumed. Checked against the binary rather than reasoned about:
+            #   $ git fetch -n --recurse-submodules yes main
+            #   fatal: 'yes' does not appear to be a git repository
+            # so git reads `yes` as the REMOTE. A review finding claimed otherwise and the lookahead
+            # written for it shifted every positional, letting `main` through — a real false accept
+            # introduced to fix a bug that did not exist. The lesson is in the commit message.
+            #
             # `-qv` is `-q -v`. Unexpanded it hit the unknown-option branch below: a rejection, so
             # safe, but for a false reason that sends an author hunting a pin problem they do not
             # have. A value-taking member is legal only as the LAST of a bundle, which is also
@@ -2543,8 +2545,13 @@ def _mutable_fetch_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
         #
         # `git fetch <remote> tag <name>` is git's shorthand for fetching one tag; the keyword sits
         # where a ref would, so skipping it is what lets the gate reach the tag behind it.
+        #
+        # The length guard is load-bearing, not defensive noise: `tag` is the keyword only when a
+        # NAME follows it. A trailing `tag` with nothing after is an ordinary refspec — and
+        # `git fetch tag tag` (remote `tag`, branch `tag`) stripped the only ref present, leaving
+        # nothing to check and waving a moving ref through. Contrived input, real false accept.
         refs = positional[1:]
-        if refs[:1] == ["tag"]:
+        if len(refs) >= 2 and refs[0] == "tag":
             refs = refs[1:]
         for raw in refs:
             raw = _unquote(raw)

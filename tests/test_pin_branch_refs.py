@@ -399,14 +399,43 @@ class TestTheFetchWalkSeesWhatGitSees:
         assert _mutable_fetch_ref("git fetch origin tag my-moving-tag\n") == "'my-moving-tag'"
 
     @pytest.mark.parametrize("value", ["yes", "no", "on-demand"])
-    def test_recurse_submodules_may_take_a_separate_value(self, value):
-        # It is in the FLAG set because `--recurse-submodules` alone is valid — but git also accepts
-        # a space-separated value, and then the value landed in the remote's slot and shifted every
-        # positional by one, so the REMOTE got checked as the ref.
-        assert _mutable_fetch_ref(f"git fetch --recurse-submodules {value} origin {SHA}\n") is None
+    def test_recurse_submodules_does_not_eat_the_next_token(self, value):
+        """`--recurse-submodules`'s argument is OPTIONAL, which in getopt means `=` ONLY.
+
+        Verified against the real binary rather than assumed, because assuming is what put a false
+        accept here in the first place:
+
+            $ git fetch -n --recurse-submodules yes main
+            fatal: 'yes' does not appear to be a git repository
+
+        git reads `yes` as the REMOTE and `main` as the refspec. A round-1 review finding claimed
+        the opposite and called this shape a false rejection; the fix written for it consumed `yes`
+        as a value, which shifted every positional and let `main` through unchecked — a real false
+        accept introduced to fix a bug that did not exist. Round 2 caught it.
+
+        So the gate must do what git does: consume nothing, and check the tokens after the remote.
+        """
+        assert _mutable_fetch_ref(f"git fetch --recurse-submodules {value} main\n") == "'main'"
+
+    def test_recurse_submodules_leaves_the_remote_slot_where_git_leaves_it(self):
+        # The same rule from the other side: with `yes` as the remote, `origin` is a REFSPEC, and a
+        # branch named `origin` moves like any other. Rejecting it is correct, not over-eager.
+        assert _mutable_fetch_ref(f"git fetch --recurse-submodules yes origin {SHA}\n") == "'origin'"
+
+    def test_the_equals_form_of_recurse_submodules_consumes_nothing_either(self):
+        assert _mutable_fetch_ref("git fetch --recurse-submodules=yes origin main\n") == "'main'"
 
     def test_recurse_submodules_without_a_value_still_works(self):
         assert _mutable_fetch_ref(f"git fetch --recurse-submodules origin {SHA}\n") is None
+
+    def test_a_remote_named_tag_does_not_swallow_the_ref(self):
+        """`git fetch tag tag` — remote `tag`, branch `tag`. Contrived, and it was a false accept.
+
+        The keyword strip fired on the only ref present and left nothing to check, so a moving ref
+        passed. `tag` is git's shorthand only when a NAME follows it; a trailing `tag` with nothing
+        after it is a refspec. Guarding on that distinction is what makes the strip safe.
+        """
+        assert _mutable_fetch_ref("git fetch tag tag\n") == "'tag'"
 
     @pytest.mark.parametrize("bundle", ["-qv", "-vq", "-qf"])
     def test_bundled_short_options_are_expanded(self, bundle):
