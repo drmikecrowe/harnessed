@@ -50,27 +50,56 @@ def _yaml_comments(text: str) -> str:
     so the guard could pass while recipe.yaml still carried a second copy of the pin. Raised in
     review of PR #353, second pass.
 
-    Not a YAML parse: comments do not survive one. This walks each line tracking quote state and
-    takes the tail from the first `#` that is OUTSIDE quotes and preceded by whitespace or
-    start-of-line. Both conditions matter and both are load-bearing:
+    Not a YAML parse: comments do not survive one, and nothing here preserves them. This is a
+    scanner, and it models the four places a `#` is NOT a comment:
 
-      * inside quotes    `summary: "pass #1 of 2"`     is a string, not a comment
-      * mid-token        `reference: https://x/y#frag` is a URL fragment, not a comment
+      * inside quotes        `summary: "pass #1 of 2"`      a string
+      * mid-token            `reference: https://x/y#frag`  a URL fragment
+      * after an escape      `summary: "say \\" # x"`         still inside the string
+      * in a block scalar    a `command: >-` hook body      shell text, and shell has comments too
 
-    Declaration lines carry no `#` at all, so `repo:`/`ref:` remain the single ownership location
-    exactly as before — this widens what counts as a comment, never what counts as a declaration.
+    The last two came from review, third pass. Note the failure DIRECTION of all four: mishandled,
+    each makes the scanner see MORE text as comment, so the guard gets noisier and never blinder.
+    That is the right way round for a rule whose job is to reject a duplicated pin — but a spurious
+    failure still costs a maintainer an afternoon, so the cases are modelled rather than tolerated.
+
+    Declaration lines carry no `#`, so `repo:`/`ref:` remain the single ownership location: this
+    widens what counts as a comment, never what counts as a declaration.
     """
     out: list[str] = []
+    block_indent: int | None = None
     for line in text.splitlines():
+        indent = len(line) - len(line.lstrip())
+        if block_indent is not None:
+            # Block-scalar content is any deeper-indented line, plus blank lines inside it. A line
+            # at or left of the opener's own indentation ends the block.
+            if not line.strip() or indent > block_indent:
+                continue
+            block_indent = None
+
         in_single = in_double = False
-        for i, ch in enumerate(line):
+        cut: int | None = None
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if in_double and ch == "\\":
+                i += 2  # escaped char inside a double-quoted scalar: consume both
+                continue
             if ch == "'" and not in_double:
                 in_single = not in_single
             elif ch == '"' and not in_single:
                 in_double = not in_double
             elif ch == "#" and not in_single and not in_double and (i == 0 or line[i - 1] in " \t"):
-                out.append(line[i:])
+                cut = i
                 break
+            i += 1
+
+        if cut is not None:
+            out.append(line[cut:])
+        code = line if cut is None else line[:cut]
+        # `key: |`, `key: >-`, `key: |2+` … open a block scalar whose content is not YAML.
+        if re.search(r"[|>][-+]?\d*\s*$", code.rstrip()):
+            block_indent = indent
     return "\n".join(out)
 
 
@@ -112,6 +141,41 @@ class TestYamlCommentExtraction:
     def test_a_url_fragment_is_not_a_comment(self):
         # `reference:` fields carry real URLs; a `#` with no preceding space is part of the token.
         assert _yaml_comments("reference: https://example.com/x#frag\n") == ""
+
+    def test_an_escaped_quote_does_not_end_the_string_early(self):
+        """`\\"` inside a double-quoted scalar keeps the string open.
+
+        Without escape tracking the string ends at the escaped quote, the rest of the line reads as
+        code, and a following `#` becomes a phantom comment — which could fail a recipe for a
+        literal that is really scalar content. Raised in review of PR #353, third pass.
+        """
+        assert _yaml_comments('summary: "he said \\" # not a comment"\n') == ""
+
+    def test_a_hash_inside_a_block_scalar_is_not_a_comment(self):
+        """`command: >-` and `command: |` bodies are shell, and shell has its own `#` comments.
+
+        The catalog is full of these — every `hooks:` entry is one — so treating their content as
+        YAML comments would scan text that is not YAML at all.
+        """
+        doc = (
+            "hooks:\n"
+            "  SessionStart:\n"
+            "    - command: |\n"
+            "        # a shell comment carrying v6.0.3\n"
+            "        echo hi\n"
+        )
+        assert _yaml_comments(doc) == ""
+
+    def test_a_comment_after_a_block_scalar_ends_is_still_found(self):
+        """The block must END at the dedent, or every comment below one becomes invisible — which
+        would be the blind direction, and the one this whole guard exists to avoid."""
+        doc = (
+            "hooks:\n"
+            "    - command: |\n"
+            "        echo hi\n"
+            "# back at column 0\n"
+        )
+        assert "# back at column 0" in _yaml_comments(doc)
 
     def test_a_declaration_line_yields_nothing(self):
         # The ownership location must stay invisible to the guard, or the pin would flag itself.
