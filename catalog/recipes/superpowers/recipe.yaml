@@ -26,16 +26,32 @@ env:
 # image, and by the launcher after the host home is materialized on `launch --host`. This recipe
 # was the reproducer for bd harnessed-8px.1 (host launch → 0 of 14 skills, no error).
 #
-# `cache:` MUST equal the SUPERPOWERS_REF pinned inside install.sh. It keys the host content cache
-# ($XDG_CACHE_HOME/harnessed/install/superpowers/v6.0.3) so the per-launch re-run — mandatory,
-# because the host home is rebuilt from scratch every launch — clones once, not every time. The
-# schema rejects a floating key; bump both together to upgrade, which yields a fresh cache dir.
+# The pin is DATA and lives HERE, once (Phase 3 of #329). It used to be two literals kept in
+# lockstep by a comment — `SUPERPOWERS_REF` in install.sh and `install.cache` here — which is the
+# defect that epic exists to delete. `install.refs:` replaces both: the script reads
+# `$HARNESSED_REF_SUPERPOWERS` / `$HARNESSED_REPO_SUPERPOWERS`, and `harnessed update` reads this
+# block. Neither value is repeated in a comment, here or in the script — a comment copy drifts the
+# same way a shell variable does, only more quietly.
+#
+# `install.cache` is now DERIVED from these refs (sha256 of `key=repo@ref`, first 16 hex) rather
+# than declared — declaring both is a schema error, not a precedence rule. It still keys the host
+# content cache so the per-launch re-run — mandatory, because the host home is rebuilt from scratch
+# every launch — clones once, not every time. Bumping `ref:` changes the derived key, so a fresh
+# cache dir follows automatically instead of needing a second edit remembered.
+#
+# No `hold:` — upstream publishes releases and `_github_releases` resolves this tag, so it
+# is AC-2 *resolvable* rather than held. Same reading as caveman in #352: #240's hold policy covers
+# mikes-universal-setup's hand-rolled third-party skill-fetch bridge, not a recipe pinning its own
+# upstream tag.
 #
 # No `system:` — nothing here needs root (pure Markdown written under the agent config dir), so the
 # host launch is fully equivalent to the container build.
 install:
   script: install.sh
-  cache: v6.0.3
+  refs:
+    superpowers:
+      repo: obra/superpowers
+      ref: v6.0.3
 
 # What the capability test must find in the running container after a successful build. install.sh
 # copies all 14 upstream skills/<name>/SKILL.md trees into ~/.claude/skills; list

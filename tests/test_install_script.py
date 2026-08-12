@@ -28,6 +28,7 @@ import pytest
 from harnessed import emit, launcher, paths
 from harnessed.schema import (
     PinValidationError,
+    derived_cache_key,
     RecipeLintError,
     SchemaError,
     load_recipe,
@@ -614,21 +615,41 @@ class TestPrecedence:
 class TestSuperpowersMigrated:
     """The proving consumer, and the recipe whose absence IS bd harnessed-8px.1."""
 
-    def test_declares_install_with_a_pinned_cache_and_no_dockerfile(self):
+    def test_declares_install_with_a_derived_cache_and_no_dockerfile(self):
         r = load_recipe(CATALOG / "recipes" / "superpowers", strict=True)
-        assert r.install.script == "install.sh"
-        assert r.install.cache == "v6.0.3"
+        assert r.install is not None and r.install.script == "install.sh"
+        # The cache key is DERIVED from `install.refs:` now (Phase 3 of #329), not declared as the
+        # tag. Asserting the literal "v6.0.3" here would pin the TEST to a version the manifest is
+        # free to bump — the drift this epic removes, re-created in the test suite.
+        assert r.install.cache and r.install.cache == derived_cache_key(r.install.refs)
         assert r.install.system is None  # pure Markdown under ~/.claude — nothing needs root
         assert not (r.root / "Dockerfile").exists(), (
             "the Dockerfile RUN is what made the skills container-only"
         )
 
-    def test_the_scripts_pinned_ref_matches_the_cache_key(self):
-        """A drifting pair would key the cache by one version and clone another — the cache would
-        hold v6.0.3's name over v6.0.4's content, forever."""
+    def test_the_pin_exists_in_exactly_one_place(self):
+        """Was: assert the script's `SUPERPOWERS_REF=` literal equals `install.cache`.
+
+        That guarded a drifting PAIR. Phase 3 deleted the pair — the ref lives only in
+        `install.refs:` and reaches the script as env — so the successor guarantee is that no copy
+        exists to drift: the version appears nowhere in the script, comments included, and the
+        script actually reads both variables it is given.
+        """
         r = load_recipe(CATALOG / "recipes" / "superpowers", strict=True)
-        body = (r.root / r.install.script).read_text()
-        assert f'SUPERPOWERS_REF="{r.install.cache}"' in body
+        assert r.install is not None and r.install.script
+        raw = (r.root / r.install.script).read_text()
+        # Two different rules, deliberately. A local ASSIGNMENT is checked against code only — the
+        # comment explaining what was removed may name `SUPERPOWERS_REF` without recreating it. A
+        # VALUE is checked against the raw file, comments included, because a comment carrying the
+        # version drifts exactly like an assignment does (learned the hard way in #352).
+        code = "\n".join(
+            ln for ln in raw.splitlines() if not ln.lstrip().startswith("#")
+        )
+        assert "SUPERPOWERS_REF=" not in code
+        for key, ref in r.install.refs.items():
+            assert ref.ref not in raw and ref.repo not in raw
+            assert f"HARNESSED_REF_{key.upper()}" in raw
+            assert f"HARNESSED_REPO_{key.upper()}" in raw
 
     def test_passes_the_install_lint(self):
         validate_install_script(load_recipe(CATALOG / "recipes" / "superpowers", strict=True))

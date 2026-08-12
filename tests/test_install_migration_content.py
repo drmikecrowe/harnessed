@@ -117,6 +117,20 @@ class TestDeclared:
         if not inst.refs:
             pytest.skip(f"{name} has not migrated to install.refs: yet")
         raw = (r.root / inst.script).read_text(encoding="utf-8")
+        # In recipe.yaml, a ref value may appear ONLY on a line that declares it. That is the whole
+        # rule — no YAML modelling, no comment extraction. It rejects a comment copy (a `#` line is
+        # not a declaration), a stray field, and a second copy tacked onto the declaration line
+        # itself, without needing to know what a block scalar or an escaped quote is.
+        #
+        # `reference:` is allowed because it is a documentation URL for a human, not a pin: it
+        # names the project, and a stale one is a bad link rather than a wrong fetch.
+        #
+        # This replaced a ~90-line comment scanner that took four review rounds and still had
+        # edge cases (PR #353). The scanner asked "is this text a comment?" — a YAML question with
+        # no cheap answer. This asks "does this line declare the value?", which is answerable by
+        # reading the line.
+        declares = ("repo:", "ref:", "reference:")
+        manifest_lines = (r.root / "recipe.yaml").read_text(encoding="utf-8").splitlines()
         for key, ref in inst.refs.items():
             for field, value in (("ref", ref.ref), ("repo", ref.repo)):
                 assert value not in raw, (
@@ -124,6 +138,18 @@ class TestDeclared:
                     f"'{key}') — the pin must live only in install.refs, in comments too, or the "
                     "two copies can drift again."
                 )
+                for line in manifest_lines:
+                    if value not in line:
+                        continue
+                    assert line.strip().startswith(declares), (
+                        f"{name}: recipe.yaml line {line.strip()!r} repeats {value!r} ({field} of "
+                        f"ref '{key}') outside a declaration. The `refs:` block is the one source; "
+                        "any other copy — a comment most easily — drifts silently."
+                    )
+                    assert line.count(value) == 1, (
+                        f"{name}: recipe.yaml line {line.strip()!r} contains {value!r} twice; a "
+                        "declaration line with a trailing copy drifts exactly like a comment does."
+                    )
             for var in (f"HARNESSED_REF_{key.upper()}", f"HARNESSED_REPO_{key.upper()}"):
                 assert var in raw, (
                     f"{name}: {inst.script} never reads ${var}, so that half of the declared ref "
