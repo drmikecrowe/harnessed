@@ -97,8 +97,12 @@ def _yaml_comments(text: str) -> str:
         if cut is not None:
             out.append(line[cut:])
         code = line if cut is None else line[:cut]
-        # `key: |`, `key: >-`, `key: |2+` … open a block scalar whose content is not YAML.
-        if re.search(r"[|>][-+]?\d*\s*$", code.rstrip()):
+        # A block-scalar header is `|` or `>` plus an optional indentation digit and chomping
+        # indicator IN EITHER ORDER (`|2+` and `|+2` are both valid). The first version of this
+        # regex accepted only sign-then-digit while the comment claimed `|2+` worked — caught in
+        # review of PR #353, fourth pass. Anchored on whitespace or `:` so an ordinary value that
+        # merely ENDS in `|` (`key: a|`) does not open a phantom block and swallow what follows.
+        if re.search(r"(?:^|[\s:])[|>](?:\d[-+]?|[-+]\d?)?\s*$", code.rstrip()):
             block_indent = indent
     return "\n".join(out)
 
@@ -165,6 +169,24 @@ class TestYamlCommentExtraction:
             "        echo hi\n"
         )
         assert _yaml_comments(doc) == ""
+
+    @pytest.mark.parametrize("header", ["|2+", ">2-", "|+2", "|-", ">", "|"])
+    def test_every_block_header_form_opens_a_block(self, header):
+        """YAML puts the indentation digit and the chomping indicator in EITHER order.
+
+        The first regex accepted sign-then-digit only, so `|2+` and `>2-` bodies were scanned as
+        YAML and their `#` lines read as comments. Raised in review of PR #353, fourth pass — the
+        comment above the regex claimed `|2+` worked, which is how a wrong claim survives: nothing
+        asserted it.
+        """
+        doc = f"hooks:\n    - command: {header}\n        # carrying v6.0.3\n        echo hi\n"
+        assert _yaml_comments(doc) == ""
+
+    def test_a_value_that_merely_ends_in_a_pipe_opens_nothing(self):
+        """`key: a|` is a scalar, not a block header. Treating it as one would swallow every
+        comment below it — the blind direction again."""
+        doc = "key: a|\n# still a comment\n"
+        assert "# still a comment" in _yaml_comments(doc)
 
     def test_a_comment_after_a_block_scalar_ends_is_still_found(self):
         """The block must END at the dedent, or every comment below one becomes invisible — which
