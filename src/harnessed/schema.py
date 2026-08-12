@@ -2461,6 +2461,9 @@ _FETCH_VALUE_OPTS = frozenset({
     "--shallow-since", "--shallow-exclude", "--negotiation-tip",
     "--server-option", "-o", "--filter", "--submodule-prefix", "--negotiate-only",
 })
+# `-qv` — ONE dash, two or more letters, so it is a bundle of short options rather than one option.
+# `--x` is excluded by the single leading dash; `-C` alone is excluded by the length.
+_SHORT_OPT_BUNDLE_RE = re.compile(r'^-[A-Za-z]{2,}$')
 
 
 def _mutable_fetch_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
@@ -2477,34 +2480,73 @@ def _mutable_fetch_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
         checks nothing out.
     Rejecting those would fail the gate on ordinary shell and teach authors to hide the acquisition,
     which costs more than the shapes are worth.
+
+    THE INVARIANT the token walk below must satisfy: it decides about exactly the tokens GIT would
+    treat as refs — no more, no fewer. Adversarial review found five ways the first version broke
+    it, all FALSE REJECTIONS of legitimately pinned fetches, all one root cause (a token stream git
+    does not actually produce): a trailing `# comment`, git's own `tag <name>` refspec shorthand,
+    `--recurse-submodules <value>`, bundled short options like `-qv`, and a `\\` line continuation.
+    False rejections are what decide whether a gate survives contact with real authors — one that
+    refuses `git fetch origin <sha> # why this commit` teaches people to delete the comment.
     """
     assigns = dict(_declared_refs(recipe))
     assigns.update({m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)})
-    for match in _GIT_FETCH_RE.finditer(body):
+    # Join continuations FIRST: the argument capture stops at a newline, so a ref on the continued
+    # line is invisible to the walk. Ignoring the trailing `\` instead of joining would be worse
+    # than the bug it fixes — the positionals would collapse to `[remote]`, which reads as "no ref"
+    # and would wave an actual moving ref through.
+    for match in _GIT_FETCH_RE.finditer(_LINE_CONTINUATION_RE.sub(" ", body)):
         tokens = match.group("args").split()
         positional: list[str] = []
-        skip_next = False
-        for token in tokens:
-            if skip_next:
-                skip_next = False
-                continue
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            index += 1
+            # A word starting with `#` opens a shell comment: git never sees it or anything after.
+            # Whole-LINE comments are stripped by the caller; nothing strips a trailing one.
+            if token.startswith("#"):
+                break
             if not token.startswith("-"):
                 positional.append(token)
                 continue
             name = token.split("=", 1)[0]
-            if name in _FETCH_VALUE_OPTS:
-                skip_next = "=" not in token
-            elif name not in _FETCH_FLAG_OPTS:
-                # An option this cannot interpret makes every token after it ambiguous: the ref may
-                # be a positional or may be this option's value. Say that, rather than guess and
-                # report a confident wrong answer about which token is the ref.
-                return (
-                    f"the option '{token}' (unknown to this gate, so the fetched ref cannot be "
-                    f"identified)"
-                )
+            # `--recurse-submodules` takes an OPTIONAL value, so neither option set can classify it
+            # by name alone — only the following token says which form this is.
+            if name == "--recurse-submodules" and tokens[index:index + 1] and tokens[index] in (
+                "yes", "no", "on-demand"
+            ):
+                index += 1
+                continue
+            # `-qv` is `-q -v`. Unexpanded it hit the unknown-option branch below: a rejection, so
+            # safe, but for a false reason that sends an author hunting a pin problem they do not
+            # have. A value-taking member is legal only as the LAST of a bundle, which is also
+            # git's rule.
+            parts = (
+                [f"-{ch}" for ch in name[1:]]
+                if _SHORT_OPT_BUNDLE_RE.match(name)
+                else [name]
+            )
+            for position, part in enumerate(parts):
+                if part in _FETCH_VALUE_OPTS:
+                    if position == len(parts) - 1 and "=" not in token:
+                        index += 1
+                elif part not in _FETCH_FLAG_OPTS:
+                    # An option this cannot interpret makes every later token ambiguous: the ref may
+                    # be a positional or may be this option's value. Say that, rather than guess and
+                    # report a confident wrong answer about which token is the ref.
+                    return (
+                        f"the option '{part}' (unknown to this gate, so the fetched ref cannot be "
+                        f"identified)"
+                    )
         # positional[0] is the REMOTE — a name or a URL, and never version-bearing. Reading it as
         # the ref would reject `git fetch upstream v1.2.3` for the remote's name alone.
-        for raw in positional[1:]:
+        #
+        # `git fetch <remote> tag <name>` is git's shorthand for fetching one tag; the keyword sits
+        # where a ref would, so skipping it is what lets the gate reach the tag behind it.
+        refs = positional[1:]
+        if refs[:1] == ["tag"]:
+            refs = refs[1:]
+        for raw in refs:
             raw = _unquote(raw)
             var = _SHELL_VAR_REF_RE.match(raw)
             if var:
