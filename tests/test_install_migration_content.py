@@ -43,6 +43,37 @@ PURE_CONTENT = ["superpowers", "hyperpowers", "caveman"]
 _CONFIG_DIR_WRITE = re.compile(r"~/\.claude|\$HOME/\.claude|/home/harnessed/\.claude")
 
 
+def _yaml_comments(text: str) -> str:
+    """Every comment in a YAML file — inline ones too, which is the whole point.
+
+    A full-line filter (`line.lstrip().startswith("#")`) misses `ref: manifest-owned  # v6.0.3`,
+    so the guard could pass while recipe.yaml still carried a second copy of the pin. Raised in
+    review of PR #353, second pass.
+
+    Not a YAML parse: comments do not survive one. This walks each line tracking quote state and
+    takes the tail from the first `#` that is OUTSIDE quotes and preceded by whitespace or
+    start-of-line. Both conditions matter and both are load-bearing:
+
+      * inside quotes    `summary: "pass #1 of 2"`     is a string, not a comment
+      * mid-token        `reference: https://x/y#frag` is a URL fragment, not a comment
+
+    Declaration lines carry no `#` at all, so `repo:`/`ref:` remain the single ownership location
+    exactly as before — this widens what counts as a comment, never what counts as a declaration.
+    """
+    out: list[str] = []
+    for line in text.splitlines():
+        in_single = in_double = False
+        for i, ch in enumerate(line):
+            if ch == "'" and not in_double:
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                in_double = not in_double
+            elif ch == "#" and not in_single and not in_double and (i == 0 or line[i - 1] in " \t"):
+                out.append(line[i:])
+                break
+    return "\n".join(out)
+
+
 def _recipe(name):
     return load_recipe(CATALOG / "recipes" / name, strict=True)
 
@@ -55,6 +86,36 @@ def _code(path: Path) -> str:
         ln for ln in path.read_text(encoding="utf-8").splitlines()
         if not ln.lstrip().startswith("#")
     )
+
+
+class TestYamlCommentExtraction:
+    """The helper the pin guard depends on. Its two exclusions are claims, so they are asserted.
+
+    A guard is only as good as what it can SEE — three times this epic a test passed because it
+    was blind to the copy it was meant to reject. Testing the extractor directly is cheaper than
+    rediscovering that through a missed literal.
+    """
+
+    def test_full_line_comments_are_captured(self):
+        assert "# a full line" in _yaml_comments("# a full line\nkey: value\n")
+
+    def test_inline_comments_are_captured(self):
+        # The case a `lstrip().startswith("#")` filter misses, and the reason this helper exists.
+        assert "# v6.0.3" in _yaml_comments("ref: manifest-owned  # v6.0.3\n")
+
+    def test_a_hash_inside_double_quotes_is_not_a_comment(self):
+        assert _yaml_comments('summary: "pass #1 of 2"\n') == ""
+
+    def test_a_hash_inside_single_quotes_is_not_a_comment(self):
+        assert _yaml_comments("summary: 'issue #329'\n") == ""
+
+    def test_a_url_fragment_is_not_a_comment(self):
+        # `reference:` fields carry real URLs; a `#` with no preceding space is part of the token.
+        assert _yaml_comments("reference: https://example.com/x#frag\n") == ""
+
+    def test_a_declaration_line_yields_nothing(self):
+        # The ownership location must stay invisible to the guard, or the pin would flag itself.
+        assert _yaml_comments("      repo: obra/superpowers\n      ref: v6.0.3\n") == ""
 
 
 @pytest.mark.parametrize("name", CONTENT_RECIPES)
@@ -117,15 +178,12 @@ class TestDeclared:
         if not inst.refs:
             pytest.skip(f"{name} has not migrated to install.refs: yet")
         raw = (r.root / inst.script).read_text(encoding="utf-8")
-        # recipe.yaml's COMMENT lines are held to the same rule as the script. The manifest is where
-        # `repo:`/`ref:` legitimately live, so only comments are scanned — but a comment beside the
-        # declaration is the easiest copy of all to write and the last one anybody re-reads. Caught
-        # in review of PR #353, where a comment three lines above the `refs:` block repeated the
-        # repo while claiming values are never repeated.
-        manifest_comments = "\n".join(
-            ln for ln in (r.root / "recipe.yaml").read_text(encoding="utf-8").splitlines()
-            if ln.lstrip().startswith("#")
-        )
+        # recipe.yaml's COMMENTS are held to the same rule as the script. The manifest is where
+        # `repo:`/`ref:` legitimately live, so only comment TEXT is scanned — but a comment beside
+        # the declaration is the easiest copy of all to write and the last one anybody re-reads.
+        # Caught in review of PR #353, where a comment three lines above the `refs:` block repeated
+        # the repo while claiming values are never repeated.
+        manifest_comments = _yaml_comments((r.root / "recipe.yaml").read_text(encoding="utf-8"))
         for key, ref in inst.refs.items():
             for field, value in (("ref", ref.ref), ("repo", ref.repo)):
                 assert value not in raw, (
