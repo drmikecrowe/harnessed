@@ -43,70 +43,6 @@ PURE_CONTENT = ["superpowers", "hyperpowers", "caveman"]
 _CONFIG_DIR_WRITE = re.compile(r"~/\.claude|\$HOME/\.claude|/home/harnessed/\.claude")
 
 
-def _yaml_comments(text: str) -> str:
-    """Every comment in a YAML file — inline ones too, which is the whole point.
-
-    A full-line filter (`line.lstrip().startswith("#")`) misses `ref: manifest-owned  # v6.0.3`,
-    so the guard could pass while recipe.yaml still carried a second copy of the pin. Raised in
-    review of PR #353, second pass.
-
-    Not a YAML parse: comments do not survive one, and nothing here preserves them. This is a
-    scanner, and it models the four places a `#` is NOT a comment:
-
-      * inside quotes        `summary: "pass #1 of 2"`      a string
-      * mid-token            `reference: https://x/y#frag`  a URL fragment
-      * after an escape      `summary: "say \\" # x"`         still inside the string
-      * in a block scalar    a `command: >-` hook body      shell text, and shell has comments too
-
-    The last two came from review, third pass. Note the failure DIRECTION of all four: mishandled,
-    each makes the scanner see MORE text as comment, so the guard gets noisier and never blinder.
-    That is the right way round for a rule whose job is to reject a duplicated pin — but a spurious
-    failure still costs a maintainer an afternoon, so the cases are modelled rather than tolerated.
-
-    Declaration lines carry no `#`, so `repo:`/`ref:` remain the single ownership location: this
-    widens what counts as a comment, never what counts as a declaration.
-    """
-    out: list[str] = []
-    block_indent: int | None = None
-    for line in text.splitlines():
-        indent = len(line) - len(line.lstrip())
-        if block_indent is not None:
-            # Block-scalar content is any deeper-indented line, plus blank lines inside it. A line
-            # at or left of the opener's own indentation ends the block.
-            if not line.strip() or indent > block_indent:
-                continue
-            block_indent = None
-
-        in_single = in_double = False
-        cut: int | None = None
-        i = 0
-        while i < len(line):
-            ch = line[i]
-            if in_double and ch == "\\":
-                i += 2  # escaped char inside a double-quoted scalar: consume both
-                continue
-            if ch == "'" and not in_double:
-                in_single = not in_single
-            elif ch == '"' and not in_single:
-                in_double = not in_double
-            elif ch == "#" and not in_single and not in_double and (i == 0 or line[i - 1] in " \t"):
-                cut = i
-                break
-            i += 1
-
-        if cut is not None:
-            out.append(line[cut:])
-        code = line if cut is None else line[:cut]
-        # A block-scalar header is `|` or `>` plus an optional indentation digit and chomping
-        # indicator IN EITHER ORDER (`|2+` and `|+2` are both valid). The first version of this
-        # regex accepted only sign-then-digit while the comment claimed `|2+` worked — caught in
-        # review of PR #353, fourth pass. Anchored on whitespace or `:` so an ordinary value that
-        # merely ENDS in `|` (`key: a|`) does not open a phantom block and swallow what follows.
-        if re.search(r"(?:^|[\s:])[|>](?:\d[-+]?|[-+]\d?)?\s*$", code.rstrip()):
-            block_indent = indent
-    return "\n".join(out)
-
-
 def _recipe(name):
     return load_recipe(CATALOG / "recipes" / name, strict=True)
 
@@ -119,89 +55,6 @@ def _code(path: Path) -> str:
         ln for ln in path.read_text(encoding="utf-8").splitlines()
         if not ln.lstrip().startswith("#")
     )
-
-
-class TestYamlCommentExtraction:
-    """The helper the pin guard depends on. Its two exclusions are claims, so they are asserted.
-
-    A guard is only as good as what it can SEE — three times this epic a test passed because it
-    was blind to the copy it was meant to reject. Testing the extractor directly is cheaper than
-    rediscovering that through a missed literal.
-    """
-
-    def test_full_line_comments_are_captured(self):
-        assert "# a full line" in _yaml_comments("# a full line\nkey: value\n")
-
-    def test_inline_comments_are_captured(self):
-        # The case a `lstrip().startswith("#")` filter misses, and the reason this helper exists.
-        assert "# v6.0.3" in _yaml_comments("ref: manifest-owned  # v6.0.3\n")
-
-    def test_a_hash_inside_double_quotes_is_not_a_comment(self):
-        assert _yaml_comments('summary: "pass #1 of 2"\n') == ""
-
-    def test_a_hash_inside_single_quotes_is_not_a_comment(self):
-        assert _yaml_comments("summary: 'issue #329'\n") == ""
-
-    def test_a_url_fragment_is_not_a_comment(self):
-        # `reference:` fields carry real URLs; a `#` with no preceding space is part of the token.
-        assert _yaml_comments("reference: https://example.com/x#frag\n") == ""
-
-    def test_an_escaped_quote_does_not_end_the_string_early(self):
-        """`\\"` inside a double-quoted scalar keeps the string open.
-
-        Without escape tracking the string ends at the escaped quote, the rest of the line reads as
-        code, and a following `#` becomes a phantom comment — which could fail a recipe for a
-        literal that is really scalar content. Raised in review of PR #353, third pass.
-        """
-        assert _yaml_comments('summary: "he said \\" # not a comment"\n') == ""
-
-    def test_a_hash_inside_a_block_scalar_is_not_a_comment(self):
-        """`command: >-` and `command: |` bodies are shell, and shell has its own `#` comments.
-
-        The catalog is full of these — every `hooks:` entry is one — so treating their content as
-        YAML comments would scan text that is not YAML at all.
-        """
-        doc = (
-            "hooks:\n"
-            "  SessionStart:\n"
-            "    - command: |\n"
-            "        # a shell comment carrying v6.0.3\n"
-            "        echo hi\n"
-        )
-        assert _yaml_comments(doc) == ""
-
-    @pytest.mark.parametrize("header", ["|2+", ">2-", "|+2", "|-", ">", "|"])
-    def test_every_block_header_form_opens_a_block(self, header):
-        """YAML puts the indentation digit and the chomping indicator in EITHER order.
-
-        The first regex accepted sign-then-digit only, so `|2+` and `>2-` bodies were scanned as
-        YAML and their `#` lines read as comments. Raised in review of PR #353, fourth pass — the
-        comment above the regex claimed `|2+` worked, which is how a wrong claim survives: nothing
-        asserted it.
-        """
-        doc = f"hooks:\n    - command: {header}\n        # carrying v6.0.3\n        echo hi\n"
-        assert _yaml_comments(doc) == ""
-
-    def test_a_value_that_merely_ends_in_a_pipe_opens_nothing(self):
-        """`key: a|` is a scalar, not a block header. Treating it as one would swallow every
-        comment below it — the blind direction again."""
-        doc = "key: a|\n# still a comment\n"
-        assert "# still a comment" in _yaml_comments(doc)
-
-    def test_a_comment_after_a_block_scalar_ends_is_still_found(self):
-        """The block must END at the dedent, or every comment below one becomes invisible — which
-        would be the blind direction, and the one this whole guard exists to avoid."""
-        doc = (
-            "hooks:\n"
-            "    - command: |\n"
-            "        echo hi\n"
-            "# back at column 0\n"
-        )
-        assert "# back at column 0" in _yaml_comments(doc)
-
-    def test_a_declaration_line_yields_nothing(self):
-        # The ownership location must stay invisible to the guard, or the pin would flag itself.
-        assert _yaml_comments("      repo: obra/superpowers\n      ref: v6.0.3\n") == ""
 
 
 @pytest.mark.parametrize("name", CONTENT_RECIPES)
@@ -264,12 +117,20 @@ class TestDeclared:
         if not inst.refs:
             pytest.skip(f"{name} has not migrated to install.refs: yet")
         raw = (r.root / inst.script).read_text(encoding="utf-8")
-        # recipe.yaml's COMMENTS are held to the same rule as the script. The manifest is where
-        # `repo:`/`ref:` legitimately live, so only comment TEXT is scanned — but a comment beside
-        # the declaration is the easiest copy of all to write and the last one anybody re-reads.
-        # Caught in review of PR #353, where a comment three lines above the `refs:` block repeated
-        # the repo while claiming values are never repeated.
-        manifest_comments = _yaml_comments((r.root / "recipe.yaml").read_text(encoding="utf-8"))
+        # In recipe.yaml, a ref value may appear ONLY on a line that declares it. That is the whole
+        # rule — no YAML modelling, no comment extraction. It rejects a comment copy (a `#` line is
+        # not a declaration), a stray field, and a second copy tacked onto the declaration line
+        # itself, without needing to know what a block scalar or an escaped quote is.
+        #
+        # `reference:` is allowed because it is a documentation URL for a human, not a pin: it
+        # names the project, and a stale one is a bad link rather than a wrong fetch.
+        #
+        # This replaced a ~90-line comment scanner that took four review rounds and still had
+        # edge cases (PR #353). The scanner asked "is this text a comment?" — a YAML question with
+        # no cheap answer. This asks "does this line declare the value?", which is answerable by
+        # reading the line.
+        declares = ("repo:", "ref:", "reference:")
+        manifest_lines = (r.root / "recipe.yaml").read_text(encoding="utf-8").splitlines()
         for key, ref in inst.refs.items():
             for field, value in (("ref", ref.ref), ("repo", ref.repo)):
                 assert value not in raw, (
@@ -277,10 +138,18 @@ class TestDeclared:
                     f"'{key}') — the pin must live only in install.refs, in comments too, or the "
                     "two copies can drift again."
                 )
-                assert value not in manifest_comments, (
-                    f"{name}: a recipe.yaml COMMENT repeats {value!r} ({field} of ref '{key}'). "
-                    "The declaration below it is the one source; a comment copy drifts silently."
-                )
+                for line in manifest_lines:
+                    if value not in line:
+                        continue
+                    assert line.strip().startswith(declares), (
+                        f"{name}: recipe.yaml line {line.strip()!r} repeats {value!r} ({field} of "
+                        f"ref '{key}') outside a declaration. The `refs:` block is the one source; "
+                        "any other copy — a comment most easily — drifts silently."
+                    )
+                    assert line.count(value) == 1, (
+                        f"{name}: recipe.yaml line {line.strip()!r} contains {value!r} twice; a "
+                        "declaration line with a trailing copy drifts exactly like a comment does."
+                    )
             for var in (f"HARNESSED_REF_{key.upper()}", f"HARNESSED_REPO_{key.upper()}"):
                 assert var in raw, (
                     f"{name}: {inst.script} never reads ${var}, so that half of the declared ref "
