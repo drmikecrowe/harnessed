@@ -2431,6 +2431,97 @@ def _mutable_archive_ref(body: str, recipe: "Recipe | None" = None) -> str | Non
     return None
 
 
+# --- #329 Phase 3 unit 3: `git fetch <remote> <ref>` is a clone by a third spelling --------------
+# `_CLONE_REF_RE` reads `--branch`, `_ARCHIVE_REF_RE` reads archive URLs, and NEITHER sees the shape
+# the two SHA-pinned Family B recipes use — because a raw commit SHA is not a branch name, so
+# `--branch` is not available to them and `git init` + `git fetch origin <sha>` is what upstream
+# documents. `git fetch -q --depth 1 origin main` therefore passed every pin gate in the repo.
+#
+# `git [<pre-opts>] fetch [<opts>] [<remote> [<ref>…]]`. The pre-option run is what makes
+# `git -C dir fetch` the same command as `git fetch`; it is matched loosely because its only job is
+# to locate the subcommand. The ARGUMENT text is then walked token by token, because a ref here is
+# positional — there is no flag to key off, which is precisely why the earlier gates missed it.
+_GIT_FETCH_RE = re.compile(
+    r'\bgit\b(?:\s+-{1,2}[A-Za-z][^\s]*(?:\s+[^-\s]\S*)?)*\s+fetch\b(?P<args>[^\n;&|)]*)'
+)
+# Options taking NO value. An option in neither set fails the walk CLOSED (see `_mutable_fetch_ref`)
+# rather than being guessed at — the posture `_IMMUTABLE_REF_RE` takes for refs, applied to flags.
+_FETCH_FLAG_OPTS = frozenset({
+    "-q", "--quiet", "-v", "--verbose", "--progress", "--no-progress",
+    "--all", "--tags", "--no-tags", "--prune", "--prune-tags", "-p", "-P",
+    "-f", "--force", "-a", "--append", "-n", "--dry-run", "-t",
+    "--unshallow", "--update-shallow", "--refetch", "--atomic", "-k", "--keep",
+    "--set-upstream", "--write-fetch-head", "--no-write-fetch-head",
+    "--recurse-submodules", "--no-recurse-submodules", "--ipv4", "--ipv6",
+})
+# Options whose value is a SEPARATE token, so that token is not a positional. The `--opt=value`
+# spelling needs no entry here: it is one token either way.
+_FETCH_VALUE_OPTS = frozenset({
+    "--depth", "--deepen", "--jobs", "-j", "--refmap", "--upload-pack",
+    "--shallow-since", "--shallow-exclude", "--negotiation-tip",
+    "--server-option", "-o", "--filter", "--submodule-prefix", "--negotiate-only",
+})
+
+
+def _mutable_fetch_ref(body: str, recipe: "Recipe | None" = None) -> str | None:
+    """Describe the first `git fetch` REF that cannot be shown immutable, else None.
+
+    Same contract as `_mutable_clone_ref`: comment-stripping is the caller's job, resolution is one
+    hop against `install.refs:` FIRST and literal shell assignments SECOND (the shell's own
+    precedence — a local assignment shadows exported env for everything after it), and anything
+    unprovable is reported.
+
+    Two shapes deliberately produce NO opinion, because neither expresses a pin:
+      * a fetch with no positional argument at all (`git fetch`, `git fetch --tags --prune`);
+      * a fetch naming only a remote (`git fetch origin`), which updates remote-tracking refs and
+        checks nothing out.
+    Rejecting those would fail the gate on ordinary shell and teach authors to hide the acquisition,
+    which costs more than the shapes are worth.
+    """
+    assigns = dict(_declared_refs(recipe))
+    assigns.update({m.group(1): _unquote(m.group(2)) for m in _SHELL_ASSIGN_RE.finditer(body)})
+    for match in _GIT_FETCH_RE.finditer(body):
+        tokens = match.group("args").split()
+        positional: list[str] = []
+        skip_next = False
+        for token in tokens:
+            if skip_next:
+                skip_next = False
+                continue
+            if not token.startswith("-"):
+                positional.append(token)
+                continue
+            name = token.split("=", 1)[0]
+            if name in _FETCH_VALUE_OPTS:
+                skip_next = "=" not in token
+            elif name not in _FETCH_FLAG_OPTS:
+                # An option this cannot interpret makes every token after it ambiguous: the ref may
+                # be a positional or may be this option's value. Say that, rather than guess and
+                # report a confident wrong answer about which token is the ref.
+                return (
+                    f"the option '{token}' (unknown to this gate, so the fetched ref cannot be "
+                    f"identified)"
+                )
+        # positional[0] is the REMOTE — a name or a URL, and never version-bearing. Reading it as
+        # the ref would reject `git fetch upstream v1.2.3` for the remote's name alone.
+        for raw in positional[1:]:
+            raw = _unquote(raw)
+            var = _SHELL_VAR_REF_RE.match(raw)
+            if var:
+                name = var.group(1)
+                if name not in assigns:
+                    return (
+                        f"${name} (no literal assignment in this file, so the ref cannot be shown "
+                        f"immutable)"
+                    )
+                ref, shown = assigns[name], f"${name} = '{assigns[name]}'"
+            else:
+                ref, shown = raw, f"'{raw}'"
+            if not _IMMUTABLE_REF_RE.match(ref):
+                return shown
+    return None
+
+
 def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
     """Raises PinValidationError if the Dockerfile body contains a floating ref (ASM-02).
 
@@ -2460,6 +2551,13 @@ def validate_pin(recipe_name: str, dockerfile_body: str) -> None:
             f"recipe '{recipe_name}': Dockerfile downloads a source archive at a moving ref {ref}. "
             "An archive URL pins nothing unless the ref does — use a full commit SHA (which also "
             "makes the download content-addressed) or a version tag."
+        )
+    ref = _mutable_fetch_ref(stripped)
+    if ref:
+        raise PinValidationError(
+            f"recipe '{recipe_name}': Dockerfile fetches a moving ref {ref}. "
+            "`git fetch <remote> <ref>` pins no more than `--branch` does — fetch a full commit SHA "
+            "or a version tag."
         )
 
 
@@ -2753,6 +2851,13 @@ def _lint_script_file(recipe: Recipe, field_name: str, rel_path: str) -> None:
             f"recipe '{recipe.name}': {field_name} '{rel_path}' downloads a source archive at a "
             f"moving ref {ref}. An archive URL pins nothing unless the ref does — use a full commit "
             "SHA (which also makes the download content-addressed) or a version tag."
+        )
+    ref = _mutable_fetch_ref(body, recipe)
+    if ref:
+        raise PinValidationError(
+            f"recipe '{recipe.name}': {field_name} '{rel_path}' fetches a moving ref {ref}. "
+            "`git fetch <remote> <ref>` pins no more than `--branch` does — fetch a full commit SHA "
+            "or a version tag."
         )
 
 
