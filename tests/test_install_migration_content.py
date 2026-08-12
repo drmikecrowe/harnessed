@@ -117,12 +117,25 @@ class TestDeclared:
         if not inst.refs:
             pytest.skip(f"{name} has not migrated to install.refs: yet")
         raw = (r.root / inst.script).read_text(encoding="utf-8")
+        # recipe.yaml's COMMENT lines are held to the same rule as the script. The manifest is where
+        # `repo:`/`ref:` legitimately live, so only comments are scanned — but a comment beside the
+        # declaration is the easiest copy of all to write and the last one anybody re-reads. Caught
+        # in review of PR #353, where a comment three lines above the `refs:` block repeated the
+        # repo while claiming values are never repeated.
+        manifest_comments = "\n".join(
+            ln for ln in (r.root / "recipe.yaml").read_text(encoding="utf-8").splitlines()
+            if ln.lstrip().startswith("#")
+        )
         for key, ref in inst.refs.items():
             for field, value in (("ref", ref.ref), ("repo", ref.repo)):
                 assert value not in raw, (
                     f"{name}: {inst.script} still contains the literal {value!r} ({field} of ref "
                     f"'{key}') — the pin must live only in install.refs, in comments too, or the "
                     "two copies can drift again."
+                )
+                assert value not in manifest_comments, (
+                    f"{name}: a recipe.yaml COMMENT repeats {value!r} ({field} of ref '{key}'). "
+                    "The declaration below it is the one source; a comment copy drifts silently."
                 )
             for var in (f"HARNESSED_REF_{key.upper()}", f"HARNESSED_REPO_{key.upper()}"):
                 assert var in raw, (
