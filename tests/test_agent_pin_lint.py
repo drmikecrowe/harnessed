@@ -701,10 +701,11 @@ class TestA5bTheOmpBunPinIsWiredEndToEnd:
         while command.startswith("--"):
             _, _, command = command.partition(" ")
             command = command.lstrip()
-        assert command.startswith("mise "), f"RUN options were not fully stripped: {command[:40]!r}"
+        assert not command.startswith("-"), f"RUN options were not fully stripped: {command[:40]!r}"
+        assert "mise use" in command, f"the acquiring command was lost: {command[:40]!r}"
         return command
 
-    def _acquire_with(self, tmp_path, bun_version):
+    def _acquire_with(self, tmp_path, bun_version, omp_version="9.9.9"):
         """Run the REAL shipped command with `mise` and `omp` swapped for recorders.
 
         SUBSTITUTION, named as one: a POSIX shell stands in for the Docker build and env vars stand
@@ -721,7 +722,7 @@ class TestA5bTheOmpBunPinIsWiredEndToEnd:
         proc = subprocess.run(
             ["bash", "-c", self._omp_acquire_command()],
             env={"PATH": f"{tmp_path}:{os.environ['PATH']}", "RECORDER": str(recorder),
-                 "OMP_VERSION": "9.9.9", "BUN_VERSION": bun_version},
+                 "OMP_VERSION": omp_version, "BUN_VERSION": bun_version},
             capture_output=True, text=True,
         )
         return proc, recorder
@@ -766,6 +767,33 @@ class TestA5bTheOmpBunPinIsWiredEndToEnd:
         assert manifest.count(value) == 1, f"{value!r} is written more than once in agent.yaml"
         assert value not in agent.build_arg_holds["BUN_VERSION"], "the hold reason restates the pin"
         assert value not in _body("omp"), "the Dockerfile restates the pin"
+
+    @pytest.mark.parametrize("name", ["BUN_VERSION", "OMP_VERSION"])
+    def test_an_empty_version_fails_the_build_instead_of_installing_an_unpinned_tool(
+            self, tmp_path, name):
+        """The worst failure available here, and it must fail CLOSED.
+
+        `ARG` with no default yields the empty string on any build path that omits `--build-arg`,
+        and MEASURED on 2026-08-13: `mise latest 'bun@'` and `mise latest
+        'github:can1357/oh-my-pi@'` BOTH answer with the newest release rather than failing. mise
+        reads an empty version as "newest", so an omitted build-arg would install an unpinned tool
+        behind a manifest that reads as pinned — this unit's own defect, by a different route.
+
+        WHAT THIS TEST HOLDS: given an empty value, the command exits non-zero and mise is never
+        reached. WHAT IT CANNOT HOLD: what a future mise does with `bun@` — and it does not need
+        to. The guard is justified by "empty is not a pin", not by the measurement above, which is
+        recorded as a dated observation precisely so nobody removes the guard after re-reading it.
+
+        BOTH names are covered, not just the one this unit introduced: they are acquired by a
+        single command, and a guard over half of it reads as complete while the other half floats.
+        """
+        proc, recorder = self._acquire_with(
+            tmp_path, "" if name == "BUN_VERSION" else "1.2.3",
+            omp_version="" if name == "OMP_VERSION" else "9.9.9",
+        )
+        assert proc.returncode != 0, f"an empty {name} was accepted — the build would install unpinned"
+        assert not recorder.exists(), "mise ran despite the guard"
+        assert name in proc.stderr
 
     def test_the_pin_is_held_rather_than_offered_for_bump(self):
         """S4 — `harnessed update` must LIST it and never offer it.

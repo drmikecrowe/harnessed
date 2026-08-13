@@ -25,9 +25,18 @@ ARG OMP_VERSION
 # a bare `bun` here took whatever mise called latest at each build. agent.yaml owns the version and
 # states why it is held rather than resolvable; naming it again here would be the AC-11 drift.
 ARG BUN_VERSION
+# THE GUARD IS THE PIN, as it is for claude (A3). `ARG` with no default yields the empty string on
+# any build path that omits `--build-arg`, and MEASURED 2026-08-13: `mise latest 'bun@'` and
+# `mise latest 'github:can1357/oh-my-pi@'` BOTH answer with the newest release rather than failing.
+# mise reads an empty version as "newest", so an omitted build-arg installs an unpinned tool behind
+# a manifest that reads as pinned — the defect this unit removes, reintroduced by a different route.
+# BOTH names are guarded, not just the new one: one command acquires both, and a guard covering half
+# a command reads as complete while leaving the other half floating.
 RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=1000,gid=1000,sharing=locked \
     --mount=type=cache,target=/home/harnessed/.cache/pnpm,id=harnessed-pnpm-meta,uid=1000,gid=1000,sharing=shared \
     --mount=type=cache,target=/home/harnessed/.cache/uv,id=harnessed-uv,uid=1000,gid=1000,sharing=shared \
+    : "${OMP_VERSION:?required build-arg is empty or unset — refusing to install an unpinned omp}" && \
+    : "${BUN_VERSION:?required build-arg is empty or unset — refusing to install an unpinned bun}" && \
     mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" "bun@${BUN_VERSION}" && mise install && omp tiny-models download
 
 # Pre-install the claude-hooks-bridge extension so an omp stack auto-loads it via omp
