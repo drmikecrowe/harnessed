@@ -132,6 +132,15 @@ class TestDeclared:
         # edge cases (PR #353). The scanner asked "is this text a comment?" — a YAML question with
         # no cheap answer. This asks "does this line declare the value?", which is answerable by
         # reading the line.
+        #
+        # KNOWN NARROWNESS, stated so the rule above is not read as wider than the check.
+        # "Declares" is decided by the line's PREFIX, so a line that merely begins like a
+        # declaration is accepted as one. Since #329 Phase 3 unit 3 (gstack) a ref may also carry a
+        # `hold:` reason as a folded (`>-`) scalar, and a continuation line inside such a reason —
+        # prose, not YAML structure — could open with `ref:` and repeat the pin unchallenged.
+        # Nothing in the catalog does this today; closing it needs line-aware YAML parsing, which
+        # is exactly the machinery PR #353 deleted on purpose. The cheap defence is the convention
+        # the gstack manifest follows and says so: a hold reason names no repo and no ref.
         declares = ("repo:", "ref:", "reference:")
         manifest_lines = (r.root / "recipe.yaml").read_text(encoding="utf-8").splitlines()
         for key, ref in inst.refs.items():

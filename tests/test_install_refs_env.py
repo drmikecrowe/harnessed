@@ -141,6 +141,50 @@ class TestRule5HoldIsPerRef:
         reasons = [f.pin.hold for f in report.held if f.pin.hold]
         assert any("no releases or tags" in r for r in reasons)
 
+    def test_a_structural_hold_survives_a_backend_that_knows_no_version(self, tmp_path):
+        """AC-2's actual criterion, for the class of ref that most needs it.
+
+        Every other test in this class hands `resolve` a non-empty release list, so the branch a
+        STRUCTURAL hold always takes in real life had never been fed to the code. A Class B repo
+        publishes no releases and no tags — that is *why* it is held — so the resolver legitimately
+        answers "I know no version for this". Reporting that as `unresolved` states the resolver
+        failed, when what actually happened is the thing the hold already explains, and it puts a
+        pin nobody can act on into the one bucket AC-2 requires to be empty.
+
+        Not to be confused with a ResolveError: that is a transient failure to ASK (rate limit,
+        network), and it stays unresolved deliberately — see the sibling test.
+        """
+        report = pinupdate.build_report(
+            [_recipe(tmp_path)],
+            resolve=lambda _b, _n: [],
+            minimum_release_age_minutes=0,
+        )
+        unresolved = [f.pin.name for f in report.unresolved]
+        assert "oakoss/agent-skills" not in unresolved, (
+            "a held pin must never land in the bucket AC-2 requires to be empty"
+        )
+        assert "oakoss/agent-skills" in [f.pin.name for f in report.held]
+        # The scope of the fix, asserted so it cannot quietly widen: the UNHELD ref in the same
+        # recipe still reports unresolved. "The backend knows no version" is real news about a pin
+        # nobody has explained, and swallowing it for everything would hide exactly the pins AC-2
+        # exists to surface.
+        assert "JuliusBrussee/caveman" in unresolved
+
+    def test_a_resolver_ERROR_is_still_unresolved_even_when_held(self, tmp_path):
+        """The distinction the fix above must not erase.
+
+        "The backend knows no version" is a permanent fact a structural hold describes. "I could
+        not reach the backend" is a transient failure to ask, and hiding it under `held` would make
+        a rate-limited run look like a clean one.
+        """
+        def _boom(_b, _n):
+            raise pinupdate.ResolveError("rate limited")
+
+        report = pinupdate.build_report(
+            [_recipe(tmp_path)], resolve=_boom, minimum_release_age_minutes=0,
+        )
+        assert "oakoss/agent-skills" in [f.pin.name for f in report.unresolved]
+
     _WITH_RECIPE_WIDE_HOLD = """\
 name: caveman
 install:

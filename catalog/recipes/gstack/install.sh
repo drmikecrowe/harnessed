@@ -13,18 +13,31 @@
 # Env is the `install.script` contract (emit.install_env) — same keys in both modes:
 #   HARNESSED_CONFIG_DIR    the agent config dir to install INTO (image ~/.claude | host home)
 #   HARNESSED_INSTALL_CACHE pinned-ref content cache; empty when the recipe declares no `install.cache`
+#   HARNESSED_REF_GSTACK    the pinned commit, from `install.refs.gstack.ref` in recipe.yaml
+#   HARNESSED_REPO_GSTACK   `owner/repo`, from `install.refs.gstack.repo`
 #   HARNESSED_MODE          host | container
 #   HARNESSED_RECIPE_DIR    this recipe's own directory
 #   HARNESS                 the harness being built/launched
 # Deliberately NOT available: PROJECT_DIR and friends — a build has no project mounted.
 set -euo pipefail
 
-# Upstream publishes no release tags, so pin to an exact commit and shallow fetch by SHA. Must match
-# `install.cache` in recipe.yaml; use the full 40-char SHA and bump both together.
-GSTACK_REF="11de390be1be6849eb9a15f91ff4922dd16c589a"
-GSTACK_REPO="https://github.com/garrytan/gstack.git"
-
+# NO PIN LITERAL HERE (Phase 3 of #329) — not even in a comment, which is why this paragraph
+# describes the old shape without naming the commit. A `GSTACK_REF=` assignment used to sit here,
+# kept equal to `install.cache` in recipe.yaml by a comment asking the reader to bump both. The pin
+# now lives in `install.refs:` alone and arrives as env, so there is nothing to keep in lockstep and
+# `harnessed update` has exactly one place to read and write.
+#
+# `:?` rather than a default: an unset ref means the manifest and this script disagree about the key
+# name, and a default would paper over that by fetching the default branch — a floating fetch
+# wearing a pinned recipe's clothes. Fail, naming the variable. These come FIRST, before the bun
+# preflight, so a misconfigured manifest is reported as itself rather than as a missing tool.
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
+: "${HARNESSED_REF_GSTACK:?install.sh requires HARNESSED_REF_GSTACK (install.refs.gstack.ref)}"
+: "${HARNESSED_REPO_GSTACK:?install.sh requires HARNESSED_REPO_GSTACK (install.refs.gstack.repo)}"
+
+# The manifest carries `owner/repo`, never a URL — contract rule 2. The script composes the URL, so
+# switching this recipe from a git fetch to a tarball download needs no manifest change.
+GSTACK_REPO="https://github.com/${HARNESSED_REPO_GSTACK}.git"
 
 # gstack's own ./setup shells out to bun (`bun install`, `playwright install chromium`). bun ships in
 # the harnessed base image, so a container build always has it; a host launch may not. Say so
@@ -39,7 +52,7 @@ fi
 fetch_ref() {  # $1 = destination dir
     git init -q "$1"
     git -C "$1" remote add origin "$GSTACK_REPO"
-    git -C "$1" fetch -q --depth 1 origin "$GSTACK_REF"
+    git -C "$1" fetch -q --depth 1 origin "$HARNESSED_REF_GSTACK"
     git -C "$1" checkout -q FETCH_HEAD
 }
 

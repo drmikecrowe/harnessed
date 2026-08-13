@@ -20,13 +20,16 @@ Four properties carry the whole design, and each has its own class below:
 """
 
 import inspect
+import os
 import re
+import subprocess
 from pathlib import Path, PurePosixPath
 
 import pytest
 
-from harnessed import emit, launcher, paths
+from harnessed import emit, launcher, paths, update
 from harnessed.schema import (
+    InstallRef,
     PinValidationError,
     derived_cache_key,
     RecipeLintError,
@@ -679,6 +682,208 @@ class TestSuperpowersMigrated:
         )
 
 
+
+
+class TestGstackMigrated:
+    """Phase 3 unit 3 of #329 — the STRADDLER, and the first recipe ref to carry a `hold:`.
+
+    caveman and superpowers are Class A: upstream publishes releases, `_github_releases` resolves
+    the tag, and AC-2 counts them *resolvable*. `garrytan/gstack` publishes **0 releases and 0
+    tags**, so there is nothing for any resolver to return. That makes its hold **structural**
+    rather than policy — lifting #240's hold policy would change nothing — and AC-2 requires the
+    reason string to say which of the two it is, so a future reader cannot "fix" a hold that is not
+    fixable.
+
+    gstack also keeps its Dockerfile, because one step needs root. That half is asserted in
+    test_install_migration_content.py::TestGstackStraddles, which this class deliberately does not
+    duplicate.
+    """
+
+    def _recipe(self):
+        return load_recipe(CATALOG / "recipes" / "gstack", strict=True)
+
+    def test_declares_the_ref_once_as_data(self):
+        r = self._recipe()
+        assert r.install is not None and r.install.script == "install.sh"
+        assert list(r.install.refs) == ["gstack"]
+        ref = r.install.refs["gstack"]
+        assert ref.repo == "garrytan/gstack"
+        # A FULL 40-char SHA. An abbreviated one is not a stable identifier, and upstream offers no
+        # tag to prefer over it.
+        assert len(ref.ref) == 40 and re.fullmatch(r"[0-9a-f]{40}", ref.ref)
+
+    def test_the_hold_names_its_class_and_the_fact_behind_it(self):
+        """AC-2: "held" alone is not a stated reason.
+
+        `structural` is the word that stops a future reader lifting this. It is not decorative —
+        the reason must also carry the FACT that makes it structural, because a class name with no
+        evidence behind it is just a different unexplained label.
+        """
+        r = self._recipe()
+        assert r.install is not None
+        hold = r.install.refs["gstack"].hold
+        assert hold and "structural" in hold.lower()
+        assert "release" in hold.lower() and "tag" in hold.lower()
+
+    def test_the_cache_key_is_derived_rather_than_declared(self):
+        """The manifest must not declare `cache:` at all — the value comes from `refs:`.
+
+        Adversarial review killed the first version of this test, correctly. It asserted
+        `install.cache == derived_cache_key(install.refs)`, but `_parse_install` ASSIGNS
+        `cache = derived_cache_key(refs)`, so that compared the function to itself: a wrong-but
+        deterministic derivation (bad byte order, wrong separator, off-by-one truncation) satisfied
+        both sides. Asserting the literal digest is not the fix either — that pins this test to a
+        value the manifest is free to bump, which is the drift this epic exists to remove, recreated
+        in the suite.
+
+        What is left is what this test can actually prove: the manifest declares no cache, the key
+        is populated, and the derivation genuinely consumes the ref. The derivation's own
+        CORRECTNESS is pinned by the golden vector in tests/test_install_refs.py, which is where a
+        constant belongs.
+        """
+        r = self._recipe()
+        assert r.install is not None
+        manifest = (r.root / "recipe.yaml").read_text(encoding="utf-8")
+        assert not re.search(r"^\s*cache:", manifest, re.M), (
+            "install.cache must be DERIVED from refs, never declared — declaring both is a schema "
+            "error, not a precedence rule"
+        )
+        assert r.install.cache
+        # The non-vacuous half: bump the ref and the key must move. A derivation that ignored the
+        # ref would return the same digest here and leave an upgrade reading stale cached content.
+        bumped = {
+            k: InstallRef(repo=v.repo, ref="0" * 40, hold=v.hold)
+            for k, v in r.install.refs.items()
+        }
+        assert derived_cache_key(bumped) != r.install.cache
+
+    def test_the_pin_exists_in_exactly_one_place(self):
+        """Was: `GSTACK_REF=` in install.sh kept equal to `install.cache` by a comment.
+
+        That guarded a drifting PAIR. There is no pair left, so the successor guarantee is that no
+        copy exists to drift.
+        """
+        r = self._recipe()
+        assert r.install is not None and r.install.script
+        raw = (r.root / r.install.script).read_text()
+        # Two different rules, deliberately (the #352 lesson). A local ASSIGNMENT is checked against
+        # CODE only — a comment may name `GSTACK_REF` while explaining that it was removed. A VALUE
+        # is checked against the RAW file, comments included, because a comment carrying the SHA
+        # drifts exactly like an assignment does, only more quietly.
+        code = "\n".join(ln for ln in raw.splitlines() if not ln.lstrip().startswith("#"))
+        assert "GSTACK_REF=" not in code
+        for key, ref in r.install.refs.items():
+            assert ref.ref not in raw and ref.repo not in raw
+            assert f"HARNESSED_REF_{key.upper()}" in raw
+            assert f"HARNESSED_REPO_{key.upper()}" in raw
+
+    @pytest.mark.parametrize("missing", ["HARNESSED_REF_GSTACK", "HARNESSED_REPO_GSTACK"])
+    def test_an_absent_ref_aborts_before_it_fetches_anything(self, tmp_path, missing):
+        """The `:?` contract, executed rather than asserted about.
+
+        An unset ref means the manifest and the script disagree about the key name. A default would
+        paper over that by fetching the default branch — a floating fetch wearing a pinned recipe's
+        clothes. This runs the real script with the variable missing and requires it to die naming
+        the variable, before any network call.
+
+        Parametrized because adversarial review caught the first version asserting only the FIRST
+        guard: it supplied neither variable, and since the guards are sequential the script died on
+        `HARNESSED_REF_GSTACK` and never reached the other one. Deleting the `HARNESSED_REPO_GSTACK`
+        guard outright would have left that test green, while a caller supplying a ref and no repo
+        got `https://github.com/.git` instead of a named abort. Each guard now has to earn its own
+        pass. Empty-not-just-unset is the case that matters most in practice — an install env that
+        carries the key with an empty value is what a manifest/script key-name mismatch actually
+        produces — and `:?` fires on both, which is why this passes the empty string rather than
+        dropping the key.
+        """
+        r = self._recipe()
+        assert r.install is not None and r.install.script
+        script = r.root / r.install.script
+        # Built from the manifest, never typed in: a literal copy of the pin HERE would be the same
+        # drift defect this unit deletes, just relocated into the suite.
+        env = {
+            "PATH": os.environ["PATH"],
+            "HOME": str(tmp_path),
+            "HARNESSED_CONFIG_DIR": str(tmp_path / "config"),
+            **emit.install_env(r, harness="claude", mode="host",
+                               config_dir=str(tmp_path / "config"),
+                               cache_dir="", bin_dir=str(tmp_path / "bin"),
+                               home_shim=str(tmp_path / "shim")),
+        }
+        env[missing] = ""
+        proc = subprocess.run(
+            ["bash", str(script)], env=env, capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode != 0
+        assert missing in proc.stderr
+        # It must not have got as far as writing anything.
+        assert not (tmp_path / "config").exists()
+
+    def test_passes_the_install_lint(self):
+        # The fetch-by-SHA gate (#355) resolves `$HARNESSED_REF_GSTACK` BY NAME against the declared
+        # ref. gstack is that gate's first real catalog consumer, so this is asserted, not assumed.
+        validate_install_script(self._recipe())
+
+    def test_the_script_declares_no_version_of_its_own(self):
+        """AC-4 — `install.sh` performs no version-bearing download whose version it declares itself.
+
+        Asserted through the scanner `harnessed update` itself uses to find literal pins in a
+        script, rather than by a second regex written here: a private copy of the rule would agree
+        with my reading of it forever, including after the real one changes.
+        """
+        r = self._recipe()
+        assert r.install is not None and r.install.script
+        script = r.root / r.install.script
+        literals = update._opaque_pins_from_text(
+            script.read_text(encoding="utf-8"),
+            recipe="gstack", path=script, note="", hold=None,
+        )
+        assert [p.spec for p in literals] == []
+
+    def test_the_cache_address_is_stable_across_loads(self):
+        """Phase 3 acceptance: the derived key "still hits on a second launch".
+
+        A second launch re-reads the manifest from disk and recomputes the key. If that key moved,
+        every launch would be a miss and the cache would be write-only. This proves the ADDRESS is
+        stable and that it is the leaf the host executor builds its path from; it cannot prove a
+        real second launch found the directory populated, which needs a build.
+        """
+        first = self._recipe()
+        second = self._recipe()
+        assert first.install is not None and second.install is not None
+        key = first.install.cache
+        assert key and key == second.install.cache
+        # The key IS the leaf, so bumping `ref:` moves the cache dir automatically rather than
+        # needing a second edit someone has to remember.
+        assert paths.install_cache_dir("gstack", key).name == key
+
+    def test_every_pin_is_held_rather_than_unresolved(self):
+        """AC-2's actual criterion: the unresolved list is empty.
+
+        Before this migration gstack sat in the unresolved bucket — a bare `install.cache` with no
+        `install.hold`, reported as an opaque pin no backend could answer for.
+
+        Adversarial review killed the first version of this test, correctly. It asserted that every
+        discovered `Pin` carried a `hold`, which is NOT what `update --check` computes: a
+        `github`-backed pin is `resolvable`, so it skips the held branch, gets sent to the resolver,
+        and — for a repo with no releases — was appended to `unresolved` with the hold never
+        consulted. The test passed while the property it names failed. So it now runs the real
+        bucketing with a resolver that answers the way GitHub actually answers for this repo:
+        nothing.
+        """
+        pins = update.discover_pins(CATALOG / "recipes" / "gstack")
+        assert pins, "a recipe that declares a ref must yield at least one pin"
+        # The derived cache key is NOT an upstream pin — reporting it would double-count the ref it
+        # is computed from and offer a bump against a digest no human can act on.
+        assert "install.cache" not in [p.name for p in pins]
+
+        report = update.build_report(
+            [CATALOG / "recipes" / "gstack"],
+            resolve=lambda _b, _n: [],   # 0 releases, 0 tags — the measured upstream state
+            minimum_release_age_minutes=0,
+        )
+        assert [f.pin.name for f in report.unresolved] == []
+        assert "garrytan/gstack" in [f.pin.name for f in report.held]
 
 
 class TestRawDownloadsAreIntegrityAnchored:

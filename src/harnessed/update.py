@@ -624,9 +624,19 @@ def build_report(recipe_dirs, *,
             report.unresolved.append(Finding(pin=pin, error=str(exc)))
             continue
         if not releases:
-            report.unresolved.append(
-                Finding(pin=pin, error=f"{pin.backend} knows no version for {pin.name}")
-            )
+            # A STRUCTURAL hold's whole content is "this backend publishes nothing to resolve"
+            # (#329 Phase 3: a Class B repo has no releases and no tags, which is why it is pinned
+            # by SHA). Reporting that as `unresolved` says the resolver failed, when what happened
+            # is the thing the hold already explains — and it puts a pin nobody can act on into the
+            # one bucket AC-2 requires to be empty. Same rule as the `not pin.resolvable` branch
+            # above, which this backend skips only because `github` IS a queryable backend.
+            #
+            # Deliberately NOT extended to ResolveError above: that is a transient failure to ASK
+            # (rate limit, network), and hiding it here would make a broken run look like a clean
+            # one. An unheld pin still reports unresolved, which is real news about a pin nobody
+            # has explained.
+            f = Finding(pin=pin, error=f"{pin.backend} knows no version for {pin.name}")
+            (report.held if pin.hold else report.unresolved).append(f)
             continue
 
         kind, f = _select(pin, releases, now, minimum_release_age_minutes)
