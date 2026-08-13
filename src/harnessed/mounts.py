@@ -479,7 +479,12 @@ def _mcp_remote_callback_port(argv: list[str]) -> int | None:
     if idx is None:
         return None
     positional = [a for a in argv[idx + 1:] if not a.startswith("-")]
-    if len(positional) < 2 or not positional[1].isdigit():
+    # `isascii() and isdecimal()`, NOT `isdigit()`. `str.isdigit()` is True for characters `int()`
+    # refuses — superscripts like '²' are digits but not decimals — so an `isdigit()` guard in front
+    # of `int()` reads as validation while leaving an uncaught ValueError that would take down
+    # `pod create` instead of skipping the publish. `isdecimal()` closes that, and `isascii()` also
+    # rejects the other-script decimals ('٠١٢') that `int()` accepts but no port is ever written in.
+    if len(positional) < 2 or not (positional[1].isascii() and positional[1].isdecimal()):
         return None
     port = int(positional[1])
     # Floor is 1024, not 1: harnessed runs the pod ROOTLESS, and a rootless publish of a privileged
@@ -588,6 +593,25 @@ def _mcp_remote_pasta_net_args(publish_args: list[str], net: str) -> list[str]:
     return ["--network", "pasta:--host-lo-to-ns-lo"]
 
 
+def _mcp_remote_pod_args(
+    servers: Sequence, net: str, port_free: "Callable[[int], bool] | None" = None
+) -> list[str]:
+    """Everything `pod create` needs for mcp-remote's OAuth callback, as ONE list.
+
+    The publish and the pasta option are emitted together because separately they are a trap: a
+    publish without `--host-lo-to-ns-lo` forwards straight past mcp-remote's loopback-bound listener
+    and changes nothing, while looking in `podman pod inspect` exactly like a working one. Composing
+    them here means the launcher cannot wire one and forget the other, and means the coupling is
+    assertable without driving a real `pod create`.
+
+    Also owns the plain `--network` passthrough, since `--network` cannot be passed twice.
+    """
+    publish = _mcp_remote_callback_publish_args(servers, port_free=port_free)
+    if not publish:
+        return ["--network", net] if net else []
+    return publish + _mcp_remote_pasta_net_args(publish, net)
+
+
 def _mcp_auth_store_mount(
     servers: Sequence, inst: str, isolated_auth: bool, home: Path | None = None
 ) -> list[str]:
@@ -638,9 +662,14 @@ def _mcp_auth_store_mount(
     # BEFORE the mkdir: a pre-existing dir owned by another uid maps to an unrelated subuid inside
     # the pod, so the refresh write fails with EACCES and nothing on the host says why.
     persist.guard_ownership(source)
-    created = not source.exists()
     source.mkdir(parents=True, exist_ok=True)
-    if created:
+    # Tightened whether harnessed created it or inherited it. Only chmod'ing our own fresh dir left
+    # the claim "0o700" true on one branch and false on the other — and the inherited branch is the
+    # LIKELY one, since mcp-remote's `ensureConfigDir` makes the version subdir 0o700 while the
+    # parent it creates alongside lands at the caller's umask (commonly 0o755). The tokens sit one
+    # level down, but a listable parent still discloses which servers have been authorized and when.
+    # Narrowing only: never widens a directory the user deliberately locked down harder.
+    if source.stat().st_mode & 0o077:
         source.chmod(0o700)
     return ["-v", f"{source}:{_CONTAINER_HOME_STR}/.mcp-auth:rw"]
 

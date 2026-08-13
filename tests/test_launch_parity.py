@@ -78,12 +78,9 @@ CONTAINER_ONLY: dict[str, str] = {
     # to undo. A host-native mcp-remote writes straight into the user's own ~/.mcp-auth, and binds
     # the host's own loopback — which is the same loopback the browser redirects to.
     "_mcp_auth_store_mount": "bind mount; a host launch already writes the real ~/.mcp-auth",
-    "_mcp_remote_callback_publish_args": (
-        "publishes a pod port; a host-native mcp-remote binds the host's own 127.0.0.1, which the "
-        "browser redirect can already reach"
-    ),
-    "_mcp_remote_pasta_net_args": (
-        "tunes pasta's port forwarding for the pod netns; a host launch has no netns to forward into"
+    "_mcp_remote_pod_args": (
+        "publishes a pod port and tunes pasta's forwarding for the pod netns; a host-native "
+        "mcp-remote binds the host's own 127.0.0.1, which the browser redirect already reaches"
     ),
     # --- credential/socket forwarding: the host reaches these natively ---
     "_credential_forward_args": "forwards host credentials into a netns the host is not in",

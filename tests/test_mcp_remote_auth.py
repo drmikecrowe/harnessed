@@ -126,6 +126,26 @@ class TestTheHostSourceIsCreatedNotDemanded:
         mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=tmp_path)
         assert (tmp_path / ".mcp-auth").stat().st_mode & 0o777 == 0o700
 
+    def test_an_INHERITED_world_readable_dir_is_tightened_too(self, tmp_path):
+        """The likely case, not the exotic one: mcp-remote's `ensureConfigDir` makes the VERSION
+        subdir 0o700, while the parent it creates alongside lands at the caller's umask. Tightening
+        only the directory harnessed itself created would make the docstring's `0o700` true on one
+        branch and false on the branch that actually happens."""
+        store = tmp_path / ".mcp-auth"
+        store.mkdir(mode=0o755)
+        store.chmod(0o755)                      # mkdir's mode is umask-masked; force it
+        assert store.stat().st_mode & 0o077     # precondition: really is group/other-readable
+        mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=tmp_path)
+        assert store.stat().st_mode & 0o777 == 0o700
+
+    def test_a_dir_the_user_locked_down_harder_is_not_widened(self, tmp_path):
+        """Narrowing only. Someone who chmod'ed their token store to 0o500 meant it."""
+        store = tmp_path / ".mcp-auth"
+        store.mkdir()
+        store.chmod(0o500)
+        mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=tmp_path)
+        assert store.stat().st_mode & 0o777 == 0o500
+
     def test_an_existing_store_is_left_byte_for_byte_alone(self, tmp_path):
         """The one thing worse than no tokens is destroying the ones the user already consented
         to."""
@@ -183,6 +203,17 @@ class TestTheCallbackPortIsReachable:
         store, and an instance with valid tokens binds nothing (L20896-20904)."""
         assert mounts._mcp_remote_callback_publish_args(
             [_atlassian(PORT)], port_free=lambda _p: False
+        ) == []
+
+    @pytest.mark.parametrize("port", ["²", "²²", "٠١٢٣"])
+    def test_a_unicode_digit_port_is_skipped_and_never_crashes_the_launch(self, port):
+        """`str.isdigit()` is True for characters `int()` REFUSES -- '²' is a digit but not a
+        decimal -- so guarding an int() with isdigit() reads as validation while leaving an uncaught
+        ValueError. A recipe with such a character in the port field would take down `pod create`
+        rather than skip the publish. Other-script decimals ('٠١٢') convert fine but are
+        never how a port is written, so they are refused too."""
+        assert mounts._mcp_remote_callback_publish_args(
+            [_atlassian(port)], port_free=lambda _p: True
         ) == []
 
     def test_a_non_numeric_port_argument_is_ignored(self):
@@ -349,6 +380,54 @@ class TestThePublishReachesALoopbackListener:
         """The two cannot both be passed; asserting the ABSENCE is what pins that."""
         args = mounts._mcp_remote_pasta_net_args(["-p", "1:1"], "mynet")
         assert not any("pasta" in a for a in args)
+
+
+class TestThePublishAndThePastaOptionCannotBeWiredApart:
+    """The invariant the whole port half rests on, asserted at the seam `pod create` actually calls.
+    A publish emitted WITHOUT the pasta option is the worst possible outcome of this change: it
+    looks correct in `podman pod inspect`, passes every other test here, and leaves the user with
+    exactly the three unexplained timeouts the change was written to remove."""
+
+    def test_a_publish_never_appears_without_the_pasta_option(self):
+        args = mounts._mcp_remote_pod_args([_atlassian(PORT)], "", port_free=lambda _p: True)
+        assert "-p" in args
+        assert "pasta:--host-lo-to-ns-lo" in args
+
+    def test_the_pasta_option_never_appears_without_a_publish(self):
+        """The converse: silently changing the network of a stack that gains nothing from it."""
+        args = mounts._mcp_remote_pod_args([_atlassian()], "", port_free=lambda _p: True)
+        assert not any("pasta" in a for a in args)
+
+    def test_a_skipped_publish_takes_the_pasta_option_with_it(self):
+        """A taken port skips the publish -- the network must not be rewritten for a publish that
+        did not happen."""
+        args = mounts._mcp_remote_pod_args([_atlassian(PORT)], "", port_free=lambda _p: False)
+        assert args == []
+
+    def test_network_is_never_passed_twice(self):
+        """`podman pod create` takes one --network. Two would be a hard launch failure, and the
+        composition is the only place both could be emitted."""
+        for net in ("", "mynet"):
+            for servers in ([_atlassian(PORT)], [_atlassian()], []):
+                args = mounts._mcp_remote_pod_args(servers, net, port_free=lambda _p: True)
+                assert args.count("--network") <= 1, (net, servers, args)
+
+    def test_an_explicit_network_survives_a_stack_with_no_mcp_remote(self):
+        """The passthrough this seam took over: forgetting it would drop HARNESSED_NET for every
+        stack in the catalog, which is nearly all of them."""
+        assert mounts._mcp_remote_pod_args([], "mynet", port_free=lambda _p: True) == [
+            "--network", "mynet"
+        ]
+
+    def test_no_mcp_remote_and_no_network_emits_nothing(self):
+        assert mounts._mcp_remote_pod_args([], "", port_free=lambda _p: True) == []
+
+    def test_an_explicit_network_still_publishes_the_port(self):
+        """HARNESSED_NET suppresses the pasta option, not the publish: on a network that does route
+        to the pod's loopback the callback still works, and the note says how to tell."""
+        args = mounts._mcp_remote_pod_args([_atlassian(PORT)], "mynet", port_free=lambda _p: True)
+        assert args[:2] == ["-p", f"127.0.0.1:{PORT}:{PORT}"]
+        assert args[-2:] == ["--network", "mynet"]
 
 
 class TestStacksWithoutMcpRemoteAreUntouched:

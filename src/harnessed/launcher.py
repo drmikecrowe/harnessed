@@ -134,8 +134,7 @@ from .mounts import (
     _keyring_init,
     _keyring_state_mount,
     _mcp_auth_store_mount,
-    _mcp_remote_callback_publish_args,
-    _mcp_remote_pasta_net_args,
+    _mcp_remote_pod_args,
     _omp_agent_mount,
     _omp_mcp_seed_mount,
     _persist_mounts,
@@ -2889,17 +2888,12 @@ class ContainerBackend(ExecutionBackend):
             # redirects to the HOST's loopback — a different netns from the listener — so the flow
             # times out three times with no explanation. Ports are a POD-level property, so this
             # belongs here and not on the member. Empty unless a recipe pins one.
-            publish = _mcp_remote_callback_publish_args(self.servers)
-            pod_cmd += publish
             # The publish is INERT without pasta's --host-lo-to-ns-lo: mcp-remote binds the pod's
             # 127.0.0.1 unconditionally, and pasta forwards to the namespace's public address by
-            # default. Measured both ways on real podman — see the helper. This also owns the plain
-            # `--network` arg, since the two cannot both be passed.
-            net_args = _mcp_remote_pasta_net_args(publish, net)
-            if net_args:
-                pod_cmd += net_args
-            elif net:
-                pod_cmd += ["--network", net]
+            # default. Measured both ways on real podman — see the helper. Composed there as one
+            # list so the two cannot be wired apart, and so it also owns the plain `--network`
+            # passthrough (which cannot be passed twice). Empty unless a recipe pins a port.
+            pod_cmd += _mcp_remote_pod_args(self.servers, net)
             _run(pod_cmd, capture_output=True)
 
         # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
