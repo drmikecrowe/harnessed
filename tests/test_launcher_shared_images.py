@@ -83,7 +83,9 @@ def test_build_images_cmd_passes_the_agent_pins_the_dockerfile_demands(monkeypat
     expected = launcher._agent_build_arg_flags(load_agent("claude"))
     assert expected, "the claude agent declares no build_args — this test would assert nothing"
     claude = by_image[launcher._CLAUDE_IMAGE]
-    for flag, value in zip(expected[::2], expected[1::2]):
+    # strict: the flags come in NAME/value pairs. An odd-length list is itself the bug, and a
+    # lenient zip would drop the unpaired tail and quietly assert less than it claims to.
+    for flag, value in zip(expected[::2], expected[1::2], strict=True):
         assert flag in claude and value in claude, f"missing --build-arg {value}"
     # The base is not an agent image; agent pins must not leak onto it.
     assert "--build-arg" not in by_image[launcher._BASE_IMAGE]
