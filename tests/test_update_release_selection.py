@@ -301,6 +301,29 @@ class TestVersionKeyIsATotalOrder:
         """The property the original code got right, and the fix must not break."""
         assert update.version_key("1.0.0-alpha.1") < update.version_key("1.0.0")
 
+    def test_build_metadata_is_ignored_for_precedence(self):
+        """Semver §10: build metadata MUST NOT affect precedence.
+
+        Found by adversarial review of 1855c05, and it was a defect this change INTRODUCED by
+        halving the concept: `is_semver_prerelease` strips `+…` first and reads `1.1.0+build-7` as the
+        release it is, while `version_key` still partitioned the RAW string on `-`, so the same
+        input became a prerelease with `pre="7"`. Two functions in one module disagreeing about
+        what a prerelease is, one of them newly written — which is how the pair drifts.
+        """
+        assert update.version_key("1.1.0+build-7") == update.version_key("1.1.0")
+        assert update.version_key("1.0.0-rc.1+build") == update.version_key("1.0.0-rc.1")
+
+    def test_a_pin_at_a_build_metadata_version_is_not_offered_its_own_bare_version(self, tmp_path):
+        """The user-visible consequence, asserted end-to-end rather than on the key.
+
+        With `1.1.0+build-7` mis-read as a prerelease it sorted BELOW `1.1.0`, so `_select` offered
+        the bare version as an upgrade — a no-op bump under semver §10, presented as progress.
+        """
+        report, _ = _report(
+            tmp_path, "npm:thing@1.1.0+build-7", _releases(("1.1.0", 30)),
+        )
+        assert [f.latest for f in report.stale] == [], "offered a same-precedence version as a bump"
+
 
 class TestPrereleasesAreNotOfferedAsBumps:
     """npm listed EVERY version, so an alpha could be offered as an upgrade.
@@ -335,6 +358,27 @@ class TestPrereleasesAreNotOfferedAsBumps:
         })
         rels = update.resolve_releases("npm", "x", fetch=lambda url: payload)
         assert [r.version for r in rels] == ["1.0.0", "1.1.0+build-7"]
+
+    def test_github_releases_are_NOT_filtered_by_the_semver_test(self):
+        """The reuse hazard, held by a test rather than only by a docstring.
+
+        `is_semver_prerelease` reads a SEMVER string. A GitHub tag may carry a `-` for reasons that
+        have nothing to do with prereleases — this repo's own bun pin resolves against tags spelled
+        `bun-vX.Y.Z` — so applying it to `_github_releases` would silently drop every release. That
+        branch has its own, better test: the API's `prerelease` flag, set by the publisher instead
+        of inferred from punctuation. This asserts the two stay separate.
+        """
+        assert update.is_semver_prerelease("bun-v1.3.14"), \
+            "the semver reading of a bun tag is 'prerelease' — which is exactly why github must not use it"
+        payload = json.dumps([
+            {"tag_name": "bun-v1.3.14", "published_at": "2026-05-13T03:48:28Z",
+             "prerelease": False, "draft": False},
+            {"tag_name": "bun-v1.3.13", "published_at": "2026-04-20T08:07:57Z",
+             "prerelease": False, "draft": False},
+        ])
+        rels = update.resolve_releases("github", "oven-sh/bun", fetch=lambda url: payload)
+        assert [r.version for r in rels] == ["bun-v1.3.14", "bun-v1.3.13"], \
+            "a hyphenated GitHub tag is a real release and must survive"
 
     def test_the_codex_shaped_case_end_to_end(self, tmp_path):
         """A pin at a real release is never offered an alpha, however much newer the alpha is."""

@@ -102,7 +102,14 @@ def version_key(v: str) -> tuple:
     `0.146.0-alpha.3.1` produced `('alpha', 3, '1-linux-x64')` and `('alpha', 3, 1)` — differing in
     TYPE at index 2, so `'<'` raised between `int` and `str`.
     """
-    s = v.strip().lstrip("vV")
+    # Build metadata is stripped BEFORE the prerelease split, and the order matters: semver §10 says
+    # build metadata must be ignored for precedence, and partitioning the raw string on `-` first
+    # reads `1.1.0+build-7` as a PRERELEASE with `pre="7"` — sorting a shipped release below its own
+    # bare version, so `_select` offers `1.1.0` as an upgrade over `1.1.0+build-7`. That is a no-op
+    # bump presented as progress. It also put this function and `is_semver_prerelease` (which strips `+`
+    # first, correctly) into disagreement about what a prerelease IS — one concept, two readings,
+    # which is how such a pair drifts. Found by adversarial review.
+    s = v.strip().lstrip("vV").partition("+")[0]
     base, _, pre = s.partition("-")
     parts: list[int] = []
     for chunk in base.split("."):
@@ -119,17 +126,28 @@ def version_key(v: str) -> tuple:
     # Deliberately NOT `str(c)` for everything, which also stops the crash: that would order "10"
     # before "9" lexicographically, the exact version-sort bug `_NUM_RE` exists to avoid two lines
     # up. Stopping the exception is easy; keeping the order right is the point.
-    pre_parts = tuple((0, int(c)) if c.isdigit() else (1, c) for c in re.split(r'[.+]', pre))
+    # Split on `.` alone: `+` can no longer appear here, because build metadata was removed above.
+    # It used to be `[.+]`, which was this function's way of coping with metadata it had not
+    # stripped — and it coped by folding the metadata into the prerelease identifiers, so
+    # `1.0.0-rc.1+build` and `1.0.0-rc.1` compared as different versions. §10 says they do not.
+    pre_parts = tuple((0, int(c)) if c.isdigit() else (1, c) for c in pre.split("."))
     return (tuple(parts), 0, pre_parts)
 
 
-def is_prerelease(version: str) -> bool:
+def is_semver_prerelease(version: str) -> bool:
     """True for a semver prerelease (`1.1.0-alpha.1`), false for build metadata (`1.1.0+build-7`).
 
     The distinction is not pedantry: `+build` marks a SHIPPED release, so treating it as a
     prerelease would silently drop real versions from every bump offer — the opposite failure, and
     a quieter one. Semver §9/§10: the prerelease is a `-` suffix on the version CORE, and build
     metadata (which may itself contain `-`) begins at the first `+`.
+
+    READS A SEMVER VERSION STRING, NOT AN ARBITRARY VCS TAG, which is why the name says so. A
+    GitHub tag may carry a `-` for reasons that have nothing to do with prereleases: this repo's
+    own bun pin resolves against tags spelled `bun-vX.Y.Z`, and every one of them would be
+    classified a prerelease here and dropped. So this is applied to the npm branch (whose keys are
+    semver by registry rule) and NOT to `_github_releases`, which already has its own, correct test
+    — the API's `prerelease` flag, set by the publisher rather than inferred from punctuation.
     """
     return "-" in version.partition("+")[0]
 
@@ -469,7 +487,7 @@ def resolve_releases(backend: str, name: str, *,
             return [
                 Release(version=v, published=_parse_ts(times.get(v)))
                 for v in data.get("versions", {})
-                if not is_prerelease(v)
+                if not is_semver_prerelease(v)
             ]
         if backend == "pipx":
             data = json.loads(fetch(f"https://pypi.org/pypi/{name}/json"))
