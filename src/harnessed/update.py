@@ -118,24 +118,21 @@ def version_key(v: str) -> tuple:
     # A release has no prerelease suffix and must outrank one: (parts, 1) > (parts, 0, ...).
     if not pre:
         return (tuple(parts), 1)
-    # Each identifier is TAGGED with its own kind, so every element is an (int, int|str) pair and
-    # two elements can always be compared: the tags decide first, and the payloads are only ever
-    # compared against a payload of the same kind. The tag order is semver §11.4.3 — "numeric
-    # identifiers always have lower precedence than non-numeric identifiers".
+    # Each identifier is TAGGED with its kind, so every element is an (int, int|str) pair: the tags
+    # decide first and a payload only ever meets its own kind, which is what makes the key total.
+    # Tag order is semver §11.4.3 — numeric identifiers rank below non-numeric ones.
     #
-    # Deliberately NOT `str(c)` for everything, which also stops the crash: that would order "10"
-    # before "9" lexicographically, the exact version-sort bug `_NUM_RE` exists to avoid two lines
-    # up. Stopping the exception is easy; keeping the order right is the point.
-    # Split on `.` alone: `+` can no longer appear here, because build metadata was removed above.
-    # It used to be `[.+]`, which was this function's way of coping with metadata it had not
-    # stripped — and it coped by folding the metadata into the prerelease identifiers, so
-    # `1.0.0-rc.1+build` and `1.0.0-rc.1` compared as different versions. §10 says they do not.
-    # `isdecimal`, NOT `isdigit`: the two differ on exactly the characters that make `int()` raise.
-    # `"²".isdigit()` is True and `int("²")` is a ValueError, so `isdigit` would have propagated out
-    # of a function whose whole contract is "always returns a comparable key" — and out through
-    # `current_key = version_key(pin.current)` in `_select`, which is not inside its try. `isdecimal`
-    # is true for precisely the set `int()` accepts, so the two can no longer disagree. (`\d` in
-    # `_NUM_RE` above is already this set, which is why the release part never had the problem.)
+    # Three near-misses, each of which reads as the obvious spelling:
+    #   `str(c)` for everything also stops the crash, and orders "10" before "9" — the lexicographic
+    #     bug `_NUM_RE` exists two lines up to avoid. Stopping the exception is easy; the order is
+    #     the point.
+    #   `isdigit` accepts characters `int()` rejects (`"²".isdigit()` is True, `int("²")` raises),
+    #     which would throw from a function contracted to always return a key — and via
+    #     `current_key = version_key(pin.current)`, which `_select` does not guard. `isdecimal` is
+    #     exactly `int()`'s domain, and exactly what `\d` in `_NUM_RE` already matches.
+    #   splitting on `[.+]` was how this coped with build metadata it had not stripped, by folding
+    #     it into the prerelease identifiers — so `1.0.0-rc.1+build` and `1.0.0-rc.1` compared
+    #     unequal. §10 says they are equal, and the strip above now guarantees no `+` reaches here.
     pre_parts = tuple((0, int(c)) if c.isdecimal() else (1, c) for c in pre.split("."))
     return (tuple(parts), 0, pre_parts)
 
