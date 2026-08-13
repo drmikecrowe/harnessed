@@ -659,10 +659,15 @@ def _mcp_auth_store_mount(
             "contains ':'."
         )
         return []
-    # BEFORE the mkdir: a pre-existing dir owned by another uid maps to an unrelated subuid inside
-    # the pod, so the refresh write fails with EACCES and nothing on the host says why.
-    persist.guard_ownership(source)
+    # AFTER the mkdir, deliberately, and this ordering is the whole guarantee. Checking first leaves
+    # the absent-directory case unguarded twice over: `guard_ownership` on a path that does not exist
+    # yet passes trivially, and the two statements are a TOCTOU window in which anything that
+    # appears at `source` is then adopted by `exist_ok=True` and mounted rw. Checking after covers
+    # both orders — a pre-existing foreign dir survives an `exist_ok` mkdir unchanged and is caught
+    # here, and so is one that raced in. A foreign-owned dir maps to an unrelated subuid inside the
+    # pod, so the refresh write fails with EACCES and nothing on the host says why.
     source.mkdir(parents=True, exist_ok=True)
+    persist.guard_ownership(source)
     # Tightened whether harnessed created it or inherited it. Only chmod'ing our own fresh dir left
     # the claim "0o700" true on one branch and false on the other — and the inherited branch is the
     # LIKELY one, since mcp-remote's `ensureConfigDir` makes the version subdir 0o700 while the

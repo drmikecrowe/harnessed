@@ -44,6 +44,14 @@ URL = "https://mcp.atlassian.com/v1/mcp/authv2"
 PORT = "32081"
 INST = "harnessed-claude-isolated-b3fb02f8"
 
+#: Every test below that asserts on a printed note first asserts the captured stream is NON-EMPTY.
+#: `_err` is a module-level Rich Console(stderr=True) built at import time, which invites the worry
+#: that `capsys` (which rebinds the NAME sys.stderr, not the object) captures nothing and leaves the
+#: membership assertions vacuous. It does not -- Rich resolves `sys.stderr` at print time whenever no
+#: explicit `file=` was passed, and none is -- but "it does not" is a claim, and this turns it into a
+#: check: if capture ever did break, these fail loudly here instead of passing on an empty string.
+_CAPTURE_PROOF = "nothing was captured on stderr — the note is missing, or capsys is not capturing"
+
 
 def _atlassian(*extra: str) -> McpServer:
     """The atlassian recipe's server: a pnpm-dlx stdio child, URL then callback port."""
@@ -289,7 +297,9 @@ class TestTheCallbackPortIsReachable:
         """A silent skip is the failure mode this whole change exists to remove: the user would get
         the same unexplained timeouts, with nothing naming the cause."""
         mounts._mcp_remote_callback_publish_args([_atlassian(PORT)], port_free=lambda _p: False)
-        assert PORT in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert err, _CAPTURE_PROOF
+        assert PORT in err
 
 
 # Module level, NOT a method: hypothesis's `differing_executors` health check fires on a @given
@@ -384,7 +394,9 @@ class TestThePublishReachesALoopbackListener:
         callback would be a worse failure than the callback needing one manual step -- but going
         quiet about it would be worse still, so the note is part of the behaviour."""
         assert mounts._mcp_remote_pasta_net_args(["-p", "1:1"], "mynet") == ["--network", "mynet"]
-        assert "host-lo-to-ns-lo" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert err, _CAPTURE_PROOF          # see below: a vacuous capture fails HERE, not silently
+        assert "host-lo-to-ns-lo" in err
 
     def test_an_explicit_network_still_gets_no_pasta_option(self):
         """The two cannot both be passed; asserting the ABSENCE is what pins that."""
@@ -486,6 +498,7 @@ class TestTheMountCannotBeSubverted:
         weird.mkdir()
         mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=weird)
         err = capsys.readouterr().err
+        assert err, _CAPTURE_PROOF
         assert "ho:me" in err and "mcp-remote" in err
 
     def test_the_refused_mount_creates_nothing_on_disk(self, tmp_path):
@@ -505,6 +518,21 @@ class TestTheMountCannotBeSubverted:
         from harnessed import paths
         from harnessed.persist import PersistOwnershipError
         (tmp_path / ".mcp-auth").mkdir()
+        monkeypatch.setattr(paths, "pod_host_uid", lambda: 4242424)
+        with pytest.raises(PersistOwnershipError):
+            mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=tmp_path)
+
+    def test_the_ownership_guard_also_covers_a_store_that_did_not_exist_yet(
+        self, tmp_path, monkeypatch
+    ):
+        """The guard runs AFTER the mkdir, and that ordering IS the guarantee. Checked first, the
+        absent-directory case is unguarded twice over: the check passes trivially on a path that
+        does not exist, and the gap between it and `mkdir(exist_ok=True)` is a window in which
+        anything appearing at that path is adopted and mounted rw. Here the store does not exist
+        when the call begins, and a foreign owner is still refused."""
+        from harnessed import paths
+        from harnessed.persist import PersistOwnershipError
+        assert not (tmp_path / ".mcp-auth").exists()
         monkeypatch.setattr(paths, "pod_host_uid", lambda: 4242424)
         with pytest.raises(PersistOwnershipError):
             mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=tmp_path)
