@@ -18,6 +18,9 @@ acquire unpinned, so switching the gate on would fail their builds while A2/A3 r
 The tests below therefore call the function directly, including against the three REAL bodies.
 """
 
+import os
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -25,6 +28,7 @@ import pytest
 from harnessed.schema import (
     PinValidationError,
     _unversioned_acquisitions,
+    load_agent,
     validate_agent_pin,
 )
 
@@ -484,9 +488,16 @@ class TestAgainstTheRealBodies:
         with pytest.raises(PinValidationError, match="no version"):
             validate_agent_pin("codex", _body("codex"), unpinnable={})
 
-    def test_claude_is_currently_absent(self):
-        with pytest.raises(PinValidationError, match="no version"):
-            validate_agent_pin("claude", _body("claude"), unpinnable={})
+    def test_claude_passes_now_that_A3_has_pinned_it(self):
+        """A3 flipped this. It was `test_claude_is_currently_absent`, asserting the DEFECT.
+
+        The class docstring above planted that tripwire deliberately: "when codex and claude get
+        pinned, the two xfail-shaped assertions below start failing and must be flipped to
+        `validate_agent_pin(...)` passing." This is that flip, and it is the point of the unit —
+        not a test weakened to get green. codex's assertion is untouched below, because A2 is a
+        separate decision gated on spike S7.
+        """
+        validate_agent_pin("claude", _body("claude"), unpinnable={})
 
     def test_antigravity_passes_only_because_it_declares(self):
         body = _body("antigravity")
@@ -512,6 +523,113 @@ class TestAgainstTheRealBodies:
         """
         with pytest.raises(PinValidationError, match="bun"):
             validate_agent_pin("omp", _body("omp"), unpinnable={})
+
+class TestA3TheClaudePinIsWiredEndToEnd:
+    """A3 — a pin is only real if the value the MANIFEST declares is the value the INSTALLER gets.
+
+    The lint above proves a version is visible in the Dockerfile. It cannot prove that version is
+    the one the manifest owns: `ARG OTHER_VERSION` plus `--build-arg CLAUDE_VERSION=…` would satisfy
+    every check in this file and install whatever upstream currently serves. These tests read both
+    sides and compare them, rather than asserting either alone.
+    """
+
+    def _claude_agent(self):
+        return load_agent("claude", root=REPO / "catalog")
+
+    def test_every_declared_build_arg_has_a_matching_ARG_in_the_dockerfile(self):
+        """The pin's value can only reach the install if the two names agree."""
+        body = _body("claude")
+        declared = set(self._claude_agent().build_args)
+        args = set(re.findall(r"^ARG\s+([A-Za-z_]\w*)", body, re.MULTILINE))
+        assert declared, "claude declares no build_args — A3 did not land"
+        assert declared <= args, f"declared but never received: {sorted(declared - args)}"
+
+    def test_the_dockerfile_keeps_no_second_copy_of_the_pin(self):
+        """`ARG CLAUDE_VERSION=<default>` would be a second pin, free to drift from the manifest.
+
+        This is the reason the shipped opencode Dockerfile states in its own comment: the manifest
+        is "the one place `harnessed update` looks". A default here is invisible to it.
+        """
+        for line in _body("claude").splitlines():
+            if line.startswith("ARG CLAUDE_VERSION"):
+                assert "=" not in line, f"ARG carries a default: {line!r}"
+
+    def _claude_install_command(self) -> str:
+        """The shipped RUN command that installs the CLI, continuations joined, `RUN ` stripped.
+
+        Read from the Dockerfile at test time rather than copied into this file: a copy agrees with
+        the author's reading forever, including after the original changes.
+        """
+        joined = re.sub(r"\\\s*\n\s*", " ", _body("claude"))
+        matches = [ln[4:] for ln in joined.splitlines()
+                   if ln.startswith("RUN ") and "install.sh" in ln]
+        assert len(matches) == 1, f"expected exactly one installing RUN, found {len(matches)}"
+        return matches[0]
+
+    def _run_against_a_fake_installer(self, tmp_path, version):
+        """Execute the REAL shipped command, with the vendor download swapped for a recorder.
+
+        SUBSTITUTION, named because it is one: a POSIX shell stands in for the Docker build, and an
+        env var stands in for `ARG` substitution. It therefore cannot prove Docker's own ARG
+        semantics; it CAN prove what the shell text does with the value it is given, which is the
+        half that carries the pin. The vendor script is replaced, so no network is touched and the
+        real installer never runs.
+        """
+        recorder = tmp_path / "argv.txt"
+        fake = tmp_path / "fake-install.sh"
+        fake.write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$RECORDER"\n')
+        command = self._claude_install_command().replace(
+            "curl -fsSL https://claude.ai/install.sh", f'cat "{fake}"', 1,
+        )
+        assert "curl" not in command, "the vendor download was not substituted — refusing to run"
+        proc = subprocess.run(
+            ["bash", "-c", command],
+            env={"PATH": os.environ["PATH"], "RECORDER": str(recorder), "CLAUDE_VERSION": version},
+            capture_output=True, text=True,
+        )
+        return proc, recorder
+
+    def test_the_declared_version_is_what_the_installer_actually_receives(self, tmp_path):
+        """The property, not the spelling: whatever the manifest declares arrives as argv[1].
+
+        Asserted by RUNNING the Dockerfile's own command rather than by matching a string in it, so
+        a behaviour-preserving rewrite (different quoting, a wrapper) still passes while a rewrite
+        that drops or mangles the version fails. Raised by adversarial review of 03d7a65: the
+        previous version of this test asserted one exact shell phrase and would have broken on a
+        harmless reformat while passing on a dropped `--`.
+        """
+        declared = self._claude_agent().build_args["CLAUDE_VERSION"]
+        proc, recorder = self._run_against_a_fake_installer(tmp_path, declared)
+        assert proc.returncode == 0, proc.stderr
+        assert recorder.read_text().split() == [declared]
+
+    def test_a_value_that_looks_like_an_option_is_still_passed_as_the_version(self, tmp_path):
+        """What `--` is for. Without it, bash would eat a leading-dash value as its own flag.
+
+        Version strings do not start with `-` today, so this guards the separator itself rather
+        than a live defect — and it is the only way to tell a present `--` from an absent one
+        without asserting on the source text.
+        """
+        proc, recorder = self._run_against_a_fake_installer(tmp_path, "--version-like")
+        assert proc.returncode == 0, proc.stderr
+        assert recorder.read_text().split() == ["--version-like"]
+
+    def test_an_empty_version_fails_the_build_instead_of_installing_an_unpinned_cli(self, tmp_path):
+        """The worst failure available here, and it must fail CLOSED. Found by adversarial review.
+
+        WHAT THIS TEST HOLDS: given an empty version, the command exits non-zero and the installer
+        is never reached. That property is the pin, and it does not depend on the vendor script.
+
+        WHAT IT CANNOT HOLD, stated because the vendor script is substituted here and never runs:
+        what the REAL `install.sh` does with an empty argument. Observed on 2026-08-12 it validated
+        and appended the target only when non-empty, so an empty value installed the vendor default
+        and exited 0. If that ever changes, this test stays green and stays correct — the guard is
+        justified by "empty is not a pin", not by the vendor's current behaviour.
+        """
+        proc, recorder = self._run_against_a_fake_installer(tmp_path, "")
+        assert proc.returncode != 0, "an empty version was accepted — the build would install unpinned"
+        assert not recorder.exists(), "the installer ran despite the guard"
+        assert "CLAUDE_VERSION" in proc.stderr
 
     def test_every_agent_is_covered_by_this_file(self):
         """If someone adds a sixth agent, this file must be updated rather than silently not
