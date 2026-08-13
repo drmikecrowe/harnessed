@@ -51,15 +51,36 @@ def _plain(text: str) -> str:
     return _ANSI.sub("", text)
 
 
+# A shell comment starts at a `#` that FOLLOWS WHITESPACE. That single rule is why this is one line
+# rather than the quote-aware scanner PR #353 deleted on purpose:
+#   * `${HARNESSED_REPO_OAKOSS##*/}` — no whitespace before `#`, so parameter expansion survives,
+#     which is shell-accurate, not a lucky escape;
+#   * `echo "hi # there"` — a `#` inside quotes IS stripped, which this rule gets wrong. It gets it
+#     wrong in the SAFE direction: over-stripping can only remove a variable name from the code
+#     text, which makes a "the script uses this" assertion FAIL LOUDLY. Under-stripping is what
+#     fails open, and that is the direction this rule cannot go.
+_TRAILING_COMMENT_RE = re.compile(r"\s#.*$")
+
+
 def _code_only(raw: str) -> str:
-    """A shell script's lines with whole-line comments removed.
+    """A shell script's EXECUTABLE text: whole-line and trailing comments both removed.
 
     The distinction matters in both directions, which is the part that keeps getting missed. A
     VALUE (a SHA, a repo) must be absent from the RAW text, comments included, because a comment
     copy drifts exactly like an assignment does. A USE (does the script actually read this
     variable?) must be checked against CODE, because a variable named in prose is used by nothing.
+
+    Trailing comments were missed in the first version of this helper, and the omission is worth a
+    line of its own: `update._ASSIGN_RE` has the SAME blind spot — it requires an assignment to end
+    the line, so `OAKOSS_SHA=<sha>  # comment` is invisible to `harnessed update`. That defect was
+    found and reported earlier in this very unit, and then reproduced here. Same class, two files,
+    one commit apart.
     """
-    return "\n".join(ln for ln in raw.splitlines() if not ln.lstrip().startswith("#"))
+    return "\n".join(
+        _TRAILING_COMMENT_RE.sub("", ln)
+        for ln in raw.splitlines()
+        if not ln.lstrip().startswith("#")
+    )
 
 
 def _recipe(tmp_path, name="r", *, install: str | None = None, script_body: str = "true\n",
@@ -1363,6 +1384,50 @@ class TestRawDownloadsAreIntegrityAnchored:
             ),
         )
         assert not self._anchored_by_a_manifest_commit_ref(commented.root / "install.sh")
+
+    def test_a_ref_named_only_in_a_TRAILING_comment_is_not_an_anchor(self, tmp_path):
+        """The sibling of the test above, and the one the first fix missed.
+
+        Stripping whole-line comments is not stripping comments: `true  # HARNESSED_REF_X` names the
+        variable in prose on a line of real code. Raised in review of this PR, and it is the same
+        blind spot `update._ASSIGN_RE` has — which this unit had already found and reported in the
+        source before reproducing it here.
+        """
+        sha = "deadbeef" * 5
+        inline = _recipe(
+            tmp_path, "inline",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     f"      ref: {sha}\n"),
+            script_body=(
+                "true  # provenance: content comes from HARNESSED_REF_X\n"
+                'curl -fsSL "https://github.com/o/r/archive/main.tar.gz" -o a.tgz\n'
+            ),
+        )
+        assert not self._anchored_by_a_manifest_commit_ref(inline.root / "install.sh")
+
+    def test_parameter_expansion_is_not_mistaken_for_a_comment(self, tmp_path):
+        """The other direction: `${VAR##*/}` must survive comment-stripping.
+
+        This recipe's install.sh derives the archive root with exactly that expansion, so a
+        comment-stripper that split on any `#` would silently erase real code — and the anchor
+        check reads that text.
+
+        The fixture puts `HARNESSED_REF_X` ONLY to the right of a `##`, which is what makes this
+        control bite. The first version of it also named the variable on the URL line, so a naive
+        `#`-splitter still found it there and the test passed against the very mutant it existed to
+        catch — vacuous, and caught by mutating the regex rather than by reading it.
+        """
+        sha = "deadbeef" * 5
+        expanded = _recipe(
+            tmp_path, "expanded",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     f"      ref: {sha}\n"),
+            script_body=(
+                'root="${HARNESSED_REPO_X##*/}-${HARNESSED_REF_X}"\n'
+                'curl -fsSL "https://github.com/o/r/archive/$root.tar.gz" -o a.tgz\n'
+            ),
+        )
+        assert self._anchored_by_a_manifest_commit_ref(expanded.root / "install.sh")
 
     def test_a_manifest_ref_that_is_a_COMMIT_is_an_anchor(self, tmp_path):
         # A hex SHA with letters in it, deliberately: an all-digit scalar is parsed by YAML as an
