@@ -212,6 +212,34 @@ USER ${USERNAME}
 # ~/.gitconfig into the container read-only, so any write attempt fails with "Device or resource busy".
 USER root
 RUN git config --system --add safe.directory '*'
+
+# THE HOME DIRECTORY MUST BE OWNED BY ${USERNAME} IN THE COMMITTED IMAGE, and the last three root
+# blocks above did not restore that the way the extra-tools COPY block does (line ~150). Every
+# derived image starts by writing into $HOME — the claude installer's first act is
+# `mkdir ~/.claude` — so a home directory this image hands over root-owned fails the CHILD build,
+# with an error that names the child's installer and gives no hint that the base is at fault.
+#
+# NOT recursive, deliberately: only the directory's own ownership is at stake, and a `chown -R` over
+# a home holding mise, pnpm and uv trees would copy the whole lot into a new layer for nothing.
+#
+# HONEST ABOUT WHAT THIS IS. It hardens against a fault observed ONCE and not reproduced: live.yml
+# run 31699857493 failed at `mkdir: cannot create directory '/home/harnessed/.claude': Permission
+# denied`, while run 31708908139 built the identical Dockerfile 20 minutes later and passed. The
+# two logs agree step for step through all 48 base steps, so the trigger is environmental — the same
+# class this file already cites twice ("Podman overlay layer corrupting home dir ownership" above,
+# and the cache-mount parent pre-creation at line ~82). This line makes the invariant explicit
+# instead of inherited, which is cheap; it is not a proven fix, because the cause is not proven.
+RUN chown ${USERNAME}:${USERNAME} /home/${USERNAME}
 USER ${USERNAME}
+
+# FAIL IN THE BASE BUILD, WHERE THE FAULT IS, rather than in whichever child image happens to touch
+# $HOME first. A one-line assertion converts "the claude installer cannot mkdir" into "harnessed-base
+# produced an unusable home directory", which is the difference between debugging the wrong image and
+# the right one. Costs one layer with no content.
+RUN test -w "/home/${USERNAME}" || { \
+      echo "harnessed-base: /home/${USERNAME} is not writable by ${USERNAME} — every derived image will fail on its first \$HOME write" >&2; \
+      ls -ld "/home/${USERNAME}" >&2; \
+      exit 1; \
+    }
 
 CMD ["/bin/bash"]
