@@ -205,6 +205,16 @@ class TestTheCallbackPortIsReachable:
             [_atlassian(PORT)], port_free=lambda _p: False
         ) == []
 
+    @pytest.mark.parametrize("port", ["abc", "32081x", "3.2", "", "٣٢٠٨١"])
+    def test_a_port_that_is_not_a_plain_number_is_skipped_and_never_crashes(self, port):
+        """Both halves of the guard carry weight, so both are exercised. `abc` is ASCII but not
+        decimal; `٣٢٠٨١` is decimal but not ASCII and converts to 32081, which would otherwise be
+        PUBLISHED off a string no operator wrote. Testing only one half lets the guard degrade to
+        `or` -- which re-opens the ValueError this test class exists to close."""
+        assert mounts._mcp_remote_callback_publish_args(
+            [_atlassian(port)], port_free=lambda _p: True
+        ) == []
+
     @pytest.mark.parametrize("port", ["²", "²²", "٠١٢٣"])
     def test_a_unicode_digit_port_is_skipped_and_never_crashes_the_launch(self, port):
         """`str.isdigit()` is True for characters `int()` REFUSES -- '²' is a digit but not a
