@@ -819,6 +819,40 @@ class TestA6Part2TheGateIsActuallyOn:
         )
         assemble.assemble(REPO / "catalog", "default", tmp_path / "build", "claude")
 
+    @pytest.mark.parametrize("build", ["_build_images_cmd", "_build_agent_image"])
+    def test_the_BUILD_paths_are_gated_too_not_only_assembly(self, tmp_path, monkeypatch, build):
+        """`assemble()` is not the only road to a built agent image, and I had assumed it was.
+
+        Found while reviewing this unit: `harnessed build` with no stack goes
+        `_build_images_cmd` -> `podman build` for base AND claude, never touching `assemble()`. The
+        lazy per-harness path reaches `_build_agent_image` the same way. So the gate wired into
+        assembly covered the stack flows and left the two paths that actually BUILD agent images
+        wide open — a gate with a way around it, which is a gate that gets walked around by
+        accident.
+
+        Both build sites now validate. This test drives each one with a floating agent Dockerfile
+        and requires the refusal to happen BEFORE podman is invoked.
+        """
+        from harnessed import launcher
+
+        self._home_with_agent(
+            tmp_path, monkeypatch,
+            "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex\n",
+        )
+        ran: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_SHARED_IMAGES_BUILT", set())
+        monkeypatch.setattr(launcher, "_run", lambda cmd, **kw: ran.append(list(cmd)))
+        monkeypatch.setattr(launcher, "_image_exists", lambda rt, image: False)
+        monkeypatch.setattr(launcher, "_ensure_extra_tools", lambda: None)
+        monkeypatch.setattr(launcher, "_corp_proxy_ca_secret_args", lambda: [])
+
+        with pytest.raises(PinValidationError, match="no version"):
+            if build == "_build_images_cmd":
+                launcher._build_images_cmd("podman")
+            else:
+                launcher._build_agent_image("podman", "claude")
+        assert not ran, f"podman was invoked before the gate refused: {ran}"
+
     def test_the_gate_reads_the_manifests_unpinnable_rather_than_assuming_none(self):
         """antigravity is the proof: its Dockerfile alone FAILS, and only the declaration saves it.
 
