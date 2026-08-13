@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import ClassVar
 
 from harnessed.emit import (
     HATAGO_ENDPOINT,
@@ -472,7 +473,9 @@ class TestHatagoCurationPassthrough:
     server's full unfiltered tool list. These tests are the contract that they survive.
     """
 
-    TOOLS = {
+    # ClassVar, not a bare class attribute: RUF012. Shared read-only across the tests — the emitter
+    # passes curation through by reference and never mutates it, which is what these tests assert.
+    TOOLS: ClassVar[dict] = {
         "include": ["getJiraIssue", "searchJiraIssuesUsingJql"],
         "exclude": ["atlassianUserInfo", "fetch"],
         "overrides": {"getJiraIssue": {"description": "Fetch an issue by key."}},
