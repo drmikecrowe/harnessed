@@ -51,6 +51,17 @@ def _plain(text: str) -> str:
     return _ANSI.sub("", text)
 
 
+def _code_only(raw: str) -> str:
+    """A shell script's lines with whole-line comments removed.
+
+    The distinction matters in both directions, which is the part that keeps getting missed. A
+    VALUE (a SHA, a repo) must be absent from the RAW text, comments included, because a comment
+    copy drifts exactly like an assignment does. A USE (does the script actually read this
+    variable?) must be checked against CODE, because a variable named in prose is used by nothing.
+    """
+    return "\n".join(ln for ln in raw.splitlines() if not ln.lstrip().startswith("#"))
+
+
 def _recipe(tmp_path, name="r", *, install: str | None = None, script_body: str = "true\n",
             env: str = "", extra: str = ""):
     """A loadable recipe dir carrying an `install:` block and its script file."""
@@ -886,6 +897,377 @@ class TestGstackMigrated:
         assert "garrytan/gstack" in [f.pin.name for f in report.held]
 
 
+class TestMikesUniversalSetupMigrated:
+    """Phase 3 unit 4 of #329 — the MULTI-REF recipe, and the last of Family B.
+
+    Three refs, three upstreams, and — the reason the plan insists acceptance is per REF rather
+    than per recipe — TWO DIFFERENT HOLD CLASSES in one manifest. A per-recipe check would pass
+    while the report told a future reader the wrong thing about two of the three.
+
+    Its pin used to be written four times: three `*_SHA=` assignments in install.sh and a
+    hand-mashed `install.cache` ("oak…-hum…-ste…") that truncated all three to 10 hex and drifted
+    independently of every one of them.
+    """
+
+    # D8's ruling for Class C, quoted rather than paraphrased — the plan requires the wording, not
+    # a gloss of it, so the test carries the string and the manifest must match.
+    D8_REASON = (
+        "SHA-pinned by design; the nearest tag is a content change, not a re-expression of this "
+        "commit"
+    )
+
+    def _recipe(self):
+        return load_recipe(CATALOG / "recipes" / "mikes-universal-setup", strict=True)
+
+    def test_declares_all_three_refs_once_as_data(self):
+        r = self._recipe()
+        assert r.install is not None
+        assert sorted(r.install.refs) == ["aminblg", "blader", "oakoss"]
+        expected_repos = {
+            "oakoss": "oakoss/agent-skills",
+            "blader": "blader/humanizer",
+            "aminblg": "AminBlg/SimpleEnglish",
+        }
+        for key, ref in r.install.refs.items():
+            assert ref.repo == expected_repos[key]
+            assert re.fullmatch(r"[0-9a-f]{40}", ref.ref), (
+                f"{key}: a full 40-hex SHA — upstream offers no tag to prefer, and an abbreviated "
+                "SHA is not a stable identifier"
+            )
+
+    def test_every_ref_is_held_individually(self):
+        """The plan's words: mikes-universal-setup's three are asserted INDIVIDUALLY.
+
+        Not `all(...)` over the set — each key by name, so a ref that lost its hold cannot hide
+        behind its siblings.
+        """
+        r = self._recipe()
+        assert r.install is not None
+        refs = r.install.refs
+        for key in ("oakoss", "blader", "aminblg"):
+            assert refs[key].hold, f"{key} declares no hold of its own"
+
+    def test_each_hold_names_its_own_class_and_the_right_one(self):
+        """AC-2, per ref. A structural hold mislabelled as policy invites a future reader to lift
+        something that cannot be lifted; the reverse freezes something that could move.
+
+        oakoss is Class B — 0 releases, 0 tags, so no resolver has anything to return and the hold
+        is STRUCTURAL. blader and aminblg are Class C — releases exist, but every tag postdates the
+        pinned commit, so the hold is POLICY and D8 ruled on the exact wording.
+        """
+        r = self._recipe()
+        assert r.install is not None
+        refs = r.install.refs
+
+        # The class is the FIRST WORD of the reason, which is a convention a reader and a test can
+        # both check without guessing. A substring search cannot do this job: the structural reason
+        # legitimately contains "policy" (it says there is no policy to lift), so "policy appears
+        # anywhere" would misclassify it. Asserting the opening word says which class this IS.
+        oakoss = (refs["oakoss"].hold or "").lower().lstrip()
+        assert oakoss.startswith("structural"), (
+            "oakoss is Class B — the reason must OPEN by naming the structural class"
+        )
+        # The fact behind the class, not just the label — a class name with no evidence is a
+        # different unexplained word.
+        assert "release" in oakoss and "tag" in oakoss
+
+        for key in ("blader", "aminblg"):
+            reason = refs[key].hold or ""
+            assert reason.lower().lstrip().startswith("policy"), (
+                f"{key} is Class C — a POLICY hold, and calling it structural would freeze "
+                "something that is resolvable in mechanism"
+            )
+            assert self.D8_REASON in reason, (
+                f"{key}: D8's ruling is to be QUOTED, not paraphrased"
+            )
+
+    def test_the_mashed_cache_key_is_gone_and_the_key_is_derived(self):
+        r = self._recipe()
+        assert r.install is not None
+        manifest = (r.root / "recipe.yaml").read_text(encoding="utf-8")
+        assert not re.search(r"^\s*cache:", manifest, re.M)
+        assert r.install.cache == derived_cache_key(r.install.refs)
+        # The hand-mashed key truncated all three SHAs to 10 hex and drifted independently of every
+        # one of them. It must not survive anywhere in the recipe dir.
+        for path in sorted(r.root.rglob("*")):
+            if path.is_file():
+                assert "oak0283bed3-hum1b485648-ste379728b5" not in path.read_text(
+                    encoding="utf-8", errors="replace"
+                ), f"the mashed cache key survives in {path.name}"
+
+    def test_no_copy_of_any_pin_exists_to_drift(self):
+        r = self._recipe()
+        assert r.install is not None and r.install.script
+        raw = (r.root / r.install.script).read_text(encoding="utf-8")
+        code = _code_only(raw)
+        for key, ref in r.install.refs.items():
+            # Three rules, and the direction matters for each. An ASSIGNMENT is checked against
+            # CODE (a comment may name the deleted variable while explaining its removal). A VALUE
+            # is checked against RAW, comments included, because a comment carrying a SHA drifts
+            # exactly like an assignment does. A USE is checked against CODE — adversarial review
+            # caught these last two asserting against `raw`, where a variable named only in prose
+            # would have satisfied "the script reads what it is given".
+            assert f"{key.upper()}_SHA=" not in code
+            assert ref.ref not in raw and ref.repo not in raw
+            assert f"HARNESSED_REF_{key.upper()}" in code
+            assert f"HARNESSED_REPO_{key.upper()}" in code
+
+    @pytest.mark.parametrize("key", ["OAKOSS", "BLADER", "AMINBLG"])
+    @pytest.mark.parametrize("half", ["REF", "REPO"])
+    def test_an_absent_ref_aborts_before_it_fetches_anything(self, tmp_path, key, half):
+        """The `:?` contract, executed rather than asserted about — once per variable.
+
+        Six variables, six independent guards. Asserting only one would let five be deleted
+        silently, which is the defect adversarial review found in unit 3's version of this test.
+        Empty-but-set is the case that matters: that is what a manifest/script key-name mismatch
+        actually produces, and `:?` fires on it.
+        """
+        r = self._recipe()
+        assert r.install is not None and r.install.script
+        missing = f"HARNESSED_{half}_{key}"
+        env = {
+            "PATH": os.environ["PATH"],
+            "HOME": str(tmp_path),
+            "HARNESSED_CONFIG_DIR": str(tmp_path / "config"),
+            # Built from the manifest, never typed in — a literal copy of a pin here would be the
+            # same drift defect this unit deletes, relocated into the suite.
+            **emit.install_env(r, harness="claude", mode="host",
+                               config_dir=str(tmp_path / "config"),
+                               cache_dir="", bin_dir=str(tmp_path / "bin"),
+                               home_shim=str(tmp_path / "shim")),
+        }
+        env[missing] = ""
+        proc = subprocess.run(
+            ["bash", str(r.root / r.install.script)],
+            env=env, capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode != 0
+        assert missing in proc.stderr
+        assert not (tmp_path / "config").exists(), "it must not have written anything"
+
+    def test_passes_the_install_lint(self):
+        validate_install_script(self._recipe())
+
+    def test_the_script_declares_no_version_of_its_own(self):
+        """AC-4, through the scanner `harnessed update` itself uses."""
+        r = self._recipe()
+        assert r.install is not None and r.install.script
+        script = r.root / r.install.script
+        literals = update._opaque_pins_from_text(
+            script.read_text(encoding="utf-8"),
+            recipe="mikes-universal-setup", path=script, note="", hold=None,
+        )
+        assert [p.spec for p in literals] == []
+
+    def test_no_ref_is_unresolved_and_none_is_offered_for_bump(self):
+        """AC-2 for this recipe, through the real bucketing rather than a comprehension.
+
+        The resolver answers the way the measured upstreams do: nothing for oakoss (0 releases), a
+        tag for the two Class C repos.
+
+        AC-2's criterion is *unresolved is empty*, and a hold's purpose is to stay out of the bump
+        set — so those are what this asserts. It deliberately does NOT require all three in `held`:
+        `_select` compares a SHA to a tag through `version_key`, which reads leading hex as a
+        number, so `379728b5…` outranks `v2.0.0` and that ref reports `current` instead. That is a
+        real wart (it tells a reader an incomparable pin is up to date) and it is recorded in
+        EVIDENCE rather than pinned here as if it were intended: ordering a SHA against a tag needs
+        GitHub's compare endpoint, which D8 named as a follow-on, not this unit.
+        """
+        def _resolve(_backend, name):
+            if name == "oakoss/agent-skills":
+                return []
+            return [update.Release(version="v2.0.0", published=None)]
+
+        report = update.build_report(
+            [CATALOG / "recipes" / "mikes-universal-setup"],
+            resolve=_resolve, minimum_release_age_minutes=0,
+        )
+        assert [f.pin.name for f in report.unresolved] == []
+        assert [f.pin.name for f in report.stale] == [], (
+            "a held ref must never be OFFERED for bump, whatever the resolver said"
+        )
+        assert report.check_exit_code() == 0
+        # Every ref that DID reach a bucket carries its reason, so whatever the report says about
+        # it, a reader can see why it is frozen.
+        reported = {f.pin.name: f.pin.hold for f in report.held + report.current}
+        for repo in ("oakoss/agent-skills", "blader/humanizer", "AminBlg/SimpleEnglish"):
+            assert reported.get(repo), f"{repo} reached no bucket carrying its hold reason"
+
+    def test_the_archive_url_carries_a_resolvable_variable_not_a_positional(self):
+        """The gap this unit closes, asserted as a property of the script.
+
+        `_mutable_archive_ref` PASSES THROUGH a positional parameter (`$2`) because the ref is not
+        knowable from the URL line. While the script hid its refs behind `fetch()`'s `$2`, the gate
+        neither rejected nor PROVED this recipe's pins — it declined to look. Building the URL at
+        the call site puts a named variable in the archive line, which the gate resolves against
+        `install.refs`. The negative control that proves the gate now bites is the sibling test.
+        """
+        r = self._recipe()
+        assert r.install is not None and r.install.script
+        raw = (r.root / r.install.script).read_text(encoding="utf-8")
+        for line in raw.splitlines():
+            if "/archive/" not in line or line.lstrip().startswith("#"):
+                continue
+            assert "$2" not in line and "${2}" not in line, (
+                f"an archive URL built from a positional parameter is invisible to the pin "
+                f"gate: {line.strip()!r}"
+            )
+            assert "HARNESSED_REF_" in line, (
+                f"an archive URL must name the ref variable so the gate can resolve it: "
+                f"{line.strip()!r}"
+            )
+
+
+class TestTheArchiveGateNowBitesOnANamedRef:
+    """The negative control for the change mikes-universal-setup's install.sh makes.
+
+    Claiming "the gate now PROVES these pins" is worthless without showing the gate can still fail
+    on this line shape. A positional parameter passes through unexamined; a NAMED variable is
+    resolved against `install.refs:` and fails closed when it cannot be shown immutable.
+    """
+
+    ARCHIVE = 'curl -fsSL "https://github.com/${{HARNESSED_REPO_X}}/archive/{ref}.tar.gz" -o a.tgz\n'
+
+    def _recipe_with(self, tmp_path, name, ref_expr, declared: str):
+        return _recipe(
+            tmp_path, name,
+            install=f"install:\n  script: install.sh\n{declared}",
+            script_body=self.ARCHIVE.format(ref=ref_expr),
+        )
+
+    def test_a_positional_parameter_is_still_a_pass_through(self, tmp_path):
+        """Documented behaviour, asserted so the contrast below is meaningful rather than asserted.
+
+        This is why the migration moved URL construction to the call site: while the ref hid behind
+        `$2`, the gate declined to look, and a correctly-pinned recipe and a floating one were
+        indistinguishable to it.
+        """
+        r = self._recipe_with(tmp_path, "positional", "$2", "")
+        validate_install_script(r)  # must not raise — and proves nothing about the ref
+
+    def test_a_named_ref_with_no_declaration_fails_closed(self, tmp_path):
+        r = self._recipe_with(tmp_path, "undeclared", "${HARNESSED_REF_X}", "")
+        with pytest.raises(PinValidationError, match="HARNESSED_REF_X"):
+            validate_install_script(r)
+
+    def test_a_named_ref_declared_as_a_commit_passes(self, tmp_path):
+        sha = "deadbeef" * 5
+        r = self._recipe_with(
+            tmp_path, "declared", "${HARNESSED_REF_X}",
+            f"  refs:\n    x:\n      repo: o/r\n      ref: {sha}\n",
+        )
+        validate_install_script(r)
+
+    def test_a_script_assignment_still_beats_the_manifest(self, tmp_path):
+        """Shell precedence, not author intent — the #352 lesson, re-asserted on the ARCHIVE gate.
+
+        A local assignment shadows the exported env for everything after it, so a manifest tag must
+        not bless a script that reassigns the variable to a branch.
+        """
+        sha = "deadbeef" * 5
+        r = _recipe(
+            tmp_path, "shadowed",
+            install=f"install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n      ref: {sha}\n",
+            script_body=(
+                'HARNESSED_REF_X=main\n'
+                + self.ARCHIVE.format(ref="${HARNESSED_REF_X}")
+            ),
+        )
+        with pytest.raises(PinValidationError, match="main"):
+            validate_install_script(r)
+
+
+class TestPhase3ClosesAC2AcrossTheCatalog:
+    """The epic-level tally AC-2 actually asks for, which no single unit could assert before.
+
+    "All six declared refs end with a resolver outcome or an explicit hold naming its class" is a
+    CROSS-RECIPE criterion. Units 1-3 each asserted their own recipe, so a broken or narrowly
+    scoped test in any of them would have been caught by nothing. mikes-universal-setup completes
+    the set, so the sweep lands here.
+    """
+
+    def _all_refs(self):
+        out = []
+        for manifest in sorted((CATALOG / "recipes").glob("*/recipe.yaml")):
+            r = load_recipe(manifest.parent, strict=True)
+            if r.install and r.install.refs:
+                out.extend((r.name, key, ref) for key, ref in r.install.refs.items())
+        return out
+
+    def test_the_catalog_declares_exactly_the_six_refs_phase_3_migrated(self):
+        """A guard on the sweep, not a target.
+
+        A sweep that silently found zero refs would satisfy every other assertion in this class
+        vacuously. Six is what §1 Family B measured after REVISION 14 struck hyperpowers: caveman,
+        superpowers, gstack, and mikes-universal-setup's three.
+        """
+        refs = self._all_refs()
+        assert len(refs) == 6, f"expected Family B's six refs, found {[(n, k) for n, k, _ in refs]}"
+
+    def test_every_declared_ref_is_pinned_immutably(self):
+        for name, key, ref in self._all_refs():
+            assert re.fullmatch(r"[0-9a-f]{40}", ref.ref) or re.match(r"v?\d+\.", ref.ref), (
+                f"{name}/{key}: {ref.ref!r} is neither a full SHA nor a version tag"
+            )
+
+    def test_every_held_ref_states_a_class(self):
+        """"Held" alone is not a stated reason — AC-2 says so explicitly."""
+        for name, key, ref in self._all_refs():
+            if ref.hold is None:
+                continue   # resolvable, which AC-2 accepts as the other outcome
+            assert "structural" in ref.hold.lower() or "policy" in ref.hold.lower(), (
+                f"{name}/{key} is held without naming its class: {ref.hold!r}"
+            )
+
+    # The upstreams that publish NOTHING a resolver can return — measured 2026-08-09, §1 Family B.
+    # Both are Class B and both must therefore be held; every other ref's upstream publishes
+    # releases, so a resolver can answer for it.
+    NO_RELEASES = ("garrytan/gstack", "oakoss/agent-skills")
+
+    def test_no_declared_ref_anywhere_in_the_catalog_is_unresolved(self):
+        """AC-2's literal criterion — "resolvable OR held" — over every recipe at once.
+
+        The resolver answers the way the MEASURED upstreams answer: nothing for the two repos that
+        publish no releases and no tags, a release for everything else. Rigging it to answer nothing
+        for all six would be a harsher test of the wrong thing — it would indict caveman and
+        superpowers, which are Class A and carry no hold precisely because they ARE resolvable, and
+        the failure would be the fixture's, not the catalog's.
+
+        Scoped to REF-derived pins by `pin.key`, which `discover_pins` sets only for `install.refs`
+        entries — otherwise this also sweeps every `tools:` pin, which this fixture cannot answer
+        for either.
+        """
+        def _resolve(_backend, name):
+            if name in self.NO_RELEASES:
+                return []
+            return [update.Release(version="v9.9.9", published=None)]
+
+        report = update.build_report(
+            sorted(p.parent for p in (CATALOG / "recipes").glob("*/recipe.yaml")),
+            resolve=_resolve,
+            minimum_release_age_minutes=0,
+        )
+        offenders = [f"{f.pin.recipe}/{f.pin.key}" for f in report.unresolved if f.pin.key]
+        assert offenders == []
+
+    def test_a_ref_whose_upstream_publishes_nothing_is_held_not_unresolved(self):
+        """The other half, so the test above cannot pass by the resolver being generous.
+
+        Both Class B refs must survive an upstream that answers nothing — that is what STRUCTURAL
+        means, and it is the property #329's unit 3 had to fix `build_report` to deliver.
+        """
+        report = update.build_report(
+            sorted(p.parent for p in (CATALOG / "recipes").glob("*/recipe.yaml")),
+            resolve=lambda _b, name: [] if name in self.NO_RELEASES else [
+                update.Release(version="v9.9.9", published=None)
+            ],
+            minimum_release_age_minutes=0,
+        )
+        held = {f.pin.name for f in report.held}
+        for repo in sorted(self.NO_RELEASES):
+            assert repo in held, f"{repo} publishes nothing and must be HELD, never unresolved"
+
+
 class TestRawDownloadsAreIntegrityAnchored:
     """bd harnessed-8px.13 — a PIN IS NOT INTEGRITY.
 
@@ -893,14 +1275,25 @@ class TestRawDownloadsAreIntegrityAnchored:
     asset can be replaced and a tag can be re-pointed, and https protects transit, not the artifact.
     So any install.sh that downloads a raw archive must anchor it to CONTENT somehow.
 
-    TWO anchors are accepted, deliberately:
+    THREE anchors are accepted, deliberately:
 
       * a sha256 of the artifact, verified before extraction
-      * a content-addressed URL — a full 40-hex git commit SHA (mikes-universal-setup)
+      * a content-addressed URL — a full 40-hex git commit SHA written in the script
+      * a full 40-hex commit SHA supplied to the script by `install.refs:` (#329 Phase 3)
 
-    The second is not a loophole. A commit SHA pins the tree cryptographically, and demanding a
-    tarball sha256 there would be actively worse: GitHub has changed archive compression before, so
-    the bytes are not stable over time and a byte hash would break builds for a non-event.
+    The commit-SHA anchors are not a loophole. A commit SHA pins the tree cryptographically, and
+    demanding a tarball sha256 there would be actively worse: GitHub has changed archive compression
+    before, so the bytes are not stable over time and a byte hash would break builds for a
+    non-event.
+
+    The THIRD anchor exists because this gate was a literal-scanner, and #329 Phase 3 moves pins out
+    of install.sh into the manifest. That is the THIRD gate in this epic to prove a property by
+    finding a literal in the script and then report a correctly-pinned recipe as broken once the
+    literal moved — after the clone gate (#352) and the `git fetch` gate (#355). The class is worth
+    naming: *a gate that reads the script alone cannot see a pin the manifest now owns.* The anchor
+    is still CONTENT, not intent — a ref declared as a version TAG does not qualify, and
+    `test_a_manifest_ref_that_is_a_TAG_is_not_an_anchor` is the negative control that proves this
+    check can still fail.
 
     This matters more since bd harnessed-8px.21.3: the install cache is now SHARED across stacks and
     persistent, so an unverified artifact is reused rather than refetched.
@@ -920,6 +1313,71 @@ class TestRawDownloadsAreIntegrityAnchored:
             self.DOWNLOADS_TO_FILE.search(p.read_text(encoding="utf-8")) for p in self._scripts()
         ), "no install.sh matched the download detector — the pattern has probably drifted"
 
+    def _anchored_by_a_manifest_commit_ref(self, script_path) -> bool:
+        """True when every ref the script CONSUMES is declared in the manifest as a commit SHA.
+
+        Fails closed in both directions that matter: a recipe declaring no refs is not anchored by
+        this route, and a recipe whose consumed ref is a version tag is not either — a tag can be
+        re-pointed, which is exactly the content-vs-intent distinction this class exists to hold.
+        """
+        recipe = load_recipe(script_path.parent, strict=True)
+        refs = (recipe.install.refs if recipe.install else {}) or {}
+        # CODE, not raw text. A ref named only in a comment is not consumed by anything, and
+        # counting it would let a script mention `HARNESSED_REF_X` in prose while downloading from
+        # a mutable URL — an unanchored artifact wearing an anchor's label, then reused out of the
+        # shared persistent cache. Found by adversarial review, which noted this file already drew
+        # the comment-vs-code distinction for its NEGATIVE assertions and not for its positive ones.
+        body = _code_only(script_path.read_text(encoding="utf-8"))
+        consumed = [r for k, r in refs.items() if f"HARNESSED_REF_{k.upper()}" in body]
+        return bool(consumed) and all(
+            re.fullmatch(r"[0-9a-f]{40}", r.ref) for r in consumed
+        )
+
+    def test_a_manifest_ref_that_is_a_TAG_is_not_an_anchor(self, tmp_path):
+        """The negative control. A pin is not integrity — that is this class's whole thesis — so
+        the manifest route must accept a COMMIT, never merely a version."""
+        tagged = _recipe(
+            tmp_path, "tagged",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     "      ref: v1.2.3\n"),
+            script_body='curl -fsSL "https://github.com/$X/archive/${HARNESSED_REF_X}.tar.gz" -o a.tgz\n',
+        )
+        assert not self._anchored_by_a_manifest_commit_ref(tagged.root / "install.sh")
+
+    def test_a_ref_named_only_in_a_COMMENT_is_not_an_anchor(self, tmp_path):
+        """The path neither original control exercised, and the one that fails OPEN.
+
+        A script that merely mentions the variable in prose consumes nothing. If that counted, a
+        recipe could download from a mutable URL and still be waved through as content-addressed —
+        and since bd harnessed-8px.21.3 the install cache is shared and persistent, so the
+        unverified artifact would be reused rather than refetched.
+        """
+        sha = "deadbeef" * 5
+        commented = _recipe(
+            tmp_path, "commented",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     f"      ref: {sha}\n"),
+            script_body=(
+                "# provenance: this content comes from HARNESSED_REF_X\n"
+                'curl -fsSL "https://github.com/o/r/archive/main.tar.gz" -o a.tgz\n'
+            ),
+        )
+        assert not self._anchored_by_a_manifest_commit_ref(commented.root / "install.sh")
+
+    def test_a_manifest_ref_that_is_a_COMMIT_is_an_anchor(self, tmp_path):
+        # A hex SHA with letters in it, deliberately: an all-digit scalar is parsed by YAML as an
+        # INTEGER, and 40 zeros is additionally falsy, which `_parse_install_refs` reports as an
+        # empty ref rather than as the value written. That is a diagnostic wart, not this test's
+        # subject — using a realistic SHA keeps this control aimed at the anchor rule.
+        sha = "deadbeef" * 5
+        pinned = _recipe(
+            tmp_path, "pinned",
+            install=("install:\n  script: install.sh\n  refs:\n    x:\n      repo: o/r\n"
+                     f"      ref: {sha}\n"),
+            script_body='curl -fsSL "https://github.com/$X/archive/${HARNESSED_REF_X}.tar.gz" -o a.tgz\n',
+        )
+        assert self._anchored_by_a_manifest_commit_ref(pinned.root / "install.sh")
+
     def test_every_raw_download_is_anchored(self):
         unanchored = []
         for p in self._scripts():
@@ -927,6 +1385,8 @@ class TestRawDownloadsAreIntegrityAnchored:
             if not self.DOWNLOADS_TO_FILE.search(body):
                 continue
             if self.SHA256_VERIFY.search(body) or self.COMMIT_SHA.search(body):
+                continue
+            if self._anchored_by_a_manifest_commit_ref(p):
                 continue
             unanchored.append(p.parent.name)
         assert not unanchored, (
