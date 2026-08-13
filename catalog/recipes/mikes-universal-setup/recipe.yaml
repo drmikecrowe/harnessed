@@ -44,16 +44,46 @@ rules:
 #      See README.md for the full provenance table and the outstanding LICENSE-notice obligations.
 install:
   script: install.sh
-  # Keys the host content cache; changes whenever a pinned SHA in install.sh changes (bump the two
-  # together, after a human diff review — see `hold` below).
-  cache: "oak0283bed3-hum1b485648-ste379728b5"
-  # The HOLD, machine-readable (bd harnessed-c5t) — was a comment here until the field existed, and
-  # a comment is not something `harnessed update` can read.
+  # The RECIPE-WIDE hold (bd harnessed-c5t). Kept alongside the per-ref holds below because its
+  # reason is orthogonal to any ref's CLASS: it is about what this content IS, not about whether an
+  # upstream publishes releases. It is also the floor — a ref added later without its own `hold:`
+  # is still held rather than silently bumpable.
   hold: >-
     skill content: a skill is agent instructions executed with the agent's full tool permissions,
     so a compromised upgrade is prompt injection, not a CVE — no scanner in the osv/trivy/grype
-    family vets it. Bump the SHAs in install.sh (and the cache key above) only after a human has
-    read the diff of the new content.
+    family vets it. Bump a ref below only after a human has read the diff of the new content.
+  # The pins, as DATA, in ONE place (Phase 3 of #329). They used to be three `*_SHA=` assignments in
+  # install.sh plus a hand-mashed cache key that truncated all three to 10 hex and drifted
+  # independently of every one of them. `install.cache` is now DERIVED from these refs (sha256 of
+  # the canonical `key=repo@ref` rendering, first 16 hex); declaring it as well is a schema error,
+  # not a precedence rule.
+  #
+  # Every ref carries its OWN `hold:` naming its CLASS, because acceptance here is per REF and these
+  # three are not all the same kind (#329 AC-2, §1 Family B, measured 2026-08-09):
+  #   * oakoss  — Class B. Upstream publishes no releases and no tags, so no resolver has anything
+  #     to return. STRUCTURAL: lifting the policy would change nothing.
+  #   * blader, aminblg — Class C. Releases exist and the resolver CAN order the pinned SHA against
+  #     them, but every tag postdates the pinned commit, so no tag re-expresses the shipped tree.
+  #     POLICY, in D8's words, quoted rather than paraphrased.
+  refs:
+    oakoss:
+      repo: oakoss/agent-skills
+      ref: 0283bed313563d5677a0838f4bf921b03296cf6c
+      hold: >-
+        structural, not policy: upstream publishes no releases and no tags, so there is no version
+        for a resolver to return and no policy to lift — a commit SHA is the only available pin.
+    blader:
+      repo: blader/humanizer
+      ref: 1b48564898e999219882660237fde01bf4843a0f
+      hold: >-
+        policy (D8): SHA-pinned by design; the nearest tag is a content change, not a re-expression
+        of this commit.
+    aminblg:
+      repo: AminBlg/SimpleEnglish
+      ref: 379728b51981b6d2ee1de0f201164483a9648972
+      hold: >-
+        policy (D8): SHA-pinned by design; the nearest tag is a content change, not a re-expression
+        of this commit.
 
 # Fetched by install.sh — the capability test verifies they landed (the assembler cannot see what an
 # install script installs, so we declare it). Keep in sync with install.sh.
