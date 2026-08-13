@@ -120,6 +120,41 @@ class TestShippedImagesCacheTheirDownloads:
                 )
 
 
+class TestEveryCacheMountRestoresWhatItTook:
+    """The convention that keeps the artifact-level assertion below from ever failing again.
+
+    Podman leaves the PARENTS of a cache-mount target owned by root in the committed layer, so the
+    fix is per-mount, not once at the end: an end-of-file chown left `npm install -g` (the layer
+    right after the FIRST cache mount, which creates ~/.npm) failing with EACCES. Each cache-mount
+    RUN therefore restores ownership immediately, and this test is what makes the next one added
+    follow suit — a reviewer will not remember, and the build only complains at the next layer that
+    happens to create a dot-directory.
+    """
+
+    def _instructions(self, body: str) -> list[str]:
+        joined = re.sub(r"\\\n", " ", body)
+        return [ln.strip() for ln in joined.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+
+    def test_each_cache_mounted_run_is_followed_by_the_restore(self):
+        for path in _shipped_image_dockerfiles():
+            instrs = self._instructions(path.read_text(encoding="utf-8"))
+            for i, instr in enumerate(instrs):
+                if not (instr.upper().startswith("RUN ") and "type=cache" in instr):
+                    continue
+                after = instrs[i + 1:i + 3]
+                assert after[:1] == ["USER root"], (
+                    f"{path.name}: cache-mounted RUN is not followed by the ownership restore "
+                    f"(found {after[:1]}) — see the comment on the first restore in the base"
+                )
+                # Either spelling of the user: the base owns the ARG, the harness images FROM it
+                # cannot see it and say `harnessed` outright.
+                assert re.match(
+                    r"RUN chown (\$\{USERNAME\}:\$\{USERNAME\}|harnessed:harnessed) "
+                    r"(/home/\$\{USERNAME\}|/home/harnessed) ",
+                    after[1],
+                ), f"{path.name}: expected the chown restore after `USER root`, found {after[1]}"
+
+
 class TestThePnpmStoreIsNeverCached:
     """The store looks like the obvious thing to cache. Caching it ships a broken image.
 

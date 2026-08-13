@@ -20,6 +20,15 @@ RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=
     --mount=type=cache,target=/home/harnessed/.cache/pnpm,id=harnessed-pnpm-meta,uid=1000,gid=1000,sharing=shared \
     --mount=type=cache,target=/home/harnessed/.cache/uv,id=harnessed-uv,uid=1000,gid=1000,sharing=shared \
     mise use -g npm:@openai/codex && mise install
+# Restore what the cache mount took: podman leaves the PARENTS of a cache-mount target owned by root
+# in the committed layer, and the very next layer here creates ~/.codex as the image user. Same
+# defect, same fix, as the first restore in Dockerfile.harnessed-base — read the comment there.
+#
+# Literal `harnessed`, not ${USERNAME}: that ARG belongs to the BASE's build and does not carry
+# across FROM into this one, where it would expand to the empty string and make `USER` fail.
+USER root
+RUN chown harnessed:harnessed /home/harnessed /home/harnessed/.cache
+USER harnessed
 
 # Bake the global codex config: ONE remote MCP server → the hatago hub. codex 0.139+ natively
 # supports remote Streamable-HTTP MCP servers — this is the EXACT shape codex itself writes for

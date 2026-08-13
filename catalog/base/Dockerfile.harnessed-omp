@@ -38,6 +38,15 @@ RUN --mount=type=cache,target=/home/harnessed/.cache/mise,id=harnessed-mise,uid=
     : "${OMP_VERSION:?required build-arg is empty or unset — refusing to install an unpinned omp}" && \
     : "${BUN_VERSION:?required build-arg is empty or unset — refusing to install an unpinned bun}" && \
     mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}" "bun@${BUN_VERSION}" && mise install && omp tiny-models download
+# Restore what the cache mount took: podman leaves the PARENTS of a cache-mount target owned by root
+# in the committed layer, and the next layer here creates ~/.omp as the image user. Same defect,
+# same fix, as the first restore in Dockerfile.harnessed-base — read the comment there.
+#
+# Literal `harnessed`, not ${USERNAME}: that ARG belongs to the BASE's build and does not carry
+# across FROM into this one, where it would expand to the empty string and make `USER` fail.
+USER root
+RUN chown harnessed:harnessed /home/harnessed /home/harnessed/.cache
+USER harnessed
 
 # Pre-install the claude-hooks-bridge extension so an omp stack auto-loads it via omp
 # extension discovery (no per-launch -e). Owner-authored npm package (MIT); pinned by
