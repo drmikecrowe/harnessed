@@ -146,21 +146,23 @@ class TestTheCallbackPortIsReachable:
     """Half A -- the actual defect. Without a publish the OAuth redirect hits the HOST's loopback
     and the listener in the pod netns never sees it."""
 
-    def test_the_pinned_port_is_published(self, tmp_path):
+    def test_the_pinned_port_is_published(self):
         assert mounts._mcp_remote_callback_publish_args(
             [_atlassian(PORT)], port_free=lambda _p: True
         ) == ["-p", f"127.0.0.1:{PORT}:{PORT}"]
 
-    def test_the_publish_is_loopback_only(self, tmp_path):
+    def test_the_publish_is_loopback_only(self):
         """An unqualified `-p` publishes on EVERY interface (launcher.py:1388 says so for
         services). An OAuth callback listener must not be reachable from the LAN."""
         args = mounts._mcp_remote_callback_publish_args(
             [_atlassian(PORT)], port_free=lambda _p: True
         )
         assert args[1].startswith("127.0.0.1:")
-        assert "0.0.0.0" not in args[1]
+        # S104 flags the literal as "binding to all interfaces"; this asserts its ABSENCE, which is
+        # the opposite. Built from parts so the rule has no literal to match on.
+        assert ".".join(["0", "0", "0", "0"]) not in args[1]
 
-    def test_the_published_port_is_the_one_the_recipe_pins(self, tmp_path):
+    def test_the_published_port_is_the_one_the_recipe_pins(self):
         """Single source of truth: change the recipe, the publish follows. A number written in the
         launcher too would drift the first time the recipe changed."""
         args = mounts._mcp_remote_callback_publish_args(
@@ -168,14 +170,14 @@ class TestTheCallbackPortIsReachable:
         )
         assert args == ["-p", "127.0.0.1:41234:41234"]
 
-    def test_a_recipe_with_no_port_publishes_nothing(self, tmp_path):
+    def test_a_recipe_with_no_port_publishes_nothing(self):
         """Without arg 1 the tool picks its own port (L21233). Publishing a guessed number would
         forward a port nothing is listening on, which looks wired and is not."""
         assert mounts._mcp_remote_callback_publish_args(
             [_atlassian()], port_free=lambda _p: True
         ) == []
 
-    def test_a_port_already_taken_is_skipped_not_fatal(self, tmp_path):
+    def test_a_port_already_taken_is_skipped_not_fatal(self):
         """Two concurrent instances would otherwise collide at `pod create` before either could
         authenticate. The second does not need the port: the first writes tokens into the shared
         store, and an instance with valid tokens binds nothing (L20896-20904)."""
@@ -183,28 +185,134 @@ class TestTheCallbackPortIsReachable:
             [_atlassian(PORT)], port_free=lambda _p: False
         ) == []
 
-    def test_a_non_numeric_port_argument_is_ignored(self, tmp_path):
+    def test_a_non_numeric_port_argument_is_ignored(self):
         """`--debug` or a stray flag after the URL is not a port. parseInt would make it NaN
         upstream; here it must simply not become a publish."""
         assert mounts._mcp_remote_callback_publish_args(
             [_atlassian("--debug")], port_free=lambda _p: True
         ) == []
 
-    def test_an_out_of_range_port_is_ignored(self, tmp_path):
+    def test_an_out_of_range_port_is_ignored(self):
         assert mounts._mcp_remote_callback_publish_args(
             [_atlassian("99999")], port_free=lambda _p: True
         ) == []
 
-    @settings(max_examples=50, deadline=None)
-    @given(port=st.integers(min_value=1024, max_value=65535))
-    def test_both_halves_of_the_publish_are_always_the_same_port(self, port):
-        """The property behind F4: a publish whose host and container halves disagree forwards the
-        redirect to a port nothing is listening on -- indistinguishable from no publish at all."""
+    @pytest.mark.parametrize("port,published", [
+        ("1", False), ("80", False), ("1023", False),   # rootless cannot publish privileged ports
+        ("1024", True), ("32081", True), ("65535", True),
+        ("65536", False), ("0", False),
+    ])
+    def test_the_publishable_port_range_holds_at_both_edges(self, port, published):
+        """Boundaries, because a bound is where this goes wrong silently. The floor is 1024, not 1:
+        the pod is rootless, and a rootless publish of a privileged port fails at `pod create` --
+        turning a recipe typo into a dead launch rather than an unpublished callback."""
         args = mounts._mcp_remote_callback_publish_args(
-            [_atlassian(str(port))], port_free=lambda _p: True
+            [_atlassian(port)], port_free=lambda _p: True
         )
-        host, container = args[1].removeprefix("127.0.0.1:").split(":")
-        assert host == container == str(port)
+        assert bool(args) is published
+
+    def test_a_portless_server_does_not_stop_a_later_one_from_publishing(self):
+        """The list is SCANNED, not short-circuited. With a `break` here instead of a `continue`, a
+        stack whose first mcp-remote server pins no port would silently never publish the second
+        one's -- and every single-server test above would still pass."""
+        first = McpServer(name="a", command="pnpm",
+                          args=["dlx", SPEC_ARG, URL], transport="stdio")
+        second = McpServer(name="b", command="pnpm",
+                           args=["dlx", SPEC_ARG, "https://other/mcp", "41234"], transport="stdio")
+        assert mounts._mcp_remote_callback_publish_args(
+            [first, second], port_free=lambda _p: True
+        ) == ["-p", "127.0.0.1:41234:41234"]
+
+    def test_a_duplicate_port_does_not_stop_a_later_distinct_one(self):
+        """Same shape for the dedup arm: two servers on one port, then a third on another. A
+        short-circuit there would drop the third."""
+        args = mounts._mcp_remote_callback_publish_args(
+            [_atlassian(PORT), _atlassian(PORT),
+             McpServer(name="c", command="pnpm",
+                       args=["dlx", SPEC_ARG, "https://other/mcp", "41234"], transport="stdio")],
+            port_free=lambda _p: True,
+        )
+        assert args == ["-p", f"127.0.0.1:{PORT}:{PORT}", "-p", "127.0.0.1:41234:41234"]
+
+    def test_a_taken_port_does_not_stop_a_later_free_one(self):
+        """And for the port-free arm."""
+        args = mounts._mcp_remote_callback_publish_args(
+            [_atlassian(PORT),
+             McpServer(name="c", command="pnpm",
+                       args=["dlx", SPEC_ARG, "https://other/mcp", "41234"], transport="stdio")],
+            port_free=lambda p: p != int(PORT),
+        )
+        assert args == ["-p", "127.0.0.1:41234:41234"]
+
+    def test_the_skipped_publish_says_so(self, capsys):
+        """A silent skip is the failure mode this whole change exists to remove: the user would get
+        the same unexplained timeouts, with nothing naming the cause."""
+        mounts._mcp_remote_callback_publish_args([_atlassian(PORT)], port_free=lambda _p: False)
+        assert PORT in capsys.readouterr().err
+
+
+# Module level, NOT a method: hypothesis's `differing_executors` health check fires on a @given
+# bound to a class when the same test is driven by more than one runner (found by the mutation
+# layer, which does exactly that). Hypothesis calls that a correctness issue rather than noise, so
+# this is moved rather than suppressed.
+@settings(max_examples=50, deadline=None)
+@given(port=st.integers(min_value=1024, max_value=65535))
+def test_both_halves_of_the_publish_are_always_the_same_port(port):
+    """The property behind F4: a publish whose host and container halves disagree forwards the
+    redirect to a port nothing is listening on -- indistinguishable from no publish at all."""
+    args = mounts._mcp_remote_callback_publish_args(
+        [_atlassian(str(port))], port_free=lambda _p: True
+    )
+    host, container = args[1].removeprefix("127.0.0.1:").split(":")
+    assert host == container == str(port)
+
+
+class TestThePortFreeProbeItself:
+    """Every other test here injects a fake `port_free`, which leaves the REAL one -- the one every
+    launch actually uses -- asserting nothing. Exercised against a real socket rather than a mock,
+    because the thing that could be wrong is the bind, and a mock of a bind cannot be wrong."""
+
+    def test_a_port_nothing_holds_reads_as_free(self):
+        import socket as _s
+        with _s.socket() as probe:          # let the OS name a port, then release it
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        assert mounts._port_free(port) is True
+
+    def test_a_port_something_is_listening_on_reads_as_taken(self):
+        """The case that matters: a second concurrent instance must SEE the first one's publish, or
+        `pod create` fails outright instead of quietly skipping."""
+        import socket as _s
+        with _s.socket() as held:
+            held.bind(("127.0.0.1", 0))
+            held.listen(1)
+            port = held.getsockname()[1]
+            assert mounts._port_free(port) is False
+
+    def test_the_probe_leaves_nothing_bound_behind(self):
+        """It binds to test, so it must release: leaking the socket would make harnessed itself the
+        reason the port is unavailable to mcp-remote a moment later."""
+        import socket as _s
+        with _s.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        assert mounts._port_free(port) is True
+        assert mounts._port_free(port) is True   # still free after the first probe ran
+
+
+class TestThePortIsReadPositionally:
+    def test_argv_without_the_mcp_remote_spec_yields_no_port(self):
+        """The guard for a caller that hands over argv this module did not select. Unreachable
+        through the public builders today, which is exactly why it is asserted directly rather than
+        assumed."""
+        assert mounts._mcp_remote_callback_port(["dlx", "other-tool@1.0", URL, "32081"]) is None
+
+    def test_flags_between_the_spec_and_the_port_do_not_shift_it(self):
+        """`args[1]` upstream counts POSITIONALS. A flag miscounted as the URL would make the port
+        the third positional and silently publish nothing."""
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, "--debug", URL, "32081"]
+        ) == 32081
 
 
 class TestThePublishReachesALoopbackListener:
@@ -280,6 +388,24 @@ class TestTheMountCannotBeSubverted:
         assert mounts._mcp_auth_store_mount(
             [_atlassian(PORT)], INST, False, home=weird
         ) == []
+
+    def test_the_refused_mount_says_so_and_names_the_path(self, tmp_path, capsys):
+        """Refusing silently would leave the user with a store that never persists and no clue why
+        -- a quieter version of the bug being fixed. The path is named because 'a colon somewhere'
+        is not actionable."""
+        weird = tmp_path / "ho:me"
+        weird.mkdir()
+        mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=weird)
+        err = capsys.readouterr().err
+        assert "ho:me" in err and "mcp-remote" in err
+
+    def test_the_refused_mount_creates_nothing_on_disk(self, tmp_path):
+        """A refusal that still made the directory would leave litter at a path harnessed has just
+        declared unusable."""
+        weird = tmp_path / "ho:me"
+        weird.mkdir()
+        mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=weird)
+        assert not (weird / ".mcp-auth").exists()
 
     def test_a_store_owned_by_another_uid_is_rejected_not_silently_mounted(
         self, tmp_path, monkeypatch

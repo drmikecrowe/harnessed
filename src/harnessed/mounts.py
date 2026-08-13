@@ -482,7 +482,12 @@ def _mcp_remote_callback_port(argv: list[str]) -> int | None:
     if len(positional) < 2 or not positional[1].isdigit():
         return None
     port = int(positional[1])
-    return port if 1 <= port <= 65535 else None
+    # Floor is 1024, not 1: harnessed runs the pod ROOTLESS, and a rootless publish of a privileged
+    # port fails at `pod create` on a default `net.ipv4.ip_unprivileged_port_start=1024`. Skipping a
+    # port that cannot be published is the same policy as skipping one already taken — a launch that
+    # dies because a recipe pinned port 80 would be a worse failure than an unpublished callback.
+    # mcp-remote's own default is 3335 + hash%45816, so this never binds on real pins.
+    return port if 1024 <= port <= 65535 else None
 
 
 def _port_free(port: int) -> bool:
