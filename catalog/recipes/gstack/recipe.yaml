@@ -15,12 +15,35 @@ description: Garry Tan's gstack skill suite (browser automation, design, PDF, �
 #   * system:  `bunx playwright install-deps chromium` needs USER root + apt. It STAYS in the
 #     Dockerfile; declaring it here makes a host launch print the reason and skip it BY NAME.
 #     harnessed never sudos and never mutates the user's system.
-#   * cache:   MUST equal the GSTACK_REF pinned inside install.sh. It keys the host content cache
-#     ($XDG_CACHE_HOME/harnessed/install/gstack/<sha>) and holds the pinned SOURCE only — ./setup's
-#     output must be built against the live config dir, so it is not cached.
+#   * refs:    the pin, as DATA, in ONE place (Phase 3 of #329). It used to be two literals kept in
+#     lockstep by a comment — a `GSTACK_REF=` assignment in install.sh and `install.cache` here —
+#     which is the defect that epic exists to delete. The script now reads
+#     `$HARNESSED_REF_GSTACK` / `$HARNESSED_REPO_GSTACK` from the install env, and `harnessed
+#     update` reads this block. Neither value is repeated in a comment, here or in the script: a
+#     comment copy drifts the same way a shell variable does, only more quietly.
+#   * cache:   DERIVED from `refs:` now (sha256 of `key=repo@ref`, first 16 hex) rather than
+#     declared — declaring both is a schema error, not a precedence rule. It still keys the host
+#     content cache ($XDG_CACHE_HOME/harnessed/install/gstack/<derived>) and still holds the pinned
+#     SOURCE only — ./setup's output must be built against the live config dir, so it is not
+#     cached. Bumping `ref:` moves the derived key, so a fresh cache dir follows automatically
+#     instead of needing a second edit someone has to remember.
+#
+# The `hold:` is STRUCTURAL, not policy, and the difference matters: a policy hold can be lifted by
+# a decision, and this one cannot be lifted by anything. Upstream has published no releases and no
+# tags (measured 2026-08-09), so there is no version string for any resolver to return — a SHA is
+# the only thing there is to pin. caveman and superpowers, by contrast, carry no hold at all: their
+# upstreams publish releases, so AC-2 counts them resolvable. The repo name is deliberately not
+# repeated in this paragraph; it is declared once below, and a comment copy drifts silently.
 install:
   script: install.sh
-  cache: 11de390be1be6849eb9a15f91ff4922dd16c589a
+  refs:
+    gstack:
+      repo: garrytan/gstack
+      ref: 11de390be1be6849eb9a15f91ff4922dd16c589a
+      hold: >-
+        structural, not policy: upstream publishes no releases and no tags, so there is no version
+        for a resolver to return and no policy to lift — a commit SHA is the only available pin.
+        Bump by choosing a newer commit after a diff review.
   system: >-
     gstack drives a headless Chromium and needs Playwright's OS shared libraries
     (`bunx playwright install-deps chromium`), which is an apt install requiring root. Without it
