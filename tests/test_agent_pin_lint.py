@@ -31,6 +31,7 @@ from harnessed.schema import (
     load_agent,
     validate_agent_pin,
 )
+from harnessed.update import discover_agent_pins
 
 REPO = Path(__file__).resolve().parent.parent
 AGENT_DOCKERFILES = REPO / "catalog" / "base"
@@ -508,21 +509,46 @@ class TestAgainstTheRealBodies:
     def test_opencode_passes(self):
         validate_agent_pin("opencode", _body("opencode"), unpinnable={})
 
-    def test_omp_fails_on_an_unpinned_bun_nobody_had_noticed(self):
-        """A6's first real find, and the reason the multi-spec defect mattered.
+    def test_omp_passes_now_that_A5b_has_pinned_its_bun(self):
+        """A5b flipped this. It was `test_omp_fails_on_an_unpinned_bun_nobody_had_noticed`.
 
-        `Dockerfile.harnessed-omp:27` reads `mise use -g "github:can1357/oh-my-pi@${OMP_VERSION}"
-        bun && …`. The `bun` has no version, so it resolves to whatever is current at build time —
-        the same class as bd harnessed-2o9. An earlier version of this test asserted omp PASSED,
-        because the lint stopped after the first spec; adversarial review found both the lint bug
-        and the live defect it was hiding.
-
-        This asserts the CURRENT state. Pinning `bun` changes what the omp image ships, so it is a
-        deliberate decision (which version?) rather than a drive-by fix — the same reason A2 and A3
-        are deferred. When it is pinned, this test flips to asserting a pass.
+        That test asserted the DEFECT — a bare `bun` trailing the pinned oh-my-pi spec, resolving
+        to whatever mise called latest at each build — and its own docstring planted the tripwire:
+        "When it is pinned, this test flips to asserting a pass." This is that flip, and it is the
+        unit's point, not a test weakened to reach green. The negative control below proves the
+        pass is the pin's doing rather than the lint having gone quiet.
         """
-        with pytest.raises(PinValidationError, match="bun"):
-            validate_agent_pin("omp", _body("omp"), unpinnable={})
+        validate_agent_pin("omp", _body("omp"), unpinnable={})
+
+    def test_the_bun_guard_still_bites_if_the_version_is_taken_away(self):
+        """Negative control for the flip above, mutating the REAL body rather than a fixture.
+
+        A flipped assertion is the one shape that passes equally well when the guard has stopped
+        working, so the guard is re-proved against the same text it just accepted: remove only the
+        version from the bun token and the same call must raise again.
+        """
+        crippled = _body("omp").replace('"bun@${BUN_VERSION}"', "bun")
+        assert crippled != _body("omp"), "the bun token was not found — this control tested nothing"
+        # Both halves of the message, not just `bun`: a bare `bun` match constrains only that SOME
+        # complaint mentioned bun, never which one, and the crippled body carries the word four more
+        # times (the guard's `BUN_VERSION`, two comments). No other bun-naming complaint is
+        # reachable for THIS body today — every quote in it is balanced, so the unbalanced-quote
+        # report cannot fire — which is the point: what the loose pattern failed to pin down was the
+        # FUTURE, where a reworded lint or an edited body keeps it green while it has stopped
+        # proving that the missing version is the objection. Raised by CodeRabbit on PR #362; the
+        # file's own idiom for this error is `match="no version"`, and naming the token as well is
+        # strictly stronger than either.
+        with pytest.raises(PinValidationError, match=r"acquires 'bun' with no version"):
+            validate_agent_pin("omp", crippled, unpinnable={})
+
+    def test_omp_declares_no_unpinnable_escape_hatch(self):
+        """bun is pinnable, so it must be PINNED, not conceded.
+
+        `unpinnable:` suppresses the ABSENT error by COUNT, so an entry added here would excuse any
+        future unversioned acquisition in this Dockerfile silently — the laundering
+        `validate_agent_pin`'s own docstring refuses.
+        """
+        assert load_agent("omp", root=REPO / "catalog").unpinnable == {}
 
 class TestA3TheClaudePinIsWiredEndToEnd:
     """A3 — a pin is only real if the value the MANIFEST declares is the value the INSTALLER gets.
@@ -637,3 +663,158 @@ class TestA3TheClaudePinIsWiredEndToEnd:
         shipped = {p.name.removeprefix("Dockerfile.harnessed-")
                    for p in AGENT_DOCKERFILES.glob("Dockerfile.harnessed-*")}
         assert shipped == {"base", "antigravity", "claude", "codex", "omp", "opencode"}
+
+
+class TestA5bTheOmpBunPinIsWiredEndToEnd:
+    """A5b — the same question A3 asked of claude, asked of the acquisition A6 found by running.
+
+    The lint above proves a version is VISIBLE beside `bun`. It cannot prove that version is the
+    one the manifest owns: `ARG BUN_VERSION` that nothing reads, plus a hardcoded `bun@1.3.14` in
+    the RUN line, satisfies every assertion in `TestAgainstTheRealBodies` while the manifest owns
+    nothing at all. Raised by the `spec-intent` review of this unit's SPEC, before implementation.
+    """
+
+    def _omp_agent(self):
+        return load_agent("omp", root=REPO / "catalog")
+
+    def test_every_declared_build_arg_has_a_matching_ARG_in_the_dockerfile(self):
+        """The pin's value can only reach the install if the two names agree."""
+        body = _body("omp")
+        declared = set(self._omp_agent().build_args)
+        args = set(re.findall(r"^ARG\s+([A-Za-z_]\w*)", body, re.MULTILINE))
+        assert "BUN_VERSION" in declared, "omp declares no BUN_VERSION — A5b did not land"
+        assert declared <= args, f"declared but never received: {sorted(declared - args)}"
+
+    def test_no_ARG_carries_a_default(self):
+        """`ARG BUN_VERSION=<default>` would be a second pin, free to drift from the manifest —
+        and invisible to `harnessed update`, which reads the manifest and nothing else."""
+        for line in _body("omp").splitlines():
+            if re.match(r"^ARG\s+(OMP|BUN)_VERSION", line):
+                assert "=" not in line, f"ARG carries a default: {line!r}"
+
+    def _omp_acquire_command(self) -> str:
+        """The shipped RUN command that acquires the tools, continuations joined, `RUN ` stripped.
+
+        Read from the Dockerfile at test time rather than copied here: a copy agrees with the
+        author's reading forever, including after the original changes.
+        """
+        joined = re.sub(r"\\\s*\n\s*", " ", _body("omp"))
+        matches = [ln[4:] for ln in joined.splitlines()
+                   if ln.startswith("RUN ") and "mise use" in ln]
+        assert len(matches) == 1, f"expected exactly one acquiring RUN, found {len(matches)}"
+        # Strip RUN's own options (`--mount=type=cache,…`). These are Dockerfile syntax, not shell:
+        # handing them to `bash -c` makes it parse them as its own flags and exit 2 with a usage
+        # dump, which is how this helper failed the first time it ran. Only LEADING `--` tokens are
+        # dropped, so an option cannot swallow part of the command.
+        command = matches[0]
+        while command.startswith("--"):
+            _, _, command = command.partition(" ")
+            command = command.lstrip()
+        assert not command.startswith("-"), f"RUN options were not fully stripped: {command[:40]!r}"
+        assert "mise use" in command, f"the acquiring command was lost: {command[:40]!r}"
+        return command
+
+    def _acquire_with(self, tmp_path, bun_version, omp_version="9.9.9"):
+        """Run the REAL shipped command with `mise` and `omp` swapped for recorders.
+
+        SUBSTITUTION, named as one: a POSIX shell stands in for the Docker build and env vars stand
+        in for `ARG` substitution, so this cannot prove Docker's own ARG semantics. It CAN prove
+        what the shipped shell text does with the values it is given — which is the half that
+        carries the pin, and the half a string match cannot reach. Nothing is downloaded: both
+        binaries are replaced, so no network and no real mise are touched.
+        """
+        recorder = tmp_path / "argv.txt"
+        for name in ("mise", "omp"):
+            stub = tmp_path / name
+            stub.write_text('#!/bin/bash\nprintf "%s\\n" "$@" >> "$RECORDER"\n')
+            stub.chmod(0o755)
+        proc = subprocess.run(
+            ["bash", "-c", self._omp_acquire_command()],
+            env={"PATH": f"{tmp_path}:{os.environ['PATH']}", "RECORDER": str(recorder),
+                 "OMP_VERSION": omp_version, "BUN_VERSION": bun_version},
+            capture_output=True, text=True,
+        )
+        return proc, recorder
+
+    def test_the_declared_version_is_the_one_bun_is_acquired_at(self, tmp_path):
+        """The property AC-10 needs: the MANIFEST's value is what the build acquires.
+
+        Asserted by RUNNING the Dockerfile's own command, so a behaviour-preserving rewrite
+        (different quoting, a reordered argument list) still passes while a rewrite that hardcodes
+        the version — the exact hole `spec-intent` found in this spec's first draft — fails.
+        """
+        declared = self._omp_agent().build_args["BUN_VERSION"]
+        proc, recorder = self._acquire_with(tmp_path, declared)
+        assert proc.returncode == 0, proc.stderr
+        assert f"bun@{declared}" in recorder.read_text().split()
+
+    def test_a_different_manifest_value_changes_what_is_acquired(self, tmp_path):
+        """The other half of "the manifest owns it", and the half that fails on a hardcoded literal.
+
+        A test that only asserts the CURRENT value passes just as well when the RUN line spells
+        that value out and ignores the ARG entirely. Feeding a value the tree does not contain is
+        what tells those two apart.
+        """
+        proc, recorder = self._acquire_with(tmp_path, "0.0.1-not-in-the-tree")
+        assert proc.returncode == 0, proc.stderr
+        acquired = recorder.read_text().split()
+        assert "bun@0.0.1-not-in-the-tree" in acquired
+        assert not any(a.startswith("bun@1.") for a in acquired), \
+            f"a hardcoded bun version survived the substitution: {acquired}"
+
+    def test_the_version_literal_is_written_exactly_once(self):
+        """AC-11, reaching the `hold:` reason as well as comments and `description:`.
+
+        A hold that explains itself by restating the number is the same drift AC-11 forbids
+        elsewhere, in the one field whose whole job is prose. Raised by the `spec-intent` review:
+        the spec's first draft bound comments and `description:` only, so a hold reason naming
+        `1.3.14` would have satisfied every other assertion here.
+        """
+        agent = self._omp_agent()
+        value = agent.build_args["BUN_VERSION"]
+        manifest = (REPO / "catalog" / "agents" / "omp" / "agent.yaml").read_text(encoding="utf-8")
+        assert manifest.count(value) == 1, f"{value!r} is written more than once in agent.yaml"
+        assert value not in agent.build_arg_holds["BUN_VERSION"], "the hold reason restates the pin"
+        assert value not in _body("omp"), "the Dockerfile restates the pin"
+
+    @pytest.mark.parametrize("name", ["BUN_VERSION", "OMP_VERSION"])
+    def test_an_empty_version_fails_the_build_instead_of_installing_an_unpinned_tool(
+            self, tmp_path, name):
+        """The worst failure available here, and it must fail CLOSED.
+
+        `ARG` with no default yields the empty string on any build path that omits `--build-arg`,
+        and MEASURED on 2026-08-13: `mise latest 'bun@'` and `mise latest
+        'github:can1357/oh-my-pi@'` BOTH answer with the newest release rather than failing. mise
+        reads an empty version as "newest", so an omitted build-arg would install an unpinned tool
+        behind a manifest that reads as pinned — this unit's own defect, by a different route.
+
+        WHAT THIS TEST HOLDS: given an empty value, the command exits non-zero and mise is never
+        reached. WHAT IT CANNOT HOLD: what a future mise does with `bun@` — and it does not need
+        to. The guard is justified by "empty is not a pin", not by the measurement above, which is
+        recorded as a dated observation precisely so nobody removes the guard after re-reading it.
+
+        BOTH names are covered, not just the one this unit introduced: they are acquired by a
+        single command, and a guard over half of it reads as complete while the other half floats.
+        """
+        proc, recorder = self._acquire_with(
+            tmp_path, "" if name == "BUN_VERSION" else "1.2.3",
+            omp_version="" if name == "OMP_VERSION" else "9.9.9",
+        )
+        assert proc.returncode != 0, f"an empty {name} was accepted — the build would install unpinned"
+        assert not recorder.exists(), "mise ran despite the guard"
+        assert name in proc.stderr
+
+    def test_the_pin_is_held_rather_than_offered_for_bump(self):
+        """S4 — `harnessed update` must LIST it and never offer it.
+
+        Held, not specced: both resolver paths for bun were measured on 2026-08-13 and both fail —
+        mise's registry maps it to `core:bun` (no aqua/ubi/github repo, so `mise_repo` returns None
+        and no release date can be had), and oven-sh/bun tags releases `bun-vX.Y.Z`, which
+        `version_key` orders BELOW a bare `X.Y.Z`. The second is why a `spec:` here would be worse
+        than none: it would never offer a bump and never say why.
+        """
+        pins = {p.name: p for p in discover_agent_pins(REPO / "catalog" / "agents" / "omp")}
+        assert "BUN_VERSION" in pins, "the pin is invisible to `harnessed update`"
+        pin = pins["BUN_VERSION"]
+        assert pin.current == self._omp_agent().build_args["BUN_VERSION"]
+        assert pin.hold, "an unheld pin with no spec would be reported as a resolver failure"
