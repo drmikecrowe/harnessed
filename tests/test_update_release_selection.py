@@ -397,10 +397,46 @@ class TestPrereleasesAreNotOfferedAsBumps:
             "a hyphenated GitHub tag is a real release and must survive"
 
     def test_the_codex_shaped_case_end_to_end(self, tmp_path):
-        """A pin at a real release is never offered an alpha, however much newer the alpha is."""
+        """A pin at a real release is never offered an alpha, however much newer the alpha is.
+
+        THROUGH `resolve_releases`, and with the alpha NEWER than the stable release. The first
+        version of this test did neither: it fed `_releases(...)` straight to `build_report`, which
+        bypasses the npm branch entirely, and its alphas were `0.146.x` — BELOW the `0.147.0` it
+        asserted. So it passed because the stable release was simply highest, not because anything
+        was filtered, and it went on passing with the filter deleted. Proven by removing
+        `is_semver_prerelease` from the npm branch and watching this test stay green.
+
+        Raised by CodeRabbit on PR #364, and it was right: a regression test that survives the
+        removal of the code it guards is not a regression test.
+
+        THE ALPHA MUST ALSO BE MATURE. The first attempt at this fix dated it 2 days old, and it
+        STILL survived the mutant — because the minimum-release-age gate skipped the alpha before
+        the prerelease rule ever mattered, so a second, unrelated mechanism was quietly supplying
+        the right answer. Two guards in series, and the test could not tell which one was doing the
+        work. `0.148.0-alpha.1` is therefore older than the age window AND higher than every stable
+        version here: the filter is the only thing standing between it and the report.
+        """
+        packument = json.dumps({
+            "versions": {
+                "0.139.0": {}, "0.147.0": {},
+                "0.148.0-alpha.1": {},                  # newer AND mature: only the filter excludes it
+                "0.146.0-alpha.3.1-linux-x64": {},      # the pair that used to crash the sort
+                "0.146.0-alpha.3.1": {},
+            },
+            "time": {
+                "created": "2026-01-01T00:00:00Z",
+                "0.139.0": _ago(70).isoformat(),
+                "0.147.0": _ago(30).isoformat(),
+                "0.148.0-alpha.1": _ago(40).isoformat(),
+                "0.146.0-alpha.3.1-linux-x64": _ago(50).isoformat(),
+                "0.146.0-alpha.3.1": _ago(50).isoformat(),
+            },
+        })
         report, _ = _report(
             tmp_path, "npm:@openai/codex@0.139.0",
-            _releases(("0.147.0", 30), ("0.146.0-alpha.3.1-linux-x64", 2), ("0.146.0-alpha.3.1", 2)),
+            lambda backend, name: update.resolve_releases(
+                backend, name, fetch=lambda url: packument,
+            ),
         )
         offered = [f.latest for f in report.stale]
         assert offered == ["0.147.0"], f"a prerelease reached the report: {offered}"

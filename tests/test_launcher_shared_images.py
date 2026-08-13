@@ -89,3 +89,76 @@ def test_build_images_cmd_passes_the_agent_pins_the_dockerfile_demands(monkeypat
         assert flag in claude and value in claude, f"missing --build-arg {value}"
     # The base is not an agent image; agent pins must not leak onto it.
     assert "--build-arg" not in by_image[launcher._BASE_IMAGE]
+
+
+@pytest.mark.parametrize("harness", ["claude", "codex", "omp"])
+def test_build_agent_image_passes_the_declared_pins_to_podman(monkeypatch, harness):
+    """The OTHER build path, asserted at the same argv boundary. Raised by CodeRabbit on PR #364.
+
+    The test above covers `_build_images_cmd`; the tests at the top of this file call
+    `_build_agent_image` but only record its `-t` target, so nothing asserted that THIS path carries
+    the pins. That asymmetry is not hypothetical — it is exactly the shape of the defect the test
+    above documents, where one path had the flags and the other silently did not, and the guard in
+    the Dockerfile was what eventually exposed it.
+
+    Parametrised over every agent that declares `build_args`, so a sixth agent with a pin is covered
+    the day it lands rather than the day someone remembers.
+    """
+    from harnessed.schema import load_agent
+
+    builds: list[list[str]] = []
+
+    def fake_run(cmd, check=True, **kwargs):
+        if len(cmd) > 2 and cmd[1] == "build":
+            builds.append(list(cmd))
+        return None
+
+    monkeypatch.setattr(launcher, "_SHARED_IMAGES_BUILT", set())
+    patch_all(monkeypatch, "_run", fake_run)
+    monkeypatch.setattr(launcher, "_ensure_extra_tools", lambda: None)
+    monkeypatch.setattr(launcher, "_corp_proxy_ca_secret_args", lambda: [])
+    patch_all(monkeypatch, "_image_exists", lambda rt, image: True)   # base present: build the agent only
+
+    launcher._build_agent_image("podman", harness)
+
+    assert len(builds) == 1, f"expected one build, got {len(builds)}"
+    cmd = builds[0]
+    agent = load_agent(harness)
+    expected = launcher._agent_build_arg_flags(agent)
+    assert expected, f"{harness} declares no build_args — this parametrisation would assert nothing"
+    for flag, value in zip(expected[::2], expected[1::2], strict=True):
+        assert flag in cmd and value in cmd, f"{harness}: missing --build-arg {value}"
+    # The VALUE, not just the name: `--build-arg NAME={'value': '1.2.3'}` is the mapping-form
+    # mistake `_agent_build_arg_flags` exists to prevent, and it would satisfy a name-only check.
+    for name, value in agent.build_args.items():
+        assert f"{name}={value}" in cmd, f"{harness}: {name} did not reach podman as NAME=value"
+
+
+def test_an_unpinnable_agent_contributes_no_build_arg(monkeypatch):
+    """antigravity declares `unpinnable:` and no `build_args`, so its build carries no pin flags.
+
+    The complement of the test above: `unpinnable:` is a declared NON-pin, and there is no value to
+    pass. If one ever appeared on the command line it would mean the two namespaces had been merged,
+    which is the confusion `_parse_agent_build_args` raises on.
+    """
+    from harnessed.schema import load_agent
+
+    builds: list[list[str]] = []
+
+    def fake_run(cmd, check=True, **kwargs):
+        if len(cmd) > 2 and cmd[1] == "build":
+            builds.append(list(cmd))
+        return None
+
+    monkeypatch.setattr(launcher, "_SHARED_IMAGES_BUILT", set())
+    patch_all(monkeypatch, "_run", fake_run)
+    monkeypatch.setattr(launcher, "_ensure_extra_tools", lambda: None)
+    monkeypatch.setattr(launcher, "_corp_proxy_ca_secret_args", lambda: [])
+    patch_all(monkeypatch, "_image_exists", lambda rt, image: True)
+
+    launcher._build_agent_image("podman", "antigravity")
+
+    agent = load_agent("antigravity")
+    assert agent.unpinnable, "antigravity declares nothing unpinnable — this test asserts nothing"
+    assert not agent.build_args
+    assert "--build-arg" not in builds[0]

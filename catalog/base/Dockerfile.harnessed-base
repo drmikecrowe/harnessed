@@ -233,11 +233,19 @@ RUN chown ${USERNAME}:${USERNAME} /home/${USERNAME}
 USER ${USERNAME}
 
 # FAIL IN THE BASE BUILD, WHERE THE FAULT IS, rather than in whichever child image happens to touch
-# $HOME first. A one-line assertion converts "the claude installer cannot mkdir" into "harnessed-base
-# produced an unusable home directory", which is the difference between debugging the wrong image and
-# the right one. Costs one layer with no content.
-RUN test -w "/home/${USERNAME}" || { \
-      echo "harnessed-base: /home/${USERNAME} is not writable by ${USERNAME} — every derived image will fail on its first \$HOME write" >&2; \
+# $HOME first. This converts "the claude installer cannot mkdir" into "harnessed-base produced an
+# unusable home directory", which is the difference between debugging the wrong image and the right
+# one. Costs one layer with no content.
+#
+# PERFORMS THE OPERATION rather than testing a proxy for it. `test -w` checks the write bit only,
+# and creating an entry in a directory needs write AND SEARCH — so a home left `d-w-------` passes
+# `test -w` and still fails the `mkdir ~/.claude` that the claude image opens with. A gate that
+# green-lights the exact failure it was added to catch is worse than no gate, because it also
+# certifies. Raised by CodeRabbit on PR #364. The probe is the real thing: create a directory as
+# ${USERNAME}, in $HOME, and remove it — leaving no content behind either way.
+RUN probe="/home/${USERNAME}/.harnessed-home-probe" && \
+    mkdir "$probe" && rmdir "$probe" || { \
+      echo "harnessed-base: ${USERNAME} cannot create a directory in /home/${USERNAME} — every derived image will fail on its first \$HOME write" >&2; \
       ls -ld "/home/${USERNAME}" >&2; \
       exit 1; \
     }
