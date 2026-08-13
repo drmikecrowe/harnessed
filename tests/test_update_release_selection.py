@@ -250,3 +250,97 @@ class TestPinConventionSurvivesSelection:
             tmp_path, "pulumi@3.251.0", _releases(("v3.254.0", 2), ("v3.253.0", 11)),
         )
         assert report.stale[0].skipped_newer == "3.254.0"
+
+
+class TestVersionKeyIsATotalOrder:
+    """`version_key` must order ANY two version strings, because `_select` SORTS with it.
+
+    Found by pinning `npm:@openai/codex` (A2). `_select` wraps its filter comparison in
+    `except TypeError: continue`, so an unorderable version is merely skipped there — but the
+    `candidates.sort(...)` two lines later has no such guard, and sorting compares candidates
+    against EACH OTHER. Two versions can each compare fine against `current` and still be mutually
+    incomparable, which is precisely what crashed `harnessed update --check`:
+
+        TypeError: '<' not supported between instances of 'int' and 'str'
+
+    The real pair, live on the npm registry: `0.146.0-alpha.3.1-linux-x64` and `0.146.0-alpha.3.1`
+    key to `('alpha', 3, '1-linux-x64')` and `('alpha', 3, 1)`, which differ in TYPE at index 2.
+    """
+
+    # The shapes @openai/codex actually publishes, read from the registry on 2026-08-13.
+    REAL_SHAPES = (
+        "0.41.0-alpha.1", "0.99.0-alpha.20-darwin-arm64", "0.99.0-darwin-arm64",
+        "0.146.0-alpha.3.1-linux-x64", "0.146.0-alpha.3.1", "0.139.0", "0.147.0",
+    )
+
+    def test_every_pair_of_real_published_shapes_is_orderable(self):
+        """The property, not the one pair: any two keys compare, whatever the mix of shapes."""
+        for a in self.REAL_SHAPES:
+            for b in self.REAL_SHAPES:
+                assert isinstance(update.version_key(a) < update.version_key(b), bool)
+
+    def test_the_exact_pair_that_crashed_the_updater(self):
+        """And it orders them the semver way round: `1` is numeric, `1-linux-x64` is not."""
+        pair = ["0.146.0-alpha.3.1-linux-x64", "0.146.0-alpha.3.1"]
+        assert sorted(pair, key=update.version_key) == [
+            "0.146.0-alpha.3.1", "0.146.0-alpha.3.1-linux-x64",
+        ]
+
+    def test_a_numeric_identifier_sorts_below_an_alphanumeric_one(self):
+        """Semver §11.4.3, and the reason the fix is a tagged tuple rather than `str()` everywhere.
+
+        Coercing both sides to `str` would also stop the crash, and would silently order `10`
+        before `9`. That is the classic version-sort bug this module's own docstring warns about.
+        """
+        assert update.version_key("1.0.0-1") < update.version_key("1.0.0-alpha")
+
+    def test_numeric_prerelease_identifiers_still_compare_numerically(self):
+        assert update.version_key("1.0.0-alpha.9") < update.version_key("1.0.0-alpha.10")
+
+    def test_a_prerelease_still_sorts_below_its_own_release(self):
+        """The property the original code got right, and the fix must not break."""
+        assert update.version_key("1.0.0-alpha.1") < update.version_key("1.0.0")
+
+
+class TestPrereleasesAreNotOfferedAsBumps:
+    """npm listed EVERY version, so an alpha could be offered as an upgrade.
+
+    The github branch already refuses this in so many words — "A prerelease or draft is not a
+    shipped version, so offering one would bump the catalog onto an unreleased build" — but the npm
+    branch returned the whole `versions` map. Pinning codex made it live: the newest npm version of
+    `@openai/codex` is a platform-suffixed alpha, so a bump would have moved the catalog onto
+    `0.146.0-alpha.3.1-linux-x64`. Crashing was the loud symptom; THIS was the quiet one.
+    """
+
+    def test_npm_omits_prereleases(self):
+        payload = json.dumps({
+            "versions": {"1.0.0": {}, "1.1.0-alpha.1": {}, "1.1.0": {}},
+            "time": {"created": "2026-01-01T00:00:00Z",
+                     "1.0.0": "2026-01-02T00:00:00Z",
+                     "1.1.0-alpha.1": "2026-01-03T00:00:00Z",
+                     "1.1.0": "2026-01-04T00:00:00Z"},
+        })
+        rels = update.resolve_releases("npm", "x", fetch=lambda url: payload)
+        assert [r.version for r in rels] == ["1.0.0", "1.1.0"], "an alpha is not a shipped version"
+
+    def test_a_release_with_build_metadata_is_still_a_release(self):
+        """`+build` is NOT a prerelease under semver — only a `-` suffix is. Excluding it would
+        quietly drop real shipped versions, which is the opposite failure."""
+        # `+build-7` carries a HYPHEN inside the build metadata, so a naive `"-" in version` test
+        # would drop it. That naive test is the obvious implementation and it is wrong; this case
+        # is here to keep it out.
+        payload = json.dumps({
+            "versions": {"1.0.0": {}, "1.1.0+build-7": {}},
+            "time": {"1.0.0": "2026-01-02T00:00:00Z", "1.1.0+build-7": "2026-01-04T00:00:00Z"},
+        })
+        rels = update.resolve_releases("npm", "x", fetch=lambda url: payload)
+        assert [r.version for r in rels] == ["1.0.0", "1.1.0+build-7"]
+
+    def test_the_codex_shaped_case_end_to_end(self, tmp_path):
+        """A pin at a real release is never offered an alpha, however much newer the alpha is."""
+        report, _ = _report(
+            tmp_path, "npm:@openai/codex@0.139.0",
+            _releases(("0.147.0", 30), ("0.146.0-alpha.3.1-linux-x64", 2), ("0.146.0-alpha.3.1", 2)),
+        )
+        offered = [f.latest for f in report.stale]
+        assert offered == ["0.147.0"], f"a prerelease reached the report: {offered}"

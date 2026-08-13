@@ -92,6 +92,15 @@ def version_key(v: str) -> tuple:
     Handles the three shapes the catalog actually contains: plain `1.2.3`, a `v`-prefixed tag, and
     a prerelease suffix. A prerelease sorts BELOW its own release (`1.0.0-rc.1` < `1.0.0`) — PEP
     440 and semver agree on that, and getting it backwards would offer a downgrade as an upgrade.
+
+    THE KEY MUST BE TOTAL, not merely correct on the pairs anyone had in mind. `_select` SORTS with
+    it, and while the filter comparison there is wrapped in `except TypeError`, the sort is not —
+    nor could it usefully be, since sorting compares candidates against each other rather than
+    against the pin. Two versions can each order fine against `current` and still be mutually
+    incomparable. That is not hypothetical: pinning `npm:@openai/codex` (A2) crashed
+    `harnessed update --check` on the live registry, where `0.146.0-alpha.3.1-linux-x64` and
+    `0.146.0-alpha.3.1` produced `('alpha', 3, '1-linux-x64')` and `('alpha', 3, 1)` — differing in
+    TYPE at index 2, so `'<'` raised between `int` and `str`.
     """
     s = v.strip().lstrip("vV")
     base, _, pre = s.partition("-")
@@ -102,8 +111,27 @@ def version_key(v: str) -> tuple:
     # A release has no prerelease suffix and must outrank one: (parts, 1) > (parts, 0, ...).
     if not pre:
         return (tuple(parts), 1)
-    pre_parts = tuple(int(c) if c.isdigit() else c for c in re.split(r'[.+]', pre))
+    # Each identifier is TAGGED with its own kind, so every element is an (int, int|str) pair and
+    # two elements can always be compared: the tags decide first, and the payloads are only ever
+    # compared against a payload of the same kind. The tag order is semver §11.4.3 — "numeric
+    # identifiers always have lower precedence than non-numeric identifiers".
+    #
+    # Deliberately NOT `str(c)` for everything, which also stops the crash: that would order "10"
+    # before "9" lexicographically, the exact version-sort bug `_NUM_RE` exists to avoid two lines
+    # up. Stopping the exception is easy; keeping the order right is the point.
+    pre_parts = tuple((0, int(c)) if c.isdigit() else (1, c) for c in re.split(r'[.+]', pre))
     return (tuple(parts), 0, pre_parts)
+
+
+def is_prerelease(version: str) -> bool:
+    """True for a semver prerelease (`1.1.0-alpha.1`), false for build metadata (`1.1.0+build-7`).
+
+    The distinction is not pedantry: `+build` marks a SHIPPED release, so treating it as a
+    prerelease would silently drop real versions from every bump offer — the opposite failure, and
+    a quieter one. Semver §9/§10: the prerelease is a `-` suffix on the version CORE, and build
+    metadata (which may itself contain `-`) begins at the first `+`.
+    """
+    return "-" in version.partition("+")[0]
 
 
 @dataclass(frozen=True)
@@ -431,9 +459,17 @@ def resolve_releases(backend: str, name: str, *,
             times = data.get("time", {})
             # Cross `versions` with `time`: `time` also holds `created`/`modified` (the only
             # non-version keys npm emits), and can retain entries for versions since unpublished.
+            #
+            # Prereleases excluded, for the reason `_github_releases` already gives: a prerelease
+            # is not a shipped version, so offering one would bump the catalog onto an unreleased
+            # build. npm returned the whole `versions` map, so that rule held for GitHub-backed
+            # pins and silently did not for npm-backed ones. Pinning codex made it live — the
+            # newest npm version of `@openai/codex` is a platform-suffixed alpha, so the first
+            # `harnessed update` would have offered `0.146.0-alpha.3.1-linux-x64` as an upgrade.
             return [
                 Release(version=v, published=_parse_ts(times.get(v)))
                 for v in data.get("versions", {})
+                if not is_prerelease(v)
             ]
         if backend == "pipx":
             data = json.loads(fetch(f"https://pypi.org/pypi/{name}/json"))
