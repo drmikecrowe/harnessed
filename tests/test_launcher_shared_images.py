@@ -52,3 +52,38 @@ def test_build_images_cmd_registers_what_it_built(podman, monkeypatch):
     launcher._build_base_image("podman")
     launcher._build_agent_image("podman", "claude")
     assert podman == [launcher._BASE_IMAGE, launcher._CLAUDE_IMAGE]
+
+
+def test_build_images_cmd_passes_the_agent_pins_the_dockerfile_demands(monkeypatch):
+    """The claude image is an agent image on BOTH build paths, so both owe it its `--build-arg`s.
+
+    Regression: this path built Dockerfile.harnessed-claude from a hardcoded pair list with no
+    build args at all. That was invisible until the Dockerfile grew a guard refusing an empty
+    CLAUDE_VERSION — then `harnessed build` (no stack) died on the guard while the per-stack path,
+    which goes through `_build_agent_image`, stayed green.
+    """
+    from harnessed.schema import load_agent
+
+    builds: list[list[str]] = []
+
+    def fake_run(cmd, check=True, **kwargs):
+        if len(cmd) > 2 and cmd[1] == "build":
+            builds.append(list(cmd))
+        return None
+
+    monkeypatch.setattr(launcher, "_SHARED_IMAGES_BUILT", set())
+    patch_all(monkeypatch, "_run", fake_run)
+    monkeypatch.setattr(launcher, "_ensure_extra_tools", lambda: None)
+    monkeypatch.setattr(launcher, "_corp_proxy_ca_secret_args", lambda: [])
+    patch_all(monkeypatch, "_image_exists", lambda rt, image: False)
+
+    launcher._build_images_cmd("podman")
+
+    by_image = {cmd[cmd.index("-t") + 1]: cmd for cmd in builds}
+    expected = launcher._agent_build_arg_flags(load_agent("claude"))
+    assert expected, "the claude agent declares no build_args — this test would assert nothing"
+    claude = by_image[launcher._CLAUDE_IMAGE]
+    for flag, value in zip(expected[::2], expected[1::2]):
+        assert flag in claude and value in claude, f"missing --build-arg {value}"
+    # The base is not an agent image; agent pins must not leak onto it.
+    assert "--build-arg" not in by_image[launcher._BASE_IMAGE]
