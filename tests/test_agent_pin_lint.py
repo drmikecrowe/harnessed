@@ -485,9 +485,32 @@ class TestAgainstTheRealBodies:
     through the migration would prove nothing about it.
     """
 
-    def test_codex_is_currently_absent(self):
-        with pytest.raises(PinValidationError, match="no version"):
-            validate_agent_pin("codex", _body("codex"), unpinnable={})
+    def test_codex_passes_now_that_A2_has_pinned_it(self):
+        """A2 flipped this. It was `test_codex_is_currently_absent`, asserting the DEFECT.
+
+        This class's docstring planted the tripwire: "when codex and claude get pinned, the two
+        xfail-shaped assertions below start failing and must be flipped to `validate_agent_pin(...)`
+        passing." claude was the first (A3); this is the second and last, so every one of the five
+        agent bodies now passes the lint — which is the precondition A6 part 2 was waiting on.
+        """
+        validate_agent_pin("codex", _body("codex"), unpinnable={})
+
+    def test_the_codex_guard_still_bites_if_the_version_is_taken_away(self):
+        """Negative control for the flip above, mutating the REAL body rather than a fixture.
+
+        A flipped assertion passes just as well when the guard has stopped working, so the guard is
+        re-proved against the same text it just accepted. Matched on the full absent-version wording
+        rather than the bare package name: a loose match constrains only that SOME complaint named
+        codex, never which one (the tightening CodeRabbit raised on PR #362).
+        """
+        crippled = _body("codex").replace('"npm:@openai/codex@${CODEX_VERSION}"', "npm:@openai/codex")
+        assert crippled != _body("codex"), "the codex token was not found — this control tested nothing"
+        with pytest.raises(PinValidationError, match=r"acquires 'npm:@openai/codex' with no version"):
+            validate_agent_pin("codex", crippled, unpinnable={})
+
+    def test_codex_declares_no_unpinnable_escape_hatch(self):
+        """codex is pinnable — npm takes a version — so it must be PINNED, not conceded."""
+        assert load_agent("codex", root=REPO / "catalog").unpinnable == {}
 
     def test_claude_passes_now_that_A3_has_pinned_it(self):
         """A3 flipped this. It was `test_claude_is_currently_absent`, asserting the DEFECT.
@@ -818,3 +841,122 @@ class TestA5bTheOmpBunPinIsWiredEndToEnd:
         pin = pins["BUN_VERSION"]
         assert pin.current == self._omp_agent().build_args["BUN_VERSION"]
         assert pin.hold, "an unheld pin with no spec would be reported as a resolver failure"
+
+
+class TestA2TheCodexPinIsWiredEndToEnd:
+    """A2 — the last unpinned agent CLI, and the one that unblocks A6 part 2.
+
+    Same question A3 and A5b asked: the lint proves a version is VISIBLE, never that it is the
+    version the MANIFEST owns. An `ARG CODEX_VERSION` nothing reads, plus a hardcoded
+    `npm:@openai/codex@0.139.0`, would satisfy every assertion in `TestAgainstTheRealBodies`
+    while the manifest owned nothing.
+    """
+
+    def _codex_agent(self):
+        return load_agent("codex", root=REPO / "catalog")
+
+    def test_every_declared_build_arg_has_a_matching_ARG_in_the_dockerfile(self):
+        body = _body("codex")
+        declared = set(self._codex_agent().build_args)
+        args = set(re.findall(r"^ARG\s+([A-Za-z_]\w*)", body, re.MULTILINE))
+        assert "CODEX_VERSION" in declared, "codex declares no CODEX_VERSION — A2 did not land"
+        assert declared <= args, f"declared but never received: {sorted(declared - args)}"
+
+    def test_no_ARG_carries_a_default(self):
+        """`ARG CODEX_VERSION=<default>` would be a second pin, invisible to `harnessed update`."""
+        for line in _body("codex").splitlines():
+            if re.match(r"^ARG\s+CODEX_VERSION", line):
+                assert "=" not in line, f"ARG carries a default: {line!r}"
+
+    def _codex_install_command(self) -> str:
+        """The shipped RUN that installs the CLI, continuations joined, `RUN ` and options stripped.
+
+        Read from the Dockerfile at test time, never copied here: a copy agrees with the author's
+        reading forever, including after the original changes.
+        """
+        joined = re.sub(r"\\\s*\n\s*", " ", _body("codex"))
+        matches = [ln[4:] for ln in joined.splitlines()
+                   if ln.startswith("RUN ") and "mise use" in ln]
+        assert len(matches) == 1, f"expected exactly one installing RUN, found {len(matches)}"
+        command = matches[0]
+        while command.startswith("--"):            # RUN's own `--mount=` options are not shell
+            _, _, command = command.partition(" ")
+            command = command.lstrip()
+        assert not command.startswith("-"), f"RUN options were not fully stripped: {command[:40]!r}"
+        return command
+
+    def _install_with(self, tmp_path, codex_version):
+        """Execute the REAL shipped command with `mise` swapped for a recorder.
+
+        SUBSTITUTION, named as one: a POSIX shell stands in for the Docker build and an env var for
+        `ARG` substitution, so it cannot prove Docker's ARG semantics. It CAN prove what the shipped
+        text does with the value it is handed, which is the half that carries the pin. No network:
+        mise is replaced, so nothing is downloaded.
+        """
+        recorder = tmp_path / "argv.txt"
+        stub = tmp_path / "mise"
+        stub.write_text('#!/bin/bash\nprintf "%s\\n" "$@" >> "$RECORDER"\n')
+        stub.chmod(0o755)
+        proc = subprocess.run(
+            ["bash", "-c", self._codex_install_command()],
+            env={"PATH": f"{tmp_path}:{os.environ['PATH']}", "RECORDER": str(recorder),
+                 "CODEX_VERSION": codex_version},
+            capture_output=True, text=True,
+        )
+        return proc, recorder
+
+    def test_the_declared_version_is_the_one_codex_is_installed_at(self, tmp_path):
+        declared = self._codex_agent().build_args["CODEX_VERSION"]
+        proc, recorder = self._install_with(tmp_path, declared)
+        assert proc.returncode == 0, proc.stderr
+        assert f"npm:@openai/codex@{declared}" in recorder.read_text().split()
+
+    def test_a_different_manifest_value_changes_what_is_installed(self, tmp_path):
+        """The half that fails on a hardcoded literal: feed a value the tree does not contain."""
+        proc, recorder = self._install_with(tmp_path, "0.0.1-not-in-the-tree")
+        assert proc.returncode == 0, proc.stderr
+        installed = recorder.read_text().split()
+        assert "npm:@openai/codex@0.0.1-not-in-the-tree" in installed
+        assert not any(a.startswith("npm:@openai/codex@0.1") for a in installed), \
+            f"a hardcoded codex version survived the substitution: {installed}"
+
+    def test_an_empty_version_fails_the_build_instead_of_installing_an_unpinned_cli(self, tmp_path):
+        """"Empty is not a pin" — the class found on claude (c77dd60) and again on omp (#362).
+
+        WHAT THIS TEST HOLDS: given an empty value the command exits non-zero and mise is never
+        reached. WHAT IT CANNOT HOLD: what a future mise does with a trailing `@` — and it need not.
+        """
+        proc, recorder = self._install_with(tmp_path, "")
+        assert proc.returncode != 0, "an empty CODEX_VERSION was accepted — the build would float"
+        assert not recorder.exists(), "mise ran despite the guard"
+        assert "CODEX_VERSION" in proc.stderr
+
+    def test_the_version_literal_is_written_exactly_once(self):
+        """AC-11: no free-text copy of a pin, in the manifest or the Dockerfile."""
+        agent = self._codex_agent()
+        value = agent.build_args["CODEX_VERSION"]
+        manifest = (REPO / "catalog" / "agents" / "codex" / "agent.yaml").read_text(encoding="utf-8")
+        assert manifest.count(value) == 1, f"{value!r} is written more than once in agent.yaml"
+        assert value not in _body("codex"), "the Dockerfile restates the pin"
+
+    def test_the_pin_is_RESOLVABLE_rather_than_held(self):
+        """codex is the counter-example to claude and omp: npm IS a backend the resolver knows.
+
+        So this pin must be offered for bump, not held. A `hold:` here would be the laundering the
+        plan's three-outcome vocabulary exists to prevent — and it would also defeat the reason the
+        value was chosen (deliberately behind npm's latest, so `harnessed update` has something real
+        to offer).
+
+        Keyed on `.key`, not `.name`: for a RESOLVABLE pin those differ, and the difference is the
+        feature. `name` carries what to ask the backend (`@openai/codex`), while `key` carries the
+        ARG name. A held pin has no spec, so its `name` IS the ARG name — which is why the omp test
+        above can index by `name` and this one cannot. Asserting through `.key` reads the same for
+        both kinds.
+        """
+        pins = {p.key: p for p in discover_agent_pins(REPO / "catalog" / "agents" / "codex")}
+        assert "CODEX_VERSION" in pins, "the pin is invisible to `harnessed update`"
+        pin = pins["CODEX_VERSION"]
+        assert pin.name == "@openai/codex", f"npm would be asked about {pin.name!r}"
+        assert pin.current == self._codex_agent().build_args["CODEX_VERSION"]
+        assert not pin.hold, "codex is resolvable via npm — holding it would suppress a real bump"
+        assert pin.backend == "npm", f"expected the npm backend, got {pin.backend!r}"

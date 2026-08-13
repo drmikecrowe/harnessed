@@ -250,3 +250,193 @@ class TestPinConventionSurvivesSelection:
             tmp_path, "pulumi@3.251.0", _releases(("v3.254.0", 2), ("v3.253.0", 11)),
         )
         assert report.stale[0].skipped_newer == "3.254.0"
+
+
+class TestVersionKeyIsATotalOrder:
+    """`version_key` must order ANY two version strings, because `_select` SORTS with it.
+
+    Found by pinning `npm:@openai/codex` (A2). `_select` wraps its filter comparison in
+    `except TypeError: continue`, so an unorderable version is merely skipped there — but the
+    `candidates.sort(...)` two lines later has no such guard, and sorting compares candidates
+    against EACH OTHER. Two versions can each compare fine against `current` and still be mutually
+    incomparable, which is precisely what crashed `harnessed update --check`:
+
+        TypeError: '<' not supported between instances of 'int' and 'str'
+
+    The real pair, live on the npm registry: `0.146.0-alpha.3.1-linux-x64` and `0.146.0-alpha.3.1`
+    key to `('alpha', 3, '1-linux-x64')` and `('alpha', 3, 1)`, which differ in TYPE at index 2.
+    """
+
+    # The shapes @openai/codex actually publishes, read from the registry on 2026-08-13.
+    REAL_SHAPES = (
+        "0.41.0-alpha.1", "0.99.0-alpha.20-darwin-arm64", "0.99.0-darwin-arm64",
+        "0.146.0-alpha.3.1-linux-x64", "0.146.0-alpha.3.1", "0.139.0", "0.147.0",
+    )
+
+    def test_every_pair_of_real_published_shapes_is_orderable(self):
+        """The property, not the one pair: any two keys compare, whatever the mix of shapes."""
+        for a in self.REAL_SHAPES:
+            for b in self.REAL_SHAPES:
+                assert isinstance(update.version_key(a) < update.version_key(b), bool)
+
+    def test_the_exact_pair_that_crashed_the_updater(self):
+        """And it orders them the semver way round: `1` is numeric, `1-linux-x64` is not."""
+        pair = ["0.146.0-alpha.3.1-linux-x64", "0.146.0-alpha.3.1"]
+        assert sorted(pair, key=update.version_key) == [
+            "0.146.0-alpha.3.1", "0.146.0-alpha.3.1-linux-x64",
+        ]
+
+    def test_a_numeric_identifier_sorts_below_an_alphanumeric_one(self):
+        """Semver §11.4.3, and the reason the fix is a tagged tuple rather than `str()` everywhere.
+
+        Coercing both sides to `str` would also stop the crash, and would silently order `10`
+        before `9`. That is the classic version-sort bug this module's own docstring warns about.
+        """
+        assert update.version_key("1.0.0-1") < update.version_key("1.0.0-alpha")
+
+    def test_numeric_prerelease_identifiers_still_compare_numerically(self):
+        assert update.version_key("1.0.0-alpha.9") < update.version_key("1.0.0-alpha.10")
+
+    def test_a_prerelease_still_sorts_below_its_own_release(self):
+        """The property the original code got right, and the fix must not break."""
+        assert update.version_key("1.0.0-alpha.1") < update.version_key("1.0.0")
+
+    def test_a_unicode_digit_int_cannot_parse_does_not_raise(self):
+        """"Always returns a comparable key" has to mean ALWAYS, including for junk.
+
+        `isdigit()` is True for `²` and `①` while `int()` rejects both, so the natural spelling
+        raised ValueError out of a function whose contract forbids it — and out through
+        `current_key = version_key(pin.current)` in `_select`, which is not inside its try/except.
+        A pin value is manifest text, so the reachable case is a typo rather than a registry.
+        `isdecimal()` is true for exactly the set `int()` accepts. Raised as an unconfirmed hunch by
+        adversarial review; confirmed here before fixing.
+        """
+        for junk in ["1.0.0-²", "1.0.0-①", "1.0.0-٣"]:
+            assert isinstance(update.version_key(junk), tuple)
+        # Still ordered, not merely non-raising: a non-decimal digit is an ALPHANUMERIC identifier
+        # under semver, so it outranks a numeric one.
+        assert update.version_key("1.0.0-1") < update.version_key("1.0.0-²")
+
+    def test_build_metadata_is_ignored_for_precedence(self):
+        """Semver §10: build metadata MUST NOT affect precedence.
+
+        Found by adversarial review of 1855c05, and it was a defect this change INTRODUCED by
+        halving the concept: `is_semver_prerelease` strips `+…` first and reads `1.1.0+build-7` as the
+        release it is, while `version_key` still partitioned the RAW string on `-`, so the same
+        input became a prerelease with `pre="7"`. Two functions in one module disagreeing about
+        what a prerelease is, one of them newly written — which is how the pair drifts.
+        """
+        assert update.version_key("1.1.0+build-7") == update.version_key("1.1.0")
+        assert update.version_key("1.0.0-rc.1+build") == update.version_key("1.0.0-rc.1")
+
+    def test_a_pin_at_a_build_metadata_version_is_not_offered_its_own_bare_version(self, tmp_path):
+        """The user-visible consequence, asserted end-to-end rather than on the key.
+
+        With `1.1.0+build-7` mis-read as a prerelease it sorted BELOW `1.1.0`, so `_select` offered
+        the bare version as an upgrade — a no-op bump under semver §10, presented as progress.
+        """
+        report, _ = _report(
+            tmp_path, "npm:thing@1.1.0+build-7", _releases(("1.1.0", 30)),
+        )
+        assert [f.latest for f in report.stale] == [], "offered a same-precedence version as a bump"
+
+
+class TestPrereleasesAreNotOfferedAsBumps:
+    """npm listed EVERY version, so an alpha could be offered as an upgrade.
+
+    The github branch already refuses this in so many words — "A prerelease or draft is not a
+    shipped version, so offering one would bump the catalog onto an unreleased build" — but the npm
+    branch returned the whole `versions` map. Pinning codex made it live: the newest npm version of
+    `@openai/codex` is a platform-suffixed alpha, so a bump would have moved the catalog onto
+    `0.146.0-alpha.3.1-linux-x64`. Crashing was the loud symptom; THIS was the quiet one.
+    """
+
+    def test_npm_omits_prereleases(self):
+        payload = json.dumps({
+            "versions": {"1.0.0": {}, "1.1.0-alpha.1": {}, "1.1.0": {}},
+            "time": {"created": "2026-01-01T00:00:00Z",
+                     "1.0.0": "2026-01-02T00:00:00Z",
+                     "1.1.0-alpha.1": "2026-01-03T00:00:00Z",
+                     "1.1.0": "2026-01-04T00:00:00Z"},
+        })
+        rels = update.resolve_releases("npm", "x", fetch=lambda url: payload)
+        assert [r.version for r in rels] == ["1.0.0", "1.1.0"], "an alpha is not a shipped version"
+
+    def test_a_release_with_build_metadata_is_still_a_release(self):
+        """`+build` is NOT a prerelease under semver — only a `-` suffix is. Excluding it would
+        quietly drop real shipped versions, which is the opposite failure."""
+        # `+build-7` carries a HYPHEN inside the build metadata, so a naive `"-" in version` test
+        # would drop it. That naive test is the obvious implementation and it is wrong; this case
+        # is here to keep it out.
+        payload = json.dumps({
+            "versions": {"1.0.0": {}, "1.1.0+build-7": {}},
+            "time": {"1.0.0": "2026-01-02T00:00:00Z", "1.1.0+build-7": "2026-01-04T00:00:00Z"},
+        })
+        rels = update.resolve_releases("npm", "x", fetch=lambda url: payload)
+        assert [r.version for r in rels] == ["1.0.0", "1.1.0+build-7"]
+
+    def test_github_releases_are_NOT_filtered_by_the_semver_test(self):
+        """The reuse hazard, held by a test rather than only by a docstring.
+
+        `is_semver_prerelease` reads a SEMVER string. A GitHub tag may carry a `-` for reasons that
+        have nothing to do with prereleases — this repo's own bun pin resolves against tags spelled
+        `bun-vX.Y.Z` — so applying it to `_github_releases` would silently drop every release. That
+        branch has its own, better test: the API's `prerelease` flag, set by the publisher instead
+        of inferred from punctuation. This asserts the two stay separate.
+        """
+        assert update.is_semver_prerelease("bun-v1.3.14"), \
+            "the semver reading of a bun tag is 'prerelease' — which is exactly why github must not use it"
+        payload = json.dumps([
+            {"tag_name": "bun-v1.3.14", "published_at": "2026-05-13T03:48:28Z",
+             "prerelease": False, "draft": False},
+            {"tag_name": "bun-v1.3.13", "published_at": "2026-04-20T08:07:57Z",
+             "prerelease": False, "draft": False},
+        ])
+        rels = update.resolve_releases("github", "oven-sh/bun", fetch=lambda url: payload)
+        assert [r.version for r in rels] == ["bun-v1.3.14", "bun-v1.3.13"], \
+            "a hyphenated GitHub tag is a real release and must survive"
+
+    def test_the_codex_shaped_case_end_to_end(self, tmp_path):
+        """A pin at a real release is never offered an alpha, however much newer the alpha is.
+
+        THROUGH `resolve_releases`, and with the alpha NEWER than the stable release. The first
+        version of this test did neither: it fed `_releases(...)` straight to `build_report`, which
+        bypasses the npm branch entirely, and its alphas were `0.146.x` — BELOW the `0.147.0` it
+        asserted. So it passed because the stable release was simply highest, not because anything
+        was filtered, and it went on passing with the filter deleted. Proven by removing
+        `is_semver_prerelease` from the npm branch and watching this test stay green.
+
+        Raised by CodeRabbit on PR #364, and it was right: a regression test that survives the
+        removal of the code it guards is not a regression test.
+
+        THE ALPHA MUST ALSO BE MATURE. The first attempt at this fix dated it 2 days old, and it
+        STILL survived the mutant — because the minimum-release-age gate skipped the alpha before
+        the prerelease rule ever mattered, so a second, unrelated mechanism was quietly supplying
+        the right answer. Two guards in series, and the test could not tell which one was doing the
+        work. `0.148.0-alpha.1` is therefore older than the age window AND higher than every stable
+        version here: the filter is the only thing standing between it and the report.
+        """
+        packument = json.dumps({
+            "versions": {
+                "0.139.0": {}, "0.147.0": {},
+                "0.148.0-alpha.1": {},                  # newer AND mature: only the filter excludes it
+                "0.146.0-alpha.3.1-linux-x64": {},      # the pair that used to crash the sort
+                "0.146.0-alpha.3.1": {},
+            },
+            "time": {
+                "created": "2026-01-01T00:00:00Z",
+                "0.139.0": _ago(70).isoformat(),
+                "0.147.0": _ago(30).isoformat(),
+                "0.148.0-alpha.1": _ago(40).isoformat(),
+                "0.146.0-alpha.3.1-linux-x64": _ago(50).isoformat(),
+                "0.146.0-alpha.3.1": _ago(50).isoformat(),
+            },
+        })
+        report, _ = _report(
+            tmp_path, "npm:@openai/codex@0.139.0",
+            lambda backend, name: update.resolve_releases(
+                backend, name, fetch=lambda url: packument,
+            ),
+        )
+        offered = [f.latest for f in report.stale]
+        assert offered == ["0.147.0"], f"a prerelease reached the report: {offered}"
