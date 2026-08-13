@@ -18,6 +18,7 @@ acquire unpinned, so switching the gate on would fail their builds while A2/A3 r
 The tests below therefore call the function directly, including against the three REAL bodies.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,7 @@ import pytest
 from harnessed.schema import (
     PinValidationError,
     _unversioned_acquisitions,
+    load_agent,
     validate_agent_pin,
 )
 
@@ -484,9 +486,16 @@ class TestAgainstTheRealBodies:
         with pytest.raises(PinValidationError, match="no version"):
             validate_agent_pin("codex", _body("codex"), unpinnable={})
 
-    def test_claude_is_currently_absent(self):
-        with pytest.raises(PinValidationError, match="no version"):
-            validate_agent_pin("claude", _body("claude"), unpinnable={})
+    def test_claude_passes_now_that_A3_has_pinned_it(self):
+        """A3 flipped this. It was `test_claude_is_currently_absent`, asserting the DEFECT.
+
+        The class docstring above planted that tripwire deliberately: "when codex and claude get
+        pinned, the two xfail-shaped assertions below start failing and must be flipped to
+        `validate_agent_pin(...)` passing." This is that flip, and it is the point of the unit —
+        not a test weakened to get green. codex's assertion is untouched below, because A2 is a
+        separate decision gated on spike S7.
+        """
+        validate_agent_pin("claude", _body("claude"), unpinnable={})
 
     def test_antigravity_passes_only_because_it_declares(self):
         body = _body("antigravity")
@@ -512,6 +521,49 @@ class TestAgainstTheRealBodies:
         """
         with pytest.raises(PinValidationError, match="bun"):
             validate_agent_pin("omp", _body("omp"), unpinnable={})
+
+class TestA3TheClaudePinIsWiredEndToEnd:
+    """A3 — a pin is only real if the value the MANIFEST declares is the value the INSTALLER gets.
+
+    The lint above proves a version is visible in the Dockerfile. It cannot prove that version is
+    the one the manifest owns: `ARG OTHER_VERSION` plus `--build-arg CLAUDE_VERSION=…` would satisfy
+    every check in this file and install whatever upstream currently serves. These tests read both
+    sides and compare them, rather than asserting either alone.
+    """
+
+    def _claude_agent(self):
+        return load_agent("claude", root=REPO / "catalog")
+
+    def test_every_declared_build_arg_has_a_matching_ARG_in_the_dockerfile(self):
+        """The pin's value can only reach the install if the two names agree."""
+        body = _body("claude")
+        declared = set(self._claude_agent().build_args)
+        args = set(re.findall(r"^ARG\s+([A-Za-z_]\w*)", body, re.MULTILINE))
+        assert declared, "claude declares no build_args — A3 did not land"
+        assert declared <= args, f"declared but never received: {sorted(declared - args)}"
+
+    def test_the_dockerfile_keeps_no_second_copy_of_the_pin(self):
+        """`ARG CLAUDE_VERSION=<default>` would be a second pin, free to drift from the manifest.
+
+        This is the reason the shipped opencode Dockerfile states in its own comment: the manifest
+        is "the one place `harnessed update` looks". A default here is invisible to it.
+        """
+        for line in _body("claude").splitlines():
+            if line.startswith("ARG CLAUDE_VERSION"):
+                assert "=" not in line, f"ARG carries a default: {line!r}"
+
+    def test_the_version_is_handed_to_the_installer_as_its_own_positional_argument(self):
+        """NC-9: the pin goes THROUGH the vendor installer's interface, never around it.
+
+        `install.sh` validates its positional argument against
+        `^(stable|latest|[0-9]+\\.[0-9]+\\.[0-9]+(-…)?)$` and verifies a sha256 from the versioned
+        manifest before running anything. Expressing the pin any other way — a different download
+        URL, a bypassed checksum — would buy reproducibility with integrity, which NC-9 forbids.
+        The `--` separator is what stops a value being read as an option.
+        """
+        body = _body("claude")
+        assert 'bash -s -- "${CLAUDE_VERSION}"' in body
+        assert "claude.ai/install.sh" in body
 
     def test_every_agent_is_covered_by_this_file(self):
         """If someone adds a sixth agent, this file must be updated rather than silently not

@@ -3,6 +3,21 @@ type: agent
 harness: claude
 image: harnessed-claude
 dockerfile: catalog/base/Dockerfile.harnessed-claude
+# Pinned tool versions for the image build (passed as --build-arg). Single source of truth — the
+# Dockerfile's matching ARG carries no default. No `spec:`: the version is PINNABLE (the official
+# installer takes one) but not RESOLVABLE, so it is held rather than offered for bump. See the
+# `hold:` reason, and plan REVISION 15 for why that reason is worded the way it is.
+#
+# The value is the vendor's `stable` channel RESOLVED ONCE, on 2026-08-12. `stable` itself is never
+# the value: it is a pointer and it moves — it went 2.1.221 -> 2.1.223 within a day of being read.
+build_args:
+  CLAUDE_VERSION:
+    value: "2.1.223"
+    hold: >-
+      unqueryable: the official installer takes a version, but the only upstream it names is
+      downloads.claude.ai, a vendor download host exposing moving channel pointers rather than a
+      repo or registry that any resolver backend (npm/pipx/github/cargo/go/gem/asdf/ubi/mise) can
+      be asked for a latest version
 description: >
   Claude Code harness. FROM harnessed-base + official Claude Code CLI installer.
   Builds without re-downloading runtimes (all in harnessed-base).
