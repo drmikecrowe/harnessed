@@ -13,9 +13,14 @@ hundred lines up: an acquisition is acceptable only if it can be SEEN to carry a
 negative rule ("reject the bad spellings") would pass every spelling nobody enumerated, and the
 whole class here is "nothing was written."
 
-NOT wired into `assemble.py` by this change — see the plan's REVISION 9. claude and codex still
-acquire unpinned, so switching the gate on would fail their builds while A2/A3 remain deferred.
-The tests below therefore call the function directly, including against the three REAL bodies.
+WIRED INTO `assemble.py` AS OF A6 PART 2 — this paragraph used to say the opposite, and the reason
+it did is worth keeping. REVISION 9: enforcement was held back because claude, codex and omp still
+acquired unpinned, so turning the gate on would have failed their own builds. A3, A2 and A5b closed
+those in turn, and `assemble()` now calls `validate_agent_image(harness)` on every assembly.
+
+Most tests below still call `validate_agent_pin` directly, because that is the unit under test.
+`TestA6Part2TheGateIsActuallyOn` covers the wiring itself — a lint nothing calls is a lint that
+cannot fail, and this file asserted the function's behaviour for three units while it ran on nothing.
 """
 
 import os
@@ -25,6 +30,7 @@ from pathlib import Path
 
 import pytest
 
+from harnessed import assemble
 from harnessed.schema import (
     PinValidationError,
     _unversioned_acquisitions,
@@ -686,6 +692,206 @@ class TestA3TheClaudePinIsWiredEndToEnd:
         shipped = {p.name.removeprefix("Dockerfile.harnessed-")
                    for p in AGENT_DOCKERFILES.glob("Dockerfile.harnessed-*")}
         assert shipped == {"base", "antigravity", "claude", "codex", "omp", "opencode"}
+
+
+class TestA6Part2TheGateIsActuallyOn:
+    """A6 part 2 — the lint runs on a real assembly, not merely in this file.
+
+    For three units `validate_agent_pin` was fully tested and called by nothing. This class exists
+    to make that state impossible to return to.
+
+    BE EXACT ABOUT WHICH TEST DOES THAT, because the first draft of this docstring claimed "every
+    assertion here fails if the call is removed" and that was measured false: with the call deleted
+    from `assemble()` the whole suite passed at 2779, including all of these. Everything here except
+    `test_assemble_ITSELF_refuses_a_stack_whose_agent_image_floats` exercises
+    `validate_agent_image` directly and would survive the gate being unwired — they test the
+    function, not its wiring. One test guards the wiring. It is the load-bearing one.
+    """
+
+    def _home_with_agent(self, tmp_path, monkeypatch, body: str | None, *, unpinnable: str = ""):
+        """Point `harnessed_home()` at a tmp catalog carrying a whole crafted agent.
+
+        BOTH halves live here, and the first draft of this helper got that wrong: it wrote only the
+        Dockerfile and expected the manifest to keep resolving from the real catalog. It does not —
+        `catalog_roots()` is built from `harnessed_home()`, so redirecting the home redirects
+        manifest lookup with it, and every test raised SchemaError before reaching the lint. Placing
+        both here is the better test anyway: it drives `load_agent`, the path join and the lint,
+        which is the whole of what `validate_agent_image` does.
+
+        `body=None` writes no Dockerfile at all — the fails-closed case.
+        """
+        agent_dir = tmp_path / "catalog" / "agents" / "claude"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        (agent_dir / "agent.yaml").write_text(
+            "type: agent\n"
+            "harness: claude\n"
+            "image: harnessed-claude\n"
+            "dockerfile: catalog/base/Dockerfile.harnessed-claude\n"
+            + unpinnable,
+            encoding="utf-8",
+        )
+        if body is not None:
+            target = tmp_path / "catalog" / "base" / "Dockerfile.harnessed-claude"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+        monkeypatch.setattr(assemble.paths, "harnessed_home", lambda: tmp_path)
+
+    def test_an_unpinned_agent_dockerfile_stops_the_assembly(self, tmp_path, monkeypatch):
+        """The property the whole epic is for: a floating agent image cannot be built.
+
+        Asserted through `validate_agent_image`, the function `assemble()` calls, rather than by
+        reading `assemble`'s source — so a refactor that moves the call still passes and a deletion
+        of it fails.
+        """
+        self._home_with_agent(
+            tmp_path, monkeypatch,
+            "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex\n",
+        )
+        with pytest.raises(PinValidationError, match="no version"):
+            assemble.validate_agent_image("claude")
+
+    def test_a_floating_ref_in_an_agent_dockerfile_stops_the_assembly(self, tmp_path, monkeypatch):
+        self._home_with_agent(
+            tmp_path, monkeypatch,
+            "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex@latest\n",
+        )
+        with pytest.raises(PinValidationError, match="floating"):
+            assemble.validate_agent_image("claude")
+
+    def test_a_pinned_agent_dockerfile_passes(self, tmp_path, monkeypatch):
+        """The negative control's counterpart: the gate must not reject a correct image."""
+        self._home_with_agent(
+            tmp_path, monkeypatch,
+            "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex@0.139.0\n",
+        )
+        assemble.validate_agent_image("claude")
+
+    def test_a_missing_agent_dockerfile_fails_closed(self, tmp_path, monkeypatch):
+        """A gate that returns quietly for an input it could not read has approved nothing.
+
+        The build would die on the same missing path moments later, so refusing here costs nothing
+        and keeps "the lint passed" meaning what it says.
+        """
+        self._home_with_agent(tmp_path, monkeypatch, None)
+        with pytest.raises(PinValidationError, match="no file is there"):
+            assemble.validate_agent_image("claude")
+
+    @pytest.mark.parametrize("harness", ["claude", "codex", "omp", "opencode", "antigravity"])
+    def test_every_shipped_agent_passes_the_gate_that_is_now_on(self, harness):
+        """The real net, and the thing that had to be true before this unit could land at all.
+
+        Not a restatement of `TestAgainstTheRealBodies`: that class calls the lint with a hand-passed
+        `unpinnable={}`, while this goes through `validate_agent_image`, which resolves the manifest
+        and reads its declared `unpinnable:` itself. antigravity passes only via the second path.
+        """
+        assemble.validate_agent_image(harness)
+
+    def test_assemble_ITSELF_refuses_a_stack_whose_agent_image_floats(self, tmp_path, monkeypatch):
+        """THE test of this unit, and the one every other test here fails to be.
+
+        Everything above calls `validate_agent_image` directly, which proves the function works and
+        proves NOTHING about whether anything invokes it — the precise state A6 part 1 left behind,
+        where a fully-tested lint ran on nothing for three units. Measured, not assumed: with the
+        call deleted from `assemble()`, the entire suite still passed at 2779. Only this test moves.
+
+        The two roots are doing different jobs, which is what makes this possible. `assemble`'s
+        `root` argument pins stack and recipe resolution to the REAL catalog, while
+        `validate_agent_image` deliberately ignores it and resolves the agent through
+        `catalog_roots()` — so patching `harnessed_home()` swaps the agent out from under a stack
+        that still loads normally.
+        """
+        self._home_with_agent(
+            tmp_path, monkeypatch,
+            "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex\n",
+        )
+        with pytest.raises(PinValidationError, match="no version"):
+            assemble.assemble(REPO / "catalog", "default", tmp_path / "build", "claude")
+
+    def test_assemble_accepts_the_same_stack_when_the_agent_is_pinned(self, tmp_path, monkeypatch):
+        """The control for the test above: the refusal is the AGENT's doing, not the stack's.
+
+        Without this, a `default` stack that failed to assemble for any unrelated reason would make
+        the test above pass while proving nothing about the gate.
+        """
+        self._home_with_agent(
+            tmp_path, monkeypatch,
+            "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex@0.139.0\n",
+        )
+        assemble.assemble(REPO / "catalog", "default", tmp_path / "build", "claude")
+
+    @pytest.mark.parametrize("build", ["_build_images_cmd", "_build_agent_image"])
+    def test_the_BUILD_paths_are_gated_too_not_only_assembly(self, tmp_path, monkeypatch, build):
+        """`assemble()` is not the only road to a built agent image, and I had assumed it was.
+
+        Found while reviewing this unit: `harnessed build` with no stack goes
+        `_build_images_cmd` -> `podman build` for base AND claude, never touching `assemble()`. The
+        lazy per-harness path reaches `_build_agent_image` the same way. So the gate wired into
+        assembly covered the stack flows and left the two paths that actually BUILD agent images
+        wide open — a gate with a way around it, which is a gate that gets walked around by
+        accident.
+
+        Both build sites now validate. This test drives each one with a floating agent Dockerfile
+        and requires the refusal to happen BEFORE podman is invoked.
+        """
+        from harnessed import launcher
+
+        self._home_with_agent(
+            tmp_path, monkeypatch,
+            "FROM harnessed-base:latest\nRUN mise use -g npm:@openai/codex\n",
+        )
+        ran: list[list[str]] = []
+        monkeypatch.setattr(launcher, "_SHARED_IMAGES_BUILT", set())
+        monkeypatch.setattr(launcher, "_run", lambda cmd, **kw: ran.append(list(cmd)))
+        monkeypatch.setattr(launcher, "_image_exists", lambda rt, image: False)
+        monkeypatch.setattr(launcher, "_ensure_extra_tools", lambda: None)
+        monkeypatch.setattr(launcher, "_corp_proxy_ca_secret_args", lambda: [])
+
+        with pytest.raises(PinValidationError, match="no version"):
+            if build == "_build_images_cmd":
+                launcher._build_images_cmd("podman")
+            else:
+                launcher._build_agent_image("podman", "claude")
+        assert not ran, f"podman was invoked before the gate refused: {ran}"
+
+    @pytest.mark.parametrize("harness", ["claude", "codex", "omp", "opencode", "antigravity"])
+    def test_the_gate_reads_the_same_file_the_builder_builds(self, harness):
+        """PARITY: the linted body and the built body must be one file, not two readings of a name.
+
+        The gate resolves `harnessed_home() / agent.dockerfile`; the builder resolves
+        `Path(ctx) / agent.dockerfile` inside `_staged_build_context()`. Those agree only because
+        that context is a `copytree` of `home/catalog` — a fact stated in a docstring three hundred
+        lines away from either. This runs BOTH sides and compares the bytes, so the day the staging
+        rule changes, this fails instead of the gate quietly certifying a file nobody builds.
+
+        Raised by adversarial review as a suspected false-rejection for user-overlay agents. It is
+        not one, and the reason is the same fact: `_staged_build_context` copies ONLY
+        `home/catalog` and never merges `~/.config/harnessed/catalog`, so an overlay Dockerfile is
+        invisible to the BUILDER too. The gate refuses what the build would refuse, earlier and by
+        name. That is a real limitation of overlay agents, and it predates this change.
+        """
+        from harnessed import launcher
+
+        agent = load_agent(harness)
+        rel = agent.dockerfile or f"catalog/base/Dockerfile.harnessed-{harness}"
+        linted = assemble.paths.harnessed_home() / rel
+        with launcher._staged_build_context() as ctx:
+            built = Path(ctx) / rel
+            assert built.is_file(), f"{harness}: the builder's Dockerfile is not in the context"
+            assert built.read_bytes() == linted.read_bytes(), (
+                f"{harness}: the gate lints a different file from the one podman builds"
+            )
+
+    def test_the_gate_reads_the_manifests_unpinnable_rather_than_assuming_none(self):
+        """antigravity is the proof: its Dockerfile alone FAILS, and only the declaration saves it.
+
+        If `validate_agent_image` passed `unpinnable={}` the shipped catalog would not assemble; if
+        it passed something permissive, a forgotten pin would be excused. This pins the wiring
+        between the manifest and the lint, which no other assertion here reaches.
+        """
+        body = _body("antigravity")
+        with pytest.raises(PinValidationError, match="no version"):
+            validate_agent_pin("antigravity", body, unpinnable={})
+        assemble.validate_agent_image("antigravity")   # same body, declaration honoured
 
 
 class TestA5bTheOmpBunPinIsWiredEndToEnd:

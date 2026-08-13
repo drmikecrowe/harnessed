@@ -21,8 +21,10 @@ from pathlib import Path
 from . import emit, paths, staleness
 from .schema import (
     McpServer,
+    PinValidationError,
     Recipe,
     Stack,
+    load_agent,
     load_service,
     load_stack,
     load_stack_with_recipes,
@@ -30,6 +32,7 @@ from .schema import (
     validate_init_no_exit,
     validate_dockerfile_not_dependent_on_install,
     validate_no_claude_writes,
+    validate_agent_pin,
     validate_no_raw_npm,
     validate_install_script,
     validate_pin,
@@ -167,6 +170,37 @@ def _resolve_service_servers(servers: list[McpServer], root: Path | None) -> lis
     return servers
 
 
+def validate_agent_image(harness: str) -> None:
+    """AC-9 part 2: lint the AGENT image's Dockerfile, the way `validate_pin` lints a recipe's.
+
+    Resolved with `root=None` DELIBERATELY, and not from `assemble`'s `root`. That parameter
+    restricts which catalog roots recipes and stacks resolve from; the agent image is built by
+    `launcher._build_agent_image`, which always loads the agent across every root. Linting what the
+    build will actually use is the whole point — reading whatever a restricted root happened to
+    contain would be a different question wearing the same name, and it would go quiet exactly when
+    a caller narrowed the root.
+
+    FAILS CLOSED on a Dockerfile it cannot read. An agent whose Dockerfile is missing is not an
+    agent that passes: the build would fail on it seconds later, and a gate that returns silently
+    for an input it could not examine is indistinguishable from one that examined it and approved.
+    """
+    agent = load_agent(harness)
+    # The manifest's path is home-relative (`catalog/base/Dockerfile.harnessed-omp`), the same
+    # convention `launcher._build_agent_image` reads it under. Anchored to `harnessed_home()`, never
+    # the CWD — assembly must not depend on where it was invoked from (CLAUDE.md).
+    rel = agent.dockerfile or f"catalog/base/Dockerfile.harnessed-{harness}"
+    dockerfile = paths.harnessed_home() / rel
+    if not dockerfile.is_file():
+        raise PinValidationError(
+            f"agent '{harness}': its Dockerfile is declared as {rel!r} but no file is there "
+            f"({dockerfile}). The pin lint cannot examine it, and the build would fail on the same "
+            f"path — refusing to assemble rather than passing an image nothing checked."
+        )
+    validate_agent_pin(
+        harness, dockerfile.read_text(encoding="utf-8"), unpinnable=agent.unpinnable,
+    )
+
+
 def assemble(
     root: Path | None, stack_name: str, build_dir: Path, harness: str, *, strict: bool = False
 ) -> AssembleResult:
@@ -198,6 +232,14 @@ def assemble(
             # Content in ~/.claude is invisible host-side and hidden container-side (harnessed-8px.7).
             validate_no_claude_writes(recipe, body)
             validate_dockerfile_not_dependent_on_install(recipe, body)
+
+    # AC-9 PART 2 — the agent image is a Dockerfile too, and until now nothing linted it. That gap
+    # is how three agents reached `main` acquiring their CLI with no version at all: `validate_pin`
+    # has only ever read RECIPE Dockerfiles, so the images every stack is built FROM were the one
+    # unlinted surface in the pipeline. Deferred until now on purpose (plan REVISION 9) because
+    # switching it on while claude, codex or omp still floated would have failed their builds; A2,
+    # A3 and A5b closed the last of those.
+    validate_agent_image(harness)
 
     servers = _resolve_service_servers(_merge_servers(recipes), root)
 

@@ -241,7 +241,13 @@ from .launchenv import (
     _varlock_resolve_env_file,
 )
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
-from .assemble import assemble, compute_recipe_hash, _merge_servers, _resolve_service_servers
+from .assemble import (
+    assemble,
+    compute_recipe_hash,
+    validate_agent_image,
+    _merge_servers,
+    _resolve_service_servers,
+)
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
@@ -530,6 +536,10 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
     # Dockerfile as `_build_agent_image`, so it owes the same `--build-arg` flags; omitting them
     # made `harnessed build` (no stack) fail the guard while the per-stack path went green.
     claude_args = _agent_build_arg_flags(load_agent("claude"))
+    # AC-9: this path builds an AGENT image without going anywhere near `assemble()`, so the gate
+    # wired in there does not cover it. Bare `harnessed build` reaches exactly here. A gate with a
+    # documented way around it is a gate that will be walked around, usually by accident.
+    validate_agent_image("claude")
 
     with _staged_build_context() as ctx:
         base = Path(ctx) / "catalog" / "base"
@@ -604,6 +614,11 @@ def _build_agent_image(rt: str, harness: str) -> None:
     """
     agent = load_agent(harness)
     image = _agent_image(harness)
+    # AC-9, same reason as in `_build_images_cmd`: this is a build site, not an assembly, and the
+    # lazy per-harness path arrives here without assembling anything. Validating at the two places
+    # that actually BUILD an agent image is what makes the rule unconditional — `assemble()` keeps
+    # its own call so a stack is refused before any file is emitted, rather than at build time.
+    validate_agent_image(harness)
 
     def build() -> None:
         if not _image_exists(rt, _BASE_IMAGE):
