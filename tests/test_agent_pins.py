@@ -299,9 +299,10 @@ class TestShippedManifestsStillLoad:
 
 _REPO_CATALOG = Path(__file__).resolve().parent.parent / "catalog"
 # A three-part version and nothing else. `stable`/`latest` are CHANNEL POINTERS: the installer
-# accepts them and they MOVE — measured moving twice in one day (2.1.221 -> 2.1.223 stable,
-# 2.1.228 -> 2.1.231 latest, 2026-08-12). Pinning one would be a floating acquisition behind a
-# manifest that reads as pinned, which is the defect this epic exists to remove (plan REVISION 15).
+# accepts them and they MOVE — both were measured advancing within a single day (2026-08-12).
+# Pinning one would be a floating acquisition behind a manifest that reads as pinned, which is the
+# defect this epic exists to remove (plan REVISION 15). The pinned version itself is owned by
+# catalog/agents/claude/agent.yaml and deliberately not repeated here.
 _THREE_PART_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-\S+)?$")
 
 

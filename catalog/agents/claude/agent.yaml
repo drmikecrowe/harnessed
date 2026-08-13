@@ -8,8 +8,9 @@ dockerfile: catalog/base/Dockerfile.harnessed-claude
 # installer takes one) but not RESOLVABLE, so it is held rather than offered for bump. See the
 # `hold:` reason, and plan REVISION 15 for why that reason is worded the way it is.
 #
-# The value is the vendor's `stable` channel RESOLVED ONCE, on 2026-08-12. `stable` itself is never
-# the value: it is a pointer and it moves — it went 2.1.221 -> 2.1.223 within a day of being read.
+# The value below is the vendor's `stable` channel RESOLVED ONCE, on 2026-08-12. `stable` itself is
+# never the value: it is a pointer and it moves — it advanced twice while this pin was being written.
+# The resolved version is written once, in `value:` below, so a bump has exactly one place to touch.
 build_args:
   CLAUDE_VERSION:
     value: "2.1.223"
