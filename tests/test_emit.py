@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import ClassVar
 
 from harnessed.emit import (
     HATAGO_ENDPOINT,
@@ -461,6 +462,85 @@ class TestWriteHatagoConfig:
         write_hatago_config(tmp_path, [])
         data = json.loads((tmp_path / "hatago.config.json").read_text())
         assert data["version"] == 1
+
+
+class TestHatagoCurationPassthrough:
+    """A recipe curates a server's tool surface with hatago's OWN vocabulary — `tools`
+    (include/exclude/overrides), `tags`, `description`, `instructions`. hatago has carried
+    per-server tool filtering since the 0.1.2 fork the base image pins, but _hatago_entry used to
+    build its dict from a fixed field list, so every one of these keys was silently dropped on the
+    way to hatago.config.json. Silently: the recipe parsed, the build passed, and the agent got the
+    server's full unfiltered tool list. These tests are the contract that they survive.
+    """
+
+    # ClassVar, not a bare class attribute: RUF012. Shared read-only across the tests — the emitter
+    # passes curation through by reference and never mutates it, which is what these tests assert.
+    TOOLS: ClassVar[dict] = {
+        "include": ["getJiraIssue", "searchJiraIssuesUsingJql"],
+        "exclude": ["atlassianUserInfo", "fetch"],
+        "overrides": {"getJiraIssue": {"description": "Fetch an issue by key."}},
+    }
+
+    def _curated(self, **kw) -> dict:
+        raw = {"tools": self.TOOLS, "tags": ["atlassian"], "description": "d", "instructions": "i"}
+        return {"raw": raw, **kw}
+
+    def test_stdio_child_carries_every_curation_key(self, tmp_path):
+        servers = [McpServer(name="atlassian", command="pnpm", args=["dlx", "x"], **self._curated())]
+        write_hatago_config(tmp_path, servers)
+        entry = json.loads((tmp_path / "hatago.config.json").read_text())["mcpServers"]["atlassian"]
+        assert entry["tools"] == self.TOOLS
+        assert entry["tags"] == ["atlassian"]
+        assert entry["description"] == "d"
+        assert entry["instructions"] == "i"
+        # The pre-existing keys are untouched — curation is additive, not a replacement.
+        assert entry["command"] == "pnpm"
+        assert entry["args"] == ["dlx", "x"]
+
+    def test_url_proxy_carries_curation_too(self, tmp_path):
+        # A proxied remote is curated by the same hub, so the same keys must ride along.
+        servers = [
+            McpServer(
+                name="remote",
+                transport="http",
+                url="http://localhost:8080/mcp",
+                **self._curated(),
+            )
+        ]
+        write_hatago_config(tmp_path, servers)
+        entry = json.loads((tmp_path / "hatago.config.json").read_text())["mcpServers"]["remote"]
+        assert entry["tools"] == self.TOOLS
+        assert entry["url"] == "http://localhost:8080/mcp"
+        assert entry["type"] == "http"
+
+    def test_uncurated_server_gains_no_curation_keys(self, tmp_path):
+        # Negative control: absence must stay absence. An empty `tools: {}` written into every entry
+        # would be a filter hatago could read as "include nothing" — the keys must simply not exist.
+        servers = [McpServer(name="time", command="pnpm", args=["dlx", "@time/server"])]
+        write_hatago_config(tmp_path, servers)
+        entry = json.loads((tmp_path / "hatago.config.json").read_text())["mcpServers"]["time"]
+        for key in ("tools", "tags", "description", "instructions"):
+            assert key not in entry
+
+    def test_partial_curation_emits_only_what_was_declared(self, tmp_path):
+        # A recipe that only filters tools must not acquire a null `tags`/`description`.
+        servers = [McpServer(name="a", command="pnpm", raw={"tools": self.TOOLS})]
+        write_hatago_config(tmp_path, servers)
+        entry = json.loads((tmp_path / "hatago.config.json").read_text())["mcpServers"]["a"]
+        assert entry["tools"] == self.TOOLS
+        assert "tags" not in entry and "description" not in entry and "instructions" not in entry
+
+    def test_curation_survives_the_recipe_parser(self, tmp_path):
+        # End-to-end from YAML: the parser keeps the keys in `raw`, the emitter writes them. Guards
+        # the seam where an unknown-field sweep on the server entry would silently eat them.
+        from harnessed.schema import _parse_servers
+
+        servers = _parse_servers(
+            {"servers": [{"name": "atlassian", "command": "pnpm", "tools": self.TOOLS}]}
+        )
+        write_hatago_config(tmp_path, servers)
+        entry = json.loads((tmp_path / "hatago.config.json").read_text())["mcpServers"]["atlassian"]
+        assert entry["tools"] == self.TOOLS
 
 
 class TestRequiredSettings:

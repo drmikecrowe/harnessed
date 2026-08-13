@@ -652,6 +652,19 @@ def warn_duplicate_hooks(
     return dupes
 
 
+# hatago-native per-server curation keys, passed through verbatim from the recipe's server entry.
+# These are hatago's own config vocabulary (@drmikecrowe/hatago-mcp-hub carries per-server tool
+# filtering — see the base image pin), not harnessed's: `tools` is {include, exclude, overrides},
+# and `tags`/`description`/`instructions` are routing/prompt metadata hatago surfaces to the agent.
+# harnessed does not model or validate their shape — hatago owns that schema and rejects a bad one.
+_HATAGO_CURATION_KEYS = ("tools", "tags", "description", "instructions")
+
+
+def _hatago_curation(server: McpServer) -> dict:
+    """The curation keys a recipe declared on this server, verbatim (absent keys stay absent)."""
+    return {k: server.raw[k] for k in _HATAGO_CURATION_KEYS if server.raw.get(k) is not None}
+
+
 def _hatago_entry(server: McpServer, project_path: str | Path | None = None) -> dict:
     """Map an MCP server to a hatago `mcpServers` entry (schema per hatago docs).
 
@@ -664,6 +677,10 @@ def _hatago_entry(server: McpServer, project_path: str | Path | None = None) -> 
     children with cwd = the container home, so a child that resolves its target from cwd (serena
     `--project-from-cwd`, repowise's default) would index the wrong directory. Only known at LAUNCH
     (path mirroring makes it per-project), so the assemble-time committed config passes None.
+
+    `_HATAGO_CURATION_KEYS` ride along on BOTH shapes: a recipe that curates a server's tool surface
+    means it for the child and the proxy alike. They reach hatago only — a HOST launch wires the
+    servers natively with no hub in the path, so nothing filters there (see hostrun).
     """
     if server.is_stdio_child:
         entry: dict = {"command": server.command, "args": list(server.args)}
@@ -671,6 +688,7 @@ def _hatago_entry(server: McpServer, project_path: str | Path | None = None) -> 
             entry["env"] = dict(server.env)
         if project_path is not None:
             entry["cwd"] = str(paths.container_project_path(project_path))
+        entry.update(_hatago_curation(server))
         return entry
     # Network-native server: hatago proxies it by URL (transport http/sse).
     # url_env → emit placeholder; resolved at runtime from the container's env (never on disk).
@@ -678,6 +696,7 @@ def _hatago_entry(server: McpServer, project_path: str | Path | None = None) -> 
     entry = {"url": url, "type": server.transport}
     if server.headers:
         entry["headers"] = dict(server.headers)
+    entry.update(_hatago_curation(server))
     return entry
 
 
