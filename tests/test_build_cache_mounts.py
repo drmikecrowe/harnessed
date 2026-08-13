@@ -18,7 +18,15 @@ from harnessed.emit import write_derived_dockerfile
 from harnessed.schema import InstallSpec, Recipe
 from support import patch_all
 
-from support import podman  # the one gate definition
+from support import PODMAN_REQUESTED as _PODMAN, podman  # the one gate definition
+
+_BASE_IMAGE = "localhost/harnessed-base:latest"
+
+
+def _image_present(image: str) -> bool:
+    return subprocess.run(
+        ["podman", "image", "exists", image], capture_output=True
+    ).returncode == 0
 
 # The downloaders every build path uses, and the cache each one must be given. Paths verified by
 # probing the built base image (`pnpm store path`, `uv cache dir`, ~/.cache) — not assumed defaults.
@@ -182,6 +190,48 @@ class TestContainerExecutorCachesDownloads:
         a = self._cache_mount(self._steps(tmp_path / "a", monkeypatch, stack="stack-one")[0])
         b = self._cache_mount(self._steps(tmp_path / "b", monkeypatch, stack="stack-two")[0])
         assert a == b and a
+
+
+@podman
+@pytest.mark.skipif(
+    _PODMAN and not _image_present(_BASE_IMAGE),
+    reason=f"{_BASE_IMAGE} not built — run `harnessed build` first",
+)
+class TestCacheMountsDoNotShipARootOwnedHome:
+    """The cost of a cache mount that nothing pays for at build time — it is paid at COMMIT.
+
+    A `--mount=type=cache` leaves the PARENT of its target owned by root in the committed layer, so
+    the base image shipped `/home/harnessed` and `/home/harnessed/.cache` as root:root while every
+    layer that runs as `harnessed` still worked (appending to files it already owns needs no write
+    bit on the directory). The image only breaks when something CREATES a dot-directory in $HOME:
+    Claude Code's installer died on `mkdir -p "$HOME/.claude/downloads"` and took the live-
+    verification job on main red on 2026-08-13 — under podman 5.8.4, having been green under 4.9.3
+    the same day with no change in this repo.
+
+    Asserted against the SHIPPED image, not the Dockerfile text: the text says a chown happens, and
+    what went wrong was ownership in the artifact. This is the same failure family as
+    `test_every_cache_target_is_pre_created_before_it_is_first_mounted` — that one covers the mount
+    point, this one covers what the mount does to everything above it.
+    """
+
+    def _run(self, script: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["podman", "run", "--rm", _BASE_IMAGE, "bash", "-lc", script],
+            capture_output=True, text=True,
+        )
+
+    def test_the_image_user_can_create_a_dot_directory_in_its_own_home(self):
+        got = self._run('mkdir -p "$HOME/.probe" && echo OK')
+        assert got.returncode == 0 and "OK" in got.stdout, (
+            f"$HOME is not writable by the image user: {got.stdout}{got.stderr}"
+        )
+
+    @pytest.mark.parametrize("path", ["$HOME", "$HOME/.cache"])
+    def test_the_cache_mount_parents_are_owned_by_the_image_user(self, path):
+        # Ownership, not just the write bit: a root-owned home that happens to be 0777 would pass
+        # the test above and still break every runtime that checks who owns its config directory.
+        got = self._run(f'stat -c "%u:%g" {path}')
+        assert got.stdout.strip() == "1000:1000", f"{path} is {got.stdout.strip()}, want 1000:1000"
 
 
 @podman

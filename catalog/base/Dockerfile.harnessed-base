@@ -214,4 +214,30 @@ USER root
 RUN git config --system --add safe.directory '*'
 USER ${USERNAME}
 
+# A `--mount=type=cache` leaves the PARENT of its target owned by root in the committed layer, so
+# every cache-mount RUN above silently re-roots /home/${USERNAME} and /home/${USERNAME}/.cache —
+# undoing the `chown -R` far above, which runs before the last of them. The image then ships a home
+# directory its own user cannot create anything in.
+#
+# Dated observation, not a standing claim about podman: this Dockerfile built green on GitHub's
+# runner under podman 4.9.3 and went red the same day the runner image moved to podman 5.8.4
+# (2026-08-13), with no change here. The symptom was Claude Code's installer dying on
+# `mkdir -p "$HOME/.claude/downloads"`, but nothing was specific to that installer — any runtime
+# write that creates a dot-directory in $HOME would have failed the same way.
+#
+# NOT `chown -R`: home holds the mise/pnpm/rust toolchains by this point, and a recursive chown
+# rewrites every one of those files into a new layer. Only the two mount parents are wrong, and
+# they are directories, so a non-recursive chown is both sufficient and nearly free.
+USER root
+RUN chown ${USERNAME}:${USERNAME} /home/${USERNAME} /home/${USERNAME}/.cache
+USER ${USERNAME}
+
+# The guard, not a comment: assert the invariant the chown above exists to hold, in the layer that
+# has to hold it. A future cache mount (or another podman change) that re-roots $HOME fails the
+# build here — loudly, at its source — rather than surfacing minutes later as a permission error
+# inside somebody else's installer, which is how this cost an afternoon the first time.
+RUN mkdir -p /home/${USERNAME}/.harnessed-home-writable && \
+    rmdir /home/${USERNAME}/.harnessed-home-writable || \
+    { echo "FATAL: \$HOME is not writable by ${USERNAME} — a cache mount re-rooted it" >&2; exit 1; }
+
 CMD ["/bin/bash"]
