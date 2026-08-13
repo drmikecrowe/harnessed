@@ -61,10 +61,14 @@ def _merge_host_claude_settings(prof: Path, required: dict, harness: str = "") -
         return
 
     # `statusLine.command` is a host-absolute path (e.g. /home/<hostuser>/.local/share/mise/shims/…)
-    # that can never resolve inside the container (home is /home/harnessed). The ccstatusline recipe
-    # bakes a container-correct statusLine into the profile; letting the host's version win here would
-    # point Claude Code's status line at a nonexistent binary → it silently renders nothing. Drop the
-    # host statusLine so the baked (or absent) profile value survives the merge.
+    # that can never resolve inside the container (home is /home/harnessed). Letting the host's
+    # version win here would point Claude Code's status line at a nonexistent binary → it silently
+    # renders nothing. Drop it so the container-correct value survives.
+    #
+    # That value is NOT in the profile: bd harnessed-8px.21.4 moved `install:` off build-time image
+    # layers, so the ccstatusline recipe's install.sh now writes statusLine into the per-stack config
+    # VOLUME at container runtime. The profile never carries the key at all — which is why
+    # `volumes._merged_settings_text` merges the profile into the volume instead of copying over it.
     host_obj.pop("statusLine", None)
 
     merged = _deep_merge_json(target_obj, host_obj)
