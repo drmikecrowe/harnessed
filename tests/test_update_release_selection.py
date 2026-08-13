@@ -301,6 +301,22 @@ class TestVersionKeyIsATotalOrder:
         """The property the original code got right, and the fix must not break."""
         assert update.version_key("1.0.0-alpha.1") < update.version_key("1.0.0")
 
+    def test_a_unicode_digit_int_cannot_parse_does_not_raise(self):
+        """"Always returns a comparable key" has to mean ALWAYS, including for junk.
+
+        `isdigit()` is True for `²` and `①` while `int()` rejects both, so the natural spelling
+        raised ValueError out of a function whose contract forbids it — and out through
+        `current_key = version_key(pin.current)` in `_select`, which is not inside its try/except.
+        A pin value is manifest text, so the reachable case is a typo rather than a registry.
+        `isdecimal()` is true for exactly the set `int()` accepts. Raised as an unconfirmed hunch by
+        adversarial review; confirmed here before fixing.
+        """
+        for junk in ["1.0.0-²", "1.0.0-①", "1.0.0-٣"]:
+            assert isinstance(update.version_key(junk), tuple)
+        # Still ordered, not merely non-raising: a non-decimal digit is an ALPHANUMERIC identifier
+        # under semver, so it outranks a numeric one.
+        assert update.version_key("1.0.0-1") < update.version_key("1.0.0-²")
+
     def test_build_metadata_is_ignored_for_precedence(self):
         """Semver §10: build metadata MUST NOT affect precedence.
 

@@ -130,7 +130,13 @@ def version_key(v: str) -> tuple:
     # It used to be `[.+]`, which was this function's way of coping with metadata it had not
     # stripped — and it coped by folding the metadata into the prerelease identifiers, so
     # `1.0.0-rc.1+build` and `1.0.0-rc.1` compared as different versions. §10 says they do not.
-    pre_parts = tuple((0, int(c)) if c.isdigit() else (1, c) for c in pre.split("."))
+    # `isdecimal`, NOT `isdigit`: the two differ on exactly the characters that make `int()` raise.
+    # `"²".isdigit()` is True and `int("²")` is a ValueError, so `isdigit` would have propagated out
+    # of a function whose whole contract is "always returns a comparable key" — and out through
+    # `current_key = version_key(pin.current)` in `_select`, which is not inside its try. `isdecimal`
+    # is true for precisely the set `int()` accepts, so the two can no longer disagree. (`\d` in
+    # `_NUM_RE` above is already this set, which is why the release part never had the problem.)
+    pre_parts = tuple((0, int(c)) if c.isdecimal() else (1, c) for c in pre.split("."))
     return (tuple(parts), 0, pre_parts)
 
 
