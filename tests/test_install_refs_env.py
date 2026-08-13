@@ -184,6 +184,11 @@ class TestRule5HoldIsPerRef:
             [_recipe(tmp_path)], resolve=_boom, minimum_release_age_minutes=0,
         )
         assert "oakoss/agent-skills" in [f.pin.name for f in report.unresolved]
+        # Both directions, because the claim in the docstring is EXCLUSIVE — unresolved *rather
+        # than* held. Presence alone would still pass if a pin were filed under both, which reads
+        # as two contradictory answers about one pin. Today the `continue` after the append makes
+        # that unreachable; asserting it is what stops a later edit making it reachable quietly.
+        assert "oakoss/agent-skills" not in [f.pin.name for f in report.held]
 
     _WITH_RECIPE_WIDE_HOLD = """\
 name: caveman
