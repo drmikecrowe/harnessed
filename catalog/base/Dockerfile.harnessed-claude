@@ -9,13 +9,18 @@ FROM harnessed-base:latest
 # `install.sh [stable|latest|VERSION]`. `--` ends bash's own option parsing so the value can never
 # be read as a flag.
 #
-# THE GUARD IS LOAD-BEARING, not defensive habit. `install.sh` validates its argument only when the
-# argument is non-empty (`[[ -n "$TARGET" ]] && [[ ! "$TARGET" =~ … ]]`), and it appends the target
-# only when non-empty (`${TARGET:+"$TARGET"}`). So an EMPTY CLAUDE_VERSION skips validation, installs
-# the vendor default, and succeeds — a silently unpinned CLI behind a manifest that reads as pinned,
-# which is precisely the defect A3 removes. `ARG` with no default yields exactly that empty string
-# whenever a build path forgets `--build-arg`. `:?` makes that case fail the build instead.
-# Measured against the installer as published 2026-08-12; found by adversarial review of 03d7a65.
+# THE GUARD IS THE PIN. An empty CLAUDE_VERSION is never a valid pin, so the build must fail rather
+# than hand the installer an empty argument and accept whatever it decides that means. That holds
+# whatever the vendor script does — which is the point: this guard does not rest on the installer's
+# current behaviour, and it must not be removed on the strength of reading that behaviour once.
+# `ARG` with no default yields exactly that empty string whenever a build path omits `--build-arg`.
+#
+# What prompted it (an observation, dated, not a standing claim about someone else's script): as
+# published on 2026-08-12, `install.sh` validated its argument only when non-empty and appended it
+# only when non-empty, so an empty value installed the vendor default and exited 0 — a silently
+# unpinned CLI behind a manifest that reads as pinned. Found by adversarial review of 03d7a65. The
+# tests hold the guard's own behaviour (empty => build fails, installer never runs); they cannot
+# hold the sentence above, which is why it is written as a dated observation.
 #
 # No default on the ARG: the pin lives in catalog/agents/claude/agent.yaml (AC-7), which is the one
 # place `harnessed update` looks. A default here would be a second copy, free to drift from the first.

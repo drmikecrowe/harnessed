@@ -615,15 +615,16 @@ class TestA3TheClaudePinIsWiredEndToEnd:
         assert recorder.read_text().split() == ["--version-like"]
 
     def test_an_empty_version_fails_the_build_instead_of_installing_an_unpinned_cli(self, tmp_path):
-        """The worst failure available here, and it fails CLOSED. Found by adversarial review.
+        """The worst failure available here, and it must fail CLOSED. Found by adversarial review.
 
-        `install.sh` validates its argument only when non-empty (`[[ -n "$TARGET" ]] && …`) and
-        appends it only when non-empty (`${TARGET:+"$TARGET"}`). So an empty value does not error —
-        it installs the vendor default and SUCCEEDS, leaving a floating CLI behind a manifest that
-        reads as pinned. `ARG` with no default produces exactly that empty string whenever a build
-        path omits `--build-arg`.
+        WHAT THIS TEST HOLDS: given an empty version, the command exits non-zero and the installer
+        is never reached. That property is the pin, and it does not depend on the vendor script.
 
-        The guard must therefore stop the build, and the installer must never be reached at all.
+        WHAT IT CANNOT HOLD, stated because the vendor script is substituted here and never runs:
+        what the REAL `install.sh` does with an empty argument. Observed on 2026-08-12 it validated
+        and appended the target only when non-empty, so an empty value installed the vendor default
+        and exited 0. If that ever changes, this test stays green and stays correct — the guard is
+        justified by "empty is not a pin", not by the vendor's current behaviour.
         """
         proc, recorder = self._run_against_a_fake_installer(tmp_path, "")
         assert proc.returncode != 0, "an empty version was accepted — the build would install unpinned"
