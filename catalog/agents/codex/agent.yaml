@@ -3,6 +3,21 @@ type: agent
 harness: codex
 image: harnessed-codex
 dockerfile: catalog/base/Dockerfile.harnessed-codex
+# Pinned tool versions for the image build (passed as --build-arg). Single source of truth — the
+# Dockerfile's matching ARG carries no default.
+#
+# RESOLVABLE, unlike claude's and omp's pins: npm is one of the nine backends `_split_spec` knows,
+# so `harnessed update` can ask the registry for a newer version and offer the bump. No `hold:`.
+#
+# The VALUE below was MEASURED 2026-08-13, not chosen: `mise ls` inside the shipped
+# `harnessed-codex:latest` reported exactly it, requested as `latest`. That is spike S7's whole
+# question — pin what already ships, so this migration changes who-gets-what for nobody.
+#
+# It is deliberately BEHIND npm's current release (20 versions behind, on the day it was measured),
+# and that gap is the point twice over: it is what an unpinned build was handing out silently, and
+# closing it is now a reviewable `harnessed update` diff rather than a side effect of rebuilding.
+build_args:
+  CODEX_VERSION: { value: "0.139.0", spec: "npm:@openai/codex" }
 description: >
   OpenAI Codex CLI harness. FROM harnessed-base + the codex CLI via mise (npm:@openai/codex).
   Reaches hatago via a baked ~/.codex/config.toml ([mcp_servers.hatago] url); does NOT natively
