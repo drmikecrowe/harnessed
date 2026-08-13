@@ -475,6 +475,61 @@ def test_merge_baked_settings_reads_the_VOLUME_not_the_image(tmp_path):
 
 
 @podman
+def test_the_per_launch_profile_copy_does_not_stomp_install_written_settings(tmp_path):
+    """bd harnessed-8px.19, arriving by a new route.
+
+    `_ensure_config_volume` composes on EVERY launch; `_run_container_installs` runs only when the
+    fingerprint moved. So the profile's settings.json copy and the install-written one are no longer
+    produced by the same launch: ccstatusline's `statusLine` lands in the volume once, and a `cp -a`
+    of the profile over it deleted the key on every relaunch thereafter — no status line, exactly the
+    P1 this epic already closed once.
+
+    The profile here deliberately carries NO statusLine (it never can — install.sh writes to the
+    volume, not the profile), so if the copy still overwrote, the key would be gone and the first
+    assertion fails. The second pins the other half: the profile must still WIN on keys it defines.
+    """
+    tag = "harnessed-test-settings-stomp:latest"
+    rt = _build_image_with(tmp_path, tag, None)
+    stack, harness = "harnessed-test-stomp-stack", "claude"
+    vol = launcher._stack_config_volume(stack, harness)
+    installed = {
+        "statusLine": {"type": "command", "command": "ccstatusline"},
+        "permissions": {"defaultMode": "bypassPermissions"},
+    }
+    prof = tmp_path / "profile"
+    (prof / ".claude").mkdir(parents=True)
+    (prof / "settings.json").write_text(json.dumps(_FLOOR))
+    try:
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+        # What a real install.sh writes, under the SAME userns harnessed uses (bd harnessed-8px.21.1).
+        subprocess.run(
+            [rt, "run", "--rm", "-i", paths.USERNS_ARG,
+             "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"cat > {CONTAINER_HOME}/.claude/settings.json"],
+            input=json.dumps(installed), text=True, check=True, capture_output=True,
+        )
+        # fresh=False — the unchanged-stack relaunch, where installs are skipped.
+        launcher._ensure_config_volume(rt, stack, harness, prof, tag, fresh=False)
+        out = subprocess.run(
+            [rt, "run", "--rm", paths.USERNS_ARG, "-v", f"{vol}:{CONTAINER_HOME}/.claude", tag,
+             "sh", "-c", f"cat {CONTAINER_HOME}/.claude/settings.json"],
+            capture_output=True, text=True, check=True,
+        )
+        final = json.loads(out.stdout)
+    finally:
+        subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
+        subprocess.run([rt, "volume", "rm", "-f", vol], capture_output=True)
+
+    assert final.get("statusLine") == installed["statusLine"], (
+        "install-written settings key lost — the profile copy stomped the volume's settings.json"
+    )
+    assert final["permissions"]["defaultMode"] == _FLOOR["permissions"]["defaultMode"], (
+        "the profile must still win on the keys it defines"
+    )
+    assert final["permissions"]["allow"] == _FLOOR["permissions"]["allow"]
+
+
+@podman
 def test_a_removed_recipes_content_does_not_linger_in_the_volume(tmp_path):
     """bd harnessed-8px.21.8 — the container mirror of `_materialize_host_home`'s wipe.
 

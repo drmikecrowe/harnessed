@@ -17,6 +17,7 @@ from pathlib import Path
 import typer
 
 from . import emit
+from . import jsonmerge
 from . import paths, toollock
 from .console import _err, _out
 from .hosthome import _HOST_STACK_FINGERPRINT, _host_stack_fingerprint
@@ -40,6 +41,48 @@ def _stack_config_volume(stack: str, harness: str) -> str:
     sharing a volume would compose each other's skills.
     """
     return f"harnessed-cfg-{harness}-{stack}"
+
+
+def _merged_settings_text(
+    rt: str, vol: str, image: str, prof: Path, *, fresh: bool,
+) -> str | None:
+    """The volume's `settings.json` with the profile's merged OVER it, or None to just copy.
+
+    `install.sh` writes its settings keys — ccstatusline's `statusLine` is the only one today — into
+    the config VOLUME at container runtime (bd harnessed-8px.21.4 moved `install:` off build-time
+    image layers). But `_ensure_config_volume` runs on EVERY launch while `_run_container_installs`
+    runs only when the fingerprint moved, so copying the profile file over the volume's dropped
+    every install-written key on every relaunch after the first — bd harnessed-8px.19
+    ("ccstatusline statusLine gone on every restart") arriving by a new route.
+
+    Merging keeps today's semantics where the profile wins on every key it DEFINES; it just no
+    longer deletes keys the profile has no opinion about. `fresh=True` has just discarded the
+    volume, so there is nothing to preserve and the plain copy stands.
+
+    Returns None whenever there is nothing to merge — no profile file, or no readable volume file.
+    A failed read is "absent", NOT "empty" (see `_volume_read`): conflating them is how
+    harnessed-8px.19 was reintroduced once already, and absent correctly means "copy the profile".
+    """
+    prof_settings = prof / "settings.json"
+    if fresh or not prof_settings.is_file():
+        return None
+
+    def _warn(msg: str) -> None:
+        _out.print(f"[yellow]⚠ settings:[/yellow] {msg}")
+
+    installed = emit.read_baked_settings(
+        _volume_read(rt, vol, image, "settings.json"), warn=_warn,
+    )
+    if installed is None:
+        return None
+    try:
+        profile_obj = json.loads(prof_settings.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(profile_obj, dict):
+        return None
+    merged = jsonmerge._deep_merge_json(installed, profile_obj)
+    return json.dumps(merged, indent=2) + "\n"
 
 
 def _ensure_config_volume(
@@ -69,7 +112,8 @@ def _ensure_config_volume(
 
     The profile is copied in on every launch, deliberately: that preserves today's semantics where
     the profile always wins over baked content. It is a local copy of small trees, not the
-    expensive part — installs are what harnessed-8px.21.3 gates.
+    expensive part — installs are what harnessed-8px.21.3 gates. `settings.json` is the one file
+    MERGED rather than copied — see `_merged_settings_text`.
     """
     vol = _stack_config_volume(stack, harness)
     if fresh:
@@ -85,20 +129,36 @@ def _ensure_config_volume(
         _run([rt, "volume", "rm", "-f", vol], check=False, capture_output=True)
     _run([rt, "volume", "create", *_volume_labels(stack, harness, "config"), vol],
          check=False, capture_output=True)
+    # Read BEFORE composing — the compose step is what would overwrite the file we need to keep.
+    merged_settings = _merged_settings_text(rt, vol, image, prof, fresh=fresh)
+    if merged_settings is None:
+        settings_step = (
+            f"if [ -f {_CTR_PROFILE_DIR}/settings.json ]; then "
+            f"  cp -a {_CTR_PROFILE_DIR}/settings.json {_CONTAINER_HOME_STR}/.claude/settings.json; "
+            "fi"
+        )
+        settings_env: list[str] = []
+    else:
+        # Passed by ENV and written with `printf %s`, for the same reason HARNESSED_TOOL_LOCK is:
+        # interpolating a JSON body into the `-c` string means hand-quoting something whose
+        # failure mode is arbitrary-code-shaped.
+        settings_step = (
+            f'printf %s "$HARNESSED_SETTINGS_JSON" > {_CONTAINER_HOME_STR}/.claude/settings.json'
+        )
+        settings_env = ["-e", f"HARNESSED_SETTINGS_JSON={merged_settings}"]
     # `cp -a src/. dst/` MERGES into the copy-up'd tree rather than replacing it — the whole point.
     compose = (
         "set -e; "
         f"if [ -d {_CTR_PROFILE_DIR}/.claude ]; then "
         f"  cp -a {_CTR_PROFILE_DIR}/.claude/. {_CONTAINER_HOME_STR}/.claude/; "
         "fi; "
-        f"if [ -f {_CTR_PROFILE_DIR}/settings.json ]; then "
-        f"  cp -a {_CTR_PROFILE_DIR}/settings.json {_CONTAINER_HOME_STR}/.claude/settings.json; "
-        "fi"
+        f"{settings_step}"
     )
     _run([
         rt, "run", "--rm", paths.USERNS_ARG,
         "-v", f"{vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{prof}:{_CTR_PROFILE_DIR}:ro",
+        *settings_env,
         "--entrypoint", "sh", image, "-c", compose,
     ], capture_output=True)
     return vol
