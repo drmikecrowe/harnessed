@@ -135,6 +135,57 @@
 >   Recording it here because a later reader seeing unit 3 vanish would otherwise conclude nothing
 >   was learned from it.
 >
+> **REVISION 15** (2026-08-12) — **A3 pre-flight measurement. The `hold:` stands; the reason S5
+> recorded for it was false, and A3 would have shipped that reason verbatim into the manifest.**
+> Re-measured `claude.ai/install.sh` live before writing A3 (7984 bytes, fetched 2026-08-12):
+>
+> - **S5's finding is re-confirmed.** The installer still validates
+>   `^(stable|latest|[0-9]+\.[0-9]+\.[0-9]+(-[^[:space:]]+)?)$` and prints
+>   `Usage: $0 [stable|latest|VERSION]`. A3 remains PINNABLE through the installer's own interface,
+>   and NC-9 is still untouched.
+> - **What was false.** S5 recorded the hold reason as *"downloads.claude.ai publishes only
+>   `latest`"*. It publishes **both** channel pointers as plain text:
+>   `…/claude-code-releases/stable` → **2.1.221** and `…/claude-code-releases/latest` → **2.1.228**
+>   (measured 2026-08-12), plus a per-version `manifest.json`. A future reader hitting `stable` would
+>   have found the recorded reason plainly untrue and re-litigated the decision.
+> - **The decision is unchanged, on a reason that is true.** `spec:` is a *mise* spec, and
+>   `_split_spec` (`src/harnessed/update.py:208`) knows exactly nine backends —
+>   `npm`/`pipx`/`github`/`cargo`/`go`/`gem`/`asdf`/`ubi` plus the bare mise registry. A vendor
+>   download host is none of them, so no `spec:` can name it however many channel pointers it
+>   publishes. **Unqueryable-by-the-resolver, not unpublished-by-the-vendor.** The corrected string
+>   is in the §3/A7 example above and is what A3 must ship.
+> - **This is REVISION 13's shape exactly** — a `hold:` whose *outcome* was right and whose *stated
+>   reason* was wrong, caught before the phase could ship it. Two for two: a hold reason written from
+>   a spike summary rather than re-measured at implementation time has now been false both times it
+>   was checked. **Re-measure the reason, not just the value, in A2 as well.**
+>
+> **Left open for the human — which version A3 pins** (the one thing this revision does not decide).
+> The shipped Dockerfile runs `curl … | bash` with no argument, so the bootstrap binary picks the
+> default for `claude install`, and **what that default is cannot be read from the installer script
+> or the manifests** — it lives inside the downloaded binary. So the A2/S7 question ("does pinning
+> silently move everyone?") applies to A3 too, and answering it needs a real image. Tracked as
+> **S10**, and it is a *build-gated* spike like S7 and S9 — flag, do not attempt. Two ways forward,
+> the human's call:
+>
+> **Neither option may put the word `stable` in `CLAUDE_VERSION`.** `stable` and `latest` are
+> *channel pointers*: the installer accepts them, and they move. Passing one would re-introduce
+> exactly the floating acquisition this epic exists to remove — an image that installs a different
+> CLI on every rebuild while the manifest looks pinned. **The channel is a thing you RESOLVE ONCE to
+> get a value; it is never the value.** Both options below therefore end with a three-part literal
+> (`2.1.221`) in the manifest; they differ only in how that literal is chosen.
+>
+> - **(a) Resolve `stable` once, now, and pin the literal it returns** — today, `2.1.221`. Defensible
+>   and self-describing: the image takes the vendor's stable channel *as read at the moment of the
+>   bump*, frozen. May be a small move for existing users if the binary's unargumented default is in
+>   fact `latest`.
+> - **(b) Answer S10 first** (procedure in §S10 below — it requires a REBUILD, not a run against
+>   whatever `harnessed-claude:latest` happens to be), pin the literal that image reports, and bump
+>   as a separate, visible change — the discipline A2 already owes S7.
+>
+> A3 is otherwise ready: A7 landed the `{value, hold}` form, A6 landed the lint, and
+> `validate_agent_pin` is still not wired into `assemble()` because codex remains unpinned — so A3
+> alone does not switch the gate on.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -1059,7 +1110,8 @@ runs first. Only A2–A4 are blocked, and they are blocked on A7 alone.
     CODEX_VERSION: { value: "0.0.0", spec: "npm:@openai/codex" }
     # S5 corrected this line: claude's installer DOES take a version. It is pinnable, just not
     # resolvable — no `spec:`, because the script names no upstream to query.
-    CLAUDE_VERSION: { value: "2.1.88", hold: "unqueryable: official installer takes a version but names no upstream repo or registry; downloads.claude.ai publishes only `latest`" }
+    # REVISION 15 corrected this reason string AND the illustrative value (measured 2026-08-12).
+    CLAUDE_VERSION: { value: "2.1.221", hold: "unqueryable: the official installer takes a version, but the only upstream it names is downloads.claude.ai, which is a vendor download host exposing channel pointers rather than a repo or registry any resolver backend (npm/pipx/github/cargo/go/gem/asdf/ubi/mise) can be asked for a latest version" }
   ```
 
   **`unpinnable:` is NOT a `build_args` member** (D7). An earlier draft showed an
@@ -1159,6 +1211,10 @@ are BLOCKED on a container build / CI** — neither can be run from a host sessi
 build`, and neither may be guessed: S7 exists specifically to stop A2 silently upgrading users, and
 S9 gates Phase 4. They stay open.
 
+**Status 2026-08-12** (REVISION 15): S5 **re-measured** at A3's implementation point and its
+*reason* corrected — the finding itself held. **S10 added and BLOCKED on the same container build**;
+it gates only which version A3 pins, not whether A3 can proceed.
+
 - ~~**S1**~~ — **ANSWERED 2026-08-09. Yes, but not through `ubi:`.** Measured on mise 2026.8.3.
   `ubi:aovestdipaperino/tokensave@7.0.2` installs and runs (`tokensave 7.0.2`), but mise prints
   `deprecated [ubi]: The ubi backend is deprecated. Use the github backend instead … removed in mise
@@ -1199,8 +1255,9 @@ S9 gates Phase 4. They stay open.
   through the installer's own supported interface, exactly as opencode's is.
   **Consequence:** A3 becomes `CLAUDE_VERSION: { value: "<pin>" }` with **no `spec:`** — the version
   is pinnable but not *resolvable*, because the script names no upstream repo or registry
-  (`downloads.claude.ai` publishes only `latest`). That is a `hold:`, not an `unpinnable:`. See the
-  §3/A7 table, corrected below.
+  ~~(`downloads.claude.ai` publishes only `latest`)~~ — **corrected by REVISION 15: it publishes
+  `stable` AND `latest`, and the true reason is that neither is a backend the resolver can ask.**
+  That is a `hold:`, not an `unpinnable:`. See the §3/A7 table, corrected below.
 - ~~**S6**~~ — **ANSWERED 2026-08-09. NO — A4 stays `UNPINNABLE`, and for a second reason as well.**
   `antigravity.google/cli/install.sh` accepts exactly two options, `-d|--dir` and `-h|--help`; any
   other argument is `[ERROR] Unknown parameter` + exit 1. It reads
@@ -1228,6 +1285,28 @@ S9 gates Phase 4. They stay open.
   independently reached.
 - **S9** _(from D3, gates Phase 4)_ — can a **host** assembly complete in CI (mise present, network,
   no podman)?
+- **S10** _(from REVISION 15, gates A3's VALUE only — not A3 itself)_ — which version does the
+  shipped `harnessed-claude` image actually carry today? The Dockerfile pipes the installer with no
+  argument, so the version is whatever the downloaded bootstrap binary defaults to, and that default
+  is **not readable from the install script or the published manifests**. It is **build-gated like
+  S7 and S9 — flag, do not attempt.** Same question S7 asks for codex: pin what already ships, or
+  accept a visible move. Channel pointers measured 2026-08-12 for reference: `stable` 2.1.221,
+  `latest` 2.1.228.
+
+  **Procedure — a REBUILD, not a run.** `podman run harnessed-claude claude --version` against the
+  existing tag answers a different question: `harnessed-claude:latest` may predate the current
+  `Dockerfile.harnessed-claude`, and it is `FROM harnessed-base:latest`, which may itself be stale.
+  S10 asks what *today's checkout* produces, so a stale tag returns a confident wrong answer — the
+  precise failure mode this revision exists to correct. Instead:
+
+  1. Rebuild both images from the current checkout with the cache disabled and the base forced —
+     `harnessed build <stack> claude --force --no-cache` (`--force` rebuilds the base, which the
+     agent image derives from; `--no-cache` stops a cached `RUN curl … | bash` layer from replaying
+     an old install). `launcher.py` builds `harnessed-base` before the agent image by design.
+  2. Record **what was measured**, not just the number: the image ID
+     (`podman image inspect --format '{{.Id}}' harnessed-claude:latest`) beside the observed
+     `podman run --rm harnessed-claude:latest claude --version`, plus the commit SHA built from.
+  3. Only then compare against the channel pointers to decide whether pinning moves users.
 
 ---
 
