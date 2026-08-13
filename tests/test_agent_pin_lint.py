@@ -853,6 +853,34 @@ class TestA6Part2TheGateIsActuallyOn:
                 launcher._build_agent_image("podman", "claude")
         assert not ran, f"podman was invoked before the gate refused: {ran}"
 
+    @pytest.mark.parametrize("harness", ["claude", "codex", "omp", "opencode", "antigravity"])
+    def test_the_gate_reads_the_same_file_the_builder_builds(self, harness):
+        """PARITY: the linted body and the built body must be one file, not two readings of a name.
+
+        The gate resolves `harnessed_home() / agent.dockerfile`; the builder resolves
+        `Path(ctx) / agent.dockerfile` inside `_staged_build_context()`. Those agree only because
+        that context is a `copytree` of `home/catalog` — a fact stated in a docstring three hundred
+        lines away from either. This runs BOTH sides and compares the bytes, so the day the staging
+        rule changes, this fails instead of the gate quietly certifying a file nobody builds.
+
+        Raised by adversarial review as a suspected false-rejection for user-overlay agents. It is
+        not one, and the reason is the same fact: `_staged_build_context` copies ONLY
+        `home/catalog` and never merges `~/.config/harnessed/catalog`, so an overlay Dockerfile is
+        invisible to the BUILDER too. The gate refuses what the build would refuse, earlier and by
+        name. That is a real limitation of overlay agents, and it predates this change.
+        """
+        from harnessed import launcher
+
+        agent = load_agent(harness)
+        rel = agent.dockerfile or f"catalog/base/Dockerfile.harnessed-{harness}"
+        linted = assemble.paths.harnessed_home() / rel
+        with launcher._staged_build_context() as ctx:
+            built = Path(ctx) / rel
+            assert built.is_file(), f"{harness}: the builder's Dockerfile is not in the context"
+            assert built.read_bytes() == linted.read_bytes(), (
+                f"{harness}: the gate lints a different file from the one podman builds"
+            )
+
     def test_the_gate_reads_the_manifests_unpinnable_rather_than_assuming_none(self):
         """antigravity is the proof: its Dockerfile alone FAILS, and only the declaration saves it.
 
