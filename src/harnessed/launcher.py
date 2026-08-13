@@ -1971,10 +1971,17 @@ def _warn_capability_gaps(backend: str, recipes) -> None:
     `harnessed assemble` has a harness, not a backend, so the same check there could only ever
     answer "nothing to report" (see `capmatrix.gaps`, which refuses to say that about a backend it
     has no column for).
+
+    LEVEL IS `[INFO]`, NOT `WARNING` (#359). `_acknowledge_warnings` counts the word WARNING and
+    holds the terminal for a keypress, so at WARNING level every single `host-run` of a stack whose
+    recipes declare `egress:` cost the user an extra Enter — for a gap they chose by typing
+    `host-run` and cannot fix on that backend. A per-launch keypress about an unchanging, expected
+    property is how a real warning gets trained away. The line still says exactly what is inert;
+    it just does not claim the launch needs a decision.
     """
     for gap in capmatrix.gaps(backend, recipes):
         _err.print(
-            f"[bold yellow]WARNING[/bold yellow] {gap.primitive} ({gap.recipe}): {gap.detail}"
+            f"[blue][INFO][/blue] {gap.primitive} ({gap.recipe}): {gap.detail}"
         )
 
 

@@ -155,6 +155,23 @@ class TestTheWarningReachesTheUser:
         assert "netty" in err and "egress" in err
         assert "not enforced" in err.lower()
 
+    def test_the_host_gap_does_not_cost_the_user_a_keypress(self, tmp_path, capsys):
+        """#359. `_acknowledge_warnings` counts the word WARNING (console._WARN_MARKER) and holds
+        the terminal for an Enter before the execvp handoff. This gap is not that kind of message:
+        the user asked for `host-run`, egress cannot apply on a backend with no network boundary,
+        and nothing about the launch is theirs to decide. At WARNING level every host-run of a
+        stack declaring `egress:` charged a keypress for an unchanging, expected fact — which is
+        how the gate stops being read at all. The line stays; the interruption goes.
+        """
+        r = _recipe(tmp_path, "netty", "egress:\n  - api.example.com\n")
+        before = launcher._err.warnings
+        launcher._warn_capability_gaps("host", [r])
+        err = capsys.readouterr().err
+        assert launcher._err.warnings == before, err
+        assert "INFO" in err, err
+        # Not merely absent from the count — absent from the TEXT, which is what the counter reads.
+        assert "WARNING" not in err.upper(), err
+
     def test_the_container_launcher_is_silent(self, tmp_path, capsys):
         r = _recipe(tmp_path, "netty", "egress:\n  - api.example.com\n")
         launcher._warn_capability_gaps("container", [r])
