@@ -318,9 +318,17 @@ class TestA3ClaudeCarriesItsPin:
         return load_agent("claude", root=_REPO_CATALOG)
 
     def test_the_version_reaches_the_build_as_a_build_arg(self):
-        """Scenario 1: the pin is DATA in the manifest, and it becomes `--build-arg`."""
-        assert self._agent.build_args == {"CLAUDE_VERSION": "2.1.223"}
-        assert _agent_build_arg_flags(self._agent) == ["--build-arg", "CLAUDE_VERSION=2.1.223"]
+        """Scenario 1: the pin is DATA in the manifest, and it becomes `--build-arg`.
+
+        The invariant is the WIRING — whatever the manifest declares is what the build receives —
+        so the declared value is read, never hardcoded. Adversarial review of 03d7a65 raised this:
+        pinning the literal here meant a routine `harnessed update` bump failed the test for the
+        wrong reason, reporting a broken pipeline when only the version had changed.
+        """
+        agent = self._agent
+        declared = agent.build_args["CLAUDE_VERSION"]
+        assert set(agent.build_args) == {"CLAUDE_VERSION"}
+        assert _agent_build_arg_flags(agent) == ["--build-arg", f"CLAUDE_VERSION={declared}"]
 
     def test_the_pinned_value_is_a_version_and_never_a_channel_pointer(self):
         """Scenario 8: the constraint REVISION 15 added — resolve a channel ONCE, pin the literal.
@@ -363,6 +371,6 @@ class TestA3ClaudeCarriesItsPin:
         """Scenario 4: `harnessed update` SEES it, and says it cannot query it — never invents one."""
         pins = pinupdate.discover_agent_pins(_REPO_CATALOG / "agents" / "claude")
         pin = next(p for p in pins if p.key == "CLAUDE_VERSION")
-        assert pin.current == "2.1.223"
+        assert pin.current == self._agent.build_args["CLAUDE_VERSION"]
         assert pin.backend == "opaque"
         assert not pin.resolvable

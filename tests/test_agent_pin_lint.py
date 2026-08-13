@@ -18,7 +18,9 @@ acquire unpinned, so switching the gate on would fail their builds while A2/A3 r
 The tests below therefore call the function directly, including against the three REAL bodies.
 """
 
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -552,18 +554,81 @@ class TestA3TheClaudePinIsWiredEndToEnd:
             if line.startswith("ARG CLAUDE_VERSION"):
                 assert "=" not in line, f"ARG carries a default: {line!r}"
 
-    def test_the_version_is_handed_to_the_installer_as_its_own_positional_argument(self):
-        """NC-9: the pin goes THROUGH the vendor installer's interface, never around it.
+    def _claude_install_command(self) -> str:
+        """The shipped RUN command that installs the CLI, continuations joined, `RUN ` stripped.
 
-        `install.sh` validates its positional argument against
-        `^(stable|latest|[0-9]+\\.[0-9]+\\.[0-9]+(-…)?)$` and verifies a sha256 from the versioned
-        manifest before running anything. Expressing the pin any other way — a different download
-        URL, a bypassed checksum — would buy reproducibility with integrity, which NC-9 forbids.
-        The `--` separator is what stops a value being read as an option.
+        Read from the Dockerfile at test time rather than copied into this file: a copy agrees with
+        the author's reading forever, including after the original changes.
         """
-        body = _body("claude")
-        assert 'bash -s -- "${CLAUDE_VERSION}"' in body
-        assert "claude.ai/install.sh" in body
+        joined = re.sub(r"\\\s*\n\s*", " ", _body("claude"))
+        matches = [ln[4:] for ln in joined.splitlines()
+                   if ln.startswith("RUN ") and "install.sh" in ln]
+        assert len(matches) == 1, f"expected exactly one installing RUN, found {len(matches)}"
+        return matches[0]
+
+    def _run_against_a_fake_installer(self, tmp_path, version):
+        """Execute the REAL shipped command, with the vendor download swapped for a recorder.
+
+        SUBSTITUTION, named because it is one: a POSIX shell stands in for the Docker build, and an
+        env var stands in for `ARG` substitution. It therefore cannot prove Docker's own ARG
+        semantics; it CAN prove what the shell text does with the value it is given, which is the
+        half that carries the pin. The vendor script is replaced, so no network is touched and the
+        real installer never runs.
+        """
+        recorder = tmp_path / "argv.txt"
+        fake = tmp_path / "fake-install.sh"
+        fake.write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$RECORDER"\n')
+        command = self._claude_install_command().replace(
+            "curl -fsSL https://claude.ai/install.sh", f'cat "{fake}"', 1,
+        )
+        assert "curl" not in command, "the vendor download was not substituted — refusing to run"
+        proc = subprocess.run(
+            ["bash", "-c", command],
+            env={"PATH": os.environ["PATH"], "RECORDER": str(recorder), "CLAUDE_VERSION": version},
+            capture_output=True, text=True,
+        )
+        return proc, recorder
+
+    def test_the_declared_version_is_what_the_installer_actually_receives(self, tmp_path):
+        """The property, not the spelling: whatever the manifest declares arrives as argv[1].
+
+        Asserted by RUNNING the Dockerfile's own command rather than by matching a string in it, so
+        a behaviour-preserving rewrite (different quoting, a wrapper) still passes while a rewrite
+        that drops or mangles the version fails. Raised by adversarial review of 03d7a65: the
+        previous version of this test asserted one exact shell phrase and would have broken on a
+        harmless reformat while passing on a dropped `--`.
+        """
+        declared = self._claude_agent().build_args["CLAUDE_VERSION"]
+        proc, recorder = self._run_against_a_fake_installer(tmp_path, declared)
+        assert proc.returncode == 0, proc.stderr
+        assert recorder.read_text().split() == [declared]
+
+    def test_a_value_that_looks_like_an_option_is_still_passed_as_the_version(self, tmp_path):
+        """What `--` is for. Without it, bash would eat a leading-dash value as its own flag.
+
+        Version strings do not start with `-` today, so this guards the separator itself rather
+        than a live defect — and it is the only way to tell a present `--` from an absent one
+        without asserting on the source text.
+        """
+        proc, recorder = self._run_against_a_fake_installer(tmp_path, "--version-like")
+        assert proc.returncode == 0, proc.stderr
+        assert recorder.read_text().split() == ["--version-like"]
+
+    def test_an_empty_version_fails_the_build_instead_of_installing_an_unpinned_cli(self, tmp_path):
+        """The worst failure available here, and it fails CLOSED. Found by adversarial review.
+
+        `install.sh` validates its argument only when non-empty (`[[ -n "$TARGET" ]] && …`) and
+        appends it only when non-empty (`${TARGET:+"$TARGET"}`). So an empty value does not error —
+        it installs the vendor default and SUCCEEDS, leaving a floating CLI behind a manifest that
+        reads as pinned. `ARG` with no default produces exactly that empty string whenever a build
+        path omits `--build-arg`.
+
+        The guard must therefore stop the build, and the installer must never be reached at all.
+        """
+        proc, recorder = self._run_against_a_fake_installer(tmp_path, "")
+        assert proc.returncode != 0, "an empty version was accepted — the build would install unpinned"
+        assert not recorder.exists(), "the installer ran despite the guard"
+        assert "CLAUDE_VERSION" in proc.stderr
 
     def test_every_agent_is_covered_by_this_file(self):
         """If someone adds a sixth agent, this file must be updated rather than silently not

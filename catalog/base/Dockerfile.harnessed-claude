@@ -6,14 +6,21 @@ FROM harnessed-base:latest
 # Install Claude Code globally via the official installer (into ~/.local/bin, already on PATH).
 #
 # The version is passed as the installer's own positional argument — its documented interface is
-# `install.sh [stable|latest|VERSION]`, and it validates the argument before use. Nothing about the
-# integrity path is bypassed (NC-9): the installer still takes the sha256 from the versioned
-# manifest.json and verifies the binary before running it. `--` ends bash's own option parsing so
-# the value can never be read as a flag.
+# `install.sh [stable|latest|VERSION]`. `--` ends bash's own option parsing so the value can never
+# be read as a flag.
 #
-# No default: the pin lives in catalog/agents/claude/agent.yaml (AC-7), which is the one place
-# `harnessed update` looks. A default here would be a second copy, free to drift from the first.
+# THE GUARD IS LOAD-BEARING, not defensive habit. `install.sh` validates its argument only when the
+# argument is non-empty (`[[ -n "$TARGET" ]] && [[ ! "$TARGET" =~ … ]]`), and it appends the target
+# only when non-empty (`${TARGET:+"$TARGET"}`). So an EMPTY CLAUDE_VERSION skips validation, installs
+# the vendor default, and succeeds — a silently unpinned CLI behind a manifest that reads as pinned,
+# which is precisely the defect A3 removes. `ARG` with no default yields exactly that empty string
+# whenever a build path forgets `--build-arg`. `:?` makes that case fail the build instead.
+# Measured against the installer as published 2026-08-12; found by adversarial review of 03d7a65.
+#
+# No default on the ARG: the pin lives in catalog/agents/claude/agent.yaml (AC-7), which is the one
+# place `harnessed update` looks. A default here would be a second copy, free to drift from the first.
 ARG CLAUDE_VERSION
-RUN curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_VERSION}"
+RUN : "${CLAUDE_VERSION:?required build-arg is empty or unset — refusing to install an unpinned Claude Code}" && \
+    curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_VERSION}"
 
 CMD ["/bin/bash"]
