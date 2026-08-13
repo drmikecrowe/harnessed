@@ -7,6 +7,18 @@ dockerfile: catalog/base/Dockerfile.harnessed-omp
 # Dockerfile's matching ARG carries no default. Keep aligned with your host omp (shared ~/.omp/agent).
 build_args:
   OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }
+  # omp's plugin runtime. PINNABLE (mise takes `bun@<version>`) but NOT RESOLVABLE by this repo's
+  # resolver, so it is held rather than offered for bump. Both halves of that reason were MEASURED
+  # on 2026-08-13, not carried over from a spike summary — the plan has twice shipped a hold whose
+  # outcome was right and whose stated reason was false (REVISIONS 13 and 15).
+  BUN_VERSION:
+    value: "1.3.14"
+    hold: >-
+      unqueryable: mise's registry maps bun to `core:bun`, which names no aqua/ubi/github repo, so
+      `mise_repo` returns None and the release dates the age gate needs cannot be fetched; and the
+      one repo that does publish them, oven-sh/bun, tags releases `bun-vX.Y.Z`, a form
+      `_github_releases` hands back verbatim and `version_key` orders BELOW a bare `X.Y.Z` — so a
+      `github:` spec here would not merely fail, it would silently never offer a bump
 description: >
   Oh My Pi harness. FROM harnessed-base + omp (via mise) +
   pre-installed claude-hooks-bridge extension. Consumes Claude-canonical profiles
