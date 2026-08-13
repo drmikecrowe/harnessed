@@ -529,7 +529,13 @@ class TestAgainstTheRealBodies:
         """
         crippled = _body("omp").replace('"bun@${BUN_VERSION}"', "bun")
         assert crippled != _body("omp"), "the bun token was not found — this control tested nothing"
-        with pytest.raises(PinValidationError, match="bun"):
+        # Both halves of the message, not just `bun`: the crippled body still carries the guard's
+        # `BUN_VERSION` text and two bun comments, so a bare `bun` match would also be satisfied by
+        # some OTHER bun-named complaint — an unbalanced-quote report, say — and the control would
+        # silently stop proving that the MISSING VERSION is what the lint objects to. Raised by
+        # CodeRabbit on PR #362; the file's own idiom for this error is `match="no version"`, and
+        # naming the token as well is strictly stronger than either.
+        with pytest.raises(PinValidationError, match=r"acquires 'bun' with no version"):
             validate_agent_pin("omp", crippled, unpinnable={})
 
     def test_omp_declares_no_unpinnable_escape_hatch(self):
