@@ -525,16 +525,22 @@ def _build_images_cmd(rt: str, force: bool = False) -> None:
     cache_arg = ["--no-cache"] if no_cache else []
     secret_args = _corp_proxy_ca_secret_args()
 
+    # The claude image is an AGENT image, so its pins live in agent.yaml — the Dockerfile's ARG
+    # carries no default and its guard refuses an empty CLAUDE_VERSION. This path builds the same
+    # Dockerfile as `_build_agent_image`, so it owes the same `--build-arg` flags; omitting them
+    # made `harnessed build` (no stack) fail the guard while the per-stack path went green.
+    claude_args = _agent_build_arg_flags(load_agent("claude"))
+
     with _staged_build_context() as ctx:
         base = Path(ctx) / "catalog" / "base"
         pairs = [
-            (_BASE_IMAGE, base / "Dockerfile.harnessed-base"),
-            (_CLAUDE_IMAGE, base / "Dockerfile.harnessed-claude"),
+            (_BASE_IMAGE, base / "Dockerfile.harnessed-base", []),
+            (_CLAUDE_IMAGE, base / "Dockerfile.harnessed-claude", claude_args),
         ]
-        for image, dockerfile in pairs:
+        for image, dockerfile, build_args in pairs:
             if force or not _image_exists(rt, image):
                 _out.print(f"[blue][INFO][/blue] Building {image} ...")
-                _run([rt, "build", "-t", image, "-f", str(dockerfile), *cache_arg, *secret_args, ctx])
+                _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, *cache_arg, *secret_args, ctx])
                 with _SHARED_IMAGES_LOCK:
                     _SHARED_IMAGES_BUILT.add(image)
     _out.print("[green][SUCCESS][/green] harnessed images ready")
