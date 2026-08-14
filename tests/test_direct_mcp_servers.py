@@ -59,11 +59,13 @@ class TestTheRecipeDeclaresIt:
         """A direct server is addressed by URL. Without one there is nothing to emit, and the
         failure would otherwise surface as a harness starting with a malformed entry."""
         with pytest.raises(SchemaError) as exc:
-            _parse_servers({"servers": [{"name": "a", "direct": True}]})
+            _parse_servers({"servers": [{"name": "a", "direct": True, "transport": "http"}]})
         assert "url" in str(exc.value)
 
     def test_url_env_satisfies_it(self):
-        parsed = _parse_servers({"servers": [{"name": "a", "direct": True, "url_env": "A_URL"}]})
+        parsed = _parse_servers(
+            {"servers": [{"name": "a", "direct": True, "url_env": "A_URL", "transport": "http"}]}
+        )
         assert parsed[0].direct is True
 
     def test_direct_and_service_are_mutually_exclusive(self):
@@ -80,14 +82,105 @@ class TestTheRecipeDeclaresIt:
         assert McpServer(name="a", command="x").is_stdio_child is True
 
 
+class TestADirectServerMustBeAddressableAsOne:
+    """`transport` defaults to `stdio`, and `_direct_entry` writes it straight through as `type`.
+    So an omitted transport emitted `type: "stdio"` beside a URL — a config that parses and a server
+    that never connects — and `sse` emitted a type this project treats as removed.
+
+    The suite could not see it: the test helper always passed `transport="http"`, so every direct
+    test was written from the one value that works. Same blind spot as the `dlx` bug. Raised by
+    CodeRabbit on PR #380.
+    """
+
+    def test_an_omitted_transport_is_refused(self):
+        with pytest.raises(SchemaError) as exc:
+            _parse_servers({"servers": [{"name": "a", "direct": True, "url": URL}]})
+        assert "http" in str(exc.value)
+
+    @pytest.mark.parametrize("transport", ["stdio", "sse"])
+    def test_a_non_http_transport_is_refused(self, transport):
+        with pytest.raises(SchemaError):
+            _parse_servers(
+                {"servers": [{"name": "a", "direct": True, "url": URL, "transport": transport}]}
+            )
+
+    def test_http_is_accepted(self):
+        parsed = _parse_servers(
+            {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http"}]}
+        )
+        assert parsed[0].direct is True
+
+    def test_a_hub_server_may_still_omit_transport(self):
+        """The restriction belongs to `direct` alone — stdio is the norm for a hub child."""
+        assert _parse_servers({"servers": [{"name": "a", "command": "x"}]})[0].transport == "stdio"
+
+    def test_the_emitted_type_is_never_stdio(self, tmp_path):
+        """The symptom the rule prevents, asserted at the emitter rather than only at the parser."""
+        write_mcp_json(tmp_path, "http", [_direct()])
+        assert _servers_of(tmp_path)["widgets"]["type"] == "http"
+
+
+class TestASecretBearingUrlStaysOffDisk:
+    """`url_env` exists so the emitted profile — a file on disk — carries a placeholder instead of a
+    URL that may embed a token. `_hatago_entry` has always resolved it that way; the direct entry
+    read `server.url` only, so an env-only server emitted `url: null`, and a server declaring BOTH
+    would have written the literal URL into the very file the other emitter keeps it out of.
+    Raised by CodeRabbit on PR #380."""
+
+    def test_url_env_emits_a_placeholder(self, tmp_path):
+        srv = McpServer(name="widgets", transport="http", url_env="WIDGETS_URL", direct=True)
+        write_mcp_json(tmp_path, "http", [srv])
+        assert _servers_of(tmp_path)["widgets"]["url"] == "${WIDGETS_URL}"
+
+    def test_url_env_wins_when_both_are_set(self, tmp_path):
+        """Precedence matches `_hatago_entry`. The literal must not reach the profile."""
+        srv = McpServer(
+            name="widgets", transport="http", url="https://secret.example/tok123",
+            url_env="WIDGETS_URL", direct=True,
+        )
+        write_mcp_json(tmp_path, "http", [srv])
+        entry = _servers_of(tmp_path)["widgets"]
+        assert entry["url"] == "${WIDGETS_URL}"
+        assert "tok123" not in json.dumps(entry)
+
+    def test_a_plain_url_is_still_emitted_literally(self, tmp_path):
+        write_mcp_json(tmp_path, "http", [_direct()])
+        assert _servers_of(tmp_path)["widgets"]["url"] == URL
+
+    def test_no_entry_is_ever_emitted_with_a_null_url(self, tmp_path):
+        srv = McpServer(name="widgets", transport="http", url_env="WIDGETS_URL", direct=True)
+        write_mcp_json(tmp_path, "http", [srv])
+        assert _servers_of(tmp_path)["widgets"]["url"] is not None
+
+
 class TestTheCallbackPortIsValidatedNotTrusted:
+    @pytest.mark.parametrize("bad", [[], 0, False, "", "nope"])
+    def test_a_falsy_non_mapping_oauth_is_refused_not_ignored(self, bad):
+        """`entry.get("oauth") or {}` swallowed every falsy non-mapping, so `oauth: []` read as
+        absent. Same quietly-ignored-config failure the port range exists to prevent."""
+        with pytest.raises(SchemaError) as exc:
+            _parse_servers(
+                {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http",
+                              "oauth": bad}]}
+            )
+        assert "oauth" in str(exc.value)
+
+    def test_an_absent_oauth_block_is_fine(self):
+        parsed = _parse_servers(
+            {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http"}]}
+        )
+        assert parsed[0].oauth_callback_port is None
+
     def test_a_port_is_optional(self):
-        parsed = _parse_servers({"servers": [{"name": "a", "direct": True, "url": URL}]})
+        parsed = _parse_servers(
+            {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http"}]}
+        )
         assert parsed[0].oauth_callback_port is None
 
     def test_a_valid_port_survives(self):
         parsed = _parse_servers(
-            {"servers": [{"name": "a", "direct": True, "url": URL, "oauth": {"callback_port": 32090}}]}
+            {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http",
+                          "oauth": {"callback_port": 32090}}]}
         )
         assert parsed[0].oauth_callback_port == 32090
 
@@ -97,7 +190,7 @@ class TestTheCallbackPortIsValidatedNotTrusted:
         and turns a recipe typo into a dead launch rather than an unpublished callback."""
         with pytest.raises(SchemaError):
             _parse_servers(
-                {"servers": [{"name": "a", "direct": True, "url": URL,
+                {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http",
                               "oauth": {"callback_port": port}}]}
             )
 
@@ -106,7 +199,7 @@ class TestTheCallbackPortIsValidatedNotTrusted:
         """`True` included deliberately: it is an int in Python and a nonsense port everywhere."""
         with pytest.raises(SchemaError):
             _parse_servers(
-                {"servers": [{"name": "a", "direct": True, "url": URL,
+                {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "http",
                               "oauth": {"callback_port": port}}]}
             )
 

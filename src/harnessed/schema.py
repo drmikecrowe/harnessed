@@ -1265,7 +1265,12 @@ def _parse_oauth_callback_port(entry: dict) -> int | None:
     unpublished callback. Rejected outright rather than defaulted, because a silently-ignored port
     reappears as an OAuth redirect that times out with nothing naming the cause.
     """
-    raw_oauth = entry.get("oauth") or {}
+    # `is None` first, NOT `or {}`. A falsy non-mapping — `oauth: []`, `oauth: 0`, `oauth: false` —
+    # would slip through `or {}` and be silently treated as absent, which is the same
+    # quietly-ignored-config failure the port validation below exists to prevent.
+    raw_oauth = entry.get("oauth")
+    if raw_oauth is None:
+        return None
     if not isinstance(raw_oauth, dict):
         raise SchemaError(f"mcp server '{entry['name']}': 'oauth' must be a mapping")
     port = raw_oauth.get("callback_port")
@@ -1311,6 +1316,17 @@ def _parse_servers(raw_mcp: dict) -> list[McpServer]:
                 f"mcp server '{entry['name']}': 'direct' and 'service' are mutually exclusive — a "
                 "service-referenced server is resolved to a hatago proxy entry, which is precisely "
                 "what 'direct' bypasses."
+            )
+        if direct and transport != "http":
+            # An omitted transport defaults to `stdio`, which for a direct server emits
+            # `type: "stdio"` next to a URL — a shape the harness cannot act on. `sse` is worse: it
+            # emits a type this project treats as removed (ARCHITECTURE §Constraints:
+            # Streamable-HTTP only). Neither is a thing to normalise silently, because both produce
+            # a config that parses and a server that never connects.
+            raise SchemaError(
+                f"mcp server '{entry['name']}': 'direct' requires transport 'http' — got "
+                f"'{transport}'. A direct server is addressed by URL over Streamable-HTTP; there is "
+                "no command for the harness to spawn."
             )
         if direct and not (entry.get("url") or entry.get("url_env")):
             # A direct server is emitted straight into the harness config, which addresses servers

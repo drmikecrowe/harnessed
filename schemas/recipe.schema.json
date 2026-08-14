@@ -289,7 +289,19 @@
       },
       "not": {
         "required": ["service", "command"]
-      }
+      },
+      "allOf": [
+        {
+          "description": "A direct server is addressed by URL over Streamable-HTTP, so it must say so and must have somewhere to connect. An omitted transport would default to stdio and emit `type: \"stdio\"` beside a URL — a config that parses and a server that never connects.",
+          "if": { "properties": { "direct": { "const": true } }, "required": ["direct"] },
+          "then": {
+            "properties": { "transport": { "const": "http" } },
+            "required": ["transport"],
+            "anyOf": [{ "required": ["url"] }, { "required": ["url_env"] }],
+            "not": { "required": ["service"] }
+          }
+        }
+      ]
     },
     "fileExt": {
       "description": "A standalone skill/command dir: a bare path string, or { path: ... }.",

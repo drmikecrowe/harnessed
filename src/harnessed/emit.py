@@ -64,7 +64,13 @@ def _direct_entry(server: McpServer) -> dict:
     recipe: this half is Claude Code's file format, verified against what `claude mcp add
     --callback-port` writes, not guessed from the recipe's spelling.
     """
-    entry: dict = {"type": server.transport, "url": server.url}
+    # `url_env` WINS over `url`, exactly as `_hatago_entry` resolves it, and for the same reason
+    # that function gives: the placeholder keeps a secret-bearing URL out of the emitted profile,
+    # which is a file on disk. Reading only `server.url` here would both write `null` for an
+    # env-only server AND, when a recipe sets both, put the literal URL in the profile that the
+    # other emitter deliberately keeps out of it.
+    url = f"${{{server.url_env}}}" if server.url_env else server.url
+    entry: dict = {"type": server.transport, "url": url}
     if server.headers:
         entry["headers"] = dict(server.headers)
     if server.oauth_callback_port is not None:
