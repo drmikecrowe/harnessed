@@ -69,6 +69,54 @@ def _load_json(path: str) -> object:
         sys.exit(2)
 
 
+def _one_line(text: str) -> str:
+    """Collapse a message to a single line.
+
+    The normalized format is one finding per line and `diff` compares line sets, but pyright
+    messages are routinely MULTI-line — it appends an indented explanation under the summary
+    ('Type "int" is not assignable to return type "str"' then '  "int" is not assignable to "str"').
+    Written verbatim, one finding becomes several lines and the counts the gate prints then describe
+    lines rather than findings: a single new error with a three-line message reports "+3 added".
+    The set arithmetic still detects it (both sides split identically, so this was never a false
+    pass), but a gate that misreports how much it found trains people to distrust it.
+    """
+    return " ".join(text.split())
+
+
+def _require_record(item: object, tool: str, index: int) -> dict:
+    """Reject a non-mapping record rather than letting `.get` raise an uncaught AttributeError.
+
+    An uncaught traceback exits 1, which is this script's "findings were added" code — a crash
+    would be read as an ordinary gate failure. Schema problems must stay distinguishable, hence 2.
+    """
+    if not isinstance(item, dict):
+        print(
+            f"ERROR: {tool} record #{index} is {type(item).__name__}, expected an object",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return item
+
+
+def _require_str(item: dict, key: str, tool: str, index: int) -> str:
+    """Return a required non-empty string field, or exit 2.
+
+    A finding's identity is built from these, so a missing or null one does not degrade the
+    comparison gracefully — it manufactures an identity like "\\t\\t" that every other malformed
+    record also matches, collapsing them into one entry and making real findings vanish from both
+    sides of the diff. Ruff 0.16 explicitly allows `filename` to be null rather than defaulting it,
+    so this is reachable input rather than a hypothetical.
+    """
+    value = item.get(key)
+    if not isinstance(value, str) or not value.strip():
+        print(
+            f"ERROR: {tool} record #{index} has a missing or non-string '{key}': {value!r}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return value
+
+
 def normalize_ruff(json_path: str) -> list[str]:
     root = _repo_root()
     data = _load_json(json_path)
@@ -79,15 +127,19 @@ def normalize_ruff(json_path: str) -> list[str]:
         )
         sys.exit(2)
     findings: list[str] = []
-    for item in data:
+    for index, raw in enumerate(data):
+        item = _require_record(raw, "ruff", index)
         # Relativised for the same reason pyright's paths are: ruff reports ABSOLUTE
         # filenames, so an identity built from them is only comparable against a baseline
         # normalized from the identical directory. That holds while the gauntlet reverts
         # in place, and stops holding the moment a baseline is generated in a temp
         # worktree — at which point every finding reads as both added and removed.
-        filename = _rel(item.get("filename") or "", root)
+        filename = _rel(_require_str(item, "filename", "ruff", index), root)
+        message = _one_line(_require_str(item, "message", "ruff", index))
+        # `code` stays OPTIONAL on purpose. Ruff emits a null code for findings with no rule id —
+        # syntax errors (the E9 class this project selects) among them. Demanding it here would
+        # turn a genuine syntax error into a crash of the gate that is supposed to report it.
         code = item.get("code") or ""
-        message = (item.get("message") or "").strip()
         findings.append(f"{filename}\t{code}\t{message}")
     return sorted(set(findings))
 
@@ -108,13 +160,27 @@ def normalize_pyright(json_path: str) -> list[str]:
             file=sys.stderr,
         )
         sys.exit(2)
+    if not isinstance(diags, list):
+        print(
+            f"ERROR: pyright 'generalDiagnostics' is {type(diags).__name__}, expected a list",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     findings: list[str] = []
-    for item in diags:
-        if item.get("severity") != "error":
+    for index, raw in enumerate(diags):
+        # Validate EVERY record BEFORE filtering on severity. Filtering first lets a malformed
+        # record through unexamined whenever its severity happens not to be "error", so the schema
+        # problem would surface only on the run where it also happened to be an error — the worst
+        # possible moment to discover the parser cannot read its own input.
+        item = _require_record(raw, "pyright", index)
+        severity = _require_str(item, "severity", "pyright", index)
+        filepath = _rel(_require_str(item, "file", "pyright", index), root)
+        message = _one_line(_require_str(item, "message", "pyright", index))
+        if severity != "error":
             continue
-        filepath = _rel(item.get("file") or "", root)
+        # `rule` is documented as present only when a rule is associated with the diagnostic, so it
+        # is genuinely optional and must not be required.
         rule = item.get("rule") or ""
-        message = (item.get("message") or "").strip()
         findings.append(f"{filepath}\t{rule}\t{message}")
     return sorted(set(findings))
 

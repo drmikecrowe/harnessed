@@ -80,9 +80,10 @@ class TestEveryMigratedRecipe:
         assert install.system is None
 
     def test_declares_no_content_cache(self, name):
-        """`install.cache` keys a pinned CONTENT clone (superpowers' git tree). These four fetch
-        packaged artifacts from uv / pnpm / mise, each of which has its own cache — an empty
-        harnessed cache dir would just be dead weight the script never reads."""
+        """`install.cache` keys a pinned CONTENT clone (a git tree). The migrated recipes fetch a
+        PACKAGED artifact instead — serena via `pipx:serena-agent`, which mise resolves through uv —
+        and uv caches wheels itself, so an empty harnessed cache dir would be dead weight the script
+        never reads. Same reasoning the recipe states at its own `tools:` block."""
         install = _recipe(name).install
         assert install is not None, f"{name}: expected install block"
         assert install.cache is None

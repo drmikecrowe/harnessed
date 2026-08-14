@@ -37,10 +37,17 @@ _cleanup() {
   [ -n "$_RESTORE" ] && git checkout HEAD -- pyproject.toml $_RESTORE 2>/dev/null
   git checkout HEAD -- pyproject.toml 2>/dev/null
   if [ -n "$_STASHDIR" ] && [ -d "$_STASHDIR" ]; then
+    # Restore by REPO-RELATIVE path, mirroring how they were stashed. Keyed on basename these
+    # would collide across directories (tests/foo.py vs tools/foo.py) and silently lose a file.
     for f in $_NEW_TESTS; do
-      [ -f "$_STASHDIR/$(basename "$f")" ] && mv "$_STASHDIR/$(basename "$f")" "$f"
+      if [ -f "$_STASHDIR/$f" ]; then
+        mkdir -p "$(dirname "$f")"
+        mv "$_STASHDIR/$f" "$f"
+      fi
     done
-    rmdir "$_STASHDIR" 2>/dev/null
+    # `rm -r`, not `rmdir`: the stash now has nested parent dirs, so rmdir would always fail and
+    # leak the temp tree. Bounded — $_STASHDIR is only ever assigned from `mktemp -d` above.
+    rm -r "$_STASHDIR" 2>/dev/null
   fi
   return 0
 }
@@ -133,16 +140,44 @@ say "5. baselines at $BASE — finding-level diff for layers 3 and 4"
 # IMPORTANT: the revert covers src/, tests/, AND tools/ — not just src/.  Reverting src/ only
 # allows a new finding in tests/ or tools/ to appear identically in both runs and cancel against
 # itself, making it structurally invisible to the gate (#327 blind spot 2).
-CHANGED_SRC=$(git diff --name-only "$BASE" HEAD -- 'src/**/*.py' 'tests/*.py' 'tools/*.py')
-NEW_FILES=$(git diff --name-only --diff-filter=A "$BASE" HEAD -- 'tests/*.py' 'tools/*.py')
+# ADDED files are split out from CHANGED here, and the split is load-bearing rather than tidy.
+# An added file does not exist at $BASE, so naming it in `git checkout "$BASE" -- ...` makes git
+# abort the WHOLE command with "pathspec did not match" and check out NOTHING — not merely skip
+# that one path. Measured, not assumed: `git checkout <base> -- src/harnessed/paths.py
+# tools/lint-findings.py` left paths.py identical to HEAD.
+#
+# So a single added .py anywhere under these patterns silently disabled the entire baseline revert.
+# Baseline then analysed the HEAD tree, baseline == head, and the finding diff reported
+# "+0 added -0 removed" — a permanent all-clear from a gate that had stopped comparing anything.
+# That is the exact fail-open this script exists to prevent, and it was live: `tools/lint-findings.py`
+# is itself an added file on the branch that introduced this diff.
+#
+# `--diff-filter=a` (lower-case = EXCLUDE added) leaves only paths that exist at $BASE and are
+# therefore checkout-able; `--diff-filter=A` collects the added ones, which get moved aside instead.
+# Both cover src/ AND tests/ AND tools/ — reverting src/ only lets a new finding in tests/ or tools/
+# appear identically in both runs and cancel against itself (#327 blind spot 2).
+CHANGED_SRC=$(git diff --name-only --diff-filter=a "$BASE" HEAD -- 'src/**/*.py' 'tests/*.py' 'tools/*.py')
+NEW_FILES=$(git diff --name-only --diff-filter=A "$BASE" HEAD -- 'src/**/*.py' 'tests/*.py' 'tools/*.py')
 STASHDIR=$(mktemp -d)
 # Arm the trap BEFORE the tree is touched, not after — that ordering is the whole point.
 _RESTORE="$CHANGED_SRC"
 _STASHDIR="$STASHDIR"
 _NEW_TESTS="$NEW_FILES"
+# Fail CLOSED. A revert that half-happened produces a baseline that is neither HEAD nor $BASE, and
+# every number downstream would be quietly wrong rather than obviously broken.
 # shellcheck disable=SC2086
-[ -n "$CHANGED_SRC" ] && git checkout "$BASE" -- $CHANGED_SRC
-for f in $NEW_FILES; do mv "$f" "$STASHDIR/$(basename "$f")"; done
+if [ -n "$CHANGED_SRC" ] && ! git checkout "$BASE" -- $CHANGED_SRC; then
+  echo "baseline revert FAILED (git checkout $BASE) — refusing to report a comparison" >&2
+  exit 2
+fi
+# Stash under the file's REPO-RELATIVE path, not its basename: tests/foo.py and tools/foo.py share a
+# basename, and a basename-keyed stash silently overwrites the first with the second, then restores
+# the wrong content to one path and leaves the other deleted. Losing a source file to the measuring
+# instrument is worse than any finding it could report.
+for f in $NEW_FILES; do
+  mkdir -p "$STASHDIR/$(dirname "$f")"
+  mv "$f" "$STASHDIR/$f"
+done
 
 _baseline_lint_exit=0
 _baseline_types_exit=0
