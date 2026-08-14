@@ -105,6 +105,14 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]  # `assert` is what a test suite is made of (2464 of them)
 
+[tool.ruff.lint.flake8-bugbear]
+# B008 fires on a function call in an argument default, because the usual such call builds a shared
+# mutable that every invocation then aliases. `typer.Option`/`typer.Argument` are the opposite: they
+# return an immutable descriptor that Typer reads ONCE to build the CLI parser, and declaring them
+# in the signature is the only supported way to write a Typer command. Listing them here says "these
+# calls are immutable" rather than muting B008, so the rule still fires on a genuine mutable default.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
 [tool.pyright]
 include = ["src", "tests", "tools"]
 pythonVersion = "3.12"  # the floor, for the reason spelled out under [tool.ruff]

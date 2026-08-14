@@ -728,13 +728,13 @@ def _persist_mounts(stack: str, project_path: Path) -> list[str]:
     for recipe in recipes:
         for entry in recipe.persist.entries:
             if entry.scope == "global":
-                assert entry.path is not None, "global persist entry must have path"
+                assert entry.path is not None, "global persist entry must have path"  # noqa: S101 — schema-enforced invariant, narrowed here for the checker
                 host_dir = persist.resolve_global_persist(entry.path)
                 persist.guard_ownership(host_dir)
                 args += ["-v", f"{host_dir}:{host_dir}:rw"]
 
             elif entry.location == "host":
-                assert entry.name is not None, "non-global persist entry must have name"
+                assert entry.name is not None, "non-global persist entry must have name"  # noqa: S101 — schema-enforced invariant, narrowed here for the checker
                 if entry.scope == "workspace":
                     host_dir = paths.persist_workspace_dir(recipe.name, project_path, entry.name)
                 else:  # project
@@ -752,7 +752,7 @@ def _persist_mounts(stack: str, project_path: Path) -> list[str]:
                 args += ["-v", f"{host_dir}:{ctr_dir}:rw"]
 
             else:  # location: in_repo
-                assert entry.name is not None, "non-global persist entry must have name"
+                assert entry.name is not None, "non-global persist entry must have name"  # noqa: S101 — schema-enforced invariant, narrowed here for the checker
                 if entry.vcs == "ignored":
                     _ensure_gitignore_entry(project_path, entry.name)
                 # No mount — the workspace is already mounted read-write.

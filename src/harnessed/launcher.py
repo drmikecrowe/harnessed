@@ -2335,7 +2335,7 @@ def _launch_host(
         # Last chance to be read: past the exec, the agent owns the screen.
         _acknowledge_warnings()
         # execvpe REPLACES this process — clean TTY handoff to claude on the host.
-        os.execvpe(argv[0], argv, env)  # never returns
+        os.execvpe(argv[0], argv, env)  # never returns  # noqa: S606 — no shell is the POINT: argv is passed as a vector, so nothing is word-split or glob-expanded
     # --rm: supervise (fork claude, wait). No host daemons to tear down — bd owns its shared server.
     # unbounded: this IS the agent session. Its duration is however long the user works; any
     # deadline here kills a live session mid-thought. The non---rm branch above execvpe's for the
@@ -3363,7 +3363,7 @@ def _attach(
         # Last chance to be read: past the exec, the agent owns the screen.
         _acknowledge_warnings()
         # os.execvp replaces this process — hands the TTY to the container natively.
-        os.execvp(rt, exec_argv)
+        os.execvp(rt, exec_argv)  # noqa: S606 — no shell is the POINT: exec_argv is passed as a vector, so nothing is word-split or glob-expanded
 
     # Keep this process alive so we can reap the pod once the interactive session exits.
     try:
@@ -4238,7 +4238,7 @@ def host_gc(
         _out.print("No host config dirs found.")
         return
 
-    for stack, harness, is_orphan, age_days, size_kb, cred_status, legacy, home in entries:
+    for stack, harness, is_orphan, age_days, size_kb, cred_status, legacy, _home in entries:
         status = "[red]ORPHAN[/red]" if is_orphan else "[green]ok[/green]"
         cred_tag = f"  cred:[yellow]{cred_status}[/yellow]" if cred_status != "none" else ""
         legacy_tag = (
@@ -4547,7 +4547,7 @@ def aws_sso(
     action: str = typer.Argument("serve", help="serve — run the aws-sso ECS credential server for containers"),
     port: int = typer.Option(AWS_SSO_ECS_PORT, "--port", help="port the ECS server listens on"),
     bind_ip: str = typer.Option(
-        "0.0.0.0",
+        "0.0.0.0",  # noqa: S104 — deliberate and user-overridable: containers reach the ECS server via host.containers.internal, which 127.0.0.1 does not answer. The listener is gated by a bearer token, and --bind-ip 127.0.0.1 turns it host-only.
         "--bind-ip",
         help="host IP to bind. 0.0.0.0 (default) is reachable from containers via "
         "host.containers.internal and gated by the bearer token; use 127.0.0.1 to keep it host-only "

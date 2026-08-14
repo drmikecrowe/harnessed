@@ -1563,7 +1563,7 @@ def _persist_entry_dir(
 ) -> str | None:
     """Absolute path an `env:` template's `{persist:<name>}` resolves to, or None when it cannot be
     known yet (build time has no project). Mirrors _persist_mounts / _service_data_dir placement."""
-    assert entry.name is not None
+    assert entry.name is not None  # noqa: S101 — narrows for the checker; the parser already rejects a nameless non-global entry
     if entry.location == "in_repo":
         # Path-preserving in both modes — but anchored at the checkout, so it needs the project.
         return None if project_path is None else str(paths.persist_in_repo_dir(project_path, entry.name))
@@ -1930,7 +1930,7 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
     if "port" in raw:
         port = int(raw["port"])
         if not (1 <= port <= 65535):
-            raise SchemaError(f"{manifest}: 'port' must be 1–65535, got {port}")
+            raise SchemaError(f"{manifest}: 'port' must be 1-65535, got {port}")
 
     data_persist = ((raw.get("data") or {}).get("persist") or "").strip()
     if scope == "project" and not data_persist:
