@@ -163,13 +163,21 @@ def test_a_failed_install_never_runs_its_tests(tmp_path, monkeypatch):
     assert not ran.exists(), "tests ran for a recipe whose install had already failed"
 
 
-def test_a_hanging_test_fails_the_install_rather_than_wedging_every_launch(tmp_path, monkeypatch):
-    """S-7. Unbounded here would block every future launch of the stack, with no way back."""
+def test_a_hanging_test_fails_the_install_rather_than_wedging_every_launch(
+    tmp_path, monkeypatch, capsys
+):
+    """S-7. Unbounded here would block every future launch of the stack, with no way back.
+
+    Asserts the REASON as well as the abort: a hang reported as `exit 124` sends the reader hunting
+    for a bug in their script, when what happened is that it never finished.
+    """
     monkeypatch.setattr(capability, "DEFAULT_TEST_TIMEOUT", 1)
     r = _recipe(tmp_path, tests={"hang.sh": "sleep 30\n"})
 
     with pytest.raises(typer.Exit):
         _host_install(tmp_path, [r], monkeypatch)
+
+    assert "timeout" in _plain(capsys.readouterr().err)
 
 
 def test_the_failure_message_cannot_leak_an_earlier_secret(tmp_path, monkeypatch, capsys):
@@ -223,6 +231,42 @@ def test_a_binary_the_install_landed_is_on_the_tests_path(tmp_path, monkeypatch)
     )
 
     _host_install(tmp_path, [r], monkeypatch)  # raises if the binary is not visible
+
+
+def test_the_test_runs_in_the_project_dir_its_install_ran_in(tmp_path, monkeypatch):
+    """S-21. Every other scenario asserts WHAT the test saw; this one asserts WHERE it ran. A recipe
+    test that inspects the project it is installing into needs the same cwd its install had, and
+    without this nothing stopped that quietly becoming 'wherever harnessed happened to be run'."""
+    dump = tmp_path / "pwd.txt"
+    r = _recipe(tmp_path, tests={"pwd.sh": f"pwd > {dump}\nexit 0\n"})
+
+    _host_install(tmp_path, [r], monkeypatch)
+
+    assert Path(dump.read_text().strip()).resolve() == tmp_path.resolve()
+
+
+def test_a_failure_reported_only_on_stderr_is_not_corrupted(tmp_path, monkeypatch, capsys):
+    """S-23. The mirror of S-22: a script that writes NOTHING to stdout. Both halves of the combined
+    output need a scenario, or whichever half is always non-empty in the tests carries the other."""
+    r = _recipe(tmp_path, tests={"err.sh": "echo 'the stderr reason' >&2\nexit 5\n"})
+
+    with pytest.raises(typer.Exit):
+        _host_install(tmp_path, [r], monkeypatch)
+
+    assert "exit 5: the stderr reason" in _plain(capsys.readouterr().err)
+
+
+def test_a_failure_reported_on_stdout_is_not_lost(tmp_path, monkeypatch, capsys):
+    """S-22. Plenty of scripts `echo` their reason rather than writing to stderr. The failure detail
+    is built from stdout AND stderr combined, and until this test every failure scenario here used
+    stderr only — so the stdout half was carried by nothing."""
+    r = _recipe(tmp_path, tests={"out.sh": "echo 'the stdout reason'\nexit 2\n"})
+
+    with pytest.raises(typer.Exit):
+        _host_install(tmp_path, [r], monkeypatch)
+
+    msg = _plain(capsys.readouterr().err)
+    assert "exit 2: the stdout reason" in msg
 
 
 # --- Host seam: ordering across recipes ---------------------------------------------------------
@@ -348,6 +392,12 @@ def test_a_script_that_cannot_be_spawned_is_a_failed_test_not_a_crash(tmp_path, 
     assert len(results) == 1
     assert results[0].present is False
     assert capability.first_failed_test(results) is results[0]
+    # "Named and attributable" is a claim the docstring makes, so it is a claim a test has to hold:
+    # the result must say WHICH script, and carry the reason rather than a bare status.
+    assert results[0].name == "r/t.sh"
+    # Both halves: a failure STATUS and the REASON. Asserting only the reason let a mutant that
+    # dropped the status through, because "cannot execute" is a substring of "exit cannot execute".
+    assert results[0].detail == "exit 1: cannot execute"
 
 
 def test_a_container_test_that_times_out_fails_the_install(tmp_path, monkeypatch):
