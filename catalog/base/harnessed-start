@@ -18,7 +18,16 @@ HATAGO_PORT="${HATAGO_PORT:-3535}"
 # inherit safe.directory without needing to read /etc/gitconfig explicitly.
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='safe.directory' GIT_CONFIG_VALUE_0='*'
 
-if [ -f "${HATAGO_CFG}" ]; then
+# `stdio` stacks deliberately get NO hub here: the harness spawns its own over stdio (the emitted
+# .mcp.json carries `command`, not `url`). Starting one anyway would not be a harmless spare — the
+# background hub spawns its own copy of every stdio child, and for an OAuth child like mcp-remote
+# that means two processes contending for one lockfile and one callback port. The launcher passes
+# this variable from `Stack.hub_transport`, the same field the emitter reads, so the config and the
+# entrypoint cannot disagree. Unset (an older launcher, or a bare `podman run`) falls back to http,
+# which is the historical behaviour.
+HATAGO_TRANSPORT="${HATAGO_TRANSPORT:-http}"
+
+if [ -f "${HATAGO_CFG}" ] && [ "${HATAGO_TRANSPORT}" = "http" ]; then
     # Login shell (-lc) activates mise so hatago (pnpm add -g into harnessed-base) is on PATH.
     # nohup + & + redirect: hub survives detach; log at the path _wait_hatago's error message cites.
     bash -lc "nohup hatago serve --http --port ${HATAGO_PORT} --config ${HATAGO_CFG} >/tmp/hatago.log 2>&1 &"

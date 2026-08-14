@@ -1049,6 +1049,24 @@ _STACK_PERMISSIONS_MODES = frozenset({
     "prompt", "yolo",
 })
 
+# How the harness reaches the hatago hub. Named constants rather than bare strings so the emitter,
+# the launcher and the entrypoint cannot drift from the parser — the same reason
+# `_STACK_PERMISSIONS_MODES` exists above.
+HUB_TRANSPORT_HTTP = "http"
+HUB_TRANSPORT_STDIO = "stdio"
+_HUB_TRANSPORTS = frozenset({HUB_TRANSPORT_HTTP, HUB_TRANSPORT_STDIO})
+
+# Distinguishes "key absent" from "key present with no value". `raw.get(k)` collapses both to None,
+# and they mean opposite things about the author's intent — see `_parse_hub_transport`.
+_UNSET = object()
+
+# Harnesses whose hub wiring is EMITTED per stack, and can therefore honour `hub_transport`.
+# Everything else bakes the hub address into its image — codex carries `[mcp_servers.hatago]` with a
+# URL in Dockerfile.harnessed-codex — so declaring `stdio` for one would produce a stack whose
+# harness still dials HTTP against a hub nobody started. That fails as a schema error rather than
+# silently, because the symptom (an agent with no tools) names nothing.
+HUB_TRANSPORT_EMITTED_HARNESSES = frozenset({"claude"})
+
 
 @dataclass
 class Stack:
@@ -1105,6 +1123,27 @@ class Stack:
     # into) and takes precedence when both are configured. This field is for the case where the
     # client wants you to log in interactively as them.
     isolated_auth: bool = False
+    # How the HARNESS reaches the hatago hub — `http` (default) or `stdio`. This is a property of
+    # the hub, not of any recipe: N recipes merge into ONE hatago.config.json, so a per-recipe knob
+    # would have no coherent merge, and it is harness-FACING, which recipes deliberately are not.
+    #
+    # `http` runs hatago as a long-lived in-container server (harnessed-start) that every client in
+    # the container shares. `stdio` makes the harness spawn its own hub, which costs that sharing —
+    # two `claude` processes in one container mean two hubs and two copies of every stdio child —
+    # and buys the two things HTTP cannot give an OAuth-bearing child server:
+    #
+    #   1. NO SPURIOUS AUTH PROMPT. `type: http` makes Claude Code treat the hub as a REMOTE server,
+    #      so authenticating it runs OAuth discovery + Dynamic Client Registration against a hub that
+    #      implements neither. Observed: `SDK auth failed: Dynamic Client Registration rejected
+    #      (HTTP 404)`. stdio has no auth concept, so the failing path does not exist.
+    #   2. THE REAL PROMPT REACHES THE USER. A child like mcp-remote prints `Please authorize this
+    #      client by visiting: <url>` on stderr. Under http that stderr goes to /tmp/hatago.log,
+    #      where nobody sees it and the flow times out unexplained; under stdio it goes to the
+    #      harness, which is the only place a human is looking.
+    #
+    # Default stays `http`: flipping it changes every existing stack, and the duplicate-hub cost is
+    # real wherever something attaches twice.
+    hub_transport: str = HUB_TRANSPORT_HTTP
     state: dict = field(default_factory=dict)
     raw: dict = field(default_factory=dict)
 
@@ -1666,6 +1705,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
 KNOWN_STACK_FIELDS = frozenset({
     "name", "extends", "recipes", "services", "harnesses", "permissions", "instructions",
     "forward_git_credentials", "ssh_keys", "forward_aws_sso", "isolated_auth", "hatago", "state",
+    "hub_transport",
 })
 # `hatago` stays in the KNOWN set deliberately after its removal (bd harnessed-1t4.1): it must reach
 # `_reject_removed_hatago_override`, whose message says what replaced it, rather than dying in the
@@ -1814,9 +1854,33 @@ def load_stack(stack_dir: Path) -> Stack:
         ssh_keys=ssh_keys,
         forward_aws_sso=bool(raw.get("forward_aws_sso", False)),
         isolated_auth=bool(raw.get("isolated_auth", False)),
+        hub_transport=_parse_hub_transport(raw.get("hub_transport", _UNSET), manifest),
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
     )
+
+
+def _parse_hub_transport(value, manifest: Path) -> str:
+    """Validate `hub_transport:` STRICTLY, rather than falling back to the default on a bad value.
+
+    Stack parsing is otherwise tolerant of unknown fields (D-14). That tolerance is wrong here: a
+    typo'd value would silently leave the stack on `http`, and the symptom is not a config error but
+    an OAuth prompt that never appears — which is precisely the failure this field exists to remove.
+
+    ABSENT and EXPLICITLY NULL are different, which is why the caller passes a sentinel rather than
+    `raw.get(...)`. Omitting the key means "I never thought about this" and correctly takes the
+    default. Writing `hub_transport:` with nothing after it is YAML for None, and it means the
+    author DID think about it and left the edit half-finished — treating that as the default is the
+    same silent fallback this function exists to refuse, just reached by a different keystroke.
+    """
+    if value is _UNSET:
+        return HUB_TRANSPORT_HTTP
+    if not isinstance(value, str) or value not in _HUB_TRANSPORTS:
+        raise SchemaError(
+            f"{manifest}: 'hub_transport' must be one of "
+            f"{', '.join(sorted(_HUB_TRANSPORTS))} — got {value!r}"
+        )
+    return value
 
 
 def _parse_harnesses(raw_harnesses, manifest: Path) -> list[str]:

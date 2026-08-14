@@ -217,6 +217,7 @@ from .assemble import (
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
+    HUB_TRANSPORT_STDIO,
     PinValidationError,
     Recipe,
     SchemaError,
@@ -2980,6 +2981,12 @@ class ContainerBackend(ExecutionBackend):
             *socket_env,
             *setup_env,
             *mise_trust_env,
+            # Tells the entrypoint whether to start a hub at all. Under `stdio` the harness spawns
+            # its own, so a background one here would be a second hub with a second copy of every
+            # stdio child — for an OAuth child like mcp-remote, two processes contending for one
+            # lockfile and one callback port. Passed always, so the entrypoint never has to infer
+            # the default the schema already decided.
+            "-e", f"HATAGO_TRANSPORT={self.stk.hub_transport}",
             *self.member_mounts,
             # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
             # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
@@ -3294,7 +3301,15 @@ def container_run(
 
     # hatago starts automatically via /usr/local/bin/harnessed-start (the container entrypoint).
     # No exec -d needed — the entrypoint script starts it in the background before exec-ing sleep.
-    hatago_up = _wait_hatago(rt, inst)
+    #
+    # UNLESS the stack is stdio: then there is deliberately no hub running, because the harness
+    # spawns its own on launch. Probing for one would wait out the full timeout and then report a
+    # degraded hub — turning correct configuration into a red herring, and (headless) into a hard
+    # exit. `harnessed-start` reads the same field, so the two cannot disagree.
+    if stk.hub_transport == HUB_TRANSPORT_STDIO:
+        hatago_up = True
+    else:
+        hatago_up = _wait_hatago(rt, inst)
 
     if headless:
         if rm:
@@ -3303,7 +3318,16 @@ def container_run(
             # Headless callers (CI / capability tests) have no terminal to notice a degraded hub, so
             # a dead hatago must be a hard failure here, not a green SUCCESS line.
             raise typer.Exit(1)
-        _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago in-container)")
+        # The hub's WHEREABOUTS, not a fixed string: under stdio nothing is running in the container
+        # and the harness spawns the hub when it starts. Saying "hatago in-container" there would be
+        # a success line asserting something false, and the next person to debug a missing tool
+        # would go looking for a process that was never meant to exist.
+        hub_where = (
+            "hatago spawned by the harness (stdio)"
+            if stk.hub_transport == HUB_TRANSPORT_STDIO
+            else "hatago in-container"
+        )
+        _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} ({hub_where})")
         return
 
     _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)

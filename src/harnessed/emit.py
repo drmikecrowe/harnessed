@@ -25,13 +25,22 @@ from pathlib import Path
 _ARG_HARNESS_RE = re.compile(r'^ARG\s+HARNESS\s*$', re.IGNORECASE)
 
 from . import paths
-from .schema import McpServer, Recipe, resolve_recipe_env
+from .schema import (
+    HUB_TRANSPORT_HTTP,
+    HUB_TRANSPORT_STDIO,
+    McpServer,
+    Recipe,
+    resolve_recipe_env,
+)
 
 # hatago's single Streamable-HTTP endpoint (design D-04; default port 3535, `HATAGO_PORT`
 # overridable). Single source: `paths.hatago_endpoint()`. The harness `.mcp.json` points ONLY
 # here — never at a stdio server directly.
 HATAGO_ENDPOINT = paths.hatago_endpoint()
 HATAGO_MCP_KEY = "hatago"
+# The hub binary as it resolves on the container's PATH (pnpm global bin, added in
+# Dockerfile.harnessed-base). Used only by the stdio form, where the harness spawns the hub itself.
+HATAGO_STDIO_COMMAND = "hatago"
 
 def reset_profile(profile_dir: Path) -> None:
     """Wipe and recreate the profile dir so emission is fully reproducible."""
@@ -45,17 +54,38 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def write_mcp_json(profile_dir: Path) -> Path:
-    """Emit the harness `.mcp.json` — exactly ONE entry pointing at the hatago endpoint.
+def write_mcp_json(profile_dir: Path, transport: str = HUB_TRANSPORT_HTTP) -> Path:
+    """Emit the harness `.mcp.json` — exactly ONE entry for the hatago hub, in `transport` form.
 
-    `type: http` is REQUIRED — Claude Code only treats an entry as a Streamable-HTTP server
-    when the type is set; without it the server is not loaded. The launcher passes this file
-    via `claude --mcp-config <file> --strict-mcp-config`, so hatago is the ONLY MCP server the
-    isolated harness sees (no host/project/account-synced servers leak in). Launching with
-    `--no-strict-mcp-config` drops the strict switch and opts back into those other sources.
+    Either way the launcher passes this file via `claude --mcp-config <file> --strict-mcp-config`,
+    so hatago is the ONLY MCP server the isolated harness sees (no host/project/account-synced
+    servers leak in). Launching with `--no-strict-mcp-config` drops the strict switch and opts back
+    into those other sources.
+
+    `http` — `type: http` is REQUIRED. Claude Code only treats an entry as a Streamable-HTTP server
+    when the type is set; without it the server is not loaded. Points at the hub `harnessed-start`
+    runs in the background.
+
+    `stdio` — a `command`/`args` entry, so the harness SPAWNS the hub itself and nothing needs to be
+    running beforehand. No `type` key: Claude Code infers stdio from the presence of `command`, and
+    the two shapes are mutually exclusive. `harnessed-start` must not also start a hub in this mode
+    (it reads `HATAGO_TRANSPORT`), or the stack pays for two.
+
+    Why the stdio form matters is on `Stack.hub_transport`: it is the difference between an OAuth
+    child server that can be authorized and one that cannot.
     """
     out = profile_dir / ".mcp.json"
-    _write_json(out, {"mcpServers": {HATAGO_MCP_KEY: {"type": "http", "url": HATAGO_ENDPOINT}}})
+    if transport == HUB_TRANSPORT_STDIO:
+        entry = {
+            "command": HATAGO_STDIO_COMMAND,
+            # `serve --stdio` is hatago's own default mode, but it is passed EXPLICITLY: the default
+            # is upstream's to change, and this file is the contract the harness reads.
+            "args": ["serve", "--stdio", "--config", str(paths.hatago_config_container())],
+            "env": {},
+        }
+    else:
+        entry = {"type": "http", "url": HATAGO_ENDPOINT}
+    _write_json(out, {"mcpServers": {HATAGO_MCP_KEY: entry}})
     return out
 
 

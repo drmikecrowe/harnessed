@@ -19,9 +19,12 @@ from pathlib import Path
 
 from . import emit, paths, staleness
 from .schema import (
+    HUB_TRANSPORT_EMITTED_HARNESSES,
+    HUB_TRANSPORT_STDIO,
     McpServer,
     PinValidationError,
     Recipe,
+    SchemaError,
     Stack,
     load_agent,
     load_service,
@@ -200,6 +203,27 @@ def validate_agent_image(harness: str) -> None:
     )
 
 
+def _validate_hub_transport(stack: Stack, harness: str) -> None:
+    """`hub_transport: stdio` is only honourable for a harness whose hub wiring harnessed EMITS.
+
+    Only claude's hub entry is written per stack (`emit.write_mcp_json`). codex bakes
+    `[mcp_servers.hatago]` with an HTTP url into its IMAGE, and omp has no hub wiring at all — so
+    assembling a stdio stack for one of those yields a harness that still dials HTTP while
+    `harnessed-start`, honouring the same field, starts no hub. The result is an agent with no tools
+    and no error explaining why, which is exactly the failure mode worth refusing at build time.
+    """
+    if stack.hub_transport != HUB_TRANSPORT_STDIO:
+        return
+    if harness in HUB_TRANSPORT_EMITTED_HARNESSES:
+        return
+    raise SchemaError(
+        f"stack '{stack.name}' declares hub_transport: stdio, which harness '{harness}' cannot "
+        f"honour — only {', '.join(sorted(HUB_TRANSPORT_EMITTED_HARNESSES))} has its hub entry "
+        f"emitted per stack; '{harness}' bakes the hub address into its image. Build this stack "
+        f"for a supported harness, or set hub_transport: http."
+    )
+
+
 def assemble(
     root: Path | None, stack_name: str, build_dir: Path, harness: str, *, strict: bool = False
 ) -> AssembleResult:
@@ -244,8 +268,10 @@ def assemble(
 
     profile_dir = build_dir / "profiles" / stack.name / harness
 
+    _validate_hub_transport(stack, harness)
+
     emit.reset_profile(profile_dir)
-    emit.write_mcp_json(profile_dir)
+    emit.write_mcp_json(profile_dir, stack.hub_transport)
     emit.write_settings_json(profile_dir, servers, recipes, stack.permissions, harness)
     emit.write_hatago_config(profile_dir, servers)
     # ASM-03 — derived Dockerfile. No scan layer: the scan moved to the credentialed post-build
