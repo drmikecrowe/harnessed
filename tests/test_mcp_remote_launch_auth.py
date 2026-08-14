@@ -156,13 +156,51 @@ class TestTheLaunchSequenceAsksAtTheOnlyMomentItCan:
             encoding="utf-8"
         )
 
-    def test_the_prompt_runs_before_the_harness_attaches(self):
-        """After the pod (which supplies the published callback port and the store mount) and before
-        attach (after which nothing can surface a URL)."""
+    # The CALL, not the definition. `_authorize_mcp_remote_servers(\n` matches `def
+    # _authorize_mcp_remote_servers(` first, which sits near the top of the file — so the original
+    # form of this test compared the definition's offset against `_attach`'s and passed no matter
+    # where the call went, including after it. It asserted nothing. Raised by CodeRabbit on PR #375.
+    # Matches the ARGUMENTS, which only the call sites carry, and tolerates their differing
+    # indentation (the re-attach one sits a level deeper).
+    _CALL = re.compile(r"_authorize_mcp_remote_servers\(\s*\n\s*rt, inst, launch_servers, stk")
+
+    def test_the_ordering_probe_matches_calls_and_not_the_definition(self):
+        """Guards the guard. If this pattern ever matches the `def` line, every ordering assertion
+        below silently goes vacuous — which is exactly how the first version of this test passed
+        while asserting nothing."""
         src = self._launcher()
-        ask = src.index("_authorize_mcp_remote_servers(\n")
-        attach = src.index("_attach(rt, harness, inst")
-        assert ask < attach
+        found = list(self._CALL.finditer(src))
+        assert len(found) >= 2, f"expected both call sites, matched {len(found)}"
+        for occurrence in found:
+            line_start = src.rfind("\n", 0, occurrence.start()) + 1
+            assert not src[line_start:occurrence.start()].strip().startswith("def "), (
+                "the ordering probe matches the function definition"
+            )
+
+    def test_every_attach_is_preceded_by_the_prompt(self):
+        """After the pod (which supplies the published callback port and the store mount) and before
+        attach (after which nothing can surface a URL). Asserted against EVERY `_attach` call site,
+        not the first — the re-attach branch reaches its own, and skipping the prompt there is the
+        defect this replaced."""
+        src = self._launcher()
+        calls = [m.start() for m in self._CALL.finditer(src)]
+        attaches = [m.start() for m in re.finditer(r"_attach\(rt, harness, inst", src)]
+        assert calls, "the launch never calls the consent prompt"
+        assert attaches, "no attach call sites found — this test is looking at the wrong thing"
+        for attach in attaches:
+            assert any(call < attach for call in calls), (
+                "an _attach is reachable with no preceding consent prompt"
+            )
+
+    def test_the_re_attach_branch_asks_too(self):
+        """A running instance is the LIKELIEST state to need this — one that came up, failed to
+        authorize, and is still running is exactly what an operator re-attaches to. Both branches
+        there return straight into `_attach`, so without this `--reauth` silently did nothing
+        whenever the pod happened to be up."""
+        src = self._launcher()
+        branch = src[src.index("if not headless and _container_running(rt, inst):"):]
+        branch = branch[:branch.index("_attach(rt, harness, inst")]
+        assert "_authorize_mcp_remote_servers(" in branch
 
     def test_headless_refuses_rather_than_blocking(self):
         """A browser prompt in CI would hang to the job timeout and report nothing useful."""
@@ -178,7 +216,7 @@ class TestTheLaunchSequenceAsksAtTheOnlyMomentItCan:
         block = src[src.index("def _authorize_mcp_remote_servers"):]
         block = block[:block.index("\ndef ")]
         assert "restart_hub = stk.hub_transport != HUB_TRANSPORT_STDIO" in block
-        assert "pkill -f hatago-mcp-hub" in block
+        assert "pkill -f" in block
 
     def test_the_hub_comes_back_even_if_the_consent_fails(self):
         """`finally`. A cancelled consent must not leave the operator with an instance that has no
@@ -216,6 +254,116 @@ class TestTheLaunchSequenceAsksAtTheOnlyMomentItCan:
         assert "if reauth:" in block
 
 
+class TestAPartiallyWrittenTokenIsNotSuccess:
+    """mcp-remote persists with a plain `writeFile` — the pinned dist contains no `rename(` at all —
+    so the file appears at its final path EMPTY and fills in after. Existence alone would end the
+    wait early, and the teardown would then terminate mcp-remote mid-write, leaving a corrupt token
+    on disk permanently. Raised by CodeRabbit on PR #375."""
+
+    def test_a_complete_token_is_accepted(self, tmp_path):
+        from harnessed.launcher import _token_is_complete
+        t = tmp_path / "t.json"
+        t.write_text(json.dumps({"access_token": "abc"}), encoding="utf-8")
+        assert _token_is_complete(t) is True
+
+    def test_a_missing_file_is_not(self, tmp_path):
+        from harnessed.launcher import _token_is_complete
+        assert _token_is_complete(tmp_path / "absent.json") is False
+
+    def test_the_moment_of_creation_is_not(self, tmp_path):
+        """The exact state `writeFile` passes through: opened, still empty."""
+        from harnessed.launcher import _token_is_complete
+        t = tmp_path / "t.json"
+        t.write_text("", encoding="utf-8")
+        assert _token_is_complete(t) is False
+
+    def test_a_half_written_object_is_not(self, tmp_path):
+        from harnessed.launcher import _token_is_complete
+        t = tmp_path / "t.json"
+        t.write_text('{"access_token": "ab', encoding="utf-8")
+        assert _token_is_complete(t) is False
+
+    def test_an_empty_object_is_not(self, tmp_path):
+        """`{}` parses. It carries no token, so it is not a finished consent."""
+        from harnessed.launcher import _token_is_complete
+        t = tmp_path / "t.json"
+        t.write_text("{}", encoding="utf-8")
+        assert _token_is_complete(t) is False
+
+    def test_a_json_scalar_is_not(self, tmp_path):
+        from harnessed.launcher import _token_is_complete
+        t = tmp_path / "t.json"
+        t.write_text("null", encoding="utf-8")
+        assert _token_is_complete(t) is False
+
+    def test_the_consent_waits_on_the_parsed_form(self):
+        """Pinned structurally too: a future edit back to `token.is_file()` reopens the race."""
+        from harnessed import paths
+        src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
+            encoding="utf-8"
+        )
+        block = src[src.index("def _run_mcp_remote_consent"):]
+        block = block[:block.index("\ndef ")]
+        assert "_token_is_complete(token)" in block
+        assert "token.is_file()" not in block
+
+
+class TestTheHubStopCannotKillItsOwnShell:
+    """`pkill -f` matches full command lines, including the `bash -lc "pkill -f …"` it runs as. The
+    plain spelling makes the shell match itself and die before signalling the hub — observed while
+    developing this, where the only symptom was an exec exiting 143 with the hub still up."""
+
+    def _block(self) -> str:
+        from harnessed import paths
+        src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
+            encoding="utf-8"
+        )
+        block = src[src.index("def _authorize_mcp_remote_servers"):]
+        return block[:block.index("\ndef ")]
+
+    def test_the_pattern_cannot_match_itself(self):
+        block = self._block()
+        pattern = re.search(r"pkill -f '(\[.\][^']*)'", block)
+        assert pattern, "the hub-stop pattern is not self-match-proof (no bracketed first char)"
+        # The regex the shell runs, applied to the literal text of the command line that runs it.
+        assert not re.search(pattern.group(1), pattern.group(0)), (
+            "the pkill pattern still matches its own command line"
+        )
+
+    def test_it_still_matches_a_real_hub_command_line(self):
+        """Self-match-proof is worthless if it also stops matching the process it must kill."""
+        block = self._block()
+        found = re.search(r"pkill -f '(\[.\][^']*)'", block)
+        assert found, "no bracketed pkill pattern found"
+        pattern = found.group(1)
+        real = ("/home/harnessed/.local/share/mise/installs/node/22/bin/node "
+                "/home/harnessed/.local/share/pnpm/global/v11/2-x/node_modules/"
+                "@drmikecrowe/hatago-mcp-hub/dist/node/cli.js serve --http --port 3535")
+        assert re.search(pattern, real)
+
+
+class TestTheHeadlessErrorDoesNotSendTheReaderInACircle:
+    def test_it_does_not_offer_reauth_as_the_way_out(self):
+        """--reauth fails headless in exactly the same way, so naming it there is a loop. The only
+        remedy is an interactive launch. Raised by CodeRabbit on PR #375."""
+        from harnessed import paths
+        src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
+            encoding="utf-8"
+        )
+        block = src[src.index("def _authorize_mcp_remote_servers"):]
+        block = block[:block.index("\ndef ")]
+        # The headless branch only (`--reauth` is legitimately named elsewhere in this function),
+        # and CODE only — the comment above the message explains why the flag is withheld, and
+        # matching that would assert the opposite of what it says.
+        branch = block[block.index("    if headless:"):]
+        branch = branch[:branch.index("typer.Exit(1)")]
+        emitted = "\n".join(
+            ln for ln in branch.splitlines() if not ln.lstrip().startswith("#")
+        )
+        assert "--reauth" not in emitted, "the headless error offers a flag that fails the same way"
+        assert "interactively" in emitted, "the headless error does not name the actual remedy"
+
+
 class TestTheConsentKnowsWhenItIsDone:
     def _consent(self) -> str:
         from harnessed import paths
@@ -227,8 +375,9 @@ class TestTheConsentKnowsWhenItIsDone:
 
     def test_the_token_file_is_the_completion_signal(self):
         """mcp-remote does not exit on success — it becomes the proxy — so waiting for exit would
-        hang forever on the happy path."""
-        assert "token.is_file()" in self._consent()
+        hang forever on the happy path. The token file is what ends the wait; that it must be
+        PARSED rather than merely present is pinned in TestAPartiallyWrittenTokenIsNotSuccess."""
+        assert "_token_is_complete(token)" in self._consent()
 
     def test_an_early_exit_is_not_mistaken_for_success(self):
         """Declined, crashed, or bad URL: the process ends with no token, and that is a failure."""

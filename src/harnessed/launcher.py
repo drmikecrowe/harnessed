@@ -1283,6 +1283,21 @@ def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None) ->
         raise typer.Exit(1)
 
 
+def _token_is_complete(token: Path) -> bool:
+    """True only when the token file holds parseable, non-empty JSON.
+
+    The completion test for a consent. Existence is not enough: mcp-remote writes with a plain
+    `writeFile` (no atomic rename anywhere in the pinned dist), so the file appears at its final
+    path empty and fills in after. Anything unreadable, unparseable, or empty means "still writing"
+    — or a previous run that died mid-write — and both are correctly "not authorized yet".
+    """
+    try:
+        parsed = json.loads(token.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(parsed, dict) and bool(parsed)
+
+
 def _run_mcp_remote_consent(
     rt: str, instance: str, name: str, argv: list[str], token: Path, timeout: int = 300
 ) -> bool:
@@ -1318,7 +1333,13 @@ def _run_mcp_remote_consent(
     deadline = time.monotonic() + timeout
     try:
         while time.monotonic() < deadline:
-            if token.is_file():
+            # PARSED, not merely present. mcp-remote persists with a plain `writeFile` and no
+            # atomic rename (verified in the pinned dist: zero `rename(` calls), so the path exists
+            # from the moment the file is OPENED and fills in afterwards. Treating existence as
+            # success would not just risk reading a truncated token — the teardown below would then
+            # terminate mcp-remote mid-write and leave a corrupt one on disk permanently. Requiring
+            # parseable, non-empty JSON closes both.
+            if _token_is_complete(token):
                 _out.print(f"\n[green][SUCCESS][/green] {name} authorized.")
                 return True
             if proc.poll() is not None:
@@ -1371,10 +1392,13 @@ def _authorize_mcp_remote_servers(
         # A blocking browser prompt in CI would hang until the job timeout and report nothing
         # useful. Naming the servers and the flag turns that into an actionable failure.
         names = ", ".join(n for n, _ in pending)
+        # Does NOT offer --reauth as a way out: passing it here fails in exactly the same way, and
+        # an error that suggests a flag which cannot work sends the reader in a circle. The only
+        # remedy is an interactive launch, so that is the only thing named.
         _err.print(
             f"[bold red]error:[/bold red] {names} require a browser authorization that headless "
-            f"mode cannot perform. Launch this stack interactively once (or run with --reauth) to "
-            f"store the token, then headless launches will reuse it."
+            f"mode cannot perform. Launch this stack interactively once to store the token; "
+            f"headless launches then reuse it."
         )
         raise typer.Exit(1)
     # CONTENTION, and it exists only on the http path. There the entrypoint started the hub with the
@@ -1386,8 +1410,13 @@ def _authorize_mcp_remote_servers(
     # there is nothing to stop and nothing to restart.
     restart_hub = stk.hub_transport != HUB_TRANSPORT_STDIO
     if restart_hub:
+        # `[h]atago` deliberately. `pkill -f` matches against full command lines, INCLUDING the
+        # `bash -lc "pkill -f …"` this runs as — so the plain spelling makes the shell match itself
+        # and die before it can signal the hub. Not hypothetical: it happened while developing this,
+        # and the only symptom was an exec exiting 143 with the hub still running. The bracket makes
+        # the pattern match the hub's command line and not its own.
         _bounded(
-            [rt, "exec", inst, "bash", "-lc", "pkill -f hatago-mcp-hub || true"],
+            [rt, "exec", inst, "bash", "-lc", "pkill -f '[h]atago-mcp-hub' || true"],
             timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True,
         )
     try:
@@ -3375,6 +3404,14 @@ def container_run(
     # (rebuilt since it started), a re-attach would silently run the stale build. Offer to recreate.
     headless = backend.headless
     if not headless and _container_running(rt, inst):
+        # THE RE-ATTACH PATH NEEDS THIS TOO, and missing it was not a small gap: both branches
+        # below `return` straight into `_attach`, so a running instance skipped the consent
+        # entirely. That is the likeliest state to need it — an instance that came up, failed to
+        # authorize, and is still running is exactly what an operator re-attaches to — and it made
+        # `--reauth` silently do nothing whenever the pod happened to be up.
+        _authorize_mcp_remote_servers(
+            rt, inst, launch_servers, stk, headless=headless, reauth=reauth
+        )
         if _container_stale(rt, inst, harness_image):
             if sys.stdin.isatty() and typer.confirm(
                 f"'{inst}' is running on an older build of {harness_image}. "
