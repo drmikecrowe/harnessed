@@ -1,0 +1,67 @@
+name: lint
+
+# ruff, pyright and shellcheck as a MERGE GATE, held at zero.
+#
+# Until #369 these three ran nowhere in CI. Their numbers (190 / 74 / 0) were carried as a
+# "baseline" that every task measured its delta against, which is precisely what kept them alive:
+# a debt compared against itself never shrinks, and #264 recorded that the figures were "too high
+# to gate on as-is". #369 burned all three to zero, so this gate needs no ratchet and no committed
+# baseline file — the threshold is simply zero, which is the only threshold nobody has to maintain.
+#
+# If a later change genuinely needs a finding kept, the answer is a `# noqa: <RULE>` (or a pyright
+# suppression) carrying the REASON on the line itself, not a raised number here. That keeps the
+# justification next to the code where the next reader will actually meet it. Every suppression
+# currently in the tree was written that way.
+#
+# DELIBERATELY NO `paths:` FILTER, matching `test.yml`: when a workflow is a required status check,
+# a path filter deadlocks any PR that does not touch the filtered paths — the check never reports,
+# so the PR can never merge.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  # Job id is the status-check context name. Renaming it (or wrapping it in a matrix, which
+  # rewrites the name to `lint (x)`) silently leaves branch protection waiting on a context that
+  # never reports again — the trap called out in `test.yml` for `pytest`.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      # PINNED TO COMMIT SHAs, not tags, matching `test.yml` and `live.yml` — a git tag is mutable,
+      # so whoever controls the action can repoint `v5` at different code that then runs on this
+      # runner. "Pin every download" (CLAUDE.md) applies to actions too: an action is a download
+      # that executes. Comments carry the human-readable version so pins can be refreshed
+      # deliberately. `persist-credentials: false` because no later step needs git auth.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          persist-credentials: false
+
+      - name: Setup uv (+ Python 3.12)
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          python-version: "3.12"
+
+      # pyright and shellcheck are pinned in `mise.toml` (npm:pyright, shellcheck), NOT in the dev
+      # extra — so mise is what makes this job run the same versions the developer does. A tool
+      # resolved from the runner's ambient PATH instead would make this gate unreproducible, which
+      # is the failure mode that lets a green CI disagree with a red local run.
+      - name: Setup mise
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654  # v4.2.4
+        with:
+          install: true
+
+      # Each layer runs as its own step so a red run names the layer in the UI without anyone
+      # opening the log. No `continue-on-error` anywhere: each tool exits nonzero on a finding and
+      # that must fail the job. A lint gate that reports without failing is a report, not a gate.
+      - name: ruff (lint + bandit `S` rules)
+        run: uv run --extra dev ruff check src tests tools
+
+      - name: pyright (static types)
+        run: pyright
+
+      # `catalog/**` is included on purpose: those install scripts run INSIDE recipe images as
+      # root, so a quoting bug there is a container build that fails opaquely, or worse, succeeds
+      # wrongly. They are the shell most worth checking and the least often read.
+      - name: shellcheck
+        run: shellcheck $(git ls-files '*.sh')
