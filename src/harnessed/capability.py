@@ -400,6 +400,92 @@ def run_recipe_tests(
     return results
 
 
+def run_test_command(
+    test: RecipeTest,
+    argv: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    cwd: str | Path | None = None,
+    timeout: int = DEFAULT_TEST_TIMEOUT,
+) -> CapabilityResult:
+    """Run ONE recipe test as `argv` and fold the outcome. The single executor for BOTH seams.
+
+    Host mode passes `["bash", <script>]` with the install's env; container mode passes the podman
+    argv. Everything that can differ between the two modes is in `argv` — everything that must NOT
+    differ (output capture, lenient decode, the timeout, which exceptions count as a failure, how a
+    failure is folded) lives here, once. An asymmetry between the seams was a real review finding,
+    so it is removed structurally rather than by remembering to keep two blocks in step.
+
+    Deliberately NOT routed through `proc._run`: that helper ECHOES captured stdout/stderr to the
+    terminal before re-raising, which is right for an install step whose output is meant to stream
+    and wrong for a recipe test, whose output must reach the user only as one truncated line
+    (T-02-07). Found by adversarial review — the container seam was printing the whole transcript.
+
+    Never raises for a failing test: every outcome, including a failure to spawn at all, becomes a
+    `CapabilityResult`. The install seams decide what a failure means.
+    """
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            # A recipe script's output is arbitrary bytes. `text=True` alone decodes STRICTLY, so
+            # one stray byte raises UnicodeDecodeError — a ValueError, caught by neither handler
+            # below, so it would escape as a traceback out of somebody's launch. Replacing is
+            # TOTAL: the readable tail still reaches the failure detail.
+            errors="replace",
+            timeout=timeout,
+            cwd=str(cwd) if cwd is not None else None,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return fold_test_result(test, 124, "", timed_out=True)
+    except (subprocess.SubprocessError, OSError) as exc:
+        # Whatever went wrong at the process boundary, the answer is "this recipe's test did not
+        # pass", named and attributable — never a traceback.
+        return fold_test_result(test, 1, str(exc))
+    return fold_test_result(
+        test, proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+    )
+
+
+def run_recipe_tests_host(
+    tests: list[RecipeTest],
+    *,
+    env: dict[str, str],
+    workdir: str | Path | None = None,
+    timeout: int = DEFAULT_TEST_TIMEOUT,
+) -> list[CapabilityResult]:
+    """Run each discovered script on the HOST, in the environment its install just ran in.
+
+    The host sibling of `run_recipe_tests`, and deliberately NOT a copy of it: there is no `cp`
+    (`tests_dir` is already a host path) and no runtime (that is the whole point of AC-6a). `env` is
+    passed in rather than rebuilt, so the test sees exactly what the install saw — `emit.install_env`
+    is the single authority and a second copy here could drift from it silently.
+
+    Never raises for a failing script: a non-zero exit is a RESULT, folded by `fold_test_result` like
+    any other. The install seam decides what a failure means.
+    """
+    return [
+        run_test_command(
+            test,
+            ["bash", str(test.tests_dir / test.script)],
+            env=env,
+            cwd=workdir,
+            timeout=timeout,
+        )
+        for test in tests
+    ]
+
+
+def first_failed_test(results: list[CapabilityResult]) -> CapabilityResult | None:
+    """The first non-passing result, or None. Both install seams gate on this same answer."""
+    for result in results:
+        if not result.present:
+            return result
+    return None
+
+
 def launch_headless(
     root: Path | str,
     stack_name: str,

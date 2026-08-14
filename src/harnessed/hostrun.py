@@ -20,6 +20,7 @@ from typing import MutableMapping, Optional
 
 import typer
 
+from . import capability
 from . import emit
 from . import paths, toollock
 from .assemble import _merge_servers
@@ -418,6 +419,30 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
         ).returncode != 0:
             _err.print(f"[bold red]error:[/bold red] install for '{recipe.name}' failed")
             raise typer.Exit(1)
+        # THIS recipe's tests, before the next recipe installs. Per-recipe interleaving, not
+        # install-all-then-test-all: a test asserts what its own install produced, and a later
+        # recipe must not install onto a stack that has already failed. Same env as the install
+        # above — one contract, so a host/container drift is not expressible here.
+        tests = capability.discover_recipe_tests([recipe])
+        if tests:
+            _err.print(
+                f"[blue][INFO][/blue] tests ({recipe.name}): {len(tests)} script(s) (host)"
+            )
+            # Timeout read at CALL time, not bound as a default: a def-time default cannot be
+            # varied, which would make the "a hung test does not wedge every launch" guarantee
+            # untestable. Same constant the container seam passes — one authority, both modes.
+            failed = capability.first_failed_test(
+                capability.run_recipe_tests_host(
+                    tests, env=env, workdir=project_path,
+                    timeout=capability.DEFAULT_TEST_TIMEOUT,
+                )
+            )
+            if failed is not None:
+                _err.print(
+                    f"[bold red]error:[/bold red] recipe test failed for '{recipe.name}': "
+                    f"{failed.name} — {failed.detail}"
+                )
+                raise typer.Exit(1)
 
 
 # Shell bookkeeping, not anything a recipe meant to export. `_` and OLDPWD change on their own; PWD

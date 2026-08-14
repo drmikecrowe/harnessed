@@ -12,7 +12,13 @@
 # Contract: exit 0 == pass.
 set -euo pipefail
 
-SETTINGS="${CONTAINER_HOME:-/home/harnessed}/.claude/settings.json"
+# $HARNESSED_CONFIG_DIR, not $CONTAINER_HOME: this script now runs during the install in BOTH modes,
+# and CONTAINER_HOME names a container the host has none of — its /home/harnessed default resolved to
+# a path that does not exist, so the script failed host-side for a reason that had nothing to do with
+# caveman. `emit.install_env` guarantees HARNESSED_CONFIG_DIR in both modes (identical KEYS is that
+# function's standing invariant), and it points at the agent config dir directly rather than at a home
+# containing one. The ASSERTIONS below are unchanged; only the way the config dir is located.
+SETTINGS="${HARNESSED_CONFIG_DIR:?HARNESSED_CONFIG_DIR is set by the install contract}/settings.json"
 
 # --- 1. WIRED: the recipe's hook actually reached the runtime config -----------------------------
 if [ ! -f "${SETTINGS}" ]; then

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import typer
 
+from . import capability
 from . import emit
 from . import jsonmerge
 from . import paths, toollock
@@ -343,6 +344,46 @@ def _run_container_installs(
                  f"{emit.CTR_RECIPE_DIR}/{recipe.name}/{inst.script}"]
         _say(f"[blue][INFO][/blue] install ({recipe.name}): {inst.script} (container)")
         _run(args)
+        _run_container_recipe_tests(recipe, args)
+
+
+def _run_container_recipe_tests(recipe, install_args: list[str]) -> None:
+    """Run THIS recipe's `tests/*.sh` in the container, right after its install, before the next.
+
+    The recipe dir is ALREADY bind-mounted read-only for the install, so the scripts are reachable
+    with no new mount and no new env: the test step is the install step with a different script
+    path, which is why it is built by replacing the last element rather than composed a second time.
+    A second composition is where the two would drift.
+
+    Run through `capability.run_test_command`, the SAME executor the host seam uses, NOT through
+    `proc._run`. Two reasons, both found by adversarial review:
+
+      * `_run` ECHOES captured stdout/stderr to the terminal before re-raising. That is right for an
+        install step, whose output is meant to stream, and wrong here: it put a recipe test's whole
+        transcript on screen, making the truncated detail (T-02-07) cosmetic.
+      * `_run`'s callers gate on `CalledProcessError`/`TimeoutExpired` only, so this seam handled a
+        narrower set of failures than the host seam did. One shared executor removes the asymmetry
+        structurally instead of asking two blocks to be kept in step.
+    """
+    tests = capability.discover_recipe_tests([recipe])
+    if not tests:
+        return
+    _say(f"[blue][INFO][/blue] tests ({recipe.name}): {len(tests)} script(s) (container)")
+    results = [
+        capability.run_test_command(
+            test,
+            [*install_args[:-1], f"{emit.CTR_RECIPE_DIR}/{recipe.name}/tests/{test.script}"],
+            timeout=capability.DEFAULT_TEST_TIMEOUT,
+        )
+        for test in tests
+    ]
+    failed = capability.first_failed_test(results)
+    if failed is not None:
+        _err.print(
+            f"[bold red]error:[/bold red] recipe test failed for '{recipe.name}': "
+            f"{failed.name} — {failed.detail}"
+        )
+        raise typer.Exit(1)
 
 
 def _ensure_stack_volumes(
