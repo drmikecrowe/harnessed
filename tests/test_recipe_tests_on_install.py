@@ -260,21 +260,27 @@ def test_a_failing_test_stops_the_remaining_recipes(tmp_path, monkeypatch):
 # --- Container seam: argv, because the suite runs no podman -------------------------------------
 
 
-def _container_argv(tmp_path, recipes, monkeypatch, fail_tests: str | None = None):
-    """Capture the podman command lines the container executor would run.
+def _container_argv(tmp_path, recipes, monkeypatch, fail_tests: str | None = None,
+                    fail_stderr: str = "it failed"):
+    """Capture the podman command lines the container executor would run, in order.
 
-    `_run` is stubbed the way it really behaves under `check=True`: a non-zero exit RAISES
-    `CalledProcessError` carrying the captured output, rather than returning a status. Stubbing it
-    as a no-op would let a test assert against a contract the real function does not have.
+    TWO boundaries, deliberately: install steps still go through `proc._run` (their output is meant
+    to stream), while test steps go through `capability.run_test_command`, which calls
+    `subprocess.run` directly precisely so a test's output is NEVER echoed. Both are captured here so
+    ordering assertions see one interleaved list.
     """
     calls: list[list[str]] = []
 
     def _fake_run(cmd, *a, **k):
         calls.append(list(cmd))
-        if fail_tests is not None and cmd[-1].endswith(fail_tests):
-            raise subprocess.CalledProcessError(1, cmd, output="", stderr="it failed")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
+    def _fake_test_run(cmd, *a, **k):
+        calls.append(list(cmd))
+        failed = fail_tests is not None and cmd[-1].endswith(fail_tests)
+        return subprocess.CompletedProcess(cmd, 1 if failed else 0, "", fail_stderr if failed else "")
+
+    monkeypatch.setattr(capability.subprocess, "run", _fake_test_run)
     patch_all(monkeypatch, "_run", _fake_run)
     monkeypatch.setattr(
         launcher.paths, "install_cache_dir", lambda name, key: tmp_path / "cache" / name / key,
@@ -347,16 +353,12 @@ def test_a_script_that_cannot_be_spawned_is_a_failed_test_not_a_crash(tmp_path, 
 def test_a_container_test_that_times_out_fails_the_install(tmp_path, monkeypatch):
     """S-18. The container seam fails closed on a hang exactly as the host seam does -- otherwise a
     stack whose test hangs would build 'successfully' forever."""
-    calls: list[list[str]] = []
-
-    def _fake_run(cmd, *a, **k):
-        calls.append(list(cmd))
-        if cmd[-1].endswith("tests/t.sh"):
-            raise subprocess.TimeoutExpired(cmd, capability.DEFAULT_TEST_TIMEOUT)
-        return subprocess.CompletedProcess(cmd, 0, "", "")
+    def _timeout(cmd, *a, **k):
+        raise subprocess.TimeoutExpired(cmd, capability.DEFAULT_TEST_TIMEOUT)
 
     r = _recipe(tmp_path, tests={"t.sh": "exit 0\n"})
-    patch_all(monkeypatch, "_run", _fake_run)
+    monkeypatch.setattr(capability.subprocess, "run", _timeout)
+    patch_all(monkeypatch, "_run", lambda cmd, *a, **k: subprocess.CompletedProcess(cmd, 0, "", ""))
     monkeypatch.setattr(
         launcher.paths, "install_cache_dir", lambda name, key: tmp_path / "cache" / name / key,
     )
@@ -365,6 +367,62 @@ def test_a_container_test_that_times_out_fails_the_install(tmp_path, monkeypatch
         launcher._run_container_installs(
             "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
         )
+
+
+def test_binary_output_from_a_test_does_not_crash_the_install(tmp_path, monkeypatch, capsys):
+    """S-19, host seam. Decoding a script's output must not itself be able to raise: a recipe that
+    prints one stray byte is a FAILING TEST, not a traceback out of somebody's launch."""
+    r = _recipe(
+        tmp_path,
+        tests={"binary.sh": "printf 'noise \\xff\\xfe\\n' >&2\necho 'the readable reason' >&2\nexit 1\n"},
+    )
+
+    with pytest.raises(typer.Exit):
+        _host_install(tmp_path, [r], monkeypatch)
+
+    assert "the readable reason" in _plain(capsys.readouterr().err)
+
+
+def test_the_container_seam_decodes_a_tests_output_leniently(tmp_path, monkeypatch):
+    """S-19, container seam. An asymmetry between the two seams would itself be the defect, so both
+    ask for a LENIENT decode and the strict-decode crash cannot arise in either."""
+    seen: dict[str, object] = {}
+    r = _recipe(tmp_path, tests={"t.sh": "exit 0\n"})
+
+    def _spy(cmd, *a, **k):
+        seen.update(k)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(capability.subprocess, "run", _spy)
+    patch_all(monkeypatch, "_run", lambda cmd, *a, **k: subprocess.CompletedProcess(cmd, 0, "", ""))
+    monkeypatch.setattr(
+        launcher.paths, "install_cache_dir", lambda name, key: tmp_path / "cache" / name / key,
+    )
+
+    launcher._run_container_installs("podman", "s", "claude", "img", [r], "cfgvol", "toolsvol")
+
+    assert seen.get("errors") == "replace", "a strict decode can crash the launch on one stray byte"
+
+
+def test_a_container_tests_output_is_never_echoed_to_the_terminal(tmp_path, monkeypatch, capsys):
+    """T-02-07, container seam — found by adversarial review.
+
+    `proc._run` prints captured stdout/stderr before re-raising, which is correct for an install
+    step and wrong for a test: routing tests through it put the WHOLE transcript on screen, so the
+    truncated failure detail was decorative. The property, not the plumbing: a secret-shaped line in
+    a failing test's output must not reach the terminal, while the reason still does.
+    """
+    r = _recipe(tmp_path, tests={"t.sh": "exit 1\n"})
+
+    with pytest.raises(typer.Exit):
+        _container_argv(
+            tmp_path, [r], monkeypatch, fail_tests="tests/t.sh",
+            fail_stderr="AKIAIOSFODNN7EXAMPLE super secret\nthe readable reason",
+        )
+
+    err = _plain(capsys.readouterr().err)
+    assert "AKIAIOSFODNN7EXAMPLE" not in err
+    assert "the readable reason" in err
 
 
 # --- The one catalog fix in scope ----------------------------------------------------------------
@@ -390,6 +448,38 @@ def test_cavemans_shipped_test_passes_under_a_host_install(tmp_path):
     )
 
     assert proc.returncode == 0, f"caveman's test fails host-side: {proc.stdout}{proc.stderr}"
+
+
+def test_no_shipped_recipe_test_reads_a_container_only_variable():
+    """S-20. The CLASS behind the caveman fix, closed over every script rather than the one that
+    was reported — raised by adversarial review, which pointed out that only caveman had been
+    audited.
+
+    `CONTAINER_HOME` names a container. Now that these scripts run during a HOST install too, a
+    script reading it resolves to `/home/harnessed`, a path that does not exist, and — because a
+    failing test aborts the install — takes down every host launch of every stack containing that
+    recipe. There is no correct way to read it from a script that must work in both modes.
+
+    Coverage is honest about its own limit: this catches this ONE variable, not every way a script
+    could be single-mode. It is a guard against the defect that actually happened.
+    """
+    scripts = sorted(CATALOG.glob("recipes/*/tests/*.sh"))
+    assert scripts, "no recipe test scripts found — this guard would pass vacuously"
+
+    offenders = []
+    for script in scripts:
+        code = "\n".join(
+            re.sub(r"\s#.*$", "", line)
+            for line in script.read_text().splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        if "CONTAINER_HOME" in code:
+            offenders.append(script.relative_to(CATALOG).as_posix())
+
+    assert offenders == [], (
+        f"container-only variable in a script that now runs during a HOST install: {offenders}. "
+        "Use $HARNESSED_CONFIG_DIR, which emit.install_env guarantees in both modes."
+    )
 
 
 def test_caveman_no_longer_depends_on_a_container_only_variable():

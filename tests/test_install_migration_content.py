@@ -274,9 +274,19 @@ class TestCatalogWideInvariants:
     def test_the_container_executor_runs_an_install_step_for_each(self, monkeypatch):
         from harnessed import launcher
 
+        from harnessed import capability
+
         recipes = [_recipe(n) for n in CONTENT_RECIPES]
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
+        # SECOND execution boundary (#329): after each install, that recipe's `tests/*.sh` run —
+        # and they do NOT go through `_run`, deliberately, so a test's output is never echoed.
+        # caveman is in CONTENT_RECIPES and ships a test, so without this the assertion below would
+        # shell out to real podman. Stubbing `_run` alone no longer neutralizes this function.
+        monkeypatch.setattr(
+            capability, "run_test_command",
+            lambda test, argv, **k: capability.fold_test_result(test, 0, ""),
+        )
         launcher._run_container_installs(
             "podman", "s", "claude", "img", recipes, "cfgvol", "toolsvol",
         )

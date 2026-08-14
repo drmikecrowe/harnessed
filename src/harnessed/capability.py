@@ -400,6 +400,55 @@ def run_recipe_tests(
     return results
 
 
+def run_test_command(
+    test: RecipeTest,
+    argv: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    cwd: str | Path | None = None,
+    timeout: int = DEFAULT_TEST_TIMEOUT,
+) -> CapabilityResult:
+    """Run ONE recipe test as `argv` and fold the outcome. The single executor for BOTH seams.
+
+    Host mode passes `["bash", <script>]` with the install's env; container mode passes the podman
+    argv. Everything that can differ between the two modes is in `argv` — everything that must NOT
+    differ (output capture, lenient decode, the timeout, which exceptions count as a failure, how a
+    failure is folded) lives here, once. An asymmetry between the seams was a real review finding,
+    so it is removed structurally rather than by remembering to keep two blocks in step.
+
+    Deliberately NOT routed through `proc._run`: that helper ECHOES captured stdout/stderr to the
+    terminal before re-raising, which is right for an install step whose output is meant to stream
+    and wrong for a recipe test, whose output must reach the user only as one truncated line
+    (T-02-07). Found by adversarial review — the container seam was printing the whole transcript.
+
+    Never raises for a failing test: every outcome, including a failure to spawn at all, becomes a
+    `CapabilityResult`. The install seams decide what a failure means.
+    """
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            # A recipe script's output is arbitrary bytes. `text=True` alone decodes STRICTLY, so
+            # one stray byte raises UnicodeDecodeError — a ValueError, caught by neither handler
+            # below, so it would escape as a traceback out of somebody's launch. Replacing is
+            # TOTAL: the readable tail still reaches the failure detail.
+            errors="replace",
+            timeout=timeout,
+            cwd=str(cwd) if cwd is not None else None,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return fold_test_result(test, 124, "", timed_out=True)
+    except (subprocess.SubprocessError, OSError) as exc:
+        # Whatever went wrong at the process boundary, the answer is "this recipe's test did not
+        # pass", named and attributable — never a traceback.
+        return fold_test_result(test, 1, str(exc))
+    return fold_test_result(
+        test, proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+    )
+
+
 def run_recipe_tests_host(
     tests: list[RecipeTest],
     *,
@@ -417,30 +466,16 @@ def run_recipe_tests_host(
     Never raises for a failing script: a non-zero exit is a RESULT, folded by `fold_test_result` like
     any other. The install seam decides what a failure means.
     """
-    results: list[CapabilityResult] = []
-    for test in tests:
-        script = test.tests_dir / test.script
-        try:
-            proc = subprocess.run(
-                ["bash", str(script)],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                cwd=str(workdir) if workdir is not None else None,
-                env=env,
-            )
-        except subprocess.TimeoutExpired:
-            results.append(fold_test_result(test, 124, "", timed_out=True))
-            continue
-        except (subprocess.SubprocessError, OSError) as exc:
-            # An unreadable or missing script is a FAILED test, not a crashed launch — the recipe
-            # is what is broken, and the message has to say which recipe.
-            results.append(fold_test_result(test, 1, str(exc)))
-            continue
-        results.append(
-            fold_test_result(test, proc.returncode, (proc.stdout or "") + (proc.stderr or ""))
+    return [
+        run_test_command(
+            test,
+            ["bash", str(test.tests_dir / test.script)],
+            env=env,
+            cwd=workdir,
+            timeout=timeout,
         )
-    return results
+        for test in tests
+    ]
 
 
 def first_failed_test(results: list[CapabilityResult]) -> CapabilityResult | None:

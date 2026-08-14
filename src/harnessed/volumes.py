@@ -355,32 +355,28 @@ def _run_container_recipe_tests(recipe, install_args: list[str]) -> None:
     path, which is why it is built by replacing the last element rather than composed a second time.
     A second composition is where the two would drift.
 
-    Output is captured rather than streamed so a failure can be reported as ONE truncated line
-    (T-02-07) instead of a transcript.
+    Run through `capability.run_test_command`, the SAME executor the host seam uses, NOT through
+    `proc._run`. Two reasons, both found by adversarial review:
+
+      * `_run` ECHOES captured stdout/stderr to the terminal before re-raising. That is right for an
+        install step, whose output is meant to stream, and wrong here: it put a recipe test's whole
+        transcript on screen, making the truncated detail (T-02-07) cosmetic.
+      * `_run`'s callers gate on `CalledProcessError`/`TimeoutExpired` only, so this seam handled a
+        narrower set of failures than the host seam did. One shared executor removes the asymmetry
+        structurally instead of asking two blocks to be kept in step.
     """
     tests = capability.discover_recipe_tests([recipe])
     if not tests:
         return
     _say(f"[blue][INFO][/blue] tests ({recipe.name}): {len(tests)} script(s) (container)")
-    results = []
-    for test in tests:
-        argv = [*install_args[:-1], f"{emit.CTR_RECIPE_DIR}/{recipe.name}/tests/{test.script}"]
-        # Gate on the EXCEPTION, not on a returned object: `check=True` is how every other step in
-        # this module reports a non-zero exit, and CalledProcessError carries the captured output
-        # the truncated detail needs. It also fails CLOSED — anything that goes wrong raises rather
-        # than yielding something that reads as a pass.
-        try:
-            _run(argv, check=True, capture_output=True, text=True,
-                 timeout=capability.DEFAULT_TEST_TIMEOUT)
-        except subprocess.CalledProcessError as exc:
-            results.append(capability.fold_test_result(
-                test, exc.returncode, (exc.stdout or "") + (exc.stderr or "")
-            ))
-            continue
-        except subprocess.TimeoutExpired:
-            results.append(capability.fold_test_result(test, 124, "", timed_out=True))
-            continue
-        results.append(capability.fold_test_result(test, 0, ""))
+    results = [
+        capability.run_test_command(
+            test,
+            [*install_args[:-1], f"{emit.CTR_RECIPE_DIR}/{recipe.name}/tests/{test.script}"],
+            timeout=capability.DEFAULT_TEST_TIMEOUT,
+        )
+        for test in tests
+    ]
     failed = capability.first_failed_test(results)
     if failed is not None:
         _err.print(
