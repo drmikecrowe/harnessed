@@ -23,7 +23,7 @@ description: >-
 # registry, which mise and pnpm already cache.
 # No `system:` — pure content under the agent config dir, nothing needs root, nothing is skipped.
 tools:
-  - npm:@opengsd/gsd-core@1.6.1
+  - npm:@opengsd/gsd-core@1.9.1
 
 install:
   script: install.sh

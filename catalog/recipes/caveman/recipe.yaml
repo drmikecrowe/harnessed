@@ -47,14 +47,14 @@ install:
   refs:
     caveman:
       repo: JuliusBrussee/caveman
-      ref: v1.9.0
+      ref: v1.10.0
 
 # What the capability test must find in the running container after a successful build. caveman
 # lands 7 skills into ~/.claude/skills and 4 slash-commands into ~/.claude/commands; declare a
 # stable few of each. (Also ships cavecrew + caveman-help skills and caveman-init/commit/review
 # commands — not enumerated.)
 expect:
-  skills:   [caveman, caveman-compress, caveman-commit, caveman-review, caveman-stats]
+  skills: [caveman, caveman-compress, caveman-commit, caveman-review, caveman-stats]
   commands: [caveman]
 
 # First-run reminder (GAP 2): on SessionStart, print a one-time nudge to run /caveman-init. Gated

@@ -51,7 +51,7 @@ install:
   refs:
     superpowers:
       repo: obra/superpowers
-      ref: v6.0.3
+      ref: v6.2.0
 
 # What the capability test must find in the running container after a successful build. install.sh
 # copies all 14 upstream skills/<name>/SKILL.md trees into ~/.claude/skills; list

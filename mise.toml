@@ -37,3 +37,22 @@ run = "python3 tools/wiki-links.py --check"
 
 [tasks.pull-and-build]
 run = 'git pull && uv tool install --editable .'
+
+# Catalog and mise.toml pin upgrades land as their own dated PR rather than riding along with
+# unrelated work, so a bad pin can be reverted as a unit.
+[tasks.upgrade-pr]
+description = "Branch, commit catalog/ + mise.toml upgrades, push, open a PR, return to main"
+run = '''
+set -euo pipefail
+day="$(date +%Y-%m-%d)"
+branch="upgrade-$day"
+
+git switch -c "$branch"
+git add catalog mise.toml
+git commit -S -m "chore(catalog): upgrade pins $day"
+git push -u origin "$branch"
+gh pr create --base main --head "$branch" \
+  --title "chore(catalog): upgrade pins $day" \
+  --body "Automated pin upgrade for $day. Covers \`catalog/\` and \`mise.toml\`."
+git switch main
+'''
