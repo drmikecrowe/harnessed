@@ -107,6 +107,20 @@ def test_other_legitimate_pin_shapes_are_accepted(version):
     assert _parse(version) == {"BUN_VERSION": version}
 
 
+@pytest.mark.parametrize(
+    "version", ["1.2.3-rc1+build.5", "2.1.223-rc.1+exp.sha.5114f85", "1.0.0-alpha.1+001"],
+)
+def test_semver_with_both_prerelease_and_build_metadata_is_accepted(version):
+    """S-28. Found by adversarial review: the suffix was ONE optional group, so a version carrying
+    a prerelease AND build metadata matched the `-rc1` half, left `+build.5` unconsumed, and failed.
+    Valid SemVer, and every build of an agent pinned that way would have failed at manifest load.
+
+    The earlier tests had `-rc.1` and `+build.5` as separate cases and never together — the gap was
+    in the test data, not only in the pattern.
+    """
+    assert _parse(version) == {"BUN_VERSION": version}
+
+
 def test_a_pinned_value_is_stored_stripped(tmp_path):
     """S-23. The value reaches `--build-arg NAME=value`; leading whitespace there is a different
     string than the one the manifest author meant."""
@@ -234,6 +248,111 @@ def test_the_agent_gate_and_the_refs_gate_agree(value, tmp_path):
         f"{value!r}: agent gate and install.refs gate disagree — the two surfaces share one "
         "instrument and must not drift"
     )
+
+
+# --- Hostile input -------------------------------------------------------------------------------
+
+
+# Written as escapes, not glyphs: ruff RUF001/2/3 reject ambiguous characters in source, and it is
+# right to — a homoglyph that reads as "1.2.3" is exactly the confusion under test here.
+ARABIC_INDIC = "\u0661.\u0662.\u0663"  # "1.2.3" in U+0660..U+0669
+ARABIC_INDIC_MIXED = "1.\u0662"  # one ASCII digit and one Arabic-Indic
+ARABIC_INDIC_ZERO = "\u06600"
+FULLWIDTH = "\uff11.\uff12.\uff13"  # "1.2.3" in U+FF10..U+FF19
+
+
+@pytest.mark.parametrize(
+    "value", [ARABIC_INDIC, ARABIC_INDIC_ZERO, ARABIC_INDIC_MIXED, FULLWIDTH],
+)
+def test_non_ascii_digits_are_not_a_version(value):
+    """S-24. Python's `\\d` is Unicode-aware, so Arabic-Indic and full-width digits matched the
+    allow-list and were accepted as pins. No registry, tag or installer resolves them — accepting
+    one is the gate failing open on precisely the unrecognised shape it promises to fail closed on."""
+    with pytest.raises(SchemaError):
+        _parse(value)
+
+
+@pytest.mark.parametrize("value", [ARABIC_INDIC, ARABIC_INDIC_MIXED])
+def test_non_ascii_digits_are_not_a_ref_either(value):
+    """S-25. The same constant guards `install.refs[].ref`, so it had the identical hole. Fixing one
+    surface and not the other would rebuild the asymmetry this unit exists to remove."""
+    from harnessed.schema import _parse_install_refs
+
+    with pytest.raises(SchemaError):
+        _parse_install_refs({"k": {"repo": "owner/repo", "ref": value}}, "install")
+
+
+def test_an_absurdly_long_value_is_rejected_promptly():
+    """S-27. `(?:\\.\\d+)*` and `(?:[-+.][0-9A-Za-z.]+)?` both match dots, so a failing input makes
+    the engine try every split — measured quadratic (4002 chars -> 96 ms). A length cap runs BEFORE
+    the regex, so the pathological input never reaches it.
+
+    Asserts the outcome and the promptness together: a test that only checked the rejection would
+    still pass while taking a minute.
+    """
+    import time
+
+    value = "1" + ".1" * 3000 + "!"
+
+    start = time.perf_counter()
+    with pytest.raises(SchemaError):
+        _parse(value)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.05, f"took {elapsed:.3f}s — the cap is not running before the regex"
+
+
+def test_every_shipped_recipe_still_loads_after_the_tightening(tmp_path):
+    """S-26. The Unicode fix tightens a constant the recipe path shares, so the recipe path is the
+    one that has to be proven unharmed."""
+    from harnessed.schema import load_recipe
+
+    catalog = Path(__file__).resolve().parents[1] / "catalog" / "recipes"
+    recipes = sorted(p.parent for p in catalog.glob("*/recipe.yaml"))
+    assert recipes, "no recipes found — this guard would pass vacuously"
+
+    for recipe_dir in recipes:
+        load_recipe(recipe_dir, strict=True)
+
+
+# --- The write path, not only the read path --------------------------------------------------------
+
+
+def _agent_manifest(tmp_path: Path, value: str = "1.2.3") -> Path:
+    manifest = tmp_path / "agent.yaml"
+    manifest.write_text(
+        "harness: demo\nimage: demo:latest\nbuild_args:\n"
+        f"  BUN_VERSION: {{ value: \"{value}\" }}\n",
+        encoding="utf-8",
+    )
+    return manifest
+
+
+@pytest.mark.parametrize("channel", ["latest", "nightly", "main"])
+def test_the_update_writer_refuses_to_persist_a_channel(tmp_path, channel):
+    """S-29. Found by adversarial review: the gate was READ-only. `harnessed update` wrote a
+    resolver-produced value straight into agent.yaml, so a resolver that returned a channel left an
+    invalid manifest on disk and turned the NEXT build into a schema error.
+
+    A pin invariant enforced only where values are read is not enforced.
+    """
+    from harnessed.update import _rewrite_agent_build_arg
+
+    manifest = _agent_manifest(tmp_path)
+    before = manifest.read_text(encoding="utf-8")
+
+    assert _rewrite_agent_build_arg(manifest, "BUN_VERSION", channel) is False
+    assert manifest.read_text(encoding="utf-8") == before, "a refused write still touched the file"
+
+
+def test_the_update_writer_still_applies_a_real_version(tmp_path):
+    """S-30. The complement: the guard must not break the path it protects."""
+    from harnessed.update import _rewrite_agent_build_arg
+
+    manifest = _agent_manifest(tmp_path, "1.2.3")
+
+    assert _rewrite_agent_build_arg(manifest, "BUN_VERSION", "1.3.14") is True
+    assert "1.3.14" in manifest.read_text(encoding="utf-8")
 
 
 # --- Property: the shape is what decides, not an enumeration ---------------------------------------

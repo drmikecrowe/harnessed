@@ -2351,6 +2351,11 @@ class Agent:
 _ARG_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
+# Longest plausible pin: a 40-hex SHA is 40, the longest real version tag is well under this. Set
+# where no legitimate value can reach it, so the cap only ever fires on input that was never a pin.
+_MAX_BUILD_ARG_PIN = 128
+
+
 def _require_immutable_build_arg(key: str, value: str, manifest: Path) -> str:
     """A build_arg value must be an IMMUTABLE pin — a version-like tag or a full SHA. Returns it.
 
@@ -2371,6 +2376,15 @@ def _require_immutable_build_arg(key: str, value: str, manifest: Path) -> str:
     escape hatch: a declared exception suppresses the ABSENT error and nothing else.
     """
     pin = value.strip()
+    # Length cap BEFORE the regex. `(?:\.[0-9]+)*` and `(?:[-+.][0-9A-Za-z.]+)?` both match dots, so
+    # a long FAILING input makes the engine try every split — measured quadratic (4002 chars → 96 ms).
+    # A version is never this long, so the cap costs nothing real and the pathological input never
+    # reaches the matcher.
+    if len(pin) > _MAX_BUILD_ARG_PIN:
+        raise SchemaError(
+            f"{manifest}: build_args {key!r} is {len(pin)} characters — a pinned version is a tag "
+            f"or a 40-character SHA, not a document."
+        )
     if not _IMMUTABLE_REF_RE.match(pin):
         raise SchemaError(
             f"{manifest}: build_args {key!r} is {value!r}, which is not a pinned version — a "
@@ -2517,7 +2531,24 @@ _FLOATING_REF_RE = re.compile(
 _CLONE_REF_RE = re.compile(r'--branch(?:=|\s+)(?P<ref>"[^"]*"|\'[^\']*\'|\S+)')
 # v6.0.3, 1.2.3, 0.1.2, v2.0.0-rc.1 — and a full commit SHA. Deliberately narrow: an unrecognised
 # shape fails closed rather than being guessed at.
-_IMMUTABLE_REF_RE = re.compile(r'^(?:[0-9a-fA-F]{40}|v?\d+(?:\.\d+)*(?:[-+.][0-9A-Za-z.]+)?)$')
+#
+# `[0-9]`, NOT `\d`: Python's `\d` is Unicode-aware, so a version written in Arabic-Indic digits
+# (U+0660..U+0669) or full-width digits (U+FF10..U+FF19) matched and was accepted as a version.
+# (The glyphs are named by codepoint rather than spelled here — ruff RUF003 rejects ambiguous
+# characters in comments, and it is right to.) No registry, tag or installer resolves those,
+# so accepting one is the gate failing open on exactly the unrecognised shape it promises to fail
+# closed on. Found by the hostile-input pass on #329 unit 7; it affected this constant, so it
+# affected BOTH surfaces that share it (`install.refs[].ref` and agent `build_args`).
+#
+# The suffix is TWO independent optional groups — a prerelease/`.postN` tail and a `+build` tail —
+# not one. As a single `[-+.]…` group, `1.2.3-rc1+build.5` matched `-rc1`, left `+build.5`
+# unconsumed, and failed: valid SemVer, wrongly rejected (found by adversarial review). The obvious
+# repair, making that one group repeat with `*`, was MEASURED and rejected — it is the classic
+# `(X+)*` shape and went exponential, hanging outright on a 480-character failing input where this
+# form stays at 0.006 ms.
+_IMMUTABLE_REF_RE = re.compile(
+    r'^(?:[0-9a-fA-F]{40}|v?[0-9]+(?:\.[0-9]+)*(?:[-.][0-9A-Za-z.]+)?(?:\+[0-9A-Za-z.]+)?)$'
+)
 # `"$FOO"` / `${FOO}` — catalog scripts pin via `FOO_REF="v6.0.3"` and clone `--branch "$FOO_REF"`,
 # so the gate follows exactly one hop to the literal assignment in the same body.
 _SHELL_VAR_REF_RE = re.compile(r'^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$')
