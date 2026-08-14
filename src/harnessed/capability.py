@@ -400,6 +400,57 @@ def run_recipe_tests(
     return results
 
 
+def run_recipe_tests_host(
+    tests: list[RecipeTest],
+    *,
+    env: dict[str, str],
+    workdir: str | Path | None = None,
+    timeout: int = DEFAULT_TEST_TIMEOUT,
+) -> list[CapabilityResult]:
+    """Run each discovered script on the HOST, in the environment its install just ran in.
+
+    The host sibling of `run_recipe_tests`, and deliberately NOT a copy of it: there is no `cp`
+    (`tests_dir` is already a host path) and no runtime (that is the whole point of AC-6a). `env` is
+    passed in rather than rebuilt, so the test sees exactly what the install saw — `emit.install_env`
+    is the single authority and a second copy here could drift from it silently.
+
+    Never raises for a failing script: a non-zero exit is a RESULT, folded by `fold_test_result` like
+    any other. The install seam decides what a failure means.
+    """
+    results: list[CapabilityResult] = []
+    for test in tests:
+        script = test.tests_dir / test.script
+        try:
+            proc = subprocess.run(
+                ["bash", str(script)],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                cwd=str(workdir) if workdir is not None else None,
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            results.append(fold_test_result(test, 124, "", timed_out=True))
+            continue
+        except (subprocess.SubprocessError, OSError) as exc:
+            # An unreadable or missing script is a FAILED test, not a crashed launch — the recipe
+            # is what is broken, and the message has to say which recipe.
+            results.append(fold_test_result(test, 1, str(exc)))
+            continue
+        results.append(
+            fold_test_result(test, proc.returncode, (proc.stdout or "") + (proc.stderr or ""))
+        )
+    return results
+
+
+def first_failed_test(results: list[CapabilityResult]) -> CapabilityResult | None:
+    """The first non-passing result, or None. Both install seams gate on this same answer."""
+    for result in results:
+        if not result.present:
+            return result
+    return None
+
+
 def launch_headless(
     root: Path | str,
     stack_name: str,

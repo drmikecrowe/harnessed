@@ -15,6 +15,7 @@ from pathlib import Path
 
 import typer
 
+from . import capability
 from . import emit
 from . import jsonmerge
 from . import paths, toollock
@@ -343,6 +344,50 @@ def _run_container_installs(
                  f"{emit.CTR_RECIPE_DIR}/{recipe.name}/{inst.script}"]
         _say(f"[blue][INFO][/blue] install ({recipe.name}): {inst.script} (container)")
         _run(args)
+        _run_container_recipe_tests(recipe, args)
+
+
+def _run_container_recipe_tests(recipe, install_args: list[str]) -> None:
+    """Run THIS recipe's `tests/*.sh` in the container, right after its install, before the next.
+
+    The recipe dir is ALREADY bind-mounted read-only for the install, so the scripts are reachable
+    with no new mount and no new env: the test step is the install step with a different script
+    path, which is why it is built by replacing the last element rather than composed a second time.
+    A second composition is where the two would drift.
+
+    Output is captured rather than streamed so a failure can be reported as ONE truncated line
+    (T-02-07) instead of a transcript.
+    """
+    tests = capability.discover_recipe_tests([recipe])
+    if not tests:
+        return
+    _say(f"[blue][INFO][/blue] tests ({recipe.name}): {len(tests)} script(s) (container)")
+    results = []
+    for test in tests:
+        argv = [*install_args[:-1], f"{emit.CTR_RECIPE_DIR}/{recipe.name}/tests/{test.script}"]
+        # Gate on the EXCEPTION, not on a returned object: `check=True` is how every other step in
+        # this module reports a non-zero exit, and CalledProcessError carries the captured output
+        # the truncated detail needs. It also fails CLOSED — anything that goes wrong raises rather
+        # than yielding something that reads as a pass.
+        try:
+            _run(argv, check=True, capture_output=True, text=True,
+                 timeout=capability.DEFAULT_TEST_TIMEOUT)
+        except subprocess.CalledProcessError as exc:
+            results.append(capability.fold_test_result(
+                test, exc.returncode, (exc.stdout or "") + (exc.stderr or "")
+            ))
+            continue
+        except subprocess.TimeoutExpired:
+            results.append(capability.fold_test_result(test, 124, "", timed_out=True))
+            continue
+        results.append(capability.fold_test_result(test, 0, ""))
+    failed = capability.first_failed_test(results)
+    if failed is not None:
+        _err.print(
+            f"[bold red]error:[/bold red] recipe test failed for '{recipe.name}': "
+            f"{failed.name} — {failed.detail}"
+        )
+        raise typer.Exit(1)
 
 
 def _ensure_stack_volumes(
