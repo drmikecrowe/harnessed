@@ -564,20 +564,45 @@ def _mcp_remote_callback_publish_args(
     is_free = port_free or _port_free
     args: list[str] = []
     seen: set[int] = set()
-    for argv in _mcp_remote_invocations(servers):
-        port = _mcp_remote_callback_port(argv)
-        if port is None or port in seen:
+    for port in _oauth_callback_ports(servers):
+        if port in seen:
             continue
         seen.add(port)
         if not is_free(port):
             _err.print(
                 f"[yellow]note:[/yellow] host port {port} is in use, so this instance publishes no "
-                "mcp-remote OAuth callback. It will use the tokens already in the shared store; "
-                "only a first-time consent needs the port."
+                "OAuth callback on it. It will use the tokens already in the shared store; only a "
+                "first-time consent needs the port."
             )
             continue
         args += ["-p", f"127.0.0.1:{port}:{port}"]
     return args
+
+
+def _oauth_callback_ports(servers: Sequence) -> list[int]:
+    """Every OAuth callback port this stack needs published, from BOTH kinds of server.
+
+    The two declare it in different places because the two are authenticated by different
+    processes, and the pod does not care which:
+
+      * a hub child (mcp-remote) carries it as a positional ARGUMENT, because that is the only
+        interface its CLI offers;
+      * a `direct:` server declares `oauth.callback_port`, because the harness itself performs the
+        flow and harnessed writes the port into the harness's own config as `oauth.callbackPort`.
+
+    Both end up as a loopback publish on the pod, and both need the pasta option for the same
+    reason — the listener binds 127.0.0.1 inside a netns the browser is not in.
+    """
+    ports: list[int] = []
+    for argv in _mcp_remote_invocations(servers):
+        port = _mcp_remote_callback_port(argv)
+        if port is not None:
+            ports.append(port)
+    for server in servers:
+        # `direct` and hub-child are mutually exclusive, so no server contributes twice.
+        if getattr(server, "direct", False) and getattr(server, "oauth_callback_port", None):
+            ports.append(server.oauth_callback_port)
+    return ports
 
 
 def _mcp_remote_pasta_net_args(publish_args: list[str], net: str) -> list[str]:

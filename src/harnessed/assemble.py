@@ -224,6 +224,28 @@ def _validate_hub_transport(stack: Stack, harness: str) -> None:
     )
 
 
+def _validate_direct_servers(servers: list[McpServer], harness: str) -> None:
+    """`direct:` is only honourable for a harness whose MCP config harnessed EMITS.
+
+    Same boundary as `hub_transport: stdio`, for the same reason. Only claude's `.mcp.json` is
+    written per stack; codex and omp carry their MCP wiring baked into their IMAGE, so a direct
+    server declared for one of those would be silently absent — the recipe would read as if the
+    server were configured while the harness never learned of it, and hatago would not have it
+    either, because `direct` removes it from the hub's config. Failing the build names the problem;
+    the alternative names nothing at all.
+    """
+    direct = [s.name for s in servers if s.direct]
+    if not direct or harness in HUB_TRANSPORT_EMITTED_HARNESSES:
+        return
+    raise SchemaError(
+        f"mcp server(s) {', '.join(sorted(direct))} declare 'direct: true', which harness "
+        f"'{harness}' cannot honour — only "
+        f"{', '.join(sorted(HUB_TRANSPORT_EMITTED_HARNESSES))} has its MCP config emitted per "
+        f"stack; '{harness}' bakes it into its image. Drop 'direct' so the server is reached "
+        f"through hatago, or build this stack for a supported harness."
+    )
+
+
 def assemble(
     root: Path | None, stack_name: str, build_dir: Path, harness: str, *, strict: bool = False
 ) -> AssembleResult:
@@ -269,9 +291,10 @@ def assemble(
     profile_dir = build_dir / "profiles" / stack.name / harness
 
     _validate_hub_transport(stack, harness)
+    _validate_direct_servers(servers, harness)
 
     emit.reset_profile(profile_dir)
-    emit.write_mcp_json(profile_dir, stack.hub_transport)
+    emit.write_mcp_json(profile_dir, stack.hub_transport, servers)
     emit.write_settings_json(profile_dir, servers, recipes, stack.permissions, harness)
     emit.write_hatago_config(profile_dir, servers)
     # ASM-03 — derived Dockerfile. No scan layer: the scan moved to the credentialed post-build

@@ -17,6 +17,7 @@ import json
 import re
 import shutil
 import sys
+from collections.abc import Sequence
 from copy import deepcopy
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from .schema import (
     HUB_TRANSPORT_STDIO,
     McpServer,
     Recipe,
+    SchemaError,
     resolve_recipe_env,
 )
 
@@ -54,8 +56,28 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def write_mcp_json(profile_dir: Path, transport: str = HUB_TRANSPORT_HTTP) -> Path:
-    """Emit the harness `.mcp.json` — exactly ONE entry for the hatago hub, in `transport` form.
+def _direct_entry(server: McpServer) -> dict:
+    """A `direct:` server as the harness's own MCP entry — the hub is not involved.
+
+    `type` comes from the server's transport (`http`), and Claude Code only treats an entry as
+    Streamable-HTTP when it is set. `oauth.callbackPort` is CAMEL-CASE here and snake_case in the
+    recipe: this half is Claude Code's file format, verified against what `claude mcp add
+    --callback-port` writes, not guessed from the recipe's spelling.
+    """
+    entry: dict = {"type": server.transport, "url": server.url}
+    if server.headers:
+        entry["headers"] = dict(server.headers)
+    if server.oauth_callback_port is not None:
+        entry["oauth"] = {"callbackPort": server.oauth_callback_port}
+    return entry
+
+
+def write_mcp_json(
+    profile_dir: Path,
+    transport: str = HUB_TRANSPORT_HTTP,
+    servers: Sequence[McpServer] | None = None,
+) -> Path:
+    """Emit the harness `.mcp.json` — the hatago hub, plus any `direct:` server that bypasses it.
 
     Either way the launcher passes this file via `claude --mcp-config <file> --strict-mcp-config`,
     so hatago is the ONLY MCP server the isolated harness sees (no host/project/account-synced
@@ -73,6 +95,12 @@ def write_mcp_json(profile_dir: Path, transport: str = HUB_TRANSPORT_HTTP) -> Pa
 
     Why the stdio form matters is on `Stack.hub_transport`: it is the difference between an OAuth
     child server that can be authorized and one that cannot.
+
+    DIRECT SERVERS ARE ADDITIONAL ENTRIES, and this is the one place the "exactly one entry"
+    invariant is deliberately relaxed. `--strict-mcp-config` still governs — the harness still sees
+    only what this file names, and nothing host- or account-synced leaks in. Each direct server is
+    excluded from `hatago.config.json` by the same predicate, so it is reachable by exactly one
+    route; listed twice, its tools would appear twice with no way to tell which copy answered.
     """
     out = profile_dir / ".mcp.json"
     if transport == HUB_TRANSPORT_STDIO:
@@ -85,7 +113,19 @@ def write_mcp_json(profile_dir: Path, transport: str = HUB_TRANSPORT_HTTP) -> Pa
         }
     else:
         entry = {"type": "http", "url": HATAGO_ENDPOINT}
-    _write_json(out, {"mcpServers": {HATAGO_MCP_KEY: entry}})
+    entries = {HATAGO_MCP_KEY: entry}
+    for server in servers or []:
+        if not server.direct:
+            continue
+        if server.name == HATAGO_MCP_KEY:
+            # The hub's own key. Silently overwriting it would replace the hub with the direct
+            # server and leave every other recipe's servers unreachable, with nothing said.
+            raise SchemaError(
+                f"mcp server '{server.name}' is direct, but that name is reserved for the hatago "
+                f"hub entry in .mcp.json. Rename the server."
+            )
+        entries[server.name] = _direct_entry(server)
+    _write_json(out, {"mcpServers": entries})
     return out
 
 
@@ -738,6 +778,10 @@ def write_hatago_config(
     `project_path` (bd main-u5d) pins each stdio child's `cwd` to the mirrored project path — see
     `_hatago_entry`. The assemble-time (committed) config is project-agnostic and passes None; the
     launcher regenerates a per-instance config with the real project path at launch time.
+
+    A `direct:` server is EXCLUDED, by the same predicate that puts it in `.mcp.json`. The two are
+    mutually exclusive on purpose: a server listed in both is reachable by two routes, so its tools
+    appear twice and nothing says which copy answered.
     """
     out = profile_dir / "hatago.config.json"
     _write_json(
@@ -745,7 +789,9 @@ def write_hatago_config(
         {
             "version": 1,
             "logLevel": "info",
-            "mcpServers": {s.name: _hatago_entry(s, project_path) for s in servers},
+            "mcpServers": {
+                s.name: _hatago_entry(s, project_path) for s in servers if not s.direct
+            },
         },
     )
     return out

@@ -267,7 +267,25 @@
         "service": { "description": "Reference to a shared service (services/<name>); the assembler resolves it to a hatago URL-proxy entry. Mutually exclusive with `command`.", "type": "string" },
         "url_env": { "description": "Optional env var injected into the instance carrying the resolved URL.", "type": "string" },
         "env": { "description": "Environment variables for the server.", "type": "object" },
-        "headers": { "description": "HTTP headers for a network-native server.", "type": "object" }
+        "headers": { "description": "HTTP headers for a network-native server.", "type": "object" },
+        "direct": {
+          "description": "Wire this server STRAIGHT into the harness config instead of proxying it through hatago. Mutually exclusive with the hub: a direct server is emitted into .mcp.json and left out of hatago.config.json, so it is reachable by exactly one route. Requires `url` (or `url_env`) and is incompatible with `service`. What it buys, for a server the harness can already speak to: the harness owns the connection, so an OAuth flow is the harness's own and its authorize URL renders in the harness UI, instead of landing on the stderr of hatago's child where nothing reads it. What it costs: hatago's curation does not apply — no tool filtering, no per-server instructions, description or tags — so the harness sees the server's full surface, unannotated. Honoured only by harnesses whose MCP config harnessed emits (claude); codex and omp bake theirs into the image, so declaring it for them is a build-time error.",
+          "type": "boolean",
+          "default": false
+        },
+        "oauth": {
+          "description": "OAuth settings for a `direct` server. Only meaningful with `direct: true` — a hub child's callback port is its own argument, read from `args`.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "callback_port": {
+              "description": "Fixed port for the OAuth redirect, emitted as `oauth.callbackPort`. PINNED deliberately: the launcher must publish this port on the pod BEFORE the harness starts, so a runtime-chosen port can never be forwarded and the redirect dies in a netns the browser cannot reach. Floor is 1024 because the pod is rootless and cannot publish a privileged port.",
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65535
+            }
+          }
+        }
       },
       "not": {
         "required": ["service", "command"]

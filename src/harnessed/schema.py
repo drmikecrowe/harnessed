@@ -117,12 +117,36 @@ class McpServer:
     url_env: str | None = None
     env: dict = field(default_factory=dict)
     headers: dict = field(default_factory=dict)
+    # Wire this server STRAIGHT into the harness config instead of proxying it through hatago.
+    # MUTUALLY EXCLUSIVE with the hub: a direct server is emitted into `.mcp.json` and left out of
+    # `hatago.config.json`, because appearing in both would surface its tools twice with no way to
+    # tell which copy answered.
+    #
+    # What it buys, for a server the harness can already speak to: the harness owns the connection,
+    # so an OAuth flow is the harness's own — the authorize URL renders in its UI instead of landing
+    # on the stderr of hatago's child, where nothing reads it.
+    #
+    # What it costs, and this is the whole reason it is opt-in per server: hatago's curation does
+    # not apply. No `tools:` filtering, no per-server `instructions`, `description` or `tags`. The
+    # harness sees the server's full surface, unannotated. For a server whose value is a curated
+    # subset, that is a bad trade; for one the hub only adds a hop to, it is free.
+    direct: bool = False
+    # Callback port for a direct server's OAuth redirect, emitted as `oauth.callbackPort`. PINNED
+    # for the same reason mcp-remote's is: the launcher must publish the port on the pod BEFORE the
+    # process starts, so a runtime-chosen one can never be forwarded and the redirect dies in a
+    # netns the browser cannot reach.
+    oauth_callback_port: int | None = None
     raw: dict = field(default_factory=dict)
 
     @property
     def is_stdio_child(self) -> bool:
-        """A stdio server hatago must bake + spawn (vs a network-native URL proxy)."""
-        return self.transport == "stdio" and self.command is not None
+        """A stdio server hatago must bake + spawn (vs a network-native URL proxy).
+
+        False for a `direct` server whatever its transport: it is not hatago's child at all, so
+        nothing that reasons about the hub's children — baking, the mcp-remote consent, the pod
+        publish keyed off argv — should ever pick it up.
+        """
+        return self.transport == "stdio" and self.command is not None and not self.direct
 
 
 @dataclass
@@ -1233,6 +1257,37 @@ class ServiceDef:
 _VALID_TRANSPORTS = frozenset({"stdio", "http", "sse"})
 
 
+def _parse_oauth_callback_port(entry: dict) -> int | None:
+    """`oauth.callback_port` — validated here rather than trusted at emit time.
+
+    The floor is 1024, matching `_mcp_remote_callback_port`: the pod is ROOTLESS, so publishing a
+    privileged port fails at `pod create` and turns a recipe typo into a dead launch instead of an
+    unpublished callback. Rejected outright rather than defaulted, because a silently-ignored port
+    reappears as an OAuth redirect that times out with nothing naming the cause.
+    """
+    raw_oauth = entry.get("oauth") or {}
+    if not isinstance(raw_oauth, dict):
+        raise SchemaError(f"mcp server '{entry['name']}': 'oauth' must be a mapping")
+    port = raw_oauth.get("callback_port")
+    if port is None:
+        return None
+    if isinstance(port, bool) or not isinstance(port, int):
+        raise SchemaError(
+            f"mcp server '{entry['name']}': 'oauth.callback_port' must be an integer — got {port!r}"
+        )
+    if not 1024 <= port <= 65535:
+        raise SchemaError(
+            f"mcp server '{entry['name']}': 'oauth.callback_port' must be 1024-65535 (rootless "
+            f"podman cannot publish a privileged port) — got {port}"
+        )
+    if not entry.get("direct"):
+        raise SchemaError(
+            f"mcp server '{entry['name']}': 'oauth.callback_port' applies only to a 'direct' "
+            "server — a hub child's callback port is its own argument, read from `args`."
+        )
+    return port
+
+
 def _parse_servers(raw_mcp: dict) -> list[McpServer]:
     servers: list[McpServer] = []
     for entry in (raw_mcp or {}).get("servers", []) or []:
@@ -1250,6 +1305,21 @@ def _parse_servers(raw_mcp: dict) -> list[McpServer]:
                 f"mcp server '{entry['name']}': 'service' and 'command' are mutually exclusive — "
                 "a service-referenced server is a network proxy, not a child process."
             )
+        direct = bool(entry.get("direct", False))
+        if direct and entry.get("service"):
+            raise SchemaError(
+                f"mcp server '{entry['name']}': 'direct' and 'service' are mutually exclusive — a "
+                "service-referenced server is resolved to a hatago proxy entry, which is precisely "
+                "what 'direct' bypasses."
+            )
+        if direct and not (entry.get("url") or entry.get("url_env")):
+            # A direct server is emitted straight into the harness config, which addresses servers
+            # by URL. Without one there is nothing to write, and the failure would otherwise be a
+            # harness that starts with a malformed entry rather than a build that says why.
+            raise SchemaError(
+                f"mcp server '{entry['name']}': 'direct' requires a 'url' (or 'url_env') — the "
+                "harness connects to it itself, so there is no command for hatago to spawn."
+            )
         servers.append(
             McpServer(
                 name=entry["name"],
@@ -1261,6 +1331,8 @@ def _parse_servers(raw_mcp: dict) -> list[McpServer]:
                 url_env=entry.get("url_env"),
                 env=dict(entry.get("env", {}) or {}),
                 headers=dict(entry.get("headers", {}) or {}),
+                direct=direct,
+                oauth_callback_port=_parse_oauth_callback_port(entry),
                 raw=dict(entry),
             )
         )
