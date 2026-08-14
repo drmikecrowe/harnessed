@@ -1593,7 +1593,7 @@ def resolve_recipe_env(
     for var, template in recipe.env.items():
         deferred = False
 
-        def _sub(m: re.Match) -> str:
+        def _sub(m: re.Match, _var: str = var) -> str:
             nonlocal deferred
             ph = m.group(1)
             if ph == "host_home":
@@ -1607,14 +1607,14 @@ def resolve_recipe_env(
                 entry = by_name.get(ph[len("persist:"):])
                 if entry is None:  # unreachable: _validate_env_templates rejects this at load
                     raise SchemaError(
-                        f"recipe '{recipe.name}': env {var}: no persist entry '{ph[len('persist:'):]}'"
+                        f"recipe '{recipe.name}': env {_var}: no persist entry '{ph[len('persist:'):]}'"
                     )
                 val = _persist_entry_dir(recipe, entry, mode=mode, project_path=project_path)
                 if val is None:
                     deferred = True
                     return ""
                 return val
-            raise SchemaError(f"recipe '{recipe.name}': env {var}: unknown placeholder '{{{ph}}}'")
+            raise SchemaError(f"recipe '{recipe.name}': env {_var}: unknown placeholder '{{{ph}}}'")
 
         value = _ENV_PLACEHOLDER_RE.sub(_sub, template)
         if not deferred:

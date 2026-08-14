@@ -155,8 +155,8 @@ def get_backend(name: str) -> type[ExecutionBackend]:
     """The backend class registered under `name`. KeyError names what is available."""
     try:
         return _REGISTRY[name]
-    except KeyError:
-        raise KeyError(f"unknown backend '{name}' (registered: {', '.join(sorted(_REGISTRY))})")
+    except KeyError as err:
+        raise KeyError(f"unknown backend '{name}' (registered: {', '.join(sorted(_REGISTRY))})") from err
 
 
 def registered() -> dict[str, type[ExecutionBackend]]:

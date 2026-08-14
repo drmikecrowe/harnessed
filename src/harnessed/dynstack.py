@@ -109,7 +109,7 @@ def derive_name(recipes: list[str], extends: str | None, services: list[str] | N
     values = ([base] if base is not None else []) + list(refs)
     parts = [_sanitize(v) for v in values]
 
-    for original, clean in zip(values, parts):
+    for original, clean in zip(values, parts, strict=True):
         if clean in _RESERVED:
             raise ValueError(
                 f"catalog ref {original!r} does not yield a usable stack-name component"
@@ -119,7 +119,7 @@ def derive_name(recipes: list[str], extends: str | None, services: list[str] | N
     # Any value whose sanitized form differs from the original has LOST information, so the readable
     # join is no longer a faithful encoding and two different sets could land on one name. Checking
     # only for "/" missed case folding (`Foo` vs `foo`) and space folding (`foo bar` vs `foo-bar`).
-    lossy = any(clean != original for original, clean in zip(values, parts))
+    lossy = any(clean != original for original, clean in zip(values, parts, strict=True))
 
     # `svcs` forces a digest for the reason in the docstring: services never appear in the readable
     # join, so without this the digest is their only carrier and it would not be emitted.

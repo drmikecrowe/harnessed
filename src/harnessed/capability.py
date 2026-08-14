@@ -52,7 +52,7 @@ TEST = "test"
 # Where a recipe's tests/ dir is copied INSIDE the live instance (podman cp target), and the default
 # per-script wall-clock budget (mirrors _exec's default). Kept small + explicit so scripts get a
 # stable, documented location (HARNESSED_TEST_DIR points at their own recipe subdir).
-REMOTE_TESTS_ROOT = "/tmp/harnessed-tests"
+REMOTE_TESTS_ROOT = "/tmp/harnessed-tests"  # noqa: S108 — container-side fixed test root, contract path
 DEFAULT_TEST_TIMEOUT = 120
 # Cap on the failure detail folded into the report — never echo a full script transcript (a stray
 # secret could ride along, threat T-02-07); one truncated tail line is enough to see *why* it failed.

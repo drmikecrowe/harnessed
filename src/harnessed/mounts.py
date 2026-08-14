@@ -13,8 +13,6 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import socket
-import subprocess
 
 from collections.abc import Sequence
 from datetime import datetime, timezone
@@ -22,7 +20,7 @@ from pathlib import Path
 
 from . import paths
 from . import persist
-from .console import _err, _out
+from .console import _err
 from .credmounts import (
     _gh_hosts_missing_plaintext_token,
     _git_identity_config_mount,
@@ -37,7 +35,7 @@ from .launchenv import _plain_env_values, _varlock_resolve
 from .layout import _catalog_base
 from .setupenv import _ensure_gitignore_entry
 from .paths import CONTAINER_HOME
-from .schema import Stack, load_stack_with_recipes
+from .schema import load_stack_with_recipes
 
 # The in-container home as a string, for interpolating into `-v src:dst` specs. Derived here rather
 # than imported from launcher so the dependency points INTO this module; `paths.CONTAINER_HOME`
@@ -640,7 +638,7 @@ def _aws_sso_server_reachable(port: int = AWS_SSO_ECS_PORT, timeout: float = 1.5
     import urllib.request
 
     try:
-        with urllib.request.urlopen(  # noqa: S310 (fixed host-local http URL)
+        with urllib.request.urlopen(  # fixed host-local http URL
             f"http://127.0.0.1:{port}/healthcheck", timeout=timeout
         ) as resp:
             return resp.status == 200

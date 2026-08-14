@@ -70,7 +70,7 @@ def _img_differs(current: str, used: str) -> bool:
 
     Either side empty (image/container gone, inspect failed) → can't tell → not stale.
     """
-    norm = lambda s: s.strip().removeprefix("sha256:")  # noqa: E731
+    norm = lambda s: s.strip().removeprefix("sha256:")
     cur, prev = norm(current), norm(used)
     return bool(cur and prev and cur != prev)
 
