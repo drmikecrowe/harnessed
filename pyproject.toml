@@ -115,6 +115,14 @@ extend-immutable-calls = ["typer.Option", "typer.Argument"]
 
 [tool.pyright]
 include = ["src", "tests", "tools"]
+# `tests/` holds `support.py` and `conftest.py`, imported as TOP-LEVEL modules by the suite —
+# pytest is told so by `pythonpath = ["tests"]` below, but that setting is pytest's alone and
+# pyright never reads it. Whether pyright resolves `import support` was therefore left to the
+# environment, and it does not resolve the same way everywhere: measured on this tree at 60 errors,
+# and at 168 in a fresh worktree where it could not find the module — a ~100-error swing that is
+# pure phantom, sitting in the layer a CI gate is supposed to hold at a fixed number. Declaring the
+# path here removes the degree of freedom instead of documenting it.
+extraPaths = ["tests"]
 pythonVersion = "3.12"  # the floor, for the reason spelled out under [tool.ruff]
 # `basic`, not `strict`. Measured on this tree: 14 errors across the 36 files of src/, 84 across
 # all 128 files once tests/ and tools/ are included — the include list above is wider than src/,
