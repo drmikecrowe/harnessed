@@ -6,73 +6,17 @@ flattens into ONE parallel `mise use -g … && mise install` layer — was used 
 
 Moving a tool install into `tools:` is only safe if BOTH executors honour it. Before this change the
 field was read in exactly one place (the derived Dockerfile), so a migrated recipe would have
-silently lost its binary on `launch --host`. These tests state that requirement first, then the
-per-recipe migration.
+silently lost its binary on `launch --host`. These tests state that requirement against SYNTHETIC
+recipes: the subject is the executor, not any catalog entry. Catalog-wide recipe rules live in
+test_recipe_uniformity.py.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from harnessed import launcher, paths
-from harnessed.schema import Recipe, load_recipe
+from harnessed import launcher
+from harnessed.schema import Recipe
 from support import patch_all
-
-# recipe name → the tool spec it must declare, and the fetch that must no longer be in its install.sh
-MIGRATED = {
-    "agentmemory": ("npm:@agentmemory/mcp@", "pnpm add -g"),
-    "context-mode": ("npm:context-mode@", "pnpm add -g"),
-    "repowise": ("pipx:repowise@", "uv tool install"),
-    "serena": ("pipx:serena-agent@", "uv tool install"),
-    "rtk": ("github:rtk-ai/rtk@", "mise use -g"),
-    "ccstatusline": ("npm:ccstatusline@", "mise use -g"),
-}
-
-
-def _recipe(name: str) -> Recipe:
-    return load_recipe(paths.harnessed_home() / "catalog" / "recipes" / name)
-
-
-class TestRecipesDeclareTheirBinary:
-    @pytest.mark.parametrize("name", sorted(MIGRATED))
-    def test_the_tool_is_declared_in_tools(self, name):
-        prefix = MIGRATED[name][0]
-        assert any(t.startswith(prefix) for t in _recipe(name).tools), (
-            f"{name} must declare {prefix}<version> in tools:, got {_recipe(name).tools}"
-        )
-
-    @pytest.mark.parametrize("name", sorted(MIGRATED))
-    def test_install_sh_no_longer_fetches_the_binary(self, name):
-        recipe = _recipe(name)
-        script = recipe.root / recipe.install.script if recipe.install and recipe.install.script else None
-        if script is None:
-            return  # a recipe whose whole install.sh was the fetch may legitimately have none left
-        body = "\n".join(
-            ln for ln in script.read_text(encoding="utf-8").splitlines()
-            if not ln.lstrip().startswith("#")
-        )
-        assert MIGRATED[name][1] not in body, (
-            f"{name}/install.sh still runs '{MIGRATED[name][1]}' — the binary is tools:' job now"
-        )
-
-    @pytest.mark.parametrize("name", sorted(MIGRATED))
-    def test_the_declared_pin_is_exact(self, name):
-        for spec in _recipe(name).tools:
-            assert "@" in spec.rsplit(":", 1)[-1], f"{name}: unpinned tool spec {spec!r}"
-            assert not spec.endswith("@latest"), f"{name}: floating tool spec {spec!r}"
-
-    def test_content_only_recipes_were_not_migrated(self):
-        # mise has no clone backend: these deliver CONTENT into the config dir, not a binary.
-        #
-        # gsd-core LEFT this list in Phase 2 of #329, and the removal is the point rather than an
-        # exception to it. It delivers content too, but it does not CLONE — the content arrives by
-        # running `@opengsd/gsd-core`, a published npm package with a `gsd-core` bin. `npm:` is a
-        # backend mise has, so the fetch is expressible where a clone is not. The recipe still keeps
-        # `install.script`: `tools:` fetches the installer, the script runs it. What this list is
-        # really about is "no backend can express the fetch", and gsd-core never met that.
-        for name in ("superpowers", "caveman", "gstack"):
-            assert _recipe(name).tools == [], f"{name} must not be expressed as tools:"
 
 
 class TestHostLaunchHonoursTools:
@@ -171,13 +115,6 @@ class TestContainerExecutorInstallsToolsBeforeInstallScripts:
             "tools: must be installed before any recipe install.sh runs"
         )
 
-    def test_the_real_ccstatusline_recipe_has_its_tool_before_its_install(self, tmp_path, monkeypatch):
-        # The recipe that actually broke: its tools: pin must be installed before the step that runs
-        # its install.sh (the script does `command -v ccstatusline`).
-        recipe = load_recipe(paths.harnessed_home() / "catalog" / "recipes" / "ccstatusline")
-        joined = "\n".join(self._steps([recipe], monkeypatch))
-        assert joined.index("npm:ccstatusline@") < joined.index("ccstatusline/install.sh")
-
 
 class TestNpmToolsResolveThroughPnpmNotAube:
     """A correctly-pinned `npm:` tool must still install once mise's default backend rejects it.
@@ -275,16 +212,3 @@ class TestMiseShimsResolveAtRunTimeNotJustInstallTime:
             )
 
 
-class TestStatusLineRecordsAResolvedBinary:
-    """statusLine.command is written into settings.json and re-invoked for a whole session (and by
-    any later plain `claude` in that config dir), so it must not be a path whose meaning depends on
-    ambient env. A mise shim is exactly such a path."""
-
-    def test_the_ccstatusline_install_resolves_the_shim_to_the_real_binary(self):
-        body = (
-            paths.harnessed_home() / "catalog" / "recipes" / "ccstatusline" / "install.sh"
-        ).read_text(encoding="utf-8")
-        assert "mise which ccstatusline" in body, (
-            "install.sh must resolve `command -v ccstatusline` (which hits the shim on a host "
-            "launch) to the real installs/… binary before baking it into settings.json"
-        )
