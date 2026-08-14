@@ -98,6 +98,28 @@ def _require_record(item: object, tool: str, index: int) -> dict:
     return item
 
 
+def _optional_str(item: dict, key: str, tool: str, index: int) -> str:
+    """Return an optional string field as "" when absent or null, or exit 2 if it is a non-string.
+
+    "Optional" means ABSENT-OR-NULL, not any-type. A bare `item.get(key) or ""` accepts both, but it
+    also silently swallows a falsey non-string (0, [], {}) and interpolates a truthy non-string
+    straight into the identity — `{'a': 1}` would become part of a finding's name and then differ
+    between runs by dict ordering. That is the same class of defect as an unvalidated `filename`,
+    and leaving it unchecked here while `filename` is strict is an inconsistency a reader would
+    reasonably read as "codes are trusted input".
+    """
+    value = item.get(key)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        print(
+            f"ERROR: {tool} record #{index} has a non-string '{key}': {value!r}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return value
+
+
 def _require_str(item: dict, key: str, tool: str, index: int) -> str:
     """Return a required non-empty string field, or exit 2.
 
@@ -139,7 +161,8 @@ def normalize_ruff(json_path: str) -> list[str]:
         # `code` stays OPTIONAL on purpose. Ruff emits a null code for findings with no rule id —
         # syntax errors (the E9 class this project selects) among them. Demanding it here would
         # turn a genuine syntax error into a crash of the gate that is supposed to report it.
-        code = item.get("code") or ""
+        # Optional still means absent-or-null, though: a non-string code is a schema violation.
+        code = _optional_str(item, "code", "ruff", index)
         findings.append(f"{filename}\t{code}\t{message}")
     return sorted(set(findings))
 
@@ -179,8 +202,8 @@ def normalize_pyright(json_path: str) -> list[str]:
         if severity != "error":
             continue
         # `rule` is documented as present only when a rule is associated with the diagnostic, so it
-        # is genuinely optional and must not be required.
-        rule = item.get("rule") or ""
+        # is genuinely optional and must not be required — but a non-string is still malformed.
+        rule = _optional_str(item, "rule", "pyright", index)
         findings.append(f"{filepath}\t{rule}\t{message}")
     return sorted(set(findings))
 
