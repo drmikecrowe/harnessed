@@ -106,7 +106,20 @@ jobs:
       #
       # `_build_images_cmd` (what bare `build` runs) builds exactly the base and agent images and
       # then reconciles stacks, which is a no-op on a fresh runner.
+      # GITHUB_TOKEN is REQUIRED here, not a nicety. mise's aqua backend resolves several pinned
+      # tools through api.github.com, and an unauthenticated runner shares one heavily-used IP
+      # rate-limit pool. When it runs out the API answers 403 and the build dies mid-layer:
+      #
+      #   mise ERROR Failed to install aqua:cli/cli@2.96.0: HTTP status client error
+      #   (403 Forbidden) for url (https://api.github.com/repos/cli/cli/releases/tags/v2.96.0)
+      #
+      # That reads as a broken pin — the pin is fine, the request was refused. The workflow token is
+      # already present in the job; passing it raises the limit from 60/hr per IP to 1000/hr per
+      # repo and needs no secret to be configured. Read-only: it authenticates public release
+      # lookups, nothing more.
       - name: Build the base image the live tests require
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: mise exec -- uv run --extra dev harnessed build
 
       # WHY THIS EXISTS: the two bugs that kept this job red for six consecutive runs were both
@@ -139,6 +152,10 @@ jobs:
       - name: Run the live-verification layer
         env:
           HARNESSED_PODMAN: "1"
+          # Same reason as the build step: the live tests build STACK images, whose `tools:` are
+          # installed at container runtime through mise — so they hit api.github.com too, and an
+          # unauthenticated 403 here fails a test rather than the build, which is harder to read.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: tools/run-tests.sh -v
 
       - name: Report what ran

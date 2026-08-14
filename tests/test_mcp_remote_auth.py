@@ -35,7 +35,6 @@ from hypothesis import given, settings, strategies as st
 from harnessed import mounts
 from harnessed.paths import CONTAINER_HOME
 from harnessed.schema import McpServer
-from support import podman
 
 
 PIN = "0.1.38-test.3"
@@ -569,10 +568,18 @@ class TestTheMountCannotBeSubverted:
             mounts._mcp_auth_store_mount([_atlassian(PORT)], INST, False, home=tmp_path)
 
 
-@podman
 class TestAgainstTheRealRecipe:
-    """S14 -- runs only under HARNESSED_PODMAN=1, against the REAL user-overlay recipe. The unit
-    tests prove the derivation; this proves the derivation still matches what is actually shipped."""
+    """S14 -- checks the REAL user-overlay recipe. The unit tests prove the derivation; this proves
+    the derivation still matches what is actually shipped.
+
+    NOT `@podman`, deliberately. This class reads a YAML file and regex-matches it — no container,
+    no image, no runtime. It was marked `@podman` to mean "integration-ish", but that marker has a
+    precise job: `tests/conftest.py::_podman_skips` identifies podman-GOVERNED tests by marker and
+    fails the live run when any of them skips while HARNESSED_PODMAN=1. A CI runner has no user
+    overlay, so this class always skipped, and being marked `@podman` made that skip fail `live.yml`
+    permanently — a job that could not go green no matter what the code did.
+
+    The precondition here is the OVERLAY, not podman, so the skip below is the whole gate."""
 
     def test_the_overlay_recipe_pins_a_callback_port(self):
         import re
