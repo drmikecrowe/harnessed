@@ -56,6 +56,26 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
+def hub_is_needed(servers: Sequence[McpServer] | None) -> bool:
+    """Does this stack need a hatago hub at all?
+
+    No, when every server it declares bypasses the hub. Pointing the harness at a hub with no
+    children is not a harmless spare: under `stdio` the harness SPAWNS that hub on every launch to
+    proxy nothing, and under `http` the entrypoint runs one in the background for the same nothing.
+    Worse, it puts a server in the harness's list that can never answer a tool call, which is
+    indistinguishable — from the agent's side — from a hub that is broken.
+
+    `None` means "the caller did not say", and keeps the hub: `write_mcp_json` has callers that do
+    not thread servers through, and silently dropping the hub for them would strand every stack.
+    An EMPTY list is different from None and also keeps the hub, so a stack that declares no MCP
+    servers at all behaves exactly as it did before this rule existed — the change is scoped to the
+    case it was written for, which is "everything here is direct".
+    """
+    if not servers:
+        return True
+    return any(not s.direct for s in servers)
+
+
 def _direct_entry(server: McpServer) -> dict:
     """A `direct:` server as the harness's own MCP entry — the hub is not involved.
 
@@ -109,6 +129,22 @@ def write_mcp_json(
     route; listed twice, its tools would appear twice with no way to tell which copy answered.
     """
     out = profile_dir / ".mcp.json"
+    if not hub_is_needed(servers):
+        # Every declared server is direct, so there is no hub to name. The harness config becomes
+        # exactly the servers the stack declared and nothing else.
+        #
+        # The hub's key stays RESERVED even though nothing occupies it here. A direct server called
+        # `hatago` would be legal in this branch and illegal the moment any recipe adding a
+        # hub-routed server joined the stack — so the stack's validity would depend on a second
+        # recipe, and the error would arrive far from the name that caused it.
+        for server in servers or []:
+            if server.name == HATAGO_MCP_KEY:
+                raise SchemaError(
+                    f"mcp server '{server.name}' is direct, but that name is reserved for the "
+                    f"hatago hub entry in .mcp.json. Rename the server."
+                )
+        _write_json(out, {"mcpServers": {s.name: _direct_entry(s) for s in servers or []}})
+        return out
     if transport == HUB_TRANSPORT_STDIO:
         entry = {
             "command": HATAGO_STDIO_COMMAND,

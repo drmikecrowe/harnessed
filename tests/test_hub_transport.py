@@ -260,7 +260,10 @@ class TestTheEntrypointAndTheLauncherAgree:
         src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
             encoding="utf-8"
         )
-        assert 'f"HATAGO_TRANSPORT={self.stk.hub_transport}"' in src
+        assert "HATAGO_TRANSPORT=" in src
+        assert "self.stk.hub_transport if emit.hub_is_needed(self.servers)" in src, (
+            "the entrypoint is no longer told when every server is direct"
+        )
 
     def test_the_headless_success_line_does_not_claim_a_hub_that_is_not_there(self):
         """The success line named the hub's location as a fixed string. Under stdio nothing runs in
@@ -281,6 +284,11 @@ class TestTheEntrypointAndTheLauncherAgree:
             encoding="utf-8"
         )
         guard = re.search(
-            r"if stk\.hub_transport == HUB_TRANSPORT_STDIO:\s*\n\s*hatago_up = True", src
+            r"if stk\.hub_transport == HUB_TRANSPORT_STDIO or not emit\.hub_is_needed\("
+            r"launch_servers\):\s*\n\s*hatago_up = True",
+            src,
         )
-        assert guard, "_wait_hatago is not skipped for stdio stacks"
+        assert guard, (
+            "_wait_hatago is not skipped for the two cases that start no hub — a stdio stack, and "
+            "one where every server is direct"
+        )

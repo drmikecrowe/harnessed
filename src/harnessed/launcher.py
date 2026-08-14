@@ -3150,7 +3150,11 @@ class ContainerBackend(ExecutionBackend):
             # stdio child — for an OAuth child like mcp-remote, two processes contending for one
             # lockfile and one callback port. Passed always, so the entrypoint never has to infer
             # the default the schema already decided.
-            "-e", f"HATAGO_TRANSPORT={self.stk.hub_transport}",
+            # `none` when every declared server is direct: the entrypoint then starts no hub, and
+            # the emitted .mcp.json names none either. One value, read by the emitter, the launcher
+            # and the entrypoint, so all three agree on whether a hub exists at all.
+            "-e", f"HATAGO_TRANSPORT="
+                  f"{self.stk.hub_transport if emit.hub_is_needed(self.servers) else 'none'}",
             *self.member_mounts,
             # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
             # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
@@ -3491,7 +3495,11 @@ def container_run(
         rt, inst, launch_servers, stk, headless=headless, reauth=reauth
     )
 
-    if stk.hub_transport == HUB_TRANSPORT_STDIO:
+    # No hub is started in either of these cases, so probing for one would wait out the full timeout
+    # and then report a degraded hub — turning correct configuration into a red herring, and in
+    # headless mode into a hard exit. Under `stdio` the harness spawns the hub at attach; when every
+    # server is direct there is no hub anywhere by design.
+    if stk.hub_transport == HUB_TRANSPORT_STDIO or not emit.hub_is_needed(launch_servers):
         hatago_up = True
     else:
         hatago_up = _wait_hatago(rt, inst)
@@ -3507,11 +3515,12 @@ def container_run(
         # and the harness spawns the hub when it starts. Saying "hatago in-container" there would be
         # a success line asserting something false, and the next person to debug a missing tool
         # would go looking for a process that was never meant to exist.
-        hub_where = (
-            "hatago spawned by the harness (stdio)"
-            if stk.hub_transport == HUB_TRANSPORT_STDIO
-            else "hatago in-container"
-        )
+        if not emit.hub_is_needed(launch_servers):
+            hub_where = "no hub — every server is direct"
+        elif stk.hub_transport == HUB_TRANSPORT_STDIO:
+            hub_where = "hatago spawned by the harness (stdio)"
+        else:
+            hub_where = "hatago in-container"
         _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} ({hub_where})")
         return
 
