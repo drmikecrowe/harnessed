@@ -22,7 +22,7 @@ description: rtk (Rust Token Killer) — compress dev-command output 60-90% befo
 # script used to run container-side — and now on a host launch too, because harnessed points
 # mise at the STACK's own config/data dir instead of the user's global one.
 tools:
-  - github:rtk-ai/rtk@0.44.1
+  - github:rtk-ai/rtk@0.45.0
 
 # The hook is what makes rtk actually fire. Without it the agent reads RTK.md's "all other commands
 # are automatically rewritten by the Claude Code hook", correctly types a plain `git status`, and

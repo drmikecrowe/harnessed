@@ -55,7 +55,7 @@ setup:
 # pipx binary required — verified in the base image), so this is the same wheel install the
 # former `uv tool install repowise==0.31.0` did, in the merged and cached tool layer.
 tools:
-  - pipx:repowise@0.37.0
+  - pipx:repowise@0.39.0
 
 # No `install:` — the CLI is the recipe's ONLY deliverable and `tools:` above owns it (bd
 # harnessed-1t4.3). repowise's project work (`repowise init --index-only`) is a per-project step

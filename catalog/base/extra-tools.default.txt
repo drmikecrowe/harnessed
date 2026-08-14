@@ -27,7 +27,7 @@ yq@4.53.3          # YAML/JSON processor
 lazygit@0.64.0     # git TUI
 
 # Dev/code tools
-ast-grep@0.45.0    # AST-based code search
-ruff@0.16.1        # Python linter/formatter
+ast-grep@0.45.1    # AST-based code search
+ruff@0.16.2        # Python linter/formatter
 stylua@2.5.2       # Lua formatter
 markdownlint-cli2@0.23.2  # markdown linter

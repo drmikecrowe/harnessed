@@ -32,7 +32,7 @@ description: tokensave — pre-indexed semantic code knowledge graph (80+ tools,
 # provenance, the lockfile records none of it, and no test here asserts it. Observing a log line
 # once is not evidence that verification is enforced when the provenance is absent.
 tools:
-  - github:aovestdipaperino/tokensave@7.0.2
+  - github:aovestdipaperino/tokensave@7.8.1
 
 setup:
   summary: >-

@@ -17,7 +17,7 @@ dockerfile: catalog/base/Dockerfile.harnessed-codex
 # and that gap is the point twice over: it is what an unpinned build was handing out silently, and
 # closing it is now a reviewable `harnessed update` diff rather than a side effect of rebuilding.
 build_args:
-  CODEX_VERSION: { value: "0.139.0", spec: "npm:@openai/codex" }
+  CODEX_VERSION: {value: "0.147.0", spec: "npm:@openai/codex"}
 description: >
   OpenAI Codex CLI harness. FROM harnessed-base + the codex CLI via mise (npm:@openai/codex).
   Reaches hatago via a baked ~/.codex/config.toml ([mcp_servers.hatago] url); does NOT natively

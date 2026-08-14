@@ -6,7 +6,7 @@ dockerfile: catalog/base/Dockerfile.harnessed-omp
 # Pinned tool versions for the image build (passed as --build-arg). Single source of truth — the
 # Dockerfile's matching ARG carries no default. Keep aligned with your host omp (shared ~/.omp/agent).
 build_args:
-  OMP_VERSION: { value: "16.4.6", spec: "github:can1357/oh-my-pi" }
+  OMP_VERSION: {value: "17.2.10", spec: "github:can1357/oh-my-pi"}
   # omp's plugin runtime. PINNABLE (mise takes `bun@<version>`) but NOT RESOLVABLE by this repo's
   # resolver, so it is held rather than offered for bump. Both halves of that reason were MEASURED
   # on 2026-08-13, not carried over from a spike summary — the plan has twice shipped a hold whose
