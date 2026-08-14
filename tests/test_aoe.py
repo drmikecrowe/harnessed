@@ -840,7 +840,7 @@ class TestLaunchFlagsReachTheRow:
 
 class TestCommandFor:
     def test_quotes_paths_with_spaces(self):
-        cmd = aoe.command_for("container-run", "serena", "claude", Path("/tmp/my project"))
+        cmd = aoe.command_for("container-run", "serena", "claude", Path("/tmp/my project"))  # noqa: S108 — path-with-space is the point of this test
         assert cmd == "harnessed container-run claude '/tmp/my project' --stack serena --"
 
     def test_terminates_with_a_bare_double_dash(self):

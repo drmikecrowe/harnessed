@@ -297,9 +297,8 @@ def test_live_capabilities_present_in_container(stack):
 # throwaway image rather than a catalog fixture because no catalog recipe writes settings.json yet.
 
 from harnessed import launcher
-from harnessed import launcher  # noqa: E402
-from harnessed.launcher import _merge_baked_settings, _runtime  # noqa: E402
-from harnessed.paths import CONTAINER_HOME  # noqa: E402
+from harnessed.launcher import _merge_baked_settings, _runtime
+from harnessed.paths import CONTAINER_HOME
 from support import patch_all
 
 # Pinned base (project hygiene — no floating tags), small + cached after first pull.

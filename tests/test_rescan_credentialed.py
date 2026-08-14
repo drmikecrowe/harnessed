@@ -13,7 +13,7 @@ import subprocess
 import pytest
 from typer.testing import CliRunner
 
-from harnessed import launcher, launchenv
+from harnessed import launcher
 from support import patch_all
 
 runner = CliRunner()

@@ -157,13 +157,16 @@ class TestMigratedRecipesDeclareInstall:
     def test_no_recipe_declares_a_system_step(self, name):
         # None of batch C needs root; a `system:` reason would be a false explanation for the two
         # host skips, which have nothing to do with privilege.
-        assert _recipe(name).install.system is None
+        install = _recipe(name).install
+        assert install is not None, f"{name}: expected install block"
+        assert install.system is None
 
     def test_ccstatusline_declares_no_content_cache(self):
         # bd harnessed-1t4.3: `install.cache` existed only to park a host-side pnpm install somewhere
         # durable, because the config dir is wiped every launch. `tools:` installs into mise's
         # stack-scoped tree, which already outlives the wipe — so a cache here would be dead state.
         r = _recipe("ccstatusline")
+        assert r.install is not None, "ccstatusline: expected install block"
         assert r.install.cache is None
         # The script no longer carries a second copy of the version to agree WITH (AC-1): it
         # resolves the binary through `command -v`, so `tools:` is the only place the pin is

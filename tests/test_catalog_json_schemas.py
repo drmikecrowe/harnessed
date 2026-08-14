@@ -26,8 +26,8 @@ from pathlib import Path
 import pytest
 
 jsonschema = pytest.importorskip("jsonschema")
-from jsonschema import Draft202012Validator  # noqa: E402
-from ruamel.yaml import YAML  # noqa: E402
+from jsonschema import Draft202012Validator
+from ruamel.yaml import YAML
 
 _ROOT = Path(__file__).resolve().parent.parent
 _yaml = YAML(typ="safe", pure=True)

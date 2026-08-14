@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -46,7 +45,7 @@ def _beads_recipe(location: str, scope: str = "project") -> Recipe:
     return Recipe(
         name="beads-team" if location == "in_repo" else "beads-stealth",
         persist=PersistSpec(entries=[entry]),
-        root=Path("/tmp/fake-recipe"),
+        root=Path("/tmp/fake-recipe"),  # noqa: S108 — sentinel path for test fixture, not actual temp file creation
     )
 
 
@@ -102,7 +101,7 @@ class TestLoadServiceScopeAndSocket:
 
     def test_project_scope_requires_data_persist(self, tmp_path):
         root = _svc_yaml(tmp_path, "name: s\nimage: i:1\nscope: project\nport: 3307\n", name="s")
-        with pytest.raises(SchemaError, match="data.persist"):
+        with pytest.raises(SchemaError, match=re.escape("data.persist")):
             load_service(root, "s")
 
 
@@ -173,7 +172,7 @@ class TestServiceDataDir:
         # A stack that attaches beads-server but has no beads recipe cannot say where the data lives.
         svc = load_service(_svc_yaml(tmp_path, PROJECT_SVC), "beads-server")
         patch_all(monkeypatch, "load_stack_with_recipes", lambda _r, _s: (None, []))
-        with pytest.raises(SchemaError, match="data.persist"):
+        with pytest.raises(SchemaError, match=re.escape("data.persist")):
             launcher._service_data_dir(svc, "no-beads-stack", tmp_path)
 
     def test_host_mode_sees_the_real_dir_not_the_container_mount(self, tmp_path, monkeypatch):

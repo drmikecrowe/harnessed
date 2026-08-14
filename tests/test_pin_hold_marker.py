@@ -22,6 +22,7 @@ empty one is rejected — a hold nobody can justify is a hold nobody can lift.
 """
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -53,16 +54,19 @@ class TestInstallHold:
             tmp_path,
             install=f"install:\n  script: install.sh\n  hold: {SKILL_HOLD_REASON!r}\n",
         )
+        assert r.install is not None, "expected install block to be parsed"
         assert r.install.hold == SKILL_HOLD_REASON
 
     def test_absent_hold_is_none(self, tmp_path):
         """The default is NOT held. A pin is offered for bumping unless a recipe says otherwise —
         holding by accident is how a genuinely stale pin hides forever."""
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
+        assert r.install is not None, "expected install block to be parsed"
         assert r.install.hold is None
 
     def test_hold_is_whitespace_stripped(self, tmp_path):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n  hold: '  why  '\n")
+        assert r.install is not None, "expected install block to be parsed"
         assert r.install.hold == "why"
 
     @pytest.mark.parametrize("bad", ["''", "'   '", "true", "[]"])
@@ -70,13 +74,13 @@ class TestInstallHold:
         """`hold: true` is the tempting shorthand and is rejected on purpose: the string is shown to
         the human deciding whether to lift the hold, so a bare boolean throws away the only part
         that makes the decision reviewable."""
-        with pytest.raises(SchemaError, match="install.hold"):
+        with pytest.raises(SchemaError, match=re.escape("install.hold")):
             _recipe(tmp_path, install=f"install:\n  script: install.sh\n  hold: {bad}\n")
 
     def test_hold_without_a_script_is_rejected(self, tmp_path):
         """A root-only install (`system:` alone) has no script, hence no pins behind a script to
         hold — the same reasoning that rejects `cache` without `script`."""
-        with pytest.raises(SchemaError, match="install.hold"):
+        with pytest.raises(SchemaError, match=re.escape("install.hold")):
             _recipe(
                 tmp_path,
                 install=f"install:\n  system: 'apt-get cmake'\n  hold: {SKILL_HOLD_REASON!r}\n",
@@ -90,6 +94,7 @@ class TestInstallHold:
                 f"  system: 'apt-get cmake'\n  hold: {SKILL_HOLD_REASON!r}\n"
             ),
         )
+        assert r.install is not None, "expected install block to be parsed"
         assert (r.install.cache, r.install.system, r.install.hold) == (
             "v6.0.3", "apt-get cmake", SKILL_HOLD_REASON,
         )

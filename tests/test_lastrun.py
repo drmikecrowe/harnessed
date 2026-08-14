@@ -31,7 +31,9 @@ def proj(tmp_path):
 class TestRoundTrip:
     def test_a_recorded_launch_comes_back(self, proj):
         lastrun.record("host-run", "serena", "claude", proj)
-        assert lastrun.load("host-run", "claude", proj)["stack"] == "serena"
+        result = lastrun.load("host-run", "claude", proj)
+        assert result is not None, "expected a recorded entry"
+        assert result["stack"] == "serena"
 
     def test_flags_survive(self, proj):
         lastrun.record(
@@ -39,12 +41,15 @@ class TestRoundTrip:
             group="g", title="t", no_strict_mcp=True,
         )
         entry = lastrun.load("host-run", "claude", proj)
+        assert entry is not None, "expected a recorded entry"
         assert (entry["aoe_group"], entry["aoe_title"], entry["no_strict_mcp"]) == ("g", "t", True)
 
     def test_relaunch_overwrites_rather_than_accumulates(self, proj):
         lastrun.record("host-run", "serena", "claude", proj)
         lastrun.record("host-run", "other", "claude", proj)
-        assert lastrun.load("host-run", "claude", proj)["stack"] == "other"
+        result = lastrun.load("host-run", "claude", proj)
+        assert result is not None, "expected a recorded entry"
+        assert result["stack"] == "other"
 
     def test_a_trailing_slash_is_the_same_project(self, proj):
         """`project_hash` normalizes, so a path typed two ways must not be two records."""
@@ -99,8 +104,12 @@ class TestWorktreeKeying:
         monkeypatch.setattr(lastrun.paths, "git_common_dir", lambda _p: tmp_path / "repo.git")
         lastrun.record("host-run", "stack-a", "claude", a)
         lastrun.record("host-run", "stack-b", "claude", b)
-        assert lastrun.load("host-run", "claude", a)["stack"] == "stack-a"
-        assert lastrun.load("host-run", "claude", b)["stack"] == "stack-b"
+        result_a = lastrun.load("host-run", "claude", a)
+        result_b = lastrun.load("host-run", "claude", b)
+        assert result_a is not None, "expected a recorded entry for worktree a"
+        assert result_b is not None, "expected a recorded entry for worktree b"
+        assert result_a["stack"] == "stack-a"
+        assert result_b["stack"] == "stack-b"
 
     def test_a_sibling_worktree_has_nothing_to_replay(self, tmp_path, monkeypatch):
         """A worktree that was never launched in reports "nothing to replay" rather than inheriting
@@ -129,7 +138,9 @@ class TestWorktreeKeying:
         b.mkdir()
         lastrun.record("host-run", "stack-a", "claude", a)
         lastrun.record("host-run", "stack-b", "claude", b)
-        assert lastrun.load("host-run", "claude", a)["stack"] == "stack-a"
+        result = lastrun.load("host-run", "claude", a)
+        assert result is not None, "expected a recorded entry for repo a"
+        assert result["stack"] == "stack-a"
 
 
 class TestFilePermissions:
@@ -167,7 +178,9 @@ class TestLifecycleFlagsAreNotRecorded:
         """`--fresh`/`--rm` say what you want THIS time, not what the stack is. Recording them
         would make a replay quietly destructive; `aoe.command_for` omits them for the same reason."""
         lastrun.record("host-run", "serena", "claude", proj)
-        assert set(lastrun.load("host-run", "claude", proj)) == {
+        entry = lastrun.load("host-run", "claude", proj)
+        assert entry is not None, "expected a recorded entry"
+        assert set(entry) == {
             "stack", "no_strict_mcp", "aoe_group", "aoe_title"
         }
 

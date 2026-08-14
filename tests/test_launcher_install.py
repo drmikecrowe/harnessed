@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import typer
 
-from harnessed import credmounts, launcher, paths
+from harnessed import launcher, paths
 from support import patch_all
 
 
@@ -1093,7 +1093,7 @@ class TestHostOsPaths:
             lambda *a, **k: SimpleNamespace(returncode=0, stdout="", stderr=""),
         )
         assert launcher._macos_op_socket_mount_source("podman", Path("/host/agent.sock")) == Path(
-            "/tmp/harnessed-op-agent.sock"
+            "/tmp/harnessed-op-agent.sock"  # noqa: S108 — this is the actual socket path the function is expected to return
         )
 
     def test_macos_relay_skips_non_podman(self, monkeypatch):

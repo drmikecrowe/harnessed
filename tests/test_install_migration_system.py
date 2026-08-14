@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import emit, launcher, paths
+from harnessed import launcher, paths
 from harnessed.schema import (
     RecipeLintError,
     SchemaError,
@@ -75,6 +75,7 @@ class TestRootOnlyInstallParses:
 
     def test_system_without_script_parses(self, tmp_path):
         r = _tmp_recipe(tmp_path, install="install:\n  system: 'apt-get cmake'\n", with_script=False)
+        assert r.install is not None, "expected install block to be parsed"
         assert r.install.script is None
         assert r.install.system == "apt-get cmake"
 
@@ -87,13 +88,13 @@ class TestRootOnlyInstallParses:
 
     def test_empty_system_is_still_rejected(self, tmp_path):
         """The reason string IS the anti-silence mechanism, so it may never be blank."""
-        with pytest.raises(SchemaError, match="install.system"):
+        with pytest.raises(SchemaError, match=re.escape("install.system")):
             _tmp_recipe(tmp_path, install="install:\n  system: '   '\n", with_script=False)
 
     def test_cache_without_script_is_rejected(self, tmp_path):
         """The cache exists to be populated and read BY the script. Root-only has no script, so a
         cache key would be bookkeeping nothing ever reads."""
-        with pytest.raises(SchemaError, match="install.script"):
+        with pytest.raises(SchemaError, match=re.escape("install.script")):
             _tmp_recipe(tmp_path, install="install:\n  cache: v1.0.0\n", with_script=False)
 
 
@@ -193,7 +194,7 @@ class TestPartialMigrationMustDeclareWhatAHostLoses:
 
     def test_undeclared_run_is_rejected(self, tmp_path):
         r = _tmp_recipe(tmp_path, install="install:\n  script: install.sh\n")
-        with pytest.raises(RecipeLintError, match="install.system"):
+        with pytest.raises(RecipeLintError, match=re.escape("install.system")):
             validate_container_only_declared(r, "FROM x\nRUN pnpm add -g foo@1.0.0\n")
 
     def test_declared_reason_passes(self, tmp_path):
@@ -328,7 +329,7 @@ class TestDockerfileCannotDependOnItsOwnInstall:
 
     def test_a_body_invoking_its_own_install_script_is_rejected(self, tmp_path):
         check, r, body = self._body(tmp_path, "USER harnessed\nRUN bash install.sh\n")
-        with pytest.raises(RecipeLintError, match="install.sh"):
+        with pytest.raises(RecipeLintError, match=re.escape("install.sh")):
             check(r, body)
 
     def test_a_body_merely_MENTIONING_it_in_a_comment_is_fine(self, tmp_path):

@@ -1,7 +1,5 @@
 """Tests for CVSS scoring and scan gate (C1 — security-critical code)."""
 
-import pytest
-
 from harnessed.scan import HIGH, _cvss3_base, _roundup, gate
 
 

@@ -75,13 +75,17 @@ class TestEveryMigratedRecipe:
     def test_declares_no_root_component(self, name):
         """None of these needs root: uv/pnpm/mise all install under the invoking user. A stray
         `system:` here would print a scary skip warning on every host launch for no reason."""
-        assert _recipe(name).install.system is None
+        install = _recipe(name).install
+        assert install is not None, f"{name}: expected install block"
+        assert install.system is None
 
     def test_declares_no_content_cache(self, name):
         """`install.cache` keys a pinned CONTENT clone (superpowers' git tree). These four fetch
         packaged artifacts from uv / pnpm / mise, each of which has its own cache — an empty
         harnessed cache dir would just be dead weight the script never reads."""
-        assert _recipe(name).install.cache is None
+        install = _recipe(name).install
+        assert install is not None, f"{name}: expected install block"
+        assert install.cache is None
 
     def test_the_script_pins_an_exact_version(self, name):
         """Every pinned artifact a script still fetches keeps its `==`/`@<version>`; a script that
@@ -147,6 +151,7 @@ class TestSerenaInstallSetupSplit:
 
     def test_setup_keeps_only_the_project_name_convergence(self):
         r = _recipe("serena")
+        assert r.setup is not None and r.setup.script is not None, "serena: expected setup.script"
         body = _code(r.root / r.setup.script)
         assert "HARNESSED_CFG_NAME" in body
         assert "serena project create" in body
@@ -155,6 +160,7 @@ class TestSerenaInstallSetupSplit:
         """The duplicate install is the regression to guard: if it came back, a host launch would
         run `uv tool install` twice per launch and the two copies could pin differently."""
         r = _recipe("serena")
+        assert r.setup is not None and r.setup.script is not None, "serena: expected setup.script"
         body = _code(r.root / r.setup.script)
         assert "uv tool install" not in body
         assert "serena init" not in body

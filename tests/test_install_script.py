@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 from pathlib import Path, PurePosixPath
+from typing import ClassVar
 
 import pytest
 
@@ -99,6 +100,7 @@ def _recipe(tmp_path, name="r", *, install: str | None = None, script_body: str 
 class TestInstallField:
     def test_minimal_install_parses(self, tmp_path):
         r = _recipe(tmp_path, install="install:\n  script: install.sh\n")
+        assert r.install is not None, "expected install block to be parsed"
         assert r.install.script == "install.sh"
         assert r.install.cache is None and r.install.system is None
 
@@ -107,13 +109,14 @@ class TestInstallField:
             tmp_path,
             install="install:\n  script: install.sh\n  cache: v6.0.3\n  system: 'apt-get cmake'\n",
         )
+        assert r.install is not None, "expected install block to be parsed"
         assert (r.install.cache, r.install.system) == ("v6.0.3", "apt-get cmake")
 
     def test_recipe_without_install_is_none(self, tmp_path):
         assert _recipe(tmp_path).install is None
 
     def test_script_is_required(self, tmp_path):
-        with pytest.raises(SchemaError, match="install.script"):
+        with pytest.raises(SchemaError, match=re.escape("install.script")):
             _recipe(tmp_path, install="install:\n  cache: v1.0.0\n")
 
     @pytest.mark.parametrize("bad", ["/etc/evil.sh", "../outside/install.sh"])
@@ -147,7 +150,7 @@ class TestInstallField:
 class TestEnvContract:
     """The contract downstream recipe authors code against."""
 
-    KEYS = {
+    KEYS: ClassVar[set[str]] = {
         "HARNESS",
         "HARNESSED_MODE",
         "HARNESSED_RECIPE_DIR",
@@ -600,7 +603,7 @@ class TestSystemLevelHostPolicy:
 class TestPrecedence:
     """THREE env sources now reach an install script: the inherited environment, the recipe's own
     `env:`, and the harnessed-owned install contract. Precedence is declared EXPLICITLY and must be
-    IDENTICAL in both modes — the defect the harnessed-0tk.7 × harnessed-8px.2 merge exposed was two
+    IDENTICAL in both modes — the defect the harnessed-0tk.7 x harnessed-8px.2 merge exposed was two
     self-consistent branches that together inverted precedence between host and container.
 
     Winner in both: the harnessed-owned contract. Asserted as ORDER, not as values.

@@ -108,11 +108,13 @@ class TestWriteDerivedDockerfile:
 class TestWriteClaudeMd:
     def test_emits_instructions_into_claude_md(self, tmp_path):
         out = write_claude_md(tmp_path, "You are the release-bot for repo X.")
+        assert out is not None
         assert out == tmp_path / ".claude" / "CLAUDE.md"
         assert out.read_text() == "You are the release-bot for repo X.\n"
 
     def test_preserves_trailing_newline(self, tmp_path):
         out = write_claude_md(tmp_path, "identity text\n")
+        assert out is not None
         assert out.read_text() == "identity text\n"
 
     def test_noop_when_instructions_unset(self, tmp_path):
@@ -131,6 +133,7 @@ class TestOpencodeAgentName:
 class TestWriteOpencodePersona:
     def test_writes_prompt_file_under_opencode_prompts(self, tmp_path):
         out = write_opencode_persona(tmp_path, "You are release-bot.", "rel")
+        assert out is not None
         assert out == tmp_path / "opencode" / "prompts" / "rel.md"
         assert out.read_text() == "You are release-bot.\n"
 
@@ -178,6 +181,7 @@ class TestWriteAntigravityIdentity:
         from harnessed.paths import CONTAINER_HOME
 
         out = write_antigravity_identity(tmp_path, "You are the release-bot for repo X.")
+        assert out is not None
         # Identity text lands in the profile's .gemini/GEMINI.md (agy's native memory tree).
         assert out == tmp_path / ".gemini" / "GEMINI.md"
         assert out.read_text() == "You are the release-bot for repo X.\n"
@@ -189,6 +193,7 @@ class TestWriteAntigravityIdentity:
 
     def test_preserves_trailing_newline(self, tmp_path):
         out = write_antigravity_identity(tmp_path, "identity text\n")
+        assert out is not None
         assert out.read_text() == "identity text\n"
 
     def test_noop_when_instructions_unset(self, tmp_path):
@@ -208,6 +213,7 @@ class TestWriteCodexAgentsMd:
         r2 = self._rule(tmp_path, "signed-commits/RULE.md", "All commits must be signed.")
         out = write_codex_agents_md(tmp_path, "You are the codex release-bot.", [r1, r2])
 
+        assert out is not None
         assert out == tmp_path / ".codex" / "AGENTS.md"
         text = out.read_text()
         # identity comes first, then each rule under its header
@@ -225,11 +231,13 @@ class TestWriteCodexAgentsMd:
 
     def test_identity_only_when_no_rules(self, tmp_path):
         out = write_codex_agents_md(tmp_path, "identity only", [])
+        assert out is not None
         assert out.read_text() == "identity only\n"
 
     def test_rules_only_when_no_identity(self, tmp_path):
         r1 = self._rule(tmp_path, "a/RULE.md", "rule body a")
         out = write_codex_agents_md(tmp_path, None, [r1])
+        assert out is not None
         text = out.read_text()
         assert "## Rule: a/RULE.md" in text
         assert "rule body a" in text
@@ -238,6 +246,7 @@ class TestWriteCodexAgentsMd:
         warnings: list[str] = []
         big = self._rule(tmp_path, "big/RULE.md", "x" * (CODEX_AGENTS_MAX_BYTES + 5000))
         out = write_codex_agents_md(tmp_path, "identity", [big], warn=warnings.append)
+        assert out is not None
         data = out.read_bytes()
         assert len(data) <= CODEX_AGENTS_MAX_BYTES
         assert b"truncated" in data
