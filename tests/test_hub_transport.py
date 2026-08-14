@@ -264,6 +264,12 @@ class TestTheEntrypointAndTheLauncherAgree:
         assert "self.stk.hub_transport if emit.hub_is_needed(self.servers)" in src, (
             "the entrypoint is no longer told when every server is direct"
         )
+        # The VALUE, not just the condition. Asserting the `if` alone leaves the else-branch free to
+        # say `http`, which would start a hub for a stack that has nothing to put in it — the exact
+        # bug this change removes, passing its own test. Raised by CodeRabbit on #381.
+        assert "else 'none'" in src, (
+            "a direct-only stack no longer tells the entrypoint to start no hub"
+        )
 
     def test_the_headless_success_line_does_not_claim_a_hub_that_is_not_there(self):
         """The success line named the hub's location as a fixed string. Under stdio nothing runs in

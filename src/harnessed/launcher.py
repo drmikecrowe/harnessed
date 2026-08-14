@@ -218,6 +218,7 @@ from .assemble import (
     validate_agent_image,
     _merge_servers,
     _resolve_service_servers,
+    _validate_direct_servers,
 )
 from .synclinks import CollisionError
 from .schema import (
@@ -3372,6 +3373,23 @@ def container_run(
     shell = _prompt_setup_notices(launch_recipes, project_path, stack, harness) or shell
 
     launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
+
+    # THE CONTAINER PATH NEVER ASSEMBLES, so `assemble`'s guard against a `direct:` server on a
+    # harness that cannot honour one has never run here — `build` (669) and the host path (2335)
+    # both assemble, this one launches a previously-built image and reads the recipes live. An
+    # image built before a recipe gained `direct:` therefore reaches launch with servers the
+    # harness will never see: they are excluded from hatago.config.json by `direct`, and only
+    # claude's MCP config is emitted, so an omp or codex stack would come up silently toolless —
+    # and, once every server is direct, with `HATAGO_TRANSPORT=none` stopping the hub as well.
+    #
+    # Enforcing the same rule here makes that a clear error instead. Raised by CodeRabbit on #381,
+    # whose suggested fix was to route direct entries into omp's config; that is the wrong remedy —
+    # it would undo the deliberate decision that only claude's MCP config is emitted per stack.
+    try:
+        _validate_direct_servers(launch_servers, harness)
+    except SchemaError as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
     backend = ContainerBackend(
         rt, inst, pod, prof, harness_image, mount_path, launch_recipes, launch_servers, stk,
         stack_from_overlay=stack_from_overlay,

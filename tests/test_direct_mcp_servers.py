@@ -319,6 +319,48 @@ class TestAHubWithNothingBehindItIsNotEmitted:
         assert emit.hub_is_needed(None) is True
 
 
+class TestTheContainerLaunchEnforcesTheHarnessRuleToo:
+    """`assemble` refuses a `direct:` server on a harness that cannot honour one — but the CONTAINER
+    launch path never assembles. `build` does, and the host path does; a container launch reads the
+    recipes live and starts a previously-built image.
+
+    So an image built BEFORE a recipe gained `direct:` reached launch with servers the harness would
+    never see: excluded from hatago.config.json by `direct`, and absent from its own config because
+    only claude's is emitted. Once every server is direct it got worse — `HATAGO_TRANSPORT=none`
+    stops the hub as well, so the stack comes up with no MCP at all and nothing says why.
+
+    Raised by CodeRabbit on #381. Its suggested fix — route direct entries into omp's config — is
+    the wrong remedy: it would undo the deliberate decision that only claude's config is emitted.
+    """
+
+    def _launcher(self) -> str:
+        from harnessed import paths
+        return (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
+            encoding="utf-8"
+        )
+
+    def test_the_launch_path_validates_direct_servers(self):
+        assert "_validate_direct_servers(launch_servers, harness)" in self._launcher()
+
+    def test_it_runs_before_anything_is_created(self):
+        """Ordering matters — a stack about to be rejected must not first have a pod built for it.
+
+        Asserted WITHIN the launch function, between resolving the servers and constructing the
+        backend. Not by comparing file offsets: `HATAGO_TRANSPORT` is set in a method of a class
+        defined EARLIER in this file and executed LATER, so textual position says nothing about
+        runtime order — an offset comparison would pass or fail for the wrong reason.
+        """
+        src = self._launcher()
+        body = src[src.index("launch_servers = _resolve_service_servers"):]
+        body = body[:body.index("ContainerBackend(")]
+        assert "_validate_direct_servers(launch_servers, harness)" in body
+
+    def test_the_failure_is_an_exit_not_a_traceback(self):
+        src = self._launcher()
+        block = src[src.index("_validate_direct_servers(launch_servers, harness)"):]
+        assert "typer.Exit(1)" in block[:400]
+
+
 class TestTheEmittedEntryIsWhatTheHarnessReads:
     """The shape is Claude Code's, verified against what `claude mcp add --transport http
     --callback-port` actually writes — not inferred from the recipe's own spelling."""
