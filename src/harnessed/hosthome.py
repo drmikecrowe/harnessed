@@ -15,20 +15,18 @@ import json
 import os
 import re
 import shutil
-import time
 
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 
 from . import paths
 from .__init__ import __version__
 from .assemble import compute_recipe_hash
-from .console import _err, _out
+from .console import _err
 
 
-_OAUTH_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"
+_OAUTH_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"  # noqa: S105 — variable name, not a hardcoded credential
 
 
 def _host_stack_fingerprint(stack: str, recipes: list) -> str:

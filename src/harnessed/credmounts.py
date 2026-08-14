@@ -80,7 +80,7 @@ def _macos_op_socket_mount_source(rt: str, host_sock: Path) -> Path | None:
     """
     if rt != "podman":
         return None  # Docker Desktop uses a different relay; not wired yet (see the todo).
-    vm_sock = Path("/tmp/harnessed-op-agent.sock")
+    vm_sock = Path("/tmp/harnessed-op-agent.sock")  # noqa: S108 — well-known 1Password VM agent socket path
     try:
         # Reverse-forward host_sock → vm_sock inside the running podman machine, backgrounded.
         # StreamLocalBindUnlink=yes clears a stale vm_sock so a second launch's -R bind doesn't fail
@@ -271,7 +271,7 @@ def _stack_from_overlay(stack: str) -> bool:
     closed: an unresolvable stack is not "yours")."""
     try:
         stack_dir = paths.find_in_catalog("stacks", stack)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
     return stack_dir.resolve().is_relative_to(paths.user_catalog().resolve())
 
@@ -290,7 +290,7 @@ def _gh_hosts_missing_plaintext_token(gh_hosts: Path) -> bool:
     """
     try:
         data = YAML(typ="safe", pure=True).load(gh_hosts.read_text())
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False  # can't parse — don't warn on a guess
 
     def has_token(node: object) -> bool:

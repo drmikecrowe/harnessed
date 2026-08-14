@@ -7,7 +7,6 @@ recipe`s `tools:`/`install:` into them.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shlex
 import subprocess
@@ -22,7 +21,6 @@ from . import paths, toollock
 from .console import _err, _out
 from .hosthome import _HOST_STACK_FINGERPRINT, _host_stack_fingerprint
 from .schema import resolve_recipe_env
-from .layout import _agent_image
 from .paths import CONTAINER_HOME
 from .proc import _run, _say
 
@@ -30,7 +28,7 @@ _CONTAINER_HOME_STR = str(CONTAINER_HOME)
 
 # Where the emitted profile is mounted `:ro` while composing the agent-config volume
 # (`_ensure_config_volume`). Scratch for that one throwaway container; never seen by the agent.
-_CTR_PROFILE_DIR = "/tmp/harnessed-profile"
+_CTR_PROFILE_DIR = "/tmp/harnessed-profile"  # noqa: S108 — container-internal mount target, fixed by design
 
 
 def _stack_config_volume(stack: str, harness: str) -> str:

@@ -27,10 +27,9 @@ from . import paths
 from rich.markup import escape
 
 from .console import _err, _out
-from .layout import _harnessed_dir
 from .paths import CONTAINER_HOME
 from .proc import _say
-from .schema import HARNESS_CONFIG_DIR, load_stack_with_recipes, resolve_recipe_env
+from .schema import load_stack_with_recipes, resolve_recipe_env
 from .svcstate import svc_client_env, svc_socket_env
 
 _CONTAINER_HOME_STR = str(CONTAINER_HOME)
@@ -203,7 +202,7 @@ def _gcd_db_name(project_path: Path) -> str:
         parts.pop(0)  # drop leading (shallowest) first, keep the specific tail
     name = "_".join(parts) or "beads"
     if len(name) > 64:
-        name = name[:55].rstrip("_") + "_" + hashlib.sha1(str(root).encode()).hexdigest()[:8]
+        name = name[:55].rstrip("_") + "_" + hashlib.sha1(str(root).encode(), usedforsecurity=False).hexdigest()[:8]
     return name
 
 
@@ -214,7 +213,7 @@ def _repo_primitives(project_path: Path) -> dict[str, str]:
     return {
         "repo": re.sub(r"[^A-Za-z0-9_-]+", "-", repo).strip("-") or "repo",
         "gcd_db": _gcd_db_name(project_path),
-        "gcd_hash": hashlib.sha1(str(gcd).encode()).hexdigest()[:8],
+        "gcd_hash": hashlib.sha1(str(gcd).encode(), usedforsecurity=False).hexdigest()[:8],
         "project_hash": paths.project_hash(project_path),
     }
 

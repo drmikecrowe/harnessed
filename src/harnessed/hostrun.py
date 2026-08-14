@@ -7,7 +7,6 @@ cannot drift.
 """
 from __future__ import annotations
 
-import json
 import os
 import shlex
 import shutil
@@ -26,7 +25,7 @@ from . import paths, toollock
 from .assemble import _merge_servers
 from .hosthome import _relink
 from .schema import load_stack_with_recipes
-from .console import _err, _out
+from .console import _err
 from .proc import _say
 from .setupenv import (
     _confirm_setup,
@@ -377,6 +376,8 @@ def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Pa
     recipe_env = _recipe_env(installs, project_path, mode="host")
     for recipe in installs:
         inst = recipe.install
+        if inst is None:  # filtered above, but narrow for type checker
+            continue
         if inst.system:
             _err.print(
                 f"[bold yellow]WARNING[/bold yellow] install ({recipe.name}): container-only step "

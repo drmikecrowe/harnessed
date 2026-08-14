@@ -20,7 +20,7 @@ import typer
 from . import paths
 from .layout import _catalog_base, _harnessed_dir
 from .proc import _run
-from .console import _err, _out
+from .console import _err
 
 
 def _points_at_a_harnessed_overlay(link: Path, kind: str) -> bool:

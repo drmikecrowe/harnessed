@@ -14,7 +14,6 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
-import os
 import secrets
 import socket
 import subprocess
@@ -25,7 +24,7 @@ from . import paths
 from .console import _err
 from .ctrquery import _container_stale, _inspect_id, _runtime
 from .paths import CONTAINER_HOME
-from .schema import SchemaError, ServiceDef, load_service, load_stack, load_stack_with_recipes
+from .schema import SchemaError, ServiceDef, load_service, load_stack_with_recipes
 
 # The in-container home as a string, for interpolating into paths a client sees. Derived here rather
 # than imported from launcher so the dependency points INTO this module; `paths.CONTAINER_HOME`

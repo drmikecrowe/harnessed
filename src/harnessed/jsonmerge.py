@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from . import emit
-from .console import _err, _out
+from .console import _out
 
 
 def _deep_merge_json(base: object, overlay: object) -> object:
