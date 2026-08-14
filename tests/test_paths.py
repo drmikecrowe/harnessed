@@ -1,6 +1,5 @@
 """Tests for paths.py resolver (B6 — single source of truth)."""
 
-import os
 from pathlib import Path
 
 import pytest
@@ -224,7 +223,7 @@ class TestPersistDir:
         repo.mkdir()
         subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
         proj = paths.persist_project_dir("beads", repo, ".beads")
-        ws = paths.persist_workspace_dir("beads", repo, ".beads")
+        _ = paths.persist_workspace_dir("beads", repo, ".beads")
         # They will differ because the git common dir path ≠ the repo path for git's internal dir
         # The hashes may differ — this test just confirms they ARE distinct concepts when in a git repo.
         # (They are the same only when git_common_dir == repo, which shouldn't happen.)

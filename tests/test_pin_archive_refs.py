@@ -26,7 +26,7 @@ recorded in the bead — the proven bug (a literal branch in the URL) is caught 
 
 import pytest
 
-from harnessed.schema import PinValidationError, RecipeLintError, load_recipe, validate_install_script, validate_pin
+from harnessed.schema import PinValidationError, load_recipe, validate_install_script, validate_pin
 
 SHA = "0283bed313563d5677a0838f4bf921b03296cf6c"
 

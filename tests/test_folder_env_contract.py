@@ -6,8 +6,6 @@ used to be evaluated by a bare `bash -lc` with NO env, so `[ ! -f "${MAIN_REPO_D
 expanded MAIN_REPO_DIR to the empty string and the test passed *falsely* on an already-set-up repo.
 """
 
-from pathlib import Path
-
 import pytest
 
 from harnessed import launcher, paths

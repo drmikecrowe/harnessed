@@ -18,7 +18,6 @@ Three rules shape this command, and each has a class below:
 
 import json
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pytest
 
@@ -177,7 +176,9 @@ class TestStaleness:
             [d], resolve=_fake_resolver({}, fail=[("npm", "x")]),
         )
         assert not report.current and not report.stale
-        assert len(report.unresolved) == 1 and "registry said no" in report.unresolved[0].error
+        assert len(report.unresolved) == 1
+        error_msg = report.unresolved[0].error
+        assert error_msg is not None and "registry said no" in error_msg
 
     def test_an_unknown_latest_is_unresolved(self, tmp_path):
         """A resolver returning None (package absent) is a reportable gap, not silence."""
@@ -306,7 +307,7 @@ class TestRewrite:
         before_lines = body.splitlines()
         after_lines = (d / "recipe.yaml").read_text().splitlines()
         changed = [
-            (a, b) for a, b in zip(before_lines, after_lines) if a != b
+            (a, b) for a, b in zip(before_lines, after_lines, strict=False) if a != b
         ]
         assert len(before_lines) == len(after_lines), (
             f"line count changed — the file was reflowed:\n{after_lines}"

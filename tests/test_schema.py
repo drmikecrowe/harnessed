@@ -7,7 +7,6 @@ from harnessed.schema import (
     HookCommand,
     InitSpec,
     McpServer,
-    PersistEntry,
     PersistSpec,
     Recipe,
     RecipeLintError,
@@ -27,7 +26,7 @@ def _make_recipe(name: str = "test", servers: list | None = None) -> Recipe:
     return Recipe(
         name=name,
         servers=servers or [],
-        root=Path("/tmp/fake-recipe"),
+        root=Path("/tmp/fake-recipe"),  # noqa: S108 — sentinel path for test fixture, not actual temp file creation
     )
 
 
@@ -440,7 +439,7 @@ class TestParseServerServiceCommandExclusion:
 
 
 class TestLoadServicePortRange:
-    """load_service validates port 1–65535 (W2.2 schema gap C6)."""
+    """load_service validates port 1-65535 (W2.2 schema gap C6)."""
 
     def _make_service(self, tmp_path, port) -> Path:
         svc_dir = tmp_path / "services" / "mySvc"
@@ -718,6 +717,7 @@ class TestInitParse:
 
     def test_run_is_stripped(self, tmp_path):
         r = self._load(tmp_path, "name: r\ninit:\n  run: '  ctx init  '\n")
+        assert r.init is not None, "expected init block to be parsed"
         assert r.init.run == "ctx init"
 
     # --- run validation ---

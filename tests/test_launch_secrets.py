@@ -142,7 +142,7 @@ class TestResolveSecretsGlobalSchema:
         env_files[0].unlink()
 
     def test_op_service_account_token_appended_when_set(self, monkeypatch, tmp_path):
-        self._setup(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"}, op_token="secret-ci-token")
+        self._setup(monkeypatch, tmp_path, {"SNYK_TOKEN": "abc123"}, op_token="secret-ci-token")  # noqa: S106 — fake token value in test fixture
         env_files, _ = launcher._resolve_launch_secrets()
         content = env_files[0].read_text()
         assert "OP_SERVICE_ACCOUNT_TOKEN=secret-ci-token" in content
@@ -408,7 +408,7 @@ class TestResolveLaunchEnvSources:
                 AssertionError("host path must not create a temp file")
             ),
         )
-        assert launcher._resolve_launch_env()["SNYK_TOKEN"] == "abc123"
+        assert launcher._resolve_launch_env()["SNYK_TOKEN"] == "abc123"  # noqa: S105 — fake token name in test assertion
         assert made == []
 
 
@@ -457,5 +457,5 @@ class TestHostLaunchAppliesSecrets:
         )
         assert result.exit_code == 0, result.output
 
-        assert captured["SNYK_TOKEN"] == "from-schema"    # schema beats a stale shell export
+        assert captured["SNYK_TOKEN"] == "from-schema"  # noqa: S105 — fake token name in test assertion; schema beats a stale shell export
         assert captured["RECIPE_OWNED"] == "from-recipe"  # recipe env beats a resolved secret

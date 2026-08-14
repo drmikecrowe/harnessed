@@ -110,7 +110,9 @@ class TestUndatedReleases:
     def test_an_undated_candidate_is_not_offered(self, tmp_path):
         report, _ = _report(tmp_path, "npm:x@1.0.0", _releases(("2.0.0", None)))
         assert not report.stale
-        assert report.unresolved and "date" in report.unresolved[0].error.lower()
+        assert report.unresolved
+        error_msg = report.unresolved[0].error
+        assert error_msg is not None and "date" in error_msg.lower()
 
     def test_a_dated_safe_release_still_wins_past_an_undated_newer_one(self, tmp_path):
         """One unusable entry must not blind the command to a good bump below it."""

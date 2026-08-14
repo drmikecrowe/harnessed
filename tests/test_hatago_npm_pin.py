@@ -64,7 +64,7 @@ class TestDerivedImageCarriesNoHatagoLayer:
         # The kwarg is gone rather than accepted-and-ignored: a stale caller must fail loudly.
         with pytest.raises(TypeError):
             write_derived_dockerfile(
-                tmp_path, "s", "claude", [], hatago={"repo": "github:o/r", "ref": "x"}
+                tmp_path, "s", "claude", [], hatago={"repo": "github:o/r", "ref": "x"}  # type: ignore[call-arg]  # intentional stale kwarg to verify TypeError
             )
 
 

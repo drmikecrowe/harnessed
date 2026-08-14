@@ -121,7 +121,9 @@ class TestCooldownWithholdsFreshReleases:
             [d], resolve=_resolver("2.0.0", None), now=NOW, minimum_release_age_minutes=7 * 1440,
         )
         assert not report.stale
-        assert report.unresolved and "age" in report.unresolved[0].error.lower()
+        assert report.unresolved
+        error_msg = report.unresolved[0].error
+        assert error_msg is not None and "age" in error_msg.lower()
 
     def test_an_undated_release_is_offered_when_the_cooldown_is_off(self, tmp_path):
         """With no cooldown there is no promise to break, so a missing date is not disqualifying."""

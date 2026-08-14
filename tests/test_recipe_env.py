@@ -26,9 +26,6 @@ from harnessed.schema import (
     load_recipe,
     resolve_recipe_env,
 )
-from support import patch_all
-
-
 def _entry(name: str, scope: str = "workspace", location: str = "host") -> PersistEntry:
     return PersistEntry(scope=scope, location=location, name=name, path=None, vcs=None)
 

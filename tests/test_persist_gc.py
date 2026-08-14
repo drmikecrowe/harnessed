@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from harnessed import paths
 from harnessed.persist_gc import _fmt_size, list_entries, prune_project
 

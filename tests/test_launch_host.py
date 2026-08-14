@@ -392,6 +392,7 @@ class TestShareClaudeState:
         real = fake_home / ".claude" / ".credentials.json"
         if body is not None:
             real.write_text(body)
+            assert mtime is not None, "_shared: mtime must be provided when body is set"
             os.utime(real, (mtime, mtime))
         return real
 

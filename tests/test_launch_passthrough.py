@@ -108,5 +108,5 @@ class TestAttachAppendsSuffix:
         assert captured["argv"][-1].endswith("claude --mcp-config '/mcp.json' --strict-mcp-config")
 
     def test_shell_mode_ignores_suffix(self, captured):
-        self._run(["--chrome"], shell=True)
+        self._run(["--chrome"], shell=True)  # noqa: S604 — shell=True is a flag to the launcher under test, not subprocess
         assert captured["argv"][-1].endswith("exec bash -l")

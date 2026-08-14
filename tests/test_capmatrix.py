@@ -1,4 +1,4 @@
-"""Recipe-capability × backend matrix (bd harnessed-0tk.2, BACKENDS.md §4).
+"""Recipe-capability x backend matrix (bd harnessed-0tk.2, BACKENDS.md §4).
 
 The matrix answers one question: does THIS backend honor what THIS recipe declared? Where it does
 not, the stack still runs — so the failure mode is silence, not breakage, which is why a warning is
@@ -27,7 +27,7 @@ from harnessed import capmatrix
 # Imported for its REGISTRATION side effect: HostBackend/ContainerBackend register themselves on
 # import, and the conformance tests below read that registry. capmatrix itself must never import
 # launcher (tests/test_module_boundaries.py enforces the direction).
-from harnessed import launcher  # noqa: F401
+from harnessed import launcher
 from harnessed.backend import registered
 from harnessed.schema import load_recipe
 

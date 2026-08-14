@@ -128,7 +128,7 @@ class TestAttachRunsInit:
         proj = tmp_path / "proj"
         proj.mkdir()
         with pytest.raises(SystemExit):
-            launcher._attach("podman", "claude", "inst", proj,
+            launcher._attach("podman", "claude", "inst", proj,  # noqa: S604 — shell=True is a flag to the launcher under test, not subprocess
                              stack="s", mount_path=tmp_path, shell=True)
         shell_cmd = captured["argv"][-1]
         assert "source ~/.bashrc" in shell_cmd
@@ -225,6 +225,6 @@ class TestHostInitEnvPropagation:
 
     def test_shell_bookkeeping_is_not_propagated(self, tmp_path, monkeypatch):
         """PWD is the init shell's cwd (the project); adopting it would relocate the agent."""
-        os.environ["PWD"] = "/somewhere/else"
+        os.environ["PWD"] = "/somewhere/else"  # noqa: S105 — PWD is an env-var name, not a password
         self._run(monkeypatch, tmp_path, "true")
-        assert os.environ["PWD"] == "/somewhere/else"
+        assert os.environ["PWD"] == "/somewhere/else"  # noqa: S105 — same
