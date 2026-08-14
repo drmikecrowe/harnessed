@@ -11,14 +11,10 @@ Replaces the bash launcher (harnessed + lib/*.sh) with a Typer CLI that:
 from __future__ import annotations
 
 import json
-import fcntl
-import hashlib
 import os
 import re
 import shlex
 import shutil
-import secrets
-import socket
 import subprocess
 import sys
 import tempfile
@@ -26,7 +22,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Generator
 from contextlib import contextmanager
-from contextvars import ContextVar
 from itertools import cycle
 from pathlib import Path
 from typing import Callable, Optional, TypeVar
@@ -34,7 +29,6 @@ from typing import Callable, Optional, TypeVar
 import typer
 from rich.markup import escape
 
-from . import __version__
 from . import aoe
 from . import dynstack
 from . import emit
@@ -58,34 +52,24 @@ from .backend import (
 )
 from .console import _err, _out
 from .ctrquery import (
-    _container_exists,
     _container_running,
     _container_stale,
     _image_exists,
     _img_differs,
-    _inspect_id,
-    _pod_exists,
     _rt_uses_pods,
     _runtime,
     _stopped_leftover,
 )
 from .hosthome import (
     _DAEMON_STATE_MARKERS,
-    _HOST_SHARED_STATE,
     _HOST_STACK_FINGERPRINT,
     _LEGACY_PROJECT_DIR_RE,
     _OAUTH_TOKEN_VAR,
-    _clear_host_home_except_runtime,
-    _credentials_are_usable,
-    _host_claude_source,
     _host_home_lock,
-    _host_oauth_token_configured,
     _host_stack_fingerprint,
-    _is_daemon_state,
     _materialize_host_home,
     _migrate_legacy_host_homes,
     _propagate_host_settings,
-    _relink,
     _rescue_host_credentials,
     _scrub_host_home,
     _share_host_claude_state,
@@ -106,10 +90,9 @@ from .catalogseed import (
     _update_recipe_dirs,
     _update_agent_dirs,
 )
-from .jsonmerge import _deep_merge_json, _merge_host_claude_settings
+from .jsonmerge import _merge_host_claude_settings
 from .layout import (
     _agent_image,
-    _catalog_base,
     _derived_image,
     _ensure_profile_dir,
     _harnessed_dir,
@@ -137,18 +120,16 @@ from .mounts import (
     _omp_mcp_seed_mount,
     _persist_mounts,
 )
-from .proc import _BUILD_TAG, _TIMEOUT_RC, _bounded, _run, _run_tagged, _say
+from .proc import _BUILD_TAG, _TIMEOUT_RC, _bounded, _run, _say
 from .setupenv import (
     _CTR_SETUP_DIR,
     _confirm_setup,
     _container_setup_env,
-    _ensure_gitignore_entry,
     _gcd_db_name,
     _init_shell_prologue,
     _pending_setup_scripts,
     _recipe_env,
     _repo_primitives,
-    _resolve_setup_config,
     _script_env,
     _setup_script_mounts,
     _stack_tools_dirs,
@@ -162,12 +143,10 @@ from .svcguards import (
     _assert_data_dir_unlocked,
     _assert_placement_unchanged,
     _assert_service_running,
-    _placement_marker,
     _service_container_status,
 )
 from .hostrun import (
     _apply_host_mise_env,
-    _harness_config_env,
     _host_install_tools,
     _host_mise_env,
     _host_native_mcp,
@@ -175,33 +154,24 @@ from .hostrun import (
     _host_run_installs,
     _host_run_setups,
     _host_tool_shims_dir,
-    _parse_env0,
-    _propagate_init_env,
 )
 from .volumes import (
     _VOL_HARNESS_LABEL,
     _VOL_LABEL,
     _VOL_STACK_LABEL,
-    _container_stack_fingerprint,
     _ensure_config_volume,
     _ensure_stack_volumes,
     _run_container_installs,
     _stack_config_volume,
-    _stack_tools_volume,
-    _volume_labels,
     _volume_read,
 )
 from .svcstate import (
     _STABLE_PORT_RANGE,
     _SVC_CONFIG_HASH_LABEL,
     _SVC_STACK_LABEL,
-    _container_config_hash,
-    _container_label,
-    _port_is_free,
     _repo_project_hashes,
     _service_data_dir,
     _service_refs,
-    _stack_from_instance_name,
     _svc_config_hash,
     _svc_container,
     _svc_container_stack,
@@ -217,9 +187,7 @@ from .svcstate import (
 from .credmounts import (
     _gh_hosts_missing_plaintext_token,
     _git_identity_config_mount,
-    _gnupg_mounts,
     _gpg_ssh_socket,
-    _host_os,
     _macos_op_socket_mount_source,
     _op_agent_socket,
     _ssh_agent_args,
@@ -230,15 +198,11 @@ from .credmounts import (
     _yubikey_device_args,
 )
 from .launchenv import (
-    _normalize_plain_env_file,
-    _parse_plain_env_line,
-    _plain_env_values,
     _resolve_launch_env,
     _resolve_launch_secrets,
     _strip_var_from_env_files,
     _varlock_cache_clear,
     _varlock_resolve,
-    _varlock_resolve_env_file,
 )
 from .paths import CONTAINER_HOME, instance_name, is_built, profile_dir, project_relpath
 from .assemble import (
@@ -262,7 +226,6 @@ from .schema import (
     load_stack_with_recipes,
     normalize_extra_tools,
     parse_extra_tools,
-    resolve_recipe_env,
 )
 
 app = typer.Typer(
@@ -271,6 +234,37 @@ app = typer.Typer(
     add_completion=False,
 )
 
+# Re-exports: this module is a facade left behind by the module split.  The test suite binds to
+# these names by attribute (e.g. `launcher._img_differs(...)`, `monkeypatch.setattr(launcher, ...)`).
+# Deleting any of these imports breaks tests — exactly as documented in issue #327 / PR #325.
+# F401 is suppressed via __all__ rather than per-line noqa to keep the contract explicit.
+__all__ = [
+    "_DAEMON_STATE_MARKERS",       # hosthome
+    "_HOST_STACK_FINGERPRINT",     # hosthome
+    "_STABLE_PORT_RANGE",          # svcstate
+    "_claude_creds_expired",       # mounts
+    "_ensure_config_volume",       # volumes
+    "_env_files_value",            # mounts
+    "_gcd_db_name",                # setupenv
+    "_gh_hosts_missing_plaintext_token",  # credmounts
+    "_host_mise_env",              # hostrun
+    "_img_differs",                # ctrquery
+    "_macos_op_socket_mount_source",  # credmounts
+    "_migrate_legacy_host_homes",  # hosthome
+    "_op_agent_socket",            # credmounts
+    "_repo_primitives",            # setupenv
+    "_repo_project_hashes",        # svcstate
+    "_run_container_installs",     # volumes
+    "_script_env",                 # setupenv
+    "_stack_config_volume",        # volumes
+    "_subst",                      # setupenv
+    "_varlock_cache_clear",        # launchenv
+    "_varlock_resolve",            # launchenv
+    "_yubikey_device_args",        # credmounts
+    "app",
+    "svc_client_env",              # svcstate
+    "svc_socket_env",              # svcstate
+]
 
 # --- shared image names (base; agent images come from catalog/agents/<h>/agent.yaml) ---
 # hatago is no longer a separate image — it is baked into harnessed-base and runs in-container
@@ -669,7 +663,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
         # Clean rejection (raw npm/npx, floating pin, name collision, missing recipe/agent) — a
         # build that is *meant* to fail should read as a one-line error, not a Python traceback.
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
     # Always rebuild the parameterised base first: the derived image is `FROM harnessed-base` (which
     # also bakes hatago + the time server — hatago-consolidation), so a stale base (e.g. after
@@ -780,7 +774,7 @@ def _declared_harnesses(stack: str, root: Path | None) -> list[str]:
         return load_stack(stack_dir).harnesses
     except SchemaError as exc:
         _err.print(f"[bold red]error:[/bold red] loading stack '{stack}' failed: {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
 
 def _declared_pairs(root: Path | None) -> list[tuple[str, str]]:
@@ -1415,7 +1409,7 @@ def _svc_run_cmd(
         run_cmd += ["-e", f"HARNESSED_SVC_PASSWORD={password}"]
 
     if svc.scope == "project":
-        assert project_path is not None  # guarded by the caller
+        assert project_path is not None  # noqa: S101  # type-narrowing: guarded by the caller
         host_dir, _, location = _service_data_dir(svc, stack, project_path)
         # keep-id, pinned to the image uid: the service writes as the invoking user, so bind-mounted
         # bytes stay host-owned (a dolt data dir written by a foreign uid would EACCES for every
@@ -1557,7 +1551,7 @@ def _ensure_service(
         where = f":{svc.port}"
     _out.print(f"[blue][INFO][/blue] Starting service '{name}' on {where} ({cname})")
     if svc.scope == "project":
-        assert project_path is not None  # guarded above
+        assert project_path is not None  # noqa: S101  # type-narrowing: guarded above
         # The side effects and aborts `_svc_run_cmd` deliberately does not carry, because they must
         # fire only when a container is actually about to be created.
         host_dir, _, location = _service_data_dir(svc, stack, project_path)
@@ -1790,7 +1784,7 @@ def _prompt_setup_notices(
         return False
     _out.print("\n[bold]Setup needed for this stack:[/bold]")
     for recipe in notices:
-        assert recipe.setup is not None  # guaranteed by _collect_setup_notices
+        assert recipe.setup is not None  # noqa: S101  # type-narrowing: guaranteed by _collect_setup_notices
         # escape() — the summary is AUTHOR-WRITTEN PROSE, not markup. Interpolated raw, rich parses
         # any `[word]` in it as a style tag and DROPS it silently: beads/team's
         # "add `services: [beads-server]` to the stack" printed as "add `services: ` to the stack",
@@ -2043,7 +2037,7 @@ class HostBackend(ExecutionBackend):
         which runs inside `materialize_config`, is what keeps that true across the rmtree when a
         previous session's refresh replaced the symlink with a regular file (bd harnessed-8px.10).
         """
-        assert self.home is not None, "seed_auth before materialize_config"
+        assert self.home is not None, "seed_auth before materialize_config"  # noqa: S101  # type-narrowing: ordering enforced by caller
         _share_host_claude_state(self.home)
 
     def provision_tools(self, spec: LaunchSpec, phase: ProvisionPhase) -> None:
@@ -2055,7 +2049,7 @@ class HostBackend(ExecutionBackend):
         a TTY prompt would hang any concurrent launch of the same stack.
         """
         if phase == FIRST_START:
-            assert self.home is not None, "provision_tools(FIRST_START) before materialize_config"
+            assert self.home is not None, "provision_tools(FIRST_START) before materialize_config"  # noqa: S101  # type-narrowing: ordering enforced by caller
             if self.rebuilt:
                 # `tools:` BEFORE `install:` — the same order as the derived image, and load-bearing:
                 # an install.sh now configures a binary that tools: provides (serena init -b LSP).
@@ -2084,7 +2078,7 @@ class HostBackend(ExecutionBackend):
         stdio-command presence check sees just-provisioned tools AND anything an install/setup
         script put in the stack bin dir.
         """
-        assert self.home is not None, "wire_mcp before materialize_config"
+        assert self.home is not None, "wire_mcp before materialize_config"  # noqa: S101  # type-narrowing: ordering enforced by caller
         mcp_servers = _host_native_mcp(spec.stack)
         # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude
         # load ONLY this file, so the copied .claude.json's global mcpServers never leak into an
@@ -2174,7 +2168,7 @@ def _launch_host(
         assemble(None, stack, paths.profiles_root().parent, harness, strict=True)
     except (SchemaError, CollisionError) as exc:
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
     # Same mirror as the container path, recorded under this verb so the two never collide: a
     # host-native session and a containerized one for the same stack+harness+folder are different
@@ -2310,6 +2304,8 @@ def _launch_host(
     # setup.script — outside the lock, because a setup can prompt (see provision_tools).
     backend.provision_tools(spec, ATTACH)
     home, cwd = backend.home, backend.cwd
+    if cwd is None:
+        raise RuntimeError("cwd not set; materialize_config must be called first")
 
     # Pending `setup:` notices, and BLOCK on them — the host half of what `launch` does at its own
     # line. This was container-only too, so a host launch printed nothing and started the agent
@@ -2692,7 +2688,7 @@ class ContainerBackend(ExecutionBackend):
         moves verbatim; splitting it is its own change with its own evidence. `seed_auth` owns the
         part that is already contiguous and deliberately last.
         """
-        assert self.config_volume and self.tools_volume, "materialize_config before provision_tools"
+        assert self.config_volume and self.tools_volume, "materialize_config before provision_tools"  # noqa: S101  # type-narrowing: ordering enforced by caller
         # Build mount args.
         self.mount_args = _build_mount_args(
             spec.harness, self.prof, self.mount_path, self.config_volume, self.tools_volume
@@ -3124,10 +3120,10 @@ def container_run(
             f"[bold red]error:[/bold red] stack '{stack}' ({harness}) references a recipe that no longer "
             f"resolves ({exc}) — run: harnessed build {stack} {harness}"
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
     except staleness.StaleProfileError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack} {harness}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
     # BEFORE the row, for the reason spelled out at the host-run call site: the row's command is
     # `--last`, `_aoe_register` EXITS under `--create-aoe-only`, and a row recorded afterwards
@@ -3148,7 +3144,7 @@ def container_run(
         stk = load_stack(stack_dir)
     except SchemaError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from exc
 
     stack_from_overlay = stack_dir.resolve().is_relative_to(paths.user_catalog().resolve())
 
