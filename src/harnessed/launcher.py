@@ -119,6 +119,7 @@ from .mounts import (
     _MCP_REMOTE_SPEC,
     _mcp_auth_store_dir,
     _mcp_auth_store_mount,
+    _mcp_remote_argv,
     _mcp_remote_pending_auth,
     _mcp_remote_pod_args,
     _mcp_remote_token_file,
@@ -1381,7 +1382,7 @@ def _authorize_mcp_remote_servers(
         # pass it is that an existing token is wrong (revoked, wrong account, too few scopes), and
         # those are exactly the tokens `_mcp_remote_pending_auth` reports as fine.
         pending = [
-            (s.name, list(s.args))
+            (s.name, _mcp_remote_argv(s))
             for s in servers
             if getattr(s, "is_stdio_child", False)
             and any(_MCP_REMOTE_SPEC.match(a) for a in s.args)
