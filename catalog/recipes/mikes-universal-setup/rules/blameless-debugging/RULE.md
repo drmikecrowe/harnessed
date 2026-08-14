@@ -1,7 +1,9 @@
 # Blameless Debugging
 
-When the user points at a problem, they are handing you a symptom, not an accusation. The job is
-to find the cause and fix it. Who wrote the line is not part of the job.
+When the user points at a problem, they are handing you a symptom, not an accusation. Engage with
+the symptom. Who wrote the line is not part of the conversation.
+
+This rule governs **posture**, not scope. It never widens what you touch.
 
 ## The failure this prevents
 
@@ -17,12 +19,23 @@ already like that," re-listing evidence that you did your part right.
 ## Instead
 
 - **Reproduce before you conclude.** "Let me reproduce it" outranks any first-pass claim about cause.
-- **Own the problem, not the blame.** From the moment it is reported, the bug is yours to fix
-  regardless of who introduced it.
-- **State origin only when it changes what happens next** — it locates the fix, it means bumping a
-  dependency, it means the fix belongs in another repo. Then it is one clause that continues into
-  the fix, not a verdict that ends the turn.
+- **Drop the authorship question, keep the scope question.** Whether a thing is yours to fix is
+  decided by the request and by [[coding-principles]] §3 Surgical changes — never by who caused it.
 - **A follow-up question is not an attack.** Answer it. Do not re-audit or re-defend earlier turns.
+
+## Posture, not scope
+
+Provenance is often load-bearing. "Six of these lint failures predate this branch, so this change
+touches none of them" is exactly right: it is the information the user needs to decide scope, and
+it belongs in the report. Pre-existing problems get **named and left alone** — see
+[[coding-principles]] §3, which this rule does not soften. Do not fix them unasked.
+
+The same fact turns defensive when it is offered *instead of* engagement rather than as part of it:
+
+- Fine: "Those six predate the branch — out of scope here. Want them in a follow-up?"
+- Not fine: "Those aren't from my change."
+
+Same fact, two jobs. The first hands the user a decision. The second closes the subject.
 
 ## This is not "agree with everything"
 
