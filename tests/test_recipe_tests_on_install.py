@@ -326,6 +326,47 @@ def test_a_container_recipe_with_no_tests_runs_no_extra_container(tmp_path, monk
     assert not [c for c in calls if "/tests/" in c[-1]]
 
 
+def test_a_script_that_cannot_be_spawned_is_a_failed_test_not_a_crash(tmp_path, monkeypatch):
+    """S-17. Fails CLOSED: whatever goes wrong at the process boundary, the answer is 'this recipe's
+    test did not pass', named and attributable -- never a traceback out of a launch."""
+    r = _recipe(tmp_path, tests={"t.sh": "exit 0\n"})
+    tests = capability.discover_recipe_tests([r])
+
+    def _boom(*a, **k):
+        raise OSError("cannot execute")
+
+    monkeypatch.setattr(capability.subprocess, "run", _boom)
+
+    results = capability.run_recipe_tests_host(tests, env={}, workdir=str(tmp_path))
+
+    assert len(results) == 1
+    assert results[0].present is False
+    assert capability.first_failed_test(results) is results[0]
+
+
+def test_a_container_test_that_times_out_fails_the_install(tmp_path, monkeypatch):
+    """S-18. The container seam fails closed on a hang exactly as the host seam does -- otherwise a
+    stack whose test hangs would build 'successfully' forever."""
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd, *a, **k):
+        calls.append(list(cmd))
+        if cmd[-1].endswith("tests/t.sh"):
+            raise subprocess.TimeoutExpired(cmd, capability.DEFAULT_TEST_TIMEOUT)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    r = _recipe(tmp_path, tests={"t.sh": "exit 0\n"})
+    patch_all(monkeypatch, "_run", _fake_run)
+    monkeypatch.setattr(
+        launcher.paths, "install_cache_dir", lambda name, key: tmp_path / "cache" / name / key,
+    )
+
+    with pytest.raises(typer.Exit):
+        launcher._run_container_installs(
+            "podman", "s", "claude", "img", [r], "cfgvol", "toolsvol",
+        )
+
+
 # --- The one catalog fix in scope ----------------------------------------------------------------
 
 
