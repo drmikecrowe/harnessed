@@ -51,9 +51,13 @@ _EXPECTED_EXEMPT = {
     ("launcher.py", "aws_sso"),        # `aws-sso setup ecs auth` + `aws-sso ecs server`
     ("proc.py", "_run"),               # imposes no policy; callers opt in via timeout=
     ("proc.py", "_run_tagged"),        # Popen does not block; its deadline is on wait(timeout=…)
+    # The OAuth consent, attached to the operator's terminal: a timeout on the call would be a
+    # timeout on a human finishing a browser flow. Bounded by its own deadline loop instead, and
+    # terminated in a `finally` on every exit path.
+    ("launcher.py", "_run_mcp_remote_consent"),
 }
 
-_EXPECTED_EXEMPT_CALL_COUNT = 8  # 7 functions, with aws_sso contributing two
+_EXPECTED_EXEMPT_CALL_COUNT = 9  # 8 functions, with aws_sso contributing two
 
 
 def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
