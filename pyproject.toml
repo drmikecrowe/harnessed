@@ -44,7 +44,11 @@ dev = [
 # Coverage cannot tell those apart, which is why a 100%-covered change can still be untested.
 # Declared here rather than passed ad hoc so the layer is reproducible by CI and by the next agent
 # — `mutmut run` with no arguments mutates everything; scope a single change with
-# `mutmut run "src.harnessed.<module>.<function>*"`, and read results with `mutmut results`.
+# `mutmut run "harnessed.<module>.x_<function>*"`, and read results with `mutmut results`.
+# WARNING: the `src.` prefix and missing `x_` are wrong. mutmut names mutants
+# `harnessed.<module>.x_<function>__mutmut_N` — no `src.` prefix, `x_` before the function.
+# A non-matching filter is silent: mutmut exits 0, generates the tree, and `mutmut results`
+# prints every mutant as `not checked` — which looks like a clean run, not a missed filter.
 paths_to_mutate = ["src/harnessed/"]
 tests_dir = ["tests/"]
 # The suite imports `support` and `conftest` as top-level modules from tests/, so the whole dir has
@@ -109,6 +113,14 @@ pythonVersion = "3.12"  # the floor, for the reason spelled out under [tool.ruff
 # so 84 is the number this config actually reports. `strict` would report far more and become a
 # number nobody looks at.
 typeCheckingMode = "basic"
+# src/harnessed/catalog is a symlink to the repo-root catalog/ directory, which contains
+# container-side scripts — they execute inside recipe images against dependencies (mcp, starlette,
+# uvicorn) that this host package deliberately does not install and should not install. Checking
+# them on the host produces only noise (reportMissingImports for every container dep) and measures
+# nothing about the code that actually runs here. The exclude entry below drops the symlink target
+# from pyright's walk so those 5 findings never appear. In pyright, exclude overrides include, so
+# listing a subpath here correctly narrows the src/ include without any wider side-effect.
+exclude = ["src/harnessed/catalog"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
