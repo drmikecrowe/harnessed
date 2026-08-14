@@ -23,7 +23,7 @@ import sys
 
 
 def _repo_root() -> str:
-    """Return the git repo root (used to relativise pyright's absolute paths)."""
+    """Return the git repo root (used to relativise the tools' absolute paths)."""
     import subprocess
 
     result = subprocess.run(
@@ -31,8 +31,17 @@ def _repo_root() -> str:
         capture_output=True,
         text=True,
     )
+    # Fail closed, like every other error path here. Falling back to getcwd() would still
+    # produce output, but the identities would be relative to whatever directory the caller
+    # happened to be in — so a baseline and a head normalized from different cwds would
+    # disagree on every single finding and the gate would report the whole set as churn.
+    # A gate that can silently emit garbage identities is worse than one that stops.
     if result.returncode != 0:
-        return os.getcwd()
+        print(
+            f"ERROR: not a git repository (git rev-parse failed): {result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     return result.stdout.strip()
 
 
@@ -61,6 +70,7 @@ def _load_json(path: str) -> object:
 
 
 def normalize_ruff(json_path: str) -> list[str]:
+    root = _repo_root()
     data = _load_json(json_path)
     if not isinstance(data, list):
         print(
@@ -70,7 +80,12 @@ def normalize_ruff(json_path: str) -> list[str]:
         sys.exit(2)
     findings: list[str] = []
     for item in data:
-        filename = item.get("filename") or ""
+        # Relativised for the same reason pyright's paths are: ruff reports ABSOLUTE
+        # filenames, so an identity built from them is only comparable against a baseline
+        # normalized from the identical directory. That holds while the gauntlet reverts
+        # in place, and stops holding the moment a baseline is generated in a temp
+        # worktree — at which point every finding reads as both added and removed.
+        filename = _rel(item.get("filename") or "", root)
         code = item.get("code") or ""
         message = (item.get("message") or "").strip()
         findings.append(f"{filename}\t{code}\t{message}")
