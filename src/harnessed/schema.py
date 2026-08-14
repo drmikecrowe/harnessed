@@ -1056,6 +1056,10 @@ HUB_TRANSPORT_HTTP = "http"
 HUB_TRANSPORT_STDIO = "stdio"
 _HUB_TRANSPORTS = frozenset({HUB_TRANSPORT_HTTP, HUB_TRANSPORT_STDIO})
 
+# Distinguishes "key absent" from "key present with no value". `raw.get(k)` collapses both to None,
+# and they mean opposite things about the author's intent — see `_parse_hub_transport`.
+_UNSET = object()
+
 # Harnesses whose hub wiring is EMITTED per stack, and can therefore honour `hub_transport`.
 # Everything else bakes the hub address into its image — codex carries `[mcp_servers.hatago]` with a
 # URL in Dockerfile.harnessed-codex — so declaring `stdio` for one would produce a stack whose
@@ -1850,7 +1854,7 @@ def load_stack(stack_dir: Path) -> Stack:
         ssh_keys=ssh_keys,
         forward_aws_sso=bool(raw.get("forward_aws_sso", False)),
         isolated_auth=bool(raw.get("isolated_auth", False)),
-        hub_transport=_parse_hub_transport(raw.get("hub_transport"), manifest),
+        hub_transport=_parse_hub_transport(raw.get("hub_transport", _UNSET), manifest),
         state=dict(raw.get("state", {}) or {}),
         raw=raw,
     )
@@ -1862,8 +1866,14 @@ def _parse_hub_transport(value, manifest: Path) -> str:
     Stack parsing is otherwise tolerant of unknown fields (D-14). That tolerance is wrong here: a
     typo'd value would silently leave the stack on `http`, and the symptom is not a config error but
     an OAuth prompt that never appears — which is precisely the failure this field exists to remove.
+
+    ABSENT and EXPLICITLY NULL are different, which is why the caller passes a sentinel rather than
+    `raw.get(...)`. Omitting the key means "I never thought about this" and correctly takes the
+    default. Writing `hub_transport:` with nothing after it is YAML for None, and it means the
+    author DID think about it and left the edit half-finished — treating that as the default is the
+    same silent fallback this function exists to refuse, just reached by a different keystroke.
     """
-    if value is None:
+    if value is _UNSET:
         return HUB_TRANSPORT_HTTP
     if not isinstance(value, str) or value not in _HUB_TRANSPORTS:
         raise SchemaError(

@@ -3318,7 +3318,16 @@ def container_run(
             # Headless callers (CI / capability tests) have no terminal to notice a degraded hub, so
             # a dead hatago must be a hard failure here, not a green SUCCESS line.
             raise typer.Exit(1)
-        _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} (hatago in-container)")
+        # The hub's WHEREABOUTS, not a fixed string: under stdio nothing is running in the container
+        # and the harness spawns the hub when it starts. Saying "hatago in-container" there would be
+        # a success line asserting something false, and the next person to debug a missing tool
+        # would go looking for a process that was never meant to exist.
+        hub_where = (
+            "hatago spawned by the harness (stdio)"
+            if stk.hub_transport == HUB_TRANSPORT_STDIO
+            else "hatago in-container"
+        )
+        _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} ({hub_where})")
         return
 
     _attach(rt, harness, inst, project_path, stack=stack, mount_path=mount_path, ephemeral=rm, pod=pod, start_dir=start_dir, shell=shell, extra=_passthrough, no_strict_mcp=no_strict_mcp_config)

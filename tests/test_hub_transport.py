@@ -52,6 +52,39 @@ class TestTheDeclarationIsParsedAndValidated:
         from harnessed.schema import _parse_hub_transport
         assert _parse_hub_transport(value, tmp_path / "stack.yaml") == value
 
+    def test_an_omitted_key_takes_the_default(self, tmp_path):
+        """Absent means "never thought about it", which is the one case the default is for."""
+        from harnessed.schema import _UNSET, _parse_hub_transport
+        assert _parse_hub_transport(_UNSET, tmp_path / "stack.yaml") == HUB_TRANSPORT_HTTP
+
+    def test_a_key_written_with_no_value_is_an_error(self, tmp_path):
+        """`hub_transport:` alone is YAML for None, and it is NOT the same as omitting the key: the
+        author reached for the field and left the edit half-finished. Defaulting there is the silent
+        fallback this validation exists to refuse, just reached by a different keystroke.
+        Raised by CodeRabbit on PR #373."""
+        from harnessed.schema import _parse_hub_transport
+        with pytest.raises(SchemaError):
+            _parse_hub_transport(None, tmp_path / "stack.yaml")
+
+    def test_a_stack_yaml_with_an_empty_value_is_refused_end_to_end(self, tmp_path):
+        """Through the real loader, not just the helper — the sentinel only works if the CALLER
+        passes it, and `raw.get(k)` (the obvious spelling) collapses absent and null together."""
+        from harnessed.schema import load_stack
+        stack_dir = tmp_path / "brokenstack"
+        stack_dir.mkdir()
+        (stack_dir / "stack.yaml").write_text("name: brokenstack\nhub_transport:\n", encoding="utf-8")
+        with pytest.raises(SchemaError) as exc:
+            load_stack(stack_dir)
+        assert "hub_transport" in str(exc.value)
+
+    def test_a_stack_yaml_that_omits_it_still_loads(self, tmp_path):
+        """The other half of the sentinel: omitting the key must remain unremarkable."""
+        from harnessed.schema import load_stack
+        stack_dir = tmp_path / "plainstack"
+        stack_dir.mkdir()
+        (stack_dir / "stack.yaml").write_text("name: plainstack\n", encoding="utf-8")
+        assert load_stack(stack_dir).hub_transport == HUB_TRANSPORT_HTTP
+
     @pytest.mark.parametrize("value", ["STDIO", "sse", "https", "stdio ", "", 1, True, ["stdio"]])
     def test_anything_else_is_an_error_rather_than_a_silent_default(self, value, tmp_path):
         """Stack parsing is otherwise tolerant of unknown fields (D-14), and that tolerance would be
@@ -228,6 +261,18 @@ class TestTheEntrypointAndTheLauncherAgree:
             encoding="utf-8"
         )
         assert 'f"HATAGO_TRANSPORT={self.stk.hub_transport}"' in src
+
+    def test_the_headless_success_line_does_not_claim_a_hub_that_is_not_there(self):
+        """The success line named the hub's location as a fixed string. Under stdio nothing runs in
+        the container, so it asserted something false — and the next person debugging a missing tool
+        would hunt a process that was never meant to exist. Raised by CodeRabbit on PR #373."""
+        src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
+            encoding="utf-8"
+        )
+        assert not re.search(r'running headless: \{inst\} \(hatago in-container\)', src), (
+            "the headless line hardcodes 'hatago in-container' again"
+        )
+        assert "hub_where" in src, "the headless line no longer varies with the transport"
 
     def test_the_launcher_does_not_wait_for_a_hub_it_never_started(self):
         """Probing under stdio would burn the full timeout and then report a degraded hub — and in
