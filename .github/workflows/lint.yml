@@ -57,8 +57,19 @@ jobs:
       - name: ruff (lint + bandit `S` rules)
         run: uv run --extra dev ruff check src tests tools
 
+      # `--pythonpath` is not optional here. mise.toml puts the venv OUTSIDE the repo
+      # (UV_PROJECT_ENVIRONMENT = ~/.local/share/harnessed/venvs/<branch>/.venv) and then activates
+      # it via `_.source`, so a developer's bare `pyright` inherits VIRTUAL_ENV and resolves
+      # everything. A CI `run:` step gets no such activation, and pyright then finds none of the
+      # installed packages: the first run of this gate reported 402 phantom reportMissingImports for
+      # pytest/harnessed/hypothesis — a tree that is genuinely at 0.
+      #
+      # So the interpreter is asked for explicitly, from the same source of truth uv and pytest use,
+      # rather than inherited from whatever the shell happened to export. Same reasoning as
+      # `extraPaths` in pyproject.toml: a type-checking layer whose result depends on where it runs
+      # cannot be gated at a fixed number.
       - name: pyright (static types)
-        run: pyright
+        run: pyright --pythonpath "$(uv run --extra dev python -c 'import sys; print(sys.executable)')"
 
       # `catalog/**` is included on purpose: those install scripts run INSIDE recipe images as
       # root, so a quoting bug there is a container build that fails opaquely, or worse, succeeds
