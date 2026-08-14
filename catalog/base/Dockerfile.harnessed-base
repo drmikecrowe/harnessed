@@ -8,7 +8,22 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/New_York
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# System dependencies and common build tools
+# System dependencies and common build tools.
+#
+# THE `lib*-dev` ENTRIES ARE CPYTHON'S OPTIONAL-MODULE HEADERS, AND THE LIST MUST STAY COMPLETE.
+# mise builds Python from source here, and CPython's build SILENTLY SKIPS any extension module
+# whose headers are missing: it notes the omission and exits 0, so the image ships a Python that
+# imports fine and then dies at RUNTIME on `import sqlite3`.
+#
+# Not hypothetical. Without libsqlite3-dev, `repowise mcp` (a stdio MCP server) died on
+# `ModuleNotFoundError: No module named '_sqlite3'` the moment hatago spawned it, and the capability
+# test could only report the server "not connected" — nothing pointed at Python. The same build was
+# also missing _bz2, _curses and readline.
+#
+# ssl/zlib/ffi were already here because their absence breaks pip and therefore fails LOUDLY during
+# the build. The four added alongside them fail QUIETLY, at runtime, in whatever recipe happens to
+# import them — which is why they were easy to omit and expensive to find. Keep the set complete
+# rather than minimal; the cost is a few MB of headers in a build layer.
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
@@ -19,6 +34,11 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     zlib1g-dev \
     libffi-dev \
+    libsqlite3-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libncurses-dev \
+    liblzma-dev \
     vim \
     tree \
     gnupg \
