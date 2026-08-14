@@ -2351,6 +2351,37 @@ class Agent:
 _ARG_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
+def _require_immutable_build_arg(key: str, value: str, manifest: Path) -> str:
+    """A build_arg value must be an IMMUTABLE pin — a version-like tag or a full SHA. Returns it.
+
+    `--build-arg NAME=latest` produces an image that is whatever `latest` meant on build day, and
+    nothing downstream can catch it: `validate_agent_pin` reads Dockerfile TEXT, where the line is
+    `bun@${NAME}` — a shell variable, which reads as pinned precisely because the pin is supposed to
+    live here. This is the only place the VALUE is ever seen.
+
+    Stated POSITIVELY, sharing `_IMMUTABLE_REF_RE` with `install.refs[].ref` rather than blocking a
+    list of channel names. A deny-list was tried on this codebase and found insufficient — bd
+    harnessed-1t4.6, where `--branch feat/…` walked through a gate built to stop exactly that — and
+    an enumeration of channels does not converge either: the seven-name list that guards
+    `install.cache` has no `nightly`, `canary`, `stable`, `beta`, `alpha` or `lts`, and plan
+    REVISION 15 measured claude publishing a `stable` channel. An unrecognised shape fails CLOSED.
+
+    `hold:` and `spec:` do NOT excuse a failure here. A hold freezes a pin and a spec explains where
+    one resolves from; neither creates one. `validate_agent_pin` states the same rule for its own
+    escape hatch: a declared exception suppresses the ABSENT error and nothing else.
+    """
+    pin = value.strip()
+    if not _IMMUTABLE_REF_RE.match(pin):
+        raise SchemaError(
+            f"{manifest}: build_args {key!r} is {value!r}, which is not a pinned version — a "
+            f"channel is a thing you RESOLVE ONCE to get a value, it is never the value. Use a "
+            f"version tag (1.2.3, v1.2.3) or a FULL 40-character commit SHA. A 'hold' or 'spec' "
+            f"does not excuse this; an agent with no version selector at all belongs in the "
+            f"top-level 'unpinnable:' mapping."
+        )
+    return pin
+
+
 def _parse_agent_build_args(raw_args, manifest: Path
                             ) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     """Split `build_args` into (values, specs, holds), accepting a scalar or a mapping per key."""
@@ -2374,7 +2405,7 @@ def _parse_agent_build_args(raw_args, manifest: Path
                     f"{manifest}: build_args {key!r} has no value — a build_arg must carry the "
                     f"version it pins (got {val!r})"
                 )
-            values[key] = str(val)
+            values[key] = _require_immutable_build_arg(key, str(val), manifest)
             continue
         if "unpinnable" in val:
             raise SchemaError(
@@ -2387,7 +2418,7 @@ def _parse_agent_build_args(raw_args, manifest: Path
                 f"{manifest}: build_args {key!r} is a mapping without a 'value' — a 'hold' or "
                 f"'spec' freezes or explains a pin, neither replaces one"
             )
-        values[key] = str(val["value"])
+        values[key] = _require_immutable_build_arg(key, str(val["value"]), manifest)
         if "spec" in val:
             spec = str(val["spec"] or "")
             if not spec:
