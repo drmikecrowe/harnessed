@@ -14,6 +14,11 @@ name: mikes-universal-setup
 description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills — an example personal always-on setup."
 
 rules:
+  # A reported problem is a symptom, not an accusation. Counterweight to coding-principles' "never
+  # guess / state verified facts", which on its own turns a bug report into an attribution argument.
+  # Posture only — it never widens scope; §3 Surgical changes still decides what gets touched, and
+  # pre-existing lint/test noise is named and left alone.
+  - path: rules/blameless-debugging
   - path: rules/coding-principles
   - path: rules/denied-commands
   # Anti-drift/anti-thrash working discipline: read-before-edit, re-read on correction, change
