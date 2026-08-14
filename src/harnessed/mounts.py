@@ -470,15 +470,38 @@ def _mcp_remote_invocations(servers: Sequence) -> list[list[str]]:
 def _mcp_remote_callback_port(argv: list[str]) -> int | None:
     """The callback port the recipe pinned, or None when it pinned none.
 
-    mcp-remote's CLI is `mcp-remote <url> [callback-port]` — the port is POSITIONAL ARG 1
-    (`args[1]`, chunk-NIAXKAUT.js L21091-21092), so flags are skipped rather than counted. Absent,
-    the tool selects its own (L21233) and there is no number harnessed could publish that it would
-    be listening on; inventing one forwards a port nothing answers, which looks wired and is not.
+    mcp-remote's CLI is `mcp-remote <url> [callback-port]` and the port is `args[1]` — a raw INDEX,
+    not "the second non-flag token" (chunk-NIAXKAUT.js L21091-21092). The one thing removed before
+    that index is read is each `--header <value>` pair, spliced out of argv in the loop at
+    L21077-21086; every other value-taking option (`--transport`, `--host`, `--resource`) is found
+    later by `indexOf` and LEFT IN PLACE, so it cannot renumber anything.
+
+    That asymmetry has to be mirrored exactly, in both directions:
+      * miss the splice and a recipe sending an auth header publishes nothing while mcp-remote
+        listens — the silent timeout this whole change exists to remove;
+      * filter flags generally and a non-`--header` option before the URL looks like a valid pin
+        here while upstream reads that option as `serverUrl` and never listens at all.
+    Absent a pin the tool selects its own port (L21233), which harnessed cannot know; inventing one
+    forwards a port nothing answers, which looks wired and is not.
     """
     idx = next((n for n, a in enumerate(argv) if _MCP_REMOTE_SPEC.match(a)), None)
     if idx is None:
         return None
-    positional = [a for a in argv[idx + 1:] if not a.startswith("-")]
+    rest = argv[idx + 1:]
+    positional: list[str] = []
+    n = 0
+    while n < len(rest):
+        # Upstream guards the splice with `i < args.length - 1`, so a DANGLING `--header` survives
+        # in its argv while it is dropped from this list. That difference is not observable: the
+        # only way it could move the port is by sitting at index 1, and there the kept token is
+        # `--header` itself — rejected by the decimal check below exactly as the short list is
+        # rejected for being too short. Both roads return None, so the branch is omitted rather
+        # than carried as a line no test can ever distinguish.
+        if rest[n] == "--header":
+            n += 2
+            continue
+        positional.append(rest[n])
+        n += 1
     # `isascii() and isdecimal()`, NOT `isdigit()`. `str.isdigit()` is True for characters `int()`
     # refuses — superscripts like '²' are digits but not decimals — so an `isdigit()` guard in front
     # of `int()` reads as validation while leaving an uncaught ValueError that would take down

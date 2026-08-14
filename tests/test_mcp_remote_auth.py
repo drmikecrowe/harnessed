@@ -358,12 +358,43 @@ class TestThePortIsReadPositionally:
         assumed."""
         assert mounts._mcp_remote_callback_port(["dlx", "other-tool@1.0", URL, "32081"]) is None
 
-    def test_flags_between_the_spec_and_the_port_do_not_shift_it(self):
-        """`args[1]` upstream counts POSITIONALS. A flag miscounted as the URL would make the port
-        the third positional and silently publish nothing."""
+    def test_trailing_flags_do_not_shift_the_port(self):
+        """The ordinary shape: `mcp-remote <url> <port> [flags]`. Options after the port are read
+        upstream by `indexOf` and never renumber it."""
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, URL, "32081", "--debug", "--transport", "http-only"]
+        ) == 32081
+
+    def test_a_header_pair_before_the_url_does_not_shift_the_port(self):
+        """`--header <value>` is the ONE option upstream REMOVES from argv (`args.splice(i, 2)`,
+        L21077-21086) before it reads `args[1]`. So upstream sees the port here and binds it. Left
+        counted, harnessed publishes nothing while mcp-remote listens -- the silent-timeout bug this
+        whole change exists to fix, back again for any recipe that sends an auth header."""
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, "--header", "Authorization: Bearer x", URL, "32081"]
+        ) == 32081
+
+    def test_repeated_header_pairs_are_all_removed(self):
+        """Upstream's splice loop runs to exhaustion, so two headers shift the port by four."""
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, "--header", "A: 1", "--header", "B: 2", URL, "32081"]
+        ) == 32081
+
+    def test_a_valueless_trailing_header_is_not_removed(self):
+        """Upstream splices only when a value follows (`i < args.length - 1`), so a dangling
+        `--header` stays in argv and must not consume the token after it -- there is none."""
+        assert mounts._mcp_remote_callback_port(
+            ["dlx", SPEC_ARG, URL, "32081", "--header"]
+        ) == 32081
+
+    def test_a_non_header_flag_before_the_url_yields_no_port(self):
+        """Upstream removes ONLY `--header`. Anything else before the URL lands in `args[0]`, so
+        `serverUrl` becomes the flag and mcp-remote is broken regardless of what harnessed does.
+        Publishing a port for that invocation forwards to a listener that was never started --
+        `_mcp_remote_callback_port`'s own rule is to skip rather than to look wired and not be."""
         assert mounts._mcp_remote_callback_port(
             ["dlx", SPEC_ARG, "--debug", URL, "32081"]
-        ) == 32081
+        ) is None
 
 
 class TestThePublishReachesALoopbackListener:
