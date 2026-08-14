@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -442,6 +443,261 @@ def _isolated_auth_fresh_wipe(harness: str, inst: str) -> None:
     if harness != "claude":
         return
     shutil.rmtree(_isolated_auth_store(inst).parent, ignore_errors=True)
+
+
+# The npm spec for the mcp-remote CLI, scoped (`@drmikecrowe/mcp-remote@0.1.38-test.3`) or bare.
+# Charset-constrained deliberately: the matched token is the anchor for a version that would
+# otherwise be free to carry a ':' into a podman `-v` spec, which is ':'-delimited.
+_MCP_REMOTE_SPEC = re.compile(r"\A(?:@[^/@\s]+/)?mcp-remote@[A-Za-z0-9._+-]+\Z")
+
+
+def _mcp_remote_invocations(servers: Sequence) -> list[list[str]]:
+    """The argv of every stdio server that runs the mcp-remote CLI (usually zero or one).
+
+    Both builders below key off the recipe's OWN args rather than a schema field, so the pin stays
+    the single source of truth: bump it and the mount and the publish follow together. A network
+    server (`url`) is proxied by hatago directly and never spawns this CLI.
+    """
+    return [
+        list(s.args)
+        for s in servers
+        if s.is_stdio_child and any(_MCP_REMOTE_SPEC.match(a) for a in s.args)
+    ]
+
+
+def _mcp_remote_callback_port(argv: list[str]) -> int | None:
+    """The callback port the recipe pinned, or None when it pinned none.
+
+    mcp-remote's CLI is `mcp-remote <url> [callback-port]` and the port is `args[1]` — a raw INDEX,
+    not "the second non-flag token" (chunk-NIAXKAUT.js L21091-21092). The one thing removed before
+    that index is read is each `--header <value>` pair, spliced out of argv in the loop at
+    L21077-21086; every other value-taking option (`--transport`, `--host`, `--resource`) is found
+    later by `indexOf` and LEFT IN PLACE, so it cannot renumber anything.
+
+    That asymmetry has to be mirrored exactly, in both directions:
+      * miss the splice and a recipe sending an auth header publishes nothing while mcp-remote
+        listens — the silent timeout this whole change exists to remove;
+      * filter flags generally and a non-`--header` option before the URL looks like a valid pin
+        here while upstream reads that option as `serverUrl` and never listens at all.
+    Absent a pin the tool selects its own port (L21233), which harnessed cannot know; inventing one
+    forwards a port nothing answers, which looks wired and is not.
+    """
+    idx = next((n for n, a in enumerate(argv) if _MCP_REMOTE_SPEC.match(a)), None)
+    if idx is None:
+        return None
+    rest = argv[idx + 1:]
+    positional: list[str] = []
+    n = 0
+    while n < len(rest):
+        # Upstream guards the splice with `i < args.length - 1`, so a DANGLING `--header` survives
+        # in its argv while it is dropped from this list. That difference is not observable: the
+        # only way it could move the port is by sitting at index 1, and there the kept token is
+        # `--header` itself — rejected by the decimal check below exactly as the short list is
+        # rejected for being too short. Both roads return None, so the branch is omitted rather
+        # than carried as a line no test can ever distinguish.
+        if rest[n] == "--header":
+            n += 2
+            continue
+        positional.append(rest[n])
+        n += 1
+    # `isascii() and isdecimal()`, NOT `isdigit()`. `str.isdigit()` is True for characters `int()`
+    # refuses — superscripts like '²' are digits but not decimals — so an `isdigit()` guard in front
+    # of `int()` reads as validation while leaving an uncaught ValueError that would take down
+    # `pod create` instead of skipping the publish. `isdecimal()` closes that, and `isascii()` also
+    # rejects the other-script decimals ('٠١٢') that `int()` accepts but no port is ever written in.
+    if len(positional) < 2 or not (positional[1].isascii() and positional[1].isdecimal()):
+        return None
+    port = int(positional[1])
+    # Floor is 1024, not 1: harnessed runs the pod ROOTLESS, and a rootless publish of a privileged
+    # port fails at `pod create` on a default `net.ipv4.ip_unprivileged_port_start=1024`. Skipping a
+    # port that cannot be published is the same policy as skipping one already taken — a launch that
+    # dies because a recipe pinned port 80 would be a worse failure than an unpublished callback.
+    # mcp-remote's own default is 3335 + hash%45816, so this never binds on real pins.
+    return port if 1024 <= port <= 65535 else None
+
+
+def _port_free(port: int) -> bool:
+    """True when 127.0.0.1:<port> can be bound right now. Best-effort and racy by nature — the
+    caller uses it to DROP a publish, never to promise one, so losing the race costs a skipped
+    publish rather than a failed launch."""
+    with socket.socket() as s:
+        try:
+            s.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def _mcp_remote_callback_publish_args(
+    servers: Sequence, port_free: "Callable[[int], bool] | None" = None
+) -> list[str]:
+    """Publish mcp-remote's OAuth callback port into the pod, so the redirect can land.
+
+    THE DEFECT THIS FIXES. mcp-remote authenticates by opening a browser and listening for the
+    redirect on 127.0.0.1:<port>. Inside a pod that publishes nothing, those are two different
+    loopbacks: the browser opens in the container where nobody can see it, and the URL pasted into
+    the HOST's browser redirects to the HOST's 127.0.0.1 — a different netns from the listener. The
+    flow can never complete, and hatago reports three `Request timed out` retries with no hint as to
+    why. Publishing the port joins the two halves; the user pastes the authorize URL, consents, and
+    the redirect reaches the process that is waiting for it.
+
+    LOOPBACK-BOUND, never `0.0.0.0`. An unqualified `-p` publishes on every interface (see the
+    service publish and its comment), and an OAuth callback listener has no business on the LAN.
+
+    A TAKEN PORT IS SKIPPED, NOT FATAL. Two concurrent instances of the same stack would otherwise
+    collide at `pod create` ("port already in use") before either could authenticate. The second one
+    does not need it: either the first is mid-consent and will write tokens into the shared store, or
+    valid tokens already exist — and an instance holding valid tokens reaches neither the callback
+    server nor the lockfile, since both hang off the `UnauthorizedError` branch (L20896-20904).
+    (Only the HOST-side publish can collide. The in-pod bind cannot: each pod has its own netns, so
+    two instances both listening on 32081 inside their own pods never see each other.)
+
+    THE PUBLISH ALONE IS INERT — see `_mcp_remote_pasta_net_args`. mcp-remote's callback server is
+    `app.listen(port, "127.0.0.1")` with no way to change the bind address (L21016; `--host` only
+    rewrites the ADVERTISED redirect URI and the tool warns as much, L21130), and rootless pasta
+    forwards a published port to the namespace's PUBLIC address by default. Verified on real podman:
+    a loopback-bound listener in a pod published with `-p` is unreachable from the host, while the
+    same pod with the pasta option below answers. Both args must be emitted together.
+    """
+    is_free = port_free or _port_free
+    args: list[str] = []
+    seen: set[int] = set()
+    for argv in _mcp_remote_invocations(servers):
+        port = _mcp_remote_callback_port(argv)
+        if port is None or port in seen:
+            continue
+        seen.add(port)
+        if not is_free(port):
+            _err.print(
+                f"[yellow]note:[/yellow] host port {port} is in use, so this instance publishes no "
+                "mcp-remote OAuth callback. It will use the tokens already in the shared store; "
+                "only a first-time consent needs the port."
+            )
+            continue
+        args += ["-p", f"127.0.0.1:{port}:{port}"]
+    return args
+
+
+def _mcp_remote_pasta_net_args(publish_args: list[str], net: str) -> list[str]:
+    """The pasta option WITHOUT WHICH the callback publish does nothing at all.
+
+    mcp-remote's callback server binds `127.0.0.1` unconditionally
+    (`app.listen(options.port, "127.0.0.1")`, L21016). `--host` does NOT move it — it only rewrites
+    the redirect URI that gets advertised, and the tool prints a warning saying the code "will not
+    reach this process" as a result (L21130). So the listener is loopback-only inside the pod netns,
+    and there is no upstream flag to change that.
+
+    Rootless podman uses pasta, which by default delivers a forwarded port to the namespace's PUBLIC
+    address — not its loopback — so a `-p` publish sails past a loopback-only listener.
+    `--host-lo-to-ns-lo` is the documented pasta option that "connections to a host loopback address
+    forwarded with -t or -u will be delivered to the same loopback address in the namespace".
+
+    Measured on real podman (rootless, netavark, pasta), same pod and same `-p` both times:
+
+        listener bound 127.0.0.1, no pasta option   -> curl exit 56, unreachable
+        listener bound 0.0.0.0,   no pasta option   -> HTTP 200
+        listener bound 127.0.0.1, --host-lo-to-ns-lo -> HTTP 200
+
+    An explicit HARNESSED_NET wins: the operator asked for a specific network and silently rewriting
+    it would be worse than a callback that needs one manual step. Say so rather than fight them.
+    """
+    if not publish_args:
+        return []
+    if net:
+        _err.print(
+            f"[yellow]note:[/yellow] HARNESSED_NET={net} is set, so the mcp-remote OAuth callback "
+            "port is published without pasta's [bold]--host-lo-to-ns-lo[/bold]. The callback server "
+            "listens on the pod's 127.0.0.1, which that network may not deliver to — if the browser "
+            "redirect hangs, authorize once on the host instead."
+        )
+        return ["--network", net]
+    return ["--network", "pasta:--host-lo-to-ns-lo"]
+
+
+def _mcp_remote_pod_args(
+    servers: Sequence, net: str, port_free: "Callable[[int], bool] | None" = None
+) -> list[str]:
+    """Everything `pod create` needs for mcp-remote's OAuth callback, as ONE list.
+
+    The publish and the pasta option are emitted together because separately they are a trap: a
+    publish without `--host-lo-to-ns-lo` forwards straight past mcp-remote's loopback-bound listener
+    and changes nothing, while looking in `podman pod inspect` exactly like a working one. Composing
+    them here means the launcher cannot wire one and forget the other, and means the coupling is
+    assertable without driving a real `pod create`.
+
+    Also owns the plain `--network` passthrough, since `--network` cannot be passed twice.
+    """
+    publish = _mcp_remote_callback_publish_args(servers, port_free=port_free)
+    if not publish:
+        return ["--network", net] if net else []
+    return publish + _mcp_remote_pasta_net_args(publish, net)
+
+
+def _mcp_auth_store_mount(
+    servers: Sequence, inst: str, isolated_auth: bool, home: Path | None = None
+) -> list[str]:
+    """Bind-mount `~/.mcp-auth` rw so an OAuth consent outlives the pod it happened in.
+
+    Without this the tokens are written into the container's own home and die with the instance, so
+    every launch walks the whole browser flow again. `saveTokens` rewrites the token in place on
+    refresh (L21511), which is why this is `rw` and why it satisfies ARCHITECTURE.md §Constraints:
+    the live store is REFERENCED, and nothing is copied, seeded, or snapshotted into a per-stack home.
+
+    THE SOURCE DEPENDS ON WHOSE IDENTITY THE STACK RUNS AS, mirroring the split that
+    `_claude_isolated_auth_mount` and `_claude_creds_seed_mount` already make:
+
+      * `isolated_auth` — a per-instance dir beside that stack's own Claude credentials. The flag
+        exists so a stack runs as a DIFFERENT account (a client's); handing it the host's ~/.mcp-auth
+        would give it the HOST's Atlassian identity, which is the exact wrong-account failure the
+        flag prevents. `instance_name` is deterministic, so the dir is the same one every launch,
+        survives an ordinary recreate, and is reset by `--fresh` (`_isolated_auth_fresh_wipe`).
+      * otherwise — the host's own `~/.mcp-auth`. These stacks already run on the host's Claude
+        identity, so sharing its Atlassian consent is consistent, and one host-side authorization
+        then covers the host and every container together.
+
+    THE WHOLE DIRECTORY, NOT `mcp-remote-<version>/`. The store is version-namespaced
+    (`getConfigDir`, L20290), and mounting one version's subdir would mean deriving the version here
+    and leaving a stale mount pointing at a directory nothing reads the moment the pin moved.
+    `ensureConfigDir` creates whatever subdir it needs INSIDE the mount (L20294), so mounting the
+    parent removes the trap entirely: a bump costs one re-consent, never a silent logout.
+
+    The source is CREATED when absent rather than demanded — the store is an output of the auth
+    flow, not a precondition to police. harnessed creates it (0o700, matching `ensureConfigDir`'s own
+    mode) instead of letting podman auto-create the missing source, so it is owned by the right uid
+    under `paths.USERNS_ARG` rather than by whoever podman decides.
+    """
+    if not _mcp_remote_invocations(servers):
+        return []
+    home = home or Path.home()
+    source = (
+        _isolated_auth_store(inst).parent / ".mcp-auth" if isolated_auth else home / ".mcp-auth"
+    )
+    # ':' is the `-v src:dst:opts` separator, so a source containing one reparses the spec into a
+    # mount of somewhere else entirely — the same defensive skip `_ssh_dir_mounts` applies.
+    if ":" in str(source):
+        _err.print(
+            f"[yellow]note:[/yellow] skipping the mcp-remote token store mount — {source} "
+            "contains ':'."
+        )
+        return []
+    # AFTER the mkdir, deliberately, and this ordering is the whole guarantee. Checking first leaves
+    # the absent-directory case unguarded twice over: `guard_ownership` on a path that does not exist
+    # yet passes trivially, and the two statements are a TOCTOU window in which anything that
+    # appears at `source` is then adopted by `exist_ok=True` and mounted rw. Checking after covers
+    # both orders — a pre-existing foreign dir survives an `exist_ok` mkdir unchanged and is caught
+    # here, and so is one that raced in. A foreign-owned dir maps to an unrelated subuid inside the
+    # pod, so the refresh write fails with EACCES and nothing on the host says why.
+    source.mkdir(parents=True, exist_ok=True)
+    persist.guard_ownership(source)
+    # Tightened whether harnessed created it or inherited it. Only chmod'ing our own fresh dir left
+    # the claim "0o700" true on one branch and false on the other — and the inherited branch is the
+    # LIKELY one, since mcp-remote's `ensureConfigDir` makes the version subdir 0o700 while the
+    # parent it creates alongside lands at the caller's umask (commonly 0o755). The tokens sit one
+    # level down, but a listable parent still discloses which servers have been authorized and when.
+    # Narrowing only: never widens a directory the user deliberately locked down harder.
+    if source.stat().st_mode & 0o077:
+        source.chmod(0o700)
+    return ["-v", f"{source}:{_CONTAINER_HOME_STR}/.mcp-auth:rw"]
 
 
 def _claude_creds_expired(creds: Path) -> bool:

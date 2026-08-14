@@ -116,6 +116,8 @@ from .mounts import (
     _keyring_fresh_wipe,
     _keyring_init,
     _keyring_state_mount,
+    _mcp_auth_store_mount,
+    _mcp_remote_pod_args,
     _omp_agent_mount,
     _omp_mcp_seed_mount,
     _persist_mounts,
@@ -2706,6 +2708,13 @@ class ContainerBackend(ExecutionBackend):
         # --env-file.
         # Persist agy's in-pod keyring store (rw) so its Google-OAuth token survives recreates (antigravity).
         self.mount_args += _keyring_state_mount(spec.harness, self.inst)
+        # Persist mcp-remote's OAuth token store (rw) so a consent outlives the instance it happened
+        # in. Sourced from the host's ~/.mcp-auth, or — for an isolated_auth stack, which runs as a
+        # DIFFERENT account — from that instance's own dir, so it never inherits the host's identity.
+        # No-op for every stack that runs no mcp-remote. Pairs with the callback publish on the pod.
+        self.mount_args += _mcp_auth_store_mount(
+            self.servers, self.inst, self.stk.isolated_auth
+        )
         # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
         self.mount_args += _omp_agent_mount(spec.harness)
         # Point omp at the in-container hatago hub (nested ro mount shadowing the agent dir's
@@ -2891,8 +2900,18 @@ class ContainerBackend(ExecutionBackend):
                 self.rt, "pod", "create", "--name", self.pod,
                 "--hostname", paths.container_hostname(self.pod), paths.USERNS_ARG,
             ]
-            if net:
-                pod_cmd += ["--network", net]
+            # Publish mcp-remote's OAuth callback port (loopback only) so the redirect can reach the
+            # process waiting for it. Without this the pod publishes nothing, the browser opens
+            # inside the container where nobody sees it, and a URL pasted into the host's browser
+            # redirects to the HOST's loopback — a different netns from the listener — so the flow
+            # times out three times with no explanation. Ports are a POD-level property, so this
+            # belongs here and not on the member. Empty unless a recipe pins one.
+            # The publish is INERT without pasta's --host-lo-to-ns-lo: mcp-remote binds the pod's
+            # 127.0.0.1 unconditionally, and pasta forwards to the namespace's public address by
+            # default. Measured both ways on real podman — see the helper. Composed there as one
+            # list so the two cannot be wired apart, and so it also owns the plain `--network`
+            # passthrough (which cannot be passed twice). Empty unless a recipe pins a port.
+            pod_cmd += _mcp_remote_pod_args(self.servers, net)
             _run(pod_cmd, capture_output=True)
 
         # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
