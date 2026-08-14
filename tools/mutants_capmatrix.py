@@ -140,7 +140,8 @@ def main() -> int:
             killed = not run_suite()
         finally:
             restore(rel)
-            assert target.read_text(encoding="utf-8") == original, f"restore failed for {rel}"
+            if target.read_text(encoding="utf-8") != original:
+                raise RuntimeError(f"restore failed for {rel}")
         print(f"{'KILLED' if killed else 'SURVIVED'}  {label}")
         if not killed:
             survivors.append(label)
