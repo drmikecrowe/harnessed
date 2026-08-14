@@ -6,8 +6,6 @@ the agent declared. All of it is derived from the stack and the paths; nothing h
 """
 from __future__ import annotations
 
-import shlex
-
 import typer
 
 from pathlib import Path
@@ -16,7 +14,7 @@ from typing import Optional
 from . import emit
 from . import paths
 from .console import _err, _out
-from .paths import CONTAINER_HOME, project_relpath
+from .paths import CONTAINER_HOME
 
 _CONTAINER_HOME_STR = str(CONTAINER_HOME)
 
@@ -90,12 +88,12 @@ def _resolve_start_dir(project_path: Path, agent_start_folder: Optional[str]) ->
         raise typer.Exit(1)
     try:
         start.relative_to(project_path)
-    except ValueError:
+    except ValueError as err:
         _err.print(
             f"[bold red]error:[/bold red] --agent-start-folder must be inside the project "
             f"({project_path}): {start}"
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from err
     return start
 
 
@@ -128,10 +126,10 @@ def _resolve_mount_path(project_path: Path, mount_folder: Optional[str]) -> Path
         raise typer.Exit(1)
     try:
         project_path.relative_to(mount_path)
-    except ValueError:
+    except ValueError as err:
         _err.print(
             f"[bold red]error:[/bold red] --mount-folder must contain the project "
             f"({project_path}): {mount_path}"
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from err
     return mount_path

@@ -42,7 +42,9 @@ class TestSchema:
             "  script: setup.sh\n  confirm: this will commit files\n"
         )
         (d / "setup.sh").write_text("#!/usr/bin/env bash\n")
-        assert load_recipe(d).setup.confirm == "this will commit files"
+        recipe = load_recipe(d)
+        assert recipe.setup is not None, "expected setup block"
+        assert recipe.setup.confirm == "this will commit files"
 
     def test_confirm_without_anything_to_gate_is_rejected(self, tmp_path):
         """A confirm with no `run`/`script` promises a gate that guards nothing."""

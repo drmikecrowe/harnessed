@@ -13,7 +13,6 @@ an unrecognised git error, or a common dir git names that is not there.
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner

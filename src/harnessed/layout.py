@@ -7,8 +7,6 @@ launcher.py would point the dependency the wrong way.
 """
 from __future__ import annotations
 
-import os
-
 from pathlib import Path
 
 from . import paths

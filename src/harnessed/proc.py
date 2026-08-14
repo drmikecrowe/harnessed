@@ -144,7 +144,7 @@ def _run_tagged(
     # deadlock — hence the pump thread. `copy_context()` carries `_BUILD_TAG` across the thread
     # boundary; a ContextVar is NOT inherited by a bare `threading.Thread`, and without this every
     # line of a parallel build would lose its tag and come out unprefixed.
-    assert proc.stdout is not None
+    assert proc.stdout is not None  # noqa: S101 — narrows for the checker; Popen was given stdout=PIPE just above
     stdout = proc.stdout
 
     def _pump() -> None:

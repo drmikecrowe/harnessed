@@ -17,7 +17,7 @@ from support import patch_all
 
 
 def _recipe(name: str, *servers: McpServer) -> Recipe:
-    return Recipe(name=name, servers=list(servers), root=Path("/tmp/fake-recipe"))
+    return Recipe(name=name, servers=list(servers), root=Path("/tmp/fake-recipe"))  # noqa: S108 — sentinel path for test fixture
 
 
 def _patch_recipes(monkeypatch, recipes: list[Recipe]) -> None:

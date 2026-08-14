@@ -25,7 +25,7 @@ def parsers():
     assert match, "summary heredoc not found in harnessed-scan"
     block = match.group(1)
     ns: dict = {}
-    exec(block.split("with open(sys.argv[1])")[0], ns)
+    exec(block.split("with open(sys.argv[1])")[0], ns)  # noqa: S102 — exec is the mechanism: parsing the scanner script to extract its constant data structure
     return ns
 
 

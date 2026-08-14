@@ -5,6 +5,7 @@ removed)."""
 
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import typer
@@ -185,7 +186,9 @@ class TestSetupScriptSchema:
 
     def test_script_parsed(self, tmp_path):
         d = self._recipe(tmp_path, "name: r\nsetup:\n  summary: s\n  reference: http://x\n  script: setup.sh\n")
-        assert load_recipe(d, strict=True).setup.script == "setup.sh"
+        recipe = load_recipe(d, strict=True)
+        assert recipe.setup is not None, "expected setup block to be parsed"
+        assert recipe.setup.script == "setup.sh"
 
     def test_declaring_run_alongside_script_is_rejected(self, tmp_path):
         """`run` used to be merely mutually exclusive with `script`; it is now removed outright, so
@@ -245,7 +248,7 @@ class TestValidateSetupScript:
 class TestScriptEnv:
     """The env contract — the SAME keys must reach the script in host and container mode."""
 
-    VALUES = {"repo": "harnessed", "gcd_db": "prog_harnessed", "config.name": "harnessed"}
+    VALUES: ClassVar[dict[str, str]] = {"repo": "harnessed", "gcd_db": "prog_harnessed", "config.name": "harnessed"}
 
     def test_primitives_and_config_become_env(self):
         env = launcher._script_env("st", Path("/p"), self.VALUES, mode="host", harness="claude")
@@ -299,8 +302,9 @@ class TestSetupScriptIgnoresCondition:
     def test_serena_condition_would_have_blocked_an_existing_project(self):
         """The serena recipe still declares a condition (for the NOTICE) — it must not gate."""
         r = load_recipe(CATALOG / "recipes" / "serena", strict=True)
+        assert r.setup is not None, "serena recipe must have a setup block"
         assert r.setup.condition and r.setup.script
-        assert launcher._pending_setup_scripts(Path("/tmp"), [r]) == [r]
+        assert launcher._pending_setup_scripts(Path("/tmp"), [r]) == [r]  # noqa: S108 — /tmp is the actual path being tested
 
 
 class TestSerenaSetupScript:
@@ -337,17 +341,20 @@ class TestSerenaSetupScript:
     def test_corrects_directory_derived_name(self, tmp_path):
         """The reported bug: project_name stuck at the worktree folder name."""
         text, calls = self._run(tmp_path, 'project_name: "main"\nlanguages:\n- python\n')
+        assert text is not None, "expected project.yml to be written"
         assert 'project_name: "harnessed"' in text
         assert "languages:" in text  # rest of the file survives
         assert "project create" not in calls  # create would have errored on an existing project
 
     def test_is_idempotent(self, tmp_path):
         text, _ = self._run(tmp_path, 'project_name: "harnessed"\nlanguages:\n- python\n')
+        assert text is not None, "expected project.yml to be written"
         assert text.count("project_name:") == 1
         assert 'project_name: "harnessed"' in text
 
     def test_adds_key_when_absent(self, tmp_path):
         text, _ = self._run(tmp_path, "languages:\n- python\n")
+        assert text is not None, "expected project.yml to be written"
         assert 'project_name: "harnessed"' in text
 
     def test_creates_project_when_none_exists(self, tmp_path):

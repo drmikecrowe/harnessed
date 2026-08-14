@@ -386,7 +386,7 @@ def project_hash(project_path: str | Path) -> str:
     `.rstrip("/")` normalization governs both).
     """
     p = str(Path(project_path)).rstrip("/")
-    return hashlib.sha1(p.encode()).hexdigest()[:8]
+    return hashlib.sha1(p.encode(), usedforsecurity=False).hexdigest()[:8]
 
 
 def instance_name(stack: str, harness: str, project_path: str | Path) -> str:

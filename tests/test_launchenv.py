@@ -187,7 +187,7 @@ class TestVarlockTimeout:
 
         def fake_run(cmd, **kw):
             seen.update(kw)
-            raise launchenv.subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+            raise launchenv.subprocess.TimeoutExpired(cmd, kw.get("timeout") or 0.0)
 
         monkeypatch.setattr(launchenv.subprocess, "run", fake_run)
 
@@ -204,7 +204,7 @@ class TestVarlockTimeout:
 
         def fake_run(cmd, **kw):
             calls.append(1)
-            raise launchenv.subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+            raise launchenv.subprocess.TimeoutExpired(cmd, kw.get("timeout") or 0.0)
 
         monkeypatch.setattr(launchenv.subprocess, "run", fake_run)
         launchenv._varlock_resolve(tmp_path)

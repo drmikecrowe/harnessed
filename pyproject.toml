@@ -44,7 +44,11 @@ dev = [
 # Coverage cannot tell those apart, which is why a 100%-covered change can still be untested.
 # Declared here rather than passed ad hoc so the layer is reproducible by CI and by the next agent
 # — `mutmut run` with no arguments mutates everything; scope a single change with
-# `mutmut run "src.harnessed.<module>.<function>*"`, and read results with `mutmut results`.
+# `mutmut run "harnessed.<module>.x_<function>*"`, and read results with `mutmut results`.
+# WARNING: the `src.` prefix and missing `x_` are wrong. mutmut names mutants
+# `harnessed.<module>.x_<function>__mutmut_N` — no `src.` prefix, `x_` before the function.
+# A non-matching filter is silent: mutmut exits 0, generates the tree, and `mutmut results`
+# prints every mutant as `not checked` — which looks like a clean run, not a missed filter.
 paths_to_mutate = ["src/harnessed/"]
 tests_dir = ["tests/"]
 # The suite imports `support` and `conftest` as top-level modules from tests/, so the whole dir has
@@ -101,14 +105,38 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]  # `assert` is what a test suite is made of (2464 of them)
 
+[tool.ruff.lint.flake8-bugbear]
+# B008 fires on a function call in an argument default, because the usual such call builds a shared
+# mutable that every invocation then aliases. `typer.Option`/`typer.Argument` are the opposite: they
+# return an immutable descriptor that Typer reads ONCE to build the CLI parser, and declaring them
+# in the signature is the only supported way to write a Typer command. Listing them here says "these
+# calls are immutable" rather than muting B008, so the rule still fires on a genuine mutable default.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
 [tool.pyright]
 include = ["src", "tests", "tools"]
+# `tests/` holds `support.py` and `conftest.py`, imported as TOP-LEVEL modules by the suite —
+# pytest is told so by `pythonpath = ["tests"]` below, but that setting is pytest's alone and
+# pyright never reads it. Whether pyright resolves `import support` was therefore left to the
+# environment, and it does not resolve the same way everywhere: measured on this tree at 60 errors,
+# and at 168 in a fresh worktree where it could not find the module — a ~100-error swing that is
+# pure phantom, sitting in the layer a CI gate is supposed to hold at a fixed number. Declaring the
+# path here removes the degree of freedom instead of documenting it.
+extraPaths = ["tests"]
 pythonVersion = "3.12"  # the floor, for the reason spelled out under [tool.ruff]
 # `basic`, not `strict`. Measured on this tree: 14 errors across the 36 files of src/, 84 across
 # all 128 files once tests/ and tools/ are included — the include list above is wider than src/,
 # so 84 is the number this config actually reports. `strict` would report far more and become a
 # number nobody looks at.
 typeCheckingMode = "basic"
+# src/harnessed/catalog is a symlink to the repo-root catalog/ directory, which contains
+# container-side scripts — they execute inside recipe images against dependencies (mcp, starlette,
+# uvicorn) that this host package deliberately does not install and should not install. Checking
+# them on the host produces only noise (reportMissingImports for every container dep) and measures
+# nothing about the code that actually runs here. The exclude entry below drops the symlink target
+# from pyright's walk so those 5 findings never appear. In pyright, exclude overrides include, so
+# listing a subpath here correctly narrows the src/ include without any wider side-effect.
+exclude = ["src/harnessed/catalog"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

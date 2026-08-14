@@ -47,11 +47,23 @@ from . import paths
 from .schema import SchemaError, load_agent, load_recipe, load_stack, valid_extra_tools
 
 __all__ = [
-    "Pin", "Finding", "Release", "Report", "ResolveError",
-    "discover_pins", "discover_extra_tools_pins", "build_report", "apply", "resolve_releases",
-    "version_key", "extra_tools_default_path", "EXTRA_TOOLS_LABEL",
-    "mise_repo", "affected_stacks", "verify_commands",
     "DEFAULT_MINIMUM_RELEASE_AGE_MINUTES",
+    "EXTRA_TOOLS_LABEL",
+    "Finding",
+    "Pin",
+    "Release",
+    "Report",
+    "ResolveError",
+    "affected_stacks",
+    "apply",
+    "build_report",
+    "discover_extra_tools_pins",
+    "discover_pins",
+    "extra_tools_default_path",
+    "mise_repo",
+    "resolve_releases",
+    "verify_commands",
+    "version_key",
 ]
 
 # Modelled on pnpm's `minimumReleaseAge`, including its unit: MINUTES. A compromised or broken
@@ -400,7 +412,7 @@ def discover_pins(recipe_dir: Path) -> list[Pin]:
 
 def _http_get(url: str) -> str:
     import urllib.request
-    req = urllib.request.Request(url, headers={"User-Agent": "harnessed-update"})
+    req = urllib.request.Request(url, headers={"User-Agent": "harnessed-update"})  # noqa: S310 (fixed https registries)
     with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 (fixed https registries)
         return resp.read().decode("utf-8")
 
@@ -648,8 +660,7 @@ def build_report(recipe_dirs, *,
     disable the gate (and with it the requirement that a release be dated at all).
     """
     if resolve is None:
-        def resolve(backend, name):  # noqa: E306
-            return resolve_releases(backend, name)
+        resolve = resolve_releases
     now = now or datetime.now(timezone.utc)
 
     # The extra-tools pins ride the same classification path as recipe pins — same cooldown, same

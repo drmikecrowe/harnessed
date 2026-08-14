@@ -1563,7 +1563,7 @@ def _persist_entry_dir(
 ) -> str | None:
     """Absolute path an `env:` template's `{persist:<name>}` resolves to, or None when it cannot be
     known yet (build time has no project). Mirrors _persist_mounts / _service_data_dir placement."""
-    assert entry.name is not None
+    assert entry.name is not None  # noqa: S101 — narrows for the checker; the parser already rejects a nameless non-global entry
     if entry.location == "in_repo":
         # Path-preserving in both modes — but anchored at the checkout, so it needs the project.
         return None if project_path is None else str(paths.persist_in_repo_dir(project_path, entry.name))
@@ -1593,7 +1593,7 @@ def resolve_recipe_env(
     for var, template in recipe.env.items():
         deferred = False
 
-        def _sub(m: re.Match) -> str:
+        def _sub(m: re.Match, _var: str = var) -> str:
             nonlocal deferred
             ph = m.group(1)
             if ph == "host_home":
@@ -1607,14 +1607,14 @@ def resolve_recipe_env(
                 entry = by_name.get(ph[len("persist:"):])
                 if entry is None:  # unreachable: _validate_env_templates rejects this at load
                     raise SchemaError(
-                        f"recipe '{recipe.name}': env {var}: no persist entry '{ph[len('persist:'):]}'"
+                        f"recipe '{recipe.name}': env {_var}: no persist entry '{ph[len('persist:'):]}'"
                     )
                 val = _persist_entry_dir(recipe, entry, mode=mode, project_path=project_path)
                 if val is None:
                     deferred = True
                     return ""
                 return val
-            raise SchemaError(f"recipe '{recipe.name}': env {var}: unknown placeholder '{{{ph}}}'")
+            raise SchemaError(f"recipe '{recipe.name}': env {_var}: unknown placeholder '{{{ph}}}'")
 
         value = _ENV_PLACEHOLDER_RE.sub(_sub, template)
         if not deferred:
@@ -1930,7 +1930,7 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
     if "port" in raw:
         port = int(raw["port"])
         if not (1 <= port <= 65535):
-            raise SchemaError(f"{manifest}: 'port' must be 1–65535, got {port}")
+            raise SchemaError(f"{manifest}: 'port' must be 1-65535, got {port}")
 
     data_persist = ((raw.get("data") or {}).get("persist") or "").strip()
     if scope == "project" and not data_persist:

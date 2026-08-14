@@ -75,7 +75,9 @@ class TestDeclared:
     def test_declares_a_pinned_cache_key(self, name):
         # Without a cache these clone on EVERY host launch — the home is rmtree'd each time, so the
         # install cannot be skipped, only made cheap.
-        assert _recipe(name).install.cache, f"{name} re-downloads on every host launch"
+        install = _recipe(name).install
+        assert install is not None, f"{name} has no install block"
+        assert install.cache, f"{name} re-downloads on every host launch"
 
     def test_cache_key_matches_the_ref_the_script_actually_fetches(self, name):
         """The two-literal drift guard — for the recipes that still HAVE two literals.
@@ -171,13 +173,17 @@ class TestDeclared:
 
     def test_script_installs_into_the_contract_config_dir(self, name):
         # The whole mode-portability story: one env var names the destination in both modes.
-        body = (CATALOG / "recipes" / name / _recipe(name).install.script).read_text(encoding="utf-8")
+        install = _recipe(name).install
+        assert install is not None and install.script is not None, f"{name}: expected install.script"
+        body = (CATALOG / "recipes" / name / install.script).read_text(encoding="utf-8")
         assert "$HARNESSED_CONFIG_DIR" in body
 
     def test_script_treats_a_missing_cache_dir_as_the_miss(self, name):
         # harnessed creates only the cache's PARENT; the dir's own absence is the miss signal, and a
         # populate must be atomic or an interrupted clone becomes a permanent phantom hit.
-        body = (CATALOG / "recipes" / name / _recipe(name).install.script).read_text(encoding="utf-8")
+        install = _recipe(name).install
+        assert install is not None and install.script is not None, f"{name}: expected install.script"
+        body = (CATALOG / "recipes" / name / install.script).read_text(encoding="utf-8")
         assert "HARNESSED_INSTALL_CACHE" in body
         assert "mv " in body, "populate temp-then-`mv`, or an interrupted fetch looks like a hit"
 
@@ -214,7 +220,9 @@ class TestGstackStraddles:
     """gstack delivers content AND needs root. Both halves have to be honest about which is which."""
 
     def test_declares_why_root_is_needed(self):
-        system = _recipe("gstack").install.system
+        install = _recipe("gstack").install
+        assert install is not None, "gstack must have an install block"
+        system = install.system
         assert system and "root" in system.lower()
 
     def test_the_root_step_stays_in_the_dockerfile(self):

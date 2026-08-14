@@ -16,7 +16,6 @@ A one-line edit could undo any of these. These tests are the guard.
 from __future__ import annotations
 
 import re
-import tomllib
 from pathlib import Path
 
 import pytest

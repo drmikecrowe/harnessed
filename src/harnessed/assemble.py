@@ -14,7 +14,6 @@ EMIT ONLY: nothing here invokes podman/docker or mounts a daemon socket.
 from __future__ import annotations
 
 import hashlib
-import os
 from dataclasses import dataclass
 from pathlib import Path
 

@@ -159,7 +159,7 @@ class TestSkippedScannersAreDeclared:
             report_block, tmp_path, [clean_source],
             [("pip-audit", "python env"), self.SKIPPED],
         )
-        unrun = [s for s in report["sources"] if s["status"] == "unrun"][0]
+        unrun = next(s for s in report["sources"] if s["status"] == "unrun")
         assert unrun["reason"] == "no SNYK_TOKEN"
 
     def test_unrun_is_distinct_from_no_output(self, report_block, tmp_path, clean_source):

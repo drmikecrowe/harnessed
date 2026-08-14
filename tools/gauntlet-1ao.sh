@@ -6,9 +6,10 @@
 #
 # Layers that need a baseline (lint, types) are non-zero on this repo by design: both tools carry a
 # large pre-existing backlog and neither runs in CI, so the bar is "zero NEW findings against the
-# branch point", never "exit 0". This script prints both numbers and leaves the comparison to you —
-# it deliberately does not exit non-zero on a pre-existing finding, because an agent that reads that
-# as failure starts deleting other people's findings to get green.
+# branch point", never "exit 0". This script performs a finding-level diff — normalising each
+# finding to "file RULE message" (line numbers dropped) — and exits nonzero if any findings were
+# ADDED. Removed findings are reported as wins. A finding that merely shifted line because of an
+# unrelated insertion is NOT counted as new.
 #
 # Usage: tools/gauntlet-1ao.sh [logdir]
 set -uo pipefail
@@ -16,9 +17,10 @@ set -uo pipefail
 # REFUSE TO RUN ON A DIRTY TREE. Step 5 reverts src/ to the branch point and step 7 rewrites
 # pyproject; both are undone with `git checkout`, which is destructive to uncommitted edits to those
 # same paths. Rather than try to preserve someone's work-in-progress, decline the run.
-if ! git diff --quiet -- src pyproject.toml || ! git diff --cached --quiet -- src pyproject.toml; then
-  echo "refusing to run: uncommitted changes under src/ or in pyproject.toml." >&2
-  echo "This script reverts both to measure a baseline and would discard them. Commit or set them aside first." >&2
+if ! git diff --quiet -- src tests tools pyproject.toml \
+  || ! git diff --cached --quiet -- src tests tools pyproject.toml; then
+  echo "refusing to run: uncommitted changes under src/, tests/, tools/, or pyproject.toml." >&2
+  echo "This script reverts those paths to measure a baseline and would discard them. Commit or set them aside first." >&2
   exit 2
 fi
 
@@ -35,10 +37,17 @@ _cleanup() {
   [ -n "$_RESTORE" ] && git checkout HEAD -- pyproject.toml $_RESTORE 2>/dev/null
   git checkout HEAD -- pyproject.toml 2>/dev/null
   if [ -n "$_STASHDIR" ] && [ -d "$_STASHDIR" ]; then
+    # Restore by REPO-RELATIVE path, mirroring how they were stashed. Keyed on basename these
+    # would collide across directories (tests/foo.py vs tools/foo.py) and silently lose a file.
     for f in $_NEW_TESTS; do
-      [ -f "$_STASHDIR/$(basename "$f")" ] && mv "$_STASHDIR/$(basename "$f")" "$f"
+      if [ -f "$_STASHDIR/$f" ]; then
+        mkdir -p "$(dirname "$f")"
+        mv "$_STASHDIR/$f" "$f"
+      fi
     done
-    rmdir "$_STASHDIR" 2>/dev/null
+    # `rm -r`, not `rmdir`: the stash now has nested parent dirs, so rmdir would always fail and
+    # leak the temp tree. Bounded — $_STASHDIR is only ever assigned from `mktemp -d` above.
+    rm -r "$_STASHDIR" 2>/dev/null
   fi
   return 0
 }
@@ -79,34 +88,156 @@ for seed in 12345 98765; do
   printf 'seed %s: %s\n' "$seed" "$(tail -1 "$LOGDIR/tests-seed-$seed.log")"
 done
 
-say "3. lint (configured command; compare against the baseline below)"
-mise exec -- uv run --extra dev ruff check src tests tools >"$LOGDIR/lint.log" 2>&1
-tail -1 "$LOGDIR/lint.log"
+say "3. lint (HEAD; finding-level diff computed in step 5)"
+# ruff exits 0 = no findings, 1 = findings found (both are normal); 2+ = crash (hard error).
+_lint_exit=0
+mise exec -- uv run --extra dev ruff check --output-format=json src tests tools \
+  >"$LOGDIR/lint.json" 2>"$LOGDIR/lint-err.log" || _lint_exit=$?
+if [ "$_lint_exit" -gt 1 ]; then
+  echo "ruff CRASHED (exit $_lint_exit) — hard failure, not a lint finding:" >&2
+  cat "$LOGDIR/lint-err.log" >&2
+  require lint "$_lint_exit"
+else
+  _norm_exit=0
+  mise exec -- uv run --extra dev python tools/lint-findings.py normalize ruff "$LOGDIR/lint.json" \
+    >"$LOGDIR/lint-normalized.txt" 2>&1 || _norm_exit=$?
+  if [ "$_norm_exit" -ne 0 ]; then
+    echo "lint normalization FAILED (exit $_norm_exit):" >&2
+    cat "$LOGDIR/lint-normalized.txt" >&2
+    require lint-normalize "$_norm_exit"
+  else
+    printf 'lint HEAD: %s findings\n' "$(wc -l <"$LOGDIR/lint-normalized.txt")"
+  fi
+fi
 
-say "4. types (configured command; compare against the baseline below)"
-mise exec -- pyright >"$LOGDIR/types.log" 2>&1
-tail -1 "$LOGDIR/types.log"
+say "4. types (HEAD; finding-level diff computed in step 5)"
+# pyright exits 0 = no errors, 1 = errors found (both are normal); 2+ = crash (hard error).
+_types_exit=0
+mise exec -- pyright --outputjson \
+  >"$LOGDIR/types.json" 2>"$LOGDIR/types-err.log" || _types_exit=$?
+if [ "$_types_exit" -gt 1 ]; then
+  echo "pyright CRASHED (exit $_types_exit) — hard failure:" >&2
+  cat "$LOGDIR/types-err.log" >&2
+  require types "$_types_exit"
+else
+  _norm_exit=0
+  mise exec -- uv run --extra dev python tools/lint-findings.py normalize pyright "$LOGDIR/types.json" \
+    >"$LOGDIR/types-normalized.txt" 2>&1 || _norm_exit=$?
+  if [ "$_norm_exit" -ne 0 ]; then
+    echo "types normalization FAILED (exit $_norm_exit):" >&2
+    cat "$LOGDIR/types-normalized.txt" >&2
+    require types-normalize "$_norm_exit"
+  else
+    printf 'types HEAD: %s findings\n' "$(wc -l <"$LOGDIR/types-normalized.txt")"
+  fi
+fi
 
-say "5. baselines at $BASE, for layers 3 and 4"
+say "5. baselines at $BASE — finding-level diff for layers 3 and 4"
 # Measured by reverting only the touched files: both tools are per-file, so this is equivalent to
 # checking the whole tree out at the branch point, without a second worktree. `$BASE` is the
 # resolved merge-base, so file SELECTION and file CONTENTS come from the same commit.
-CHANGED_SRC=$(git diff --name-only "$BASE" HEAD -- 'src/**/*.py')
-NEW_TESTS=$(git diff --name-only --diff-filter=A "$BASE" HEAD -- 'tests/**/*.py')
+#
+# IMPORTANT: the revert covers src/, tests/, AND tools/ — not just src/.  Reverting src/ only
+# allows a new finding in tests/ or tools/ to appear identically in both runs and cancel against
+# itself, making it structurally invisible to the gate (#327 blind spot 2).
+# ADDED files are split out from CHANGED here, and the split is load-bearing rather than tidy.
+# An added file does not exist at $BASE, so naming it in `git checkout "$BASE" -- ...` makes git
+# abort the WHOLE command with "pathspec did not match" and check out NOTHING — not merely skip
+# that one path. Measured, not assumed: `git checkout <base> -- src/harnessed/paths.py
+# tools/lint-findings.py` left paths.py identical to HEAD.
+#
+# So a single added .py anywhere under these patterns silently disabled the entire baseline revert.
+# Baseline then analysed the HEAD tree, baseline == head, and the finding diff reported
+# "+0 added -0 removed" — a permanent all-clear from a gate that had stopped comparing anything.
+# That is the exact fail-open this script exists to prevent, and it was live: `tools/lint-findings.py`
+# is itself an added file on the branch that introduced this diff.
+#
+# `--diff-filter=a` (lower-case = EXCLUDE added) leaves only paths that exist at $BASE and are
+# therefore checkout-able; `--diff-filter=A` collects the added ones, which get moved aside instead.
+# Both cover src/ AND tests/ AND tools/ — reverting src/ only lets a new finding in tests/ or tools/
+# appear identically in both runs and cancel against itself (#327 blind spot 2).
+CHANGED_SRC=$(git diff --name-only --diff-filter=a "$BASE" HEAD -- 'src/**/*.py' 'tests/*.py' 'tools/*.py')
+NEW_FILES=$(git diff --name-only --diff-filter=A "$BASE" HEAD -- 'src/**/*.py' 'tests/*.py' 'tools/*.py')
 STASHDIR=$(mktemp -d)
 # Arm the trap BEFORE the tree is touched, not after — that ordering is the whole point.
 _RESTORE="$CHANGED_SRC"
 _STASHDIR="$STASHDIR"
-_NEW_TESTS="$NEW_TESTS"
+_NEW_TESTS="$NEW_FILES"
+# Fail CLOSED. A revert that half-happened produces a baseline that is neither HEAD nor $BASE, and
+# every number downstream would be quietly wrong rather than obviously broken.
 # shellcheck disable=SC2086
-[ -n "$CHANGED_SRC" ] && git checkout "$BASE" -- $CHANGED_SRC
-for f in $NEW_TESTS; do mv "$f" "$STASHDIR/$(basename "$f")"; done
-mise exec -- uv run --extra dev ruff check src tests tools >"$LOGDIR/lint-baseline.log" 2>&1
-mise exec -- pyright >"$LOGDIR/types-baseline.log" 2>&1
-printf 'lint  baseline: %s\n' "$(tail -1 "$LOGDIR/lint-baseline.log")"
-printf 'types baseline: %s\n' "$(tail -1 "$LOGDIR/types-baseline.log")"
+if [ -n "$CHANGED_SRC" ] && ! git checkout "$BASE" -- $CHANGED_SRC; then
+  echo "baseline revert FAILED (git checkout $BASE) — refusing to report a comparison" >&2
+  exit 2
+fi
+# Stash under the file's REPO-RELATIVE path, not its basename: tests/foo.py and tools/foo.py share a
+# basename, and a basename-keyed stash silently overwrites the first with the second, then restores
+# the wrong content to one path and leaves the other deleted. Losing a source file to the measuring
+# instrument is worse than any finding it could report.
+for f in $NEW_FILES; do
+  mkdir -p "$STASHDIR/$(dirname "$f")"
+  mv "$f" "$STASHDIR/$f"
+done
+
+_baseline_lint_exit=0
+_baseline_types_exit=0
+mise exec -- uv run --extra dev ruff check --output-format=json src tests tools \
+  >"$LOGDIR/lint-baseline.json" 2>"$LOGDIR/lint-baseline-err.log" || _baseline_lint_exit=$?
+mise exec -- pyright --outputjson \
+  >"$LOGDIR/types-baseline.json" 2>"$LOGDIR/types-baseline-err.log" || _baseline_types_exit=$?
+
 _cleanup           # restore via the same path the trap uses, so both are exercised every run
 _RESTORE=""; _STASHDIR=""; _NEW_TESTS=""
+
+# --- lint diff ---
+if [ "$_baseline_lint_exit" -gt 1 ]; then
+  echo "ruff CRASHED in baseline run (exit $_baseline_lint_exit) — hard failure" >&2
+  require lint-baseline "$_baseline_lint_exit"
+else
+  _norm_exit=0
+  mise exec -- uv run --extra dev python tools/lint-findings.py normalize ruff \
+    "$LOGDIR/lint-baseline.json" >"$LOGDIR/lint-baseline-normalized.txt" 2>&1 || _norm_exit=$?
+  if [ "$_norm_exit" -ne 0 ]; then
+    echo "lint baseline normalization FAILED (exit $_norm_exit):" >&2
+    cat "$LOGDIR/lint-baseline-normalized.txt" >&2
+    require lint-baseline-normalize "$_norm_exit"
+  else
+    printf 'lint baseline: %s findings\n' "$(wc -l <"$LOGDIR/lint-baseline-normalized.txt")"
+    echo "Lint finding-level diff (HEAD vs baseline):"
+    _lint_diff_exit=0
+    mise exec -- uv run --extra dev python tools/lint-findings.py diff \
+      "$LOGDIR/lint-baseline-normalized.txt" "$LOGDIR/lint-normalized.txt" \
+      || _lint_diff_exit=$?
+    if [ "$_lint_diff_exit" -gt 0 ]; then
+      require "lint(added-findings)" 1
+    fi
+  fi
+fi
+
+# --- types diff ---
+if [ "$_baseline_types_exit" -gt 1 ]; then
+  echo "pyright CRASHED in baseline run (exit $_baseline_types_exit) — hard failure" >&2
+  require types-baseline "$_baseline_types_exit"
+else
+  _norm_exit=0
+  mise exec -- uv run --extra dev python tools/lint-findings.py normalize pyright \
+    "$LOGDIR/types-baseline.json" >"$LOGDIR/types-baseline-normalized.txt" 2>&1 || _norm_exit=$?
+  if [ "$_norm_exit" -ne 0 ]; then
+    echo "types baseline normalization FAILED (exit $_norm_exit):" >&2
+    cat "$LOGDIR/types-baseline-normalized.txt" >&2
+    require types-baseline-normalize "$_norm_exit"
+  else
+    printf 'types baseline: %s findings\n' "$(wc -l <"$LOGDIR/types-baseline-normalized.txt")"
+    echo "Types finding-level diff (HEAD vs baseline):"
+    _types_diff_exit=0
+    mise exec -- uv run --extra dev python tools/lint-findings.py diff \
+      "$LOGDIR/types-baseline-normalized.txt" "$LOGDIR/types-normalized.txt" \
+      || _types_diff_exit=$?
+    if [ "$_types_diff_exit" -gt 0 ]; then
+      require "types(added-findings)" 1
+    fi
+  fi
+fi
 
 say "6. changed-line coverage"
 tools/run-tests.sh --cov=src/harnessed --cov-report=xml -q >"$LOGDIR/coverage.log" 2>&1
@@ -169,8 +300,8 @@ echo "against the shared checkout) and adversarial review (three independent age
 if [ -n "$_FAILED" ]; then
   echo >&2
   echo "GAUNTLET FAILED — required layer(s):$_FAILED" >&2
-  echo "Lint and types are excluded by design: both have a large pre-existing backlog, so the bar" >&2
-  echo "is 'no NEW findings against the printed baseline', which only a human can judge." >&2
+  echo "Lint and types gate on ADDED findings (finding-level diff, line numbers ignored)." >&2
+  echo "Removed findings are wins. Pre-existing findings do not fail the gate." >&2
   exit 1
 fi
-echo "All required layers passed. Lint/types: compare each against its baseline above."
+echo "All required layers passed. Lint/types: no findings were added against the baseline."

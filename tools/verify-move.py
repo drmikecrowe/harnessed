@@ -36,7 +36,8 @@ def _defs(source: str, origin: str) -> dict[str, tuple[str, str]]:
     for node in ast.parse(source).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             start = node.decorator_list[0].lineno - 1 if node.decorator_list else node.lineno - 1
-            assert node.end_lineno is not None
+            if node.end_lineno is None:
+                raise RuntimeError(f"AST node {node.name!r} has no end_lineno")
             out[node.name] = ("".join(lines[start:node.end_lineno]).rstrip("\n"), origin)
     return out
 

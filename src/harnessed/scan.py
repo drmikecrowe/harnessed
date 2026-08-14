@@ -179,7 +179,7 @@ def run_image_scan_online(archive_tar: Path | str) -> ScanResult:
     archive_tar = Path(archive_tar)
     proc = _run(["osv-scanner", "scan", "image", "--archive", str(archive_tar), "--format", "json"])
     if proc.returncode == 128:
-        warnings = [f"osv-scanner found no packages in image archive (exit 128 — investigate)"]
+        warnings = ["osv-scanner found no packages in image archive (exit 128 — investigate)"]
         return ScanResult(scope="image", highs=[], warnings=warnings)
     data = _parse_json(proc.stdout) or {}
     highs = gate(data)
