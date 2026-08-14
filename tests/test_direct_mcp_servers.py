@@ -243,8 +243,9 @@ class TestEachServerIsReachableByExactlyOneRoute:
         assert not (set(harness) - {HATAGO_MCP_KEY}) & set(hub)
 
     def test_the_hub_entry_survives_alongside_a_direct_server(self, tmp_path):
-        """Direct servers are ADDITIONAL. Losing the hub entry would strand every other recipe."""
-        write_mcp_json(tmp_path, "http", [_direct()])
+        """Direct servers are ADDITIONAL where a hub is still needed. Losing the hub entry while
+        another recipe still routes through it would strand that recipe."""
+        write_mcp_json(tmp_path, "http", [_direct(), _hub_child()])
         assert _servers_of(tmp_path)[HATAGO_MCP_KEY] == {
             "type": "http", "url": emit.HATAGO_ENDPOINT
         }
@@ -260,6 +261,104 @@ class TestEachServerIsReachableByExactlyOneRoute:
         """The default path must not move: every existing stack emits one entry."""
         write_mcp_json(tmp_path, "http", [_hub_child()])
         assert list(_servers_of(tmp_path)) == [HATAGO_MCP_KEY]
+
+
+class TestAHubWithNothingBehindItIsNotEmitted:
+    """A hub entry naming a hub with no children is not a harmless spare. Under `stdio` the harness
+    SPAWNS that hub every launch to proxy nothing; under `http` the entrypoint runs one for the same
+    nothing; and either way the agent is handed a server that can never answer a tool call, which
+    from its side is indistinguishable from a broken one.
+
+    So the rule is: a hub exists iff at least one declared server routes through it.
+    """
+
+    def test_a_stack_of_only_direct_servers_names_no_hub(self, tmp_path):
+        write_mcp_json(tmp_path, "stdio", [_direct()])
+        assert list(_servers_of(tmp_path)) == ["widgets"]
+
+    def test_the_direct_server_is_still_fully_emitted(self, tmp_path):
+        """Dropping the hub must not drop the entry that replaced it."""
+        write_mcp_json(tmp_path, "stdio", [_direct()])
+        entry = _servers_of(tmp_path)["widgets"]
+        assert entry["url"] == URL and entry["oauth"] == {"callbackPort": PORT}
+
+    def test_one_hub_routed_server_is_enough_to_keep_the_hub(self, tmp_path):
+        write_mcp_json(tmp_path, "http", [_direct(), _hub_child()])
+        assert HATAGO_MCP_KEY in _servers_of(tmp_path)
+
+    def test_the_rule_holds_under_either_transport(self, tmp_path):
+        """`hub_transport` chooses HOW the harness reaches a hub, not WHETHER one exists."""
+        for transport in ("http", "stdio"):
+            write_mcp_json(tmp_path, transport, [_direct()])
+            assert HATAGO_MCP_KEY not in _servers_of(tmp_path)
+
+    def test_a_stack_declaring_no_servers_is_unchanged(self, tmp_path):
+        """Scoped deliberately. An empty list is not "everything is direct" — it is a stack that
+        never asked, and it behaved this way long before this rule existed."""
+        write_mcp_json(tmp_path, "http", [])
+        assert list(_servers_of(tmp_path)) == [HATAGO_MCP_KEY]
+
+    def test_a_caller_that_passes_no_servers_keeps_the_hub(self, tmp_path):
+        """`None` means "did not say". Silently dropping the hub for a caller that never threads
+        servers through would strand every stack it emits."""
+        write_mcp_json(tmp_path, "http")
+        assert list(_servers_of(tmp_path)) == [HATAGO_MCP_KEY]
+
+    def test_the_hubs_name_stays_reserved_even_with_no_hub(self, tmp_path):
+        """Otherwise a stack's validity would depend on a SECOND recipe: legal alone, illegal the
+        moment anything hub-routed joined, with the error landing far from the name that caused it."""
+        with pytest.raises(SchemaError):
+            write_mcp_json(tmp_path, "stdio", [_direct(name=HATAGO_MCP_KEY)])
+
+    def test_the_predicate_is_the_one_the_launcher_uses(self):
+        """Three readers decide whether a hub exists — the emitter, the launcher's readiness gate,
+        and the entrypoint via HATAGO_TRANSPORT. They must not each infer it."""
+        assert emit.hub_is_needed([_direct()]) is False
+        assert emit.hub_is_needed([_direct(), _hub_child()]) is True
+        assert emit.hub_is_needed([]) is True
+        assert emit.hub_is_needed(None) is True
+
+
+class TestTheContainerLaunchEnforcesTheHarnessRuleToo:
+    """`assemble` refuses a `direct:` server on a harness that cannot honour one — but the CONTAINER
+    launch path never assembles. `build` does, and the host path does; a container launch reads the
+    recipes live and starts a previously-built image.
+
+    So an image built BEFORE a recipe gained `direct:` reached launch with servers the harness would
+    never see: excluded from hatago.config.json by `direct`, and absent from its own config because
+    only claude's is emitted. Once every server is direct it got worse — `HATAGO_TRANSPORT=none`
+    stops the hub as well, so the stack comes up with no MCP at all and nothing says why.
+
+    Raised by CodeRabbit on #381. Its suggested fix — route direct entries into omp's config — is
+    the wrong remedy: it would undo the deliberate decision that only claude's config is emitted.
+    """
+
+    def _launcher(self) -> str:
+        from harnessed import paths
+        return (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
+            encoding="utf-8"
+        )
+
+    def test_the_launch_path_validates_direct_servers(self):
+        assert "_validate_direct_servers(launch_servers, harness)" in self._launcher()
+
+    def test_it_runs_before_anything_is_created(self):
+        """Ordering matters — a stack about to be rejected must not first have a pod built for it.
+
+        Asserted WITHIN the launch function, between resolving the servers and constructing the
+        backend. Not by comparing file offsets: `HATAGO_TRANSPORT` is set in a method of a class
+        defined EARLIER in this file and executed LATER, so textual position says nothing about
+        runtime order — an offset comparison would pass or fail for the wrong reason.
+        """
+        src = self._launcher()
+        body = src[src.index("launch_servers = _resolve_service_servers"):]
+        body = body[:body.index("ContainerBackend(")]
+        assert "_validate_direct_servers(launch_servers, harness)" in body
+
+    def test_the_failure_is_an_exit_not_a_traceback(self):
+        src = self._launcher()
+        block = src[src.index("_validate_direct_servers(launch_servers, harness)"):]
+        assert "typer.Exit(1)" in block[:400]
 
 
 class TestTheEmittedEntryIsWhatTheHarnessReads:

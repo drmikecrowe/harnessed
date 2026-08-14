@@ -25,6 +25,11 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0='safe.directory' GIT_CONFIG_VALUE_0='
 # this variable from `Stack.hub_transport`, the same field the emitter reads, so the config and the
 # entrypoint cannot disagree. Unset (an older launcher, or a bare `podman run`) falls back to http,
 # which is the historical behaviour.
+#
+# Three values reach this, and only one starts anything: `http` (start the hub here), `stdio` (the
+# harness spawns its own), and `none` (every declared server is direct, so no hub exists anywhere).
+# The test below matches `http` exactly rather than excluding `stdio`, which is what makes a value
+# this script has never heard of fail SAFE — no hub — instead of starting a second one.
 HATAGO_TRANSPORT="${HATAGO_TRANSPORT:-http}"
 
 if [ -f "${HATAGO_CFG}" ] && [ "${HATAGO_TRANSPORT}" = "http" ]; then

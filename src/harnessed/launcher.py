@@ -218,6 +218,7 @@ from .assemble import (
     validate_agent_image,
     _merge_servers,
     _resolve_service_servers,
+    _validate_direct_servers,
 )
 from .synclinks import CollisionError
 from .schema import (
@@ -3150,7 +3151,11 @@ class ContainerBackend(ExecutionBackend):
             # stdio child — for an OAuth child like mcp-remote, two processes contending for one
             # lockfile and one callback port. Passed always, so the entrypoint never has to infer
             # the default the schema already decided.
-            "-e", f"HATAGO_TRANSPORT={self.stk.hub_transport}",
+            # `none` when every declared server is direct: the entrypoint then starts no hub, and
+            # the emitted .mcp.json names none either. One value, read by the emitter, the launcher
+            # and the entrypoint, so all three agree on whether a hub exists at all.
+            "-e", f"HATAGO_TRANSPORT="
+                  f"{self.stk.hub_transport if emit.hub_is_needed(self.servers) else 'none'}",
             *self.member_mounts,
             # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
             # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
@@ -3368,6 +3373,23 @@ def container_run(
     shell = _prompt_setup_notices(launch_recipes, project_path, stack, harness) or shell
 
     launch_servers = _resolve_service_servers(_merge_servers(launch_recipes), None)
+
+    # THE CONTAINER PATH NEVER ASSEMBLES, so `assemble`'s guard against a `direct:` server on a
+    # harness that cannot honour one has never run here — `build` (669) and the host path (2335)
+    # both assemble, this one launches a previously-built image and reads the recipes live. An
+    # image built before a recipe gained `direct:` therefore reaches launch with servers the
+    # harness will never see: they are excluded from hatago.config.json by `direct`, and only
+    # claude's MCP config is emitted, so an omp or codex stack would come up silently toolless —
+    # and, once every server is direct, with `HATAGO_TRANSPORT=none` stopping the hub as well.
+    #
+    # Enforcing the same rule here makes that a clear error instead. Raised by CodeRabbit on #381,
+    # whose suggested fix was to route direct entries into omp's config; that is the wrong remedy —
+    # it would undo the deliberate decision that only claude's MCP config is emitted per stack.
+    try:
+        _validate_direct_servers(launch_servers, harness)
+    except SchemaError as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
     backend = ContainerBackend(
         rt, inst, pod, prof, harness_image, mount_path, launch_recipes, launch_servers, stk,
         stack_from_overlay=stack_from_overlay,
@@ -3491,7 +3513,11 @@ def container_run(
         rt, inst, launch_servers, stk, headless=headless, reauth=reauth
     )
 
-    if stk.hub_transport == HUB_TRANSPORT_STDIO:
+    # No hub is started in either of these cases, so probing for one would wait out the full timeout
+    # and then report a degraded hub — turning correct configuration into a red herring, and in
+    # headless mode into a hard exit. Under `stdio` the harness spawns the hub at attach; when every
+    # server is direct there is no hub anywhere by design.
+    if stk.hub_transport == HUB_TRANSPORT_STDIO or not emit.hub_is_needed(launch_servers):
         hatago_up = True
     else:
         hatago_up = _wait_hatago(rt, inst)
@@ -3507,11 +3533,12 @@ def container_run(
         # and the harness spawns the hub when it starts. Saying "hatago in-container" there would be
         # a success line asserting something false, and the next person to debug a missing tool
         # would go looking for a process that was never meant to exist.
-        hub_where = (
-            "hatago spawned by the harness (stdio)"
-            if stk.hub_transport == HUB_TRANSPORT_STDIO
-            else "hatago in-container"
-        )
+        if not emit.hub_is_needed(launch_servers):
+            hub_where = "no hub — every server is direct"
+        elif stk.hub_transport == HUB_TRANSPORT_STDIO:
+            hub_where = "hatago spawned by the harness (stdio)"
+        else:
+            hub_where = "hatago in-container"
         _out.print(f"[green][SUCCESS][/green] Isolated pod running headless: {inst} ({hub_where})")
         return
 

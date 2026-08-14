@@ -82,6 +82,11 @@ CONTAINER_ONLY: dict[str, str] = {
         "publishes a pod port and tunes pasta's forwarding for the pod netns; a host-native "
         "mcp-remote binds the host's own 127.0.0.1, which the browser redirect already reaches"
     ),
+    "_validate_direct_servers": (
+        "the host path already runs this INSIDE its own in-process `assemble`, which the container "
+        "path does not do — it launches a previously-built image and reads the recipes live, so the "
+        "guard has to be called explicitly there or a stale image reaches launch unvalidated"
+    ),
     "_authorize_mcp_remote_servers": (
         "runs the consent via `podman exec -it` into the instance, and exists because the harness "
         "discards the stderr of hatago's grandchild; a host-native launch leaves that stderr on the "
