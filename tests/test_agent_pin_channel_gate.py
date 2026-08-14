@@ -25,9 +25,22 @@ from harnessed.schema import SchemaError, _parse_agent_build_args, load_agent
 MANIFEST = Path("/catalog/agents/demo/agent.yaml")
 CATALOG_AGENTS = Path(__file__).resolve().parents[1] / "catalog" / "agents"
 
-# Every version this catalog actually ships. A gate that rejects one of these is worse than the
-# hole it closes, so they are asserted as a set rather than sampled.
-SHIPPED = ("16.4.6", "1.3.14", "0.139.0", "2.1.223", "1.17.9")
+def _shipped_pins() -> tuple[str, ...]:
+    """Every version this catalog actually ships, READ FROM THE CATALOG at test time.
+
+    Not a hardcoded list. The first version of this file pasted the five values in, and a pin
+    upgrade on another branch invalidated three of them the same day — a copy of the authority
+    agrees with your reading forever, including after the original moves. A gate that rejects a
+    shipped pin is worse than the hole it closes, so this assertion has to track the real values.
+    """
+    found: list[str] = []
+    for manifest in sorted(CATALOG_AGENTS.glob("*/agent.yaml")):
+        agent = load_agent(manifest.parent.name)
+        found.extend(agent.build_args.values())
+    return tuple(found)
+
+
+SHIPPED = _shipped_pins()
 
 # The seven the pre-existing deny-list knew about, plus the six it did NOT — the class intent
 # review caught. `stable` is not hypothetical: plan REVISION 15 measured claude's channel
