@@ -9,6 +9,12 @@ is no set to keep in step.
 """
 from __future__ import annotations
 
+import sys
+
+import pytest
+
+from harnessed import launcher, persist
+
 
 def test_container_env_trusts_the_projects_mise_config():
     """bd harnessed-8px.27.
@@ -31,3 +37,47 @@ def test_container_env_trusts_the_projects_mise_config():
     assert "*mise_trust_env," in src, (
         "MISE_TRUSTED_CONFIG_PATHS is built but never spliced into the container's `podman run`"
     )
+
+
+class TestPersistRefusalIsNotACrash:
+    """The persist gate is default-deny, so a refusal is a normal first-launch outcome.
+
+    Every refusal message already names its remediation (the exact allowlist line, or the chown).
+    Uncaught, typer's excepthook wraps it in a Rich traceback and the remediation reads as harnessed
+    crashing on the user. `main()` is the only place that covers every verb the gate runs from.
+    """
+
+    @pytest.mark.parametrize(
+        "err",
+        [
+            persist.PersistDeniedError,
+            persist.PersistNotAllowlistedError,
+            persist.PersistOwnershipError,
+        ],
+    )
+    def test_the_message_survives_and_the_exit_is_clean(self, err, monkeypatch, capsys):
+        def refuse():
+            raise err("add /home/u/.config/gh to the allowlist")
+
+        monkeypatch.setattr(launcher, "app", refuse)
+        monkeypatch.setattr(sys, "argv", ["harnessed", "omp"])
+
+        with pytest.raises(SystemExit) as caught:
+            launcher.main()
+
+        assert caught.value.code == 1
+        # `from None` — otherwise the refusal is still chained and prints as a traceback anyway.
+        assert caught.value.__suppress_context__
+        assert "allowlist" in capsys.readouterr().err
+
+    def test_other_failures_keep_their_traceback(self, monkeypatch):
+        """Narrow on purpose: only the gate's own errors lose their traceback."""
+
+        def boom():
+            raise RuntimeError("unrelated")
+
+        monkeypatch.setattr(launcher, "app", boom)
+        monkeypatch.setattr(sys, "argv", ["harnessed", "omp"])
+
+        with pytest.raises(RuntimeError):
+            launcher.main()

@@ -4905,7 +4905,22 @@ def main() -> None:
     # which reads like a usage error rather than a missing registration. With the stack named by
     # `--stack`, a bare leading token is a harness and there is nothing left to disambiguate.
     sys.argv = [sys.argv[0], *_extract_passthrough(sys.argv[1:])]
-    app()
+    # The persist gate (persist.py) is default-deny BY DESIGN, so being refused is a normal outcome
+    # of a first launch — and every one of its refusals already carries the remediation in the
+    # message (the exact allowlist line to add, or the chown to run). Left uncaught, typer's
+    # excepthook buries that message under a Rich traceback, which reads as a harnessed crash
+    # rather than the gate doing its job. Caught here rather than at a call site because the gate
+    # runs from every verb that composes mounts (container run, host-native run); narrow on purpose
+    # — only these three types, so nothing else loses its traceback.
+    try:
+        app()
+    except (
+        persist.PersistDeniedError,
+        persist.PersistNotAllowlistedError,
+        persist.PersistOwnershipError,
+    ) as exc:
+        _err.print(f"[bold red]error:[/bold red] {exc}", highlight=False)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
