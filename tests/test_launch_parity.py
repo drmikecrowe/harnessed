@@ -73,6 +73,15 @@ CONTAINER_ONLY: dict[str, str] = {
     "_strip_var_from_env_files": "scrubs the token from podman --env-file temps; host mode has no env-file",
     "_omp_agent_mount": "bind mount",
     "_omp_mcp_seed_mount": "bind mount",
+    # Both halves of the mcp-remote OAuth fix are container-only BY NATURE, not by decision: each
+    # exists purely to undo something the pod boundary breaks, and on the host there is no boundary
+    # to undo. A host-native mcp-remote writes straight into the user's own ~/.mcp-auth, and binds
+    # the host's own loopback — which is the same loopback the browser redirects to.
+    "_mcp_auth_store_mount": "bind mount; a host launch already writes the real ~/.mcp-auth",
+    "_mcp_remote_pod_args": (
+        "publishes a pod port and tunes pasta's forwarding for the pod netns; a host-native "
+        "mcp-remote binds the host's own 127.0.0.1, which the browser redirect already reaches"
+    ),
     # --- credential/socket forwarding: the host reaches these natively ---
     "_credential_forward_args": "forwards host credentials into a netns the host is not in",
     "_ssh_agent_auto_forward_args": "forwards $SSH_AUTH_SOCK; the host already has it",
