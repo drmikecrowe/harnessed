@@ -112,6 +112,73 @@ class TestShippedImagesCacheTheirDownloads:
                 )
 
 
+class TestEveryCacheMountRestoresWhatItTook:
+    """The convention that keeps the artifact-level assertion below from ever failing again.
+
+    Podman leaves the PARENTS of a cache-mount target owned by root in the committed layer, so the
+    fix is per-mount, not once at the end: an end-of-file chown left `npm install -g` (the layer
+    right after the FIRST cache mount, which creates ~/.npm) failing with EACCES. Each cache-mount
+    RUN therefore restores ownership immediately, and this test is what makes the next one added
+    follow suit — a reviewer will not remember, and the build only complains at the next layer that
+    happens to create a dot-directory.
+    """
+
+    def _instructions(self, body: str) -> list[str]:
+        joined = re.sub(r"\\\n", " ", body)
+        return [ln.strip() for ln in joined.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+
+    def test_each_cache_mounted_run_is_followed_by_the_restore(self):
+        for path in _shipped_image_dockerfiles():
+            instrs = self._instructions(path.read_text(encoding="utf-8"))
+            for i, instr in enumerate(instrs):
+                if not (instr.upper().startswith("RUN ") and "type=cache" in instr):
+                    continue
+                after = instrs[i + 1:i + 3]
+                assert after[:1] == ["USER root"], (
+                    f"{path.name}: cache-mounted RUN is not followed by the ownership restore "
+                    f"(found {after[:1]}) — see the comment on the first restore in the base"
+                )
+                # Either spelling of the user: the base owns the ARG, the harness images FROM it
+                # cannot see it and say `harnessed` outright.
+                #
+                # ~/.cache IS NAMED, not merely "some second path". $HOME and $HOME/.cache are BOTH
+                # mount parents and both get re-rooted, but only $HOME had a symptom anyone had seen
+                # — so a restore covering $HOME alone reads as complete and ships a base whose
+                # ~/.cache is still root-owned. That is exactly what reached live.yml run 62, where
+                # the failure surfaced an image later as the Claude installer's `mkdir
+                # ~/.cache/claude`. Requiring the path by name is what stops that recurring.
+                assert re.match(
+                    r"RUN chown (\$\{USERNAME\}:\$\{USERNAME\}|harnessed:harnessed) "
+                    r"(/home/\$\{USERNAME\}|/home/harnessed) "
+                    r"(/home/\$\{USERNAME\}|/home/harnessed)/\.cache\b",
+                    after[1],
+                ), (
+                    f"{path.name}: the chown restore after `USER root` must repair BOTH mount "
+                    f"parents ($HOME and $HOME/.cache), found {after[1]}"
+                )
+
+    def test_the_base_probes_every_directory_the_restores_repair(self):
+        """The gate has to be as wide as the damage, or it certifies the broken case.
+
+        The base ends with a probe that CREATES a directory and removes it, because that is the
+        operation derived images actually perform. It covered $HOME only, so live.yml run 62 built a
+        green base whose ~/.cache was root-owned and handed the failure to the next image. A probe
+        narrower than the restores above it is not a weaker gate, it is a misleading one.
+        """
+        base = next(p for p in _shipped_image_dockerfiles() if p.name.endswith("harnessed-base"))
+        probes = [
+            ins for ins in self._instructions(base.read_text(encoding="utf-8"))
+            if "harnessed-home-probe" in ins
+        ]
+        assert probes, "harnessed-base no longer probes its home directory at all"
+        covered = " ".join(probes)
+        for required in ("/home/${USERNAME}", "/home/${USERNAME}/.cache"):
+            assert required in covered, (
+                f"harnessed-base's writability probe never exercises {required} — the restores "
+                f"repair it, so the gate must check it"
+            )
+
+
 class TestThePnpmStoreIsNeverCached:
     """The store looks like the obvious thing to cache. Caching it ships a broken image.
 
