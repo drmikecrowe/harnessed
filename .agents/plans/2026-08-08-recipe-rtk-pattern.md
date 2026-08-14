@@ -186,6 +186,63 @@
 > `validate_agent_pin` is still not wired into `assemble()` because codex remains unpinned — so A3
 > alone does not switch the gate on.
 >
+> **REVISION 16** (2026-08-14) — **Phase 4 pre-flight: one gate question for the human, and three
+> measurements that change Phase 4's shape.** No implementation file is touched by this revision.
+>
+> **THE GATE QUESTION — RULING NEEDED before Phase 4 starts.** This spec states the S9 gate twice,
+> and the two statements do not say the same thing:
+>
+> - **D3**: *"Do not write 20 test files on the assumption until S9 answers."* That gates the
+>   **recipe scripts**.
+> - **The phase list**: *"S9 gates Phase 4."* That gates **the phase**, including the
+>   `capability.py` execution mechanism §4 assigns to it.
+>
+> A Phase 4 unit scoped to the mechanism alone — the host execution path, zero recipe scripts — is
+> **permitted by the first and forbidden by the second**. A draft SPEC for exactly that unit was
+> written and sent for independent intent review on 2026-08-14; the reviewer's verdict on the narrow
+> reading was that it is *"the reasoning one would reach specifically to justify building something
+> that is gated"*, and recommended the plan be amended before the unit proceeds rather than the
+> implementer resolving the ambiguity in their own favour. **That is what this revision does. The
+> unit was NOT built.**
+>
+> Weigh one circularity when ruling: **the broad reading cannot be satisfied by any action this plan
+> permits.** S9 asks whether a *host assembly* can complete in CI. There is no host execution path
+> today (measured — see M-3), so there is nothing to put to CI, and the gate has no opener. The
+> narrow reading is the only one under which S9 can ever be answered. That is an argument for the
+> narrow reading, not a licence to assume it.
+>
+> **M-1 — Phase 4 is ~20 scripts to author, not a sweep over existing ones.** Measured: exactly
+> **two** recipe test scripts exist in the whole catalog — `catalog/recipes/rtk/tests/rtk-runs.sh`
+> and `catalog/recipes/caveman/tests/hook-fires.sh`.
+>
+> **M-2 — one of those two is already container-only, so AC-6's two-mode clause has a live violation
+> before Phase 4 starts.** rtk's script reads `${CLAUDE_CONFIG_DIR:-$HOME/.claude}` and is already
+> mode-neutral. caveman's reads `${CONTAINER_HOME:-/home/harnessed}` — a path that does not exist on
+> a host, and whose *default* would silently point a host run at a container-shaped directory rather
+> than fail honestly. Under AC-6 that recipe is `SUBSTITUTED`, never `PASSED`. It needs to move to
+> `CLAUDE_CONFIG_DIR` whichever way the gate is ruled.
+>
+> **M-3 — D3 understates AC-6a, and §4 names the wrong single file.** §4 lists only
+> `src/harnessed/capability.py` *(host test path, AC-6a)*. Measured: necessary, **not sufficient**.
+> A host assembly installs executables into the **stack's** tool tree —
+> `setupenv._stack_tools_dirs(stack)` → `$XDG_DATA_HOME/harnessed/tools/<stack>/{bin,uv-tools}` —
+> which is **not** on the operator's `PATH`. A host runner that merely inherits the environment would
+> report *"rtk not found"* while the binary sits installed one directory away: a fabricated failure,
+> and the precise opposite of AC-6's *"invoke the thing installed"*. That environment already exists
+> and already has an owner — `hostrun._host_run_installs`
+> (`src/harnessed/hostrun.py:396-414`) sets `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR`, `npm_config_prefix`,
+> `PATH` (stack `bin` prepended), and **last** `_harness_config_env(harness, home)`, so an inherited
+> `CLAUDE_CONFIG_DIR` cannot survive into the script (bd harnessed-8px.26). **Consequence**: Phase 4
+> unit 1 must also touch `hostrun.py` and `setupenv.py`, to give that contract **one authority and
+> two callers**. Restating it inside `capability.py` would be a second copy that agrees with today's
+> reading forever — including after the original changes. Add both files to §4's list when the gate
+> is ruled open.
+>
+> **Baselines re-measured** on `02357c5`: **2879 passed, 26 skipped; ruff 0; pyright 0.**
+> `.old-coder.toml`'s note — *"ruff 196, pyright 89, and neither runs in CI"* — is **stale**: PR #370
+> burned both to zero and gated them in CI. Phase 4's bar is therefore a true zero, not a baseline
+> delta.
+>
 > **APPROVED** 2026-08-08. Later changes to this file are spec drift and must be visible as a
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
@@ -1204,6 +1261,13 @@ or held (S8 decides which).
 
 **Phase 4 — tests for all** (AC-6a now, AC-6b gated on #250).
 
+> **BLOCKED pending a human ruling — REVISION 16 (2026-08-14).** "S9 gates Phase 4" (this line's
+> section) and D3's "do not write 20 test files … until S9 answers" gate different things, and a
+> mechanism-only unit falls in the gap between them. REVISION 16 states both readings, the
+> circularity that S9 cannot be answered while no host execution path exists, and three measurements
+> that resize this phase (only 2 recipe scripts exist; caveman's is container-only; AC-6a needs
+> `hostrun.py` + `setupenv.py`, not `capability.py` alone). **Rule the gate before starting Phase 4.**
+
 ### Spikes (do these first; they change §3)
 
 **Status 2026-08-09**: S1, S2, S3, S5, S6 **answered** (below). S4, S8 answered earlier. **S7 and S9
@@ -1284,7 +1348,9 @@ it gates only which version A3 pins, not whether A3 can proceed.
   holding" in §1 Family B is superseded as a *decision* and survives as the outcome the assessment
   independently reached.
 - **S9** _(from D3, gates Phase 4)_ — can a **host** assembly complete in CI (mise present, network,
-  no podman)?
+  no podman)? **REVISION 16**: still unanswered, and note it is currently **unanswerable** — there is
+  no host execution path in the tree, so there is nothing to put to CI. Whether building that path
+  is itself gated by S9 is the open ruling REVISION 16 records.
 - **S10** _(from REVISION 15, gates A3's VALUE only — not A3 itself)_ — which version does the
   shipped `harnessed-claude` image actually carry today? The Dockerfile pipes the installer with no
   argument, so the version is whatever the downloaded bootstrap binary defaults to, and that default
