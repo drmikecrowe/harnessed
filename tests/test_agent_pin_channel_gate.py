@@ -302,6 +302,25 @@ def test_an_absurdly_long_value_is_rejected_promptly():
     assert elapsed < 0.05, f"took {elapsed:.3f}s — the cap is not running before the regex"
 
 
+def test_an_absurdly_long_ref_is_rejected_promptly():
+    """S-31. Found by adversarial review round 2: the cap was added to the agent surface only, while
+    `install.refs[].ref` reached the SAME regex unbounded. A cap on one of two callers of one pattern
+    is not a cap — and I had recorded that as a known limit rather than fixing it, which is how a
+    documented gap becomes a shipped defect."""
+    import time
+
+    from harnessed.schema import _parse_install_refs
+
+    ref = "1" + ".1" * 3000 + "!"
+
+    start = time.perf_counter()
+    with pytest.raises(SchemaError):
+        _parse_install_refs({"k": {"repo": "owner/repo", "ref": ref}}, "install")
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.05, f"took {elapsed:.3f}s — the ref cap is not running before the regex"
+
+
 def test_every_shipped_recipe_still_loads_after_the_tightening(tmp_path):
     """S-26. The Unicode fix tightens a constant the recipe path shares, so the recipe path is the
     one that has to be proven unharmed."""

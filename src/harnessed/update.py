@@ -868,7 +868,13 @@ def _rewrite_agent_build_arg(manifest: Path, key: str, new_value: str) -> bool:
     # channel ("nightly" as the newest release) persisted it here, and the manifest that had been
     # valid a moment ago now fails at the NEXT build with a schema error instead of this update
     # simply declining. Declining is `False`, the same "not applied" answer this function already
-    # gives when the key is absent, so the finding stays open and visible.
+    # gives when the key is absent, so `apply` does not list the finding among those it rewrote.
+    #
+    # Precise about what that does and does not buy, because the overclaiming version of this
+    # sentence was itself a review finding: the bad value never reaches disk, and the bump is not
+    # reported as applied — but the caller cannot tell a REFUSED value from an absent key, so no
+    # reason is surfaced. Distinguishing them means changing `apply`'s return contract, which is a
+    # wider change than this gate.
     try:
         _require_immutable_build_arg(key, new_value, manifest)
     except SchemaError:

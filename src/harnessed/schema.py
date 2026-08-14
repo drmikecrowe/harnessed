@@ -811,7 +811,10 @@ def _parse_install_refs(raw_refs, manifest_label: str) -> dict[str, InstallRef]:
                 f"git clone to a tarball fetch needs no manifest change."
             )
         ref = str(spec.get("ref") or "").strip()
-        if not _IMMUTABLE_REF_RE.match(ref):
+        # Length cap BEFORE the regex, for the same reason the agent surface has one: the shared
+        # `_IMMUTABLE_REF_RE` backtracks quadratically on a long FAILING input, and a ref arrives
+        # from a catalog overlay just as a build_arg does. No git tag or SHA approaches this.
+        if len(ref) > _MAX_PIN_LENGTH or not _IMMUTABLE_REF_RE.match(ref):
             raise SchemaError(
                 f"recipe '{manifest_label}.refs' {key!r} has ref {ref!r}, which is not immutable — "
                 f"use a version tag (v1.2.3) or a FULL 40-character commit SHA. A branch moves, and "
@@ -2353,7 +2356,12 @@ _ARG_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 # Longest plausible pin: a 40-hex SHA is 40, the longest real version tag is well under this. Set
 # where no legitimate value can reach it, so the cap only ever fires on input that was never a pin.
-_MAX_BUILD_ARG_PIN = 128
+#
+# Shared by BOTH surfaces that feed `_IMMUTABLE_REF_RE`. It was first added to the agent side only,
+# and adversarial review pointed out that `install.refs[].ref` reaches the same regex with no bound
+# — the quadratic backtracking the cap exists to prevent was still reachable there. A cap on one of
+# two callers of the same pattern is not a cap.
+_MAX_PIN_LENGTH = 128
 
 
 def _require_immutable_build_arg(key: str, value: str, manifest: Path) -> str:
@@ -2380,7 +2388,7 @@ def _require_immutable_build_arg(key: str, value: str, manifest: Path) -> str:
     # a long FAILING input makes the engine try every split — measured quadratic (4002 chars → 96 ms).
     # A version is never this long, so the cap costs nothing real and the pathological input never
     # reaches the matcher.
-    if len(pin) > _MAX_BUILD_ARG_PIN:
+    if len(pin) > _MAX_PIN_LENGTH:
         raise SchemaError(
             f"{manifest}: build_args {key!r} is {len(pin)} characters — a pinned version is a tag "
             f"or a 40-character SHA, not a document."

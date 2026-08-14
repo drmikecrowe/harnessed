@@ -50,7 +50,7 @@ dev = [
 # A non-matching filter is silent: mutmut exits 0, generates the tree, and `mutmut results`
 # prints every mutant as `not checked` — which looks like a clean run, not a missed filter.
 paths_to_mutate = ["src/harnessed/"]
-tests_dir = ["tests/"]
+tests_dir = ["tests/test_agent_pin_channel_gate.py", "tests/test_agent_pins.py"]
 # The suite imports `support` and `conftest` as top-level modules from tests/, so the whole dir has
 # to land in the mutants tree — a file-by-file `also_copy` fails, since mutmut does not create the
 # parent dirs. The suite is podman-GATED, not podman-driven (tests/conftest.py): a mutant must be
