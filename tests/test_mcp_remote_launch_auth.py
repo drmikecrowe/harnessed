@@ -29,8 +29,19 @@ URL_SHA = "704a04845e8f89b90b87e2859a49ca9fd773b21816b45b2106417094b4c7fab3"
 
 
 class _Server:
-    def __init__(self, name="atlassian", args=None, is_stdio_child=True):
+    """Shaped like the real `McpServer`, which keeps `command` and `args` APART. Earlier versions of
+    this fake carried only `args`, and that omission is exactly why the suite could not see the
+    `dlx` bug: every test was written from the same half of the invocation the code used."""
+
+    def __init__(
+        self,
+        name: str = "atlassian",
+        args: list[str] | None = None,
+        is_stdio_child: bool = True,
+        command: str | None = "pnpm",
+    ):
         self.name = name
+        self.command = command
         self.args = args if args is not None else ["dlx", SPEC_ARG, URL, PORT]
         self.is_stdio_child = is_stdio_child
 
@@ -129,6 +140,56 @@ class TestOnlyAServerWithNoTokenIsAskedAbout:
         second = _Server(name="other", args=["dlx", SPEC_ARG, "https://mcp.example.com/mcp", "4000"])
         pending = mounts._mcp_remote_pending_auth([_Server(), second], INST, False, home=tmp_path)
         assert [n for n, _ in pending] == ["atlassian", "other"]
+
+
+class TestWhatIsHandedToPodmanIsRunnable:
+    """The consent runs `podman exec -it <inst> <argv>`, so argv must be the FULL command line.
+
+    `McpServer` keeps `command` and `args` apart — `command: "pnpm"`, `args: ["dlx", …]` — which is
+    the shape hatago's config wants and a trap for anything that runs the server itself. Passing
+    `args` alone produced, on a real launch:
+
+        crun: executable file `dlx` not found in $PATH
+
+    No test over `args` could have caught it, because `args` was what the code and the tests were
+    both built from. These assert the executable specifically.
+    """
+
+    def test_the_command_leads_the_argv(self, tmp_path):
+        pending = mounts._mcp_remote_pending_auth([_Server()], INST, False, home=tmp_path)
+        assert pending[0][1][0] == "pnpm"
+
+    def test_the_argv_is_command_plus_args(self, tmp_path):
+        pending = mounts._mcp_remote_pending_auth([_Server()], INST, False, home=tmp_path)
+        assert pending[0][1] == ["pnpm", "dlx", SPEC_ARG, URL, PORT]
+
+    def test_the_leading_token_is_never_a_bare_subcommand(self, tmp_path):
+        """The specific shape of the bug: `dlx` is pnpm's subcommand, not an executable."""
+        pending = mounts._mcp_remote_pending_auth([_Server()], INST, False, home=tmp_path)
+        assert pending[0][1][0] != "dlx"
+
+    def test_a_server_with_no_command_falls_back_to_its_args(self):
+        """`command` is Optional on the model. A server that carries the executable as args[0] must
+        still yield something runnable rather than a list with a leading None."""
+        srv = _Server(command=None, args=["mcp-remote-bin", SPEC_ARG, URL, PORT])
+        assert mounts._mcp_remote_argv(srv) == ["mcp-remote-bin", SPEC_ARG, URL, PORT]
+
+    def test_no_element_is_none(self, tmp_path):
+        """`podman exec` takes strings; a None anywhere is a TypeError at the call, far from here."""
+        pending = mounts._mcp_remote_pending_auth([_Server()], INST, False, home=tmp_path)
+        assert all(isinstance(a, str) for a in pending[0][1])
+
+    def test_reauth_builds_the_same_runnable_argv(self):
+        """The --reauth branch assembles its own list, so it can drift from the pending path — and
+        the original bug lived in both."""
+        from harnessed import paths
+        src = (paths.harnessed_home() / "src" / "harnessed" / "launcher.py").read_text(
+            encoding="utf-8"
+        )
+        block = src[src.index("def _authorize_mcp_remote_servers"):]
+        block = block[:block.index("\ndef ")]
+        assert "_mcp_remote_argv(s)" in block
+        assert "list(s.args)" not in block, "the reauth branch still passes bare args"
 
 
 class TestTheStoreLookedAtIsTheStoreMounted:

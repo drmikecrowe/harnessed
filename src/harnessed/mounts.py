@@ -701,6 +701,21 @@ def _mcp_remote_token_file(store: Path, argv: Sequence[str]) -> Path | None:
     return store / f"mcp-remote-{version}" / f"{digest}_tokens.json"
 
 
+def _mcp_remote_argv(server) -> list[str]:
+    """The FULL command line for a stdio server — `command` followed by `args`.
+
+    `McpServer` keeps the two apart (`command: "pnpm"`, `args: ["dlx", "mcp-remote@…", …]`), which
+    is what hatago's config wants, and it is a trap for anything that runs the server itself: the
+    args alone begin with `dlx`, so executing them directly produces
+
+        crun: executable file `dlx` not found in $PATH
+
+    Found by running the launch-time consent for real; no unit test on `args` could have shown it,
+    because `args` is exactly what those tests were built from.
+    """
+    return [server.command, *server.args] if server.command else list(server.args)
+
+
 def _mcp_remote_pending_auth(
     servers: Sequence, inst: str, isolated_auth: bool, home: Path | None = None
 ) -> list[tuple[str, list[str]]]:
@@ -726,7 +741,8 @@ def _mcp_remote_pending_auth(
         token = _mcp_remote_token_file(store, argv)
         if token is None or token.is_file():
             continue
-        pending.append((server.name, argv))
+        # The RUNNABLE command line, not the bare args the detection matched on.
+        pending.append((server.name, _mcp_remote_argv(server)))
     return pending
 
 
