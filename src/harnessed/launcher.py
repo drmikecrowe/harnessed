@@ -116,8 +116,13 @@ from .mounts import (
     _keyring_fresh_wipe,
     _keyring_init,
     _keyring_state_mount,
+    _MCP_REMOTE_SPEC,
+    _mcp_auth_store_dir,
     _mcp_auth_store_mount,
+    _mcp_remote_argv,
+    _mcp_remote_pending_auth,
     _mcp_remote_pod_args,
+    _mcp_remote_token_file,
     _omp_agent_mount,
     _omp_mcp_seed_mount,
     _persist_mounts,
@@ -1277,6 +1282,165 @@ def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None) ->
         if detail:
             _err.print(f"[dim]{escape(detail)}[/dim]")
         raise typer.Exit(1)
+
+
+def _token_is_complete(token: Path) -> bool:
+    """True only when the token file holds parseable, non-empty JSON.
+
+    The completion test for a consent. Existence is not enough: mcp-remote writes with a plain
+    `writeFile` (no atomic rename anywhere in the pinned dist), so the file appears at its final
+    path empty and fills in after. Anything unreadable, unparseable, or empty means "still writing"
+    — or a previous run that died mid-write — and both are correctly "not authorized yet".
+    """
+    try:
+        parsed = json.loads(token.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(parsed, dict) and bool(parsed)
+
+
+def _run_mcp_remote_consent(
+    rt: str, instance: str, name: str, argv: list[str], token: Path, timeout: int = 300
+) -> bool:
+    """Run one mcp-remote consent INTERACTIVELY, attached to the operator's terminal.
+
+    This exists because the authorize URL is otherwise unreachable. In normal operation mcp-remote
+    is hatago's stdio child — a GRANDCHILD of the harness — and it prints
+    `Please authorize this client by visiting: <url>` to a stderr the harness discards. The operator
+    sees only `MCP error -32001: Request timed out` three retries later, with nothing naming a
+    missing consent. Running the same argv here, before the harness starts, puts that URL on the
+    terminal a human is already looking at.
+
+    IN THE CONTAINER, not on the host: the pod already publishes the callback port and bind-mounts
+    the token store, so the redirect resolves and the token lands where the harness will look. Doing
+    it host-side would need node on the host — a dependency this CLI deliberately does not have.
+
+    Returns True once the token file appears. mcp-remote does not exit on success (it becomes the
+    proxy), so the token file IS the completion signal, and the process is torn down once it lands.
+    """
+    import time
+
+    _out.print(
+        f"\n[bold]{name}[/bold] needs a one-time browser authorization.\n"
+        f"Open the URL below, approve it, and this will continue on its own.\n"
+        f"[dim]The token is stored on the host and reused by every later launch "
+        f"(re-run with --reauth to replace it).[/dim]\n"
+    )
+    # unbounded: this is the interactive consent itself — it must stay attached to the operator's
+    # terminal for as long as they need to finish a browser flow, so a timeout on the CALL would be
+    # a timeout on a human. The wait below is deadline-driven instead, and the `finally` terminates
+    # this process on every exit path, so nothing here can outlive the launch.
+    proc = subprocess.Popen([rt, "exec", "-it", instance, *argv])
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline:
+            # PARSED, not merely present. mcp-remote persists with a plain `writeFile` and no
+            # atomic rename (verified in the pinned dist: zero `rename(` calls), so the path exists
+            # from the moment the file is OPENED and fills in afterwards. Treating existence as
+            # success would not just risk reading a truncated token — the teardown below would then
+            # terminate mcp-remote mid-write and leave a corrupt one on disk permanently. Requiring
+            # parseable, non-empty JSON closes both.
+            if _token_is_complete(token):
+                _out.print(f"\n[green][SUCCESS][/green] {name} authorized.")
+                return True
+            if proc.poll() is not None:
+                # Exited without writing a token: a declined consent, a bad URL, or a crash. The
+                # child's own output is already on the terminal, so add no guesses on top of it.
+                _err.print(f"[yellow]note:[/yellow] {name} authorization did not complete.")
+                return False
+            time.sleep(1)
+        _err.print(f"[yellow]note:[/yellow] {name} authorization timed out after {timeout}s.")
+        return False
+    except KeyboardInterrupt:
+        # Ctrl-C aborts THIS consent, not the launch. A stack whose other servers are fine should
+        # still come up; the harness will simply be short one server, which is the state the
+        # operator just chose.
+        _err.print(f"\n[yellow]note:[/yellow] {name} authorization cancelled.")
+        return False
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+
+def _authorize_mcp_remote_servers(
+    rt: str, inst: str, servers: list, stk, *, headless: bool, reauth: bool
+) -> None:
+    """Prompt for any OAuth MCP server that has no token yet, before the harness starts.
+
+    Ordering is the point: run this AFTER the pod is up (the callback port and the store mount both
+    come from it) and BEFORE the harness attaches (so hatago's first connection attempt finds a
+    token instead of opening a browser nobody can see).
+    """
+    store = _mcp_auth_store_dir(inst, stk.isolated_auth)
+    pending = _mcp_remote_pending_auth(servers, inst, stk.isolated_auth)
+    if reauth:
+        # --reauth asks for EVERY mcp-remote server, not only the unauthorized ones: the reason to
+        # pass it is that an existing token is wrong (revoked, wrong account, too few scopes), and
+        # those are exactly the tokens `_mcp_remote_pending_auth` reports as fine.
+        pending = [
+            (s.name, _mcp_remote_argv(s))
+            for s in servers
+            if getattr(s, "is_stdio_child", False)
+            and any(_MCP_REMOTE_SPEC.match(a) for a in s.args)
+        ]
+    if not pending:
+        return
+    if headless:
+        # A blocking browser prompt in CI would hang until the job timeout and report nothing
+        # useful. Naming the servers and the flag turns that into an actionable failure.
+        names = ", ".join(n for n, _ in pending)
+        # Does NOT offer --reauth as a way out: passing it here fails in exactly the same way, and
+        # an error that suggests a flag which cannot work sends the reader in a circle. The only
+        # remedy is an interactive launch, so that is the only thing named.
+        _err.print(
+            f"[bold red]error:[/bold red] {names} require a browser authorization that headless "
+            f"mode cannot perform. Launch this stack interactively once to store the token; "
+            f"headless launches then reuse it."
+        )
+        raise typer.Exit(1)
+    # CONTENTION, and it exists only on the http path. There the entrypoint started the hub with the
+    # container, so hatago has ALREADY spawned its own mcp-remote for this server — holding the
+    # lockfile and bound to the very callback port the interactive run needs. A second one cannot
+    # bind, so the consent would never appear. Stop the hub for the duration and start it again
+    # after, by which point the token exists and its first connection attempt succeeds instead of
+    # burning three retries. Under stdio there is no hub yet (the harness spawns it at attach), so
+    # there is nothing to stop and nothing to restart.
+    restart_hub = stk.hub_transport != HUB_TRANSPORT_STDIO
+    if restart_hub:
+        # `[h]atago` deliberately. `pkill -f` matches against full command lines, INCLUDING the
+        # `bash -lc "pkill -f …"` this runs as — so the plain spelling makes the shell match itself
+        # and die before it can signal the hub. Not hypothetical: it happened while developing this,
+        # and the only symptom was an exec exiting 143 with the hub still running. The bracket makes
+        # the pattern match the hub's command line and not its own.
+        _bounded(
+            [rt, "exec", inst, "bash", "-lc", "pkill -f '[h]atago-mcp-hub' || true"],
+            timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True,
+        )
+    try:
+        for name, argv in pending:
+            token = _mcp_remote_token_file(store, argv)
+            if token is None:
+                continue
+            _run_mcp_remote_consent(rt, inst, name, argv, token)
+    finally:
+        # `finally`: a cancelled or failed consent must not leave the stack hubless. Restarting a
+        # hub that will still fail to reach one server is strictly better than handing the operator
+        # an instance with no MCP at all.
+        if restart_hub:
+            # The hub command only, NOT `harnessed-start` — that entrypoint ends in
+            # `exec sleep infinity`, so re-running it would fork a second PID-1 stand-in. This
+            # mirrors the entrypoint's own line and `test_the_hub_restart_matches_the_entrypoint`
+            # holds the two together, since a drift here would restart a differently-configured hub.
+            _bounded(
+                [rt, "exec", "-d", inst, "bash", "-lc",
+                 f"nohup hatago serve --http --port {paths.hatago_port()} "
+                 f"--config {paths.hatago_config_container()} >/tmp/hatago.log 2>&1 &"],
+                timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True,
+            )
 
 
 def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> bool:
@@ -3019,6 +3183,11 @@ def container_run(
     no_extends: bool = _NO_EXTENDS_OPT,
     service: list[str] = _SERVICE_OPT,
     fresh: bool = typer.Option(False, "--fresh", help="Tear down any existing pod/instance first"),
+    reauth: bool = typer.Option(
+        False, "--reauth",
+        help="Re-run the browser consent for OAuth MCP servers even when a token already exists "
+             "(revoked, wrong account, or a scope change)",
+    ),
     rm: bool = typer.Option(False, "--rm", help="Ephemeral: tear the pod down when the interactive session exits"),
     no_firewall: bool = typer.Option(False, "--no-firewall", help="Skip egress firewall"),
     agent_start_folder: Optional[str] = typer.Option(
@@ -3236,6 +3405,14 @@ def container_run(
     # (rebuilt since it started), a re-attach would silently run the stale build. Offer to recreate.
     headless = backend.headless
     if not headless and _container_running(rt, inst):
+        # THE RE-ATTACH PATH NEEDS THIS TOO, and missing it was not a small gap: both branches
+        # below `return` straight into `_attach`, so a running instance skipped the consent
+        # entirely. That is the likeliest state to need it — an instance that came up, failed to
+        # authorize, and is still running is exactly what an operator re-attaches to — and it made
+        # `--reauth` silently do nothing whenever the pod happened to be up.
+        _authorize_mcp_remote_servers(
+            rt, inst, launch_servers, stk, headless=headless, reauth=reauth
+        )
         if _container_stale(rt, inst, harness_image):
             if sys.stdin.isatty() and typer.confirm(
                 f"'{inst}' is running on an older build of {harness_image}. "
@@ -3306,6 +3483,14 @@ def container_run(
     # spawns its own on launch. Probing for one would wait out the full timeout and then report a
     # degraded hub — turning correct configuration into a red herring, and (headless) into a hard
     # exit. `harnessed-start` reads the same field, so the two cannot disagree.
+    # BEFORE the hub is waited on and before the harness attaches. An OAuth server with no token
+    # cannot be fixed later from here: hatago spawns mcp-remote, mcp-remote wants a browser, and the
+    # request for one goes to a grandchild's stderr the harness throws away. Asking now — while a
+    # human is still watching the launch — is the only point where the URL can reach them.
+    _authorize_mcp_remote_servers(
+        rt, inst, launch_servers, stk, headless=headless, reauth=reauth
+    )
+
     if stk.hub_transport == HUB_TRANSPORT_STDIO:
         hatago_up = True
     else:

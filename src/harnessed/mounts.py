@@ -10,6 +10,7 @@ and env vars pointing at the live store, and never copy a secret into a per-stac
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -634,6 +635,117 @@ def _mcp_remote_pod_args(
     return publish + _mcp_remote_pasta_net_args(publish, net)
 
 
+def _mcp_auth_store_dir(inst: str, isolated_auth: bool, home: Path | None = None) -> Path:
+    """The HOST directory bind-mounted at the container's `~/.mcp-auth`.
+
+    Extracted so the mount and the "is this server authorized yet?" check below cannot disagree
+    about where the tokens live — a launch that mounts one directory and inspects another would
+    re-prompt forever while a perfectly good token sat next door.
+    """
+    home = home or Path.home()
+    return _isolated_auth_store(inst).parent / ".mcp-auth" if isolated_auth else home / ".mcp-auth"
+
+
+def _mcp_remote_spec_version(argv: Sequence[str]) -> str | None:
+    """The pinned version out of the `[@scope/]mcp-remote@VERSION` argument.
+
+    The store is version-namespaced — `getConfigDir` appends `mcp-remote-<version>` unconditionally
+    (chunk-NIAXKAUT.js L20290) — so the version is part of the token path, and reading it back out
+    of the recipe's own args keeps the pin the single source of truth. Bump the pin and this follows;
+    there is no second copy to forget.
+    """
+    spec = next((a for a in argv if _MCP_REMOTE_SPEC.match(a)), None)
+    return spec.rsplit("@", 1)[1] if spec else None
+
+
+def _mcp_remote_server_url(argv: Sequence[str]) -> str | None:
+    """The remote server URL — mcp-remote's positional arg 0, read exactly as upstream reads it.
+
+    Same `--header <value>` splice as `_mcp_remote_callback_port`, for the same reason: upstream
+    removes those pairs before indexing (L21077-21092), so a recipe passing an auth header would
+    otherwise have its URL misread as the header's value.
+    """
+    idx = next((n for n, a in enumerate(argv) if _MCP_REMOTE_SPEC.match(a)), None)
+    if idx is None:
+        return None
+    rest = list(argv[idx + 1:])
+    positional: list[str] = []
+    n = 0
+    while n < len(rest):
+        if rest[n] == "--header":
+            n += 2
+            continue
+        positional.append(rest[n])
+        n += 1
+    return positional[0] if positional else None
+
+
+def _mcp_remote_token_file(store: Path, argv: Sequence[str]) -> Path | None:
+    """Where mcp-remote writes THIS server's tokens, or None when argv does not name one.
+
+    `<store>/mcp-remote-<version>/<sha256(server_url)>_tokens.json`. The basename is a plain
+    SHA-256 of the server URL — verified against a real store, not inferred: the file
+    `704a0484…fab3_lock.json` sitting beside the Atlassian consent is exactly
+    `sha256("https://mcp.atlassian.com/v1/mcp/authv2")`.
+
+    Computing it means the "needs authorization" test is EXACT rather than a guess at directory
+    contents. A stack with two OAuth servers gets two independent answers, and a half-finished
+    consent (client_info and code_verifier present, tokens absent — the real state observed
+    mid-flow) reads as unauthorized, which is what it is.
+    """
+    version = _mcp_remote_spec_version(argv)
+    url = _mcp_remote_server_url(argv)
+    if not version or not url:
+        return None
+    digest = hashlib.sha256(url.encode()).hexdigest()
+    return store / f"mcp-remote-{version}" / f"{digest}_tokens.json"
+
+
+def _mcp_remote_argv(server) -> list[str]:
+    """The FULL command line for a stdio server — `command` followed by `args`.
+
+    `McpServer` keeps the two apart (`command: "pnpm"`, `args: ["dlx", "mcp-remote@…", …]`), which
+    is what hatago's config wants, and it is a trap for anything that runs the server itself: the
+    args alone begin with `dlx`, so executing them directly produces
+
+        crun: executable file `dlx` not found in $PATH
+
+    Found by running the launch-time consent for real; no unit test on `args` could have shown it,
+    because `args` is exactly what those tests were built from.
+    """
+    return [server.command, *server.args] if server.command else list(server.args)
+
+
+def _mcp_remote_pending_auth(
+    servers: Sequence, inst: str, isolated_auth: bool, home: Path | None = None
+) -> list[tuple[str, list[str]]]:
+    """Every mcp-remote server with no token yet — `(server name, argv)`, in declaration order.
+
+    This is the whole detection behind the launch-time prompt. It answers a question nothing else
+    can answer from outside the container: mcp-remote only reveals that it needs a browser AFTER
+    hatago has spawned it, on a grandchild's stderr that the harness discards, by which point the
+    only visible symptom is `MCP error -32001: Request timed out`.
+
+    An EXPIRED token is deliberately not "pending". Refresh is a token-endpoint POST with no browser
+    and no callback (`refreshAuthorization`), so prompting for one would interrupt a launch that was
+    about to succeed on its own. Only absent — never authorized, or revoked — asks for a human.
+    """
+    store = _mcp_auth_store_dir(inst, isolated_auth, home)
+    pending: list[tuple[str, list[str]]] = []
+    for server in servers:
+        if not getattr(server, "is_stdio_child", False):
+            continue
+        argv = list(server.args)
+        if not any(_MCP_REMOTE_SPEC.match(a) for a in argv):
+            continue
+        token = _mcp_remote_token_file(store, argv)
+        if token is None or token.is_file():
+            continue
+        # The RUNNABLE command line, not the bare args the detection matched on.
+        pending.append((server.name, _mcp_remote_argv(server)))
+    return pending
+
+
 def _mcp_auth_store_mount(
     servers: Sequence, inst: str, isolated_auth: bool, home: Path | None = None
 ) -> list[str]:
@@ -669,10 +781,7 @@ def _mcp_auth_store_mount(
     """
     if not _mcp_remote_invocations(servers):
         return []
-    home = home or Path.home()
-    source = (
-        _isolated_auth_store(inst).parent / ".mcp-auth" if isolated_auth else home / ".mcp-auth"
-    )
+    source = _mcp_auth_store_dir(inst, isolated_auth, home)
     # ':' is the `-v src:dst:opts` separator, so a source containing one reparses the spec into a
     # mount of somewhere else entirely — the same defensive skip `_ssh_dir_mounts` applies.
     if ":" in str(source):
