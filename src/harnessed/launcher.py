@@ -217,6 +217,7 @@ from .assemble import (
 from .synclinks import CollisionError
 from .schema import (
     HARNESS_CONFIG_DIR,
+    HUB_TRANSPORT_STDIO,
     PinValidationError,
     Recipe,
     SchemaError,
@@ -2980,6 +2981,12 @@ class ContainerBackend(ExecutionBackend):
             *socket_env,
             *setup_env,
             *mise_trust_env,
+            # Tells the entrypoint whether to start a hub at all. Under `stdio` the harness spawns
+            # its own, so a background one here would be a second hub with a second copy of every
+            # stdio child — for an OAuth child like mcp-remote, two processes contending for one
+            # lockfile and one callback port. Passed always, so the entrypoint never has to infer
+            # the default the schema already decided.
+            "-e", f"HATAGO_TRANSPORT={self.stk.hub_transport}",
             *self.member_mounts,
             # Use harnessed-start (baked into base since hatago-consolidation) when present; fall back
             # to plain `sleep infinity` on older images so the launch degrades gracefully rather than
@@ -3294,7 +3301,15 @@ def container_run(
 
     # hatago starts automatically via /usr/local/bin/harnessed-start (the container entrypoint).
     # No exec -d needed — the entrypoint script starts it in the background before exec-ing sleep.
-    hatago_up = _wait_hatago(rt, inst)
+    #
+    # UNLESS the stack is stdio: then there is deliberately no hub running, because the harness
+    # spawns its own on launch. Probing for one would wait out the full timeout and then report a
+    # degraded hub — turning correct configuration into a red herring, and (headless) into a hard
+    # exit. `harnessed-start` reads the same field, so the two cannot disagree.
+    if stk.hub_transport == HUB_TRANSPORT_STDIO:
+        hatago_up = True
+    else:
+        hatago_up = _wait_hatago(rt, inst)
 
     if headless:
         if rm:
