@@ -1,8 +1,9 @@
 # harnessed — architecture
 
 The authoritative description of *what lives where* and *what the words mean*. Read this first.
-The deeper "why" is in [docs/harnessed-design.md](docs/harnessed-design.md). For how to add things, see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+The deeper "why" is in [docs/harnessed-design.md](docs/harnessed-design.md). *Where* a composed
+stack runs — the execution-backend seam behind both launch verbs — is [BACKENDS.md](BACKENDS.md).
+For how to add things, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## What harnessed is
 
@@ -19,11 +20,20 @@ harnessed/
 ├── pyproject.toml            # the Python project (name: harnessed)
 ├── src/harnessed/            # the application — ALL assembly + launch logic
 │   ├── launcher.py           #   `harnessed` CLI (Typer): build / launch / test / new / svc / …
+│   │                         #   AND both backends: HostBackend + ContainerBackend live here
+│   │                         #   (see BACKENDS.md), beside the private helpers they call
+│   ├── backend.py            #   the ExecutionBackend contract + LaunchSpec + registry — see BACKENDS.md
+│   ├── capmatrix.py          #   which recipe primitive each backend honors (the matrix tests read)
 │   ├── cli.py                #   `harnessed-tools` (assemble/scan/test entrypoints)
 │   ├── assemble.py  emit.py  #   emit-only assembler: stack + recipes → a committed profile
 │   ├── schema.py             #   typed models + catalog resolution (Agent/Recipe/Service/Stack)
 │   ├── capability.py report.py  # the capability test (the integration oracle)
 │   ├── paths.py              #   single source of truth for host/container paths + catalog roots
+│   ├── hostrun.py  hosthome.py   # host-native execution: per-stack home, installs/setups
+│   ├── mounts.py  volumes.py  credmounts.py   # container mount set, per-stack volumes, auth mounts
+│   ├── svcstate.py  svcguards.py              # service lifecycle + the guards around it
+│   ├── launchenv.py  setupenv.py              # the folder-env contract, resolved per surface
+│   ├── dynstack.py  lastrun.py  persist.py    # `--recipe` minting, `--last`, persist entries
 │   ├── scan.py  synclinks.py
 ├── tests/                    # pytest (unit + podman-gated integration); tests/fixtures/
 ├── catalog/                  # everything contributors author (see Vocabulary) — SHIPPED IN THE WHEEL
@@ -38,6 +48,10 @@ harnessed/
 
 Generated profiles are **not** in the repo — they are emitted to `$XDG_DATA_HOME/harnessed/profiles/`
 (the clone stays immutable source).
+
+The module list above is the **orientation subset, not the inventory** — `src/harnessed/` holds 37
+modules. `docs/codebase/STRUCTURE.md` has the generated full map; treat this tree as the answer to
+"where do I start reading", and that one as the answer to "does a module for X already exist".
 
 ## harnessed home (why `build` works from any directory)
 
@@ -147,6 +161,20 @@ services (started host-published, idempotently).
 | --- | --- | --- |
 | `harnessed container-run <harness> [path]` | container (podman pod + hatago + services) | the filesystem, the network, **and** the configuration |
 | `harnessed host-run claude [path]` | host-native — no podman, no MCP hub | the **configuration only** |
+
+Both verbs run the same composed stack through the **execution-backend seam**,
+`harnessed.backend.ExecutionBackend` — six capabilities (materialize config / provision tools /
+wire MCP / seed auth / wire services / apply isolation) that a backend implements and *sequences
+itself*. There is deliberately no shared driver: the host backend materializes before it
+provisions, the container backend provisions first because podman's copy-up is what populates the
+volume the mount set then delivers. `HostBackend` and `ContainerBackend` are the two conforming
+implementations and **both live in `launcher.py`**, next to the private helpers they call, so the
+dependency points into `backend.py` and never back out (`tests/test_module_boundaries.py`).
+Isolation is therefore a backend *capability*, not a property of the product — which is what makes
+a third backend (bwrap, devcontainer, microVM) a class to write rather than a fork of the launch
+path. **[BACKENDS.md](BACKENDS.md) is the full treatment**: the isolation spectrum, the capability
+contract, and `harnessed.capmatrix` as the machine-checked record of which primitive each backend
+honors.
 
 **The verb picks the BACKEND; a flag picks the STACK.** Both take the same options — `--stack/-s`
 for a stack you authored, `--recipe/-r` (repeatable) to compose one on the fly. The two are mutually
