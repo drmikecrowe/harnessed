@@ -7,8 +7,8 @@
 #   - no open PR is set to close it
 #   - no unexpired local claim exists for it
 #
-# This is the `bd ready` equivalent. GitHub can filter FOR blocked issues but
-# has no native "give me the unblocked ones" query, so it is computed here.
+# GitHub can filter FOR blocked issues but has no native "give me the unblocked
+# ones" query, so it is computed here.
 #
 # Requires: gh >= 2.94.0 (blockedBy/blocking JSON fields), jq
 # Usage: ready.sh [--repo owner/repo] [--limit N] [--label L] [--json]

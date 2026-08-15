@@ -55,20 +55,18 @@ adapted from `skills/gh-issues/SKILL.md` in [openclaw/openclaw](https://github.c
 MIT licensed, Copyright (c) 2026 OpenClaw Foundation. Attribution is carried in the skill's own
 Attribution section.
 
-## Changes made during the split
+## Invariants
 
-- **Renamed to `gh-issue-tracker`, directory and frontmatter together.** Previously the directory
-  was `gh-issues` while the frontmatter said `name: gh-backlog`. The directory name is what reaches
-  `~/.claude/skills/<name>`, so the two disagreed in every assembled profile.
-- **Claim env vars renamed with it**: `GH_BACKLOG_STATE_DIR`/`_CLAIM_TTL`/`_AGENT` →
-  `GH_ISSUE_TRACKER_*`, and the state dir `~/.local/state/gh-backlog` →
-  `~/.local/state/gh-issue-tracker`. `ready.sh` and `claim.sh` must agree on the state dir or claims
-  land where the ready query cannot see them. Any in-flight claims under the old path are orphaned;
-  they are advisory and expire in 2h.
-- **`--set-parent` corrected to `--parent`** in SKILL.md. The documented flag does not exist in
-  `gh` 2.96.0; the edit-relationships example would have failed as written.
-- **Scripts made executable (0755).** They were vendored 0600 and arrived 0600 in the assembled
-  profile — `ready.sh` failed with "permission denied" against a real profile on 2026-08-08.
-  `install.sh` also re-applies the bit, so the recipe is correct regardless of the copy step.
-- **`.beads/` not carried over.** A 1.4M beads Dolt database had been copied into the old skill
-  directory. It is working state, not skill content.
+Four things this recipe must keep true. Each is cheap to break and expensive to notice.
+
+- **The skill directory name and its frontmatter `name:` must match.** The *directory* name is what
+  reaches `~/.claude/skills/<name>`, so a disagreement between the two is invisible in the source
+  and wrong in every assembled profile.
+- **`ready.sh` and `claim.sh` must agree on the state dir** (`GH_ISSUE_TRACKER_STATE_DIR`, default
+  `~/.local/state/gh-issue-tracker`). If they disagree, claims land where the ready query cannot see
+  them and every claimed issue reads as available. Claims are advisory and expire after 2h.
+- **The parent flag is `--parent`.** `--set-parent` does not exist in `gh`; an example using it
+  looks plausible and fails when run.
+- **Scripts ship mode 0755.** A script vendored 0600 arrives 0600 in the assembled profile and dies
+  with "permission denied" at the point of use, not at build. `install.sh` re-applies the bit, so
+  the recipe is correct regardless of how the copy step behaves.
