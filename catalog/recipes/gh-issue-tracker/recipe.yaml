@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
+# Recipe: gh-issue-tracker — issue tracking over GitHub Issues (skill + SessionStart prime hook).
+#
+# Split out of mikes-universal-setup 2026-08-08. It lived there as `skills/gh-issues`, but it does
+# not belong in a "universal baseline": it is not universal (it needs a GitHub repo, an
+# authenticated gh, and a team that actually tracks work in Issues) and it is not passive — it
+# ships a SessionStart hook and a pinned CLI. A baseline recipe of always-on RULES should not drag
+# a tool + hook + credential mount behind it.
+#
+# Naming: the skill previously shipped in a directory called `gh-issues` while its own frontmatter
+# said `name: gh-backlog`. The DIRECTORY is what reaches ~/.claude/skills/<name>, so the two
+# disagreed in every assembled profile. Both are now `gh-issue-tracker`, and the claim-file env
+# vars were renamed with them (GH_BACKLOG_* -> GH_ISSUE_TRACKER_*); ready.sh and claim.sh must
+# agree on the state dir or claims are written where the ready query cannot see them.
+name: gh-issue-tracker
+description: "Backlog management over GitHub Issues: find ready (unblocked) work, file issues with real blocked-by/parent relationships, claim, close, and triage — plus a SessionStart hook that reports live queue state."
+
+# gh >= 2.94.0 is a HARD floor, not a preference: --parent / --blocked-by / --blocking and the
+# blockedBy/parent/subIssues JSON fields landed in 2.94.0 (June 2026). Below that the skill's core
+# operations silently degrade into writing "Blocked by: #12" prose, which is a mention rather than a
+# relationship and which nothing can query. install.sh enforces the floor at build time.
+# jq is required by ready.sh/claim.sh/prime.sh (blockedBy is a connection object, parsed with jq).
+tools:
+  - gh@2.97.0
+  - jq@1.8.2
+
+# gh talks to the REST + GraphQL API; github.com covers the OAuth device flow if the user ever runs
+# `gh auth login` inside a pod. Default-DROP otherwise, so both must be named.
+egress:
+  - api.github.com
+  - github.com
+
+# Auth is REFERENCED, never replicated: the real host gh config dir is bind-mounted as-is, so the
+# token stays the host's and is never baked into an image or copied into a per-stack home. Requires
+# the expanded path (e.g. /home/you/.config/gh) in ~/.config/harnessed/persist-allowlist — the
+# launch fails and names the exact line to add otherwise. Same pattern as the pulumi recipe.
+persist:
+  - scope: global
+    path: ~/.config/gh
+
+# The pod's $HOME is /home/harnessed, so the mirrored mount is NOT at ~/.config/gh inside the pod.
+# Point gh at the mirrored host path. Idempotent by construction (a plain export).
+init:
+  run: export GH_CONFIG_DIR="$HOST_HOME/.config/gh"
+
+setup:
+  summary: >-
+    gh auth is forwarded from your host, not baked. Run `gh auth login` ON THE HOST once, then
+    permit the mount: add your expanded home path plus /.config/gh (e.g. /home/you/.config/gh) as a
+    line in ~/.config/harnessed/persist-allowlist.
+  reference: https://cli.github.com/manual/gh_auth_login
+  # Exit 0 (still needed) when the host gh has no usable credential; suppressed once it does.
+  condition: "! gh auth status >/dev/null 2>&1"
+
+# Two delivery paths, deliberately both:
+#   - the SKILL is progressive disclosure — only its ~500-char description sits in context, and the
+#     body loads when the model recognizes a backlog task.
+#   - the HOOK carries live state (how many issues are ready, what is assigned to you), which a
+#     skill cannot: a skill body is static text, the hook runs a query.
+# They do not conflict and they answer different questions. Wiring rationale: WIRING.md (recipe
+# root, deliberately NOT under skills/ — it is authoring notes, and anything under skills/ is copied
+# into the profile and spends agent context).
+hooks:
+  # No `matcher` — fires on every SessionStart sub-type (startup/resume/clear). prime.sh already
+  # exits 0 with NO output when gh/jq are missing, gh is unauthenticated, or the repo does not
+  # resolve, so this is safe in a stack whose project is not a GitHub repo at all. The `test -x`
+  # guard covers the one case prime.sh cannot self-handle: the file not being there.
+  SessionStart:
+    - command: >-
+        sh -c 'p="$HARNESSED_CONFIG_DIR/skills/gh-issue-tracker/scripts/prime.sh";
+        test -x "$p" && "$p" 2>/dev/null; exit 0'
+
+# The always-on floor: durable work is an Issue, TodoWrite is within-session, and the hook has
+# ALREADY run so do not re-run prime.sh. Deliberately a rule rather than a paste into some repo's
+# CLAUDE.md — a rule travels with the recipe, so every stack that adds this recipe states the policy
+# and no stack that omits it does. Kept short on purpose: rules are context on every session, and
+# the skill carries the depth.
+rules:
+  - path: rules/work-tracking
+
+skills:
+  # [mine] Authored here. Repo resolution, the expiring claim-file pattern, and the duplicate-work
+  # checks are adapted from skills/gh-issues/SKILL.md in openclaw/openclaw (MIT, Copyright (c) 2026
+  # OpenClaw Foundation) — attribution is carried in the skill's own Attribution section.
+  - path: skills/gh-issue-tracker
+
+# install.sh restores the executable bit; the capability test confirms the skill actually landed.
+install:
+  script: install.sh
+
+expect:
+  skills: [gh-issue-tracker]
