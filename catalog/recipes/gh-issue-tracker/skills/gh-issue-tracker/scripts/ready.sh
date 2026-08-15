@@ -57,8 +57,12 @@ PR_LINKED="$(gh pr list --repo "$REPO" --state open --limit 200 \
   --json closingIssuesReferences \
   -q '.[].closingIssuesReferences[]?.number' 2>/dev/null | sort -u || true)"
 
+# The --json value is ONE argument: a comma-separated field list gh parses itself. Quoted so that
+# is unambiguous — unquoted, shellcheck reads the commas as a botched attempt to separate array
+# elements and fails the build on SC2054. Behaviour is identical either way; the quotes are for
+# the reader and the linter.
 ARGS=(--repo "$REPO" --state open --limit "$LIMIT"
-      --json number,title,labels,url,assignees,blockedBy)
+      --json "number,title,labels,url,assignees,blockedBy")
 [ -n "$LABEL" ] && ARGS+=(--label "$LABEL")
 
 gh issue list "${ARGS[@]}" \
