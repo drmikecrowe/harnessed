@@ -272,8 +272,8 @@ RUN echo 'PS1="\[\033[01;32m\][harnessed]\[\033[00m\] \[\033[01;34m\]\w\[\033[00
     echo 'mise trust -a 2>/dev/null' >> /home/${USERNAME}/.bashrc
 
 # profile.d runs for login shells too (bash -lc, as used by recipe init.run), unlike .bashrc which
-# only sources for interactive shells. Recipes whose tools resolve through mise shims (e.g. beads'
-# `bd`) need trust established before init.run executes, or mise aborts on the untrusted mise.toml.
+# only sources for interactive shells. Recipes whose tools resolve through mise shims need trust
+# established before init.run executes, or mise aborts on the untrusted mise.toml.
 USER root
 RUN echo 'mise trust -a 2>/dev/null || true' > /etc/profile.d/mise-trust.sh && \
     chmod 0644 /etc/profile.d/mise-trust.sh

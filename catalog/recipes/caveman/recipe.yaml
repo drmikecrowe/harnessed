@@ -60,7 +60,7 @@ expect:
 # First-run reminder (GAP 2): on SessionStart, print a one-time nudge to run /caveman-init. Gated
 # by a marker file IN THE PROJECT (not $HOME) — `$CLAUDE_PROJECT_DIR` is a real Claude Code env var
 # passed into hook commands, and `.claude/` inside the project is already a writable, expected spot
-# for recipe-local state in this catalog (see beads' `.claude/settings.local.json`). `bash -lc`
+# for recipe-local state in this catalog. `bash -lc`
 # forces a real shell regardless of how the hook runner invokes the command, so `$VAR` expansion is
 # guaranteed. No `matcher` — fires for every SessionStart sub-type (startup/resume/clear); the
 # marker check (not the matcher) is what makes this "once per project".
