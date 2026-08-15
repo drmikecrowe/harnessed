@@ -1,10 +1,9 @@
 # Backend Abstraction — Composition × Execution
 
-> **Status:** Direction confirmed 2026-07-19 (host-native-spike branch, PR #127): **product-for-
-> others, container-primary** (see §7). Containers/devcontainers get the investment; the host
-> backend stays as a maintained secondary. Companion to
-> [docs/harnessed-design.md](docs/harnessed-design.md) (the container-era "why"); fold into the
-> wiki once the `run` verb + capability matrix settle.
+> **Container-primary.** Containers and devcontainers get the investment; the host backend is a
+> maintained secondary — the fast local path and the auth escape hatch. Companion to
+> [ARCHITECTURE.md](ARCHITECTURE.md) (what the words mean) and
+> [docs/harnessed-design.md](docs/harnessed-design.md) (why the system is shaped this way).
 
 ## 1. The insight
 
@@ -70,7 +69,7 @@ Every backend implements the same seam so a composed stack can run on any of the
 | **wire services** | Stand up service-backed dependencies and route the harness to them (pod netns, compose, or N/A). |
 | **apply isolation** | Enforce the backend's isolation level (none / landlock / container / VM). |
 
-The seam is `harnessed.backend.ExecutionBackend` (bd harnessed-0tk.1). `launcher.HostBackend` and
+The seam is `harnessed.backend.ExecutionBackend`. `launcher.HostBackend` and
 `launcher.ContainerBackend` are the two conforming implementations; `_launch_host` and
 `container_run` are their sequencers.
 
@@ -88,18 +87,17 @@ network. A backend implements the capabilities and orders its own launch.
 
 Not every recipe primitive is honored on every backend. Where one is not, the launch still
 **succeeds** and the declaration is simply inert — silence, not breakage — so the launcher names the
-gap (bd harnessed-0tk.2).
+gap.
 
-**The matrix lives in `harnessed.capmatrix`, not here.** This section is a pointer on purpose. The
-table below used to be the matrix, and it went stale without anyone noticing: it recorded
-`service sidecars — host: ✗ (yet)` long after `HostBackend.wire_services` began calling
-`_ensure_services`. A table no test reads rots. `capmatrix.MATRIX` is read by conformance tests that
-fail if a registered backend has no column or a primitive has no cell, so bwrap (harnessed-0tk.3)
-and devcontainer (harnessed-0tk.4) must each fill theirs deliberately.
+**The matrix lives in `harnessed.capmatrix`, not here.** This section is a pointer on purpose:
+**a table no test reads rots.** A prose matrix drifts from the code silently, claiming a backend
+cannot do something it has done for months, and nothing fails when it does. `capmatrix.MATRIX` is
+read by conformance tests that fail if a registered backend has no column or a primitive has no
+cell, so a new backend must fill its column deliberately.
 
-As of harnessed-0tk.2 exactly one cell is DEGRADED: **`egress:` on `host`**, because
-`HostBackend.isolation` is `none` and `apply_isolation` does nothing — the allowlist is not
-enforced. Everything else the two built backends can do, they both do.
+Exactly one cell is DEGRADED: **`egress:` on `host`**, because `HostBackend.isolation` is `none`
+and `apply_isolation` does nothing — the allowlist is not enforced. Everything else the two built
+backends can do, they both do.
 
 Two gaps that look like matrix cells are handled better elsewhere, and `capmatrix` deliberately
 stays out of their way:
@@ -125,57 +123,25 @@ Consequence: **supply-chain scanning changes role by backend.** In a container i
 boundary; on a (sandboxed) host it is advisory hygiene ("warn before installing a bad pinned tool").
 Both are worth having; describe them honestly per backend.
 
-## 6. Sequencing (proposed)
+## 6. Standing decisions
 
-1. **Land the host backend additively** (this branch): commit the per-project `host_home` fix; keep
-   the container `launch` path intact. Host = backend #2, not a replacement.
-2. **Name the seam**: extract the §3 backend interface; make `_launch_host` and the container path
-   conform. (Enables everything below.)
-3. **Capability matrix + assembler gate** (§4): warn/refuse on unsupported primitive × backend.
-4. **`host-run` verb** (`harnessed-ltj`, shipped): `harnessed host-run claude [path]` —
-   host-native launch with no podman, sharing no flags with `launch`. The general `--backend`
-   selection surface (per-stack default in `stack.yaml`, unified `run` verb) remains open.
-5. **Container OAuth-token freshness — host token proxy** (`harnessed-nym`, P1): the root
-   frustration behind the host spike, fixed IN the container world. Per-instance credential copies
-   diverge (idle side goes stale → silent logout); replace with a host-side token endpoint over a
-   bind-mounted unix socket (the `guides/aws-sso.md` pattern) — one refresher, zero divergence.
-   The first container investment under the container-primary decision.
-6. **Evaluate devcontainer emit** (`harnessed-0tk.4`, promoted to P2): generate a
-   `devcontainer.json` + Feature from a composed stack; measure how much of the bespoke layer it
-   absorbs (IDE/Codespaces reach, Anthropic's blessed firewall). Decide whether it replaces or
-   complements bespoke podman. *(bwrap/landlock — `0tk.3` — deferred to P4: a sandboxed-host
-   backend is the personal-tool sweet spot, and the audience decision went the other way.)*
-7. **Per-harness backends** (`harnessed-72j/7rh/rlw/w8k`): antigravity/codex/opencode/omp
-   materialization — these are "the host/sandbox backend for harness X."
-8. **Docs + web** (`harnessed-2nu`): rewrite around composition × backends once the verb + matrix
-   settle (avoid documenting a moving interface twice).
+- **Container-primary.** Containers and devcontainers get the investment. The host backend is a
+  maintained secondary — the fast local path and the auth escape hatch — not a replacement and not
+  a target for new features.
+- **Container auth is a host token proxy**, over a bind-mounted unix socket: one refresher, zero
+  divergence. Not per-instance credential copies, which go stale on the idle side and present as a
+  silent logout, and not a shared read-write mount.
+- **The folder-env contract is unified.** A recipe's `env:` with `{persist:…}` references resolves
+  to the mode-correct path — bind-mount target in a container, host persist dir on a host launch.
+  One declaration, both modes; no container-only `ENV` entries in Dockerfiles.
+- **First-run setup refuses rather than guesses.** When a prompted config item has no TTY, fail
+  with guidance. A forever-value — a tracker prefix, an account id — must never be set by silence.
 
-## 7. Decisions (2026-07-19) and remaining open questions
+## 7. Open questions
 
-Decided (recorded on the bead IDs named below — beads itself was retired 2026-08-08):
-
-- **Audience** (`0tk.5`, closed): **product-for-others, container-primary.** Containers/
-  devcontainers get the investment; the host backend stays as a maintained secondary (fast local
-  path + auth escape hatch), no new feature investment; bwrap deferred.
-- **Container auth** (`harnessed-nym`, P1): host token proxy over a bind-mounted unix socket — not
-  per-instance copies, not a shared rw mount.
-- ~~**beads dolt-server placement** (`0tk.6`, closed): per-project `beads-server` sidecar is the
-  PRIMARY placement; the host shared-server survives only as what `harnessed host-run` uses today.
-  `0tk.6` detect+abort guards the seam between them.~~ **SUPERSEDED 2026-08-08** — beads was
-  retired; its recipes, service, stacks and the dolt guards are removed. Kept as a record of what
-  was decided on 2026-07-19, not as current design.
-- **Unified folder-env contract** (`0tk.7`, closed): recipe `env:` with `{persist:…}` references
-  resolves to the mode-correct path (bind-mount target in a container, host persist dir on
-  `harnessed host-run`) — one declaration, both modes. Static container-only `ENV` entries in
-  Dockerfiles replaced.
-- **Non-TTY first-run setup** (`0tk.8`, closed): refuse with guidance when a prompted config item
-  has no TTY — a forever-value (e.g. a tracker issue-ID prefix) is never set by silence.
-
-Still open:
-
-- **Does devcontainer subsume bespoke podman?** Compose-for-services and bespoke egress are the gaps
-  to test (`0tk.4`).
-- **Domain-level egress** on host/bwrap backends needs a proxy/DNS story (clawker-style) or is
+- **Does devcontainer subsume bespoke podman?** Compose-for-services and bespoke egress are the
+  gaps to test.
+- **Domain-level egress** on host and sandboxed-host backends needs a proxy/DNS story, or is
   declared out of scope for those backends.
-- **`--backend` selection surface**: per-stack default in `stack.yaml`? CLI override? Both?
-  (Decide inside the unified `run` verb work, `harnessed-ltj`.)
+- **The `--backend` selection surface**: a per-stack default in `stack.yaml`, a CLI override, or
+  both.
