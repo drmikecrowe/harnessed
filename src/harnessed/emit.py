@@ -802,7 +802,7 @@ def _hatago_entry(server: McpServer, project_path: str | Path | None = None) -> 
             entry["cwd"] = str(paths.container_project_path(project_path))
         entry.update(_hatago_curation(server))
         return entry
-    # Network-native server: hatago proxies it by URL (transport http/sse).
+    # Network-native server: hatago proxies it by URL (transport http).
     # url_env → emit placeholder; resolved at runtime from the container's env (never on disk).
     url = f"${{{server.url_env}}}" if server.url_env else server.url
     entry = {"url": url, "type": server.transport}

@@ -352,15 +352,42 @@ class TestParseServerTransportValidation:
         r = load_recipe(d)
         assert r.servers[0].transport == "http"
 
-    def test_sse_passes(self, tmp_path):
+    def test_sse_raises_naming_recipe_server_field_and_replacement(self, tmp_path):
+        """#249: 'sse' was a full _VALID_TRANSPORTS member and passed silently. The Streamable-
+        HTTP-only constraint (ARCHITECTURE.md/CLAUDE.md) must be enforced, not merely stated, and
+        the error must be actionable: which recipe, which server, which field, what to write
+        instead."""
         from harnessed.schema import load_recipe
         d = tmp_path / "recipe-sse"
         d.mkdir()
-        (d / "recipe.yaml").write_text(
+        manifest = d / "recipe.yaml"
+        manifest.write_text(
             "name: test\nmcp:\n  servers:\n    - name: srv\n      transport: sse\n      url: http://localhost:8080/sse\n"
         )
-        r = load_recipe(d)
-        assert r.servers[0].transport == "sse"
+        with pytest.raises(SchemaError, match="sse") as exc:
+            load_recipe(d)
+        msg = str(exc.value)
+        assert str(manifest) in msg  # names the recipe
+        assert "srv" in msg  # names the server
+        assert "transport" in msg  # names the field
+        assert "http" in msg  # names the replacement
+        # 'sse' must hit the dedicated migration branch, not merely fall through to the generic
+        # "invalid transport" rejection every OTHER bad value (grpc, websocket, ...) shares — the
+        # generic message also happens to contain "sse"/"srv"/"transport"/"http", so those four
+        # asserts alone cannot tell the two branches apart.
+        assert "is not supported" in msg
+        assert "endpoint" in msg
+
+    def test_sse_raises_with_no_manifest_prefix_when_called_directly(self):
+        """`_parse_servers` is also called directly (manifest=None) by tests that unit-test parsing
+        in isolation from a real file (e.g. test_direct_mcp_servers.py) — the recipe-path prefix
+        must be genuinely absent then, not a stray placeholder."""
+        from harnessed.schema import _parse_servers
+
+        with pytest.raises(SchemaError) as exc:
+            _parse_servers({"servers": [{"name": "srv", "transport": "sse", "url": "http://x/sse"}]})
+        msg = str(exc.value)
+        assert msg.startswith("mcp server 'srv':")
 
 
 class TestRecipeEgressAndTools:
