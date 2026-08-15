@@ -423,7 +423,7 @@ credentials needed for a green report).
 ## Constraints (unchanged)
 
 Claude format is canonical (every other agent adapts out of it); pnpm everywhere (no npm/npx); `uvx`
-for light Python MCP servers; credentials referenced from the host, never baked; Streamable-HTTP MCP
+for light Python MCP servers; credentials referenced, never replicated; Streamable-HTTP MCP
 (SSE is deprecated).
 
 **Credentials are referenced, never replicated (SOP).** harnessed never copies, seeds, or snapshots
