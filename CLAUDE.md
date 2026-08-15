@@ -113,6 +113,6 @@ A green run is not end-to-end proof: the suite runs no `podman build` and no `ha
 
 Durable work lives in GitHub Issues. The working rules ship as a rule, not from here.
 
-Beads was retired 2026-08-08; its recipes, service and stacks are gone from the catalog. Comments
-across the tree still cite bead IDs (`bd harnessed-8px.10`) as historical provenance — breadcrumbs
-to old decisions, not a live tracker. The 93 open beads became issues #232–#324.
+Source comments still cite `bd <id>` tokens. These are **not** a tracker and nothing reads them —
+treat one as an opaque marker on the comment it sits in, and never as a place to look something up.
+Do not add new ones.

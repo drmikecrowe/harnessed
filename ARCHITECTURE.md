@@ -147,12 +147,12 @@ Two consequences worth knowing:
 5. scan the populated volumes and merge the installer-written `settings.json` back into the profile.
 
 The volume is **composed**, never layered: podman's copy-up lifts the image's own content in, then
-the fanned profile content goes on top. That is what retired the old copy-the-baked-content-back-out
-pass — with one tree there is nothing left for a mount to shadow (bd harnessed-8px.22, where a
-profile dir mounted over `~/.claude/skills` hid 70 of 75 skills).
+the fanned profile content goes on top. One tree means nothing is left for a mount to shadow.
+**Never mount a profile directory over a config subtree** — a mount hides everything the image put
+there, so a profile dir over `~/.claude/skills` leaves only the skills the profile itself ships.
 
 `harnessed container-run <harness> --stack <name>` then launches the pod (derived image if present, else the agent image), starts
-**hatago** as a process *inside* that container (hatago-consolidation), and brings up any referenced
+**hatago** as a process *inside* that container, and brings up any referenced
 services (started host-published, idempotently).
 
 ## Two launch verbs, one per backend
@@ -198,8 +198,8 @@ separate `--path` option, and it still let `host-run <stack> --recipe X` silentl
 generated stack with the authored name demoted to a path, exit 0.
 
 The harness is required on both verbs, including `host-run` where **`claude` is currently the only
-accepted value** (`_HOST_HARNESS`; the other harnesses do not consume `CLAUDE_CONFIG_DIR` directly
-yet — bd harnessed-72j/-7rh/-rlw/-w8k). It is spelled out rather than defaulted because `path` is
+accepted value** (`_HOST_HARNESS`; the other harnesses do not consume `CLAUDE_CONFIG_DIR`
+directly). It is spelled out rather than defaulted because `path` is
 the second positional: a defaulted harness would make `host-run .` bind `.` as the harness.
 
 `host-run` materializes the stack's assembled profile into a per-stack `CLAUDE_CONFIG_DIR`
@@ -226,7 +226,7 @@ at least one `--recipe` — with nothing inherited and nothing composed there is
 A generated stack cannot use `ssh_keys:` — the private-key gate honors that field only from the
 user's own overlay. That is correct rather than unfortunate: `ssh_keys` is per-stack and a generated
 stack is shared across repos, so it cannot express "the key for *this* repo". Per-repo SSH
-identity comes from the forwarded agent plus your own `~/.ssh/config` (bd harnessed-ji6).
+identity comes from the forwarded agent plus your own `~/.ssh/config`.
 
 **Per-repo binding.** A launch records its resolved stack in harnessed's own state, and `--last`
 replays it:
@@ -240,13 +240,13 @@ No env var, no discovery, no precedence rules, and nothing written into the repo
 flag rather than the bare verb because bare is already the `default` baseline; with no record it
 fails loudly instead of falling back to one.
 
-This replaced a `mise.local.toml` task table harnessed wrote into each project (bd harnessed-7mt).
-mise keys trust per config *file* and trust does not cascade from a trusted ancestor, so that file
-re-prompted in every new worktree; automating the trust was rejected, since a mise config can carry
-`_.source` and trusting one grants code execution. Rejected alternatives from bd harnessed-7rx still
-stand: an unknown top-level `[harnessed]` table warns on every mise invocation, and
-`[env] HARNESSED_RECIPES` is live only when mise is activated, failing silently and expensively when
-it is not.
+**The record belongs in harnessed's own state, never in a mise config.** mise keys trust per config
+*file* and trust does not cascade from a trusted ancestor, so a file written into each project
+re-prompts in every new worktree — and automating that trust is not an option, because a mise config
+can carry `_.source`, so trusting one grants code execution. The two shapes that look like a way
+around it are both worse: an unknown top-level `[harnessed]` table warns on every mise invocation,
+and `[env] HARNESSED_RECIPES` is live only when mise is activated, so it fails silently and
+expensively when it is not.
 
 ## Agent of Empires mirror (optional)
 
@@ -275,8 +275,7 @@ detached write path, that failure is invisible.
 If registration happens earlier, the row becomes a bookmark for a launch that died on a renamed
 recipe. That row fails identically every time it is started from the dashboard.
 
-Two aoe behaviours the code is shaped around, both verified 2026-08-01 and neither documented by
-aoe:
+Two aoe behaviours the code is shaped around, neither documented by aoe:
 
 1. **`--cmd` is not stored verbatim.** It is validated against aoe's own tool list and silently
    substituted with the configured default, so a harnessed invocation came back as
