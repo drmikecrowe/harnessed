@@ -368,8 +368,8 @@ The split is forced, not stylistic. `setup` cannot run at build: no project is b
 `HARNESSED_PROJECT_DIR` is unresolvable. `install` used to be barred from container runtime for the
 mirror-image reason — re-running it per start re-pays the clone every launch — but that assumed
 **no persistence**. A fingerprint-gated per-stack volume removes the assumption: you pay once per
-stack *change*, not per start, exactly as the host path already did. Moving it there is bd
-harnessed-8px.21, and the reason is cost: a one-line edit to a recipe's `install.sh` cost **307s** as
+stack *change*, not per start, exactly as the host path already did. The reason it belongs there is
+cost: a one-line edit to a recipe's `install.sh` costs **307s** as
 a layer rebuild against **4.3s** for the same install executed natively. Almost none of that gap was
 download — the build already had cache mounts — it was podman committing layers over a large tree.
 
@@ -476,8 +476,7 @@ decides whether mechanism 1 is available for a given harness, so establish it be
   connections, one consistent row set; both links intact afterwards).
 - **Replaces the file → the link silently becomes a copy.** Claude Code rewrites
   `.credentials.json` by replacement, converting the link into a regular file whose refreshed token
-  never reaches the shared store. That is harnessed-8px.10, and it is a property of the harness, not
-  a flaw in symlinks.
+  never reaches the shared store. This is a property of the harness, not a flaw in symlinks.
 
 **This SOP governs credentials only.** Symlinking *history, sessions, memory and usage state* up to
 one shared location is deliberate design, not a violation — a universal rolled-up view across every
@@ -497,8 +496,8 @@ stack is the point, and those files are not subject to the replace-on-refresh ha
    Among the declared sources the **last** one wins, matching the global → project order the
    env-files are built in — and an explicit empty value is a declaration meaning *off*, not an
    absence. A project-level `CLAUDE_CODE_OAUTH_TOKEN=` therefore disables a user-global token and
-   correctly falls back to the credential file; answering from the first source instead left the
-   container with no token *and* no credentials (harnessed-7bk).
+   correctly falls back to the credential file. Answering from the *first* source instead leaves the
+   container with no token **and** no credentials.
 2. **Per-instance credential seed (legacy fallback — NOT mechanism 1).** When no OAuth token is
    configured, the launcher seeds a per-instance copy of `~/.claude/.credentials.json`, mounted
    **rw** so the container can refresh it. This is acknowledged replication — it violates the SOP
@@ -533,8 +532,10 @@ deleted — or, when configured, the shared `CLAUDE_CONFIG_DIR` copy is never de
 credential file, so the launcher **bind-mounts that host dir read-write** and runs plain `omp`
 (never `--profile`, which points omp at an isolated *empty* store — a credential-only seed lands on
 the login screen). That is mechanism 1 (reference the live store, at dir granularity): shared host
-state, deliberately not isolated. Do not "fix" it back to isolation by snapshotting the dir — that
-was built, tried, and rejected; see [design §4c](docs/harnessed-design.md).
+state, deliberately not isolated. **Do not "fix" it back to isolation by snapshotting the dir.** A
+snapshot fragments auth, usage and sessions across every stack, resets usage on recreate, and still
+has to copy most of the directory to work — all cost, no isolation anyone wanted. See
+[design §7](docs/harnessed-design.md).
 
 Both host backends inherit the same shape, because `CLAUDE_CONFIG_DIR` and `PI_CODING_AGENT_DIR`
 each move config **and** credentials together. The per-stack home therefore holds content

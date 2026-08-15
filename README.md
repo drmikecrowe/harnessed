@@ -37,11 +37,11 @@ skill/plugin/MCP/memory combinations — in clean, reproducible, throwaway-or-pe
 without dragging every host default into the container or polluting `~`.
 
 > The full architecture and design rationale live in **[docs/harnessed-design.md](docs/harnessed-design.md)**
-> (§1–§18 — the *why*). This README is the *how*: install, build, and run.
+> (the *why*). This README is the *how*: install, build, and run.
 
 ## Isolated mode
 
-Every stack runs in **isolated mode**: auth seeded from host credentials, config layer (skills/commands/hooks/MCP) sourced exclusively from an assembled stack profile — **nothing from host config** leaks in. The harness container + hatago MCP hub run as a podman pod. See [design §2](docs/harnessed-design.md).
+Every stack runs in **isolated mode**: auth seeded from host credentials, config layer (skills/commands/hooks/MCP) sourced exclusively from an assembled stack profile — **nothing from host config** leaks in. The harness container + hatago MCP hub run as a podman pod. See the [design rationale](docs/harnessed-design.md).
 
 ## Install
 
@@ -194,7 +194,7 @@ environment — there is no `harnessed auth` command (see [Supply chain & securi
 - **[AWS SSO](docs/guides/aws-sso.md)** — opt-in AWS credentials via the aws-sso ECS server (short-lived STS, env-only, never baked).
 - **[Egress & exposing services](docs/guides/egress.md)** — the container egress firewall; recipe-declared `egress:` hosts + pinned `tools:` to conditionally open a service (e.g. Pulumi Cloud).
 - **[Troubleshooting](docs/guides/troubleshooting.md)** — podman setup, first-run build, `--fresh`, host-persisted sessions, the nightly re-scan timer.
-- **[Architecture & design](docs/harnessed-design.md)** — the *why* behind every decision (§1–§18).
+- **[Architecture & design](docs/harnessed-design.md)** — the *why* behind every decision.
 
 ## Recipe roadmap
 
@@ -227,8 +227,8 @@ the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-re
 
 ## Supply chain & security
 
-- **pnpm everywhere** — every JavaScript install (global, per-recipe, hatago's bundled servers) uses **pnpm**, never `npm`/`npx`. `pnpm dlx` replaces `npx`. A managed supply-chain config applies `minimumReleaseAge` cooldowns and lifecycle-script default-deny. Recipe validation flags raw `npm`/`npx` and points at the pnpm equivalent ([design §7](docs/harnessed-design.md)).
-- **In-image supply-chain scan (advisory)** — the derived image's final layer runs **snyk** (over mise node globals + recipe installs, via a synthesized manifest; token-gated by a build *secret*, warn-skips without one), plus credential-free **osv-scanner** (recipe lockfiles) and **pip-audit** (the Python env). It **reports** a compact severity summary and writes `scan-report.json` — it does **not** fail the build. Rationale: harnessed installs third-party agent tooling whose dependency trees always carry open advisories. A hard gate blocks every build on code you do not control. Visibility is the deliverable ([design §7](docs/harnessed-design.md)).
+- **pnpm everywhere** — every JavaScript install (global, per-recipe, hatago's bundled servers) uses **pnpm**, never `npm`/`npx`. `pnpm dlx` replaces `npx`. A managed supply-chain config applies `minimumReleaseAge` cooldowns and lifecycle-script default-deny. Recipe validation flags raw `npm`/`npx` and points at the pnpm equivalent ([design rationale](docs/harnessed-design.md)).
+- **In-image supply-chain scan (advisory)** — the derived image's final layer runs **snyk** (over mise node globals + recipe installs, via a synthesized manifest; token-gated by a build *secret*, warn-skips without one), plus credential-free **osv-scanner** (recipe lockfiles) and **pip-audit** (the Python env). It **reports** a compact severity summary and writes `scan-report.json` — it does **not** fail the build. Rationale: harnessed installs third-party agent tooling whose dependency trees always carry open advisories. A hard gate blocks every build on code you do not control. Visibility is the deliverable ([design rationale](docs/harnessed-design.md)).
 - **Opt-in secrets** — varlock + 1Password resolve `op://` refs as **env only** (never a profile, image layer, or repo file) — into the pod for `container-run`, into the agent process for `host-run`. Copy `.env.schema.example` to `~/.config/harnessed/.env.schema` to turn it on. See **[docs/guides/secrets.md](docs/guides/secrets.md)**.
 - **Nightly re-scan** — a systemd user timer re-runs osv-scanner **online** against installed images so a CVE disclosed *after* build still surfaces. See **[troubleshooting](docs/guides/troubleshooting.md#nightly-re-scan-timer-sec-04)** for setup (including the `loginctl enable-linger` prerequisite).
 - **Secrets/auth referenced, never baked** — Claude OAuth, scanner tokens, and 1Password secrets reach the instance as env or read-only mounts; never an image layer.

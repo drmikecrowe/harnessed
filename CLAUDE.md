@@ -38,7 +38,7 @@ Keep layout and vocabulary in ARCHITECTURE.md, not here.
 - **Credentials referenced, never replicated.** Never bake, commit, copy, seed, or snapshot into a
   per-stack home. Reference the live store (mount, symlink, token/broker URL). A symlink counts only
   while the harness rewrites **in place** — one that replaces the file turns the link into a stale
-  copy (harnessed-8px.10). Symlinking history/session/usage state up is deliberate design, not a
+  copy. Symlinking history/session/usage state up is deliberate design, not a
   violation. See ARCHITECTURE.md §Constraints.
 - **MCP transports: `stdio` and Streamable-HTTP only** (SSE rejected at validation).
 - Author under **`catalog/`** (repo) or **`~/.config/harnessed/catalog`** (user overlay, wins on
