@@ -13,6 +13,7 @@ repo-blind. Open `src/` only with a specific question the docs did not answer, o
 | Who calls this symbol? What does a change reach? Show me one function. | `codebase-memory-mcp` — see [AGENTS.md](AGENTS.md) §Codebase graph for the tools **and their warnings**. Beats `rg` + `Read`. |
 | How is code written? What is tested or known-weak? | [docs/codebase/](docs/codebase/) — CONVENTIONS, TESTING, CONCERNS |
 | How do I author a recipe/service/stack? Set up a dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
+| *Where* does a stack run? What is a backend, and what does each one honor? | [BACKENDS.md](BACKENDS.md) — the `ExecutionBackend` seam, the isolation spectrum, and why `capmatrix` (not a table) is the record. |
 | *Why* is it built this way? | [docs/harnessed-design.md](docs/harnessed-design.md) |
 | What must I not do operationally? | [AGENTS.md](AGENTS.md) |
 | What work is open or decided? | GitHub Issues — never a markdown TODO |
