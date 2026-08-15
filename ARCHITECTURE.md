@@ -423,8 +423,8 @@ credentials needed for a green report).
 ## Constraints (unchanged)
 
 Claude format is canonical (every other agent adapts out of it); pnpm everywhere (no npm/npx); `uvx`
-for light Python MCP servers; credentials referenced, never replicated; Streamable-HTTP MCP
-(SSE is deprecated).
+for light Python MCP servers; credentials referenced, never replicated; MCP transports are `stdio`
+and Streamable-HTTP (SSE is rejected at validation).
 
 **Credentials are referenced, never replicated (SOP).** harnessed never copies, seeds, or snapshots
 a harness's credential store into a per-stack home — container or host. The reason is structural,

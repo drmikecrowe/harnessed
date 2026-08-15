@@ -105,7 +105,7 @@ class McpServer:
 
     `transport` is explicit (RESEARCH Pitfall B). A `stdio` server (with `command`)
     is run by hatago as a child (stdio→HTTP) and must be baked into the hatago image;
-    a network-native server (`url`, transport http/sse) is proxied by hatago by URL.
+    a network-native server (`url`, transport http) is proxied by hatago by URL.
     """
 
     name: str
@@ -1254,7 +1254,7 @@ class ServiceDef:
         return any("{password}" in v for v in self.client_env.values())
 
 
-_VALID_TRANSPORTS = frozenset({"stdio", "http", "sse"})
+_VALID_TRANSPORTS = frozenset({"stdio", "http"})
 
 
 def _parse_oauth_callback_port(entry: dict) -> int | None:
@@ -1293,17 +1293,33 @@ def _parse_oauth_callback_port(entry: dict) -> int | None:
     return port
 
 
-def _parse_servers(raw_mcp: dict) -> list[McpServer]:
+def _parse_servers(raw_mcp: dict, manifest: Path | None = None) -> list[McpServer]:
+    """`manifest` is the owning recipe.yaml path, threaded in from `load_recipe` so a validation
+    error names the recipe it came from (bd #249) — the same `{manifest}:` prefix convention every
+    sibling parser in this file uses (`_parse_egress`, `_parse_tools`, ...). Optional and unused by
+    tests that call `_parse_servers` directly to unit-test parsing in isolation from a real file.
+    """
     servers: list[McpServer] = []
+    loc = f"{manifest}: " if manifest is not None else ""
     for entry in (raw_mcp or {}).get("servers", []) or []:
         if "name" not in entry:
             raise SchemaError(f"mcp server entry missing 'name': {entry!r}")
         transport = entry.get("transport", "stdio")
+        if transport == "sse":
+            # #249: 'sse' used to be a full _VALID_TRANSPORTS member and passed silently — the
+            # Streamable-HTTP-only constraint (ARCHITECTURE.md/CLAUDE.md §Constraints) was stated
+            # but never enforced. Rejected explicitly, ahead of the generic branch below, so the
+            # migration hint is specific rather than folded into "invalid transport".
+            raise SchemaError(
+                f"{loc}mcp server '{entry['name']}': transport 'sse' is not supported — "
+                "this project is Streamable-HTTP MCP only. Set transport: http and point 'url' "
+                "at the server's Streamable-HTTP endpoint."
+            )
         if transport not in _VALID_TRANSPORTS:
             raise SchemaError(
-                f"mcp server '{entry['name']}': invalid transport '{transport}' "
+                f"{loc}mcp server '{entry['name']}': invalid transport '{transport}' "
                 f"(supported: {', '.join(sorted(_VALID_TRANSPORTS))}). "
-                "Use 'http' for Streamable-HTTP servers (SSE is deprecated)."
+                "Use 'http' for Streamable-HTTP servers."
             )
         if entry.get("service") and entry.get("command"):
             raise SchemaError(
@@ -1319,10 +1335,9 @@ def _parse_servers(raw_mcp: dict) -> list[McpServer]:
             )
         if direct and transport != "http":
             # An omitted transport defaults to `stdio`, which for a direct server emits
-            # `type: "stdio"` next to a URL — a shape the harness cannot act on. `sse` is worse: it
-            # emits a type this project treats as removed (ARCHITECTURE §Constraints:
-            # Streamable-HTTP only). Neither is a thing to normalise silently, because both produce
-            # a config that parses and a server that never connects.
+            # `type: "stdio"` next to a URL — a shape the harness cannot act on. Not a thing to
+            # normalise silently: it produces a config that parses and a server that never
+            # connects. (`sse` can never reach here — the transport check above rejects it first.)
             raise SchemaError(
                 f"mcp server '{entry['name']}': 'direct' requires transport 'http' — got "
                 f"'{transport}'. A direct server is addressed by URL over Streamable-HTTP; there is "
@@ -1767,7 +1782,7 @@ def load_recipe(recipe_dir: Path, *, strict: bool = False, ref: str = "") -> Rec
     return Recipe(
         name=raw["name"],
         description=raw.get("description", ""),
-        servers=_parse_servers(raw.get("mcp", {}) or {}),
+        servers=_parse_servers(raw.get("mcp", {}) or {}, manifest),
         skills=_parse_fileext(raw.get("skills")),
         commands=_parse_fileext(raw.get("commands")),
         rules=_parse_fileext(raw.get("rules")),

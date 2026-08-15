@@ -258,9 +258,9 @@
         "command": { "description": "Executable for a stdio child server (e.g. uvx). Mutually exclusive with `service`. Never raw npm/npx — use pnpm dlx.", "type": "string" },
         "args": { "description": "Arguments to `command`.", "type": "array", "items": { "type": "string" } },
         "transport": {
-          "description": "Transport. 'stdio' (default) → hatago child; 'http' → Streamable-HTTP URL proxy. 'sse' is deprecated.",
+          "description": "Transport. 'stdio' (default) → hatago child; 'http' → Streamable-HTTP URL proxy. 'sse' is not supported (Streamable-HTTP MCP only).",
           "type": "string",
-          "enum": ["stdio", "http", "sse"],
+          "enum": ["stdio", "http"],
           "default": "stdio"
         },
         "url": { "description": "Endpoint for a network-native server (transport http).", "type": "string" },

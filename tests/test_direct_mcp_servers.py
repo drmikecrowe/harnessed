@@ -85,11 +85,17 @@ class TestTheRecipeDeclaresIt:
 class TestADirectServerMustBeAddressableAsOne:
     """`transport` defaults to `stdio`, and `_direct_entry` writes it straight through as `type`.
     So an omitted transport emitted `type: "stdio"` beside a URL — a config that parses and a server
-    that never connects — and `sse` emitted a type this project treats as removed.
+    that never connects.
 
     The suite could not see it: the test helper always passed `transport="http"`, so every direct
     test was written from the one value that works. Same blind spot as the `dlx` bug. Raised by
     CodeRabbit on PR #380.
+
+    `sse` is deliberately NOT parametrized here (#249): the transport check now rejects it before
+    `_parse_servers` ever reaches the `direct` branch this class covers, so a case that used to
+    exercise "sse is worse than an omitted transport for a direct server" would now just re-test
+    the dedicated sse migration message from `TestParseServerTransportValidation` under a
+    misleading name.
     """
 
     def test_an_omitted_transport_is_refused(self):
@@ -97,11 +103,10 @@ class TestADirectServerMustBeAddressableAsOne:
             _parse_servers({"servers": [{"name": "a", "direct": True, "url": URL}]})
         assert "http" in str(exc.value)
 
-    @pytest.mark.parametrize("transport", ["stdio", "sse"])
-    def test_a_non_http_transport_is_refused(self, transport):
+    def test_a_non_http_transport_is_refused(self):
         with pytest.raises(SchemaError):
             _parse_servers(
-                {"servers": [{"name": "a", "direct": True, "url": URL, "transport": transport}]}
+                {"servers": [{"name": "a", "direct": True, "url": URL, "transport": "stdio"}]}
             )
 
     def test_http_is_accepted(self):

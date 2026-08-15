@@ -100,7 +100,7 @@ explicitly in `AGENTS.md`). `build`, `test`, `list`, and `harnessed-tools assemb
   a layer is built. Pin to a tag or a commit SHA.
 - **pnpm, never `npm`/`npx`** (`pnpm dlx` replaces `npx`); **`uvx`** for light Python MCP servers.
   Enforced inside `install.sh` and Dockerfiles alike.
-- **Streamable HTTP only.** SSE is deprecated; do not author it.
+- **`stdio` and Streamable HTTP only.** `transport: sse` is rejected at validation; do not author it.
 - **A recipe Dockerfile may not write to `~/.claude`** — that content is invisible on a host launch
   and shadowed by the profile mount in a container. Use `install.script` writing to
   `$HARNESSED_CONFIG_DIR`.
