@@ -72,6 +72,11 @@ CONTAINER_ONLY: dict[str, str] = {
     "_isolated_auth_fresh_wipe": "resets the container-side isolated-auth store",
     "_strip_var_from_env_files": "scrubs the token from podman --env-file temps; host mode has no env-file",
     "_omp_agent_mount": "bind mount",
+    "_omp_config_seed_mount": (
+        "sanitizes a per-instance copy of the host config.yml; on the host the legacy "
+        "claude-hooks-bridge path it strips is a real working path, so removing it there "
+        "would change the user's live omp config"
+    ),
     "_omp_mcp_seed_mount": "bind mount",
     # Both halves of the mcp-remote OAuth fix are container-only BY NATURE, not by decision: each
     # exists purely to undo something the pod boundary breaks, and on the host there is no boundary
@@ -130,7 +135,7 @@ CONTAINER_ONLY: dict[str, str] = {
     "_require_supported_harness": "`host_run` calls it itself, before delegating",
     "_resolve_stack": "`host_run` calls it itself — shared --stack/--recipe resolution",
     "_resolve_last": "`host_run` calls it itself — shared --last replay resolution, and it must run "
-                     "BEFORE the sequencer, since it is what decides which stack the launch is",
+    "BEFORE the sequencer, since it is what decides which stack the launch is",
 }
 
 

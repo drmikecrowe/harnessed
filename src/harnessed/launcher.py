@@ -124,6 +124,7 @@ from .mounts import (
     _mcp_remote_pod_args,
     _mcp_remote_token_file,
     _omp_agent_mount,
+    _omp_config_seed_mount,
     _omp_mcp_seed_mount,
     _persist_mounts,
 )
@@ -2883,6 +2884,9 @@ class ContainerBackend(ExecutionBackend):
         )
         # Share omp's state with the host (auth + usage + sessions) via a bind mount of ~/.omp/agent.
         self.mount_args += _omp_agent_mount(spec.harness)
+        # Shadow only config.yml when it names the retired local claude-hooks-bridge path; the
+        # image-installed plugin is the canonical bridge inside the pod.
+        self.mount_args += _omp_config_seed_mount(spec.harness, self.inst)
         # Point omp at the in-container hatago hub (nested ro mount shadowing the agent dir's
         # mcp.json), so a stack's assembled MCP servers reach omp — mirrors claude's --mcp-config
         # wiring. Emitted here, immediately after the dir mount it shadows, because the ORDER of
