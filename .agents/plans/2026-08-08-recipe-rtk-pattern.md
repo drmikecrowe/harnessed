@@ -247,6 +247,50 @@
 > commit — that is the property this committed copy exists to provide, and that the gitignored
 > working copy cannot.
 
+> **REVISION 17** (2026-08-14) — **the human ruled REVISION 16's gate, and the mechanism-only unit
+> shipped as PR #379.** No file this revision touches was written by the implementer resolving its
+> own ambiguity; both the ruling and the scope change below are the human's, taken verbatim from
+> issue #329 comments at `2026-08-14T10:27:26Z` and `2026-08-14T12:19:01Z`.
+>
+> **The ruling: narrow reading, ship the mechanism.** The S9 gate blocks the ~20 recipe test
+> scripts (D3's reading); it does not block the host execution path itself (§4's `capability.py`
+> plus, per M-3, `hostrun.py`/`setupenv.py`). REVISION 16's circularity argument stood: S9 asks
+> whether a *host assembly* can complete in CI, and building the host execution path is what would
+> make that question answerable, so the broad reading has no opener and cannot gate its own
+> prerequisite.
+>
+> **What shipped — PR #379** (`worktree-worktree-phase4-host-runner`, merged 2026-08-14). Two
+> runtime seams — `hostrun._host_run_installs` (host) and `volumes._run_container_installs`
+> (container) — now run each recipe's `tests/*.sh` immediately after that recipe's install script,
+> in that install's own environment, through one shared executor
+> (`capability.run_test_command`); a failing test aborts the install. M-3's file list was correct:
+> `hostrun.py` and `setupenv.py` needed touching, not just `capability.py`. M-2's live violation is
+> fixed as part of the same PR — `catalog/recipes/caveman/tests/hook-fires.sh` moved from
+> `${CONTAINER_HOME:-/home/harnessed}` to `$HARNESSED_CONFIG_DIR`, so it now runs correctly in both
+> modes. A new guard forbids any future recipe test from reading a container-only variable.
+>
+> **The scope change: AC-6's per-recipe script count leaves the epic.** The human's second ruling,
+> stated on the PR itself: *"AC-6 is NOT delivered by this. This is the runner only; the ~20
+> per-recipe scripts remain, and the human reframed them as authored-as-recipes-are-written rather
+> than an epic AC."* AC-6 (§3) is amended accordingly: the epic's obligation is the **mechanism**
+> (a recipe that ships a test gets it run, in both modes, and a failure blocks the install) — not an
+> inventory of every installing recipe having one authored during this epic. Writing a recipe's
+> `tests/*.sh` is now ordinary practice when that recipe is authored or migrated (Phases 0–3 already
+> did this for every recipe they touched: rtk and caveman both ship one), not a Phase 4 checklist.
+> **Consequence: AC-6a is satisfied by PR #379.** AC-6b is unchanged — still gated on #250, which
+> this epic was always scoped to route around, not fix (§7). **Phase 4 is therefore done for
+> epic-closure purposes; the epic's only remaining external dependency is #250, tracked separately.**
+>
+> **Known limits carried forward, not epic-blocking** (from PR #379's own report — recorded here so
+> they are not lost, not because they gate anything): `_run_container_installs` now has two
+> execution boundaries and a test stubbing only `_run` against a tests-shipping recipe will really
+> invoke podman (recommends a conftest guard); `capability._exec`/`_exec_script`'s pre-existing
+> strict-UTF-8 decode on the separate `harnessed-tools test` verb path was deliberately left, per
+> this spec's N-3 constraint that path is untouched; `diff-cover` is not declared in the project, so
+> changed-line coverage was checked by inspection, not an auto-failing gate. None of these are new —
+> they are the same three follow-ups the PR itself flagged, restated here so the committed plan and
+> the PR agree on what is still open.
+
 - **Tracker**: [#329](https://github.com/drmikecrowe/harnessed/issues/329) (epic).
   Children: [#261](https://github.com/drmikecrowe/harnessed/issues/261) (reporting),
   [#330](https://github.com/drmikecrowe/harnessed/issues/330) (agents).
@@ -934,14 +978,21 @@ cost for a small hygiene win. Consequences, now binding:
 - **AC-4 — `install.sh` performs no version-bearing download** whose version it declares itself.
 - **AC-5 — first line of defence is a guard.** Every recipe whose `tools:` delivers an executable has
   `<tool> --version` in `install.sh` before any wiring (rtk's pattern).
-- **AC-6 — every installing recipe has a behavioural test, run POST-ASSEMBLY against the real
-  install.** It must (a) invoke the thing installed, (b) assert it identifies itself where a name
-  collision is possible, and (c) assert the **assembled** wiring is present (`settings.json` entry,
-  skill file on disk, MCP server connected) — not merely that a file exists.
-  - **AC-6a (host)** — the same scripts run against a host assembly, no podman. Gated on S9.
-  - **AC-6b (container)** — the existing podman path. Gated on #250.
+- **AC-6 — a recipe that ships a behavioural test gets it run POST-ASSEMBLY against the real
+  install, in both modes, and a failure blocks the install.** A qualifying test must (a) invoke the
+  thing installed, (b) assert it identifies itself where a name collision is possible, and (c)
+  assert the **assembled** wiring is present (`settings.json` entry, skill file on disk, MCP server
+  connected) — not merely that a file exists.
+  - **AC-6a (host)** — the runtime seam and executor (`hostrun.py`, `capability.py`,
+    `setupenv.py`). **Satisfied — PR #379, REVISION 17.**
+  - **AC-6b (container)** — the equivalent podman-path seam. **Satisfied — PR #379**; argv-asserted
+    only, real execution gated on #250, unchanged (§7 — this epic routes around #250, not fixes it).
   - A recipe whose install differs between modes must be asserted in **both**. A single-mode pass for
     a two-mode recipe is `SUBSTITUTED`, not `PASSED`.
+  - **Amended by REVISION 17**: authoring a `tests/*.sh` for every installing recipe is no longer
+    this epic's obligation — the human reframed that as ordinary practice going forward, not a
+    Phase 4 inventory. AC-6 is satisfied by the mechanism above; it does not require this epic to
+    reach 100% recipe-test coverage before closing.
 
 ### The three pin outcomes — one vocabulary, all gates
 
@@ -1259,14 +1310,15 @@ the implementer. For each: same files land in `$HARNESSED_CONFIG_DIR`, the deriv
 `install.cache` key still hits on a second launch, and `harnessed update` lists the pin as resolvable
 or held (S8 decides which).
 
-**Phase 4 — tests for all** (AC-6a now, AC-6b gated on #250).
+**Phase 4 — tests for all** (AC-6a **done**, AC-6b **done** modulo real container execution, gated
+on #250). **DONE — REVISION 17 (2026-08-14).**
 
-> **BLOCKED pending a human ruling — REVISION 16 (2026-08-14).** "S9 gates Phase 4" (this line's
-> section) and D3's "do not write 20 test files … until S9 answers" gate different things, and a
-> mechanism-only unit falls in the gap between them. REVISION 16 states both readings, the
-> circularity that S9 cannot be answered while no host execution path exists, and three measurements
-> that resize this phase (only 2 recipe scripts exist; caveman's is container-only; AC-6a needs
-> `hostrun.py` + `setupenv.py`, not `capability.py` alone). **Rule the gate before starting Phase 4.**
+> **RULED — REVISION 17 (2026-08-14).** The human resolved REVISION 16's gate: narrow reading, ship
+> the mechanism (S9 blocks the 20 recipe scripts, not the host execution path itself — the broad
+> reading has no opener, per REVISION 16's own circularity argument). PR #379 shipped it:
+> `hostrun.py` + `setupenv.py` + `capability.py`, exactly M-3's file list, plus M-2's caveman fix.
+> The human then reframed AC-6's script count as ordinary per-recipe practice, not a Phase 4
+> inventory — see REVISION 17's full text above and the amended AC-6 in §3.
 
 ### Spikes (do these first; they change §3)
 
@@ -1347,10 +1399,13 @@ it gates only which version A3 pins, not whether A3 can proceed.
   no tag re-expresses the shipped tree and both hold on **policy**. The earlier blanket "recommend
   holding" in §1 Family B is superseded as a *decision* and survives as the outcome the assessment
   independently reached.
-- **S9** _(from D3, gates Phase 4)_ — can a **host** assembly complete in CI (mise present, network,
-  no podman)? **REVISION 16**: still unanswered, and note it is currently **unanswerable** — there is
-  no host execution path in the tree, so there is nothing to put to CI. Whether building that path
-  is itself gated by S9 is the open ruling REVISION 16 records.
+- **S9** _(from D3, gates the 20 recipe scripts, not the mechanism — RULED by REVISION 17)_ — can a
+  **host** assembly complete in CI (mise present, network, no podman)? Still **unanswered as a
+  spike**: there was and is no host execution path to put to CI test-question for. REVISION 17
+  resolves what it gates, not the question itself — the human ruled the narrow reading (S9 blocks
+  authoring the ~20 recipe scripts as a CI question, not the host runner PR #379 built), so the
+  mechanism shipped without waiting on S9. S9 remains open for whoever later decides whether to run
+  host assemblies in CI at all.
 - **S10** _(from REVISION 15, gates A3's VALUE only — not A3 itself)_ — which version does the
   shipped `harnessed-claude` image actually carry today? The Dockerfile pipes the installer with no
   argument, so the version is whatever the downloaded bootstrap binary defaults to, and that default
