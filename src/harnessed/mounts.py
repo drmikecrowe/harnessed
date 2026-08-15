@@ -17,9 +17,14 @@ import re
 import shutil
 import socket
 
+from io import StringIO
+
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
+
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from . import paths
 from . import persist
@@ -927,6 +932,62 @@ def _omp_agent_mount(harness: str) -> list[str]:
         )
         return []
     return ["-v", f"{host_agent}:{_CONTAINER_HOME_STR}/.omp/agent:rw"]
+
+
+def _is_legacy_omp_bridge_extension(value: object) -> bool:
+    """True for the old local-dev bridge path now supplied by the omp image plugin."""
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip().replace("\\", "/").rstrip("/")
+    return normalized.endswith("/omp-extensions/claude-hooks-bridge")
+
+
+def _omp_config_seed_mount(harness: str, inst: str) -> list[str]:
+    """Shadow omp's host config.yml only when it names the retired local bridge path.
+
+    The omp image already installs @drmikecrowe/omp-claude-hooks-bridge under ~/.omp/plugins.
+    Some host configs still carry the older explicit extension path
+    ~/Programming/AI/omp-extensions/claude-hooks-bridge. Inside the pod, omp expands that `~` to
+    /home/harnessed, so startup warns that the module is missing. Do NOT make that path exist: the
+    installed plugin would then load once from ~/.omp/plugins and again through the compatibility
+    path. Instead, mount a per-instance copy of config.yml with only that obsolete entry removed.
+    """
+    if harness != "omp":
+        return []
+
+    host_config = Path.home() / ".omp" / "agent" / "config.yml"
+    if not host_config.is_file():
+        return []
+
+    yaml = YAML()
+    try:
+        data = yaml.load(host_config.read_text(encoding="utf-8"))
+    except (OSError, YAMLError):
+        return []
+    if not isinstance(data, dict):
+        return []
+
+    extensions = data.get("extensions")
+    if not isinstance(extensions, list):
+        return []
+
+    kept = [entry for entry in extensions if not _is_legacy_omp_bridge_extension(entry)]
+    if len(kept) == len(extensions):
+        return []
+    if kept:
+        data["extensions"] = kept
+    else:
+        del data["extensions"]
+
+    state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
+    state_dir = state_root / "harnessed" / inst
+    state_dir.mkdir(parents=True, exist_ok=True)
+    seed = state_dir / "omp-config.yml"
+    rendered = StringIO()
+    yaml.dump(data, rendered)
+    seed.write_text(rendered.getvalue(), encoding="utf-8")
+
+    return ["-v", f"{seed}:{_CONTAINER_HOME_STR}/.omp/agent/config.yml:ro"]
 
 
 def _omp_mcp_seed_mount(harness: str, inst: str) -> list[str]:
