@@ -39,7 +39,7 @@ Keep layout and vocabulary in ARCHITECTURE.md, not here.
   while the harness rewrites **in place** — one that replaces the file turns the link into a stale
   copy (harnessed-8px.10). Symlinking history/session/usage state up is deliberate design, not a
   violation. See ARCHITECTURE.md §Constraints.
-- **Streamable-HTTP MCP only** (SSE rejected at validation).
+- **MCP transports: `stdio` and Streamable-HTTP only** (SSE rejected at validation).
 - Author under **`catalog/`** (repo) or **`~/.config/harnessed/catalog`** (user overlay, wins on
   clash). Profiles generate to `$XDG_DATA_HOME/harnessed/profiles/` — never the repo.
 - **`catalog/` ships inside the wheel** (`src/harnessed/catalog` symlink + package-data), so — see
