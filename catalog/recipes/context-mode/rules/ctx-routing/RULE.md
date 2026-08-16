@@ -36,9 +36,17 @@ directory is not.
 
 ## The failure mode that costs more than it saves
 
-`queries` decides what re-enters context. Broad or overlapping queries match every section and echo
-them **in full, once per query**, so two loose queries over one command can cost more than running it
-plainly. Ask narrow, specific questions, and prefer several precise queries to one vague one.
+`queries` decides what re-enters context, and it cuts BOTH ways.
+
+Too **broad**: overlapping queries match every section and echo them **in full, once per query**, so
+two loose queries over one command can cost more than running it plainly.
+
+Too **narrow**: a command runs and is indexed but matches nothing, so it never appears in the output
+at all and you re-run it separately. The batch succeeded and still cost you the round trip.
+
+Aim for several precise queries that between them cover every command you batched. `label` is
+required on each command, so use the labels as your checklist: if you cannot name a query that would
+surface a given label, that command had no reason to be in the batch.
 
 `query_scope` defaults to `batch`, meaning this call's output only. Reach for `global` deliberately,
 when you want the persistent index searched as well.
