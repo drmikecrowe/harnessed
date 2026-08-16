@@ -356,10 +356,13 @@ def write_codex_agents_md(
 # omp (Oh My Pi) shared-agent identity/rules delivery (bd main-w8k).
 #
 # omp reads two plain-markdown files from its agent dir: APPEND_SYSTEM.md (appended to the system
-# prompt) and RULES.md (rules). The omp harness runs the pre-installed omp-claude-hooks-bridge, a
-# PURE hook-execution bridge with no content-injection path (its session_start handler only posts a
-# UI notification — it never reads additionalContext), so a per-profile identity mount like the
-# other harnesses use is impossible without an upstream bridge change. Instead we deliver identity +
+# prompt) and RULES.md (rules). STALE-CLAIM NOTE (2026-08-16): this paragraph used to say the bridge
+# had no content-injection path at all, and that a per-profile identity mount was therefore
+# impossible without an upstream change. That upstream change LANDED — bridge 0.4.0 injects
+# additionalContext plus SessionStart/UserPromptSubmit stdout — so the blocker named below is gone
+# and only the shared-file design remains, unrevisited. Injected context is still not the same thing
+# as a per-profile identity FILE, so this is a design question to reopen rather than a bug. Instead
+# we deliver identity +
 # rules by writing GUARDED, IDEMPOTENT, delimiter-marked per-stack blocks into the SHARED host
 # ~/.omp/agent/{APPEND_SYSTEM.md,RULES.md} — the same dir the launcher bind-mounts rw into every omp
 # pod (_omp_agent_mount), so no new delivery path is invented. TRADE-OFF (accepted, documented): the

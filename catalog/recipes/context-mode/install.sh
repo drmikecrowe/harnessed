@@ -21,9 +21,11 @@ set -euo pipefail
 # applies the same pinned tool spec, so that branch is gone rather than duplicated.
 
 # --- omp only -------------------------------------------------------------------------------------
-# Under omp the bridged Claude hooks are inert (omp-claude-hooks-bridge drops
-# hookSpecificOutput.additionalContext, so the PreToolUse routing nudge and the SessionStart context
-# re-injection never reach the model, and it maps no omp event to PreCompact at all). recipe.yaml's
+# Under omp the bridged Claude hooks are inert for THIS recipe's purposes. As of bridge 0.4.0 the
+# SessionStart half would in fact bridge (queued to the next prompt), but PreToolUse
+# additionalContext — which is exactly what the routing nudge is — stays unbridged at every version,
+# because omp's tool_call result has no context field. PreCompact maps to no omp event at all.
+# 0.4.1 changed only updatedInput, a different field, so it does not move this. recipe.yaml's
 # every hook entry's `skip_harnesses: [omp]` therefore suppresses them, and upstream's own omp extension —
 # installed below — takes over, covering session_start / tool_call / tool_result /
 # session_before_compact natively. Every other harness uses the hooks and needs nothing here.

@@ -51,7 +51,9 @@ mcp:
 # structurally cannot. Content is deliberately about WHEN to route and how `queries` breadth decides
 # whether a call saves or spends — a reducer queried too broadly re-emits the dump it exists to avoid.
 #
-# Still true against bridge 0.4.0, but for a NARROWER reason than the note below states (that note
+# Still true against bridge 0.4.0 AND 0.4.1, but for a NARROWER reason than the note below states.
+# 0.4.1 bridges PreToolUse `updatedInput` (command rewriting, which is what unblocked rtk); it does
+# NOT touch additionalContext, so it does not move this decision. (That note
 # predates 0.4.0 and is now half stale — see the Hook layer). 0.4.0 injects additionalContext from
 # any event plus SessionStart/UserPromptSubmit stdout, so the SessionStart half WOULD now bridge.
 # `PreToolUse` additionalContext is one of the two paths its README documents as deliberately NOT

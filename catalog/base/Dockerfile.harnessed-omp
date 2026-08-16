@@ -53,14 +53,25 @@ USER harnessed
 # into the image layer (design §8/§11).
 #
 # PINNED (was an unpinned `install`, which took whatever npm called latest at build time —
-# the same AC-11 drift OMP_VERSION/BUN_VERSION are pinned to avoid). 0.4.0 is the first
-# release that INJECTS a bridged hook's SessionStart stdout / UserPromptSubmit
-# additionalContext into the omp session, instead of only running the hook and discarding
-# its output. Without it a recipe's steering hooks (e.g. codebase-memory-mcp's "use the
-# graph tools FIRST" SessionStart reminder) execute but never reach the agent on omp —
-# the hooks are populated in settings.json and the bridge runs them, but 0.3.0's
-# session_start handler only `ctx.ui.notify`s the output. See the bridge repo's 0.4.0
-# release (drmikecrowe/omp-claude-hooks-bridge).
-RUN omp plugin install @drmikecrowe/omp-claude-hooks-bridge@0.4.0
+# the same AC-11 drift OMP_VERSION/BUN_VERSION are pinned to avoid).
+#
+# Two releases matter, and they fix DIFFERENT fields of the same hook result:
+#   0.4.0  injects a bridged hook's SessionStart stdout / UserPromptSubmit additionalContext
+#          into the session, instead of running the hook and discarding its output. Without it
+#          a recipe's steering hooks (codebase-memory-mcp's "use the graph tools FIRST"
+#          SessionStart reminder) execute but never reach the agent: 0.3.0's session_start
+#          handler only `ctx.ui.notify`s the output.
+#   0.4.1  returns a PreToolUse hook's `hookSpecificOutput.updatedInput` as omp's tool_call
+#          `input`, so COMMAND-REWRITING hooks work. Without it the rtk recipe's hook ran on
+#          every Bash call and its rewrite was thrown away — measured live: `rtk gain` reported
+#          no tracking data for a whole session of git/find calls. A `block` decision still
+#          short-circuits ahead of the rewrite, and the last non-blocking rewrite wins, matching
+#          omp's documented tool_call semantics.
+#
+# Still NOT bridged, and deliberately: PreToolUse `additionalContext` (omp's tool_call result has
+# no context field) and SubagentStart (omp has no subagent_* event). context-mode's routing nudge
+# is the first of those, which is why that recipe skips the hook on omp and ships
+# rules/ctx-routing with `only_harnesses: [omp]` instead. See drmikecrowe/omp-claude-hooks-bridge.
+RUN omp plugin install @drmikecrowe/omp-claude-hooks-bridge@0.4.1
 
 CMD ["/bin/bash"]
