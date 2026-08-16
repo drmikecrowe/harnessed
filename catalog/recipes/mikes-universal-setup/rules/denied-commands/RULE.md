@@ -20,12 +20,12 @@ including the allowed segments.
   though `rg` is fine. Filter inside `rg` itself.
 - **Split destructive+benign compounds.** `rm -rf docs/x && mkdir -p docs/x` dies as a unit. Run the
   allowed half separately.
-- **Never bundle a git write with anything else.** Commit, push, and PR-create are *three* calls, not
-  one `&&` chain — a denial on the push segment throws away the commit too. Push and `gh pr create`
-  are outward-facing anyway: confirm first (see [[stop-and-ask]]).
+- **Never bundle a git write with anything else.** Commit, push, and PR-create are *three* calls,
+  never one `&&` chain. A denial on the push segment throws away the commit too. Push and
+  `gh pr create` are outward-facing anyway: confirm first (see [[stop-and-ask]]).
 
 ## Subagents
 
-Subagents do not inherit these rules. Every subagent prompt that will search a tree must say so
-explicitly: *use `rg`/`fd`, never `grep`/`find`.* Left unsaid, subagents are the single largest
-source of denied calls.
+Subagents do not inherit these rules. If a subagent prompt will search a tree, say so explicitly:
+*use `rg`/`fd`, never `grep`/`find`.* Left unsaid, subagents are the single largest source of
+denied calls.

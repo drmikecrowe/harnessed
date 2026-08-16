@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Test-driven development with red-green-refactor loops built around vertical slices (tracer bullets), not horizontal layers. Use when asked to "use TDD", "write test-first", "red-green-refactor", "build this with tests", or whenever a feature has a clear observable contract and would benefit from tests that outlive refactors. Complements the bundled test and add-tests skills — use this for the discipline, use those for the mechanics.
+description: Test-driven development: red-green-refactor over vertical slices (tracer bullets), not layers. Use on "use TDD", "write test-first", "red-green-refactor", or when a feature has a clear observable contract. Covers the discipline; test and add-tests cover mechanics.
 ---
 
 <objective>
@@ -8,7 +8,7 @@ Drive feature implementation through one red-green-refactor cycle per vertical s
 </objective>
 
 <context>
-GSD already organizes work into slices (S##) and tasks (T##). This skill operates at the task level — inside a single T##-PLAN.md, it structures the execution as a sequence of tiny red-green-refactor cycles rather than write-all-then-test or write-all-without-tests.
+GSD already organizes work into slices (S##) and tasks (T##). This skill operates at the task level, inside a single T##-PLAN.md. It structures the execution as a sequence of tiny red-green-refactor cycles, never as write-all-then-test or write-all-without-tests.
 
 Invocation points:
 - Task plan calls out behavior with a clear external contract (pure function, API endpoint, module boundary)
@@ -22,7 +22,7 @@ Do not use this skill for:
 </context>
 
 <core_principle>
-**TESTS VERIFY BEHAVIOR THROUGH PUBLIC INTERFACES, NOT IMPLEMENTATION DETAILS.** A good test reads like a specification and survives refactors. A test that mocks internals or asserts private state fails every time you clean up the code — that is a bad test pretending to be a good one.
+**TESTS VERIFY BEHAVIOR THROUGH PUBLIC INTERFACES, NOT IMPLEMENTATION DETAILS.** A good test reads like a specification and survives refactors. A test that mocks internals or asserts private state fails every time you clean up the code. That is a bad test pretending to be a good one.
 
 **VERTICAL SLICES, NOT HORIZONTAL LAYERS.** Writing all tests upfront ("horizontal slicing") produces tests for behavior you imagined, not behavior the code actually exhibits. One tracer bullet at a time: write one test, make it pass, learn, write the next.
 
@@ -77,7 +77,7 @@ Now that the behavior is pinned, clean up. Extract duplicated logic. Rename uncl
 Rules:
 
 - Every refactor keeps every test GREEN. Run tests after each small change.
-- If a refactor requires changing a test, the test was coupled to implementation — either the test is wrong, or the interface you thought you were pinning is actually different. Fix the test first, then refactor.
+- If a refactor requires changing a test, the test was coupled to implementation. Either the test is wrong, or the interface you thought you were pinning is different. Fix the test first, then refactor.
 - Do not refactor speculatively. Extract around real duplication and real seams, not imagined ones.
 
 ## Step 5: Close the slice
@@ -85,7 +85,7 @@ Rules:
 When the behavior the task plan specified is fully under test and the code is clean:
 
 1. Run the full test suite — not just the tests you wrote. Verify no regressions.
-2. Append a one-line summary of what is now pinned to `.gsd/KNOWLEDGE.md` if the behavior is non-obvious or the test surfaced a trap future agents should know about.
+2. Append a one-line summary of what is now pinned to `.gsd/KNOWLEDGE.md`. Do this when the behavior is non-obvious, or the test surfaced a trap future agents must know about.
 3. Use `gsd_*` tools to mark the task complete — do not edit checkboxes by hand.
 
 </process>

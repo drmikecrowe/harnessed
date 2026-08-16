@@ -1,6 +1,6 @@
 ---
 name: defuddle
-description: Extract clean markdown content from web pages using Defuddle CLI, removing clutter and navigation to save tokens. ALWAYS use this instead of Fetch or WebFetch for any URL the user provides or you need to read — documentation pages, articles, blog posts, npm/pnpm/GitHub docs, or any standard web page. Do not reach for Fetch/WebFetch first and fall back to this later; check this skill before fetching a URL at all. Do NOT use for URLs ending in .md — those are already markdown, use WebFetch directly.
+description: Extract clean markdown from a web page with the Defuddle CLI. ALWAYS use it instead of Fetch or WebFetch for any URL — docs, articles, blog posts. Check it before fetching any URL. Exception: a `.md` URL goes to WebFetch.
 ---
 
 # Defuddle

@@ -1,16 +1,11 @@
 ---
 name: varlock
-description: >
-  Create, edit, and maintain `.env.schema` files using the varlock/@env-spec DSL. Use when:
-  working with `.env.schema` files; adding or updating environment variable definitions;
-  migrating from `.env.example` to `.env.schema`; running varlock CLI commands (init, load,
-  run, encrypt, audit, reveal, lock); setting up varlock in a new project; debugging missing
-  or invalid env vars; integrating secrets from 1Password or other secret managers.
+description: Create and maintain `.env.schema` files in the varlock/@env-spec DSL. Use when adding env var definitions, migrating from `.env.example`, running varlock commands (init, load, run, encrypt, audit), debugging missing env vars, or wiring 1Password secrets.
 ---
 
 # Varlock
 
-Varlock uses the `@env-spec` DSL — decorator-style comments on top of standard `.env` syntax — to declare schemas for environment variables with types, validation, secrets integration, and defaults.
+Varlock uses the `@env-spec` DSL: decorator-style comments on top of standard `.env` syntax. It declares environment variable schemas with types, validation, secrets integration, and defaults.
 
 Full decorator/type reference: [references/env-spec.md](references/env-spec.md)
 
