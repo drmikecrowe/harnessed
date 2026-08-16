@@ -171,6 +171,28 @@ def test_context_mode_hooks_are_skipped_on_omp_only():
         assert set(hooks) == {"PreToolUse", "SessionStart", "PostToolUse", "PreCompact"}, harness
 
 
+def test_context_mode_ctx_routing_rule_is_omp_only():
+    """The rule and the PreToolUse skip are one decision, so assert them together.
+
+    context-mode skips its PreToolUse hook on omp because omp's tool_call result has no context
+    field, and ships rules/ctx-routing to carry that steering instead. On every other harness the
+    hook fires and injects the same instruction, so shipping the rule there too would repeat it
+    always-on, every session. If a future change drops one side without the other, this fails.
+    """
+    recipe = load_recipe(ROOT / "catalog" / "recipes" / "context-mode", strict=True)
+    [rule] = recipe.rules
+    assert rule.path == "rules/ctx-routing"
+    assert rule.only_harnesses == ["omp"]
+
+    # The complement: the hook this rule stands in for is skipped on exactly that harness.
+    pre = recipe.hooks["PreToolUse"]
+    assert all(e.skip_harnesses == ["omp"] for e in pre)
+
+    assert rule.ships_to("omp")
+    for harness in ("claude", "opencode", "codex", "antigravity"):
+        assert not rule.ships_to(harness), harness
+
+
 def test_codebase_memory_mcp_hooks_reach_settings():
     """The real catalog recipe: an MCP server that is present but never reached is the failure.
 

@@ -857,6 +857,35 @@ class TestHooksParse:
         with pytest.raises(SchemaError, match="unknown harness"):
             self._load(tmp_path, body)
 
+    def test_rule_entry_only_harnesses_parsed(self, tmp_path):
+        r = self._load(
+            tmp_path,
+            "name: r\nrules:\n  - path: rules/a\n    only_harnesses: [omp]\n  - path: rules/b\n",
+        )
+        assert [e.only_harnesses for e in r.rules] == [["omp"], []]
+        a, b = r.rules
+        assert a.ships_to("omp") and not a.ships_to("claude")
+        assert b.ships_to("omp") and b.ships_to("claude")
+        # harness=None is ship-everything, so a harness-less read is never short content.
+        assert a.ships_to(None) and b.ships_to(None)
+
+    def test_rule_entry_only_harnesses_unknown_harness_rejected(self, tmp_path):
+        # A typo must fail at parse time. Silently shipping nowhere is the worse failure: the rule
+        # simply never appears and nothing says why.
+        body = "name: r\nrules:\n  - path: rules/a\n    only_harnesses: [ompp]\n"
+        with pytest.raises(SchemaError, match="only_harnesses"):
+            self._load(tmp_path, body)
+
+    def test_rule_entry_unknown_field_rejected(self, tmp_path):
+        body = "name: r\nrules:\n  - path: rules/a\n    nope: 1\n"
+        with pytest.raises(SchemaError, match="valid fields: path, only_harnesses"):
+            self._load(tmp_path, body)
+
+    def test_rule_entry_only_harnesses_empty_list_rejected(self, tmp_path):
+        body = "name: r\nrules:\n  - path: rules/a\n    only_harnesses: []\n"
+        with pytest.raises(SchemaError, match="must not be empty"):
+            self._load(tmp_path, body)
+
     def test_skip_harnesses_explicit_empty_list_rejected(self, tmp_path):
         # Fail-open closed: `skip_harnesses: []` used to reduce to "skip nothing" in silence, which
         # is indistinguishable from the author having meant a suppression. Omitting the key is the

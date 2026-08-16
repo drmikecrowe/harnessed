@@ -305,14 +305,17 @@
       ]
     },
     "fileExt": {
-      "description": "A standalone skill/command dir: a bare path string, or { path: ... }.",
+      "description": "A standalone skill/command/rule dir: a bare path string, or { path, only_harnesses? }. `only_harnesses` is an ALLOW-list: name the harnesses that receive this entry, and every other harness skips it. Empty or absent ships to all. It is the complement of hooks.skip_harnesses, for the case where a rule exists only to cover a hook that cannot fire on one harness (context-mode skips its PreToolUse hook on omp, and ships rules/ctx-routing there instead). Deliberately an allow-list, not a skip-list: content patching one harness's hole must not silently ship to a harness added later.",
       "oneOf": [
         { "type": "string", "minLength": 1 },
         {
           "type": "object",
           "additionalProperties": true,
           "required": ["path"],
-          "properties": { "path": { "type": "string", "minLength": 1 } }
+          "properties": {
+            "path": { "type": "string", "minLength": 1 },
+            "only_harnesses": { "description": "Allow-list of harnesses that receive this entry. Absent or empty ships to all.", "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["claude", "omp", "opencode", "antigravity", "codex"] } }
+          }
         }
       ]
     },

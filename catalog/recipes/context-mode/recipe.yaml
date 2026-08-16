@@ -59,7 +59,15 @@ mcp:
 # and the routing nudge is exactly a PreToolUse additionalContext hook. So the steering gap this rule
 # fills is real regardless of bridge version, and closing it needs an omp API that does not exist.
 rules:
+  # omp ONLY, and it is the exact complement of the PreToolUse skip below. On every other harness
+  # that hook fires and injects this same routing instruction, so shipping the rule there would
+  # repeat it always-on, in every session, for nothing. On omp the hook cannot deliver it at all
+  # (omp's tool_call result has no context field), so the rule is the only carrier.
+  #
+  # Keep the two in lockstep: if the bridge ever gains current-turn injection for PreToolUse, drop
+  # the skip below AND this allow-list together, or the steering arrives twice.
   - path: rules/ctx-routing
+    only_harnesses: [omp]
 
 # --- Install layer ---
 # What used to be this recipe's whole Dockerfile: the omp plugin install, as one bash file run by
