@@ -49,8 +49,18 @@ RUN chown harnessed:harnessed /home/harnessed /home/harnessed/.cache
 USER harnessed
 
 # Pre-install the claude-hooks-bridge extension so an omp stack auto-loads it via omp
-# extension discovery (no per-launch -e). Owner-authored npm package (MIT); pinned by
-# omp's plugin lock under ~/.omp/plugins. Installed into the image layer (design §8/§11).
-RUN omp plugin install @drmikecrowe/omp-claude-hooks-bridge
+# extension discovery (no per-launch -e). Owner-authored npm package (MIT); installed
+# into the image layer (design §8/§11).
+#
+# PINNED (was an unpinned `install`, which took whatever npm called latest at build time —
+# the same AC-11 drift OMP_VERSION/BUN_VERSION are pinned to avoid). 0.4.0 is the first
+# release that INJECTS a bridged hook's SessionStart stdout / UserPromptSubmit
+# additionalContext into the omp session, instead of only running the hook and discarding
+# its output. Without it a recipe's steering hooks (e.g. codebase-memory-mcp's "use the
+# graph tools FIRST" SessionStart reminder) execute but never reach the agent on omp —
+# the hooks are populated in settings.json and the bridge runs them, but 0.3.0's
+# session_start handler only `ctx.ui.notify`s the output. See the bridge repo's 0.4.0
+# release (drmikecrowe/omp-claude-hooks-bridge).
+RUN omp plugin install @drmikecrowe/omp-claude-hooks-bridge@0.4.0
 
 CMD ["/bin/bash"]
