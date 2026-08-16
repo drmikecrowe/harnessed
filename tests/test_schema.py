@@ -857,6 +857,34 @@ class TestHooksParse:
         with pytest.raises(SchemaError, match="unknown harness"):
             self._load(tmp_path, body)
 
+    def test_per_entry_skip_harnesses_parsed(self, tmp_path):
+        body = (
+            "name: r\nhooks:\n"
+            "  PreToolUse:\n"
+            "    - command: nudge\n"
+            "      matcher: Bash\n"
+            "      skip_harnesses: [omp]\n"
+            "    - command: gate\n"
+        )
+        r = self._load(tmp_path, body)
+        assert r.hooks_skip_harnesses == []
+        entries = r.hooks["PreToolUse"]
+        assert [e.skip_harnesses for e in entries] == [["omp"], []]
+
+    def test_per_entry_skip_harnesses_unknown_harness_rejected(self, tmp_path):
+        # Same fail-at-parse-time guarantee as the recipe-wide key: a typo would silently emit the
+        # entry it was meant to suppress. The message must name the ENTRY path, not the recipe key.
+        body = (
+            "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      skip_harnesses: [ompp]\n"
+        )
+        with pytest.raises(SchemaError, match=r"hooks\.PreToolUse\[\]\.skip_harnesses"):
+            self._load(tmp_path, body)
+
+    def test_unknown_entry_field_message_lists_skip_harnesses(self, tmp_path):
+        body = "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      nope: 1\n"
+        with pytest.raises(SchemaError, match="valid fields: command, matcher, skip_harnesses"):
+            self._load(tmp_path, body)
+
     def test_skip_harnesses_not_a_list_rejected(self, tmp_path):
         body = "name: r\nhooks:\n  skip_harnesses: omp\n  SessionStart:\n    - command: h\n"
         with pytest.raises(SchemaError, match="must be a list of harness names"):

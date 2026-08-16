@@ -6,6 +6,7 @@ from typing import ClassVar
 
 from harnessed.emit import (
     HATAGO_ENDPOINT,
+    _recipe_hooks_settings,
     HATAGO_MCP_KEY,
     merge_opencode_config,
     merge_settings,
@@ -655,6 +656,40 @@ class TestRequiredSettings:
         ]
         assert required_settings([], recipes, harness="omp")["hooks"] == {
             "SessionStart": [{"hooks": [{"type": "command", "command": "gsd-hook"}]}],
+        }
+
+    def test_per_entry_skip_drops_only_that_entry(self):
+        # The reason per-entry exists: the recipe-wide key is all-or-nothing, so a recipe with one
+        # undeliverable event on a harness had to forfeit its deliverable ones too.
+        recipes = [_hook_recipe("cm", {
+            "PreToolUse": [
+                HookCommand(command="nudge", matcher="Bash", skip_harnesses=["omp"]),
+                HookCommand(command="gate", matcher="Bash"),
+            ],
+        })]
+        omp = _recipe_hooks_settings(recipes, "omp")
+        assert [g["hooks"][0]["command"] for g in omp["PreToolUse"]] == ["gate"]
+        claude = _recipe_hooks_settings(recipes, "claude")
+        assert [g["hooks"][0]["command"] for g in claude["PreToolUse"]] == ["nudge", "gate"]
+
+    def test_event_with_every_entry_skipped_is_omitted_not_empty(self):
+        # `{"PreToolUse": []}` is not the same as absent, and Claude Code never writes an empty
+        # group itself. context-mode on omp is exactly this shape for all four of its events.
+        recipes = [_hook_recipe("cm", {
+            "PreToolUse": [HookCommand(command="nudge", matcher="Bash", skip_harnesses=["omp"])],
+            "SessionStart": [HookCommand(command="sess", skip_harnesses=["omp"])],
+        })]
+        assert _recipe_hooks_settings(recipes, "omp") == {}
+        assert sorted(_recipe_hooks_settings(recipes, "claude")) == ["PreToolUse", "SessionStart"]
+
+    def test_per_entry_skip_is_inert_when_harness_is_unknown(self):
+        # harness=None is the assemble-time default before a harness is chosen: skip nothing, or the
+        # floor and the post-build merge would disagree about which hooks exist.
+        recipes = [_hook_recipe("cm", {
+            "SessionStart": [HookCommand(command="sess", skip_harnesses=["omp"])],
+        })]
+        assert _recipe_hooks_settings(recipes, None) == {
+            "SessionStart": [{"hooks": [{"type": "command", "command": "sess"}]}]
         }
 
     def test_skip_harnesses_is_inert_on_every_other_harness(self):

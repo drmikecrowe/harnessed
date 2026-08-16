@@ -557,11 +557,18 @@ def _recipe_hooks_settings(recipes: list[Recipe], harness: str | None = None) ->
         for event, entries in recipe.hooks.items():
             group = out.setdefault(event, [])
             for entry in entries:
+                # Per-ENTRY skip, on top of the recipe-wide gate above. A recipe may deliver some
+                # events natively on a harness (or find one structurally unbridgeable there) while
+                # the rest replay fine, and the all-or-nothing recipe key cannot say that.
+                if harness is not None and harness in entry.skip_harnesses:
+                    continue
                 block: dict = {"hooks": [{"type": "command", "command": entry.command}]}
                 if entry.matcher is not None:
                     block["matcher"] = entry.matcher
                 group.append(block)
-    return out
+    # Drop events left empty by the per-entry skip above: `{"PreToolUse": []}` is not the same as
+    # absent, and an empty group is a shape Claude Code never writes itself.
+    return {event: groups for event, groups in out.items() if groups}
 
 
 # Stack `permissions:` → Claude Code settings.json `permissions.defaultMode` (bd main-c5g,

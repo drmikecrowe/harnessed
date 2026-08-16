@@ -110,21 +110,42 @@ install:
 # body (`isExternalMcpTool()` in hooks/core/routing.mjs) filters context-mode's own tools out, so
 # dropping the plugin-specific entries preserves the semantics exactly.
 hooks:
-  skip_harnesses: [omp]
-  # REQUIRED upstream. Injects the routing instruction steering the model to `ctx_*` over raw tools.
+  # Per-ENTRY skips rather than the recipe-wide `skip_harnesses: [omp]` this replaces. That key is
+  # all-or-nothing, so suppressing the one event omp cannot deliver cost every other event too, and a
+  # recipe could not say "native here, bridged there" per event. Each skip below now carries its own
+  # reason, because they are NOT the same reason — one is structural, three are double-fire.
   PreToolUse:
+    # REQUIRED upstream. Injects the routing instruction steering the model to `ctx_*` over raw tools.
+    # STRUCTURAL on omp, and the only skip here that no bridge version can lift: omp's `tool_call`
+    # result has no context field and there is no current-turn injection API, so
+    # omp-claude-hooks-bridge documents PreToolUse additionalContext as deliberately not bridged.
+    # Replaying it would spawn a node CLI per tool call to produce output nothing can deliver.
     - command: context-mode hook claude-code pretooluse
       matcher: Bash|WebFetch|Read|Grep|Agent|mcp__
-  # REQUIRED upstream. Injects active session context + routing enforcement at session open.
+      skip_harnesses: [omp]
   SessionStart:
+    # REQUIRED upstream. Injects active session context + routing enforcement at session open.
+    # DOUBLE-FIRE on omp, not structural: bridge 0.4.0 DOES inject SessionStart additionalContext and
+    # stdout (queued to the next prompt, since omp session_start handlers cannot return context). The
+    # native extension handles session_start directly and without that queuing, so it is the better
+    # of the two — but only one may run.
     - command: context-mode hook claude-code sessionstart
-  # Optional upstream. Captures edits / git ops / tasks / errors into SQLite for continuity.
+      skip_harnesses: [omp]
   PostToolUse:
+    # Optional upstream. Captures edits / git ops / tasks / errors into SQLite for continuity.
+    # DOUBLE-FIRE on omp: the bridge maps this to tool_result and it works, but the native extension
+    # writes the same rows. Two writers on one SQLite session store is the exact duplication the skip
+    # mechanism exists to prevent.
     - command: context-mode hook claude-code posttooluse
       matcher: Bash|Read|Write|Edit|NotebookEdit|Glob|Grep|TodoWrite|TaskCreate|TaskUpdate|EnterPlanMode|ExitPlanMode|Skill|Agent|AskUserQuestion|EnterWorktree|mcp__
-  # Optional upstream. Snapshots session state before compaction so the model can resume via BM25.
+      skip_harnesses: [omp]
   PreCompact:
+    # Optional upstream. Snapshots session state before compaction so the model can resume via BM25.
+    # INERT on omp: the bridge maps no omp event to PreCompact, so this would never fire there. Skipped
+    # to say so explicitly rather than shipping a hook that silently cannot run; the native extension
+    # covers it via session_before_compact.
     - command: context-mode hook claude-code precompact
+      skip_harnesses: [omp]
 
 # --- Persist layer ---
 # context-mode's sessions/content store — the SQLite DB the PostToolUse/PreCompact hooks (and, on

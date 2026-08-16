@@ -479,6 +479,13 @@ class HookCommand:
 
     command: str
     matcher: str | None = None
+    # Harnesses on which THIS ENTRY is not emitted, independent of the recipe-wide
+    # `hooks.skip_harnesses`. The recipe-wide key is all-or-nothing, which forces a recipe to
+    # forfeit EVERY hook on a harness in order to suppress the one that cannot be delivered there.
+    # Per-entry skipping is what lets one recipe reconcile harnesses that differ per EVENT: on omp,
+    # context-mode's PreToolUse nudge is structurally undeliverable (the bridge has no context field
+    # on tool_call) while its other events bridge fine.
+    skip_harnesses: list[str] = field(default_factory=list)
 
 
 # Claude Code's documented hook event names (code.claude.com/docs/en/hooks). Validated so a typo
@@ -547,18 +554,23 @@ def _parse_hooks(raw_hooks) -> tuple[dict[str, list[HookCommand]], list[str]]:
             matcher = entry.get("matcher")
             if matcher is not None and not isinstance(matcher, str):
                 raise SchemaError(f"recipe 'hooks.{event}' entry 'matcher' must be a string: {entry!r}")
-            unknown = sorted(set(entry) - {"command", "matcher"})
+            entry_skip = _parse_hooks_skip_harnesses(
+                entry.get("skip_harnesses"), label=f"hooks.{event}[].skip_harnesses"
+            )
+            unknown = sorted(set(entry) - {"command", "matcher", "skip_harnesses"})
             if unknown:
                 raise SchemaError(
                     f"recipe 'hooks.{event}' entry: unknown field(s) {unknown} — "
-                    "valid fields: command, matcher"
+                    "valid fields: command, matcher, skip_harnesses"
                 )
-            commands.append(HookCommand(command=command.strip(), matcher=matcher))
+            commands.append(
+                HookCommand(command=command.strip(), matcher=matcher, skip_harnesses=entry_skip)
+            )
         parsed[event] = commands
     return parsed, skip
 
 
-def _parse_hooks_skip_harnesses(raw) -> list[str]:
+def _parse_hooks_skip_harnesses(raw, label: str = "hooks.skip_harnesses") -> list[str]:
     """Parse `hooks.skip_harnesses:` — harnesses on which this recipe's hooks are NOT emitted.
 
     Validated against HARNESS_CONFIG_DIR so a typo (`ompp`) fails at parse time rather than
@@ -567,12 +579,12 @@ def _parse_hooks_skip_harnesses(raw) -> list[str]:
     if raw is None:
         return []
     if not isinstance(raw, list) or not all(isinstance(h, str) for h in raw):
-        raise SchemaError("recipe 'hooks.skip_harnesses' must be a list of harness names")
+        raise SchemaError(f"recipe {label!r} must be a list of harness names")
     skip = [h.strip() for h in raw if h.strip()]
     unknown = sorted(set(skip) - set(HARNESS_CONFIG_DIR))
     if unknown:
         raise SchemaError(
-            f"recipe 'hooks.skip_harnesses': unknown harness(es) {unknown} — "
+            f"recipe {label!r}: unknown harness(es) {unknown} — "
             f"valid harnesses: {', '.join(sorted(HARNESS_CONFIG_DIR))}"
         )
     return skip
