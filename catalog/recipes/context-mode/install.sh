@@ -71,3 +71,30 @@ if [ -z "${CONTEXT_MODE_VERSION}" ]; then
 fi
 
 omp plugin install "context-mode@${CONTEXT_MODE_VERSION}"
+
+# --- VERIFY it landed -----------------------------------------------------------------------------
+# `omp plugin install` exiting 0 is not proof the extension is present, and a half-installed one is
+# INVISIBLE downstream: recipe.yaml's `hooks.skip_harnesses: [omp]` suppresses the bridged Claude
+# hooks precisely BECAUSE this extension replaces them, so if it is missing, context-mode runs with
+# its MCP server and none of its four native handlers — no routing steering, no session continuity.
+#
+# Nothing else catches that. `expect:` cannot: `expect.plugins` probes ~/.claude/plugins (Claude
+# plugins), not ~/.omp/plugins, and `expect: mcp: [context-mode]` only proves the hub connected,
+# which it does either way. Observed live in an omp pod whose `omp plugin list` carried only the
+# hooks bridge while `harnessed test` stayed green.
+#
+# Pure-shell `case` rather than grep/rg: the base image ships neither reliably (same reason the
+# version read above avoids jq).
+INSTALLED_PLUGINS="$(omp plugin list 2>/dev/null || true)"
+case "${INSTALLED_PLUGINS}" in
+    *context-mode*) ;;
+    *)
+        echo "error: install (context-mode): 'omp plugin install" \
+             "context-mode@${CONTEXT_MODE_VERSION}' reported success but the plugin is ABSENT from" \
+             "'omp plugin list'. Its four omp-native handlers (session_start / tool_call /" \
+             "tool_result / session_before_compact) would be silently missing, and the bridged" \
+             "Claude hooks are suppressed on omp by design, so the recipe would deliver its MCP" \
+             "server with no steering and no session continuity." >&2
+        exit 1
+        ;;
+esac
