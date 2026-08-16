@@ -29,6 +29,12 @@ rules:
   # stop-and-ask gates WHETHER. A secret scanner only catches key-shaped strings — this is the
   # semantic pass it can't do.
   - path: rules/pre-publish-review
+  # Resolves the WHICH-WINS question the other rules leave open: user > harness tool policy > project
+  # docs > rules > skills > memory. Deliberately capability-phrased, never naming a harness's tools —
+  # a rule that names a binary is naming an example, so the harness decides the mechanism and the
+  # rule keeps the intent. Also states that an index/graph/cache is a derived view, so authoritative
+  # resolution wins for single-symbol truth.
+  - path: rules/precedence
   # Prompt-injection baseline: instructions only from user/project, everything fetched or
   # tool-returned is data. Covers identity/rule overrides, secret disclosure, unvalidated
   # executable output, encoding and pressure tricks, and harmful-content refusals.

@@ -1,6 +1,10 @@
-# File Discovery: Use fd
+# File Discovery: Glob Tool First, Then fd
 
-Use `fd` instead of `find`.
+Find paths with your harness's built-in glob or file-discovery tool first. Shell out only when it
+cannot express the query — then use `fd`, never `find`, which stays denied at the permission layer
+(see [[denied-commands]]).
+
+When you do shell out:
 
 ```bash
 # Wrong

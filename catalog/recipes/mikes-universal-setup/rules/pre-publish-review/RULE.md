@@ -6,6 +6,10 @@ for "it is just markdown" or "user said it is fine" — publishing is irreversib
 
 A secret scanner catches key-shaped strings only. It cannot see the leaks below. That pass is yours.
 
+Reading the diff before you publish is **required review**, not routine validation. Where standing
+guidance discourages reflexive `git` calls, that is about not re-checking work you just did — it
+never exempts the one read that precedes an irreversible action.
+
 ## Check for
 
 - **Live credentials** — keys, tokens, private keys, connection strings with real passwords.
