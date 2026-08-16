@@ -1,13 +1,6 @@
 ---
 name: map-codebase
-description: >
-  Analyze an existing codebase by running parallel analysis agents across four domains:
-  technology stack, architecture, coding conventions, and technical concerns.
-  Produces 7 structured markdown documents. Use when the user asks to "map codebase",
-  "analyze codebase", "document existing code", "understand this project",
-  "codebase analysis", "what does this codebase look like", or when onboarding
-  to a brownfield project. Also use when the user says "map my code",
-  "analyze my project structure", or "generate codebase documentation".
+description: Map an existing codebase with parallel agents across stack, architecture, conventions, and concerns; writes 7 markdown documents. Use on "map codebase", "analyze codebase", "document existing code", "understand this project", or when onboarding to a brownfield project.
 license: MIT
 compatibility: >
   Best with Claude Code (parallel agent spawning via Task tool).

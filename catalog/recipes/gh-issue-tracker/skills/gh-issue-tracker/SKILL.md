@@ -1,6 +1,6 @@
 ---
 name: gh-issue-tracker
-description: "Manage a project backlog in GitHub Issues from the terminal using gh: find ready (unblocked) work, create issues with blocked-by/blocking dependencies and epic parent links, claim and close work, and triage. Use this skill whenever the user asks what to work on next, what is ready, what is blocked, wants to file or groom issues, mentions their backlog, epics, sub-issues, or issue dependencies, or is migrating from a local issue tracker like beads/bd to GitHub Issues — even if they do not say 'GitHub Issues' explicitly."
+description: Manage a GitHub Issues backlog with `gh`: find ready work, create issues with blocked-by dependencies and epic links, claim, close, triage. Use when asked what to work on next, what is blocked, or to groom or migrate a beads/bd backlog.
 ---
 
 # gh-issue-tracker
@@ -12,20 +12,21 @@ criteria, no definition-of-done, no required review gates. File issues however
 you like; this skill only handles the tracking layer.
 
 For issue-to-PR automation (spawning workers to fix issues and open PRs), see
-the separate `gh-issues` skill from openclaw, which this skill's claim handling
-is adapted from. The two compose: use this one to decide *what* is workable,
+the separate `gh-issues` skill from openclaw. This skill's claim handling is
+adapted from it. The two compose: use this one to decide *what* is workable,
 that one to actually *do* it.
 
 ## Requirements
 
-- `gh` >= **2.94.0**. Dependency and hierarchy flags (`--blocked-by`,
-  `--blocking`, `--parent`) and the `blockedBy`/`blocking`/`parent`/`subIssues`
-  JSON fields landed in 2.94.0 (June 2026). Verify before trusting output:
+- `gh` >= **2.94.0**. Two things landed in 2.94.0 (June 2026): the dependency
+  and hierarchy flags (`--blocked-by`, `--blocking`, `--parent`), and the
+  `blockedBy`/`blocking`/`parent`/`subIssues` JSON fields. Verify before
+  trusting output:
   ```bash
   gh issue create --help | grep -E -- '--parent|--blocked-by|--blocking'
   ```
-  If those flags are absent, tell the user to upgrade `gh`. Do not fall back to
-  writing "Blocked by: #12" in the issue body — that creates a mention, not a
+  If those flags are absent, tell the user to upgrade `gh`. Never fall back to
+  writing "Blocked by: #12" in the issue body. That creates a mention, not a
   relationship, and nothing can query it.
 - `jq`, and authentication via `gh auth status` or `GH_TOKEN`.
 
@@ -53,15 +54,15 @@ scripts/ready.sh --json          # for programmatic use
 scripts/ready.sh --label bug --limit 20
 ```
 
-An issue is ready when it is open, has no OPEN blocker, has no open PR set to
-close it, and carries no live local claim. GitHub can filter *for* blocked
-issues but has no native unblocked query, which is why this is computed.
+An issue is ready on four conditions. It is open. It has no OPEN blocker. No
+open PR is set to close it. It carries no live local claim. GitHub filters *for*
+blocked issues but has no native unblocked query. Hence the computation.
 
-Two things the script gets right that hand-rolled versions usually don't:
-`blockedBy` is a connection object shaped `{nodes: [...], totalCount: N}` rather
-than a plain array, and a blocker whose state cannot be read is treated as still
-blocking. Reporting blocked work as ready sends an agent at something it cannot
-finish, so the bias runs the other way.
+Two things the script gets right that hand-rolled versions usually don't. First,
+`blockedBy` is a connection object shaped `{nodes: [...], totalCount: N}`, not a
+plain array. Second, an unreadable blocker still counts as blocking. Reporting
+blocked work as ready sends an agent at something it cannot finish, so the bias
+runs the other way.
 
 ## Creating issues
 
@@ -115,7 +116,7 @@ gh issue edit <n> --add-assignee @me
 ```
 
 For short-lived coordination between concurrent agents on one machine, the
-claim file is cheaper and self-healing — a crashed agent's claim expires rather
+claim file is cheaper and self-healing. A crashed agent's claim expires rather
 than wedging the issue permanently:
 
 ```bash

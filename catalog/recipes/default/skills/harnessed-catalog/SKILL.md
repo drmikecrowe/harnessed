@@ -1,6 +1,6 @@
 ---
 name: harnessed-catalog
-description: Author harnessed catalog content — recipes, stacks, and services — in the user overlay (~/.config/harnessed/catalog) or the repo catalog. Use when asked to create, edit, split, or debug a recipe.yaml / stack.yaml / service.yaml, to add an MCP server, skills, commands or rules to a stack, to compose several stacks that share a base (extends:), or when a build fails on "unknown recipe field", "unknown stack field", a pin-validation error, or a name collision in the assembled profile.
+description: Author harnessed catalog content: recipes, stacks, services. Use to create or edit a recipe.yaml, stack.yaml, or service.yaml, to add an MCP server or skills to a stack, to compose stacks with `extends:`, or on unknown-field, pin, or name-collision build errors.
 ---
 
 # Authoring harnessed catalog content
@@ -40,9 +40,9 @@ Rules that follow from that split, and they are hard:
   A repo recipe carrying a live URL key is a published secret. Ship a placeholder template
   (`catalog/recipes/openbrain-example`) and keep the real one in the overlay.
 - **Nothing host-local in `<repo>/catalog/`, including symlinks** — setuptools follows them into the
-  wheel. Symlinking a recipe's `skills:`/`rules:` entries at content you edit elsewhere on the host
-  (`~/.agents/skills/...`) is a good overlay pattern and only ever an overlay pattern; the fan-out
-  resolves and copies, so the real content lands in the profile.
+  wheel. Pointing a recipe's `skills:`/`rules:` entries at host content you edit elsewhere
+  (`~/.agents/skills/...`) is a good overlay pattern. It is only ever an overlay pattern. The
+  fan-out resolves and copies, so the real content lands in the profile.
 - `<repo>/catalog-local/{agents,recipes,services,stacks}` are gitignored symlinks to the overlay, so
   you can browse and edit the overlay from inside the checkout. Edit through them freely; never
   create such a link inside `catalog/`.
@@ -85,9 +85,9 @@ Every manifest starts with the schema header so the editor validates as you type
 
 Steps 4 and 5 are what "done" means for a new or changed recipe. A green `pytest` is not enough.
 
-**Do not run `harnessed container-run` or `harnessed host-run` yourself** — both hand the terminal
-to an interactive agent session, so they are the user's to run (the harnessed repo states this
-explicitly in `AGENTS.md`). `build`, `test`, `list`, and `harnessed-tools assemble` are yours.
+**Do not run `harnessed container-run` or `harnessed host-run` yourself.** Both hand the terminal
+to an interactive agent session, so they are the user's to run. `AGENTS.md` in the harnessed repo
+states this explicitly. `build`, `test`, `list`, and `harnessed-tools assemble` are yours.
 
 ## Non-negotiables when authoring
 
@@ -101,10 +101,13 @@ explicitly in `AGENTS.md`). `build`, `test`, `list`, and `harnessed-tools assemb
 - **pnpm, never `npm`/`npx`** (`pnpm dlx` replaces `npx`); **`uvx`** for light Python MCP servers.
   Enforced inside `install.sh` and Dockerfiles alike.
 - **`stdio` and Streamable HTTP only.** `transport: sse` is rejected at validation; do not author it.
-- **A recipe Dockerfile may not write to `~/.claude`** — that content is invisible on a host launch
-  and shadowed by the profile mount in a container. Use `install.script` writing to
-  `$HARNESSED_CONFIG_DIR`.
+- **A recipe Dockerfile may not write to `~/.claude`.** A host launch never sees that content, and
+  in a container the profile mount shadows it. Write to `$HARNESSED_CONFIG_DIR` from
+  `install.script` instead.
 - **A recipe Dockerfile carries no `FROM` and no `ARG HARNESS`** — the assembler prepends both.
+- **Write every `RULE.md` and `SKILL.md` to the house style.** Imperative, one clause per
+  instruction, no hedges, 25 words per sentence. Check it with `harnessed-tools lint-prose <path>`.
+  See [injected-content-style.md](injected-content-style.md).
 - **Credentials are referenced, never copied.** Do not bake, seed, or snapshot a credential store
   into a recipe. See `ARCHITECTURE.md` §Constraints.
 
@@ -125,7 +128,9 @@ explicitly in `AGENTS.md`). `build`, `test`, `list`, and `harnessed-tools assemb
   `install:` vs `setup:` vs `init:`, `env:`.
 - [stack-fields.md](stack-fields.md) — every `stack.yaml` field and the `extends:` merge table.
 - [services.md](services.md) — when a sidecar is the answer, and the two service scopes.
-- `docs/guides/recipe-authoring.md`, `stacks.md`, `extending-stacks.md`, `service-authoring.md`,
-  `egress.md`, `secrets.md` — the long-form guides (present only in `main/`; `docs/` is the wiki
-  clone and is not populated in a task worktree).
+- [injected-content-style.md](injected-content-style.md) — how to write a `RULE.md` or `SKILL.md`,
+  and what `harnessed-tools lint-prose` enforces.
+- `docs/guides/` — the long-form guides: `recipe-authoring.md`, `stacks.md`, `extending-stacks.md`,
+  `service-authoring.md`, `egress.md`, `secrets.md`. Present only in `main/`; `docs/` is the wiki
+  clone, so a task worktree does not have it.
 - `src/harnessed/schema.py` — the typed models. Code wins on any conflict with prose.

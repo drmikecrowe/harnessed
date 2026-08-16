@@ -15,8 +15,9 @@ import sys
 from pathlib import Path
 
 from rich.console import Console
+from rich.table import Table
 
-from . import paths, report
+from . import paths, prose, report
 from .assemble import assemble
 from .capability import CapabilityError, run_capability_test
 from .emit import HATAGO_ENDPOINT
@@ -99,6 +100,28 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "persist-list",
         help="list all persist dirs under persist_root() with recipe, project hash, name, and disk usage",
+    )
+
+    lp = sub.add_parser(
+        "lint-prose",
+        help="style-check injected content (RULE.md / SKILL.md) against the house standard",
+    )
+    lp.add_argument(
+        "targets",
+        nargs="+",
+        metavar="PATH",
+        help="files, or directories to search for RULE.md/SKILL.md (e.g. catalog/recipes/<name>)",
+    )
+    lp.add_argument(
+        "--warn-only",
+        action="store_true",
+        dest="warn_only",
+        help="report findings but always exit 0 (errors alone are non-zero by default)",
+    )
+    lp.add_argument(
+        "--summary",
+        action="store_true",
+        help="print the per-file metric table instead of the individual findings",
     )
 
     prn = sub.add_parser(
@@ -228,6 +251,50 @@ def _run_persist_prune(args: argparse.Namespace, out: Console, err: Console) -> 
     return 0
 
 
+def _run_lint_prose(args: argparse.Namespace, out: Console, err: Console) -> int:
+    """Report every style finding across the targets; exit 1 if any is an error.
+
+    Reports ALL findings rather than raising on the first (unlike the npm/pin gates) because prose
+    quality is a gradient — an author wants the whole list to fix in one pass.
+    """
+    reports = prose.lint_paths([Path(t) for t in args.targets])
+    if not reports:
+        err.print("[yellow]lint-prose:[/yellow] no RULE.md or SKILL.md found under the given paths.")
+        return 1
+
+    if args.summary:
+        table = Table(title="injected content — prose metrics")
+        # fold, not ellipsis: a truncated path is not actionable, and these paths are deep.
+        table.add_column("file", overflow="fold")
+        for column in ("sentences", "avg words", "passive", "soft/hard", "errors"):
+            table.add_column(column, justify="right")
+        for r in sorted(reports, key=lambda r: (-r.errors, -r.avg_sentence_words)):
+            table.add_row(
+                str(r.path),
+                str(r.sentences),
+                f"{r.avg_sentence_words:.1f}",
+                str(r.passive),
+                f"{r.soft_modals}/{r.hard_directives}",
+                str(r.errors),
+            )
+        out.print(table)
+    else:
+        for r in reports:
+            for finding in r.findings:
+                style = "red" if finding.severity == prose.ERROR else "yellow"
+                out.print(f"[{style}]{finding.format()}[/{style}]", highlight=False)
+
+    errors = sum(r.errors for r in reports)
+    warnings = sum(len(r.findings) - r.errors for r in reports)
+    if errors:
+        out.print(f"[bold red]{errors} error(s)[/bold red], {warnings} warning(s) "
+                  f"across {len(reports)} file(s)")
+    else:
+        out.print(f"[bold green]clean[/bold green] — 0 errors, {warnings} warning(s) "
+                  f"across {len(reports)} file(s)")
+    return 0 if args.warn_only or not errors else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -243,6 +310,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_persist_list(args, out, err)
     if args.command == "persist-prune":
         return _run_persist_prune(args, out, err)
+    if args.command == "lint-prose":
+        return _run_lint_prose(args, out, err)
     parser.error(f"unknown command: {args.command}")
     return 2
 
