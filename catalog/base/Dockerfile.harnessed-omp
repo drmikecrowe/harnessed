@@ -67,11 +67,18 @@ USER harnessed
 #          no tracking data for a whole session of git/find calls. A `block` decision still
 #          short-circuits ahead of the rewrite, and the last non-blocking rewrite wins, matching
 #          omp's documented tool_call semantics.
+#   0.5.0  maps PreCompact onto omp's `session_before_compact`, which was previously unbridged.
+#          Hooks get `trigger` (manual for /compact, auto for omp's automatic path, derived from
+#          the auto_compaction_start/end bracket), `custom_instructions`, and `transcript_path`;
+#          the manual/auto matcher is honored, and a deny cancels the compaction.
 #
-# Still NOT bridged, and deliberately: PreToolUse `additionalContext` (omp's tool_call result has
-# no context field) and SubagentStart (omp has no subagent_* event). context-mode's routing nudge
-# is the first of those, which is why that recipe skips the hook on omp and ships
-# rules/ctx-routing with `only_harnesses: [omp]` instead. See drmikecrowe/omp-claude-hooks-bridge.
-RUN omp plugin install @drmikecrowe/omp-claude-hooks-bridge@0.4.1
+# Still NOT injected, and deliberately: PreToolUse `additionalContext`, because omp's tool_call
+# result has no context field and the only same-turn landing spot is the paired tool_result, which
+# arrives AFTER the tool ran — so the context could not gate the call, only steer later ones. Also
+# SubagentStart (omp has no subagent_* event). context-mode's routing nudge is the first of those,
+# which is why that recipe skips the hook on omp and ships rules/ctx-routing with
+# `only_harnesses: [omp]` instead. PostToolUse additionalContext is documented upstream as fixable
+# but not yet wired. Release notes: the repo's CHANGELOG.md, tagged vX.Y.Z as of 0.5.0.
+RUN omp plugin install @drmikecrowe/omp-claude-hooks-bridge@0.5.0
 
 CMD ["/bin/bash"]

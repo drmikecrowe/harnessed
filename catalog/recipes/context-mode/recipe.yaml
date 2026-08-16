@@ -51,9 +51,11 @@ mcp:
 # structurally cannot. Content is deliberately about WHEN to route and how `queries` breadth decides
 # whether a call saves or spends — a reducer queried too broadly re-emits the dump it exists to avoid.
 #
-# Still true against bridge 0.4.0 AND 0.4.1, but for a NARROWER reason than the note below states.
-# 0.4.1 bridges PreToolUse `updatedInput` (command rewriting, which is what unblocked rtk); it does
-# NOT touch additionalContext, so it does not move this decision. (That note
+# Still true against bridge 0.4.0, 0.4.1 AND 0.5.0, but for a NARROWER reason than the note below.
+# 0.4.1 bridges PreToolUse `updatedInput` (command rewriting, which is what unblocked rtk) and 0.5.0
+# bridges PreCompact; neither touches PreToolUse additionalContext, so neither moves this decision.
+# 0.5.0's README now states the blocker outright: the only same-turn landing spot is the paired
+# tool_result, which arrives after the tool ran, so the context could not gate the call. (That note
 # predates 0.4.0 and is now half stale — see the Hook layer). 0.4.0 injects additionalContext from
 # any event plus SessionStart/UserPromptSubmit stdout, so the SessionStart half WOULD now bridge.
 # `PreToolUse` additionalContext is one of the two paths its README documents as deliberately NOT
@@ -151,9 +153,12 @@ hooks:
       skip_harnesses: [omp]
   PreCompact:
     # Optional upstream. Snapshots session state before compaction so the model can resume via BM25.
-    # INERT on omp: the bridge maps no omp event to PreCompact, so this would never fire there. Skipped
-    # to say so explicitly rather than shipping a hook that silently cannot run; the native extension
-    # covers it via session_before_compact.
+    # DOUBLE-FIRE on omp as of bridge 0.5.0, which maps PreCompact onto session_before_compact. This
+    # was INERT before that release — the reason changed, the skip did not — and it is now the same
+    # argument as SessionStart and PostToolUse above: the native extension already handles
+    # session_before_compact, and two writers on one SQLite session store is the duplication this
+    # mechanism exists to prevent. A bridged PreCompact deny would also cancel the compaction twice
+    # over.
     - command: context-mode hook claude-code precompact
       skip_harnesses: [omp]
 

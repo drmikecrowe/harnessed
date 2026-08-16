@@ -150,10 +150,11 @@ def test_context_mode_hooks_are_skipped_on_omp_only():
 
     The skip is declared PER ENTRY, not recipe-wide. Same observable outcome on omp, but the reasons
     differ per event and only ONE is structural: PreToolUse additionalContext is undeliverable on omp
-    at any bridge version (omp's tool_call result has no context field), whereas SessionStart and
-    PostToolUse do bridge as of 0.4.0 and are skipped only because the native extension already
-    covers them. Asserting per-entry keeps that distinction testable, so a later change that un-skips
-    the bridgeable events cannot silently un-skip the structural one too.
+    at any bridge version (omp's tool_call result has no context field). The other three DO bridge —
+    SessionStart and PostToolUse since 0.4.0, PreCompact since 0.5.0 — and are skipped only because
+    the native extension already covers them, so two writers would duplicate the SQLite session
+    store. Asserting per-entry keeps that distinction testable, so a later change that un-skips the
+    bridgeable events cannot silently un-skip the structural one too.
     """
     recipe = load_recipe(ROOT / "catalog" / "recipes" / "context-mode", strict=True)
     # Deliberately empty: the recipe-wide key is all-or-nothing and cannot say "native here,
