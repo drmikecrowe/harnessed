@@ -16,9 +16,15 @@ tool runs it. Cap the output where it is produced, not after it lands:
 - Existence or location only: `rg -l` for filenames, `rg -c` for per-file counts. Never page full
   matches to answer "does this exist".
 - Cap the volume: `-m/--max-count` per file, and scope to a path or `-g` glob before widening.
-- If this profile carries a rule naming a batch-execute or sandbox tool, **that rule governs** any
-  search whose output you cannot bound: follow it instead of paging matches into the conversation.
-  It still cannot un-spend a result set you did not need, so bound first, then route.
+- Route what you could not bound, and pick by what you need back:
+  - **`rtk rg …`** when you want the matches themselves. It runs `rg` natively and compacts the
+    result: whitespace stripped, long lines truncated, grouped by file. One shell call, no round
+    trip. Type it explicitly; do not assume something rewrites your command for you.
+  - **`ctx_batch_execute`** when the match list is large and you have specific questions about it.
+    It runs the command, indexes the output, and returns only the windows matching your `queries`,
+    so the raw list never enters the conversation. See [[ctx-routing]] for the query-breadth trap.
+
+Neither un-spends a result set you did not need. Bound first, then route.
 
 Capture expensive output once; query the file rather than re-running:
 
