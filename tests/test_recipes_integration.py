@@ -144,17 +144,54 @@ def test_context_mode_hooks_are_skipped_on_omp_only():
     """The real catalog recipe, not a fixture (bd main-4fx / main-wyh).
 
     context-mode's capability is delivered NATIVELY on omp (its own omp extension, installed by the
-    recipe's Dockerfile: session_start / tool_call / tool_result / session_before_compact). Replaying
+    recipe's install.sh: session_start / tool_call / tool_result / session_before_compact). Replaying
     the same hook bodies through omp-claude-hooks-bridge would double-write the session DB and spawn
     a node CLI per tool call whose output the bridge discards. Every other harness must be unchanged.
+
+    The skip is declared PER ENTRY, not recipe-wide. Same observable outcome on omp, but the reasons
+    differ per event and only ONE is structural: PreToolUse additionalContext is undeliverable on omp
+    at any bridge version (omp's tool_call result has no context field). The other three DO bridge —
+    SessionStart and PostToolUse since 0.4.0, PreCompact since 0.5.0 — and are skipped only because
+    the native extension already covers them, so two writers would duplicate the SQLite session
+    store. Asserting per-entry keeps that distinction testable, so a later change that un-skips the
+    bridgeable events cannot silently un-skip the structural one too.
     """
     recipe = load_recipe(ROOT / "catalog" / "recipes" / "context-mode", strict=True)
-    assert recipe.hooks_skip_harnesses == ["omp"]
+    # Deliberately empty: the recipe-wide key is all-or-nothing and cannot say "native here,
+    # bridged there" per event.
+    assert recipe.hooks_skip_harnesses == []
+    assert set(recipe.hooks) == {"PreToolUse", "SessionStart", "PostToolUse", "PreCompact"}
+    for event, entries in recipe.hooks.items():
+        assert entries, event
+        for entry in entries:
+            assert entry.skip_harnesses == ["omp"], f"{event}: {entry.command}"
 
     assert "hooks" not in required_settings([], [recipe], harness="omp")
     for harness in ("claude", "opencode", "codex", "antigravity"):
         hooks = required_settings([], [recipe], harness=harness).get("hooks", {})
         assert set(hooks) == {"PreToolUse", "SessionStart", "PostToolUse", "PreCompact"}, harness
+
+
+def test_context_mode_ctx_routing_rule_is_omp_only():
+    """The rule and the PreToolUse skip are one decision, so assert them together.
+
+    context-mode skips its PreToolUse hook on omp because omp's tool_call result has no context
+    field, and ships rules/ctx-routing to carry that steering instead. On every other harness the
+    hook fires and injects the same instruction, so shipping the rule there too would repeat it
+    always-on, every session. If a future change drops one side without the other, this fails.
+    """
+    recipe = load_recipe(ROOT / "catalog" / "recipes" / "context-mode", strict=True)
+    [rule] = recipe.rules
+    assert rule.path == "rules/ctx-routing"
+    assert rule.only_harnesses == ["omp"]
+
+    # The complement: the hook this rule stands in for is skipped on exactly that harness.
+    pre = recipe.hooks["PreToolUse"]
+    assert all(e.skip_harnesses == ["omp"] for e in pre)
+
+    assert rule.ships_to("omp")
+    for harness in ("claude", "opencode", "codex", "antigravity"):
+        assert not rule.ships_to(harness), harness
 
 
 def test_codebase_memory_mcp_hooks_reach_settings():

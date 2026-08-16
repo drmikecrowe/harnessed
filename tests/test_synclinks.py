@@ -24,6 +24,76 @@ def _recipe(root: Path, rules: list[str]) -> Recipe:
     )
 
 
+class TestOnlyHarnesses:
+    """`only_harnesses` on a rule entry: an allow-list, applied before every other check."""
+
+    def _gated(self, root: Path, path: str, only: list[str]) -> Recipe:
+        return Recipe(name="cm", root=root, rules=[FileExt(path=path, only_harnesses=only)])
+
+    def test_ships_to_the_named_harness(self, tmp_path):
+        root = tmp_path / "recipe"
+        _make_rule_dir(root, "ctx-routing", "# route\nUse ctx_batch_execute.\n")
+        syncer = LinkSyncer(harness="omp")
+        syncer.add_recipe(self._gated(root, "rules/ctx-routing", ["omp"]))
+        claude_dir = tmp_path / "profile" / ".claude"
+        syncer.fan(claude_dir)
+        assert (claude_dir / "rules" / "ctx-routing" / "ctx-routing.md").is_file()
+
+    def test_skipped_on_every_other_harness(self, tmp_path):
+        # The point of the field: on Claude the recipe's own PreToolUse hook injects this steering,
+        # so shipping the rule too would repeat it always-on for nothing.
+        root = tmp_path / "recipe"
+        _make_rule_dir(root, "ctx-routing")
+        for harness in ("claude", "opencode", "codex", "antigravity"):
+            syncer = LinkSyncer(harness=harness)
+            syncer.add_recipe(self._gated(root, "rules/ctx-routing", ["omp"]))
+            claude_dir = tmp_path / f"profile-{harness}" / ".claude"
+            syncer.fan(claude_dir)
+            assert not (claude_dir / "rules" / "ctx-routing").exists(), harness
+
+    def test_no_harness_ships_everything(self, tmp_path):
+        # harness=None is the assemble-time default before a harness is chosen. Skipping there would
+        # make a harness-less inspection silently incomplete.
+        root = tmp_path / "recipe"
+        _make_rule_dir(root, "ctx-routing")
+        syncer = LinkSyncer()
+        syncer.add_recipe(self._gated(root, "rules/ctx-routing", ["omp"]))
+        claude_dir = tmp_path / "profile" / ".claude"
+        syncer.fan(claude_dir)
+        assert (claude_dir / "rules" / "ctx-routing").is_dir()
+
+    def test_empty_allow_list_ships_everywhere(self, tmp_path):
+        root = tmp_path / "recipe"
+        _make_rule_dir(root, "universal")
+        syncer = LinkSyncer(harness="claude")
+        syncer.add_recipe(self._gated(root, "rules/universal", []))
+        claude_dir = tmp_path / "profile" / ".claude"
+        syncer.fan(claude_dir)
+        assert (claude_dir / "rules" / "universal").is_dir()
+
+    def test_a_skipped_entry_reserves_no_name(self, tmp_path):
+        """Filtering happens BEFORE the collision check, so two recipes may ship one rule name for
+        different harnesses. Reserving the name would forbid exactly the split this field enables."""
+        root_a, root_b = tmp_path / "a", tmp_path / "b"
+        _make_rule_dir(root_a, "shared", "omp flavour")
+        _make_rule_dir(root_b, "shared", "claude flavour")
+        syncer = LinkSyncer(harness="claude")
+        syncer.add_recipe(Recipe(name="a", root=root_a,
+                                rules=[FileExt(path="rules/shared", only_harnesses=["omp"])]))
+        syncer.add_recipe(Recipe(name="b", root=root_b,
+                                 rules=[FileExt(path="rules/shared", only_harnesses=["claude"])]))
+        claude_dir = tmp_path / "profile" / ".claude"
+        syncer.fan(claude_dir)
+        assert "claude flavour" in (claude_dir / "rules" / "shared" / "shared.md").read_text()
+
+    def test_a_skipped_entry_need_not_exist(self, tmp_path):
+        """The existence check is also downstream of the filter, so a harness that does not take an
+        entry never fails on it."""
+        syncer = LinkSyncer(harness="claude")
+        syncer.add_recipe(self._gated(tmp_path / "recipe", "rules/absent", ["omp"]))
+        syncer.fan(tmp_path / "profile" / ".claude")
+
+
 class TestRulesRoundTrip:
     def test_rules_fanned_into_profile(self, tmp_path):
         """A recipe declaring rules: gets .claude/rules/<name>/ with the markdown file."""

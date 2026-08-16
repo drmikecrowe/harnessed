@@ -60,6 +60,22 @@ rules:                      # the one field that accepts a FILE as well as a dir
   - path: rules/my-rule     #   → .claude/rules/my-rule/RULE.md   (both are loaded)
 ```
 
+Each skill, command, or rule entry also takes `only_harnesses:`, an allow-list. Every other harness
+skips it. No other recipe field accepts it.
+
+```yaml
+rules:
+  - path: rules/ctx-routing
+    only_harnesses: [omp]   # ships to omp only
+```
+
+Use it when a rule exists to cover a hook that cannot fire on one harness. It is the complement of
+`hooks.<Event>[].skip_harnesses`: skip the hook where it cannot run, ship the rule there instead.
+Keep the pair in lockstep, or the same steering arrives twice.
+
+It is an allow-list, not a skip-list, on purpose. Content that patches one harness must never ship
+to a harness added later.
+
 Leaf names are global across the stack — the assembler **fails fast** if two recipes contribute the
 same skill or command name. Design complementary recipes with zero name overlap.
 

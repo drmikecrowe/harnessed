@@ -34,6 +34,9 @@ class LinkSyncer:
     skills: dict[str, tuple[Path, str]] = field(default_factory=dict)
     commands: dict[str, tuple[Path, str]] = field(default_factory=dict)
     rules: dict[str, tuple[Path, str]] = field(default_factory=dict)
+    # Target harness, for `only_harnesses` on an entry. None = ship everything (the assemble-time
+    # default before a harness is known), which keeps a harness-less inspection complete.
+    harness: str | None = None
 
     def add_recipe(self, recipe: Recipe) -> None:
         self._register(recipe, recipe.skills, self.skills, "skill")
@@ -42,8 +45,8 @@ class LinkSyncer:
         # so a rule source may be either a single file or a directory.
         self._register(recipe, recipe.rules, self.rules, "rule", allow_file=True)
 
-    @staticmethod
     def _register(
+        self,
         recipe: Recipe,
         entries: list[FileExt],
         registry: dict[str, tuple[Path, str]],
@@ -51,6 +54,11 @@ class LinkSyncer:
         allow_file: bool = False,
     ) -> None:
         for entry in entries:
+            # Filtered BEFORE the existence and collision checks. An entry this harness does not
+            # take must not reserve its name either, or two recipes could not ship the same rule
+            # name for different harnesses — the case this field exists to allow.
+            if not entry.ships_to(self.harness):
+                continue
             src = (recipe.root / entry.path).resolve()
             if not (src.is_dir() or (allow_file and src.is_file())):
                 raise CollisionError(

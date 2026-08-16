@@ -305,7 +305,9 @@ def assemble(
     # Fan each recipe's standalone skills/commands into the harness-native profile tree
     # (<profile>/.claude/{skills,commands}). The launcher mounts these dirs into the instance and
     # the capability test reads them back, so the fan-out is what makes a skill recipe observable.
-    syncer = LinkSyncer()
+    # `harness` is threaded in so an entry's `only_harnesses` can drop it here: content that exists
+    # to patch one harness's hole must not ship, always-on, to the harnesses without that hole.
+    syncer = LinkSyncer(harness=harness)
     for recipe in recipes:
         syncer.add_recipe(recipe)
     syncer.fan(profile_dir / ".claude")

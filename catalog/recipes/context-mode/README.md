@@ -16,7 +16,7 @@ The session store (`~/.context-mode`) is declared as workspace-scoped `persist:`
 ## omp: the native extension (container only)
 
 Under `omp` the bridged Claude hooks are inert, so the recipe suppresses them
-(`hooks.skip_harnesses: [omp]`) and installs upstream's own omp extension instead — that is all
+(a per-entry `skip_harnesses: [omp]` on each) and installs upstream's own omp extension instead — that is all
 `install.sh` does: `omp plugin install context-mode@<version>`. The step is **container-only, and
 says so on a host launch**: it writes into `~/.omp/plugins`, which host-side is *your own* omp
 installation. harnessed mounts `~/.omp/agent` read-write as deliberately shared host state, but it

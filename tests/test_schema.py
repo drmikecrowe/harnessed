@@ -857,6 +857,96 @@ class TestHooksParse:
         with pytest.raises(SchemaError, match="unknown harness"):
             self._load(tmp_path, body)
 
+    def test_rule_entry_only_harnesses_parsed(self, tmp_path):
+        r = self._load(
+            tmp_path,
+            "name: r\nrules:\n  - path: rules/a\n    only_harnesses: [omp]\n  - path: rules/b\n",
+        )
+        assert [e.only_harnesses for e in r.rules] == [["omp"], []]
+        a, b = r.rules
+        assert a.ships_to("omp") and not a.ships_to("claude")
+        assert b.ships_to("omp") and b.ships_to("claude")
+        # harness=None is ship-everything, so a harness-less read is never short content.
+        assert a.ships_to(None) and b.ships_to(None)
+
+    def test_rule_entry_only_harnesses_unknown_harness_rejected(self, tmp_path):
+        # A typo must fail at parse time. Silently shipping nowhere is the worse failure: the rule
+        # simply never appears and nothing says why.
+        body = "name: r\nrules:\n  - path: rules/a\n    only_harnesses: [ompp]\n"
+        with pytest.raises(SchemaError, match="only_harnesses"):
+            self._load(tmp_path, body)
+
+    def test_rule_entry_unknown_field_rejected(self, tmp_path):
+        body = "name: r\nrules:\n  - path: rules/a\n    nope: 1\n"
+        with pytest.raises(SchemaError, match="valid fields: path, only_harnesses"):
+            self._load(tmp_path, body)
+
+    def test_rule_entry_only_harnesses_empty_list_rejected(self, tmp_path):
+        # The hint must match THIS field's polarity. One validator serves both keys, and omitting
+        # them means opposite things: `skip_harnesses` absent skips nothing, `only_harnesses` absent
+        # ships everywhere. A shared "skip nothing" message told allow-list authors the wrong thing.
+        body = "name: r\nrules:\n  - path: rules/a\n    only_harnesses: []\n"
+        with pytest.raises(SchemaError, match=r"must not be empty.*ship to every harness"):
+            self._load(tmp_path, body)
+
+    def test_hooks_skip_harnesses_keeps_its_own_omit_hint(self, tmp_path):
+        # The negative control for the message above: the skip-list keeps skip-list wording.
+        body = "name: r\nhooks:\n  skip_harnesses: []\n  SessionStart:\n    - command: h\n"
+        with pytest.raises(SchemaError, match=r"must not be empty.*skip nothing"):
+            self._load(tmp_path, body)
+
+    def test_skip_harnesses_explicit_empty_list_rejected(self, tmp_path):
+        # Fail-open closed: `skip_harnesses: []` used to reduce to "skip nothing" in silence, which
+        # is indistinguishable from the author having meant a suppression. Omitting the key is the
+        # way to skip nothing, and it stays valid (see test_skip_harnesses_absent_is_empty_list).
+        body = "name: r\nhooks:\n  skip_harnesses: []\n  SessionStart:\n    - command: h\n"
+        with pytest.raises(SchemaError, match="must not be empty"):
+            self._load(tmp_path, body)
+
+    def test_skip_harnesses_blank_harness_name_rejected(self, tmp_path):
+        # The unknown-harness check cannot catch this: "" strips to nothing and was dropped before
+        # the membership test ran, so the hook was emitted on every harness anyway.
+        body = 'name: r\nhooks:\n  skip_harnesses: ["  "]\n  SessionStart:\n    - command: h\n'
+        with pytest.raises(SchemaError, match="blank harness name"):
+            self._load(tmp_path, body)
+
+    def test_per_entry_skip_harnesses_empty_list_rejected(self, tmp_path):
+        # Same guarantee at the entry level — the per-entry key doubled the number of places this
+        # could fail open.
+        body = (
+            "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      skip_harnesses: []\n"
+        )
+        with pytest.raises(SchemaError, match=r"hooks\.PreToolUse\[\]\.skip_harnesses"):
+            self._load(tmp_path, body)
+
+    def test_per_entry_skip_harnesses_parsed(self, tmp_path):
+        body = (
+            "name: r\nhooks:\n"
+            "  PreToolUse:\n"
+            "    - command: nudge\n"
+            "      matcher: Bash\n"
+            "      skip_harnesses: [omp]\n"
+            "    - command: gate\n"
+        )
+        r = self._load(tmp_path, body)
+        assert r.hooks_skip_harnesses == []
+        entries = r.hooks["PreToolUse"]
+        assert [e.skip_harnesses for e in entries] == [["omp"], []]
+
+    def test_per_entry_skip_harnesses_unknown_harness_rejected(self, tmp_path):
+        # Same fail-at-parse-time guarantee as the recipe-wide key: a typo would silently emit the
+        # entry it was meant to suppress. The message must name the ENTRY path, not the recipe key.
+        body = (
+            "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      skip_harnesses: [ompp]\n"
+        )
+        with pytest.raises(SchemaError, match=r"hooks\.PreToolUse\[\]\.skip_harnesses"):
+            self._load(tmp_path, body)
+
+    def test_unknown_entry_field_message_lists_skip_harnesses(self, tmp_path):
+        body = "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      nope: 1\n"
+        with pytest.raises(SchemaError, match="valid fields: command, matcher, skip_harnesses"):
+            self._load(tmp_path, body)
+
     def test_skip_harnesses_not_a_list_rejected(self, tmp_path):
         body = "name: r\nhooks:\n  skip_harnesses: omp\n  SessionStart:\n    - command: h\n"
         with pytest.raises(SchemaError, match="must be a list of harness names"):

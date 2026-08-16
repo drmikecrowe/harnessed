@@ -107,7 +107,8 @@
           "required": ["command"],
           "properties": {
             "command": { "description": "Shell command Claude Code runs when this event fires.", "type": "string", "minLength": 1 },
-            "matcher": { "description": "Optional matcher (tool name for PreToolUse/PostToolUse; \"startup\"|\"resume\"|\"clear\" for SessionStart, etc). Ignored by events that don't support matching.", "type": "string" }
+            "matcher": { "description": "Optional matcher (tool name for PreToolUse/PostToolUse; \"startup\"|\"resume\"|\"clear\" for SessionStart, etc). Ignored by events that don't support matching.", "type": "string" },
+            "skip_harnesses": { "description": "Harnesses on which THIS ENTRY is not emitted, independent of the recipe-wide hooks.skip_harnesses. The recipe-wide key is all-or-nothing, so suppressing one undeliverable event there costs every other hook on that harness too. Use this when a recipe reconciles harnesses PER EVENT: e.g. on omp, context-mode's PreToolUse nudge is structurally undeliverable (omp's tool_call result has no context field, so omp-claude-hooks-bridge documents it as not bridgeable) while its other events replay correctly. An event whose every entry is skipped is omitted from settings.json entirely rather than emitted empty.", "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["claude", "omp", "opencode", "antigravity", "codex"] } }
           }
         }
       }
@@ -304,14 +305,17 @@
       ]
     },
     "fileExt": {
-      "description": "A standalone skill/command dir: a bare path string, or { path: ... }.",
+      "description": "A standalone skill/command/rule dir: a bare path string, or { path, only_harnesses? }. `only_harnesses` is an ALLOW-list: name the harnesses that receive this entry, and every other harness skips it. OMIT the key to ship to all; an empty list is rejected, because a hand-written empty allow-list reads as \"ship nowhere\". It is the complement of hooks.skip_harnesses, for the case where a rule exists only to cover a hook that cannot fire on one harness (context-mode skips its PreToolUse hook on omp, and ships rules/ctx-routing there instead). Deliberately an allow-list, not a skip-list: content patching one harness's hole must not silently ship to a harness added later.",
       "oneOf": [
         { "type": "string", "minLength": 1 },
         {
           "type": "object",
-          "additionalProperties": true,
+          "additionalProperties": false,
           "required": ["path"],
-          "properties": { "path": { "type": "string", "minLength": 1 } }
+          "properties": {
+            "path": { "type": "string", "minLength": 1 },
+            "only_harnesses": { "description": "Allow-list of harnesses that receive this entry. Omit the key to ship to all; an empty list is rejected.", "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["claude", "omp", "opencode", "antigravity", "codex"] } }
+          }
         }
       ]
     },

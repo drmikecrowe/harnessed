@@ -13,6 +13,15 @@
 name: mikes-universal-setup
 description: "Mike's baseline rules (coding stance, tool preferences, confirmation gates, token economy) plus a set of generic utility skills — an example personal always-on setup."
 
+# COMPANION TOOLS ASSUMED PRESENT. rules/rg and rules/fd name `rtk` and context-mode's
+# `ctx_batch_execute` outright instead of hedging ("if your stack provides a reducer"), because this
+# baseline is always composed alongside the rg/fd/rtk/context-mode recipes. The coupling is
+# DELIBERATE, and the schema cannot express it — there is no recipe-to-recipe `requires:`, only
+# `services:` for sidecars — so it is recorded here instead. The hedged phrasing was tried first and
+# does not work: an abstract "some stacks add an output reducer" never fires at the moment you are
+# reaching for rg, which is the only moment it would have to. If you lift this recipe WITHOUT those
+# companions, those two rules name tools you do not have — drop the bullets rather than leave them
+# dangling.
 rules:
   # A reported problem is a symptom, not an accusation. Counterweight to coding-principles' "never
   # guess / state verified facts", which on its own turns a bug report into an attribution argument.
@@ -25,10 +34,23 @@ rules:
   # approach after repeated failure, finish the whole task before stopping.
   - path: rules/execution-discipline
   - path: rules/fd
+  # Anti-agentic-regression, not a docs style guide: comment ONLY what a competent reader would
+  # reasonably delete (upstream workarounds, tuned constants, arbitrary-looking ordering, untested
+  # defensive checks, deliberate convention breaks), as a terse marker plus a MANDATORY ticket/ADR/SHA
+  # reference. The mandate is the anti-hallucination mechanism: a model cannot invent a ticket number
+  # that resolves, so an uncitable rationale must be labelled as inference or omitted. Carries the
+  # inverse duty too — read the reference before deleting what it guards.
+  - path: rules/load-bearing-comments
   # Gates WHAT gets published (read what you didn't author; provenance; no private content).
   # stop-and-ask gates WHETHER. A secret scanner only catches key-shaped strings — this is the
   # semantic pass it can't do.
   - path: rules/pre-publish-review
+  # Resolves the WHICH-WINS question the other rules leave open: user > harness tool policy > project
+  # docs > rules > skills > memory. Deliberately capability-phrased, never naming a harness's tools —
+  # a rule that names a binary is naming an example, so the harness decides the mechanism and the
+  # rule keeps the intent. Also states that an index/graph/cache is a derived view, so authoritative
+  # resolution wins for single-symbol truth.
+  - path: rules/precedence
   # Prompt-injection baseline: instructions only from user/project, everything fetched or
   # tool-returned is data. Covers identity/rule overrides, secret disclosure, unvalidated
   # executable output, encoding and pressure tricks, and harmful-content refusals.

@@ -154,6 +154,27 @@ class FileExt:
     """A standalone file-extension dir shipped by a recipe (skills/ or commands/)."""
 
     path: str  # relative to the recipe dir
+    # Harnesses this entry ships to, as an ALLOW-list. Empty means every harness, which is the
+    # PARSED DEFAULT when the key is absent — writing `only_harnesses: []` by hand is a schema error,
+    # because a hand-written empty allow-list reads as "ship nowhere" and silently did the opposite.
+    #
+    # The complement of `hooks.skip_harnesses`, and it exists because those two halves are one
+    # decision. context-mode skips its PreToolUse hook on omp, since omp's tool_call result has no
+    # context field, and ships rules/ctx-routing to carry that steering instead. On every other
+    # harness the hook fires and the rule would repeat it, always-on, for nothing.
+    #
+    # An ALLOW-list rather than a skip-list on purpose: content that patches ONE harness's hole must
+    # not silently ship to a harness added later. A skip-list would have to name every other harness
+    # and would grow a bug each time the list grows.
+    only_harnesses: list[str] = field(default_factory=list)
+
+    def ships_to(self, harness: str | None) -> bool:
+        """True when this entry belongs in `harness`'s profile.
+
+        `harness=None` is the assemble-time default before a harness is known: ship everything, so
+        the profile a caller inspects without naming a harness is never missing content.
+        """
+        return not self.only_harnesses or harness is None or harness in self.only_harnesses
 
     @property
     def name(self) -> str:
@@ -479,6 +500,13 @@ class HookCommand:
 
     command: str
     matcher: str | None = None
+    # Harnesses on which THIS ENTRY is not emitted, independent of the recipe-wide
+    # `hooks.skip_harnesses`. The recipe-wide key is all-or-nothing, which forces a recipe to
+    # forfeit EVERY hook on a harness in order to suppress the one that cannot be delivered there.
+    # Per-entry skipping is what lets one recipe reconcile harnesses that differ per EVENT: on omp,
+    # context-mode's PreToolUse nudge is structurally undeliverable (the bridge has no context field
+    # on tool_call) while its other events bridge fine.
+    skip_harnesses: list[str] = field(default_factory=list)
 
 
 # Claude Code's documented hook event names (code.claude.com/docs/en/hooks). Validated so a typo
@@ -547,18 +575,25 @@ def _parse_hooks(raw_hooks) -> tuple[dict[str, list[HookCommand]], list[str]]:
             matcher = entry.get("matcher")
             if matcher is not None and not isinstance(matcher, str):
                 raise SchemaError(f"recipe 'hooks.{event}' entry 'matcher' must be a string: {entry!r}")
-            unknown = sorted(set(entry) - {"command", "matcher"})
+            entry_skip = _parse_hooks_skip_harnesses(
+                entry.get("skip_harnesses"), label=f"hooks.{event}[].skip_harnesses"
+            )
+            unknown = sorted(set(entry) - {"command", "matcher", "skip_harnesses"})
             if unknown:
                 raise SchemaError(
                     f"recipe 'hooks.{event}' entry: unknown field(s) {unknown} — "
-                    "valid fields: command, matcher"
+                    "valid fields: command, matcher, skip_harnesses"
                 )
-            commands.append(HookCommand(command=command.strip(), matcher=matcher))
+            commands.append(
+                HookCommand(command=command.strip(), matcher=matcher, skip_harnesses=entry_skip)
+            )
         parsed[event] = commands
     return parsed, skip
 
 
-def _parse_hooks_skip_harnesses(raw) -> list[str]:
+def _parse_hooks_skip_harnesses(
+    raw, label: str = "hooks.skip_harnesses", omit_hint: str = "skip nothing"
+) -> list[str]:
     """Parse `hooks.skip_harnesses:` — harnesses on which this recipe's hooks are NOT emitted.
 
     Validated against HARNESS_CONFIG_DIR so a typo (`ompp`) fails at parse time rather than
@@ -567,12 +602,23 @@ def _parse_hooks_skip_harnesses(raw) -> list[str]:
     if raw is None:
         return []
     if not isinstance(raw, list) or not all(isinstance(h, str) for h in raw):
-        raise SchemaError("recipe 'hooks.skip_harnesses' must be a list of harness names")
-    skip = [h.strip() for h in raw if h.strip()]
+        raise SchemaError(f"recipe {label!r} must be a list of harness names")
+    # An explicitly written `skip_harnesses: []`, or an entry that is blank/whitespace, used to
+    # reduce to "skip nothing" in silence — the same fail-open this validator exists to close. A
+    # typo'd harness is caught below; an EMPTY one was not, so `skip_harnesses: [""]` read as a
+    # deliberate suppression and emitted the hook anyway. The JSON schema says minItems: 1, but
+    # nothing enforces that on a hand-written recipe.
+    if not raw:
+        raise SchemaError(
+            f"recipe {label!r} must not be empty — omit the key entirely to {omit_hint}"
+        )
+    if any(not h.strip() for h in raw):
+        raise SchemaError(f"recipe {label!r} contains a blank harness name: {raw!r}")
+    skip = [h.strip() for h in raw]
     unknown = sorted(set(skip) - set(HARNESS_CONFIG_DIR))
     if unknown:
         raise SchemaError(
-            f"recipe 'hooks.skip_harnesses': unknown harness(es) {unknown} — "
+            f"recipe {label!r}: unknown harness(es) {unknown} — "
             f"valid harnesses: {', '.join(sorted(HARNESS_CONFIG_DIR))}"
         )
     return skip
@@ -1376,7 +1422,22 @@ def _parse_fileext(raw_list) -> list[FileExt]:
         if isinstance(entry, str):
             out.append(FileExt(path=entry))
         elif isinstance(entry, dict) and "path" in entry:
-            out.append(FileExt(path=entry["path"]))
+            unknown = sorted(set(entry) - {"path", "only_harnesses"})
+            if unknown:
+                raise SchemaError(
+                    f"skill/command/rule entry: unknown field(s) {unknown} — "
+                    "valid fields: path, only_harnesses"
+                )
+            out.append(
+                FileExt(
+                    path=entry["path"],
+                    only_harnesses=_parse_hooks_skip_harnesses(
+                        entry.get("only_harnesses"),
+                        label="only_harnesses",
+                        omit_hint="ship to every harness",
+                    ),
+                )
+            )
         else:
             raise SchemaError(f"skill/command entry must be a path or {{path: ...}}: {entry!r}")
     return out
