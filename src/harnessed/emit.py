@@ -391,6 +391,51 @@ def _managed_block_re(stack_name: str) -> re.Pattern[str]:
     )
 
 
+_ANY_BLOCK_RE = re.compile(
+    r"<!-- BEGIN harnessed:(?P<name>[^\s>]+) -->\n(?P<body>.*?)<!-- END harnessed:(?P=name) -->\n?",
+    re.DOTALL,
+)
+
+_RULE_HEADER_RE = re.compile(r"^## Rule: (?P<label>.+)$", re.MULTILINE)
+
+
+def _split_rule_sections(body: str) -> list[tuple[str, str]]:
+    """`[(label, section)]` for each `## Rule: <label>` section in a RULES.md block body."""
+    heads = list(_RULE_HEADER_RE.finditer(body))
+    return [
+        (
+            h.group("label").strip(),
+            body[h.start() : (heads[i + 1].start() if i + 1 < len(heads) else len(body))].strip(),
+        )
+        for i, h in enumerate(heads)
+    ]
+
+
+def _prune_rules_from_other_blocks(path: Path, stack_name: str, labels: set[str]) -> None:
+    """Drop `## Rule: <label>` sections for `labels` from every OTHER stack's block in `path`.
+
+    RULES.md is shared by every omp stack, so one recipe carried by several stacks lands its rules
+    under each stack's own block. Those copies DIVERGE, because each was captured whenever that
+    stack was last built, so the exact-text check this replaced could not collapse them: the agent
+    read the same rule two or three times in conflicting versions. The LAUNCHING stack holds the
+    current text, so its copy is authoritative and the stale ones go. A block left with no rules at
+    all is removed along with them.
+    """
+    if not labels or not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+
+    def _prune(m: re.Match[str]) -> str:
+        if m.group("name") == stack_name:
+            return m.group(0)
+        kept = [s for label, s in _split_rule_sections(m.group("body")) if label not in labels]
+        return _managed_block(m.group("name"), "\n\n".join(kept)) if kept else ""
+
+    updated = _ANY_BLOCK_RE.sub(_prune, text)
+    if updated != text:
+        path.write_text(updated, encoding="utf-8")
+
+
 def upsert_managed_block(text: str, stack_name: str, body: str) -> str:
     """Insert or REPLACE this stack's delimiter-marked block in `text` (bd main-w8k).
 
@@ -445,24 +490,24 @@ def write_omp_identity(
     agent_dir = agent_dir or _default_omp_agent_dir()
 
     rule_parts: list[str] = []
+    rule_labels: set[str] = set()
     for rule_path in rules or []:
         body = rule_path.read_text(encoding="utf-8").strip()
         if not body:
             continue
-        rule_parts.append(f"## Rule: {_rule_label(rule_path, profile_dir)}\n\n{body}")
+        label = _rule_label(rule_path, profile_dir)
+        rule_labels.add(label)
+        rule_parts.append(f"## Rule: {label}\n\n{body}")
 
-    # RULES.md is shared across EVERY omp stack (see the module note above), so a recipe two stacks
-    # both include would otherwise deposit its rules under each stack's own block — the same body
-    # duplicated once per stack (observed triplication across three stacks). Drop any rule already
-    # present in ANOTHER stack's block so each distinct rule appears once. This stack's OWN current
-    # block is stripped before the check, so a re-run still refreshes in place: a changed body
-    # rewrites, a dropped rule removes (see _remove_block_file below). Self-healing: if the stack
-    # that first carried a rule later drops it, the next stack still carrying the recipe re-adds it.
+    # RULES.md is shared across EVERY omp stack (see the module note above), so a recipe that two
+    # stacks both include deposits its rules under each stack's own block. Those copies diverge as
+    # the recipe evolves, so the exact-text dedup this replaced silently failed on any drift and the
+    # agent read the same rule two or three times in CONFLICTING versions (observed: three
+    # coding-principles blocks across three stacks). This stack carries the current text, so write
+    # our copy and strip the same-labelled ones from every other block. Self-healing either way: a
+    # stack that later drops the recipe stops re-adding it, and one that still carries it re-adds it.
     rules_file = agent_dir / _OMP_RULES_FILE
-    elsewhere = _managed_block_re(stack_name).sub(
-        "", rules_file.read_text(encoding="utf-8") if rules_file.is_file() else ""
-    )
-    rule_parts = [rp for rp in rule_parts if rp not in elsewhere]
+    _prune_rules_from_other_blocks(rules_file, stack_name, rule_labels)
     rules_body = "\n\n".join(rule_parts)
 
     identity = instructions.strip() if instructions else ""

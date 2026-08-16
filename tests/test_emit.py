@@ -375,6 +375,54 @@ class TestWriteOmpIdentity:
         assert rules_text.count("All commits must be signed.") == 1
         assert "## Rule: signed-commits/RULE.md" in rules_text
 
+    def test_divergent_bodies_collapse_to_the_launching_stacks_copy(self, tmp_path):
+        # The case the exact-text dedup could not see. Each stack's block was written whenever THAT
+        # stack was last built, so a shared rule DRIFTS between blocks; three coding-principles
+        # blocks in conflicting versions were observed live. Every dedup test above uses one
+        # identical body, which passes with or without the fix — only divergence catches this.
+        agent = tmp_path / "agent"
+        r1 = self._rule(tmp_path, "coding-principles/RULE.md", "Keep changes surgical.")
+        write_omp_identity(tmp_path, "alpha", "alpha identity", [r1], agent_dir=agent)
+
+        r1.write_text("Keep changes surgical. Never guess.", encoding="utf-8")
+        write_omp_identity(tmp_path, "beta", "beta identity", [r1], agent_dir=agent)
+
+        rules_text = (agent / "RULES.md").read_text()
+        assert rules_text.count("## Rule: coding-principles/RULE.md") == 1
+        assert "Never guess." in rules_text, "the launching stack's current body must win"
+        assert rules_text.count("Keep changes surgical.") == 1
+
+    def test_block_left_empty_by_the_prune_is_removed(self, tmp_path):
+        # Pruning a stale copy must not leave an empty delimiter pair behind.
+        agent = tmp_path / "agent"
+        r1 = self._rule(tmp_path, "coding-principles/RULE.md", "v1 body")
+        write_omp_identity(tmp_path, "alpha", None, [r1], agent_dir=agent)
+
+        r1.write_text("v2 body", encoding="utf-8")
+        write_omp_identity(tmp_path, "beta", None, [r1], agent_dir=agent)
+
+        rules_text = (agent / "RULES.md").read_text()
+        assert "<!-- BEGIN harnessed:alpha -->" not in rules_text
+        assert "<!-- BEGIN harnessed:beta -->" in rules_text
+        assert "v1 body" not in rules_text
+
+    def test_prune_keeps_another_stacks_unrelated_rules(self, tmp_path):
+        # The prune is scoped to the labels the launching stack actually carries. A rule only the
+        # other stack has must survive, block and all.
+        agent = tmp_path / "agent"
+        shared = self._rule(tmp_path, "coding-principles/RULE.md", "v1 body")
+        theirs = self._rule(tmp_path, "react/RULE.md", "Server components by default.")
+        write_omp_identity(tmp_path, "alpha", None, [shared, theirs], agent_dir=agent)
+
+        shared.write_text("v2 body", encoding="utf-8")
+        write_omp_identity(tmp_path, "beta", None, [shared], agent_dir=agent)
+
+        rules_text = (agent / "RULES.md").read_text()
+        assert "Server components by default." in rules_text
+        assert "<!-- BEGIN harnessed:alpha -->" in rules_text
+        assert rules_text.count("## Rule: coding-principles/RULE.md") == 1
+        assert "v1 body" not in rules_text
+
 
 class TestWriteMcpJson:
     def test_creates_mcp_json_at_profile_root(self, tmp_path):
