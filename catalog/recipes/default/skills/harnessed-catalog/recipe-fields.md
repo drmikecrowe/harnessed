@@ -60,7 +60,8 @@ rules:                      # the one field that accepts a FILE as well as a dir
   - path: rules/my-rule     #   → .claude/rules/my-rule/RULE.md   (both are loaded)
 ```
 
-Any entry also takes `only_harnesses:`, an allow-list. Every other harness skips it.
+Each skill, command, or rule entry also takes `only_harnesses:`, an allow-list. Every other harness
+skips it. No other recipe field accepts it.
 
 ```yaml
 rules:

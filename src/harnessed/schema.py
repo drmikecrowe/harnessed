@@ -154,7 +154,9 @@ class FileExt:
     """A standalone file-extension dir shipped by a recipe (skills/ or commands/)."""
 
     path: str  # relative to the recipe dir
-    # Harnesses this entry ships to, as an ALLOW-list. Empty = every harness (the default).
+    # Harnesses this entry ships to, as an ALLOW-list. Empty means every harness, which is the
+    # PARSED DEFAULT when the key is absent — writing `only_harnesses: []` by hand is a schema error,
+    # because a hand-written empty allow-list reads as "ship nowhere" and silently did the opposite.
     #
     # The complement of `hooks.skip_harnesses`, and it exists because those two halves are one
     # decision. context-mode skips its PreToolUse hook on omp, since omp's tool_call result has no
@@ -589,7 +591,9 @@ def _parse_hooks(raw_hooks) -> tuple[dict[str, list[HookCommand]], list[str]]:
     return parsed, skip
 
 
-def _parse_hooks_skip_harnesses(raw, label: str = "hooks.skip_harnesses") -> list[str]:
+def _parse_hooks_skip_harnesses(
+    raw, label: str = "hooks.skip_harnesses", omit_hint: str = "skip nothing"
+) -> list[str]:
     """Parse `hooks.skip_harnesses:` — harnesses on which this recipe's hooks are NOT emitted.
 
     Validated against HARNESS_CONFIG_DIR so a typo (`ompp`) fails at parse time rather than
@@ -606,7 +610,7 @@ def _parse_hooks_skip_harnesses(raw, label: str = "hooks.skip_harnesses") -> lis
     # nothing enforces that on a hand-written recipe.
     if not raw:
         raise SchemaError(
-            f"recipe {label!r} must not be empty — omit the key entirely to skip nothing"
+            f"recipe {label!r} must not be empty — omit the key entirely to {omit_hint}"
         )
     if any(not h.strip() for h in raw):
         raise SchemaError(f"recipe {label!r} contains a blank harness name: {raw!r}")
@@ -1428,7 +1432,9 @@ def _parse_fileext(raw_list) -> list[FileExt]:
                 FileExt(
                     path=entry["path"],
                     only_harnesses=_parse_hooks_skip_harnesses(
-                        entry.get("only_harnesses"), label="only_harnesses"
+                        entry.get("only_harnesses"),
+                        label="only_harnesses",
+                        omit_hint="ship to every harness",
                     ),
                 )
             )

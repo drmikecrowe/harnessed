@@ -882,8 +882,17 @@ class TestHooksParse:
             self._load(tmp_path, body)
 
     def test_rule_entry_only_harnesses_empty_list_rejected(self, tmp_path):
+        # The hint must match THIS field's polarity. One validator serves both keys, and omitting
+        # them means opposite things: `skip_harnesses` absent skips nothing, `only_harnesses` absent
+        # ships everywhere. A shared "skip nothing" message told allow-list authors the wrong thing.
         body = "name: r\nrules:\n  - path: rules/a\n    only_harnesses: []\n"
-        with pytest.raises(SchemaError, match="must not be empty"):
+        with pytest.raises(SchemaError, match="must not be empty.*ship to every harness"):
+            self._load(tmp_path, body)
+
+    def test_hooks_skip_harnesses_keeps_its_own_omit_hint(self, tmp_path):
+        # The negative control for the message above: the skip-list keeps skip-list wording.
+        body = "name: r\nhooks:\n  skip_harnesses: []\n  SessionStart:\n    - command: h\n"
+        with pytest.raises(SchemaError, match="must not be empty.*skip nothing"):
             self._load(tmp_path, body)
 
     def test_skip_harnesses_explicit_empty_list_rejected(self, tmp_path):
