@@ -50,6 +50,14 @@ mcp:
 # steering. A rule ships to every harness through the profile, so it covers the gap the hook layer
 # structurally cannot. Content is deliberately about WHEN to route and how `queries` breadth decides
 # whether a call saves or spends — a reducer queried too broadly re-emits the dump it exists to avoid.
+#
+# Still true against bridge 0.4.0, but for a NARROWER reason than the note below states (that note
+# predates 0.4.0 and is now half stale — see the Hook layer). 0.4.0 injects additionalContext from
+# any event plus SessionStart/UserPromptSubmit stdout, so the SessionStart half WOULD now bridge.
+# `PreToolUse` additionalContext is one of the two paths its README documents as deliberately NOT
+# bridged (omp's tool_call result has no context field and there is no current-turn injection API),
+# and the routing nudge is exactly a PreToolUse additionalContext hook. So the steering gap this rule
+# fills is real regardless of bridge version, and closing it needs an omp API that does not exist.
 rules:
   - path: rules/ctx-routing
 
@@ -76,6 +84,15 @@ install:
 # Claude profile is canonical in harnessed — the other harnesses adapt out of the same .claude/
 # profile (see emit._recipe_hooks_settings).
 #
+# NOTE (2026-08-16, verified against bridge 0.4.0's source AND the live upstream README at
+# github.com/drmikecrowe/omp-claude-hooks-bridge — the copy in node_modules can lag): the
+# additionalContext claim just below was true of 0.3.0 and is now only HALF true. 0.4.0 injects
+# additionalContext from any event plus SessionStart/UserPromptSubmit stdout, so the SessionStart
+# half DOES bridge today — though it is QUEUED for the next user prompt (omp session_start handlers
+# cannot return context), so it never steers the turn in progress. `PreToolUse` additionalContext is
+# one of the two paths the README documents as deliberately NOT bridged (omp's tool_call result has
+# no context field, and no current-turn injection API exists), so the routing-nudge half still
+# reaches nothing. The double-fire argument for skipping is unaffected either way.
 # EXCEPT omp (skip_harnesses below). omp's bridge (omp-claude-hooks-bridge) does replay these, but
 # it is a pure decision+side-effect bridge: it drops hookSpecificOutput.additionalContext, so the
 # PreToolUse routing nudge and the SessionStart context re-injection — the two halves upstream marks
