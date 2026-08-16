@@ -580,7 +580,18 @@ def _parse_hooks_skip_harnesses(raw, label: str = "hooks.skip_harnesses") -> lis
         return []
     if not isinstance(raw, list) or not all(isinstance(h, str) for h in raw):
         raise SchemaError(f"recipe {label!r} must be a list of harness names")
-    skip = [h.strip() for h in raw if h.strip()]
+    # An explicitly written `skip_harnesses: []`, or an entry that is blank/whitespace, used to
+    # reduce to "skip nothing" in silence — the same fail-open this validator exists to close. A
+    # typo'd harness is caught below; an EMPTY one was not, so `skip_harnesses: [""]` read as a
+    # deliberate suppression and emitted the hook anyway. The JSON schema says minItems: 1, but
+    # nothing enforces that on a hand-written recipe.
+    if not raw:
+        raise SchemaError(
+            f"recipe {label!r} must not be empty — omit the key entirely to skip nothing"
+        )
+    if any(not h.strip() for h in raw):
+        raise SchemaError(f"recipe {label!r} contains a blank harness name: {raw!r}")
+    skip = [h.strip() for h in raw]
     unknown = sorted(set(skip) - set(HARNESS_CONFIG_DIR))
     if unknown:
         raise SchemaError(

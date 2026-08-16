@@ -23,7 +23,7 @@ into a lie.
 
 ## Form: terse marker plus a reference
 
-```
+```text
 // Ordering matters here — see LW-4471
 ```
 

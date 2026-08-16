@@ -857,6 +857,30 @@ class TestHooksParse:
         with pytest.raises(SchemaError, match="unknown harness"):
             self._load(tmp_path, body)
 
+    def test_skip_harnesses_explicit_empty_list_rejected(self, tmp_path):
+        # Fail-open closed: `skip_harnesses: []` used to reduce to "skip nothing" in silence, which
+        # is indistinguishable from the author having meant a suppression. Omitting the key is the
+        # way to skip nothing, and it stays valid (see test_skip_harnesses_absent_is_empty_list).
+        body = "name: r\nhooks:\n  skip_harnesses: []\n  SessionStart:\n    - command: h\n"
+        with pytest.raises(SchemaError, match="must not be empty"):
+            self._load(tmp_path, body)
+
+    def test_skip_harnesses_blank_harness_name_rejected(self, tmp_path):
+        # The unknown-harness check cannot catch this: "" strips to nothing and was dropped before
+        # the membership test ran, so the hook was emitted on every harness anyway.
+        body = 'name: r\nhooks:\n  skip_harnesses: ["  "]\n  SessionStart:\n    - command: h\n'
+        with pytest.raises(SchemaError, match="blank harness name"):
+            self._load(tmp_path, body)
+
+    def test_per_entry_skip_harnesses_empty_list_rejected(self, tmp_path):
+        # Same guarantee at the entry level — the per-entry key doubled the number of places this
+        # could fail open.
+        body = (
+            "name: r\nhooks:\n  PreToolUse:\n    - command: h\n      skip_harnesses: []\n"
+        )
+        with pytest.raises(SchemaError, match=r"hooks\.PreToolUse\[\]\.skip_harnesses"):
+            self._load(tmp_path, body)
+
     def test_per_entry_skip_harnesses_parsed(self, tmp_path):
         body = (
             "name: r\nhooks:\n"

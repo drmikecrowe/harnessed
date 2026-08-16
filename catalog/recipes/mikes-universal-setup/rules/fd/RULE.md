@@ -14,6 +14,10 @@ find . -name "*.ts" -type f
 fd -e ts
 ```
 
-`rtk` has no `fd` subcommand, so there is nothing to wrap a listing in. When a listing is large
-enough to matter, run it through `ctx_batch_execute` instead and query the result. Better still,
-narrow it at the source: `-e <ext>`, a starting path, `--max-depth`.
+`rtk` has no `fd` subcommand, so there is nothing to wrap a listing in. Narrow at the source first:
+`-e <ext>`, a starting path, `--max-depth`. When a listing is still large enough to matter, run it
+through `ctx_batch_execute` and query the result.
+
+Keep those queries SPECIFIC. A broad query matches every section and re-emits the whole listing, once
+per query, which is the dump you were avoiding; too narrow and a section you asked for never surfaces
+at all. Both failure directions are real. See [[ctx-routing]].

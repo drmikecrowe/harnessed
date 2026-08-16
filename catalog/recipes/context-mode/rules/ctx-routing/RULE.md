@@ -9,7 +9,7 @@ no harness-native plugin, so this routing holds wherever the recipe is installed
 `ctx_batch_execute` instead.** It executes the command, indexes the output, and returns only the
 windows matching your `queries`, so the raw match list never enters the conversation.
 
-```
+```text
 ctx_batch_execute(
   commands: [{label: "callers", command: "rg -n load_recipe src tests"}],
   queries: ["load_recipe in schema", "load_recipe in tests"],

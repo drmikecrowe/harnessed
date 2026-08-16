@@ -29,3 +29,8 @@ including the allowed segments.
 Subagents do not inherit these rules. Every subagent prompt that will search a tree must say so
 explicitly: *prefer the harness's own search and glob tools; if you shell out, use `rg`/`fd`, never
 `grep`/`find`.* Left unsaid, subagents are the single largest source of denied calls.
+
+Carry the OUTPUT bound across too, because a subagent inherits no more of [[rg]] than it does of
+this file: *scope the search to a path, bound the result set (`-l`, `-c`, `-m`), and route anything
+you cannot bound through `ctx_batch_execute`.* A subagent handed only "use rg" will happily run an
+unbounded one and return the dump, which costs the same context whether you or it spent it.

@@ -45,7 +45,7 @@ mcp:
 
 # --- Rule layer ---
 # The MCP tools above are reachable in EVERY harness with no hook and no plugin, but nothing tells
-# the agent when to prefer them: the hooks below are `skip_harnesses: [omp]` and the replacement omp
+# the agent when to prefer them: every hook below carries `skip_harnesses: [omp]` and the replacement omp
 # extension is container-only, so an omp launch (and any host launch) gets the tools with zero
 # steering. A rule ships to every harness through the profile, so it covers the gap the hook layer
 # structurally cannot. Content is deliberately about WHEN to route and how `queries` breadth decides

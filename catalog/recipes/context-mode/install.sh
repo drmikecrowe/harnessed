@@ -24,7 +24,7 @@ set -euo pipefail
 # Under omp the bridged Claude hooks are inert (omp-claude-hooks-bridge drops
 # hookSpecificOutput.additionalContext, so the PreToolUse routing nudge and the SessionStart context
 # re-injection never reach the model, and it maps no omp event to PreCompact at all). recipe.yaml's
-# `hooks.skip_harnesses: [omp]` therefore suppresses them, and upstream's own omp extension —
+# every hook entry's `skip_harnesses: [omp]` therefore suppresses them, and upstream's own omp extension —
 # installed below — takes over, covering session_start / tool_call / tool_result /
 # session_before_compact natively. Every other harness uses the hooks and needs nothing here.
 if [ "${HARNESS:-}" != "omp" ]; then
@@ -74,7 +74,7 @@ omp plugin install "context-mode@${CONTEXT_MODE_VERSION}"
 
 # --- VERIFY it landed -----------------------------------------------------------------------------
 # `omp plugin install` exiting 0 is not proof the extension is present, and a half-installed one is
-# INVISIBLE downstream: recipe.yaml's `hooks.skip_harnesses: [omp]` suppresses the bridged Claude
+# INVISIBLE downstream: recipe.yaml's per-entry `skip_harnesses: [omp]` suppresses the bridged Claude
 # hooks precisely BECAUSE this extension replaces them, so if it is missing, context-mode runs with
 # its MCP server and none of its four native handlers — no routing steering, no session continuity.
 #
