@@ -20,8 +20,8 @@ tool runs it. Cap the output where it is produced, not after it lands:
   - **`rtk rg …`** when you want the matches themselves. It runs `rg` natively and compacts the
     result: whitespace stripped, long lines truncated, grouped by file. One shell call, no round
     trip. Type it explicitly; do not assume something rewrites your command for you.
-    Not when the exact bytes matter. That compaction is lossy, so for precise whitespace, a full
-    unbroken line, or a token you are about to copy, run bounded `rg` raw and read the real output.
+    Not when the exact bytes matter. That compaction is lossy. If you need precise whitespace, a
+    full unbroken line, or a token you will copy, run bounded `rg` raw.
   - **`ctx_batch_execute`** when the match list is large and you have specific questions about it.
     It runs the command, indexes the output, and returns only the windows matching your `queries`,
     so the raw list never enters the conversation. See [[ctx-routing]] for the query-breadth trap.

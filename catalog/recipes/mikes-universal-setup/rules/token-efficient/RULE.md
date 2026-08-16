@@ -10,7 +10,7 @@
 - Read existing files before writing. Never re-read to confirm a write that already succeeded: an editing tool reports its own failure, so a confirming read buys nothing. Inspect the diff or specific lines only when the change itself needs verifying.
 - No speculative reads. Do not open files "just in case." Know why you need a file before reading it.
 - Thorough in reasoning, concise in output. Tight narration — one sentence per update, no restating what tool output already says.
-- No sycophantic openers or closing fluff. No emojis. No em-dashes. This is a style floor for prose you author — chat replies, commit messages, PR bodies, docs you write — not a licence to rewrite quoted text, existing files, or a source you are only citing.
+- No sycophantic openers or closing fluff. No emojis. No em-dashes. This floor covers prose you author: chat replies, commit messages, PR bodies, docs. Never rewrite quoted text or an existing file to satisfy it.
 - Do not guess APIs, versions, flags, commit SHAs, or package names. Verify by reading code or docs before asserting.
 
 Violating these rules wastes the user's money and shortens the session. Treat the context window as a scarce, non-renewable resource.

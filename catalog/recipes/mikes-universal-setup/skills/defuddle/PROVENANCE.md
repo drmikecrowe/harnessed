@@ -5,14 +5,14 @@ Derived from **[kepano/obsidian-skills](https://github.com/kepano/obsidian-skill
 
 ## Local modifications (why this is vendored, not fetched)
 
-Two edits, layered. Because of them this skill is **not** fetched from upstream at build time (a
-fetch would revert both) — it is vendored here.
+Three edits, layered. Because of them this skill is **not** fetched from upstream at build time (a
+fetch would revert all three) — it is vendored here.
 
 **1. Trigger strengthened** — the original divergence from upstream:
 
 - description: upstream *"Use instead of WebFetch when the user provides a URL…"* →
-  local *"**ALWAYS** use this instead of Fetch or WebFetch for any URL… **check this skill
-  before fetching a URL at all**"*, and it names `npm/pnpm/GitHub docs` explicitly.
+  local *"**ALWAYS** use it instead of Fetch or WebFetch for any URL… **check it before
+  fetching any URL**"*.
 - body: the same "prefer" → "ALWAYS use it instead of Fetch/WebFetch" strengthening.
 
 The base upstream commit was not identified: the local copy matches no commit in kepano's recent
@@ -29,5 +29,13 @@ harness-specific assumption inside a recipe that is required to be harness-indep
 Now: prefer the harness's own extraction, escalate to Defuddle when that output is cluttered,
 boilerplate-heavy, or truncated. Tools are described by capability instead of named.
 
-To re-sync: diff against `kepano/obsidian-skills:skills/defuddle/SKILL.md`, decide which of the two
-local edits still apply, re-apply them, and update this note.
+**3. Cut to the house style** (#404, merged into this branch):
+
+`#404` cut the description from 86 words to 40 for `harnessed-tools lint-prose`. Its own provenance
+note recorded that the ALWAYS-strengthening survived the cut. In this merge it does not: edit 2
+removed ALWAYS deliberately, and edit 3 is now only the word budget applied to edit 2's wording. The
+dropped words were the `npm/pnpm/GitHub docs` example list and a restatement of the Fetch-first
+prohibition, and neither returns.
+
+To re-sync: diff against `kepano/obsidian-skills:skills/defuddle/SKILL.md`, decide which of the three
+local edits still apply, re-apply them, and re-run `harnessed-tools lint-prose` on the result.

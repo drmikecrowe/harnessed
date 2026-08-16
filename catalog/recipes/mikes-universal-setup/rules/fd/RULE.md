@@ -19,5 +19,5 @@ fd -e ts
 through `ctx_batch_execute` and query the result.
 
 Keep those queries SPECIFIC. A broad query matches every section and re-emits the whole listing, once
-per query, which is the dump you were avoiding; too narrow and a section you asked for never surfaces
-at all. Both failure directions are real. See [[ctx-routing]].
+per query. That is the dump you were avoiding. Too narrow and a section you asked for never surfaces.
+Both failure directions are real. See [[ctx-routing]].

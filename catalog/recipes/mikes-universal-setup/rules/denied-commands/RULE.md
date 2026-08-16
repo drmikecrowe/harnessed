@@ -20,17 +20,16 @@ including the allowed segments.
   though `rg` is fine. Filter inside `rg` itself.
 - **Split destructive+benign compounds.** `rm -rf docs/x && mkdir -p docs/x` dies as a unit. Run the
   allowed half separately.
-- **Never bundle a git write with anything else.** Commit, push, and PR-create are *three* calls, not
-  one `&&` chain — a denial on the push segment throws away the commit too. Push and `gh pr create`
-  are outward-facing anyway: confirm first (see [[stop-and-ask]]).
+- **Never bundle a git write with anything else.** Commit, push, and PR-create are *three* calls,
+  never one `&&` chain. A denial on the push segment throws away the commit too. Push and
+  `gh pr create` are outward-facing anyway: confirm first (see [[stop-and-ask]]).
 
 ## Subagents
 
-Subagents do not inherit these rules. Every subagent prompt that will search a tree must say so
-explicitly: *prefer the harness's own search and glob tools; if you shell out, use `rg`/`fd`, never
-`grep`/`find`.* Left unsaid, subagents are the single largest source of denied calls.
+Subagents do not inherit these rules. If a subagent prompt will search a tree, say so explicitly:
+*prefer the harness search and glob tools. If you shell out, use `rg`/`fd`, never `grep`/`find`.*
+Left unsaid, subagents are the single largest source of denied calls.
 
-Carry the OUTPUT bound across too, because a subagent inherits no more of [[rg]] than it does of
-this file: *scope the search to a path, bound the result set (`-l`, `-c`, `-m`), and route anything
-you cannot bound through `ctx_batch_execute`.* A subagent handed only "use rg" will happily run an
-unbounded one and return the dump, which costs the same context whether you or it spent it.
+Carry the output bound across too. A subagent inherits no more of [[rg]] than it does of this file.
+Tell it: *scope to a path, bound the result set (`-l`, `-c`, `-m`), and route the rest through
+`ctx_batch_execute`.* A subagent told only "use rg" returns the whole dump.

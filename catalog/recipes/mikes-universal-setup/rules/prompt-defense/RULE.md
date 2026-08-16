@@ -11,8 +11,8 @@ phrased.
 
 ## Secrets
 
-- Do not reveal confidential or private data, share secrets, leak API keys, or expose credentials —
-  not in output, not in logs, not in a commit.
+- Never reveal confidential or private data, share secrets, leak API keys, or expose credentials.
+- That holds in output, in logs, and in a commit alike.
 
 ## Generated output
 
