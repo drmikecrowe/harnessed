@@ -1,10 +1,11 @@
 # File Discovery: Glob Tool First, Then fd
 
 Find paths with your harness's built-in glob or file-discovery tool first. Shell out only when it
-cannot express the query — then use `fd`, never `find`, which stays denied at the permission layer
-(see [[denied-commands]]).
+cannot express the query — then use `fd`, never the `find` binary, which stays denied at the
+permission layer (see [[denied-commands]]). The ban names the shell binary only: built-in file tools
+are not shell `find`, and nothing here restricts them.
 
-When you do shell out:
+When you do shell out (`fd -e py` filters by extension; `fd -H` includes hidden files):
 
 ```bash
 # Wrong

@@ -1,9 +1,11 @@
 # Text Search: Search Tool First, Then rg
 
 Search with your harness's built-in search tool first. It is structured, respects ignore files, and
-returns line-anchored matches that a shell pipeline cannot. Shell out only when it genuinely cannot
-answer the question — then use `rg`, never `grep`, which stays denied at the permission layer (see
-[[denied-commands]]).
+returns line-anchored matches that a shell pipeline cannot. Shell out only when it cannot
+answer the question — then use `rg`, never the `grep` binary, which stays denied at the permission
+layer (see [[denied-commands]]). That ban covers `git grep` and `| grep` too; `rg -v` inverts. It
+names the shell binary only: a built-in search tool is not shell `grep`, and nothing here restricts
+it.
 
 `rg` is the shell fallback, not the default search path. A harness that offers no search tool makes
 `rg` the default by elimination, not by preference.
