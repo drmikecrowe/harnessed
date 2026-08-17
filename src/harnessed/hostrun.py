@@ -329,10 +329,14 @@ def _host_install_tools(stack: str, recipes) -> None:
 #
 # Pinned rather than unset, deliberately: unsetting makes such an installer fall back to
 # `$HOME/.claude`, the user's REAL config dir, which is a worse landing spot than the parent stack's.
-# Only claude is listed because `_HOST_HARNESS` scopes the host backend to claude today; add the
-# others (omp's PI_*, codex, opencode, antigravity) as each gains host support.
+# One row per harness `launcher._HOST_HARNESSES` can run; add codex/opencode/antigravity as each
+# gains host support. omp's is `PI_CODING_AGENT_DIR` — an install run under an inherited one would
+# write into the PARENT stack's agent dir, and unset it would land in the user's own `~/.omp/agent`,
+# which is the very leak the per-stack dir exists to end (#307 finding 6). `PI_CONFIG_DIR` is NOT
+# listed: it is a name under `$HOME`, not a path, so a stack home cannot be expressed in it.
 _HARNESS_CONFIG_DIR_ENV: dict[str, tuple[str, ...]] = {
     "claude": ("CLAUDE_CONFIG_DIR",),
+    "omp": ("PI_CODING_AGENT_DIR",),
 }
 
 

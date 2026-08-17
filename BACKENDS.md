@@ -62,7 +62,7 @@ Every backend implements the same seam so a composed stack can run on any of the
 
 | Capability | What the backend must do |
 |---|---|
-| **materialize config** | Deliver the assembled `.claude/*` profile (skills/commands/rules/CLAUDE.md/settings) to where the harness reads it (bind-mount, copy, or symlink). |
+| **materialize config** | Deliver the assembled profile to where the harness reads it (bind-mount, copy, or symlink) — the `.claude/*` tree for claude, the harness's own shape otherwise (omp: `APPEND_SYSTEM.md` / `RULES.md` / `mcp.json` / `config.yml` in its agent dir). |
 | **provision tools** | Make tools resolvable to the harness: `install:` scripts run on first start (fingerprint-gated), `setup.script` at attach time. Container: baked into the image or run via `podman exec`; host: written to the stack's `$HARNESSED_BIN_DIR`. |
 | **wire MCP** | Present the stack's MCP servers to the harness (native `.mcp.json`, or hatago hub). |
 | **seed auth** | Give the harness the host's credentials **by reference** — bind-mount or symlink the live store, never a copy or snapshot (CLAUDE.md non-negotiable). A backend that cannot reference the live store must fail rather than replicate it. |
@@ -72,6 +72,13 @@ Every backend implements the same seam so a composed stack can run on any of the
 The seam is `harnessed.backend.ExecutionBackend`. `launcher.HostBackend` and
 `launcher.ContainerBackend` are the two conforming implementations; `_launch_host` and
 `container_run` are their sequencers.
+
+**The host backend is not claude-only.** It runs any harness that exposes one lever: an env var
+whose value *is* a per-stack config/agent dir. `launcher._HOST_HARNESSES` is the record of them —
+`CLAUDE_CONFIG_DIR` for claude, `PI_CODING_AGENT_DIR` for omp — pairing that var with the harness's
+live host dir and with what it deliberately shares back (claude: `.credentials.json` + session dirs;
+omp: `agent.db` + `sessions/`/`blobs/`/`memories/`/`history.db`). A harness is absent from that
+record because its row has not been established, not because host mode is claude-shaped.
 
 **Sequencing is backend-owned.** The contract is a capability set, not a pipeline — there is no
 shared driver calling the six in a fixed order, because the two implementations do not agree on one
@@ -107,6 +114,12 @@ stays out of their way:
   an `install:` leave a Dockerfile `RUN` undeclared, and the host launcher prints the reason
   verbatim. That is strictly more informative than a generic "unsupported" line.
 - **Supply-chain scan** — a property of what is scanned, not of what a recipe declares.
+- **Claude-shaped `skills:`/`hooks:` under `host` + `omp`** — omp reads them only through the
+  claude-hooks bridge, which is baked into the omp *image*, so a host launch has it only if the user
+  installed it. Real, and inert in exactly capmatrix's sense — but its key is (backend, **harness**),
+  and `MATRIX`'s axis is the backend alone. Bending the table into two dimensions for one cell would
+  cost every other cell a harness column it does not need, so `launcher._note_host_omp_bridge_gap`
+  states it at launch instead, in the same `[INFO]` register.
 
 Aspirational columns for the unbuilt backends are kept out of the code table for the same reason
 this section stopped being the matrix: a cell nothing can verify is a claim, not a fact.
