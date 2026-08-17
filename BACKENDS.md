@@ -114,12 +114,14 @@ stays out of their way:
   an `install:` leave a Dockerfile `RUN` undeclared, and the host launcher prints the reason
   verbatim. That is strictly more informative than a generic "unsupported" line.
 - **Supply-chain scan** — a property of what is scanned, not of what a recipe declares.
-- **Claude-shaped `skills:`/`hooks:` under `host` + `omp`** — omp reads them only through the
-  claude-hooks bridge, which is baked into the omp *image*, so a host launch has it only if the user
-  installed it. Real, and inert in exactly capmatrix's sense — but its key is (backend, **harness**),
-  and `MATRIX`'s axis is the backend alone. Bending the table into two dimensions for one cell would
-  cost every other cell a harness column it does not need, so `launcher._note_host_omp_bridge_gap`
-  states it at launch instead, in the same `[INFO]` register.
+- **Claude-shaped `skills:` under `host` + `omp`** — the claude-hooks bridge covers command hooks
+  only, and omp's own skill surface (`managed-skills`) is a format harnessed does not emit, so a
+  stack's skills land in the profile and are read by nothing on that path. Real, and inert in
+  exactly capmatrix's sense — but its key is (backend, **harness**), and `MATRIX`'s axis is the
+  backend alone. Bending the table into two dimensions for one cell would cost every other cell a
+  harness column it does not need, so `launcher._note_host_omp_skill_gap` states it at launch
+  instead, in the same `[INFO]` register. **`hooks:` are NOT in this gap** — they are delivered, via
+  the bridge and the per-stack `CLAUDE_CONFIG_DIR` the launcher exports for omp.
 
 Aspirational columns for the unbuilt backends are kept out of the code table for the same reason
 this section stopped being the matrix: a cell nothing can verify is a claim, not a fact.

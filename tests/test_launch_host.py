@@ -1480,9 +1480,11 @@ class TestOmpLaunchPlan:
         assert cwd == tmp_path
         assert rebuilt is True
         assert "hostspike tracer agent" in (home / "APPEND_SYSTEM.md").read_text()
-        # The claude content layer belongs to a harness that can read it; omp host-side cannot.
+        # The claude content layer goes in the nested bridge surface, never loose in the agent dir
+        # where omp would be reading files it has no format for.
         assert not (home / "skills").exists()
         assert not (home / "CLAUDE.md").exists()
+        assert (hosthome._host_omp_claude_dir(home) / "settings.json").is_file()
 
     def test_assembly_can_skip_the_shared_block_write(self, monkeypatch, tmp_path):
         """#307 acceptance criterion 6. `assemble` is the ONE emit step that writes outside the
@@ -1559,7 +1561,101 @@ class TestOmpHostCliRouting:
     def test_an_install_runs_pinned_at_the_stacks_agent_dir(self, tmp_path):
         """bd harnessed-8px.26, omp's half: inherited, `PI_CODING_AGENT_DIR` would redirect an
         install into the PARENT stack's dir; unset, into the user's own — the exact leak the
-        per-stack dir exists to end (#307 finding 6)."""
+        per-stack dir exists to end (#307 finding 6).
+
+        A claude-shaped installer honouring `CLAUDE_CONFIG_DIR` must land in the BRIDGE surface,
+        not loose in the agent dir and never in the user's real `~/.claude`."""
         home = tmp_path / "agentdir"
-        assert hostrun._harness_config_env("omp", home) == {"PI_CODING_AGENT_DIR": str(home)}
+        assert hostrun._harness_config_env("omp", home) == {
+            "PI_CODING_AGENT_DIR": str(home),
+            "CLAUDE_CONFIG_DIR": str(hosthome._host_omp_claude_dir(home)),
+        }
+
+    def test_the_claude_path_still_pins_only_its_own_var(self, tmp_path):
+        home = tmp_path / "claudehome"
+        assert hostrun._harness_config_env("claude", home) == {"CLAUDE_CONFIG_DIR": str(home)}
+
+
+class TestOmpHooksBridgeSurface:
+    """The claude-hooks bridge reads hooks from `$CLAUDE_CONFIG_DIR/settings.json`
+    (`index.ts:100`, merged with the project's `.claude/settings.json`), and it is a USER-installed
+    omp plugin — present on a host that installed it, absent otherwise.
+
+    Leaving `CLAUDE_CONFIG_DIR` unset is therefore NOT the neutral choice it looks like: the bridge
+    falls back to the real `~/.claude` and fires the user's GLOBAL hooks inside a stack session
+    while the stack's own never run. That inverts the one thing this backend isolates.
+    """
+
+    def test_the_bridge_surface_is_nested_not_a_sibling(self, tmp_path):
+        """`host-gc` reads every dir at the `<stack>/<harness>` level as a config dir, so a sibling
+        would surface as a phantom harness. A child is one dir to the same eyes."""
+        home = paths.host_home("s", "omp")
+        assert hosthome._host_omp_claude_dir(home).parent == home
+
+    def test_it_is_not_the_claude_host_home(self, monkeypatch, tmp_path):
+        """That dir is a real claude session's, with claude's credential and session-state symlinks
+        in it. Sharing one would put omp's launches inside claude's auth wiring for nothing."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        omp_home = paths.host_home("s", "omp")
+        assert hosthome._host_omp_claude_dir(omp_home) != paths.host_home("s", "claude")
+
+    def test_the_launch_points_claude_config_dir_at_the_stack(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "REAL-user-claude"))
+        real = tmp_path / "host-omp"
+        real.mkdir()
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
+        monkeypatch.setattr(launcher, "_passthrough", [])
+        captured: dict = {}
+
+        def fake_execvpe(file, argv, env):
+            captured.update(ccd=env.get("CLAUDE_CONFIG_DIR"))
+            raise SystemExit(0)
+
+        monkeypatch.setattr(launcher.os, "execvpe", fake_execvpe)
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app, ["host-run", "omp", str(tmp_path), "--stack", "hostspike"]
+        )
+
+        assert result.exit_code == 0, result.output
+        home = paths.host_home("hostspike", "omp")
+        assert captured["ccd"] == str(hosthome._host_omp_claude_dir(home))
+        # The user's own claude config must NOT be what the bridge reads inside a stack session.
+        assert captured["ccd"] != str(tmp_path / "REAL-user-claude")
+
+    def test_the_stacks_hooks_land_where_the_bridge_reads_them(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "host-omp"))
+        prof = paths.profile_dir("hostspike", "omp")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+
+        home, _argv, _cwd, _rebuilt = launcher._host_launch_plan("hostspike", "omp", tmp_path)
+
+        bridge = hosthome._host_omp_claude_dir(home)
+        assert json.loads((bridge / "settings.json").read_text())["permissions"]["defaultMode"] == (
+            "acceptEdits"
+        )
+        # Container-only artifacts stay out of it, exactly as on the claude path.
+        assert not (bridge / ".mcp.json").exists()
+
+    def test_settings_reach_the_bridge_even_when_the_stack_is_unchanged(self, monkeypatch, tmp_path):
+        """bd harnessed-8px.18 applies here too, and here settings.json is the ONLY file that
+        matters: the bridge reads hooks from it and nothing else."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "host-omp"))
+        prof = paths.profile_dir("hostspike", "omp")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+        home = paths.host_home("hostspike", "omp")
+        launcher._materialize_host_omp_home(home, identity={}, fingerprint="fp")
+        launcher._stamp_host_home(home, "fp")
+        (prof / "settings.json").write_text('{"hooks":{"SessionStart":[]}}')
+
+        launcher._plan_host_omp("hostspike", prof, home, fingerprint="fp")  # gate: "unchanged"
+
+        bridge = hosthome._host_omp_claude_dir(home)
+        assert "SessionStart" in (bridge / "settings.json").read_text()
 

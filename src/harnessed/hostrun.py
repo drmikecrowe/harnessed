@@ -16,7 +16,7 @@ import tempfile
 import tomllib
 
 from pathlib import Path
-from typing import MutableMapping, Optional
+from typing import Callable, MutableMapping, Optional
 
 import typer
 
@@ -24,7 +24,7 @@ from . import capability
 from . import emit
 from . import paths, toollock
 from .assemble import _merge_servers
-from .hosthome import _relink
+from .hosthome import _host_omp_claude_dir, _relink
 from .schema import load_stack_with_recipes
 from .console import _err
 from .proc import _say
@@ -330,24 +330,38 @@ def _host_install_tools(stack: str, recipes) -> None:
 # Pinned rather than unset, deliberately: unsetting makes such an installer fall back to
 # `$HOME/.claude`, the user's REAL config dir, which is a worse landing spot than the parent stack's.
 # One row per harness `launcher._HOST_HARNESSES` can run; add codex/opencode/antigravity as each
-# gains host support. omp's is `PI_CODING_AGENT_DIR` — an install run under an inherited one would
-# write into the PARENT stack's agent dir, and unset it would land in the user's own `~/.omp/agent`,
-# which is the very leak the per-stack dir exists to end (#307 finding 6). `PI_CONFIG_DIR` is NOT
-# listed: it is a name under `$HOME`, not a path, so a stack home cannot be expressed in it.
-_HARNESS_CONFIG_DIR_ENV: dict[str, tuple[str, ...]] = {
-    "claude": ("CLAUDE_CONFIG_DIR",),
-    "omp": ("PI_CODING_AGENT_DIR",),
+# gains host support. Each entry maps the var to the dir it must point at, DERIVED from the stack
+# home — omp needs two, and they are not the same directory.
+#
+# omp's own lever is `PI_CODING_AGENT_DIR`: inherited it would write into the PARENT stack's agent
+# dir, unset into the user's own `~/.omp/agent`, which is the very leak the per-stack dir exists to
+# end (#307 finding 6). `PI_CONFIG_DIR` is NOT listed — it is a name under `$HOME`, not a path, so a
+# stack home cannot be expressed in it.
+#
+# omp ALSO gets `CLAUDE_CONFIG_DIR`, pointed at the nested bridge surface rather than at the agent
+# dir. An installer that honours it is claude-shaped (skills, settings blocks), and it must land
+# where the claude-hooks bridge reads — not loose in omp's agent dir, and never in the user's real
+# `~/.claude`.
+_HARNESS_CONFIG_DIR_ENV: dict[str, dict[str, Callable[[Path], Path]]] = {
+    "claude": {"CLAUDE_CONFIG_DIR": lambda home: home},
+    "omp": {
+        "PI_CODING_AGENT_DIR": lambda home: home,
+        "CLAUDE_CONFIG_DIR": _host_omp_claude_dir,
+    },
 }
 
 
 def _harness_config_env(harness: str, home: Path) -> dict[str, str]:
-    """Pin the harness's own config-dir variable at this stack's home (bd harnessed-8px.26).
+    """Pin the harness's own config-dir variables at this stack's home (bd harnessed-8px.26).
 
     Applied wherever catalog-authored content runs host-side — installs, setup scripts, and the
     `setup.condition` eval — alongside the UV_TOOL_DIR / npm_config_prefix redirection those sites
     already do. Same intent: keep what a recipe writes inside the stack's own tree.
     """
-    return {var: str(home) for var in _HARNESS_CONFIG_DIR_ENV.get(harness, ())}
+    return {
+        var: str(resolve(home))
+        for var, resolve in _HARNESS_CONFIG_DIR_ENV.get(harness, {}).items()
+    }
 
 
 def _host_run_installs(stack: str, project_path: Path, *, harness: str, home: Path) -> None:

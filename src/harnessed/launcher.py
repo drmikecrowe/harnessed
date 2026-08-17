@@ -67,6 +67,7 @@ from .hosthome import (
     _LEGACY_PROJECT_DIR_RE,
     _OAUTH_TOKEN_VAR,
     _host_home_lock,
+    _host_omp_claude_dir,
     _host_stack_fingerprint,
     _materialize_host_home,
     _materialize_host_omp_home,
@@ -2090,6 +2091,11 @@ def _plan_host_omp(stack: str, prof: Path, home: Path, *, fingerprint: str | Non
     `config.yml` is propagated on every launch, gate or no gate, for the same reason claude's
     settings.json is: it is a function of the HOST's live preferences, not of the recipe closure the
     fingerprint covers.
+
+    The claude content layer is materialized too, into the nested per-stack `CLAUDE_CONFIG_DIR` —
+    see `_host_omp_claude_dir` for why omp needs one at all. Content only, and no `seed_auth`: omp
+    authenticates out of `agent.db`, so wiring claude's credential path in here would maintain a
+    login nothing on this path reads.
     """
     stk, _recipes = load_stack_with_recipes(None, stack)
     rules_dir = prof / ".claude" / "rules"
@@ -2097,6 +2103,18 @@ def _plan_host_omp(stack: str, prof: Path, home: Path, *, fingerprint: str | Non
     identity = emit.render_omp_identity(prof, stk.instructions, rule_files)
     rebuilt = _materialize_host_omp_home(home, identity=identity, fingerprint=fingerprint)
     _propagate_host_omp_config(home)
+    # AFTER the agent-dir materialize, never before: a rebuild wipes the agent dir wholesale, and
+    # this dir is a CHILD of it. Gated on `rebuilt` for the same reason the claude path gates its
+    # own — the content is a pure function of the recipe closure the fingerprint covers.
+    claude_dir = _host_omp_claude_dir(home)
+    if rebuilt:
+        _materialize_host_home(prof, claude_dir)
+    # settings.json is the exception the gate does not cover (bd harnessed-8px.18), and here it is
+    # the ONLY file that matters: the bridge reads hooks from it and nothing else.
+    settings = prof / "settings.json"
+    if settings.is_file():
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        _propagate_host_settings(settings, claude_dir / "settings.json")
     return rebuilt
 
 
@@ -2254,35 +2272,38 @@ def _warn_capability_gaps(backend: str, recipes) -> None:
         )
 
 
-def _note_host_omp_bridge_gap(harness: str, recipes) -> None:
-    """Say, once per launch, what a host omp session does NOT get (#307).
+def _note_host_omp_skill_gap(harness: str, recipes) -> None:
+    """Say, once per launch, that a host omp session does not read Claude-shaped `skills:` (#307).
 
-    omp consumes Claude-shaped skills, commands and hooks only through the claude-hooks bridge, and
-    that bridge is baked into the omp IMAGE — a host launch runs the user's own `omp` against the
-    user's own `~/.omp/plugins`, so it has the bridge only if they installed it themselves. Exactly
-    the same shape as host mode having no hatago: the container supplies a piece the host does not.
+    HOOKS are NOT in this gap and must not be described as if they were. The claude-hooks bridge
+    delivers them, reading `$CLAUDE_CONFIG_DIR/settings.json` (`index.ts:100`), and `_launch_host`
+    points that at the stack — so a stack's hooks fire when the bridge is installed and the variable
+    is simply unread when it is not. Neither outcome is "inert content nobody mentioned".
 
-    So a stack's `skills:` are assembled, land in the profile, and are then read by nothing on this
-    path. That is the silent-inert case `capmatrix` exists for — but `capmatrix`'s axis is the
-    BACKEND, and this gap is (backend, HARNESS). Rather than bend that table into two dimensions for
-    one cell, the gap is stated here, in the same `[INFO]` register and for the same reason
+    `skills:` genuinely are inert here. The bridge handles command hooks ONLY — it has no skills,
+    commands or agents path at all — and omp's own skill surface (`managed-skills`) is a different
+    format harnessed does not emit. So a stack's skills land in the profile and are read by nothing
+    on this path, whether or not the bridge is present.
+
+    That is the silent-inert case `capmatrix` exists for — but `capmatrix`'s axis is the BACKEND, and
+    this gap is keyed (backend, HARNESS). Rather than bend that table into two dimensions for one
+    cell, the gap is stated here, in the same `[INFO]` register and for the same reason
     (`_warn_capability_gaps`, #359): a per-launch keypress about an unchanging, chosen property is
     how a real warning gets trained away.
 
-    Identity and rules are NOT in this gap — they are delivered natively as `APPEND_SYSTEM.md` and
-    `RULES.md` in the per-stack agent dir, and MCP servers go to its `mcp.json`.
+    Identity and rules are delivered natively as `APPEND_SYSTEM.md` and `RULES.md` in the per-stack
+    agent dir, and MCP servers go to its `mcp.json`.
     """
     if harness != "omp":
         return
-    carriers = sorted({r.name for r in recipes if r.skills or r.hooks})
+    carriers = sorted({r.name for r in recipes if r.skills})
     if not carriers:
         return
     _err.print(
-        f"[blue][INFO][/blue] skills/hooks ({', '.join(carriers)}): Claude-shaped skills and hooks "
-        "reach omp through the claude-hooks bridge, which is baked into the omp IMAGE — a host "
-        "launch uses your own omp and your own ~/.omp/plugins, so they are inert here unless you "
-        "installed the bridge yourself. Identity, rules and MCP servers ARE delivered. Run this "
-        "stack under `container-run` to get the bridge."
+        f"[blue][INFO][/blue] skills ({', '.join(carriers)}): omp does not read Claude-shaped "
+        "skills — the claude-hooks bridge covers hooks only, and omp's own skill surface is a "
+        "different format. They are inert on this launch. Identity, rules, hooks and MCP servers "
+        "ARE delivered; run this stack under `container-run` for the full omp surface."
     )
 
 
@@ -2535,7 +2556,7 @@ def _launch_host(
     # agent is already up.
     _warn_capability_gaps(HostBackend.name, host_recipes)
     # The (backend, harness) gap capmatrix's backend-keyed table cannot express — see the function.
-    _note_host_omp_bridge_gap(harness, host_recipes)
+    _note_host_omp_skill_gap(harness, host_recipes)
     spec = LaunchSpec(
         stack=stack, harness=harness, project_path=project_path,
         extra=tuple(extra or []), no_strict_mcp=no_strict_mcp, ephemeral=rm,
@@ -2620,8 +2641,8 @@ def _launch_host(
     # setup.script — outside the lock, because a setup can prompt (see provision_tools).
     backend.provision_tools(spec, ATTACH)
     home, cwd = backend.home, backend.cwd
-    if cwd is None:
-        raise RuntimeError("cwd not set; materialize_config must be called first")
+    if cwd is None or home is None:
+        raise RuntimeError("home/cwd not set; materialize_config must be called first")
 
     # Pending `setup:` notices, and BLOCK on them — the host half of what `launch` does at its own
     # line. This was container-only too, so a host launch printed nothing and started the agent
@@ -2646,6 +2667,13 @@ def _launch_host(
     )
     env = dict(os.environ)
     env[config_dir_var] = str(home)
+    if harness == "omp":
+        # The claude-hooks bridge reads hooks from `$CLAUDE_CONFIG_DIR/settings.json`, so omp needs
+        # this pointed at the stack too. Unset it is NOT neutral: the bridge falls back to the real
+        # `~/.claude` and runs the user's GLOBAL hooks inside a stack session while the stack's own
+        # stay silent — see `_host_omp_claude_dir`. Harmless when the bridge is absent; the variable
+        # is then simply unread.
+        env["CLAUDE_CONFIG_DIR"] = str(_host_omp_claude_dir(home))
     os.chdir(cwd)
 
     if not rm:

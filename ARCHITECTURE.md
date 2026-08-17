@@ -216,10 +216,22 @@ profile's `.claude/*` content tree plus a settings floor. omp gets its own agent
 `APPEND_SYSTEM.md` and `RULES.md` written **whole** (the shared `~/.omp/agent` delimiter blocks are a
 container-path mechanism; a per-stack agent dir has no other stack to share the file with),
 `mcp.json` for the stack's native stdio servers, and a `config.yml` seeded from your own each launch
-so the stack inherits your model roles and providers instead of omp's shipped defaults. Claude-shaped
-skills and hooks reach omp only through the claude-hooks bridge, which is baked into the omp *image*
-— so host-side they are inert unless you installed the bridge yourself, and the launcher says so at
-launch. Same shape as host mode having no hatago.
+so the stack inherits your model roles and providers instead of omp's shipped defaults.
+
+omp also gets a **nested per-stack `CLAUDE_CONFIG_DIR`** (`<agent dir>/claude-config`) holding the
+profile's `.claude/*` content layer and its settings floor. The claude-hooks bridge — a *user-installed*
+omp plugin — reads hooks from `$CLAUDE_CONFIG_DIR/settings.json`, so leaving that variable unset is
+not the neutral choice it looks like: the bridge falls back to your real `~/.claude` and fires your
+**global** hooks inside a stack session while the stack's own never run, which inverts the one thing
+this backend isolates. Pointed at the stack, hooks work when the bridge is installed and the variable
+is simply unread when it is not. It is nested rather than a sibling because `host-gc` reads every dir
+at the `<stack>/<harness>` level as a config dir, and it is distinct from `host_home(stack, "claude")`
+because that dir belongs to a real claude session, with claude's own credential and session-state
+symlinks in it.
+
+**`skills:` remain inert** for host omp: the bridge covers command hooks only — it has no skills,
+commands or agents path — and omp's own skill surface (`managed-skills`) is a format harnessed does
+not emit. The launcher names that gap at launch.
 
 The two verbs share no flags except `--rm` (host-side: stop daemons this launch started). They are
 separate commands rather than one command with a mode switch. The flags `--fresh`, `--no-firewall`,

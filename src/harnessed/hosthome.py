@@ -456,6 +456,29 @@ _OMP_SHARED_STATE_DIRS = ("sessions", "blobs", "memories")
 _OMP_SHARED_STATE_FILES = ("agent.db", "history.db")
 
 
+def _host_omp_claude_dir(home: Path) -> Path:
+    """The per-stack `CLAUDE_CONFIG_DIR` a host omp session runs under (#307).
+
+    omp reads Claude-shaped **hooks** through the claude-hooks bridge, and that bridge resolves them
+    from `process.env.CLAUDE_CONFIG_DIR || ~/.claude` (`index.ts:100`, merging
+    `$CLAUDE_CONFIG_DIR/settings.json` with the project's `.claude/settings.json`). So the variable is
+    load-bearing for omp too, and leaving it unset does NOT mean "the stack's hooks are inert" — it
+    means the bridge falls back to the user's REAL `~/.claude/settings.json` and fires their GLOBAL
+    hooks inside a stack session while the stack's own never run. That is the exact inversion of what
+    this backend promises, since configuration isolation is its whole boundary.
+
+    NESTED inside the agent dir rather than beside it: `paths.host_home` keys a home by
+    `<stack>/<harness>` and `host-gc` reads every dir at that level as a config dir, so a sibling
+    would show up as a phantom harness. A child is one dir to the same eyes, and it rides the agent
+    dir's wholesale rebuild for free.
+
+    Distinct from `paths.host_home(stack, "claude")` deliberately — that is a real claude session's
+    dir, with claude's own credential and session-state symlinks in it. Sharing one between the two
+    harnesses would put omp's launches inside claude's auth wiring for no reason.
+    """
+    return home / "claude-config"
+
+
 def _host_omp_source() -> Path:
     """The host's live omp agent dir — the share-back target. Honors a `PI_CODING_AGENT_DIR` or
     `PI_CONFIG_DIR` the user already runs under; else the `~/.omp/agent` default.
