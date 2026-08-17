@@ -130,7 +130,7 @@ def _is_daemon_state(entry: Path) -> bool:
     return any((entry / marker).exists() for marker in _DAEMON_STATE_MARKERS)
 
 
-def _clear_host_home_except_runtime(home: Path) -> None:
+def _clear_host_home_except_runtime(home: Path, *, keep: tuple[str, ...] = ()) -> None:
     """Empty the config dir the way the wholesale rmtree did — but spare live daemon state.
 
     bd harnessed-8px.20. `_materialize_host_home` used to `shutil.rmtree(home)`. That is right for
@@ -145,8 +145,16 @@ def _clear_host_home_except_runtime(home: Path) -> None:
 
     Selective deletion rather than move-aside-and-restore: an interrupted rebuild can then never
     strand the preserved state somewhere the next launch will not look for it.
+
+    `keep` names entries to spare BY NAME, for a harness whose live state is not claude-daemon
+    shaped and so cannot be recognised by `_is_daemon_state`'s content probe. Deliberately narrow:
+    the wholesale wipe is what stops a dropped recipe leaving content behind, so an entry earns a
+    place here only by being live state a running session would lose — never merely by being
+    expensive to rebuild.
     """
     for entry in home.iterdir():
+        if entry.name in keep:
+            continue
         if _is_daemon_state(entry):
             continue
         if entry.is_dir() and not entry.is_symlink():
@@ -455,6 +463,34 @@ _OMP_CONFIG_FILE = "config.yml"
 _OMP_SHARED_STATE_DIRS = ("sessions", "blobs", "memories")
 _OMP_SHARED_STATE_FILES = ("agent.db", "history.db")
 
+#: Spared by a rebuild — omp's twin of the claude daemon-state exception (bd harnessed-8px.20).
+#:
+#: `terminal-sessions/pts-N` is a live pointer a RUNNING session writes: the cwd plus the session
+#: jsonl to resume, keyed by TTY. It is what makes "continue this terminal's session" work, so a
+#: rebuild that deletes it strips a live session of its resume path — the same shape as the observed
+#: daemon-state loss, and not recognisable by `_is_daemon_state`'s content probe.
+#:
+#: `cache/` and `models.db` are deliberately NOT here. Both are refetchable (document conversions,
+#: the model list), so losing them costs a refetch, and the wholesale wipe is the contract that
+#: keeps a dropped recipe from leaving content behind. Expensive to rebuild is not the bar; live
+#: state a running session would lose is.
+_OMP_RUNTIME_KEEP = ("terminal-sessions",)
+
+
+def _is_harnessed_owned(path: Path) -> bool:
+    """True when `path` is inside harnessed's own per-stack home tree.
+
+    Used to tell "the user's real store" from "another stack's" — see `_host_omp_source`. Compares
+    resolved paths so a symlinked home cannot dodge the check, and treats an unresolvable path as
+    NOT owned: this only ever suppresses an override, and refusing on doubt would silently ignore a
+    legitimate one the user set.
+    """
+    try:
+        path.resolve().relative_to(paths.host_homes_root().resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
 
 def _host_omp_claude_dir(home: Path) -> Path:
     """The per-stack `CLAUDE_CONFIG_DIR` a host omp session runs under (#307).
@@ -485,9 +521,23 @@ def _host_omp_source() -> Path:
 
     `PI_CONFIG_DIR` is resolved the way omp itself resolves it — as a NAME under `$HOME`, with
     `agent` beneath it — precisely because it is not usable as a path anywhere else in here.
+
+    An override pointing INSIDE `paths.host_homes_root()` is ignored, because it is not the user's
+    store — it is another stack's. `_launch_host` exports `PI_CODING_AGENT_DIR` to the agent, so a
+    stack launched from inside a host omp session inherits the PARENT stack's agent dir (the same
+    inheritance bd harnessed-8px.26 documents for `CLAUDE_CONFIG_DIR`). The self-link guard in
+    `_share_host_omp_state` does not catch it: parent and child homes differ, so it proceeds and
+    links the child's shared state at the PARENT's. Those links resolve transitively today — right
+    up until the parent stack's fingerprint changes and its rebuild unlinks them. The child is then
+    left pointing at nothing, and the next omp to open that dangling `agent.db` creates a REAL
+    database at the parent's path: a stack silently off the shared login, writing its auth into
+    another stack's home.
+
+    NOTE: `_host_claude_source` has the same shape and no such guard. That is pre-existing and left
+    alone here deliberately (this change must not alter the claude path); it is worth its own issue.
     """
     override = os.environ.get(_OMP_AGENT_DIR_VAR)
-    if override:
+    if override and not _is_harnessed_owned(Path(override)):
         return Path(override)
     return Path.home() / (os.environ.get("PI_CONFIG_DIR") or ".omp") / "agent"
 
@@ -518,7 +568,7 @@ def _materialize_host_omp_home(
         if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == fingerprint:
             return False
     if home.exists():
-        _clear_host_home_except_runtime(home)
+        _clear_host_home_except_runtime(home, keep=_OMP_RUNTIME_KEEP)
     home.mkdir(parents=True, exist_ok=True)
     for name in _OMP_IDENTITY_FILES:
         text = identity.get(name)

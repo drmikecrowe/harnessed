@@ -1202,6 +1202,18 @@ class TestHostRunVerb:
 # --- omp host mode (#307) -------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _clean_passthrough(monkeypatch):
+    """`launcher._passthrough` is module-level and only `main()` clears it, so args one test sets
+    otherwise leak into every later `CliRunner` invocation in the process.
+
+    Autouse rather than pinned per test: the leak is invisible until some assertion happens to be
+    exact about argv, which is how it reached CI green once already. A fixture makes the next CLI
+    test here immune without its author having to know any of this.
+    """
+    monkeypatch.setattr(launcher, "_passthrough", [])
+
+
 @pytest.fixture
 def omp_real(monkeypatch, tmp_path):
     """A stand-in for the user's real `~/.omp/agent`, addressed via `PI_CODING_AGENT_DIR`."""
@@ -1230,6 +1242,56 @@ class TestHostOmpSource:
         monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
         monkeypatch.setenv("HOME", str(tmp_path))
         assert hosthome._host_omp_source() == tmp_path / ".omp" / "agent"
+
+    def test_a_nested_launch_does_not_treat_the_parent_stack_as_the_user_store(
+        self, monkeypatch, tmp_path
+    ):
+        """`_launch_host` exports `PI_CODING_AGENT_DIR` to the agent, so a stack launched from
+        INSIDE a host omp session inherits the PARENT stack's agent dir — the same inheritance bd
+        harnessed-8px.26 documents for `CLAUDE_CONFIG_DIR`.
+
+        `_share_host_omp_state`'s self-link guard cannot catch it: parent and child homes differ, so
+        it would link the child's shared state at the parent's. Those links resolve transitively
+        right up until the parent's fingerprint changes and its rebuild unlinks them — after which
+        the next omp to open the dangling `agent.db` creates a REAL database at the parent's path,
+        silently taking that stack off the shared login.
+        """
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        parent_home = paths.host_home("parent-stack", "omp")
+        parent_home.mkdir(parents=True)
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(parent_home))
+
+        # Falls through to the real user store, NOT the parent stack's home.
+        assert hosthome._host_omp_source() == tmp_path / "userhome" / ".omp" / "agent"
+
+    def test_a_user_override_outside_the_homes_root_is_still_honored(self, monkeypatch, tmp_path):
+        """The guard suppresses another STACK's dir, never a dir the user genuinely runs under."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "my-own-omp"))
+        assert hosthome._host_omp_source() == tmp_path / "my-own-omp"
+
+    def test_the_nested_child_shares_with_the_real_store_not_the_parent(
+        self, monkeypatch, tmp_path
+    ):
+        """The end-to-end consequence: a nested launch still gets ONE login."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        real = tmp_path / "userhome" / ".omp" / "agent"
+        real.mkdir(parents=True)
+        (real / "agent.db").write_text("the one login")
+        parent_home = paths.host_home("parent-stack", "omp")
+        parent_home.mkdir(parents=True)
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(parent_home))
+        child_home = paths.host_home("child-stack", "omp")
+        child_home.mkdir(parents=True)
+
+        launcher._share_host_omp_state(child_home)
+
+        assert (child_home / "agent.db").resolve() == (real / "agent.db").resolve()
+        assert not (parent_home / "agent.db").exists()
 
 
 class TestRenderOmpIdentityWhole:
@@ -1312,6 +1374,36 @@ class TestMaterializeOmpHome:
         ) is True
         assert (home / "RULES.md").read_text() == "b\n"
 
+    def test_a_live_terminal_resume_pointer_survives_the_rebuild(self, tmp_path):
+        """omp's twin of the claude daemon-state exception (bd harnessed-8px.20).
+
+        `terminal-sessions/pts-N` is written by a RUNNING session — the cwd plus the session jsonl
+        to resume, keyed by TTY. A rebuild that deletes it strips a live session of its resume path.
+        """
+        home = tmp_path / "agentdir"
+        (home / "terminal-sessions").mkdir(parents=True)
+        (home / "terminal-sessions" / "pts-0").write_text("/proj\n/sessions/x.jsonl\n")
+        (home / "RULES.md").write_text("old\n")
+
+        launcher._materialize_host_omp_home(home, identity={"RULES.md": "new\n"})
+
+        assert (home / "terminal-sessions" / "pts-0").is_file()
+        assert (home / "RULES.md").read_text() == "new\n"
+
+    def test_refetchable_caches_are_still_wiped(self, tmp_path):
+        """The keep-set is for live state, not for whatever is expensive to rebuild. `cache/` and
+        `models.db` are refetchable, and the wholesale wipe is what stops a dropped recipe leaving
+        content behind — widening it to "anything costly" is how that guarantee erodes."""
+        home = tmp_path / "agentdir"
+        (home / "cache").mkdir(parents=True)
+        (home / "cache" / "conv.bin").write_text("x")
+        (home / "models.db").write_text("cached models")
+
+        launcher._materialize_host_omp_home(home, identity={})
+
+        assert not (home / "cache").exists()
+        assert not (home / "models.db").exists()
+
     def test_the_rebuild_unlinks_shared_state_instead_of_following_it(self, tmp_path, omp_real):
         """The agent dir is full of symlinks INTO the user's real one. A rebuild that followed them
         would delete the user's sessions and login database, not the stack's content."""
@@ -1346,13 +1438,25 @@ class TestShareOmpState:
             assert (home / name).resolve() == (omp_real / name).resolve()
 
     def test_config_and_identity_stay_per_stack(self, tmp_path, omp_real):
-        """The whole point of the per-stack dir: what isolates must not be linked back."""
+        """The whole point of the per-stack dir: what isolates must not be linked back.
+
+        The user's dir must HOLD each of these first. `is_symlink()` is False for a path that does
+        not exist, so against an empty `omp_real` every assertion below passes vacuously and the
+        test would stay green even if the implementation started linking them.
+        """
+        isolated = ("config.yml", "settings.json", "RULES.md", "APPEND_SYSTEM.md", "mcp.json",
+                    "models.db")
+        for name in isolated:
+            (omp_real / name).write_text("user's own\n")
+        (omp_real / "managed-skills").mkdir()
         home = tmp_path / "agentdir"
         home.mkdir()
+
         launcher._share_host_omp_state(home)
-        for name in ("config.yml", "settings.json", "RULES.md", "APPEND_SYSTEM.md", "mcp.json",
-                     "managed-skills", "models.db"):
+
+        for name in (*isolated, "managed-skills"):
             assert not (home / name).is_symlink(), name
+            assert not (home / name).exists(), name
 
     def test_first_run_without_a_host_login_is_a_note_not_a_dangling_link(self, tmp_path, omp_real):
         """Linking at a missing `agent.db` would have omp create its database THROUGH the link,
@@ -1527,9 +1631,6 @@ class TestOmpHostCliRouting:
         real = tmp_path / "host-omp"
         real.mkdir()
         monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
-        # `_passthrough` is module-level and only `main()` resets it, so a test that set it earlier
-        # leaks its args into every later CLI invocation. Pinned so `argv` here means what it says.
-        monkeypatch.setattr(launcher, "_passthrough", [])
         captured: dict = {}
 
         def fake_execvpe(file, argv, env):
@@ -1551,6 +1652,39 @@ class TestOmpHostCliRouting:
         assert captured["agent_dir"] != str(real)
         # MCP is wired through the agent dir's own file, isolated to this stack.
         assert json.loads((home / "mcp.json").read_text()) == {"mcpServers": {}}
+
+    def test_no_strict_mcp_config_says_it_does_nothing_for_omp(self, monkeypatch, tmp_path):
+        """`host-run` accepts the flag for any harness and records it in `lastrun`, but omp has no
+        strict/non-strict mode — it reads its agent dir's mcp.json and nothing else. Accepted and
+        silently inert is the case this codebase names rather than tolerates."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        real = tmp_path / "host-omp"
+        real.mkdir()
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app,
+            ["host-run", "omp", str(tmp_path), "--stack", "hostspike", "--no-strict-mcp-config"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "no effect for omp" in result.output
+
+    def test_the_note_is_absent_when_the_flag_is_not_passed(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        real = tmp_path / "host-omp"
+        real.mkdir()
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app, ["host-run", "omp", str(tmp_path), "--stack", "hostspike"]
+        )
+
+        assert "no effect for omp" not in result.output
 
     def test_an_unsupported_host_harness_still_names_what_is_supported(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
@@ -1605,7 +1739,6 @@ class TestOmpHooksBridgeSurface:
         real = tmp_path / "host-omp"
         real.mkdir()
         monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
-        monkeypatch.setattr(launcher, "_passthrough", [])
         captured: dict = {}
 
         def fake_execvpe(file, argv, env):

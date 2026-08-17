@@ -2072,9 +2072,6 @@ _HOST_HARNESSES: dict[str, HostHarness] = {
     ),
 }
 
-# Breadcrumb written into every host config dir so orphan detection can reverse the project_hash.
-
-
 def _plan_host_omp(stack: str, prof: Path, home: Path, *, fingerprint: str | None) -> bool:
     """Materialize the per-stack omp agent dir; return whether it rebuilt (#307).
 
@@ -2410,6 +2407,16 @@ class HostBackend(ExecutionBackend):
                 json.dumps({"mcpServers": mcp_servers or {}}, indent=2) + "\n", encoding="utf-8"
             )
             self.argv = [_HOST_HARNESSES[spec.harness].argv0, *spec.extra]
+            if spec.no_strict_mcp:
+                # `--no-strict-mcp-config` opts OUT of claude's `--strict-mcp-config`. omp has
+                # neither flag — it reads its agent dir's mcp.json and nothing else — so there is no
+                # non-strict mode to ask for. Accepted-and-inert is the silent case this codebase
+                # names rather than tolerates (`_warn_capability_gaps`), and the flag is recorded in
+                # `lastrun`, so a replay would carry it forward unremarked too.
+                _err.print(
+                    "[blue][INFO][/blue] --no-strict-mcp-config has no effect for omp: it reads "
+                    "only its own agent dir's mcp.json, so there is no non-strict mode to opt into."
+                )
             return
         # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude
         # load ONLY this file, so the copied .claude.json's global mcpServers never leak into an
