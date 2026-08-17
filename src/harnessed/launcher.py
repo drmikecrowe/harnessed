@@ -2357,6 +2357,11 @@ def _launch_host(
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1) from exc
 
+    # The assemble above just refreshed THIS stack's block in the shared omp agent dir; this drops
+    # the blocks of stacks that no longer resolve at all. Both launch verbs prune, so it does not
+    # matter which one the user reaches for.
+    _prune_unlaunchable_omp_blocks(harness)
+
     # Same mirror as the container path, recorded under this verb so the two never collide: a
     # host-native session and a containerized one for the same stack+harness+folder are different
     # things to run. No-op when aoe is absent; never raises.
@@ -3200,6 +3205,48 @@ class ContainerBackend(ExecutionBackend):
             self.secrets_temp_files = []
 
 
+def _prune_unlaunchable_omp_blocks(harness: str) -> None:
+    """Drop `harnessed:<stack>` blocks for stacks that can no longer be launched (omp only).
+
+    ~/.omp/agent/{APPEND_SYSTEM.md,RULES.md} are SHARED across every omp stack and are APPEND-first
+    by design: `write_omp_identity` refreshes a stack's own block at assemble time and deliberately
+    leaves every other stack's block alone. Nothing ever removed a block for a stack that stopped
+    existing, so abandoned experiments kept injecting their rules into every omp session forever
+    (measured on one real agent dir: 601 lines across 6 blocks, 4 of them unlaunchable).
+
+    WHY HERE, AND WHY BOTH LAUNCH VERBS: only a launch consumes these files. `--host` re-assembles
+    every launch, but `container-run` does NOT — its profile was assembled back at `harnessed build`
+    — so an assemble-time prune alone would never fire for the containerized path, which is the
+    common one. Pruning where the file is about to be mounted covers both.
+
+    THE LIVENESS RULE, and why it is safe to apply without asking: a block is dropped only when its
+    stack fails the SAME existence check `container_run` already treats as fatal for the stack being
+    launched (`staleness.stack_resolves`). Such a stack cannot be built and cannot be launched, so
+    its block can never be refreshed and can never be reached — removing it takes away nothing that
+    any session could use.
+
+    Deliberately NOT keyed on "absent from the current launch": that would strip live stacks. Their
+    blocks are refreshed only by their own build, so a container stack would lose its rules until
+    someone rebuilt a multi-GB image. Staleness is not death either — a stale-but-resolvable stack
+    rebuilds fine and keeps its block.
+
+    Self-healing: if a stack.yaml comes back, that stack's next build rewrites its block.
+    """
+    if harness != "omp":
+        return
+    agent_dir = emit.omp_agent_dir()
+    names = set(emit.managed_block_names(agent_dir / "RULES.md")) | set(
+        emit.managed_block_names(agent_dir / "APPEND_SYSTEM.md")
+    )
+    dead = {n for n in names if not staleness.stack_resolves(None, n)}
+    removed = emit.prune_omp_blocks(agent_dir, dead)
+    if removed:
+        _out.print(
+            f"[blue][INFO][/blue] Pruned {len(removed)} unlaunchable stack block(s) from the shared "
+            f"omp agent dir: {', '.join(removed)}"
+        )
+
+
 @app.command("container-run")
 def container_run(
     harness: str = typer.Argument(..., help="Harness to use (claude|omp|opencode|antigravity|codex)"),
@@ -3346,6 +3393,12 @@ def container_run(
     except staleness.StaleProfileError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack} {harness}")
         raise typer.Exit(1) from exc
+
+    # AFTER the guard above, and using the very same existence check it just applied to THIS stack —
+    # now applied to every OTHER stack with a block in the shared omp agent dir we are about to
+    # mount. A container launch never re-assembles, so this is the only point on this path that can
+    # notice a block whose stack is gone.
+    _prune_unlaunchable_omp_blocks(harness)
 
     # BEFORE the row, for the reason spelled out at the host-run call site: the row's command is
     # `--last`, `_aoe_register` EXITS under `--create-aoe-only`, and a row recorded afterwards

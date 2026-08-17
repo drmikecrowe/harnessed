@@ -6,6 +6,8 @@ from typing import ClassVar
 
 from harnessed.emit import (
     HATAGO_ENDPOINT,
+    managed_block_names,
+    prune_omp_blocks,
     _recipe_hooks_settings,
     HATAGO_MCP_KEY,
     merge_opencode_config,
@@ -423,6 +425,86 @@ class TestWriteOmpIdentity:
         assert "<!-- BEGIN harnessed:alpha -->" in rules_text
         assert rules_text.count("## Rule: coding-principles/RULE.md") == 1
         assert "v1 body" not in rules_text
+
+
+class TestPruneOmpBlocks:
+    """Removal of blocks whose stack is gone — the append-forever half of the shared agent dir.
+
+    `write_omp_identity` refreshes one stack's block and leaves every other block alone, so nothing
+    ever removed the block of a stack that stopped existing. The launcher decides WHICH names are
+    dead (see `_prune_unlaunchable_omp_blocks`); these cover the surgery.
+    """
+
+    def _rule(self, profile_dir: Path, name: str, body: str) -> Path:
+        p = profile_dir / ".claude" / "rules" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body, encoding="utf-8")
+        return p
+
+    def test_prunes_named_blocks_from_both_files(self, tmp_path):
+        agent = tmp_path / "agent"
+        # DISTINCT rules per stack: a shared label is deduped into the launching stack's block by
+        # `_prune_rules_from_other_blocks`, which would empty the other block and remove it — the
+        # dedup doing its job, but not the removal under test here.
+        dead_rule = self._rule(tmp_path, "dead/RULE.md", "dead rule body")
+        live_rule = self._rule(tmp_path, "live/RULE.md", "live rule body")
+        write_omp_identity(tmp_path, "dead-stack", "dead identity", [dead_rule], agent_dir=agent)
+        write_omp_identity(tmp_path, "live-stack", "live identity", [live_rule], agent_dir=agent)
+
+        assert prune_omp_blocks(agent, {"dead-stack"}) == ["dead-stack"]
+
+        for name in ("APPEND_SYSTEM.md", "RULES.md"):
+            text = (agent / name).read_text()
+            assert "harnessed:dead-stack" not in text
+            assert "harnessed:live-stack" in text
+
+    def test_leaves_unmanaged_content_alone(self, tmp_path):
+        """The agent dir is the USER's. harnessed owns only what it delimited."""
+        agent = tmp_path / "agent"
+        agent.mkdir()
+        rules = agent / "RULES.md"
+        rules.write_text(
+            "My own hand-written rule.\n\n"
+            "<!-- BEGIN harnessed:gone -->\n## Rule: x\nbody\n<!-- END harnessed:gone -->\n",
+            encoding="utf-8",
+        )
+
+        assert prune_omp_blocks(agent, {"gone"}) == ["gone"]
+        assert "My own hand-written rule." in rules.read_text()
+        assert "harnessed:gone" not in rules.read_text()
+
+    def test_empty_dead_set_is_a_noop(self, tmp_path):
+        agent = tmp_path / "agent"
+        r = self._rule(tmp_path, "a/RULE.md", "rule body")
+        write_omp_identity(tmp_path, "s1", "identity", [r], agent_dir=agent)
+        before = (agent / "RULES.md").read_text()
+
+        assert prune_omp_blocks(agent, set()) == []
+        assert (agent / "RULES.md").read_text() == before
+
+    def test_reports_only_names_actually_present(self, tmp_path):
+        """A name that is not in the files is not reported as pruned — the caller prints this."""
+        agent = tmp_path / "agent"
+        r = self._rule(tmp_path, "a/RULE.md", "rule body")
+        write_omp_identity(tmp_path, "s1", "identity", [r], agent_dir=agent)
+
+        assert prune_omp_blocks(agent, {"s1", "never-existed"}) == ["s1"]
+
+    def test_missing_agent_dir_is_a_noop(self, tmp_path):
+        assert prune_omp_blocks(tmp_path / "nope", {"anything"}) == []
+
+    def test_managed_block_names_reads_file_order(self, tmp_path):
+        agent = tmp_path / "agent"
+        # Distinct rules, for the dedup reason spelled out above.
+        first = self._rule(tmp_path, "first/RULE.md", "first body")
+        second = self._rule(tmp_path, "second/RULE.md", "second body")
+        write_omp_identity(tmp_path, "first", None, [first], agent_dir=agent)
+        write_omp_identity(tmp_path, "second", None, [second], agent_dir=agent)
+
+        assert managed_block_names(agent / "RULES.md") == ["first", "second"]
+
+    def test_managed_block_names_on_missing_file(self, tmp_path):
+        assert managed_block_names(tmp_path / "absent.md") == []
 
 
 class TestWriteMcpJson:
