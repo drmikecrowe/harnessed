@@ -377,6 +377,11 @@ def _default_omp_agent_dir() -> Path:
     return Path.home() / ".omp" / "agent"
 
 
+def omp_agent_dir() -> Path:
+    """Public name for the shared omp agent dir, for callers outside assembly (the launcher)."""
+    return _default_omp_agent_dir()
+
+
 def _managed_block(stack_name: str, body: str) -> str:
     """A delimiter-marked managed block for `stack_name` wrapping `body` (bd main-w8k)."""
     return (
@@ -437,6 +442,44 @@ def _prune_rules_from_other_blocks(path: Path, stack_name: str, labels: set[str]
     updated = _ANY_BLOCK_RE.sub(_prune, text)
     if updated != text:
         path.write_text(updated, encoding="utf-8")
+
+
+def managed_block_names(path: Path) -> list[str]:
+    """Every `harnessed:<stack>` block name in `path`, in file order (duplicates preserved)."""
+    if not path.is_file():
+        return []
+    return [m.group("name") for m in _ANY_BLOCK_RE.finditer(path.read_text(encoding="utf-8"))]
+
+
+def prune_omp_blocks(agent_dir: Path, dead: set[str]) -> list[str]:
+    """Delete the managed blocks named in `dead` from BOTH shared omp agent files.
+
+    Returns the names actually removed, sorted. Content outside a `harnessed:` block is never
+    touched — the shared files are the user's, and harnessed only owns what it delimited.
+
+    The caller decides what is dead; this function only does the surgery. See
+    `launcher._prune_unlaunchable_omp_blocks` for the liveness rule and why it is safe to apply
+    without asking.
+    """
+    if not dead:
+        return []
+    removed: set[str] = set()
+    for filename in (_OMP_APPEND_SYSTEM_FILE, _OMP_RULES_FILE):
+        path = agent_dir / filename
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+
+        def _drop(m: re.Match[str]) -> str:
+            if m.group("name") not in dead:
+                return m.group(0)
+            removed.add(m.group("name"))
+            return ""
+
+        updated = _ANY_BLOCK_RE.sub(_drop, text)
+        if updated != text:
+            path.write_text(updated, encoding="utf-8")
+    return sorted(removed)
 
 
 def upsert_managed_block(text: str, stack_name: str, body: str) -> str:

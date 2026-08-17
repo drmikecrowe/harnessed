@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 
 from . import paths
-from .schema import Recipe, Stack, load_stack_with_recipes
+from .schema import Recipe, SchemaError, Stack, load_stack_with_recipes
 
 # File written into each profile dir holding the input hash.
 STAMP_FILE = ".build-stamp"
@@ -83,6 +83,21 @@ def read_stamp(profile_dir: Path) -> str | None:
         return json.loads(f.read_text(encoding="utf-8")).get("stamp")
     except (ValueError, OSError):
         return None
+
+
+def stack_resolves(root: Path | None, stack_name: str) -> bool:
+    """True if `stack_name` still resolves to a stack.yaml AND every recipe it references.
+
+    Check 1 of `check_profile_fresh` (existence), asked as a question instead of an exception. False
+    means a fresh `harnessed build` of that stack would fail and `container_run` would refuse to
+    launch it — the strongest "this stack is gone" signal the catalog offers, and the only one that
+    does not depend on a profile dir (nothing ever deletes those).
+    """
+    try:
+        load_stack_with_recipes(root, stack_name)
+    except SchemaError:
+        return False
+    return True
 
 
 def check_profile_fresh(root: Path | None, stack_name: str, harness: str, *, strict: bool = False) -> None:
