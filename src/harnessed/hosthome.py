@@ -18,7 +18,11 @@ import shutil
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from io import StringIO
 from pathlib import Path
+
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from . import paths
 from .__init__ import __version__
@@ -126,7 +130,7 @@ def _is_daemon_state(entry: Path) -> bool:
     return any((entry / marker).exists() for marker in _DAEMON_STATE_MARKERS)
 
 
-def _clear_host_home_except_runtime(home: Path) -> None:
+def _clear_host_home_except_runtime(home: Path, *, keep: tuple[str, ...] = ()) -> None:
     """Empty the config dir the way the wholesale rmtree did — but spare live daemon state.
 
     bd harnessed-8px.20. `_materialize_host_home` used to `shutil.rmtree(home)`. That is right for
@@ -141,8 +145,16 @@ def _clear_host_home_except_runtime(home: Path) -> None:
 
     Selective deletion rather than move-aside-and-restore: an interrupted rebuild can then never
     strand the preserved state somewhere the next launch will not look for it.
+
+    `keep` names entries to spare BY NAME, for a harness whose live state is not claude-daemon
+    shaped and so cannot be recognised by `_is_daemon_state`'s content probe. Deliberately narrow:
+    the wholesale wipe is what stops a dropped recipe leaving content behind, so an entry earns a
+    place here only by being live state a running session would lose — never merely by being
+    expensive to rebuild.
     """
     for entry in home.iterdir():
+        if entry.name in keep:
+            continue
         if _is_daemon_state(entry):
             continue
         if entry.is_dir() and not entry.is_symlink():
@@ -404,6 +416,245 @@ def _share_host_claude_state(home: Path) -> None:
     acct = (Path(env_ccd) if env_ccd else Path.home()) / ".claude.json"
     if acct.is_file():
         shutil.copy2(acct, home / ".claude.json")  # snapshot account → skips onboarding, isolated writes
+
+
+# --- omp (#307) ----------------------------------------------------------------
+#
+# The host backend was claude-only because it was built around ONE lever: point the agent at a
+# per-stack config dir via `CLAUDE_CONFIG_DIR`. omp 17.x has an exact analogue — `PI_CODING_AGENT_DIR`
+# takes an ABSOLUTE path (verified live at 17.3.4: `PI_CODING_AGENT_DIR=<tmp> omp config list` exits 0
+# and creates `agent.db` there) and moves omp's whole user-level surface with it: config.yml,
+# settings.json, RULES.md, APPEND_SYSTEM.md, mcp.json, managed-skills, sessions, memories, agent.db.
+#
+# `PI_CONFIG_DIR` is NOT that lever and is deliberately unused here: it is a NAME under $HOME
+# (`path.join(os.homedir(), PI_CONFIG_DIR || '.omp')`), so it cannot address the harnessed home at
+# all. `--profile` is a dead end for a different reason — it is mutually exclusive with the env var
+# and WINS, silently ignoring the override.
+
+#: The env var that points omp at a per-stack agent dir — omp's `CLAUDE_CONFIG_DIR`.
+_OMP_AGENT_DIR_VAR = "PI_CODING_AGENT_DIR"
+
+#: omp's identity surface, written WHOLE per stack (see `emit.render_omp_identity`).
+_OMP_IDENTITY_FILES = ("APPEND_SYSTEM.md", "RULES.md")
+
+#: The user-level preferences file. Not a credential — model roles, providers, theme, keybinds.
+_OMP_CONFIG_FILE = "config.yml"
+
+#: Shared with the real `~/.omp/agent` by SYMLINK, the omp analogue of `_HOST_SHARED_STATE`.
+#:
+#: `agent.db` carries auth (`auth_credentials`/`auth_credential_blocks`/`auth_credential_refresh_leases`)
+#: AND the usage ledger, so sharing it is what makes "one login, one usage history" true across
+#: stacks — REFERENCED, never copied, so no credential is replicated (ARCHITECTURE.md §Constraints).
+#: Sound at the DB-file level, verified live at 17.3.4: with `agent.db` a symlink, SQLite places
+#: `-wal`/`-shm` beside the symlink TARGET, not beside the link, so every stack drives ONE logical
+#: database with one WAL and same-kernel POSIX locking — the same coordination story
+#: `mounts._omp_agent_mount` already accepts for containers. And SQLite rewrites the file in place
+#: rather than replacing it, so the bd harnessed-8px.10 failure mode that dogs claude's
+#: `.credentials.json` symlink (a refresh REPLACES the link with a regular file) structurally cannot
+#: happen here.
+#:
+#: `history.db` (prompt history) and `sessions/` are the history/session state ARCHITECTURE.md
+#: §Constraints calls deliberate to share up. `blobs/` rides with `sessions/` because sessions
+#: reference it — share one without the other and a resumed session loses its attachments.
+#: `memories/` is cross-project agent memory, the same class as sessions.
+#:
+#: Everything else stays PER-STACK: config.yml, settings.json, RULES.md, APPEND_SYSTEM.md, mcp.json,
+#: managed-skills, cache, terminal-sessions, models.db (a refetchable model cache).
+_OMP_SHARED_STATE_DIRS = ("sessions", "blobs", "memories")
+_OMP_SHARED_STATE_FILES = ("agent.db", "history.db")
+
+#: Spared by a rebuild — omp's twin of the claude daemon-state exception (bd harnessed-8px.20).
+#:
+#: `terminal-sessions/pts-N` is a live pointer a RUNNING session writes: the cwd plus the session
+#: jsonl to resume, keyed by TTY. It is what makes "continue this terminal's session" work, so a
+#: rebuild that deletes it strips a live session of its resume path — the same shape as the observed
+#: daemon-state loss, and not recognisable by `_is_daemon_state`'s content probe.
+#:
+#: `cache/` and `models.db` are deliberately NOT here. Both are refetchable (document conversions,
+#: the model list), so losing them costs a refetch, and the wholesale wipe is the contract that
+#: keeps a dropped recipe from leaving content behind. Expensive to rebuild is not the bar; live
+#: state a running session would lose is.
+_OMP_RUNTIME_KEEP = ("terminal-sessions",)
+
+
+def _is_harnessed_owned(path: Path) -> bool:
+    """True when `path` is inside harnessed's own per-stack home tree.
+
+    Used to tell "the user's real store" from "another stack's" — see `_host_omp_source`. Compares
+    resolved paths so a symlinked home cannot dodge the check, and treats an unresolvable path as
+    NOT owned: this only ever suppresses an override, and refusing on doubt would silently ignore a
+    legitimate one the user set.
+    """
+    try:
+        path.resolve().relative_to(paths.host_homes_root().resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _host_omp_claude_dir(home: Path) -> Path:
+    """The per-stack `CLAUDE_CONFIG_DIR` a host omp session runs under (#307).
+
+    omp reads Claude-shaped **hooks** through the claude-hooks bridge, and that bridge resolves them
+    from `process.env.CLAUDE_CONFIG_DIR || ~/.claude` (`index.ts:100`, merging
+    `$CLAUDE_CONFIG_DIR/settings.json` with the project's `.claude/settings.json`). So the variable is
+    load-bearing for omp too, and leaving it unset does NOT mean "the stack's hooks are inert" — it
+    means the bridge falls back to the user's REAL `~/.claude/settings.json` and fires their GLOBAL
+    hooks inside a stack session while the stack's own never run. That is the exact inversion of what
+    this backend promises, since configuration isolation is its whole boundary.
+
+    NESTED inside the agent dir rather than beside it: `paths.host_home` keys a home by
+    `<stack>/<harness>` and `host-gc` reads every dir at that level as a config dir, so a sibling
+    would show up as a phantom harness. A child is one dir to the same eyes, and it rides the agent
+    dir's wholesale rebuild for free.
+
+    Distinct from `paths.host_home(stack, "claude")` deliberately — that is a real claude session's
+    dir, with claude's own credential and session-state symlinks in it. Sharing one between the two
+    harnesses would put omp's launches inside claude's auth wiring for no reason.
+    """
+    return home / "claude-config"
+
+
+def _host_omp_source() -> Path:
+    """The host's live omp agent dir — the share-back target. Honors a `PI_CODING_AGENT_DIR` or
+    `PI_CONFIG_DIR` the user already runs under; else the `~/.omp/agent` default.
+
+    `PI_CONFIG_DIR` is resolved the way omp itself resolves it — as a NAME under `$HOME`, with
+    `agent` beneath it — precisely because it is not usable as a path anywhere else in here.
+
+    An override pointing INSIDE `paths.host_homes_root()` is ignored, because it is not the user's
+    store — it is another stack's. `_launch_host` exports `PI_CODING_AGENT_DIR` to the agent, so a
+    stack launched from inside a host omp session inherits the PARENT stack's agent dir (the same
+    inheritance bd harnessed-8px.26 documents for `CLAUDE_CONFIG_DIR`). The self-link guard in
+    `_share_host_omp_state` does not catch it: parent and child homes differ, so it proceeds and
+    links the child's shared state at the PARENT's. Those links resolve transitively today — right
+    up until the parent stack's fingerprint changes and its rebuild unlinks them. The child is then
+    left pointing at nothing, and the next omp to open that dangling `agent.db` creates a REAL
+    database at the parent's path: a stack silently off the shared login, writing its auth into
+    another stack's home.
+
+    NOTE: `_host_claude_source` has the same shape and no such guard. That is pre-existing and left
+    alone here deliberately (this change must not alter the claude path); it is worth its own issue.
+    """
+    override = os.environ.get(_OMP_AGENT_DIR_VAR)
+    if override and not _is_harnessed_owned(Path(override)):
+        return Path(override)
+    return Path.home() / (os.environ.get("PI_CONFIG_DIR") or ".omp") / "agent"
+
+
+def _materialize_host_omp_home(
+    home: Path, *, identity: dict[str, str], fingerprint: str | None = None
+) -> bool:
+    """Lay the omp profile down as a per-stack agent dir (`PI_CODING_AGENT_DIR`).
+
+    The omp twin of `_materialize_host_home`, and deliberately NOT a call to it: the two harnesses
+    materialize different SHAPES. claude's config dir is the profile's `.claude/*` tree plus a
+    settings floor; omp's agent dir is omp-native files — `APPEND_SYSTEM.md` and `RULES.md` written
+    WHOLE (`emit.render_omp_identity`), with `mcp.json` added later by `wire_mcp` and `config.yml`
+    seeded from the host's. Copying the `.claude/*` tree in here would deliver skills and hooks to a
+    harness that, host-side, has nothing to read them: the claude-hooks bridge is baked into the omp
+    IMAGE, so a host launch has it only if the user installed it themselves (the same reason host
+    mode ships no hatago).
+
+    Same gate and same wholesale rebuild as the claude path: a rule dropped from the stack must not
+    survive in the agent dir, and the fingerprint is what keeps that from costing a wipe per launch.
+    The wipe unlinks the shared-state symlinks without following them — `_share_host_omp_state` runs
+    immediately after, inside the same home lock, and re-points them.
+
+    Returns True if it (re)built, False if an up-to-date agent dir was left untouched.
+    """
+    if fingerprint is not None:
+        stamp = home / _HOST_STACK_FINGERPRINT
+        if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == fingerprint:
+            return False
+    if home.exists():
+        _clear_host_home_except_runtime(home, keep=_OMP_RUNTIME_KEEP)
+    home.mkdir(parents=True, exist_ok=True)
+    for name in _OMP_IDENTITY_FILES:
+        text = identity.get(name)
+        if text:
+            (home / name).write_text(text, encoding="utf-8")
+    return True
+
+
+def _share_host_omp_state(home: Path) -> None:
+    """Symlink the per-stack agent dir at the real `~/.omp/agent` for the SHARED pieces (#307).
+
+    The omp twin of `_share_host_claude_state`. See `_OMP_SHARED_STATE_FILES` for why a symlinked
+    `agent.db` is sound and why sharing it is what keeps one login and one usage ledger across stacks.
+
+    FIRST-RUN GUARD: with no `agent.db` in the real agent dir there is nothing to share, and linking
+    at a path that does not exist would have omp create its database THROUGH the dangling link,
+    writing a stack's login into the user's agent dir sideways. Skipped with a note instead — omp
+    then prompts a per-stack login, which is a first run, not an error. Mirrors the container path's
+    `mounts._omp_agent_mount`.
+
+    Directories are created when missing (they are just state containers, and an absent `sessions/`
+    would otherwise leave every stack with a dangling link); `agent.db` deliberately is NOT.
+    """
+    real = _host_omp_source()
+    if real.resolve() == home.resolve():
+        return
+    real.mkdir(parents=True, exist_ok=True)
+    for name in _OMP_SHARED_STATE_DIRS:
+        src = real / name
+        src.mkdir(parents=True, exist_ok=True)  # ensure it exists so the symlink resolves
+        _relink(home / name, src)
+    for name in _OMP_SHARED_STATE_FILES:
+        src = real / name
+        if not src.is_file():
+            if name == "agent.db":
+                _err.print(
+                    f"[yellow]note:[/yellow] no {src} on the host — omp will prompt to log in "
+                    "(run `omp` on the host first)."
+                )
+            continue
+        _relink(home / name, src)
+
+
+def _propagate_host_omp_config(home: Path) -> None:
+    """Seed the per-stack `config.yml` from the host's, every launch (#307).
+
+    A per-stack agent dir means a per-stack `config.yml`, and omp resolves config at exactly ONE
+    level (`omp config path` == the agent dir). Left alone, a host launch would therefore run with
+    omp's built-in defaults — no model roles, no provider order, none of the user's setup — which is
+    not isolation, it is a factory reset. Verified: `PI_CODING_AGENT_DIR=<tmp> omp config list`
+    reports the shipped defaults, not the host's values.
+
+    Preferences, not credentials: omp keeps auth in `agent.db` (shared by symlink), so nothing
+    secret is copied here. Re-propagated on EVERY launch rather than seeded once, for the same
+    reason as claude's settings.json (bd harnessed-8px.18): a preference the user changes in their
+    own omp must reach the stack without waiting for something unrelated to change the fingerprint.
+
+    Host keys WIN; keys only the per-stack file has are carried over, so an `install:` script that
+    wrote into `$PI_CODING_AGENT_DIR/config.yml` is not silently undone the next launch. Exactly
+    `_propagate_host_settings`'s rule, in YAML.
+    """
+    src = _host_omp_source() / _OMP_CONFIG_FILE
+    if src.resolve() == (home / _OMP_CONFIG_FILE).resolve() or not src.is_file():
+        return
+    live = home / _OMP_CONFIG_FILE
+    yaml = YAML()
+    try:
+        fresh = yaml.load(src.read_text(encoding="utf-8")) or {}
+        prior = (yaml.load(live.read_text(encoding="utf-8")) or {}) if live.is_file() else {}
+    except (OSError, YAMLError):
+        # Unreadable/invalid on either side → the plain copy, same fallback as the settings twin. A
+        # config the user hand-edited into invalid YAML must not take the whole launch down.
+        shutil.copy2(src, live)
+        return
+    carried = (
+        {k: v for k, v in prior.items() if k not in fresh}
+        if isinstance(fresh, dict) and isinstance(prior, dict)
+        else {}
+    )
+    if not carried:
+        shutil.copy2(src, live)  # nothing to preserve → byte-identical propagation
+        return
+    merged = {**fresh, **carried}
+    rendered = StringIO()
+    yaml.dump(merged, rendered)
+    live.write_text(rendered.getvalue(), encoding="utf-8")
 
 
 def _propagate_host_settings(profile_settings: Path, live: Path) -> None:

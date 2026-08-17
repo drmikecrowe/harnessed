@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from harnessed import launcher, paths
+from harnessed import emit, hosthome, hostrun, launcher, paths
 from harnessed.assemble import assemble
 from support import patch_all
 
@@ -1197,4 +1197,598 @@ class TestHostRunVerb:
         """The whole point of the split: these cannot be passed to host-run at all."""
         r = runner.invoke(launcher.app, ["host-run", "claude", "--stack", "hostspike", "--fresh"])
         assert r.exit_code != 0
+
+
+# --- omp host mode (#307) -------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clean_passthrough(monkeypatch):
+    """`launcher._passthrough` is module-level and only `main()` clears it, so args one test sets
+    otherwise leak into every later `CliRunner` invocation in the process.
+
+    Autouse rather than pinned per test: the leak is invisible until some assertion happens to be
+    exact about argv, which is how it reached CI green once already. A fixture makes the next CLI
+    test here immune without its author having to know any of this.
+    """
+    monkeypatch.setattr(launcher, "_passthrough", [])
+
+
+@pytest.fixture
+def omp_real(monkeypatch, tmp_path):
+    """A stand-in for the user's real `~/.omp/agent`, addressed via `PI_CODING_AGENT_DIR`."""
+    real = tmp_path / "host-omp-agent"
+    real.mkdir()
+    monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
+    return real
+
+
+class TestHostOmpSource:
+    def test_the_env_override_wins(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "elsewhere"))
+        assert hosthome._host_omp_source() == tmp_path / "elsewhere"
+
+    def test_pi_config_dir_is_a_name_under_home_not_a_path(self, monkeypatch, tmp_path):
+        """omp resolves it as `join(homedir(), PI_CONFIG_DIR || '.omp')`, so it can only ever RENAME
+        the config root. Reading it as a path is the trap the issue flagged — it would send the
+        share-back target somewhere omp never looks."""
+        monkeypatch.delenv("PI_CODING_AGENT_DIR", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("PI_CONFIG_DIR", ".omp-alt")
+        assert hosthome._host_omp_source() == tmp_path / ".omp-alt" / "agent"
+
+    def test_defaults_to_dot_omp_agent(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("PI_CODING_AGENT_DIR", raising=False)
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        assert hosthome._host_omp_source() == tmp_path / ".omp" / "agent"
+
+    def test_a_nested_launch_does_not_treat_the_parent_stack_as_the_user_store(
+        self, monkeypatch, tmp_path
+    ):
+        """`_launch_host` exports `PI_CODING_AGENT_DIR` to the agent, so a stack launched from
+        INSIDE a host omp session inherits the PARENT stack's agent dir — the same inheritance bd
+        harnessed-8px.26 documents for `CLAUDE_CONFIG_DIR`.
+
+        `_share_host_omp_state`'s self-link guard cannot catch it: parent and child homes differ, so
+        it would link the child's shared state at the parent's. Those links resolve transitively
+        right up until the parent's fingerprint changes and its rebuild unlinks them — after which
+        the next omp to open the dangling `agent.db` creates a REAL database at the parent's path,
+        silently taking that stack off the shared login.
+        """
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        parent_home = paths.host_home("parent-stack", "omp")
+        parent_home.mkdir(parents=True)
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(parent_home))
+
+        # Falls through to the real user store, NOT the parent stack's home.
+        assert hosthome._host_omp_source() == tmp_path / "userhome" / ".omp" / "agent"
+
+    def test_a_user_override_outside_the_homes_root_is_still_honored(self, monkeypatch, tmp_path):
+        """The guard suppresses another STACK's dir, never a dir the user genuinely runs under."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "my-own-omp"))
+        assert hosthome._host_omp_source() == tmp_path / "my-own-omp"
+
+    def test_the_nested_child_shares_with_the_real_store_not_the_parent(
+        self, monkeypatch, tmp_path
+    ):
+        """The end-to-end consequence: a nested launch still gets ONE login."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "userhome"))
+        monkeypatch.delenv("PI_CONFIG_DIR", raising=False)
+        real = tmp_path / "userhome" / ".omp" / "agent"
+        real.mkdir(parents=True)
+        (real / "agent.db").write_text("the one login")
+        parent_home = paths.host_home("parent-stack", "omp")
+        parent_home.mkdir(parents=True)
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(parent_home))
+        child_home = paths.host_home("child-stack", "omp")
+        child_home.mkdir(parents=True)
+
+        launcher._share_host_omp_state(child_home)
+
+        assert (child_home / "agent.db").resolve() == (real / "agent.db").resolve()
+        assert not (parent_home / "agent.db").exists()
+
+
+class TestRenderOmpIdentityWhole:
+    def test_the_files_are_whole_not_delimiter_marked_blocks(self, tmp_path):
+        """#307 finding 7. The `<!-- BEGIN harnessed:<stack> -->` markers exist ONLY to let one
+        stack's content be replaced inside a SHARED file. A per-stack agent dir has no other stack
+        to share with, so the markers would be noise the model reads."""
+        prof = tmp_path / "prof"
+        rules = prof / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "a.md").write_text("do the thing\n")
+
+        out = emit.render_omp_identity(prof, "you are the tracer", [rules / "a.md"])
+
+        assert out["APPEND_SYSTEM.md"] == "you are the tracer\n"
+        assert out["RULES.md"] == "## Rule: a.md\n\ndo the thing\n"
+        assert "BEGIN harnessed:" not in "".join(out.values())
+
+    def test_nothing_to_say_writes_no_file(self, tmp_path):
+        assert emit.render_omp_identity(tmp_path / "prof", None, []) == {}
+
+    def test_an_empty_rule_file_is_not_an_empty_section(self, tmp_path):
+        prof = tmp_path / "prof"
+        rules = prof / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "empty.md").write_text("   \n")
+        assert "RULES.md" not in emit.render_omp_identity(prof, None, [rules / "empty.md"])
+
+    def test_the_shared_block_path_renders_the_same_rule_text(self, tmp_path):
+        """Both paths go through `_render_omp_rules`, so container and host agree on rule text.
+        Divergence here would mean the same stack said different things on the two backends."""
+        prof = tmp_path / "prof"
+        rules = prof / ".claude" / "rules"
+        rules.mkdir(parents=True)
+        (rules / "a.md").write_text("do the thing\n")
+        agent_dir = tmp_path / "shared"
+
+        emit.write_omp_identity(prof, "s", None, [rules / "a.md"], agent_dir=agent_dir)
+
+        whole = emit.render_omp_identity(prof, None, [rules / "a.md"])["RULES.md"]
+        assert whole.strip() in (agent_dir / "RULES.md").read_text()
+
+
+class TestMaterializeOmpHome:
+    def test_writes_the_identity_surface_whole(self, tmp_path):
+        home = tmp_path / "agentdir"
+        identity = {"APPEND_SYSTEM.md": "ident\n", "RULES.md": "## Rule: a.md\n\nbody\n"}
+
+        assert launcher._materialize_host_omp_home(home, identity=identity) is True
+
+        assert (home / "APPEND_SYSTEM.md").read_text() == "ident\n"
+        assert (home / "RULES.md").read_text() == "## Rule: a.md\n\nbody\n"
+
+    def test_a_stack_with_no_identity_gets_no_files(self, tmp_path):
+        home = tmp_path / "agentdir"
+        launcher._materialize_host_omp_home(home, identity={})
+        assert not (home / "APPEND_SYSTEM.md").exists()
+        assert not (home / "RULES.md").exists()
+
+    def test_dropped_rule_content_is_removed_on_a_rebuild(self, tmp_path):
+        """Wholesale, like the claude path: a rule the stack no longer carries must not survive in
+        the agent dir, or the model keeps reading an instruction nobody can find in the catalog."""
+        home = tmp_path / "agentdir"
+        launcher._materialize_host_omp_home(home, identity={"RULES.md": "old\n"})
+        launcher._materialize_host_omp_home(home, identity={"APPEND_SYSTEM.md": "new\n"})
+        assert not (home / "RULES.md").exists()
+        assert (home / "APPEND_SYSTEM.md").read_text() == "new\n"
+
+    def test_the_fingerprint_gate_skips_an_unchanged_stack(self, tmp_path):
+        home = tmp_path / "agentdir"
+        launcher._materialize_host_omp_home(home, identity={"RULES.md": "a\n"}, fingerprint="fp1")
+        launcher._stamp_host_home(home, "fp1")
+
+        assert launcher._materialize_host_omp_home(
+            home, identity={"RULES.md": "b\n"}, fingerprint="fp1"
+        ) is False
+        assert (home / "RULES.md").read_text() == "a\n"
+        assert launcher._materialize_host_omp_home(
+            home, identity={"RULES.md": "b\n"}, fingerprint="fp2"
+        ) is True
+        assert (home / "RULES.md").read_text() == "b\n"
+
+    def test_a_live_terminal_resume_pointer_survives_the_rebuild(self, tmp_path):
+        """omp's twin of the claude daemon-state exception (bd harnessed-8px.20).
+
+        `terminal-sessions/pts-N` is written by a RUNNING session — the cwd plus the session jsonl
+        to resume, keyed by TTY. A rebuild that deletes it strips a live session of its resume path.
+        """
+        home = tmp_path / "agentdir"
+        (home / "terminal-sessions").mkdir(parents=True)
+        (home / "terminal-sessions" / "pts-0").write_text("/proj\n/sessions/x.jsonl\n")
+        (home / "RULES.md").write_text("old\n")
+
+        launcher._materialize_host_omp_home(home, identity={"RULES.md": "new\n"})
+
+        assert (home / "terminal-sessions" / "pts-0").is_file()
+        assert (home / "RULES.md").read_text() == "new\n"
+
+    def test_refetchable_caches_are_still_wiped(self, tmp_path):
+        """The keep-set is for live state, not for whatever is expensive to rebuild. `cache/` and
+        `models.db` are refetchable, and the wholesale wipe is what stops a dropped recipe leaving
+        content behind — widening it to "anything costly" is how that guarantee erodes."""
+        home = tmp_path / "agentdir"
+        (home / "cache").mkdir(parents=True)
+        (home / "cache" / "conv.bin").write_text("x")
+        (home / "models.db").write_text("cached models")
+
+        launcher._materialize_host_omp_home(home, identity={})
+
+        assert not (home / "cache").exists()
+        assert not (home / "models.db").exists()
+
+    def test_the_rebuild_unlinks_shared_state_instead_of_following_it(self, tmp_path, omp_real):
+        """The agent dir is full of symlinks INTO the user's real one. A rebuild that followed them
+        would delete the user's sessions and login database, not the stack's content."""
+        home = tmp_path / "agentdir"
+        (omp_real / "agent.db").write_text("real db")
+        (omp_real / "sessions").mkdir()
+        (omp_real / "sessions" / "s.json").write_text("session")
+        launcher._materialize_host_omp_home(home, identity={"RULES.md": "a\n"})
+        launcher._share_host_omp_state(home)
+
+        launcher._materialize_host_omp_home(home, identity={"RULES.md": "b\n"})
+
+        assert (omp_real / "agent.db").read_text() == "real db"
+        assert (omp_real / "sessions" / "s.json").read_text() == "session"
+
+
+class TestShareOmpState:
+    def test_symlinks_the_shared_db_and_session_state(self, tmp_path, omp_real):
+        (omp_real / "agent.db").write_text("db")
+        (omp_real / "history.db").write_text("hist")
+        home = tmp_path / "agentdir"
+        home.mkdir()
+
+        launcher._share_host_omp_state(home)
+
+        # auth + usage ledger: REFERENCED, so one login and one ledger serve every stack.
+        assert (home / "agent.db").is_symlink()
+        assert (home / "agent.db").read_text() == "db"
+        assert (home / "history.db").is_symlink()
+        for name in ("sessions", "blobs", "memories"):
+            assert (home / name).is_symlink(), name
+            assert (home / name).resolve() == (omp_real / name).resolve()
+
+    def test_config_and_identity_stay_per_stack(self, tmp_path, omp_real):
+        """The whole point of the per-stack dir: what isolates must not be linked back.
+
+        The user's dir must HOLD each of these first. `is_symlink()` is False for a path that does
+        not exist, so against an empty `omp_real` every assertion below passes vacuously and the
+        test would stay green even if the implementation started linking them.
+        """
+        isolated = ("config.yml", "settings.json", "RULES.md", "APPEND_SYSTEM.md", "mcp.json",
+                    "models.db")
+        for name in isolated:
+            (omp_real / name).write_text("user's own\n")
+        (omp_real / "managed-skills").mkdir()
+        home = tmp_path / "agentdir"
+        home.mkdir()
+
+        launcher._share_host_omp_state(home)
+
+        for name in (*isolated, "managed-skills"):
+            assert not (home / name).is_symlink(), name
+            assert not (home / name).exists(), name
+
+    def test_first_run_without_a_host_login_is_a_note_not_a_dangling_link(self, tmp_path, omp_real):
+        """Linking at a missing `agent.db` would have omp create its database THROUGH the link,
+        writing a stack's login into the user's agent dir sideways. omp prompting a per-stack login
+        on a first run is expected, not an error — mirrors `mounts._omp_agent_mount`."""
+        home = tmp_path / "agentdir"
+        home.mkdir()
+
+        launcher._share_host_omp_state(home)
+
+        assert not (home / "agent.db").exists()
+        assert not (home / "agent.db").is_symlink()
+        assert not (omp_real / "agent.db").exists()
+
+    def test_nothing_is_written_into_the_real_agent_dir_except_the_shared_dirs(
+        self, tmp_path, omp_real
+    ):
+        """#307 acceptance criterion 6. Everything the stack owns lands in its own dir; the only
+        things that appear in the user's is the shared-state containers the symlinks need."""
+        (omp_real / "agent.db").write_text("db")
+        home = tmp_path / "agentdir"
+        launcher._materialize_host_omp_home(
+            home, identity={"RULES.md": "r\n", "APPEND_SYSTEM.md": "i\n"}
+        )
+        launcher._share_host_omp_state(home)
+
+        assert sorted(p.name for p in omp_real.iterdir()) == [
+            "agent.db", "blobs", "memories", "sessions"
+        ]
+
+    def test_a_second_run_repoints_an_existing_link(self, tmp_path, omp_real):
+        (omp_real / "agent.db").write_text("db")
+        home = tmp_path / "agentdir"
+        home.mkdir()
+        launcher._share_host_omp_state(home)
+        launcher._share_host_omp_state(home)
+        assert (home / "agent.db").read_text() == "db"
+
+    def test_a_regular_file_left_by_an_earlier_run_is_replaced_by_the_link(self, tmp_path, omp_real):
+        (omp_real / "agent.db").write_text("shared")
+        home = tmp_path / "agentdir"
+        home.mkdir()
+        (home / "agent.db").write_text("stale per-stack")
+
+        launcher._share_host_omp_state(home)
+
+        assert (home / "agent.db").is_symlink()
+        assert (home / "agent.db").read_text() == "shared"
+
+    def test_launching_the_users_own_agent_dir_is_a_no_op(self, tmp_path, omp_real):
+        """Guard against linking a directory at itself."""
+        launcher._share_host_omp_state(omp_real)
+        assert not (omp_real / "sessions").is_symlink()
+
+
+class TestPropagateOmpConfig:
+    def test_the_host_preferences_are_seeded_into_the_stack(self, tmp_path, omp_real):
+        """A per-stack agent dir means a per-stack config.yml, and omp resolves config at exactly
+        one level. Without this the stack runs on omp's shipped defaults — no model roles, no
+        provider order — which is a factory reset, not isolation."""
+        (omp_real / "config.yml").write_text("modelRoles:\n  default: anthropic/claude-opus-5\n")
+        home = tmp_path / "agentdir"
+        home.mkdir()
+
+        launcher._propagate_host_omp_config(home)
+
+        assert "anthropic/claude-opus-5" in (home / "config.yml").read_text()
+
+    def test_host_keys_win_on_every_launch(self, tmp_path, omp_real):
+        """The 8px.18 rule, in YAML: a preference the user changes in their own omp must reach the
+        stack without waiting for something unrelated to change the fingerprint."""
+        (omp_real / "config.yml").write_text("theme:\n  dark: new-theme\n")
+        home = tmp_path / "agentdir"
+        home.mkdir()
+        (home / "config.yml").write_text("theme:\n  dark: stale-theme\n")
+
+        launcher._propagate_host_omp_config(home)
+
+        assert "new-theme" in (home / "config.yml").read_text()
+        assert "stale-theme" not in (home / "config.yml").read_text()
+
+    def test_keys_only_the_stack_has_survive(self, tmp_path, omp_real):
+        """An `install:` script writing into `$PI_CODING_AGENT_DIR/config.yml` must not be silently
+        undone the next launch — the same collision `_propagate_host_settings` resolves."""
+        (omp_real / "config.yml").write_text("theme:\n  dark: t\n")
+        home = tmp_path / "agentdir"
+        home.mkdir()
+        (home / "config.yml").write_text("theme:\n  dark: old\nextensions:\n  - stack-tool\n")
+
+        launcher._propagate_host_omp_config(home)
+
+        text = (home / "config.yml").read_text()
+        assert "stack-tool" in text
+        assert "dark: t" in text
+
+    def test_no_host_config_is_a_clean_no_op(self, tmp_path, omp_real):
+        home = tmp_path / "agentdir"
+        home.mkdir()
+        launcher._propagate_host_omp_config(home)
+        assert not (home / "config.yml").exists()
+
+    def test_invalid_yaml_falls_back_to_the_plain_copy(self, tmp_path, omp_real):
+        """A config hand-edited into invalid YAML must not take the whole launch down."""
+        (omp_real / "config.yml").write_text("theme:\n  dark: t\n")
+        home = tmp_path / "agentdir"
+        home.mkdir()
+        (home / "config.yml").write_text("[not: valid: yaml\n")
+
+        launcher._propagate_host_omp_config(home)
+
+        assert (home / "config.yml").read_text() == "theme:\n  dark: t\n"
+
+
+class TestOmpLaunchPlan:
+    def test_plan_materializes_the_agent_dir_and_returns_omp_argv(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "host-omp"))
+        assemble(None, "hostspike", paths.profiles_root().parent, "omp", strict=True,
+                 shared_identity=False)
+
+        home, argv, cwd, rebuilt = launcher._host_launch_plan("hostspike", "omp", tmp_path)
+
+        assert home == paths.host_home("hostspike", "omp")
+        assert argv == ["omp"]
+        assert cwd == tmp_path
+        assert rebuilt is True
+        assert "hostspike tracer agent" in (home / "APPEND_SYSTEM.md").read_text()
+        # The claude content layer goes in the nested bridge surface, never loose in the agent dir
+        # where omp would be reading files it has no format for.
+        assert not (home / "skills").exists()
+        assert not (home / "CLAUDE.md").exists()
+        assert (hosthome._host_omp_claude_dir(home) / "settings.json").is_file()
+
+    def test_assembly_can_skip_the_shared_block_write(self, monkeypatch, tmp_path):
+        """#307 acceptance criterion 6. `assemble` is the ONE emit step that writes outside the
+        profile; on the host path its output would land where nothing reads."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        shared = tmp_path / "host-omp"
+        shared.mkdir()
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(shared))
+        monkeypatch.setenv("HOME", str(tmp_path / "fakehome"))
+
+        assemble(None, "hostspike", paths.profiles_root().parent, "omp", strict=True,
+                 shared_identity=False)
+
+        assert not (shared / "APPEND_SYSTEM.md").exists()
+        assert not (tmp_path / "fakehome" / ".omp").exists()
+
+    def test_two_stacks_get_distinct_identity_but_one_login(self, monkeypatch, tmp_path):
+        """#307 acceptance criterion 7."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        real = tmp_path / "host-omp"
+        real.mkdir()
+        (real / "agent.db").write_text("one login")
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
+        a, b = paths.host_home("sa", "omp"), paths.host_home("sb", "omp")
+
+        for home, ident in ((a, "stack A\n"), (b, "stack B\n")):
+            launcher._materialize_host_omp_home(home, identity={"APPEND_SYSTEM.md": ident})
+            launcher._share_host_omp_state(home)
+
+        assert (a / "APPEND_SYSTEM.md").read_text() != (b / "APPEND_SYSTEM.md").read_text()
+        assert (a / "agent.db").resolve() == (b / "agent.db").resolve()
+
+
+class TestOmpHostCliRouting:
+    def test_host_run_omp_execs_omp_with_the_agent_dir_env(self, monkeypatch, tmp_path):
+        """#307 acceptance criterion 1 + 2: no `_HOST_HARNESS` error, and the agent dir omp is
+        pointed at is the per-stack one, never the user's own `~/.omp/agent`."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        real = tmp_path / "host-omp"
+        real.mkdir()
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
+        captured: dict = {}
+
+        def fake_execvpe(file, argv, env):
+            captured.update(file=file, argv=argv, agent_dir=env.get("PI_CODING_AGENT_DIR"))
+            raise SystemExit(0)
+
+        monkeypatch.setattr(launcher.os, "execvpe", fake_execvpe)
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app, ["host-run", "omp", str(tmp_path), "--stack", "hostspike"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert captured["file"] == "omp"
+        assert captured["argv"] == ["omp"]  # no --mcp-config: omp reads mcp.json from the agent dir
+        home = paths.host_home("hostspike", "omp")
+        assert captured["agent_dir"] == str(home)
+        assert captured["agent_dir"] != str(real)
+        # MCP is wired through the agent dir's own file, isolated to this stack.
+        assert json.loads((home / "mcp.json").read_text()) == {"mcpServers": {}}
+
+    def test_no_strict_mcp_config_says_it_does_nothing_for_omp(self, monkeypatch, tmp_path):
+        """`host-run` accepts the flag for any harness and records it in `lastrun`, but omp has no
+        strict/non-strict mode — it reads its agent dir's mcp.json and nothing else. Accepted and
+        silently inert is the case this codebase names rather than tolerates."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        real = tmp_path / "host-omp"
+        real.mkdir()
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app,
+            ["host-run", "omp", str(tmp_path), "--stack", "hostspike", "--no-strict-mcp-config"],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "no effect for omp" in result.output
+
+    def test_the_note_is_absent_when_the_flag_is_not_passed(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        real = tmp_path / "host-omp"
+        real.mkdir()
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app, ["host-run", "omp", str(tmp_path), "--stack", "hostspike"]
+        )
+
+        assert "no effect for omp" not in result.output
+
+    def test_an_unsupported_host_harness_still_names_what_is_supported(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        r = runner.invoke(launcher.app, ["host-run", "codex", str(tmp_path), "--stack", "hostspike"])
+        assert r.exit_code == 1
+        assert "claude" in r.output and "omp" in r.output
+
+    def test_an_install_runs_pinned_at_the_stacks_agent_dir(self, tmp_path):
+        """bd harnessed-8px.26, omp's half: inherited, `PI_CODING_AGENT_DIR` would redirect an
+        install into the PARENT stack's dir; unset, into the user's own — the exact leak the
+        per-stack dir exists to end (#307 finding 6).
+
+        A claude-shaped installer honouring `CLAUDE_CONFIG_DIR` must land in the BRIDGE surface,
+        not loose in the agent dir and never in the user's real `~/.claude`."""
+        home = tmp_path / "agentdir"
+        assert hostrun._harness_config_env("omp", home) == {
+            "PI_CODING_AGENT_DIR": str(home),
+            "CLAUDE_CONFIG_DIR": str(hosthome._host_omp_claude_dir(home)),
+        }
+
+    def test_the_claude_path_still_pins_only_its_own_var(self, tmp_path):
+        home = tmp_path / "claudehome"
+        assert hostrun._harness_config_env("claude", home) == {"CLAUDE_CONFIG_DIR": str(home)}
+
+
+class TestOmpHooksBridgeSurface:
+    """The claude-hooks bridge reads hooks from `$CLAUDE_CONFIG_DIR/settings.json`
+    (`index.ts:100`, merged with the project's `.claude/settings.json`), and it is a USER-installed
+    omp plugin — present on a host that installed it, absent otherwise.
+
+    Leaving `CLAUDE_CONFIG_DIR` unset is therefore NOT the neutral choice it looks like: the bridge
+    falls back to the real `~/.claude` and fires the user's GLOBAL hooks inside a stack session
+    while the stack's own never run. That inverts the one thing this backend isolates.
+    """
+
+    def test_the_bridge_surface_is_nested_not_a_sibling(self, tmp_path):
+        """`host-gc` reads every dir at the `<stack>/<harness>` level as a config dir, so a sibling
+        would surface as a phantom harness. A child is one dir to the same eyes."""
+        home = paths.host_home("s", "omp")
+        assert hosthome._host_omp_claude_dir(home).parent == home
+
+    def test_it_is_not_the_claude_host_home(self, monkeypatch, tmp_path):
+        """That dir is a real claude session's, with claude's credential and session-state symlinks
+        in it. Sharing one would put omp's launches inside claude's auth wiring for nothing."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        omp_home = paths.host_home("s", "omp")
+        assert hosthome._host_omp_claude_dir(omp_home) != paths.host_home("s", "claude")
+
+    def test_the_launch_points_claude_config_dir_at_the_stack(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "REAL-user-claude"))
+        real = tmp_path / "host-omp"
+        real.mkdir()
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(real))
+        captured: dict = {}
+
+        def fake_execvpe(file, argv, env):
+            captured.update(ccd=env.get("CLAUDE_CONFIG_DIR"))
+            raise SystemExit(0)
+
+        monkeypatch.setattr(launcher.os, "execvpe", fake_execvpe)
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+
+        result = runner.invoke(
+            launcher.app, ["host-run", "omp", str(tmp_path), "--stack", "hostspike"]
+        )
+
+        assert result.exit_code == 0, result.output
+        home = paths.host_home("hostspike", "omp")
+        assert captured["ccd"] == str(hosthome._host_omp_claude_dir(home))
+        # The user's own claude config must NOT be what the bridge reads inside a stack session.
+        assert captured["ccd"] != str(tmp_path / "REAL-user-claude")
+
+    def test_the_stacks_hooks_land_where_the_bridge_reads_them(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "host-omp"))
+        prof = paths.profile_dir("hostspike", "omp")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+
+        home, _argv, _cwd, _rebuilt = launcher._host_launch_plan("hostspike", "omp", tmp_path)
+
+        bridge = hosthome._host_omp_claude_dir(home)
+        assert json.loads((bridge / "settings.json").read_text())["permissions"]["defaultMode"] == (
+            "acceptEdits"
+        )
+        # Container-only artifacts stay out of it, exactly as on the claude path.
+        assert not (bridge / ".mcp.json").exists()
+
+    def test_settings_reach_the_bridge_even_when_the_stack_is_unchanged(self, monkeypatch, tmp_path):
+        """bd harnessed-8px.18 applies here too, and here settings.json is the ONLY file that
+        matters: the bridge reads hooks from it and nothing else."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path / "host-omp"))
+        prof = paths.profile_dir("hostspike", "omp")
+        prof.mkdir(parents=True)
+        _fake_profile(prof)
+        home = paths.host_home("hostspike", "omp")
+        launcher._materialize_host_omp_home(home, identity={}, fingerprint="fp")
+        launcher._stamp_host_home(home, "fp")
+        (prof / "settings.json").write_text('{"hooks":{"SessionStart":[]}}')
+
+        launcher._plan_host_omp("hostspike", prof, home, fingerprint="fp")  # gate: "unchanged"
+
+        bridge = hosthome._host_omp_claude_dir(home)
+        assert "SessionStart" in (bridge / "settings.json").read_text()
 

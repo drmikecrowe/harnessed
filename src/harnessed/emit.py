@@ -514,6 +514,50 @@ def _remove_block_file(path: Path, stack_name: str) -> None:
         path.write_text(updated, encoding="utf-8")
 
 
+def _render_omp_rules(profile_dir: Path, rules: list[Path] | None) -> tuple[str, set[str]]:
+    """`(body, labels)` for the fanned `.claude/rules/*.md`, concatenated under `## Rule: <label>`.
+
+    Extracted so the SHARED block path (`write_omp_identity`) and the per-stack host path
+    (`render_omp_identity`) render byte-identical rule text from one place. Empty rule files are
+    skipped by both — a rule with no body is nothing to deliver, not an empty section.
+    """
+    parts: list[str] = []
+    labels: set[str] = set()
+    for rule_path in rules or []:
+        body = rule_path.read_text(encoding="utf-8").strip()
+        if not body:
+            continue
+        label = _rule_label(rule_path, profile_dir)
+        labels.add(label)
+        parts.append(f"## Rule: {label}\n\n{body}")
+    return "\n\n".join(parts), labels
+
+
+def render_omp_identity(
+    profile_dir: Path, instructions: str | None, rules: list[Path] | None = None
+) -> dict[str, str]:
+    """The omp identity surface rendered WHOLE, for a PER-STACK agent dir (#307).
+
+    `{filename: text}` for whichever of APPEND_SYSTEM.md / RULES.md this stack has content for —
+    absent from the mapping means "this stack delivers nothing here", which the host materializer
+    turns into "do not write the file" rather than "write an empty one".
+
+    The delimiter-marked blocks `write_omp_identity` produces exist ONLY because the container path
+    shares one `~/.omp/agent` across every omp stack: the markers are what let one stack's content be
+    replaced without touching another's. A host launch under `PI_CODING_AGENT_DIR` owns its agent dir
+    outright, so the whole file IS this stack's block and the markers, the cross-block rule pruning,
+    and the label dedup all have nothing left to do (#307 finding 7).
+    """
+    out: dict[str, str] = {}
+    identity = instructions.strip() if instructions else ""
+    if identity:
+        out[_OMP_APPEND_SYSTEM_FILE] = identity + "\n"
+    rules_body = _render_omp_rules(profile_dir, rules)[0]
+    if rules_body:
+        out[_OMP_RULES_FILE] = rules_body + "\n"
+    return out
+
+
 def write_omp_identity(
     profile_dir: Path,
     stack_name: str,
@@ -535,15 +579,7 @@ def write_omp_identity(
     """
     agent_dir = agent_dir or _default_omp_agent_dir()
 
-    rule_parts: list[str] = []
-    rule_labels: set[str] = set()
-    for rule_path in rules or []:
-        body = rule_path.read_text(encoding="utf-8").strip()
-        if not body:
-            continue
-        label = _rule_label(rule_path, profile_dir)
-        rule_labels.add(label)
-        rule_parts.append(f"## Rule: {label}\n\n{body}")
+    rules_body, rule_labels = _render_omp_rules(profile_dir, rules)
 
     # RULES.md is shared across EVERY omp stack (see the module note above), so a recipe that two
     # stacks both include deposits its rules under each stack's own block. Those copies diverge as
@@ -554,7 +590,6 @@ def write_omp_identity(
     # stack that later drops the recipe stops re-adding it, and one that still carries it re-adds it.
     rules_file = agent_dir / _OMP_RULES_FILE
     _prune_rules_from_other_blocks(rules_file, stack_name, rule_labels)
-    rules_body = "\n\n".join(rule_parts)
 
     identity = instructions.strip() if instructions else ""
     if not identity and not rules_body:

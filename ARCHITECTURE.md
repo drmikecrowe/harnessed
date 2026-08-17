@@ -160,7 +160,7 @@ services (started host-published, idempotently).
 | verb | backend | what it isolates |
 | --- | --- | --- |
 | `harnessed container-run <harness> [path]` | container (podman pod + hatago + services) | the filesystem, the network, **and** the configuration |
-| `harnessed host-run claude [path]` | host-native — no podman, no MCP hub | the **configuration only** |
+| `harnessed host-run <claude\|omp> [path]` | host-native — no podman, no MCP hub | the **configuration only** |
 
 Both verbs run the same composed stack through the **execution-backend seam**,
 `harnessed.backend.ExecutionBackend` — six capabilities (materialize config / provision tools /
@@ -197,16 +197,41 @@ from a project path under `--recipe`. That cost the recipe form a rejects-all-po
 separate `--path` option, and it still let `host-run <stack> --recipe X` silently launch the
 generated stack with the authored name demoted to a path, exit 0.
 
-The harness is required on both verbs, including `host-run` where **`claude` is currently the only
-accepted value** (`_HOST_HARNESS`; the other harnesses do not consume `CLAUDE_CONFIG_DIR`
-directly). It is spelled out rather than defaulted because `path` is
-the second positional: a defaulted harness would make `host-run .` bind `.` as the harness.
+The harness is required on both verbs. On `host-run` the accepted values are **`claude` and `omp`**
+(`launcher._HOST_HARNESSES`) — the harnesses that expose an env var whose value *is* a per-stack
+config dir, which is the lever this whole backend is built on: `CLAUDE_CONFIG_DIR` and
+`PI_CODING_AGENT_DIR`. codex, opencode and antigravity are absent because that row has not been
+established for them, not because host mode is claude-shaped. It is spelled out rather than defaulted
+because `path` is the second positional: a defaulted harness would make `host-run .` bind `.` as the
+harness.
 
-`host-run` materializes the stack's assembled profile into a per-stack `CLAUDE_CONFIG_DIR`
-(`<stack>/<harness>`, see `paths.host_home`) and execs the harness against your real machine, real
-project, and real credentials. Configuration isolation *is* the host backend's boundary — which
-skills, rules, commands and hooks are live — so a stack's hooks fire only in that stack rather than
-in every session, the way a global `~/.claude` does.
+`host-run` materializes the stack's assembled profile into that per-stack dir (`<stack>/<harness>`,
+see `paths.host_home`) and execs the harness against your real machine, real project, and real
+credentials. Configuration isolation *is* the host backend's boundary — which skills, rules, commands
+and hooks are live — so a stack's hooks fire only in that stack rather than in every session, the way
+a global `~/.claude` does.
+
+What gets materialized is per-harness, because the harnesses read different shapes. claude gets the
+profile's `.claude/*` content tree plus a settings floor. omp gets its own agent-dir files —
+`APPEND_SYSTEM.md` and `RULES.md` written **whole** (the shared `~/.omp/agent` delimiter blocks are a
+container-path mechanism; a per-stack agent dir has no other stack to share the file with),
+`mcp.json` for the stack's native stdio servers, and a `config.yml` seeded from your own each launch
+so the stack inherits your model roles and providers instead of omp's shipped defaults.
+
+omp also gets a **nested per-stack `CLAUDE_CONFIG_DIR`** (`<agent dir>/claude-config`) holding the
+profile's `.claude/*` content layer and its settings floor. The claude-hooks bridge — a *user-installed*
+omp plugin — reads hooks from `$CLAUDE_CONFIG_DIR/settings.json`, so leaving that variable unset is
+not the neutral choice it looks like: the bridge falls back to your real `~/.claude` and fires your
+**global** hooks inside a stack session while the stack's own never run, which inverts the one thing
+this backend isolates. Pointed at the stack, hooks work when the bridge is installed and the variable
+is simply unread when it is not. It is nested rather than a sibling because `host-gc` reads every dir
+at the `<stack>/<harness>` level as a config dir, and it is distinct from `host_home(stack, "claude")`
+because that dir belongs to a real claude session, with claude's own credential and session-state
+symlinks in it.
+
+**`skills:` remain inert** for host omp: the bridge covers command hooks only — it has no skills,
+commands or agents path — and omp's own skill surface (`managed-skills`) is a format harnessed does
+not emit. The launcher names that gap at launch.
 
 The two verbs share no flags except `--rm` (host-side: stop daemons this launch started). They are
 separate commands rather than one command with a mode switch. The flags `--fresh`, `--no-firewall`,
@@ -529,13 +554,22 @@ behind is removed, so the stale file cannot outlive the switch. The shared `~/.c
 deleted — or, when configured, the shared `CLAUDE_CONFIG_DIR` copy is never deleted — because it is the user's own login, outside any stack.
 
 **omp** stores auth/usage/sessions together in `~/.omp/agent` with no separately-mountable
-credential file, so the launcher **bind-mounts that host dir read-write** and runs plain `omp`
-(never `--profile`, which points omp at an isolated *empty* store — a credential-only seed lands on
-the login screen). That is mechanism 1 (reference the live store, at dir granularity): shared host
-state, deliberately not isolated. **Do not "fix" it back to isolation by snapshotting the dir.** A
-snapshot fragments auth, usage and sessions across every stack, resets usage on recreate, and still
-has to copy most of the directory to work — all cost, no isolation anyone wanted. See
-[design §7](docs/harnessed-design.md).
+credential file. On the **container** backend the launcher therefore **bind-mounts that host dir
+read-write** and runs plain `omp` (never `--profile`, which points omp at an isolated *empty* store —
+a credential-only seed lands on the login screen). That is mechanism 1 (reference the live store, at
+dir granularity): shared host state, deliberately not isolated. **Do not "fix" it back to isolation
+by snapshotting the dir.** A snapshot fragments auth, usage and sessions across every stack, resets
+usage on recreate, and still has to copy most of the directory to work — all cost, no isolation
+anyone wanted. See [design §7](docs/harnessed-design.md).
+
+The **host** backend reaches the same place at finer granularity: `PI_CODING_AGENT_DIR` gives the
+stack its own agent dir, and `agent.db` inside it is a **symlink** at the real one. Still mechanism 1
+— referenced, never copied — and sound at the file level: SQLite places the `-wal`/`-shm` beside the
+symlink *target*, so every stack drives one logical database with one WAL and same-kernel locking,
+and it rewrites the file in place rather than replacing it, so the replace-on-refresh hazard that
+dogs claude's `.credentials.json` link structurally cannot occur. `history.db`, `sessions/`,
+`blobs/` and `memories/` are linked the same way. With no `agent.db` on the host yet, the link is
+skipped with a note and omp prompts a per-stack login — a first run, not an error.
 
 Both host backends inherit the same shape, because `CLAUDE_CONFIG_DIR` and `PI_CODING_AGENT_DIR`
 each move config **and** credentials together. The per-stack home therefore holds content

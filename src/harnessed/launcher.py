@@ -22,6 +22,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Generator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from itertools import cycle
 from pathlib import Path
 from typing import Callable, Optional, TypeVar
@@ -66,13 +67,17 @@ from .hosthome import (
     _LEGACY_PROJECT_DIR_RE,
     _OAUTH_TOKEN_VAR,
     _host_home_lock,
+    _host_omp_claude_dir,
     _host_stack_fingerprint,
     _materialize_host_home,
+    _materialize_host_omp_home,
     _migrate_legacy_host_homes,
+    _propagate_host_omp_config,
     _propagate_host_settings,
     _rescue_host_credentials,
     _scrub_host_home,
     _share_host_claude_state,
+    _share_host_omp_state,
     _stamp_host_home,
 )
 from .attachcmd import (
@@ -2027,9 +2032,87 @@ def _acknowledge_warnings() -> None:
 # --- Typer commands ------------------------------------------------------------
 
 # Host-native content-only backend subdirs to materialize from the assembled profile's .claude tree.
-_HOST_HARNESS = "claude"  # spike scope: only claude consumes CLAUDE_CONFIG_DIR directly here.
 
-# Breadcrumb written into every host config dir so orphan detection can reverse the project_hash.
+
+@dataclass(frozen=True)
+class HostHarness:
+    """What the host backend needs to know about one harness to run it natively (#307).
+
+    Host mode was claude-only because it was written around ONE lever expressed as a scalar
+    (`_HOST_HARNESS = "claude"`): point the agent at a per-stack config dir through
+    `CLAUDE_CONFIG_DIR`. Every harness that has such a lever can run here; the gate exists to keep
+    OUT the ones that do not, not to keep host mode single-harness. Making it a record is what turns
+    "add omp" into filling in a row rather than threading a second `if harness ==` through five call
+    sites, and what makes the next harness's missing piece obvious.
+
+    `config_dir_var` is that lever: the env var whose value IS the per-stack config/agent dir, and
+    `argv0` the binary it points at. `share_state` wires the per-stack dir back to the harness's own
+    live host dir for whatever it deliberately shares — claude's `.credentials.json` plus the session
+    dirs, omp's `agent.db` plus sessions/blobs/memories/history. What that set IS differs per harness
+    and had to be established, not carried across by analogy.
+
+    Materializing is NOT in here on purpose: the two harnesses lay down different SHAPES (claude a
+    `.claude/*` content tree, omp its own agent-dir files), so `_host_launch_plan` branches once,
+    explicitly, rather than pretending one signature fits both.
+    """
+
+    config_dir_var: str
+    argv0: str
+    share_state: Callable[[Path], None]
+
+
+_HOST_HARNESSES: dict[str, HostHarness] = {
+    "claude": HostHarness(
+        config_dir_var="CLAUDE_CONFIG_DIR", argv0="claude",
+        share_state=_share_host_claude_state,
+    ),
+    "omp": HostHarness(
+        config_dir_var="PI_CODING_AGENT_DIR", argv0="omp",
+        share_state=_share_host_omp_state,
+    ),
+}
+
+def _plan_host_omp(stack: str, prof: Path, home: Path, *, fingerprint: str | None) -> bool:
+    """Materialize the per-stack omp agent dir; return whether it rebuilt (#307).
+
+    The omp half of `_host_launch_plan`, kept as its own function because it shares only the
+    fingerprint gate with the claude half — the content is omp-native, not a `.claude/*` tree.
+
+    Identity is rendered from the SAME inputs the container path uses (`stack.instructions` + the
+    profile's fanned `.claude/rules/*.md`), but written WHOLE rather than as delimiter-marked blocks
+    in the shared `~/.omp/agent`. The blocks, their cross-stack rule pruning and their label dedup
+    all exist only because that one agent dir is shared by every omp stack; under
+    `PI_CODING_AGENT_DIR` this stack owns its dir, so the whole file IS its block (#307 finding 7).
+    The container path keeps the block machinery, untouched.
+
+    `config.yml` is propagated on every launch, gate or no gate, for the same reason claude's
+    settings.json is: it is a function of the HOST's live preferences, not of the recipe closure the
+    fingerprint covers.
+
+    The claude content layer is materialized too, into the nested per-stack `CLAUDE_CONFIG_DIR` —
+    see `_host_omp_claude_dir` for why omp needs one at all. Content only, and no `seed_auth`: omp
+    authenticates out of `agent.db`, so wiring claude's credential path in here would maintain a
+    login nothing on this path reads.
+    """
+    stk, _recipes = load_stack_with_recipes(None, stack)
+    rules_dir = prof / ".claude" / "rules"
+    rule_files = sorted(rules_dir.rglob("*.md")) if rules_dir.is_dir() else []
+    identity = emit.render_omp_identity(prof, stk.instructions, rule_files)
+    rebuilt = _materialize_host_omp_home(home, identity=identity, fingerprint=fingerprint)
+    _propagate_host_omp_config(home)
+    # AFTER the agent-dir materialize, never before: a rebuild wipes the agent dir wholesale, and
+    # this dir is a CHILD of it. Gated on `rebuilt` for the same reason the claude path gates its
+    # own — the content is a pure function of the recipe closure the fingerprint covers.
+    claude_dir = _host_omp_claude_dir(home)
+    if rebuilt:
+        _materialize_host_home(prof, claude_dir)
+    # settings.json is the exception the gate does not cover (bd harnessed-8px.18), and here it is
+    # the ONLY file that matters: the bridge reads hooks from it and nothing else.
+    settings = prof / "settings.json"
+    if settings.is_file():
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        _propagate_host_settings(settings, claude_dir / "settings.json")
+    return rebuilt
 
 
 def _host_launch_plan(
@@ -2040,7 +2123,7 @@ def _host_launch_plan(
     Split out from _launch_host so the plan is verifiable in tests without handing over the TTY.
 
     Materialization only: this is `HostBackend.materialize_config`'s whole body. Seeding auth is
-    the separate contract operation `HostBackend.seed_auth` (`_share_host_claude_state`), called
+    the separate contract operation `HostBackend.seed_auth` (`HostHarness.share_state`), called
     immediately after this returns and inside the same home lock — the credential RESCUE below
     stays here because it exists to survive the rmtree two lines under it, which is this
     function's own hazard rather than a step in wiring auth up.
@@ -2051,10 +2134,15 @@ def _host_launch_plan(
     """
     prof = profile_dir(stack, harness)
     home = paths.host_home(stack, harness)
+    fingerprint = _host_stack_fingerprint(stack, recipes) if recipes is not None else None
+    if harness == "omp":
+        rebuilt = _plan_host_omp(stack, prof, home, fingerprint=fingerprint)
+        return home, [_HOST_HARNESSES[harness].argv0], project_path, rebuilt
     # BEFORE the materialize: if it rebuilds, it rmtree's `home`, and a token the last session
     # refreshed lives in there as a regular file that replaced our symlink (bd harnessed-8px.10).
+    # omp needs no equivalent: its credentials live in `agent.db`, which SQLite rewrites IN PLACE, so
+    # the symlink is never replaced and there is nothing to rescue (#307 finding 2).
     _rescue_host_credentials()
-    fingerprint = _host_stack_fingerprint(stack, recipes) if recipes is not None else None
     rebuilt = _materialize_host_home(prof, home, fingerprint=fingerprint)
     # settings.json is the ONE profile artifact recomputed on EVERY launch, so it must be propagated
     # even when the fingerprint gate skipped the rebuild (bd harnessed-8px.18). It is not a pure
@@ -2181,6 +2269,41 @@ def _warn_capability_gaps(backend: str, recipes) -> None:
         )
 
 
+def _note_host_omp_skill_gap(harness: str, recipes) -> None:
+    """Say, once per launch, that a host omp session does not read Claude-shaped `skills:` (#307).
+
+    HOOKS are NOT in this gap and must not be described as if they were. The claude-hooks bridge
+    delivers them, reading `$CLAUDE_CONFIG_DIR/settings.json` (`index.ts:100`), and `_launch_host`
+    points that at the stack — so a stack's hooks fire when the bridge is installed and the variable
+    is simply unread when it is not. Neither outcome is "inert content nobody mentioned".
+
+    `skills:` genuinely are inert here. The bridge handles command hooks ONLY — it has no skills,
+    commands or agents path at all — and omp's own skill surface (`managed-skills`) is a different
+    format harnessed does not emit. So a stack's skills land in the profile and are read by nothing
+    on this path, whether or not the bridge is present.
+
+    That is the silent-inert case `capmatrix` exists for — but `capmatrix`'s axis is the BACKEND, and
+    this gap is keyed (backend, HARNESS). Rather than bend that table into two dimensions for one
+    cell, the gap is stated here, in the same `[INFO]` register and for the same reason
+    (`_warn_capability_gaps`, #359): a per-launch keypress about an unchanging, chosen property is
+    how a real warning gets trained away.
+
+    Identity and rules are delivered natively as `APPEND_SYSTEM.md` and `RULES.md` in the per-stack
+    agent dir, and MCP servers go to its `mcp.json`.
+    """
+    if harness != "omp":
+        return
+    carriers = sorted({r.name for r in recipes if r.skills})
+    if not carriers:
+        return
+    _err.print(
+        f"[blue][INFO][/blue] skills ({', '.join(carriers)}): omp does not read Claude-shaped "
+        "skills — the claude-hooks bridge covers hooks only, and omp's own skill surface is a "
+        "different format. They are inert on this launch. Identity, rules, hooks and MCP servers "
+        "ARE delivered; run this stack under `container-run` for the full omp surface."
+    )
+
+
 @register
 class HostBackend(ExecutionBackend):
     """The host backend: no podman, the agent runs as a process on this machine (BACKENDS.md §2).
@@ -2217,15 +2340,19 @@ class HostBackend(ExecutionBackend):
         )
 
     def seed_auth(self, spec: LaunchSpec) -> None:
-        """Symlink the host's live `~/.claude` credential/session state into the config dir.
+        """Symlink the harness's live host credential/session state into the config dir.
 
-        Reference, never a copy (CLAUDE.md): the agent refreshes the host's own token in place, so
-        a host session and every container session stay one login. `_rescue_host_credentials`,
-        which runs inside `materialize_config`, is what keeps that true across the rmtree when a
-        previous session's refresh replaced the symlink with a regular file (bd harnessed-8px.10).
+        Reference, never a copy (CLAUDE.md): the agent refreshes the host's own credential in place,
+        so a host session and every container session stay one login. What that means concretely is
+        the harness's own business and lives in its `HostHarness.share_state` — claude's
+        `.credentials.json` + session dirs, omp's `agent.db` + sessions/blobs/memories/history.
+
+        For claude, `_rescue_host_credentials` (inside `materialize_config`) is what keeps the
+        sharing true across the rmtree when a previous session's refresh replaced the symlink with a
+        regular file (bd harnessed-8px.10). omp needs no such rescue — see `_host_launch_plan`.
         """
         assert self.home is not None, "seed_auth before materialize_config"  # noqa: S101  # type-narrowing: ordering enforced by caller
-        _share_host_claude_state(self.home)
+        _HOST_HARNESSES[spec.harness].share_state(self.home)
 
     def provision_tools(self, spec: LaunchSpec, phase: ProvisionPhase) -> None:
         """`tools:` + `install:` on first start; each recipe's `setup.script` at attach.
@@ -2259,7 +2386,7 @@ class HostBackend(ExecutionBackend):
         _host_run_inits(spec.stack, spec.project_path, harness=spec.harness)
 
     def wire_mcp(self, spec: LaunchSpec) -> None:
-        """Write the stack's `.mcp.json` and build the agent argv that points claude at it.
+        """Write the stack's MCP config and build the agent argv that points the harness at it.
 
         Native stdio servers, no hatago hub on this backend. Resolved after PATH is set so the
         stdio-command presence check sees just-provisioned tools AND anything an install/setup
@@ -2267,6 +2394,30 @@ class HostBackend(ExecutionBackend):
         """
         assert self.home is not None, "wire_mcp before materialize_config"  # noqa: S101  # type-narrowing: ordering enforced by caller
         mcp_servers = _host_native_mcp(spec.stack)
+        if spec.harness == "omp":
+            # omp has no --mcp-config flag; it reads `mcp.json` from its agent dir, in the same
+            # `{"mcpServers": {...}}` shape claude's file uses. That dir being per-stack IS the
+            # isolation `--strict-mcp-config` buys on the claude path, so write unconditionally:
+            # with no servers the stack gets an empty set rather than inheriting the user's own.
+            #
+            # This also retires, host-side, the reason `mounts._omp_mcp_seed_mount` exists — its
+            # "omp has no such flag" premise is about hatago, and there is no hatago here. Migrating
+            # the CONTAINER path to `PI_CODING_AGENT_DIR` is a separate change (#307 §Still open).
+            (self.home / "mcp.json").write_text(
+                json.dumps({"mcpServers": mcp_servers or {}}, indent=2) + "\n", encoding="utf-8"
+            )
+            self.argv = [_HOST_HARNESSES[spec.harness].argv0, *spec.extra]
+            if spec.no_strict_mcp:
+                # `--no-strict-mcp-config` opts OUT of claude's `--strict-mcp-config`. omp has
+                # neither flag — it reads its agent dir's mcp.json and nothing else — so there is no
+                # non-strict mode to ask for. Accepted-and-inert is the silent case this codebase
+                # names rather than tolerates (`_warn_capability_gaps`), and the flag is recorded in
+                # `lastrun`, so a replay would carry it forward unremarked too.
+                _err.print(
+                    "[blue][INFO][/blue] --no-strict-mcp-config has no effect for omp: it reads "
+                    "only its own agent dir's mcp.json, so there is no non-strict mode to opt into."
+                )
+            return
         # ALWAYS write .mcp.json + --strict-mcp-config, even with no servers: strict makes claude
         # load ONLY this file, so the copied .claude.json's global mcpServers never leak into an
         # isolated stack (content-only included). With servers → the stack's set; without → an empty
@@ -2328,10 +2479,10 @@ def _launch_host(
 
     `no_strict_mcp` (--no-strict-mcp-config) omits `--strict-mcp-config`, so claude reads its own MCP
     sources (project `.mcp.json`, user config) in addition to the stack's file."""
-    if harness != _HOST_HARNESS:
+    if harness not in _HOST_HARNESSES:
         _err.print(
-            f"[bold red]error:[/bold red] host-run currently supports only '{_HOST_HARNESS}' "
-            f"(got '{harness}')"
+            f"[bold red]error:[/bold red] host-run supports "
+            f"{', '.join(repr(h) for h in sorted(_HOST_HARNESSES))} (got '{harness}')"
         )
         raise typer.Exit(1)
 
@@ -2352,7 +2503,11 @@ def _launch_host(
     # CONTAINS profiles/ (assemble emits to <build_root>/profiles/<stack>/<harness>).
     _err.print(f"[blue][INFO][/blue] Assembling '{stack}' ({harness}) host-native (no container) ...")
     try:
-        assemble(None, stack, paths.profiles_root().parent, harness, strict=True)
+        # `shared_identity=False`: this backend gives omp a PER-STACK agent dir, so the shared
+        # `~/.omp/agent` block write would land where nothing on this path reads (#307).
+        assemble(
+            None, stack, paths.profiles_root().parent, harness, strict=True, shared_identity=False,
+        )
     except (SchemaError, CollisionError) as exc:
         _err.print(f"[bold red]error:[/bold red] assembling stack '{stack}' failed: {exc}")
         raise typer.Exit(1) from exc
@@ -2412,6 +2567,8 @@ def _launch_host(
     # about while there is still a choice to make (rerun under `container-run`), not after the
     # agent is already up.
     _warn_capability_gaps(HostBackend.name, host_recipes)
+    # The (backend, harness) gap capmatrix's backend-keyed table cannot express — see the function.
+    _note_host_omp_skill_gap(harness, host_recipes)
     spec = LaunchSpec(
         stack=stack, harness=harness, project_path=project_path,
         extra=tuple(extra or []), no_strict_mcp=no_strict_mcp, ephemeral=rm,
@@ -2496,8 +2653,8 @@ def _launch_host(
     # setup.script — outside the lock, because a setup can prompt (see provision_tools).
     backend.provision_tools(spec, ATTACH)
     home, cwd = backend.home, backend.cwd
-    if cwd is None:
-        raise RuntimeError("cwd not set; materialize_config must be called first")
+    if cwd is None or home is None:
+        raise RuntimeError("home/cwd not set; materialize_config must be called first")
 
     # Pending `setup:` notices, and BLOCK on them — the host half of what `launch` does at its own
     # line. This was container-only too, so a host launch printed nothing and started the agent
@@ -2515,12 +2672,20 @@ def _launch_host(
     backend.apply_isolation(spec, BOUNDARY)
     backend.apply_isolation(spec, EGRESS)
 
+    config_dir_var = _HOST_HARNESSES[harness].config_dir_var
     _err.print(
-        f"[green]host-native[/green]: CLAUDE_CONFIG_DIR=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
+        f"[green]host-native[/green]: {config_dir_var}=[cyan]{home}[/cyan] cwd=[cyan]{cwd}[/cyan] "
         "— no container"
     )
     env = dict(os.environ)
-    env["CLAUDE_CONFIG_DIR"] = str(home)
+    env[config_dir_var] = str(home)
+    if harness == "omp":
+        # The claude-hooks bridge reads hooks from `$CLAUDE_CONFIG_DIR/settings.json`, so omp needs
+        # this pointed at the stack too. Unset it is NOT neutral: the bridge falls back to the real
+        # `~/.claude` and runs the user's GLOBAL hooks inside a stack session while the stack's own
+        # stay silent — see `_host_omp_claude_dir`. Harmless when the bridge is absent; the variable
+        # is then simply unread.
+        env["CLAUDE_CONFIG_DIR"] = str(_host_omp_claude_dir(home))
     os.chdir(cwd)
 
     if not rm:

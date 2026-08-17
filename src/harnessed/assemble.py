@@ -247,13 +247,21 @@ def _validate_direct_servers(servers: list[McpServer], harness: str) -> None:
 
 
 def assemble(
-    root: Path | None, stack_name: str, build_dir: Path, harness: str, *, strict: bool = False
+    root: Path | None, stack_name: str, build_dir: Path, harness: str, *, strict: bool = False,
+    shared_identity: bool = True,
 ) -> AssembleResult:
     """Assemble a stack into a profile. `root` None → resolve recipes/stacks/services across the
     catalog roots (user overlay first); a Path restricts resolution to that single root.
 
     `strict` → reject unknown recipe-manifest fields (typo guardrail); `harnessed build` passes it
-    on by default, `--no-strict` opts out."""
+    on by default, `--no-strict` opts out.
+
+    `shared_identity=False` suppresses the ONE emit step that writes OUTSIDE the profile — omp's
+    delimiter-marked blocks in the shared `~/.omp/agent` (#307). A host launch assembles in-process
+    every time and then materializes a PER-STACK agent dir under `PI_CODING_AGENT_DIR`, so leaving
+    the shared write on would have every `host-run <stack> omp` deposit blocks in the user's own omp
+    while the session read a different file entirely — writing into the shared dir precisely to
+    achieve nothing. The container path, which has no per-stack agent dir, keeps the default."""
     root = Path(root) if root is not None else None
     build_dir = Path(build_dir)
 
@@ -335,8 +343,10 @@ def assemble(
         rule_files = sorted(rules_dir.rglob("*.md")) if rules_dir.is_dir() else []
         if harness == "codex":
             emit.write_codex_agents_md(profile_dir, instructions, rule_files)
-        else:
+        elif shared_identity:
             emit.write_omp_identity(profile_dir, stack.name, instructions, rule_files)
+        # else: the host backend renders the same content WHOLE into its per-stack agent dir
+        # (launcher._plan_host_omp) — see `shared_identity` above.
 
     # stdio children are baked into the harness/stack image and spawned by the in-container hatago
     # (hatago-consolidation); kept for reporting. No separate baked-servers.json is written.
