@@ -1,7 +1,7 @@
 # Denied Commands
 
-These commands are blocked at the permission layer. A denied call is a wasted round-trip, not a
-prompt you can talk your way past.
+Never run these commands. A harness that denies one wastes the round-trip, and no rephrasing
+gets past it.
 
 | Never run | Use instead |
 | --- | --- |
@@ -16,8 +16,8 @@ prompt you can talk your way past.
 **The deny matcher inspects every segment of a command.** One denied word kills the whole chain —
 including the allowed segments.
 
-- **Never bury a denied binary in a pipe or `&&` chain.** `rg foo | grep -v test` is denied even
-  though `rg` is fine. Filter inside `rg` itself.
+- **Never bury a denied binary in a pipe or `&&` chain.** The matcher denies `rg foo | grep -v test`
+  even though `rg` alone is fine. Filter inside `rg` itself.
 - **Split destructive+benign compounds.** `rm -rf docs/x && mkdir -p docs/x` dies as a unit. Run the
   allowed half separately.
 - **Never bundle a git write with anything else.** Commit, push, and PR-create are *three* calls,
