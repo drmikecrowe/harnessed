@@ -31,12 +31,16 @@ def _stub_from_mount(mount: list[str]) -> dict:
 
 class TestSeedStub:
     def test_copies_identity_fields_sets_onboarding_no_token(self, monkeypatch, tmp_path):
-        _host(monkeypatch, tmp_path, {
-            "oauthAccount": {"emailAddress": "x@example.com", "accountUuid": "abc"},
-            "userID": "user-123",
-            "projects": {"/secret/host/path": {}},   # host config that must NOT leak
-            "mcpServers": {"leak": {}},
-        })
+        _host(
+            monkeypatch,
+            tmp_path,
+            {
+                "oauthAccount": {"emailAddress": "x@example.com", "accountUuid": "abc"},
+                "userID": "user-123",
+                "projects": {"/secret/host/path": {}},  # host config that must NOT leak
+                "mcpServers": {"leak": {}},
+            },
+        )
         mount = launcher._claude_config_seed_mount("claude", "harnessed-claude_time-deadbeef")
 
         stub = _stub_from_mount(mount)
@@ -70,6 +74,9 @@ class TestSeedStub:
         _host(monkeypatch, tmp_path, {"oauthAccount": {}, "userID": "u"})
         assert launcher._claude_config_seed_mount("antigravity", "inst-z") == []
 
-    def test_omp_also_seeded(self, monkeypatch, tmp_path):
+    def test_omp_gets_no_stub(self, monkeypatch, tmp_path):
+        """omp reads ~/.claude.json only to discover MCP servers, which harnessed supplies through
+        `_omp_mcp_seed_mount`. Seeding an onboarding stub there mounts a file omp never uses and
+        shadows nothing it wants (#314)."""
         _host(monkeypatch, tmp_path, {"oauthAccount": {"x": 1}, "userID": "u"})
-        assert launcher._claude_config_seed_mount("omp", "inst-omp") != []
+        assert launcher._claude_config_seed_mount("omp", "inst-omp") == []

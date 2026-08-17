@@ -160,8 +160,12 @@ def _claude_config_seed_mount(harness: str, inst: str, isolated_auth: bool = Fal
     somebody ELSE would both hand your account metadata to a client-facing container and pair a
     stub identifying you with credentials belonging to them. The onboarding fields are all that
     branch needs; the client's own login repopulates the rest.
+
+    omp is NOT included: nothing it does needs this file. It reads ~/.claude.json only to DISCOVER
+    MCP servers, and harnessed already wires omp's MCP layer through `_omp_mcp_seed_mount`. The
+    claude-hooks-bridge is an ~/.omp/plugins module and never opens it (#314).
     """
-    if harness not in ("claude", "omp"):
+    if harness != "claude":
         return []
 
     oauth_account: object = {}
@@ -216,8 +220,11 @@ def _claude_oauth_token_args(harness: str, env_files: Sequence[Path] = ()) -> li
     this the other way at `_launch_host`: "letting a stale export in the invoking shell silently
     beat it is the failure mode that is hardest to see from inside a session." Skipping the `-e`
     here makes the two backends agree.
+
+    omp is NOT included: it reads no Claude credential (see `_claude_creds_seed_mount` for the
+    evidence; #314).
     """
-    if harness not in ("claude", "omp"):
+    if harness != "claude":
         return []
     # ANY explicit assignment in an env-file wins, empty included. A non-empty one supplies the
     # token, so the forward is redundant; an empty one is how a source turns the token OFF, and
@@ -290,8 +297,11 @@ def _claude_oauth_token_configured(harness: str, project_path: Path | None = Non
     secrets agent that does not write env-files).  The warning distinguishes this
     "cannot determine" state from "genuinely no token", so the credential-file
     mount that follows is not a silent regression.
+
+    omp is NOT included: it reads no Claude credential (see `_claude_creds_seed_mount` for the
+    evidence; #314).
     """
-    if harness not in ("claude", "omp"):
+    if harness != "claude":
         return False
 
     # Route 1: already in the host process environment.
@@ -364,8 +374,15 @@ def _claude_creds_seed_mount(harness: str, inst: str, token_configured: bool = F
     permanently logged out: relaunching never refreshed it and the only cure was deleting the
     state dir by hand. Re-seeding is gated on expiry precisely so a token the container itself
     refreshed is never clobbered while it is still valid (the reason for the original guard).
+
+    omp is NOT included: it reads no Claude credential. Its Anthropic env names are
+    `ANTHROPIC_OAUTH_TOKEN`/`ANTHROPIC_API_KEY` (`CLAUDE_CODE_OAUTH_TOKEN` appears nowhere in the
+    binary), its own credentials live in the `auth_credentials` table of the ~/.omp/agent/agent.db
+    that `_omp_agent_mount` bind-mounts, and the omp image ships no `claude` CLI to use a copy.
+    Gating this on omp copied a live secret into a pod with no consumer, and warned about it twice
+    on every launch (#314).
     """
-    if harness not in ("claude", "omp") or token_configured:
+    if harness != "claude" or token_configured:
         return []
 
     state_root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
