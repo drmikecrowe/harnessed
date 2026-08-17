@@ -629,6 +629,8 @@ def _build_agent_image(rt: str, harness: str) -> None:
             _say("[yellow][WARNING][/yellow] harnessed-base not found. Building base first…")
             _build_images_cmd(rt, force=False)
         build_args = _agent_build_arg_flags(agent)
+        no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
+        cache_arg = ["--no-cache"] if no_cache else []
         _say(f"[blue][INFO][/blue] Building {image} ...")
         with _staged_build_context() as ctx:
             # agent.dockerfile is home-relative (e.g. catalog/agents/omp/Dockerfile) — and the staged
@@ -637,7 +639,7 @@ def _build_agent_image(rt: str, harness: str) -> None:
                 Path(ctx) / agent.dockerfile if agent.dockerfile
                 else Path(ctx) / "catalog" / "base" / f"Dockerfile.harnessed-{harness}"
             )
-            _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, ctx])
+            _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, *cache_arg, ctx])
 
     _build_shared_once(image, build)
 
@@ -1524,6 +1526,8 @@ def _build_service_image(rt: str, name: str) -> None:
 
     def build() -> None:
         _say(f"[blue][INFO][/blue] Building service image {svc.image} ...")
+        no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
+        cache_arg = ["--no-cache"] if no_cache else []
         tmp = _service_dockerfile_with_ca(orig_dockerfile)
         try:
             effective = tmp if tmp else orig_dockerfile
@@ -1532,7 +1536,7 @@ def _build_service_image(rt: str, name: str) -> None:
             with tempfile.TemporaryDirectory() as build_ctx:
                 shutil.copytree(svc_dir, build_ctx, dirs_exist_ok=True)
                 _run([rt, "build", "-t", svc.image, "-f", str(effective),
-                      *_corp_proxy_ca_secret_args(), build_ctx])
+                      *cache_arg, *_corp_proxy_ca_secret_args(), build_ctx])
         finally:
             if tmp:
                 tmp.unlink(missing_ok=True)
@@ -3738,37 +3742,48 @@ def build(
     # Optional cache disable: when --no-cache (or --force, which implies it) is set, bypass podman
     # layer cache for image builds — without this, an unchanged Dockerfile is a cache hit and
     # "rebuild" produces the identical image, which is what made a bare `--force` look like a no-op.
+    # Restored in `finally` below: this env var is process-global, and `build` can run more than
+    # once in-process (tests via CliRunner, or any future programmatic caller) — leaving it set
+    # would silently disable the cache for unrelated later builds in the same process.
+    _prev_no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE")
     if no_cache or force:
         os.environ["HARNESSED_PODMAN_NO_CACHE"] = "true"
 
-    root_path = Path(root).resolve() if root else None
-    if stack:
-        if harness:
-            if harness not in HARNESS_CONFIG_DIR:
-                _err.print(
-                    f"[bold red]error:[/bold red] unsupported harness '{harness}' "
-                    f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+    try:
+        root_path = Path(root).resolve() if root else None
+        if stack:
+            if harness:
+                if harness not in HARNESS_CONFIG_DIR:
+                    _err.print(
+                        f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+                        f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+                    )
+                    raise typer.Exit(1)
+                targets = [harness]
+            else:
+                # No harness argument: fan out to the stack's declared `harnesses:` list.
+                targets = _declared_harnesses(stack, root_path)
+                if not targets:
+                    _err.print(
+                        "[bold red]error:[/bold red] harness is required when a stack is specified "
+                        "(e.g.: harnessed build my-stack claude) — or declare `harnesses: [claude, omp]` "
+                        f"in the '{stack}' stack.yaml to build several at once"
+                    )
+                    raise typer.Exit(1)
+                _out.print(
+                    f"[blue][INFO][/blue] Stack '{stack}' declares harnesses: {', '.join(targets)}"
                 )
-                raise typer.Exit(1)
-            targets = [harness]
+            for target in targets:
+                _build_stack(rt, stack, target, root_path, strict=not no_strict)
         else:
-            # No harness argument: fan out to the stack's declared `harnesses:` list.
-            targets = _declared_harnesses(stack, root_path)
-            if not targets:
-                _err.print(
-                    "[bold red]error:[/bold red] harness is required when a stack is specified "
-                    "(e.g.: harnessed build my-stack claude) — or declare `harnesses: [claude, omp]` "
-                    f"in the '{stack}' stack.yaml to build several at once"
-                )
-                raise typer.Exit(1)
-            _out.print(
-                f"[blue][INFO][/blue] Stack '{stack}' declares harnesses: {', '.join(targets)}"
-            )
-        for target in targets:
-            _build_stack(rt, stack, target, root_path, strict=not no_strict)
-    else:
-        _build_images_cmd(rt, force=force)
-        _reconcile_stacks(rt, root_path, strict=not no_strict, jobs=jobs, force=force)
+            _build_images_cmd(rt, force=force)
+            _reconcile_stacks(rt, root_path, strict=not no_strict, jobs=jobs, force=force)
+    finally:
+        if no_cache or force:
+            if _prev_no_cache is None:
+                os.environ.pop("HARNESSED_PODMAN_NO_CACHE", None)
+            else:
+                os.environ["HARNESSED_PODMAN_NO_CACHE"] = _prev_no_cache
 
 
 @app.command("list")

@@ -172,12 +172,39 @@ class TestBareBuildReconcile:
             "is already current"
         )
 
-    def test_force_sets_no_cache_env_for_the_derived_build(self, root, built, monkeypatch):
-        self._fake_podman(monkeypatch, images="", hashes={})
+    def test_force_sets_no_cache_env_during_the_build_and_restores_it_after(self, root, built, monkeypatch):
+        # The env var is process-global plumbing to `_build_derived_image`/`_build_agent_image`/
+        # `_build_service_image` (see TestBuildDerivedImageCacheBypass in
+        # test_launcher_install.py for proof it actually reaches the podman command) — this test
+        # only checks that `build --force` turns it on for the duration of the build and restores
+        # whatever was there before, so it can't leak into unrelated later builds in the same
+        # process (e.g. another CliRunner.invoke in the same pytest session).
+        seen: list[str | None] = []
+
+        def fake_run(cmd, **kwargs):
+            seen.append(os.environ.get("HARNESSED_PODMAN_NO_CACHE"))
+            if cmd[1] == "images":
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if cmd[1] == "inspect":
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="no such image")
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        monkeypatch.setattr(launcher.subprocess, "run", fake_run)
         monkeypatch.delenv("HARNESSED_PODMAN_NO_CACHE", raising=False)
+
         result = runner.invoke(launcher.app, ["build", "--force", "--root", str(root)])
         assert result.exit_code == 0, result.output
-        assert os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true", (
-            "--force must bypass the podman layer cache, or a rebuild of an unchanged Dockerfile "
-            "is a cache hit that looks like a no-op"
+        assert seen and all(v == "true" for v in seen), "--force must set the cache-bypass env var for the build"
+        assert os.environ.get("HARNESSED_PODMAN_NO_CACHE") is None, (
+            "the CLI command must restore the prior (absent) value once the build finishes, or it "
+            "leaks into unrelated later builds in the same process"
+        )
+
+    def test_force_restores_a_pre_existing_no_cache_value_after(self, root, built, monkeypatch):
+        self._fake_podman(monkeypatch, images="", hashes={})
+        monkeypatch.setenv("HARNESSED_PODMAN_NO_CACHE", "false")
+        result = runner.invoke(launcher.app, ["build", "--force", "--root", str(root)])
+        assert result.exit_code == 0, result.output
+        assert os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "false", (
+            "a pre-existing env value must be restored, not clobbered with the process default"
         )
