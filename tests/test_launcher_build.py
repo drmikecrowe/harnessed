@@ -8,6 +8,7 @@ covered elsewhere — what matters here is WHICH (stack, harness) pairs get hand
 * `build`                   → declared pairs + previously-built pairs, rebuilt when stale
 """
 
+import os
 import re
 import subprocess
 
@@ -149,3 +150,34 @@ class TestBareBuildReconcile:
         result = runner.invoke(launcher.app, ["build", "--root", str(root)])
         assert result.exit_code == 0, result.output
         assert ("single", "claude") in built
+
+    def test_force_rebuilds_pairs_with_a_current_hash(self, root, built, monkeypatch):
+        from harnessed.assemble import compute_recipe_hash
+        from harnessed.schema import load_stack_with_recipes
+
+        _, recipes = load_stack_with_recipes(root, "multi", strict=True)
+        current = compute_recipe_hash(root / "stacks" / "multi" / "stack.yaml", recipes)
+        self._fake_podman(
+            monkeypatch,
+            images="",
+            hashes={
+                "harnessed-claude-multi:latest": current,
+                "harnessed-omp-multi:latest": current,
+            },
+        )
+        result = runner.invoke(launcher.app, ["build", "--force", "--root", str(root)])
+        assert result.exit_code == 0, result.output
+        assert built == [("multi", "claude"), ("multi", "omp")], (
+            "--force must rebuild every declared/previously-built pair even when its recipe hash "
+            "is already current"
+        )
+
+    def test_force_sets_no_cache_env_for_the_derived_build(self, root, built, monkeypatch):
+        self._fake_podman(monkeypatch, images="", hashes={})
+        monkeypatch.delenv("HARNESSED_PODMAN_NO_CACHE", raising=False)
+        result = runner.invoke(launcher.app, ["build", "--force", "--root", str(root)])
+        assert result.exit_code == 0, result.output
+        assert os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true", (
+            "--force must bypass the podman layer cache, or a rebuild of an unchanged Dockerfile "
+            "is a cache hit that looks like a no-op"
+        )

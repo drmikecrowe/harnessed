@@ -82,7 +82,7 @@ class TestReconcileParallel:
     def _stale(self, monkeypatch, pairs):
         monkeypatch.setattr(
             launcher, "_stale_pairs",
-            lambda rt, root, *, strict: [(s, h, "no built image") for s, h in pairs],
+            lambda rt, root, *, strict, force=False: [(s, h, "no built image") for s, h in pairs],
         )
 
     def test_shared_images_built_before_any_stack(self, monkeypatch, harness_stubs):
