@@ -1,11 +1,10 @@
 # Text Search: Search Tool First, Then rg
 
-Search with your harness's built-in search tool first. It is structured, respects ignore files, and
-returns line-anchored matches that a shell pipeline cannot. Shell out only when it cannot
-answer the question — then use `rg`, never the `grep` binary, which stays denied at the permission
-layer (see [[denied-commands]]). That ban covers `git grep` and `| grep` too; `rg -v` inverts. It
-names the shell binary only: a built-in search tool is not shell `grep`, and nothing here restricts
-it.
+Search with your harness's built-in search tool first. It respects ignore files and returns
+line-anchored matches that a shell pipeline cannot. Shell out only when it cannot
+answer the question — then use `rg`, never the `grep` binary (see [[denied-commands]]). That ban
+covers `git grep` and `| grep` too; `rg -v` inverts. It names the shell binary only: a built-in
+search tool is not shell `grep`, and nothing here restricts it.
 
 `rg` is the shell fallback, not the default search path. A harness that offers no search tool makes
 `rg` the default by elimination, not by preference.
@@ -13,7 +12,7 @@ it.
 ## Bound the result set at the source
 
 An unbounded search over a large tree is one of the cheapest ways to burn a context window, whichever
-tool runs it. Cap the output where it is produced, not after it lands:
+tool runs it. Cap the output at the source, not after it lands:
 
 - Existence or location only: `rg -l` for filenames, `rg -c` for per-file counts. Never page full
   matches to answer "does this exist".

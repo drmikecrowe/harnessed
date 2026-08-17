@@ -12,9 +12,9 @@ criteria, no definition-of-done, no required review gates. File issues however
 you like; this skill only handles the tracking layer.
 
 For issue-to-PR automation (spawning workers to fix issues and open PRs), see
-the separate `gh-issues` skill from openclaw. This skill's claim handling is
-adapted from it. The two compose: use this one to decide *what* is workable,
-that one to actually *do* it.
+the separate `gh-issues` skill from openclaw. This skill adapts its claim
+handling from that one. The two compose: use this one to decide *what* is
+workable, that one to actually *do* it.
 
 ## Requirements
 
@@ -187,7 +187,7 @@ step in this skill worth an explicit confirmation.
 
 ## Attribution
 
-Repo resolution, the expiring claim-file pattern, and the duplicate-work checks
-are adapted from `skills/gh-issues/SKILL.md` in
+This skill adapts repo resolution, the expiring claim-file pattern, and the
+duplicate-work checks from `skills/gh-issues/SKILL.md` in
 [openclaw/openclaw](https://github.com/openclaw/openclaw), MIT licensed,
 Copyright (c) 2026 OpenClaw Foundation.

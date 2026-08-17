@@ -1,5 +1,7 @@
 # Stop-and-Ask
 
-- No broad filesystem scans (`find /`, `rg` over root, etc.) for thing user can name in one sentence. Ask.
-- No outward-facing actions (push, PR, comment, publish, send) without explicit confirmation. Missing "yes" = "no."
-- No echo/log/restate secrets. No ask user paste secrets into chat or edit `.env` manually — use secure env mechanism.
+- Never scan the filesystem broadly (`find /`, `rg` over root) for something the user can name. Ask.
+- Never take an outward-facing action (push, PR, comment, publish, send) without explicit
+  confirmation. A missing "yes" means "no".
+- Never echo, log, or restate a secret. Never ask the user to paste a secret into chat, or to edit
+  `.env` by hand. Use the secure env mechanism.

@@ -251,6 +251,23 @@ def find_in_catalog(kind: str, name: str) -> Path:
     return roots[0] / kind / rel
 
 
+def overlay_shadowed_repo_path(kind: str, name: str) -> Path | None:
+    """The repo-catalog path a user-overlay entry shadows; None when nothing is shadowed.
+
+    Shadowed means BOTH copies exist: `user_catalog()/<kind>/<relpath>` AND
+    `harnessed_home()/catalog/<kind>/<relpath>`. On a name clash the overlay wins (see
+    `catalog_roots`), so the repo copy is never read — a session then quietly assembles stale
+    overlay content while the newer repo copy sits unused. That silent drift has already caused
+    real regressions, which is why the loader warns on it. `name` may be a variety ref (see
+    `catalog_relpath`).
+    """
+    rel = catalog_relpath(name)
+    repo = harnessed_home() / "catalog" / kind / rel
+    if (user_catalog() / kind / rel).exists() and repo.exists():
+        return repo
+    return None
+
+
 # The manifest file that marks a real entry of each catalog kind (its plural dir → marker file).
 _KIND_MARKER = {
     "agents": "agent.yaml",

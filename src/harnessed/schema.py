@@ -25,6 +25,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import MarkedYAMLError
 
 from . import paths
+from .console import _err
 
 def _resolve_dir(root: Path | None, kind: str, name: str) -> Path:
     """Resolve catalog/<kind>/<name>.
@@ -2224,6 +2225,42 @@ def load_service(root: Path | None, name: str) -> ServiceDef:
     )
 
 
+# Names already warned about this process. Every launch of every stack naming a shadowed recipe
+# re-resolves it; one warning per name is enough to be read without becoming noise.
+_overlay_shadow_warned: set[str] = set()
+
+
+def _reset_overlay_shadow_warnings() -> None:
+    """Test hook: forget already-warned names so each test starts from a clean slate."""
+    _overlay_shadow_warned.clear()
+
+
+def _warn_overlay_shadowed_recipes(refs: list[str]) -> None:
+    """Warn, once per name, when a recipe resolves from the user overlay and shadows the repo copy.
+
+    The overlay wins on a name clash (see paths.catalog_roots), so the repo copy is never read:
+    sessions have quietly assembled stale overlay recipes while the newer repo copy sat unused.
+    `default` is exempt — overriding it is a documented, blessed pattern, so warning there is
+    pure noise. Recipes only; stacks, agents and services stay silent.
+    """
+    for ref in refs:
+        if ref == "default" or ref in _overlay_shadow_warned:
+            continue
+        repo = paths.overlay_shadowed_repo_path("recipes", ref)
+        if repo is None:
+            continue
+        _overlay_shadow_warned.add(ref)
+        overlay = paths.user_catalog() / "recipes" / paths.catalog_relpath(ref)
+        _err.print(
+            f"[bold yellow]warning:[/bold yellow] recipe '{ref}' comes from your user overlay, "
+            "not the repo catalog.\n"
+            f"  using:    {overlay}\n"
+            f"  shadowed: {repo}\n"
+            "  The overlay wins. Re-sync it or the repo copy stays unused.",
+            highlight=False,
+        )
+
+
 def load_stack_with_recipes(
     root: Path | None, stack_name: str, *, strict: bool = False
 ) -> tuple[Stack, list[Recipe]]:
@@ -2241,6 +2278,9 @@ def load_stack_with_recipes(
         load_recipe(_resolve_dir(root, "recipes", ref), strict=strict, ref=ref) for ref in stack.recipes
     ]
     _check_recipe_conflicts(stack.name, recipes)
+    if root is None:
+        # Production path only: an explicit `root` is a test/fixture tree, never an overlay.
+        _warn_overlay_shadowed_recipes(stack.recipes)
     return stack, recipes
 
 
