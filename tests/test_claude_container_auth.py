@@ -84,7 +84,8 @@ class TestOauthTokenDetection:
         proj.mkdir()
         (proj / ".env.schema").write_text("")  # triggers the varlock branch
         monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
-        patch_all(monkeypatch, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": "secret-token"}
+        patch_all(
+            monkeypatch, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": "secret-token"}
         )
         assert launcher._claude_oauth_token_configured("claude", proj) is True
 
@@ -163,8 +164,7 @@ class TestOauthTokenDetection:
         proj.mkdir()
         (proj / ".env.schema").write_text("")
         monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
-        patch_all(monkeypatch, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": ""}
-        )
+        patch_all(monkeypatch, "_varlock_resolve", lambda d: {"CLAUDE_CODE_OAUTH_TOKEN": ""})
         assert launcher._claude_oauth_token_configured("claude", proj) is False
 
 
@@ -182,6 +182,55 @@ class TestCredsMountSupersededByToken:
         (host / ".credentials.json").write_text(_creds(timedelta(hours=8)))
         args = launcher._claude_creds_seed_mount("claude", "inst", token_configured=False)
         assert args and args[0] == "-v"
+
+
+class TestOmpConsumesNoClaudeCredential:
+    """#314: every Claude-credential path was gated on `harness in ("claude", "omp")`, so an omp
+    launch copied the host's live OAuth credential into a pod that cannot read it and printed two
+    warnings about doing so. omp authenticates from the `auth_credentials` table of the
+    ~/.omp/agent/agent.db that `_omp_agent_mount` bind-mounts; its Anthropic env names are
+    ANTHROPIC_OAUTH_TOKEN/ANTHROPIC_API_KEY, and the omp image ships no `claude` CLI."""
+
+    def test_no_token_forward(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "secret-value")
+        assert launcher._claude_oauth_token_args("omp") == []
+
+    def test_never_reports_a_token_configured(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "secret-value")
+        _home(monkeypatch, tmp_path)
+        assert launcher._claude_oauth_token_configured("omp", tmp_path) is False
+
+    def test_varlock_failure_warns_for_claude_but_not_for_omp(self, monkeypatch, tmp_path):
+        """The user-visible half of #314: the harness gate must short-circuit BEFORE the varlock
+        probe, or omp keeps emitting the 'could not resolve CLAUDE_CODE_OAUTH_TOKEN' warning."""
+        monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+        _home(monkeypatch, tmp_path)
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        (proj / ".env.schema").write_text("")
+        monkeypatch.setattr(launcher.shutil, "which", lambda name: "/usr/bin/varlock")
+        patch_all(monkeypatch, "_varlock_resolve", lambda d: None)  # varlock failure
+
+        before = launcher._err.warnings
+        launcher._claude_oauth_token_configured("omp", proj)
+        assert launcher._err.warnings == before, "omp warned about a token it cannot use"
+
+        launcher._claude_oauth_token_configured("claude", proj)
+        assert launcher._err.warnings > before, "claude must still warn"
+
+    def test_no_credential_file_is_copied(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        host = tmp_path / "home" / ".claude"
+        host.mkdir(parents=True)
+        (host / ".credentials.json").write_text(_creds(timedelta(hours=8)))
+
+        before = launcher._err.warnings
+        assert launcher._claude_creds_seed_mount("omp", "inst", token_configured=False) == []
+        assert not (tmp_path / "harnessed" / "inst" / "credentials.json").exists(), (
+            "the host credential was copied into per-instance state for a harness that cannot use it"
+        )
+        assert launcher._err.warnings == before
 
 
 class TestExpiredCopyReseeds:
@@ -250,7 +299,9 @@ class TestVarlockResolveMemo:
     presence check), so the result is memoized per dir for the process lifetime.
     """
 
-    def _stub_varlock(self, monkeypatch, calls: list[str], *, returncode: int = 0, stdout: str = "{}"):
+    def _stub_varlock(
+        self, monkeypatch, calls: list[str], *, returncode: int = 0, stdout: str = "{}"
+    ):
         launcher._varlock_cache_clear()
 
         def fake_run(cmd, **kwargs):
@@ -329,7 +380,10 @@ class TestEnvFileBeatsShellExport:
         monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "mine-from-shell")
         env_file = tmp_path / "resolved.env"
         env_file.write_text("SOMETHING_ELSE=1\n")
-        assert launcher._claude_oauth_token_args("claude", [env_file]) == ["-e", "CLAUDE_CODE_OAUTH_TOKEN"]
+        assert launcher._claude_oauth_token_args("claude", [env_file]) == [
+            "-e",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+        ]
 
     def test_a_blank_env_file_value_also_suppresses_the_host_forward(self, monkeypatch, tmp_path):
         """An explicit blank is a declaration too — it means "declared, and turned off". Forwarding
@@ -343,7 +397,8 @@ class TestEnvFileBeatsShellExport:
     def test_missing_env_file_does_not_break_the_launch(self, monkeypatch, tmp_path):
         monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "mine-from-shell")
         assert launcher._claude_oauth_token_args("claude", [tmp_path / "gone.env"]) == [
-            "-e", "CLAUDE_CODE_OAUTH_TOKEN",
+            "-e",
+            "CLAUDE_CODE_OAUTH_TOKEN",
         ]
 
     def test_default_argument_preserves_the_old_call_shape(self, monkeypatch):
@@ -402,7 +457,9 @@ class TestIsolatedAuthStore:
         launcher._isolated_auth_fresh_wipe("claude", "inst-d")
         assert not store.exists()
 
-    def test_fresh_wipe_is_a_noop_for_other_harnesses_and_missing_stores(self, monkeypatch, tmp_path):
+    def test_fresh_wipe_is_a_noop_for_other_harnesses_and_missing_stores(
+        self, monkeypatch, tmp_path
+    ):
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
         launcher._isolated_auth_fresh_wipe("codex", "inst-e")
         launcher._isolated_auth_fresh_wipe("claude", "never-launched")
@@ -514,10 +571,14 @@ class TestIsolatedAuthDoesNotLeakHostAccountMetadata:
     def _host_config(self, monkeypatch, tmp_path):
         home = _home(monkeypatch, tmp_path)
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-        (home / ".claude.json").write_text(json.dumps({
-            "oauthAccount": {"emailAddress": "me@example.com", "organizationName": "Mine"},
-            "userID": "host-user-id",
-        }))
+        (home / ".claude.json").write_text(
+            json.dumps(
+                {
+                    "oauthAccount": {"emailAddress": "me@example.com", "organizationName": "Mine"},
+                    "userID": "host-user-id",
+                }
+            )
+        )
 
     def test_isolated_seed_omits_account_identity(self, monkeypatch, tmp_path):
         self._host_config(monkeypatch, tmp_path)
@@ -549,8 +610,17 @@ class TestIsolatedAuthIsGatedOnTheHarness:
     def _backend(self, tmp_path, isolated: bool):
         stk = SimpleNamespace(isolated_auth=isolated)
         b = launcher.ContainerBackend(
-            "podman", "inst-x", "pod-x", tmp_path, "img", tmp_path,
-            [], [], stk, stack_from_overlay=False, headless=True,
+            "podman",
+            "inst-x",
+            "pod-x",
+            tmp_path,
+            "img",
+            tmp_path,
+            [],
+            [],
+            stk,
+            stack_from_overlay=False,
+            headless=True,
         )
         b.mount_args = []  # stand in for materialize_config having run
         return b
@@ -560,19 +630,27 @@ class TestIsolatedAuthIsGatedOnTheHarness:
         f.write_text("CLAUDE_CODE_OAUTH_TOKEN=host-token\n")
         return f
 
-    def test_omp_keeps_its_token_when_a_claude_stack_field_is_set(self, monkeypatch, tmp_path):
+    def test_a_claude_only_flag_does_not_rewrite_a_shared_env_file_for_omp(
+        self, monkeypatch, tmp_path
+    ):
+        """`isolated_auth` strips the token from the resolved env-file so a client-identity stack
+        cannot fall back to the host account. That file is SHARED with everything else the stack
+        runs, so the strip must not fire for a harness the flag does not govern. omp reads no
+        Claude token itself (#314) — the invariant is about not mutating shared state."""
         monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
         _home(monkeypatch, tmp_path)
         env_file = self._env_file(tmp_path)
         monkeypatch.setattr(
-            launcher, "_resolve_launch_secrets", lambda p: ([env_file], [env_file]),
+            launcher,
+            "_resolve_launch_secrets",
+            lambda p: ([env_file], [env_file]),
         )
         b = self._backend(tmp_path, isolated=True)
 
         b.seed_auth(LaunchSpec(stack="s", harness="omp", project_path=tmp_path))
 
         assert "CLAUDE_CODE_OAUTH_TOKEN=host-token" in env_file.read_text(), (
-            "omp's token was stripped by a claude-only flag"
+            "a claude-only flag rewrote the shared env-file on an omp launch"
         )
         assert not any("isolated-auth" in a for a in b.mount_args)
 
@@ -581,7 +659,9 @@ class TestIsolatedAuthIsGatedOnTheHarness:
         _home(monkeypatch, tmp_path)
         env_file = self._env_file(tmp_path)
         monkeypatch.setattr(
-            launcher, "_resolve_launch_secrets", lambda p: ([env_file], [env_file]),
+            launcher,
+            "_resolve_launch_secrets",
+            lambda p: ([env_file], [env_file]),
         )
         b = self._backend(tmp_path, isolated=True)
 
