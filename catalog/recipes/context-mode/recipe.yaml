@@ -51,13 +51,13 @@ mcp:
 # structurally cannot. Content is deliberately about WHEN to route and how `queries` breadth decides
 # whether a call saves or spends — a reducer queried too broadly re-emits the dump it exists to avoid.
 #
-# Still true against bridge 0.4.0, 0.4.1 AND 0.5.0, but for a NARROWER reason than the note below.
-# 0.4.1 bridges PreToolUse `updatedInput` (command rewriting, which is what unblocked rtk) and 0.5.0
-# bridges PreCompact; neither touches PreToolUse additionalContext, so neither moves this decision.
+# Still true against bridge 0.4.0, 0.4.1 AND 0.5.0 — see the Hook layer note. 0.4.1 bridges
+# PreToolUse `updatedInput` (command rewriting, which is what unblocked rtk) and 0.5.0 bridges
+# PreCompact; neither touches PreToolUse additionalContext, so neither moves this decision.
 # 0.5.0's README now states the blocker outright: the only same-turn landing spot is the paired
-# tool_result, which arrives after the tool ran, so the context could not gate the call. (That note
-# predates 0.4.0 and is now half stale — see the Hook layer). 0.4.0 injects additionalContext from
-# any event plus SessionStart/UserPromptSubmit stdout, so the SessionStart half WOULD now bridge.
+# tool_result, which arrives after the tool ran, so the context could not gate the call.
+# 0.4.0 injects additionalContext from any event plus SessionStart/UserPromptSubmit stdout, so
+# the SessionStart half WOULD now bridge.
 # `PreToolUse` additionalContext is one of the two paths its README documents as deliberately NOT
 # bridged (omp's tool_call result has no context field and there is no current-turn injection API),
 # and the routing nudge is exactly a PreToolUse additionalContext hook. So the steering gap this rule
@@ -96,22 +96,15 @@ install:
 # Claude profile is canonical in harnessed — the other harnesses adapt out of the same .claude/
 # profile (see emit._recipe_hooks_settings).
 #
-# NOTE (2026-08-16, verified against bridge 0.4.0's source AND the live upstream README at
-# github.com/drmikecrowe/omp-claude-hooks-bridge — the copy in node_modules can lag): the
-# additionalContext claim just below was true of 0.3.0 and is now only HALF true. 0.4.0 injects
-# additionalContext from any event plus SessionStart/UserPromptSubmit stdout, so the SessionStart
-# half DOES bridge today — though it is QUEUED for the next user prompt (omp session_start handlers
-# cannot return context), so it never steers the turn in progress. `PreToolUse` additionalContext is
-# one of the two paths the README documents as deliberately NOT bridged (omp's tool_call result has
-# no context field, and no current-turn injection API exists), so the routing-nudge half still
-# reaches nothing. The double-fire argument for skipping is unaffected either way.
-# EXCEPT omp (skip_harnesses below). omp's bridge (omp-claude-hooks-bridge) does replay these, but
-# it is a pure decision+side-effect bridge: it drops hookSpecificOutput.additionalContext, so the
-# PreToolUse routing nudge and the SessionStart context re-injection — the two halves upstream marks
-# REQUIRED — reach nothing, and it maps no omp event to PreCompact at all. omp instead gets
-# upstream's own omp extension, installed by this recipe's `install.sh`: it covers all four events
-# natively (and hard-blocks curl/wget in bash rather than merely nudging). Leaving these hooks on
-# for omp would double-write the session DB and spawn a node CLI per tool call for discarded output.
+# omp: every entry below carries `skip_harnesses: [omp]`, each with its own reason — one
+# structural, three double-fire (see the per-entry comments). Verified against the PUBLISHED
+# omp-claude-hooks-bridge tarballs (`npm pack`, not node_modules, which lags): 0.4.0 injects
+# SessionStart/UserPromptSubmit additionalContext (queued to the next prompt), 0.4.1 bridges
+# PreToolUse `updatedInput`, 0.5.0 maps PreCompact onto session_before_compact — but PreToolUse
+# additionalContext stays unbridged at every version, because omp's tool_call result has no
+# context field and no current-turn injection API exists. omp instead gets upstream's own omp
+# extension, installed by this recipe's `install.sh`: it covers all four events natively (and
+# hard-blocks curl/wget in bash rather than merely nudging).
 # CAVEAT (host): that extension install is container-only — see install.sh — so `launch --host`
 # with HARNESS=omp has neither the bridged hooks (skipped here) nor the native extension.
 #

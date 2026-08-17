@@ -36,6 +36,12 @@ tools:
 #
 # No `skip_harnesses`: unlike context-mode, rtk ships no harness-native plugin, so there is no
 # harness where replaying this would double-fire.
+#
+# omp VERSION FLOOR: this rewrite reaches omp only at omp-claude-hooks-bridge >= 0.4.1, which
+# added returning `hookSpecificOutput.updatedInput` as the tool_call input (extractUpdatedInput,
+# verified against the published 0.4.1 tarball). Below that floor the hook still runs and its
+# rewrite is silently discarded — the 0.06% delivery rate measured above is that failure mode.
+# The pin lives in catalog/base/Dockerfile.harnessed-omp (0.5.0 at this writing).
 hooks:
   PreToolUse:
     - command: rtk hook claude

@@ -84,11 +84,19 @@ hooks:
   # structural answer alongside the textual one. `command -v` + `exit 0` keep it silent-and-passing
   # on a stack where the binary somehow did not land; a PreToolUse hook that errors is noise on
   # every single Grep.
+  #
+  # STRUCTURAL skip on omp, same as context-mode's PreToolUse: the bridge never injects PreToolUse
+  # additionalContext (verified against the published omp-claude-hooks-bridge 0.5.0 index.ts —
+  # extractAdditionalContext runs only on the SessionStart and UserPromptSubmit paths; tool_call
+  # applies decisions and input rewrites, never context), and augmentation-as-context is ALL this
+  # hook does. Replaying it would spawn a shell per search to produce output nothing can deliver.
+  # SessionStart below stays live there; its reminder item 4 covers the missing per-search nudge.
   PreToolUse:
     - matcher: Grep|Glob
       command: >-
         sh -c 'command -v codebase-memory-mcp >/dev/null 2>&1 &&
         codebase-memory-mcp hook-augment 2>/dev/null; exit 0'
+      skip_harnesses: [omp]
 
   # No `matcher:` — an absent matcher fires on every SessionStart source (startup, resume, clear,
   # compact), which is exactly the four upstream enumerates one-by-one.
@@ -111,9 +119,12 @@ hooks:
            - query_graph(query) for complex Cypher patterns
            - get_architecture(aspects) for project structure
            - search_code(pattern) for text search (graph-augmented grep)
-        2. Use Grep/Glob/Read freely for text, configs, non-code files, and
-           always Read a file before editing it.
+        2. Use the harness's own search and file-read tools freely for text, configs,
+           and non-code files, and always read a file before editing it.
         3. If a project is not indexed yet, run index_repository FIRST.
+        4. Some harnesses add no per-search graph augmentation. Route to the graph
+           tools deliberately, and repeat this instruction in every subagent prompt
+           you write.
         CBM_REMINDER
 
         # Index this checkout, because cbm will not (`auto_index = false`, see the mcp: comment).
@@ -145,10 +156,16 @@ hooks:
 
   # Subagents inherit the tool list but not the session-start context, so they re-derive their own
   # search habits. SubagentStart injects via JSON `additionalContext`, NOT plain stdout — the raw
-  # object is upstream's, emitted verbatim.
+  # object is upstream's, with its tool-naming line rewritten harness-neutral.
+  #
+  # Skipped on omp: the bridge subscribes to no subagent event at all (0.5.0 index.ts — its
+  # `before_agent_start` maps to UserPromptSubmit, not SubagentStart), so this entry could never
+  # fire there. The skip records that as intent rather than accident. Reminder item 4 above
+  # (repeat the instruction in every subagent prompt) is the omp fallback.
   SubagentStart:
     - matcher: "*"
       command: |
         cat <<'CBM_SUBAGENT'
-        {"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"Code discovery: prefer codebase-memory-mcp tools (search_graph, trace_path, get_code_snippet, query_graph, get_architecture, search_code) over grep/file-read for navigating code. Use Grep/Glob/Read for text, configs, and non-code files."}}
+        {"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"Code discovery: prefer codebase-memory-mcp tools (search_graph, trace_path, get_code_snippet, query_graph, get_architecture, search_code) over grep/file-read for navigating code. Use the harness's own search and file-read tools for text, configs, and non-code files."}}
         CBM_SUBAGENT
+      skip_harnesses: [omp]

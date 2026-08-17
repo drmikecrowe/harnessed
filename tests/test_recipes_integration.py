@@ -203,14 +203,23 @@ def test_codebase_memory_mcp_hooks_reach_settings():
     Asserted here rather than via `expect:`, which has no hooks kind (Expect = skills/commands/
     plugins/mcp), so nothing else in the suite would notice them silently disappearing.
 
-    No `skip_harnesses`: unlike context-mode, cbm has no native delivery on any harness.
+    No recipe-wide `skip_harnesses`: unlike context-mode, cbm has no native delivery on any
+    harness, so the capability is never replaced — only, on omp, undeliverable per event.
     """
     recipe = load_recipe(ROOT / "catalog" / "recipes" / "codebase-memory-mcp", strict=True)
     assert recipe.hooks_skip_harnesses == []
 
-    for harness in ("claude", "opencode", "codex", "antigravity", "omp"):
+    for harness in ("claude", "opencode", "codex", "antigravity"):
         hooks = required_settings([], [recipe], harness=harness).get("hooks", {})
         assert set(hooks) == {"PreToolUse", "SessionStart", "SubagentStart"}, harness
+
+    # omp keeps ONLY SessionStart, via per-entry skips. Both others are structurally undeliverable
+    # there, verified against the published omp-claude-hooks-bridge 0.5.0: PreToolUse
+    # additionalContext is never injected (extractAdditionalContext runs on the SessionStart and
+    # UserPromptSubmit paths only), and no subagent event is subscribed at all. Asserted as an
+    # exact set so re-adding either — or losing the SessionStart that DOES fire — fails here.
+    omp_hooks = required_settings([], [recipe], harness="omp").get("hooks", {})
+    assert set(omp_hooks) == {"SessionStart"}
 
     hooks = required_settings([], [recipe], harness="claude")["hooks"]
     # Graph-augments text search only — anchored to the tool names, since a matcher that stopped
@@ -240,6 +249,12 @@ def test_codebase_memory_mcp_hooks_reach_settings():
     # Indexes the current checkout, because cbm ships `auto_index = false` — without this every
     # git worktree opens graph-blind while the reminder above insists the graph tools come first.
     assert "cli index_repository" in sess_body
+
+    # The reminder must NOT name one harness's tool identifiers (recipes are harness-independent),
+    # and must carry the fallback the two skipped hooks no longer deliver on omp: route to the
+    # graph deliberately, and repeat that in every subagent prompt.
+    assert "Grep/Glob/Read" not in sess_body
+    assert "subagent prompt" in sess_body
     # Keyed to the git toplevel, NOT $PWD: a worktree must get its own branch-accurate graph, and a
     # non-git cwd must get nothing. `--repo-path "$PWD"` would index a subdirectory as a project.
     assert "--repo-path \"$cbm_root\"" in sess_body
