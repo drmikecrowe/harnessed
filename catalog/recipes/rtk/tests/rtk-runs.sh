@@ -44,6 +44,10 @@ if [[ ! -f "${settings}" ]]; then
     echo "settings.json not found at ${settings}" >&2
     exit 1
 fi
+# WIRED, not DELIVERED: this proves the hook is in settings.json, nothing more. On omp the
+# rewrite only reaches the tool when the hooks bridge honors `updatedInput` (>= 0.4.1 — see the
+# floor note at recipe.yaml `hooks:`); below that floor this check passes while every rewrite is
+# silently discarded.
 if ! grep -q 'rtk hook claude' "${settings}"; then
     echo "rtk PreToolUse hook missing from ${settings} — rtk will never fire" >&2
     exit 1
