@@ -1129,3 +1129,31 @@ class TestBuildDerivedImageNeverTouchesSecrets:
         assert calls[0][:2] == ["podman", "build"]
         assert "varlock" not in calls[0]
         assert "--secret" not in calls[0], "the build must never claim a secret it doesn't resolve"
+
+
+class TestBuildDerivedImageCacheBypass:
+    """`--force` (which sets HARNESSED_PODMAN_NO_CACHE) must bypass podman's layer cache on the
+    derived per-stack image build — otherwise a forced rebuild of an unchanged Dockerfile is a
+    cache hit that produces the identical image."""
+
+    def _capture(self, monkeypatch):
+        calls = []
+
+        def fake_run(cmd, check=True, **kwargs):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+        return calls
+
+    def test_no_cache_flag_absent_by_default(self, monkeypatch, tmp_path):
+        calls = self._capture(monkeypatch)
+        monkeypatch.delenv("HARNESSED_PODMAN_NO_CACHE", raising=False)
+        launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef")
+        assert "--no-cache" not in calls[0]
+
+    def test_no_cache_flag_present_when_env_set(self, monkeypatch, tmp_path):
+        calls = self._capture(monkeypatch)
+        monkeypatch.setenv("HARNESSED_PODMAN_NO_CACHE", "true")
+        launcher._build_derived_image("podman", "harnessed-x:latest", tmp_path / "Dockerfile", tmp_path, "deadbeef")
+        assert "--no-cache" in calls[0]

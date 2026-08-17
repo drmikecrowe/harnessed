@@ -629,6 +629,8 @@ def _build_agent_image(rt: str, harness: str) -> None:
             _say("[yellow][WARNING][/yellow] harnessed-base not found. Building base first…")
             _build_images_cmd(rt, force=False)
         build_args = _agent_build_arg_flags(agent)
+        no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
+        cache_arg = ["--no-cache"] if no_cache else []
         _say(f"[blue][INFO][/blue] Building {image} ...")
         with _staged_build_context() as ctx:
             # agent.dockerfile is home-relative (e.g. catalog/agents/omp/Dockerfile) — and the staged
@@ -637,7 +639,7 @@ def _build_agent_image(rt: str, harness: str) -> None:
                 Path(ctx) / agent.dockerfile if agent.dockerfile
                 else Path(ctx) / "catalog" / "base" / f"Dockerfile.harnessed-{harness}"
             )
-            _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, ctx])
+            _run([rt, "build", "-t", image, "-f", str(dockerfile), *build_args, *cache_arg, ctx])
 
     _build_shared_once(image, build)
 
@@ -815,7 +817,7 @@ def _declared_pairs(root: Path | None) -> list[tuple[str, str]]:
     return pairs
 
 
-def _stale_pairs(rt: str, root: Path | None, *, strict: bool) -> list[tuple[str, str, str]]:
+def _stale_pairs(rt: str, root: Path | None, *, strict: bool, force: bool = False) -> list[tuple[str, str, str]]:
     """The (stack, harness, reason) triples a bare `harnessed build` must rebuild. A pair is in
     scope when it is either:
 
@@ -826,7 +828,9 @@ def _stale_pairs(rt: str, root: Path | None, *, strict: bool) -> list[tuple[str,
       only ever rebuilt once someone has named them explicitly at least once.
 
     It is stale when its recipe-closure hash no longer matches the `harnessed.recipe-hash` label
-    baked into its image (or the image is absent). Fresh/unchanged pairs are dropped."""
+    baked into its image (or the image is absent). Fresh/unchanged pairs are dropped — unless
+    `force` (from `harnessed build --force`), which treats every pair in scope as stale regardless
+    of its hash, so every container-based stack we have ever built on this machine gets rebuilt."""
     pairs: list[tuple[str, str]] = _declared_pairs(root)  # (stack, harness)
 
     result = _bounded(
@@ -880,13 +884,14 @@ def _stale_pairs(rt: str, root: Path | None, *, strict: bool) -> list[tuple[str,
             continue
 
         current = _built_image_hash(rt, name, harness)
-        if current == expected:
+        if not force and current == expected:
             continue
-        stale.append((name, harness, "no built image" if current is None else "recipe hash changed"))
+        reason = "forced rebuild" if force else ("no built image" if current is None else "recipe hash changed")
+        stale.append((name, harness, reason))
     return stale
 
 
-def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool, jobs: int = 1) -> None:
+def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool, jobs: int = 1, force: bool = False) -> None:
     """Rebuild every stale (stack, harness) pair — the reconciliation half of a bare
     `harnessed build`. With `jobs > 1` the stale pairs build CONCURRENTLY.
 
@@ -897,8 +902,12 @@ def _reconcile_stacks(rt: str, root: Path | None, *, strict: bool, jobs: int = 1
     Each worker runs under a colour+label tag (_BUILD_TAG) so N interleaved podman logs stay
     readable. Failures do NOT cancel their siblings: every pair gets its shot, and the failures are
     reported together at the end — one broken stack shouldn't cost you the whole build.
+
+    `force` (from `harnessed build --force`) treats every declared/previously-built pair as stale,
+    not just hash-mismatched ones — this is how `--force` rebuilds every container-based stack on
+    this machine rather than only the ones whose recipe closure changed.
     """
-    stale = _stale_pairs(rt, root, strict=strict)
+    stale = _stale_pairs(rt, root, strict=strict, force=force)
     if not stale:
         _out.print("[green][SUCCESS][/green] All stacks up to date.")
         return
@@ -986,9 +995,16 @@ def _build_derived_image(rt: str, derived: str, dockerfile: Path, ctx: str, reci
     and `harnessed.recipe-hash=<recipe_hash>` (`compute_recipe_hash` — the stack's recipe-closure
     content hash, read back by `_built_image_hash`/`_reconcile_stacks` so a bare `harnessed build`
     knows which stacks are stale without a separate manifest file that could drift from the image).
+
+    Honors `HARNESSED_PODMAN_NO_CACHE` (set by `--no-cache` / `--force`): without it, an unchanged
+    Dockerfile is a pure layer-cache hit and this call is a no-op that still relabels the same image
+    — which is why `--force` alone previously looked like it did nothing on a named-stack build.
     """
+    no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
+    cache_arg = ["--no-cache"] if no_cache else []
     _run([
         rt, "build", "-t", derived, "-f", str(dockerfile),
+        *cache_arg,
         "--label", "harnessed=true",
         "--label", f"harnessed.recipe-hash={recipe_hash}",
         ctx,
@@ -1510,6 +1526,8 @@ def _build_service_image(rt: str, name: str) -> None:
 
     def build() -> None:
         _say(f"[blue][INFO][/blue] Building service image {svc.image} ...")
+        no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "true"
+        cache_arg = ["--no-cache"] if no_cache else []
         tmp = _service_dockerfile_with_ca(orig_dockerfile)
         try:
             effective = tmp if tmp else orig_dockerfile
@@ -1518,7 +1536,7 @@ def _build_service_image(rt: str, name: str) -> None:
             with tempfile.TemporaryDirectory() as build_ctx:
                 shutil.copytree(svc_dir, build_ctx, dirs_exist_ok=True)
                 _run([rt, "build", "-t", svc.image, "-f", str(effective),
-                      *_corp_proxy_ca_secret_args(), build_ctx])
+                      *cache_arg, *_corp_proxy_ca_secret_args(), build_ctx])
         finally:
             if tmp:
                 tmp.unlink(missing_ok=True)
@@ -3650,7 +3668,14 @@ def build(
         False, "--no-strict",
         help="Allow unknown recipe-manifest fields (disables the typo guardrail)",
     ),
-    force: bool = typer.Option(False, "--force", help="Force rebuild of base images"),
+    force: bool = typer.Option(
+        False, "--force",
+        help=(
+            "Force rebuild: base/claude images, plus (on a bare `build`) every declared/"
+            "previously-built container stack regardless of recipe-hash staleness. Bypasses the "
+            "podman layer cache (implies --no-cache) so the rebuild is real, not a cache hit."
+        ),
+    ),
     no_cache: bool = typer.Option(False, "--no-cache", help="Disable podman layer cache for image builds"),
     jobs: int = typer.Option(
         _DEFAULT_JOBS, "--jobs", "-j", min=1,
@@ -3686,7 +3711,12 @@ def build(
                                   shared recipe propagates to every stack that uses it without
                                   having to name them one by one. Stale stacks build CONCURRENTLY
                                   (`--jobs`, default half the cores capped at 4); each build's log
-                                  is prefixed with its own coloured stack(harness) tag.
+                                  is prefixed with its own coloured stack(harness) tag. `--force`
+                                  treats every DECLARED/previously-built pair as stale regardless of
+                                  its recipe hash, and bypasses the podman layer cache, so a bare
+                                  `build --force` rebuilds every container-based stack on this
+                                  machine from scratch. `--force` also bypasses the layer cache on a
+                                  named `build <stack> <harness>`.
 
     The --corp-proxy-ca-crt flag is a one-time setup for SSL-inspecting corporate proxies: it
     persists the CA bundle at $XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt and subsequent builds
@@ -3709,38 +3739,51 @@ def build(
     _ensure_docs_wiki_clone()
     rt = _runtime()
 
-    # Optional cache disable: when --no-cache is set, bypass podman layer cache for image builds.
-    if no_cache:
+    # Optional cache disable: when --no-cache (or --force, which implies it) is set, bypass podman
+    # layer cache for image builds — without this, an unchanged Dockerfile is a cache hit and
+    # "rebuild" produces the identical image, which is what made a bare `--force` look like a no-op.
+    # Restored in `finally` below: this env var is process-global, and `build` can run more than
+    # once in-process (tests via CliRunner, or any future programmatic caller) — leaving it set
+    # would silently disable the cache for unrelated later builds in the same process.
+    _prev_no_cache = os.environ.get("HARNESSED_PODMAN_NO_CACHE")
+    if no_cache or force:
         os.environ["HARNESSED_PODMAN_NO_CACHE"] = "true"
 
-    root_path = Path(root).resolve() if root else None
-    if stack:
-        if harness:
-            if harness not in HARNESS_CONFIG_DIR:
-                _err.print(
-                    f"[bold red]error:[/bold red] unsupported harness '{harness}' "
-                    f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+    try:
+        root_path = Path(root).resolve() if root else None
+        if stack:
+            if harness:
+                if harness not in HARNESS_CONFIG_DIR:
+                    _err.print(
+                        f"[bold red]error:[/bold red] unsupported harness '{harness}' "
+                        f"(supported: {', '.join(sorted(HARNESS_CONFIG_DIR))})"
+                    )
+                    raise typer.Exit(1)
+                targets = [harness]
+            else:
+                # No harness argument: fan out to the stack's declared `harnesses:` list.
+                targets = _declared_harnesses(stack, root_path)
+                if not targets:
+                    _err.print(
+                        "[bold red]error:[/bold red] harness is required when a stack is specified "
+                        "(e.g.: harnessed build my-stack claude) — or declare `harnesses: [claude, omp]` "
+                        f"in the '{stack}' stack.yaml to build several at once"
+                    )
+                    raise typer.Exit(1)
+                _out.print(
+                    f"[blue][INFO][/blue] Stack '{stack}' declares harnesses: {', '.join(targets)}"
                 )
-                raise typer.Exit(1)
-            targets = [harness]
+            for target in targets:
+                _build_stack(rt, stack, target, root_path, strict=not no_strict)
         else:
-            # No harness argument: fan out to the stack's declared `harnesses:` list.
-            targets = _declared_harnesses(stack, root_path)
-            if not targets:
-                _err.print(
-                    "[bold red]error:[/bold red] harness is required when a stack is specified "
-                    "(e.g.: harnessed build my-stack claude) — or declare `harnesses: [claude, omp]` "
-                    f"in the '{stack}' stack.yaml to build several at once"
-                )
-                raise typer.Exit(1)
-            _out.print(
-                f"[blue][INFO][/blue] Stack '{stack}' declares harnesses: {', '.join(targets)}"
-            )
-        for target in targets:
-            _build_stack(rt, stack, target, root_path, strict=not no_strict)
-    else:
-        _build_images_cmd(rt, force=force)
-        _reconcile_stacks(rt, root_path, strict=not no_strict, jobs=jobs)
+            _build_images_cmd(rt, force=force)
+            _reconcile_stacks(rt, root_path, strict=not no_strict, jobs=jobs, force=force)
+    finally:
+        if no_cache or force:
+            if _prev_no_cache is None:
+                os.environ.pop("HARNESSED_PODMAN_NO_CACHE", None)
+            else:
+                os.environ["HARNESSED_PODMAN_NO_CACHE"] = _prev_no_cache
 
 
 @app.command("list")

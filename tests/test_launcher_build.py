@@ -8,6 +8,7 @@ covered elsewhere — what matters here is WHICH (stack, harness) pairs get hand
 * `build`                   → declared pairs + previously-built pairs, rebuilt when stale
 """
 
+import os
 import re
 import subprocess
 
@@ -149,3 +150,61 @@ class TestBareBuildReconcile:
         result = runner.invoke(launcher.app, ["build", "--root", str(root)])
         assert result.exit_code == 0, result.output
         assert ("single", "claude") in built
+
+    def test_force_rebuilds_pairs_with_a_current_hash(self, root, built, monkeypatch):
+        from harnessed.assemble import compute_recipe_hash
+        from harnessed.schema import load_stack_with_recipes
+
+        _, recipes = load_stack_with_recipes(root, "multi", strict=True)
+        current = compute_recipe_hash(root / "stacks" / "multi" / "stack.yaml", recipes)
+        self._fake_podman(
+            monkeypatch,
+            images="",
+            hashes={
+                "harnessed-claude-multi:latest": current,
+                "harnessed-omp-multi:latest": current,
+            },
+        )
+        result = runner.invoke(launcher.app, ["build", "--force", "--root", str(root)])
+        assert result.exit_code == 0, result.output
+        assert built == [("multi", "claude"), ("multi", "omp")], (
+            "--force must rebuild every declared/previously-built pair even when its recipe hash "
+            "is already current"
+        )
+
+    def test_force_sets_no_cache_env_during_the_build_and_restores_it_after(self, root, built, monkeypatch):
+        # The env var is process-global plumbing to `_build_derived_image`/`_build_agent_image`/
+        # `_build_service_image` (see TestBuildDerivedImageCacheBypass in
+        # test_launcher_install.py for proof it actually reaches the podman command) — this test
+        # only checks that `build --force` turns it on for the duration of the build and restores
+        # whatever was there before, so it can't leak into unrelated later builds in the same
+        # process (e.g. another CliRunner.invoke in the same pytest session).
+        seen: list[str | None] = []
+
+        def fake_run(cmd, **kwargs):
+            seen.append(os.environ.get("HARNESSED_PODMAN_NO_CACHE"))
+            if cmd[1] == "images":
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if cmd[1] == "inspect":
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="no such image")
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+        monkeypatch.delenv("HARNESSED_PODMAN_NO_CACHE", raising=False)
+
+        result = runner.invoke(launcher.app, ["build", "--force", "--root", str(root)])
+        assert result.exit_code == 0, result.output
+        assert seen and all(v == "true" for v in seen), "--force must set the cache-bypass env var for the build"
+        assert os.environ.get("HARNESSED_PODMAN_NO_CACHE") is None, (
+            "the CLI command must restore the prior (absent) value once the build finishes, or it "
+            "leaks into unrelated later builds in the same process"
+        )
+
+    def test_force_restores_a_pre_existing_no_cache_value_after(self, root, built, monkeypatch):
+        self._fake_podman(monkeypatch, images="", hashes={})
+        monkeypatch.setenv("HARNESSED_PODMAN_NO_CACHE", "false")
+        result = runner.invoke(launcher.app, ["build", "--force", "--root", str(root)])
+        assert result.exit_code == 0, result.output
+        assert os.environ.get("HARNESSED_PODMAN_NO_CACHE") == "false", (
+            "a pre-existing env value must be restored, not clobbered with the process default"
+        )
