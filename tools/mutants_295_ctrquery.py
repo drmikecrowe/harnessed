@@ -55,8 +55,8 @@ MUTANTS: list[tuple[str, str, str, Path]] = [
     ),
     (
         "M2: remove timeout= from _image_exists _bounded call",
-        "            timeout=_PODMAN_QUERY_TIMEOUT,\n            capture_output=True,\n        ).returncode\n        == 0\n    )\n\n\ndef _container_running",
-        "            capture_output=True,\n        ).returncode\n        == 0\n    )\n\n\ndef _container_running",
+        "        timeout=_PODMAN_QUERY_TIMEOUT,\n        capture_output=True,\n    ).returncode == 0\n\n\ndef _container_running",
+        "        capture_output=True,\n    ).returncode == 0\n\n\ndef _container_running",
         _CTRQUERY,
     ),
     (
