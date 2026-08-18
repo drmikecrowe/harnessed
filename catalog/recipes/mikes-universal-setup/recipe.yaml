@@ -58,6 +58,11 @@ rules:
   - path: rules/rg
   - path: rules/stop-and-ask
   - path: rules/token-efficient
+  # The cwd is session identity, not convenience: backgrounding snapshots the LIVE cwd, so a session
+  # that wandered into a subdirectory gets keyed into the wrong transcript namespace and cannot be
+  # resumed from the project root. Concrete instance of execution-discipline's drift failure; a
+  # declared worktree switch is explicitly exempt.
+  - path: rules/working-directory-stability
 
 # Skills arrive two ways:
 #   1. install.script FETCHES the UNMODIFIED third-party skills at pinned commit SHAs — they are NOT
