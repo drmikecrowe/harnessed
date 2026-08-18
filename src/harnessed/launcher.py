@@ -2781,7 +2781,7 @@ def _resolve_stack(
         with _mint_lock(derived):
             preexisting = (paths.generated_catalog_root() / "stacks" / derived / "stack.yaml").is_file()
             name, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}")
         raise typer.Exit(1) from exc
     return name, None if preexisting else stack_dir
