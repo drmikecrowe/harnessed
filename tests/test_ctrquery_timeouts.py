@@ -2,8 +2,8 @@
 
 The five direct podman callers (_image_exists, _container_running, _container_exists, _pod_exists,
 _inspect_id) must return a safe sentinel (False or "") when podman hangs (rc=124 from _bounded)
-rather than blocking indefinitely.  _stopped_leftover and _container_stale compose these five and
-return False by induction — they carry no direct subprocess.run calls.
+rather than blocking indefinitely.  _stopped_leftover and _container_stale carry no direct
+subprocess.run calls; their composite timeout behaviour is pinned in TestCompositeTimeoutBehaviour.
 """
 
 from __future__ import annotations
@@ -38,8 +38,7 @@ class TestRc124FallThrough:
 
     We patch _bounded directly (ctrquery no longer calls subprocess.run) and return
     the rc=124 CompletedProcess that _bounded produces on timeout.  _stopped_leftover and
-    _container_stale are not tested here because they compose the five functions below —
-    their safe behavior follows by induction.
+    _container_stale are tested in TestCompositeTimeoutBehaviour below.
     """
 
     def test_image_exists_timeout_returns_false(self):
@@ -108,11 +107,11 @@ class TestTimeoutConstantPresent:
 
 
 class TestBoundedIsUsed:
-    """subprocess.run must NOT be called directly; _bounded must be used instead.
+    """Each of the five direct callers invokes _bounded with a real timeout= value.
 
-    These tests verify that the call dispatches through _bounded (which carries a timeout),
-    rather than bare subprocess.run.  We do this by verifying that _bounded is called with
-    a timeout= keyword argument, while a direct subprocess.run would not be.
+    These tests verify that _bounded is called (and receives a non-None, positive timeout).
+    They do NOT assert that subprocess.run is never called — that guarantee is the audit test
+    in test_subprocess_timeout_audit.py (test_no_unbounded_call_without_a_stated_reason).
     """
 
     @pytest.mark.parametrize(
@@ -126,7 +125,7 @@ class TestBoundedIsUsed:
         ],
     )
     def test_bounded_called_with_timeout(self, fn, args, kwargs):
-        """Each ctrquery function must call _bounded (not subprocess.run) with timeout= set."""
+        """_bounded is called with a positive timeout= value."""
         calls = []
 
         def _fake_bounded(cmd, *, timeout, warn=True, **kw):
@@ -141,4 +140,56 @@ class TestBoundedIsUsed:
         assert calls, f"ctrquery.{fn} did not call _bounded at all"
         assert all(t is not None and t > 0 for t in calls), (
             f"ctrquery.{fn} called _bounded without a real timeout: {calls}"
+        )
+
+
+class TestCompositeTimeoutBehaviour:
+    """Pin the actual behaviour of _stopped_leftover and _container_stale under timeout.
+
+    These are KNOWN LIMITS documented in EVIDENCE, not PASSED claims.  The tests exist to
+    prevent silent regression — if the behaviour changes, these tests will catch it.
+    """
+
+    def test_stopped_leftover_returns_false_when_all_bounded_calls_timeout(self):
+        """_stopped_leftover returns False (eventually) when every _bounded call returns rc=124.
+
+        On a hung podman with rt='podman', up to three sequential _bounded calls each wait
+        _PODMAN_QUERY_TIMEOUT seconds before returning rc=124; the worst-case wall-clock block is
+        3 * _PODMAN_QUERY_TIMEOUT.  This test pins that _stopped_leftover returns False rather than
+        raising or returning True.
+        """
+        timeout_rc = subprocess.CompletedProcess(
+            args=[], returncode=124, stdout=b"", stderr=b""
+        )
+        timeout_text = subprocess.CompletedProcess(
+            args=[], returncode=124, stdout="", stderr=""
+        )
+        calls: list[list[str]] = []
+
+        def _fake_bounded(cmd, *, timeout, warn=True, **kw):
+            calls.append(list(cmd))
+            text = kw.get("text", False)
+            return timeout_text if text else timeout_rc
+
+        with patch("harnessed.ctrquery._bounded", side_effect=_fake_bounded):
+            result = ctrquery._stopped_leftover("podman", "myinst", "mypod")
+
+        assert result is False
+        # All three queries must have run (none short-circuits when rc=124).
+        assert len(calls) == 3, f"expected 3 _bounded calls, got {len(calls)}: {calls}"
+
+    def test_container_stale_returns_false_when_inspect_times_out(self):
+        """_container_stale returns False (not stale) when _inspect_id returns '' on timeout.
+
+        Known limit (F4, Issue #295): a hung podman causes _inspect_id to return '' (rc=124 =>
+        else branch).  _img_differs sees two empty strings and returns False ('can't tell ->
+        not stale').  The container is treated as current and re-attached, potentially running
+        an old build.  This is fail-open on staleness detection; the alternative (hang forever)
+        was the pre-#295 behaviour.
+        """
+        empty = subprocess.CompletedProcess(args=[], returncode=124, stdout="", stderr="")
+        with patch("harnessed.ctrquery._bounded", return_value=empty):
+            result = ctrquery._container_stale("podman", "mycontainer", "myimage")
+        assert result is False, (
+            "_container_stale must return False (fail-open) when inspect times out"
         )

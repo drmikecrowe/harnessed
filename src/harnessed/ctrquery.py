@@ -8,7 +8,6 @@ that imported them from launcher would invert the dependency the split depends o
 from __future__ import annotations
 
 import shutil
-import subprocess
 
 import typer
 
@@ -67,7 +66,11 @@ def _pod_exists(rt: str, pod: str) -> bool:
 def _stopped_leftover(rt: str, inst: str, pod: str) -> bool:
     """True if a prior (non-ephemeral) session left a stopped instance/pod that would block a fresh
     `pod create` with "name already in use". A *running* instance is re-attached, never torn down
-    here — only genuinely stopped leftovers qualify."""
+    here — only genuinely stopped leftovers qualify.
+
+    On a hung podman (rt="podman") this makes up to three sequential _bounded calls, each with
+    _PODMAN_QUERY_TIMEOUT seconds, for a worst-case wall-clock block of 3 x _PODMAN_QUERY_TIMEOUT.
+    """
     if _container_running(rt, inst):
         return False
     return _container_exists(rt, inst) or (_rt_uses_pods(rt) and _pod_exists(rt, pod))

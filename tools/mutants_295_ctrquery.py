@@ -17,7 +17,6 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent
 _CTRQUERY = _ROOT / "src" / "harnessed" / "ctrquery.py"
 _AUDIT = _ROOT / "tests" / "test_subprocess_timeout_audit.py"
-_TESTS = _ROOT / "tests" / "test_ctrquery_timeouts.py"
 
 
 def _git(*args: str) -> str:
@@ -45,8 +44,8 @@ def _restore(path: Path) -> None:
     subprocess.check_call(["git", "checkout", "--", str(path.relative_to(_ROOT))], cwd=_ROOT)
 
 
-MUTANTS: list[tuple[str, str, str, Path]] = [
-    # (description, old_text, new_text, file)
+# (description, old_text, new_text, file) — old_text/new_text are None for scope survivors (skipped).
+MUTANTS: list[tuple[str, str | None, str | None, Path]] = [
     (
         "M1: _PODMAN_QUERY_TIMEOUT = 0 (wrong value)",
         "_PODMAN_QUERY_TIMEOUT = 30",
@@ -67,13 +66,16 @@ MUTANTS: list[tuple[str, str, str, Path]] = [
     ),
     (
         "M4: invert _inspect_id branch (returncode != 0 instead of == 0)",
-        "return r.stdout.strip() if r.returncode == 0 else \"\"",
-        "return r.stdout.strip() if r.returncode != 0 else \"\"",
+        'return r.stdout.strip() if r.returncode == 0 else ""',
+        'return r.stdout.strip() if r.returncode != 0 else ""',
         _CTRQUERY,
     ),
+    # M5 is a scope survivor: the 'and result.stdout.strip() == "true"' check in _container_running
+    # is pre-existing logic, unchanged by this PR.  The suite covers it elsewhere; testing it here
+    # would assert behaviour outside this PR's scope.
     (
         "M5 (scope survivor): drop stdout check from _container_running — pre-existing logic",
-        None,  # skip: pre-existing logic, out of scope for this PR
+        None,
         None,
         _CTRQUERY,
     ),
@@ -90,7 +92,7 @@ def main() -> int:
     skipped: list[str] = []
 
     for desc, old, new, path in MUTANTS:
-        if old is None:
+        if old is None or new is None:
             print(f"  SKIP   {desc}")
             skipped.append(desc)
             continue
