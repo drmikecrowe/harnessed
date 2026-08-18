@@ -38,6 +38,14 @@ class TestRc124FallThrough:
         with patch("harnessed.svcstate._bounded", return_value=_timeout_result()):
             assert svcstate._svc_published_port("podman", "myctr", 3307) == 0
 
+    def test_svc_published_port_success_returns_parsed_port(self):
+        """returncode == 0 with valid stdout => the parsed port integer."""
+        ok = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="127.0.0.1:49183\n", stderr=""
+        )
+        with patch("harnessed.svcstate._bounded", return_value=ok):
+            assert svcstate._svc_published_port("podman", "myctr", 3307) == 49183
+
     def test_repo_project_hashes_timeout_returns_only_local_hash(self, tmp_path):
         """On git timeout the function returns only the local project hash, not sibling hashes."""
         fake_hash = "deadbeef"
