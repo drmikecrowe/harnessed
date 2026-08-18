@@ -10,6 +10,7 @@ Replaces the bash launcher (harnessed + lib/*.sh) with a Typer CLI that:
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -2710,6 +2711,27 @@ def _require_supported_harness(harness: str) -> None:
         raise typer.Exit(1)
 
 
+@contextmanager
+def _mint_lock(derived: str) -> Generator[None, None, None]:
+    """Serialize the is_file → mint sequence for one derived stack name.
+
+    The lock file is a SIBLING of the stack dir (stacks/{derived}.lock vs stacks/{derived}/),
+    so it survives an rmtree of the guarded directory — see the three delete sites in host_run
+    and container_run. Released before _resolve_stack returns; never held across a build
+    (bd harnessed-287).
+    """
+    lock_dir = paths.generated_catalog_root() / "stacks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = lock_dir / f"{derived}.lock"
+    fh = open(lock_path, "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        fh.close()
+
+
 def _resolve_stack(
     stack: Optional[str], recipe: list[str], extends: str, no_extends: bool, service: list[str]
 ) -> tuple[str, Optional[Path]]:
@@ -2753,9 +2775,12 @@ def _resolve_stack(
         # services MUST be passed to BOTH calls — they are part of the identity, so deriving
         # without them would compute a different name than mint() does and the preexisting check
         # would inspect the wrong path.
+        # derive_name is pure computation and its return value IS the lock key — calling it outside
+        # the lock is correct; see bd harnessed-287 (reviewed and confirmed).
         derived = dynstack.derive_name(list(recipe), base, services=list(service))
-        preexisting = (paths.generated_catalog_root() / "stacks" / derived / "stack.yaml").is_file()
-        name, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
+        with _mint_lock(derived):
+            preexisting = (paths.generated_catalog_root() / "stacks" / derived / "stack.yaml").is_file()
+            name, stack_dir = dynstack.mint(list(recipe), base, services=list(service))
     except ValueError as exc:
         _err.print(f"[bold red]error:[/bold red] {exc}")
         raise typer.Exit(1) from exc
