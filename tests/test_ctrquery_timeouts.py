@@ -19,6 +19,7 @@ from harnessed import ctrquery
 # Helper: build a CompletedProcess that _bounded would return on timeout
 # ---------------------------------------------------------------------------
 
+
 def _timeout_result(*, text: bool = False) -> subprocess.CompletedProcess:
     """Simulate a _bounded timeout: rc=124, empty output."""
     stdout = "" if text else b""
@@ -30,38 +31,52 @@ def _timeout_result(*, text: bool = False) -> subprocess.CompletedProcess:
 # rc=124 fall-through tests (spec scenarios)
 # ---------------------------------------------------------------------------
 
+
 class TestRc124FallThrough:
-    """Each function must return a safe False / "" on timeout (rc=124) without raising."""
+    """Each function must return a safe False / "" on timeout (rc=124) without raising.
+
+    We patch _bounded directly (ctrquery no longer calls subprocess.run) and return
+    the rc=124 CompletedProcess that _bounded produces on timeout.
+    """
 
     def test_image_exists_timeout_returns_false(self):
         """rc=124 => returncode != 0 => False."""
         result = _timeout_result()
-        with patch("harnessed.ctrquery.subprocess.run", return_value=result):
+        with patch("harnessed.ctrquery._bounded", return_value=result):
             assert ctrquery._image_exists("podman", "myimage:latest") is False
 
     def test_container_running_timeout_returns_false(self):
         """rc=124 short-circuits at returncode==0 check => False."""
         result = _timeout_result(text=True)
-        with patch("harnessed.ctrquery.subprocess.run", return_value=result):
+        with patch("harnessed.ctrquery._bounded", return_value=result):
             assert ctrquery._container_running("podman", "mycontainer") is False
 
     def test_container_exists_timeout_returns_false(self):
         """rc=124 => returncode != 0 => False."""
         result = _timeout_result()
-        with patch("harnessed.ctrquery.subprocess.run", return_value=result):
+        with patch("harnessed.ctrquery._bounded", return_value=result):
             assert ctrquery._container_exists("podman", "mycontainer") is False
 
     def test_pod_exists_timeout_returns_false(self):
         """rc=124 => returncode != 0 => False."""
         result = _timeout_result()
-        with patch("harnessed.ctrquery.subprocess.run", return_value=result):
+        with patch("harnessed.ctrquery._bounded", return_value=result):
             assert ctrquery._pod_exists("podman", "mypod") is False
 
     def test_inspect_id_timeout_returns_empty_string(self):
         """rc=124 => takes the else branch => ""."""
         result = _timeout_result(text=True)
-        with patch("harnessed.ctrquery.subprocess.run", return_value=result):
+        with patch("harnessed.ctrquery._bounded", return_value=result):
             assert ctrquery._inspect_id("podman", "container", "mycontainer", "{{.Id}}") == ""
+
+    def test_inspect_id_success_returns_stdout(self):
+        """rc=0 => returns stdout.strip() — validates the branch is not inverted."""
+        result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="sha256:abc123\n", stderr=""
+        )
+        with patch("harnessed.ctrquery._bounded", return_value=result):
+            val = ctrquery._inspect_id("podman", "container", "mycontainer", "{{.Id}}")
+        assert val == "sha256:abc123", f"expected stripped stdout, got {val!r}"
 
 
 class TestTimeoutConstantPresent:
@@ -75,6 +90,19 @@ class TestTimeoutConstantPresent:
     def test_constant_value_is_30(self):
         assert ctrquery._PODMAN_QUERY_TIMEOUT == 30
 
+    def test_ctrquery_is_in_audit(self):
+        """ctrquery.py must appear in _AUDITED so the audit catches future unbounded calls there.
+
+        This test guards against silently dropping the audit coverage: removing 'ctrquery.py'
+        from _AUDITED would let a future bare subprocess.run() in ctrquery go undetected.
+        """
+        from tests.test_subprocess_timeout_audit import _AUDITED  # type: ignore[import]
+
+        assert "ctrquery.py" in _AUDITED, (
+            "'ctrquery.py' was removed from _AUDITED in test_subprocess_timeout_audit.py — "
+            "Issue #295 requires it to be audited for unbounded subprocess calls."
+        )
+
 
 class TestBoundedIsUsed:
     """subprocess.run must NOT be called directly; _bounded must be used instead.
@@ -84,13 +112,16 @@ class TestBoundedIsUsed:
     a timeout= keyword argument, while a direct subprocess.run would not be.
     """
 
-    @pytest.mark.parametrize("fn,args,kwargs", [
-        ("_image_exists", ("podman", "myimage"), {}),
-        ("_container_running", ("podman", "myname"), {}),
-        ("_container_exists", ("podman", "myname"), {}),
-        ("_pod_exists", ("podman", "mypod"), {}),
-        ("_inspect_id", ("podman", "container", "myref", "{{.Id}}"), {}),
-    ])
+    @pytest.mark.parametrize(
+        "fn,args,kwargs",
+        [
+            ("_image_exists", ("podman", "myimage"), {}),
+            ("_container_running", ("podman", "myname"), {}),
+            ("_container_exists", ("podman", "myname"), {}),
+            ("_pod_exists", ("podman", "mypod"), {}),
+            ("_inspect_id", ("podman", "container", "myref", "{{.Id}}"), {}),
+        ],
+    )
     def test_bounded_called_with_timeout(self, fn, args, kwargs):
         """Each ctrquery function must call _bounded (not subprocess.run) with timeout= set."""
         calls = []
