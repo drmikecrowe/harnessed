@@ -211,6 +211,7 @@ class TestMintRace:
             dynstack, "mint", _make_mint(solo_tmp / "data", derive_fn=original_derive)
         )
         _solo_name, solo_dir = launcher._resolve_stack(None, RECIPE, EXTENDS, False, [])
+        assert solo_dir is not None, "first single-threaded call must mint (own the manifest)"
         solo_content = (solo_dir / "stack.yaml").read_text()
 
         # Concurrent launch in the original tmp space
