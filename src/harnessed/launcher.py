@@ -2718,7 +2718,7 @@ def _mint_lock(derived: str) -> Generator[None, None, None]:
     The lock file is a SIBLING of the stack dir (stacks/{derived}.lock vs stacks/{derived}/),
     so it survives an rmtree of the guarded directory — see the three delete sites in host_run
     and container_run. Released before _resolve_stack returns; never held across a build
-    (bd harnessed-287).
+    (#287).
     """
     lock_dir = paths.generated_catalog_root() / "stacks"
     lock_dir.mkdir(parents=True, exist_ok=True)
@@ -2776,7 +2776,7 @@ def _resolve_stack(
         # without them would compute a different name than mint() does and the preexisting check
         # would inspect the wrong path.
         # derive_name is pure computation and its return value IS the lock key — calling it outside
-        # the lock is correct; see bd harnessed-287 (reviewed and confirmed).
+        # the lock is correct; see #287 (reviewed and confirmed).
         derived = dynstack.derive_name(list(recipe), base, services=list(service))
         with _mint_lock(derived):
             preexisting = (paths.generated_catalog_root() / "stacks" / derived / "stack.yaml").is_file()
