@@ -23,8 +23,9 @@ parent session was correct; only the spawned child was stranded.
   into every later call.
 - **Prefer the tool's own path argument** over shell navigation: `git -C <dir> status`, `fd . <dir>`,
   `rg <pat> <dir>`.
-- **Before any handoff, confirm where you are standing.** Backgrounding, spawning a job, or ending a
-  session are all snapshot points. `pwd` should read the launch directory.
+- **Before any handoff, confirm the expected working directory.** Backgrounding, spawning a job, or
+  ending a session are all snapshot points. Without a declared worktree switch, `pwd` should read the
+  launch directory. After a declared worktree switch, `pwd` should read the declared worktree.
 
 ## Not covered
 
