@@ -1,8 +1,9 @@
 """Timeout behaviour for ctrquery.py — Issue #295.
 
-Each podman predicate must return a safe sentinel value when podman hangs (rc=124 from _bounded)
-rather than blocking indefinitely.  These tests verify the rc=124 fall-through in each of the five
-public predicates.
+The five direct podman callers (_image_exists, _container_running, _container_exists, _pod_exists,
+_inspect_id) must return a safe sentinel (False or "") when podman hangs (rc=124 from _bounded)
+rather than blocking indefinitely.  _stopped_leftover and _container_stale compose these five and
+return False by induction — they carry no direct subprocess.run calls.
 """
 
 from __future__ import annotations
@@ -33,10 +34,12 @@ def _timeout_result(*, text: bool = False) -> subprocess.CompletedProcess:
 
 
 class TestRc124FallThrough:
-    """Each function must return a safe False / "" on timeout (rc=124) without raising.
+    """Each direct podman caller returns False or "" on timeout (rc=124) without raising.
 
     We patch _bounded directly (ctrquery no longer calls subprocess.run) and return
-    the rc=124 CompletedProcess that _bounded produces on timeout.
+    the rc=124 CompletedProcess that _bounded produces on timeout.  _stopped_leftover and
+    _container_stale are not tested here because they compose the five functions below —
+    their safe behavior follows by induction.
     """
 
     def test_image_exists_timeout_returns_false(self):
