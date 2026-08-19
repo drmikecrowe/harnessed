@@ -6,7 +6,7 @@ Run: tools/mutants_391_svcstate.py
 Each mutant is a real bug a future edit could plausibly introduce. The suite must
 FAIL on every one of them; a mutant that survives means the tests covering it assert nothing.
 
-Restores every file it touches and verifies the tree came back clean with `git diff`.
+Restores every file it touches (even on error) and verifies the tree came back clean.
 """
 from __future__ import annotations
 
@@ -24,7 +24,9 @@ def _git(*args: str) -> str:
 
 
 def _dirty() -> bool:
-    return bool(_git("diff", "--name-only").strip())
+    # status --porcelain, not `diff`: `diff` alone ignores STAGED changes, so a staged edit to a
+    # target file would pass the clean-tree gate and then be silently reverted by _restore.
+    return bool(_git("status", "--porcelain").strip())
 
 
 def _run_suite() -> bool:
@@ -90,6 +92,14 @@ def main() -> int:
         print("ERROR: working tree is dirty — run on a clean tree", file=sys.stderr)
         return 1
 
+    # Baseline gate: a suite that ALREADY fails reports every mutant as killed, which is the
+    # fail-open mode that makes a mutation score worthless. Prove the suite is green first.
+    print("  BASE   verifying the suite passes before any mutation")
+    if _run_suite():
+        print("ERROR: target suite fails BEFORE mutation — every mutant would report killed",
+              file=sys.stderr)
+        return 1
+
     killed = 0
     survivors: list[str] = []
     skipped: list[str] = []
@@ -108,8 +118,12 @@ def main() -> int:
         print(f"  APPLY  {desc}")
         path.write_text(src.replace(old, new, 1), encoding="utf-8")
 
-        failed = _run_suite()
-        _restore(path)
+        try:
+            failed = _run_suite()
+        finally:
+            # finally, not a bare call: if _run_suite raises, an un-restored mutation is left
+            # sitting in a source file the caller believes is clean.
+            _restore(path)
 
         if _dirty():
             print(f"  ERROR  restore failed for {desc}", file=sys.stderr)
