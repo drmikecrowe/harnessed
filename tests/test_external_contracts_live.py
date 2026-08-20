@@ -442,5 +442,10 @@ class TestVarlockJsonOutput:
         _varlock_cache_clear()
         result = _varlock_resolve(empty_dir)
         assert result is None, (
-            f"_varlock_resolve must return None when no .env.schema exists; got: {result!r}"
+            # Same hazard as the sibling test above: the dict may carry OP_SERVICE_ACCOUNT_TOKEN
+            # and whatever else launchenv injects from os.environ. This assertion only fires in
+            # the surprising case, which is exactly when a full dump would reach a public CI log.
+            # Key NAMES only, never values.
+            f"_varlock_resolve must return None when no .env.schema exists; "
+            f"got a dict with keys {sorted(result)} (values omitted — may contain env secrets)"
         )
