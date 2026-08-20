@@ -21,7 +21,9 @@ import pytest
 
 SRC = Path(__file__).parent.parent / "src" / "harnessed"
 
-# Extracted out of launcher.py. Add every new one here — that is the whole cost of the rule.
+# Every module that shares launcher's console. Most were extracted out of launcher.py; a few, like
+# schema.py, only borrow the console. Both are held to the same rule. Add every new one here — that
+# is the whole cost of the rule.
 EXTRACTED = [
     "attachcmd.py",
     "backend.py",
@@ -38,6 +40,7 @@ EXTRACTED = [
     "layout.py",
     "mounts.py",
     "proc.py",
+    "schema.py",  # never lived in launcher.py; listed because it reports through the shared console
     "setupenv.py",
     "svcguards.py",
     "svcstate.py",
@@ -77,8 +80,9 @@ def test_extracted_module_does_not_import_launcher(module):
 def test_the_ledger_lists_every_extracted_module():
     """A module missing from EXTRACTED is unenforced, which is indistinguishable from compliant.
 
-    Anything importing `harnessed.console` was carved out of launcher.py — that module exists only
-    so an extracted module can report on launcher's console instead of building a second one.
+    Anything importing `harnessed.console` reports through launcher's console instead of building a
+    second one. Most such modules were carved out of launcher.py; the rest still owe it the same
+    one-way dependency.
     """
     def imports_harnessed_console(path: Path) -> bool:
         # The relative `from .console import ...` specifically — `rich.console` is a different

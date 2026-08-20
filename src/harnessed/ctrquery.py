@@ -8,11 +8,15 @@ that imported them from launcher would invert the dependency the split depends o
 from __future__ import annotations
 
 import shutil
-import subprocess
 
 import typer
 
 from .console import _err
+from .proc import _bounded
+
+# Same value as launcher.py's _PODMAN_QUERY_TIMEOUT — both default to 30 s for consistency.
+# Kept local to avoid importing from launcher.py (circular dependency).
+_PODMAN_QUERY_TIMEOUT = 30
 
 
 def _runtime() -> str:
@@ -25,15 +29,17 @@ def _runtime() -> str:
 
 
 def _image_exists(rt: str, image: str) -> bool:
-    return subprocess.run(
+    return _bounded(
         [rt, "image", "inspect", image],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True,
     ).returncode == 0
 
 
 def _container_running(rt: str, name: str) -> bool:
-    result = subprocess.run(
+    result = _bounded(
         [rt, "container", "inspect", "-f", "{{.State.Running}}", name],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True, text=True,
     )
     return result.returncode == 0 and result.stdout.strip() == "true"
@@ -41,27 +47,41 @@ def _container_running(rt: str, name: str) -> bool:
 
 def _container_exists(rt: str, name: str) -> bool:
     """True if a container named `name` exists in any state (running, exited, created)."""
-    return subprocess.run(
-        [rt, "container", "inspect", name], capture_output=True,
+    return _bounded(
+        [rt, "container", "inspect", name],
+        timeout=_PODMAN_QUERY_TIMEOUT,
+        capture_output=True,
     ).returncode == 0
 
 
 def _pod_exists(rt: str, pod: str) -> bool:
     """True if a podman pod named `pod` exists in any state (created/running/exited)."""
-    return subprocess.run([rt, "pod", "inspect", pod], capture_output=True).returncode == 0
+    return _bounded(
+        [rt, "pod", "inspect", pod],
+        timeout=_PODMAN_QUERY_TIMEOUT,
+        capture_output=True,
+    ).returncode == 0
 
 
 def _stopped_leftover(rt: str, inst: str, pod: str) -> bool:
     """True if a prior (non-ephemeral) session left a stopped instance/pod that would block a fresh
     `pod create` with "name already in use". A *running* instance is re-attached, never torn down
-    here — only genuinely stopped leftovers qualify."""
+    here — only genuinely stopped leftovers qualify.
+
+    On a hung podman (rt="podman") this makes up to three sequential _bounded calls, each with
+    _PODMAN_QUERY_TIMEOUT seconds, for a worst-case wall-clock block of 3 x _PODMAN_QUERY_TIMEOUT.
+    """
     if _container_running(rt, inst):
         return False
     return _container_exists(rt, inst) or (_rt_uses_pods(rt) and _pod_exists(rt, pod))
 
 
 def _inspect_id(rt: str, kind: str, ref: str, fmt: str) -> str:
-    r = subprocess.run([rt, kind, "inspect", "-f", fmt, ref], capture_output=True, text=True)
+    r = _bounded(
+        [rt, kind, "inspect", "-f", fmt, ref],
+        timeout=_PODMAN_QUERY_TIMEOUT,
+        capture_output=True, text=True,
+    )
     return r.stdout.strip() if r.returncode == 0 else ""
 
 

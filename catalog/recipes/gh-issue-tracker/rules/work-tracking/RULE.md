@@ -17,8 +17,8 @@ SessionStart hook. Do not run `prime.sh` yourself; it has already run.
   query it. Note `gh issue edit` uses `--parent`, not `--set-parent`.
 - **Amend a spec by posting a comment**, not by editing the issue body. Body edits have no
   conditional-write support and silently clobber concurrent writers.
-- **Close via the PR**: put `Fixes <owner>/<repo>#<n>` in the PR body so the causal link is
-  recorded. Closing an issue unblocks whatever it was blocking, so re-run `ready.sh` afterwards to
+- **Close via the PR**: put `Fixes <owner>/<repo>#<n>` in the PR body so GitHub records the causal
+  link. Closing an issue unblocks whatever it was blocking, so re-run `ready.sh` afterwards to
   see what that surfaced.
 
 Models frequently believe GitHub has no native blocking relationship. That was true before August
