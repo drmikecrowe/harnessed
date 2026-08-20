@@ -36,7 +36,7 @@ pytestmark = pytest.mark.skipif(
 # The files this audit governs: launcher.py is where the bead counted the calls, and proc.py holds
 # `_run`/`_run_tagged` — the seam every other module reaches podman through. Auditing the launcher
 # while leaving its own chokepoint unexamined would measure the symptom and skip the cause.
-_AUDITED = ("launcher.py", "proc.py")
+_AUDITED = ("launcher.py", "proc.py", "ctrquery.py", "svcstate.py")
 
 _MARKER = "# unbounded:"
 

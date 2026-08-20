@@ -16,7 +16,6 @@ import hashlib
 import json
 import secrets
 import socket
-import subprocess
 
 from pathlib import Path
 
@@ -24,7 +23,14 @@ from . import paths
 from .console import _err
 from .ctrquery import _container_stale, _inspect_id, _runtime
 from .paths import CONTAINER_HOME
+from .proc import _bounded
 from .schema import SchemaError, ServiceDef, load_service, load_stack_with_recipes
+
+# Same value as launcher.py's _PODMAN_QUERY_TIMEOUT — 30 s for consistency.
+# Kept local to avoid importing from launcher.py (circular dependency).
+# Also applied to the git worktree-list call in _repo_project_hashes: 30 s is adequate
+# for a local git query and avoids a separate constant for one call.
+_PODMAN_QUERY_TIMEOUT = 30
 
 # The in-container home as a string, for interpolating into paths a client sees. Derived here rather
 # than imported from launcher so the dependency points INTO this module; `paths.CONTAINER_HOME`
@@ -210,8 +216,10 @@ def _svc_published_port(rt: str, cname: str, ctr_port: int) -> int:
     port changes whenever the container is recreated, and a stale copy in a file or an env var is
     exactly the failure the socket design was avoiding when it refused to persist its own path.
     """
-    result = subprocess.run(
-        [rt, "port", cname, str(ctr_port)], capture_output=True, text=True, check=False
+    result = _bounded(
+        [rt, "port", cname, str(ctr_port)],
+        timeout=_PODMAN_QUERY_TIMEOUT,
+        capture_output=True, text=True, check=False,
     )
     if result.returncode != 0:
         return 0
@@ -350,8 +358,9 @@ def _repo_project_hashes(project_path: Path) -> set[str]:
     therefore be running from a sibling, not from where you are standing.
     """
     hashes = {paths.project_hash(project_path)}
-    result = subprocess.run(
+    result = _bounded(
         ["git", "-C", str(project_path), "worktree", "list", "--porcelain"],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True, text=True,
     )
     if result.returncode != 0:
@@ -401,8 +410,9 @@ def _svc_stacks_from_instances(rt: str, project_path: Path) -> list[str]:
     for this command is a plain shell with no agent up — dropping them would fail the very use it
     exists for.
     """
-    result = subprocess.run(
+    result = _bounded(
         [rt, "ps", "-a", "--filter", "name=harnessed-", "--format", "{{.Names}}\t{{.State}}"],
+        timeout=_PODMAN_QUERY_TIMEOUT,
         capture_output=True, text=True,
     )
     if result.returncode != 0:
