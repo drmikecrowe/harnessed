@@ -429,7 +429,10 @@ class TestVarlockJsonOutput:
             "or may have returned non-zero"
         )
         assert result.get("FOO") == "bar", (
-            f"Expected FOO=bar in resolved dict; got: {result!r}"
+            # Do NOT print result!r here — the dict may contain OP_SERVICE_ACCOUNT_TOKEN
+            # from os.environ (launchenv.py injects it when set). Print only the key under test.
+            f"Expected FOO=bar in resolved dict; got FOO={result.get('FOO')!r} "
+            "(full dict omitted — may contain env secrets)"
         )
 
     def test_varlock_returns_none_on_missing_schema(self, tmp_path):
