@@ -28,11 +28,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCAN = "catalog/base/harnessed-scan"
+DOCKERFILE = "catalog/base/Dockerfile.harnessed-base"
 
 TESTS = [
     "tests/test_scan_acknowledged.py",
     "tests/test_scan_osv_no_lockfiles.py",
     "tests/test_scan_ledger_reconciliation.py",
+    "tests/test_scan_corepack_removed.py",
     "tests/test_scan_coverage_reporting.py",
     "tests/test_scan_socket_parser.py",
 ]
@@ -106,6 +108,24 @@ MUTANTS = [
     # --- the advisory contract (SPEC N1) ---
     ("scan starts gating on findings", SCAN,
      'report = {"advisory": True, "gating": 0,', 'report = {"advisory": True, "gating": 1,'),
+
+    # --- corepack removal (SPEC group D, failure mode F6) ---
+    # The Dockerfile is the other half of the change and no other layer touches it: ruff, pyright
+    # and the heredoc mutants above all stop at the scan script.
+    ("corepack removal layer deleted entirely", DOCKERFILE,
+     'RUN rm -rf "$(mise where node@22)/lib/node_modules/corepack" \\',
+     'RUN true "$(mise where node@22)/lib/node_modules/corepack" \\'),
+    ("removal widened from corepack to the whole node_modules tree", DOCKERFILE,
+     '"$(mise where node@22)/lib/node_modules/corepack" \\',
+     '"$(mise where node@22)/lib/node_modules" \\'),
+    ("mise reshim dropped, leaving a dangling corepack shim on PATH", DOCKERFILE,
+     '"$HOME/.local/share/mise/shims/corepack" && \\\n    mise reshim',
+     '"$HOME/.local/share/mise/shims/corepack"'),
+    ("pnpm pin removed — nothing would provide pnpm once corepack is gone", DOCKERFILE,
+     "        pnpm@11 \\\n", ""),
+    ("something starts invoking corepack again", DOCKERFILE,
+     "RUN npm install -g npm@11.18.0",
+     "RUN npm install -g npm@11.18.0\nRUN corepack enable"),
 ]
 
 
