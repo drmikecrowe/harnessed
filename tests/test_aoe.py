@@ -20,7 +20,7 @@ import typer
 from typer.core import TyperGroup
 from typer.testing import CliRunner
 
-from harnessed import aoe, launcher
+from harnessed import aoe, launchscript, launcher
 from harnessed.schema import SchemaError
 from support import patch_all
 
@@ -138,7 +138,7 @@ class TestSyncSession:
         [add] = rec.registrations()
         assert add[1] == str(tmp_path)
         assert _flag(add, "-p") == aoe.PROFILE
-        assert _flag(add, "--cmd-override") == "harnessed container-run claude --last --"
+        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-container --"
 
     def test_uses_cmd_override_not_cmd(self, rec, tmp_path):
         # `--cmd` is validated against aoe's tool list and silently substitutes its configured
@@ -311,9 +311,9 @@ class TestTitleUniqueness:
 class TestIdentity:
     """(path, verb, harness) — the key that decides duplicate vs distinct.
 
-    The recorded command is `harnessed <verb>-run <harness> --last --`, which names no STACK, so two
-    stacks in one folder still share a row: which one it starts is whatever `lastrun` recorded, and
-    the launch rewrites that. The VERB is named, so host and container launches no longer collapse
+    The recorded command is `<project>/<harness>-<verb> --`, which names no STACK, so two stacks in
+    one folder still share a row: which one it starts is whatever the launcher script currently
+    says, and the launch rewrites that script. The VERB is named, so host and container launches no longer collapse
     together (bd harnessed-7mt) — they did under `mise run <harness> --`, which named neither.
 
     That collapse was not free: one row cannot restart two backends, so a folder used both ways had
@@ -321,9 +321,8 @@ class TestIdentity:
     folder-used-both-ways and buys a row that restarts what it says it restarts.
     """
 
-    def _existing(
-        self, tmp_path: Path, command: str = "harnessed container-run claude --last --"
-    ) -> str:
+    def _existing(self, tmp_path: Path, command: str | None = None) -> str:
+        command = command if command is not None else f"{tmp_path}/claude-container --"
         return f'[{{"id": "s1", "path": "{tmp_path}", "command": "{command}"}}]'
 
     def test_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
@@ -361,7 +360,7 @@ class TestIdentity:
         aoe.sync_session("host-run", "serena", "claude", tmp_path)
         assert len(rec.registrations()) == 1
         [add] = rec.registrations()
-        assert _flag(add, "--cmd-override") == "harnessed host-run claude --last --"
+        assert _flag(add, "--cmd-override") == f"{tmp_path}/claude-host --"
 
     def test_an_open_mcp_relaunch_does_not_duplicate(self, monkeypatch, tmp_path):
         rec = Recorder(sessions=self._existing(tmp_path))
@@ -519,6 +518,97 @@ class TestForgetStack:
         assert calls == []
 
 
+class TestForgetStackReadsTheLauncherScript:
+    """`harnessed rm <stack>` must attribute a script row to its stack — by reading the script.
+
+    The row's command names no stack (that is the identity property), so the only place the stack
+    can be read from is the file the row would run. Same file, so the two cannot disagree — the
+    `--last` shape this replaced had to consult a side record for the same answer.
+
+    UNATTRIBUTABLE ROWS ARE LEFT ALONE. `rm` is destructive and unattended, so a missing or
+    unreadable script means "not mine to remove", never "remove it anyway".
+    """
+
+    def _row(self, script: Path, sid: str = "s1") -> str:
+        return json.dumps([{"id": sid, "path": str(script.parent),
+                            "command": f"{script} --"}])
+
+    def _rec(self, monkeypatch, sessions: str) -> Recorder:
+        return Recorder(sessions=sessions).install(monkeypatch)
+
+    def test_a_row_whose_script_names_the_stack_is_removed(self, monkeypatch, tmp_path):
+        script = launchscript.write("container-run", "serena", "claude", tmp_path)
+        assert script is not None
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == ["s1"]
+
+    def test_a_row_whose_script_names_another_stack_is_left_alone(self, monkeypatch, tmp_path):
+        script = launchscript.write("container-run", "other", "claude", tmp_path)
+        assert script is not None
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == []
+
+    def test_a_host_script_is_left_alone_by_the_container_verb(self, monkeypatch, tmp_path):
+        # `rm` tears down CONTAINERS; a host-native session owns none.
+        script = launchscript.write("host-run", "serena", "claude", tmp_path)
+        assert script is not None
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == []
+
+    def test_a_missing_script_is_left_alone(self, monkeypatch, tmp_path):
+        rec = self._rec(monkeypatch, self._row(tmp_path / "claude-container"))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == []
+
+    def test_a_script_with_no_exec_line_is_left_alone(self, monkeypatch, tmp_path):
+        script = tmp_path / "claude-container"
+        script.write_text("#!/bin/sh\n# harnessed:launcher v1\n", encoding="utf-8")
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == []
+
+    def test_an_unbalanced_quote_in_the_script_is_left_alone(self, monkeypatch, tmp_path):
+        script = tmp_path / "claude-container"
+        script.write_text("#!/bin/sh\nexec harnessed container-run claude --stack 'serena\n",
+                          encoding="utf-8")
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == []
+
+    def test_a_title_containing_a_newline_still_attributes_the_row(self, monkeypatch, tmp_path):
+        # Single quotes span lines in sh, so a newline in a flag value makes the exec STATEMENT more
+        # than one physical line. Scanning line-by-line handed shlex an unterminated quote and lost
+        # the row — `harnessed rm` would tear the container down and leave its dashboard row behind.
+        script = launchscript.write(
+            "container-run", "serena", "claude", tmp_path, title="two\nlines"
+        )
+        assert script is not None
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == ["s1"]
+
+    def test_a_title_containing_a_carriage_return_still_attributes_the_row(
+        self, monkeypatch, tmp_path
+    ):
+        script = launchscript.write(
+            "container-run", "serena", "claude", tmp_path, title="before\rafter"
+        )
+        assert script is not None
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == ["s1"]
+
+    def test_a_stack_name_that_is_only_a_substring_does_not_match(self, monkeypatch, tmp_path):
+        script = launchscript.write("container-run", "serena-extra", "claude", tmp_path)
+        assert script is not None
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == []
+
+
 class TestNeverRaises:
     """A dashboard is not worth failing a launch over."""
 
@@ -604,7 +694,7 @@ class TestWriteDispatch:
     def test_already_registered_is_success_without_writing(self, monkeypatch, tmp_path):
         rec = Recorder(
             sessions=f'[{{"id": "s1", "path": "{tmp_path}", '
-                     f'"command": "harnessed container-run claude --last --"}}]'
+                     f'"command": "{tmp_path}/claude-container --"}}]'
         ).install(monkeypatch)
         assert aoe.sync_session("container-run", "serena", "claude", tmp_path) is True
         assert rec.spawned == []
@@ -900,7 +990,11 @@ class TestCommandDrift:
     """
 
     TITLE = "proj [claude/host] serena"
-    OURS = "harnessed host-run claude --last --"
+    # Path-dependent since the row invokes the project's own launcher script, so it is derived per
+    # test rather than a module constant.
+    def _ours(self, proj: Path) -> str:
+        return f"{proj}/claude-host --"
+
     STALE_TITLE = "proj [claude/host] serena (stale abc123)"
 
     def _renames(self, rec: Recorder) -> list[list[str]]:
@@ -973,7 +1067,7 @@ class TestCommandDrift:
         assert "abc123" in message
         assert self.TITLE in message
         assert "harnessed host-run claude /proj --" in message
-        assert self.OURS in message
+        assert self._ours(proj) in message
 
     def test_repair_returns_true_having_issued_the_rename(self, monkeypatch, proj):
         # `is True` alone was vacuous: before any of this existed the add was dispatched and
@@ -987,6 +1081,33 @@ class TestCommandDrift:
         rec = self._rec(monkeypatch, proj, "mise run omp --")
         self._sync(proj)
         assert len(self._renames(rec)) == 1
+
+    def test_last_shaped_drift_is_also_ours(self, monkeypatch, proj):
+        # Every row written between the mise task and the launcher script runs `--last`. The flag is
+        # gone, so these rows are DEAD until a launch repairs them — reading them as foreign would
+        # strand every one of them, since drift against a foreign row is only ever reported.
+        rec = self._rec(monkeypatch, proj, "harnessed host-run claude --last --")
+        self._sync(proj)
+        assert len(self._renames(rec)) == 1
+
+    def test_a_launcher_script_row_for_another_project_is_still_ours(self, monkeypatch, proj):
+        # Ours is decided by the command's SHAPE, never by the file being present: a row whose
+        # script was deleted is exactly the row that needs repairing.
+        rec = self._rec(monkeypatch, proj, "/gone/claude-host --")
+        self._sync(proj)
+        assert len(self._renames(rec)) == 1
+
+    def test_a_foreign_single_token_row_is_not_a_launcher_script(self, monkeypatch, proj):
+        # The narrowness that makes the shape safe: the basename must name a real harness and one
+        # of the two verbs, or every `./run-dev --` row in a dashboard becomes rewritable.
+        rec = self._rec(monkeypatch, proj, "./run-dev --")
+        self._sync(proj)
+        assert self._renames(rec) == []
+
+    def test_a_launcher_named_for_an_unknown_harness_is_foreign(self, monkeypatch, proj):
+        rec = self._rec(monkeypatch, proj, "/p/notaharness-host --")
+        self._sync(proj)
+        assert self._renames(rec) == []
 
     # ---- report-only path: the stored command is not ours ----
 
@@ -1119,7 +1240,7 @@ class TestCommandDrift:
 
     def test_matching_command_is_not_drift(self, monkeypatch, proj):
         seen: list[str] = []
-        rec = self._rec(monkeypatch, proj, self.OURS)
+        rec = self._rec(monkeypatch, proj, self._ours(proj))
         assert self._sync(proj, on_drift=lambda m, r: seen.append(m)) is True
         assert seen == []
         assert rec.added() == []
