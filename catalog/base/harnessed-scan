@@ -216,7 +216,17 @@ if command -v osv-scanner >/dev/null 2>&1; then
         echo "  · osv-scanner: recipe lockfiles"
         printf 'osv|recipe lockfiles\n' >>"$ATTEMPTS"
         bounded osv-scanner scan source --recursive --format json "${osv_dirs[@]}" >"$WORK/osv.json" 2>/dev/null
-        [[ $? -eq 124 ]] && record_skip osv "recipe lockfiles" "timed out after ${SCAN_TIMEOUT}s"
+        osv_rc=$?
+        # 128 is osv-scanner's "No package sources found" — the dirs exist but ship no lockfile.
+        # Nothing went wrong and there was nothing to scan, so this is a SKIP, not a result. Left to
+        # fall through it writes no manifest line, and the coverage reconciler below can only read
+        # that as "ran but produced NO parseable output" — i.e. a broken scanner — on every
+        # otherwise-clean build. Same situation as the no-dirs branch, one level deeper.
+        if [[ $osv_rc -eq 124 ]]; then
+            record_skip osv "recipe lockfiles" "timed out after ${SCAN_TIMEOUT}s"
+        elif [[ $osv_rc -eq 128 ]]; then
+            record_skip osv "recipe lockfiles" "no lockfiles under skills/ or commands/ to scan"
+        fi
         [[ -s "$WORK/osv.json" ]] && printf 'osv|recipe lockfiles|%s\n' "$WORK/osv.json" >>"$MANIFEST"
     else
         record_skip osv "recipe lockfiles" "no skills/ or commands/ dir to scan"
@@ -241,6 +251,44 @@ HARNESSED_SCAN_REPORT="$REPORT" HARNESSED_SCAN_ATTEMPTS="$ATTEMPTS" python3 - "$
 import sys, os, json
 
 rows = []   # {source, tool, critical, high, other, notable:[...]}
+
+# Advisories with NO patched release anywhere upstream. There is no pin, bump, or removal that
+# clears these, so reporting them every build is pure noise that trains people to ignore the scan.
+# They are ACKNOWLEDGED, not suppressed: every hit is counted and printed by name below, so the
+# summary still says out loud what it is choosing not to count as a HIGH.
+#
+# Keyed by advisory id, which is what makes this self-expiring. When npm finally ships a fixed
+# brace-expansion the ids stop appearing and the entries go dead on their own; a NEW advisory
+# against the same package is not in the map and gets reported at full severity. Never key an
+# entry by package name — that blinds the scan to the next CVE in the same dependency.
+#
+# Verified 2026-08-22: npm 11.18.0 (our pin, Dockerfile.harnessed-base), 11.19.0, and 12.0.2
+# (`latest`) ALL bundle brace-expansion 5.0.7. Both advisories are fixed in 5.0.9, which no
+# published npm release ships. Re-check by extracting node_modules/brace-expansion/package.json
+# from the npm tarball; drop the entry the moment it reads >= 5.0.9.
+ACKNOWLEDGED = {
+    "GHSA-mh99-v99m-4gvg": "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7",
+    "CVE-2026-14257":      "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7",
+    "GHSA-rgw5-rvv9-x895": "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7",
+    "CVE-2026-69152":      "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7",
+}
+# {advisory id: package} — printed, never silently dropped. A dict because snyk reports the same
+# vulnerability once per detected project, exactly like the by_id dedup in parse_snyk.
+acknowledged_hits = {}
+
+def advisory_ids(v):
+    """Every id a snyk vulnerability answers to: its own, plus each CVE/GHSA/etc identifier.
+
+    Snyk keys findings by its own `SNYK-JS-*` id and reports upstream ids under `identifiers`,
+    whose key set is not guaranteed (GHSA is often absent where CVE is present). Match on the
+    union so an ACKNOWLEDGED entry lands whichever vocabulary this snyk version emits.
+    """
+    ids = {v.get("id")} if v.get("id") else set()
+    for values in (v.get("identifiers") or {}).values():
+        for value in values or []:
+            if value:
+                ids.add(value)
+    return ids
 
 def sev_from_cvss(score):
     try:
@@ -267,8 +315,15 @@ def parse_snyk(doc):
     for proj in projects:
         for v in (proj or {}).get("vulnerabilities", []) or []:
             vid = v.get("id")
-            if vid:
-                by_id[vid] = ((v.get("severity") or "").lower(), v.get("packageName") or v.get("name") or "?")
+            if not vid:
+                continue
+            pkg = v.get("packageName") or v.get("name") or "?"
+            known = advisory_ids(v) & set(ACKNOWLEDGED)
+            if known:
+                by_id.pop(vid, None)
+                acknowledged_hits[sorted(known)[0]] = pkg
+                continue
+            by_id[vid] = ((v.get("severity") or "").lower(), pkg)
     return list(by_id.values())
 
 def parse_osv(doc):
@@ -350,26 +405,37 @@ for r in rows:
 reported = {(r["tool"], r["source"]) for r in rows}
 unreported = []
 unrun = []
+ledger = []
 try:
     with open(os.environ["HARNESSED_SCAN_ATTEMPTS"]) as f:
-        for line in f:
-            line = line.rstrip("\n")
-            if not line:
-                continue
-            parts = line.split("|", 3)
-            tool, source = parts[0], (parts[1] if len(parts) > 1 else "")
-            status = parts[2] if len(parts) > 2 else "attempted"
-            row = {"source": source, "tool": tool, "critical": 0, "high": 0,
-                   "other": 0, "notable": []}
-            if status == "unrun":
-                row["status"] = "unrun"
-                row["reason"] = parts[3] if len(parts) > 3 else ""
-                unrun.append(row)
-            elif (tool, source) not in reported:
-                row["status"] = "no-output"
-                unreported.append(row)
+        ledger = [line.rstrip("\n") for line in f if line.strip()]
 except Exception:
     pass
+
+# An `unrun` line WINS over a bare attempt line for the same (tool, source). A scanner that
+# announced its attempt and only then bailed with a reason — timed out, or nothing to scan —
+# writes both lines, and taken at face value it lands in sources[] TWICE: once as an actionable
+# skip carrying its reason, and once as "ran but produced nothing", i.e. probably broken. Those
+# are contradictory claims about one scanner, and the reasoned one is strictly more informative.
+skipped = set()
+for line in ledger:
+    parts = line.split("|", 3)
+    if len(parts) > 2 and parts[2] == "unrun":
+        skipped.add((parts[0], parts[1] if len(parts) > 1 else ""))
+
+for line in ledger:
+    parts = line.split("|", 3)
+    tool, source = parts[0], (parts[1] if len(parts) > 1 else "")
+    status = parts[2] if len(parts) > 2 else "attempted"
+    row = {"source": source, "tool": tool, "critical": 0, "high": 0,
+           "other": 0, "notable": []}
+    if status == "unrun":
+        row["status"] = "unrun"
+        row["reason"] = parts[3] if len(parts) > 3 else ""
+        unrun.append(row)
+    elif (tool, source) not in reported and (tool, source) not in skipped:
+        row["status"] = "no-output"
+        unreported.append(row)
 rows.extend(unreported)
 rows.extend(unrun)
 
@@ -382,6 +448,8 @@ uncovered = unreported + unrun
 
 report = {"advisory": True, "gating": 0,
           "totals": {"critical": tot_c, "high": tot_h},
+          "acknowledged": [{"id": vid, "package": pkg, "reason": ACKNOWLEDGED[vid]}
+                           for vid, pkg in sorted(acknowledged_hits.items())],
           "covered": bool(scanned),
           "coverage": {"attempted": len(rows), "reported": len(scanned),
                        "no_output": [r["tool"] for r in unreported],
@@ -411,6 +479,13 @@ else:
         label = ("%s · %s" % (r["tool"], r["source"]))[:34]
         print("  %-34s %4d %4d   %s" % (label, r["critical"], r["high"], ", ".join(r["notable"])))
     print("  " + "-" * 62)
+if acknowledged_hits:
+    # Not a warning and deliberately not counted above — but never silent either. The list is the
+    # audit trail for the decision, so a reader can check the claim instead of trusting the total.
+    print("  %d acknowledged advisor%s with no upstream fix (excluded from the totals above):"
+          % (len(acknowledged_hits), "y" if len(acknowledged_hits) == 1 else "ies"))
+    for vid, pkg in sorted(acknowledged_hits.items()):
+        print("      %s · %s — %s" % (vid, pkg, ACKNOWLEDGED[vid]))
 if unreported:
     print("  ⚠ %d scanner(s) ran but produced NO parseable output — not covered by this result:"
           % len(unreported))
