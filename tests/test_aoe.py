@@ -201,9 +201,9 @@ class TestSyncSession:
         )
         assert _flag(rec.added()[0], "-g") == "general"
 
-    def test_title_carries_folder_harness_and_stack(self, rec, tmp_path):
+    def test_title_carries_harness_backend_folder_and_stack(self, rec, tmp_path):
         aoe.sync_session("container-run", "serena", "omp", tmp_path)
-        assert _flag(rec.added()[0], "-t") == f"{tmp_path.name} [omp/container] serena"
+        assert _flag(rec.added()[0], "-t") == f"omp/container {tmp_path.name} serena"
 
 
 class TestToolLabel:
@@ -288,10 +288,103 @@ class TestTitleUniqueness:
             "host-run", "serena", "claude", tmp_path, no_strict_mcp=True
         )
 
-    def test_strict_titles_are_unchanged(self, tmp_path):
-        # The default must not churn: every existing row was registered under this exact label.
+    def test_the_derived_shape_is_harness_backend_folder_stack(self, tmp_path):
+        # Harness and backend lead because they are what the reader picks between; the folder
+        # follows. An authored stack composes nothing, so it names itself.
         assert aoe.title_for("host-run", "serena", "claude", tmp_path) == (
-            f"{tmp_path.name} [claude/host] serena"
+            f"claude/host {tmp_path.name} serena"
+        )
+
+    def test_the_folder_is_still_in_the_title(self, tmp_path):
+        # Load-bearing, not cosmetic: `_registered` matches (group, title) with no path check when
+        # both --aoe-group and --aoe-title are given, and every worktree of one checkout shares a
+        # group. Without the folder, two worktrees on one stack collide and the second never
+        # registers.
+        a = tmp_path / "main"
+        b = tmp_path / "worktree-feature"
+        a.mkdir()
+        b.mkdir()
+        assert aoe.title_for("host-run", "serena", "claude", a) != aoe.title_for(
+            "host-run", "serena", "claude", b
+        )
+
+
+class TestComposedRecipesInTheTitle:
+    """A dynamic stack is named `<base>.<recipe>.<recipe>`; only the delta belongs in the label."""
+
+    def _mint(self, monkeypatch, tmp_path, name, body):
+        root = tmp_path / "generated"
+        (root / "stacks" / name).mkdir(parents=True)
+        (root / "stacks" / name / "stack.yaml").write_text(body, encoding="utf-8")
+        monkeypatch.setattr(aoe.paths, "generated_catalog_root", lambda: root)
+        monkeypatch.setattr(
+            aoe.paths, "find_in_catalog", lambda kind, n: root / kind / n
+        )
+        return root
+
+    def test_the_baseline_is_left_out(self, monkeypatch, tmp_path):
+        self._mint(
+            monkeypatch, tmp_path, "default.codebase-memory-mcp.gh-issue-tracker",
+            "name: default.codebase-memory-mcp.gh-issue-tracker\n"
+            "extends: default\n"
+            "recipes:\n  - codebase-memory-mcp\n  - gh-issue-tracker\n",
+        )
+        project = tmp_path / "main"
+        project.mkdir()
+        assert aoe.title_for(
+            "host-run", "default.codebase-memory-mcp.gh-issue-tracker", "claude", project
+        ) == "claude/host main codebase-memory-mcp+gh-issue-tracker"
+
+    def test_a_lossy_name_still_yields_the_real_recipe(self, monkeypatch, tmp_path):
+        # `beads/team` sanitizes to `beads-team` and forces a digest, so the NAME is not
+        # parseable back into the ref. The manifest carries it verbatim.
+        self._mint(
+            monkeypatch, tmp_path, "default.beads-team-55bfd6ac",
+            "name: default.beads-team-55bfd6ac\nextends: default\nrecipes:\n  - beads/team\n",
+        )
+        project = tmp_path / "main"
+        project.mkdir()
+        assert aoe.title_for(
+            "host-run", "default.beads-team-55bfd6ac", "claude", project
+        ) == "claude/host main beads/team"
+
+    def test_an_authored_stack_names_itself(self, monkeypatch, tmp_path):
+        # Its `recipes:` key is its whole content, not a delta -- `default` lists eight. Reading it
+        # would make the title longer than the stack name it replaced.
+        root = tmp_path / "catalog"
+        (root / "stacks" / "default").mkdir(parents=True)
+        (root / "stacks" / "default" / "stack.yaml").write_text(
+            "name: default\nrecipes:\n" + "".join(f"  - r{i}\n" for i in range(8)),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            aoe.paths, "generated_catalog_root", lambda: tmp_path / "generated"
+        )
+        monkeypatch.setattr(aoe.paths, "find_in_catalog", lambda kind, n: root / kind / n)
+        project = tmp_path / "main"
+        project.mkdir()
+        assert aoe.title_for("host-run", "default", "claude", project) == (
+            "claude/host main default"
+        )
+
+    def test_two_baselines_do_not_collide(self, monkeypatch, tmp_path):
+        # Both compose nothing. Falling back to the stack name is what keeps them apart.
+        monkeypatch.setattr(aoe, "_composed_recipes", lambda stack: [])
+        project = tmp_path / "main"
+        project.mkdir()
+        assert aoe.title_for(
+            "container-run", "default", "claude", project
+        ) != aoe.title_for("container-run", "isolated", "claude", project)
+
+    def test_an_unreadable_manifest_falls_back_to_the_stack_name(self, monkeypatch, tmp_path):
+        def boom(kind, n):
+            raise OSError("catalog is gone")
+
+        monkeypatch.setattr(aoe.paths, "find_in_catalog", boom)
+        project = tmp_path / "main"
+        project.mkdir()
+        assert aoe.title_for("host-run", "whatever", "claude", project) == (
+            "claude/host main whatever"
         )
 
     def test_open_mcp_rows_do_not_collide_end_to_end(self, monkeypatch, tmp_path):
@@ -1024,13 +1117,13 @@ class TestCommandDrift:
     rewritten; anything else is reported and left alone.
     """
 
-    TITLE = "proj [claude/host] serena"
+    TITLE = "claude/host proj serena"
     # Path-dependent since the row invokes the project's own launcher script, so it is derived per
     # test rather than a module constant.
     def _ours(self, proj: Path) -> str:
         return f"{proj}/claude-host --"
 
-    STALE_TITLE = "proj [claude/host] serena (stale abc123)"
+    STALE_TITLE = "claude/host proj serena (stale abc123)"
 
     def _renames(self, rec: Recorder) -> list[list[str]]:
         return [a for a in rec.calls if a[:2] == ["session", "rename"]]
@@ -1258,7 +1351,7 @@ class TestCommandDrift:
     def test_same_path_different_title_is_not_drift(self, monkeypatch, proj):
         seen: list[str] = []
         rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --",
-                        title="proj [omp/host] serena")
+                        title="omp/host proj serena")
         self._sync(proj, on_drift=lambda m, r: seen.append(m))
         assert self._renames(rec) == []
         assert seen == []
