@@ -141,6 +141,11 @@ skills:
   # upstream). Attribution is owed and recorded; this is NOT a fetch candidate — the local version
   # is the one we want. Original: github.com/open-gsd/gsd-core (MIT).
   - path: skills/map-codebase
+  # [mine] Mike's drafting voice for anything outward-facing and short-form. Sourced from his
+  # captured "Mike's voice — generic drafting guide" note (Open Brain, 2026-08-21), which is itself
+  # distilled from blog-writer + humanizer with the blog structure stripped out. Deliberately scoped
+  # AWAY from blog posts: blog-writer owns those and the two disagree on openers.
+  - path: skills/mikes-voice
   # [mine] Origin unresolved — a GSD-flavoured TDD skill that matches NO commit in mattpocock/skills
   # (its once-assumed source) or open-gsd/gsd-core. Treated as authored-here until proven otherwise.
   - path: skills/tdd

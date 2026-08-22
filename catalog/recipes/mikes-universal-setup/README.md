@@ -1,7 +1,7 @@
 # mikes-universal-setup
 
 A personal baseline: 13 rules (coding stance, precedence, comment discipline, tool preferences, confirmation gates, token economy, cwd stability)
-plus 12 generic utility skills — 5 vendored in-tree and 7 fetched at build time from pinned
+plus 13 generic utility skills — 6 vendored in-tree and 7 fetched at build time from pinned
 upstreams. Serves as the worked example of what a personal "how I want my agent to behave" recipe
 looks like.
 
@@ -22,6 +22,7 @@ byte-identical to upstream despite being long believed original.
 | `map-codebase` | [open-gsd/gsd-core](https://github.com/open-gsd/gsd-core) | MIT | derived, then decoupled + modified — stays vendored |
 | `tdd` | **origin unresolved** (not mattpocock — matches no upstream commit) | — | treated as authored-here |
 | `defuddle` | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) | MIT | derived + locally modified (stronger trigger) — vendored **with LICENSE + PROVENANCE.md** |
+| `mikes-voice` | authored here (from Mike's captured drafting-guide note, 2026-08-21) | — | original |
 | `varlock`, `wrangler` | authored here | — | original |
 
 The oakoss five and `humanizer` were verified byte-for-byte against their upstreams (oakoss at
