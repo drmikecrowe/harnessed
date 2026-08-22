@@ -2534,7 +2534,7 @@ def _launch_host(
     launchscript.write(
         "host-run", stack, harness, project_path,
         group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
-        argv=["harnessed", *_invocation],
+        argv=_typed_invocation("host-run"),
     )
     # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue of
     # `launch`'s is_built/staleness checks — so registering ahead of it would leave a row behind for
@@ -3503,7 +3503,7 @@ def container_run(
     launchscript.write(
         "container-run", stack, harness, project_path,
         group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
-        argv=["harnessed", *_invocation],
+        argv=_typed_invocation("container-run"),
     )
     # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
     # launch that is about to fail never leaves a row behind, and before the podman work so the row
@@ -5086,7 +5086,34 @@ _passthrough: list[str] = []
 # Captured here rather than read from `sys.argv` at the write site because `main` REWRITES sys.argv
 # to strip the passthrough before typer ever sees it — by then the original is gone. Display only:
 # nothing executes this list. See `launchscript`.
-_invocation: list[str] = []
+#
+# None means "this process did not come through `main`" — a `CliRunner` test or an embedded caller
+# reaching a run verb directly. That is NOT the same as "the user typed nothing", and the two must
+# not be conflated: see `_typed_invocation`.
+_invocation: Optional[list[str]] = None
+
+
+def _typed_invocation(verb: str) -> Optional[list[str]]:
+    """The argv for this launch's `# as typed:` line, or None to write no line at all.
+
+    TWO WAYS TO GET A LINE THAT LIES, both refused here, because a provenance comment that names a
+    different launch than the one below it is worse than no comment — the whole point of the file is
+    that you can trust what it says you ran.
+
+      * NO PARSE AT ALL. `CliRunner` and direct calls into a run verb never reach
+        `_extract_passthrough`, so there is no invocation to report. Reporting the empty list would
+        write the bare word `harnessed`, which reads as a real launch and is not one.
+      * A PARSE FROM ANOTHER LAUNCH. One process can parse once and then write scripts for several
+        projects (tests do exactly this). The recorded argv names its own verb, so a mismatch means
+        the invocation belongs to a different launch than the one being written.
+
+    Neither can happen on the real CLI path, where `main` parses once and runs one command. They are
+    refused anyway: the cost is one absent comment, and the alternative is a file that misreports a
+    launch in somebody's repository.
+    """
+    if not _invocation or _invocation[0] != verb:
+        return None
+    return ["harnessed", *_invocation]
 
 
 def _extract_passthrough(argv: list[str]) -> list[str]:

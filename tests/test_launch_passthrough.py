@@ -13,6 +13,44 @@ from harnessed import launcher
 from support import patch_all
 
 
+class TestTypedInvocation:
+    """What reaches the launcher script's `# as typed:` line — or does not.
+
+    That line is the whole point of the launcher script: it says what you ran here. A line naming a
+    DIFFERENT launch than the `exec` beneath it is worse than no line, because the file's one job is
+    to be trustworthy. Two ways to get one, both refused (reported by CodeRabbit on #422):
+
+      * no parse at all — `CliRunner` and direct calls never reach `_extract_passthrough`;
+      * a parse belonging to another launch — one process can write scripts for several projects.
+    """
+
+    def test_no_parse_yields_no_comment(self, monkeypatch):
+        monkeypatch.setattr(launcher, "_invocation", None)
+        assert launcher._typed_invocation("host-run") is None
+
+    def test_an_empty_parse_yields_no_comment(self, monkeypatch):
+        # Not the same as "the user typed nothing": reporting it would write the bare word
+        # `harnessed`, which reads as a real launch and is not one.
+        monkeypatch.setattr(launcher, "_invocation", [])
+        assert launcher._typed_invocation("host-run") is None
+
+    def test_a_parse_for_another_verb_yields_no_comment(self, monkeypatch):
+        monkeypatch.setattr(launcher, "_invocation", ["container-run", "claude", "-r", "x"])
+        assert launcher._typed_invocation("host-run") is None, (
+            "a container-run invocation must never caption a host-run script"
+        )
+
+    def test_a_matching_parse_is_reported_with_the_binary_name(self, monkeypatch):
+        monkeypatch.setattr(launcher, "_invocation", ["host-run", "claude", "-r", "x"])
+        assert launcher._typed_invocation("host-run") == ["harnessed", "host-run", "claude", "-r", "x"]
+
+    def test_extract_passthrough_records_the_head_only(self):
+        launcher._extract_passthrough(["host-run", "claude", "--", "--resume", "abc"])
+        assert launcher._typed_invocation("host-run") == ["harnessed", "host-run", "claude"], (
+            "the agent's own flags are not part of what was typed AT harnessed"
+        )
+
+
 class TestExtractPassthrough:
     def test_splits_at_first_double_dash(self):
         head = launcher._extract_passthrough(["S", "claude", "--", "--chrome"])

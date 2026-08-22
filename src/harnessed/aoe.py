@@ -725,8 +725,15 @@ def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
     name = Path(tokens[0]).name
     if name != launchscript.script_name(verb, name.rpartition("-")[0]):
         return False
+    script = Path(tokens[0])
     try:
-        content = launchscript._read_as_the_shell_does(Path(tokens[0]), _SCRIPT_READ_LIMIT)
+        # `is_file()` BEFORE the read, the same guard `launchscript._ensure_excluded` applies to the
+        # exclude file. A row's path comes out of aoe's JSON and can point at anything: a FIFO passes
+        # `exists()`, and opening one BLOCKS until something writes to it — so `harnessed rm`, which
+        # runs unattended, would hang rather than fail. `except OSError` cannot catch a hang.
+        if not script.is_file():
+            return False
+        content = launchscript._read_as_the_shell_does(script, _SCRIPT_READ_LIMIT)
     except OSError:
         return False
     # `split("\n")`, not `splitlines()` — see `launchscript.write`. A flag value carrying \x85 or

@@ -92,6 +92,7 @@ class TestWriting:
 
     def test_host_verb_writes_claude_host(self, proj):
         written = launchscript.write("host-run", "serena", "claude", proj)
+        assert written is not None
         assert written == proj / "claude-host"
         assert written.exists(), "expected the launcher script on disk"
 
@@ -105,6 +106,7 @@ class TestWriting:
 
     def test_the_script_is_executable(self, proj):
         written = launchscript.write("host-run", "serena", "claude", proj)
+        assert written is not None
         assert stat.S_IMODE(written.stat().st_mode) == 0o755
 
     def test_shebang_then_sentinel(self, proj):
@@ -127,6 +129,7 @@ class TestParityWithCommandFor:
     def test_exec_argv_is_command_for_minus_the_separator(self, proj, title):
         kwargs = {"group": "librechat", "title": title, "no_strict_mcp": True}
         written = launchscript.write("host-run", "serena", "claude", proj, **kwargs)
+        assert written is not None
         # The authority, read at test time rather than copied into this file.
         authority = shlex.split(aoe.command_for("host-run", "serena", "claude", proj, **kwargs))
         assert authority[-1] == "--", "guard: command_for is expected to end with the separator"
@@ -148,11 +151,13 @@ class TestProvenanceComment:
     def test_records_the_argv_as_typed(self, proj):
         argv = ["harnessed", "host-run", "claude", "-r", "codebase-memory-mcp", "-r", "gh-issues"]
         written = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
+        assert written is not None
         assert "# as typed: harnessed host-run claude -r codebase-memory-mcp -r gh-issues" \
             in launchscript._read_as_the_shell_does(written).split("\n")
 
     def test_absent_when_no_argv_is_supplied(self, proj):
         written = launchscript.write("host-run", "serena", "claude", proj)
+        assert written is not None
         assert "# as typed:" not in written.read_text()
 
     @pytest.mark.parametrize("hostile", ["a\nexec touch /tmp/pwned", "a\rb", "a\x00b", "a\x1bb"])
@@ -160,6 +165,7 @@ class TestProvenanceComment:
         written = launchscript.write(
             "host-run", "serena", "claude", proj, argv=["harnessed", hostile]
         )
+        assert written is not None
         typed = [ln for ln in launchscript._read_as_the_shell_does(written).split("\n")
                  if ln.startswith("# as typed:")]
         assert len(typed) == 1, "the comment must stay on exactly one line"
@@ -168,6 +174,7 @@ class TestProvenanceComment:
     def test_removing_the_comment_changes_nothing_that_runs(self, proj, run_script):
         argv = ["harnessed", "host-run", "claude", "-r", "x"]
         with_comment = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
+        assert with_comment is not None
         got_with = run_script(with_comment)
         # Same reason as the parity test: rebuilding the file through Python's line grammar would
         # rewrite any \r in the exec line as \n, so the assertion would be about a script this test
@@ -250,7 +257,7 @@ class TestClobberRefusal:
     def test_rewrites_its_own_file(self, proj):
         first = launchscript.write("host-run", "serena", "claude", proj)
         second = launchscript.write("host-run", "other-stack", "claude", proj)
-        assert second == first
+        assert first is not None and second == first
         assert "other-stack" in first.read_text()
 
 

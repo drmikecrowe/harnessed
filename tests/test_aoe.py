@@ -10,6 +10,7 @@ No test shells out to a real `aoe`; `_run` is the seam.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 
@@ -1341,3 +1342,46 @@ class TestCommandDrift:
         rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
         self._sync(proj)
         assert [a[:2] for a in rec.calls].count(["list", "--json"]) == 1
+
+
+class TestForgetStackRefusesNonRegularPaths:
+    """A row's path comes out of aoe's JSON and can name anything at all.
+
+    `except OSError` cannot catch a HANG. Opening a FIFO blocks until something else writes to it,
+    and `harnessed rm` runs unattended — so the file TYPE is checked before the read, the same guard
+    `launchscript._ensure_excluded` applies to the exclude file. Reported by CodeRabbit on #422.
+    """
+
+    def _row(self, path: Path) -> str:
+        command = str(path) + " --"
+        return json.dumps([{"id": "s1", "path": str(path.parent), "command": command}])
+
+    def test_a_fifo_row_returns_instead_of_blocking(self, monkeypatch, tmp_path):
+        fifo = tmp_path / "claude-container"
+        os.mkfifo(fifo)
+        try:
+            rec = Recorder(sessions=self._row(fifo)).install(monkeypatch)
+            aoe.forget_stack("container-run", "serena")
+            assert rec.removed() == []
+        finally:
+            fifo.unlink()
+
+    def test_a_directory_in_place_of_the_script_is_left_alone(self, monkeypatch, tmp_path):
+        as_dir = tmp_path / "claude-container"
+        as_dir.mkdir()
+        rec = Recorder(sessions=self._row(as_dir)).install(monkeypatch)
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == []
+
+    def test_an_unreadable_script_is_left_alone(self, monkeypatch, tmp_path):
+        # The `is_file()` guard does not make `except OSError` dead: the file can pass the check and
+        # still fail to open — no read permission, an I/O error, or a delete racing between the two.
+        script = launchscript.write("container-run", "serena", "claude", tmp_path)
+        assert script is not None
+        script.chmod(0o000)
+        try:
+            rec = Recorder(sessions=self._row(script)).install(monkeypatch)
+            aoe.forget_stack("container-run", "serena")
+            assert rec.removed() == []
+        finally:
+            script.chmod(0o755)
