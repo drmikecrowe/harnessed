@@ -87,11 +87,13 @@ MUTANTS = [
 
     # --- acknowledged advisories (SPEC group A, failure modes F1/F2) ---
     ("acknowledgment disabled — the two brace-expansion highs return", SCAN,
-     "            known = advisory_ids(v) & set(ACKNOWLEDGED)",
+     "            known = {i for i in advisory_ids(v) & set(ACKNOWLEDGED)\n"
+     "                     if ACKNOWLEDGED[i][0] == pkg}",
      "            known = set()"),
     ("acknowledgment keyed by PACKAGE NAME — silences every future brace-expansion CVE", SCAN,
-     "            known = advisory_ids(v) & set(ACKNOWLEDGED)",
-     '            known = {pkg} if pkg == "brace-expansion" else set()'),
+     "            known = {i for i in advisory_ids(v) & set(ACKNOWLEDGED)\n"
+     "                     if ACKNOWLEDGED[i][0] == pkg}",
+     '            known = {"CVE-2026-14257"} if pkg == "brace-expansion" else set()'),
     ("identifiers ignored — only snyk's own id can match", SCAN,
      "    for values in (v.get(\"identifiers\") or {}).values():",
      "    for values in []:"),
