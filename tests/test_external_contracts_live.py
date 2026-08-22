@@ -1,6 +1,6 @@
-"""Live contract tests for six external-binary output formats (issue #250, direction 3).
+"""Live contract tests for seven external-binary output formats (issue #250, direction 3).
 
-Six parsers in production code are exercised here against a real container runtime, a real mise
+Seven parsers in production code are exercised here against a real container runtime, a real mise
 binary, and a real varlock binary. These tests are gated behind HARNESSED_PODMAN=1 via the @podman
 decorator — they skip in the hermetic suite and run in live.yml.
 
@@ -24,10 +24,26 @@ from harnessed.launcher import _session_active
 from harnessed.svcstate import _svc_published_port
 from harnessed.hostrun import _host_mise_env
 
-from support import podman
+from support import PODMAN_REQUESTED as _PODMAN, podman
 
 # Pinned — project hygiene forbids a floating tag.
 _TEST_IMAGE = "docker.io/library/alpine:3.20"
+
+_BASE_IMAGE = "localhost/harnessed-base:latest"
+
+
+def _image_present(image: str) -> bool:
+    return subprocess.run(
+        [_runtime(), "image", "exists", image], capture_output=True
+    ).returncode == 0
+
+
+# The gate being open does not mean `harnessed build` has run. Skipping with the
+# "<image> not built" reason is what conftest's gate accounting counts; a bare failure is not.
+_needs_base_image = pytest.mark.skipif(
+    _PODMAN and not _image_present(_BASE_IMAGE),
+    reason=f"{_BASE_IMAGE} not built — run `harnessed build` first",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -76,20 +92,22 @@ class TestPodmanInspect:
         result = _container_running(rt, "harnessed-test-inspect-does-not-exist-xyz99")
         assert result is False
 
+    @_needs_base_image
     def test_image_exists_on_present_image(self):
         """Base image (pulled by earlier build step) → _image_exists returns True."""
         rt = _runtime()
-        base = "localhost/harnessed-base:latest"
+        base = _BASE_IMAGE
         result = _image_exists(rt, base)
         assert result is True, (
             f"_image_exists({base!r}) returned False; the base image must be present "
             "(run `harnessed build` first)"
         )
 
+    @_needs_base_image
     def test_inspect_id_returns_non_empty_for_present_image(self):
         """_inspect_id returns a non-empty sha256-prefixed string for the base image."""
         rt = _runtime()
-        base = "localhost/harnessed-base:latest"
+        base = _BASE_IMAGE
         image_id = _inspect_id(rt, "image", base, "{{.Id}}")
         assert image_id, (
             f"_inspect_id returned empty string for {base!r}; podman image inspect "
@@ -204,40 +222,53 @@ class TestPodmanImagesFilter:
     builds a minimal labeled image, runs the filter command directly, and applies the same
     parsing logic.
 
-    Negative control: a line not starting with 'harnessed-' must be absent from parsed output —
-    confirmed by asserting a non-harnessed-prefixed line never appears in results.
+    Negative control: a SECOND labelled image whose repository does not start with 'harnessed-'
+    is built alongside the first. It appears in the raw filter output and must be absent from the
+    parsed pairs — an assertion that cannot pass vacuously, because the harnessed-prefixed image
+    guarantees the parsed list is non-empty.
     """
 
     _LABELED_IMAGE = "localhost/harnessed-claude-testspec"
+    _UNRELATED_IMAGE = "localhost/notharnessed-claude-testspec"
     _LABEL = "harnessed=true"
     # Known harness names from HARNESS_CONFIG_DIR — sufficient to exercise the parser.
     _KNOWN_HARNESSES = ("claude", "omp", "opencode", "antigravity", "codex")
 
     @pytest.fixture(scope="class")
     def labeled_image(self):
+        """Build both the harnessed-prefixed image and the unrelated-but-labelled decoy.
+
+        Both carry `harnessed=true`, so both come back from the filter command. Only the first
+        may survive the parser — that pairing is the negative control.
+        """
         rt = _runtime()
         with tempfile.TemporaryDirectory() as tmpdir:
             dockerfile = Path(tmpdir) / "Dockerfile"
             dockerfile.write_text(
                 f"FROM {_TEST_IMAGE}\nLABEL harnessed=true\n"
             )
-            subprocess.run(
-                [rt, "build", "-t", self._LABELED_IMAGE, str(tmpdir)],
-                capture_output=True, text=True, check=True,
-            )
+            for tag in (self._LABELED_IMAGE, self._UNRELATED_IMAGE):
+                subprocess.run(
+                    [rt, "build", "-t", tag, str(tmpdir)],
+                    capture_output=True, text=True, check=True,
+                )
         yield self._LABELED_IMAGE
-        subprocess.run([rt, "rmi", "-f", self._LABELED_IMAGE], capture_output=True)
+        for tag in (self._LABELED_IMAGE, self._UNRELATED_IMAGE):
+            subprocess.run([rt, "rmi", "-f", tag], capture_output=True)
 
     @staticmethod
     def _parse_harnessed_pairs(rt: str, known_harnesses: tuple) -> list[tuple[str, str]]:
         """Run the images filter and parse according to the intended contract.
 
-        NOTE ON _stale_pairs BUG: The production parser in launcher.py checks
-        `repo.startswith("harnessed-")`, but modern podman prepends "localhost/" to
-        all local image names. The correct check is `startswith("localhost/harnessed-")`
-        (or strip "localhost/" first). This test exercises the CORRECT parsing of the
-        actual podman output format, not the production code's current (buggy) check.
-        The bug is filed as a finding in EVIDENCE — out of scope to fix here.
+        DELIBERATE DUPLICATE of `launcher._stale_pairs` parsing — do not "deduplicate" this by
+        calling the production helper. `_stale_pairs` checks `repo.startswith("harnessed-")`, but
+        modern podman prepends "localhost/" to every local image name, so it silently matches
+        nothing. This copy strips "localhost/" first and therefore encodes the INTENDED contract,
+        which is what makes the test able to describe the podman output format at all. Sharing the
+        production helper here would make the test pass only by agreeing with the bug.
+
+        Fixing `_stale_pairs` is out of scope for #250 (direction 3 is contracts only) — filed as
+        issue #420. Retire this copy when that fix lands.
         """
         result = subprocess.run(
             [rt, "images", "--filter", "label=harnessed=true",
@@ -280,6 +311,10 @@ class TestPodmanImagesFilter:
             f"{self._LABELED_IMAGE!r} not found in filter output; "
             f"got: {repos!r}"
         )
+        assert self._UNRELATED_IMAGE in repos, (
+            f"{self._UNRELATED_IMAGE!r} not found in filter output; the negative control below "
+            f"is only meaningful while the decoy reaches the parser. got: {repos!r}"
+        )
 
     def test_parser_extracts_stack_and_harness_from_labeled_image(self, labeled_image):
         """Parser produces ('testspec', 'claude') from 'localhost/harnessed-claude-testspec'."""
@@ -290,13 +325,24 @@ class TestPodmanImagesFilter:
         )
 
     def test_non_harnessed_prefixed_line_is_ignored(self, labeled_image):
-        """A repo not starting with 'harnessed-' never appears in parsed results.
+        """The labelled decoy 'notharnessed-claude-testspec' yields no pair.
 
-        The parser skips any line that does not start with 'harnessed-', so images like
-        'localhost/something-else' are silently ignored even if they carry the label.
+        `_UNRELATED_IMAGE` carries `harnessed=true` and shares the `<harness>-<stack>` tail of
+        `_LABELED_IMAGE`, so the ONLY thing that can keep it out of the parsed pairs is the
+        'harnessed-' prefix check. Asserting on that exact tail is what makes this non-vacuous:
+        a parser that ignored the prefix would emit ('testspec', 'claude') twice, and an empty
+        parse cannot pass, because the sibling assertion requires the real pair to be present.
         """
         rt = _runtime()
         pairs = self._parse_harnessed_pairs(rt, self._KNOWN_HARNESSES)
+        assert ("testspec", "claude") in pairs, (
+            "the harnessed-prefixed image produced no pair — the negative control below would "
+            f"pass vacuously. got: {pairs!r}"
+        )
+        assert pairs.count(("testspec", "claude")) == 1, (
+            f"{self._UNRELATED_IMAGE!r} was parsed into a pair despite lacking the 'harnessed-' "
+            f"prefix; got: {pairs!r}"
+        )
         # All returned pairs must have been produced from a harnessed-prefixed image
         for stack, harness in pairs:
             assert harness in self._KNOWN_HARNESSES, (
@@ -384,7 +430,7 @@ class TestMiseTrustIntegration:
         result = subprocess.run(
             ["mise", "install"],
             capture_output=True, text=True, env=host_env,
-            cwd=str(tmp_path),
+            cwd=str(tmp_path), timeout=120,
         )
         assert result.returncode == 0, (
             f"`mise install` exited {result.returncode}; stderr: {result.stderr.strip()!r}"

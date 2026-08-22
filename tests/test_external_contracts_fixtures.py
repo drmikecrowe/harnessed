@@ -187,6 +187,11 @@ class TestNamesFromLlmJson:
 
         result = _names_from_llm_json(raw)
         assert isinstance(result, set), f"_names_from_llm_json must return a set; got {type(result)}"
+        # WEAKER THAN IT MUST EVENTUALLY BE. A non-empty check cannot tell a correct parse from a
+        # parser that selected the wrong non-empty array. Replace this with an equality assertion
+        # against a set written out by hand from the captured fixture — NOT derived from `raw` or
+        # from `result`, which would make it tautological. Cannot be written until the fixture
+        # exists; tracked as a known limit in the EVIDENCE section of PR #416 (issue #250).
         assert len(result) > 0, (
             "fixture must contain at least one server name; update the fixture or the assertion "
             "to match actual captured content"
