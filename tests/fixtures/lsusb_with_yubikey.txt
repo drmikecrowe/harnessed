@@ -1,0 +1,7 @@
+# Captured: SYNTHETIC — not from real hardware; see open question 1 in issue #250 SPEC
+# Command: lsusb (representative output, not captured)
+# YubiKey model: Yubico.com YubiKey OTP+U2F (model 407, representative)
+Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+Bus 003 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 003 Device 004: ID 1050:0407 Yubico.com YubiKey OTP+U2F
