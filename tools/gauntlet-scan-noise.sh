@@ -37,13 +37,18 @@ SCAN_TESTS=(
 )
 
 FAILED=0
-pass() { printf '  PASS         %s\n' "$1"; }
-fail() { printf '  FAIL         %s\n' "$1"; FAILED=$((FAILED + 1)); }
-note() { printf '  %-12s %s\n' "$1" "$2"; }
+# Wall-clock per LAYER, not for the run. The evidence report carries a cost column so the tier map
+# can be tuned by measurement rather than by feel — a layer that costs minutes and finds nothing
+# over several tasks is a candidate for demotion, and that judgement needs numbers.
+_T0=$SECONDS
+layer() { _T0=$SECONDS; printf '\n%s\n' "$1"; }
+_el() { printf '%dm%02ds' $(( (SECONDS - _T0) / 60 )) $(( (SECONDS - _T0) % 60 )); }
+pass() { printf '  PASS   [%6s]  %s\n' "$(_el)" "$1"; }
+fail() { printf '  FAIL   [%6s]  %s\n' "$(_el)" "$1"; FAILED=$((FAILED + 1)); }
+note() { printf '  %-6s [%6s]  %s\n' "$1" "$(_el)" "$2"; }
 
 # ---------------------------------------------------------------------------
-echo
-echo "L1  shellcheck (by path — CI's '*.sh' glob does not match this file)"
+layer "L1  shellcheck (by path — CI's '*.sh' glob does not match this file)"
 if mise exec -- shellcheck -s bash "$SCAN" >"$LOGDIR/shellcheck.log" 2>&1; then
     pass "shellcheck $SCAN: clean"
 else
@@ -65,8 +70,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-echo
-echo "L2  ruff"
+layer "L2  ruff"
 # `src tests tools`, verbatim from .github/workflows/lint.yml — NOT `.`. The first version of this
 # layer guessed `ruff check .` and duly went red on a pre-existing S104 in catalog/services/ping
 # and on markdown code blocks under .agents/plans, neither of which this change touches and
@@ -82,8 +86,7 @@ fi
 note "N-A" "ruff cannot see the python inside $SCAN's heredoc"
 
 # ---------------------------------------------------------------------------
-echo
-echo "L3  pyright"
+layer "L3  pyright"
 # CI's exact invocation. A bare `pyright` happens to work for a developer because mise activates
 # the venv and pyright inherits VIRTUAL_ENV, but that makes the result depend on shell state — and
 # a number in an evidence report must not. --pythonpath pins the interpreter explicitly.
@@ -96,8 +99,7 @@ fi
 note "N-A" "pyright cannot see the python inside $SCAN's heredoc"
 
 # ---------------------------------------------------------------------------
-echo
-echo "L4  full test suite"
+layer "L4  full test suite"
 tools/run-tests.sh >"$LOGDIR/tests-full.log" 2>&1
 # The repo carries 3 PRE-EXISTING failures in tests/test_aoe_real.py at the branch point. The bar
 # is zero NEW failures, never exit 0 — so count them by name rather than trusting the exit code.
@@ -111,8 +113,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-echo
-echo "L5  changed-line coverage"
+layer "L5  changed-line coverage"
 # UNAVAILABLE, and not for want of a tool. diff-cover is declared and works, but it maps a coverage
 # report onto the branch diff by FILE PATH. Every changed line here lives either in bash or in a
 # python heredoc that only becomes a .py file when a test extracts it to a temp path, so there is
@@ -128,8 +129,7 @@ note "UNAVAIL" "diff-cover/coverage.py cannot bind to bash or to heredoc'd pytho
 note "SUBST" "mutation (L6) — covers assertion strength, NOT line enumeration"
 
 # ---------------------------------------------------------------------------
-echo
-echo "L6  mutation"
+layer "L6  mutation"
 note "SUBST" "mutmut is declared but generates from src/ ASTs; it cannot reach a bash heredoc"
 if tools/mutants_scan_noise.py >"$LOGDIR/mutation.log" 2>&1; then
     # Both score lines, not `tail -1`. The compound score is printed last, so tailing one line
@@ -140,8 +140,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-echo
-echo "L7  suite health (randomized order)"
+layer "L7  suite health (randomized order)"
 HEALTH_OK=1
 for seed in 1 2 3; do
     if ! tools/run-tests.sh "${SCAN_TESTS[@]}" -q -p randomly \
@@ -158,8 +157,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-echo
-echo "L8  real execution"
+layer "L8  real execution"
 # The layer that has actually found things here. A green suite says the code does what the tests
 # say; running the real script says what an operator will see.
 if tools/scan-real-run.sh "$LOGDIR" >"$LOGDIR/real-run.log" 2>&1; then
@@ -169,8 +167,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-echo
-echo "L9  supply chain"
+layer "L9  supply chain"
 note "N-A" "this change adds no dependency (pyproject.toml untouched)"
 if mise exec -- uv run --extra dev pip-audit >"$LOGDIR/pip-audit.log" 2>&1; then
     pass "pip-audit: clean"
