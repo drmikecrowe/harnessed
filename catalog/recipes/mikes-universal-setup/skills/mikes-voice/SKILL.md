@@ -1,6 +1,6 @@
 ---
 name: mikes-voice
-description: Draft in Mike's voice anything another human will read — email, text, Slack, GitHub or PR comment, PR description, issue, doc, release note, short-form post. Use whenever Mike says write, draft, reply, or send and names no style of his own. Blog posts are out of scope; use blog-writer for those.
+description: Draft in Mike's voice anything another human reads: email, text, Slack, GitHub or PR comment, PR description, issue, doc, release note. Use whenever he asks to write or reply and names no style. Not blog posts; use blog-writer.
 ---
 
 # Mike's voice
