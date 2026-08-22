@@ -37,6 +37,14 @@ SENTINEL = "# harnessed:launcher v1"
 _SHEBANG = "#!/bin/sh"
 _TYPED = "# as typed: "
 
+# The provenance comment is the one place user argv reaches a file, and argv is bounded only by
+# ARG_MAX (~2MB on Linux). A megabyte-long comment line is not a security problem — it is display
+# only and never executed — but it is an unbounded write into somebody's repo, so it is capped and
+# marked when it is cut. Long enough for any real launch: the longest plausible one is a dozen
+# `--recipe` names.
+_TYPED_LIMIT = 2048
+_TRUNCATED = " ... (truncated)"
+
 # `host-run` -> `claude-host`. The verb is in the FILENAME rather than a flag, so the two backends
 # cannot collide in one folder and an aoe row cannot restart a backend it does not name.
 _VERB_SUFFIX = {"host-run": "host", "container-run": "container"}
@@ -112,7 +120,10 @@ def _body(
 
     lines = [_SHEBANG, SENTINEL]
     if argv:
-        lines.append(_TYPED + _sanitize(shlex.join(argv)))
+        typed = _sanitize(shlex.join(argv))
+        if len(typed) > _TYPED_LIMIT:
+            typed = typed[:_TYPED_LIMIT - len(_TRUNCATED)] + _TRUNCATED
+        lines.append(_TYPED + typed)
     lines.append(f"exec {shlex.join(args)} \"$@\"")
     return "\n".join(lines) + "\n"
 

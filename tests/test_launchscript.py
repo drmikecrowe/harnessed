@@ -318,55 +318,57 @@ class TestExcludeEntry:
         assert "/claude-host" in lines and "/claude-container" in lines
 
 
-class TestProperties:
-    """Invariants over inputs nobody thought to enumerate."""
+# Property tests are MODULE-LEVEL functions, not methods. pytest builds a fresh class instance
+# per test, and hypothesis rejects a @given target reached through more than one of them
+# (HealthCheck.differing_executors) — which surfaced only under mutmut, where the suite is
+# re-entered many times in one process. Suppressing that check hides a real reproducibility
+# problem; dropping the class removes it.
 
-    @given(st.lists(st.text(min_size=1), min_size=1, max_size=8))
-    @settings(max_examples=200, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    def test_the_comment_is_always_exactly_one_line(self, tmp_path_factory, argv):
-        """Whatever argv holds, the `# as typed:` line cannot become two lines.
+@given(st.lists(st.text(min_size=1), min_size=1, max_size=8))
+@settings(max_examples=200, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_the_comment_is_always_exactly_one_line(tmp_path_factory, argv):
+    """Whatever argv holds, the `# as typed:` line cannot become two lines.
 
-        This is the property the sanitizer exists for: one embedded newline turns a display-only
-        comment into a second line of shell, and a second line of shell is executed.
-        """
-        proj = tmp_path_factory.mktemp("p")
-        written = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
-        assert written is not None
-        lines = written.read_text(encoding="utf-8").splitlines()
-        assert sum(ln.startswith(_TYPED_PREFIX) for ln in lines) == 1
-        assert len(lines) == 4, "shebang, sentinel, comment, exec — never more"
-        assert lines[3].startswith("exec ")
+    This is the property the sanitizer exists for: one embedded newline turns a display-only
+    comment into a second line of shell, and a second line of shell is executed.
+    """
+    proj = tmp_path_factory.mktemp("p")
+    written = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
+    assert written is not None
+    lines = written.read_text(encoding="utf-8").splitlines()
+    assert sum(ln.startswith(_TYPED_PREFIX) for ln in lines) == 1
+    assert len(lines) == 4, "shebang, sentinel, comment, exec — never more"
+    assert lines[3].startswith("exec ")
 
-    @given(st.integers(min_value=1, max_value=12))
-    @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    def test_repeated_writes_never_grow_the_exclude_file(self, tmp_path_factory, times):
-        """N launches leave exactly one exclude line, for every N."""
-        proj = tmp_path_factory.mktemp("p")
-        _git_init(proj)
-        for _ in range(times):
-            launchscript.write("host-run", "serena", "claude", proj)
-        lines = (proj / ".git" / "info" / "exclude").read_text(encoding="utf-8").splitlines()
-        assert lines.count("/claude-host") == 1
+@given(st.integers(min_value=1, max_value=12))
+@settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_repeated_writes_never_grow_the_exclude_file(tmp_path_factory, times):
+    """N launches leave exactly one exclude line, for every N."""
+    proj = tmp_path_factory.mktemp("p")
+    _git_init(proj)
+    for _ in range(times):
+        launchscript.write("host-run", "serena", "claude", proj)
+    lines = (proj / ".git" / "info" / "exclude").read_text(encoding="utf-8").splitlines()
+    assert lines.count("/claude-host") == 1
 
-    @given(st.text(min_size=1).filter(lambda t: "\x00" not in t),
-           st.text(min_size=1).filter(lambda t: "\x00" not in t))
-    @settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    def test_any_flag_value_survives_execution_intact(self, tmp_path_factory, run_script,
-                                                      group, title):
-        """Whatever the flag values, the EXECUTED script hands them over byte-identical.
+@given(st.text(min_size=1).filter(lambda t: "\x00" not in t),
+       st.text(min_size=1).filter(lambda t: "\x00" not in t))
+@settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_any_flag_value_survives_execution_intact(tmp_path_factory, run_script, group, title):
+    """Whatever the flag values, the EXECUTED script hands them over byte-identical.
 
-        Asserted by running the script rather than by reading it. A value may legitimately contain a
-        newline — single quotes span lines in sh — so the exec statement is not always one physical
-        line, and any text-scanning check would be asserting a property of the formatting rather
-        than of the launch. NUL is excluded because execve cannot carry it in an argument at all.
-        """
-        proj = tmp_path_factory.mktemp("p")
-        written = launchscript.write(
-            "host-run", "serena", "claude", proj, group=group, title=title
-        )
-        assert written is not None
-        argv = run_script(written)
-        assert group in argv and title in argv
+    Asserted by running the script rather than by reading it. A value may legitimately contain a
+    newline — single quotes span lines in sh — so the exec statement is not always one physical
+    line, and any text-scanning check would be asserting a property of the formatting rather
+    than of the launch. NUL is excluded because execve cannot carry it in an argument at all.
+    """
+    proj = tmp_path_factory.mktemp("p")
+    written = launchscript.write(
+        "host-run", "serena", "claude", proj, group=group, title=title
+    )
+    assert written is not None
+    argv = run_script(written)
+    assert group in argv and title in argv
 
 
 class TestCarriageReturnRegression:
@@ -406,3 +408,231 @@ class TestCarriageReturnRegression:
         )
         assert written is not None
         assert self.HOSTILE in run_script(written), "the value must survive execution intact"
+
+
+class TestFailureBranches:
+    """The error paths. Each one degrades to "no script, launch proceeds" — never to an exception.
+
+    These are the branches that only fire when the environment misbehaves, so they are the ones a
+    test suite silently leaves unexecuted and a refactor silently breaks.
+    """
+
+    @pytest.mark.parametrize("exc", [
+        FileNotFoundError("git"),
+        subprocess.TimeoutExpired("git", 5),
+        OSError("fork failed"),
+    ])
+    def test_git_that_does_not_complete_reads_as_no_answer(self, proj, monkeypatch, exc):
+        """`_git` returns None rather than propagating — every caller treats None as "not a repo".
+
+        Exercised against `_git` directly. Routing it through `write` on a non-git folder proved
+        nothing: `_ensure_excluded` returns before `_git` is ever called, so the assertion held
+        whatever `_git` did. Changed-line coverage is what surfaced that.
+        """
+        def raise_it(*_a, **_k):
+            raise exc
+
+        monkeypatch.setattr(launchscript.subprocess, "run", raise_it)
+        assert launchscript._git(proj, "rev-parse", "--show-toplevel") is None
+
+    def test_a_launch_in_a_git_repo_survives_git_failing(self, proj, monkeypatch):
+        _git_init(proj)
+        monkeypatch.setattr(launchscript, "_git", lambda *_a, **_k: None)
+        written = launchscript.write("host-run", "serena", "claude", proj)
+        assert written is not None and written.exists(), "the script is written regardless"
+        assert "/claude-host" not in (proj / ".git" / "info" / "exclude").read_text()
+
+    def test_an_unreadable_existing_script_is_refused(self, proj, monkeypatch):
+        (proj / "claude-host").write_text("x", encoding="utf-8")
+
+        def boom(*_a, **_k):
+            raise OSError("unreadable")
+
+        monkeypatch.setattr(launchscript, "_read_as_the_shell_does", boom)
+        assert launchscript.write("host-run", "serena", "claude", proj) is None
+
+    def test_a_failed_toplevel_lookup_writes_no_exclude_line(self, proj, monkeypatch):
+        _git_init(proj)
+        real = launchscript._git
+
+        def fail_toplevel(path, *args):
+            if "--show-toplevel" in args:
+                return subprocess.CompletedProcess(["git"], 128, "", "boom")
+            return real(path, *args)
+
+        monkeypatch.setattr(launchscript, "_git", fail_toplevel)
+        assert launchscript.write("host-run", "serena", "claude", proj) is not None
+        assert "/claude-host" not in (proj / ".git" / "info" / "exclude").read_text()
+
+    def test_an_empty_toplevel_writes_no_exclude_line(self, proj, monkeypatch):
+        _git_init(proj)
+        real = launchscript._git
+
+        def empty_toplevel(path, *args):
+            if "--show-toplevel" in args:
+                return subprocess.CompletedProcess(["git"], 0, "/\n", "")
+            return real(path, *args)
+
+        monkeypatch.setattr(launchscript, "_git", empty_toplevel)
+        assert launchscript.write("host-run", "serena", "claude", proj) is not None
+        assert "/claude-host" not in (proj / ".git" / "info" / "exclude").read_text()
+
+    def test_a_script_outside_the_toplevel_writes_no_exclude_line(self, proj, monkeypatch, tmp_path):
+        # `relative_to` cannot express it, so there is no anchored pattern to write. Fails CLOSED:
+        # a wrong pattern in a file every worktree shares is worse than no pattern.
+        _git_init(proj)
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        real = launchscript._git
+
+        def other_toplevel(path, *args):
+            if "--show-toplevel" in args:
+                return subprocess.CompletedProcess(["git"], 0, f"{elsewhere}\n", "")
+            return real(path, *args)
+
+        monkeypatch.setattr(launchscript, "_git", other_toplevel)
+        assert launchscript.write("host-run", "serena", "claude", proj) is not None
+        assert "/claude-host" not in (proj / ".git" / "info" / "exclude").read_text()
+
+    def test_an_unwritable_exclude_file_is_survivable(self, proj):
+        _git_init(proj)
+        exclude = proj / ".git" / "info" / "exclude"
+        exclude.chmod(0o400)
+        try:
+            # The script is written BEFORE the exclude entry is attempted, so the launch keeps its
+            # shortcut even when the entry cannot be added.
+            written = launchscript.write("host-run", "serena", "claude", proj)
+            assert written is not None and written.exists()
+            assert "/claude-host" not in exclude.read_text(encoding="utf-8")
+        finally:
+            exclude.chmod(0o600)
+
+
+class TestMutationGaps:
+    """Assertions that mutation testing proved were missing.
+
+    Every test here corresponds to a mutant that SURVIVED the first run: the line was executed and
+    the suite passed anyway. Coverage cannot see this class of hole, which is the whole reason the
+    mutation layer exists.
+    """
+
+    def test_a_tab_survives_into_the_provenance_comment(self, proj):
+        # `_sanitize` keeps `\t` explicitly. Nothing asserted it, so deleting the clause was free.
+        written = launchscript.write(
+            "host-run", "serena", "claude", proj, argv=["harnessed", "a\tb"]
+        )
+        assert written is not None
+        typed = next(
+            ln for ln in launchscript._read_as_the_shell_does(written).split("\n")
+            if ln.startswith(_TYPED_PREFIX)
+        )
+        assert "\t" in typed
+
+    def test_strict_mcp_is_the_default(self, proj):
+        # `no_strict_mcp` defaulting to True instead of False changed the agent's MCP surface and
+        # no test noticed.
+        written = launchscript.write("host-run", "serena", "claude", proj)
+        assert written is not None
+        assert "--no-strict-mcp-config" not in written.read_text(encoding="utf-8")
+
+    def test_no_strict_mcp_reaches_the_script_when_asked_for(self, proj, run_script):
+        written = launchscript.write(
+            "host-run", "serena", "claude", proj, no_strict_mcp=True
+        )
+        assert written is not None
+        assert "--no-strict-mcp-config" in run_script(written)
+
+    def test_an_untracked_sentinel_file_in_a_real_repo_is_rewritten(self, proj):
+        # The tracked-file refusal has to be able to say NO as well as YES. Without
+        # `--error-unmatch`, `git ls-files` exits 0 for an untracked path too, so every existing
+        # file read as tracked — and every rewrite silently stopped happening.
+        _git_init(proj)
+        first = launchscript.write("host-run", "serena", "claude", proj)
+        assert first is not None
+        second = launchscript.write("host-run", "other-stack", "claude", proj)
+        assert second is not None, "an untracked file we wrote must still be rewritable"
+        assert "other-stack" in second.read_text(encoding="utf-8")
+
+    def test_the_sentinel_is_only_honoured_on_line_two(self, proj):
+        # Widening the window to three lines would accept a file whose second line is somebody
+        # else's, which is not the format we write.
+        victim = proj / "claude-host"
+        victim.write_text(
+            f"#!/bin/sh\necho not ours\n{launchscript.SENTINEL}\n", encoding="utf-8"
+        )
+        assert launchscript.write("host-run", "serena", "claude", proj) is None
+        assert "echo not ours" in victim.read_text(encoding="utf-8")
+
+    def test_the_read_limit_is_honoured(self, proj):
+        written = launchscript.write("host-run", "serena", "claude", proj)
+        assert written is not None
+        assert len(launchscript._read_as_the_shell_does(written, 5)) == 5
+        assert len(launchscript._read_as_the_shell_does(written)) > 5
+
+    def test_undecodable_bytes_do_not_raise(self, proj):
+        # `errors="replace"` is the reason. A script somebody else wrote can hold any bytes, and
+        # the sentinel check must reach a verdict rather than a UnicodeDecodeError.
+        victim = proj / "claude-host"
+        victim.write_bytes(b"#!/bin/sh\n\xff\xfe not utf-8\n")
+        assert launchscript.write("host-run", "serena", "claude", proj) is None
+        assert victim.read_bytes().startswith(b"#!/bin/sh\n\xff\xfe")
+
+    def test_a_fresh_exclude_file_has_no_leading_blank_line(self, proj):
+        _git_init(proj)
+        exclude = proj / ".git" / "info" / "exclude"
+        exclude.unlink()
+        launchscript.write("host-run", "serena", "claude", proj)
+        assert exclude.read_text(encoding="utf-8") == "/claude-host\n"
+
+    def test_appending_inserts_no_blank_line(self, proj):
+        _git_init(proj)
+        exclude = proj / ".git" / "info" / "exclude"
+        exclude.write_text("*.log\n", encoding="utf-8")
+        launchscript.write("host-run", "serena", "claude", proj)
+        assert exclude.read_text(encoding="utf-8") == "*.log\n/claude-host\n"
+
+    def test_a_project_path_with_a_space_still_deduplicates(self, tmp_path):
+        # The membership check splits on newlines. Splitting on WHITESPACE instead broke a pattern
+        # containing a space into fragments, found nothing, and appended a fresh line every launch.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git_init(repo)
+        nested = repo / "a dir"
+        nested.mkdir()
+        for _ in range(3):
+            launchscript.write("host-run", "serena", "claude", nested)
+        lines = (repo / ".git" / "info" / "exclude").read_text(encoding="utf-8").split("\n")
+        assert lines.count("/a dir/claude-host") == 1
+
+
+class TestProvenanceCommentIsBounded:
+    """The one place user argv reaches a file. argv is bounded only by ARG_MAX, so the line is not.
+
+    Display-only and never executed, so this is not a security bound — it is a bound on how much
+    harnessed will write into somebody's repository without being asked.
+    """
+
+    def test_a_huge_argv_is_capped_and_marked(self, proj):
+        written = launchscript.write(
+            "host-run", "serena", "claude", proj, argv=["harnessed", "x" * 50_000]
+        )
+        assert written is not None
+        typed = next(
+            ln for ln in launchscript._read_as_the_shell_does(written).split("\n")
+            if ln.startswith(_TYPED_PREFIX)
+        )
+        assert len(typed) <= len(_TYPED_PREFIX) + launchscript._TYPED_LIMIT
+        assert typed.endswith("(truncated)"), "a cut line must say it was cut"
+
+    def test_an_ordinary_argv_is_untouched(self, proj):
+        argv = ["harnessed", "host-run", "claude", "-r", "codebase-memory-mcp", "-r", "gh-issues"]
+        written = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
+        assert written is not None
+        assert "(truncated)" not in written.read_text(encoding="utf-8")
+
+    def test_truncation_never_touches_what_runs(self, proj, run_script):
+        written = launchscript.write(
+            "host-run", "serena", "claude", proj, argv=["harnessed", "x" * 50_000]
+        )
+        assert written is not None
+        assert run_script(written)[0] == "host-run", "the exec line is unaffected by the cap"
