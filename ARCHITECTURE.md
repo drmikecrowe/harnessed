@@ -33,7 +33,7 @@ harnessed/
 │   ├── mounts.py  volumes.py  credmounts.py   # container mount set, per-stack volumes, auth mounts
 │   ├── svcstate.py  svcguards.py              # service lifecycle + the guards around it
 │   ├── launchenv.py  setupenv.py              # the folder-env contract, resolved per surface
-│   ├── dynstack.py  lastrun.py  persist.py    # `--recipe` minting, `--last`, persist entries
+│   ├── dynstack.py  launchscript.py  persist.py  # `--recipe` minting, `./claude-host`, persist entries
 │   ├── scan.py  synclinks.py
 ├── tests/                    # pytest (unit + podman-gated integration); tests/fixtures/
 ├── catalog/                  # everything contributors author (see Vocabulary) — SHIPPED IN THE WHEEL
@@ -253,17 +253,32 @@ user's own overlay. That is correct rather than unfortunate: `ssh_keys` is per-s
 stack is shared across repos, so it cannot express "the key for *this* repo". Per-repo SSH
 identity comes from the forwarded agent plus your own `~/.ssh/config`.
 
-**Per-repo binding.** A launch records its resolved stack in harnessed's own state, and `--last`
-replays it:
+**Per-repo binding.** A launch leaves an executable behind — `<harness>-<verb>` in the project
+folder — and running it replays that launch:
 
 ```console
 $ harnessed container-run claude --recipe superpowers --recipe serena   # once
-$ harnessed container-run claude --last                                 # thereafter
+$ ./claude-container                                                    # thereafter
+$ ./claude-container --fresh                                            # ...with a flag for today
+$ cat claude-container                                                  # ...or just read it
 ```
 
-No env var, no discovery, no precedence rules, and nothing written into the repo. `--last` is a
-flag rather than the bare verb because bare is already the `default` baseline; with no record it
-fails loudly instead of falling back to one.
+No env var, no discovery, no precedence rules. The file is the record, which is the point: the
+launch it replays is legible without a flag to print it, and the earlier `--last` design kept the
+same facts in a state file nothing ever showed you.
+
+**The script ends with `"$@"`, and the trailing `--` lives on the aoe row instead.** aoe appends the
+agent's resume flags when it restarts a session, and those have to sail past harnessed's own option
+parsing — hence a separator. Put that separator in the file and a human's `./claude-container
+--fresh` sails past too, reaching the agent instead of harnessed. So the row invokes
+`<script> --` and the file forwards `"$@"`: the human's flag lands on harnessed, the agent's lands
+on the agent.
+
+Written after the backend's own validation gate, never fatal if it cannot be written, and never over
+a file harnessed did not write (a `# harnessed:launcher v1` sentinel on line 2 is the licence, and a
+git-tracked file is refused even with it). The name is added once to the git common dir's
+`info/exclude` — which every worktree of the checkout shares, so it is written once and covers all of
+them, and needs no trust decision because nothing but you executes it.
 
 **The record belongs in harnessed's own state, never in a mise config.** mise keys trust per config
 *file* and trust does not cascade from a trusted ancestor, so a file written into each project

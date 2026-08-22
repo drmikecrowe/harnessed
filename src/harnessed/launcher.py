@@ -34,7 +34,7 @@ from rich.markup import escape
 from . import aoe
 from . import dynstack
 from . import emit
-from . import lastrun
+from . import launchscript
 from . import paths
 from . import persist
 from . import staleness
@@ -2412,8 +2412,8 @@ class HostBackend(ExecutionBackend):
                 # `--no-strict-mcp-config` opts OUT of claude's `--strict-mcp-config`. omp has
                 # neither flag — it reads its agent dir's mcp.json and nothing else — so there is no
                 # non-strict mode to ask for. Accepted-and-inert is the silent case this codebase
-                # names rather than tolerates (`_warn_capability_gaps`), and the flag is recorded in
-                # `lastrun`, so a replay would carry it forward unremarked too.
+                # names rather than tolerates (`_warn_capability_gaps`), and the flag is recorded
+                # in the launcher script, so a replay would carry it forward unremarked too.
                 _err.print(
                     "[blue][INFO][/blue] --no-strict-mcp-config has no effect for omp: it reads "
                     "only its own agent dir's mcp.json, so there is no non-strict mode to opt into."
@@ -2527,14 +2527,14 @@ def _launch_host(
     # a launch that then died on a renamed recipe, and that row would fail identically every time it
     # was started from the dashboard. It costs `--create-aoe-only` one assembly, which is
     # sub-second, emit-only and container-free on this path.
-    # BEFORE the row, because the row's command is `--last` and `--last` reads this. `_aoe_register`
-    # EXITS under `--create-aoe-only`, so recording afterwards would write a row whose one job is to
-    # replay a launch that was never recorded — dead on arrival, failing "nothing to replay" every
-    # time it is started. That is the same class of dead row the comment above avoids by
-    # registering after assembly.
-    lastrun.record(
+    # BEFORE the row, because the row's command IS this script. `_aoe_register` EXITS under
+    # `--create-aoe-only`, so writing afterwards would leave a row pointing at a file that does not
+    # exist — dead on arrival, failing every time it is started from the dashboard. That is the same
+    # class of dead row the comment above avoids by registering after assembly.
+    launchscript.write(
         "host-run", stack, harness, project_path,
         group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp,
+        argv=_typed_invocation("host-run"),
     )
     # AFTER assembly, not before. Assembly is this backend's real validation gate — the analogue of
     # `launch`'s is_built/staleness checks — so registering ahead of it would leave a row behind for
@@ -2787,67 +2787,6 @@ def _resolve_stack(
     return name, None if preexisting else stack_dir
 
 
-def _resolve_last(
-    verb: str, harness: str, path: Optional[str],
-    stack: Optional[str], recipe: list[str], extends: str, no_extends: bool, service: list[str],
-    *, no_strict_mcp: bool, aoe_group: Optional[str], aoe_title: Optional[str],
-) -> tuple[str, bool, Optional[str], Optional[str]]:
-    """Replay the last launch in this folder — the `--last` path (bd harnessed-7mt).
-
-    This is what the aoe dashboard row invokes (`aoe.replay_command`), and what a human types to get
-    the same thing back without retyping a recipe set. It is deliberately a FLAG rather than the
-    bare `harnessed <verb>-run <harness>` form: bare is documented as the `default` baseline, and
-    redefining it would silently change the most-typed command in a folder whose record names a
-    different stack — the wrong-stack-at-exit-0 class this module keeps paying to avoid.
-
-    FAILS LOUDLY with no record. Falling back to the baseline is precisely the silent wrong launch
-    above, one layer down: the row says "restart what was here", and starting something else while
-    reporting success is worse than not starting at all.
-
-    Explicit flags still win. `--last --aoe-title x` replays the stack and takes the new title; the
-    record only fills what the user did not say.
-
-    EVERY STACK-SELECTION INPUT IS REJECTED, not just `--stack`/`--recipe`. They each feed
-    `_resolve_stack`, which `--last` skips entirely, so any of them left merely "allowed" would be
-    accepted and then silently dropped — `--last --service redis` would start no redis and say
-    nothing. Rejecting is not an inconvenience here: pairing "replay the last launch" with an
-    instruction to compose a different one is a contradiction, and picking a winner silently is how
-    you get a launch nobody asked for. Lifecycle flags (`--fresh`, `--rm`) are deliberately NOT in
-    this set — they say what you want THIS time and apply to a replay exactly as they would to any
-    other launch.
-    """
-    conflicting = [
-        name for name, given in (
-            ("--stack", bool(stack)), ("--recipe", bool(recipe)), ("--service", bool(service)),
-            ("--extends", extends != _EXTENDS_DEFAULT), ("--no-extends", no_extends),
-        ) if given
-    ]
-    if conflicting:
-        _err.print(
-            f"[bold red]error:[/bold red] --last replays the last launch here; "
-            f"{', '.join(conflicting)} compose a different one. Provide one or the other."
-        )
-        raise typer.Exit(1)
-
-    project_path = Path(path).resolve() if path else Path.cwd()
-    entry = lastrun.load(verb, harness, project_path)
-    if entry is None:
-        _err.print(
-            f"[bold red]error:[/bold red] no recorded {verb} launch for {harness} in "
-            f"{project_path} — nothing to replay.\n"
-            f"Start one explicitly first (e.g. `harnessed {verb} {harness}` for the default "
-            f"baseline, or with --stack/--recipe), and --last will replay it after that."
-        )
-        raise typer.Exit(1)
-
-    return (
-        entry["stack"],
-        no_strict_mcp or bool(entry.get("no_strict_mcp")),
-        aoe_group if aoe_group is not None else entry.get("aoe_group"),
-        aoe_title if aoe_title is not None else entry.get("aoe_title"),
-    )
-
-
 # Shared by both run verbs so the two grammars cannot drift apart.
 _STACK_OPT = typer.Option(
     None, "--stack", "-s",
@@ -2858,8 +2797,7 @@ _RECIPE_OPT = typer.Option(
     help="Recipe to include; repeat for each. Order is irrelevant — the set is sorted. "
          "Mutually exclusive with --stack.",
 )
-# The baseline `--extends` names when the user does not. Named because `_resolve_last` compares
-# against it to tell "user asked for a different baseline" from "user said nothing".
+# The baseline `--extends` names when the user does not.
 _EXTENDS_DEFAULT = "default"
 _EXTENDS_OPT = typer.Option(
     _EXTENDS_DEFAULT, "--extends",
@@ -2890,13 +2828,6 @@ _AOE_TITLE_OPT = typer.Option(
          "'<folder> [<harness>/<backend>] <stack>'. With --aoe-group, also identifies the row to "
          "reuse — the pair is how an existing or hand-written row is adopted rather than duplicated.",
 )
-_LAST_OPT = typer.Option(
-    False, "--last",
-    help="Replay the last launch of this harness in this folder — its stack and flags, without "
-         "retyping them. This is what an Agent of Empires row runs. Errors if nothing was launched "
-         "here yet; it never falls back to the default baseline. Not combinable with "
-         "--stack/--recipe, which select a different stack.",
-)
 
 
 @app.command("host-run")
@@ -2914,7 +2845,6 @@ def host_run(
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
-    last: bool = _LAST_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -2931,7 +2861,6 @@ def host_run(
         harnessed host-run <harness> [path]                        # the `default` baseline
         harnessed host-run <harness> [path] --stack <name>
         harnessed host-run <harness> [path] --recipe r1 --recipe r2
-        harnessed host-run <harness> [path] --last                 # replay what ran here last
 
     ONE grammar for both stack sources, and the harness leads. An earlier design put the stack in
     the first positional slot, which made it indistinguishable from the project path under
@@ -2952,17 +2881,7 @@ def host_run(
     every launch.
     """
     _require_supported_harness(harness)
-    if last:
-        # No mint on this path — the record already names a RESOLVED stack (a `--recipe` set was
-        # minted by the launch that recorded it), so there is nothing to create and nothing to
-        # clean up if the launch fails. Hence minted_dir stays None.
-        stack_name, no_strict_mcp_config, aoe_group, aoe_title = _resolve_last(
-            "host-run", harness, path, stack, recipe, extends, no_extends, service,
-            no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
-        )
-        minted_dir = None
-    else:
-        stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
+    stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
     try:
         _launch_host(
             stack_name, harness, path, rm=rm, extra=_passthrough,
@@ -3471,7 +3390,6 @@ def container_run(
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
-    last: bool = _LAST_OPT,
     create_aoe_only: bool = typer.Option(
         False, "--create-aoe-only",
         help="Register the Agent of Empires session for this stack and exit without launching. "
@@ -3481,7 +3399,6 @@ def container_run(
 ) -> None:
     """Run a stack in an isolated container against a project directory (container backend).
 
-        harnessed container-run <harness> [path] --last                 # replay what ran here last
         harnessed container-run <harness> [path]                        # the `default` baseline
         harnessed container-run <harness> [path] --stack <name>
         harnessed container-run <harness> [path] --recipe r1 --recipe r2
@@ -3493,17 +3410,7 @@ def container_run(
     collapses proliferation rather than relocating it.
     """
     _require_supported_harness(harness)
-    if last:
-        # See the same branch in `host_run`: the record names an already-resolved stack, so there is
-        # nothing minted here and nothing to clean up. `recipe` stays empty, which also keeps the
-        # rebuild below off — a replay runs what is already assembled.
-        stack, no_strict_mcp_config, aoe_group, aoe_title = _resolve_last(
-            "container-run", harness, path, stack, recipe, extends, no_extends, service,
-            no_strict_mcp=no_strict_mcp_config, aoe_group=aoe_group, aoe_title=aoe_title,
-        )
-        minted_dir = None
-    else:
-        stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
+    stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
 
     if recipe:
         # A freshly minted stack has no assembled profile, and everything below hard-errors without
@@ -3589,12 +3496,13 @@ def container_run(
     # notice a block whose stack is gone.
     _prune_unlaunchable_omp_blocks(harness)
 
-    # BEFORE the row, for the reason spelled out at the host-run call site: the row's command is
-    # `--last`, `_aoe_register` EXITS under `--create-aoe-only`, and a row recorded afterwards
-    # would have nothing to replay.
-    lastrun.record(
+    # BEFORE the row, for the reason spelled out at the host-run call site: the row's command IS
+    # this script, `_aoe_register` EXITS under `--create-aoe-only`, and a row written afterwards
+    # would point at a file that does not exist.
+    launchscript.write(
         "container-run", stack, harness, project_path,
         group=aoe_group, title=aoe_title, no_strict_mcp=no_strict_mcp_config,
+        argv=_typed_invocation("container-run"),
     )
     # Mirror into Agent of Empires if the user runs it. Placed after every validation above so a
     # launch that is about to fail never leaves a row behind, and before the podman work so the row
@@ -5173,14 +5081,49 @@ def aws_sso(
 # split it off argv before Typer parses. Set by main(); read by both run verbs.
 _passthrough: list[str] = []
 
+# The invocation as the user typed it, up to any `--`, for the launcher script's `# as typed:` line.
+# Captured here rather than read from `sys.argv` at the write site because `main` REWRITES sys.argv
+# to strip the passthrough before typer ever sees it — by then the original is gone. Display only:
+# nothing executes this list. See `launchscript`.
+#
+# None means "this process did not come through `main`" — a `CliRunner` test or an embedded caller
+# reaching a run verb directly. That is NOT the same as "the user typed nothing", and the two must
+# not be conflated: see `_typed_invocation`.
+_invocation: Optional[list[str]] = None
+
+
+def _typed_invocation(verb: str) -> Optional[list[str]]:
+    """The argv for this launch's `# as typed:` line, or None to write no line at all.
+
+    TWO WAYS TO GET A LINE THAT LIES, both refused here, because a provenance comment that names a
+    different launch than the one below it is worse than no comment — the whole point of the file is
+    that you can trust what it says you ran.
+
+      * NO PARSE AT ALL. `CliRunner` and direct calls into a run verb never reach
+        `_extract_passthrough`, so there is no invocation to report. Reporting the empty list would
+        write the bare word `harnessed`, which reads as a real launch and is not one.
+      * A PARSE FROM ANOTHER LAUNCH. One process can parse once and then write scripts for several
+        projects (tests do exactly this). The recorded argv names its own verb, so a mismatch means
+        the invocation belongs to a different launch than the one being written.
+
+    Neither can happen on the real CLI path, where `main` parses once and runs one command. They are
+    refused anyway: the cost is one absent comment, and the alternative is a file that misreports a
+    launch in somebody's repository.
+    """
+    if not _invocation or _invocation[0] != verb:
+        return None
+    return ["harnessed", *_invocation]
+
 
 def _extract_passthrough(argv: list[str]) -> list[str]:
     """Split argv at the first standalone `--`, stashing everything after it in `_passthrough` and
     returning the head. With no `--`, clears `_passthrough` and returns argv unchanged."""
-    global _passthrough
+    global _passthrough, _invocation
+    _invocation = list(argv)
     if "--" in argv:
         i = argv.index("--")
         _passthrough = argv[i + 1 :]
+        _invocation = argv[:i]
         return argv[:i]
     _passthrough = []
     return argv

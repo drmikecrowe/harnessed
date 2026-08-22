@@ -386,21 +386,27 @@ class TestTheTrustedPathMergeHoldsForAnyUserConfig:
 class TestTheSuiteWritesNoStateIntoTheDevelopersHome:
     """`conftest._isolated_user_state` is autouse, and this is what it is for.
 
-    Everything durable harnessed records — `lastrun` replay records, project-env dotenvs holding
-    live service passwords, per-instance dirs, `svc-secrets` — is keyed off `paths.xdg_state_home()`.
+    Everything durable harnessed records — project-env dotenvs holding live service passwords,
+    per-instance dirs, `svc-secrets` — is keyed off `paths.xdg_state_home()`.
     Unset, that is the developer's real `~/.local/state`, and the launcher tests reach all of it.
     """
 
     def test_the_state_root_is_not_the_real_one(self):
         assert paths.xdg_state_home() != Path.home() / ".local" / "state", (
-            "XDG_STATE_HOME is not isolated, so this test run is writing lastrun records and "
-            "project-env dotenvs into the developer's own harnessed state"
+            "XDG_STATE_HOME is not isolated, so this test run is writing project-env dotenvs "
+            "into the developer's own harnessed state"
         )
 
-    def test_writing_a_lastrun_record_stays_inside_the_tmp_root(self, tmp_path):
-        from harnessed import lastrun
+    def test_writing_a_project_env_stays_inside_the_tmp_root(self, tmp_path, monkeypatch):
+        from harnessed import setupenv
 
-        lastrun.record("host-run", "s", "claude", tmp_path)
-        written = list((paths.xdg_state_home() / "harnessed" / "last-run").glob("*.json"))
-        assert written, "the record went somewhere other than $XDG_STATE_HOME"
-        assert all(str(p).startswith(os.environ["XDG_STATE_HOME"]) for p in written)
+        # The env SOURCES are stubbed, not the writer: this pins where a durable write lands, and
+        # the default stack happens to declare no recipe env, so nothing would be written at all.
+        monkeypatch.setattr(setupenv, "load_stack_with_recipes", lambda *_a, **_k: (None, []))
+        monkeypatch.setattr(setupenv, "_recipe_env", lambda *_a, **_k: {"FOO": "bar"})
+        monkeypatch.setattr(setupenv, "svc_client_env", lambda *_a, **_k: {})
+
+        setupenv._write_project_tool_env("s", tmp_path, harness="claude", verb="host-run")
+        written = setupenv.project_env_path(tmp_path)
+        assert written.exists(), "the dotenv went somewhere other than $XDG_STATE_HOME"
+        assert str(written).startswith(os.environ["XDG_STATE_HOME"])

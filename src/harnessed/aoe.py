@@ -75,7 +75,6 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from . import lastrun
 from . import paths
 from .schema import HARNESS_CONFIG_DIR
 
@@ -107,6 +106,11 @@ _GROUP_LINE = re.compile(r"^\s*[•*-]\s+(\S+)\s+\(")
 # the stack sits at a keyword rather than a fixed index — `command_for` writes it and
 # `forget_stack` reads it back, and they must not drift.
 _STACK_FLAG = ["--stack"]
+
+# How much of a launcher script `_replays_stack` will read. The exec line is line 3 or 4 of a file we
+# wrote, but a row can point at ANY path, and `harnessed rm` is unattended — so the read is bounded
+# rather than trusting the target to be small.
+_SCRIPT_READ_LIMIT = 64 * 1024
 
 # The two overrides, recorded on the command so a restart from the dashboard re-asserts them. Left
 # off it, a restarted row would sync itself back under the DERIVED group and title and add a second
@@ -206,29 +210,40 @@ def _apply(
     return True
 
 
-def replay_command(verb: str, harness: str) -> str:
-    """What the row runs: harnessed's own replay of the last launch in that folder.
+def replay_command(verb: str, harness: str, project_path: Path) -> str:
+    """What the row runs: the launcher script that launch left in the project folder.
 
-    The flags live in `lastrun`'s state file, not in this string, so this stays STABLE across
-    launches — the identity property the old `mise run <harness> --` had, and the reason a flag
-    added to `command_for` is free rather than re-keying every existing row. See `command_for`'s
-    note on identity.
+    The flags live in the script, not in this string, so this stays STABLE across launches — the
+    identity property the old `mise run <harness> --` had, and the reason a flag added to
+    `command_for` is free rather than re-keying every existing row. See `command_for`'s note on
+    identity.
 
-    Replaced the mise task (bd harnessed-7mt). That task lived in a `mise.local.toml` harnessed
-    wrote into the user's repo, which forced a `mise trust` prompt in every new worktree — trust is
-    keyed per config FILE and does not cascade from an ancestor, so every fresh worktree path
-    re-prompted. Owning both sides here removes the file and the prompt with it.
+    Replaced `--last` and its `lastrun` state file, which in turn replaced the mise task
+    (bd harnessed-7mt). Each step removed an indirection; this one also makes the record READABLE —
+    the user can `cat claude-host` instead of reconstructing a launch from shell history.
 
-    NOT `--last --stack <name>`: naming the stack would put a launch flag back in the identity key.
+    NOT `--stack <name>`: naming the stack would put a launch flag back in the identity key.
 
-    Terminated with `--` for the reason spelled out in `command_for` — aoe appends the recorded
-    tool's resume flags on restart, and they have to sail past harnessed's own option parsing to
-    reach the agent. Unlike `mise run`, harnessed needs no separator of its own to see `--last`.
+    ABSOLUTE, not `./claude-host`. Whether aoe runs a row's command with the working directory set
+    to the row's path is aoe's business and not ours to depend on; an absolute path is correct under
+    either behavior and is equally stable as an identity key.
 
-    No cwd is pinned; the row's path is the project, and `--last` reads the record for that folder.
-    A folder with no record fails LOUDLY (see `lastrun.load`), never as a baseline launch.
+    TERMINATED WITH `--`, and that separator belongs HERE rather than inside the script. aoe appends
+    the recorded tool's resume flags on restart and they must sail past harnessed's own option
+    parsing to reach the agent (see `command_for`). The script ends with `"$@"`, so the separator
+    arrives as the script's own argument and lands in exactly the right place — while a human's
+    `./claude-host --fresh`, with no separator, still reaches harnessed. Put the `--` in the file and
+    the human's flag goes to the agent instead; see `launchscript`.
     """
-    return shlex.join(["harnessed", verb, harness, "--last", "--"])
+    # Imported HERE, not at module scope: `launchscript` needs `command_for` from this module, so a
+    # top-level import either way is a cycle. It resolves today by luck of ordering — both sides
+    # only touch each other at call time — and would stop resolving the moment either module used
+    # the other during import. A local import states the dependency direction instead of relying on
+    # that.
+    from . import launchscript
+
+    script = Path(project_path) / launchscript.script_name(verb, harness)
+    return shlex.join([str(script), "--"])
 
 
 def command_for(
@@ -428,7 +443,27 @@ def _is_ours(command: str) -> bool:
         return False
     if tokens[:1] == ["harnessed"]:
         return True
+    if _is_launcher_script(tokens):
+        return True
     return tokens[:2] == ["mise", "run"] and len(tokens) > 2 and tokens[2] in HARNESS_CONFIG_DIR
+
+
+def _is_launcher_script(tokens: list[str]) -> bool:
+    """Whether these tokens are a `<path>/<harness>-<verb> --` row — what `replay_command` writes.
+
+    Matched on the BASENAME against the harness registry, never on the path existing. A row whose
+    script has been deleted is still ours and still repairable; requiring the file would strand it
+    at exactly the moment repair is what the user needs.
+
+    Narrow on purpose. Any single-token command ending in `--` would be far too broad — it would
+    make a user's own `./run-dev --` row eligible for rewriting. The basename must name a harness we
+    know and one of the two verbs, which no unrelated script does by accident.
+    """
+    if len(tokens) != 2 or tokens[1] != "--":
+        return False
+    name = Path(tokens[0]).name
+    harness, _, suffix = name.rpartition("-")
+    return bool(harness) and harness in HARNESS_CONFIG_DIR and suffix in {"host", "container"}
 
 
 def _drifted_rows(sessions: list[dict], command: str, project_path: Path, title: str) -> list[dict]:
@@ -572,7 +607,7 @@ def sync_session(
         # Canonicalize once: the resolved path is both what we record and what we compare against,
         # so two routes to the same directory cannot register two rows.
         project_path = Path(project_path).resolve()
-        command = replay_command(verb, harness)
+        command = replay_command(verb, harness, project_path)
         sessions = _sessions(exe)
         if _registered(sessions, command, project_path, group=group, title=title):
             return True
@@ -665,23 +700,66 @@ def sync_session(
         return False
 
 
-def _replays_stack(tokens: list[str], recorded_path: str | None, verb: str, stack: str) -> bool:
-    """Whether a `--last` row would start `stack` — the stack a replay row does not carry.
+def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
+    """Whether a launcher-script row would start `stack` — the stack a replay row does not carry.
 
-    Only for the shape `replay_command` writes (`harnessed <verb> <harness> --last --`); the caller
-    handles the older `--stack <name>` shape itself. Everything is guarded because this runs inside
+    Only for the shape `replay_command` writes (`<path>/<harness>-<verb> --`); the caller handles
+    the older `--stack <name>` shape itself. Everything is guarded because this runs inside
     `harnessed rm`'s best-effort cleanup, over aoe's JSON, which is not our schema to trust.
 
-    Returns False when the record is missing — see `forget_stack` on why an unattributable row is
-    left alone rather than removed.
+    READS THE SCRIPT the row points at, rather than a side record. The script IS the record now, and
+    it carries the resolved `--stack <name>` in its exec line — so the file that would run and the
+    file we attribute the row by are the same file, and cannot disagree. The `--last` shape this
+    replaced had to consult `lastrun` for the same answer.
+
+    Returns False when the script is missing, unreadable, or names another stack — see `forget_stack`
+    on why an unattributable row is left alone rather than removed. Bounded read: a row can point
+    anywhere, and `harnessed rm` must not stall on a huge or blocking file.
     """
-    if len(tokens) < 5 or tokens[3:5] != ["--last", "--"] or not recorded_path:
+    if not _is_launcher_script(tokens):
         return False
+    # Verb agreement is not optional: `rm` is container-scoped, and a `claude-host` row names a
+    # backend it must not touch.
+    from . import launchscript  # local, for the cycle reason in `replay_command`
+
+    name = Path(tokens[0]).name
+    if name != launchscript.script_name(verb, name.rpartition("-")[0]):
+        return False
+    script = Path(tokens[0])
     try:
-        entry = lastrun.load(verb, tokens[2], Path(recorded_path))
-    except (OSError, TypeError, ValueError):
+        # `is_file()` BEFORE the read, the same guard `launchscript._ensure_excluded` applies to the
+        # exclude file. A row's path comes out of aoe's JSON and can point at anything: a FIFO passes
+        # `exists()`, and opening one BLOCKS until something writes to it — so `harnessed rm`, which
+        # runs unattended, would hang rather than fail. `except OSError` cannot catch a hang.
+        if not script.is_file():
+            return False
+        content = launchscript._read_as_the_shell_does(script, _SCRIPT_READ_LIMIT)
+    except OSError:
         return False
-    return bool(entry) and entry.get("stack") == stack
+    # `split("\n")`, not `splitlines()` — see `launchscript.write`. A flag value carrying \x85 or
+    # \u2028 would otherwise split the exec line here but not in the shell, and this row would go
+    # unattributed while the container it names is torn down.
+    # From `exec ` to the END of the file, not to the end of its first physical line. A flag value
+    # may contain a newline — single quotes span lines in sh — so the exec STATEMENT is not always
+    # one line, and splitting on lines would hand `shlex` an unterminated quote and lose the row.
+    # Two cases rather than one clever index. The single-expression version used -1 to mean "the
+    # file opens with `exec `", which is the SAME value `str.find` returns for "not found" — so the
+    # not-found guard swallowed that branch and it never ran. A sentinel that collides with a real
+    # answer is a bug even when the colliding input is rare.
+    if content.startswith("exec "):
+        statement = content[len("exec "):]
+    else:
+        index = content.find("\nexec ")
+        if index == -1:
+            return False
+        statement = content[index + len("\nexec "):]
+    try:
+        script_tokens = shlex.split(statement)
+    except ValueError:
+        return False
+    return any(
+        a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(script_tokens)
+    )
 
 
 def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
@@ -697,11 +775,11 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
         index: the stack used to be the third token, which a prefix compare could check; it is a
         flag value sitting after the harness and path, so its position varies with whether a project
         path was recorded.
-      * `<harness> --last --` — what `replay_command` writes now. It names NO stack, deliberately:
-        putting one back would re-key every row whenever the flag set changed, which is the identity
-        property the switch away from `mise run` was protecting. The stack is instead resolved from
-        the `lastrun` record for that row's (path, verb, harness) — the same record the row replays,
-        so a row matches this cleanup exactly when it would have started the stack being removed.
+      * `<path>/<harness>-<verb> --` — what `replay_command` writes now. It names NO stack,
+        deliberately: putting one back would re-key every row whenever the flag set changed, which
+        is the identity property the switch away from `mise run` was protecting. The stack is
+        instead read out of the launcher script the row points at — the same file the row runs, so a
+        row matches this cleanup exactly when it would have started the stack being removed.
 
     NOT matched by title. `--aoe-title` overrides the derived title, so a titled row would escape
     cleanup and a coincidentally-titled foreign row could be caught by it.
@@ -720,11 +798,15 @@ def forget_stack(verb: str, stack: str, *, background: bool = True) -> None:
                 tokens = shlex.split(session.get("command") or "")
             except ValueError:
                 continue
-            if tokens[:2] != ["harnessed", verb]:
+            # Two admissible shapes, and the launcher-script one does NOT start with `harnessed` —
+            # it starts with a path. Gating on that prefix alone silently skipped every script row,
+            # which is every row written since `--last` was retired: `harnessed rm` would tear the
+            # containers down and leave their dashboard rows behind.
+            if tokens[:2] != ["harnessed", verb] and not _is_launcher_script(tokens):
                 continue
             if not (
                 any(a == _STACK_FLAG[0] and b == stack for a, b in itertools.pairwise(tokens))
-                or _replays_stack(tokens, session.get("path"), verb, stack)
+                or _replays_stack(tokens, verb, stack)
             ):
                 continue
             sid = session.get("id")

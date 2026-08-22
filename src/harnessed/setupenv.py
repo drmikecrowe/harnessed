@@ -388,12 +388,14 @@ def _write_project_tool_env(
     into the source tree is one `git add -f`, one backup, one tree-walking tool away from leaving
     the machine. Keyed on `git_common_dir`, so every worktree of a checkout reads one env.
 
-    NOTHING IS WRITTEN INTO THE PROJECT (bd harnessed-7mt). This used to also write a
+    NO MISE CONFIG IS WRITTEN INTO THE PROJECT (bd harnessed-7mt). This used to also write a
     `mise.local.toml` holding a `[env] _.file` pointer at the dotenv and a `[tasks.<harness>]`
-    launch task. Both are gone:
+    launch task. Both are gone — the launcher script `launchscript` writes is the only file
+    harnessed puts in a project, and it needs no trust decision because nothing but the user
+    executes it:
 
       * the task was what the aoe dashboard row invoked; the row now runs
-        `harnessed <verb>-run <harness> --last --` and reads its flags from `lastrun`
+        the project's `<harness>-<verb>` launcher script, which carries its flags
       * the pointer is not replaced by default. Configuring a plain shell was always OPT-IN
         territory — harnessed configures the agent it launches, and this reached past that — so it
         is now the user's own one-time choice of loader (mise, direnv, a shell function) pointed at
@@ -473,8 +475,8 @@ def _warn_if_stale_mise_local(project_path: Path) -> None:
     # falls back to auto-start rather than complaining.
     _say(
         f"[blue][INFO][/blue] {stale.name} is left over from an older harnessed and is no longer "
-        f"read. Before deleting it: `mise run <harness>` here stops working — use "
-        f"`harnessed <verb>-run <harness> --last` instead — and if a plain shell in this repo got "
+        f"read. Before deleting it: `mise run <harness>` here stops working — use this project's "
+        f"`./<harness>-<verb>` launcher script instead — and if a plain shell in this repo got "
         f"its `bd`/service vars from it, re-point one at `harnessed project-env-path`."
     )
 
