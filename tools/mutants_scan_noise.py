@@ -95,13 +95,13 @@ MUTANTS = [
      "                     if ACKNOWLEDGED[i][0] == pkg}",
      '            known = {"CVE-2026-14257"} if pkg == "brace-expansion" else set()'),
     ("identifiers ignored — only snyk's own id can match", SCAN,
-     "    for values in (v.get(\"identifiers\") or {}).values():",
-     "    for values in []:"),
+     "        for values in identifiers.values():",
+     "        for values in []:"),
     ("acknowledged hits silently dropped instead of recorded", SCAN,
      "                acknowledged_hits[sorted(known)[0]] = pkg",
      "                pass"),
     ("acknowledged findings omitted from the report json", SCAN,
-     '          "acknowledged": [{"id": vid, "package": pkg, "reason": ACKNOWLEDGED[vid]}\n'
+     '          "acknowledged": [{"id": vid, "package": pkg, "reason": ACKNOWLEDGED[vid][1]}\n'
      '                           for vid, pkg in sorted(acknowledged_hits.items())],',
      '          "acknowledged": [],'),
     ("acknowledged findings no longer printed to the summary", SCAN,
