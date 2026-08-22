@@ -3533,17 +3533,6 @@ def container_run(
         _err.print(f"[bold red]error:[/bold red] project directory does not exist: {anchor_path}")
         raise typer.Exit(1)
 
-    # Not inside any git worktree at all (e.g. launching from a bare-repo's parent dir instead of
-    # one of its worktrees) — confirm before mounting/persisting against a directory that has no
-    # git identity to key off of. Skipped outside a tty (headless/scripted), matching the
-    # stale-image confirm below.
-    if paths.git_common_dir(anchor_path) is None and sys.stdin.isatty():
-        if not typer.confirm(
-            f"{anchor_path} doesn't look like a git repository or worktree. Continue anyway?",
-            default=False,
-        ):
-            raise typer.Exit(1)
-
     # The "project" is wherever the agent starts, not wherever you invoked `launch` from — so
     # --agent-start-folder is resolved first, and everything downstream (instance identity, persist
     # keys, relpath, container -w) is keyed on the resolved start_dir. This makes `launch main
