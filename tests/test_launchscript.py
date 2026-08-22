@@ -108,7 +108,9 @@ class TestWriting:
         assert stat.S_IMODE(written.stat().st_mode) == 0o755
 
     def test_shebang_then_sentinel(self, proj):
-        lines = launchscript.write("host-run", "serena", "claude", proj).read_text().splitlines()
+        written = launchscript.write("host-run", "serena", "claude", proj)
+        assert written is not None
+        lines = launchscript._read_as_the_shell_does(written).split("\n")
         assert lines[0] == "#!/bin/sh"
         assert lines[1] == launchscript.SENTINEL
 
@@ -147,7 +149,7 @@ class TestProvenanceComment:
         argv = ["harnessed", "host-run", "claude", "-r", "codebase-memory-mcp", "-r", "gh-issues"]
         written = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
         assert "# as typed: harnessed host-run claude -r codebase-memory-mcp -r gh-issues" \
-            in written.read_text().splitlines()
+            in launchscript._read_as_the_shell_does(written).split("\n")
 
     def test_absent_when_no_argv_is_supplied(self, proj):
         written = launchscript.write("host-run", "serena", "claude", proj)
@@ -158,7 +160,8 @@ class TestProvenanceComment:
         written = launchscript.write(
             "host-run", "serena", "claude", proj, argv=["harnessed", hostile]
         )
-        typed = [ln for ln in written.read_text().splitlines() if ln.startswith("# as typed:")]
+        typed = [ln for ln in launchscript._read_as_the_shell_does(written).split("\n")
+                 if ln.startswith("# as typed:")]
         assert len(typed) == 1, "the comment must stay on exactly one line"
         assert all(c not in typed[0] for c in "\r\n\x00\x1b")
 
@@ -275,10 +278,18 @@ class TestExcludeEntry:
     def _exclude(self, repo: Path) -> Path:
         return repo / ".git" / "info" / "exclude"
 
+    def _lines(self, exclude: Path) -> list[str]:
+        """Git's line grammar, not Python's — the same rule the production readers follow.
+
+        `read_text().splitlines()` would split a pattern on any of the eight characters Python
+        treats as line breaks and git does not, so a project path carrying one would make these
+        assertions pass or fail for a reason that has nothing to do with the behaviour."""
+        return launchscript._read_as_the_shell_does(exclude).split("\n")
+
     def test_appends_the_root_anchored_path(self, proj):
         _git_init(proj)
         launchscript.write("host-run", "serena", "claude", proj)
-        assert "/claude-host" in self._exclude(proj).read_text().splitlines()
+        assert "/claude-host" in self._lines(self._exclude(proj))
 
     def test_a_nested_project_is_anchored_from_the_repo_root(self, tmp_path):
         repo = tmp_path / "repo"
@@ -287,14 +298,13 @@ class TestExcludeEntry:
         nested = repo / "sub" / "dir"
         nested.mkdir(parents=True)
         launchscript.write("host-run", "serena", "claude", nested)
-        assert "/sub/dir/claude-host" in self._exclude(repo).read_text().splitlines()
+        assert "/sub/dir/claude-host" in self._lines(self._exclude(repo))
 
     def test_ten_launches_write_one_line(self, proj):
         _git_init(proj)
         for _ in range(10):
             launchscript.write("host-run", "serena", "claude", proj)
-        lines = self._exclude(proj).read_text().splitlines()
-        assert lines.count("/claude-host") == 1
+        assert self._lines(self._exclude(proj)).count("/claude-host") == 1
 
     def test_existing_content_is_preserved(self, proj):
         _git_init(proj)
@@ -308,7 +318,7 @@ class TestExcludeEntry:
         exclude = self._exclude(proj)
         exclude.write_text("*.log", encoding="utf-8")
         launchscript.write("host-run", "serena", "claude", proj)
-        assert exclude.read_text().splitlines() == ["*.log", "/claude-host"]
+        assert self._lines(exclude) == ["*.log", "/claude-host", ""]
 
     def test_info_dir_is_created_when_absent(self, proj):
         _git_init(proj)
@@ -317,7 +327,7 @@ class TestExcludeEntry:
             child.unlink()
         info.rmdir()
         launchscript.write("host-run", "serena", "claude", proj)
-        assert "/claude-host" in self._exclude(proj).read_text().splitlines()
+        assert "/claude-host" in self._lines(self._exclude(proj))
 
     def test_a_non_git_folder_writes_no_exclude_and_still_writes_the_script(self, proj):
         assert launchscript.write("host-run", "serena", "claude", proj) is not None
@@ -327,7 +337,7 @@ class TestExcludeEntry:
         _git_init(proj)
         launchscript.write("host-run", "serena", "claude", proj)
         launchscript.write("container-run", "serena", "claude", proj)
-        lines = self._exclude(proj).read_text().splitlines()
+        lines = self._lines(self._exclude(proj))
         assert "/claude-host" in lines and "/claude-container" in lines
 
 
@@ -348,10 +358,14 @@ def test_the_comment_is_always_exactly_one_line(tmp_path_factory, argv):
     proj = tmp_path_factory.mktemp("p")
     written = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
     assert written is not None
-    lines = written.read_text(encoding="utf-8").splitlines()
+    # The guarded read, not `read_text().splitlines()` — this property draws ARBITRARY argv, so it
+    # is the last place that should disagree with the shell about where a line ends.
+    lines = launchscript._read_as_the_shell_does(written).split("\n")
     assert sum(ln.startswith(_TYPED_PREFIX) for ln in lines) == 1
-    assert len(lines) == 4, "shebang, sentinel, comment, exec — never more"
-    assert lines[3].startswith("exec ")
+    # 5, not 4: `split("\n")` keeps the trailing empty element that `splitlines()` drops. The file
+    # ends with a newline, as a shell script should.
+    assert len(lines) == 5, "shebang, sentinel, comment, exec, trailing empty — never more"
+    assert lines[3].startswith("exec ") and lines[4] == ""
 
 @given(st.integers(min_value=1, max_value=12))
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
@@ -361,7 +375,7 @@ def test_repeated_writes_never_grow_the_exclude_file(tmp_path_factory, times):
     _git_init(proj)
     for _ in range(times):
         launchscript.write("host-run", "serena", "claude", proj)
-    lines = (proj / ".git" / "info" / "exclude").read_text(encoding="utf-8").splitlines()
+    lines = launchscript._read_as_the_shell_does(proj / ".git" / "info" / "exclude").split("\n")
     assert lines.count("/claude-host") == 1
 
 @given(st.text(min_size=1).filter(lambda t: "\x00" not in t),
