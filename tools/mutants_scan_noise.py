@@ -43,11 +43,11 @@ TESTS = [
 MUTANTS = [
     # --- osv exit-code dispatch (SPEC group O, failure mode F4) ---
     ("osv exit 128 no longer treated as a skip", SCAN,
-     '    elif [[ $osv_rc -eq 128 ]]; then\n            record_skip osv "recipe lockfiles" '
-     '"no lockfiles under skills/ or commands/ to scan"\n        fi',
-     "    fi"),
+     '        elif [[ $osv_rc -eq 128 ]]; then\n            record_skip osv "recipe lockfiles" '
+     '"no package sources found under skills/ or commands/"\n',
+     "        elif false; then\n            :\n"),
     ("osv skip branch broadened to a catch-all, swallowing real crashes", SCAN,
-     "elif [[ $osv_rc -eq 128 ]]; then", "else"),
+     "elif [[ $osv_rc -eq 128 ]]; then", "elif true; then"),
     ("osv skip branch keyed on the wrong exit code", SCAN,
      "elif [[ $osv_rc -eq 128 ]]; then", "elif [[ $osv_rc -eq 129 ]]; then"),
     ("osv timeout branch collapsed into the nothing-to-scan branch", SCAN,
