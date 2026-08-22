@@ -66,23 +66,29 @@ fi
 
 # ---------------------------------------------------------------------------
 echo
-echo "L2  ruff (lint + format)"
-if mise exec -- uv run --extra dev ruff check . >"$LOGDIR/ruff.log" 2>&1; then
-    pass "ruff check: clean"
+echo "L2  ruff"
+# `src tests tools`, verbatim from .github/workflows/lint.yml — NOT `.`. The first version of this
+# layer guessed `ruff check .` and duly went red on a pre-existing S104 in catalog/services/ping
+# and on markdown code blocks under .agents/plans, neither of which this change touches and
+# neither of which the project gates. A guessed command produces confident, wrong evidence.
+#
+# `ruff format --check` is deliberately absent for the same reason: the repo does not gate
+# formatting anywhere, so running it here would invent a standard and then report failing it.
+if mise exec -- uv run --extra dev ruff check src tests tools >"$LOGDIR/ruff.log" 2>&1; then
+    pass "ruff check src tests tools: clean"
 else
     fail "ruff check — see $LOGDIR/ruff.log"
-fi
-if mise exec -- uv run --extra dev ruff format --check . >"$LOGDIR/ruff-format.log" 2>&1; then
-    pass "ruff format --check: clean"
-else
-    fail "ruff format --check — see $LOGDIR/ruff-format.log"
 fi
 note "N-A" "ruff cannot see the python inside $SCAN's heredoc"
 
 # ---------------------------------------------------------------------------
 echo
 echo "L3  pyright"
-if mise exec -- pyright >"$LOGDIR/pyright.log" 2>&1; then
+# CI's exact invocation. A bare `pyright` happens to work for a developer because mise activates
+# the venv and pyright inherits VIRTUAL_ENV, but that makes the result depend on shell state — and
+# a number in an evidence report must not. --pythonpath pins the interpreter explicitly.
+PYPATH="$(mise exec -- uv run --extra dev python -c 'import sys; print(sys.executable)')"
+if mise exec -- pyright --pythonpath "$PYPATH" >"$LOGDIR/pyright.log" 2>&1; then
     pass "pyright: clean"
 else
     fail "pyright — see $LOGDIR/pyright.log"

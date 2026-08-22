@@ -15,7 +15,12 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 SCAN="$PWD/catalog/base/harnessed-scan"
 
-WORK="${1:-$(mktemp -d)}/real-run"
+# ABSOLUTE, always. harnessed-scan runs each scanner from inside a mktemp'd manifest dir
+# (`cd "$tmp" && bounded snyk …`), so a relative entry on PATH stops resolving the moment it does.
+# Passed a relative logdir, the snyk stub silently became unfindable, the scan reported "0
+# reporting sources", and every assertion below failed for a reason that had nothing to do with
+# the code under test.
+WORK="$(cd "${1:-$(mktemp -d)}" && pwd)/real-run"
 rm -r "$WORK" 2>/dev/null
 mkdir -p "$WORK/home/.claude/skills/md-only" "$WORK/bin"
 echo "# a skill with no lockfile — the normal case" >"$WORK/home/.claude/skills/md-only/SKILL.md"
