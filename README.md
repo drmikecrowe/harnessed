@@ -195,8 +195,12 @@ environment — there is no `harnessed auth` command (see [Supply chain & securi
 - **[Egress & exposing services](docs/guides/egress.md)** — the container egress firewall; recipe-declared `egress:` hosts + pinned `tools:` to conditionally open a service (e.g. Pulumi Cloud).
 - **[Troubleshooting](docs/guides/troubleshooting.md)** — podman setup, first-run build, `--fresh`, host-persisted sessions, the nightly re-scan timer.
 - **[Architecture & design](docs/harnessed-design.md)** — the *why* behind every decision.
+- **[Roadmap](ROADMAP.md)** — where harnessed is going, at the epic level: backends, secrets, harness parity, authoring, verification.
 
 ## Recipe roadmap
+
+> Catalog only — which third-party recipes are shipped or wanted. For where the *product* is
+> going, see **[ROADMAP.md](ROADMAP.md)**.
 
 The shipped recipes today are mostly **tracer/development** recipes — minimal slices used to exercise
 the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-recipe`). The
