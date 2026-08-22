@@ -187,4 +187,8 @@ class TestStaleFileFromAnOlderHarnessed:
         (project / "mise.local.toml").write_text("# managed by harnessed\n")
         _write(project)
         out = capsys.readouterr().out
-        assert "--last" in out and "project-env-path" in out
+        # The remediation it names must be a thing that EXISTS. It advised `--last` until that
+        # flag was removed, at which point the notice was telling users to run a command the CLI
+        # rejects — a stale message is worse than no message, because it is followed.
+        assert "launcher script" in out and "project-env-path" in out
+        assert "--last" not in out, "the flag is gone; the notice must not send anyone to it"

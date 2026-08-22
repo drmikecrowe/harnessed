@@ -292,17 +292,19 @@ def _isolated_user_state(monkeypatch, tmp_path_factory):
     """Point $XDG_STATE_HOME at an empty dir for every test, so the suite writes no user state.
 
     The companion to `_isolated_user_catalog`, and its absence was doing real damage. Everything
-    durable harnessed records lands under `paths.xdg_state_home()` — `lastrun` replay records,
+    durable harnessed records lands under `paths.xdg_state_home()` —
     `setupenv._write_project_tool_env`'s dotenvs, per-instance dirs, `svc-secrets`. The launcher
     tests drive `_launch_host` / `container-run` far enough to reach all of it, and with the
     variable unset that is the DEVELOPER'S `~/.local/state/harnessed`, not a tmp dir.
 
     Measured on this machine before the fixture existed: 237 of 258 files in
     `~/.local/state/harnessed/last-run` were records for `/tmp/pytest-of-*/…` project paths, 112 of
-    them mode 0644 from before that path was hardened, alongside 629 stray `project-env` dotenvs and
+    them mode 0644 from before that path was hardened (that directory belonged to the since-removed
+    `lastrun`; the measurement is kept because it is why this fixture exists), alongside 629 stray
+    `project-env` dotenvs and
     dozens of `harnessed-test-*` instance dirs. Two costs, and the second is the serious one:
 
-      * NOISE — junk records interleaved with the user's real ones in a directory `--last` reads.
+      * NOISE — junk records interleaved with the user's real ones in a directory harnessed reads.
       * SECRETS — `project-env` dotenvs and `svc-secrets` hold live service passwords. The suite
         creating files there at all is a credential path that has no business existing, and the
         0644 ones were readable by every account on the box.

@@ -475,8 +475,8 @@ def _warn_if_stale_mise_local(project_path: Path) -> None:
     # falls back to auto-start rather than complaining.
     _say(
         f"[blue][INFO][/blue] {stale.name} is left over from an older harnessed and is no longer "
-        f"read. Before deleting it: `mise run <harness>` here stops working — use "
-        f"`harnessed <verb>-run <harness> --last` instead — and if a plain shell in this repo got "
+        f"read. Before deleting it: `mise run <harness>` here stops working — use this project's "
+        f"`./<harness>-<verb>` launcher script instead — and if a plain shell in this repo got "
         f"its `bd`/service vars from it, re-point one at `harnessed project-env-path`."
     )
 
