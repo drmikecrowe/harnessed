@@ -3581,8 +3581,18 @@ def container_run(
         )
         raise typer.Exit(1) from exc
     except staleness.StaleProfileError as exc:
-        _err.print(f"[bold red]error:[/bold red] {exc} — run: harnessed build {stack} {harness}")
-        raise typer.Exit(1) from exc
+        # Unlike the SchemaError above — a rename/removal a rebuild cannot fix — a stale stamp means
+        # the sources merely changed, which `harnessed build` resolves. Offer it inline rather than
+        # making the user re-run by hand. Declining aborts: launching a stale profile is the exact
+        # silent-outdated-image failure this guard exists to prevent. Skipped outside a tty
+        # (headless/scripted), matching the confirms above and below.
+        _err.print(f"[yellow]warning:[/yellow] {exc}.")
+        if not sys.stdin.isatty() or not typer.confirm(
+            f"Rebuild '{stack}' ({harness}) now to continue?", default=True
+        ):
+            _err.print(f"[bold red]error:[/bold red] cannot launch a stale profile — run: harnessed build {stack} {harness}")
+            raise typer.Exit(1) from exc
+        _build_stack(rt, stack, harness)
 
     # AFTER the guard above, and using the very same existence check it just applied to THIS stack —
     # now applied to every OTHER stack with a block in the shared omp agent dir we are about to
