@@ -34,6 +34,10 @@ EXECUTABLE_SUFFIXES = {".sh", ".bash", ".py", ".yaml", ".yml", ".toml", ""}
 
 
 def is_executable_surface(path):
+    """True for files that can RUN a command — Dockerfiles, shell, python, build config.
+
+    Prose cannot break an image, and treating it as a dependency makes this suite fire on its own
+    rationale, which is exactly how it failed the first time it ran."""
     if path.suffix in EXECUTABLE_SUFFIXES:
         return True
     return path.name.startswith("Dockerfile") or ".Dockerfile" in path.name
@@ -81,7 +85,32 @@ def logical_lines(text):
     return joined
 
 
+# The delete targets and the self-check in the removal command. Everything else that names
+# corepack in that command is a new invocation.
+_REMOVAL_TOKENS = (
+    '"$NODE_DIR/lib/node_modules/corepack"',
+    '"$NODE_DIR/bin/corepack"',
+    '"$HOME/.local/share/mise/shims/corepack"',
+    "! command -v corepack",
+)
+
+
+def invokes_corepack(line):
+    """True when a logical line names corepack for some reason OTHER than deleting it.
+
+    Exempting any line containing `rm -rf` was too broad. The removal is a single joined logical
+    line, so appending `&& corepack enable` to that same `&&` chain landed inside the exemption and
+    kept this guard green. Strip the known delete targets instead, and see what still mentions
+    corepack.
+    """
+    stripped = line
+    for token in _REMOVAL_TOKENS:
+        stripped = stripped.replace(token, "")
+    return "corepack" in stripped
+
+
 def mentions_corepack(path):
+    """Every logical line in the file that names corepack, comments already stripped."""
     try:
         text = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
@@ -98,10 +127,7 @@ class TestNothingDependsOnCorepack:
             # The one legitimate user, on a different base image entirely (test below).
             if path == ROOT / "catalog" / "services" / "agentmemory" / "Dockerfile":
                 continue
-            hits = [
-                line for line in mentions_corepack(path)
-                if "rm -rf" not in line  # the Dockerfile layer that performs the deletion
-            ]
+            hits = [line for line in mentions_corepack(path) if invokes_corepack(line)]
             if hits:
                 offenders[str(path.relative_to(ROOT))] = hits
         assert offenders == {}, offenders
@@ -125,6 +151,7 @@ class TestTheBaseImageStillProvidesPnpm:
 
     @pytest.fixture(scope="class")
     def dockerfile(self):
+        """The base Dockerfile's raw text, read at test time from the authority itself."""
         assert BASE_DOCKERFILE.is_file(), BASE_DOCKERFILE
         return BASE_DOCKERFILE.read_text()
 

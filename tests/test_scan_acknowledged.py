@@ -32,6 +32,10 @@ BRACE_CVE = "CVE-2026-14257"
 
 
 def _heredoc() -> str:
+    """Extract the summary block's python out of the bash heredoc it lives in.
+
+    The parser has no import surface — it is a program embedded in a shell script — so every test
+    here reaches it either by exec'ing this text or by running it as a subprocess."""
     src = SCRIPT.read_text()
     match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT"):], re.S)
     assert match, "summary heredoc not found in harnessed-scan"
@@ -59,9 +63,19 @@ def _pkg_max():
     return ns["_PKG_MAX"]
 
 
-def snyk_vuln(vid, pkg="brace-expansion", severity="high", identifiers=None):
+_UNSET = object()
+
+
+def snyk_vuln(vid, pkg="brace-expansion", severity="high", identifiers=_UNSET):
+    """Build one snyk vulnerability object.
+
+    A sentinel, NOT `identifiers or {}`. The falsy hostile shapes — `[]` and `None` — collapse
+    back into the default `{}` under `or`, so two of the parametrized cases below were silently
+    testing the same empty dict as everything else and the non-dict guard in `advisory_ids` was
+    never exercised by them.
+    """
     return {"id": vid, "packageName": pkg, "severity": severity,
-            "identifiers": identifiers or {}}
+            "identifiers": {} if identifiers is _UNSET else identifiers}
 
 
 class TestAcknowledgedAdvisoriesAreExcluded:
@@ -81,6 +95,9 @@ class TestAcknowledgedAdvisoriesAreExcluded:
         assert parsers["acknowledged_hits"] == {BRACE_CVE: "brace-expansion"}
 
     def test_matched_by_ghsa_identifier(self, parsers):
+        """The other half of the pair above. Snyk emits GHSA for some advisories and CVE for
+        others, and which one appears is not something this code gets to choose — so both
+        vocabularies have to land the same entry."""
         doc = {"vulnerabilities": [
             snyk_vuln("SNYK-JS-BRACEEXPANSION-13579", identifiers={"GHSA": [BRACE_GHSA]})
         ]}
@@ -169,13 +186,61 @@ class TestScannerJsonIsNotTrustedToHaveAShape:
         assert parsers["parse_snyk"](doc) == []
         assert parsers["acknowledged_hits"] == {BRACE_CVE: "brace-expansion"}
 
-    def test_a_non_string_id_can_never_be_acknowledged_but_is_still_reported(self, parsers):
-        """Fails toward REPORTING, which is the only safe direction for a suppression mechanism:
-        a junk id cannot collide with an ACKNOWLEDGED key, so the finding survives to the totals."""
-        doc = {"vulnerabilities": [{"id": 99, "packageName": "brace-expansion",
+    @pytest.mark.parametrize("vid", [99, None, "", [], {"a": 1}, 0, False])
+    def test_a_finding_with_no_usable_id_is_still_counted(self, parsers, vid):
+        """Fails toward REPORTING, which is the only safe direction for a suppression mechanism.
+
+        An earlier version dropped these outright (`if not vid: continue`), which removed a real
+        finding from the totals AND from `notable` — a silent under-count in a security scan, with
+        no trace anywhere that the scanner had reported anything. A junk id cannot collide with an
+        ACKNOWLEDGED key, so counting it is always safe.
+        """
+        doc = {"vulnerabilities": [{"id": vid, "packageName": "brace-expansion",
                                     "severity": "high"}]}
         assert parsers["parse_snyk"](doc) == [("high", "brace-expansion")]
         assert parsers["acknowledged_hits"] == {}
+
+    def test_unidentified_findings_still_dedup_across_projects(self, parsers):
+        """The synthetic key has to behave like a real one: snyk reports the same vulnerability
+        once per detected project, so two id-less copies must not become two findings."""
+        vuln = {"id": None, "packageName": "brace-expansion", "severity": "high"}
+        doc = [{"vulnerabilities": [vuln]}, {"vulnerabilities": [vuln]}]
+        assert parsers["parse_snyk"](doc) == [("high", "brace-expansion")]
+
+    def test_unidentified_findings_of_different_severities_are_kept_apart(self, parsers):
+        """...but the key must not over-merge either: a critical and a high against the same
+        package are two findings, and collapsing them would under-count the worse one."""
+        doc = {"vulnerabilities": [
+            {"id": None, "packageName": "x", "severity": "high"},
+            {"id": None, "packageName": "x", "severity": "critical"},
+        ]}
+        assert sorted(parsers["parse_snyk"](doc)) == [("critical", "x"), ("high", "x")]
+
+    def test_an_unidentified_finding_reaches_the_totals(self, tmp_path):
+        """End-to-end, because the defect was that it left no trace: it must show up in the
+        report's totals and in `notable`, not merely in the parser's return value."""
+        block = tmp_path / "report.py"
+        block.write_text(_heredoc())
+        payload = tmp_path / "snyk.json"
+        payload.write_text(json.dumps({"vulnerabilities": [
+            {"packageName": "ghost-pkg", "severity": "critical"}   # no "id" key at all
+        ]}))
+        manifest = tmp_path / "manifest"
+        manifest.write_text("snyk|node globals|%s\n" % payload)
+        ledger = tmp_path / "attempts"
+        ledger.write_text("snyk|node globals\n")
+        out = tmp_path / "report.json"
+        proc = subprocess.run(
+            [sys.executable, str(block), str(manifest)],
+            capture_output=True, text=True,
+            env={"HARNESSED_SCAN_REPORT": str(out), "HARNESSED_SCAN_ATTEMPTS": str(ledger),
+                 "PATH": "/usr/bin:/bin"},
+        )
+        assert proc.returncode == 0, proc.stderr
+        report = json.loads(out.read_text())
+        assert report["totals"] == {"critical": 1, "high": 0}
+        assert report["sources"][0]["notable"] == ["ghost-pkg"]
+        assert "ghost-pkg" in proc.stdout
 
 
 class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
@@ -276,6 +341,10 @@ class TestAcknowledgedIsNeverSilent:
     reader check the claim instead of trusting a number that quietly got smaller."""
 
     def _run(self, tmp_path, vulns):
+        """Drive the whole summary block over one snyk payload; return (stdout, parsed report).
+
+        End-to-end rather than calling the parser directly, because these assertions are about
+        what an operator SEES and what lands on disk, not about a return value."""
         block = tmp_path / "report.py"
         block.write_text(_heredoc())
         payload = tmp_path / "snyk.json"

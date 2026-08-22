@@ -30,6 +30,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "catalog" / "base" / "harnessed-s
 
 
 def heredoc() -> str:
+    """Extract the summary block's python out of the bash heredoc it lives in."""
     src = SCRIPT.read_text()
     match = re.search(r"<<'PY'\n(.*?)\nPY\n", src[src.index("HARNESSED_SCAN_REPORT"):], re.S)
     assert match, "summary heredoc not found in harnessed-scan"
@@ -38,6 +39,10 @@ def heredoc() -> str:
 
 @pytest.fixture(scope="module")
 def block(tmp_path_factory):
+    """The summary block written to a real .py file, so tests can run it as a subprocess.
+
+    Module-scoped safely: a subprocess cannot leak state between tests, unlike the exec'd
+    namespace in test_scan_acknowledged, which must be function-scoped."""
     path = tmp_path_factory.mktemp("ledger") / "report.py"
     path.write_text(heredoc())
     return path
@@ -172,6 +177,9 @@ class TestTheHandRolledLedgerFormatSurvivesItsOwnInputs:
         assert [r["tool"] for r in report["sources"]] == ["osv"]
 
     def test_an_unrun_line_with_no_reason_still_parses(self, block, tmp_path):
+        """A three-field unrun line — tool, source, `unrun`, and nothing after it. The reason
+        becomes empty and the summary substitutes "no reason recorded", which is the honest
+        rendering: the scanner was skipped and did not say why."""
         _, report = run(block, tmp_path, ["osv|recipe lockfiles|unrun"])
         row = next(r for r in report["sources"] if r["tool"] == "osv")
         assert row["status"] == "unrun"
@@ -468,10 +476,64 @@ class TestAFailedManifestSynthesisIsAlsoAReasonedSkip:
         assert report["coverage"]["no_output"] == [], report["sources"]
 
 
+class TestATimedOutScanLeavesNothingBehind:
+    """`synth_manifest_dir` creates its own `mktemp -d`, OUTSIDE `$WORK`.
+
+    `$WORK` is removed at the end of the script; `$tmp` is removed by its caller. So a path that
+    returns before that `rm -rf` orphans a whole synthesized tree — a symlink plus a package.json
+    — with nothing left to clean it up. Inside a build container that is invisible; on a `rescan`
+    of several recipe trees it is one orphan per timeout.
+
+    Observed on the filesystem rather than asserted from the code, because the defect IS a
+    filesystem side effect: a test that read the source would pass on any arrangement of the same
+    two statements.
+    """
+
+    def test_a_snyk_timeout_orphans_no_temp_directory(self, tmp_path):
+        home = tmp_path / "home"
+        nm = home / ".local" / "share" / "mise" / "installs" / "node" / "22" / "lib" \
+            / "node_modules" / "npm"
+        nm.mkdir(parents=True)
+        (nm / "package.json").write_text('{"name": "npm", "version": "11.18.0"}')
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        # Hangs for longer than the timeout, so `bounded` kills it and returns 124.
+        snyk = bin_dir / "snyk"
+        snyk.write_text("#!/usr/bin/env bash\nsleep 30\n")
+        snyk.chmod(0o755)
+        tmpdir = tmp_path / "tmp"
+        tmpdir.mkdir()
+        runner = tmp_path / "run.sh"
+        runner.write_text(
+            "#!/usr/bin/env bash\n"
+            'export HOME="%s"\nexport PATH="%s:/usr/bin:/bin"\n'
+            'export TMPDIR="%s"\nexport SNYK_TOKEN=stub\n'
+            "export HARNESSED_SCAN_TIMEOUT=1\n"
+            "unset SOCKET_CLI_API_TOKEN SOCKET_SECURITY_API_KEY\n"
+            'exec bash "%s"\n' % (home, bin_dir, tmpdir, SCRIPT)
+        )
+        proc = subprocess.run(["bash", str(runner)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+
+        # The timeout must be reported — otherwise this test could pass by never timing out.
+        report = json.loads((home / ".harnessed" / "scan-report.json").read_text())
+        row = next(r for r in report["sources"] if r["tool"] == "snyk")
+        assert row["status"] == "unrun" and "timed out" in row["reason"], row
+
+        # And TMPDIR must be empty: the script removes its own $WORK, and the synthesized manifest
+        # dir is the only other thing it creates there.
+        leftovers = sorted(p.name for p in tmpdir.iterdir())
+        assert leftovers == [], leftovers
+
+
 class TestTheScanStaysAdvisory:
     """N1. Nothing in this change may start gating a build."""
 
     def test_gating_is_zero_even_with_findings(self, block, tmp_path):
+        """N1, pinned against the worst possible input: a CRITICAL. harnessed installs
+        third-party agent tooling whose dependency trees carry open highs at any moment, so a
+        gating scan would make the recipe system unusable. Advisory is a contract, not a
+        default."""
         payload = tmp_path / "snyk.json"
         payload.write_text(json.dumps({"vulnerabilities": [
             {"id": "SNYK-JS-X-1", "packageName": "x", "severity": "critical"}

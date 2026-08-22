@@ -135,7 +135,7 @@ SCAN_TIMEOUT="${HARNESSED_SCAN_TIMEOUT:-120}"
 bounded() { timeout -k 10 "$SCAN_TIMEOUT" "$@"; }
 
 snyk_scan() {
-    local nm="$1" label="$2" tmp out
+    local nm="$1" label="$2" tmp out rc
     [[ -d "$nm" ]] || return 0
     command -v snyk >/dev/null 2>&1 || { record_skip snyk "$label" "snyk not installed"; return 0; }
     [[ -n "${SNYK_TOKEN:-}" ]] || { record_skip snyk "$label" "no SNYK_TOKEN"; return 0; }
@@ -145,8 +145,14 @@ snyk_scan() {
         || { record_skip snyk "$label" "could not synthesize a manifest for the tree"; return 0; }
     out="$WORK/snyk-$(slug "$label").json"
     ( cd "$tmp" && bounded snyk test --json ) >"$out" 2>/dev/null
-    [[ $? -eq 124 ]] && { record_skip snyk "$label" "timed out after ${SCAN_TIMEOUT}s"; return 0; }
+    # Capture BEFORE the cleanup: `rm` overwrites `$?`, and the timeout branch returns, so doing
+    # this in the other order both loses the status and leaks the directory. `$tmp` is its own
+    # `mktemp -d`, outside `$WORK`, so nothing else ever removes it — a scan that times out on
+    # several trees leaves one orphaned tree each. socket_scan already cleans up before its own
+    # bail, so this was the only instance.
+    rc=$?
     rm -rf "$tmp"
+    [[ $rc -eq 124 ]] && { record_skip snyk "$label" "timed out after ${SCAN_TIMEOUT}s"; return 0; }
     [[ -s "$out" ]] && printf 'snyk|%s|%s\n' "$(nosep "$label")" "$out" >>"$MANIFEST"
 }
 
@@ -401,16 +407,24 @@ def parse_snyk(doc):
     for proj in projects:
         for v in (proj or {}).get("vulnerabilities", []) or []:
             vid = v.get("id")
-            if not vid:
-                continue
             pkg = safe_text(v.get("packageName") or v.get("name") or "?", _PKG_MAX)
+            sev = (v.get("severity") or "").lower()
+            if not isinstance(vid, str) or not vid:
+                # No USABLE id — missing, empty, or not a string. Dropping it here would remove a
+                # real finding from the totals AND from `notable`, leaving no trace anywhere that
+                # the scanner reported anything: a silent under-count in a security scan, which is
+                # the one direction this file must never fail in. It cannot match ACKNOWLEDGED
+                # (that needs a string id), so counting it is always safe. Keyed synthetically so
+                # repeats across projects still dedup the way real ids do.
+                by_id[("unidentified", pkg, sev)] = (sev, pkg)
+                continue
             known = {i for i in advisory_ids(v) & set(ACKNOWLEDGED)
                      if ACKNOWLEDGED[i][0] == pkg}
             if known:
                 by_id.pop(vid, None)
                 acknowledged_hits[sorted(known)[0]] = pkg
                 continue
-            by_id[vid] = ((v.get("severity") or "").lower(), pkg)
+            by_id[vid] = (sev, pkg)
     return list(by_id.values())
 
 def parse_osv(doc):

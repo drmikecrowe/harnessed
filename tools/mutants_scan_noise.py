@@ -207,6 +207,28 @@ MUTANTS = [
     ("something starts invoking corepack again", DOCKERFILE,
      "RUN npm install -g npm@11.18.0",
      "RUN npm install -g npm@11.18.0\nRUN corepack enable"),
+    # The narrower case CodeRabbit found: a re-enable appended INSIDE the removal chain. The old
+    # guard exempted any logical line containing `rm -rf`, and the removal is one joined logical
+    # line, so this landed inside the exemption and kept the test green.
+    ("corepack re-enabled inside the removal chain itself", DOCKERFILE,
+     "    mise reshim && \\\n    ! command -v corepack",
+     "    mise reshim && \\\n    corepack enable && \\\n    true"),
+
+    # --- findings with no usable advisory id (CodeRabbit) ---
+    ("a finding with no usable id is dropped instead of counted", SCAN,
+     '            if not isinstance(vid, str) or not vid:',
+     "            if False:"),
+    ("unidentified findings collapse onto one key regardless of severity", SCAN,
+     '                by_id[("unidentified", pkg, sev)] = (sev, pkg)',
+     '                by_id[("unidentified", pkg)] = (sev, pkg)'),
+
+    # --- the snyk timeout temp-dir leak (CodeRabbit) ---
+    ("snyk timeout returns before cleaning up its synthesized manifest dir", SCAN,
+     '    rc=$?\n    rm -rf "$tmp"\n'
+     '    [[ $rc -eq 124 ]] && { record_skip snyk "$label" "timed out after ${SCAN_TIMEOUT}s"; '
+     "return 0; }",
+     '    [[ $? -eq 124 ]] && { record_skip snyk "$label" "timed out after ${SCAN_TIMEOUT}s"; '
+     'return 0; }\n    rm -rf "$tmp"'),
 ]
 
 
@@ -270,10 +292,16 @@ def dirty() -> bool:
 
 
 def restore(rel: str) -> None:
+    """Return one tracked file to HEAD. Called from a `finally`, so a mutant is reverted even when
+    the suite run raises."""
     subprocess.run(["git", "checkout", "--", rel], cwd=ROOT, check=True)
 
 
 def main() -> int:
+    """Run every single mutant, then every compound mutant, and report both scores.
+
+    Exit 0 only when all are killed; 1 on a survivor; 2 when a safety guard refused to run or a
+    mutant could not be applied — never a silent pass."""
     try:
         branch = _git("rev-parse", "--abbrev-ref", "HEAD").strip()
         if branch in ("main", "master"):

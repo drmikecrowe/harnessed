@@ -20,7 +20,18 @@ SCAN="$PWD/catalog/base/harnessed-scan"
 # Passed a relative logdir, the snyk stub silently became unfindable, the scan reported "0
 # reporting sources", and every assertion below failed for a reason that had nothing to do with
 # the code under test.
-WORK="$(cd "${1:-$(mktemp -d)}" && pwd)/real-run"
+#
+# FAIL CLOSED on a bad argument. There is no `set -e` here, so a failing `cd` inside the command
+# substitution yields an EMPTY string, `WORK` becomes "/real-run", and the script proceeds to
+# `rm -r` and `mkdir -p` at the filesystem root before failing every assertion for an unrelated
+# reason. Check the directory first and refuse.
+BASE="${1:-$(mktemp -d)}"
+if [[ ! -d "$BASE" ]]; then
+    echo "refusing to run: workdir does not exist or is not a directory: $BASE" >&2
+    exit 2
+fi
+BASE="$(cd "$BASE" && pwd)" || exit 2
+WORK="$BASE/real-run"
 rm -r "$WORK" 2>/dev/null
 mkdir -p "$WORK/home/.claude/skills/md-only" "$WORK/bin"
 echo "# a skill with no lockfile — the normal case" >"$WORK/home/.claude/skills/md-only/SKILL.md"

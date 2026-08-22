@@ -45,6 +45,10 @@ def scan_env(tmp_path):
 
 
 def stub(bin_dir, name, exit_code, stdout="", stderr=""):
+    """Write an executable stub scanner with a fixed exit code and output.
+
+    Stubs rather than the real binaries: the exit codes ARE the thing under test, and a real
+    scanner cannot be made to produce a chosen one on demand."""
     path = bin_dir / name
     path.write_text("#!/usr/bin/env bash\nprintf '%s'\nprintf '%s' >&2\nexit %d\n"
                     % (stdout, stderr, exit_code))
