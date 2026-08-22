@@ -404,6 +404,70 @@ class TestEveryPathOutOfAnAttemptRecordsAResultOrAReason:
             assert report["coverage"]["no_output"] == [], (body, report["sources"])
 
 
+class TestAFailedManifestSynthesisIsAlsoAReasonedSkip:
+    """The two paths the socket-stub tests above CANNOT reach.
+
+    `synth_manifest_dir` returns non-zero only when `mktemp -d` fails, and every other test in this
+    file arranges for it to succeed — the socket stubs divert later, at `scan create`, and snyk is
+    disabled by unsetting its token. So both `synth_manifest_dir || record_skip` guards were
+    reachable in production and unreachable in the suite: deleting either left every test green.
+
+    Forcing the failure needs `mktemp -d` to fail for the scanner but NOT for the script's own
+    WORK directory, which is created first. Hence a counting stub: the first call delegates to the
+    real mktemp, every later one fails.
+    """
+
+    def run_with_failing_mktemp(self, tmp_path, tool):
+        home = tmp_path / "home"
+        nm = home / ".local" / "share" / "mise" / "installs" / "node" / "22" / "lib" \
+            / "node_modules" / "npm"
+        nm.mkdir(parents=True)
+        (nm / "package.json").write_text('{"name": "npm", "version": "11.18.0"}')
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        counter = tmp_path / "mktemp.count"
+        mktemp = bin_dir / "mktemp"
+        mktemp.write_text(
+            "#!/usr/bin/env bash\n"
+            'n=$(cat "%s" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "%s"\n'
+            '# Call 1 is the scan script\'s own WORK dir and must succeed, or nothing runs at all.\n'
+            'if [ "$n" -gt 1 ] && [ "$1" = "-d" ]; then exit 1; fi\n'
+            'exec /usr/bin/mktemp "$@"\n' % (counter, counter)
+        )
+        mktemp.chmod(0o755)
+        # A scanner binary that would succeed if it were ever reached.
+        stub = bin_dir / tool
+        stub.write_text("#!/usr/bin/env bash\necho '{\"ok\":true,\"data\":[]}'\n")
+        stub.chmod(0o755)
+        token = ("export SNYK_TOKEN=stub\nunset SOCKET_CLI_API_TOKEN SOCKET_SECURITY_API_KEY\n"
+                 if tool == "snyk" else
+                 "export SOCKET_CLI_API_TOKEN=stub\nexport SOCKET_CLI_ORG_SLUG=acme\n"
+                 "unset SNYK_TOKEN\n")
+        runner = tmp_path / "run.sh"
+        runner.write_text(
+            "#!/usr/bin/env bash\n"
+            'export HOME="%s"\nexport PATH="%s:/usr/bin:/bin"\n%s'
+            'exec bash "%s"\n' % (home, bin_dir, token, SCRIPT)
+        )
+        proc = subprocess.run(["bash", str(runner)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+        return json.loads((home / ".harnessed" / "scan-report.json").read_text())
+
+    def test_snyk_records_a_reason_when_the_manifest_cannot_be_synthesized(self, tmp_path):
+        report = self.run_with_failing_mktemp(tmp_path, "snyk")
+        row = next(r for r in report["sources"] if r["tool"] == "snyk")
+        assert row["status"] == "unrun", row
+        assert "synthesize" in row["reason"], row
+        assert report["coverage"]["no_output"] == [], report["sources"]
+
+    def test_socket_records_a_reason_when_the_manifest_cannot_be_synthesized(self, tmp_path):
+        report = self.run_with_failing_mktemp(tmp_path, "socket")
+        row = next(r for r in report["sources"] if r["tool"] == "socket")
+        assert row["status"] == "unrun", row
+        assert "synthesize" in row["reason"], row
+        assert report["coverage"]["no_output"] == [], report["sources"]
+
+
 class TestTheScanStaysAdvisory:
     """N1. Nothing in this change may start gating a build."""
 

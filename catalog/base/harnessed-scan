@@ -29,12 +29,17 @@ MANIFEST="$WORK/manifest"
 # otherwise vanish from the report entirely — 5 of 6 scanners silent still reads as a clean scan.
 # Reconciling attempts against the manifest is what lets the summary name what it did NOT see.
 #
-# THE INVARIANT EVERY SCANNER MUST HOLD: once a scanner has written its attempt line, every path
-# out of it must first either write a MANIFEST line or call `record_skip`. A path that returns
-# without doing either leaves an attempt with no result and no reason, and the reconciler can only
-# read that as "ran and produced nothing" — i.e. broken. Four early returns violated this (two in
+# THE INVARIANT EVERY SCANNER MUST HOLD: once a scanner has written its attempt line, a path that
+# BAILS EARLY — for a reason the scanner itself knows — must call `record_skip` before returning.
+# Otherwise it leaves an attempt with no result and no reason, and the reconciler can only read
+# that as "ran and produced nothing", i.e. broken. Four early returns violated this (two in
 # socket_scan, one in each function's manifest-synthesis step), so a scan whose console said
 # "skipped" produced a report that said the scanner was broken.
+#
+# NOT covered by this rule, deliberately: reaching the end of the function with an empty output
+# file. That is a scanner which genuinely ran and yielded nothing, which is the definition of the
+# no-output bucket — there is no reason to record because none is known. Stating the invariant as
+# "every path must record something" would wrongly condemn that case.
 ATTEMPTS="$WORK/attempts"
 : >"$MANIFEST"
 : >"$ATTEMPTS"

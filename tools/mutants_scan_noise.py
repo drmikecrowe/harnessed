@@ -172,6 +172,17 @@ MUTANTS = [
      '        record_skip socket "$label" "socket scan create returned no scan id"; return 0; }',
      '    [[ -n "$id" ]] || { echo "    (socket scan create failed — skipped)"; return 0; }'),
 
+    ("snyk bails on a failed manifest synthesis without recording a skip", SCAN,
+     '    tmp="$(synth_manifest_dir "$nm")" \\\n'
+     '        || { record_skip snyk "$label" "could not synthesize a manifest for the tree"; '
+     "return 0; }",
+     '    tmp="$(synth_manifest_dir "$nm")" || return 0'),
+    ("socket bails on a failed manifest synthesis without recording a skip", SCAN,
+     '    tmp="$(synth_manifest_dir "$nm")" \\\n'
+     '        || { record_skip socket "$label" "could not synthesize a manifest for the tree"; '
+     "return 0; }",
+     '    tmp="$(synth_manifest_dir "$nm")" || return 0'),
+
     # --- corepack removal (SPEC group D, failure mode F6) ---
     # The Dockerfile is the other half of the change and no other layer touches it: ruff, pyright
     # and the heredoc mutants above all stop at the scan script.
