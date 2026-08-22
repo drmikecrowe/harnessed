@@ -84,6 +84,17 @@ PY
 # Stable, filesystem-safe slug for a scanner label ("recipe: foo" -> "recipe__foo").
 slug() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '_'; }
 
+# BOTH ledgers are `|`-separated with NO escaping, and the summary block splits them by POSITION.
+# So a `|` anywhere in a field silently shifts every field after it, and the two readers fail in
+# different ways: an `unrun` line stops being recognised as unrun (the scanner reappears as
+# "probably broken"), and a MANIFEST line's third field — a file path — stops pointing at the
+# scanner's JSON. Neither surfaces as an error; both just report the wrong thing.
+#
+# The labels are not all literals. `recipe: $(basename …)` is a directory name under
+# ~/.claude/skills, which a recipe controls. Strip the separator at the single choke point rather
+# than trusting each of the six write sites to remember, and never rely on it in the parser.
+nosep() { printf '%s' "${1//|/ }"; }
+
 # A scanner we committed to but never started — no token, or the binary is not installed. It has to
 # reach the report, or a consumer of scan-report.json cannot tell a skipped scanner from one that
 # never existed, and 1-of-6 coverage reads as a clean scan (bd harnessed-wx9). Distinct from a
@@ -91,7 +102,8 @@ slug() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '_'; }
 # strip any from the reason rather than corrupting the ledger.
 record_skip() {
     local tool="$1" label="$2" reason="$3"
-    printf '%s|%s|unrun|%s\n' "$tool" "$label" "${reason//|/ }" >>"$ATTEMPTS"
+    printf '%s|%s|unrun|%s\n' "$(nosep "$tool")" "$(nosep "$label")" "$(nosep "$reason")" \
+        >>"$ATTEMPTS"
 }
 
 # Every scanner below is NETWORK-BOUND and none of them self-limit. bd harnessed-8px.28: a `socket`
@@ -116,13 +128,13 @@ snyk_scan() {
     command -v snyk >/dev/null 2>&1 || { record_skip snyk "$label" "snyk not installed"; return 0; }
     [[ -n "${SNYK_TOKEN:-}" ]] || { record_skip snyk "$label" "no SNYK_TOKEN"; return 0; }
     echo "  · snyk: ${label}"
-    printf 'snyk|%s\n' "$label" >>"$ATTEMPTS"
+    printf 'snyk|%s\n' "$(nosep "$label")" >>"$ATTEMPTS"
     tmp="$(synth_manifest_dir "$nm")" || return 0
     out="$WORK/snyk-$(slug "$label").json"
     ( cd "$tmp" && bounded snyk test --json ) >"$out" 2>/dev/null
     [[ $? -eq 124 ]] && { record_skip snyk "$label" "timed out after ${SCAN_TIMEOUT}s"; return 0; }
     rm -rf "$tmp"
-    [[ -s "$out" ]] && printf 'snyk|%s|%s\n' "$label" "$out" >>"$MANIFEST"
+    [[ -s "$out" ]] && printf 'snyk|%s|%s\n' "$(nosep "$label")" "$out" >>"$MANIFEST"
 }
 
 # Every socket API call needs an org slug. Interactively, socket reads one from ~/.config/socket —
@@ -153,7 +165,7 @@ socket_scan() {
     command -v socket >/dev/null 2>&1 || { record_skip socket "$label" "socket not installed"; return 0; }
     [[ -n "${SOCKET_CLI_API_TOKEN:-}" ]] || { record_skip socket "$label" "no SOCKET_CLI_API_TOKEN"; return 0; }
     echo "  · socket: ${label}"
-    printf 'socket|%s\n' "$label" >>"$ATTEMPTS"
+    printf 'socket|%s\n' "$(nosep "$label")" >>"$ATTEMPTS"
     org="$(socket_org)"
     [[ -n "$org" ]] || { echo "    (socket: no org for this token — skipped)"; return 0; }
     tmp="$(synth_manifest_dir "$nm")" || return 0
@@ -173,7 +185,7 @@ except Exception:
     # silently, leaving socket contributing nothing while still LOOKING like it ran.
     bounded socket scan view "$id" --json --no-banner --no-spinner --org "$org" >"$out" 2>/dev/null
     [[ $? -eq 124 ]] && { record_skip socket "$label" "timed out after ${SCAN_TIMEOUT}s"; return 0; }
-    [[ -s "$out" ]] && printf 'socket|%s|%s\n' "$label" "$out" >>"$MANIFEST"
+    [[ -s "$out" ]] && printf 'socket|%s|%s\n' "$(nosep "$label")" "$out" >>"$MANIFEST"
 }
 
 echo "== harnessed supply-chain scan (advisory) =="
