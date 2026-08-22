@@ -194,10 +194,10 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
         "\r\n\t",         # line control, which would forge extra summary rows
         "\x00",
         "\x07",           # BEL
-        " ",         # LINE SEPARATOR — a newline that is not \n
-        " ",         # NBSP
-        "​",         # zero-width space
-        "‮",         # RTL override — reverses how the rest of the line renders
+        "\u2028",         # LINE SEPARATOR — a newline that is not \n
+        "\u00a0",         # NBSP
+        "\u200b",         # zero-width space
+        "\u202e",         # RTL override — reverses how the rest of the line renders
     ])
     def test_each_control_character_class_is_removed(self, parsers, hostile):
         """One case per class, because `isprintable()` is doing the work and its coverage is the
