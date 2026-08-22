@@ -116,16 +116,25 @@ class TestWriting:
 class TestParityWithCommandFor:
     """S2 — the exec line comes from `command_for`, never from re-quoting here."""
 
-    def test_exec_argv_is_command_for_minus_the_separator(self, proj):
-        kwargs = {"group": "librechat", "title": "t", "no_strict_mcp": True}
+    @pytest.mark.parametrize("title", [
+        "t",
+        "before\rafter",      # the value that broke every reader of this file
+        "nel\x85sep",         # splitlines() breaks here; /bin/sh does not
+        "vt\x0bff\x0c",       # ditto
+    ])
+    def test_exec_argv_is_command_for_minus_the_separator(self, proj, title):
+        kwargs = {"group": "librechat", "title": title, "no_strict_mcp": True}
         written = launchscript.write("host-run", "serena", "claude", proj, **kwargs)
         # The authority, read at test time rather than copied into this file.
         authority = shlex.split(aoe.command_for("host-run", "serena", "claude", proj, **kwargs))
         assert authority[-1] == "--", "guard: command_for is expected to end with the separator"
 
-        exec_line = next(
-            ln for ln in written.read_text().splitlines() if ln.startswith("exec ")
-        )
+        # `_read_as_the_shell_does` + `split("\n")`, never `read_text().splitlines()`. This test
+        # reads a shell script, so it has to use the shell's line grammar like every other reader —
+        # with Python's, a flag value carrying \r or \x85 splits the exec line here and the
+        # assertion fails on formatting instead of on the parity it guards.
+        content = launchscript._read_as_the_shell_does(written)
+        exec_line = next(ln for ln in content.split("\n") if ln.startswith("exec "))
         assert exec_line.endswith(' "$@"'), "S4: the script forwards its own argv"
         body = shlex.split(exec_line[len("exec "):-len(' "$@"')])
         assert body == authority[:-1]
@@ -157,10 +166,14 @@ class TestProvenanceComment:
         argv = ["harnessed", "host-run", "claude", "-r", "x"]
         with_comment = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
         got_with = run_script(with_comment)
+        # Same reason as the parity test: rebuilding the file through Python's line grammar would
+        # rewrite any \r in the exec line as \n, so the assertion would be about a script this test
+        # damaged rather than about the comment.
+        content = launchscript._read_as_the_shell_does(with_comment)
         stripped = "\n".join(
-            ln for ln in with_comment.read_text().splitlines() if not ln.startswith("# as typed:")
-        ) + "\n"
-        with_comment.write_text(stripped, encoding="utf-8")
+            ln for ln in content.split("\n") if not ln.startswith("# as typed:")
+        )
+        with_comment.open("w", encoding="utf-8", newline="").write(stripped)
         assert run_script(with_comment) == got_with
 
 
@@ -624,6 +637,21 @@ class TestProvenanceCommentIsBounded:
         assert len(typed) <= len(_TYPED_PREFIX) + launchscript._TYPED_LIMIT
         assert typed.endswith("(truncated)"), "a cut line must say it was cut"
 
+    def test_a_comment_exactly_at_the_limit_is_not_truncated(self, proj):
+        # The boundary. At exactly the cap there is nothing to cut, so cutting would both lose a
+        # character and add a "(truncated)" marker that is not true.
+        pad = launchscript._TYPED_LIMIT - len("harnessed ")
+        written = launchscript.write(
+            "host-run", "serena", "claude", proj, argv=["harnessed", "x" * pad]
+        )
+        assert written is not None
+        typed = next(
+            ln for ln in launchscript._read_as_the_shell_does(written).split("\n")
+            if ln.startswith(_TYPED_PREFIX)
+        )
+        assert len(typed) == len(_TYPED_PREFIX) + launchscript._TYPED_LIMIT
+        assert "(truncated)" not in typed
+
     def test_an_ordinary_argv_is_untouched(self, proj):
         argv = ["harnessed", "host-run", "claude", "-r", "codebase-memory-mcp", "-r", "gh-issues"]
         written = launchscript.write("host-run", "serena", "claude", proj, argv=argv)
@@ -636,3 +664,43 @@ class TestProvenanceCommentIsBounded:
         )
         assert written is not None
         assert run_script(written)[0] == "host-run", "the exec line is unaffected by the cap"
+
+
+class TestTheSentinelReadIsBounded:
+    """`write` inspects two lines of an existing file, so it must not read all of it.
+
+    `except OSError` does not catch `MemoryError`, so an unbounded read here would let a large file
+    in the way break the module's "every failure path returns None" contract and take the launch
+    down with it. `aoe._replays_stack` bounded the same call; this site did not.
+    """
+
+    def test_a_file_larger_than_the_limit_is_not_read_whole(self, proj, monkeypatch):
+        victim = proj / "claude-host"
+        victim.write_text("#!/bin/sh\n" + launchscript.SENTINEL + "\n" + "x" * 200_000, "utf-8")
+
+        reads: list[object] = []
+        real = launchscript._read_as_the_shell_does
+
+        def spy(path, limit=None):
+            reads.append(limit)
+            return real(path, limit)
+
+        monkeypatch.setattr(launchscript, "_read_as_the_shell_does", spy)
+        launchscript.write("host-run", "serena", "claude", proj)
+        assert reads == [launchscript._SENTINEL_READ_LIMIT], "the sentinel check must pass a limit"
+
+    def test_a_giant_first_line_is_refused_rather_than_read(self, proj):
+        # Truncation means the sentinel is not among the first two lines read, so the file is
+        # treated as somebody else's and left alone — the safe direction.
+        victim = proj / "claude-host"
+        original = "#" * (launchscript._SENTINEL_READ_LIMIT + 10) + "\n" + launchscript.SENTINEL + "\n"
+        victim.write_text(original, encoding="utf-8")
+        assert launchscript.write("host-run", "serena", "claude", proj) is None
+        assert victim.read_text(encoding="utf-8") == original
+
+    def test_an_ordinary_file_we_wrote_is_still_rewritten(self, proj):
+        # The bound must not break the normal case it sits in front of.
+        first = launchscript.write("host-run", "serena", "claude", proj)
+        assert first is not None
+        second = launchscript.write("host-run", "other-stack", "claude", proj)
+        assert second is not None and "other-stack" in second.read_text(encoding="utf-8")

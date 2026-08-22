@@ -45,6 +45,14 @@ _TYPED = "# as typed: "
 _TYPED_LIMIT = 2048
 _TRUNCATED = " ... (truncated)"
 
+# How much of an EXISTING file `write` reads to check for the sentinel. Only the first two lines
+# matter (~40 bytes for a file we wrote), but the file in the way can be anything at all — the read
+# is bounded so that a huge one cannot raise `MemoryError`, which `write`'s `except OSError` does not
+# catch and which would therefore break this module's "every failure path returns None" contract.
+# `aoe._replays_stack` bounds the same call for the same reason; this site did not, until an
+# adversarial review noticed the asymmetry.
+_SENTINEL_READ_LIMIT = 4096
+
 # `host-run` -> `claude-host`. The verb is in the FILENAME rather than a flag, so the two backends
 # cannot collide in one folder and an aoe row cannot restart a backend it does not name.
 _VERB_SUFFIX = {"host-run": "host", "container-run": "container"}
@@ -148,7 +156,7 @@ def write(
             # sentinel: committing a generated launcher is a choice a repo is allowed to make, and
             # rewriting it on every launch would produce a dirty tree nobody asked for.
             try:
-                head = _read_as_the_shell_does(target).split("\n")[:2]
+                head = _read_as_the_shell_does(target, _SENTINEL_READ_LIMIT).split("\n")[:2]
             except OSError:
                 return None
             if SENTINEL not in head:
@@ -222,7 +230,10 @@ def _ensure_excluded(project_path: Path, target: Path) -> None:
         # Guard the newline rather than assume one: git reads `*.log/claude-host` as a single
         # pattern and silently stops excluding both.
         prefix = "" if (existing == "" or existing.endswith("\n")) else "\n"
-        with exclude.open("a", encoding="utf-8") as handle:
+        # `newline=""` for symmetry with every other reader and writer of newline-delimited content
+        # here. It is a no-op on Linux, where os.linesep is already "\n" — stated so the next reader
+        # does not have to work out why this one site is the exception.
+        with exclude.open("a", encoding="utf-8", newline="") as handle:
             handle.write(f"{prefix}{pattern}\n")
     except OSError:
         return

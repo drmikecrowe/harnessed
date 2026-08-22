@@ -726,8 +726,6 @@ def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
     if name != launchscript.script_name(verb, name.rpartition("-")[0]):
         return False
     try:
-        from . import launchscript  # local, for the cycle reason in `replay_command`
-
         content = launchscript._read_as_the_shell_does(Path(tokens[0]), _SCRIPT_READ_LIMIT)
     except OSError:
         return False
