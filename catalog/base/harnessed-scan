@@ -309,7 +309,10 @@ ACKNOWLEDGED = {
 acknowledged_hits = {}
 
 _ID_MAX = 64          # advisory ids are short; anything longer is not one
-_PKG_MAX = 64         # npm caps package names at 214, and we only need enough to identify one
+# CHARACTERS, not bytes. npm caps package names at 214 and we only need enough to identify one; a
+# name of 4-byte codepoints is therefore ~4x this in bytes, which is still bounded — the property
+# that matters — but is not a 64-byte guarantee and must not be described as one.
+_PKG_MAX = 64
 
 def safe_text(value, limit):
     """A third-party string, made safe to print and to store.

@@ -178,11 +178,48 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
         assert "\x1b" not in pkg and "\n" not in pkg
         assert pkg == "evil[2Jname"
 
+    @pytest.mark.parametrize("hostile", [
+        "\x1b[2J",        # ANSI clear-screen — rewrites the terminal the summary is drawn on
+        "\r\n\t",         # line control, which would forge extra summary rows
+        "\x00",
+        "\x07",           # BEL
+        " ",         # LINE SEPARATOR — a newline that is not \n
+        " ",         # NBSP
+        "​",         # zero-width space
+        "‮",         # RTL override — reverses how the rest of the line renders
+    ])
+    def test_each_control_character_class_is_removed(self, parsers, hostile):
+        """One case per class, because `isprintable()` is doing the work and its coverage is the
+        claim being made. Asserting only on ESC would leave the others as an assumption.
+
+        The property is that no non-printable character survives — NOT that the whole escape
+        sequence disappears. `\\x1b[2J` loses its ESC byte and leaves the literal text `[2J`,
+        which is inert: it is the ESC that makes a terminal act on the rest."""
+        doc = {"vulnerabilities": [snyk_vuln("SNYK-X", pkg="a%sb" % hostile)]}
+        (_, pkg), = parsers["parse_snyk"](doc)
+        assert all(ch.isprintable() for ch in pkg), repr(pkg)
+        assert not any(ch in pkg for ch in hostile if not ch.isprintable()), repr(pkg)
+        assert pkg.startswith("a") and pkg.endswith("b"), repr(pkg)
+
+    def test_legitimate_unicode_survives(self, parsers):
+        """Guard against 'sanitizing' by mangling every non-ASCII name."""
+        doc = {"vulnerabilities": [snyk_vuln("SNYK-X", pkg="café-pkg")]}
+        assert parsers["parse_snyk"](doc) == [("high", "café-pkg")]
+
     def test_an_absurdly_long_name_is_truncated(self, parsers):
         doc = {"vulnerabilities": [snyk_vuln("SNYK-X", pkg="a" * 5000)]}
         (_, pkg), = parsers["parse_snyk"](doc)
         assert len(pkg) <= 70, len(pkg)
         assert pkg.endswith("…")
+
+    def test_the_cap_is_characters_and_the_byte_length_stays_bounded(self, parsers):
+        """The cap counts CHARACTERS, so a name of 4-byte codepoints is ~4x its character count
+        in bytes. Still bounded — which is the property that matters — but 'bounded to 64 bytes'
+        would be a false claim, so it is pinned here as what it actually is."""
+        doc = {"vulnerabilities": [snyk_vuln("SNYK-X", pkg="\U0001f4a9" * 5000)]}
+        (_, pkg), = parsers["parse_snyk"](doc)
+        assert len(pkg) <= 70
+        assert len(pkg.encode("utf-8")) <= 300
 
     def test_the_pre_existing_notable_path_is_bounded_too(self, tmp_path):
         """`notable[:4]` bounds how MANY names print, never how long each is. Guarding only the new
