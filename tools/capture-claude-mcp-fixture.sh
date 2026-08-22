@@ -34,6 +34,16 @@ dest="${repo_root}/tests/fixtures/claude_mcp_list_output.json"
 workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
 
+# ENFORCEMENT, not documentation. The header comment above says "never run this in CI"; this is the
+# part that makes it true. `CI` is set by GitHub Actions and by essentially every other runner, so
+# an accidental wiring-up fails loudly at the top instead of silently spending money per build.
+# HARNESSED_ALLOW_BILLED_CAPTURE=1 is the deliberate override for a human who really means it.
+if [[ -n "${CI:-}${GITHUB_ACTIONS:-}" && "${HARNESSED_ALLOW_BILLED_CAPTURE:-}" != "1" ]]; then
+    echo "error: refusing to run under CI — 'claude -p' is a BILLED API call." >&2
+    echo "       This fixture is captured once by hand and committed; CI reads the file." >&2
+    exit 1
+fi
+
 command -v claude >/dev/null || { echo "error: claude not on PATH" >&2; exit 1; }
 
 cat > "${workdir}/.mcp.json" <<EOF
