@@ -75,6 +75,8 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from ruamel.yaml import YAML
+
 from . import paths
 from .schema import HARNESS_CONFIG_DIR
 
@@ -130,6 +132,10 @@ _NO_STRICT_MCP_FLAG = "--no-strict-mcp-config"
 # fail on the detached path, silently, which is the exact failure class this whole change exists to
 # remove.
 _STALE_SUFFIX = "(stale {sid})"
+
+# Separator between composed recipes in a derived title. See `title_for` for why it is
+# not `-`.
+_RECIPE_JOIN = "+"
 
 
 def _bin() -> str | None:
@@ -314,12 +320,65 @@ def title_for(
     registered with — the flag would appear to be ignored.
 
     An explicit `title` is returned verbatim — the caller owns the collision risk described above.
+
+    WHAT LEADS IS WHAT VARIES. The harness and backend come first because they are what the reader
+    is picking between; the folder follows. The old shape led with the folder and buried the pair in
+    brackets, which put the least distinguishing token first in a dashboard already grouped by repo.
+
+    THE FOLDER STAYS, and it is not cosmetic. `_registered` matches on (group, title) with NO path
+    check when the caller supplies both `--aoe-group` and `--aoe-title`, and `_group_for` keys on
+    the git COMMON dir — so every worktree of one checkout shares a group. Drop the folder and two
+    worktrees running the same stack, harness and backend collide on that key: the second launch
+    reads as already-registered and never gets a row, silently, because the write is detached.
+
+    THE BASELINE IS NOT SHOWN. A dynamic stack's name is `<base>.<recipe>.<recipe>`, so the old
+    title restated `default.` on every row that had one. `_composed_recipes` returns the delta over
+    that baseline and the join shows only it. An authored stack has no delta and falls back to its
+    own name, which is also what keeps `default` and `isolated` — two baselines, no recipes between
+    them — from rendering identically.
     """
     if title is not None:
         return title
     backend = "host" if verb == "host-run" else "container"
     mcp = " +open-mcp" if no_strict_mcp else ""
-    return f"{project_path.name} [{harness}/{backend}] {stack}{mcp}"
+    recipes = _composed_recipes(stack)
+    # `+`, not `-`: recipe names contain `-` themselves (`codebase-memory-mcp`, `gh-issue-tracker`),
+    # so a `-` join has no visible seam between two of them.
+    composed = _RECIPE_JOIN.join(recipes) if recipes else stack
+    return f"{harness}/{backend} {project_path.name} {composed}{mcp}"
+
+
+def _composed_recipes(stack: str) -> list[str]:
+    """The recipes a stack composes ON TOP of its baseline, or [] when it composes nothing.
+
+    THE RAW MANIFEST, never `load_stack`. That resolves the `extends:` chain, which would hand back
+    the baseline's recipes merged in — the very thing this exists to leave out.
+
+    THE STACK NAME CANNOT BE PARSED FOR THIS, though it looks like it can. `derive_name` joins on
+    `.` after sanitizing each ref, and appends a digest when the join is lossy or over-long: the
+    single recipe `beads/team` mints as `default.beads-team-55bfd6ac`. Splitting that on `.` yields
+    `beads-team-55bfd6ac`, which is neither the recipe nor recoverable. The manifest carries
+    `recipes: [beads/team]` verbatim.
+
+    LOCATION IS WHAT MARKS A STACK MACHINE-MADE — the generated manifest's own header says so, and
+    it is why an authored stack returns [] here rather than its `recipes:` key. That key is an
+    authored stack's whole content and not a delta at all: `default` lists eight recipes, so
+    reading it would produce a title several times longer than the stack name it replaced.
+
+    Guarded like everything else on this path: a missing, unreadable or malformed manifest costs
+    the delta and falls back to the stack name, never a failed launch.
+    """
+    try:
+        stack_dir = paths.find_in_catalog("stacks", stack).resolve()
+        generated = (paths.generated_catalog_root() / "stacks").resolve()
+        if not stack_dir.is_relative_to(generated):
+            return []
+        yaml = YAML(typ="safe", pure=True)
+        with (stack_dir / "stack.yaml").open(encoding="utf-8") as fh:
+            raw = yaml.load(fh)
+        return [r for r in (raw.get("recipes") or []) if isinstance(r, str)]
+    except Exception:  # noqa: BLE001 — an optional dashboard must never break a launch.
+        return []
 
 
 def group_for(project_path: Path, *, group: str | None = None) -> str:

@@ -2198,7 +2198,9 @@ def _aoe_register(
     drift: list[bool] = []
 
     def _on_drift(message: str, repairing: bool) -> None:
-        # ESCAPED: a title carries `[<harness>/<backend>]`, which rich would eat as markup.
+        # ESCAPED: a title can carry `[...]`, which rich would eat as markup. The derived shape
+        # no longer brackets the harness/backend pair, but `--aoe-title` takes anything and every
+        # row registered before that change still holds the bracketed form.
         drift.append(repairing)
         _err.print(f"[bold yellow]warning:[/bold yellow] {escape(message)}", highlight=False)
 
