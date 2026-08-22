@@ -53,6 +53,13 @@ _TRUNCATED = " ... (truncated)"
 # adversarial review noticed the asymmetry.
 _SENTINEL_READ_LIMIT = 4096
 
+# The same bound for `info/exclude`. A real one is a few kilobytes; the cap exists because the
+# "never raises" contract is unconditional and `MemoryError` is not an `OSError`. Past the cap the
+# membership check cannot be trusted, and appending blind would add a duplicate line on EVERY
+# launch — so the entry is skipped instead. Losing one entry costs an un-ignored file; a duplicate
+# per launch corrupts a file that every worktree of the checkout shares.
+_EXCLUDE_READ_LIMIT = 1024 * 1024
+
 # `host-run` -> `claude-host`. The verb is in the FILENAME rather than a flag, so the two backends
 # cannot collide in one folder and an aoe row cannot restart a backend it does not name.
 _VERB_SUFFIX = {"host-run": "host", "container-run": "container"}
@@ -218,10 +225,19 @@ def _ensure_excluded(project_path: Path, target: Path) -> None:
         return
     exclude = common / "info" / "exclude"
     try:
+        # `is_file()`, not `exists()`: a FIFO at this path passes `exists()`, and reading it would
+        # block the launch until something else wrote to it.
+        if exclude.exists() and not exclude.is_file():
+            return
         # Same `newline=""` reason as the script reader: git's exclude grammar is newline
         # separated, and a translated `\r` would make an existing pattern look absent and be
-        # appended a second time on every launch.
-        existing = _read_as_the_shell_does(exclude) if exclude.exists() else ""
+        # appended a second time on every launch. BOUNDED for the reason at `_EXCLUDE_READ_LIMIT`;
+        # reading one byte past the cap is how we detect that we are past it.
+        existing = (
+            _read_as_the_shell_does(exclude, _EXCLUDE_READ_LIMIT + 1) if exclude.is_file() else ""
+        )
+        if len(existing) > _EXCLUDE_READ_LIMIT:
+            return
         # `split("\n")` for the reason given in `write`: git's exclude grammar is newline
         # separated, and `splitlines()` would treat several other characters as separators too.
         if pattern in existing.split("\n"):

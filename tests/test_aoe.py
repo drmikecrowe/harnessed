@@ -536,6 +536,16 @@ class TestForgetStackReadsTheLauncherScript:
     def _rec(self, monkeypatch, sessions: str) -> Recorder:
         return Recorder(sessions=sessions).install(monkeypatch)
 
+    def test_a_row_whose_command_will_not_parse_is_skipped(self, monkeypatch, tmp_path):
+        # aoe's JSON is not our schema to trust, and `harnessed rm` is destructive and unattended:
+        # a command we cannot parse is one we cannot attribute, so it is left alone rather than
+        # guessed at.
+        unparseable = "harnessed " + chr(39) + "unbalanced"
+        rows = json.dumps([{"id": "s1", "path": str(tmp_path), "command": unparseable}])
+        rec = Recorder(sessions=rows).install(monkeypatch)
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == []
+
     def test_a_row_whose_script_names_the_stack_is_removed(self, monkeypatch, tmp_path):
         script = launchscript.write("container-run", "serena", "claude", tmp_path)
         assert script is not None
@@ -574,6 +584,30 @@ class TestForgetStackReadsTheLauncherScript:
         script = tmp_path / "claude-container"
         script.write_text("#!/bin/sh\nexec harnessed container-run claude --stack 'serena\n",
                           encoding="utf-8")
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == []
+
+    def test_a_script_whose_first_line_is_the_exec_line_is_attributed(self, monkeypatch, tmp_path):
+        # No shebang, no leading newline. The single-expression index used -1 to mean "the file
+        # opens with `exec `", which is also what `str.find` returns for "not found", so the
+        # not-found guard swallowed the branch and it never ran — the row survived `harnessed rm`
+        # with its container gone.
+        script = tmp_path / "claude-container"
+        script.write_text(
+            'exec harnessed container-run claude /p --stack serena "$@"\n', encoding="utf-8"
+        )
+        rec = self._rec(monkeypatch, self._row(script))
+        aoe.forget_stack("container-run", "serena")
+        assert rec.removed() == ["s1"]
+
+    def test_a_script_whose_first_line_is_an_exec_for_another_stack_is_left_alone(
+        self, monkeypatch, tmp_path
+    ):
+        script = tmp_path / "claude-container"
+        script.write_text(
+            'exec harnessed container-run claude /p --stack other "$@"\n', encoding="utf-8"
+        )
         rec = self._rec(monkeypatch, self._row(script))
         aoe.forget_stack("container-run", "serena")
         assert rec.removed() == []

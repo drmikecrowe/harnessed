@@ -718,3 +718,69 @@ class TestTheSentinelReadIsBounded:
         assert first is not None
         second = launchscript.write("host-run", "other-stack", "claude", proj)
         assert second is not None and "other-stack" in second.read_text(encoding="utf-8")
+
+
+class TestTheExcludeReadIsBounded:
+    """`_ensure_excluded` reads `info/exclude` to check membership, so that read must be bounded too.
+
+    Fifth instance of the same class: `MemoryError` is not an `OSError`, so an unbounded read here
+    escapes both this function's guard and `write`'s, and the "never raises" contract is
+    unconditional. The script read was bounded one round earlier and this one was missed.
+    """
+
+    def test_an_oversized_exclude_file_is_left_alone(self, proj):
+        _git_init(proj)
+        exclude = proj / ".git" / "info" / "exclude"
+        original = "#" * (launchscript._EXCLUDE_READ_LIMIT + 1) + "\n"
+        exclude.write_text(original, encoding="utf-8")
+        written = launchscript.write("host-run", "serena", "claude", proj)
+        assert written is not None and written.exists(), "the launch keeps its script"
+        assert exclude.read_text(encoding="utf-8") == original, "the file must not be appended to"
+
+    def test_skipping_beats_appending_blind(self, proj):
+        # The reason the oversized case SKIPS rather than appends: membership cannot be checked, so
+        # appending would add one line per launch to a file every worktree shares.
+        _git_init(proj)
+        exclude = proj / ".git" / "info" / "exclude"
+        exclude.write_text("#" * (launchscript._EXCLUDE_READ_LIMIT + 1) + "\n", encoding="utf-8")
+        for _ in range(3):
+            launchscript.write("host-run", "serena", "claude", proj)
+        assert exclude.read_text(encoding="utf-8").count("/claude-host") == 0
+
+    def test_a_file_just_under_the_cap_still_gets_its_entry(self, proj):
+        # The bound must not break the case it sits in front of.
+        _git_init(proj)
+        exclude = proj / ".git" / "info" / "exclude"
+        exclude.write_text("#" * (launchscript._EXCLUDE_READ_LIMIT - 100) + "\n", encoding="utf-8")
+        launchscript.write("host-run", "serena", "claude", proj)
+        assert "/claude-host" in launchscript._read_as_the_shell_does(exclude).split("\n")
+
+    def test_a_fifo_in_place_of_the_exclude_file_does_not_block(self, proj):
+        # A FIFO passes `exists()`. Reading one blocks until a writer appears — which would hang the
+        # launch, not merely lose the entry.
+        _git_init(proj)
+        exclude = proj / ".git" / "info" / "exclude"
+        exclude.unlink()
+        os.mkfifo(exclude)
+        try:
+            written = launchscript.write("host-run", "serena", "claude", proj)
+            assert written is not None and written.exists()
+        finally:
+            exclude.unlink()
+
+    def test_the_exclude_read_passes_a_limit(self, proj, monkeypatch):
+        # Asserting the OUTCOME is not enough here: an unbounded read of an oversized file produces
+        # the same verdict, so the "left alone" test above passes either way. The bound itself is
+        # the property — it is what stops a `MemoryError` from escaping `except OSError`.
+        _git_init(proj)
+        limits: list[object] = []
+        real = launchscript._read_as_the_shell_does
+
+        def spy(path, limit=None):
+            limits.append(limit)
+            return real(path, limit)
+
+        monkeypatch.setattr(launchscript, "_read_as_the_shell_does", spy)
+        launchscript.write("host-run", "serena", "claude", proj)
+        assert launchscript._EXCLUDE_READ_LIMIT + 1 in limits, "the exclude read must be bounded"
+        assert None not in limits, "no read of a file we did not write may be unbounded"

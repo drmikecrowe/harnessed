@@ -735,11 +735,17 @@ def _replays_stack(tokens: list[str], verb: str, stack: str) -> bool:
     # From `exec ` to the END of the file, not to the end of its first physical line. A flag value
     # may contain a newline — single quotes span lines in sh — so the exec STATEMENT is not always
     # one line, and splitting on lines would hand `shlex` an unterminated quote and lose the row.
-    marker = "\nexec "
-    start = content.find(marker) if not content.startswith("exec ") else -len("\n")
-    if start == -1:
-        return False
-    statement = content[start + len(marker):]
+    # Two cases rather than one clever index. The single-expression version used -1 to mean "the
+    # file opens with `exec `", which is the SAME value `str.find` returns for "not found" — so the
+    # not-found guard swallowed that branch and it never ran. A sentinel that collides with a real
+    # answer is a bug even when the colliding input is rare.
+    if content.startswith("exec "):
+        statement = content[len("exec "):]
+    else:
+        index = content.find("\nexec ")
+        if index == -1:
+            return False
+        statement = content[index + len("\nexec "):]
     try:
         script_tokens = shlex.split(statement)
     except ValueError:
