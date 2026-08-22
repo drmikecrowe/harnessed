@@ -238,15 +238,27 @@ class TestTheWriterNeverEmitsASeparator:
 
     @pytest.mark.parametrize("name", ["has|pipe", "a|b|c", "|leading"])
     def test_a_separator_in_a_recipe_name_does_not_corrupt_the_report(self, tmp_path, name):
+        """The PROPERTY, not the mechanics: in this fixture nothing is broken, so the report must
+        say nothing is broken.
+
+        The first version of this test asserted only that snyk's own row looked right. That
+        checked the MANIFEST writer and left `record_skip` completely uncovered — snyk succeeds
+        here, so the skip path is never taken through it — and the mutation run duly reported the
+        original defect as a survivor. socket is absent in this fixture, so it goes through
+        `record_skip` with the same pipe-bearing label; unsanitized, its `unrun` marker lands in
+        the wrong field and it is reported as a scanner that ran and broke.
+        """
         report = self.run_scan(tmp_path, name)
-        snyk_rows = [r for r in report["sources"] if r["tool"] == "snyk"]
-        assert len(snyk_rows) == 1, snyk_rows
-        # The label reached the report with the separator replaced, and nothing shifted: the row
-        # is a real result, not a phantom no-output row for a tool called "recipe".
-        assert snyk_rows[0]["status"] == "ok"
-        assert snyk_rows[0]["source"].startswith("recipe: ")
-        assert "|" not in snyk_rows[0]["source"]
-        assert all("|" not in r["tool"] for r in report["sources"])
+        assert report["coverage"]["no_output"] == [], report["sources"]
+        for row in report["sources"]:
+            assert "|" not in row["tool"], row
+            assert "|" not in row["source"], row
+            assert row["status"] in ("ok", "unrun"), row
+        # Every scanner that looked at the recipe tree names it by its sanitized label.
+        recipe_rows = [r for r in report["sources"] if r["source"].startswith("recipe: ")]
+        assert {r["tool"] for r in recipe_rows} == {"snyk", "socket"}, recipe_rows
+        assert next(r for r in recipe_rows if r["tool"] == "snyk")["status"] == "ok"
+        assert next(r for r in recipe_rows if r["tool"] == "socket")["status"] == "unrun"
 
     def test_a_plain_recipe_name_is_unchanged(self, tmp_path):
         """Guard against fixing the corruption by mangling every label."""
