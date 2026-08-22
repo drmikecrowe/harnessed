@@ -84,7 +84,7 @@ check() {  # check <description> <expected-present|absent> <pattern>
 # The user's original complaint, gone.
 check "no spurious 'produced NO parseable output' warning" absent "produced NO parseable output"
 # osv is still accounted for — silently dropping it would be the wrong fix.
-check "osv reported as a reasoned skip" present "no lockfiles under skills/ or commands/ to scan"
+check "osv reported as a reasoned skip" present "no package sources found under skills/ or commands/"
 # The two unfixable advisories are excluded from the totals but named.
 check "acknowledged block printed" present "acknowledged"
 check "first advisory named" present "CVE-2026-14257"

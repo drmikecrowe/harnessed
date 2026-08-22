@@ -132,7 +132,9 @@ echo
 echo "L6  mutation"
 note "SUBST" "mutmut is declared but generates from src/ ASTs; it cannot reach a bash heredoc"
 if tools/mutants_scan_noise.py >"$LOGDIR/mutation.log" 2>&1; then
-    pass "$(tail -1 "$LOGDIR/mutation.log")"
+    # Both score lines, not `tail -1`. The compound score is printed last, so tailing one line
+    # silently dropped the single-mutant score — the number this layer actually rests on.
+    while read -r line; do pass "$line"; done < <(grep -E 'mutants killed$' "$LOGDIR/mutation.log")
 else
     fail "mutation survivors — see $LOGDIR/mutation.log"
 fi
