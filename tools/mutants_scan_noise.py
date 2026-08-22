@@ -150,12 +150,10 @@ MUTANTS = [
      'skipped_pairs = {(r["tool"], r["source"]) for r in unrun}\n'
      'rows = [r for r in rows if (r["tool"], r["source"]) not in skipped_pairs]\n',
      ""),
-    ("osv writes a manifest line even after recording a skip", SCAN,
-     '        elif [[ -s "$WORK/osv.json" ]]; then\n'
-     "            printf 'osv|recipe lockfiles|%s\\n' \"$WORK/osv.json\" >>\"$MANIFEST\"\n"
-     "        fi",
-     "        fi\n        [[ -s \"$WORK/osv.json\" ]] && printf 'osv|recipe lockfiles|%s\\n' "
-     '"$WORK/osv.json" >>"$MANIFEST"'),
+    # "osv writes a manifest line even after recording a skip" lives in COMPOUND_MUTANTS, not here.
+    # As a single mutant it SURVIVES, and correctly so: the parser-side defence catches the same
+    # contradiction, so removing the bash guard alone changes nothing observable. Leaving it here
+    # would report a redundancy as a hollow test, which is the opposite of what a survivor means.
 
     # --- the socket sibling of the snyk manifest writer (correctness C1) ---
     ("socket manifest writer stops sanitizing the label", SCAN,
@@ -186,6 +184,31 @@ MUTANTS = [
     ("something starts invoking corepack again", DOCKERFILE,
      "RUN npm install -g npm@11.18.0",
      "RUN npm install -g npm@11.18.0\nRUN corepack enable"),
+]
+
+
+# Mutants that must be applied TOGETHER, each a list of (file, find, replace).
+#
+# Why this list exists. Some invariants here are guarded twice on purpose, and a one-at-a-time
+# runner reports both guards as survivors: remove either and the other still holds the line, so
+# nothing observable changes. That is a true statement about redundancy, and it is indistinguishable
+# in a report from "these tests assert nothing" — which is the failure mutation testing exists to
+# catch. Applying both edits at once tells the two apart. A compound that is KILLED proves the pair
+# genuinely guards something; one that survives means neither guard was ever load-bearing.
+COMPOUND_MUTANTS = [
+    ("BOTH guards removed: osv writes a manifest line after a skip AND the parser stops "
+     "dropping the contradiction", [
+         (SCAN,
+          '        elif [[ -s "$WORK/osv.json" ]]; then\n'
+          "            printf 'osv|recipe lockfiles|%s\\n' \"$WORK/osv.json\" >>\"$MANIFEST\"\n"
+          "        fi",
+          "        fi\n        [[ -s \"$WORK/osv.json\" ]] && printf 'osv|recipe lockfiles|%s\\n' "
+          '"$WORK/osv.json" >>"$MANIFEST"'),
+         (SCAN,
+          'skipped_pairs = {(r["tool"], r["source"]) for r in unrun}\n'
+          'rows = [r for r in rows if (r["tool"], r["source"]) not in skipped_pairs]\n',
+          ""),
+     ]),
 ]
 
 
@@ -269,18 +292,47 @@ def main() -> int:
         if not killed:
             survivors.append(label)
 
+    compound_survivors: list[str] = []
+    for j, (label, edits) in enumerate(COMPOUND_MUTANTS, 1):
+        originals = {}
+        try:
+            for rel, find, repl in edits:
+                path = ROOT / rel
+                if rel not in originals:
+                    originals[rel] = path.read_text()
+                current = path.read_text()
+                count = current.count(find)
+                if count != 1:
+                    print(f"[C{j}] ABORT: anchor occurs {count}x (expected 1) in {rel}")
+                    for r in originals:
+                        restore(r)
+                    return 2
+                path.write_text(current.replace(find, repl))
+            killed = not run_suite()
+        finally:
+            for rel in originals:
+                restore(rel)
+        print(f"[C{j}/{len(COMPOUND_MUTANTS)}] {'killed ' if killed else 'SURVIVED'} — {label}")
+        if not killed:
+            compound_survivors.append(label)
+
     if dirty():
         print("\nFAILED: tree is dirty after restore — a mutant was not reverted.")
         return 2
     print("\ntree restored clean (git status -uno)")
 
-    print(f"\n{len(MUTANTS) - len(survivors)}/{len(MUTANTS)} mutants killed")
+    print(f"\n{len(MUTANTS) - len(survivors)}/{len(MUTANTS)} single mutants killed")
+    print(f"{len(COMPOUND_MUTANTS) - len(compound_survivors)}/{len(COMPOUND_MUTANTS)} "
+          "compound mutants killed")
     if survivors:
-        print("SURVIVORS (tests covering these assert nothing):")
+        print("SINGLE SURVIVORS:")
         for s in survivors:
             print(f"  - {s}")
-        return 1
-    return 0
+    if compound_survivors:
+        print("COMPOUND SURVIVORS (neither guard was ever load-bearing):")
+        for s in compound_survivors:
+            print(f"  - {s}")
+    return 1 if (survivors or compound_survivors) else 0
 
 
 if __name__ == "__main__":

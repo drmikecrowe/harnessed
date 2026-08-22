@@ -186,17 +186,26 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
 
     def test_the_pre_existing_notable_path_is_bounded_too(self, tmp_path):
         """`notable[:4]` bounds how MANY names print, never how long each is. Guarding only the new
-        acknowledged line would leave the identical hole one row higher."""
+        acknowledged line would leave the identical hole one row higher.
+
+        Driven through **osv**, deliberately. The first version of this test used a snyk payload
+        and the mutation run reported the notable guard as a SURVIVOR — because `parse_snyk`
+        already sanitizes `pkg` upstream for the acknowledgment check, so on that one path the
+        guard is redundant and removing it changes nothing. It is load-bearing for the three
+        parsers that do NOT pre-sanitize: osv, socket and pip-audit. Testing the path where a
+        guard happens to be redundant proves nothing about the paths where it is not.
+        """
         block = tmp_path / "report.py"
         block.write_text(_heredoc())
-        payload = tmp_path / "snyk.json"
-        payload.write_text(json.dumps({"vulnerabilities": [
-            {"id": "SNYK-X", "packageName": "b" * 5000 + "\x1b[2J", "severity": "critical"}
-        ]}))
+        payload = tmp_path / "osv.json"
+        payload.write_text(json.dumps({"results": [{"packages": [
+            {"package": {"name": "b" * 5000 + "\x1b[2J"},
+             "groups": [{"max_severity": "9.8"}]}
+        ]}]}))
         manifest = tmp_path / "manifest"
-        manifest.write_text("snyk|node globals|%s\n" % payload)
+        manifest.write_text("osv|recipe lockfiles|%s\n" % payload)
         ledger = tmp_path / "attempts"
-        ledger.write_text("snyk|node globals\n")
+        ledger.write_text("osv|recipe lockfiles\n")
         out = tmp_path / "report.json"
         proc = subprocess.run(
             [sys.executable, str(block), str(manifest)],
