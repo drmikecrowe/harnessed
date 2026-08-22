@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import pytest
@@ -162,19 +163,29 @@ class TestNamesFromLlmJson:
     All other scenarios run unconditionally — they exercise the parser with synthetic inputs.
     """
 
+    # The capture script pins --mcp-config to exactly one stdio server, so the correct answer is
+    # knowable in advance and is written HERE rather than read out of the fixture. Deriving it from
+    # the fixture (or from the parser's own output) would make the assertion tautological: a parser
+    # that selected the wrong non-empty array would still "match". Keep in sync with _SERVER_NAME
+    # in tools/capture-claude-mcp-fixture.sh.
+    _EXPECTED_SERVERS: ClassVar[set[str]] = {"time"}
+
     def test_real_fixture_is_parsed_correctly(self):
-        """Real captured fixture → set containing the expected server names from the fixture.
+        """Real captured fixture → exactly {'time'}.
 
-        BLOCKED until Mike captures output of:
-          claude -p 'List MCP servers...' --output-format json --mcp-config <path> --strict-mcp-config
+        Capture with `tools/capture-claude-mcp-fixture.sh` on a machine with an authenticated
+        `claude` binary. That script refuses to write a fixture the production parser cannot read
+        back as _EXPECTED_SERVERS, so a fixture that exists is one that carries real evidence.
 
-        The fixture must include a top-level '_provenance' key per the SPEC.
+        THIS TEST NEVER CALLS `claude`. It reads a committed file. The billed `claude -p` call
+        happens once, by hand, when the fixture is captured — never in CI and never per-run. Do not
+        "improve" this by shelling out to claude to refresh the fixture.
         """
         if not _CLAUDE_FIXTURE.is_file():
             pytest.skip(
-                f"fixture missing: {_CLAUDE_FIXTURE} — "
-                "capture with: claude -p 'List MCP servers...' --output-format json "
-                "--mcp-config <path> --strict-mcp-config > tests/fixtures/claude_mcp_list_output.json"
+                f"fixture missing: {_CLAUDE_FIXTURE} — capture it with "
+                "`tools/capture-claude-mcp-fixture.sh` (needs an authenticated `claude`; an "
+                "unauthenticated one returns 'Not logged in' and the script refuses to write)"
             )
         raw = _CLAUDE_FIXTURE.read_text()
         fixture = json.loads(raw)
@@ -187,14 +198,11 @@ class TestNamesFromLlmJson:
 
         result = _names_from_llm_json(raw)
         assert isinstance(result, set), f"_names_from_llm_json must return a set; got {type(result)}"
-        # WEAKER THAN IT MUST EVENTUALLY BE. A non-empty check cannot tell a correct parse from a
-        # parser that selected the wrong non-empty array. Replace this with an equality assertion
-        # against a set written out by hand from the captured fixture — NOT derived from `raw` or
-        # from `result`, which would make it tautological. Cannot be written until the fixture
-        # exists; tracked as a known limit in the EVIDENCE section of PR #416 (issue #250).
-        assert len(result) > 0, (
-            "fixture must contain at least one server name; update the fixture or the assertion "
-            "to match actual captured content"
+        assert result == self._EXPECTED_SERVERS, (
+            f"parser returned {result!r}, expected {self._EXPECTED_SERVERS!r}. Either the "
+            "`claude -p --output-format json` envelope changed shape, or the fixture was captured "
+            "without --strict-mcp-config and picked up the host's own MCP servers. Re-capture with "
+            "tools/capture-claude-mcp-fixture.sh."
         )
         # Every item in the result must be a string (the function's documented contract)
         for item in result:
