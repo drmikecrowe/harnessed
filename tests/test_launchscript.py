@@ -13,6 +13,7 @@ import os
 import shlex
 import stat
 import subprocess
+import threading
 from pathlib import Path
 
 import pytest
@@ -791,3 +792,54 @@ class TestTheExcludeReadIsBounded:
         launchscript.write("host-run", "serena", "claude", proj)
         assert launchscript._EXCLUDE_READ_LIMIT + 1 in limits, "the exclude read must be bounded"
         assert None not in limits, "no read of a file we did not write may be unbounded"
+
+
+class TestTheTargetPathIsCheckedForWhatItIs:
+    """A FIFO named `claude-host` in a project must not hang the launch.
+
+    `exists()` is true for a FIFO, and opening one BLOCKS until a writer appears — so the sentinel
+    check hung forever, and `except OSError` cannot catch a hang. Found by adversarial review round
+    3; the seventh instance of this class and the fourth time the guard landed at one call site and
+    not at its neighbour, this time seventy lines away in the same file.
+
+    A TRAP WORTH RECORDING: the first attempt to reproduce this reported a clean `None` return,
+    because `TimeoutError` subclasses `OSError` — a SIGALRM raised inside `write` was swallowed by
+    `write`'s own handler. Timing is the honest instrument, which is why these tests bound the call
+    with a real deadline rather than catching an exception.
+    """
+
+    def _write_within(self, proj: Path, seconds: float = 10.0):
+        """Run `write` in a worker thread; fail the test if it has not returned in time.
+
+        A thread, not a signal: signals only fire on the main thread and — as above — a
+        signal-raised `TimeoutError` is indistinguishable from an ordinary `OSError` here.
+        """
+        result: list = []
+
+        def run():
+            result.append(launchscript.write("host-run", "serena", "claude", proj))
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(seconds)
+        assert not worker.is_alive(), "write() blocked — a non-regular file hung the launch"
+        return result[0]
+
+    def test_a_fifo_at_the_target_does_not_hang_the_launch(self, proj):
+        os.mkfifo(proj / "claude-host")
+        try:
+            assert self._write_within(proj) is None
+            assert (proj / "claude-host").is_fifo(), "the FIFO must be left exactly as it was"
+        finally:
+            (proj / "claude-host").unlink()
+
+    def test_a_directory_at_the_target_is_refused(self, proj):
+        (proj / "claude-host").mkdir()
+        assert self._write_within(proj) is None
+        assert (proj / "claude-host").is_dir()
+
+    def test_a_regular_file_still_takes_the_normal_path(self, proj):
+        # The guard must not break the case it sits in front of.
+        first = launchscript.write("host-run", "serena", "claude", proj)
+        assert first is not None and first.is_file()
+        assert self._write_within(proj) is not None, "our own file is still rewritable"

@@ -159,6 +159,16 @@ def write(
         target = project_path / script_name(verb, harness)
 
         if target.exists():
+            # NOT A REGULAR FILE: refuse before touching it. A FIFO passes `exists()` and BLOCKS on
+            # open until a writer appears, so reading it to check the sentinel hangs the launch
+            # forever — and `except OSError` cannot catch a hang. Refusing also means we never
+            # clobber a directory or a socket somebody put here on purpose.
+            #
+            # Seventh instance of one class in this change, and the same guard `_ensure_excluded`
+            # applies seventy lines below. Every path that arrives from outside gets checked for
+            # WHAT IT IS before it is read.
+            if not target.is_file():
+                return None
             # Two separate refusals, and the tracked one applies EVEN to a file carrying our
             # sentinel: committing a generated launcher is a choice a repo is allowed to make, and
             # rewriting it on every launch would produce a dirty tree nobody asked for.
