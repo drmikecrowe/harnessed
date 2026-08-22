@@ -11,10 +11,17 @@ B1 — _yubikey_device_args() (credmounts.py): tests run against a committed fix
      coverage; fixture must be replaced with a real capture when hardware is available.
 
 B2 — _names_from_llm_json() (capability.py): tests for the JSON envelope format emitted by
-     `claude -p --output-format json`. The fixture file (tests/fixtures/claude_mcp_list_output.json)
-     must be captured by Mike on a machine with an authenticated claude binary and hatago hub.
-     Fixture-dependent test skips with a LOUD reason when the file is absent.
-     Parser-only scenarios (bare JSON array, prose wrapping, etc.) run unconditionally.
+     `claude -p --output-format json`. The fixture (tests/fixtures/claude_mcp_list_output.json)
+     is a REAL capture, taken with tools/capture-claude-mcp-fixture.sh. Re-capture with that
+     script — never by hand — so the pinned single-server config keeps the expected set
+     deterministic. The test skips with a LOUD reason if the file is ever removed.
+
+     WHAT THE REAL CAPTURE TAUGHT US: claude answered the "Respond with ONLY a JSON array ...
+     No prose." prompt with a MARKDOWN-FENCED block — ```json\\n["time"]\\n``` — not a bare
+     array. No synthetic case covered fencing; the closest, test_prose_wrapping_a_json_array_is
+     _handled, wraps in plain prose. `_names_from_llm_json` survives it only because its
+     `\\[.*\\]` search ignores everything outside the brackets. Do not "simplify" that regex into
+     a `json.loads()` of the whole result string: the real format would break it immediately.
 """
 
 from __future__ import annotations
@@ -216,6 +223,16 @@ class TestNamesFromLlmJson:
     def test_prose_wrapping_a_json_array_is_handled(self):
         """'Connected servers: [\"time\"]' → {'time'}."""
         result = _names_from_llm_json('Connected servers: ["time"]')
+        assert result == {"time"}, f"got {result!r}"
+
+    def test_markdown_fenced_array_is_handled(self):
+        '''"```json\\n[\\"time\\"]\\n```" → {"time"}.
+
+        This is what a real `claude -p` answered to a prompt that said "No prose" — recorded in
+        tests/fixtures/claude_mcp_list_output.json. Kept as a synthetic case too so the format
+        stays covered even if that fixture is ever removed.
+        '''
+        result = _names_from_llm_json('```json\n["time"]\n```')
         assert result == {"time"}, f"got {result!r}"
 
     def test_empty_string_yields_empty_set(self):
