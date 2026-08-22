@@ -229,17 +229,31 @@ if command -v osv-scanner >/dev/null 2>&1; then
         printf 'osv|recipe lockfiles\n' >>"$ATTEMPTS"
         bounded osv-scanner scan source --recursive --format json "${osv_dirs[@]}" >"$WORK/osv.json" 2>/dev/null
         osv_rc=$?
-        # 128 is osv-scanner's "No package sources found" — the dirs exist but ship no lockfile.
-        # Nothing went wrong and there was nothing to scan, so this is a SKIP, not a result. Left to
-        # fall through it writes no manifest line, and the coverage reconciler below can only read
-        # that as "ran but produced NO parseable output" — i.e. a broken scanner — on every
-        # otherwise-clean build. Same situation as the no-dirs branch, one level deeper.
+        # osv-scanner's exit codes, verified against 2.5.1 rather than assumed:
+        #   0   scanned, no vulnerabilities   -> a real (clean) result, JSON on stdout
+        #   1   scanned, vulnerabilities found -> a real result, JSON on stdout
+        #   127 usage error (bad flag, bad path, unknown subcommand) -> genuinely broken
+        #   128 "No package sources found": ZERO packages extracted, whether because nothing ships
+        #       a lockfile or because the lockfiles present contain no packages
+        #
+        # 128 is the one that made every clean build print a warning. Nothing went wrong and there
+        # was nothing to scan, so it is a SKIP, not a result; left to fall through it writes no
+        # manifest line, and the reconciler below can only read that as "ran but produced NO
+        # parseable output" — i.e. a broken scanner. 127 deliberately keeps falling through, since
+        # a broken invocation is exactly what that bucket is for.
+        #
+        # The branches are exclusive with the manifest write on purpose. Unlike snyk_scan and
+        # socket_scan, this block is inline and cannot `return`, so a timeout that still left
+        # partial JSON in osv.json used to record BOTH an unrun line and a manifest line — the
+        # same scanner reported twice, once as skipped and once as a complete result built from a
+        # truncated file.
         if [[ $osv_rc -eq 124 ]]; then
             record_skip osv "recipe lockfiles" "timed out after ${SCAN_TIMEOUT}s"
         elif [[ $osv_rc -eq 128 ]]; then
-            record_skip osv "recipe lockfiles" "no lockfiles under skills/ or commands/ to scan"
+            record_skip osv "recipe lockfiles" "no package sources found under skills/ or commands/"
+        elif [[ -s "$WORK/osv.json" ]]; then
+            printf 'osv|recipe lockfiles|%s\n' "$WORK/osv.json" >>"$MANIFEST"
         fi
-        [[ -s "$WORK/osv.json" ]] && printf 'osv|recipe lockfiles|%s\n' "$WORK/osv.json" >>"$MANIFEST"
     else
         record_skip osv "recipe lockfiles" "no skills/ or commands/ dir to scan"
     fi
@@ -278,15 +292,40 @@ rows = []   # {source, tool, critical, high, other, notable:[...]}
 # (`latest`) ALL bundle brace-expansion 5.0.7. Both advisories are fixed in 5.0.9, which no
 # published npm release ships. Re-check by extracting node_modules/brace-expansion/package.json
 # from the npm tarball; drop the entry the moment it reads >= 5.0.9.
+# {advisory id: (package it applies to, why it cannot be fixed)}. BOTH must match before anything
+# is acknowledged. The package is a second necessary condition, never a key in its own right — it
+# can only ever narrow, so it cannot become the package-name suppression that N2 forbids. It is
+# here because one CVE can legitimately affect several packages: an ID-only match would silence a
+# finding against some OTHER package that shares the advisory and may well have a fix available.
+_REASON = "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7"
 ACKNOWLEDGED = {
-    "GHSA-mh99-v99m-4gvg": "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7",
-    "CVE-2026-14257":      "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7",
-    "GHSA-rgw5-rvv9-x895": "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7",
-    "CVE-2026-69152":      "brace-expansion <5.0.9 DoS; every npm release bundles 5.0.7",
+    "GHSA-mh99-v99m-4gvg": ("brace-expansion", _REASON),
+    "CVE-2026-14257":      ("brace-expansion", _REASON),
+    "GHSA-rgw5-rvv9-x895": ("brace-expansion", _REASON),
+    "CVE-2026-69152":      ("brace-expansion", _REASON),
 }
 # {advisory id: package} — printed, never silently dropped. A dict because snyk reports the same
 # vulnerability once per detected project, exactly like the by_id dedup in parse_snyk.
 acknowledged_hits = {}
+
+_ID_MAX = 64          # advisory ids are short; anything longer is not one
+_PKG_MAX = 64         # npm caps package names at 214, and we only need enough to identify one
+
+def safe_text(value, limit):
+    """A third-party string, made safe to print and to store.
+
+    Package names reach a BUILD CONSOLE — a CI log, public for a public repo — and
+    scan-report.json. They arrive from scanner output, i.e. ultimately from whoever published the
+    package, and nothing upstream bounds or escapes them. An unprintable character here rewrites
+    the terminal the summary is drawn on; an unbounded one buries the summary it belongs to.
+
+    Applied at BOTH sinks rather than only the new one. `notable` has carried the same exposure
+    all along — `[:4]` bounds how MANY names print, never how long each is — so guarding only the
+    acknowledged line would leave the identical hole one row higher and invent a second, weaker
+    rule for the same kind of data.
+    """
+    text = "".join(ch for ch in str(value) if ch.isprintable())
+    return (text[:limit] + "…") if len(text) > limit else text
 
 def advisory_ids(v):
     """Every id a snyk vulnerability answers to: its own, plus each CVE/GHSA/etc identifier.
@@ -294,12 +333,28 @@ def advisory_ids(v):
     Snyk keys findings by its own `SNYK-JS-*` id and reports upstream ids under `identifiers`,
     whose key set is not guaranteed (GHSA is often absent where CVE is present). Match on the
     union so an ACKNOWLEDGED entry lands whichever vocabulary this snyk version emits.
+
+    DEFENSIVE ON PURPOSE. `identifiers` is JSON from another program, so its shape is guaranteed
+    by nothing: observed as a list of strings, but a bare string, a number, or a nested list are
+    all valid JSON and the obvious `for value in values or []` raises TypeError on two of them.
+    That exception has nowhere to land — no caller catches it — and the surrounding bash runs
+    `set -uo pipefail` WITHOUT -e, so the python dies, the report is never written, and the script
+    still exits 0. The build prints no summary at all and looks like it simply had nothing to say.
     """
-    ids = {v.get("id")} if v.get("id") else set()
-    for values in (v.get("identifiers") or {}).values():
-        for value in values or []:
-            if value:
-                ids.add(value)
+    ids = set()
+    vid = v.get("id")
+    if isinstance(vid, str) and vid:
+        ids.add(vid[:_ID_MAX])
+    identifiers = v.get("identifiers")
+    if isinstance(identifiers, dict):
+        for values in identifiers.values():
+            if isinstance(values, str):     # a bare string would otherwise iterate CHARACTERS,
+                values = [values]           # silently matching nothing rather than crashing
+            elif not isinstance(values, (list, tuple, set)):
+                continue
+            for value in values:
+                if isinstance(value, str) and value:
+                    ids.add(value[:_ID_MAX])
     return ids
 
 def sev_from_cvss(score):
@@ -329,8 +384,9 @@ def parse_snyk(doc):
             vid = v.get("id")
             if not vid:
                 continue
-            pkg = v.get("packageName") or v.get("name") or "?"
-            known = advisory_ids(v) & set(ACKNOWLEDGED)
+            pkg = safe_text(v.get("packageName") or v.get("name") or "?", _PKG_MAX)
+            known = {i for i in advisory_ids(v) & set(ACKNOWLEDGED)
+                     if ACKNOWLEDGED[i][0] == pkg}
             if known:
                 by_id.pop(vid, None)
                 acknowledged_hits[sorted(known)[0]] = pkg
@@ -398,7 +454,7 @@ with open(sys.argv[1]) as f:
         for want in ("critical", "high"):
             for s, pkg in items:
                 if s == want and pkg not in seen:
-                    seen.add(pkg); notable.append(pkg)
+                    seen.add(pkg); notable.append(safe_text(pkg, _PKG_MAX))
         rows.append({"source": source, "tool": tool, "critical": crit,
                      "high": high, "other": len(items) - crit - high, "notable": notable[:4]})
 
@@ -448,6 +504,14 @@ for line in ledger:
     elif (tool, source) not in reported and (tool, source) not in skipped:
         row["status"] = "no-output"
         unreported.append(row)
+# A pair that BOTH reported and skipped is contradictory, and the skip is the safer reading: every
+# skip reason here (timed out, nothing to scan) means the run did not complete, so any output it
+# left behind is partial. Reporting partial findings as a finished result is the worse error, so
+# the `ok` row is dropped and the reasoned skip stands. The bash above now makes the two mutually
+# exclusive at the source; this is the second line of defence, because the parser must not depend
+# on a guarantee living in a different language two hundred lines away.
+skipped_pairs = {(r["tool"], r["source"]) for r in unrun}
+rows = [r for r in rows if (r["tool"], r["source"]) not in skipped_pairs]
 rows.extend(unreported)
 rows.extend(unrun)
 
@@ -460,7 +524,7 @@ uncovered = unreported + unrun
 
 report = {"advisory": True, "gating": 0,
           "totals": {"critical": tot_c, "high": tot_h},
-          "acknowledged": [{"id": vid, "package": pkg, "reason": ACKNOWLEDGED[vid]}
+          "acknowledged": [{"id": vid, "package": pkg, "reason": ACKNOWLEDGED[vid][1]}
                            for vid, pkg in sorted(acknowledged_hits.items())],
           "covered": bool(scanned),
           "coverage": {"attempted": len(rows), "reported": len(scanned),
@@ -497,7 +561,7 @@ if acknowledged_hits:
     print("  %d acknowledged advisor%s with no upstream fix (excluded from the totals above):"
           % (len(acknowledged_hits), "y" if len(acknowledged_hits) == 1 else "ies"))
     for vid, pkg in sorted(acknowledged_hits.items()):
-        print("      %s · %s — %s" % (vid, pkg, ACKNOWLEDGED[vid]))
+        print("      %s · %s — %s" % (vid, pkg, ACKNOWLEDGED[vid][1]))
 if unreported:
     print("  ⚠ %d scanner(s) ran but produced NO parseable output — not covered by this result:"
           % len(unreported))

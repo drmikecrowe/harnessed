@@ -109,18 +109,76 @@ MUTANTS = [
     ("scan starts gating on findings", SCAN,
      'report = {"advisory": True, "gating": 0,', 'report = {"advisory": True, "gating": 1,'),
 
+    # --- hostile scanner JSON (security review F1) ---
+    # The worst finding of the review: a TypeError here has no handler, and the surrounding bash
+    # is `set -uo pipefail` WITHOUT -e, so the python dies, no report is written, and the scan
+    # still exits 0. The build prints no summary and looks like it had nothing to say.
+    ("identifiers assumed to be a list again — crashes the whole summary block", SCAN,
+     "            if isinstance(values, str):     # a bare string would otherwise iterate "
+     "CHARACTERS,\n                values = [values]           # silently matching nothing rather "
+     "than crashing\n            elif not isinstance(values, (list, tuple, set)):\n"
+     "                continue\n            for value in values:\n"
+     "                if isinstance(value, str) and value:",
+     "            for value in values or []:\n                if value:"),
+    ("bare-string identifier iterates characters instead of matching", SCAN,
+     "            if isinstance(values, str):     # a bare string would otherwise iterate "
+     "CHARACTERS,\n                values = [values]           # silently matching nothing rather "
+     "than crashing\n            elif",
+     "            if False:\n                values = [values]\n            elif"),
+
+    # --- third-party strings reaching an output surface (security review F2 / correctness C3) ---
+    ("package names no longer sanitized before printing", SCAN,
+     '    text = "".join(ch for ch in str(value) if ch.isprintable())',
+     '    text = str(value)'),
+    ("package names no longer bounded in length", SCAN,
+     '    return (text[:limit] + "…") if len(text) > limit else text',
+     "    return text"),
+    ("the pre-existing notable path left unsanitized", SCAN,
+     "seen.add(pkg); notable.append(safe_text(pkg, _PKG_MAX))",
+     "seen.add(pkg); notable.append(pkg)"),
+
+    # --- acknowledgment must also match the package (security review F4) ---
+    ("acknowledgment stops requiring the package to match", SCAN,
+     "            known = {i for i in advisory_ids(v) & set(ACKNOWLEDGED)\n"
+     "                     if ACKNOWLEDGED[i][0] == pkg}",
+     "            known = advisory_ids(v) & set(ACKNOWLEDGED)"),
+
+    # --- a pair that both reported and skipped (correctness P1) ---
+    ("parser-side defence removed: a skipped scanner can also report a result", SCAN,
+     'skipped_pairs = {(r["tool"], r["source"]) for r in unrun}\n'
+     'rows = [r for r in rows if (r["tool"], r["source"]) not in skipped_pairs]\n',
+     ""),
+    ("osv writes a manifest line even after recording a skip", SCAN,
+     '        elif [[ -s "$WORK/osv.json" ]]; then\n'
+     "            printf 'osv|recipe lockfiles|%s\\n' \"$WORK/osv.json\" >>\"$MANIFEST\"\n"
+     "        fi",
+     "        fi\n        [[ -s \"$WORK/osv.json\" ]] && printf 'osv|recipe lockfiles|%s\\n' "
+     '"$WORK/osv.json" >>"$MANIFEST"'),
+
+    # --- the socket sibling of the snyk manifest writer (correctness C1) ---
+    ("socket manifest writer stops sanitizing the label", SCAN,
+     '    [[ -s "$out" ]] && printf \'socket|%s|%s\\n\' "$(nosep "$label")" "$out" >>"$MANIFEST"',
+     '    [[ -s "$out" ]] && printf \'socket|%s|%s\\n\' "$label" "$out" >>"$MANIFEST"'),
+
     # --- corepack removal (SPEC group D, failure mode F6) ---
     # The Dockerfile is the other half of the change and no other layer touches it: ruff, pyright
     # and the heredoc mutants above all stop at the scan script.
     ("corepack removal layer deleted entirely", DOCKERFILE,
-     'RUN rm -rf "$(mise where node@22)/lib/node_modules/corepack" \\',
-     'RUN true "$(mise where node@22)/lib/node_modules/corepack" \\'),
+     '    rm -rf "$NODE_DIR/lib/node_modules/corepack" \\',
+     '    true "$NODE_DIR/lib/node_modules/corepack" \\'),
     ("removal widened from corepack to the whole node_modules tree", DOCKERFILE,
-     '"$(mise where node@22)/lib/node_modules/corepack" \\',
-     '"$(mise where node@22)/lib/node_modules" \\'),
+     '"$NODE_DIR/lib/node_modules/corepack" \\',
+     '"$NODE_DIR/lib/node_modules" \\'),
     ("mise reshim dropped, leaving a dangling corepack shim on PATH", DOCKERFILE,
-     '"$HOME/.local/share/mise/shims/corepack" && \\\n    mise reshim',
-     '"$HOME/.local/share/mise/shims/corepack"'),
+     '    mise reshim && \\\n    ! command -v corepack',
+     "    true"),
+    ("empty-node guard removed — rm -rf silently targets an absolute system path", DOCKERFILE,
+     '    [ -n "$NODE_DIR" ] && [ -d "$NODE_DIR" ] && \\\n', "    "),
+    ("removal no longer verifies corepack is actually gone", DOCKERFILE,
+     '    mise reshim && \\\n    ! command -v corepack', "    mise reshim"),
+    ("node resolved inline again instead of once, reintroducing the fail-open", DOCKERFILE,
+     'RUN NODE_DIR="$(mise where node@22)" && \\',
+     'RUN NODE_DIR="" && \\'),
     ("pnpm pin removed — nothing would provide pnpm once corepack is gone", DOCKERFILE,
      "        pnpm@11 \\\n", ""),
     ("something starts invoking corepack again", DOCKERFILE,

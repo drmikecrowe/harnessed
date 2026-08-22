@@ -82,7 +82,9 @@ class TestNoLockfilesIsNotABrokenScanner:
         _, report = run_scan(home, bin_dir)
         row = next(r for r in report["sources"] if r["tool"] == "osv")
         assert row["status"] == "unrun"
-        assert "no lockfiles" in row["reason"]
+        # "no package sources", not "no lockfiles": 128 also fires when a lockfile IS present but
+        # yields zero packages, and the reason an operator reads must not claim more than osv did.
+        assert "no package sources" in row["reason"]
 
     def test_a_timeout_is_still_reported_as_a_timeout(self, scan_env):
         """124 keeps its own wording — a scanner cut off mid-run is a different fact from one that
@@ -101,6 +103,26 @@ class TestNoLockfilesIsNotABrokenScanner:
         stdout, report = run_scan(home, bin_dir)
         assert "osv" in report["coverage"]["no_output"]
         assert "produced NO parseable output" in stdout
+
+    def test_a_timeout_that_left_partial_output_is_not_also_reported_as_a_result(self, scan_env):
+        """The osv block is INLINE, so unlike snyk_scan and socket_scan it cannot `return` after
+        recording a skip. A timeout that had already written some JSON therefore used to produce
+        an unrun line AND a manifest line: one scanner, two rows, contradicting each other — and
+        the `ok` row's findings came from a file the scanner never finished writing.
+
+        `timeout` exits 124 having killed the child, so partial output on disk is the normal shape
+        of this case, not a contrived one."""
+        home, bin_dir = scan_env
+        partial = json.dumps({"results": [{"packages": [
+            {"package": {"name": "tar-fs"}, "groups": [{"max_severity": "9.8"}]}]}]})
+        stub(bin_dir, "osv-scanner", 124, stdout=partial)
+        _, report = run_scan(home, bin_dir)
+        osv_rows = [r for r in report["sources"] if r["tool"] == "osv"]
+        assert len(osv_rows) == 1, osv_rows
+        assert osv_rows[0]["status"] == "unrun"
+        assert "timed out" in osv_rows[0]["reason"]
+        # A partial file must never be counted as a finished scan's findings.
+        assert report["totals"] == {"critical": 0, "high": 0}
 
     def test_real_findings_are_still_parsed(self, scan_env):
         """Guard against fixing the warning by disabling the scanner."""

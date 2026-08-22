@@ -191,10 +191,19 @@ RUN npm install -g npm@11.18.0
 # src/harnessed/ invokes it. Left in place it is dead weight that the in-image supply-chain scan
 # flags on every build. Deleting beats acknowledging: the findings go away because the code does.
 # Drop the mise shim too, or `corepack` stays on PATH resolving to a file that is gone.
-RUN rm -rf "$(mise where node@22)/lib/node_modules/corepack" \
-           "$(mise where node@22)/bin/corepack" \
+#
+# FAIL CLOSED. `mise where` writes its errors to stderr and nothing to stdout, so interpolating it
+# straight into a path would leave an absolute one that does not exist here — and `rm -rf` on a
+# missing path returns 0. The layer would go green while corepack survived, which is exactly the
+# finding this was added to remove. So: resolve once, refuse an empty or absent answer, and prove
+# the removal worked rather than assuming it did.
+RUN NODE_DIR="$(mise where node@22)" && \
+    [ -n "$NODE_DIR" ] && [ -d "$NODE_DIR" ] && \
+    rm -rf "$NODE_DIR/lib/node_modules/corepack" \
+           "$NODE_DIR/bin/corepack" \
            "$HOME/.local/share/mise/shims/corepack" && \
-    mise reshim
+    mise reshim && \
+    ! command -v corepack
 
 # Extra user-specified tools. Edit ~/.config/harnessed/extra-tools.txt to add more (seeded from
 # catalog/base/extra-tools.default.txt); the base build stages that into catalog/base/extra-tools.txt.

@@ -111,6 +111,29 @@ class TestASkippedScannerAppearsOnceWithItsReason:
         by_source = {r["source"]: r["status"] for r in report["sources"] if r["tool"] == "snyk"}
         assert by_source == {"node globals": "unrun", "recipe: serena": "no-output"}
 
+    def test_a_pair_that_both_reported_and_skipped_yields_only_the_skip(self, block, tmp_path):
+        """P1. A skip means the run did not complete, so whatever output it left is partial.
+        Reporting partial findings as a finished result is the worse of the two errors, so the
+        reasoned skip wins and the `ok` row is dropped.
+
+        Reachable through osv before the fix: unlike snyk_scan and socket_scan, the osv block is
+        inline and cannot `return`, so a timeout that still left partial JSON recorded an unrun
+        line AND a manifest line — one scanner, reported twice, contradicting itself."""
+        payload = tmp_path / "osv.json"
+        payload.write_text(json.dumps({"results": [{"packages": [
+            {"package": {"name": "tar-fs"}, "groups": [{"max_severity": "9.8"}]}]}]}))
+        stdout, report = run(
+            block, tmp_path,
+            ["osv|recipe lockfiles", "osv|recipe lockfiles|unrun|timed out after 120s"],
+            [("osv", "recipe lockfiles", str(payload))],
+        )
+        osv_rows = [r for r in report["sources"] if r["tool"] == "osv"]
+        assert len(osv_rows) == 1, osv_rows
+        assert osv_rows[0]["status"] == "unrun"
+        # And the partial finding must not reach the totals as though the scan had finished.
+        assert report["totals"] == {"critical": 0, "high": 0}
+        assert "timed out" in stdout
+
     def test_a_reported_scanner_is_never_duplicated_by_its_attempt_line(self, block, tmp_path):
         """The pre-existing guard: a scanner with a manifest line is already an `ok` row."""
         payload = tmp_path / "pip.json"
@@ -213,9 +236,15 @@ class TestTheWriterNeverEmitsASeparator:
     field further along, where the shifted field is a FILE PATH.
     """
 
-    def run_scan(self, tmp_path, skill_dir_name):
+    def run_scan(self, tmp_path, skill_dir_name, with_socket=False):
         """Run the real script against a fake $HOME holding a recipe whose directory name carries
-        a separator, with a stub snyk so the `recipe: <name>` label is actually reached."""
+        a separator, with stub scanners so the `recipe: <name>` label is actually reached.
+
+        `with_socket` drives socket's SUCCESS path, which is the only way to reach socket's
+        MANIFEST write. Without it socket is absent and goes through `record_skip` instead —
+        which is how the socket manifest writer stayed unexercised while this file looked like it
+        covered the separator class.
+        """
         home = tmp_path / "home"
         nm = home / ".claude" / "skills" / skill_dir_name / "node_modules" / "left-pad"
         nm.mkdir(parents=True)
@@ -225,16 +254,47 @@ class TestTheWriterNeverEmitsASeparator:
         snyk = bin_dir / "snyk"
         snyk.write_text("#!/usr/bin/env bash\necho '{\"vulnerabilities\":[]}'\n")
         snyk.chmod(0o755)
+        env_extra = "unset SOCKET_CLI_API_TOKEN SOCKET_SECURITY_API_KEY\n"
+        if with_socket:
+            # Dispatch on the subcommand: `organization list`, `scan create`, then `scan view`.
+            socket = bin_dir / "socket"
+            socket.write_text(
+                "#!/usr/bin/env bash\n"
+                'case "$1 $2" in\n'
+                '  "organization list") echo \'{"ok":true,"data":{"organizations":'
+                '[{"slug":"acme"}]}}\' ;;\n'
+                '  "scan create")      echo \'{"ok":true,"data":{"id":"scan-1"}}\' ;;\n'
+                '  "scan view")        echo \'{"ok":true,"data":[{"name":"left-pad",'
+                '"version":"1.0.0","alerts":[]}]}\' ;;\n'
+                "  *) exit 1 ;;\n"
+                "esac\n"
+            )
+            socket.chmod(0o755)
+            env_extra = "export SOCKET_CLI_API_TOKEN=stub\n"
         runner = tmp_path / "run.sh"
         runner.write_text(
             "#!/usr/bin/env bash\n"
             'export HOME="%s"\nexport SNYK_TOKEN=stub\nexport PATH="%s:/usr/bin:/bin"\n'
-            "unset SOCKET_CLI_API_TOKEN SOCKET_SECURITY_API_KEY\n"
-            'exec bash "%s"\n' % (home, bin_dir, SCRIPT)
+            "%s"
+            'exec bash "%s"\n' % (home, bin_dir, env_extra, SCRIPT)
         )
         proc = subprocess.run(["bash", str(runner)], capture_output=True, text=True)
         assert proc.returncode == 0, proc.stderr
         return json.loads((home / ".harnessed" / "scan-report.json").read_text())
+
+    @pytest.mark.parametrize("name", ["has|pipe", "a|b|c"])
+    def test_the_socket_manifest_write_sanitizes_its_label_too(self, tmp_path, name):
+        """C1. snyk and socket write the manifest with the identical pattern; only snyk's was
+        exercised. In a MANIFEST line the field a separator shifts is the third one — a FILE PATH —
+        so the parser is handed a path that points nowhere and the scanner silently contributes
+        nothing while having run perfectly."""
+        report = self.run_scan(tmp_path, name, with_socket=True)
+        recipe_rows = {r["tool"]: r for r in report["sources"]
+                       if r["source"].startswith("recipe: ")}
+        assert set(recipe_rows) == {"snyk", "socket"}, report["sources"]
+        assert recipe_rows["socket"]["status"] == "ok", recipe_rows["socket"]
+        assert "|" not in recipe_rows["socket"]["source"]
+        assert report["coverage"]["no_output"] == [], report["sources"]
 
     @pytest.mark.parametrize("name", ["has|pipe", "a|b|c", "|leading"])
     def test_a_separator_in_a_recipe_name_does_not_corrupt_the_report(self, tmp_path, name):
