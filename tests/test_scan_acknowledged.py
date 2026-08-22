@@ -48,6 +48,17 @@ def parsers():
     return ns
 
 
+def _pkg_max():
+    """The package-name cap, read out of the scan script itself.
+
+    A hardcoded number here decays into decoration: `<= 70` against a limit of 64 keeps passing
+    if someone raises the limit to 70, so the assertion stops constraining anything.
+    """
+    ns: dict = {}
+    exec(_heredoc().split("with open(sys.argv[1])")[0], ns)  # noqa: S102 — see `parsers`
+    return ns["_PKG_MAX"]
+
+
 def snyk_vuln(vid, pkg="brace-expansion", severity="high", identifiers=None):
     return {"id": vid, "packageName": pkg, "severity": severity,
             "identifiers": identifiers or {}}
@@ -253,7 +264,9 @@ class TestThirdPartyPackageNamesAreBoundedBeforeTheyArePrinted:
         assert proc.returncode == 0, proc.stderr
         notable = json.loads(out.read_text())["sources"][0]["notable"]
         assert len(notable) == 1
-        assert len(notable[0]) <= 70, len(notable[0])
+        # Bound read from the code, not hardcoded: `<= 70` against a limit of 64 would still pass
+        # if someone raised the limit to 70, which makes the number decorative.
+        assert len(notable[0]) <= _pkg_max() + 1, len(notable[0])
         assert "\x1b" not in notable[0]
         assert "\x1b" not in proc.stdout
 

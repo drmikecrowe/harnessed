@@ -28,6 +28,13 @@ MANIFEST="$WORK/manifest"
 # line when a scanner produced parseable output, so a scanner that runs and yields nothing would
 # otherwise vanish from the report entirely — 5 of 6 scanners silent still reads as a clean scan.
 # Reconciling attempts against the manifest is what lets the summary name what it did NOT see.
+#
+# THE INVARIANT EVERY SCANNER MUST HOLD: once a scanner has written its attempt line, every path
+# out of it must first either write a MANIFEST line or call `record_skip`. A path that returns
+# without doing either leaves an attempt with no result and no reason, and the reconciler can only
+# read that as "ran and produced nothing" — i.e. broken. Four early returns violated this (two in
+# socket_scan, one in each function's manifest-synthesis step), so a scan whose console said
+# "skipped" produced a report that said the scanner was broken.
 ATTEMPTS="$WORK/attempts"
 : >"$MANIFEST"
 : >"$ATTEMPTS"
@@ -129,7 +136,8 @@ snyk_scan() {
     [[ -n "${SNYK_TOKEN:-}" ]] || { record_skip snyk "$label" "no SNYK_TOKEN"; return 0; }
     echo "  · snyk: ${label}"
     printf 'snyk|%s\n' "$(nosep "$label")" >>"$ATTEMPTS"
-    tmp="$(synth_manifest_dir "$nm")" || return 0
+    tmp="$(synth_manifest_dir "$nm")" \
+        || { record_skip snyk "$label" "could not synthesize a manifest for the tree"; return 0; }
     out="$WORK/snyk-$(slug "$label").json"
     ( cd "$tmp" && bounded snyk test --json ) >"$out" 2>/dev/null
     [[ $? -eq 124 ]] && { record_skip snyk "$label" "timed out after ${SCAN_TIMEOUT}s"; return 0; }
@@ -167,8 +175,10 @@ socket_scan() {
     echo "  · socket: ${label}"
     printf 'socket|%s\n' "$(nosep "$label")" >>"$ATTEMPTS"
     org="$(socket_org)"
-    [[ -n "$org" ]] || { echo "    (socket: no org for this token — skipped)"; return 0; }
-    tmp="$(synth_manifest_dir "$nm")" || return 0
+    [[ -n "$org" ]] || { echo "    (socket: no org for this token — skipped)"
+        record_skip socket "$label" "no organization for this token"; return 0; }
+    tmp="$(synth_manifest_dir "$nm")" \
+        || { record_skip socket "$label" "could not synthesize a manifest for the tree"; return 0; }
     id="$(cd "$tmp" && bounded socket scan create --json --tmp --no-interactive --no-banner --no-spinner \
             --org "$org" . 2>/dev/null \
           | python3 -c 'import json,sys
@@ -178,7 +188,8 @@ try:
 except Exception:
     print("")')"
     rm -rf "$tmp"
-    [[ -n "$id" ]] || { echo "    (socket scan create failed — skipped)"; return 0; }
+    [[ -n "$id" ]] || { echo "    (socket scan create failed — skipped)"
+        record_skip socket "$label" "socket scan create returned no scan id"; return 0; }
     out="$WORK/socket-$(slug "$label").json"
     # --org here too: `scan view` is an org-scoped endpoint. Interactively it falls back to the
     # default org in ~/.config/socket, which a container does not have — omit it and the call fails

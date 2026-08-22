@@ -160,6 +160,18 @@ MUTANTS = [
      '    [[ -s "$out" ]] && printf \'socket|%s|%s\\n\' "$(nosep "$label")" "$out" >>"$MANIFEST"',
      '    [[ -s "$out" ]] && printf \'socket|%s|%s\\n\' "$label" "$out" >>"$MANIFEST"'),
 
+    # --- every path out of an attempt records a result or a reason (round-2 review) ---
+    # Four pre-existing early returns left an attempt with neither, so the console said "skipped"
+    # while the report said the scanner was broken — the exact contradiction this change removes.
+    ("socket bails on a missing org without recording a skip", SCAN,
+     '    [[ -n "$org" ]] || { echo "    (socket: no org for this token — skipped)"\n'
+     '        record_skip socket "$label" "no organization for this token"; return 0; }',
+     '    [[ -n "$org" ]] || { echo "    (socket: no org for this token — skipped)"; return 0; }'),
+    ("socket bails on a failed scan create without recording a skip", SCAN,
+     '    [[ -n "$id" ]] || { echo "    (socket scan create failed — skipped)"\n'
+     '        record_skip socket "$label" "socket scan create returned no scan id"; return 0; }',
+     '    [[ -n "$id" ]] || { echo "    (socket scan create failed — skipped)"; return 0; }'),
+
     # --- corepack removal (SPEC group D, failure mode F6) ---
     # The Dockerfile is the other half of the change and no other layer touches it: ruff, pyright
     # and the heredoc mutants above all stop at the scan script.

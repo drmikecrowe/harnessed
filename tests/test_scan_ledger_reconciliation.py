@@ -327,6 +327,83 @@ class TestTheWriterNeverEmitsASeparator:
         assert [r["source"] for r in snyk_rows] == ["recipe: serena"]
 
 
+class TestEveryPathOutOfAnAttemptRecordsAResultOrAReason:
+    """The invariant the whole reconciler rests on.
+
+    Once a scanner writes its attempt line, every path out of it must write a MANIFEST line or
+    call `record_skip`. A path that does neither leaves an attempt with no result and no reason,
+    which the reconciler can only read as "ran and produced nothing" — a broken scanner.
+
+    Four early returns violated it, all pre-existing: socket bailing with no org slug, socket
+    bailing when `scan create` returns no id, and the manifest-synthesis step in BOTH functions.
+    The visible symptom is the same contradiction this change exists to remove — the console
+    printed "skipped" while scan-report.json said the scanner was broken.
+    """
+
+    def run_with_socket_stub(self, tmp_path, body):
+        home = tmp_path / "home"
+        nm = home / ".local" / "share" / "mise" / "installs" / "node" / "22" / "lib" \
+            / "node_modules" / "npm"
+        nm.mkdir(parents=True)
+        (nm / "package.json").write_text('{"name": "npm", "version": "11.18.0"}')
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        socket = bin_dir / "socket"
+        socket.write_text("#!/usr/bin/env bash\n" + body)
+        socket.chmod(0o755)
+        runner = tmp_path / "run.sh"
+        runner.write_text(
+            "#!/usr/bin/env bash\n"
+            'export HOME="%s"\nexport PATH="%s:/usr/bin:/bin"\n'
+            "export SOCKET_CLI_API_TOKEN=stub\nunset SNYK_TOKEN SOCKET_CLI_ORG_SLUG\n"
+            'exec bash "%s"\n' % (home, bin_dir, SCRIPT)
+        )
+        proc = subprocess.run(["bash", str(runner)], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+        report = json.loads((home / ".harnessed" / "scan-report.json").read_text())
+        return proc.stdout, report
+
+    def test_no_org_for_the_token_is_a_reasoned_skip_not_a_broken_scanner(self, tmp_path):
+        """`socket organization list` returns no organizations — a token with no org attached."""
+        stdout, report = self.run_with_socket_stub(
+            tmp_path, 'echo \'{"ok":true,"data":{"organizations":[]}}\'\n')
+        row = next(r for r in report["sources"] if r["tool"] == "socket")
+        assert row["status"] == "unrun", row
+        assert "organization" in row["reason"], row
+        assert report["coverage"]["no_output"] == [], report["sources"]
+        # The console already said "skipped"; the report must not contradict it.
+        assert "skipped" in stdout
+
+    def test_a_failed_scan_create_is_a_reasoned_skip_not_a_broken_scanner(self, tmp_path):
+        """The org lookup succeeds, then `scan create` returns no id — a quota or API failure."""
+        stdout, report = self.run_with_socket_stub(tmp_path, (
+            'case "$1 $2" in\n'
+            '  "organization list") echo \'{"ok":true,"data":{"organizations":'
+            '[{"slug":"acme"}]}}\' ;;\n'
+            '  "scan create")      echo \'{"ok":false,"message":"quota exceeded"}\' ;;\n'
+            "  *) exit 1 ;;\n"
+            "esac\n"
+        ))
+        row = next(r for r in report["sources"] if r["tool"] == "socket")
+        assert row["status"] == "unrun", row
+        assert "scan id" in row["reason"], row
+        assert report["coverage"]["no_output"] == [], report["sources"]
+        assert "skipped" in stdout
+
+    def test_no_scanner_is_ever_left_as_an_attempt_with_neither_result_nor_reason(self, tmp_path):
+        """The property itself, stated once: whatever socket does, the report never describes it
+        as having run and produced nothing when it in fact bailed with a reason."""
+        bodies = ['echo \'{"ok":true,"data":{"organizations":[]}}\'\n',
+                  'echo \'{"ok":false}\'\n',
+                  "exit 1\n",
+                  'echo "not json at all"\n']
+        for i, body in enumerate(bodies):
+            case = tmp_path / ("case%d" % i)
+            case.mkdir()
+            _, report = self.run_with_socket_stub(case, body)
+            assert report["coverage"]["no_output"] == [], (body, report["sources"])
+
+
 class TestTheScanStaysAdvisory:
     """N1. Nothing in this change may start gating a build."""
 
