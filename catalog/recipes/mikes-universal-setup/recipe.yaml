@@ -34,6 +34,14 @@ rules:
   # approach after repeated failure, finish the whole task before stopping.
   - path: rules/execution-discipline
   - path: rules/fd
+  # Anti-sycophancy + response shape. coding-principles' Response Principles already said "skip
+  # filler" and it was NOT enough on its own: a one-line bullet inside a coding rule never fires at
+  # the moment a reply opens with "Great question". This is the same instruction given its own rule,
+  # a NAMED blocklist of the actual openers, and a pre-send self-check. It borrows the BONES of the
+  # simple-english skill (sentence-length caps, one word one meaning, active voice, condition before
+  # command) rather than the full ASD-STE100 standard — full STE on conversation prose reads like a
+  # maintenance manual and would bar the domain vocabulary these rules depend on.
+  - path: rules/interaction-style
   # Anti-agentic-regression, not a docs style guide: comment ONLY what a competent reader would
   # reasonably delete (upstream workarounds, tuned constants, arbitrary-looking ordering, untested
   # defensive checks, deliberate convention breaks), as a terse marker plus a MANDATORY ticket/ADR/SHA
