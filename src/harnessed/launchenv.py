@@ -324,6 +324,16 @@ def _varlock_proxy_modes(schema_dir: Path) -> dict[str, str] | None:
 def _warn_unproxied_secrets(schema_dir: Path) -> None:
     """Name the secrets the credential proxy will NOT carry, once per schema dir per launch.
 
+    A READINESS REPORT, not a live fault. Today `_varlock_resolve` runs `varlock load`, which hands
+    back the real value for every item whatever its proxy mode — so an unrouted item still works.
+    It stops working the moment the launch switches to the broker's placeholder env (#388 Phase 1),
+    and at that point the failure is invisible: a real-looking placeholder no API accepts,
+    surfacing far away as a 401. Saying so while the schema is still being authored is the entire
+    value; a warning that arrives only after the cutover arrives too late to be cheap.
+
+    The wording therefore states both tenses. Do not tighten it to the present until the broker
+    path is the one actually delivering these values.
+
     Silent unless the schema opts in (`@proxy` present). Values are never read or printed — this
     reports NAMES and MODES only, which is what makes it safe to run on every launch.
     """
@@ -352,8 +362,9 @@ def _warn_unproxied_secrets(schema_dir: Path) -> None:
     if unusable:
         _err.print(
             f"[yellow]warning:[/yellow] {len(unusable)} secret(s) in {schema_dir}/.env.schema "
-            "reach neither the agent nor any upstream — the container gets a placeholder no API "
-            "will accept, which surfaces later as an unexplained 401:"
+            "declare no @proxy route. Once harnessed brokers secrets (#388) each will reach "
+            "neither the agent nor any upstream — a placeholder no API accepts, surfacing as an "
+            "unexplained 401. They still arrive as real values today:"
         )
         for k in unusable:
             _err.print(f"  [yellow]·[/yellow] {k} [dim]({classified[k]})[/dim]")
@@ -364,16 +375,19 @@ def _warn_unproxied_secrets(schema_dir: Path) -> None:
         )
 
     if withheld:
+        # Worth printing even though `_varlock_resolve` also fails on this schema: its error names
+        # the DIRECTORY, this names the ITEM. That is the difference between "varlock broke" and
+        # "this one credential is gone".
         _err.print(
             f"[yellow]warning:[/yellow] {len(withheld)} secret(s) in {schema_dir}/.env.schema "
-            "could not be resolved and are withheld from the container entirely — the variable "
-            "will be UNSET, not wrong:"
+            "could not be resolved at all:"
         )
         for k in withheld:
             _err.print(f"  [yellow]·[/yellow] {k}")
         _err.print(
-            "[dim]  These are resolver failures, not routing mistakes — check the backing item "
-            "exists and the secrets backend is reachable.[/dim]"
+            "[dim]  Resolver failures, not routing mistakes — check the backing item exists and "
+            "the secrets backend is reachable. Today this fails the whole schema; under the "
+            "broker it would withhold just these.[/dim]"
         )
 
     if passthrough:
@@ -381,8 +395,8 @@ def _warn_unproxied_secrets(schema_dir: Path) -> None:
         # the container" is exactly the question the proxy exists to make answerable, and a
         # passthrough item keeps the full pre-proxy exposure.
         _err.print(
-            f"[dim]note: {len(passthrough)} secret(s) deliberately pass through as real values "
-            f"in the container: {', '.join(passthrough)}[/dim]"
+            f"[dim]note: {len(passthrough)} secret(s) are declared to keep passing through as "
+            f"real values in the container: {', '.join(passthrough)}[/dim]"
         )
 
 

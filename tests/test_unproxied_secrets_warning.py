@@ -138,15 +138,28 @@ class TestWhatGetsReported:
         err = capsys.readouterr().err
         assert "UNCLASSIFIED_TOKEN" in err
 
-    def test_a_resolver_failure_is_reported_as_unset_not_as_a_bad_value(self, tmp_path, capsys,
-                                                                       monkeypatch):
+    def test_a_resolver_failure_is_reported_separately_from_a_missing_route(self, tmp_path, capsys,
+                                                                            monkeypatch):
         """`omit` and `placeholder` fail differently and are fixed differently: one is a broken
         resolver, the other a missing rule. Collapsing them sends the reader to the wrong file."""
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
         err = capsys.readouterr().err
         assert "DEAD_TOKEN" in err
-        assert "UNSET" in err
+        assert "could not be resolved" in err
+        # The two groups must not be merged into one list.
+        assert err.index("DEAD_TOKEN") > err.index("UNCLASSIFIED_TOKEN")
+
+    def test_it_does_not_claim_an_unrouted_secret_is_already_broken(self, tmp_path, capsys,
+                                                                    monkeypatch):
+        """Today `_varlock_resolve` runs `varlock load`, which returns the REAL value whatever the
+        proxy mode — so an unrouted item still works. The warning is a readiness report, and
+        stating it in the present tense would be false until #388 Phase 1 switches the launch to
+        the broker's placeholder env."""
+        monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
+        launchenv._warn_unproxied_secrets(_schema(tmp_path))
+        err = capsys.readouterr().err
+        assert "still arrive as real values today" in err
 
     def test_a_proxied_secret_is_not_reported(self, tmp_path, capsys, monkeypatch):
         """The whole point is that it works; naming it would train the reader to skip the block."""
