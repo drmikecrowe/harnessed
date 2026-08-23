@@ -1318,7 +1318,7 @@ def _firewall_policy_is_drop(rt: str, netns_anchor: str, image: str) -> bool:
     ruleset needs NET_ADMIN too, and the agent container is deliberately not given it.
     """
     res = _bounded(
-        _firewall_runner_argv(rt, netns_anchor, image) + ["iptables", "-S", "OUTPUT"],
+        [*_firewall_runner_argv(rt, netns_anchor, image), "iptables", "-S", "OUTPUT"],
         timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True,
     )
     if res.returncode != 0:
@@ -1370,8 +1370,8 @@ def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None,
     anchor = netns_anchor or instance
     img = image or _agent_image("claude")
     res = _bounded(
-        _firewall_runner_argv(rt, anchor, img)
-        + ["bash", "/usr/local/sbin/egress-firewall", *(domains or [])],
+        [*_firewall_runner_argv(rt, anchor, img),
+         "bash", "/usr/local/sbin/egress-firewall", *(domains or [])],
         timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True,
     )
     # FAIL CLOSED. The script installs a default-DROP policy, so "it did not run" is not a degraded
