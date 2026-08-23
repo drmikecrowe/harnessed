@@ -20,7 +20,7 @@ import pytest
 
 from harnessed.ctrquery import _container_running, _image_exists, _inspect_id, _runtime
 from harnessed.launchenv import _varlock_cache_clear, _varlock_resolve
-from harnessed.launcher import _session_active
+from harnessed.launcher import _session_active, parse_built_pairs
 from harnessed.svcstate import _svc_published_port
 from harnessed.hostrun import _host_mise_env
 
@@ -258,44 +258,22 @@ class TestPodmanImagesFilter:
 
     @staticmethod
     def _parse_harnessed_pairs(rt: str, known_harnesses: tuple) -> list[tuple[str, str]]:
-        """Run the images filter and parse according to the intended contract.
+        """Run the images filter and parse it with the PRODUCTION parser.
 
-        DELIBERATE DUPLICATE of `launcher._stale_pairs` parsing — do not "deduplicate" this by
-        calling the production helper. `_stale_pairs` checks `repo.startswith("harnessed-")`, but
-        modern podman prepends "localhost/" to every local image name, so it silently matches
-        nothing. This copy strips "localhost/" first and therefore encodes the INTENDED contract,
-        which is what makes the test able to describe the podman output format at all. Sharing the
-        production helper here would make the test pass only by agreeing with the bug.
-
-        Fixing `_stale_pairs` is out of scope for #250 (direction 3 is contracts only) — filed as
-        issue #420. Retire this copy when that fix lands.
+        This called a local copy of the parser until #420 landed. The copy existed because
+        `_stale_pairs` tested `repo.startswith("harnessed-")` against podman output that reads
+        `localhost/harnessed-…`, so sharing the production helper would have made the test pass
+        only by agreeing with the bug. `launcher.parse_built_pairs` now strips the prefix, so the
+        duplicate is retired and this test asserts the real thing against real podman output.
         """
         result = subprocess.run(
             [rt, "images", "--filter", "label=harnessed=true",
              "--format", "{{.Repository}}"],
             capture_output=True, text=True,
         )
-        pairs: list[tuple[str, str]] = []
         if result.returncode != 0:
-            return pairs
-        for repo in result.stdout.splitlines():
-            repo = repo.strip()
-            # Modern podman prepends "localhost/" to local images; strip it first.
-            # The production _stale_pairs checks startswith("harnessed-") without
-            # stripping, which silently skips all locally-built images. (FINDING)
-            if repo.startswith("localhost/"):
-                repo = repo[len("localhost/"):]
-            if not repo.startswith("harnessed-"):
-                continue
-            tail = repo[len("harnessed-"):]  # <harness>-<stack>
-            for harness_candidate in known_harnesses:
-                prefix = harness_candidate + "-"
-                if tail.startswith(prefix):
-                    stack_name = tail[len(prefix):]
-                    if stack_name:
-                        pairs.append((stack_name, harness_candidate))
-                    break
-        return pairs
+            return []
+        return parse_built_pairs(result.stdout.splitlines(), known_harnesses)
 
     def test_labeled_image_appears_in_filter_output(self, labeled_image):
         """The filter command returns the labeled image repository."""

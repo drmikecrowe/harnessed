@@ -21,7 +21,7 @@ import sys
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import cycle
@@ -823,6 +823,43 @@ def _declared_pairs(root: Path | None) -> list[tuple[str, str]]:
     return pairs
 
 
+# Podman prepends this to the repository name of every LOCALLY BUILT image, which is every image
+# harnessed makes — see #420. Docker prepends nothing, so the strip must stay optional.
+_LOCAL_IMAGE_PREFIX = "localhost/"
+
+
+def parse_built_pairs(repos: Iterable[str], known_harnesses: Iterable[str]) -> list[tuple[str, str]]:
+    """`(stack, harness)` for each `harnessed-<harness>-<stack>` repository name in `repos`.
+
+    Split out of `_stale_pairs` so the live contract test can assert against THIS parser instead of
+    its own copy of it (#420) — a duplicate can only ever agree with whichever of the two is wrong.
+
+    The `localhost/` strip is the whole bug #420 fixed: podman reports locally-built images as
+    `localhost/harnessed-claude-default`, so the bare `startswith("harnessed-")` test was False for
+    every image harnessed builds. `_stale_pairs` then contributed nothing from the PREVIOUSLY-BUILT
+    half of its sweep and printed "All stacks up to date" over 18 stale pairs.
+
+    Matched by PREFIX, never by substring: `repo.split("harnessed-", 1)` would also accept
+    `notharnessed-claude-default`, which the contract test's negative control rejects.
+    """
+    pairs: list[tuple[str, str]] = []
+    for raw in repos:
+        repo = raw.strip()
+        if repo.startswith(_LOCAL_IMAGE_PREFIX):
+            repo = repo[len(_LOCAL_IMAGE_PREFIX):]
+        if not repo.startswith("harnessed-"):
+            continue
+        tail = repo[len("harnessed-"):]  # <harness>-<stack>
+        for harness_candidate in known_harnesses:
+            prefix = harness_candidate + "-"
+            if tail.startswith(prefix):
+                stack_name = tail[len(prefix):]
+                if stack_name and (stack_name, harness_candidate) not in pairs:
+                    pairs.append((stack_name, harness_candidate))
+                break
+    return pairs
+
+
 def _stale_pairs(rt: str, root: Path | None, *, strict: bool, force: bool = False) -> list[tuple[str, str, str]]:
     """The (stack, harness, reason) triples a bare `harnessed build` must rebuild. A pair is in
     scope when it is either:
@@ -845,21 +882,10 @@ def _stale_pairs(rt: str, root: Path | None, *, strict: bool, force: bool = Fals
         capture_output=True, text=True,
     )
     if result.returncode == 0:
-        # Parse image names of the form harnessed-<harness>-<stack>.
-        # harness = the first hyphen-delimited segment after "harnessed-" that is a known harness
-        # name; stack = the remainder after removing "harnessed-<harness>-".
-        for repo in result.stdout.splitlines():
-            repo = repo.strip()
-            if not repo.startswith("harnessed-"):
-                continue
-            tail = repo[len("harnessed-"):]  # <harness>-<stack>
-            for harness_candidate in HARNESS_CONFIG_DIR:
-                prefix = harness_candidate + "-"
-                if tail.startswith(prefix):
-                    stack_name = tail[len(prefix):]
-                    if stack_name and (stack_name, harness_candidate) not in pairs:
-                        pairs.append((stack_name, harness_candidate))
-                    break
+        # Parse image names of the form harnessed-<harness>-<stack>; see parse_built_pairs.
+        for pair in parse_built_pairs(result.stdout.splitlines(), HARNESS_CONFIG_DIR):
+            if pair not in pairs:
+                pairs.append(pair)
     else:
         # Cannot use `_listing` here: unlike the CLI listings, this one is ADDITIVE — declared pairs
         # are still worth reconciling, so aborting would be an overreaction. But saying nothing is

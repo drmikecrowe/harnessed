@@ -142,6 +142,22 @@ class TestBareBuildReconcile:
 
     def test_previously_built_undeclared_stack_still_reconciles(self, root, built, monkeypatch):
         # 'single' declares no harnesses, but has a stale built image → still swept, as before.
+        #
+        # The `localhost/` is what real podman prints for a locally-built image, and it is NOT
+        # decoration: this stub said plain `harnessed-claude-single` until #420, which is the only
+        # reason the suite stayed green while `_stale_pairs` matched nothing on a real machine.
+        # Do not "simplify" it away.
+        self._fake_podman(
+            monkeypatch,
+            images="localhost/harnessed-claude-single\n",
+            hashes={"harnessed-claude-single:latest": "stale"},
+        )
+        result = runner.invoke(launcher.app, ["build", "--root", str(root)])
+        assert result.exit_code == 0, result.output
+        assert ("single", "claude") in built
+
+    def test_previously_built_stack_reconciles_without_a_registry_prefix(self, root, built, monkeypatch):
+        """Docker prints no `localhost/`, so the strip must stay optional rather than required."""
         self._fake_podman(
             monkeypatch,
             images="harnessed-claude-single\n",
@@ -150,6 +166,25 @@ class TestBareBuildReconcile:
         result = runner.invoke(launcher.app, ["build", "--root", str(root)])
         assert result.exit_code == 0, result.output
         assert ("single", "claude") in built
+
+    def test_labelled_image_not_named_harnessed_is_ignored(self, root, built, monkeypatch):
+        """Negative control: the prefix strip must not widen into a substring match.
+
+        `notharnessed-claude-single` carries the same `<harness>-<stack>` tail, so a parser that
+        matched on the bare substring `harnessed-` would sweep a stack that is not ours.
+        """
+        self._fake_podman(
+            monkeypatch,
+            images="localhost/notharnessed-claude-single\n",
+            hashes={"harnessed-claude-single:latest": "stale"},
+        )
+        result = runner.invoke(launcher.app, ["build", "--root", str(root)])
+        assert result.exit_code == 0, result.output
+        # Not `built == []`: 'multi' DECLARES [claude, omp] and so builds on every sweep. What the
+        # decoy must not do is add the undeclared 'single' on top of that.
+        assert ("single", "claude") not in built, (
+            f"a foreign labelled image must contribute no pair; got {built!r}"
+        )
 
     def test_force_rebuilds_pairs_with_a_current_hash(self, root, built, monkeypatch):
         from harnessed.assemble import compute_recipe_hash
