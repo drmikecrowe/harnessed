@@ -40,6 +40,20 @@ def _schema(tmp_path: Path, body: str = "# @proxy(domain=\"x\")\nA=1\n") -> Path
     return tmp_path
 
 
+def _flat(text: str) -> str:
+    """Rendered output with every run of whitespace collapsed.
+
+    `_err` is a rich Console that hard-wraps at 80 columns, and the messages embed `schema_dir` —
+    a pytest `tmp_path`, whose length differs per machine (`/tmp/pytest-of-mcrowe/pytest-1829/...`
+    locally, `/tmp/pytest-of-runner/pytest-0/...` in CI). So the wrap point moves, and a substring
+    assertion on a multi-word phrase passes or fails depending on WHO RAN IT. That is how
+    `test_a_resolver_failure_...` went green locally and red on CI.
+
+    Assert through this, never on the raw text.
+    """
+    return " ".join(text.split())
+
+
 def _fake_rules(stdout: str, returncode: int = 0):
     def run(cmd, **kw):
         return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr="")
@@ -122,20 +136,20 @@ class TestTheGate:
 
         monkeypatch.setattr(launchenv.subprocess, "run", explode)
         launchenv._warn_unproxied_secrets(_schema(tmp_path, "# @sensitive\nSNYK_TOKEN=op(op://v/i/f)\n"))
-        assert capsys.readouterr().err == ""
+        assert _flat(capsys.readouterr().err) == ""
 
     def test_an_absent_schema_is_silent(self, tmp_path, capsys, monkeypatch):
         monkeypatch.setattr(launchenv.subprocess, "run",
                             lambda *a, **kw: (_ for _ in ()).throw(AssertionError("no")))
         launchenv._warn_unproxied_secrets(tmp_path)
-        assert capsys.readouterr().err == ""
+        assert _flat(capsys.readouterr().err) == ""
 
 
 class TestWhatGetsReported:
     def test_an_unroutable_secret_is_named(self, tmp_path, capsys, monkeypatch):
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
-        err = capsys.readouterr().err
+        err = _flat(capsys.readouterr().err)
         assert "UNCLASSIFIED_TOKEN" in err
 
     def test_a_resolver_failure_is_reported_separately_from_a_missing_route(self, tmp_path, capsys,
@@ -144,7 +158,7 @@ class TestWhatGetsReported:
         resolver, the other a missing rule. Collapsing them sends the reader to the wrong file."""
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
-        err = capsys.readouterr().err
+        err = _flat(capsys.readouterr().err)
         assert "DEAD_TOKEN" in err
         assert "could not be resolved" in err
         # The two groups must not be merged into one list.
@@ -158,14 +172,14 @@ class TestWhatGetsReported:
         the broker's placeholder env."""
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
-        err = capsys.readouterr().err
+        err = _flat(capsys.readouterr().err)
         assert "still arrive as real values today" in err
 
     def test_a_proxied_secret_is_not_reported(self, tmp_path, capsys, monkeypatch):
         """The whole point is that it works; naming it would train the reader to skip the block."""
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
-        assert "RULED_TOKEN" not in capsys.readouterr().err
+        assert "RULED_TOKEN" not in _flat(capsys.readouterr().err)
 
     def test_an_all_passthrough_schema_raises_no_warning(self, tmp_path, capsys, monkeypatch):
         """Passthrough is a declared decision, not a defect. Warning on it would make the warning
@@ -176,14 +190,14 @@ class TestWhatGetsReported:
                "  B  passthrough: real value sent to the child\n")
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(out))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
-        assert "warning" not in capsys.readouterr().err
+        assert "warning" not in _flat(capsys.readouterr().err)
 
     def test_passthrough_items_are_still_listed_as_a_note(self, tmp_path, capsys, monkeypatch):
         """'Which real secrets are still in the container' is the question the proxy exists to
         answer, and passthrough keeps the full pre-proxy exposure."""
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
-        assert "PASSTHRU_TOKEN" in capsys.readouterr().err
+        assert "PASSTHRU_TOKEN" in _flat(capsys.readouterr().err)
 
     def test_an_unknown_mode_is_treated_as_unsafe(self, tmp_path, capsys, monkeypatch):
         """varlock's proxy surface is an explicit preview and its modes may grow. A mode this
@@ -192,7 +206,7 @@ class TestWhatGetsReported:
                "  • h  → inject X\n\nSecrets (1)\n  X  quarantined: something new\n")
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(out))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
-        err = capsys.readouterr().err
+        err = _flat(capsys.readouterr().err)
         assert "X" in err and "quarantined" in err
 
     def test_an_unparseable_rules_output_says_so_instead_of_going_quiet(self, tmp_path, capsys,
@@ -201,13 +215,30 @@ class TestWhatGetsReported:
         telling anyone (cf. the egress firewall, #429)."""
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules("something else entirely\n"))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
-        assert "could not be classified" in capsys.readouterr().err
+        assert "could not be classified" in _flat(capsys.readouterr().err)
+
+    def test_the_report_survives_a_schema_path_long_enough_to_move_every_wrap(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """`_err` hard-wraps at 80 columns and the messages embed the schema path, so the wrap
+        points are a function of how long that path happens to be. This passed locally and failed
+        on CI purely because `/tmp/pytest-of-runner/pytest-0/…` is a different length from
+        `/tmp/pytest-of-mcrowe/pytest-1829/…`, which split "could not be resolved" across a line.
+
+        A path long enough to shift every wrap keeps that class of bug from coming back."""
+        deep = tmp_path / ("d" * 60) / ("e" * 60)
+        monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
+        launchenv._warn_unproxied_secrets(_schema(deep))
+        err = _flat(capsys.readouterr().err)
+        for phrase in ("declare no @proxy route", "could not be resolved",
+                       "still arrive as real values today"):
+            assert phrase in err, f"{phrase!r} did not survive wrapping"
 
     def test_no_secret_value_is_ever_printed(self, tmp_path, capsys, monkeypatch):
         """The report is names and modes only — that is what makes it safe on every launch."""
         monkeypatch.setattr(launchenv.subprocess, "run", _fake_rules(RULES_OUTPUT))
         launchenv._warn_unproxied_secrets(_schema(tmp_path))
-        err = capsys.readouterr().err
+        err = _flat(capsys.readouterr().err)
         # The descriptions carry no values, and nothing here reads the resolved map at all.
         assert "op://" not in err
         assert "real value injected on matching hosts" not in err
@@ -218,7 +249,7 @@ class TestWhatGetsReported:
         d = _schema(tmp_path)
         launchenv._warn_unproxied_secrets(d)
         launchenv._warn_unproxied_secrets(d)
-        assert capsys.readouterr().err.count("UNCLASSIFIED_TOKEN") == 1
+        assert _flat(capsys.readouterr().err).count("UNCLASSIFIED_TOKEN") == 1
 
 
 class TestBothLaunchPathsAreWired:
