@@ -68,12 +68,20 @@ def _sync(project, reports):
     )
 
 
-def test_aoe_refuses_a_duplicate_title_and_path_at_exit_zero(drifted):
-    """The premise the whole fix rests on. If this ever stops holding, the fix is pointless."""
+def test_aoe_refuses_a_duplicate_title_and_path(drifted):
+    """The premise the whole fix rests on. If this ever stops holding, the fix is pointless.
+
+    THE EXIT CODE IS DELIBERATELY NOT ASSERTED. aoe 1.13.2 refused at exit 0; aoe 1.14.1 refuses at
+    exit 1. Pinning either one makes this test a version check rather than a behavior check, and
+    `sync_session` no longer reads that code — it re-reads the session list instead, precisely so
+    the next change here cannot turn a working registration into a reported failure.
+
+    What matters, and what is asserted: the add is REFUSED and the stale row SURVIVES. That is what
+    makes a remove-then-add strategy lose the row, and it is why the repair is a rename.
+    """
     project, title, profile = drifted
     result = _aoe("add", str(project), "-p", profile, "-g", "grp", "-t", title,
                   "--cmd-override", aoe.replay_command("host-run", "claude", project))
-    assert result.returncode == 0, "a refused duplicate exits ZERO — that is what hid the bug"
     assert "already exists" in result.stdout + result.stderr
     assert [r["command"] for r in _rows(profile)] == [STALE_COMMAND], "the stale row survived"
 
@@ -109,6 +117,9 @@ def test_remove_would_not_have_worked(drifted):
 
     A docstring saying "remove does not work here" rots silently. This fails the day aoe changes
     its trash semantics, which is exactly when the repair strategy should be revisited.
+
+    The trashed row coming back from `list --json` is also why `_sessions` subtracts
+    `session list-trash` — see `test_a_trashed_row_is_not_a_live_row` below.
     """
     project, title, profile = drifted
     row_id = _rows(profile)[0]["id"]
@@ -118,6 +129,38 @@ def test_remove_would_not_have_worked(drifted):
 
     refused = _aoe("add", str(project), "-p", profile, "-g", "grp", "-t", title,
                    "--cmd-override", aoe.replay_command("host-run", "claude", project))
-    assert refused.returncode == 0, "aoe refuses a duplicate at exit zero — that is what makes it silent"
     assert "already exists" in refused.stdout + refused.stderr, \
         "a trashed row still holds the (title, path) key, so remove+add loses the row entirely"
+
+
+def test_a_trashed_row_is_not_a_live_row(drifted):
+    """`_sessions` must not hand a trashed row to `_registered`, and only aoe can prove it does not.
+
+    aoe returns a trashed session from `list --json` with the same fields as a live one — no
+    status, no `trashed_at`. Left in, deleting a row makes it impossible to recreate: the launch
+    matches the trashed row, skips the `add`, and reports success over an empty dashboard.
+    """
+    _project, _, profile = drifted
+    row_id = _rows(profile)[0]["id"]
+    assert _aoe("remove", row_id, "-p", profile).returncode == 0
+
+    assert any(r["id"] == row_id for r in _rows(profile)), \
+        "precondition: aoe still lists the trashed row"
+    assert all(s["id"] != row_id for s in aoe._sessions("aoe")), \
+        "_sessions must subtract it"
+
+
+def test_a_deleted_row_can_be_registered_again(drifted):
+    """The user-visible half of the same bug: delete a row, relaunch, get the row back."""
+    project, _, profile = drifted
+    reports: list[tuple[str, bool]] = []
+    assert _sync(project, reports) is True
+    ours = aoe.replay_command("host-run", "claude", project)
+    mine = [r for r in _rows(profile) if r["command"] == ours]
+    assert len(mine) == 1
+
+    assert _aoe("rm", "--purge", mine[0]["id"], "-p", profile).returncode == 0
+    assert not [r for r in _rows(profile) if r["command"] == ours], "precondition: it is gone"
+
+    assert _sync(project, []) is True, "a relaunch must register it again"
+    assert len([r for r in _rows(profile) if r["command"] == ours]) == 1

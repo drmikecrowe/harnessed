@@ -46,10 +46,12 @@ class Recorder:
     caring which seam a given command went through.
     """
 
-    def __init__(self, *, profiles=PROFILE_LIST_PRESENT, groups=GROUP_LIST_EMPTY, sessions="[]"):
+    def __init__(self, *, profiles=PROFILE_LIST_PRESENT, groups=GROUP_LIST_EMPTY, sessions="[]",
+                 trash=""):
         self.calls: list[list[str]] = []
         self.spawned: list[list[str]] = []
         self._profiles, self._groups, self._sessions = profiles, groups, sessions
+        self._trash = trash
 
     def run(self, exe: str, args: list[str], *, timeout: int = 10) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
@@ -59,6 +61,8 @@ class Recorder:
             return _ok(self._groups)
         if args[:2] == ["list", "--json"]:
             return _ok(self._sessions)
+        if args[:2] == ["session", "list-trash"]:
+            return _ok(self._trash)
         return _ok()
 
     def spawn(self, exe: str, batch: list[list[str]]) -> bool:
@@ -1155,8 +1159,11 @@ class TestCommandDrift:
     def test_drifted_row_is_renamed_before_the_add(self, monkeypatch, proj):
         rec = self._rec(monkeypatch, proj, "harnessed host-run claude /proj --")
         self._sync(proj)
-        verbs = [a[0] for a in rec.calls if a[0] in ("session", "add")]
-        assert verbs == ["session", "add", "add"], "the key must be freed before the re-add"
+        # WRITES ONLY. `session` also prefixes the `session list-trash` read that `_sessions`
+        # issues, so matching on the bare verb counted a read as one of the writes under test.
+        verbs = ["rename" if a[:2] == ["session", "rename"] else a[0]
+                 for a in rec.calls if a[:2] == ["session", "rename"] or a[0] == "add"]
+        assert verbs == ["rename", "add", "add"], "the key must be freed before the re-add"
 
     def test_repair_renames_only_the_matched_row_in_our_profile(self, monkeypatch, proj):
         rows = json.loads(self._sessions(proj, "harnessed host-run claude /proj --"))
@@ -1478,3 +1485,140 @@ class TestForgetStackRefusesNonRegularPaths:
             assert rec.removed() == []
         finally:
             script.chmod(0o755)
+
+
+class TestTrashedRowsDoNotBlockRegistration:
+    """`aoe list --json` returns trashed rows, and nothing in the JSON says which they are.
+
+    Verified against aoe 1.14.1: a trashed session comes back with the same fields and the same
+    shape as a live one. Left in, `_registered` matches one on (command, path) and `sync_session`
+    returns early — so a row the user deleted can never be recreated, and the launch reports
+    success while the dashboard stays empty.
+    """
+
+    def _row(self, proj: Path, sid: str = "abc123abc123abc1") -> str:
+        return json.dumps([{
+            "id": sid,
+            "title": "claude/host proj serena",
+            "path": str(proj),
+            "command": f"{proj}/claude-host --",
+        }])
+
+    def _trash_line(self, sid: str = "abc123abc123abc1") -> str:
+        return (f"Trashed sessions in profile 'harnessed':\n"
+                f"  {sid}  claude/host proj serena  (trashed 2026-08-23T00:04:31.590726053+00:00)\n")
+
+    def test_a_live_row_still_suppresses_the_add(self, monkeypatch, tmp_path):
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        rec = Recorder(sessions=self._row(proj)).install(monkeypatch)
+        assert aoe.sync_session("host-run", "serena", "claude", proj) is True
+        assert rec.added() == []
+
+    def test_a_trashed_row_does_not_suppress_the_add(self, monkeypatch, tmp_path):
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        rec = Recorder(sessions=self._row(proj), trash=self._trash_line()).install(monkeypatch)
+        assert aoe.sync_session("host-run", "serena", "claude", proj) is True
+        assert rec.added(), "the trashed row must not be mistaken for a live one"
+
+    def test_an_unreadable_trash_keeps_every_row(self, monkeypatch, tmp_path):
+        # Fails OPEN: not knowing means behaving as before. Dropping the whole session list because
+        # the trash could not be read would re-add rows that already exist.
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        rec = Recorder(sessions=self._row(proj))
+        rec.install(monkeypatch)
+        real = rec.run
+
+        def run(exe, args, *, timeout=10):
+            if args[:2] == ["session", "list-trash"]:
+                return _fail()
+            return real(exe, args, timeout=timeout)
+
+        monkeypatch.setattr(aoe, "_run", run)
+        assert aoe.sync_session("host-run", "serena", "claude", proj) is True
+        assert rec.added() == []
+
+
+class TestARefusedDuplicateIsNotAFailure:
+    """What a refused `add` EXITS WITH is not ours to depend on.
+
+    The plain retry behind the `--tool`-labelled add is refused whenever the labelled one won. aoe
+    1.13.2 exited 0 for that refusal; aoe 1.14.1 exits 1. Reading the exit code made every
+    successfully labelled row on 1.14.1 report "could not register the session" while sitting in
+    the dashboard. `sync_session` asks whether the row is there instead.
+    """
+
+    def _rec(self, monkeypatch, proj: Path, *, plain_rc: int):
+        rec = Recorder()
+        rec.install(monkeypatch)
+        real = rec.run
+        added: list[list[str]] = []
+
+        def run(exe, args, *, timeout=10):
+            if args[0] == "add":
+                added.append(args)
+                rec.calls.append(args)
+                if "--tool" not in args:
+                    # The row the labelled add already created now holds (title, path).
+                    if plain_rc:
+                        return subprocess.CompletedProcess(
+                            args=[], returncode=plain_rc, stdout="",
+                            stderr="Error: Session already exists with same title and path\n")
+                    return _ok()
+                rec._sessions = json.dumps([{
+                    "id": "abc123abc123abc1", "title": aoe.title_for(
+                        "host-run", "serena", "claude", proj),
+                    "path": str(proj), "command": f"{proj}/claude-host --",
+                }])
+                return _ok()
+            return real(exe, args, timeout=timeout)
+
+        monkeypatch.setattr(aoe, "_run", run)
+        return rec
+
+    def test_exit_one_on_the_retry_still_reports_success(self, monkeypatch, tmp_path):
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        self._rec(monkeypatch, proj, plain_rc=1)
+        assert aoe.sync_session(
+            "host-run", "serena", "claude", proj, background=False
+        ) is True, "the labelled add created the row; the refused retry is not a failure"
+
+    def test_exit_zero_on_the_retry_still_reports_success(self, monkeypatch, tmp_path):
+        # aoe 1.13.2's behavior. Both must pass, which is the point of asking rather than inferring.
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        self._rec(monkeypatch, proj, plain_rc=0)
+        assert aoe.sync_session(
+            "host-run", "serena", "claude", proj, background=False
+        ) is True
+
+    def test_a_row_that_never_appeared_still_reports_failure(self, monkeypatch, tmp_path):
+        # The check must not paper over a real failure: nothing registered, nothing in the list.
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        rec = Recorder()
+        rec.install(monkeypatch)
+        real = rec.run
+
+        def run(exe, args, *, timeout=10):
+            if args[0] == "add":
+                rec.calls.append(args)
+                return _fail()
+            return real(exe, args, timeout=timeout)
+
+        monkeypatch.setattr(aoe, "_run", run)
+        assert aoe.sync_session(
+            "host-run", "serena", "claude", proj, background=False
+        ) is False
+
+    def test_the_detached_path_is_unchanged(self, monkeypatch, tmp_path):
+        # A detached batch has not necessarily run yet, so there is nothing to re-read; `_spawn`'s
+        # own answer remains the only one available.
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        rec = Recorder().install(monkeypatch)
+        assert aoe.sync_session("host-run", "serena", "claude", proj) is True
+        assert ("list", "--json") in rec.verbs()

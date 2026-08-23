@@ -133,6 +133,10 @@ _NO_STRICT_MCP_FLAG = "--no-strict-mcp-config"
 # remove.
 _STALE_SUFFIX = "(stale {sid})"
 
+# An aoe session id as `session list-trash` prints it. Fixed-width hex, which is what
+# makes it findable on a line whose title is arbitrary free text.
+_TRASH_ID = re.compile(r"\b[0-9a-f]{16}\b")
+
 # Separator between composed recipes in a derived title. See `title_for` for why it is
 # not `-`.
 _RECIPE_JOIN = "+"
@@ -412,10 +416,20 @@ def _has_group(exe: str, group: str) -> bool:
 
 
 def _sessions(exe: str) -> list[dict]:
-    """Every session in the harnessed profile. Empty on any parse or transport failure.
+    """Every LIVE session in the harnessed profile. Empty on any parse or transport failure.
 
     aoe prints a human "No sessions found" line rather than `[]` for an empty profile, so a decode
     failure is an ordinary outcome here, not an anomaly.
+
+    TRASHED ROWS ARE SUBTRACTED, and nothing in the JSON says which they are. `aoe list --json`
+    returns a trashed session with the same fields and the same shape as a live one — no status, no
+    `trashed_at`, nothing to filter on. Verified against aoe 1.14.1.
+
+    Without this, trashing a row makes it permanently un-re-registerable: `_registered` matches the
+    trashed row on (command, path), `sync_session` returns early believing the row is there, and no
+    `add` is ever issued. The user deletes a row, relaunches to recreate it, and gets told it
+    registered fine while the dashboard stays empty. `aoe session list-trash` is the only thing that
+    can tell them apart, and it costs the same 0.02s as the list above.
     """
     result = _run(exe, ["list", "--json", "-p", PROFILE])
     if result is None or result.returncode != 0:
@@ -424,7 +438,28 @@ def _sessions(exe: str) -> list[dict]:
         data = json.loads(result.stdout)
     except (json.JSONDecodeError, ValueError):
         return []
-    return [s for s in data if isinstance(s, dict)] if isinstance(data, list) else []
+    if not isinstance(data, list):
+        return []
+    trashed = _trashed_ids(exe)
+    return [s for s in data if isinstance(s, dict) and s.get("id") not in trashed]
+
+
+def _trashed_ids(exe: str) -> frozenset[str]:
+    """Ids aoe holds in this profile's trash, or an empty set when it cannot say.
+
+    FAILS OPEN, on purpose. Not knowing means we keep every row `list` returned, which is exactly
+    today's behavior: at worst a trashed row suppresses one registration. Failing CLOSED — dropping
+    the whole session list because the trash could not be read — would make every launch re-add rows
+    that already exist, and duplicates are the failure this module exists to prevent.
+
+    Scraped, because `list-trash` has no `--json`. The id is the one fixed-width hex token on a
+    line; titles are free text and can contain anything, so the id is matched rather than the line
+    parsed positionally.
+    """
+    result = _run(exe, ["session", "list-trash", "-p", PROFILE])
+    if result is None or result.returncode != 0:
+        return frozenset()
+    return frozenset(_TRASH_ID.findall(result.stdout))
 
 
 def _registered(
@@ -750,11 +785,25 @@ def sync_session(
         # a mise install dir that is on the user's shell PATH and not on a daemon's. Asking aoe is no
         # cheaper than trying: `aoe agents` is ~1.35s, a hundred times the other reads, and it answers
         # for the wrong PATH anyway. So attempt the labelled add and follow it with the plain one,
-        # which aoe refuses as a duplicate title+path at exit 0 WITHOUT touching the stored tool when
-        # the first won, and which registers the row as before when it did not. Verified, aoe 1.13.2.
+        # which aoe refuses as a duplicate title+path WITHOUT touching the stored tool when the
+        # first won, and which registers the row as before when it did not.
         batch.append([*add, "--tool", harness])
         batch.append(add)
-        return _apply(exe, batch, background=background, optional=frozenset({len(batch) - 2}))
+        applied = _apply(exe, batch, background=background, optional=frozenset({len(batch) - 2}))
+        if background:
+            return applied
+        # ASK, DO NOT INFER. The retry above is refused whenever the labelled add won, and what a
+        # refusal EXITS WITH is not ours to depend on: aoe 1.13.2 exited 0, aoe 1.14.1 exits 1. Under
+        # the exit-code reading, every successfully labelled row on 1.14.1 reported
+        # "could not register the session" while sitting in the dashboard — a `--create-aoe-only`
+        # that fails loudly having done exactly what was asked.
+        #
+        # Re-reading settles it against any aoe: the row is there or it is not. Only on the blocking
+        # path, where the writes have finished; a detached batch has not necessarily run yet, so
+        # there `applied` remains the only answer available.
+        return _registered(
+            _sessions(exe), command, project_path, group=group, title=title
+        ) or applied
     except Exception:  # noqa: BLE001 — an optional dashboard must never break a launch.
         return False
 
