@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -44,10 +45,37 @@ _VARLOCK_CACHE: dict[Path, dict[str, str] | None] = {}
 # desktop app is not running — fails with a message instead of hanging forever. bd harnessed-prf.
 _VARLOCK_TIMEOUT = 60
 
+# Per-item proxy mode, keyed on schema dir. Same lifetime and same rationale as _VARLOCK_CACHE:
+# `varlock proxy rules` is a subprocess, and both launch paths ask about the same dirs.
+_PROXY_MODES_CACHE: dict[Path, dict[str, str] | None] = {}
+
+# Dirs already warned about, so the four call sites (global/project x container/host) print once.
+_PROXY_WARNED: set[Path] = set()
+
+# What `varlock proxy rules` reports per item, and what each means for a launch:
+#   proxied      pod holds a placeholder, real value injected at the wire      — the goal state
+#   passthrough  pod holds the REAL value; deliberate (`@proxy=passthrough`)   — old exposure, fine
+#   placeholder  sensitive but NO rule: reaches neither the pod NOR any upstream — BROKEN
+#   omit         resolution failed, withheld from the child entirely            — BROKEN
+#
+# The last two are why this warning exists. varlock treats every item as sensitive by default, so
+# an item nobody classified silently degrades to a useless placeholder: the agent gets a
+# real-looking value that no upstream will ever accept, and the failure surfaces far away as a
+# confusing 401. Naming them at launch is the whole point (issue #388, finding F1).
+_PROXY_MODES_OK = ("proxied", "passthrough")
+
+_RULES_HEADER_RE = re.compile(r"^Rules \((\d+)\)\s*$")
+_SECRETS_HEADER_RE = re.compile(r"^Secrets \((\d+)\)\s*$")
+# `  NAME<column padding>mode: description`. The padding is always >= 2 because the column is
+# right-padded to the longest name.
+_SECRET_LINE_RE = re.compile(r"^\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s{2,}(?P<mode>[a-z-]+):")
+
 
 def _varlock_cache_clear() -> None:
     """Drop the `_varlock_resolve` memo. For tests that resolve the same dir across differing state."""
     _VARLOCK_CACHE.clear()
+    _PROXY_MODES_CACHE.clear()
+    _PROXY_WARNED.clear()
 
 
 def _varlock_resolve(schema_dir: Path) -> dict[str, str] | None:
@@ -222,6 +250,142 @@ def _normalize_plain_env_file(src: Path) -> Path:
     return Path(tmp)
 
 
+def _schema_declares_proxy(schema_dir: Path) -> bool:
+    """Whether this schema mentions `@proxy` at all — the cheap gate on everything below.
+
+    A text test, not a parse, and deliberately so: it costs one file read, and a schema with no
+    `@proxy` anywhere is every schema shipped today. That keeps `varlock proxy rules` — which
+    RESOLVES values, so it can prompt for a 1Password unlock — entirely off the critical path until
+    somebody opts into the proxy model.
+
+    Known limit: it reads the entry schema only, so a `@proxy` living exclusively in an imported
+    fragment is missed and no warning is emitted. That is the safe direction to be wrong in (a
+    missing warning, never a false one), but it must be revisited when recipe `env.schema`
+    fragments land — see #388 Phase 1.
+    """
+    try:
+        return "@proxy" in (schema_dir / ".env.schema").read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+
+def _varlock_proxy_modes(schema_dir: Path) -> dict[str, str] | None:
+    """`{KEY: mode}` from `varlock proxy rules`, or None when the output cannot be trusted.
+
+    `proxy rules` is the ONLY source of per-item proxy mode — `varlock load --format json-full`
+    reports `isSensitive` and the schema-wide egress setting but nothing per item — and it prints
+    for humans, with no `--format json`. So this parses display text, which will drift.
+
+    It therefore refuses to guess. The `Secrets (N)` header states its own count; if the number of
+    lines parsed does not match N, or either header is missing, this returns None and the caller
+    says so out loud. A guardrail that quietly stops guarding is the failure mode we already have
+    one open bug for (#429) — not a pattern to repeat here.
+    """
+    cached = _PROXY_MODES_CACHE.get(schema_dir, ...)
+    if cached is not ...:
+        return cached  # type: ignore[return-value]
+
+    result: dict[str, str] | None = None
+    try:
+        proc = subprocess.run(
+            ["varlock", "proxy", "rules"],
+            cwd=schema_dir, capture_output=True, text=True, timeout=_VARLOCK_TIMEOUT,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        proc = None
+
+    if proc is not None and proc.returncode == 0:
+        rule_count: int | None = None
+        declared: int | None = None
+        modes: dict[str, str] = {}
+        in_secrets = False
+        for line in proc.stdout.splitlines():
+            if (m := _RULES_HEADER_RE.match(line)):
+                rule_count = int(m.group(1))
+                continue
+            if (m := _SECRETS_HEADER_RE.match(line)):
+                declared, in_secrets = int(m.group(1)), True
+                continue
+            if in_secrets:
+                if not line.strip():
+                    in_secrets = False
+                    continue
+                if (m := _SECRET_LINE_RE.match(line)):
+                    modes[m.group("name")] = m.group("mode")
+        # Both headers must have been seen and the count must agree, or the parse is not
+        # trustworthy. `rule_count` is read purely as that structural check.
+        if rule_count is not None and declared is not None and len(modes) == declared:
+            result = modes
+
+    _PROXY_MODES_CACHE[schema_dir] = result
+    return result
+
+
+def _warn_unproxied_secrets(schema_dir: Path) -> None:
+    """Name the secrets the credential proxy will NOT carry, once per schema dir per launch.
+
+    Silent unless the schema opts in (`@proxy` present). Values are never read or printed — this
+    reports NAMES and MODES only, which is what makes it safe to run on every launch.
+    """
+    if schema_dir in _PROXY_WARNED or not _schema_declares_proxy(schema_dir):
+        return
+    _PROXY_WARNED.add(schema_dir)
+
+    classified = _varlock_proxy_modes(schema_dir)
+    if classified is None:
+        _err.print(
+            f"[yellow]warning:[/yellow] {schema_dir}/.env.schema declares @proxy, but "
+            "`varlock proxy rules` could not be classified — so harnessed cannot tell you which "
+            "secrets the proxy will carry. Check `varlock proxy rules` by hand; if its output "
+            "looks fine, this parser needs updating for your varlock version."
+        )
+        return
+
+    # Grouped by what actually goes wrong, because the fix differs. Anything unrecognised joins
+    # `unusable`: a mode this version of harnessed has never heard of is not something to assume
+    # is safe.
+    unusable = sorted(k for k, v in classified.items()
+                      if v not in _PROXY_MODES_OK and v != "omit")
+    withheld = sorted(k for k, v in classified.items() if v == "omit")
+    passthrough = sorted(k for k, v in classified.items() if v == "passthrough")
+
+    if unusable:
+        _err.print(
+            f"[yellow]warning:[/yellow] {len(unusable)} secret(s) in {schema_dir}/.env.schema "
+            "reach neither the agent nor any upstream — the container gets a placeholder no API "
+            "will accept, which surfaces later as an unexplained 401:"
+        )
+        for k in unusable:
+            _err.print(f"  [yellow]·[/yellow] {k} [dim]({classified[k]})[/dim]")
+        _err.print(
+            "[dim]  Fix each one: @proxy(domain=…) ON THE ITEM to route it (in the header it "
+            "declares a policy rule and injects nothing), @proxy=passthrough to send the real "
+            "value into the container, or @sensitive=false if it is not a secret.[/dim]"
+        )
+
+    if withheld:
+        _err.print(
+            f"[yellow]warning:[/yellow] {len(withheld)} secret(s) in {schema_dir}/.env.schema "
+            "could not be resolved and are withheld from the container entirely — the variable "
+            "will be UNSET, not wrong:"
+        )
+        for k in withheld:
+            _err.print(f"  [yellow]·[/yellow] {k}")
+        _err.print(
+            "[dim]  These are resolver failures, not routing mistakes — check the backing item "
+            "exists and the secrets backend is reachable.[/dim]"
+        )
+
+    if passthrough:
+        # Not a defect — a declared decision. Reported because "which real secrets are still in
+        # the container" is exactly the question the proxy exists to make answerable, and a
+        # passthrough item keeps the full pre-proxy exposure.
+        _err.print(
+            f"[dim]note: {len(passthrough)} secret(s) deliberately pass through as real values "
+            f"in the container: {', '.join(passthrough)}[/dim]"
+        )
+
+
 def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path], list[Path]]:
     """Resolve launch-time env-files, layered global → project (podman --env-file is last-wins,
     so project values override the global schema).
@@ -249,6 +413,7 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
     global_schema = global_dir / ".env.schema"
     global_env = global_dir / ".env"
     if global_schema.is_file() and have_varlock:
+        _warn_unproxied_secrets(global_dir)
         p = _varlock_resolve_env_file(global_dir)
         if p:
             env_files.append(p)
@@ -264,6 +429,7 @@ def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path
         proj_schema = project_path / ".env.schema"
         proj_env = project_path / ".env"
         if proj_schema.is_file() and have_varlock:
+            _warn_unproxied_secrets(project_path)
             p = _varlock_resolve_env_file(project_path)
             if p:
                 env_files.append(p)
@@ -322,6 +488,7 @@ def _resolve_launch_env(project_path: Path | None = None) -> dict[str, str]:
     global_schema = global_dir / ".env.schema"
     global_env = global_dir / ".env"
     if global_schema.is_file() and have_varlock:
+        _warn_unproxied_secrets(global_dir)
         resolved = _varlock_resolve(global_dir)
         if resolved:
             values.update(resolved)
@@ -332,6 +499,7 @@ def _resolve_launch_env(project_path: Path | None = None) -> dict[str, str]:
         proj_schema = project_path / ".env.schema"
         proj_env = project_path / ".env"
         if proj_schema.is_file() and have_varlock:
+            _warn_unproxied_secrets(project_path)
             resolved = _varlock_resolve(project_path)
             if resolved:
                 values.update(resolved)
