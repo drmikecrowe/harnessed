@@ -1,9 +1,15 @@
 """The launch-time warning for secrets the credential proxy will not carry (#388 finding F1).
 
-varlock treats every schema item as sensitive by default, and an item with no `@proxy` rule
-resolves to a placeholder that reaches neither the container nor any upstream. Nothing fails at
-launch; the agent just gets a real-looking value no API accepts, and the error surfaces far away
-as a 401. These tests defend the contract that harnessed names those items out loud.
+varlock treats every schema item as sensitive by default, so once the launch takes its env from
+the broker, an item with no `@proxy` rule resolves to a placeholder that reaches neither the
+container nor any upstream. Nothing fails at launch; the agent just gets a real-looking value no
+API accepts, and the error surfaces far away as a 401. These tests defend the contract that
+harnessed names those items out loud, BEFORE that cutover makes them break.
+
+Today is still the old behaviour: `_varlock_resolve` runs `varlock load`, which returns the real
+value for every item whatever its proxy mode (pinned by
+`test_it_does_not_claim_an_unrouted_secret_is_already_broken`). The warning is a readiness report,
+and its wording has to stay in that tense until the broker path is the one delivering values.
 
 `varlock proxy rules` prints for humans and has no `--format json`, so the classifier parses
 display text. The parse is therefore the fragile part, and most of what follows pins its failure
@@ -137,6 +143,40 @@ class TestTheGate:
         monkeypatch.setattr(launchenv.subprocess, "run", explode)
         launchenv._warn_unproxied_secrets(_schema(tmp_path, "# @sensitive\nSNYK_TOKEN=op(op://v/i/f)\n"))
         assert _flat(capsys.readouterr().err) == ""
+
+    @pytest.mark.parametrize("prose", [
+        "# TODO: add @proxy after the migration\nA=1\n",
+        "# see the @proxy docs before editing this\nA=1\n",
+        # Bare `@proxy` is not an annotation either: varlock 1.17.0 reports `Rules (0)` for it and
+        # no item changes mode, so it buys a resolving subprocess for no answer.
+        "# @sensitive @proxy\nA=1\n",
+    ])
+    def test_a_prose_mention_of_proxy_does_not_buy_a_subprocess(self, tmp_path, capsys,
+                                                                monkeypatch, prose):
+        """The gate guards a `varlock proxy rules` call that RESOLVES values and can sit on a
+        1Password prompt. A schema that merely says the word has opted into nothing."""
+        def explode(*a, **kw):
+            raise AssertionError("varlock must not run for a schema with no @proxy annotation")
+
+        monkeypatch.setattr(launchenv.subprocess, "run", explode)
+        launchenv._warn_unproxied_secrets(_schema(tmp_path, prose))
+        assert _flat(capsys.readouterr().err) == ""
+
+    @pytest.mark.parametrize("annotation", [
+        '# @sensitive @proxy(domain="api.github.com")\nA=1\n',
+        "# @sensitive @proxy=passthrough\nA=1\n",
+        '# @proxyConfig={egress="strict"}\n# ---\n# @sensitive\nA=1\n',
+    ])
+    def test_every_real_annotation_form_still_opens_the_gate(self, tmp_path, monkeypatch,
+                                                             annotation):
+        """The inverse risk of tightening the gate: a pattern narrow enough to miss a real
+        annotation makes the whole warning fail silent, which is the failure mode this file exists
+        to prevent. All three forms are ones varlock 1.17.0 acts on."""
+        ran: list = []
+        monkeypatch.setattr(launchenv.subprocess, "run",
+                            lambda *a, **kw: ran.append(1) or _fake_rules(RULES_OUTPUT)(*a, **kw))
+        launchenv._warn_unproxied_secrets(_schema(tmp_path, annotation))
+        assert ran, f"gate closed on a real annotation: {annotation!r}"
 
     def test_an_absent_schema_is_silent(self, tmp_path, capsys, monkeypatch):
         monkeypatch.setattr(launchenv.subprocess, "run",

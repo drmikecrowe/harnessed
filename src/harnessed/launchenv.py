@@ -70,6 +70,19 @@ _SECRETS_HEADER_RE = re.compile(r"^Secrets \((\d+)\)\s*$")
 # right-padded to the longest name.
 _SECRET_LINE_RE = re.compile(r"^\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s{2,}(?P<mode>[a-z-]+):")
 
+# The opt-in gate. Matches the ANNOTATION forms and not a prose mention of the word, because the
+# only thing on the other side of this test is a `varlock proxy rules` subprocess that RESOLVES
+# values — it can sit on a 1Password unlock prompt for up to `_VARLOCK_TIMEOUT`. A schema whose
+# only `@proxy` is inside a sentence must not buy that.
+#
+# Measured against varlock 1.17.0, which is why the shapes are exactly these:
+#   `@proxy(domain="…")`    -> a routing rule            (the item is proxied)
+#   `@proxy=passthrough`    -> an explicit opt-out       (the item keeps its real value)
+#   `@proxyConfig={egress=…}` -> schema-wide proxy policy
+#   bare `@proxy`           -> NOTHING. `proxy rules` reports `Rules (0)` and no item changes
+#                              mode, so treating it as opt-in would be a subprocess for no answer.
+_PROXY_ANNOTATION_RE = re.compile(r"@proxy(?:Config)?\s*[(=]")
+
 
 def _varlock_cache_clear() -> None:
     """Drop the `_varlock_resolve` memo. For tests that resolve the same dir across differing state."""
@@ -251,22 +264,30 @@ def _normalize_plain_env_file(src: Path) -> Path:
 
 
 def _schema_declares_proxy(schema_dir: Path) -> bool:
-    """Whether this schema mentions `@proxy` at all — the cheap gate on everything below.
+    """Whether this schema carries a `@proxy` ANNOTATION — the cheap gate on everything below.
 
     A text test, not a parse, and deliberately so: it costs one file read, and a schema with no
     `@proxy` anywhere is every schema shipped today. That keeps `varlock proxy rules` — which
     RESOLVES values, so it can prompt for a 1Password unlock — entirely off the critical path until
     somebody opts into the proxy model.
 
-    Known limit: it reads the entry schema only, so a `@proxy` living exclusively in an imported
-    fragment is missed and no warning is emitted. That is the safe direction to be wrong in (a
-    missing warning, never a false one), but it must be revisited when recipe `env.schema`
-    fragments land — see #388 Phase 1.
+    Matches `_PROXY_ANNOTATION_RE`, not the bare word. A prose line like
+    `# TODO: add @proxy after the migration` used to pass this gate and buy a resolving subprocess
+    for a schema that had opted into nothing.
+
+    Two known limits, both erring toward a MISSING warning rather than a false one:
+
+      * It reads the entry schema only, so a `@proxy` living exclusively in an imported fragment is
+        missed. Must be revisited when recipe `env.schema` fragments land — see #388 Phase 1.
+      * Prose that happens to quote a full annotation (`use @proxy=passthrough for these`) still
+        matches. Unavoidable without parsing, and the cost is one spurious subprocess rather than a
+        wrong claim about anybody's secrets.
     """
     try:
-        return "@proxy" in (schema_dir / ".env.schema").read_text(encoding="utf-8")
+        text = (schema_dir / ".env.schema").read_text(encoding="utf-8")
     except OSError:
         return False
+    return _PROXY_ANNOTATION_RE.search(text) is not None
 
 
 def _varlock_proxy_modes(schema_dir: Path) -> dict[str, str] | None:
