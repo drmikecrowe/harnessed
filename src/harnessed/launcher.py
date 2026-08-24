@@ -99,6 +99,7 @@ from .catalogseed import (
 from .jsonmerge import _merge_host_claude_settings
 from .layout import (
     _agent_image,
+    _catalog_base,
     _derived_image,
     _ensure_profile_dir,
     _harnessed_dir,
@@ -1304,16 +1305,75 @@ def _session_active(rt: str, inst: str) -> bool | None:
     return any(t not in ("?", "-", "") for t in ttys)
 
 
-def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None) -> None:
+def _firewall_policy_is_drop(rt: str, netns_anchor: str, image: str) -> bool:
+    """Read the OUTPUT policy back out of the pod's netns. True only for an explicit DROP.
+
+    The launcher's OWN check, deliberately not the script's word for it. Every silent-firewall
+    bug so far has been the script reporting success it did not achieve (#429), and a guard that
+    trusts the thing it is guarding is not a guard. Anything unreadable — exec failed, iptables
+    missing, output in a shape we do not recognise — is False: "cannot prove it is confined" and
+    "is not confined" must reach the same fail-closed branch.
+
+    Runs in a throwaway privileged member for the same reason `_apply_firewall` does: reading the
+    ruleset needs NET_ADMIN too, and the agent container is deliberately not given it.
+    """
+    res = _bounded(
+        [*_firewall_runner_argv(rt, netns_anchor, image), "iptables", "-S", "OUTPUT"],
+        timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True,
+    )
+    if res.returncode != 0:
+        return False
+    out = (res.stdout or b"").decode(errors="replace")
+    return any(line.strip() == "-P OUTPUT DROP" for line in out.splitlines())
+
+
+def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
+    """Argv prefix for a throwaway container that shares the pod's network namespace and MAY
+    change its firewall.
+
+    Why a separate container rather than `exec` into the agent: installing iptables rules needs
+    CAP_NET_ADMIN, and the agent container must never have it. The agent is the untrusted party
+    here — the whole point of the firewall is to confine it — so handing its namespace-mates the
+    capability to flush those rules would hand the confined process the key. Measured on this
+    design: the agent member keeps `CapEff: 0` AND NET_ADMIN stays out of its bounding set, so it
+    cannot install or remove a rule even if it reached root inside the container.
+
+    The runner shares the POD's netns (pod members do, by construction), so rules it installs
+    apply to every member including the agent. It exits immediately; the capability does not
+    outlive the call.
+
+    `image` is the harness image the member is already running, so nothing is pulled.
+    """
+    return [
+        rt, "run", "--rm",
+        # Pod members share the infra container's netns; the pod-less runtimes join the first
+        # container's instead. Either way this must land in the SAME namespace as the agent, or
+        # the rules confine an empty netns and the agent runs wide open.
+        *(["--pod", netns_anchor] if _rt_uses_pods(rt) else [f"--network=container:{netns_anchor}"]),
+        "--cap-add", "NET_ADMIN",
+        # NET_ADMIN in the bounding set is not enough: the image's default user is unprivileged and
+        # iptables carries no file capabilities, so an effective set of 0 makes every call fail
+        # with "Permission denied (you must be root)" — which is exactly how #429 stayed hidden.
+        "--user", "root",
+        "-v", f"{_catalog_base('egress-firewall.sh')}:/usr/local/sbin/egress-firewall:ro",
+        "--entrypoint", "",
+        image,
+    ]
+
+
+def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None,
+                    *, netns_anchor: str | None = None, image: str | None = None) -> None:
     if os.environ.get("NO_FIREWALL", "false").lower() == "true":
         return
-    # egress-firewall.sh is mounted at /usr/local/sbin/egress-firewall by _build_mount_args. Extra
-    # domains (recipe-declared `egress:`) are appended to the script's allowlist — it takes them as
-    # positional args and resolves each to its current IPs.
-    res = _bounded([
-        rt, "exec", instance, "bash", "/usr/local/sbin/egress-firewall",
-        *(domains or []),
-    ], timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True)
+    # Extra domains (recipe-declared `egress:`) are appended to the script's allowlist — it takes
+    # them as positional args and resolves each to its current IPs.
+    anchor = netns_anchor or instance
+    img = image or _agent_image("claude")
+    res = _bounded(
+        [*_firewall_runner_argv(rt, anchor, img),
+         "bash", "/usr/local/sbin/egress-firewall", *(domains or [])],
+        timeout=_PODMAN_EXEC_TIMEOUT, capture_output=True,
+    )
     # FAIL CLOSED. The script installs a default-DROP policy, so "it did not run" is not a degraded
     # firewall — it is NO firewall, and the container gets unrestricted egress for the whole session.
     # This return value used to be discarded, which was survivable only because an unbounded hang
@@ -1331,6 +1391,21 @@ def _apply_firewall(rt: str, instance: str, domains: list[str] | None = None) ->
         )
         if detail:
             _err.print(f"[dim]{escape(detail)}[/dim]")
+        raise typer.Exit(1)
+
+    # A zero exit is the script's CLAIM. Verify it. For most of this project's life the script
+    # returned 0 while installing nothing — `set -uo pipefail` (no `-e`) plus a closing `exit 0`
+    # meant 43 consecutive "Permission denied" errors still printed "[firewall] Egress active"
+    # and satisfied the check above (#429). The script is fixed to fail loudly now, but the
+    # launcher should not have to depend on that: this asserts the observable end state instead
+    # of the reported one, and covers every future cause of the same silence.
+    if not _firewall_policy_is_drop(rt, anchor, img):
+        _err.print(
+            f"[bold red]error:[/bold red] the egress firewall reported success in {instance} but "
+            "the OUTPUT policy is not DROP — refusing to continue, because the container would "
+            "run with UNRESTRICTED network access. Set NO_FIREWALL=true to launch without one "
+            "deliberately."
+        )
         raise typer.Exit(1)
 
 
@@ -3198,7 +3273,10 @@ class ContainerBackend(ExecutionBackend):
             # otherwise).
             egress_domains = sorted({d for r in self.recipes for d in r.egress})
             try:
-                _apply_firewall(self.rt, self.inst, egress_domains)
+                _apply_firewall(
+                    self.rt, self.inst, egress_domains,
+                    netns_anchor=self.pod or self.inst, image=self.harness_image,
+                )
             except BaseException:
                 # By this phase BOUNDARY has already started the pod, so simply propagating would
                 # hand the user their shell back and leave a container running with UNRESTRICTED

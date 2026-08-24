@@ -169,7 +169,11 @@ Personal/experimental catalog entries can live in `~/.config/harnessed/catalog/`
 
 ## Tests
 
-- `uv run pytest -q` — fast unit + assembly oracle (no containers). Run before every PR.
+- `tools/preflight.sh` — **run this before every PR.** Every gate CI runs: pytest, then
+  `ruff` → `pyright` → `shellcheck`. `uv run pytest -q` alone covers one gate of four, so a green
+  suite is not a green CI. `--all` adds the catalog pin check; `--no-tests` runs the lint layers
+  only.
+- `uv run pytest -q` — fast unit + assembly oracle (no containers), when you want just the tests.
 - `HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py` — live: builds each stack and
   asserts every declared skill/command/plugin/MCP is present in the running container. Add your stack
   to the catalog and it is covered automatically.

@@ -802,18 +802,24 @@ class TestCredentialForwarding:
         # assertions below are unchanged — only the stub had to start telling the truth.
         def fake_run(cmd, **k):
             captured.setdefault("cmd", cmd)
+            # The read-back must answer DROP or `_apply_firewall` correctly fails closed.
+            if cmd[-3:] == ["iptables", "-S", "OUTPUT"]:
+                return launcher.subprocess.CompletedProcess(cmd, 0, b"-P OUTPUT DROP\n", b"")
             return launcher.subprocess.CompletedProcess(cmd, 0, b"", b"")
 
         monkeypatch.setattr(launcher.subprocess, "run", fake_run)
-        launcher._apply_firewall("podman", "inst", ["api.pulumi.com", "get.pulumi.com"])
+        launcher._apply_firewall("podman", "inst", ["api.pulumi.com", "get.pulumi.com"],
+                                 netns_anchor="pod", image="img")
         assert captured["cmd"][-2:] == ["api.pulumi.com", "get.pulumi.com"]
-        assert captured["cmd"][:5] == ["podman", "exec", "inst", "bash", "/usr/local/sbin/egress-firewall"]
+        assert captured["cmd"][:3] == ["podman", "run", "--rm"]
+        assert "/usr/local/sbin/egress-firewall" in captured["cmd"]
 
     def test_firewall_skipped_when_disabled(self, monkeypatch):
         called = {"ran": False}
         monkeypatch.setattr(launcher.os.environ, "get", lambda k, d=None: "true" if k == "NO_FIREWALL" else d)
         monkeypatch.setattr(launcher.subprocess, "run", lambda *a, **k: called.__setitem__("ran", True))
-        launcher._apply_firewall("podman", "inst", ["api.pulumi.com"])
+        launcher._apply_firewall("podman", "inst", ["api.pulumi.com"],
+                                 netns_anchor="pod", image="img")
         assert called["ran"] is False
 
     def test_yubikey_no_lsusb_is_clean(self, monkeypatch):

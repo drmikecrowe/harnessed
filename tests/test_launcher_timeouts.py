@@ -498,6 +498,23 @@ class TestAnUnansweredQueryIsNeverReportedAsEmpty:
         launcher.stop("somestack")  # must not raise
 
 
+def _fw_stub(*, apply_rc=0, policy=b"-P OUTPUT DROP\n", seen=None):
+    """Answer the two calls `_apply_firewall` makes: install, then read the policy back.
+
+    They are told apart by the argv tail — the verification runs `iptables -S OUTPUT`, the install
+    runs the script. A stub that answered only the first would let a broken read-back pass, which
+    is the exact blindness #429 was.
+    """
+    def run(cmd, **kw):
+        if seen is not None:
+            seen.setdefault("cmds", []).append(cmd)
+            seen.update(kw)
+        if cmd[-3:] == ["iptables", "-S", "OUTPUT"]:
+            return subprocess.CompletedProcess(cmd, 0, policy, b"")
+        return subprocess.CompletedProcess(cmd, apply_rc, b"", b"")
+    return run
+
+
 class TestTheEgressFirewallFailsClosed:
     """The script installs a default-DROP policy, so "did not run" means NO firewall, not a weaker
     one. This return value was discarded, which only survived because an unbounded hang stopped the
@@ -511,7 +528,8 @@ class TestTheEgressFirewallFailsClosed:
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, proc._TIMEOUT_RC, b"", b""),
         )
         with pytest.raises(typer.Exit) as exc:
-            launcher._apply_firewall("podman", "inst", ["example.com"])
+            launcher._apply_firewall("podman", "inst", ["example.com"],
+                                     netns_anchor="pod", image="img")
         assert exc.value.exit_code == 1
         assert "unrestricted" in err.text.lower()
 
@@ -524,16 +542,59 @@ class TestTheEgressFirewallFailsClosed:
             lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, b"", b"nft: permission denied"),
         )
         with pytest.raises(typer.Exit):
-            launcher._apply_firewall("podman", "inst", [])
+            launcher._apply_firewall("podman", "inst", [], netns_anchor="pod", image="img")
 
     def test_a_successful_firewall_is_silent(self, monkeypatch, err):
         monkeypatch.delenv("NO_FIREWALL", raising=False)
-        monkeypatch.setattr(
-            launcher, "_bounded",
-            lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, b"", b""),
-        )
-        launcher._apply_firewall("podman", "inst", [])
+        monkeypatch.setattr(launcher, "_bounded", _fw_stub())
+        launcher._apply_firewall("podman", "inst", [], netns_anchor="pod", image="img")
         assert err.text == ""
+
+    def test_a_script_that_claims_success_without_installing_anything_fails_closed(
+        self, monkeypatch, err
+    ):
+        """THE #429 REGRESSION. `egress-firewall.sh` exited 0 while every iptables call failed with
+        "Permission denied", so the exit-code guard above passed and every container ran with
+        unrestricted egress. The launcher must assert the observable end state, not the reported
+        one — a guard that trusts the thing it guards is not a guard."""
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+        monkeypatch.setattr(launcher, "_bounded", _fw_stub(apply_rc=0, policy=b"-P OUTPUT ACCEPT\n"))
+        with pytest.raises(typer.Exit):
+            launcher._apply_firewall("podman", "inst", [], netns_anchor="pod", image="img")
+        assert "unrestricted" in err.text.lower()
+
+    def test_an_unreadable_policy_fails_closed_too(self, monkeypatch, err):
+        """"Cannot prove it is confined" and "is not confined" must reach the same branch —
+        otherwise a broken read-back silently restores the old behaviour."""
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+
+        def run(cmd, **kw):
+            rc = 1 if cmd[-3:] == ["iptables", "-S", "OUTPUT"] else 0
+            return subprocess.CompletedProcess(cmd, rc, b"", b"")
+
+        monkeypatch.setattr(launcher, "_bounded", run)
+        with pytest.raises(typer.Exit):
+            launcher._apply_firewall("podman", "inst", [], netns_anchor="pod", image="img")
+
+    def test_the_agent_container_is_never_the_one_given_net_admin(self, monkeypatch, err):
+        """The agent is the untrusted party the firewall exists to confine. Granting NET_ADMIN to
+        its container — or exec-ing the script inside it — would hand the confined process the
+        capability to flush its own rules. The privileged work happens in a throwaway member that
+        shares only the pod's netns."""
+        seen: dict = {}
+        monkeypatch.delenv("NO_FIREWALL", raising=False)
+        monkeypatch.setattr(launcher, "_bounded", _fw_stub(seen=seen))
+        launcher._apply_firewall("podman", "inst", [], netns_anchor="pod", image="img")
+
+        for cmd in seen["cmds"]:
+            assert "exec" not in cmd, "the firewall must not run inside the agent container"
+            assert "inst" not in cmd, "the agent container must not appear in a privileged argv"
+            assert "--cap-add" in cmd and cmd[cmd.index("--cap-add") + 1] == "NET_ADMIN"
+            # Same netns as the agent, or the rules confine an empty namespace.
+            assert cmd[cmd.index("--pod") + 1] == "pod"
+            # NET_ADMIN in the bounding set is inert for an unprivileged uid: iptables carries no
+            # file capabilities, so without this the effective set is 0 and every call fails.
+            assert cmd[cmd.index("--user") + 1] == "root"
 
     def test_it_runs_the_firewall_script_with_the_recipe_domains_and_a_deadline(
         self, monkeypatch, err
@@ -544,20 +605,24 @@ class TestTheEgressFirewallFailsClosed:
         seen = {}
 
         def spy(cmd, **kw):
+            # Record the INSTALL call only; the read-back that follows is a different assertion.
+            if cmd[-3:] == ["iptables", "-S", "OUTPUT"]:
+                return subprocess.CompletedProcess(cmd, 0, b"-P OUTPUT DROP\n", b"")
             seen["cmd"] = cmd
             seen.update(kw)
             return subprocess.CompletedProcess(cmd, 0, b"", b"")
 
         monkeypatch.delenv("NO_FIREWALL", raising=False)
         monkeypatch.setattr(launcher, "_bounded", spy)
-        launcher._apply_firewall("podman", "inst", ["api.example.com", "get.example.com"])
+        launcher._apply_firewall("podman", "inst", ["api.example.com", "get.example.com"],
+                                 netns_anchor="pod", image="img")
 
-        assert seen["cmd"][:5] == [
-            "podman", "exec", "inst", "bash", "/usr/local/sbin/egress-firewall",
-        ]
+        cmd = seen["cmd"]
+        assert cmd[:3] == ["podman", "run", "--rm"]
+        assert "bash" in cmd and "/usr/local/sbin/egress-firewall" in cmd
         # Recipe-declared `egress:` hosts are positional args the script appends to its allowlist —
         # lose them and a recipe that needs the network is silently cut off.
-        assert seen["cmd"][-2:] == ["api.example.com", "get.example.com"]
+        assert cmd[-2:] == ["api.example.com", "get.example.com"]
         assert seen["timeout"] == launcher._PODMAN_EXEC_TIMEOUT
 
     def test_an_unconfinable_container_is_torn_down_not_left_running(self, monkeypatch, err):
@@ -574,6 +639,7 @@ class TestTheEgressFirewallFailsClosed:
 
         backend = launcher.ContainerBackend.__new__(launcher.ContainerBackend)
         backend.rt, backend.inst, backend.pod, backend.recipes = "podman", "inst", "pod", []
+        backend.harness_image = "img"
 
         # project_path is never read on the EGRESS branch; it only has to satisfy the dataclass.
         spec = launcher.LaunchSpec(stack="s", harness="claude", project_path=Path("/nonexistent"))
@@ -599,6 +665,7 @@ class TestTheEgressFirewallFailsClosed:
 
         backend = launcher.ContainerBackend.__new__(launcher.ContainerBackend)
         backend.rt, backend.inst, backend.pod, backend.recipes = "podman", "inst", "pod", []
+        backend.harness_image = "img"
         spec = launcher.LaunchSpec(stack="s", harness="claude", project_path=Path("/nonexistent"))
 
         with pytest.raises(type(boom)):
@@ -611,7 +678,7 @@ class TestTheEgressFirewallFailsClosed:
         monkeypatch.setenv("NO_FIREWALL", "true")
         called = []
         monkeypatch.setattr(launcher, "_bounded", lambda cmd, **kw: called.append(cmd))
-        launcher._apply_firewall("podman", "inst", [])
+        launcher._apply_firewall("podman", "inst", [], netns_anchor="pod", image="img")
         assert called == [] and err.text == ""
 
 

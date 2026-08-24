@@ -8,6 +8,21 @@
 
 set -uo pipefail
 
+# NOT `set -e`: the per-domain resolution loop below is allowed to fail for individual hosts (a
+# CDN that will not resolve must not abort the whole firewall). Every call that MUST succeed is
+# checked explicitly instead — see `require` and the final verification.
+
+# A rule that could not be installed is not a weaker firewall, it is NO firewall. For most of this
+# project's life every iptables call here failed with "Permission denied" (the container had no
+# CAP_NET_ADMIN) and this script still printed "Egress active" and exited 0, so the launcher's
+# fail-closed guard never fired and every container ran with unrestricted egress (#429).
+require() {
+    if ! "$@"; then
+        echo "[firewall] FATAL: $* failed — refusing to report a firewall that is not installed" >&2
+        exit 1
+    fi
+}
+
 WHITELIST=(
     # Anthropic / Claude API
     api.anthropic.com
@@ -38,19 +53,20 @@ for arg in "$@"; do
     [ -n "$arg" ] && WHITELIST+=("$arg")
 done
 
-# Flush existing OUTPUT rules and set default DROP policy
-iptables -F OUTPUT
-iptables -P OUTPUT DROP
+# Flush existing OUTPUT rules and set default DROP policy. These four are the firewall: if any
+# one of them does not take, everything after it is decoration on an open netns.
+require iptables -F OUTPUT
+require iptables -P OUTPUT DROP
 
 # Always allow loopback
-iptables -A OUTPUT -o lo -j ACCEPT
+require iptables -A OUTPUT -o lo -j ACCEPT
 
 # Allow established/related connections (responses to our requests)
-iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+require iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Allow DNS so tools can resolve names
-iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+require iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+require iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
 # Allow access to the host gateway (for connecting to local services on the host). Rootless podman
 # has TWO relevant gateways: the default-route gateway (HOST_GW) and the podman host-gateway
@@ -99,8 +115,16 @@ for domain in "${WHITELIST[@]}"; do
     done
 done
 
-# Mark this session so apply_firewall skips re-application while container is running
-touch /run/egress-firewall-active
+# Verify the end state rather than trusting the calls above, then say so. Cheap, and it is the
+# only line here that can honestly justify the message that follows.
+if ! iptables -S OUTPUT 2>/dev/null | grep -qx -- '-P OUTPUT DROP'; then
+    echo "[firewall] FATAL: OUTPUT policy is not DROP after applying rules — no firewall is in effect" >&2
+    exit 1
+fi
+
+# Mark this session so apply_firewall skips re-application while container is running.
+# Best-effort: the marker is an optimisation, and a read-only /run must not fail a working firewall.
+touch /run/egress-firewall-active 2>/dev/null || true
 
 echo "[firewall] Egress active: $allowed_ips IPs across ${#WHITELIST[@]} domains"
 [ ${#failed[@]} -gt 0 ] && echo "[firewall] Warning: could not resolve: ${failed[*]}"
