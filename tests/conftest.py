@@ -139,6 +139,13 @@ def pytest_sessionfinish(session, exitstatus):
 # re-expose podman's own config inside the isolated root — see `_isolated_user_catalog`.
 _REAL_XDG_CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
 
+# The REAL developer home, captured before `_isolated_home` moves HOME. Nothing in the suite may
+# read it as a source of test data; it exists so teardown can put HOME back.
+_REAL_HOME = Path.home()
+
+#: Named here because `conftest` pops it at import — see the block below the FORCE_COLOR pop.
+_OAUTH_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"  # noqa: S105 — variable name, not a credential
+
 # MODULE LEVEL, NOT A FIXTURE — and that is the whole point. `rich` reads FORCE_COLOR when a
 # `Console` is CONSTRUCTED, and console.py builds `_out`/`_err` at module import. An autouse
 # fixture runs after that import and is therefore too late; it was tried and did not work.
@@ -154,6 +161,23 @@ _REAL_XDG_CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / 
 # NOT `NO_COLOR`: that would suppress color the tests never asked about, diverging from CI in the
 # other direction. The goal is parity with a plain environment, not forced monochrome.
 os.environ.pop("FORCE_COLOR", None)
+
+# SAME CLASS, SAME PLACE, DIFFERENT BLAST RADIUS (#432). A developer shell that follows
+# `docs/guides/secrets.md` exports CLAUDE_CODE_OAUTH_TOKEN, and `hosthome._host_oauth_token_configured`
+# reads it straight out of `os.environ`. A configured token deliberately suppresses the credential
+# symlink and the rescue, so five TestShareClaudeState tests asserted behaviour the code correctly
+# declined to perform. Those five never set or clear the variable — they inherit whatever the shell
+# exports — while their siblings 50 lines up do `monkeypatch.setenv` it, which is why the class
+# looked internally consistent. CI exports nothing, so CI was green throughout and could not see it.
+#
+# Measured both directions on this machine: with this pop removed and the variable exported, all
+# five fail; with it in place they pass.
+#
+# Module level rather than a fixture, for parity with FORCE_COLOR above: the variable must be gone
+# before any test runs, and before any module-level code in a test module reads it at collection.
+# Tests that WANT a token set it themselves with `monkeypatch.setenv`; that is the opt-in, and it
+# runs after this pop.
+os.environ.pop(_OAUTH_TOKEN_VAR, None)
 
 
 _LINK_KINDS = ("agents", "recipes", "services", "stacks")
@@ -241,6 +265,56 @@ def _restore_catalog_local():
     """
     with catalog_local_restored(Path(__file__).resolve().parents[1]):
         yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_home(tmp_path_factory):
+    """Point $HOME at an empty dir for the whole session, so no test reads the developer's home.
+
+    The companion to `_isolated_user_catalog`, and it covers ground that fixture cannot.
+    `_isolated_user_catalog` blanks XDG_CONFIG_HOME, but `launchenv._resolve_launch_secrets` builds
+    the user-global secrets dir as `Path.home() / ".config" / "harnessed"` (launchenv.py:447 and
+    :522), reading the HOME rather than the XDG variable. So the developer's real
+    `~/.config/harnessed/.env.schema` stayed reachable from a unit run, and on this machine that
+    file exists, declares CLAUDE_CODE_OAUTH_TOKEN, and `varlock` is on PATH — the three conditions
+    for a unit test to resolve a live credential out of a 1Password vault. On a locked vault that
+    is an unlock prompt in the middle of a test run.
+
+    The same fallback shape is the credential-into-output vector #432 reports: `_host_claude_source`
+    falls back to `Path.home() / ".claude"`, so a failing assertion could print fields of the real
+    `.credentials.json` into pytest output and from there into a CI log.
+
+    Be exact about what was measured, because the issue's own diagnosis moved twice. On this machine
+    the ambient shell variable is what actually reddens the five tests; with it unset and both guards
+    off the full suite showed no TestShareClaudeState failure. What this fixture is measured to do is
+    close the reachability — and take the suite from 145.7s to 126.6s, consistent with varlock
+    subprocesses no longer being spawned.
+
+    SESSION-SCOPED because a function-scoped fixture is only in effect while a test function runs,
+    and six other test modules declare session- or module-scoped fixtures of their own, which do
+    not. Be honest about the strength of that: a function-scoped version was measured and passes
+    the whole suite today, so the scope is width for the fixtures that come later, not a
+    distinction anything currently asserts. Neither scope covers module-level code in a test
+    module, which runs at collection before any fixture.
+
+    Tests that want a specific home still `monkeypatch.setenv("HOME", ...)` themselves; that runs
+    after this one, wins for the test's duration, and restores this isolated value rather than the
+    real home on teardown. `test_claude_json_seeded_from_home_level_not_config_dir`
+    (test_launch_host.py) is the canonical opt-in.
+
+    Not `monkeypatch` here: that fixture is function-scoped, and a session-scoped `MonkeyPatch()`
+    would buy nothing over the explicit save/restore below.
+    """
+    home = tmp_path_factory.mktemp("home")
+    previous = os.environ.get("HOME")
+    os.environ["HOME"] = str(home)
+    try:
+        yield home
+    finally:
+        if previous is None:
+            os.environ.pop("HOME", None)
+        else:
+            os.environ["HOME"] = previous
 
 
 @pytest.fixture(autouse=True)
