@@ -79,8 +79,11 @@ _SECRET_LINE_RE = re.compile(r"^\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s{2,}(?P<mod
 #   `@proxy(domain="…")`    -> a routing rule            (the item is proxied)
 #   `@proxy=passthrough`    -> an explicit opt-out       (the item keeps its real value)
 #   `@proxyConfig={egress=…}` -> schema-wide proxy policy
-#   bare `@proxy`           -> NOTHING. `proxy rules` reports `Rules (0)` and no item changes
-#                              mode, so treating it as opt-in would be a subprocess for no answer.
+#   bare `@proxy`           -> an INVALID schema. `proxy rules` reports the item as `omit`
+#                              (withheld entirely) and `varlock load` fails validation outright,
+#                              so `_varlock_resolve` already returns None and the launch reports
+#                              it. Excluding it from this gate costs no warning that is not
+#                              already being made, more loudly, by the resolution path.
 _PROXY_ANNOTATION_RE = re.compile(r"@proxy(?:Config)?\s*[(=]")
 
 

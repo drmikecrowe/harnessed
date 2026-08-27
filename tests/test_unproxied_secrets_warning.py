@@ -147,8 +147,9 @@ class TestTheGate:
     @pytest.mark.parametrize("prose", [
         "# TODO: add @proxy after the migration\nA=1\n",
         "# see the @proxy docs before editing this\nA=1\n",
-        # Bare `@proxy` is not an annotation either: varlock 1.17.0 reports `Rules (0)` for it and
-        # no item changes mode, so it buys a resolving subprocess for no answer.
+        # Bare `@proxy` is not an annotation either. Measured on varlock 1.17.0: the item is
+        # reported as `omit` and `varlock load` fails validation, so `_varlock_resolve` already
+        # returns None and the launch says so. Nothing is silenced by skipping it here.
         "# @sensitive @proxy\nA=1\n",
     ])
     def test_a_prose_mention_of_proxy_does_not_buy_a_subprocess(self, tmp_path, capsys,

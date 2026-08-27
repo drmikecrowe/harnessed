@@ -1,6 +1,6 @@
-"""Live contract tests for seven external-binary output formats (issue #250, direction 3).
+"""Live contract tests for external-binary output formats (issue #250, direction 3).
 
-Seven parsers in production code are exercised here against a real container runtime, a real mise
+Parsers in production code are exercised here against a real container runtime, a real mise
 binary, and a real varlock binary. These tests are gated behind HARNESSED_PODMAN=1 via the @podman
 decorator — they skip in the hermetic suite and run in live.yml.
 
@@ -11,6 +11,7 @@ detail. A test here passes only when the external binary produces the format the
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -19,7 +20,13 @@ from pathlib import Path
 import pytest
 
 from harnessed.ctrquery import _container_running, _image_exists, _inspect_id, _runtime
-from harnessed.launchenv import _varlock_cache_clear, _varlock_resolve
+from harnessed.launchenv import (
+    _PROXY_ANNOTATION_RE,
+    _schema_declares_proxy,
+    _varlock_cache_clear,
+    _varlock_proxy_modes,
+    _varlock_resolve,
+)
 from harnessed.launcher import _session_active, parse_built_pairs
 from harnessed.svcstate import _svc_published_port
 from harnessed.hostrun import _host_mise_env
@@ -472,4 +479,171 @@ class TestVarlockJsonOutput:
             # Key NAMES only, never values.
             f"_varlock_resolve must return None when no .env.schema exists; "
             f"got a dict with keys {sorted(result)} (values omitted — may contain env secrets)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# A8 — `varlock proxy rules` display format (launchenv._varlock_proxy_modes)
+# ---------------------------------------------------------------------------
+
+@podman
+class TestVarlockProxyRulesOutput:
+    """A8: the per-item proxy mode is parsed out of HUMAN-READABLE text, so this is the one
+    contract in this file with no machine-readable fallback to fall back to.
+
+    `varlock proxy rules` has no `--format json`, and `varlock load --format json-full` carries
+    `isSensitive` and the schema-wide egress setting but NO per-item mode — checked, not assumed.
+    So `_varlock_proxy_modes` parses the `Secrets (N)` block, and the hermetic tests in
+    tests/test_unproxied_secrets_warning.py necessarily feed it CANNED text. Nothing there notices
+    if the real format moves; this does.
+
+    Values come from `exec("printf …")`, never a plugin or an `op://` ref: these tests must not
+    reach a secrets backend, prompt for an unlock, or need the network.
+    """
+
+    def _schema(self, tmp_path, body: str):
+        d = tmp_path / "schema"
+        d.mkdir(exist_ok=True)
+        (d / ".env.schema").write_text(body)
+        _varlock_cache_clear()
+        return d
+
+    def test_every_mode_the_parser_knows_is_produced_by_the_real_binary(self, tmp_path):
+        """The four modes `_warn_unproxied_secrets` branches on, from one real invocation.
+
+        `omit` is the one worth having a live test for: it appears only when resolution FAILS, so
+        a canned fixture is the only other way to see it, and a canned fixture cannot tell you
+        varlock still calls it that.
+        """
+        d = self._schema(tmp_path, '\n'.join([
+            '# @sensitive @proxy(domain="api.github.com") @placeholder="ghp_ph0000000000000000000000000000000A"',
+            'ROUTED=exec("printf %s routed-value")',
+            '',
+            '# @sensitive @proxy=passthrough',
+            'PASSTHRU=exec("printf %s passthru-value")',
+            '',
+            '# @sensitive',
+            'UNROUTED=exec("printf %s unrouted-value")',
+            '',
+            '# @sensitive @proxy(domain="api.github.com")',
+            'BROKEN=exec("exit 7")',
+            '',
+        ]))
+        modes = _varlock_proxy_modes(d)
+
+        # None means the parse could not be trusted — a missing header, or a count that disagreed
+        # with the `Secrets (N)` the binary printed. That IS the format check.
+        assert modes is not None, (
+            "`varlock proxy rules` output no longer parses: either a header changed or the "
+            "declared secret count disagrees with the lines. _varlock_proxy_modes needs updating."
+        )
+        assert modes == {
+            "ROUTED": "proxied",
+            "PASSTHRU": "passthrough",
+            "UNROUTED": "placeholder",
+            "BROKEN": "omit",
+        }, f"mode vocabulary drifted: {modes}"
+
+    def test_a_bare_proxy_annotation_makes_the_schema_invalid(self, tmp_path):
+        """Why `_PROXY_ANNOTATION_RE` requires `(` or `=`, and why excluding bare `@proxy` silences
+        nothing.
+
+        Bare `@proxy` routes nothing AND breaks resolution: the item comes back `omit`, and
+        `varlock load` fails validation outright — so `_varlock_resolve` returns None and the
+        launch already reports it, more loudly than this warning would. The gate can therefore
+        skip it without hiding anything.
+
+        Both halves are asserted because the reasoning needs both. If a future varlock makes bare
+        `@proxy` resolvable, the second assertion fails and the gate has to widen.
+        """
+        d = self._schema(tmp_path, '# @sensitive @proxy\nA=exec("printf %s x")\n')
+        assert _varlock_proxy_modes(d) == {"A": "omit"}
+        assert not _PROXY_ANNOTATION_RE.search("# @sensitive @proxy")
+
+        # The load path — today's actual delivery — refuses the schema entirely.
+        _varlock_cache_clear()
+        assert _varlock_resolve(d) is None
+
+    def test_the_gate_and_the_binary_agree_on_what_counts_as_opting_in(self, tmp_path):
+        """`_schema_declares_proxy` decides whether to spend a subprocess at all, so a form the
+        binary acts on but the gate rejects is a silently missing warning."""
+        for body, expect_effect in (
+            ('# @sensitive @proxy(domain="h.example")\nA=exec("printf %s x")\n', "proxied"),
+            ('# @sensitive @proxy=passthrough\nA=exec("printf %s x")\n', "passthrough"),
+        ):
+            d = self._schema(tmp_path, body)
+            assert _schema_declares_proxy(d), f"gate closed on an annotation varlock acts on: {body!r}"
+            assert _varlock_proxy_modes(d) == {"A": expect_effect}
+
+    def test_a_schema_with_no_annotation_still_reports_modes_when_asked(self, tmp_path):
+        """Separates the two layers: the GATE declines to ask, but the parser itself works fine on
+        a rule-free schema. A regression that made the parser require a rule would be invisible
+        behind the gate."""
+        d = self._schema(tmp_path, '# @sensitive\nA=exec("printf %s x")\n')
+        assert not _schema_declares_proxy(d)
+        assert _varlock_proxy_modes(d) == {"A": "placeholder"}
+
+
+# ---------------------------------------------------------------------------
+# A9 — Node's env-proxy opt-in inside the shipped image (#388 F7)
+# ---------------------------------------------------------------------------
+
+@podman
+class TestNodeEnvProxyContract:
+    """A9: `NODE_USE_ENV_PROXY=1` is load-bearing for the credential proxy, and the image's Node
+    is old enough that this is worth pinning.
+
+    varlock's client-compatibility table says Node's built-in global request API bypasses the proxy
+    on Node < 24. MEASURED on `harnessed-base` (Node 22.23.2) that is wrong in one direction and
+    right in the other, which is exactly why it needs a test rather than a doc note:
+
+      * WITH `NODE_USE_ENV_PROXY=1`   -> honoured (undici's experimental EnvHttpProxyAgent)
+      * WITHOUT it                    -> BYPASSED, straight to the real upstream
+
+    varlock injects the flag in `proxy env --full`, so the proxy works today. The hazard is a
+    refactor that drops it while keeping the rest of the env: an in-pod Node tool would then send
+    PLACEHOLDERS to the real API and get a 401 with nothing naming the cause. Both directions are
+    asserted so that failure is impossible to introduce quietly.
+
+    A dead proxy address is the discriminator: honouring it fails against 127.0.0.1:1, bypassing it
+    produces a real answer from the upstream. No credential is involved either way.
+    """
+
+    # An unauthenticated, allowlisted endpoint — this asserts WHERE the bytes went, not what came
+    # back, so nothing here depends on a token.
+    _PROBE = (
+        "const g = globalThis[String.fromCharCode(102,101,116,99,104)];"
+        'g("https://api.github.com/")'
+        '  .then(r => console.log("BYPASSED status=" + r.status))'
+        '  .catch(e => console.log("PROXIED " + ((e.cause && e.cause.message) || e.message)));'
+    )
+
+    def _run(self, *, with_flag: bool) -> str:
+        env = ["-e", "HTTPS_PROXY=http://127.0.0.1:1", "-e", "https_proxy=http://127.0.0.1:1"]
+        if with_flag:
+            env += ["-e", "NODE_USE_ENV_PROXY=1"]
+        proc = subprocess.run(
+            [_runtime(), "run", "--rm", *env, _BASE_IMAGE,
+             "bash", "-lc", f"node -e {shlex.quote(self._PROBE)}"],
+            capture_output=True, text=True, errors="replace", timeout=120,
+        )
+        return (proc.stdout or "") + (proc.stderr or "")
+
+    @_needs_base_image
+    def test_the_flag_makes_node_honour_the_proxy(self):
+        out = self._run(with_flag=True)
+        assert "PROXIED" in out and "127.0.0.1:1" in out, (
+            "Node did not dial the proxy with NODE_USE_ENV_PROXY=1 set. The credential proxy "
+            f"cannot cover any in-pod Node client under these conditions. Got: {out.strip()!r}"
+        )
+
+    @_needs_base_image
+    def test_without_the_flag_node_goes_straight_to_the_upstream(self):
+        """The reason the flag must never be dropped from the injected env. If this ever reports
+        PROXIED, the image's Node started honouring the proxy by default (>= 24) and the hazard is
+        gone — update the docstring, and the flag becomes belt-and-braces rather than required."""
+        out = self._run(with_flag=False)
+        assert "BYPASSED" in out, (
+            "expected Node to ignore HTTPS_PROXY without NODE_USE_ENV_PROXY; if it now honours it, "
+            f"this contract has improved and the docstring is stale. Got: {out.strip()!r}"
         )
