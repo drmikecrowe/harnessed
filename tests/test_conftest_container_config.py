@@ -32,12 +32,20 @@ import pytest
 
 from harnessed import paths
 
+# NOT `Path.home() / ".config"` (#432). `conftest._isolated_home` points HOME at an empty tmp dir
+# for the session, so recomputing the guard path from the home would make both tests below skip
+# on EVERY machine — the exact "test quietly stops running while the suite stays green" failure
+# this file exists to pin. `_REAL_XDG_CONFIG_HOME` is captured at conftest import, before any
+# fixture moves either variable, and it also honors a non-default XDG_CONFIG_HOME that
+# `Path.home() / ".config"` never did.
+from tests.conftest import _REAL_XDG_CONFIG_HOME
+
 
 class TestPodmanConfigIsReachable:
     def test_the_isolated_root_exposes_containers(self):
         """The whole point: podman's config dir resolves from inside the isolated XDG root."""
         real = Path(os.environ["XDG_CONFIG_HOME"]) / "containers"
-        if not (Path.home() / ".config" / "containers").is_dir():
+        if not (_REAL_XDG_CONFIG_HOME / "containers").is_dir():
             pytest.skip("no ~/.config/containers on this machine — nothing to expose")
         assert real.exists(), (
             "containers/ is not reachable from the isolated XDG root, so rootless podman cannot "
@@ -47,7 +55,7 @@ class TestPodmanConfigIsReachable:
     def test_storage_conf_is_readable_through_it(self):
         """`storage.conf` is the specific file that carries `graphroot`. Exposing the directory but
         not reaching the file would leave the bug in place."""
-        src = Path.home() / ".config" / "containers" / "storage.conf"
+        src = _REAL_XDG_CONFIG_HOME / "containers" / "storage.conf"
         if not src.is_file():
             pytest.skip("no storage.conf on this machine (default graphroot — bug cannot bite)")
         via_isolated = Path(os.environ["XDG_CONFIG_HOME"]) / "containers" / "storage.conf"
