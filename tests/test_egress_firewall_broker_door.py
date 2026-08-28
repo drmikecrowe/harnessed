@@ -1,7 +1,7 @@
 """`catalog/base/egress-firewall.sh` must open the loopback broker door — issue #436.
 
 Epic #388 Phase 1 ruled Topology B: `varlock proxy start` binds `127.0.0.1` on the HOST only, and
-the pod reaches it at `169.254.1.1` through podman's `pasta --map-host-loopback,169.254.1.1`. The
+the pod is to reach it at `169.254.1.1` through the `pasta --map-host-loopback` mapping #437 adds. The
 firewall sets `OUTPUT` policy to DROP and whitelists from there, so without an ACCEPT for that one
 address the pod cannot reach the broker at all.
 
@@ -128,9 +128,12 @@ class TestBrokerDoor:
         assert f"-A OUTPUT -d {BROKER_DOOR} -j ACCEPT" in ipt
 
     def test_door_is_opened_after_the_flush(self, tmp_path):
-        # S2. `-F OUTPUT` discards every existing rule, so a door issued before it is not in the
-        # ruleset the pod runs under. `-P OUTPUT DROP` only sets the default verdict — it flushes
-        # nothing — so the flush is what this anchors on. Mutant M5 is what makes it non-vacuous.
+        # S2. What this proves: the script ISSUES `-F OUTPUT` before it issues the door rule.
+        # Why that ordering is the one worth pinning: in a real netns `-F OUTPUT` would discard a
+        # rule issued before it. The stubs are append-only argv recorders and hold no ruleset, so
+        # the consequence is the motivation for the assertion, not something asserted here.
+        # `-P OUTPUT DROP` sets the default verdict and flushes nothing, which is why the flush is
+        # the anchor. Mutant M5 is what makes the assertion non-vacuous.
         _proc, ipt, _ip6t = _run_firewall(tmp_path)
         door = ipt.index(f"-A OUTPUT -d {BROKER_DOOR} -j ACCEPT")
         assert ipt.index("-F OUTPUT") < door
