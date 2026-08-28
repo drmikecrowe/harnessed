@@ -68,6 +68,13 @@ require iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 require iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 require iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 
+# The varlock broker's door. The broker binds 127.0.0.1 on the HOST and is reachable from the pod
+# only because podman is started with `pasta --map-host-loopback,169.254.1.1`; nothing else on any
+# network can reach it. `require`d, not best-effort like the two gateway rules below, because this
+# address is a constant — an iptables failure here is a broken firewall, not a missing lookup
+# (#429). Do not widen to a link-local CIDR — see #436.
+require iptables -A OUTPUT -d 169.254.1.1 -j ACCEPT
+
 # Allow access to the host gateway (for connecting to local services on the host). Rootless podman
 # has TWO relevant gateways: the default-route gateway (HOST_GW) and the podman host-gateway
 # `host.containers.internal` — the address shared service sidecars publish their ports to (plan
