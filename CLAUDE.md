@@ -58,6 +58,16 @@ Keep layout and vocabulary in ARCHITECTURE.md, not here.
 the checks that gate a merge, so it reads as "not finished" for work that is. If it is not ready,
 do not open it yet.
 
+**Every PR body states what it closes.** Use a closing keyword — `Closes #<n>`, or the qualified
+`Closes drmikecrowe/harnessed#<n>` (`Fixes` is equivalent) — so GitHub records the causal link and
+the issue closes on merge. A PR that closes nothing says so in one line. **`Refs #<n>` is a mention,
+not a link:** it closes nothing while reading like tracking, which is exactly how finished work
+stays open in the backlog.
+
+**Never close an epic on one phase.** Close the phase's own sub-issue and `Refs` the epic. If the
+phase has no issue, say so in the body instead of letting the epic absorb it — PR #433 shipped two
+named gaps (A8, A9) under `Refs #388, #430`, so nothing in the tracker records that they are done.
+
 Covers code, catalog, config, and all repo-tracked Markdown (`ARCHITECTURE.md`, this file, the
 `README.md` files, `.agents/skills/**`).
 

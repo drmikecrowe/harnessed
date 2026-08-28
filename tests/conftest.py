@@ -272,9 +272,11 @@ def _isolated_home(tmp_path_factory):
     """Point $HOME at an empty dir for the whole session, so no test reads the developer's home.
 
     The companion to `_isolated_user_catalog`, and it covers ground that fixture cannot.
-    `_isolated_user_catalog` blanks XDG_CONFIG_HOME, but `launchenv._resolve_launch_secrets` builds
-    the user-global secrets dir as `Path.home() / ".config" / "harnessed"` (launchenv.py:447 and
-    :522), reading the HOME rather than the XDG variable. So the developer's real
+    `_isolated_user_catalog` blanks XDG_CONFIG_HOME, but `launchenv._resolve_launch_secrets` and
+    `launchenv._resolve_launch_env` each build the user-global secrets dir as
+    `Path.home() / ".config" / "harnessed"`, reading the HOME rather than the XDG variable. (Cited
+    by symbol, not line: the original line numbers were stale within a day, shifted by an unrelated
+    PR that merged alongside this one.) So the developer's real
     `~/.config/harnessed/.env.schema` stayed reachable from a unit run, and on this machine that
     file exists, declares CLAUDE_CODE_OAUTH_TOKEN, and `varlock` is on PATH — the three conditions
     for a unit test to resolve a live credential out of a 1Password vault. On a locked vault that
