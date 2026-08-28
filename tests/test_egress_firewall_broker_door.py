@@ -5,6 +5,9 @@ the pod reaches it at `169.254.1.1` through podman's `pasta --map-host-loopback,
 firewall sets `OUTPUT` policy to DROP and whitelists from there, so without an ACCEPT for that one
 address the pod cannot reach the broker at all.
 
+The rule is not port-scoped, on purpose: the broker port is chosen at launch and never reaches this
+script. See the comment at the rule, and #437.
+
 These tests run the REAL script under `bash` with a stub `PATH`. Only the kernel-touching binaries
 at its boundary are replaced (`iptables`, `ip6tables`, `ip`, `getent`); every line of the script's
 own logic executes. The stubs record their argv, so the assertions are about the rules the script
@@ -124,11 +127,14 @@ class TestBrokerDoor:
         _proc, ipt, _ip6t = _run_firewall(tmp_path)
         assert f"-A OUTPUT -d {BROKER_DOOR} -j ACCEPT" in ipt
 
-    def test_door_is_opened_after_the_drop_policy_is_set(self, tmp_path):
-        # S2. `-F OUTPUT` flushes; a rule appended before `-P OUTPUT DROP` would be discarded.
-        # This asserts the rule actually survives to the end state, not merely that it was issued.
+    def test_door_is_opened_after_the_flush(self, tmp_path):
+        # S2. `-F OUTPUT` discards every existing rule, so a door issued before it is not in the
+        # ruleset the pod runs under. `-P OUTPUT DROP` only sets the default verdict — it flushes
+        # nothing — so the flush is what this anchors on. Mutant M5 is what makes it non-vacuous.
         _proc, ipt, _ip6t = _run_firewall(tmp_path)
-        assert ipt.index("-P OUTPUT DROP") < ipt.index(f"-A OUTPUT -d {BROKER_DOOR} -j ACCEPT")
+        door = ipt.index(f"-A OUTPUT -d {BROKER_DOOR} -j ACCEPT")
+        assert ipt.index("-F OUTPUT") < door
+        assert ipt.index("-P OUTPUT DROP") < door
 
     def test_no_ipv6_rule_for_the_broker(self, tmp_path):
         # S5. 169.254.1.1 is IPv4 link-local. An ip6tables counterpart would be meaningless.
