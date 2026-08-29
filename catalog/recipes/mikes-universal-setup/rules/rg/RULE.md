@@ -1,36 +1,33 @@
 # Text Search: Search Tool First, Then rg
 
-Search with your harness's built-in search tool first. It respects ignore files and returns
-line-anchored matches that a shell pipeline cannot. Shell out only when it cannot
-answer the question — then use `rg`, never the `grep` binary (see [[denied-commands]]). That ban
-covers `git grep` and `| grep` too; `rg -v` inverts. It names the shell binary only: a built-in
-search tool is not shell `grep`, and nothing here restricts it.
+Search with the harness's built-in search tool first — it respects ignore files and returns
+line-anchored matches. Shell out only when that cannot answer the question. Then use `rg`, never the
+`grep` binary (see [[denied-commands]]; that ban covers `git grep` and `| grep`, and `rg -v`
+inverts). The ban names the shell binary only: a built-in search tool is not shell `grep`.
 
-`rg` is the shell fallback, not the default search path. A harness that offers no search tool makes
-`rg` the default by elimination, not by preference.
+`rg` is the fallback, not the default. No search tool → `rg` by elimination, never by preference.
 
 ## Bound the result set at the source
 
-An unbounded search over a large tree is one of the cheapest ways to burn a context window, whichever
-tool runs it. Cap the output at the source, not after it lands:
+An unbounded search over a large tree is one of the cheapest ways to burn a context window. Cap the
+output at the source, never after it lands:
 
-- Existence or location only: `rg -l` for filenames, `rg -c` for per-file counts. Never page full
-  matches to answer "does this exist".
-- Cap the volume: `-m/--max-count` per file, and scope to a path or `-g` glob before widening.
-- Route what you could not bound, and pick by what you need back:
-  - **`rtk rg …`** when you want the matches themselves. It runs `rg` natively and compacts the
-    result: whitespace stripped, long lines truncated, grouped by file. One shell call, no round
-    trip. The rtk hook also rewrites a plain `rg` for you, so typing the prefix is optional and
-    never doubles up.
-    Not when the exact bytes matter. That compaction is lossy. If you need precise whitespace, a
-    full unbroken line, or a token you will copy, run bounded `rg` raw.
-  - **`ctx_batch_execute`** when the match list is large and you have specific questions about it.
-    It runs the command, indexes the output, and returns only the windows matching your `queries`,
-    so the raw list never enters the conversation. See [[ctx-routing]] for the query-breadth trap.
+- Existence or location only → `rg -l` for filenames, `rg -c` for counts. Never page full matches to
+  answer "does this exist".
+- Cap the volume → `-m/--max-count`, and scope to a path or `-g` glob before widening.
+- Could not bound it → route by what you need back:
+  - **`rtk rg …`** for the matches themselves. Runs `rg` natively and compacts the result:
+    whitespace stripped, long lines truncated, grouped by file. One call, no round trip. The rtk hook
+    rewrites a plain `rg` too, so the prefix is optional and never doubles up.
+    **Not when exact bytes matter** — the compaction is lossy. Precise whitespace, a full unbroken
+    line, or a token you will copy → bounded raw `rg`.
+  - **`ctx_batch_execute`** for a large match list you have specific questions about. It indexes the
+    output and returns only the windows your `queries` match. See [[ctx-routing]] for the
+    query-breadth trap.
 
 Neither un-spends a result set you did not need. Bound first, then route.
 
-Capture expensive output once; query the file rather than re-running:
+## Capture once, query many
 
 ```bash
 # Wrong — runs twice, output may differ

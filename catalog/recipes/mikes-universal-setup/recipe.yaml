@@ -29,6 +29,10 @@ rules:
   # pre-existing lint/test noise is named and left alone.
   - path: rules/blameless-debugging
   - path: rules/coding-principles
+  # Commit-message hygiene only. Conventional-commit shape was already de-facto practice in every
+  # repo here and written down nowhere, so nothing enforced it. The type vocabulary is read from the
+  # log rather than fixed, because a closed list would narrow the types already in use.
+  - path: rules/commit-hygiene
   - path: rules/denied-commands
   # Anti-drift/anti-thrash working discipline: read-before-edit, re-read on correction, change
   # approach after repeated failure, finish the whole task before stopping.
@@ -49,6 +53,11 @@ rules:
   # that resolves, so an uncitable rationale must be labelled as inference or omitted. Carries the
   # inverse duty too — read the reference before deleting what it guards.
   - path: rules/load-bearing-comments
+  # The named blocklist behind coding-principles §2 "Simplicity first" — single-implementation
+  # interfaces, one-type factories, delegating wrappers, unreachable error handling, needless
+  # dependencies. Same reason interaction-style exists separately: §2's one-line principle does not
+  # fire at the moment you are typing the interface. Bans only what you ADD; removal stays §3's.
+  - path: rules/no-speculative-code
   # Gates WHAT gets published (read what you didn't author; provenance; no private content).
   # stop-and-ask gates WHETHER. A secret scanner only catches key-shaped strings — this is the
   # semantic pass it can't do.
@@ -65,6 +74,11 @@ rules:
   - path: rules/prompt-defense
   - path: rules/rg
   - path: rules/stop-and-ask
+  # An existing test outranks your change: fix the code, never the assertion. The escape hatch is
+  # deliberately narrow and evidence-gated — a test CAN be wrong (harnessed #432: ambient OAuth token,
+  # broken fixture, correct expectation), so an absolute "the test is always right" would have blocked
+  # the correct diagnosis. Also bars reporting local red that CI runs green as "pre-existing".
+  - path: rules/tests-are-authority
   - path: rules/token-efficient
   # The cwd is session identity, not convenience: backgrounding snapshots the LIVE cwd, so a session
   # that wandered into a subdirectory gets keyed into the wrong transcript namespace and cannot be
