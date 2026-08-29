@@ -1,11 +1,18 @@
 # Denied Commands
 
-Never run these. A harness that denies one wastes the round-trip, and no rephrasing gets past it.
+**Scope: shell commands only.** Every entry below names a binary you would run through the shell.
+
+A harness tool that shares a name is a different thing and is never restricted here. `Grep` the tool
+is not `/usr/bin/grep`; `Glob` is not `/usr/bin/find`; `Read` is not `cat`. Reach for the tool first
+— the table's "use instead" column points at it.
+
+Never run these as shell commands. A harness that denies one wastes the round-trip, and no rephrasing
+gets past it.
 
 |Never run|Use instead|
 |---|---|
-|`grep` — including `\|grep`, `\|grep -v`, `git grep`|the harness search tool; `rg` when you must shell out (`rg -v` inverts) — see [[rg]]|
-|`find`|the harness glob tool; `fd` when you must shell out (`fd -e py`, `fd -H`) — see [[fd]]|
+|`grep`, `git grep`, and any `\| grep` / `\| grep -v` segment|the harness search tool (`Grep`); `rg` when you must shell out (`rg -v` inverts) — see [[rg]]|
+|`find`|the harness glob tool (`Glob`); `fd` when you must shell out (`fd -e py`, `fd -H`) — see [[fd]]|
 |`rm -rf`|`rm -r` on a specific path, or `git clean`|
 |`git push --force`|`git push --force-with-lease`, and only when asked|
 |`sudo`, `su`, `chmod 777`, `dd`, `mkfs`, `fdisk`, `ssh`, `scp`, `rsync`|ask the user to run it|
@@ -25,6 +32,6 @@ segments.
 ## Subagents
 
 Subagents inherit none of this. A prompt that will search a tree must say so. Quote it: *prefer the
-harness search and glob tools; if you shell out, use `rg`/`fd`, never `grep`/`find`.* Carry the
-output bound across too: *scope to a path, bound the result set (`-l`, `-c`, `-m`), route the rest
-through `ctx_batch_execute`.* Told only "use rg", a subagent returns the whole dump.
+harness search and glob tools; if you shell out, use `rg`/`fd`, never the `grep`/`find` binaries.*
+Carry the output bound across too: *scope to a path, bound the result set (`-l`, `-c`, `-m`), route
+the rest through `ctx_batch_execute`.* Told only "use rg", a subagent returns the whole dump.
