@@ -30,7 +30,7 @@ import signal
 import socket
 import subprocess
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -233,7 +233,7 @@ def _session_on_port(rows: list[dict], port: int) -> str | None:
 def start(
     inst: str,
     pod: str,
-    schema_dir: str | Path,
+    schema_dirs: str | Path | Sequence[str | Path],
     *,
     cert_dir: str | Path | None = None,
     spawn: Callable[[list[str]], int] = _spawn,
@@ -255,12 +255,15 @@ def start(
     certs = Path(cert_dir) if cert_dir is not None else state_dir() / f"{inst}-certs"
     certs.mkdir(parents=True, exist_ok=True)
 
-    argv = [
-        "varlock", "proxy", "start",
-        "--path", str(schema_dir),
-        "--port", str(port),
-        "--cert-dir", str(certs),
-    ]
+    # `--path` is repeatable, and a launch composes up to two schemas: the user-global
+    # ~/.config/harnessed and the project's own. Passing both is what makes the broker resolve the
+    # SAME composed set the --env-file path resolves (launchenv._resolve_launch_secrets), rather
+    # than a subset that silently omits half the user's secrets.
+    dirs = [schema_dirs] if isinstance(schema_dirs, (str, Path)) else list(schema_dirs)
+    argv = ["varlock", "proxy", "start"]
+    for d in dirs:
+        argv += ["--path", str(d)]
+    argv += ["--port", str(port), "--cert-dir", str(certs)]
     pid = spawn(argv)
 
     waited = 0.0

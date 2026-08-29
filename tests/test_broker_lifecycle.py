@@ -33,7 +33,7 @@ CERTS = "/run/harnessed/certs/" + INST
 # A resolved secret must never reach disk or a message. The recorders below hand the code a value
 # shaped like one so an assertion can search for it by content rather than by hope.
 SENTINEL = "sk-ant-oat01-THIS-IS-A-RESOLVED-SECRET-VALUE"
-TOKEN_SENTINEL = "4f2a9e45-f135-4d47-8284-4f39dcf94551"
+TOKEN_SENTINEL = "4f2a9e45-f135-4d47-8284-4f39dcf94551"  # noqa: S105 - a fixture, not a credential
 
 
 @pytest.fixture(autouse=True)
@@ -133,6 +133,19 @@ class TestStartRecordsJustEnoughToFindItAgain:
         argv = runner.spawned[0]
         assert "--path" in argv
         assert argv[argv.index("--path") + 1] == "/proj"
+
+    def test_start_passes_every_composed_schema_dir(self):
+        # A launch composes the user-global schema and the project's. The broker must resolve the
+        # same set the --env-file path does; one --path would silently drop half the secrets.
+        runner = _Runner()
+        broker.start(
+            INST, POD, ["/global", "/proj"],
+            spawn=runner.spawn, status=runner.status, kill=runner.kill,
+            port_free=lambda _p: True, candidates=iter([PORT]), sleep=lambda _s: None,
+        )
+        argv = runner.spawned[0]
+        paths_passed = [argv[i + 1] for i, a in enumerate(argv) if a == "--path"]
+        assert paths_passed == ["/global", "/proj"]
 
     def test_start_pins_the_port_and_the_cert_dir(self):
         runner = _Runner()

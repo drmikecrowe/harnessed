@@ -424,6 +424,31 @@ def _warn_unproxied_secrets(schema_dir: Path) -> None:
         )
 
 
+def proxy_schema_dirs(project_path: Path | None = None) -> list[Path]:
+    """The composed schema dirs that opt into the proxy model, in --env-file order (global, then
+    project). Empty when nothing opted in — which is every stack shipped today.
+
+    This is the gate on starting a secrets broker at all (#437). It deliberately mirrors the dir
+    selection in `_resolve_launch_secrets` rather than inventing its own: the broker must resolve
+    the SAME set the --env-file path resolves, or #439 will hand the pod placeholders for items the
+    broker never loaded.
+
+    `_schema_declares_proxy` is a text test, so this costs two file reads and NO subprocess. That
+    matters: `varlock proxy rules` resolves values and can sit on a 1Password unlock prompt, and a
+    launch that opted into nothing must not buy one.
+    """
+    if not shutil.which("varlock"):
+        return []
+    dirs: list[Path] = []
+    global_dir = Path.home() / ".config" / "harnessed"
+    if (global_dir / ".env.schema").is_file() and _schema_declares_proxy(global_dir):
+        dirs.append(global_dir)
+    if project_path is not None:
+        if (project_path / ".env.schema").is_file() and _schema_declares_proxy(project_path):
+            dirs.append(project_path)
+    return dirs
+
+
 def _resolve_launch_secrets(project_path: Path | None = None) -> tuple[list[Path], list[Path]]:
     """Resolve launch-time env-files, layered global → project (podman --env-file is last-wins,
     so project values override the global schema).

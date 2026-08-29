@@ -32,6 +32,7 @@ import typer
 from rich.markup import escape
 
 from . import aoe
+from . import broker
 from . import dynstack
 from . import emit
 from . import launchscript
@@ -54,10 +55,12 @@ from .backend import (
 )
 from .console import _err, _out
 from .ctrquery import (
+    _container_exists,
     _container_running,
     _container_stale,
     _image_exists,
     _img_differs,
+    _pod_exists,
     _rt_uses_pods,
     _runtime,
     _stopped_leftover,
@@ -213,6 +216,7 @@ from .credmounts import (
     _yubikey_device_args,
 )
 from .launchenv import (
+    proxy_schema_dirs,
     _resolve_launch_env,
     _resolve_launch_secrets,
     _strip_var_from_env_files,
@@ -1257,7 +1261,74 @@ def _without_userns(args: list[str]) -> list[str]:
     return [a for a in args if not a.startswith("--userns")]
 
 
+def _secrets_disabled() -> bool:
+    """Whether this launch was told to skip the secrets broker (`--no-secrets`).
+
+    Read from the environment rather than threaded through the backend, because that is exactly how
+    `--no-firewall` already reaches the same code path — one mechanism for the two opt-outs beats
+    two.
+    """
+    return os.environ.get("NO_SECRETS", "").strip().lower() in ("1", "true", "yes")
+
+
+def _broker_start_for(inst: str, pod: str, project_path: "Path | None"):
+    """Start this instance's secrets broker, or return None when the launch gets none.
+
+    A broker is started ONLY when the composed schema carries a `@proxy` annotation and
+    `--no-secrets` was not passed. A stack that opted into nothing — every stack shipped today —
+    reaches no varlock subprocess at all: `proxy_schema_dirs` is a text test by design, because
+    `varlock proxy rules` resolves values and can sit on a 1Password unlock prompt.
+
+    A FAILED START IS FATAL, and that is a behaviour change (issue #437, SPEC decision 2). The
+    alternative is a pod wired half-way to a proxy that is not there — the silent half-wiring epic
+    #388 exists to remove — and it gets worse at #439, when the pod's env becomes placeholders that
+    only this broker can redeem. `--no-secrets` is the way past it.
+
+    THE FAILURE MESSAGE DOES NOT ECHO THE EXCEPTION. `broker.py` never puts a resolved value in a
+    BrokerError, but a message built by interpolating one would make that a convention every future
+    raiser has to remember, and #388 asks for value-free BY CONSTRUCTION. So this prints a fixed
+    line naming the instance and the escape hatch. The cost is real and accepted: the broker's own
+    detail (which port, which timeout) does not reach the user here.
+    """
+    if _secrets_disabled():
+        return None
+    dirs = proxy_schema_dirs(project_path)
+    if not dirs:
+        return None
+    try:
+        return broker.start(inst, pod, dirs)
+    except broker.BrokerError as exc:
+        _err.print(
+            f"[bold red]error:[/bold red] could not start the secrets broker for {inst}.\n"
+            f"This project's schema opts into the varlock proxy, so launching without the broker "
+            f"would leave the pod half-wired. Check `varlock proxy status`, or launch with "
+            f"[bold]--no-secrets[/bold] to skip it."
+        )
+        raise typer.Exit(1) from exc
+
+
+def _broker_stop_for(instance: str) -> None:
+    """Stop `instance`'s secrets broker, never fatally.
+
+    A named wrapper rather than a bare `broker.stop` call at each site: `tests/test_launch_parity`
+    identifies capabilities by ATTRIBUTE NAME, so `broker.stop(...)` inside a backend method is
+    indistinguishable there from the `stop` CLI command, and the ledger would record a collision
+    instead of this capability.
+    """
+    try:
+        broker.stop(instance)
+    except Exception as exc:      # noqa: BLE001 - a teardown path may never raise; see callers
+        _err.print(
+            f"[yellow]warning:[/yellow] could not stop the secrets broker for {instance}: {exc}"
+        )
+
+
 def _pod_teardown(rt: str, instance: str, pod: str) -> None:
+    # The broker first, and never fatally: it is a HOST process holding live secrets, so it must
+    # not outlive the pod — but if stopping it fails, the pod still has to come down. A container
+    # left running without its boundary is strictly worse than one leaked host process, and
+    # `broker.reconcile` reaps whatever this misses.
+    _broker_stop_for(instance)
     if _rt_uses_pods(rt):
         _bounded([rt, "pod", "rm", "-f", pod], timeout=_PODMAN_WRITE_TIMEOUT, capture_output=True)
     else:
@@ -3044,6 +3115,9 @@ class ContainerBackend(ExecutionBackend):
         #: The stack's resolved MCP server set. Computed once by the sequencer and shared, so
         #: `wire_mcp` and the settings merge cannot drift apart on what this stack's servers are.
         self.servers = servers
+        #: This instance's host secrets broker, or None when the launch gets none (no `@proxy` in
+        #: the composed schema, `--no-secrets`, or a runtime with no pods). Set at BOUNDARY.
+        self.broker = None
         self.stk = stk
         self.stack_from_overlay = stack_from_overlay
         self.headless = headless
@@ -3299,6 +3373,16 @@ class ContainerBackend(ExecutionBackend):
         # Pod network.
         net = os.environ.get("HARNESSED_NET", "")
 
+        if not _rt_uses_pods(self.rt) and proxy_schema_dirs(spec.project_path):
+            # The broker door is a pasta option on `pod create`; a runtime with no pods has no way
+            # to deliver 169.254.1.1 into the container. Starting a broker here would produce
+            # exactly the half-wired state --no-secrets exists to avoid, so say so instead.
+            _err.print(
+                f"[yellow]note:[/yellow] {self.rt} does not use pods, so the varlock secrets broker "
+                "is not started for this launch — the pod would have no route to it. Secrets are "
+                "resolved into the container env as before."
+            )
+
         # Create pod.
         if _rt_uses_pods(self.rt):
             # --hostname explicitly: without it podman uses the pod NAME, which crun rejects past
@@ -3319,8 +3403,20 @@ class ContainerBackend(ExecutionBackend):
             # default. Measured both ways on real podman — see the helper. Composed there as one
             # list so the two cannot be wired apart, and so it also owns the plain `--network`
             # passthrough (which cannot be passed twice). Empty unless a recipe pins a port.
-            pod_cmd += _mcp_remote_pod_args(self.servers, net)
-            _run(pod_cmd, capture_output=True)
+            # The secrets broker is started BEFORE `pod create`, because the pod's network args
+            # depend on whether there is one: without a broker the pod must not be handed a route
+            # to the host's loopback it has no use for.
+            self.broker = _broker_start_for(self.inst, self.pod, spec.project_path)
+            pod_cmd += _mcp_remote_pod_args(self.servers, net, broker=self.broker is not None)
+            try:
+                _run(pod_cmd, capture_output=True)
+            except BaseException:
+                # A broker that outlives the launch it was started for is a host process holding
+                # live secrets that nothing will ever reap by name — worse than a leaked pod,
+                # which at least `podman ps` can see. Ctrl-C included, same reasoning as EGRESS.
+                if self.broker is not None:
+                    _broker_stop_for(self.inst)
+                raise
 
         # Socket-backed project services (beads-server) as REAL container env, not only an attach-shell
         # export: `_init_shell_prologue` reaches the interactive shell and nothing else, so a `podman
@@ -3479,6 +3575,11 @@ def container_run(
     ),
     rm: bool = typer.Option(False, "--rm", help="Ephemeral: tear the pod down when the interactive session exits"),
     no_firewall: bool = typer.Option(False, "--no-firewall", help="Skip egress firewall"),
+    no_secrets: bool = typer.Option(
+        False, "--no-secrets",
+        help="Skip the host secrets broker and the pod's proxy wiring. Parallel to --no-firewall: "
+             "the launch keeps working, with the pod holding real values as it does today.",
+    ),
     agent_start_folder: Optional[str] = typer.Option(
         None, "--agent-start-folder",
         help="Start the agent in this subfolder of the project (root is still mounted in full)",
@@ -3538,6 +3639,9 @@ def container_run(
 
     if no_firewall:
         os.environ["NO_FIREWALL"] = "true"
+
+    if no_secrets:
+        os.environ["NO_SECRETS"] = "true"
 
     rt = _runtime()
     anchor_path = Path(path).resolve() if path else Path.cwd()
@@ -4042,6 +4146,28 @@ def build(
                 os.environ["HARNESSED_PODMAN_NO_CACHE"] = _prev_no_cache
 
 
+def _broker_report(pod_exists, *, run=None) -> None:
+    """Print the secret-broker section of `harnessed list`, reconciling before reporting.
+
+    Reconciles FIRST because the alternative is lying: a record whose pod is gone would otherwise
+    read as an attached broker, and the whole value of this section is telling the user whether a
+    host process is holding their secrets right now. `reconcile` also stops the ones it reaps, so
+    this doubles as the periodic cleanup for every teardown path that never ran (issue #437, F-a).
+
+    Prints instance, session and port — which is everything the record holds. There is no redaction
+    step here because there is nothing to redact.
+    """
+    kw = {} if run is None else {"run": run}
+    broker.reconcile(pod_exists, **kw)
+    live = [broker.read(i) for i in broker.all_instances()]
+    live = [b for b in live if b is not None]
+    if not live:
+        return
+    _out.print("[bold]Secret brokers (host-side, one per instance):[/bold]")
+    for b in live:
+        _out.print(f"  {b.instance}  session {b.session}  127.0.0.1:{b.port}")
+
+
 @app.command("list")
 def list_stacks() -> None:
     """List authored stacks and harnessed instances (running and stopped)."""
@@ -4070,6 +4196,13 @@ def list_stacks() -> None:
             f"[bold red]warning:[/bold red] the instance list above is INCOMPLETE — the container "
             f"runtime exited {listed.returncode}. An empty list here does not mean there are none."
         )
+        # Do NOT reconcile brokers off a failed query: `_pod_running` would report every pod
+        # absent and reap every live broker. A runtime that cannot be asked is not an answer.
+        return
+    # A pod on a pods runtime, a plain container otherwise — the same split `_pod_teardown` makes.
+    exists = (lambda pod: _pod_exists(rt, pod)) if _rt_uses_pods(rt) else (
+        lambda pod: _container_exists(rt, pod))
+    _broker_report(exists)
 
 
 @app.command("stop")

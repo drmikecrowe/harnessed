@@ -49,6 +49,15 @@ CONTAINER_ONLY: dict[str, str] = {
     "_container_stale": "inspects a container",
     "_stopped_leftover": "removes a dead container",
     "_pod_teardown": "tears down a pod",
+    # --- the varlock secrets broker (#437, epic #388 Topology B) ---
+    # Container-only BY NATURE, not by decision. The broker exists so a CONTAINER can hold
+    # placeholders while real values are injected on the wire from the host. A host-native launch
+    # runs the harness in the user's own session with their own credentials — there is no boundary
+    # for the broker to sit on, and varlock resolves natively there already. The epic's backend
+    # matrix records exactly this: "host: n/a (native varlock)".
+    "_broker_start_for": "starts a host broker for a POD; a host launch resolves varlock natively",
+    "proxy_schema_dirs": "decides whether a POD needs a broker",
+    "_broker_stop_for": "stops a pod's broker; a host launch never started one",
     "_rt_uses_pods": "asks the container runtime about pods",
     "_without_userns": "strips a pod-level --userns; a host-native launch has no user namespace",
     "_run": "shells out to podman/docker",
