@@ -126,6 +126,13 @@ class TestStartRecordsJustEnoughToFindItAgain:
         # And positively: it holds exactly the five fields needed to find and stop the session.
         assert set(json.loads(raw)) == {"instance", "pod", "session", "port", "cert_dir"}
 
+    def test_start_invokes_varlock_proxy_start(self):
+        # The command words themselves. Asserting only the flags leaves the verb unpinned, and
+        # `varlock proxy status --port …` would satisfy every other assertion in this class.
+        runner = _Runner()
+        _start(runner)
+        assert runner.spawned[0][:3] == ["varlock", "proxy", "start"]
+
     def test_start_passes_the_schema_dir_as_an_explicit_path(self):
         # M3. A cwd-based invocation does not survive the mise shim outside this repo.
         runner = _Runner()
@@ -213,8 +220,7 @@ class TestStop:
         runner = _Runner()
         _start(runner)
         broker.stop(INST, run=runner.run)
-        assert runner.ran[-1][:4] == ["varlock", "proxy", "stop", "--session"]
-        assert runner.ran[-1][4] == "i0oku"
+        assert runner.ran[-1] == ["varlock", "proxy", "stop", "--session", "i0oku"]
         assert broker.read(INST) is None
 
     def test_stop_never_stops_every_session(self):
@@ -247,7 +253,9 @@ class TestReconciliationReapsOrphans:
         reaped = broker.reconcile(lambda _pod: False, run=runner.run)
         assert reaped == [INST]
         assert broker.read(INST) is None
-        assert runner.ran[-1][:3] == ["varlock", "proxy", "stop"]
+        # The WHOLE argv. A malformed flag would leave the broker running while this reported it
+        # reaped — the failure mode reconciliation exists to prevent.
+        assert runner.ran[-1] == ["varlock", "proxy", "stop", "--session", "i0oku"]
 
     def test_a_broker_whose_pod_is_alive_is_left_alone(self):
         runner = _Runner()
@@ -265,13 +273,108 @@ class TestReconciliationReapsOrphans:
         broker.reconcile(lambda pod: asked.append(pod) or True, run=runner.run)
         assert asked == [POD]
 
+    def test_a_live_broker_does_not_stop_the_sweep_reaching_a_later_orphan(self):
+        """Every other test here has ONE record, which makes `break` and `continue` identical.
+
+        With two, an early return leaves a real orphan running: a host process holding live
+        secrets, for a pod that is gone, that nothing will name again.
+        """
+        runner = _Runner()
+        _start(runner)
+        broker._write(broker.Broker(
+            instance="zzz-later", pod="zzz-pod", session="other", port=39999, cert_dir="/c",
+        ))
+        reaped = broker.reconcile(lambda pod: pod == POD, run=runner.run)
+        assert reaped == ["zzz-later"]
+        assert broker.read(INST) is not None
+
+    def test_two_corrupt_records_are_both_reaped(self):
+        # The corrupt branch has its own `continue`, and with a single record `break` is
+        # indistinguishable from it — the same hole as the live-broker sweep above, one branch over.
+        runner = _Runner()
+        for name in ("aaa-one", "zzz-two"):
+            broker.state_path(name).parent.mkdir(parents=True, exist_ok=True)
+            broker.state_path(name).write_text("{not json")
+        assert broker.reconcile(lambda _pod: True, run=runner.run) == ["aaa-one", "zzz-two"]
+
+    def test_a_corrupt_record_is_reported_as_reaped_by_name(self):
+        runner = _Runner()
+        _start(runner)
+        broker.state_path(INST).write_text("{not json")
+        assert broker.reconcile(lambda _pod: True, run=runner.run) == [INST]
+
     def test_a_corrupt_state_file_is_reaped_rather_than_crashing_the_command(self):
         # Hostile-input pass: this file is read by `harnessed list`, which must not die on it.
         runner = _Runner()
         _start(runner)
         broker.state_path(INST).write_text("{not json")
         broker.reconcile(lambda _pod: True, run=runner.run)
-        assert broker.read(INST) is None
+        # The FILE, not `read()`: a corrupt record already reads as None, so asserting that would
+        # hold whether or not reconcile deleted anything. mutmut found this exact hole.
+        assert not broker.state_path(INST).exists()
+
+
+class TestTheGapsMutationFound:
+    """Each of these closes a survivor from the mutmut run, and each is a real hole.
+
+    They share a shape worth naming: an assertion whose expected value was already true before the
+    code under test ran, or a parameter whose effect the tests never varied. Neither can fail, so
+    neither was testing anything.
+    """
+
+    def test_stop_deletes_a_corrupt_record(self):
+        # `read()` returns None for a corrupt file, so `stop` takes its early-return branch — and
+        # must still delete the file. Otherwise a record nothing can parse becomes permanent.
+        runner = _Runner()
+        _start(runner)
+        broker.state_path(INST).write_text("{not json")
+        broker.stop(INST, run=runner.run)
+        assert not broker.state_path(INST).exists()
+
+    def test_the_recorded_cert_dir_is_the_one_passed_to_varlock(self, tmp_path):
+        # #438 binds this directory into the pod. A record naming a different one — or None — sends
+        # that issue at the wrong path, and nothing here would have noticed.
+        certs = str(tmp_path / "certs")
+        runner = _Runner()
+        record = broker.start(
+            INST, POD, "/proj", cert_dir=certs,
+            spawn=runner.spawn, status=runner.status, kill=runner.kill,
+            port_free=lambda _p: True, candidates=iter([PORT]), sleep=lambda _s: None,
+        )
+        argv = runner.spawned[0]
+        assert record.cert_dir == certs
+        assert argv[argv.index("--cert-dir") + 1] == certs
+
+    def test_start_honours_the_port_free_predicate(self, tmp_path):
+        # Previously every test passed a predicate that said yes, so `start` ignoring it entirely
+        # was indistinguishable from `start` obeying it.
+        runner = _Runner(statuses=[[_status_entry(port=39444)]])
+        record = broker.start(
+            INST, POD, "/proj", cert_dir=str(tmp_path / "c"),
+            spawn=runner.spawn, status=runner.status, kill=runner.kill,
+            port_free=lambda p: p != 39443, candidates=iter([39443, 39444]),
+            sleep=lambda _s: None,
+        )
+        assert record.port == 39444
+
+    def test_starting_again_over_an_existing_cert_dir_is_fine(self, tmp_path):
+        # A relaunch of the same instance reuses the directory. `mkdir` without exist_ok raises
+        # FileExistsError, which would break every launch after the first.
+        certs = tmp_path / "certs"
+        certs.mkdir()
+        runner = _Runner()
+        broker.start(
+            INST, POD, "/proj", cert_dir=str(certs),
+            spawn=runner.spawn, status=runner.status, kill=runner.kill,
+            port_free=lambda _p: True, candidates=iter([PORT]), sleep=lambda _s: None,
+        )
+        assert broker.read(INST) is not None
+
+    def test_a_row_with_no_env_is_skipped_rather_than_crashing(self):
+        # Hostile input: varlock is free to add or drop fields. A row without `env` must not take
+        # down a launch.
+        runner = _Runner(statuses=[[{"id": "nope"}, _status_entry()]])
+        assert _start(runner).session == "i0oku"
 
 
 class TestPortSelection:

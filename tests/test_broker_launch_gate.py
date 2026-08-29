@@ -124,6 +124,48 @@ class TestOptInStartsABroker:
         assert str(proj) in spy.starts[0][2]
 
 
+class TestTheGlobalSchemaCounts:
+    """`~/.config/harnessed/.env.schema` is half the composed set, and every test above pointed
+    HOME at an empty dir — so this whole branch went unexercised until mutation said so."""
+
+    def test_a_global_proxy_schema_alone_starts_a_broker(
+        self, monkeypatch, tmp_path, no_global_schema
+    ):
+        cfg = no_global_schema / ".config" / "harnessed"
+        cfg.mkdir(parents=True)
+        (cfg / ".env.schema").write_text(PROXY_SCHEMA)
+        spy = _Spy()
+        monkeypatch.setattr(broker, "start", spy.start)
+        assert launcher._broker_start_for(INST, POD, _project(tmp_path, None)) is not None
+        assert spy.starts[0][2] == [str(cfg)]
+
+    def test_both_schemas_are_passed_global_first(
+        self, monkeypatch, tmp_path, no_global_schema
+    ):
+        # --env-file is last-wins and the project must override the global, so the ORDER is the
+        # contract, not just the membership.
+        cfg = no_global_schema / ".config" / "harnessed"
+        cfg.mkdir(parents=True)
+        (cfg / ".env.schema").write_text(PROXY_SCHEMA)
+        proj = _project(tmp_path, PROXY_SCHEMA)
+        spy = _Spy()
+        monkeypatch.setattr(broker, "start", spy.start)
+        launcher._broker_start_for(INST, POD, proj)
+        assert spy.starts[0][2] == [str(cfg), str(proj)]
+
+    def test_a_global_schema_without_proxy_is_not_passed(
+        self, monkeypatch, tmp_path, no_global_schema
+    ):
+        cfg = no_global_schema / ".config" / "harnessed"
+        cfg.mkdir(parents=True)
+        (cfg / ".env.schema").write_text(PLAIN_SCHEMA)
+        proj = _project(tmp_path, PROXY_SCHEMA)
+        spy = _Spy()
+        monkeypatch.setattr(broker, "start", spy.start)
+        launcher._broker_start_for(INST, POD, proj)
+        assert spy.starts[0][2] == [str(proj)]
+
+
 class TestNoSecretsOptsOut:
     """C3 — the escape hatch decision 2 promises, parallel to --no-firewall."""
 
@@ -135,6 +177,26 @@ class TestNoSecretsOptsOut:
         monkeypatch.setattr(broker, "start", spy.start)
         assert launcher._broker_start_for(INST, POD, _project(tmp_path, PROXY_SCHEMA)) is None
         assert spy.starts == []
+
+    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", " true "])
+    def test_every_documented_truthy_spelling_disables_the_broker(
+        self, monkeypatch, tmp_path, no_global_schema, value
+    ):
+        monkeypatch.setenv("NO_SECRETS", value)
+        spy = _Spy()
+        monkeypatch.setattr(broker, "start", spy.start)
+        assert launcher._broker_start_for(INST, POD, _project(tmp_path, PROXY_SCHEMA)) is None
+
+    @pytest.mark.parametrize("value", ["", "0", "false", "no"])
+    def test_a_falsy_value_does_not_disable_the_broker(
+        self, monkeypatch, tmp_path, no_global_schema, value
+    ):
+        # The dangerous direction: NO_SECRETS=false must not read as "skip the broker", or a user
+        # explicitly asking for secrets would silently get none.
+        monkeypatch.setenv("NO_SECRETS", value)
+        spy = _Spy()
+        monkeypatch.setattr(broker, "start", spy.start)
+        assert launcher._broker_start_for(INST, POD, _project(tmp_path, PROXY_SCHEMA)) is not None
 
     def test_the_flag_sets_the_env_the_backend_reads(self):
         """`--no-secrets` reaches the backend the same way `--no-firewall` does. Asserting the
@@ -240,6 +302,9 @@ class TestListReportsBrokerAttachment:
         out = capsys.readouterr().out
         assert INST in out
         assert "i0oku" in out
+        # The port too: it is read back off disk by `broker.read`, and a report that lost it would
+        # leave the user unable to tell which broker is which, or to reach it.
+        assert "39443" in out
 
     def test_an_instance_with_no_broker_is_not_reported(self, capsys):
         launcher._broker_report(lambda _pod: True)

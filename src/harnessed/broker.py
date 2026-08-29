@@ -224,7 +224,10 @@ def _session_on_port(rows: list[dict], port: int) -> str | None:
     want = f":{port}"
     for row in rows:
         env = row.get("env") or {}
-        url = env.get("HTTPS_PROXY") or env.get("HTTP_PROXY") or ""
+        # HTTPS_PROXY only. A measured session sets all six proxy vars to the same URL, so a
+        # HTTP_PROXY fallback would be a second code path that no input can reach — unrequested
+        # flexibility that mutation testing correctly reported as untested. One key, one meaning.
+        url = env.get("HTTPS_PROXY") or ""
         if url.endswith(want) and row.get("id"):
             return str(row["id"])
     return None
