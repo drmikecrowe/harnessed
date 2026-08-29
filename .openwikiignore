@@ -1,0 +1,32 @@
+# Read boundary for `openwiki` (mise run openwiki-init / openwiki-update). Paths listed here are
+# never read, scanned, or reproduced in the generated wiki.
+#
+# This is not a taste filter. Everything below is either a byte-for-byte duplicate of source that
+# openwiki already reads, or generated output whose staleness would be laundered into the wiki as
+# fresh evidence.
+
+# Task worktrees are FULL CHECKOUTS of this same repository, each on a different branch. Left
+# readable, openwiki would ground claims in dozens of divergent copies of every file it documents.
+.claude/worktrees/
+
+# Generated agent documentation (output of /map-codebase). Grounding a generated wiki on an older
+# generated map turns "the map said so" into evidence, which is exactly the drift openwiki's Claims
+# exist to catch. The hand-written docs/guides/ and docs/harnessed-design.md stay readable.
+docs/codebase/
+
+# Build and analysis artifacts.
+/profiles/
+/catalog-local/
+tools/test-fixtures/profiles/
+mutants/
+__pycache__/
+*.egg-info/
+.venv/
+/build/
+/dist/
+.hypothesis/
+.coverage
+coverage.xml
+
+# Machine-generated dependency graph: tens of thousands of lines, no prose signal.
+uv.lock
