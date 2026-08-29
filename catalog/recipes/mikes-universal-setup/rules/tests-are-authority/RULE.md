@@ -17,8 +17,8 @@ An existing test encodes a decision already made. Your change does not outrank i
 - Fix the SETUP, not the ASSERTION. Failure from ambient state — an exported env var, the real
   `$HOME`, machine-local config — is a broken fixture, never a wrong expectation.
 
-Instance (harnessed #432): five tests failed on any machine with the harness OAuth token exported.
-Code correct, expectation correct, fixture missing one `monkeypatch.delenv`.
+<!-- Instance: harnessed #432 — five tests failed on any machine with the harness OAuth token
+exported. Code correct, expectation correct, fixture missing one monkeypatch.delenv. -->
 
 ## Green is not proof
 

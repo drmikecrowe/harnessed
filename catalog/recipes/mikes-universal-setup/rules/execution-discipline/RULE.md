@@ -1,29 +1,24 @@
 # Execution Discipline
 
-Guardrails against drift, thrash, and half-finished work. These apply to every task.
+Guardrails against drift, thrash, and half-finished work.
 
 ## Editing
 
-- **Read the full file before editing.** Plan all changes, then make ONE complete edit. If you have
-  edited a file 3+ times, stop and re-read the user's requirements.
+- Read the full file before editing. Plan every change, then make ONE complete edit.
+- Edited the same file 3+ times → stop and re-read the requirements.
 
 ## Staying on target
 
-- **When the user corrects you, stop and re-read their message.** Quote back what they asked for and
-  confirm before proceeding.
-- **Every few turns, re-read the original request** to make sure you have not drifted from the goal.
-- **Re-read the user's last message before responding.** Follow through on every instruction completely.
+- Corrected → stop, re-read the message, quote back what was asked, confirm before proceeding.
+- Re-read the original request every few turns to check for drift.
+- Re-read the last message before responding, and follow through on every instruction in it.
 
 ## When things go wrong
 
-- **When stuck, summarize what you've tried and ask the user for guidance** instead of retrying the
-  same approach.
-- **After 2 consecutive tool failures, stop and change your approach entirely.** Explain what failed
-  and try a different strategy.
+- Stuck → summarize what you tried and ask for guidance. Never retry the same approach.
+- Two consecutive tool failures → change approach entirely and say what failed.
 
 ## Before finishing
 
-- **Double-check your output before presenting it.** Verify that your changes actually address what
-  the user asked for.
-- **Complete the FULL task before stopping.** If the user asked for multiple things, implement all of
-  them before presenting results.
+- Verify your changes actually address what was asked.
+- The user asked for several things → implement all of them before presenting results.
