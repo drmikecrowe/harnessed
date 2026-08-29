@@ -1,6 +1,7 @@
 # mikes-universal-setup
 
-A personal baseline: 13 rules (coding stance, precedence, comment discipline, tool preferences, confirmation gates, token economy, cwd stability)
+A personal baseline: 17 rules (coding stance, change and test discipline, precedence, comment
+discipline, commit hygiene, tool preferences, confirmation gates, token economy, cwd stability)
 plus 13 generic utility skills — 6 vendored in-tree and 7 fetched at build time from pinned
 upstreams. Serves as the worked example of what a personal "how I want my agent to behave" recipe
 looks like.
