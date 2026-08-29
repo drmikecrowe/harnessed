@@ -27,6 +27,7 @@ SRC = Path(__file__).parent.parent / "src" / "harnessed"
 EXTRACTED = [
     "attachcmd.py",
     "backend.py",
+    "broker.py",  # never lived in launcher.py; listed because it reports through the shared console
     "capmatrix.py",
     "catalogseed.py",
     "console.py",

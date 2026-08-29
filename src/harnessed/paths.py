@@ -82,6 +82,13 @@ def pod_host_uid() -> int | None:
 # Default port the hatago hub listens on (design D-04).
 HATAGO_PORT = 3535
 
+# The address at which a pod reaches a `varlock proxy` broker bound to the HOST's 127.0.0.1.
+# Not routable by itself: it works only because the pod is created with pasta's
+# `--map-host-loopback,169.254.1.1` (mounts._mcp_remote_pasta_net_args) AND the egress firewall
+# ACCEPTs it (catalog/base/egress-firewall.sh). Three places must agree on this literal, which is
+# why it lives here rather than in any one of them. Epic #388 Topology B; #436, #437.
+BROKER_HOST_DOOR = "169.254.1.1"
+
 
 def hatago_port() -> int:
     """The hatago hub port — honors the `HATAGO_PORT` env override, default `HATAGO_PORT`."""
