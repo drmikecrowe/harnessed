@@ -627,7 +627,9 @@ def _oauth_callback_ports(servers: Sequence) -> list[int]:
     return ports
 
 
-def _mcp_remote_pasta_net_args(publish_args: list[str], net: str) -> list[str]:
+def _mcp_remote_pasta_net_args(
+    publish_args: list[str], net: str, *, broker: bool = False
+) -> list[str]:
     """The pasta option WITHOUT WHICH the callback publish does nothing at all.
 
     mcp-remote's callback server binds `127.0.0.1` unconditionally
@@ -649,22 +651,46 @@ def _mcp_remote_pasta_net_args(publish_args: list[str], net: str) -> list[str]:
 
     An explicit HARNESSED_NET wins: the operator asked for a specific network and silently rewriting
     it would be worse than a callback that needs one manual step. Say so rather than fight them.
+
+    `broker=True` adds the SECOND pasta option this seam owns: `--map-host-loopback,169.254.1.1`,
+    the pod's private door to a `varlock proxy` bound to the host's loopback (issue #437, epic #388
+    Topology B; the firewall side landed in #436). The two options compose into ONE `pasta:` value
+    because `podman pod create` accepts a single `--network` — emitting them as two would be a hard
+    launch failure, and emitting only one silently disables whichever feature lost. The composed
+    form `pasta:--map-host-loopback,169.254.1.1,--host-lo-to-ns-lo` is what the #388 Phase 0 spike
+    verified with both features live, which is why the broker option is written first.
     """
-    if not publish_args:
-        return []
     if net:
-        _err.print(
-            f"[yellow]note:[/yellow] HARNESSED_NET={net} is set, so the mcp-remote OAuth callback "
-            "port is published without pasta's [bold]--host-lo-to-ns-lo[/bold]. The callback server "
-            "listens on the pod's 127.0.0.1, which that network may not deliver to — if the browser "
-            "redirect hangs, authorize once on the host instead."
-        )
+        # Both notes can fire: a stack can want the callback AND the broker, and an operator who
+        # loses both to one HARNESSED_NET deserves to be told about both.
+        if publish_args:
+            _err.print(
+                f"[yellow]note:[/yellow] HARNESSED_NET={net} is set, so the mcp-remote OAuth callback "
+                "port is published without pasta's [bold]--host-lo-to-ns-lo[/bold]. The callback server "
+                "listens on the pod's 127.0.0.1, which that network may not deliver to — if the browser "
+                "redirect hangs, authorize once on the host instead."
+            )
+        if broker:
+            _err.print(
+                f"[yellow]note:[/yellow] HARNESSED_NET={net} is set, so the pod gets no pasta route to "
+                f"[bold]169.254.1.1[/bold]. The secrets broker still runs on the host's loopback, but "
+                f"this pod cannot reach it unless {net} routes there — proxied requests will time out. "
+                "Launch with --no-secrets, or unset HARNESSED_NET, to avoid that."
+            )
         return ["--network", net]
-    return ["--network", "pasta:--host-lo-to-ns-lo"]
+    opts = []
+    if broker:
+        opts.append(f"--map-host-loopback,{paths.BROKER_HOST_DOOR}")
+    if publish_args:
+        opts.append("--host-lo-to-ns-lo")
+    if not opts:
+        return []
+    return ["--network", "pasta:" + ",".join(opts)]
 
 
 def _mcp_remote_pod_args(
-    servers: Sequence, net: str, port_free: "Callable[[int], bool] | None" = None
+    servers: Sequence, net: str, port_free: "Callable[[int], bool] | None" = None,
+    *, broker: bool = False,
 ) -> list[str]:
     """Everything `pod create` needs for mcp-remote's OAuth callback, as ONE list.
 
@@ -674,12 +700,13 @@ def _mcp_remote_pod_args(
     them here means the launcher cannot wire one and forget the other, and means the coupling is
     assertable without driving a real `pod create`.
 
-    Also owns the plain `--network` passthrough, since `--network` cannot be passed twice.
+    Also owns the plain `--network` passthrough, since `--network` cannot be passed twice — and,
+    for the same reason, the secrets broker's `--map-host-loopback` door (`broker=True`, #437).
+    Three features, one `--network`: composing them anywhere else would mean two of them, which
+    `pod create` rejects outright.
     """
     publish = _mcp_remote_callback_publish_args(servers, port_free=port_free)
-    if not publish:
-        return ["--network", net] if net else []
-    return publish + _mcp_remote_pasta_net_args(publish, net)
+    return publish + _mcp_remote_pasta_net_args(publish, net, broker=broker)
 
 
 def _mcp_auth_store_dir(inst: str, isolated_auth: bool, home: Path | None = None) -> Path:
