@@ -35,6 +35,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import paths
+from .console import _err
 
 # The broker binds a real port and needs a moment to be listening before `status` reports it. Long
 # enough for a cold node start on a loaded machine, short enough that a broker which will never
@@ -137,7 +138,11 @@ def _ephemeral_candidates() -> Iterator[int]:
     while True:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("127.0.0.1", 0))
-            yield s.getsockname()[1]
+            port = s.getsockname()[1]
+        # Yield OUTSIDE the `with`. A generator suspends at its yield, so yielding inside would
+        # hand out a port this very socket still holds — `_port_free` then cannot bind it, every
+        # candidate reads as taken, and `pick_port()` fails on its own default path. It did.
+        yield port
 
 
 def pick_port(
@@ -300,22 +305,56 @@ def start(
     )
 
 
-def stop(inst: str, *, run: Callable[[list[str]], int] = _run) -> None:
+def _stop_session(
+    record: Broker, run: Callable[[list[str]], int], status: Callable[[], list[dict]]
+) -> bool:
+    """Stop one session. True when it is gone afterwards and the record may be dropped.
+
+    A non-zero `proxy stop` is ambiguous: the broker may be wedged and still holding secrets, or
+    the session may simply have died already. The two need opposite handling — dropping the record
+    of a LIVE broker leaves it orphaned with nothing naming it, while keeping the record of a dead
+    one makes `harnessed list` report a phantom forever. So on failure we ask `status` which case
+    it is, rather than guessing.
+    """
+    if run(["varlock", "proxy", "stop", "--session", record.session]) == 0:
+        return True
+    return _session_on_port(status(), record.port) is None
+
+
+def stop(
+    inst: str,
+    *,
+    run: Callable[[list[str]], int] = _run,
+    status: Callable[[], list[dict]] = _status,
+) -> None:
     """Stop `inst`'s broker and forget it. A no-op when there is nothing recorded.
 
     Never `--all`: that would stop brokers belonging to other instances and to the user's own
     terminals. Idempotent, because `_pod_teardown` runs on paths that may already have torn down.
+
+    The record is kept when the stop failed AND the session is still running — see `_stop_session`.
     """
     record = read(inst)
     if record is None:
+        # Still `forget`: `read` returns None for a CORRUPT record too, and that file would
+        # otherwise be permanent.
         forget(inst)
         return
-    run(["varlock", "proxy", "stop", "--session", record.session])
-    forget(inst)
+    if _stop_session(record, run, status):
+        forget(inst)
+        return
+    _err.print(
+        f"[yellow]warning:[/yellow] the secrets broker for {inst} (session {record.session}) did "
+        f"not stop. Its record is kept so `harnessed list` still shows it; stop it by hand with "
+        f"`varlock proxy stop --session {record.session}`."
+    )
 
 
 def reconcile(
-    pod_exists: Callable[[str], bool], *, run: Callable[[list[str]], int] = _run
+    pod_exists: Callable[[str], bool],
+    *,
+    run: Callable[[list[str]], int] = _run,
+    status: Callable[[], list[dict]] = _status,
 ) -> list[str]:
     """Stop every recorded broker whose pod is gone. Returns the instances reaped.
 
@@ -335,7 +374,10 @@ def reconcile(
             continue
         if pod_exists(record.pod):
             continue
-        run(["varlock", "proxy", "stop", "--session", record.session])
+        if not _stop_session(record, run, status):
+            # Same rule as `stop`: a broker that would not die keeps its record, so the next
+            # sweep tries again and `harnessed list` keeps showing it. Not counted as reaped.
+            continue
         forget(inst)
         reaped.append(inst)
     return reaped

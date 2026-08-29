@@ -38,6 +38,11 @@ def _isolate(monkeypatch, tmp_path):
     """
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.delenv("NO_SECRETS", raising=False)
+    # `proxy_schema_dirs` returns [] when varlock is not on PATH, so without this stub every test
+    # below would silently measure the HOST's PATH instead of the schema content it means to test —
+    # and the no-broker cases would pass for the wrong reason on a machine without varlock.
+    # Absent-varlock behaviour gets its own explicit test rather than riding on the environment.
+    monkeypatch.setattr(launchenv.shutil, "which", lambda _name: "/usr/bin/varlock")
     launchenv._varlock_cache_clear()
     yield
     launchenv._varlock_cache_clear()
@@ -106,6 +111,19 @@ class TestNoOptInMeansNoBroker:
         monkeypatch.setattr(broker, "_run", lambda argv: spawned.append(argv) or 0)
         launcher._broker_start_for(INST, POD, _project(tmp_path, PLAIN_SCHEMA))
         assert spawned == []
+
+
+class TestVarlockMustBeOnPath:
+    """The gate's other input, now that the fixture stubs it: no varlock, no broker."""
+
+    def test_no_varlock_on_path_starts_no_broker(
+        self, monkeypatch, tmp_path, no_global_schema
+    ):
+        monkeypatch.setattr(launchenv.shutil, "which", lambda _name: None)
+        spy = _Spy()
+        monkeypatch.setattr(broker, "start", spy.start)
+        assert launcher._broker_start_for(INST, POD, _project(tmp_path, PROXY_SCHEMA)) is None
+        assert spy.starts == []
 
 
 class TestOptInStartsABroker:
@@ -305,7 +323,8 @@ def _option_flags(command) -> list[str]:
 class TestListReportsBrokerAttachment:
     """Group D — `harnessed list` shows whether a running instance has a broker attached."""
 
-    def _record(self, inst=INST, pod=POD, session="i0oku", port=39443):
+    @staticmethod
+    def _record(inst=INST, pod=POD, session="i0oku", port=39443):
         broker._write(broker.Broker(
             instance=inst, pod=pod, session=session, port=port, cert_dir="/certs",
         ))

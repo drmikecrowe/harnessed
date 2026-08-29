@@ -283,6 +283,31 @@ class TestStop:
         broker.stop(INST, run=runner.run)
         assert not any("--all" in argv for argv in runner.ran)
 
+    def test_a_stop_that_fails_while_the_session_lives_keeps_the_record(self):
+        """Dropping the record of a broker that is still running orphans it: nothing names it, so
+        `reconcile` cannot find it and `harnessed list` cannot show it. Keeping the record is what
+        makes the failure recoverable."""
+        runner = _Runner()
+        _start(runner)
+        broker.stop(INST, run=lambda _argv: 1, status=lambda: [_status_entry()])
+        assert broker.read(INST) is not None
+
+    def test_a_stop_that_fails_because_the_session_is_already_gone_forgets_it(self):
+        """The opposite case, and it needs the opposite handling: a non-zero exit because varlock
+        no longer knows the session must not leave a phantom in `harnessed list` forever."""
+        runner = _Runner()
+        _start(runner)
+        broker.stop(INST, run=lambda _argv: 1, status=lambda: [])
+        assert broker.read(INST) is None
+
+    def test_a_kept_record_says_how_to_stop_it_by_hand(self, capsys):
+        runner = _Runner()
+        _start(runner)
+        broker.stop(INST, run=lambda _argv: 1, status=lambda: [_status_entry()])
+        err = capsys.readouterr().err
+        assert "i0oku" in err
+        assert SENTINEL not in err
+
     def test_stopping_an_unknown_instance_is_a_no_op(self):
         # B4. `_pod_teardown` runs on paths that may already have torn down.
         runner = _Runner()
@@ -325,6 +350,15 @@ class TestReconciliationReapsOrphans:
         asked: list[str] = []
         broker.reconcile(lambda pod: asked.append(pod) or True, run=runner.run)
         assert asked == [POD]
+
+    def test_a_broker_that_will_not_die_keeps_its_record_and_is_not_reported_reaped(self):
+        runner = _Runner()
+        _start(runner)
+        reaped = broker.reconcile(
+            lambda _pod: False, run=lambda _argv: 1, status=lambda: [_status_entry()],
+        )
+        assert reaped == []
+        assert broker.read(INST) is not None
 
     def test_a_live_broker_does_not_stop_the_sweep_reaching_a_later_orphan(self):
         """Every other test here has ONE record, which makes `break` and `continue` identical.
@@ -440,6 +474,27 @@ class TestPortSelection:
             port_free=lambda p: p not in taken, candidates=iter([39443, 39444]),
         )
         assert chosen == 39444
+
+    def test_the_real_default_path_returns_a_usable_port(self):
+        """NO injected seams. Every other test here supplies both `port_free` and `candidates`,
+        which is exactly how the production default went untested: the generator yielded a port
+        while its own probe socket still held it, so `_port_free` could never bind it and every
+        launch would have died with "no free loopback port". Found in review, not by this suite.
+        """
+        port = broker.pick_port()
+        assert isinstance(port, int)
+        assert 1024 < port < 65536
+
+    def test_the_default_candidate_is_actually_free_when_offered(self):
+        # The property the bug broke: a candidate must be bindable by the CALLER, not held open
+        # by the generator that produced it.
+        #
+        # The generator is kept in a local ON PURPOSE. Dropping the reference lets CPython finalize
+        # it immediately, which closes the socket and makes this pass for a reason that has nothing
+        # to do with the fix — `pick_port` holds its generator, so that is the state to test.
+        source = broker._ephemeral_candidates()
+        port = next(source)
+        assert broker._port_free(port)
 
     def test_no_free_port_raises_rather_than_returning_a_taken_one(self):
         with pytest.raises(broker.BrokerError):
