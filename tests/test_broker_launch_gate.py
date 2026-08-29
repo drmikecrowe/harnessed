@@ -253,6 +253,20 @@ class TestTeardownTakesTheBrokerWithIt:
         launcher._pod_teardown("podman", INST, POD)
         assert stopped == [INST]
 
+    def test_an_interrupt_stopping_the_broker_never_blocks_the_pod_teardown(self, monkeypatch):
+        """KeyboardInterrupt is not an Exception. The pod is the containment boundary — losing
+        `pod rm` to a Ctrl-C during `varlock proxy stop` leaves a container running that the user
+        asked to tear down, which is strictly worse than leaking one host process."""
+
+        def interrupted(inst, **kw):
+            raise KeyboardInterrupt
+
+        torn: list[tuple] = []
+        monkeypatch.setattr(broker, "stop", interrupted)
+        monkeypatch.setattr(launcher, "_bounded", lambda *a, **k: torn.append(a) or _ok())
+        launcher._pod_teardown("podman", INST, POD)
+        assert torn, "the pod teardown did not run"
+
     def test_a_broker_stop_failure_never_blocks_the_pod_teardown(self, monkeypatch):
         """The pod is the containment boundary. If stopping the broker raises, the pod must still
         come down — leaving it running would be strictly worse than leaking one host process."""

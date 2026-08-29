@@ -213,6 +213,59 @@ class TestAFailedStartLeavesNothingBehind:
         assert runner.killed == [4242]
 
 
+class TestCtrlCDuringStartupLeavesNoOrphan:
+    """The worst orphan available here, and the one the timeout path already guards against.
+
+    `spawn` uses `start_new_session=True`, so the broker does NOT get the terminal's SIGINT. If
+    Ctrl-C lands while `start` is polling for the session — a window of up to `_START_TIMEOUT` —
+    the process keeps running with live credentials AND no state file names it, so `reconcile` is
+    structurally blind to it. It survives until the machine reboots.
+    """
+
+    def test_an_interrupt_while_polling_kills_the_spawned_broker(self):
+        runner = _Runner(statuses=[[]])
+
+        def interrupt(_seconds):
+            raise KeyboardInterrupt
+
+        with pytest.raises(KeyboardInterrupt):
+            broker.start(
+                INST, POD, "/proj",
+                spawn=runner.spawn, status=runner.status, kill=runner.kill,
+                port_free=lambda _p: True, candidates=iter([PORT]), sleep=interrupt,
+            )
+        assert runner.killed == [4242]
+
+    def test_and_writes_no_state_file(self):
+        runner = _Runner(statuses=[[]])
+
+        def interrupt(_seconds):
+            raise KeyboardInterrupt
+
+        with pytest.raises(KeyboardInterrupt):
+            broker.start(
+                INST, POD, "/proj",
+                spawn=runner.spawn, status=runner.status, kill=runner.kill,
+                port_free=lambda _p: True, candidates=iter([PORT]), sleep=interrupt,
+            )
+        assert broker.read(INST) is None
+
+    def test_a_failure_inside_status_also_kills_the_broker(self):
+        """Not only Ctrl-C: any escape from the polling loop must take the process with it."""
+        runner = _Runner()
+
+        def boom():
+            raise OSError("varlock vanished")
+
+        with pytest.raises(OSError):
+            broker.start(
+                INST, POD, "/proj",
+                spawn=runner.spawn, status=boom, kill=runner.kill,
+                port_free=lambda _p: True, candidates=iter([PORT]), sleep=lambda _s: None,
+            )
+        assert runner.killed == [4242]
+
+
 class TestStop:
     """B3, B4."""
 

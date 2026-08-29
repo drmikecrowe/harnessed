@@ -1317,9 +1317,14 @@ def _broker_stop_for(instance: str) -> None:
     """
     try:
         broker.stop(instance)
-    except Exception as exc:      # noqa: BLE001 - a teardown path may never raise; see callers
+    except BaseException as exc:  # noqa: BLE001 - a teardown path may never raise; see below
+        # BaseException, not Exception, for the same reason `apply_isolation`'s EGRESS handler uses
+        # it: KeyboardInterrupt is not an Exception, and letting one through here skips the
+        # `pod rm` below. The pod is the containment boundary — a container left running after the
+        # user asked to tear it down is strictly worse than one leaked host process, which
+        # `broker.reconcile` will reap anyway.
         _err.print(
-            f"[yellow]warning:[/yellow] could not stop the secrets broker for {instance}: {exc}"
+            f"[yellow]warning:[/yellow] could not stop the secrets broker for {instance}: {exc!r}"
         )
 
 

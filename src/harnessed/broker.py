@@ -269,19 +269,29 @@ def start(
     argv += ["--port", str(port), "--cert-dir", str(certs)]
     pid = spawn(argv)
 
+    # BaseException, not Exception: `spawn` uses start_new_session=True, so the broker does NOT
+    # receive the terminal's SIGINT. A Ctrl-C anywhere in this loop — a window of up to `timeout` —
+    # would otherwise leave a live broker holding real credentials with NO state file naming it,
+    # which makes it invisible to `reconcile` (it reads filenames) and immortal short of a reboot.
+    # That is the worst orphan this module can produce, and it is strictly worse than the timeout
+    # case the loop already guards.
     waited = 0.0
-    while True:
-        session = _session_on_port(status(), port)
-        if session:
-            record = Broker(
-                instance=inst, pod=pod, session=session, port=port, cert_dir=str(certs),
-            )
-            _write(record)
-            return record
-        if waited >= timeout:
-            break
-        sleep(_POLL_INTERVAL)
-        waited += _POLL_INTERVAL
+    try:
+        while True:
+            session = _session_on_port(status(), port)
+            if session:
+                record = Broker(
+                    instance=inst, pod=pod, session=session, port=port, cert_dir=str(certs),
+                )
+                _write(record)
+                return record
+            if waited >= timeout:
+                break
+            sleep(_POLL_INTERVAL)
+            waited += _POLL_INTERVAL
+    except BaseException:
+        kill(pid)
+        raise
 
     kill(pid)
     raise BrokerError(
