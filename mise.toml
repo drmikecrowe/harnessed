@@ -91,6 +91,13 @@ git switch main
 [vars]
 openwiki_env = "varlock run -p $HOME/.config/harnessed --filter 'OPENWIKI_*,OPENAI_COMPATIBLE_*,LANGCHAIN_TRACING_V2' --"
 
+# Not interactive, no varlock, no model: it recomputes each Claim's evidence digest against the tree
+# and exits non-zero when cited code actually changed. That makes "which pages are lying" a check
+# rather than a regeneration, so it is the cheap thing to run before deciding to run openwiki-update.
+[tasks.openwiki-drift]
+description = "Report which openwiki Claims cite code that has changed (exit 1 when any have)"
+run = "tools/openwiki-drift.py"
+
 # THE ENTRY POINT, including for the very first run: upstream's own CI example notes that
 # `--update` "also handles the first run for code docs when env vars are set", and unlike `--init`
 # it does not force the setup wizard. --print makes it one-shot and exits.
