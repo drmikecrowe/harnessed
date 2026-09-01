@@ -26,7 +26,8 @@ You can read my [announcement here](https://mikesshinyobjects.tech/posts/2026/20
 ---
 
 `harnessed` is **one executable** that launches **composable harness stacks** — each a
-podman pod running an AI coding harness (`claude` or `omp` today) plus an MCP hub (hatago) plus optional
+podman pod running an AI coding harness (`claude`, `omp`, `opencode`, `antigravity`, or `codex`) plus
+an MCP hub (hatago) plus optional
 shared services (hindsight, openbrain, …). You compose a named stack (one harness + chosen recipes)
 and launch an authenticated instance that exposes **exactly** the skills/commands/MCP/
 services it declares — nothing from the host config — reproducibly, with **podman as the only host
@@ -168,7 +169,7 @@ harnessed test time claude
 | Command | What it does |
 | --- | --- |
 | `harnessed container-run <harness> [path] [--stack <name> \| --recipe <name>…] [--fresh]` | Isolated stack on a harness: assembled profile + pod (harness + hatago). `--stack` and `--recipe` (repeatable) are mutually exclusive; with neither, runs the `default` baseline |
-| `harnessed host-run claude [path] [--stack <name> \| --recipe <name>…]` | Same stack, host-native — no podman, no container; config isolated per stack, credentials from host |
+| `harnessed host-run <claude \| omp> [path] [--stack <name> \| --recipe <name>…]` | Same stack, host-native — no podman, no container; config isolated per stack, credentials from host. Only these two harnesses: the backend needs an env var whose value *is* a per-stack config dir (`CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR`) — see [BACKENDS.md](BACKENDS.md) |
 | `harnessed build [<stack> [<harness>]]` | Build the base/harness/hatago images (+ reconcile declared/built pairs), or assemble + build a stack — for one harness, or for every harness in its `harnesses:` list |
 | `harnessed test <stack> <harness>` | Capability test: launch `--fresh` headless + assert declared capabilities (markdown report) |
 | `harnessed svc up \| down \| recreate \| sync \| migrate <service>` | Manage service sidecars. `recreate` tears down and rebuilds — mounts and env are fixed at create time, so `podman restart` cannot pick up a change to how the container is built |
@@ -199,35 +200,42 @@ environment — there is no `harnessed auth` command (see [Supply chain & securi
 
 ## Recipe roadmap
 
-> Catalog only — which third-party recipes are shipped or wanted. For where the *product* is
+> Catalog only — which **third-party** recipes are shipped or wanted. For where the *product* is
 > going, see **[ROADMAP.md](ROADMAP.md)**.
 
-The shipped recipes today are mostly **tracer/development** recipes — minimal slices used to exercise
-the assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-recipe`). The
-**non-development** recipes — real third-party tooling — are the ones worth tracking:
+**The rule, so this list cannot rot silently:** shipped means a `recipe.yaml` under
+`catalog/recipes/`; planned means it is still in `catalog/recipes.backlog/`. `harnessed list` is
+authoritative for what your install actually carries. First-party recipes (`default`,
+`mikes-universal-setup`, `gh-issue-tracker`) and the tracer/development slices used to exercise the
+assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-recipe`) are out of this
+list's scope by design.
 
 **Shipped**
 
-- [x] **[gstack](https://github.com/garrytan/gstack)** — Garry Tan's skill suite (browser automation,
-  design, PDF, …), installed via its upstream `./setup` (`catalog/recipes/gstack/`). *The first real
-  non-development recipe.*
+- [x] **[gstack](https://github.com/garrytan/gstack)** — Garry Tan's skill suite (browser automation, design, PDF, …), installed via its upstream `./setup` · *skills recipe*
+- [x] **[serena](https://github.com/oraios/serena)** — semantic code intelligence MCP (LSP-backed retrieval/editing, 40+ languages) · *MCP recipe*
+- [x] **[codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)** — codebase knowledge graph (158 languages, C binary) · *MCP recipe*
+- [x] **[context-mode](https://github.com/mksglu/context-mode)** — context-window optimization / tool-output sandbox · *MCP + hooks recipe*
+- [x] **[tokensave](https://github.com/aovestdipaperino/tokensave)** — pre-indexed semantic code knowledge graph (80+ MCP tools, Rust) · *MCP recipe*
+- [x] **[agentmemory](https://github.com/rohitg00/agentmemory)** — persistent memory server (53 MCP tools, HTTP :3111) · *service + recipe*
+- [x] **[openwiki](https://github.com/langchain-ai/openwiki)** — agent-written repository wiki with grounded, drift-checkable Claims · *MCP + skill recipe*
+- [x] **[repowise](https://github.com/repowise-dev/repowise)** — repository analysis / retrieval · *MCP recipe*
+- [x] **[rtk](https://github.com/rtk-ai/rtk)** — Rust Token Killer: CLI proxy compressing dev-command output · *CLI + hooks recipe*
+- [x] **[superpowers](https://github.com/obra/superpowers)** — software-development methodology skill suite (TDD, code review, subagent-driven dev) · *skills recipe*
+- [x] **[gsd-core](https://github.com/open-gsd/gsd-core)** — GSD methodology skills · *skills recipe*
+- [x] **[solidspec](https://github.com/jyjeanne/solidspec)** — multi-methodology spec-driven development CLI · *skills recipe*
+- [x] **[caveman](https://github.com/JuliusBrussee/caveman)** — concise-output / token-compression skill · *skills recipe*
+- [x] **[ccstatusline](https://www.npmjs.com/package/ccstatusline)** — status-line renderer the harness invokes for `statusLine` · *CLI recipe*
+- [x] **[pulumi](https://github.com/pulumi/pulumi)** — the Pulumi CLI plus its egress allowlist, as pure YAML · *tools + egress recipe*
+- [x] **OB1 / Open Brain** — shared persistent memory + vector search across AI tools · *service + recipe*, shipped as the `openbrain-example` **template**: copy it to your overlay catalog and set `OB1_URL`, since the recipe carries no upstream endpoint of its own
 
-**Planned** — packages classified in [docs/todos/2026-06-27-recipe-stress-test.md](docs/todos/2026-06-27-recipe-stress-test.md)
+**Planned** — still under `catalog/recipes.backlog/`; packages classified in
+[docs/research/recipe-stress-test.md](docs/research/recipe-stress-test.md)
 (repos, install commands, data models, and architecture gaps each one surfaces):
 
-- [ ] **[serena](https://github.com/oraios/serena)** — semantic code intelligence MCP (LSP-backed retrieval/editing, 40+ languages) · *MCP recipe*
-- [ ] **[agentmemory](https://github.com/rohitg00/agentmemory)** — persistent memory server (53 MCP tools, 12 hooks, HTTP :3111) · *service + recipe*
 - [ ] **[headroom](https://github.com/headroomlabs-ai/headroom)** — context/tool-output compression before it reaches the LLM · *MCP recipe*
 - [ ] **[gbrain](https://github.com/garrytan/gbrain)** — knowledge brain (synthesis, graph traversal, gap analysis) · *service + recipe*
-- [ ] **[solidspec](https://github.com/jyjeanne/solidspec)** — multi-methodology spec-driven development CLI · *skills recipe*
-- [ ] **[codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)** — codebase knowledge graph (158 languages, C binary) · *MCP recipe*
-- [ ] **[context-mode](https://github.com/mksglu/context-mode)** — context-window optimization / tool-output sandbox (6 hooks) · *MCP + hooks recipe*
-- [ ] **[tokensave](https://github.com/aovestdipaperino/tokensave)** — pre-indexed semantic code knowledge graph (80+ MCP tools, Rust) · *MCP recipe*
-- [ ] **[caveman](https://github.com/JuliusBrussee/caveman)** — concise-output / token-compression skill · *skills recipe*
 - [ ] **[hindsight](https://hindsight.vectorize.io)** — memory/recall sidecar (multi-container Postgres stack) · *existing service*
-- [ ] **[Superpowers](https://github.com/obra/Superpowers)** — composable software-development methodology skill suite (TDD, code review, subagent-driven dev) · *skills recipe*
-- [ ] **[rtk](https://github.com/rtk-ai/rtk)** — Rust Token Killer: CLI proxy that compresses dev-command output to cut LLM tokens 60–90% · *CLI + hooks recipe*
-- [x] **[OB1 / Open Brain](https://github.com/NateBJones-Projects/OB1)** — personal knowledge infrastructure: shared persistent memory + vector search across AI tools (MCP + Supabase/Postgres backend) · *service + recipe*
 
 ## Supply chain & security
 
