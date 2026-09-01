@@ -1,0 +1,4 @@
+# Files
+
+- [Operations: the command surface and lifecycle verbs](cli.md) - The full harnessed verb surface across both entrypoints (harnessed and harnessed-tools), each verb mapped to its owning module and the lifecycle stage it manages — build and reconciliation, instance teardown, sidecars, capability tests, pin updates, the garbage collectors, the nightly rescan — plus the per-project launcher scripts a launch leaves behind.
+- [Supply chain: scans, pins, and tool locks](supply-chain.md) - The two image scan passes (the credentialed in-image advisory scan with tokens resolved host-side from the user-global schema, and the gating online archive scan decided in Python at CVSS 7.0), harnessed-scan's coverage accounting, harnessed update's pin report with holds and the release-age gate, and toollock's per-recipe mise.lock merge built on four measured mise facts.

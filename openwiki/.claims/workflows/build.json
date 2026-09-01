@@ -1,0 +1,710 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:5d775e6b1a43202da0e3d5eba3fdedf8415419d49b61fdc09e88de551f231013",
+  "claims": [
+    {
+      "id": "claim_252d58a4136d4bab8deb980788528260",
+      "statement": "The build has two entrypoints driving the same machinery: `harnessed build <stack> <harness>` (launcher.build → launcher._build_stack, the full path with in-process assembly plus every podman-touching stage) and `harnessed-tools assemble` (cli._run_assemble), a standalone emit-only entrypoint that reads the catalog and writes a profile and nothing else.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/cli.py",
+          "version": "repo-file-v1:sha256:f0afdcb2a23ca8631c62fc72e1b3ae1ba78401737c7cca576f137da750d5c330"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_05b7e407f74b4b1591cf5239fa87787a",
+      "statement": "The emit-only half of the build (schema.py, assemble.py, emit.py, synclinks.py) reads and writes files but never invokes podman, docker, or a daemon socket; everything podman-touching lives in launcher.py, with volumes.py the module it drives the volume half through. This is why `harnessed-tools` is a separate console script that produces a committed profile on a machine with no container runtime.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py",
+          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        },
+        {
+          "resource": "repo://src/harnessed/synclinks.py",
+          "version": "repo-file-v1:sha256:afd997d037d16a226c6096259d2ddd410482b4ec66c3ae6d757f364742b3b8cf"
+        }
+      ]
+    },
+    {
+      "id": "claim_53c525fbe57644ad88937f39ceb0e18d",
+      "statement": "The build stages run in a fixed order with named owners: schema.py load+validate → synclinks.py fan (fail-fast collision) → emit.py profile tree + .mcp.json + hatago.config.json + derived Dockerfile → assemble.py orchestration + compute_recipe_hash → launcher._build_stack: base image, agent image, derived image, volume population, credentialed re-scan, baked-settings merge, service image builds.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py",
+          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        },
+        {
+          "resource": "repo://src/harnessed/synclinks.py",
+          "version": "repo-file-v1:sha256:afd997d037d16a226c6096259d2ddd410482b4ec66c3ae6d757f364742b3b8cf"
+        }
+      ]
+    },
+    {
+      "id": "claim_3e3b864d2ce6494a88b926f4ffb766e3",
+      "statement": "Before any file is emitted, assemble() runs the recipe lints and assemble.validate_agent_image, which raise SchemaError subclasses that launcher._build_stack and cli._run_assemble turn into a one-line error and exit 1 — so a bad catalog fails loudly before any artifact is written.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py",
+          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_1b5501eb107d450abd0557030ab6e5ef",
+      "statement": "assemble.validate_agent_image lints the agent image's Dockerfile the way validate_pin lints a recipe's, resolves with root=None deliberately (the agent image is built across every root), anchors the manifest's home-relative dockerfile path to paths.harnessed_home() rather than the CWD, and fails closed on a Dockerfile it cannot read.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py",
+          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+        }
+      ]
+    },
+    {
+      "id": "claim_febe3e7a67424d9f97e6511b9927d622",
+      "statement": "assemble._merge_servers unions every recipe's mcp.servers and raises CollisionError (naming both) if two recipes declare the same server name; _resolve_service_servers rewrites service:-referenced servers to http://host.containers.internal:<port>/mcp by reading the service's services/<name>/service.yaml, keeping emit dumb about services.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py",
+          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ce9e3443f8d4020bff6fa66011df71b",
+      "statement": "The profile lands at profiles/<stack>/<harness>/ — the per-harness component prevents building the same stack for two harnesses from overwriting one profile with the other — and emit.reset_profile rmtree's and recreates the directory so the committed tree is a pure function of the recipes and stack.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_d4165cd856c54fcdbf2b96c0737bd6f9",
+      "statement": "emit.write_mcp_json emits .mcp.json with exactly one hub entry named `hatago` pointing at paths.hatago_endpoint() (http://localhost:3535/mcp, overridable via HATAGO_PORT) — or, under hub_transport: stdio, a command/args entry so the harness spawns the hub itself.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        }
+      ]
+    },
+    {
+      "id": "claim_f2216770a14e44b594e3fb91817a8201",
+      "statement": "A `direct: true` server becomes an additional .mcp.json entry and is excluded from hatago.config.json by the same predicate, because a server reachable by two routes has its tools appear twice with no way to tell which copy answered; when every server is direct, hub_is_needed is false and no hub is named at all, and the reserved key `hatago` is refused as a direct server name so stack validity cannot depend on a second recipe joining later.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        }
+      ]
+    },
+    {
+      "id": "claim_f09c974e532e4281afc7025f083404e5",
+      "statement": "emit.write_settings_json writes the assemble-time settings.json floor (permissions.defaultMode from the stack's permissions:, default acceptEdits; the mcp__hatago grant when the stack has servers; each recipe's hooks rendered into Claude's native shape minus hooks.skip_harnesses), which cannot yet include what an installer bakes because it runs before any image exists; merge_settings re-applies it post-build.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        }
+      ]
+    },
+    {
+      "id": "claim_a84dedd00bae470c9a63f14c7c592982",
+      "statement": "emit.write_hatago_config writes hatago.config.json ({version: 1, logLevel: info, mcpServers: …}) with each non-direct server as a hatago child (command/args/env) or URL proxy (url/type); _HATAGO_CURATION_KEYS (tools, tags, description, instructions) pass through verbatim because hatago owns that schema.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        }
+      ]
+    },
+    {
+      "id": "claim_ca228b3908654a669da411c9c8906fcd",
+      "statement": "synclinks.LinkSyncer fans each recipe's standalone skills:/commands:/rules: into <profile>/.claude/{skills,commands,rules}/; names are registered as recipes are added so a collision aborts before any file is copied and the error names both recipes and both source paths, and only_harnesses is an allow-list filtered before the existence and collision checks, so two recipes may ship the same name for different harnesses. Files are copied, not symlinked.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/synclinks.py",
+          "version": "repo-file-v1:sha256:afd997d037d16a226c6096259d2ddd410482b4ec66c3ae6d757f364742b3b8cf"
+        }
+      ]
+    },
+    {
+      "id": "claim_8b25465779a24d7e8a184f60f2df9c6d",
+      "statement": "staleness.write_stamp writes .build-stamp last, once the profile is complete. The stamp (is the profile stale) is a different function from the recipe-hash label (is the image stale); a launch that finds the profile missing or mismatched raises StaleProfileError and container_run offers an inline rebuild rather than silently running an orphaned image.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        },
+        {
+          "resource": "repo://src/harnessed/staleness.py",
+          "version": "repo-file-v1:sha256:a2577a992585f99775ea8a90a9602483906c1a69ac5960122ed201c54b887ff3"
+        }
+      ]
+    },
+    {
+      "id": "claim_3e4d3d4f922e4970b605e4e81281c61a",
+      "statement": "emit.write_derived_dockerfile emits an ARG HARNESS=<harness> / FROM harnessed-${HARNESS}:latest / ARG HARNESS header, then per recipe the recipe's env: as real ENV lines (before that recipe's body so a RUN sees them) and the recipe Dockerfile body with FROM and ARG HARNESS stripped; ARG HARNESS is re-declared after FROM because ARG is scoped to the build stage, letting harness-independent recipe bodies branch on ${HARNESS}.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        }
+      ]
+    },
+    {
+      "id": "claim_4b3c0554881b43a28552d549254a2d7a",
+      "statement": "tools: and install: are deliberately NOT emitted into the derived Dockerfile: they run at container RUNTIME into per-stack volumes gated on a fingerprint, because baking them as image layers made every recipe edit cost a layer rebuild (measured 307s for a one-line change to gsd-core/install.sh vs 4.3s natively); what remains in the image is exactly what a volume cannot carry — recipe env: and system-level Dockerfile bodies.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py",
+          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9a49a7bd2c5c4fbe92b240bd6ba62ea6",
+      "statement": "There is no scan layer in the emitted Dockerfile: it used to be the final RUN but since installs stopped being image layers it scanned an image containing no stack content and still printed green; the real scan is the credentialed post-build pass, because a green-looking result covering almost nothing is worse than no result.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_e4c5051f9c214e1090e3b8eb22be9084",
+      "statement": "launcher._build_base_image builds harnessed-base:latest from catalog/base/Dockerfile.harnessed-base, which is where hatago is baked (@drmikecrowe/hatago-mcp-hub@0.1.2, the maintained fork with per-server tool filtering) along with the core runtimes, extra-tools, the four supply-chain scanners, harnessed-scan, harnessed-start, and the op shim — there is no separate hatago image. It is always rebuilt first, cache-backed, because every other image sits in its lineage.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base",
+          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_8f82c042c4034e99b43e3ef0d06efc9b",
+      "statement": "launcher._build_agent_image builds the per-harness agent image named by catalog/agents/<harness>/agent.yaml's image: field; the manifest's build_args are the single source of pinned versions passed as --build-arg, and the agent Dockerfiles' ARGs carry no defaults and guard with `:?` so an omitted flag fails rather than handing the installer an empty argument. Built at most once per process.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-claude",
+          "version": "repo-file-v1:sha256:0d672be813f19b300a0cc00ddad273cf7a4394818e1af1604f1a327b85088649"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_80f73723616c49b0bf1cb4fa82d5013d",
+      "statement": "launcher._build_derived_image builds harnessed-<harness>-<stack>:latest from the emitted Dockerfile, labels it harnessed=true (how rescan finds it) and harnessed.recipe-hash=<hash>, and never passes a secret — building must always succeed without credentials so recipe verification never depends on a secret resolving. It honors HARNESSED_PODMAN_NO_CACHE; without it an unchanged Dockerfile is a pure layer-cache hit that still relabels the same image.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_a0a5991670f544818cee7b77b535dfca",
+      "statement": "As the code stands, the standalone per-harness agent image IS the derived image's direct FROM parent (every agent manifest's image: is harnessed-<harness>, matching the emitter's FROM harnessed-${HARNESS}:latest), so base → agent → derived ordering inside _build_stack is required — the derived build's FROM has nothing to resolve until the agent image exists — and _build_derived_image passes no --build-arg because the emitter's in-file ARG HARNESS=<harness> default makes the tag resolve. An agent pin bump therefore produces a new parent image and invalidates the cached layers of every derived stack image — the cache cost launcher.py's three \"agent-last\" comments claim was removed. Those comments and the emitter currently DISAGREE (write_derived_dockerfile reads no agent manifest and inlines nothing), so anyone touching the lineage must change the emitter's FROM, the launcher's lineage comments, and the agent Dockerfiles together and re-check the cache property; _build_agent_image must keep running once per process because container-run falls back to the plain agent image (derived if _image_exists(rt, derived) else _agent_image(harness)).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_61892d658c5441efb62a11e276fa4ae2",
+      "statement": "launcher._staged_build_context is a contextmanager yielding a TemporaryDirectory holding a copy of catalog/ plus the resolved extra-tools.txt, and every image build uses it instead of building from paths.harnessed_home() — in a wheel install home is site-packages (staging there writes the installed package, and fails read-only) and in a checkout home is the repo root (the whole repo would ship to the daemon). catalog/ sits at the context root so COPY paths are identical between checkout and wheel and the layer cache, keyed on file content not context path, is unaffected.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/catalogseed.py",
+          "version": "repo-file-v1:sha256:66a63b6fdb5e660f1047068dda497cd9fa65984d98ccff71817c90080f2590db"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_1c25d1587bc44380b8400fd91bbb4c43",
+      "statement": "extra-tools.txt is seeded by catalogseed._ensure_extra_tools from catalog/base/extra-tools.default.txt into the user-owned ~/.config/harnessed/extra-tools.txt when absent, staged into the build context and never back into catalog/; on the host it is normalized (schema.normalize_extra_tools strips a UTF-8 BOM and folds CRLF to LF) and then validated (schema.parse_extra_tools refuses unpinned or non-ASCII entries) before the SAME normalized text is staged, so the guard blesses exactly what the build ships and the error names the user's file.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/catalogseed.py",
+          "version": "repo-file-v1:sha256:66a63b6fdb5e660f1047068dda497cd9fa65984d98ccff71817c90080f2590db"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py",
+          "version": "repo-file-v1:sha256:b5eae73846437cda40aefd632aa0de85cf29e79f1c699cc5c205c2623ba836c2"
+        }
+      ]
+    },
+    {
+      "id": "claim_4141353157f740f7a97cd48d2c223a7c",
+      "statement": "emit.CACHE_MOUNTS assembles three download-only cache mounts with fixed constant ids — ~/.cache/mise (harnessed-mise, locked), ~/.cache/pnpm (harnessed-pnpm-meta, shared), ~/.cache/uv (harnessed-uv, shared) — mounted uid=1000,gid=1000 because the layers run as the harnessed user and a root-owned mount fails under rootless podman; the ids must stay constant for cross-stack sharing, and only download caches are mounted because a cache mount hides its target at commit.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base",
+          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L1062-L1095",
+          "version": "repo-lines-v1:sha256:4b61b50bad8ab6bc381e1f1e951fe2b507323f01f07c6ffd69ee740c5c69ebd6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyODA2MDNhYzViYTkzYTNiNmI5MzkwZTk4ZDQ1ZTljYzNjZDY5ZWIxNTliY2ZlYzczMzJkZTE1MjUyNDBhNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4NGFlZTEzNzFjMjgzNzI2Mzc3OTE4YjNjNzM0ZmE2OGQxYjZhZDljNjVjYTZjMWRjYzg4ZTgzMjliYjUwMjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6f378f090a7841d0be0445bbcf25caaf",
+      "statement": "pnpm's content-addressed store is deliberately absent from the cache mounts and must stay absent: pnpm v11 does not copy out of it — a global install is a symlink into store/v11/links/… — so with the store mounted as a cache the image ships dangling links and `hatago --version` dies with MODULE_NOT_FOUND (verified by building). mise's npm: backend links the same way; uv and mise materialize real files and are unaffected. A reader must not 'fix' this by adding the store.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py#L1072-L1077",
+          "version": "repo-lines-v1:sha256:1d1271b0d49837d2cea4cc5a7dd2e5c2157a0f46bb5ef9fe222f4550f11cbfa1:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM2MzFjM2E2NmRkNjBjYzdmM2QzYmYyNTFkMGE2NzFmNWNkMTA2ODU4NzE2OTFjMmM0MjhjZmZjNzIwNWIyYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmRlYjBkMTc4ZTI2N2VkODc1ODY2ZTEyYmQ0YjYxNzU1ODA5YjNhOTdlNDk3MDc2NTkxMjg4OTA0ZWY2Yzc5YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTc3NTk0NmU0OTNkMWJiY2JlNWQ3N2QxZTE0MDc0MGQwNmE0ZTAyZjJjZWEzY2ZlZjYwMzdmMjZmNzg4NjBlNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmRkYjFkZWNlNDQyYWRiNWFkNmFjNDNiODc0M2Q5YTg0YWEwMmQ3OWZiM2ZlODgyZWM4MWI4ZWNhNmE0N2MxZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_079716dd51e6464d9ed31b2f4c9e393d",
+      "statement": "The base Dockerfile pre-creates every cache-mount target and its parents owned by ${USERNAME} (podman creates missing mount points and parents as root, which once made every later mise install die with Permission denied) and re-chowns the parents after each cache-mounted layer (a cache mount leaves them root-owned in the committed layer); both restores are deliberately not chown -R to avoid rewriting every file of a large toolchain home into new layers.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base",
+          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L1062-L1095",
+          "version": "repo-lines-v1:sha256:4b61b50bad8ab6bc381e1f1e951fe2b507323f01f07c6ffd69ee740c5c69ebd6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyODA2MDNhYzViYTkzYTNiNmI5MzkwZTk4ZDQ1ZTljYzNjZDY5ZWIxNTliY2ZlYzczMzJkZTE1MjUyNDBhNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE4NGFlZTEzNzFjMjgzNzI2Mzc3OTE4YjNjNzM0ZmE2OGQxYjZhZDljNjVjYTZjMWRjYzg4ZTgzMjliYjUwMjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6c196c24ebaa4b498719519dd7e4bd45",
+      "statement": "assemble.compute_recipe_hash is a SHA-256 over the stack's full build closure — the stack.yaml bytes, every file under each recipe directory (sorted), and every referenced service directory, with service names drawn from the same three sources _service_refs uses; each service contribution is length-prefixed (4-byte name, 8-byte content) so a/b+c cannot collide with a+bc and the service name is framed in because paths are service-relative. The hash is stamped as the harnessed.recipe-hash image LABEL by _build_derived_image (not a side-file), so it can never drift from the image it describes.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py",
+          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_08040604a97f4f40987a109d34078887",
+      "statement": "launcher._build_stack calls _ensure_stack_volumes after the derived image and before the scan and the settings merge; the same call is ContainerBackend.provision_tools(spec, FIRST_START), which is what keeps the build path and the launch path from diverging — build populates and then scans, launch populates and runs.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py",
+          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2148d9bf084742caaf3a7356cbe66228",
+      "statement": "Volume population creates two named volumes per (stack, harness) — harnessed-cfg-<harness>-<stack> mounted at /home/harnessed/.claude and harnessed-tools-<harness>-<stack> at ~/.local — plus the shared cross-stack harnessed-dl-cache at ~/.cache; the key is load-bearing because the composed content differs on both axes, and volumes are identified by label (harnessed.role, harnessed.stack, harnessed.harness), not by parsing the name.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py",
+          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_fd271e6dd051433fb78d6f41375bd484",
+      "statement": "The volume gate compares _container_stack_fingerprint = hosthome._host_stack_fingerprint(stack, recipes) plus the image ID; the image component is forced by podman's copy-up running exactly once per volume, after which volume content wins permanently. Unchanged → installs skipped; changed → the config volume is discarded (additive composition would leave a dropped recipe's skills forever), the tools volume is kept (mise use -g is declarative), the installs run, and the new fingerprint is written only after the installs succeed — a failed install must never certify a half-populated volume.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py",
+          "version": "repo-file-v1:sha256:a68e3eceb8fce207dfa5992008ef59cd5792ee877506e1f96fdacb2627370871"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py",
+          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9aefbf9dda0345f2bcbd5bea05e799cd",
+      "statement": "volumes._ensure_config_volume mounts the empty named volume over /home/harnessed/.claude so podman copy-up brings the image's own content into the volume, then merges the fanned profile content on top with cp -a — one tree, nothing left for a mount to shadow. This replaced per-subdir :ro bind-mounts that once hid 70 of 75 skills, and the rule to keep is: never mount a profile directory over a config subtree.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/volumes.py",
+          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_76b9598fab194a7aa654c8763c02d86e",
+      "statement": "The volume population step must use the same userns mapping as the pod (paths.USERNS_ARG, --userns=keep-id:uid=1000,gid=1000): a volume first populated under the default userns is unusable by the agent — uid 1000 inside reads the files as owner 999 and every write EACCESes.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py",
+          "version": "repo-file-v1:sha256:06ec98918d22a8108ebd18d594b5ea01b4a1d0a729d237fa55afa63f3596c816"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py",
+          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_fd90c8e00f484f4aae66fd1dff19c9fe",
+      "statement": "settings.json is the one file merged rather than copied during volume composition (volumes._merged_settings_text → jsonmerge._deep_merge_json), because _ensure_config_volume runs on every launch while the installs run only when the fingerprint moves — a plain copy dropped every install-written key on every relaunch; and _volume_read returns None (not \"\") for a failed read because absent is not empty, a distinction whose loss once reintroduced the regression.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py",
+          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ef2662a05d384ea399ce3b8705124a31",
+      "statement": "_run_container_installs runs tools: first (sorted, deduped, with the merged per-recipe checksum lockfile via HARNESSED_TOOL_LOCK and MISE_NPM_PACKAGE_MANAGER=pnpm required), then each recipe's install.script in its own one-shot container — one container per step because each recipe's env differs and passing it with -e avoids hand-quoting; each recipe's tests/*.sh run right after its install through capability.run_test_command and a failure exits the build.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/volumes.py",
+          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0e8d498df6294ff49fe872668793e1de",
+      "statement": "emit.install_env defines the install.script environment contract (HARNESS, HARNESSED_MODE, HARNESSED_RECIPE_DIR, HARNESSED_CONFIG_DIR, HARNESSED_INSTALL_CACHE, HARNESSED_BIN_DIR, HARNESSED_HOME_SHIM, plus HARNESSED_REF_*/HARNESSED_REPO_* from install.refs:) with identical keys in host and container mode, and these harnessed-owned keys are applied last, winning over both the inherited environment and the recipe's own env:.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        }
+      ]
+    },
+    {
+      "id": "claim_ee02111ca0894963a51a466d4cb9fb58",
+      "statement": "A recipe's install.cache bind-mounts the parent of the host cache dir, never the leaf: a miss IS \"the leaf does not exist\" and podman statfs's a bind source before the script runs, so a leaf mount turns every first build into `statfs … no such file or directory`; the parent also keeps the scripts' populate-a-sibling-then-rename idiom atomic.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/volumes.py",
+          "version": "repo-file-v1:sha256:022feb2e6612c019a71de3af8617986e3934be7ab495b21ebf3cb2c2bd7a62d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_06d3290d48664a778f52252757b4c260",
+      "statement": "The build's one scan, launcher._scan_image_in_container, runs the image's baked harnessed-scan in a throwaway container with the stack volumes mounted and with tokens resolved host-side (_resolve_launch_secrets(None) → user-global .env.schema via varlock, else a bare .env) handed to podman as a mode-0600 temp --env-file unlinked afterwards; it is the only path on which snyk and socket actually run, is skipped by --no-security-scans (HARNESSED_NO_SCANS=true), and is advisory — it reports posture and never gates the build.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4505-L4585",
+          "version": "repo-lines-v1:sha256:1e9fd2255ab91314fd6f45448cdbcfca7f754bbefcd347f00d1146c81f9e2923:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyMjI2MDc5NDhkMGQyODEwODc2MzRmYTY4YWIxYWI4NWFhODgyYzdlNWY4ZGFlNzQ5YTQ5YjI3Mjk2MzJlZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkNDU3YmU4NjZiOGFmYzFjYjc1ZDEzODcxNWRkNDg5MTg5OWY3OWY2MDBjNWQ5ZjlmYmQ5NDUxNDQ0YzMxMzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1NzlhZWUxYzA2NWIxMzNhNmIxYWY3OGY5MTk5N2NmM2VkNTE4N2Y4ZGQ2ODY1MjhmYTAyZmRkZDYyMTg4NGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1ZWE3Mzc3ZjZhZjA3YWUxNjU0MDU4Nzg4Zjc4ZDEzZmNiZjM0M2VkYTVkNmYwMDE2ZmI4ZDMzOGUwZjExYjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7fa1f78be51f491a88c6cab1cb079fad",
+      "statement": "The scan container is deliberately not --rm: its report is the only one that ever contains snyk/socket findings and a removed container takes it with it, which is exactly how a green no-high/critical verdict was once printed over a build that had just reported 4 high. It is kept just long enough to cp the report out, then removed in a finally; the whole container is bounded at 900s (_SCAN_CONTAINER_TIMEOUT) because a scan container once ran 71 hours at 0% CPU.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4495-L4585",
+          "version": "repo-lines-v1:sha256:40b40ceaf98e56bacdbf324d4b853713d8497dcbe4ac9a8eca08e6e3d6eaeabc:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YmU4OGI5ZDk1MWFmYTQyOTJiOWY0MDk2MTViNTJiZmZjZGM5NWFlYzEyYzRlMWEwYWI0MzA1OTZiYzA0MTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkNDU3YmU4NjZiOGFmYzFjYjc1ZDEzODcxNWRkNDg5MTg5OWY3OWY2MDBjNWQ5ZjlmYmQ5NDUxNDQ0YzMxMzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxNWVlZDlkZTYzZTM1ZGFhNzMzNWYyYzQ2MzcxNGIyOTExOGQzNDlkNTRlZjc1YzdjZTRlZGZlMjI3ZDE0N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1ZWE3Mzc3ZjZhZjA3YWUxNjU0MDU4Nzg4Zjc4ZDEzZmNiZjM0M2VkYTVkNmYwMDE2ZmI4ZDMzOGUwZjExYjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f65595030e8e465cac157b596de4979e",
+      "statement": "The second scan pass belongs to `harnessed rescan`/`harnessed scan`, not to build: scan.run_image_scan_online podman-save's the image to a tarball and runs osv-scanner against it online (offline DB flags dropped) so it sees advisories disclosed since the build, and gates on HIGH+ (CVSS ≥ 7.0, decided in Python because osv-scanner exits 1 on any finding and offers no severity flag).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        },
+        {
+          "resource": "repo://src/harnessed/scan.py",
+          "version": "repo-file-v1:sha256:b61d5ea0183d0f63a9eeb57ea223c443a7f7795c2fd17dd4b1f85da5235a3ec6"
+        }
+      ]
+    },
+    {
+      "id": "claim_7e5eaa1115264928a6aedb666b4bfd54",
+      "statement": "After the scan, _merge_baked_settings replaces the assemble-time floor with the installer-written settings.json and surgically re-applies harnessed's contribution via emit.merge_settings; it is unconditional (not gated on recipe-bake, because the agent base image is an independent bake surface), reads the volume first and falls back to the image only when the volume has none, keeps the floor silently on an absent file, and warns-and-keeps-the-floor on malformed JSON so a recipe's bad settings.json never crashes the build.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_5357c4764eba4a4baff00efd438e4d29",
+      "statement": "emit.merge_settings is not a generic deep-merge: permissions.defaultMode is a floor (a recipe/base that set its own keeps it), each mcp__hatago grant is unioned into allow and removed from deny (required wins — hatago is the only MCP path), required hooks are unioned onto baked hooks by whole-entry equality (re-appending was doubling every recipe hook), and every other baked key carries through verbatim; emit.warn_duplicate_hooks warns — never fails — on duplicate (event, matcher, command) triples.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        }
+      ]
+    },
+    {
+      "id": "claim_0f08f5231429400685ad897d69743b5d",
+      "statement": "_build_stack builds each referenced service image via _build_service_image, once per process and layer-cached, over _service_refs(stack) — the three-way union of recipe mcp.servers[].service, recipe services:, and the stack's own services: — so service images are ready before first run.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_11d3afda3d1e4e1293ef7629dcd27664",
+      "statement": "The parallel-build default is _DEFAULT_JOBS = max(1, min(4, (os.cpu_count() or 2) // 2)) — half the cores, capped at 4 — deliberately not cpu_count, because a stack build is mostly podman build, podman serializes chunks of its image store, and each derived image is multi-GB.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L320-L320",
+          "version": "repo-lines-v1:sha256:fde0cac05c8da197cec6ca242a543e78c0012777721343684d2eb4a28e489d35:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmRlMGNhYzA1YzhkYTE5N2NlYzZjYTI0MmE1NDNlNzhjMDAxMjc3NzcyMTM0MzY4NGQyZWI0YTI4ZTQ4OWQzNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmRlMGNhYzA1YzhkYTE5N2NlYzZjYTI0MmE1NDNlNzhjMDAxMjc3NzcyMTM0MzY4NGQyZWI0YTI4ZTQ4OWQzNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzYxZDRjOWJmMWY4MjhmOTRiODg1ZWQ2ZGIwMDg4N2IyZDBlMzZmYTI0NTBiZWQxZGM5ZWJiNzg4Y2VmM2E2ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzk3YjhhODhlNjNhNjY0ZDAzZTU3NTZhYmM4YmExOTBhNzJlZGM0NTU5MzA3ZjNhZmI0MmE3MWFmM2NjMzE3MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e8248e8c88124c8ea972f9148f201e4a",
+      "statement": "Each parallel build runs under a (label, colour) tag from proc._BUILD_TAG, a ContextVar defaulting to None: proc._say prefixes every line with the label (highlight=False so rich's auto-highlighter does not split a tag like mystack(omp) mid-word) and proc._run routes through proc._run_tagged, which folds a build's stderr into its own lane and escapes podman's STEP markers. The pump thread is started with copy_context().run because a ContextVar is not inherited by a bare threading.Thread; unset means a serial build streams output through untouched.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L935-L1007",
+          "version": "repo-lines-v1:sha256:1940d56e1e01dbad9711b1551b732f43184a29fe0a0dd96e941fb366e326ad31:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzYjQ5MDNkM2QzYWUxMjExMTA4NDIzYmJlYzA2YzVhY2U2ODgwNTQ2OTg1MDU4YjU2MTg3ZDllMDM2YzFlN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3YWUxYTdkM2Y2NDAwMWU4MzZiMjYzODYwNWU0MDQ5ZTNmMzI5MTFiOWM1MzNhMTY0MWQ4MGFhMmIxYjc5M2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmZjNiNGQzNWIwM2U2MTc5NmRkOTc4NzYwYWM1MDk1OTRlODBlNGRlZGJmN2Y5NTljY2JiYTY2ZmZkOTEwZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NzI3YjYzYTM0MjRmZmU3NzZjY2ZlYjI5MTM2MjFhOTAzZGFlZDAxNDg0MDA1YjM2NDJlMDdjMmRhM2VjNGEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/proc.py",
+          "version": "repo-file-v1:sha256:208ee88799844615b3dff98d5ad5d1fb239befb5c1459478bed10e4a92422566"
+        }
+      ]
+    },
+    {
+      "id": "claim_f6754106aa4343c69cc0d34ecb229608",
+      "statement": "_build_shared_once serializes the shared images (harnessed-base, per-harness agent images, service images) with one threading.Lock plus a process-wide _SHARED_IMAGES_BUILT set, holding the lock across the build and not just the set check — a claim-then-release would let a second worker build its derived image FROM a base that does not exist yet. Building each once per process is enough because nothing between two pairs in the same run can change the shared Dockerfiles.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L516-L536",
+          "version": "repo-lines-v1:sha256:434d35e202a0f99dcb9330db210d012621a21862842aaa4da5c6d64868b27579:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlMjYzMGU0NGFlNmNkZGI1Y2M2ZTRiZGUwNTI0ODRhNDYwMjBlNjE5ZmQ4MThiMjhiMGRkMzYyODBlZGQwY2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxYjU1OTI4ZDVhYWM5YTZiZTQwNDgyOTgwOWRhZGE5OTBjODgzMmFlMmY5NDM0ZjQ5MGJjOWJmOTA3NzY1NDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1MWM4ZjgwMTU3YThjNTAxMWRmYjdlYmI3Njc0NjRmODVmZDg0NzdjNThkNmRjY2JhODI3MmI0ZGRiOGY3M2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyNDllNDUzN2I0ZWY0MGY0NmQ3NzVmMDg3YTliNDYyMzlhZTk5NmQ1M2JmMzYxNzJkYThlMDY5YjdhZmM1N2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_05937ead27d7466186d08b48940e459f",
+      "statement": "_build_stack_guarded sets the tag, runs _build_stack, and returns [exc] on failure rather than raising — returning is what lets one stack fail without killing the siblings already mid-build; every pair gets its shot and the failures are reported together at the end before a single typer.Exit(1).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L990-L1007",
+          "version": "repo-lines-v1:sha256:66f3239edd6651eb24f4f02ddecdd5c01f67e2357f2462ff02c4fe39f8531479:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiM2RiMWQ4YzljNzg3OTc2MTk2ZDI0MWU4MmE1M2YyMDBjZTZhMjBiMDFiNjUwNmU5NzAwNzJiMGZiMGE0NTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3YWUxYTdkM2Y2NDAwMWU4MzZiMjYzODYwNWU0MDQ5ZTNmMzI5MTFiOWM1MzNhMTY0MWQ4MGFhMmIxYjc5M2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQxMzcyODk5NDQwYWExMmNjOGYyNTFkMzg3YzVhZTE4MjcyNDA1OGJhZjQxMWI2OGNkN2RlZmYzYjQ1NzU2NDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NzI3YjYzYTM0MjRmZmU3NzZjY2ZlYjI5MTM2MjFhOTAzZGFlZDAxNDg0MDA1YjM2NDJlMDdjMmRhM2VjNGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3f00c43078394694a27ceccfbf8af99c",
+      "statement": "A bare `harnessed build` runs _build_images_cmd (base + claude, with validate_agent_image(\"claude\") re-applied because this path builds an agent image without going through assemble()), then _reconcile_stacks: _stale_pairs collects every declared (stack, harness) pair plus every previously-built pair by scanning podman images --filter label=harnessed=true and parsing harnessed-<harness>-<stack> repositories (stripping podman's optional localhost/ prefix, matching by prefix not substring); a pair is stale when the recipe hash differs, the image is absent, or --force is set, and shared images build first and serially before the stale pairs.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_aeb6da7282114945a0bf710b6c31ae0b",
+      "statement": "harnessed-scan bounds each scanner call individually (default 120s via HARNESSED_SCAN_TIMEOUT) so one wedged scanner does not cost the others, converts a timeout exit 124 into an explicit skipped record rather than silently omitting it, and requires SNYK_TOKEN for snyk; the build-time container adds an outer 900s backstop for the script wedging outside the scanners.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/harnessed-scan",
+          "version": "repo-file-v1:sha256:c39524dd07c2a7c936efe9f890d91e7a4597a1414fa589207cbb665e1c2b7ca9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4495-L4585",
+          "version": "repo-lines-v1:sha256:40b40ceaf98e56bacdbf324d4b853713d8497dcbe4ac9a8eca08e6e3d6eaeabc:eyJzZWxlY3RlZExpbmVDb3VudCI6OTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YmU4OGI5ZDk1MWFmYTQyOTJiOWY0MDk2MTViNTJiZmZjZGM5NWFlYzEyYzRlMWEwYWI0MzA1OTZiYzA0MTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkNDU3YmU4NjZiOGFmYzFjYjc1ZDEzODcxNWRkNDg5MTg5OWY3OWY2MDBjNWQ5ZjlmYmQ5NDUxNDQ0YzMxMzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxNWVlZDlkZTYzZTM1ZGFhNzMzNWYyYzQ2MzcxNGIyOTExOGQzNDlkNTRlZjc1YzdjZTRlZGZlMjI3ZDE0N2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1ZWE3Mzc3ZjZhZjA3YWUxNjU0MDU4Nzg4Zjc4ZDEzZmNiZjM0M2VkYTVkNmYwMDE2ZmI4ZDMzOGUwZjExYjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b052f405886c486a96d8818294a8dd57",
+      "statement": "schema.py constructs one ruamel YAML instance per load because a ruamel instance carries scanner/parser/constructor state across load() calls and is not thread-safe under parallel builds, and wraps MarkedYAMLError into SchemaError at parse time so a duplicate key reaches the user as a one-line rejection rather than a traceback.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/schema.py",
+          "version": "repo-file-v1:sha256:b5eae73846437cda40aefd632aa0de85cf29e79f1c699cc5c205c2623ba836c2"
+        }
+      ]
+    },
+    {
+      "id": "claim_569dbdb1ba83473eb988ead0679ea6c3",
+      "statement": "Catalog resolution in schema.load_stack_with_recipes is overlay-first: the user overlay ~/.config/harnessed/catalog wins on a name clash, then the shipped catalog/ under paths.harnessed_home(), then the generated root; a root argument restricts resolution to a single catalog root and is a test/fixture affordance. strict (the default for build and test) rejects unknown recipe-manifest fields so a typo fails loudly.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py",
+          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py",
+          "version": "repo-file-v1:sha256:b5eae73846437cda40aefd632aa0de85cf29e79f1c699cc5c205c2623ba836c2"
+        }
+      ]
+    },
+    {
+      "id": "claim_9dff2e2dc42c4d42999e20cf7cea8651",
+      "statement": "For harness == opencode the build additionally runs _merge_baked_opencode, which reads the image-baked opencode.json (opencode reads its MCP wiring from there, not .claude/.mcp.json), adds a persona agent plus a rules glob, and writes the merged config into the profile.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_5afe716d418841e39f4d45beed4431bd",
+      "statement": "cli._run_assemble passes --root as None when the flag is absent — resolving across the catalog roots — not the CWD; root names a single catalog root (root/stacks/<stack>), so a CWD default would silently demand the user be standing in a catalog.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/cli.py",
+          "version": "repo-file-v1:sha256:f0afdcb2a23ca8631c62fc72e1b3ae1ba78401737c7cca576f137da750d5c330"
+        }
+      ]
+    },
+    {
+      "id": "claim_bd83df882a18466896f03111d6e34dc7",
+      "statement": "Two harness-capability gates run on the same boundary: _validate_hub_transport rejects hub_transport: stdio outside HUB_TRANSPORT_EMITTED_HARNESSES (currently {claude}), because a stdio stack on a harness that dials HTTP anyway yields a toolless agent with no error explaining why; and _validate_direct_servers rejects direct: true servers on a harness that bakes its own MCP config, because the server would be silently absent from both the harness config and hatago.config.json.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py",
+          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+        }
+      ]
+    },
+    {
+      "id": "claim_d494c000d1bf4764981af43aac69d0d9",
+      "statement": "The committed hatago.config.json is project-agnostic (assemble calls emit.write_hatago_config with project_path=None), and the launcher regenerates a per-instance copy at launch (ContainerBackend.wire_mcp calls the same emitter with spec.project_path) to pin each stdio child's cwd to the mirrored project path — one emitter, two call sites, because the committed profile is built before any project is known.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py",
+          "version": "repo-file-v1:sha256:bdbaaf7fd9c5abee69ab06b07c7ae2844a7863e6a90d8dbd68af186f2754889e"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py",
+          "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_9b20cd958f934b7f9932cd1c932d473e",
+      "statement": "The one non-token credential a build carries is the corporate proxy CA bundle: when $XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt exists (persisted once via `harnessed build --corp-proxy-ca-crt`), _corp_proxy_ca_secret_args adds --secret id=corp_proxy_ca to the base build, the base+claude pair in _build_images_cmd, and every service build; Dockerfile.harnessed-base consumes it under RUN --mount=type=secret with required=false so a build with no cert is a no-op. A build secret never lands in image history and nothing is staged into the context, which is why a service Dockerfile harnessed does not author gets the equivalent block injected into a TEMP copy (_service_dockerfile_with_ca) right after its first complete RUN rather than being edited. _build_agent_image passes no secret — the agent images are FROM harnessed-base, which already installed the CA. The full SOP lives in concepts/credentials.md.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base",
+          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py",
+          "version": "repo-file-v1:sha256:806b9efd7105544a5b2374e08230077ec28d7cfc0d9336d3f4e0aa6daa938e39"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py",
+          "version": "repo-file-v1:sha256:06ec98918d22a8108ebd18d594b5ea01b4a1d0a729d237fa55afa63f3596c816"
+        }
+      ]
+    },
+    {
+      "id": "claim_e33d48d329d74b88874ce38d5517eb34",
+      "statement": "The base build closes by PROBING the ownership it just repaired and failing in the BASE if the probe fails: as ${USERNAME}, create and remove a directory in $HOME and in ~/.cache. It performs the real operation rather than a proxy (test -w checks only the write bit; creating an entry needs write AND search, so a d-w------- home passes test -w and still fails the mkdir the claude image opens with), and ~/.cache is probed too because it is the directory that actually shipped broken once while $HOME alone passed — failing there names the right image instead of a child-image error naming the wrong one.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-base",
+          "version": "repo-file-v1:sha256:d2c857bf490059d5ce6b311d578439f77102a30a41b6e7a257493d6df38e6359"
+        }
+      ]
+    },
+    {
+      "id": "claim_32339f9901ae4421bb1d38d319c56f0a",
+      "statement": "Because the user overlay wins silently on a name clash, load_stack_with_recipes (production path only, root=None) also warns when a user-overlay recipe shadows a repo-catalog recipe of the same ref — once per ref per process, naming both the overlay path in use and the shadowed repo path — since sessions had quietly assembled stale overlay recipes while the newer repo copy sat unused. The `default` recipe is exempt (overriding it is a blessed pattern), and stacks/agents/services stay silent.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/schema.py",
+          "version": "repo-file-v1:sha256:b5eae73846437cda40aefd632aa0de85cf29e79f1c699cc5c205c2623ba836c2"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-01T11:08:21.365Z"
+  }
+}

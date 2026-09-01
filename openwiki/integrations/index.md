@@ -1,0 +1,4 @@
+# Files
+
+- [Agent of Empires mirror and per-project launch scripts](aoe-and-launch-scripts.md) - The optional register-only aoe tmux bridge and the per-project launcher scripts a launch writes into the repo: identity and the two-key drift hazard, detached writes, the flags aoe add accepts, the sentinel licence, and the trailing `--` that routes human flags to harnessed and aoe resume flags to the agent.
+- [Harness integrations: one canonical profile, five readers](harnesses.md) - How the same Claude-canonical .claude/ profile is consumed by claude, omp, opencode, antigravity and codex: each harness's MCP route to the hatago hub (emitted .mcp.json vs image-baked configs vs omp's seeded mcp.json), the direct-server guard the container path re-validates at launch, the host backend's two-harness record (CLAUDE_CONFIG_DIR / PI_CODING_AGENT_DIR), omp's host asymmetries, and the per-harness attach commands.

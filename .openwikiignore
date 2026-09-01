@@ -17,7 +17,7 @@ docs/codebase/
 # Build and analysis artifacts.
 /profiles/
 /catalog-local/
-tools/test-fixtures/profiles/
+tools/
 mutants/
 __pycache__/
 *.egg-info/
@@ -27,6 +27,16 @@ __pycache__/
 .hypothesis/
 .coverage
 coverage.xml
+tests/
+.serena/
+.vscode/
+.agents/
+.claude/
+.pytest_cache/
+.ruff_cache/
+catalog-local/
+web/
+catalog/recipes.backlog
 
 # Machine-generated dependency graph: tens of thousands of lines, no prose signal.
 uv.lock

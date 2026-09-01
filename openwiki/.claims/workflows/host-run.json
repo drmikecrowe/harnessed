@@ -1,0 +1,714 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:e017476168ccacd4bb316cc201e6f5613a1c444b28bc473d13d738e1762a1815",
+  "claims": [
+    {
+      "id": "claim_43a776daac44445ca2877b7331bbdf10",
+      "statement": "The host backend's launch sequence ends in os.execvpe of the harness on the host (or subprocess.run supervision under --rm), replacing the launcher process entirely, so no exit hook exists and every self-healing mechanism on this path must be anticipatory.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2795-L2804",
+          "version": "repo-lines-v1:sha256:d581d6391b57ae914c4d3965a12f9aa2936d2bb695dafb30e5f7056d6de5ffaf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzOWQ0MDEzYjhlZjFiZTAzNDQ0ZjI2YTQyNGU1ZWRhZWUwNzUzNzRjN2FjNDkxYTUzY2JkMzIyYTYxMjk0M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzM2Q4ODIzZTdiYTkzNGRhOTMyMTY3YjliZDI0NTg0Nzg2Mzc4NjRkMGZiZmJiYWJmNjFjMDQ4MTU3MzhlMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiMTI4YWJlYzRkYWMyODZiYzY3ZDZmZGRkNDE3Yjk3MzI4MTZhNWMxNmUyYTZhMDcyZWU3MjViZTQ5YWY4OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3MjcyNjg2MmUyMzAxMDhhOGMyODVmY2E0ODQ4Y2ZhYThjOTdlNGM0ZjdhMjliYmJlYThiYWEyMDdjMmY0ZDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_95861359514b4be38bd8c8e0def2d447",
+      "statement": "_launch_host assembles the stack in-process on every launch via assemble(..., strict=True, shared_identity=False) — emit-only, no podman and no image build — which is what keeps host-run container-free end to end; assembly itself is this backend's validation gate in place of the container path's is_built/staleness checks.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2603-L2617",
+          "version": "repo-lines-v1:sha256:d708cc024d4a48dc78d3a99358071d27bc13e632ecc64cc3c92891973e69944c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZTE1ZTdlZDY2ZjIxY2VhMzI0NmFkOTBiNzBmOGMxOGNjMjRjOTRlMjU4MWVjMGZlZThlZmViMGZiODkzY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMGYyZDM4MzY3MzU3ZjE2OWRmMGIzODFiODliZjE4YzJhMDliZmZhNTIyOGIzZjIxNWU4M2I0YmQzZGMyYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNDUwZjQyZTgzZDk1ZDVmODk2MTNmY2E1MzBjNjE2YzgwYWEwZGQ0N2RkOWQ0ZmY4ZjczNTFiOWYxZjM4MmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2ZDNmYTZjYWUwMWU0ZjI4NGI5ZTk0ZDFkYzVmZWE1Y2U1ZDc0M2NkODBlYWYxMDk2M2FiOTcyMGJmMGU1ZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_40dacb10f5084f0daa53cfa91ceea5eb",
+      "statement": "shared_identity=False suppresses the one emit step that writes outside the profile (omp's delimiter-marked identity blocks in the shared ~/.omp/agent), because a host omp launch reads a per-stack agent dir under PI_CODING_AGENT_DIR and the shared write would deposit blocks to no effect.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py#L259-L264",
+          "version": "repo-lines-v1:sha256:d8e3b069c12035b7e1e71d39cf29ab07790bcf1ed968220bc8bd311d90f75da6:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDU1ZGY2Nzg4NmY5MjIyNTNmMDk1MzhkM2IxMTQ0YzBiZjk1ZGUwY2U2YzIwNjY1ZjgwNzMxNTIwNDEyZjI5YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWJmMmIwMDdlMGNmYTliYmM1YWYwMzA3YzMxZjNmNGJkNGNmNmQ1MDFlMTI3MDJjYmUyOGUyMGMzOTBmMjM1YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmVhMDVlMWMxNDBiMmQ1NTI5NGZhZjJkZDY2NDcyMTFkNzkxZWYzZTZlZmI0M2U2MGEzY2E3YTllYWEwMzYwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODljM2Q4YmUwNTJkYzAzNzE5YmQ2Yjk5NjA5NzlmNTFlZDNhZGYwMDI0NzFjNGQxNzc3MWRlODA0MjNkMTgzYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_588fec621a66464fb296dd30441bbe30",
+      "statement": "On the host path os.environ IS the box: _resolve_launch_env and _recipe_env are applied in-place to os.environ, and env = dict(os.environ) at the exec is what delivers them to the agent and to every spawned install/setup script — nothing is written to disk on this path.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L510-L521",
+          "version": "repo-lines-v1:sha256:ea1ed4aaaa7c6d1dfe73db91f7b1033bf9452166b203b3b983d642df290bf30a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmYTg3N2MyZTIyMGUxNDY0MzM1Y2E2MDBjNDAxMzNlNGRjZTM3YWI4MTBiMjEyZWYxOTFhYTY1MjJhOWMwODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkZmY3Y2E2ZGZjZDk5NDdkZmU5MjJkZWZmMTAxYTY3NDdkZmI1MjI3OGZjOTc0OTU1NDUxZDRhZjIzNjMwODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkODc2MDU0ZjMxOWE0YTMxYTc3N2I3YmJjMzQ1NTAwYTUxZmU4ZDdjYWNlZjdhZTExM2VkZDgwNTE5OGNjNzAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2652-L2663",
+          "version": "repo-lines-v1:sha256:d3553556e20ca99ffd2b7d0d6d5cd2144a1606cdd6fe893bdadde8bbb58f7de1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyZTY3NGNhNjgyMjI5NzU3MDhjYTQwZDBlMmVmNGQ4ZTIzMWY3OGY0Y2M3NWYwOGU5ZmRhNzAyMzYyMTc0ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwYjAzZTUyYzk5NDM0N2ViMzlkZTdiMzkzNmEzODQ2YTRiNmNkODE1M2Q3NmFkNTMzOTEwMGFjMDY1MDE5NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNGU2YmRmYjE5Y2ZkYjU5OTAzMDk4NmU4N2FkMzBkMWFiOWYzNjM1NTAwYzA1MTA3ZmFmNDVjNzliYzVmMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3YzJmYzVkMmUzODJjNzdjOWEzZDY2ZWIxYzViNGUzYzBmMmFkNWRhN2FiM2QyNDU3ZDhjNjQ2NGMzZGQ1MTAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2692-L2698",
+          "version": "repo-lines-v1:sha256:cceb8e0e37e60198d902fe95c9fa3bac3d471b7b6739d3a979c85a10aa03af9a:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBhYzE5NGI5NGU3ZTcyOWVmMzEzYmU5NTQxYWFmNmE1MWEyZTViOGJlZjU1YTY2NTc1YmI2NzlmYTc2MzcxMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTlhNjczYzFiNmY4MmIzMDJlZTA2ZGVmYWVmN2MzMWIyYjA1OTJjYmVlYjg4ZjY3YzIzZmI4NTI3NWQ2MmQ4NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDhhMTA4OTBhMjNlZDRhNGYwY2IxNWEzYTQwNDg0YjY3ZTk5MTVlZTYwNGU3OTAwZDkyZTExZGY4NjE2ZGQ1NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2JmMDA1Y2UxNWY4YjY3NDI0MzExY2I3ZDA0MWJmZDlmNmNmNWYxMGFlOWM3ZTJhNTUxM2Q2NjFjYWMyZjExYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1a82c3df05324efc8ba35584087ccba2",
+      "statement": "Two deliberate precedence calls govern the host env delivery: _resolve_launch_env is applied BEFORE _recipe_env so recipe declarations still win (mirroring podman run -e over --env-file), and it overrides an inherited shell value of the same name so the schema remains the declared source of truth.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2652-L2663",
+          "version": "repo-lines-v1:sha256:d3553556e20ca99ffd2b7d0d6d5cd2144a1606cdd6fe893bdadde8bbb58f7de1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyZTY3NGNhNjgyMjI5NzU3MDhjYTQwZDBlMmVmNGQ4ZTIzMWY3OGY0Y2M3NWYwOGU5ZmRhNzAyMzYyMTc0ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwYjAzZTUyYzk5NDM0N2ViMzlkZTdiMzkzNmEzODQ2YTRiNmNkODE1M2Q3NmFkNTMzOTEwMGFjMDY1MDE5NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNGU2YmRmYjE5Y2ZkYjU5OTAzMDk4NmU4N2FkMzBkMWFiOWYzNjM1NTAwYzA1MTA3ZmFmNDVjNzliYzVmMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3YzJmYzVkMmUzODJjNzdjOWEzZDY2ZWIxYzViNGUzYzBmMmFkNWRhN2FiM2QyNDU3ZDhjNjQ2NGMzZGQ1MTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ae756be9995411dbe9212772ee006f6",
+      "statement": "_resolve_launch_env is the host-native twin of the container path's _resolve_launch_secrets: the same sources and global-then-project precedence (project wins), returned as a KEY→value map rather than a list of --env-file paths; it returns {} when nothing is configured or varlock fails, so a launch never hard-fails on secrets it may not need.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L510-L547",
+          "version": "repo-lines-v1:sha256:37062995c4bbb392c64eb2402a9b32663999aa3cafdceda45a55cee02d91e776:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmYTg3N2MyZTIyMGUxNDY0MzM1Y2E2MDBjNDAxMzNlNGRjZTM3YWI4MTBiMjEyZWYxOTFhYTY1MjJhOWMwODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzOTRkMzkzY2ExYThmZjk1NWM2ODhiMDYxMzM4OGRmOGJlODBjMmQ1NWQ4MzkyZWM0MjlkMThlM2M5MjUwYTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkZmY3Y2E2ZGZjZDk5NDdkZmU5MjJkZWZmMTAxYTY3NDdkZmI1MjI3OGZjOTc0OTU1NDUxZDRhZjIzNjMwODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_983a39dc400a4ffd926ac8315e714e36",
+      "statement": "The host config dir is keyed <stack>/<harness> only, not by project: host mode isolates configuration and the stack is the configuration. The project_hash was removed once the wipe became fingerprint-gated, which also removed per-project content duplication, orphan sprawl, and per-project install re-runs (bd harnessed-8px.12).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L359-L375",
+          "version": "repo-lines-v1:sha256:36cb8597bcab4cd14a2b721dffd7fe2c4f8a8c12b4de36eae3c5e80aaba98ca7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhNWQ3Y2E5NDY0MWQ0MGRhZmI0NTE3NTQxZjlmMGQ5Zjk5N2NhYWZkNjc3NzI5NTYxMmJiZDZjMTE4YjYwYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwOGJhYTFlNmVmMjNhNjNlMmZiMWY3NzM1YTA1MDI4NzYwNjRkNTlhMzc5YWZjZjAzMzc2ZTZiYmFhYjMxMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjNzk2YzUzZmEwMWM4ZDZiMzlhYTU3YWU4ZjdlMTQ0NmQ4MWMyNjA2YzcwNGQ4Y2I4MzdkNTljMDVhNDE1ZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmMjNjYjM2YjE4ODY3MWQxYTM4NzBjNWMwMTRjMDAwNDg1YWM4YTYyNjUwYTY4NmQ0YzdmMTYwZGUxMzMxNGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1f7ca026c3b440a4a6261da4c66ca813",
+      "statement": "_materialize_host_home copies only the profile's content layer (.claude/* tree plus the settings.json floor) into the host config dir, excluding the container-only artifacts (.mcp.json hub wiring, hatago.config.json, the derived Dockerfile) because there is no MCP hub host-side.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L166-L203",
+          "version": "repo-lines-v1:sha256:0fc1ebdac8cf00aff10dc31c3ac5a62f5ab0612899c8f898051e0415b6d23dee:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0N2E5ZmJhNzY3NWE0MDM3NjMwNjAyZGJhZWNiNTA2NDRhNjU2ZDA2Yzg1NTBhYzRiMWY2MTE2OGEwNjQxNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjN2Y3YzNmZTU4YjI1Zjc2YWY3YjA1N2NlNmM0ZjlkNTIwZGJhNDUzNGQxODYyMTcwZWYzMmRiODVjZjI4MWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2YjY1OTJjYjIyZWRiN2NhMmFiODlkYTZhZTU4NzQ0MzU1YzY3ZDA5NjNkOTQ3Zjk4ZGNlOWVkYmRiMDc1YmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ae4f31f16c3245d7ad7a92ba7d4a0a9f",
+      "statement": "The materialize is gated on a fingerprint of harnessed's own __version__ plus the recipe-closure hash; when the .harnessed-stack stamp inside the config dir matches, the materialize returns False and the existing home is left untouched. The version is included because a host launch has no image build to force a refresh of emit output.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L36-L50",
+          "version": "repo-lines-v1:sha256:936f015b28448abb8fffec2ee7651dff3b436e6cc8bf0b808a193c8ccdde53e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MTE5YTExM2ZhYmNhOTNjZWIxMjRhNjYyOThiMWZhNjdjNDZmYjJiNzBmMzZlNzgzNTQ5ZTRjMzFjNDlkNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkY2EwZWZlNzc5NmI0Y2ExNDliN2Q4NzZiMWI1ZmRhZWU0MDI0MjBlYTkzNGZlYTBiYzdiOGMyNDRkNjM0MDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1YjE1OTM5ZjljYzRiOGY0ZTgxYWRmYmZkNWY1NzU3MmZkYzhiYTMzYWFjZGM5MTM5ZjcxYmYxZWMwZmMxZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjM2MxNzgxY2I5NWUxMzMxMWM1MWQyOGI5ZjRkNzQ1ZTlkNWM5OWJmNjg4YjVhZjVmNzVkOTg4OGE5NzY0MTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ee8a8113083047438d40c39feec088d5",
+      "statement": "The stamp is written only after every install script has succeeded — by HostBackend.provision_tools, never by the materializer. Stamping at copy time left a matching stamp on a failed install, so later launches skipped both rebuild and installs and started the agent against a permanently half-installed stack (bd harnessed-8px.15). The stamp lives inside the config dir so a hand-deleted or half-written dir reads as 'no fingerprint' and rebuilds.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L206-L216",
+          "version": "repo-lines-v1:sha256:fc9df5d2ace3b4b79d22bf6891c3bcb426e4ac6e668cd8fba1f81d57b5a10878:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4MTIzMTU5Y2I2NjJlYzc4YjI5YTkzMWE2YmJmYzZhY2UxZDc4MTI2NTY2M2ViYmY0YzRlMThlZTE1MThjMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlMzk4ZjlhMzA4YzgxZjNlNWUzOTgxZGUyM2ExZWQ4YTdkN2I5YzQxYmJhYzBkZGVjZmMxNDNjZjFhMWYzYmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExZWQ2OTBkMWEzYjM2NzJmMGJiZDkwMmYwNmQxZTRlY2JhN2UxOGUzNzVlYjM1NDdlZmMyY2JhZjhmNDI3YjMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2478-L2483",
+          "version": "repo-lines-v1:sha256:f68c6f772661da94b468f355db832fedd00456461c8d1d1c6d21247fc6ec00c2:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTI5NGNiZmE2MGY3NzRjMzY0YTQ4ZWU4MzE4NTlkOTI5ZjcwYTE5NjM3ZWZlM2EyYWIyZDEwMzMxMTk0NTc2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU3NTdiZjE1ZTBlNGE0N2YxMGFmZTM3NTk4N2MxNThiMTBjNmQzMzM5MTdhZDM4NTlmODVmNWRlNmNjYzQ1YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWJhYTY4NTRmODI5MDhhNGVhMmY4YjBmYmJmZTJjMWY1ODc3MTRkZjRkYWQ0MGFlMWE1YjZkNDBkYTJjMzZhNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjBmZmRlMzEyMjJiZmM5NTIxYThmMTVhYTA0NTRkZmUzZTFlOGJhODlhOTEyMDBhM2UzMWY0OTE2NzE2YTAyNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0cfefff3186d419ba929d46ed657d6b1",
+      "statement": "When a rebuild does happen it is wholesale: _clear_host_home_except_runtime empties the config dir (including symlinks, never following one into ~/.claude) so the dir stays a pure function of profile plus installs and a recipe dropped from the stack cannot leave files behind.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L133-L163",
+          "version": "repo-lines-v1:sha256:e4f8aa77a672883f9e63e2041f019c9b4e122feaf621166e77e8deef50de826d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3YjIyMzM4OGNmOTg2MTFjNmIwYmM2Y2MyODNiYWU4YTgyZjEyMzUzOTY4ZTIzYWMwZDI4NzQ5YWY5M2ZiN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzNDA2ZjFjNDlkNGU3ODlmNTg2Mjc2ZjFhNDdjYzhiNDE4ZTY2ZjI3ODE1MTYzZDQzMzk5ZDZiMjFjZmFiZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkMzM4NGMyNDlmNmE3YjljZTAzYmQwNjM4N2Q1ZTU3ODcwNDZlN2Y3ZmYzYWQwNGIwNzA5YTAzMDIyMGI3MTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2ZDU5MWU0ZGQyNDVlYTg4N2Q5ZjVlN2VkY2I1MGM2MzcyOThmODRjYTNlNTViN2M3ODcyYzUyZGIwMjJiMDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_71f0d1696e384978bc8dd28b76f23a68",
+      "statement": "Live daemon/runtime state is spared from the rebuild and identified by CONTENT, not name: _is_daemon_state matches a dir named 'daemon' or holding any of daemon.json/daemon.log/daemon-auth-status.json/daemon-auth-cooldown. The bar for the keep list is 'live state a running session would lose', never 'expensive to rebuild' — omp's sole keep entry is terminal-sessions; cache/ and models.db are refetchable and stay wiped.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L111-L163",
+          "version": "repo-lines-v1:sha256:c0b1e13a94db843847e540c530e246d42c7a82b1b16ea34fecc0994a7877fe2d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyMzZlY2IxZGY2NmExNmY5YzJhYzczNzc1OGY1MGMxNzRkMzE5NWYxM2ViN2M1ZjRmZTExOWY2M2QyMjE4NWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzNDA2ZjFjNDlkNGU3ODlmNTg2Mjc2ZjFhNDdjYzhiNDE4ZTY2ZjI3ODE1MTYzZDQzMzk5ZDZiMjFjZmFiZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkYWUyNDkyZjJiNjhhNDY3ZjUwZGYxZWE1YjRhZDI1NzE1YzVhMDdjNDk1MGI0ZDUxNTgxZDQ4NzE2NjRkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2ZDU5MWU0ZGQyNDVlYTg4N2Q5ZjVlN2VkY2I1MGM2MzcyOThmODRjYTNlNTViN2M3ODcyYzUyZGIwMjJiMDUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L466-L477",
+          "version": "repo-lines-v1:sha256:76d3342d1cec293680bd8d2f225875c0a72c58b8988ba1caf2e836ac8b8d8f06:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4YWNkN2ZiN2U1NjMwNmFkNjY1ZTRmMDRkN2FkYmNlYjViYTZjZTk1MzY4ZTUyYmJmZDU3MTRkNjRlOWMyZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiM2YzZmFhZWNhMDE4YTZmZWY2ODE4MDkwZjViZGY1YmEyZTlhMzNmMWU5OWRjMGRhODc4OWNkOGViZWRmMDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3OGU1MGMwZTRjODdkNTRjMGE5MTBlZWU4NmQxMDljOTNjZDA2ZmYyNGJmZDlmYWYyYTdlZDUyNGE2NmM2NTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyOGYzM2EzODViMDgzYWM3Zjg2OWZhMDczNDVkYTg1MjM4NGExZDVjM2VkZDRmZWQ2MGFhYTNlODMxNDBmMmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c3e7e9da2cd046febd0f339c1996f2ac",
+      "statement": "The wipe-by-content exception exists because a rebuild once deleted daemon.json from under a daemon alive 13h53m; ~200ms later the daemon wrote auth_required, the credential file was gutted, and the orphaned daemon held control.sock with nothing valid behind it so the next launch timed out.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L134-L154",
+          "version": "repo-lines-v1:sha256:671570856b605966f2875e758aa255d55995c51d1d284c2b441a8bb83375bea3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0MTE3OGIyMGM5YWQ3NjdjNzgyYjQ5OWM3NDlmOGNmOTJlZTdiMzU4MjIzMzhlMjc3MTk3NTBlZjcwMmY3NDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlmN2E4ODNlYzJiZmE1YTA5MzdmYThmNjg2OGVhNzg4ZTVjMTAyZjk1NWRmNTA0YzIxZGIyYjIyMjVhMmZiZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzMTY4OWNjMmMxNzgzMzVlMDcxOTc3NWRlZjczMjkxNjg2YzVjMmY1YTY1MDQ4OGJmY2ZlMDI5MTgzZmE2N2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e72016c9b90a4e6eaaaeb1c219266999",
+      "statement": "Installs run AFTER _materialize_host_home because the materialize wipes the home on a rebuild: an install that ran before it would have its output deleted milliseconds later, silently (the harnessed-8px.1 failure shape). The fingerprint gate narrows when the wipe happens but does not relax the ordering constraint.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L367-L383",
+          "version": "repo-lines-v1:sha256:058f3ada862ce82db6f383069e44a451533b561753d1b8204244dc82418a2eef:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczZjhmOTliZTE4MTFhMGJiZWVkM2ZmZjdiY2RlMThhMjQ2OTEyZDI4MzNmMjg5Zjc0ZWIyNGFlM2Q5MTI2MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhYTQ2NTY1N2QyNzFjNjQ5OWY2NTVmMjMxMjRjZTk0NDlmYWVjZGQwODlkOWE5MGQwNzQ2ZDkyNjBlYmM1ZDAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2725-L2758",
+          "version": "repo-lines-v1:sha256:a600d51230bb5130426a6053b1c1d0dcf769c1d639c314d0551446e6234e9664:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMmZjMmY3OTA1ZmRkNmJkOTIyMDhkOGU1MjhkYmU0Nzc4M2NiMDgxOGIzNTY3ZjJmYTM0NDFmM2RhYmJhMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlNDViYmFjMjRjNTk0NWM5Y2ZjMjZlODhkZDUxZjhhMmY1ZWE2YjIzMTg5MTYzMDZiOWUzYmE4MGRlOTAyZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiYWI5ZTlhNmZmMWRkZjkwODI4MTg3ZTNhODQ3MTk5Mjc4MDNlZDA0ZGIxZjRiNWFlOWZiOTVhMjQ0OWEyMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmYzk1MWZiN2MxYTA5ODFjMGY1ZmUxZDhiZDI2OTA1NjA1MzFkZGM5M2E5ZjQzODI2NjNkZTQ4YjYzY2QxNzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8cb872d7c27a4953a7e25c4836db6b86",
+      "statement": "The every-rebuild re-run of install scripts is made affordable by the cache: declaration — paths.install_cache_dir keys a content cache by the recipe's PINNED ref, so the output (which cannot survive the wipe) is rebuilt by copying out of a cached pinned source rather than re-cloning. The cache dir's own existence is the script's hit/miss test, so _host_run_installs creates only the parent.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L411-L414",
+          "version": "repo-lines-v1:sha256:10ed7edadf0c062085a110513df7f62a47cf4fd50cb7ec6c44080e3c34173f2e:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmU3YjA3YzAwZTVhZGQ0OGY5YjY2ODI3NDAwZTM5NmQ5NWU3ODdkYjZiMGIwZTA3NGI4Y2RkYzQzMDNiZjA4NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjk4OTU4NDg4MjgwNWNkY2U5MzA3ZGI2MzY1NDYxOWRmNmFlZTlhZGI1Yjc3NTFlMzZiNjBjYzcxODRlZTRiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzIwNjZhYjc5NWI4MzdkMmI0YzIxMjlkMjg1OTk4NDBhMzA0NTliY2VhNTY4ZTA0NGVhNmYxNWRjNGY5YTIyMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTZjMGJmZGYyMjhkOGEzMzM1ZjQ2NmIxNDQ5OTg3OWRjZWU0MjI3MWVjZWU2NjUxZTQ5NzE4MzEyNzUxMmI0ZiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L120-L131",
+          "version": "repo-lines-v1:sha256:b63497578692f0d3522f6164307d465a6f967f12cc5efc492bb1fa3d7b40aab7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNTA4N2RjYTdjNWU2NThiYTEzZTdjNDZhM2JlMjkzZTMyYjA3NTUwZWMwZmM5ZTUxYTMxOWMyYTgyOTdlN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5Zjg5NGRhYWRkZGEzNGJmMzc4NjgzYzUzOTYzNWI4ZTViZTdjNjM3ODk4OTMwZGIzYzk2NWVmZjhlY2YwOTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3OGFiMDE2OWY3NDlhZGFhNThmMGNiOGQ1ZjIyMmFkZWRiMmE4YzIyYjRiM2ZjYTZhMTkzZjdlN2EwNGZmOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhOGY3ODNjYjk1NDY2MTQxODc0MDMzYTNhOGY5MmY0NzVlOWY4ODJiMzJlYTZmOGI5MjMxMDM3YTdmNzliOGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c857bf9f9501413c9c520f116079381f",
+      "statement": "The home lock (_host_home_lock, an exclusive flock on the SIBLING file <harness>.lock) spans materialize_config, seed_auth and provision_tools(FIRST_START) — releasing after the rebuild would let a second launch see a matching stamp, skip installs, and exec the agent while the first launch's install scripts were still writing into the same dir. provision_tools(ATTACH) runs outside it because a setup script can prompt and an exclusive flock across a TTY prompt hangs a concurrent launch.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L84-L108",
+          "version": "repo-lines-v1:sha256:e36cb2340747912b1b94d51c0399d3086b17eb7394a12e81a2c77970afaa7de1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2MWYzM2MxMzI1NjlhNzQ5NDZiMmZjZjU0NmNhM2M0NDI1ZGEwY2E1Y2Y2YjY4NmMyNjA5MGZhYTlkMTEyYjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlNzNiN2Y1ZGZhZDQxYTg1MmFlYTJjMGQ2NWI2NDEzZTM5YWNiNjVkZTE3Y2NjZmNlNmIwNTFlZmMxYTg2ZjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlOWI3YzQzZmRlYTRhYjUzYThiMWRiZTY4YzQxNzQ0NDIxYzJkMDIwZThmMDU4YWQzMjZlMGQ1Zjc2MmY4NGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5NTAxYTgyYzk3MWVkMzFlMGUwMTJhZTZjNDRiOTlkZGQyODM0MDQ1ZDc5NzFmZGM1ZjJhMDg1MTUzOWU2YjMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2748-L2758",
+          "version": "repo-lines-v1:sha256:4503ab210996bfc2264c9242a1c676413b81320ad4a84f574fbaac043c0149e1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyYTYwNDY3NDc0YWQ2NzlkMmYzNThkMTQ1ZGRhNDY4MGU1NDk0MTQ1NjU1ZWY2NGU4ODcxMWFlYWU0ZGQxMmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlNDViYmFjMjRjNTk0NWM5Y2ZjMjZlODhkZDUxZjhhMmY1ZWE2YjIzMTg5MTYzMDZiOWUzYmE4MGRlOTAyZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyMTY4NWFlMmNhZTU2NDZmNzdlYzkwNDJjYjkwODQzNjAzMWJjZGRjOWM4MTcxMmM1NTMzYTgyZGNkNmRlMzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmYzk1MWZiN2MxYTA5ODFjMGY1ZmUxZDhiZDI2OTA1NjA1MzFkZGM5M2E5ZjQzODI2NjNkZTQ4YjYzY2QxNzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4f6cffed566546f5a43409c58d978170",
+      "statement": "settings.json (claude) and config.yml (omp) are recomputed and propagated into the live config dir on EVERY launch, gate or no gate, because they are functions of the host's live state rather than of the recipe closure the fingerprint covers.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L615-L657",
+          "version": "repo-lines-v1:sha256:eee2256518b40b33fd000fbaca20645cabd25eaeae3ed4b2083a979a135350f9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3Y2ZiYmJjYTIwNjM2MGE1MTZkYzRjNTBhNzZhZGYwMzQ2OTEwODIxZWE4YTE5NTc2ODVlNDQyMzM3MzA5YWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlMjM4NjhlYTFmOWIxMGNkMGNjMmZjOTAxZTdlZGU3NTYwZDgzZTJkNjY3MmQ5NWE4OTUwMDhmMTBmZGExNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmYzk5OGNlYWMwNWM4ZGY3NDE4ZGE3M2U5ODU4YzE0OTFlZDUwZjBmYzgwOWUyZGEyNDAyYzA5OGQ2MDY1MGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjYTE2YmUzODY2OTViODc2MjUwNzA1MTgzYTFmYzI2YzdhN2E1YjI1ODUwMTdjNDEzNTRkZTE3NGRjNTA0MzMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2248-L2259",
+          "version": "repo-lines-v1:sha256:52db3f1e8c17ff8d50525c5aa9234542b53fd83525dc2daafca482393659754c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxYWQ5MWQ4OTA5YTVjZTg1MGYwNjAyNjc4YTJlOTlmYWNkOWYxMjVmMWJmYzJkNGIwYzE0NzQ4MGI2NjY3Y2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjZWRmZjliZDNlOTcwNDY0M2FjYmY5MTAzNWY4NTkzMGYxZTc1NGIyMGE4YTcxNzNiNGViNWY2Mzk1ZjI2ZjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0Yjg0YTk5YTYzN2U4NmM5ZjgyNDI2OWFmZjM3NjIyZTlhZTQ4NGUyNzRkOTJmZWNmMzExNjBjOTg5ODkzODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzODM2YjFjNDQ0ZTFhYmRiNDEzZjc5NjkxOGExZWZkNzU2YmM5ZGJmNjU2ODRjOTA0ZjhlYmI2MjA2NmU3MmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_532b15b499e74204a6c7997044a170b2",
+      "statement": "_propagate_host_settings (and its YAML twin for omp's config.yml) merges by 'fresh keys win, only keys the fresh file does not define at all are carried over' — the carry-over is what keeps an install script's own writes alive, since installs are skipped when the fingerprint matches while settings.json is re-propagated every launch. Unparseable input on either side falls back to the plain copy rather than failing the launch.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L660-L692",
+          "version": "repo-lines-v1:sha256:41d2856bc8e75cdc7bbe7bab7369ab815c6ccc449f4dd66f9d9364a4de5e461d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4MmRkYTc0ZjExNWU5NDJhODIyYmZiOGRmYzUwMjAzZjBlOTY2ZGFmZjRjMzRmZGQ3YmQ4YjBmNTk0MmYxZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZGNkY2Q5MmE2YzNkOWEzMWJiOWEzYWQ3Y2IyMzQ0MDU3ZDY2OWQ3MDQ0M2FlOTZlMWZlNDBkMzE3NjMyY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwYWNmNzJlOTIzZmZiMmY1NDM3MjBjMjU3ZmY1MmU1ZDI1NjI4NTMwYWM5MDIzN2QyNTFhNzI3N2VkZDIzOGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_83a8a1cf822649f185080b3bd968717c",
+      "statement": "The $HOME shim is a SIBLING of the config dir (paths.host_home_shim → <harness>.home) whose .claude symlinks at the config dir, because the config dir is wiped on rebuild; its stability is the point (recipes used to improvise mktemp -d, so installer-recorded absolute paths died seconds later), and _host_run_installs re-links it each launch because the home is rebuilt and the symlink must be re-pointed at the new inode.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L388-L395",
+          "version": "repo-lines-v1:sha256:3cfe50886b0650a2eeeb3409521beb8d9383a33befd9bcfd35f5ccf8fb5f384d:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDljOGU4NzQ5YjAwMTM3Zjc0ZGFjYmFjYzhmNzJiMzRkZmQzZGQ5OWM2ZmE1YjRkNDhmNDBmNjU4MzA3OGFhNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjA5NDY0NTJiOGE1NzBjMTIxM2JkYTdkNGZjZTcwNGJiMTBiZWJkMWM3MzNjYjVmNTk3YTE1Zjg3YjEzOGY5NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDM0YmQ3OGIyN2RlZjNiOWIxY2Q5ZDhmMjg0OWViMzllN2ZhZDNhOTg3NGY5YzM4YTMzODQ3MjlmNjg4ZGUzMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmVkYWU1MDViYzVkODJlZjdhM2U2NzE1NGZiMWQ4N2MwZGM2MjE5NWY1Y2VkYjBhZTIyODI1YmVhODEyOGY5MCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L378-L394",
+          "version": "repo-lines-v1:sha256:ee6217eb875d2745365c094fa1bfca1d7ab50467f6003fccd93720d3c3faa445:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZjhlOGEyYjg5Yzc0NmJhMjVmZjBiZTY4MTk5OTE4NTRiMmYxZWJkNzU3YTc1ZTM4ZjU3MDI5OGVmMDZiMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4M2ExOTU2ZTNkMDFjZDJjMTI5NWZkNTYwNTYyODRiNTRkNGExNDFiMDI0YTAyMTVlMDc3OGY2ZTEzOThiNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViMTY4Y2I0YTNhMTg5Y2FmYzYwNTg1YTgyYzlhMWFmNzc2ZDQ4ZTM4ZmNlNGMwYTVjMjU4OTMwOTkwZTQzNmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhNDE5MDMzNTk2OGUxYjY3Zjc1MzM4MmI2MDE3M2E0ZWJlYzJmODJkNDJhM2NiYWY4NjAwNjViMjhkOTQ2ZjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9b3ed2b68573419d9fd83a4f968a57b5",
+      "statement": "claude share-back (mechanism 1) symlinks the session-state dirs projects/file-history/todos/tasks/session-env/shell-snapshots and .credentials.json at the host's real config dir (honouring a pre-existing CLAUDE_CONFIG_DIR, else ~/.claude), and COPIES only .claude.json — the account snapshot read from beside the config dir, so the stack skips onboarding while its writes stay out of the user's global claude state.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L379-L418",
+          "version": "repo-lines-v1:sha256:ad284279ea0b71ebe5127f63a4131e4c29620301288c6249debd4de2e6bf6f0a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZDE5YzI5NGJlODVjODFmZmU0MDM1MDg0NDk4MDJmMGY0ZjhlZWE5MjJjODdhYWRjNTA5OTI5MGY1MmY0ZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2NDIyMDA5ZDMxOGY2YjhjYmI5MGU4MzhkMTliZjU3ZTFhMzgzYTQ5OWFmN2U0ZjY1YWE0ZGUzOTQwZjhiZGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4MmMxYzk3OGE1NTRiN2UwMDYyYTA4MmFjZTdiMTZhNDBjOWIzYTBjNzExMjYzZDU1NWI2MWJiOWFjOTQ4NzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3MTZlMWYyZjRhYjEwMTkzNjA5MTliYWQyNzY2OTc0NzcyZDU4NzZmZWRiOTA5ZmEwYTE0NzVlZDYwM2ZlZWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_78803ccd67854d669c3b93b27d9310b9",
+      "statement": "The claude credentials rescue exists because Claude Code's token refresh REPLACES the .credentials.json symlink with a regular file, so the refreshed token lands in the stack dir and the shared copy never sees it; without the rescue the next launch wipes the stack dir and re-links at a stale copy, logging the user out roughly every refresh (bd harnessed-8px.10). _rescue_host_credentials runs BEFORE the materialize, inside _host_launch_plan, precisely because the rmtree below it is its own hazard.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L314-L377",
+          "version": "repo-lines-v1:sha256:e84d15861627568b4486d93df455ab85021ae17a892ca3a4d2d6543f54350e74:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjM2NiMjM1MjlhZGMzNmRiYTM3ZmFlZWE2MTEzZTUwNjQyNDYyZDdmNGU0ODIyOWJiYTY3ODMwMjczNjc2MjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1MzZkNDUxMzFhZWIxMDI4ODljZTQxZjE3Y2QxMTU3MWNkYTQwMDAxYzE0YzIwZDUwNGE4MGU1YWMyYmU1ODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVlMDAyNjZlNDk0NWRiNTdkOTJlZDI5YTU5MmI0ZGZkODZmZjIxOTBkYjlmNjVkNTFjMGQxMjk4YmRjY2Q1ZGEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2243-L2248",
+          "version": "repo-lines-v1:sha256:e694f72bae9a4244b2f9d5e317ab13f4ffe103c3bab4d4c6f84ab38217fe1fac:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjA1NTM3MzkwOTU2Y2Q2NDIyZjE1NmE4NjEyNjA5ZGEyNzA4NmMxZTYxZGQxOTU5ZjllYzA3Y2NhMzZmOWUxNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzFhZDkxZDg5MDlhNWNlODUwZjA2MDI2NzhhMmU5OWZhY2Q5ZjEyNWYxYmZjMmQ0YjBjMTQ3NDgwYjY2NjdjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDMwMDJmNmI3NDQ4MDYxZDU2MmNhZWI0NWYwZTc3ZTg5OTc5NmQyYzU1YTBkZGVlZDQxZjEwNDcxZGQxMzcwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzNhOTAyOGI3ZjgxOTQyYTRkNzdhZTI3YmM3YjYyOWRkZDljNTkxMDM3OGY2ZmFjODhmZTk0YWI1MTI3ZjAzYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_03fa58d8c16c4a83beb6a2cf3dea2e59",
+      "statement": "The credential rescue scans EVERY host home using explicit glob depths (*/*/* and */*), never **, because config dirs contain symlinked state dirs pointing back into ~/.claude and a recursive walk risks escaping the tree. Scanning all homes (not just the launching one) is what makes 'one login everywhere' true across stacks and projects rather than only within one.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L346-L355",
+          "version": "repo-lines-v1:sha256:68822dc0c75f91aba88e107894665d09fe7cccab0516f81315fea6601627faa0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MzQxN2U3YTljM2NmNWE2N2QwZWY5NGYzM2YxMTdlZTQyOGJkZGRmYWUyNDg1N2Q3OGU3NGZlYmVhN2ZmOTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyMTAyNTBhOTg1NGNiNTg0YzdiMjI3NjFjNjI1ZDg2Njc2ZWE3YjQ4NjI3MWVjYTMyYWNhNDM3NDIyNjVmOWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkOWQ2NGM2NWY5MTI1ZmQ0MWQ1NmJiMmQ5NGYwMjQ1YzA2MmNmZjM0MzAxZjM4MzkyM2I1N2JhNGE4ZDk2NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2N2RhMzQ3NGZiM2Q2ZGExOTU4NWY1NWRiNjVlMTUxY2M4MzdkNjlhZTFlMzc0NGFmMDQ2MGI5NTUzOGM3NWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a634ac782b1a4eb891a1bc747d3781aa",
+      "statement": "Freshness alone is not sufficient for credential rescue: _credentials_are_usable rejects a gutted credential (empty accessToken or refreshToken, or expiresAt 0 — the state a real logout leaves) because the gutted file is often the newest on disk and promoting it overwrites a working shared token and logs every other stack out. An expired ACCESS token is deliberately still usable — that is the healthy state a refresh token exists to serve — and a shared copy that is already gutted is healed even though it is newer.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L260-L292",
+          "version": "repo-lines-v1:sha256:40c4e9f07cd79d1089ee71451d237b5373ec4f28d07a256099ec57351f0f680d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MDZmN2ZhZGZlNDZiMWUyYmJkZmQ2MDNiMjE3NDZkOTAyYTlkMzIzNjllNWY1YzlmZjg5ZmVkNjM4MDY0ZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiY2I2YzFjNjU0MDc3YTlmNGEyOGNlMmIxOTg3ODg0NTJkZGFmNTVlNTIwNGE5MTVmNzNhZDUyZDcwMzFjNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzOWQ5OGU0ZTBlODM1ZjYyMTQwNzY0ZGM4MGE2NTI5N2U4OWMyMTFlZTE2ZWE0NjRkM2Y0OTAwNGY0YzhiNDEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L365-L376",
+          "version": "repo-lines-v1:sha256:2562ceed0bc5ec7da3f3c103b8bce48692d4f5d80288d4f094b8a98210247f6f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjMDg1ZGQwZmY4ODZjZTcxNmE4NGI3ZWNlMDllZGVmZTM5NDhmZDFhZjRkZjk4ZGQyYzFhMzJiZWMwODliZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyYWJiMjhmMDljMjJhYzVkYzc5ZTAwYzdkNTMzZWQ1YzdhNjA4YmYzMmZhYzM4ZmZiMGE2MTJhYjRhNzhlOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwOTVjZDc0Y2VkNzVmODkwNDc4M2Y1NTkxMTFmMTJjZTUwNjA4MjJiNzQwZGVhNTA4NTk0ZGRlZTQ5MTFiMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2OTk3MGY3NGYwM2NlZjhjY2UwZmJiNjA1OWFjOTQyN2ZlMWMzNmM0MDAzNTVlZDZkNDJjNzQyYzMxN2JhOTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ee070ae7202a4edeb89f81e32a9c1e3d",
+      "statement": "Under a configured CLAUDE_CODE_OAUTH_TOKEN the credentials file is dead weight: the share-back removes a per-stack copy (never the shared ~/.claude file, which is the user's own login) and links nothing, and the rescue returns immediately. An EMPTY token value is not 'configured' — export VAR= is how a shell profile turns it off, and reading the bare name would retire a load-bearing credential with no way back.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L294-L311",
+          "version": "repo-lines-v1:sha256:6e6505ddf2dcc84b71cd4b20410edcfb400064b436c6ba5def52efeed7c0b7d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjMDQzMjhjMmM2Y2ZiNGNjNjgxODYzNDMwNjliNjgzZjIzYzdhMDlmMDkzNTUzYTg2MGZjNTBmZjJhYjYzMTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwZWY2NDQxMTUwY2M2MjAxMGUyZDRhZGM0MTY3ZWMzMmUzZjIyYjg2MjQ5MGU3ODYzZDU0MjNiNGM1NmY1Y2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxODA3MmQxMTE4ZWYyZDE3MGQ5NzZjODM2YjgyNTUxOGQ5NTM1ZTE5MWRmYzViYWE1MDIwZTg2MDBlMDczMTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhNzdiZGNkMjQ0YjMxY2VhMTk5NGM2NWE2ZjU1Mzg3NWE2MzhlMGI2YzJhZjQzOTAyYzk4OGRkMjlhMDA5ZDEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L397-L412",
+          "version": "repo-lines-v1:sha256:75a2d80da999b8643d53750ecaee628e653c4756ad0e05b31f30873530036ce0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2YWQ2N2E4NjZkYTYwODhjNDVlZjNkMGNjYzgyNWMxMTcwMjMxNzY5NDIxMTIwZDc4ZTE1ZDk2Y2RhZmNmOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4N2M1N2FhZGIzOTgwOWFhMWJlYWM3ODk2MGUyMWNkZGVjNjc2ZWZiZmI1MjczOGQ5YTlhZjM1NTliZWJhYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4YzEyMTE1NmIyNzczZjEzNDg4ZmY4OTA1M2RhN2FjYjkwZDgyNWY4NDU3YWE4NGYwZmQ5YTFhNzhhZjY4ODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4M2QwOGRlNjEyMDhkOWI1MzM4ZTQxZGFhZjA0MGIyNDUxNzEyY2FlOWJlZTU3YjQxNmYwMTZhMmQ5ZmIwOWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d94ee578aa334b51aa30b7e18d6f2a66",
+      "statement": "omp share-back symlinks agent.db (auth AND the usage ledger — sharing it is what makes one login and one usage history true across stacks), history.db, sessions/, blobs/ and memories/ at the host's real agent dir; config.yml, settings.json, the identity files, mcp.json, managed-skills, cache, terminal-sessions and models.db stay per-stack.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L443-L464",
+          "version": "repo-lines-v1:sha256:d48ca6d80803b8667808a0a674b24fa06df8f318835fe82c7aa7789cec3d011d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmMWRhNDZmNjZmZTNlZGNhNmY2ZmRiZmI5MTVjZjIwY2E3MTA4YTdmNGQ5NDQwNzMzMzlkMDRmNjkzNzgxOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNzg0M2NlNjJiM2Y3MzA5NzEwMGMzMzcxNWI4OTMwYTdkNWIxNTc5MTk4YmM2MTU0NjQyYTI1NzhiYzU5N2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxMjRhODcyZTVlMmQ3MzZlYTI4ZTcyMzFlY2M1ODRjNzVlZTMwOGIzN2ZlOWE3YmY0ZThiMzBhODNlMzdjMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2N2U3NzQ1OTU2YjQzNGI1NmM1OTAzZTQ1MGVkYjU5ZDRlMTBhNmZmMDk5OWYxZDVlNmQ4MWZjY2ZhYjZkOTIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L580-L612",
+          "version": "repo-lines-v1:sha256:8037b9c0b298973c26cb1c395e3ed5a67ac80c2c55d344bf896e02d40077f8a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0MWQyMWI3OTNmM2JiOWQ4ZGU1M2Y3MWFjODM2NTU4MzI2ODU2OTE5ZTIyZTg4NmE4MGEzNGZhNzkzMmMzN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNWE5NTM1YmQ0MGFlNjU4NDE5Y2JiMWViZDMwMzcwYjMwYjY5NWNiMzUyOTczNjBkY2JhZDY1YWRhMjNkNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFmZmY5ZDViZTIzZGRkOGY0MzU1YjI5MWQwNTA3YTFkMTBhNDE5MGFhNmVkMTI2ZDMyZWI2NDBjNzY5ZDIxYmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_00fcb9d730e8456aa7a881c48dc769b2",
+      "statement": "A symlinked omp agent.db is sound and structurally immune to the claude replace-on-refresh hazard: SQLite places -wal/-shm beside the symlink TARGET (not beside the link) and rewrites the file in place, so every stack drives one logical database with one WAL and same-kernel POSIX locking — no omp credential rescue exists or is needed.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L443-L464",
+          "version": "repo-lines-v1:sha256:d48ca6d80803b8667808a0a674b24fa06df8f318835fe82c7aa7789cec3d011d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmMWRhNDZmNjZmZTNlZGNhNmY2ZmRiZmI5MTVjZjIwY2E3MTA4YTdmNGQ5NDQwNzMzMzlkMDRmNjkzNzgxOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNzg0M2NlNjJiM2Y3MzA5NzEwMGMzMzcxNWI4OTMwYTdkNWIxNTc5MTk4YmM2MTU0NjQyYTI1NzhiYzU5N2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxMjRhODcyZTVlMmQ3MzZlYTI4ZTcyMzFlY2M1ODRjNzVlZTMwOGIzN2ZlOWE3YmY0ZThiMzBhODNlMzdjMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2N2U3NzQ1OTU2YjQzNGI1NmM1OTAzZTQ1MGVkYjU5ZDRlMTBhNmZmMDk5OWYxZDVlNmQ4MWZjY2ZhYjZkOTIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2243-L2247",
+          "version": "repo-lines-v1:sha256:6e8ad700ab5c7f276a622c70c985d8c0ddfccc9975cdcbb0331b54e7bb166e87:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjA1NTM3MzkwOTU2Y2Q2NDIyZjE1NmE4NjEyNjA5ZGEyNzA4NmMxZTYxZGQxOTU5ZjllYzA3Y2NhMzZmOWUxNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWIxNTVjY2E0YTRlNTEwMjYyYzMzNTk5YzY4OGFmNzJhYmNkZmU1NzlhMmE5MTlmY2Y5YjUwM2RiNjI5ZDA0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDMwMDJmNmI3NDQ4MDYxZDU2MmNhZWI0NWYwZTc3ZTg5OTc5NmQyYzU1YTBkZGVlZDQxZjEwNDcxZGQxMzcwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzlhMDk1YWM0NzMyNTQ0Y2Q1ZDk3YmYyMWY1Y2VhYzE2OGZkNTEwMWM3ZWI3YjUzYjI0OGY2MDhiNjFlOGE3NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9099a4d3fcc646e1bd68a050f77726d9",
+      "statement": "omp share-back has a first-run guard: with no agent.db in the real agent dir the link is skipped with a note, because linking at a path that does not exist would have omp create its database THROUGH the dangling link, writing a stack's login into the user's agent dir sideways. Directories are created when missing; agent.db deliberately is not.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L586-L612",
+          "version": "repo-lines-v1:sha256:7acc98736fb246eb2ec1e75171d0c1ba5c5ee17c52ea79bca7106f3d48b55ed6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0ZTYzY2YwNjAyMGRhNDViY2Q1ZjMwYTRlZTlmYTcwZWRjNmRhMWQzOGJiZTRmZjhlYjAzYzQwMWM4MjNmYjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNWE5NTM1YmQ0MGFlNjU4NDE5Y2JiMWViZDMwMzcwYjMwYjY5NWNiMzUyOTczNjBkY2JhZDY1YWRhMjNkNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4ZDVjMWNjZjIyMDNjOTQxNGQwOTVmNWMwNGU2OTdlYzZlYTk3NmM4NzJkZjdkMDNjMGQ2ZjIyNTAwZTlmMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFmZmY5ZDViZTIzZGRkOGY0MzU1YjI5MWQwNTA3YTFkMTBhNDE5MGFhNmVkMTI2ZDMyZWI2NDBjNzY5ZDIxYmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_24a420a1d377400ea5528368c5cca0cd",
+      "statement": "An inherited PI_CODING_AGENT_DIR pointing inside harnessed's own homes tree is IGNORED by _host_omp_source (via _is_harnessed_owned, a resolved-path comparison), because launching a stack from inside another stack's host omp session inherits the parent's agent dir and would otherwise link the child's shared state at the parent's — links that dangle once the parent rebuilds, after which omp creates a REAL database at the parent's path. _host_claude_source has the same shape and no such guard.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L480-L542",
+          "version": "repo-lines-v1:sha256:fc2f93d556173319535d06e7d21b4cfafbbd6906a3fca2fbd08ca85d1ad36487:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2OWNkM2E5MjM4MTYxYmRhMmY5MzliMzVlMjE5YmUwZGNhZDUwY2Y0MWMyYjJmNzEyNDA2NmExMjU0MzA5YmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzYTE3MmEzYzI5NGFiZTQ3NTUxNmI2MTJkM2Q0N2YxZTQ2MjEwNDUwZDk3ZDY3YTZiNTkyNTMzOTMwZTAyMWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4OTUzYjhlMGUxNWJiMTdmNWY5ODE0MTc5ZTI3NGVjOTJiYTJkMGNjOTlmNGRiNWM4MzFjYzFkZDA1NDQ3YzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlYWIxYTU4MzVhN2ViNjFhMTY0Y2FiZTc5NjNlNDlkZjg2ZWIyM2UzZGQzOWQ1NmI5ZTgyZTEwMDY5NWQ1ZjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_612c81a3f33b403a85721abec2971b36",
+      "statement": "An omp host launch materializes TWO directories: the per-stack agent dir (PI_CODING_AGENT_DIR, holding APPEND_SYSTEM.md and RULES.md written whole via emit.render_omp_identity — deliberately not a call to _materialize_host_home, since the shapes differ), plus a NESTED claude-config dir (_host_omp_claude_dir = <home>/claude-config) holding the claude content layer and a settings.json propagated every launch.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L495-L577",
+          "version": "repo-lines-v1:sha256:eac3d73705b44aac3abb69b8c2c5b0810cbcbf5c93ae212614f64fea1e81237f:eyJzZWxlY3RlZExpbmVDb3VudCI6ODMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0OTA5ZmFiMjYxYjU3NmZkMmJiNWYwMTk5MGFkMjZlMTg4M2ZlN2I3ZGY1NjJhYWI1YjYwZTAwOTM4YmY3MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0YmQyNDFiMmVmMTdiMDk1YWViODRjODcwNDIzOTUyMzRlMGE4Y2Y2NDhlN2FlYmMyOGEyOWYwMGJmYWU4YzMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2177-L2217",
+          "version": "repo-lines-v1:sha256:f407f061f7fb5c24a6535e1002e221991a63c88019063fd87e34087bacffc654:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4M2QxODc3NzQ0Mjg0MmQ5NTgwODZjNThhMDdiNGNjZTRkOWJmMjQ0MjZiZGI1NWZmYzEyYTNlMzYzNjc4MzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZjUwMjY1NjRlODdmYjk4ODAwMzRkNTMyMjA4YjQ3NDk2ZGQ1YTA5YzAyNTg0ZmQ3YTQ1ODM1MWZkMjlkMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5YmE0ODRkYjBkYTBjMTRmNWZlMDkzMmYwMGU3NGUwZjczMjA1ZTMzZTZkNDM3NTc1MTExYmUyMjg4NDJlMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljZjQxZDk0YjY3YjVkYmJiZDIzMzBlNDc4NDgzODdjY2Q5MTc3ZTNmZjdmNTcyNjE5MDVhYzIzMGJjMDNiNTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c6d1106dcadf4302811f3311cf043acd",
+      "statement": "omp needs a nested per-stack CLAUDE_CONFIG_DIR because the claude-hooks bridge resolves hooks from process.env.CLAUDE_CONFIG_DIR || ~/.claude: leaving it unset is not neutral — the bridge falls back to the user's REAL ~/.claude/settings.json and fires their GLOBAL hooks inside a stack session while the stack's own never run, inverting the configuration isolation that is this backend's whole boundary.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L495-L516",
+          "version": "repo-lines-v1:sha256:4fb7646a2b16de309d5aa9c5b31b235007bf1ebd1dc865e48027310fba8450b0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0OTA5ZmFiMjYxYjU3NmZkMmJiNWYwMTk5MGFkMjZlMTg4M2ZlN2I3ZGY1NjJhYWI1YjYwZTAwOTM4YmY3MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxZmQzMmQxM2RlMzA2MjY1N2Q3NjM5MTFiMmUxMjA3NjA0MzM4ZTgzMjAxNTc1NTZkYzMzNDdkZmQ1ZjM0OWIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2786-L2792",
+          "version": "repo-lines-v1:sha256:a732463dea80538119ca055f87b32ea7fba3f6d8f7b197a05409eb19343df0d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWU2NTMyZTdjNDg3NWY0OGM2NmRmOGY5M2UxMDA2NzRhZmFlNjY4MWJiZmFkYjVkZDU0ZjZlMmNhNGNiNTA0YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDk2ZDYyNjU2ZGNmZjA0MTUyODlkYWQyODEwNjU0NmE1MDg1YTNmZjQyN2JkMTE3MTI5MmRlM2RjNzc3NDI4OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYThhYzYxOTYyYzk4MjM3ZGNjODVlODA4YTY5ZjFhNTAxOTdlZGMxNWE5NGQ1ODhiZDY4NjU2ZWU1YTg0ZGNmOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzhmNTEzMTBiNmM2ZjI2MGQ4MTEzZGNiZjZiZThmODIxMTU0ZGM2MWM1ZjY3MTI1Mjc5MzE3ZjM3ODA2ZTJkOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bfe1d720d1bc484cadffd3faa6dc0565",
+      "statement": "The omp claude-config dir is NESTED inside the agent dir rather than a sibling because paths.host_home keys a home by <stack>/<harness> and host-gc reads every dir at that level as a config dir, so a sibling would appear as a phantom harness; a child is invisible to those eyes and rides the agent dir's wholesale rebuild for free. It is also distinct from host_home(stack, 'claude'), which belongs to a real claude session with claude's own auth wiring.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L506-L516",
+          "version": "repo-lines-v1:sha256:0ef60221db5a08fa593626f9ec764f787e1e7aadbdc2636c10b8a26618de7f3f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3YjIyZTU3NDA4YWY5NGMwMjdiNjZhYjY5YzEwNGM2ZTczYzgwZmZkOWRmNjg1YzA0Y2Y5NGVjMDFiYmZiNWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyYjNjZjgzZDFiYTU5MDc0ODI0MjU1ZmU3MTQyNzY2NzdmYmQwZDhjODhkYjJhZjg1MzBmMDE3NDYzOTdlZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxZmQzMmQxM2RlMzA2MjY1N2Q3NjM5MTFiMmUxMjA3NjA0MzM4ZTgzMjAxNTc1NTZkYzMzNDdkZmQ1ZjM0OWIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4776-L4779",
+          "version": "repo-lines-v1:sha256:ff541c59155a00cb2e04f41480177cff2be2f85e596c7a7ce196dc0ceb78e82d:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDdlMmVhOTNkMTk0ZjMyNTkwOWYwYzExMmNhNzZlMzVhZjFiNmU1ZTY4YmE2ZjJhZWMxYmZiYTllNGRjN2E3YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzU3YWI0NTBkYTcxYzY0MjkxZTYzMGZlNjMyMzIxZjQ5YzQyMDg5OWEwNTZkODQyZTM4M2FhNmMyMDEyYmE2NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDRhNDNhNWIzN2U0ODBjNzIxZTBlNzFhZWFmNTNkMzEyZmY3ODZlNDRiOGRjMDBlN2IyYWRjZDQwNGFlMmIxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDhlYjA1YzBlZDk3MWZhZjRlZTJhMjI0ODQyZmQ5YWU1NGRiYzUwZjk1NzY0ZjViMmI2NzJhZjIzY2NlODFmNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_602db4ceb37e49fcb93255320f3d941b",
+      "statement": "Host omp cannot read Claude-shaped skills and the launcher names that gap once per launch: the claude-hooks bridge covers command hooks only (no skills, commands or agents path) and omp's own managed-skills surface is a different format. Hooks are NOT in the gap. The gap is stated outside capmatrix because its key is (backend, harness) and the matrix axis is the backend alone.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2376-L2408",
+          "version": "repo-lines-v1:sha256:2a4c63b8f973ec8630206f6dedfc320edc4a3bf562d0ecc4171628f7aa3e0b92:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhNGJlZTViYmNiODZlMTBjMDgzZTI3NTlmZWQ3NTczMzllYjg3ZjEyMDQ5ODkyZjE5ZTE3ZDRhYjZjNzdhNDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZTU2YjI0YzllZmE2MjQ0YWYwN2U5OTdkZTViODU3NjU1YmQ4NTBkN2EzYWYwNjExN2IzZWJjMjE5NWFiNWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_50e9677b5cf14f1f9c82546e38f04897",
+      "statement": "MISE_DATA_DIR and MISE_CONFIG_DIR are redirected into the stack's own tools tree (<xdg_data>/harnessed/tools/<stack>/mise) so a stack's mise installs never touch the user's, while MISE_STATE_DIR is DELIBERATELY NOT redirected because it holds mise's trust store and trust is a fact about the user and a config file, never about which stack is running — redirecting it gave every stack an empty trust store and made every user-trusted mise.toml read untrusted, reported misleadingly as 'error parsing config file'.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L50-L95",
+          "version": "repo-lines-v1:sha256:e68b50a7c8c9bb86b0c6afed0d793a15ba9568b0a5ccf6b0c1fd1bc182c42f6e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyYzQ4OTliYzU2YzBjMzNhN2IxYTQ4ODhmYTE0YTg0YmI3ZDI3MzA1ZDcxMDRmYzBkNGZhNzNjMTU5YzE5NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0YTdhNWMyMTVlYzRlNWUwYTdiOWViZTg4NTkyZTAyZjg4NzhjNzVmYTcxMDk0MzFmM2QzNzQyODA2ZWVlYmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyZjRlZWVmNDZlZjk2YzI3OTc5ZWEwMGJjYzQzNjBmMzEzZTYwYTk5YTA5OTg4M2IyN2UyZDk4ZTI3OWIyYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_844fa54ca143494998ea4d4f209f4be8",
+      "statement": "A stale MISE_STATE_DIR exported by a previous harnessed release is actively REMOVED (not merely unset) and only when the value matches harnessed's own former shape, matched as one path segment and RESOLVED on both sides so a symlink into a stack's own dir cannot launder that stack's trusted_config_paths into the next launch as a user choice. MISE_CONFIG_DIR gets the same predicate for the same inheritance trap; the user's own MISE_CONFIG_DIR is honoured.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L202-L247",
+          "version": "repo-lines-v1:sha256:93b7954c81b6b692df9fa38b27dcf51a36e7c18dfaeab8c68461fc024caab8e2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYzRlZDM4MjcxNDlkNzg1M2E0MTNiNmYyZTA1M2UyOTdhNTM3ZmNmZDI1NTk3ZTViMjA4ZjhlMzM1Nzk0NjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MWZlNzJhMDgwZjI3YmI2ZDJkOWU0MzAyNmVkZDUxNGI2Yjk4YTUwZWViZTcwNjAyMTQyOTUwOWJiZTBkM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhODJlYmU5ZWQ0MDdjM2E2YmE0YjAwMzQyOTJiYWE1MmMxMWNlNWFlMjg2MTA3NDAyZGU0NzkyZWVlY2FjZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzMDQxZmIwZDIyNjdjMDkwOGY2NDY1ZjE0ODVkYzFkZWQ0ODg4Zjk5ZGU1NWYwMWE3ZGUyZGE5NGJlMTlmZjAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L98-L177",
+          "version": "repo-lines-v1:sha256:eec72b44b1215538a7f25f00dfce00291fc58335ee3908d253006a1f45746140:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3NDkxOGUyOWY4Nzg5NWQxNWVjZGUwNTc5NmFiOWZkYzQ1YmQ1ZmRlNjQxMzkyOWIwNzkyZTliMjc2MGJjYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxOWRkOWQxYTA5ZWM1NTNiMzhlMDIzODAzMGU1NjgwMTBhODRlZWFiMzM2ZWU1YTExNTUzMjRhMWFhMWZkOTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkZDkxZTdhYjRhODFkYjlmNGM3ZDkzZDg4OTVhZTE5YWRhYmRlZWFkMmM2MGZmYmI1ZTVjYzljYmNmOTBlMjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_70b6ccb12604411b8c46a64c68594f1a",
+      "statement": "harnessed carries mise trust rather than inventing it: _apply_host_mise_env sets MISE_TRUSTED_CONFIG_PATHS from entries read out of the user's OWN config (which the MISE_CONFIG_DIR redirect would otherwise hide) plus inherited entries, deduped — harnessed names none of its own, because a mise config can carry _.source and naming a path would grant code execution the user never granted. The user's trusted paths are read BEFORE the redirect lands so a user-chosen config dir is not silently passed over.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L180-L247",
+          "version": "repo-lines-v1:sha256:88f12097b9cd827318cf5aaba71956920fb7b039109e3106781477c424bdd7ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyYzA1MWEzZDg2NzkyMmYyNmMzM2M4ZTFlY2QwOWQwNTVmNjA1NGY2ZGI2MTdjMTg1YjAwNzg0MDJmYjgwMmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MWZlNzJhMDgwZjI3YmI2ZDJkOWU0MzAyNmVkZDUxNGI2Yjk4YTUwZWViZTcwNjAyMTQyOTUwOWJiZTBkM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3Nzg2M2UwM2U1MjY5YTQwYjQ3NWYwZmUxMWMxYzExZTM2M2Y0OGQ5YWFhMTY0ZDA3OWRmNzc5NWFiMjUwY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzMDQxZmIwZDIyNjdjMDkwOGY2NDY1ZjE0ODVkYzFkZWQ0ODg4Zjk5ZGU1NWYwMWE3ZGUyZGE5NGJlMTlmZjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2416251eaea04458bdc6aa5a394c9d49",
+      "statement": "The mise shims dir on PATH is useless without the env redirect: a shim is a symlink to the mise binary that re-resolves the tool by argv[0] against MISE_DATA_DIR at run time, so _launch_host exports _apply_host_mise_env in the same breath as the PATH entry — one function for both so install time and run time cannot drift.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L41-L60",
+          "version": "repo-lines-v1:sha256:482bc6f908c8786b0b6e210896f632c0f36033c145181c297c92ba9ed18189f6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmOGNlZDg5NDI5YjJjOTEwZjM1MTc4NTkwZmI2NDQ3MmQ1YWFlNzk5YzlmODlhMDQwNTAzNTMyY2NlYzYwNjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3ODg1NjkwY2E3YjRmNjQ4ZTVjZmY0YmUxMzE1YzlkNDlhNDdiODA3MGI4NDliNTg5ZWFhNWE0ZjI4ZmM2ODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyN2YwMjAyOGE2NDEyMmI0MWI5YmE5NDc0ODhiZmRiM2FhYTVmYTVhMzQ0OWNhZGVkYjMxNDExZDc5MzY1NzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyZWRkZDM3MzNiOTc1NmEwYTQ2MGRmN2UwZDEyYTYxZmNhMjlkOWU1NGI1NTM2ZjZmZmQyMWU3MDA5MmIxZDQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2700-L2717",
+          "version": "repo-lines-v1:sha256:442e93c7cca3d59c5028727b40a6edfb77dfd2cc5f5194298324a74565d9f596:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NzYzNGI1ODU0ZDM1NDY3OGQzNzljMDQwNTI5YzQzNDJhMzA2YmU4M2E3ZDI5YjZkN2M1NTkzNWUzNjc3ZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiODVjMTY0ZjNkYmE5YmU1NDFjNDdiYzA0NWYzOGJjYTRlN2ZkYWFmOTE2YWE3NzJlZTQzM2Q3ZThlOTA4MWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0ZTFlZWY0Zjg0NmNiMzNkYTM2NjZiNWU0OThjYjU1ZGM3ODg0YjhlYzU5MzFhYzU3MzAwNGEyYTEzODJiMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1NmMxOGIzYzZlYjg0OTU5ZTM1NzgwZTc4NDQzZTQ5NzRmNDVjMGMyMGMwYTFkMTE1ZTVkNGE2YWMyOTRkNjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9b28f0cf26d04a709305064f54176bc1",
+      "statement": "Host-only install redirections keep catalog-authored tool installs inside the stack tree: UV_TOOL_DIR at the stack's uv-tools dir, UV_TOOL_BIN_DIR and a bin-dir-leading PATH (npm_config_prefix at the bin dir's parent) for both _host_run_installs and _host_run_setups. In-container these stay unset because the image already baked the tool.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L426-L433",
+          "version": "repo-lines-v1:sha256:b77ae765a11219b68a7b0438a18860a5d23d7035a151e4426702d21bf288e661:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2U5ZDUzNzU0MzAzMzRkMzdhOTU2M2E2ZjAxMDA5ODFkOWMyMWQzNTM2N2JiZTdkYmU2ZTExMDkwNmQ5MWJlMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE3OGQxMzMzZTUyMjVlM2FmNThhODNjOWMxM2Y1NDY1YmIwZmEzY2RmNzUyMGVmYjVjMzA3YzA4MGViY2U1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmEyMmQzYzdiNTMzNjMyODQyMjExZmVlODFmY2I4NDk0ZDg4YjA1OTY4OTYxZTBmZDc3Yjk5ZTE3MmUyNzNjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjI2NjI5OWRiMDI2M2IyZTg4NmI4YWQ2NjRjZmM2ZDc0ODVmZDQ2OGYxMGU3OGQ2ODlmOWM4NTJjNzdmNmY4NiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L594-L600",
+          "version": "repo-lines-v1:sha256:ab435f2853c38a43700dee6460b783c9dbb0045a73b13dbcfcf8b6806dbe3381:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzQ0M2VlYzVjY2U4NjRmMzUzMjRmNzIzNDNmZmY5NzA4YTJhMTA1ODNmYWRkYzJiNDU2NzI5NmExMzZlZGYyNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGZkMjFmNTRmZGQzZjNkYTczZGUzMTQ1N2Q4MTdlYWE5ZGE5OThmNDUyMDkyZjZjYWJmZTg5OGM0MjgzZGJkZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTBkYTgxNjkyZjFmMTk1MTNlMGU2YTdmYzllN2Q5NWUwYTlhYTNjZDQwZGVhNzNiMzFkMDNmMzVkOTM0Mjk1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWE5NjliZGRiNWRlNmFlY2QwYTk2OWE4MjA4ZGViNjY0NGZkOTI1YWFkMjE5ZDI4ZjExNWU0MWY3OWZiN2EwZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_faf070e5d1284e0d9ad686410647f997",
+      "statement": "The stack bin dir and the stack's own mise shims dir are prepended to PATH before setups and the native MCP check, so _host_native_mcp's stdio-command presence check sees just-provisioned tools and anything an install/setup script put in the stack bin dir.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2492-L2498",
+          "version": "repo-lines-v1:sha256:8f1c43579baac6d1d87a26dc73de1d99def4981625dcf4cab5111304c762b634:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjOWJjYjhjMmViZGZhNzU2ZTZkNDliZTJhOWNjMTE2MjEzNjEzOTMyOGIyOWEzZTBkODYzYWE3Y2UwYTJkZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTBkZTI1ODcxOTYxNDkyNjA3MWM4ZmIxOWZkODY2MTUwNTU1ZjFiMDEzNTRmOGNkMTYwM2ExMDlhN2RkYWU0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTg3NjBkMWFjYjA0OGM3NWMxN2I3Y2YwNjdhY2M3ZWM2NTc3NTgzYjNlOGY0OTRjYzMwOGYxMDU3MGI0MjcwMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmRmNDdiMDUzZGQyMDZkYzBlMmZjYTNmYmFlMjI5YzQ5ODUwMDcwMmRhNmFlN2FmZmY0OTIwMDE5NGUyZDkxMSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2700-L2723",
+          "version": "repo-lines-v1:sha256:55056d580652787f546470171523b2771fd9dacfdf9c440884a936930cd5089d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NzYzNGI1ODU0ZDM1NDY3OGQzNzljMDQwNTI5YzQzNDJhMzA2YmU4M2E3ZDI5YjZkN2M1NTkzNWUzNjc3ZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2OGZjODc1MWY3ZWJiOWNhYmY3ZThjNjUyZGM1ZDUzOGI1OTA1MWZiODkyN2NkYzI2MDY3NzY5YzlhZjhkZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0ZTFlZWY0Zjg0NmNiMzNkYTM2NjZiNWU0OThjYjU1ZGM3ODg0YjhlYzU5MzFhYzU3MzAwNGEyYTEzODJiMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwYzMwZjJmYzliNjI5YmZlZGU4MTY0ZmNiYWU2NWI2NjZlZjNkNmE4ZDAyNDgyZjZiZDM0MWM2Mzg5MzdiOWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b8fd31559a5f49e687b6c545b34db924",
+      "statement": "_harness_config_env pins the harness's own config-dir variables wherever catalog-authored content runs host-side (installs, setup scripts, the setup.condition eval), applied LAST so an inherited value cannot survive: claude gets CLAUDE_CONFIG_DIR at the stack home; omp gets PI_CODING_AGENT_DIR at the stack home and CLAUDE_CONFIG_DIR at the nested bridge dir. Pinned rather than unset because unsetting sends an honouring installer to the user's real $HOME/.claude — a worse landing spot than the parent stack's (bd harnessed-8px.26: gsd-core's install.sh wrote 69 skills into an unrelated stack's home).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L320-L364",
+          "version": "repo-lines-v1:sha256:81f44e79cb1fde17a4eccaff0323601b1a0306b657538f87b5d3c435564050b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNDMxMGExMGFjOWJlM2Q5ZTM5OGI0N2Y4NTY2NjkxYjI0MjM3MGY3NTU5ZmQ5YzliYTZlZThkMzE2YTNjNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ODczMGFmMzQ5ZTY2NmVhNWFiYzlhZThkOGIzZGM4ZDFjZmZiYzM1OWM0NjZkNzdhYTIwM2ExMGFiOGI2Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzZTU2YjRhMjJhZDRlN2VkZjk0YjFmNWMwZjYxMTAxOGU0YTZkYzA4Zjg0Mzg2ZjY4YmFmNzdkYzZmMzVhYTYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L426-L433",
+          "version": "repo-lines-v1:sha256:b77ae765a11219b68a7b0438a18860a5d23d7035a151e4426702d21bf288e661:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2U5ZDUzNzU0MzAzMzRkMzdhOTU2M2E2ZjAxMDA5ODFkOWMyMWQzNTM2N2JiZTdkYmU2ZTExMDkwNmQ5MWJlMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE3OGQxMzMzZTUyMjVlM2FmNThhODNjOWMxM2Y1NDY1YmIwZmEzY2RmNzUyMGVmYjVjMzA3YzA4MGViY2U1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmEyMmQzYzdiNTMzNjMyODQyMjExZmVlODFmY2I4NDk0ZDg4YjA1OTY4OTYxZTBmZDc3Yjk5ZTE3MmUyNzNjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjI2NjI5OWRiMDI2M2IyZTg4NmI4YWQ2NjRjZmM2ZDc0ODVmZDQ2OGYxMGU3OGQ2ODlmOWM4NTJjNzdmNmY4NiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_668397b22fd54c7b99828d455278d032",
+      "statement": "Host install env layering is: inherited os.environ → recipe env: → emit.install_env(...) with the harnessed-owned contract winning over both (the same winner as container mode, where inline RUN assignments beat preceding ENV lines), then the host-only extras, then _harness_config_env last. install_env is deliberately a SUBSET of the folder-env contract because install runs at container build time where PROJECT_DIR/MAIN_REPO_DIR are unknowable.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py#L997-L1015",
+          "version": "repo-lines-v1:sha256:93ea30ec82fb4bad0c2fe71a5e645ce506219e5329a9cc109dd72198d888a685:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjN2EwNTkyOGVmMmZmYmYxNjYxOTY4OGJjNjc4ODAzMGVlZmE3MDBhOTc1OWIzOTYwZDEyNDdhY2EwNjYxNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwMTY3ZTI4NmE2ZjBlNDU2NTMyMmEwMGQyZmYwNmIxNmE4MDk2OTljODQ2Nzk0MTE4MzA5ZGZjOTdkMjI4OWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzYmNhYWIxMzU1YTJmMDUzY2MxNTI5ZTViYjdiOTdkNWVlNTNhNmFmZTFjOGU2OTE3YzkwOTZhOGRhZmQzNzYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L417-L433",
+          "version": "repo-lines-v1:sha256:fef03330392c43ce7ccd242dbcd1138ef9b16956c54b4b227c6fa314829c32ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNjRlNGE0YTFiOTMzNDQ4OGU3ZWQ1Mjk4YzQ5OTlhZjYxNWRhNzJlMmY2MmY3ODNjOWQ4NzU3YjNiNjVmZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzhkMTMzM2U1MjI1ZTNhZjU4YTgzYzljMTNmNTQ2NWJiMGZhM2NkZjc1MjBlZmI1YzMwN2MwODBlYmNlNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyODA0M2ZiY2IwOWFkOTNiNmVkMjkyMGE4NTU1MjNlMzhhNDU0ZmNmOTI2MGE1MTExN2NiNzZlN2FkZGVjOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyNjYyOTlkYjAyNjNiMmU4ODZiOGFkNjY0Y2ZjNmQ3NDg1ZmQ0NjhmMTBlNzhkNjg5ZjljODUyYzc3ZjZmODYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5a3267ac07564aa4b3178a284a67135b",
+      "statement": "Host install tests are interleaved per-recipe (this recipe's tests run before the next recipe installs) using capability.run_recipe_tests_host, which takes the env in rather than rebuilding it so the test sees exactly what the install saw; the timeout is read at call time (capability.DEFAULT_TEST_TIMEOUT) so a hung test cannot wedge every launch.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capability.py#L452-L478",
+          "version": "repo-lines-v1:sha256:4fa2f15de2769142df70e2afc7078dc18e594a7d7cc239214b11fb1dc2292b8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2ZDkzZGMwOTU5NjZkOTliZmY5NDc5ODk5Njk3ZDFlZjY4ZjU5ODUyYmVkMzkzZjQzNGM0YWYzYWIwOWE1ZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzM2U2ZTY0OTY1OGE3ODcyMzA4YjhjMjAxYTY2M2ZmNWFlNzMyMDcyNDk3OTk1N2I3ZWNkMGNlYjQ5ZWE0MzgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L440-L463",
+          "version": "repo-lines-v1:sha256:a76e8fd47a3e31312bd616d31d6dcc736d2e60aa26b444997ad5f1e4036aa946:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhY2U1ODYzZmNmM2NjMjE4YzBiNWQ1ZmRkMDhiN2YwYjkxZWY2ZTRiOWU0NWMwYzNiYzdkMGIzZmRkMTU5ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmZmJiZjI2ZDc1ZGE3Y2M1M2UzMGVmZmFhODNiYmNiOTBhNjg2OTVkOThjZDQzNmIwZGJjMWFkNjBjZmExZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkMGJhYTU2ZTQ4OGUzM2EzZGRlNmNjNmMwYzEzMjc1MDAwMGQ4MGI0ZDk5MzBkNzgwNzlkNTEyZDRhZjk4N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlOWU4MWRlOWFiMDA4YjQ4OWY1MjcyZDI4MDRlZTBmNzE4ZTc2MWMyZDllMDVjZWI5MmIxMjdkNjljNWEzZTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_93d9cb76ff6e4323b903f6454c8f0586",
+      "statement": "A recipe's install.system component is skipped on a host launch and announced verbatim with the recipe named, because it declares a component only a container build can perform (root / apt-get) and harnessed does not sudo or mutate the user's system; a script-less install makes the warning the whole host-side behaviour.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L367-L410",
+          "version": "repo-lines-v1:sha256:4683ae3955104eb7a13e5065f7c3e652c3879b7779ca74ca3e1db804870419ed:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczZjhmOTliZTE4MTFhMGJiZWVkM2ZmZjdiY2RlMThhMjQ2OTEyZDI4MzNmMjg5Zjc0ZWIyNGFlM2Q5MTI2MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YWQwNTJjNDRiOTUzZjBkODMyODZhMmRkZGVjMjE4NWU3ZjE4OWRiMGU0ZjUwMmM2ZjA2ZjM0NzU4NDU0YTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3YTk5NjQ2YTc3ZDFiZDYwZjdhZDljMzg2MGM2ZDM0NTY1NDAyYTY0ZWY2YzgzOGRhZmJhMzUzOTJiMjJiMjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_205589c441874820a25429335d306aaf",
+      "statement": "setup.condition is deliberately NOT consulted when deciding to run a setup.script host-side: a condition is a first-run gate, so gating on it makes a script fresh-project-only and an existing project whose state is present but wrong can never be corrected. Scripts are idempotent and self-gating by contract, run every launch, and converge; condition keeps its job gating the user-facing notice and _confirm_setup's prompt.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L561-L571",
+          "version": "repo-lines-v1:sha256:69a24c02d68f7b55823cb1829fd422d6a8c6da04b0bedd784f35e8a6bcc75ccb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0NmZjMDMwODk1ZmNlYmMwZThkNTIxNWU2YzM1NzcxMGVjZjVhNzc5MmU5MDk0Mzk0YTNhYTNlNGViNjYxYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkMzNiYzljYTYwYWJmZTIxNTMyMTI3NmNlNTcwYTRhNjBiZjQ2MzcyNWU4ODU2MmI4MzI3MjBkYmFiNmZlOTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3ODgzMmFhYjE3YTUxYjAyZjY0OTkyMTg5M2E4NzUwZGQ4NGMzYjZmZDYzMWQwNmFkMTM1ZDU2NDZhZjFmZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0ZDg4NWU0YjY1OGViOGZhMTUxNGRhYzcxZDhmOTU0YzUwNjdhNGE5OGEyYWQ3YmJjMTczMDA0NWZlNDA0ZGUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L325-L341",
+          "version": "repo-lines-v1:sha256:e67b152def4186327ce64cb3a98b166d71a16cebcf4de863c9cb48a7ced225f6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzYjYyOTMyYjRiY2RmNWUzN2U0MTVmZmEwNzJmM2UxNGM2OTRmNjU2MmU4NzQwZWE3YjZhYTgyZDM3OTE1ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxMTI5ZmJiODQ2ZjBlOWIwNGNkYmFiYjczM2E3NDIzOGI0NDQ0ZTA3ZWVjOGFhM2UxYzI2NTdmNDgyNDcyM2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyMjFmY2M1YmU1ODI4NTg4Y2RjYTBhYzZhYTZiZDc2N2ZjYzAxYzM0ZDgxZWUyN2EyZDY5NjI5ZDc2ZTFmZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0NjQwNDFlZmQzNmIyZTE5MDgwYWEyNmIwNjc0ODViYWQ2NGIxNmZjNzZjYmZhM2UzNzc4YjUxZTRlMjkxZjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8f1a492d3cfc448f92d5179cd8c5c5b5",
+      "statement": "Host init propagation captures the env delta INSIDE the init shell (env -0 before and after a brace group, with the exit status preserved across the second capture) rather than diffing against what harnessed passed in, because bash -lc sources the user's profile first and a profile-added variable is not something a recipe asked to export into the agent. Without this, init: run: export … was a silent no-op under host-run since the agent is exec'd from os.environ.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L505-L558",
+          "version": "repo-lines-v1:sha256:3c159de533a5a193f58649850ce41ea2824c9bad083b72fb6a00ddaed8343b57:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxMmMwOTg4ZDM1YWIxNTEzM2Q5NjkxOGQxYTZmMGMwMGQzNzA5MDRlNTFhNzE3NGI5NjAyYmVlOTQ1ZWJiZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiNzYzMmMzMzQ5ZGI2YjRkMzU2MmVkZTY1NTYzOWUzZmMyMTU4M2QxMGYzYTQ2ZTllODYxMTBiNGYwNDhiMDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM0ODFjNzU0OTBmMmQ0OTcyN2UxNmFmOWEwZTljYmRhNWZjMzViYjJlZmYwM2NiMTUzOGMyNWNkMWZkZGY1OTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZGU3NzM4ZTE5MzVmMDhmODBjNTM1MjY5MTg0OGEwMWU0ZDYzMmJlMTc4YTQ4YTExZjNkMWVlYWVlYWMwNjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bf58fecffba74fcc951c7f49aa23d7fc",
+      "statement": "_propagate_init_env merges PATH rather than replacing it (only entries init ADDED are prepended, in order) because the launcher composed the agent's PATH deliberately, and ignores shell bookkeeping (_, SHLVL, PWD, OLDPWD, __harnessed_rc) since PWD is the init shell's cwd and would silently relocate the agent.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L466-L502",
+          "version": "repo-lines-v1:sha256:054316df1387cb111a7ddf8398f9c84260bcd8f637e88ea463afe1d3d030eef4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0Y2RhZjEwYjVkNjUwNzA4NzdkZGY1NjI0MjM1M2U5MzJkODQyN2UwZmE5MDFhZjBlYjljYWIzYmM5ZTlmNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlZWE4NWQ5YmEzMTVlOTBiY2IzODU5MWQ0ZTBmNDY2NzcyY2IzMDYzOTFlYTc4NDJkNzkyZDk3MzdlYjU0NjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5MjY1NzIxMGIxMGQ3NzU0NmY3N2U2YmU5MTVkNDU2ZTI1OWZiYTBmYTllODQ2NmE5ZDBlZjVlZTI4M2UyZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3YTdmNDMwZTdjNDdiMjE3NDg0ZjE1MDQ0NmVmYmY3NGU2YjdjNjdkZDY4MzhiYmVmYTNjYjM2OWY1YTg2YWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_afc4440a8aee4dbca6518369a0f59ad5",
+      "statement": "Host MCP is native with no hatago hub: stdio servers are spawned by the harness itself, url servers are connected directly (a url_env becomes a ${VAR} reference expanded at read time so the value stays off disk), and service-backed servers are warned and skipped.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L608-L644",
+          "version": "repo-lines-v1:sha256:8760abcea810d952d106293ec1bbd0f7da08c7ec0328b0c62c4029fd3368e907:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2NmFmMmU1OWFlYzYwMWE5ZmVlYjZjODRhZGM1MGFkM2EyNmE1MjYyZWFkY2ViOGRiZjMxYzZlODA3NTM1ZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMzYwODg1Y2M2ZjFiY2M2NTM2NTc2YjIzNjYwMTRhYTY0MjVkNGMxNWU2MDk5Y2FiMmI0YWM5YmIyZjVmYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmY2E5OTFjMWExZjEyNTc5M2YwZDA4Mzc0ZGExMzU0ODZiOTE1NjdkNTFlZWI5NzM4ZmY3NTk3ZmNhMDllZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6c6f0600ab5940428267c3b033e1d9f4",
+      "statement": "The MCP config file is ALWAYS written even with zero servers — that is the isolation lever. claude gets <home>/.mcp.json plus --mcp-config and --strict-mcp-config (strict makes claude load only this file so the copied .claude.json's global mcpServers cannot leak in); omp gets <home>/mcp.json written unconditionally because it has no --mcp-config flag and reads only its agent dir's mcp.json, so the per-stack dir IS the isolation.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2492-L2535",
+          "version": "repo-lines-v1:sha256:91f325b80cef35ec2ae9dbe553202b79de25dbe9bcab436c899c88f78a7c3316:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzliY2I4YzJlYmRmYTc1NmU2ZDQ5YmUyYTljYzExNjIxMzYxMzkzMjhiMjlhM2UwZDg2M2FhN2NlMGEyZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlNDJjMzA1ZDhmYmY5ODVmODkyNDZmMGE5NTM4MjQ5MDQxZWU3MWUyNzFjODhlMDRhNzU1ZjA3NTBiNTRkZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4NzYwZDFhY2IwNDhjNzVjMTdiN2NmMDY3YWNjN2VjNjU3NzU4M2IzZThmNDk0Y2MzMDhmMTA1NzBiNDI3MDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjYzhiNTU3MTU1ZTA0NGIyZmYyZjA3OWYzMzMyMGQwMjdkNjU4MGUwZjcwODg1Y2Y3ODk4OTM3MjUwMDAwZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f3952e9ad282476b9bda60bce46a4650",
+      "statement": "Isolation is 'none' by declaration: HostBackend.isolation = ISOLATION_NONE and apply_isolation does nothing in either phase (BOUNDARY and EGRESS), yet the sequencer still calls both phases so the host path exercises the whole contract. The capmatrix DEGRADED cell for host egress records exactly this gap, and _warn_capability_gaps names it before anything is materialized so the user can still rerun under container-run.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capmatrix.py#L41-L70",
+          "version": "repo-lines-v1:sha256:85a61b25841648542649d15fe51b92c95c74b851b46020a0a5c788b370cfa44a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlN2E0MjdhM2Q0NTEzYmFlNTg2NWQ0NzgwNTZiZjNjOTE0NmQ3NmM2OWFkZTNmMGRjYjE1ZmVlNWJjNzJhZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzMGExZTMxYmE3OTliYjg4M2Y3OGRjMDVlNDM0ZmQwYjNlMmUyOTNjY2I3MWU0OTlkOTg4MTUzYzZlY2ExYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwY2UzZjI0YWI0N2MyZjVhOWQzMzdmMzc3ZWQ4NTczZmE1NjU4NDA3NjQwMmYxYWYwNTRhM2RlZDYxOTQ2MmYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2562-L2568",
+          "version": "repo-lines-v1:sha256:d6be5ee9fc87d807dce61254a948716fce59c28ac1a0889b1c9828aaabb55ee2:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODY1ZjZhOTU1NmUyNWYxOWM3N2FhZTM1NGE5NTNhMzJhZjIxNjg4ZDI3ZWM0MzEzNWIwNDc2MDhiNmQ2Y2ExNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTBkZTI1ODcxOTYxNDkyNjA3MWM4ZmIxOWZkODY2MTUwNTU1ZjFiMDEzNTRmOGNkMTYwM2ExMDlhN2RkYWU0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODczM2QxMWVlYmNkZjdkZmEzZDkwNzM0NWY5YWVlZDM5OWRkMmVmNzkwZTgzYTVlNTRkNTNhMmI3ZjY1MmU2ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTQyY2I1YWRhMzc4ZTNlNGEyMTc2YWJjNDFmNDc1MGE5NjU5MzAwZmE5Y2FiZmM4MGM1NDc2YmExZGUzNmE2ZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2670-L2675",
+          "version": "repo-lines-v1:sha256:8c33155a438c06fe58155b7339b43b087a209f5ebca7e194285ba147485d2aad:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjdkYTQyZTUzZDgzMWExYzk5NDg5OGE1MTVkYWEyYTA5NzU4ZjkyOTcyY2VmZWI0MGMxNjI4NzdkNDc3NTkwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmJlMjU0ZjJhM2UzMTU0ZjQ5MzkzMjgxYTZlYjlhMzBhYzc1OWI3NzRjMTYwMDNkZTQzMWJhNmI4OGM5YjE4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmE0ZmQ0NjM5NDUzMzk0MGQyMTcwZGIzMDIwOWVmYjNkZmM4ZjgxODgzZDc5ZDgzMDUyNjk0ZjBiNjYzZjYyYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmY3YzE5ODMxYTg1ODdmNzA2MWQyZjM2N2Y1NDU0YTIyOGMzNTQ0OTQ4MzBiNGVhMDk2ZGIxZTMyNmQ1Njg3NiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4a588d7f64dc41c1a4630c4096921caf",
+      "statement": "The capability-gap warning is emitted at [INFO] level, not WARNING, deliberately: _acknowledge_warnings counts the word WARNING and holds the terminal for a keypress, so at WARNING level every host-run of a stack whose recipes declare egress: would cost an extra Enter for a gap the user chose by typing host-run and cannot fix on that backend.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2350-L2373",
+          "version": "repo-lines-v1:sha256:f6c3f3d7c37b8fd8ade3ba9a7dc3da3e163bc309ef5941edc7d3f2860206d1a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNzVmMDgwZjAwZjY1MGRiN2JiMThiNTMwMWVmNDVkODRlZDA1OWM2NWYxM2Q3ZTE1MzM1YTM4ODUwODljNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1NzVjOTQ4NDNkM2ZiZWE4OGY0NWU5YmI0ZTVjNzg1OGY3MzA3MmQ3M2ViMDk2NWQ3M2ExNTljMWE4OWExOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxZDgxNGU5NDk1NWE5OTQ5NGRkMWFmYjNiOGYyODQxNWEwNmRkMWFkZTZmZWE5YjY1MWRjNjMwMDAwNGQzYTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dcce6640190f4e49896df7f01118541b",
+      "statement": "HostBackend.wire_services ensures the SAME sidecars the container backend ensures, because a services: entry is a property of the stack rather than the backend; it is guarded on the stack declaring services (so a service-less host launch needs no runtime at all) and passes _resolve_mount_path rather than the project path so the svc-config-hash label is identical whichever entry point started the sidecar.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2537-L2560",
+          "version": "repo-lines-v1:sha256:2246a7e9d867f95e197b11694671800b8042f5e76a7e012af09f7f6b01977f93:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZjkxMTcwMWI3ODUwNjBiN2VhY2MyMGUzZmY1NDk2ZDBmNDBmYzVmMzFlNzA3ODkxNTAyZDRiOWRmYzNiOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhYjE5NDEwZDE3Mzg3MmM4Y2U0N2Q1MjlhNGRjZmI5Y2Y5ZjIwNGY2YzE1NTQyMDI5OTc5YmVlYmI4OTBkODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2MmFjMTBlZGNiZjUxN2FmNDAxMzFjMDAyZDhmMjYyYzA5ODU2YjYxNDQ5ZmYxYzE2Zjk3ZmUyMGE0OTllY2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_80abab596c834eab9c719ad9d65f7427",
+      "statement": "A host harness qualifies only by exposing an env var whose value IS a per-stack config/agent dir — launcher._HOST_HARNESSES is the record (claude/CLAUDE_CONFIG_DIR, omp/PI_CODING_AGENT_DIR), each row pairing config_dir_var, argv0 and share_state; codex/opencode/antigravity are absent because their rows have not been established. Materialization is deliberately not in the record because the two harnesses lay down different directory shapes, so _host_launch_plan branches once explicitly.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2139-L2175",
+          "version": "repo-lines-v1:sha256:628abe44a24eb4b526f3d3e8373d373b29bdd4006eeee144e51498ceec928faa:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OWExMzk3NWMyNTZlYzgzMjBlMjAxNjA4M2M5NmRmNjM3Y2EzZDM1YmViZGUyMzE0YmVlM2E0NzExYjU2Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxNWMzNDM2OTRiYTBhZWFlYWU4YjE0NzNjNDVkMTkzNmVmYjEwYWNjNjY1YTFkNTE5ZmVkNTJhNjEwODMwODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlYTUyYzVlZGU0MWNkNDUxYzcxNzU0ZGRmMmJhZTE3MTc4NTUwODNhOWFkYjFjMDc4MDk2MDM1NjdlNDI4MTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4457eeeb45fd4145b747d998783ccb37",
+      "statement": "_write_project_tool_env gives the PROJECT the same tool env the agent gets, as a 0600 dotenv under $XDG_STATE_HOME keyed on the git common dir and regenerated every launch, so a plain tool invocation in a terminal and live agents do not each fall back to auto-start and fight over a sidecar's exclusive lock. Nothing is written into the repo.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L375-L449",
+          "version": "repo-lines-v1:sha256:9ec921770ff156e00dac81b763d829d9973ad30a2d3a41d154928d5f57aaf8a5:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzMjgyNGJkYmRhYzExZGIyODc5NzVkMzllMGQ3MzcwODI5NjY1YmYwMDc3MDNmMWNlN2FhNDRiNGExMmFjZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMTJjODkwNjNkOTI3MmU4OGI4NThlODRlOTUwNGI1MDJhN2ZmYWRlZmRiMmMyNmEwODUzZTkxZTZkOWYxNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExNTRkZGFkMzI1NDAyMjMwZDUwNWQxYTllOGE1NWNmYzk5N2I3MmNmMzJhYmM3ODgwOWUwZWRiNmZiZmNkYzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b445206810f8483ba39bb5f9d5c99db2",
+      "statement": "Removing a host config dir scrubs rather than bare-deletes: _scrub_host_home overwrites a real .credentials.json with null bytes and fsyncs before unlinking, then rmtrees — reducing (not guaranteeing, given SSD wear-leveling) the window in which a stranded token is recoverable. _migrate_legacy_host_homes uses it for pre-8px.12 per-project dirs, matched narrowly (8-hex name AND config-dir-looking) so a recipe shipping an 8-hex-named directory is not silently deleted, and runs BEFORE the wipe.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L240-L257",
+          "version": "repo-lines-v1:sha256:e1d1dca58b692b62c540f138e928e883b8c8cc1b772751d75e22e00649b73cc2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjYzRlMzUxZGZjMTI2YzkwN2VlNGYyMzc0MzFjNTc1MWUyZmFjMjE4NmRkM2RiM2Y1ZDkyODcxNmNmZjQwMzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmYzVkMDQxM2I0ZDdlNDA1ZWE2NjZkZGUwZmZhNGFhZTEyYWM0MzJmZmE1YzI2ZDE4YWU4NTQ1NjFiZjRiM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3ZDJjOGYzZjZhZjJlYzM3MDVlY2ExYmIxZWI5NjY3NmFkYTk4ZDlmNDMzZDk4YWVjZDA0NDU2OWFmNDdkYzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhZTJiZWE3OGI3ZGE5Yjc1ZWQ0N2ZiMjUzMmIwYjkwMGYwMzg1NjhjMzE2MDg1YzE3M2JlMjk2NTAyODQyYmMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L57-L82",
+          "version": "repo-lines-v1:sha256:a12f6e313662bb44fec06eaf37572b4059dd4c5294e6d8ac3839a683b6c1038a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2YmQ2YTIxMmI3MzIwYTk5YTI3NjBlMzg3MjdjZjIzOWI1ZjdiY2M5NDYxYzk1YzU4MTk0MTIxNzE4OWRiNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0Y2IxOTIxZGJhODIwMjI2ZjNmZTljZThiYWY2NTkwYTQyMjQ5ZGNlZDBkMTk0M2I3N2RlYzUwOTZiYzA3MWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwYTJlNGIwYmU0OGFlM2JlYmNiZTRiM2U1ODMyYWQ0YWExMWMyNzAzMjUwYWM5NzlmOWI5YjYyMGExZDBhMTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f75a2ebab57d4462b4d667578800b73f",
+      "statement": "harnessed host-gc enumerates root/<stack>/<harness> reporting age, size and credential status (symlink vs REAL-FILE vs absent) and prunes dirs whose STACK no longer resolves in the catalog — a resolvable orphan signal, unlike the old one-way per-project hash. The scan skips the <harness>.lock file (not a dir) and the <harness>.home shim (name ends with .home), since removing the shim would break installs.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4733-L4837",
+          "version": "repo-lines-v1:sha256:b88dc9953115b9ef1e6d7c0906979407cf3a3faaeabe2665786e3efa6188c011:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5N2ZiYmY1MjgxNWU1N2Y4N2M1Njc0YWVmM2Q3NmExNWQwZDdmYmQxMWM2YjRmNmE2NTJjNjVhMjg3OTY1MTFlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ZGJlMWZmNzlkMGU4NWE0OTNkNzRhYjFlZTE3NDRiNjkxMGUxMTRlZmY3NDMzOWE4MGVmYTEwY2M5ODgyOTRjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzNjNlMTQxNTI1OWZkMzdjZWI0YjQ0MGI1NWNlOTk5ZjkyOGNlMGYxYTYyMWM5NTdjMTM5NGU3OWM1Y2M2MjA1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2YTNjZjUxOTIzNTRmNzE2MTVhYzUxMDM0YjNlOTdjMjBlZGE5OTY0M2ZjYWY1YmJlNmQ0MWFkNTliZDEyMTY3In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_a5ddbfddd1b34b7590e35a863d3bb7eb",
+      "statement": "Host-side mise tool install writes the merged per-recipe lockfile into $MISE_CONFIG_DIR/mise.lock BEFORE running mise use -g and mise install (mise enforces that exact name and ignores every other spelling); an empty merged body REMOVES a stale lock rather than leaving it to verify a tool set the stack no longer has, and two recipes locking one spec to different bytes fail closed with both named.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L293-L317",
+          "version": "repo-lines-v1:sha256:d953e89431ec3bdd28ef9e2b6de95164d1c571da4fb4d85f4907ac96dfc70eb4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2MzMxNjU5MDlmNDBmYjE5YjQzZTM5OWQ3NzQzNGFjZGM1YzM1NTA3MjBmNzZkNThmOThmNmY5ZDFjNDBmN2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzNmI5MjVkMTY4MTlkMWZhZDMzNTlmMTQ2YTY4MzdkZjJiMjRmMWVlNzg2ODUxNjk3ZjgzMjRiOTA3OWM3OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2ODQzNDJmNzE0NmUyZDIzMGRmYmIzZTc5MjljNGE2N2E3YTc2YTY3NjgzNTIxY2JjZTZlY2Q2ZDhjOGFjM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlNTAwN2ZkNTExOTk4NzA4MDVhZDViNDYwZDcxMmU2MTcxYzI2NDQxOWE2N2YxY2IxOWIzN2E4MTkyZmQ4YjMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/toollock.py#L154-L168",
+          "version": "repo-lines-v1:sha256:edd7f70fcf20fe34d8e5e091bef4f61eab8397db71341f65096908b9764341a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlMDMxNjM5MTUwZDA2MDAyYzg0OTRhMTUzZjM0MDM0NjQ3OGFkNjkzYTc5ODNlNzUzY2I1YzRlYjg0MGM2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjOTVjMTkyMTZlZTA0MDIzYzhjYmQwY2NjNGE2YzBhZGVjNzA1OTM1YzFlMzQ2YWM2ZjVjYWQzZGNhMjZjYzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2MDhkMzhkNmYxMGUwMmFjZTllZjA0Nzg0Y2Y1YWRlMTJkZGZhYjQ1NjhiNjk5ZjM2YTdkMzlmYmVlZDNhNGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI5ZjVjZWVjMmY3ZGQyZTE2M2VkYzQ3N2NlNDlhMGY1ZjE4OGQ1OTNmMDZhODBkZmVkYTMwOWMyNzI2NjY0NmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8f2563ab3fd041a7bda43f91305d73d9",
+      "statement": "Before the exec, _acknowledge_warnings holds the terminal for a keypress when any WARNING was printed — past the exec the agent's fullscreen renderer draws on the alternate screen buffer and anything already printed is hidden until the session ends. It is skipped when stdin is not a TTY so headless/CI launches never block.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2108-L2131",
+          "version": "repo-lines-v1:sha256:87de3c67124d003b9bb402b0275518a000fb6118923c1d1772997e3600f959f3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4MmRmMmFlNTg1Y2Y5ZjYyZDA0ZmM3ODk0MzI5ZTQyZWQ3YjgwYmI4MWY0N2VmYjIxYzNmZmVkNzA5NzU1YzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MTVkZWUzNDE4Zjg2ZDA3ODRkMWNhZWI2ZDljZGJiNTg2YWM3MWE3NWRhNzliMDRjNjFmYTlhOTZiOTI3ZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3NGZkOGZlMmQ0ODhmOGRkOTA5ZWFhYmM2ZmU1ODYxNmFiODFkZjJiZDBjOTI3MDYxNDgwZjk3NjViOWQzZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwZGE1Y2Q0MDI2NTZmNzk4OTNlMGQ3ZmVmMGJjNmNjNjE5M2VhMzhlOGJkOWNiNjc2MWVjMjQ4MzZlZmRlMDkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2795-L2799",
+          "version": "repo-lines-v1:sha256:277f04ee4a1e7be4b21205451d268abcc4819d735189f64f1befbf99273bd08b:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjM5ZDQwMTNiOGVmMWJlMDM0NDRmMjZhNDI0ZTVlZGFlZTA3NTM3NGM3YWM0OTFhNTNjYmQzMjJhNjEyOTQzZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDZhNTZlYjVkZGMzZTkyOWExYWEyYzliODY0NzMwNWUwZDExYjZmNzk1MDg5ODM0ZTI1ZTFjNDJmMGYzM2Q3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWIxMjhhYmVjNGRhYzI4NmJjNjdkNmZkZGQ0MTdiOTczMjgxNmE1YzE2ZTJhNmEwNzJlZTcyNWJlNDlhZjg4YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTYyMjkyNjdmMTUwOTRiOWZhNDBhNjMyZmFmNmM2NGFlNjVlZTc2YWFhNTM3N2NhYmQ2YzJhZmQxNjYxMmFjMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d8b3d235713a4742bcf0f14c91762a5e",
+      "statement": "The host-run CLI wrapper removes a manifest this invocation minted when the launch fails (a SchemaError/CollisionError from a bad recipe set, or a non-zero typer.Exit), but a typer.Exit(0) — how --create-aoe-only ends — must NOT clean up, having just written a row whose recorded command names that manifest; a pre-existing manifest is left alone.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2936-L3014",
+          "version": "repo-lines-v1:sha256:f21826576fd163d07beb7f4677186a9f1ee08b2d2901eded17138764b7dd8e5d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwODJkNWM0ZDkxZDk1M2RjMzIxMmMyZGRlMTg1MzYwODhjMDI1NTBkZDQyMjE3OWNkNzBhYTZiY2MxN2EwOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzYjIyMzQzZTljNzU1OTIzM2RjNDZkY2VhNTg5OTY1OGY2Yzg2YTczMTRmYTQ2MjA5OGYyOTI4YWY2YWQzZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5OGIwNjNkOWI0N2U2NTM3OTYyNTU3MmNjZTE5NzY2OWQ1NzY3ZTEyYzE4YmUwNzU2NTJiOGNkOTgxY2U4ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZTU2YjI0YzllZmE2MjQ0YWYwN2U5OTdkZTViODU3NjU1YmQ4NTBkN2EzYWYwNjExN2IzZWJjMjE5NWFiNWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_95520648b3d64daca7fae1107d0fdd25",
+      "statement": "host-run gives no pod, no network namespace, no egress firewall and no separate home: the agent runs as the invoking uid against the real $HOME and credentials with the machine's full network reach, and only configuration is per-stack — session history and credentials are deliberately shared up to the real harness dirs, which is the host analog of the container's bind-mounts rather than a leak.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capmatrix.py#L62-L70",
+          "version": "repo-lines-v1:sha256:417694961720206bd8bec71d7803600573757e450b01762431a5bc217886e45d:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzJiZDBmZmM2ZDAwYzE3ODU1NzBjYWQyZDAyMmFmZWIwZDcxNzRjZTQ2ZTk4ZDhjZGNhNjE2MzYyOTA5ZjlmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjc2YTU0NGNjMDIzZWQ0MDVlM2I5OGI4YTM1NDA5MGZhZDE2ZTllMThkNWVlOWY3YmE2YzNlNzAwNTMwMDlkMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzBjZTNmMjRhYjQ3YzJmNWE5ZDMzN2YzNzdlZDg1NzNmYTU2NTg0MDc2NDAyZjFhZjA1NGEzZGVkNjE5NDYyZiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2957-L2985",
+          "version": "repo-lines-v1:sha256:46edfa3d1ae525ed0fdb0966c316e13df213425f17605f954466b8e321023148:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZWM2NjlhY2Q2MWU2MmFiMzY2MTc1ZGJhYzE5YmRmYzhhOWMyZDY3YmRiMTI1NTdkYTk1ZGZmNzA5NTRhOGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4N2E4MGIwYTMzZTE2YWYwYTNmZGM3NzQzYmZjOTcwMGIyNTU5NjljM2QwOTgwODc3MWVhY2UwNjZmYjc0MTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiNWU5OTA4MjJiOTMwYzBjOTQxNzc1MmZiNmI1ODBkMTUwNmZkY2NjNDE4MzI5ODYxNTkyMmM5YzhkOTU4N2MifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-01T11:08:21.365Z"
+  }
+}
