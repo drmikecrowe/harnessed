@@ -55,7 +55,7 @@ setup:
   condition: test ! -d .serena
   # The project NAME serena would otherwise take from the DIRECTORY — which in a bare+worktree
   # checkout is the worktree folder ("main"), never the repo. `{repo}` and NOT `{gcd_db}`: serena's
-  # registry is keyed by PATH, and its cache/memories are per-checkout by design, so unlike beads a
+  # registry is keyed by PATH, and its cache/memories are per-checkout by design, so a
   # worktree-STABLE identity is explicitly not wanted. See setup.sh.
   config:
     - key: name
