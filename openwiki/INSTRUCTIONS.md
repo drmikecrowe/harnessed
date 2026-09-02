@@ -63,6 +63,43 @@ open work and is documented nowhere else in the wiki. It must state:
 
 `src/harnessed/launchenv.py` is the source of record. Follow its own issue references.
 
+## Corrections to apply on the next run
+
+Review of #445 found these statements wrong against the code. A digest check cannot catch a claim
+that misreads code which has not changed, so they are recorded here instead. Verify each against
+the source before rewriting — do not take this list on faith.
+
+- **Global service address.** `host.containers.internal:<port>` is the containerized-agent address
+  only; a host-run client reaches the same service at `127.0.0.1:<port>`. Describe both.
+- **Service identity versus allocation state.** Container identity and ephemeral ports are
+  re-derived per launch, but stable ports (`svcstate._svc_stable_port` allocate-once registry) and
+  service passwords under XDG state are *persisted*. Saying everything is re-derived invites someone
+  to delete state that stable connectivity and auth depend on.
+- **`harnessed-tools` and the container runtime.** `test` launches a headless instance and needs
+  podman/docker; the other verbs are emit-only. Do not claim the whole CLI is runtime-free.
+- **The scan layer.** There is no build-time scan layer in the derived Dockerfile; scanning happens
+  after the image build. Do not describe build-time coverage the pipeline does not have.
+- **`aoe list --json` and trash.** It returns trashed rows and exposes no field to filter them.
+  Describe the actual filtering, or show the list unfiltered.
+- **Project key inputs.** One hash function, two normalized inputs: the git common dir keys
+  project-scoped persist dirs, service containers and project-env files; worktree-specific identity
+  keys instance naming.
+- **Host-backend gating.** It skips the profile and image-label gates but still uses
+  `_host_stack_fingerprint` to gate wholesale host-home rebuilding.
+- **Pod launching is the container backend's**, not the host backend's.
+- **`host-run` is container-free for the AGENT only.** A stack declaring services may still build or
+  revive sidecars, so it needs the runtime and can leave sidecars running.
+- **`openwiki-drift` coverage.** It verifies line-ranged evidence anchors; whole-file evidence and
+  unknown version schemes are skipped and reported separately.
+- **Quickstart prerequisites** must include `mise`, since `pyright` and `shellcheck` come from it,
+  and the test examples must invoke `tools/run-tests.sh` rather than `pytest` directly.
+
+## Markdown the linters accept
+
+Give every fenced block a language identifier, and never skip a heading level — an `h3` directly
+under the `h1` trips `markdownlint` MD001, a bare fence trips MD040. Neither is a repository gate
+today, so this is about the pages being clean where they are read, not about passing CI.
+
 ## Out of scope
 
 Do not document the developer's machine, personal paths, vault item names, or any account identity.

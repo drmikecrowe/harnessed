@@ -134,12 +134,18 @@ Prefer a page when the answer spans many modules — `precedence.md` collects on
 them. Prefer the source when a single comment is the answer, which here is often: the comments are
 dense and usually better in place than any summary of them.
 
-**The claims are checkable, which `docs/codebase/` never was.** Every factual statement carries
-`repo://<path>#L<a>-L<b>` evidence plus the content digest observed when it was written.
-`mise run openwiki-drift` recomputes every anchor in under a second and exits non-zero when cited
-code actually changed. Run it before acting on a page, and after substantial edits. It separates a
-block that MOVED from one that CHANGED; without that split a week of ordinary work reports ~33%
-stale against a real ~5%, which is how a staleness gate gets ignored.
+**Most claims are checkable, which `docs/codebase/` never was.** `mise run openwiki-drift`
+recomputes each evidence digest in under a second and exits non-zero when cited code actually
+changed. Run it before acting on a page, and after substantial edits. It separates a block that
+MOVED from one that CHANGED; without that split a week of ordinary work reports ~33% stale against
+a real ~5%, which is how a staleness gate gets ignored.
+
+**Its coverage is not total, and the gap is the part to remember.** It verifies evidence carrying a
+`repo://<path>#L<a>-L<b>` range. Whole-file evidence has no range to hash, so it is counted and
+reported as `skipped`, never verified — currently ~6% of items. And no digest can catch a claim
+that MISREADS code which has not changed since; only a reader can. CodeRabbit found several such
+errors on #445 that this gate passed clean. Treat a green drift run as "nothing it cites has
+moved", not "everything it says is true".
 
 **The wiki cannot express an ABSENCE or a PRESCRIPTION.** Claims must anchor to positive repository
 evidence, so "no test covers X" and "write it this way" have nowhere to live there. Those stay in

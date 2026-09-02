@@ -110,7 +110,11 @@ def collect_anchors(claims_dir: Path) -> tuple[list[Anchor], int, int]:
         try:
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise SystemExit(f"error: cannot read {sidecar}: {exc}") from exc
+            # `SystemExit(str)` prints the message but exits 1, which collides with "a Claim went
+            # stale" -- the one status a caller gates on. Both unreadable-input paths therefore
+            # print and exit 2 explicitly, matching the contract in this module's docstring.
+            print(f"error: cannot read {sidecar}: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
         page = str(sidecar.relative_to(claims_dir))
         for claim in payload.get("claims") or []:
             for evidence in claim.get("evidence") or []:
@@ -126,12 +130,14 @@ def collect_anchors(claims_dir: Path) -> tuple[list[Anchor], int, int]:
                 start = int(match["start"])
                 end = int(match["end"] or start)
                 if recorded is not None and recorded != end - start + 1:
-                    raise SystemExit(
+                    print(
                         f"error: {page} claim {claim.get('id')} cites {resource} "
                         f"({end - start + 1} lines) but its version records {recorded}. "
                         "This script is parsing the resource range wrong -- fix it rather than "
-                        "trusting the result."
+                        "trusting the result.",
+                        file=sys.stderr,
                     )
+                    raise SystemExit(2)
                 anchors.append(Anchor(
                     page=page, claim_id=str(claim.get("id", "?")),
                     statement=str(claim.get("statement", "")),

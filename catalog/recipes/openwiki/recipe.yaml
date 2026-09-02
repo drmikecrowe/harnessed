@@ -24,15 +24,23 @@ description: >
 # `openwiki integrations install claude` writes into ~/.claude.json, which harnessed never uses —
 # MCP wiring belongs to the profile hatago generates, not to a harness config file.
 #
-# `--host` is a free-form LABEL, not a validated target: dist/cli/commands.js:440-467 accepts any
-# 1-64 character lowercase/digit/hyphen string and defaults to "unknown". It reaches the agent as
-# host-shaping text, so a fixed value keeps this recipe harness-independent. `claude` is the value
-# upstream's own installer writes and matches harnessed's Claude-canonical profile.
+# `--host` is NOT merely a label, which is what an earlier draft of this comment claimed. It is the
+# AUTHORING AGENT's identity: `dist/integrations/core/session-manager.js:52` does
+# `producerActor = options.producerActor ?? options.host` and records
+# `metadataModel: host-agent/<host>`, so the value lands in run metadata and generated provenance.
+# The agent that writes the pages is claude, omp, codex … — never harnessed, which starts the pod
+# and authors nothing.
+#
+# So the host must follow the harness, and neither a literal nor `${HARNESS}` can do that here:
+# `emit.py` writes stdio `args` VERBATIM (only a `url_env` URL gets `${VAR}` substitution), so a
+# placeholder would reach openwiki intact and fail its `isValidHostId` check. `install.sh` therefore
+# installs `openwiki-mcp-host`, a wrapper that resolves `$HARNESS` from the folder-env contract at
+# spawn time — one entry, correct provenance on every harness, no `harnesses:` field.
+# Raised in review on #445.
 mcp:
   servers:
     - name: openwiki
-      command: openwiki
-      args: [mcp, --host, claude]
+      command: openwiki-mcp-host
       transport: stdio
 
 # --- Install layer ---

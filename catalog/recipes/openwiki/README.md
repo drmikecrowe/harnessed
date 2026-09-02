@@ -16,7 +16,7 @@ the second would be dead config. The recipe re-creates both from the same pinned
 | --- | --- |
 | `openwiki` on PATH | `install.sh` — a project-scoped `pnpm install`, symlinked into `$HARNESSED_BIN_DIR` |
 | `openwiki` skill | `install.sh` copies the package's own `integrations/openwiki` directory |
-| `openwiki` MCP server | `recipe.yaml` — stdio, `openwiki mcp --host claude`, spawned by hatago |
+| `openwiki` MCP server | `recipe.yaml` — stdio, `openwiki-mcp-host` (wrapper passing `$HARNESS`), spawned by hatago |
 | Resumable state | `persist: .openwiki`, scope `project` |
 
 Five operations reach the agent: `openwiki_begin`, `openwiki_submit_plan`, `openwiki_next_page`,

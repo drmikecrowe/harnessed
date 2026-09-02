@@ -20,6 +20,10 @@ jobs:
           # commit it last documented; a shallow clone hides that commit and the
           # update runs against an empty change summary.
           fetch-depth: 0
+          # The openwiki step below runs third-party code over the whole repository. Persisted git
+          # credentials would sit in the job's git config for it to find; create-pull-request takes
+          # its own `token:` input and does not read them, so nothing here needs them.
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -27,8 +31,33 @@ jobs:
           node-version: "22"
 
       - name: Install OpenWiki
-        # mermaid + jsdom are optional; they add high-fidelity validation of Mermaid diagrams. Remove if your wiki has none.
+        # mermaid + jsdom are optional; they add high-fidelity validation of Mermaid diagrams.
+        # Remove if your wiki has none.
+        #
+        # `npm install --global`, NOT the recipe's project-scoped pnpm install. The two differ
+        # because their constraints do: the recipe installs under catalog/base/pnpm/config.yaml,
+        # whose `strictDepBuilds: true` denies better-sqlite3's build script and forces a
+        # project-scoped allowlist. This runner has no such policy, and npm still runs dependency
+        # lifecycle scripts by default at npm 10/11.
+        #
+        # That default is going away: npm 12 blocks them and requires an explicit opt-in. When this
+        # runner's npm crosses that line the addon silently will not build, so the next step
+        # verifies it rather than trusting the install — openwiki imports SqliteSaver at module
+        # load, so a missing addon breaks every subcommand, not just the sqlite path.
         run: npm install --global openwiki@0.4.3 mermaid@11.16.0 jsdom@29.1.1
+
+      - name: Verify the native addon built
+        # Fails loudly here instead of as "Could not locate the bindings file" mid-generation.
+        run: |
+          set -euo pipefail
+          root="$(npm root -g)"
+          if ! find "$root" -name better_sqlite3.node -print -quit | grep -q .; then
+            echo "::error::better-sqlite3 did not build. npm likely blocked its lifecycle script" \
+                 "(npm 12 default). Add --allow-scripts=better-sqlite3, or install via pnpm with" \
+                 "an allowBuilds entry as catalog/recipes/openwiki does." >&2
+            exit 1
+          fi
+          openwiki --help >/dev/null
 
       - name: Run OpenWiki
         id: openwiki

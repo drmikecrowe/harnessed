@@ -204,11 +204,11 @@ environment — there is no `harnessed auth` command (see [Supply chain & securi
 > going, see **[ROADMAP.md](ROADMAP.md)**.
 
 **The rule, so this list cannot rot silently:** shipped means a `recipe.yaml` under
-`catalog/recipes/`; planned means it is still in `catalog/recipes.backlog/`. `harnessed list` is
-authoritative for what your install actually carries. First-party recipes (`default`,
-`mikes-universal-setup`, `gh-issue-tracker`) and the tracer/development slices used to exercise the
-assembly pipeline and capability test (`greet`, `ping`, `time`, `floating-recipe`) are out of this
-list's scope by design.
+`catalog/recipes/`; planned means it is still in `catalog/recipes.backlog/`. That directory listing
+is the authority — `harnessed list` reports **stacks and instances, not recipes**, so it cannot
+answer this question. First-party recipes (`default`, `mikes-universal-setup`, `gh-issue-tracker`)
+and the tracer/development slices used to exercise the assembly pipeline and capability test
+(`greet`, `ping`, `time`, `floating-recipe`) are out of this list's scope by design.
 
 **Shipped**
 
