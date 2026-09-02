@@ -6,6 +6,24 @@ stacks with podman. Write for an agent that has to change this code correctly on
 Ground every page in `src/harnessed/`. `catalog/` is authored content, not code: describe its schema
 and how the build consumes it, not each recipe.
 
+**`tests/` and `tools/` are readable, and how you use them is constrained.** `tests/` is larger than
+the source tree, so it is evidence, never a subject:
+
+- Cite the **assertion that pins a behaviour** when it settles a question the source leaves
+  ambiguous. `test_install_script.py::TestPrecedence` asserts install-env precedence as ORDER, not
+  values; `test_module_boundaries.py` is why both backends live in `launcher.py`;
+  `test_external_contracts_live.py` is why specific versions are pinned. A claim grounded in an
+  assertion is stronger than one grounded in a comment, because the assertion fails when it stops
+  being true.
+- Do **not** enumerate suites, count tests, or write a page about the test tree. `TESTING`-shaped
+  content belongs in `docs/codebase/`, and a test count in prose is stale the day after it is
+  written.
+- Prefer one assertion that proves a contract over three that illustrate it.
+
+`tools/` holds the verification entry points — `run-tests.sh`, `preflight.sh`, `openwiki-drift.py`.
+Read them before describing what a gate does. They were previously unreadable, and every page that
+described a gate was inferring from `mise.toml` and the CI workflows instead.
+
 Priorities, highest first:
 
 1. **The build and launch pipeline.** How a stack plus a harness becomes a profile, an image, and a

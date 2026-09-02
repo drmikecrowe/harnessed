@@ -14,10 +14,23 @@
 # exist to catch. The hand-written docs/guides/ and docs/harnessed-design.md stay readable.
 docs/codebase/
 
+# `tests/` is NOT ignored, deliberately. It is where this project's contracts are actually pinned —
+# `mise.toml` cites `test_external_contracts_live.py` by name as the reason varlock is pinned, and
+# `install.sh` precedence is asserted as ORDER in `test_install_script.py::TestPrecedence`. Excluded,
+# the wiki has to infer those guarantees instead of citing them. See INSTRUCTIONS.md for the rule
+# that keeps that from turning into 2 MB of enumerated test bodies.
+#
+# `tools/` is NOT ignored either, narrowed back to the generated fixture profiles it was meant to
+# cover. Excluding the whole directory made the wiki describe `tools/run-tests.sh`,
+# `tools/preflight.sh` and `tools/openwiki-drift.py` from `mise.toml` and the CI workflows alone,
+# without being able to open any of them — which is how `testing/verification-ladder.md` came to
+# overstate what the drift gate verifies (raised in review on #445).
+
 # Build and analysis artifacts.
 /profiles/
 /catalog-local/
-tools/
+catalog-local/
+tools/test-fixtures/profiles/
 mutants/
 __pycache__/
 *.egg-info/
@@ -27,14 +40,18 @@ __pycache__/
 .hypothesis/
 .coverage
 coverage.xml
-tests/
+.pytest_cache/
+.ruff_cache/
+
+# Editor, agent and tool state — nothing about this project, and `.claude/worktrees/` above is the
+# consequential half of `.claude/`.
 .serena/
 .vscode/
 .agents/
 .claude/
-.pytest_cache/
-.ruff_cache/
-catalog-local/
+
+# Not part of the shipped project: `web/` is unrelated, and recipes.backlog holds PLAN.md drafts for
+# recipes that do not exist yet — documenting them would describe capabilities the catalog lacks.
 web/
 catalog/recipes.backlog
 
