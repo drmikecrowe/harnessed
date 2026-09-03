@@ -53,7 +53,7 @@ from .backend import (
     ProvisionPhase,
     register,
 )
-from .console import _can_prompt, _err, _out, exec_mode, set_exec_mode
+from .console import _can_prompt, _err, _out, in_exec_mode, set_exec_mode
 from .ctrquery import (
     _container_exists,
     _container_running,
@@ -2190,8 +2190,9 @@ def _acknowledge_warnings() -> None:
     a warning that did not happen.
 
     Deliberately gated on warnings ONLY — `[INFO]` lines are reference material, and making every
-    launch cost a keypress would be worse than the problem. Skipped when stdin is not a TTY, so
-    headless/CI/capability-test launches never block (same guard as `_prompt_setup_notices`).
+    launch cost a keypress would be worse than the problem. Skipped when nobody can answer — no TTY
+    (headless/CI/capability-test) or an `-exec` verb — so a scripted launch never blocks. Same guard
+    as `_prompt_setup_notices`; see `_can_prompt`.
     """
     count = _out.warnings + _err.warnings
     if not count or not _can_prompt():
@@ -4022,7 +4023,7 @@ def _attach(
     # survive land in whatever the caller piped the output into. `-i` stays either way — a piped
     # prompt on stdin has to reach the agent.
     exec_argv = [
-        rt, "exec", "-i", *([] if exec_mode() else ["-t"]),
+        rt, "exec", "-i", *([] if in_exec_mode() else ["-t"]),
         "-e", "TERM=xterm-256color",
         "-w", str(start_dir or project_path),
         inst,

@@ -53,7 +53,7 @@ def set_exec_mode(on: bool) -> None:
     _EXEC_MODE = on
 
 
-def exec_mode() -> bool:
+def in_exec_mode() -> bool:
     """Whether this is an `-exec` invocation. Read it, never the global — `set_exec_mode` rebinds
     the module attribute, so a `from … import _EXEC_MODE` would freeze the launch's first answer."""
     return _EXEC_MODE
