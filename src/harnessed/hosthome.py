@@ -28,6 +28,7 @@ from . import paths
 from .__init__ import __version__
 from .assemble import compute_recipe_hash
 from .console import _err
+from .setupenv import _stack_tools_dirs
 
 
 _OAUTH_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"  # noqa: S105 — variable name, not a hardcoded credential
@@ -214,6 +215,23 @@ def _stamp_host_home(home: Path, fingerprint: str) -> None:
     disk (bd harnessed-8px.15).
     """
     (home / _HOST_STACK_FINGERPRINT).write_text(fingerprint + "\n", encoding="utf-8")
+
+
+def _host_fresh_wipe(stack: str, harness: str) -> None:
+    """`host-run --fresh`: drop the fingerprint stamp AND the stack's host tool tree (#452).
+
+    Removing the stamp alone is not enough. It forces `_materialize_host_home` to rebuild and
+    `provision_tools(FIRST_START)` to re-run `tools:`, but mise treats an already-installed version
+    as a no-op — so a tool whose install is partial or broken survives every "fresh" launch. Wiping
+    the tools tree is the half that makes the reinstall real.
+
+    The tools tree is keyed by STACK while the home is keyed by (stack, harness), so this removes a
+    tree the stack's OTHER harnesses share, and the caller's home lock does not cover them. Both are
+    deliberate: `tools:` is a property of the recipe closure, not of the harness, and a second lock
+    would exist only to serialize the case --fresh is explicitly asking for.
+    """
+    (paths.host_home(stack, harness) / _HOST_STACK_FINGERPRINT).unlink(missing_ok=True)
+    shutil.rmtree(_stack_tools_dirs(stack)[0], ignore_errors=True)
 
 
 def _host_claude_source() -> Path:

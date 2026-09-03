@@ -1149,13 +1149,17 @@ class TestSettingsPropagateWithoutARebuild:
 
 class TestHostRunVerb:
     """bd harnessed-ltj. `--host` was scaffolding bolted onto the container `launch` verb, where
-    most flags (--fresh/--no-firewall/--shell/--mount-folder/--agent-start-folder) describe a pod
-    that does not exist host-side. `host-run` is the first-class host entry point."""
+    most flags (--no-firewall/--shell/--mount-folder/--agent-start-folder) describe a pod that does
+    not exist host-side. `host-run` is the first-class host entry point.
+
+    `--fresh` left that list in #452. It is now a host flag with host meaning — discard the build
+    stamp and the tool tree — which is a different operation from the container verb's pod
+    teardown, sharing only the spelling."""
 
     def _stub(self, monkeypatch, calls):
         monkeypatch.setattr(
             launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False: calls.append((stack, harness, path, rm)),
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False, fresh=False: calls.append((stack, harness, path, rm, fresh)),
         )
 
     def test_host_run_dispatches_to_the_host_backend(self, monkeypatch, tmp_path):
@@ -1163,7 +1167,7 @@ class TestHostRunVerb:
         self._stub(monkeypatch, calls)
         r = runner.invoke(launcher.app, ["host-run", "claude", str(tmp_path), "--stack", "hostspike"])
         assert r.exit_code == 0, r.output
-        assert calls == [("hostspike", "claude", str(tmp_path), False)]
+        assert calls == [("hostspike", "claude", str(tmp_path), False, False)]
 
     def test_the_harness_is_required(self, monkeypatch, tmp_path):
         """It used to default to claude, back when the stack led the positionals.
@@ -1193,10 +1197,31 @@ class TestHostRunVerb:
         assert r.exit_code == 1
         assert calls == [], "must not reach the backend with an unsupported harness"
 
-    def test_container_only_flags_are_not_offered(self):
-        """The whole point of the split: these cannot be passed to host-run at all."""
-        r = runner.invoke(launcher.app, ["host-run", "claude", "--stack", "hostspike", "--fresh"])
+    @pytest.mark.parametrize(
+        "flag", ["--no-firewall", "--shell", "--mount-folder", "--agent-start-folder"]
+    )
+    def test_container_only_flags_are_not_offered(self, monkeypatch, flag):
+        """The whole point of the split: these cannot be passed to host-run at all.
+
+        STUBBED even though the parse is expected to fail first. Unstubbed, a flag that starts
+        being ACCEPTED runs a real launch inside the suite — real assembly against the user's own
+        XDG dirs, then `os.execvpe` replacing the pytest process, which is how this test reported
+        the #452 change: no failure, just a truncated run.
+        """
+        self._stub(monkeypatch, [])
+        r = runner.invoke(launcher.app, ["host-run", "claude", "--stack", "hostspike", flag])
         assert r.exit_code != 0
+
+    def test_fresh_is_accepted_and_forwarded(self, monkeypatch, tmp_path):
+        """#452: --fresh crossed over to host-run, where it means the stamp + tool tree."""
+        calls: list = []
+        self._stub(monkeypatch, calls)
+        r = runner.invoke(
+            launcher.app,
+            ["host-run", "claude", str(tmp_path), "--stack", "hostspike", "--fresh"],
+        )
+        assert r.exit_code == 0, r.output
+        assert calls[0][4] is True
 
 
 # --- omp host mode (#307) -------------------------------------------------------
@@ -1792,3 +1817,97 @@ class TestOmpHooksBridgeSurface:
         bridge = hosthome._host_omp_claude_dir(home)
         assert "SessionStart" in (bridge / "settings.json").read_text()
 
+
+
+class TestHostRunFresh:
+    """#452. The stamp gate is the host backend's staleness cache and had no escape hatch: an
+    unchanged fingerprint skipped `tools:` and `install:` forever, so a stack whose tool tree was
+    incomplete could only be repaired by deleting the stamp by hand."""
+
+    def _tools(self, stack: str) -> Path:
+        return hostrun._stack_tools_dirs(stack)[0]
+
+    def _launch(self, tmp_path, monkeypatch, calls, *args):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "no-host-src"))
+        patch_all(monkeypatch, "_host_run_installs",
+            lambda stack, project_path, *, harness, home: calls.append(stack),
+        )
+        monkeypatch.setattr(launcher.os, "execvpe", lambda *_a: (_ for _ in ()).throw(SystemExit(0)))
+        monkeypatch.setattr(launcher.os, "chdir", lambda *_a: None)
+        return runner.invoke(
+            launcher.app,
+            ["host-run", "claude", str(tmp_path), "--stack", "hostspike", *args],
+        )
+
+    def test_fresh_reruns_installs_on_an_unchanged_stack(self, monkeypatch, tmp_path):
+        calls: list[str] = []
+        self._launch(tmp_path, monkeypatch, calls)
+        assert calls == ["hostspike"]
+        r = self._launch(tmp_path, monkeypatch, calls, "--fresh")
+        assert r.exit_code == 0, r.output
+        assert calls == ["hostspike", "hostspike"], "--fresh must defeat a matching fingerprint"
+        assert "installs skipped" not in r.output
+
+    def test_without_fresh_the_second_launch_still_skips(self, monkeypatch, tmp_path):
+        """The control. --fresh must be the only thing that changed, so the gate itself is intact."""
+        calls: list[str] = []
+        self._launch(tmp_path, monkeypatch, calls)
+        r = self._launch(tmp_path, monkeypatch, calls)
+        assert calls == ["hostspike"]
+        assert "installs skipped" in r.output
+
+    def test_fresh_wipes_the_stack_tool_tree(self, monkeypatch, tmp_path):
+        """The half a stamp deletion alone does not buy: mise resolves an already-installed version
+        as a no-op, so a partial tool tree survives a rebuild that only re-runs `tools:`."""
+        calls: list[str] = []
+        self._launch(tmp_path, monkeypatch, calls)
+        stale = self._tools("hostspike") / "mise" / "installs" / "npm-whatever" / "1.0.0"
+        stale.mkdir(parents=True)
+        (stale / "marker").write_text("x")
+        self._launch(tmp_path, monkeypatch, calls, "--fresh")
+        assert not stale.exists(), "an installed tool version must not survive --fresh"
+
+    def test_a_plain_launch_leaves_the_tool_tree_alone(self, monkeypatch, tmp_path):
+        calls: list[str] = []
+        self._launch(tmp_path, monkeypatch, calls)
+        keep = self._tools("hostspike") / "bin"
+        keep.mkdir(parents=True)
+        (keep / "sometool").write_text("#!/bin/sh\n")
+        self._launch(tmp_path, monkeypatch, calls)
+        assert (keep / "sometool").is_file(), "only --fresh may remove installed tools"
+
+
+class TestHostFreshWipe:
+    def test_removes_the_stamp_and_the_tool_tree(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        home = paths.host_home("s", "claude")
+        home.mkdir(parents=True)
+        hosthome._stamp_host_home(home, "fp-1")
+        tools = hostrun._stack_tools_dirs("s")[0]
+        (tools / "bin").mkdir(parents=True)
+        hosthome._host_fresh_wipe("s", "claude")
+        assert not (home / launcher._HOST_STACK_FINGERPRINT).exists()
+        assert not tools.exists()
+
+    def test_keeps_the_home_itself(self, monkeypatch, tmp_path):
+        """Only the STAMP goes. The rebuild that follows is `_materialize_host_home`'s job, and it
+        preserves daemon/runtime state the wipe has no business deleting."""
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        home = paths.host_home("s", "claude")
+        (home / "skills").mkdir(parents=True)
+        hosthome._stamp_host_home(home, "fp-1")
+        hosthome._host_fresh_wipe("s", "claude")
+        assert (home / "skills").is_dir()
+
+    def test_is_a_no_op_when_neither_exists(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        hosthome._host_fresh_wipe("never-launched", "claude")  # must not raise
+
+    def test_the_wipe_runs_inside_the_lock_and_before_the_materialize(self):
+        """Outside the lock, a concurrent launch of the same stack could read a half-wiped tree;
+        after the materialize, the stamp it defeats has already been read."""
+        src = inspect.getsource(launcher._launch_host)
+        lock_at = src.index("with _host_home_lock(")
+        assert lock_at < src.index("_host_fresh_wipe(")
+        assert src.index("_host_fresh_wipe(") < src.index("backend.materialize_config(")
