@@ -166,6 +166,8 @@ from .svcguards import (
 from .hostrun import (
     _apply_host_mise_env,
     _apply_host_tool_path,
+    _restore_user_mise_env,
+    _snapshot_user_mise_env,
     _host_install_tools,
     _host_mise_env,
     _host_native_mcp,
@@ -2798,6 +2800,10 @@ def _launch_host(
     # the agent, and everything the agent spawns all need it, and os.environ IS the host's box.
     # CLEARS as well as sets — see `_HOST_MISE_UNSET`. Launching a stack from inside another stack's
     # host session inherits that session's MISE_STATE_DIR, and only a removal gets rid of it.
+    # Snapshot BEFORE the redirect: the agent gets these back at the exec below (#449). The
+    # redirect is for provisioning; carrying it into the session breaks every mise shim on the
+    # user's own PATH, the agent binary included. See `_restore_user_mise_env`.
+    user_mise_env = _snapshot_user_mise_env(os.environ)
     _apply_host_mise_env(os.environ, stack)
     # Folder-env contract into THIS process's env, for the same reason (and with the same precedent)
     # as the PATH mutation above: a container launch sets the contract box-wide (`podman run -e`) so
@@ -2866,6 +2872,9 @@ def _launch_host(
         "— no container"
     )
     env = dict(os.environ)
+    # The stack's mise instance provisioned this launch; it does not own the session. See
+    # `_restore_user_mise_env` for the shim failure this undoes (#449).
+    _restore_user_mise_env(env, user_mise_env)
     env[config_dir_var] = str(home)
     if harness == "omp":
         # The claude-hooks bridge reads hooks from `$CLAUDE_CONFIG_DIR/settings.json`, so omp needs

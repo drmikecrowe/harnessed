@@ -113,6 +113,61 @@ def _apply_host_tool_path(env: MutableMapping[str, str], stack: str) -> None:
         env["PATH"] = os.pathsep.join([*added, current]) if current else os.pathsep.join(added)
 
 
+# Every variable `_apply_host_mise_env` writes or removes. Named once so the snapshot below and the
+# redirect itself cannot list different sets — a variable restored on one side only is how the
+# session ends up half-redirected, which is worse than either state.
+_MISE_SESSION_VARS = (
+    "MISE_DATA_DIR", "MISE_CONFIG_DIR", "MISE_TRUSTED_CONFIG_PATHS", "MISE_STATE_DIR",
+)
+
+
+def _snapshot_user_mise_env(env: MutableMapping[str, str]) -> dict[str, Optional[str]]:
+    """The user's own mise variables, before `_apply_host_mise_env` redirects them. `None` = unset.
+
+    Paired with `_restore_user_mise_env`; see it for why the session gets them back.
+    """
+    return {key: env.get(key) for key in _MISE_SESSION_VARS}
+
+
+def _restore_user_mise_env(
+    env: MutableMapping[str, str], saved: dict[str, Optional[str]]
+) -> None:
+    """Undo the redirect for the AGENT's environment (#449, second cause).
+
+    The redirect exists so PROVISIONING writes into the stack's tools tree instead of the user's
+    mise. The SESSION is a different question, and carrying it there was the second half of the
+    `host-run omp` failure: a mise shim re-resolves its tool by argv[0] against MISE_DATA_DIR EVERY
+    TIME IT RUNS, so a redirected session breaks every shim on the user's own PATH — `node`, `gh`,
+    `python`, and the agent binary itself whenever the harness is one mise installed. `omp` is:
+
+        mise ERROR No version is set for shim: omp
+
+    Nothing harnessed puts on PATH is a shim any more (`_host_tool_bin_dirs`), so the redirect has
+    no run-time job left. The stack's `tools:` reach the agent as real install dirs, and everything
+    else in the session resolves against the user's own mise — which is what a launch into the
+    user's own project, with the user's own credentials, should give them.
+
+    Restores to the SNAPSHOT rather than deleting: a user who sets MISE_DATA_DIR themselves keeps
+    the value they chose, and one who set none ends with none.
+
+    EXCEPT a value harnessed itself wrote. Launching a stack from inside another stack's host
+    session is routine, so the snapshot frequently holds the OUTER stack's redirect rather than the
+    user's choice — and restoring that hands the agent a data dir where its own binary was never
+    installed. Measured while verifying this: the inner launch died with
+
+        mise ERROR omp is not a valid shim
+
+    which is the same bug one level out. Same predicates, and the same narrowness rule, as the
+    inherited-MISE_STATE_DIR case `_is_a_harnessed_stack_state_dir` already exists for: only the
+    shape harnessed emits is eligible, so a user's own directory is never second-guessed.
+    """
+    for key, value in saved.items():
+        if value is None or (key in _NOT_THE_USERS and _NOT_THE_USERS[key](value)):
+            env.pop(key, None)
+        else:
+            env[key] = value
+
+
 def _host_mise_env(stack: str) -> dict[str, str]:
     """The redirect that points mise at the STACK's own instance instead of the user's.
 
@@ -122,9 +177,11 @@ def _host_mise_env(stack: str) -> dict[str, str]:
     never find it again — `mise ERROR <tool> is not a valid shim`, because mise fell back to
     ~/.local/share/mise where the stack installed nothing.
 
-    Nothing puts that shims dir on PATH any more (#449 — `_host_tool_bin_dirs` replaced it), but the
-    redirect is still needed on both sides: install time, and any `mise` the agent or a recipe script
-    runs inside the session, which must see the stack's instance and not the user's.
+    Scoped to PROVISIONING since #449: install time, and the recipe install/setup/init scripts that
+    inherit it. The AGENT no longer gets it — `_restore_user_mise_env` puts the user's own mise back
+    before the exec, because nothing harnessed puts on PATH is a shim any more and carrying the
+    redirect into the session broke every shim on the USER's PATH instead, the agent binary
+    included.
 
     MISE_STATE_DIR IS DELIBERATELY NOT REDIRECTED. mise keeps its TRUST STORE in the state dir, and
     trust is a fact about the user and a config FILE — never about which stack happens to be
@@ -196,6 +253,10 @@ def _is_a_harnessed_stack_dir(value: str, tail: str) -> bool:
     `env.get(VAR, "")`, so an UNSET variable arrives here as `""` — and `Path("").resolve()` is the
     CWD, which under a process sitting in a stack's own dir made an absent variable match. The
     invariant is "only a value harnessed itself wrote is eligible"; nobody wrote an absent one.
+
+    An empty `tail` names the mise root itself — MISE_DATA_DIR's shape, which has no trailing
+    segment. Spelled as a branch rather than a `("mise", *filter(None, [tail]))` splat because the
+    two cases are two different questions and one of them is off-by-one-able.
     """
     if not value:
         return False
@@ -205,7 +266,7 @@ def _is_a_harnessed_stack_dir(value: str, tail: str) -> bool:
         )
     except (ValueError, TypeError, OSError, RuntimeError):
         return False
-    return relative.parts[1:] == ("mise", tail)
+    return relative.parts[1:] == (("mise", tail) if tail else ("mise",))
 
 
 # mise splits MISE_TRUSTED_CONFIG_PATHS on THIS and nothing else — verified against 2026.8.3, where
@@ -223,6 +284,27 @@ def _is_a_harnessed_stack_config_dir(value: str) -> bool:
     chosen it — an over-grant, which is the one failure this whole path exists to avoid.
     """
     return _is_a_harnessed_stack_dir(value, "config")
+
+
+def _is_a_harnessed_stack_data_dir(value: str) -> bool:
+    """Whether `value` is a MISE_DATA_DIR harnessed itself exported — `_host_mise_env`'s shape.
+
+    Same predicate, no tail: MISE_DATA_DIR IS the mise root. Same inheritance trap too, and this is
+    the one that bites hardest, because the data dir is what every shim resolves against. See
+    `_restore_user_mise_env`.
+    """
+    return _is_a_harnessed_stack_dir(value, "")
+
+
+# Which snapshot values are harnessed's own redirect rather than the user's choice, for
+# `_restore_user_mise_env` — which is defined above but only reads this when a launch calls it.
+# MISE_TRUSTED_CONFIG_PATHS is deliberately absent: `_apply_host_mise_env` only ever CARRIES entries
+# read out of the user's OWN config into it, so an inherited value is theirs by construction.
+_NOT_THE_USERS: dict[str, Callable[[str], bool]] = {
+    "MISE_DATA_DIR": _is_a_harnessed_stack_data_dir,
+    "MISE_CONFIG_DIR": _is_a_harnessed_stack_config_dir,
+    "MISE_STATE_DIR": _is_a_harnessed_stack_state_dir,
+}
 
 
 def _user_mise_config_file(env: MutableMapping[str, str]) -> Path:

@@ -305,3 +305,63 @@ class TestTheToolPathIsScopedToTheStacksOwnTools:
         assert env["PATH"] == "/usr/bin"
         out = capsys.readouterr()
         assert "bin-paths" in (out.err + out.out)
+
+
+class TestTheSessionGetsTheUsersOwnMiseBack:
+    """#449, second cause — the redirect provisions the stack; it does not own the session.
+
+    Removing the shims dir from PATH was only half the report. `_launch_host` also exported the
+    MISE_DATA_DIR / MISE_CONFIG_DIR redirect onto the AGENT, and a mise shim re-resolves its tool by
+    argv[0] against MISE_DATA_DIR every time it runs — so the redirect broke every shim on the
+    USER's own PATH instead. `node`, `gh`, `python`, and `omp` itself, which is mise-installed:
+
+        mise ERROR No version is set for shim: omp
+
+    Verified live before and after: `host-run omp` reached the same error with the PATH fix alone,
+    and started the agent once the session got the user's mise back.
+    """
+
+    def _outer_stack_mise_root(self) -> str:
+        """A value shaped exactly like the one `_host_mise_env` emits, for some other stack."""
+        return str(launcher._stack_tools_dirs("outer")[0] / "mise")
+
+    def test_a_users_own_value_is_restored(self):
+        env = {"MISE_DATA_DIR": "/stack/redirect"}
+        hostrun._restore_user_mise_env(env, {"MISE_DATA_DIR": "/home/u/.local/share/mise"})
+        assert env["MISE_DATA_DIR"] == "/home/u/.local/share/mise"
+
+    def test_a_variable_the_user_never_set_ends_unset(self):
+        # Not "restored to empty" — an empty MISE_DATA_DIR is not the same as mise's default.
+        env = {"MISE_DATA_DIR": "/stack/redirect"}
+        hostrun._restore_user_mise_env(env, {"MISE_DATA_DIR": None})
+        assert "MISE_DATA_DIR" not in env
+
+    def test_an_inherited_harnessed_redirect_is_dropped_not_restored(self):
+        # Launching a stack from inside another stack's host session is routine. Restoring the OUTER
+        # stack's data dir hands the agent a tree its own binary was never installed into — measured
+        # live as `mise ERROR omp is not a valid shim`, the same bug one level out.
+        outer = self._outer_stack_mise_root()
+        env = {"MISE_DATA_DIR": "/inner/redirect"}
+        hostrun._restore_user_mise_env(env, {"MISE_DATA_DIR": outer})
+        assert "MISE_DATA_DIR" not in env
+
+    def test_the_trusted_paths_are_restored_verbatim(self):
+        # NOT in `_NOT_THE_USERS`: `_apply_host_mise_env` only ever carries entries read out of the
+        # user's OWN config into this one, so an inherited value is theirs by construction.
+        env = {"MISE_TRUSTED_CONFIG_PATHS": "/stack/x"}
+        hostrun._restore_user_mise_env(env, {"MISE_TRUSTED_CONFIG_PATHS": "/home/u/repo"})
+        assert env["MISE_TRUSTED_CONFIG_PATHS"] == "/home/u/repo"
+
+    def test_the_snapshot_covers_every_variable_the_redirect_touches(self):
+        # A variable restored on one side only leaves the session half-redirected, which is worse
+        # than either state.
+        touched = set(launcher._host_mise_env("s")) | {"MISE_STATE_DIR", "MISE_TRUSTED_CONFIG_PATHS"}
+        assert touched <= set(hostrun._MISE_SESSION_VARS)
+
+    def test_the_data_dir_shape_is_recognised(self):
+        assert hostrun._is_a_harnessed_stack_data_dir(self._outer_stack_mise_root())
+
+    def test_a_users_own_data_dir_is_never_second_guessed(self, tmp_path):
+        # Narrowness rule: only the shape harnessed itself emits is eligible to be dropped.
+        assert not hostrun._is_a_harnessed_stack_data_dir(str(tmp_path))
+        assert not hostrun._is_a_harnessed_stack_data_dir("")
