@@ -390,6 +390,41 @@ class TestTheStackBinDirLeadsThePath:
         assert entries[1] == "/t/installs/rtk/0.45.0"
         assert entries[-1] == "/usr/bin"
 
+
+    def test_an_outer_stacks_tool_dirs_do_not_survive_into_an_inner_launch(self, monkeypatch):
+        """Launching a stack from inside another stack's host session is routine.
+
+        The inner launch inherits the OUTER stack's PATH. Filtering only against the inner stack's
+        own prefix left the outer entries behind the new ones, so a tool the inner stack never
+        declared still resolved — out of a tree belonging to a different stack. Same leak, and the
+        same fix, as the inherited mise redirect in `_restore_user_mise_env`.
+        """
+        outer_bin = str(hostrun._stack_tools_dirs("outer")[1])
+        outer_tool = str(hostrun._stack_tools_dirs("outer")[0] / "mise" / "installs" / "node" / "24" / "bin")
+        env = {"PATH": ":".join([outer_bin, outer_tool, "/home/u/.local/bin", "/usr/bin"])}
+        _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0"])
+        hostrun._apply_host_tool_path(env, "inner")
+        entries = env["PATH"].split(":")
+        assert outer_bin not in entries, "the outer stack's bin dir rode into the inner launch"
+        assert outer_tool not in entries, "the outer stack's tool dir rode into the inner launch"
+        assert entries[0] == str(hostrun._stack_tools_dirs("inner")[1])
+        assert entries[1] == "/t/installs/rtk/0.45.0"
+
+    def test_the_users_own_path_entries_are_untouched(self, monkeypatch):
+        # The filter is scoped to the harnessed tools root precisely so it cannot eat these.
+        env = {"PATH": "/home/u/.local/bin:/usr/local/bin:/usr/bin"}
+        _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0"])
+        hostrun._apply_host_tool_path(env, "inner")
+        assert env["PATH"].endswith("/home/u/.local/bin:/usr/local/bin:/usr/bin")
+
+    def test_only_paths_under_the_harnessed_tools_root_count_as_ours(self, tmp_path):
+        assert hostrun._is_a_harnessed_tools_path(str(hostrun._stack_tools_dirs("outer")[1]))
+        assert not hostrun._is_a_harnessed_tools_path(str(tmp_path))
+        assert not hostrun._is_a_harnessed_tools_path("/usr/bin")
+        # Empty must be rejected BEFORE the resolve: `Path("").resolve()` is the cwd, which matches
+        # for any process sitting inside the tree.
+        assert not hostrun._is_a_harnessed_tools_path("")
+
     def test_the_second_call_lands_on_the_same_order(self, monkeypatch):
         # `_launch_host` calls it against an empty tools tree on a first launch; `_host_install_tools`
         # calls it again once the installs exist. Skipping entries already present would leave the

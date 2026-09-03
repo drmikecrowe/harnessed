@@ -105,6 +105,33 @@ def _stack_tool_path_prefix(stack: str) -> list[str]:
     return [str(_stack_tools_dirs(stack)[1]), *(str(d) for d in _host_tool_bin_dirs(stack))]
 
 
+def _is_a_harnessed_tools_path(value: str) -> bool:
+    """Whether `value` is any PATH entry under `<xdg_data_home>/harnessed/tools` — ours, ANY stack's.
+
+    Deliberately looser than `_is_a_harnessed_stack_dir`, which pins an exact `<stack>/mise/<tail>`
+    shape. The two entries a launch writes sit at different depths — `<stack>/bin`, and whatever
+    `mise bin-paths` returns under `<stack>/mise/installs/...` — so the question here is only "is
+    this inside the tree harnessed installs into", not "is it one particular directory".
+
+    That whole tree is harnessed's: nothing else writes there and no user puts it on their PATH by
+    hand, which is what makes "under the root" a safe test rather than an over-broad one.
+
+    Resolved on both sides, same reason as `_is_a_harnessed_stack_dir`: a lexical compare reads a
+    symlinked tools dir as "not ours" and lets it through. Empty is never ours and is rejected
+    before the resolve — `Path("").resolve()` is the CWD, which would match for a process sitting
+    inside the tree.
+    """
+    if not value:
+        return False
+    try:
+        Path(value).resolve().relative_to(
+            (paths.xdg_data_home() / "harnessed" / "tools").resolve()
+        )
+    except (ValueError, TypeError, OSError, RuntimeError):
+        return False
+    return True
+
+
 def _apply_host_tool_path(env: MutableMapping[str, str], stack: str) -> None:
     """Put `_stack_tool_path_prefix` at the front of `env["PATH"]`, exactly once (#449).
 
@@ -114,13 +141,27 @@ def _apply_host_tool_path(env: MutableMapping[str, str], stack: str) -> None:
     yet at the first call and `install.sh` — which runs next, and configures binaries `tools:`
     provides — has to resolve them.
 
-    So it REMOVES the prefix's entries before prepending, rather than skipping ones already present.
-    Skipping is idempotent but not order-stable: the second call would leave a freshly-installed
-    tool dir ahead of the stack bin dir that the first call had already placed. Rebuilding the front
-    of the PATH makes both calls land on the same order, whichever runs.
+    So it REMOVES before prepending, rather than skipping entries already present. Skipping is
+    idempotent but not order-stable: the second call would leave a freshly-installed tool dir ahead
+    of the stack bin dir the first call placed. Rebuilding the front makes both calls agree.
+
+    It removes EVERY harnessed tools entry, not just this stack's. Launching a stack from inside
+    another stack's host session inherits the OUTER stack's PATH, and filtering only against this
+    stack's own prefix left those entries behind the new ones — so a tool the inner stack never
+    declared still resolved, out of the outer stack's tree. Same leak, and the same fix, as
+    `_restore_user_mise_env`: provisioning state belongs to the launch that created it and must not
+    ride into the next one. The current stack's entries come straight back via `prefix`; a user's
+    own toolchain entries are untouched, because none of them live under the harnessed tools root.
     """
     prefix = _stack_tool_path_prefix(stack)
-    kept = [entry for entry in env.get("PATH", "").split(os.pathsep) if entry and entry not in prefix]
+    # BOTH tests. The tools-root one is the nested-launch fix and covers this stack's entries too in
+    # production, where `mise bin-paths` only ever names dirs inside that root. The membership test
+    # is what keeps the function idempotent regardless — a prefix entry that resolves outside the
+    # root would otherwise be re-added on the second call and duplicate.
+    kept = [
+        entry for entry in env.get("PATH", "").split(os.pathsep)
+        if entry and entry not in prefix and not _is_a_harnessed_tools_path(entry)
+    ]
     env["PATH"] = os.pathsep.join([*prefix, *kept])
 
 
