@@ -15,7 +15,7 @@ import typer
 
 from typer.testing import CliRunner
 
-from harnessed import launcher, staleness
+from harnessed import console, launcher, staleness
 from harnessed.schema import SchemaError
 from support import patch_all
 
@@ -66,7 +66,11 @@ def _run(monkeypatch, tmp_path, *, isatty: bool, confirm: bool = True, exc: Exce
 
     monkeypatch.setattr(launcher.staleness, "check_profile_fresh", _stale)
     monkeypatch.setattr(launcher, "_build_stack", lambda *a, **k: builds.append(a))
+    # BOTH modules: the prompt guard `_can_prompt` reads `console.sys.stdin` (#450), while the
+    # remaining tty checks in launcher.py read its own. Patching one leaves the other on the
+    # runner's non-tty stream, and the branch under test stays unreachable.
     monkeypatch.setattr(launcher, "sys", _Sys(isatty))
+    monkeypatch.setattr(console, "sys", _Sys(isatty))
     monkeypatch.setattr(typer, "confirm", lambda msg, **k: (prompts.append(msg), confirm)[1])
     # --create-aoe-only exits through the register hook; stub the bridge so a machine without `aoe`
     # installed does not turn "got past the guard" into exit 1.

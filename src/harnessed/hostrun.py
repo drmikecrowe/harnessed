@@ -11,7 +11,6 @@ import os
 import shlex
 import shutil
 import subprocess
-import sys
 import tempfile
 import tomllib
 
@@ -26,7 +25,7 @@ from . import paths, toollock
 from .assemble import _merge_servers
 from .hosthome import _host_omp_claude_dir, _relink
 from .schema import load_stack_with_recipes
-from .console import _err
+from .console import _can_prompt, _err
 from .proc import _say
 from .setupenv import (
     _confirm_setup,
@@ -39,12 +38,186 @@ from .setupenv import (
 )
 
 def _host_tool_shims_dir(stack: str) -> Path:
-    """Where a host launch's `tools:` binaries become resolvable (bd harnessed-1t4.3).
+    """mise's shims dir under the STACK's own data dir (bd harnessed-1t4.3).
 
-    mise's shims dir under the STACK's own data dir — not `~/.local/share/mise/shims`, which belongs
-    to the user. `_launch_host` puts this on PATH next to the stack bin dir.
+    NOT on the launch PATH — `_host_tool_bin_dirs` is, and #449 is why. Kept because it names where
+    mise writes when `_host_mise_env` redirects it, which is what makes that redirect checkable.
     """
     return _stack_tools_dirs(stack)[0] / "mise" / "shims"
+
+
+def _host_tool_bin_dirs(stack: str) -> list[Path]:
+    """The dirs a host launch puts on PATH to deliver the stack's `tools:` (#449).
+
+    `mise bin-paths` — the tools' REAL install dirs — never mise's shims dir, which is what this
+    replaced. A shims dir is not scoped to the stack's declared tool set: mise writes one shim per
+    binary of every version ever installed under MISE_DATA_DIR and removes none when a tool leaves
+    the config. Measured on stack `default`: 96 shims, 6 declared tools, 28 installs — the user's
+    whole global tool set, left by a release that redirected MISE_DATA_DIR at install time without
+    MISE_CONFIG_DIR, so `mise install` read the user's global config and populated the stack tree
+    from it. Ahead of the user's own PATH that dir fails two ways, both on every launch:
+
+      1. A shim whose tool has no version in the stack config DIES — `mise ERROR No version is set
+         for shim: <tool>`. `omp` was one, so the AGENT BINARY itself was shadowed by a broken shim
+         and `host-run omp` could not start at all. That is the #449 report.
+      2. A shim that does resolve shadows the user's pinned version with the stack's. `node`
+         resolved to v26.8.1 out of the stack tree against the user's global `node = "24"`.
+
+    bin-paths has neither: exactly the declared set, and real binaries rather than symlinks that
+    re-resolve against MISE_DATA_DIR at run time.
+
+    cwd=<mise root> IS LOAD-BEARING. mise merges every config from the cwd upward, so resolving this
+    in the project would put the PROJECT's `mise.toml` tools on the agent's PATH — measured: 8 paths
+    from the harnessed repo against the 6 the stack declares.
+    """
+    mise_root = _stack_tools_dirs(stack)[0] / "mise"
+    if not mise_root.is_dir() or not shutil.which("mise"):
+        return []
+    env = {**os.environ}
+    _apply_host_mise_env(env, stack)
+    proc = subprocess.run(
+        ["mise", "bin-paths"], env=env, cwd=str(mise_root),
+        capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        _err.print(
+            "[bold yellow]WARNING[/bold yellow] tools: `mise bin-paths` failed, so this stack's "
+            f"`tools:` are NOT on the launch PATH: {proc.stderr.strip()}"
+        )
+        return []
+    dirs: list[Path] = []
+    for line in proc.stdout.splitlines():
+        entry = line.strip()
+        if entry and Path(entry).is_dir():
+            dirs.append(Path(entry))
+    return dirs
+
+
+def _stack_tool_path_prefix(stack: str) -> list[str]:
+    """The stack's own PATH entries, in the order they must appear (#449).
+
+    THE STACK BIN DIR LEADS. An `install.sh` installs a binary there (via the UV_TOOL_BIN_DIR /
+    PNPM_HOME redirects) and may install one the stack's `tools:` also declares; the recipe's copy
+    won before this change and has to keep winning. Prepending the two separately inverted that,
+    silently, because each prepend went to the front — reported by adversarial review of #449.
+    Composing the whole prefix in ONE place is what stops the two call sites disagreeing.
+    """
+    return [str(_stack_tools_dirs(stack)[1]), *(str(d) for d in _host_tool_bin_dirs(stack))]
+
+
+def _is_a_harnessed_tools_path(value: str) -> bool:
+    """Whether `value` is any PATH entry under `<xdg_data_home>/harnessed/tools` — ours, ANY stack's.
+
+    Deliberately looser than `_is_a_harnessed_stack_dir`, which pins an exact `<stack>/mise/<tail>`
+    shape. The two entries a launch writes sit at different depths — `<stack>/bin`, and whatever
+    `mise bin-paths` returns under `<stack>/mise/installs/...` — so the question here is only "is
+    this inside the tree harnessed installs into", not "is it one particular directory".
+
+    That whole tree is harnessed's: nothing else writes there and no user puts it on their PATH by
+    hand, which is what makes "under the root" a safe test rather than an over-broad one.
+
+    Resolved on both sides, same reason as `_is_a_harnessed_stack_dir`: a lexical compare reads a
+    symlinked tools dir as "not ours" and lets it through. Empty is never ours and is rejected
+    before the resolve — `Path("").resolve()` is the CWD, which would match for a process sitting
+    inside the tree.
+    """
+    if not value:
+        return False
+    try:
+        Path(value).resolve().relative_to(
+            (paths.xdg_data_home() / "harnessed" / "tools").resolve()
+        )
+    except (ValueError, TypeError, OSError, RuntimeError):
+        return False
+    return True
+
+
+def _apply_host_tool_path(env: MutableMapping[str, str], stack: str) -> None:
+    """Put `_stack_tool_path_prefix` at the front of `env["PATH"]`, exactly once (#449).
+
+    Called TWICE per launch, and both are needed. `_launch_host` calls it while composing the PATH,
+    which is the only call that fires when the fingerprint matched and the installs were skipped;
+    `_host_install_tools` calls it again at its end, because on a FIRST launch nothing is installed
+    yet at the first call and `install.sh` — which runs next, and configures binaries `tools:`
+    provides — has to resolve them.
+
+    So it REMOVES before prepending, rather than skipping entries already present. Skipping is
+    idempotent but not order-stable: the second call would leave a freshly-installed tool dir ahead
+    of the stack bin dir the first call placed. Rebuilding the front makes both calls agree.
+
+    It removes EVERY harnessed tools entry, not just this stack's. Launching a stack from inside
+    another stack's host session inherits the OUTER stack's PATH, and filtering only against this
+    stack's own prefix left those entries behind the new ones — so a tool the inner stack never
+    declared still resolved, out of the outer stack's tree. Same leak, and the same fix, as
+    `_restore_user_mise_env`: provisioning state belongs to the launch that created it and must not
+    ride into the next one. The current stack's entries come straight back via `prefix`; a user's
+    own toolchain entries are untouched, because none of them live under the harnessed tools root.
+    """
+    prefix = _stack_tool_path_prefix(stack)
+    # BOTH tests. The tools-root one is the nested-launch fix and covers this stack's entries too in
+    # production, where `mise bin-paths` only ever names dirs inside that root. The membership test
+    # is what keeps the function idempotent regardless — a prefix entry that resolves outside the
+    # root would otherwise be re-added on the second call and duplicate.
+    kept = [
+        entry for entry in env.get("PATH", "").split(os.pathsep)
+        if entry and entry not in prefix and not _is_a_harnessed_tools_path(entry)
+    ]
+    env["PATH"] = os.pathsep.join([*prefix, *kept])
+
+
+# Every variable `_apply_host_mise_env` writes or removes. Named once so the snapshot below and the
+# redirect itself cannot list different sets — a variable restored on one side only is how the
+# session ends up half-redirected, which is worse than either state.
+_MISE_SESSION_VARS = (
+    "MISE_DATA_DIR", "MISE_CONFIG_DIR", "MISE_TRUSTED_CONFIG_PATHS", "MISE_STATE_DIR",
+)
+
+
+def _snapshot_user_mise_env(env: MutableMapping[str, str]) -> dict[str, Optional[str]]:
+    """The user's own mise variables, before `_apply_host_mise_env` redirects them. `None` = unset.
+
+    Paired with `_restore_user_mise_env`; see it for why the session gets them back.
+    """
+    return {key: env.get(key) for key in _MISE_SESSION_VARS}
+
+
+def _restore_user_mise_env(
+    env: MutableMapping[str, str], saved: dict[str, Optional[str]]
+) -> None:
+    """Undo the redirect for the AGENT's environment (#449, second cause).
+
+    The redirect exists so PROVISIONING writes into the stack's tools tree instead of the user's
+    mise. The SESSION is a different question, and carrying it there was the second half of the
+    `host-run omp` failure: a mise shim re-resolves its tool by argv[0] against MISE_DATA_DIR EVERY
+    TIME IT RUNS, so a redirected session breaks every shim on the user's own PATH — `node`, `gh`,
+    `python`, and the agent binary itself whenever the harness is one mise installed. `omp` is:
+
+        mise ERROR No version is set for shim: omp
+
+    Nothing harnessed puts on PATH is a shim any more (`_host_tool_bin_dirs`), so the redirect has
+    no run-time job left. The stack's `tools:` reach the agent as real install dirs, and everything
+    else in the session resolves against the user's own mise — which is what a launch into the
+    user's own project, with the user's own credentials, should give them.
+
+    Restores to the SNAPSHOT rather than deleting: a user who sets MISE_DATA_DIR themselves keeps
+    the value they chose, and one who set none ends with none.
+
+    EXCEPT a value harnessed itself wrote. Launching a stack from inside another stack's host
+    session is routine, so the snapshot frequently holds the OUTER stack's redirect rather than the
+    user's choice — and restoring that hands the agent a data dir where its own binary was never
+    installed. Measured while verifying this: the inner launch died with
+
+        mise ERROR omp is not a valid shim
+
+    which is the same bug one level out. Same predicates, and the same narrowness rule, as the
+    inherited-MISE_STATE_DIR case `_is_a_harnessed_stack_state_dir` already exists for: only the
+    shape harnessed emits is eligible, so a user's own directory is never second-guessed.
+    """
+    for key, value in saved.items():
+        if value is None or (key in _NOT_THE_USERS and _NOT_THE_USERS[key](value)):
+            env.pop(key, None)
+        else:
+            env[key] = value
 
 
 def _host_mise_env(stack: str) -> dict[str, str]:
@@ -56,8 +229,11 @@ def _host_mise_env(stack: str) -> dict[str, str]:
     never find it again — `mise ERROR <tool> is not a valid shim`, because mise fell back to
     ~/.local/share/mise where the stack installed nothing.
 
-    So _launch_host exports this alongside the PATH entry for `_host_tool_shims_dir`: a shims dir
-    on PATH without this env is a dir of guaranteed-broken symlinks.
+    Scoped to PROVISIONING since #449: install time, and the recipe install/setup/init scripts that
+    inherit it. The AGENT no longer gets it — `_restore_user_mise_env` puts the user's own mise back
+    before the exec, because nothing harnessed puts on PATH is a shim any more and carrying the
+    redirect into the session broke every shim on the USER's PATH instead, the agent binary
+    included.
 
     MISE_STATE_DIR IS DELIBERATELY NOT REDIRECTED. mise keeps its TRUST STORE in the state dir, and
     trust is a fact about the user and a config FILE — never about which stack happens to be
@@ -129,6 +305,10 @@ def _is_a_harnessed_stack_dir(value: str, tail: str) -> bool:
     `env.get(VAR, "")`, so an UNSET variable arrives here as `""` — and `Path("").resolve()` is the
     CWD, which under a process sitting in a stack's own dir made an absent variable match. The
     invariant is "only a value harnessed itself wrote is eligible"; nobody wrote an absent one.
+
+    An empty `tail` names the mise root itself — MISE_DATA_DIR's shape, which has no trailing
+    segment. Spelled as a branch rather than a `("mise", *filter(None, [tail]))` splat because the
+    two cases are two different questions and one of them is off-by-one-able.
     """
     if not value:
         return False
@@ -138,7 +318,7 @@ def _is_a_harnessed_stack_dir(value: str, tail: str) -> bool:
         )
     except (ValueError, TypeError, OSError, RuntimeError):
         return False
-    return relative.parts[1:] == ("mise", tail)
+    return relative.parts[1:] == (("mise", tail) if tail else ("mise",))
 
 
 # mise splits MISE_TRUSTED_CONFIG_PATHS on THIS and nothing else — verified against 2026.8.3, where
@@ -156,6 +336,27 @@ def _is_a_harnessed_stack_config_dir(value: str) -> bool:
     chosen it — an over-grant, which is the one failure this whole path exists to avoid.
     """
     return _is_a_harnessed_stack_dir(value, "config")
+
+
+def _is_a_harnessed_stack_data_dir(value: str) -> bool:
+    """Whether `value` is a MISE_DATA_DIR harnessed itself exported — `_host_mise_env`'s shape.
+
+    Same predicate, no tail: MISE_DATA_DIR IS the mise root. Same inheritance trap too, and this is
+    the one that bites hardest, because the data dir is what every shim resolves against. See
+    `_restore_user_mise_env`.
+    """
+    return _is_a_harnessed_stack_dir(value, "")
+
+
+# Which snapshot values are harnessed's own redirect rather than the user's choice, for
+# `_restore_user_mise_env` — which is defined above but only reads this when a launch calls it.
+# MISE_TRUSTED_CONFIG_PATHS is deliberately absent: `_apply_host_mise_env` only ever CARRIES entries
+# read out of the user's OWN config into it, so an inherited value is theirs by construction.
+_NOT_THE_USERS: dict[str, Callable[[str], bool]] = {
+    "MISE_DATA_DIR": _is_a_harnessed_stack_data_dir,
+    "MISE_CONFIG_DIR": _is_a_harnessed_stack_config_dir,
+    "MISE_STATE_DIR": _is_a_harnessed_stack_state_dir,
+}
 
 
 def _user_mise_config_file(env: MutableMapping[str, str]) -> Path:
@@ -315,6 +516,10 @@ def _host_install_tools(stack: str, recipes) -> None:
     ).returncode != 0:
         _err.print("[bold red]error:[/bold red] installing the stack's `tools:` failed")
         raise typer.Exit(1)
+    # Only NOW do these dirs exist, so `_launch_host`'s own call could not have added them: on a
+    # first launch it ran against an empty tools tree. `install.sh` runs next and configures
+    # binaries `tools:` provides (serena init -b LSP), so it has to resolve them. See #449.
+    _apply_host_tool_path(os.environ, stack)
 
 
 # Each harness's OWN config-dir variable. An upstream installer that honours one of these beats
@@ -585,7 +790,10 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
             continue
         if primitives is None:
             primitives = _repo_primitives(project_path)
-        values = _resolve_setup_config(setup, primitives, interactive=sys.stdin.isatty())
+        # `_can_prompt`, not a bare isatty (#450, adversary finding 3). `_confirm_setup` two
+        # lines up was converted and this was not, so an `-exec` launch stopped on the SECOND
+        # prompt in the same loop — the one hidden behind a boolean rather than at a confirm call.
+        values = _resolve_setup_config(setup, primitives, interactive=_can_prompt())
         script = recipe.root / setup.script
         bin_dir.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ)

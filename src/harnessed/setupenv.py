@@ -15,7 +15,6 @@ import os
 import re
 import shlex
 import subprocess
-import sys
 
 from pathlib import Path
 from typing import Optional
@@ -26,7 +25,7 @@ from . import emit
 from . import paths
 from rich.markup import escape
 
-from .console import _err, _out
+from .console import _can_prompt, _err, _out
 from .paths import CONTAINER_HOME
 from .proc import _say
 from .schema import load_stack_with_recipes, resolve_recipe_env
@@ -508,7 +507,9 @@ def _container_setup_env(stack: str, project_path: Path, pending, *, harness: st
     primitives = _repo_primitives(project_path)
     env: dict[str, str] = {}
     for recipe in pending:
-        values = _resolve_setup_config(recipe.setup, primitives, interactive=sys.stdin.isatty())
+        # `_can_prompt`, not a bare isatty — the container half of the same site (#450,
+        # adversary finding 3). See the note at the host call in `hostrun._host_run_setups`.
+        values = _resolve_setup_config(recipe.setup, primitives, interactive=_can_prompt())
         env.update(_script_env(
             stack, project_path, values, mode="container", harness=harness, recipe=recipe
         ))
@@ -530,7 +531,8 @@ def _confirm_setup(recipe, stack: str, project_path: Path, *, harness: str) -> b
     No TTY → SKIP, never run. A headless launch (CI, the capability test, a scripted run) cannot
     answer, and "nobody objected" is not consent for a commit into someone's repo. Same guard as
     `_prompt_setup_notices`, opposite default — that one proceeds without prompting because it only
-    prints; this one would write.
+    prints; this one would write. `host-exec` / `container-exec` take the same branch (#450): a real
+    TTY with nobody at it is not consent either.
     """
     setup = getattr(recipe, "setup", None)
     if setup is None or not setup.confirm:
@@ -549,7 +551,7 @@ def _confirm_setup(recipe, stack: str, project_path: Path, *, harness: str) -> b
         )},
     ).returncode != 0:
         return False
-    if not sys.stdin.isatty():
+    if not _can_prompt():
         _err.print(
             f"[yellow]warning:[/yellow] skipping setup for '{recipe.name}' — it needs confirmation "
             "and there is no terminal to ask. Run this launch interactively to complete it."
