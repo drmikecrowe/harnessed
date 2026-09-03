@@ -14,9 +14,34 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from harnessed import launcher
+from harnessed import hostrun, launcher
 from harnessed.schema import Recipe
 from support import patch_all
+
+
+def _fake_bin_paths(monkeypatch, lines, *, returncode=0, stderr=""):
+    """Stand in for the `mise bin-paths` subprocess, and record how it was invoked.
+
+    Returns the recorded call list. Every path in `lines` is reported as an existing directory —
+    `_host_tool_bin_dirs` drops entries that are not, and a tmp-path fixture per test would only
+    restate mise's own output contract.
+    """
+    calls: list[dict] = []
+    monkeypatch.setattr(hostrun.shutil, "which", lambda cmd: "/usr/bin/mise")
+    monkeypatch.setattr(hostrun.Path, "is_dir", lambda self: True)
+
+    class Result:
+        def __init__(self):
+            self.returncode = returncode
+            self.stdout = "".join(f"{line}\n" for line in lines)
+            self.stderr = stderr
+
+    def fake_run(cmd, **kwargs):
+        calls.append({"cmd": cmd, **kwargs})
+        return Result()
+
+    monkeypatch.setattr(hostrun.subprocess, "run", fake_run)
+    return calls
 
 
 class TestHostLaunchHonoursTools:
@@ -26,7 +51,11 @@ class TestHostLaunchHonoursTools:
         monkeypatch.setattr(launcher.shutil, "which", lambda cmd: "/usr/bin/mise")
 
         class Result:
+            # `stdout`/`stderr` are for the `mise bin-paths` call `_host_install_tools` ends with
+            # (#449); the `mise use -g`/`mise install` calls read neither.
             returncode = 0
+            stdout = ""
+            stderr = ""
 
         def run(argv, **kwargs):
             calls.append((argv, kwargs.get("env") or {}))
@@ -69,10 +98,12 @@ class TestHostLaunchHonoursTools:
         out = capsys.readouterr()
         assert "mise" in (out.err + out.out).lower()
 
-    def test_the_tool_bin_dir_is_on_the_launch_path(self):
+    def test_the_tool_bin_dir_is_on_the_launch_path(self, monkeypatch):
         # Installing into a stack-scoped dir is useless if the agent cannot resolve the binary.
-        shims = launcher._host_tool_shims_dir("s")
-        assert str(shims).startswith(str(launcher._stack_tools_dirs("s")[0]))
+        env = {"PATH": "/usr/bin"}
+        _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0"])
+        hostrun._apply_host_tool_path(env, "s")
+        assert env["PATH"].split(":")[0] == "/t/installs/rtk/0.45.0"
 
     def test_tools_are_installed_before_install_scripts_run(self):
         # serena's install.sh keeps `serena init` — it configures a binary that tools: now provides,
@@ -179,11 +210,15 @@ class TestMiseShimsResolveAtRunTimeNotJustInstallTime:
     shim on that PATH entry died with `mise ERROR <tool> is not a valid shim`. Surfaced as a dead
     ccstatusline statusLine on `launch --host`: settings.json recorded the shim path, and Claude Code
     spawns statusLine as a plain subprocess.
+
+    That shims dir is no longer on the PATH (#449 — see TestTheToolPathIsScopedToTheStacksOwnTools),
+    but the redirect it forced still governs every `mise` run inside the session, and the two halves
+    must still agree. These tests hold that agreement, not the PATH entry that first exposed it.
     """
 
     def test_the_shims_dir_lives_under_the_data_dir_the_env_points_at(self):
         env = launcher._host_mise_env("s")
-        shims = launcher._host_tool_shims_dir("s")
+        shims = hostrun._host_tool_shims_dir("s")
         assert shims.parent == Path(env["MISE_DATA_DIR"]), (
             "a shim resolves against MISE_DATA_DIR; a shims dir that does not live under it is a "
             f"dir of broken symlinks (shims={shims}, MISE_DATA_DIR={env['MISE_DATA_DIR']})"
@@ -197,6 +232,8 @@ class TestMiseShimsResolveAtRunTimeNotJustInstallTime:
 
         class Result:
             returncode = 0
+            stdout = ""
+            stderr = ""
 
         monkeypatch.setattr(
             launcher.subprocess,
@@ -212,3 +249,59 @@ class TestMiseShimsResolveAtRunTimeNotJustInstallTime:
             )
 
 
+
+
+class TestTheToolPathIsScopedToTheStacksOwnTools:
+    """#449 — the launch PATH carries the tools' REAL install dirs, never mise's shims dir.
+
+    mise writes one shim per binary of every version ever installed under MISE_DATA_DIR and removes
+    none when a tool leaves the config, so the shims dir is not scoped to what the stack declares.
+    Measured on stack `default` when this was reported: 96 shims, 6 declared tools, 28 installs —
+    the user's entire global tool set, left by a release that redirected MISE_DATA_DIR at install
+    time without MISE_CONFIG_DIR. Prepended to PATH that dir failed two ways at once:
+
+      1. A shim whose tool has no version in the STACK config dies with `mise ERROR No version is
+         set for shim: <tool>`. `omp` was one of them, so the AGENT BINARY was shadowed by a broken
+         shim and `host-run omp` could not start.
+      2. A shim that does resolve shadows the user's pin with the stack's — `node` came back as
+         v26.8.1 out of the stack tree against the user's global `node = "24"`.
+    """
+
+    def test_only_the_declared_tools_reach_the_path(self, monkeypatch):
+        env = {"PATH": "/usr/bin"}
+        _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0", "/t/installs/pulumi/3.251.0/pulumi"])
+        hostrun._apply_host_tool_path(env, "s")
+        assert env["PATH"] == "/t/installs/rtk/0.45.0:/t/installs/pulumi/3.251.0/pulumi:/usr/bin"
+
+    def test_the_shims_dir_is_not_on_the_path(self, monkeypatch):
+        # The whole point. A regression here reinstates both failure modes above at once.
+        env = {"PATH": "/usr/bin"}
+        _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0"])
+        hostrun._apply_host_tool_path(env, "s")
+        assert str(hostrun._host_tool_shims_dir("s")) not in env["PATH"].split(":")
+
+    def test_bin_paths_resolves_at_the_stack_mise_root_not_the_project(self, monkeypatch):
+        # mise merges every config from the cwd upward. Run in the project, this puts the PROJECT's
+        # mise.toml tools on the agent's PATH — measured, 8 paths against the 6 the stack declares.
+        calls = _fake_bin_paths(monkeypatch, [])
+        hostrun._host_tool_bin_dirs("s")
+        assert calls[0]["cmd"] == ["mise", "bin-paths"]
+        assert calls[0]["cwd"] == str(launcher._stack_tools_dirs("s")[0] / "mise")
+
+    def test_a_second_call_does_not_double_the_path(self, monkeypatch):
+        # _launch_host and _host_install_tools BOTH call it — the first is the only one that fires
+        # when the fingerprint matched, the second the only one that sees a first launch's installs.
+        env = {"PATH": "/usr/bin"}
+        _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0"])
+        hostrun._apply_host_tool_path(env, "s")
+        hostrun._apply_host_tool_path(env, "s")
+        assert env["PATH"].count("/t/installs/rtk/0.45.0") == 1
+
+    def test_a_failing_mise_warns_and_leaves_the_path_alone(self, monkeypatch, capsys):
+        # Never a silent empty PATH contribution: the tools are missing and the user must know.
+        env = {"PATH": "/usr/bin"}
+        _fake_bin_paths(monkeypatch, [], returncode=1, stderr="boom")
+        hostrun._apply_host_tool_path(env, "s")
+        assert env["PATH"] == "/usr/bin"
+        out = capsys.readouterr()
+        assert "bin-paths" in (out.err + out.out)

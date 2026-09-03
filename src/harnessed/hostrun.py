@@ -39,12 +39,78 @@ from .setupenv import (
 )
 
 def _host_tool_shims_dir(stack: str) -> Path:
-    """Where a host launch's `tools:` binaries become resolvable (bd harnessed-1t4.3).
+    """mise's shims dir under the STACK's own data dir (bd harnessed-1t4.3).
 
-    mise's shims dir under the STACK's own data dir — not `~/.local/share/mise/shims`, which belongs
-    to the user. `_launch_host` puts this on PATH next to the stack bin dir.
+    NOT on the launch PATH — `_host_tool_bin_dirs` is, and #449 is why. Kept because it names where
+    mise writes when `_host_mise_env` redirects it, which is what makes that redirect checkable.
     """
     return _stack_tools_dirs(stack)[0] / "mise" / "shims"
+
+
+def _host_tool_bin_dirs(stack: str) -> list[Path]:
+    """The dirs a host launch puts on PATH to deliver the stack's `tools:` (#449).
+
+    `mise bin-paths` — the tools' REAL install dirs — never mise's shims dir, which is what this
+    replaced. A shims dir is not scoped to the stack's declared tool set: mise writes one shim per
+    binary of every version ever installed under MISE_DATA_DIR and removes none when a tool leaves
+    the config. Measured on stack `default`: 96 shims, 6 declared tools, 28 installs — the user's
+    whole global tool set, left by a release that redirected MISE_DATA_DIR at install time without
+    MISE_CONFIG_DIR, so `mise install` read the user's global config and populated the stack tree
+    from it. Ahead of the user's own PATH that dir fails two ways, both on every launch:
+
+      1. A shim whose tool has no version in the stack config DIES — `mise ERROR No version is set
+         for shim: <tool>`. `omp` was one, so the AGENT BINARY itself was shadowed by a broken shim
+         and `host-run omp` could not start at all. That is the #449 report.
+      2. A shim that does resolve shadows the user's pinned version with the stack's. `node`
+         resolved to v26.8.1 out of the stack tree against the user's global `node = "24"`.
+
+    bin-paths has neither: exactly the declared set, and real binaries rather than symlinks that
+    re-resolve against MISE_DATA_DIR at run time.
+
+    cwd=<mise root> IS LOAD-BEARING. mise merges every config from the cwd upward, so resolving this
+    in the project would put the PROJECT's `mise.toml` tools on the agent's PATH — measured: 8 paths
+    from the harnessed repo against the 6 the stack declares.
+    """
+    mise_root = _stack_tools_dirs(stack)[0] / "mise"
+    if not mise_root.is_dir() or not shutil.which("mise"):
+        return []
+    env = {**os.environ}
+    _apply_host_mise_env(env, stack)
+    proc = subprocess.run(
+        ["mise", "bin-paths"], env=env, cwd=str(mise_root),
+        capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0:
+        _err.print(
+            "[bold yellow]WARNING[/bold yellow] tools: `mise bin-paths` failed, so this stack's "
+            f"`tools:` are NOT on the launch PATH: {proc.stderr.strip()}"
+        )
+        return []
+    dirs: list[Path] = []
+    for line in proc.stdout.splitlines():
+        entry = line.strip()
+        if entry and Path(entry).is_dir():
+            dirs.append(Path(entry))
+    return dirs
+
+
+def _apply_host_tool_path(env: MutableMapping[str, str], stack: str) -> None:
+    """Prepend `_host_tool_bin_dirs` to `env["PATH"]`, skipping what is already there (#449).
+
+    Called TWICE per launch, and both are needed. `_launch_host` calls it while composing the PATH,
+    which is the only call that fires when the fingerprint matched and the installs were skipped;
+    `_host_install_tools` calls it again at its end, because on a FIRST launch nothing is installed
+    yet at the first call and `install.sh` — which runs next, and configures binaries `tools:`
+    provides — has to resolve them.
+
+    Deduplicating is what makes calling it twice safe rather than a PATH that doubles every launch.
+    """
+    dirs = [str(d) for d in _host_tool_bin_dirs(stack)]
+    current = env.get("PATH", "")
+    seen = set(current.split(os.pathsep))
+    added = [d for d in dirs if d not in seen]
+    if added:
+        env["PATH"] = os.pathsep.join([*added, current]) if current else os.pathsep.join(added)
 
 
 def _host_mise_env(stack: str) -> dict[str, str]:
@@ -56,8 +122,9 @@ def _host_mise_env(stack: str) -> dict[str, str]:
     never find it again — `mise ERROR <tool> is not a valid shim`, because mise fell back to
     ~/.local/share/mise where the stack installed nothing.
 
-    So _launch_host exports this alongside the PATH entry for `_host_tool_shims_dir`: a shims dir
-    on PATH without this env is a dir of guaranteed-broken symlinks.
+    Nothing puts that shims dir on PATH any more (#449 — `_host_tool_bin_dirs` replaced it), but the
+    redirect is still needed on both sides: install time, and any `mise` the agent or a recipe script
+    runs inside the session, which must see the stack's instance and not the user's.
 
     MISE_STATE_DIR IS DELIBERATELY NOT REDIRECTED. mise keeps its TRUST STORE in the state dir, and
     trust is a fact about the user and a config FILE — never about which stack happens to be
@@ -315,6 +382,10 @@ def _host_install_tools(stack: str, recipes) -> None:
     ).returncode != 0:
         _err.print("[bold red]error:[/bold red] installing the stack's `tools:` failed")
         raise typer.Exit(1)
+    # Only NOW do these dirs exist, so `_launch_host`'s own call could not have added them: on a
+    # first launch it ran against an empty tools tree. `install.sh` runs next and configures
+    # binaries `tools:` provides (serena init -b LSP), so it has to resolve them. See #449.
+    _apply_host_tool_path(os.environ, stack)
 
 
 # Each harness's OWN config-dir variable. An upstream installer that honours one of these beats

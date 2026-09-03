@@ -193,7 +193,11 @@ class TestTheHostPath:
         calls: list[list[str]] = []
 
         class _Ok:
+            # `stdout`/`stderr` are for the `mise bin-paths` call `_host_install_tools` ends with
+            # (#449); the `mise use -g`/`mise install` calls read neither.
             returncode = 0
+            stdout = ""
+            stderr = ""
 
         monkeypatch.setattr(hostrun.shutil, "which", lambda _n: "/usr/bin/mise")
         monkeypatch.setattr(hostrun.subprocess, "run",

@@ -165,13 +165,13 @@ from .svcguards import (
 )
 from .hostrun import (
     _apply_host_mise_env,
+    _apply_host_tool_path,
     _host_install_tools,
     _host_mise_env,
     _host_native_mcp,
     _host_run_inits,
     _host_run_installs,
     _host_run_setups,
-    _host_tool_shims_dir,
 )
 from .volumes import (
     _VOL_HARNESS_LABEL,
@@ -2777,16 +2777,18 @@ def _launch_host(
     # there (via UV_TOOL_BIN_DIR / PNPM_HOME redirect), and _host_native_mcp's presence check runs
     # after that — it needs them resolvable. Mutating this process's PATH is fine: it's dedicated to
     # this launch, and claude (env built from os.environ below) inherits it.
-    # The stack's mise shims dir joins it (bd harnessed-1t4.3): `tools:` installs land there, and a
-    # binary the agent cannot resolve is the same as one that was never installed.
+    # The stack's `tools:` join it (bd harnessed-1t4.3): a binary the agent cannot resolve is the
+    # same as one that was never installed. Their REAL install dirs, never mise's shims dir — see
+    # `_host_tool_bin_dirs` and #449 for the two ways that dir shadowed the user's PATH, one of
+    # which killed the agent binary itself. A no-op on a first launch (nothing installed yet);
+    # `_host_install_tools` makes the same call once the installs exist.
     _, stack_bin, _ = _stack_tools_dirs(stack)
-    os.environ["PATH"] = os.pathsep.join(
-        [str(stack_bin), str(_host_tool_shims_dir(stack)), os.environ.get("PATH", "")]
-    )
-    # The shims dir is USELESS without this. Each shim re-execs mise, which resolves the tool by
-    # argv[0] against MISE_DATA_DIR — unset, it reads the user's ~/.local/share/mise, where the
-    # stack installed nothing, and every shim on the PATH entry above fails with "not a valid
-    # shim". Set on os.environ (not a private dict) for the same reason as PATH: installs, setups,
+    os.environ["PATH"] = os.pathsep.join([str(stack_bin), os.environ.get("PATH", "")])
+    _apply_host_tool_path(os.environ, stack)
+    # Any `mise` the agent or a recipe script runs needs this. Unset, it reads the user's
+    # ~/.local/share/mise, where the stack installed nothing, so a `mise x`/`mise run` inside the
+    # session resolves against a tool set this stack never declared.
+    # Set on os.environ (not a private dict) for the same reason as PATH: installs, setups,
     # the agent, and everything the agent spawns all need it, and os.environ IS the host's box.
     # CLEARS as well as sets — see `_HOST_MISE_UNSET`. Launching a stack from inside another stack's
     # host session inherits that session's MISE_STATE_DIR, and only a removal gets rid of it.
