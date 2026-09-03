@@ -9,6 +9,7 @@ launcher and its extracted modules both import from here, and this module import
 from __future__ import annotations
 
 import re
+import sys
 
 from rich.console import Console
 
@@ -36,3 +37,37 @@ class _WarnCountingConsole(Console):
 
 _out = _WarnCountingConsole()
 _err = _WarnCountingConsole(stderr=True)
+
+
+_EXEC_MODE = False
+"""Set for the run of a `host-exec` / `container-exec` invocation (#450). See `_can_prompt`."""
+
+
+def set_exec_mode(on: bool) -> None:
+    """Declare whether this invocation has anyone at the keyboard. Called once, by the run verb.
+
+    Here rather than in `launcher` for the same reason the consoles are: `setupenv._confirm_setup`
+    has to read it, and importing launcher from there is the cycle this module exists to avoid.
+    """
+    global _EXEC_MODE
+    _EXEC_MODE = on
+
+
+def exec_mode() -> bool:
+    """Whether this is an `-exec` invocation. Read it, never the global — `set_exec_mode` rebinds
+    the module attribute, so a `from … import _EXEC_MODE` would freeze the launch's first answer."""
+    return _EXEC_MODE
+
+
+def _can_prompt() -> bool:
+    """Whether harnessed may BLOCK this launch on a question the operator has to answer.
+
+    `sys.stdin.isatty()` was the whole test, and it is still the right one for CI and for a piped
+    launch. It is wrong for the `-exec` verbs: those run from a real terminal, with a real TTY, and
+    still have nobody at the keyboard — the operator handed over a prompt and is waiting for an exit
+    code. A `typer.prompt` there does not ask a question, it hangs a script.
+
+    Every caller already has a correct non-interactive branch, because the non-TTY case was designed
+    for. This makes `-exec` take that same branch rather than inventing a second policy per site.
+    """
+    return sys.stdin.isatty() and not _EXEC_MODE

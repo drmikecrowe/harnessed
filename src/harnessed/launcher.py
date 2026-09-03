@@ -53,7 +53,7 @@ from .backend import (
     ProvisionPhase,
     register,
 )
-from .console import _err, _out
+from .console import _can_prompt, _err, _out, exec_mode, set_exec_mode
 from .ctrquery import (
     _container_exists,
     _container_running,
@@ -2150,7 +2150,7 @@ def _prompt_setup_notices(
     Returns True when the user chose [T]erminal — the caller ORs it into its `--shell` flag.
     """
     notices = _collect_setup_notices(recipes, project_path, stack, harness)
-    if not notices or not sys.stdin.isatty():
+    if not notices or not _can_prompt():
         return False
     _out.print("\n[bold]Setup needed for this stack:[/bold]")
     for recipe in notices:
@@ -2194,7 +2194,7 @@ def _acknowledge_warnings() -> None:
     headless/CI/capability-test launches never block (same guard as `_prompt_setup_notices`).
     """
     count = _out.warnings + _err.warnings
-    if not count or not sys.stdin.isatty():
+    if not count or not _can_prompt():
         return
     noun = "warning" if count == 1 else "warnings"
     _out.print(
@@ -2649,6 +2649,7 @@ def _launch_host(
     extra: Optional[list[str]] = None, create_aoe_only: bool = False,
     no_strict_mcp: bool = False,
     aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
+    exec_mode: bool = False,
 ) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
@@ -2658,7 +2659,11 @@ def _launch_host(
     then stop the daemons THIS launch started).
 
     `no_strict_mcp` (--no-strict-mcp-config) omits `--strict-mcp-config`, so claude reads its own MCP
-    sources (project `.mcp.json`, user config) in addition to the stack's file."""
+    sources (project `.mcp.json`, user config) in addition to the stack's file.
+
+    `exec_mode` (`host-exec`, #450) says nobody is at the keyboard — declared HERE rather than in the
+    Typer command so the sequencer owns it, which is also where `container_run` declares its own."""
+    set_exec_mode(exec_mode)
     if harness not in _HOST_HARNESSES:
         _err.print(
             f"[bold red]error:[/bold red] host-run supports "
@@ -3013,6 +3018,7 @@ _AOE_TITLE_OPT = typer.Option(
 
 @app.command("host-run")
 def host_run(
+    ctx: typer.Context,
     harness: str = typer.Argument(..., help="Harness to use (host-native: claude)"),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
     stack: Optional[str] = _STACK_OPT,
@@ -3060,6 +3066,8 @@ def host_run(
 
     No image build on this path even for a minted recipe set: `_launch_host` assembles in-process on
     every launch.
+
+    Also registered as `host-exec` — the same launch with nobody at the keyboard. See `_can_prompt`.
     """
     _require_supported_harness(harness)
     stack_name, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
@@ -3068,6 +3076,7 @@ def host_run(
             stack_name, harness, path, rm=rm, extra=_passthrough,
             create_aoe_only=create_aoe_only, no_strict_mcp=no_strict_mcp_config,
             aoe_group=aoe_group, aoe_title=aoe_title,
+            exec_mode=ctx.info_name == "host-exec",
         )
     except typer.Exit as exc:
         # typer.Exit(0) is a SUCCESS that unwinds like a failure, and it must not clean up:
@@ -3567,6 +3576,7 @@ def _prune_unlaunchable_omp_blocks(harness: str) -> None:
 
 @app.command("container-run")
 def container_run(
+    ctx: typer.Context,
     harness: str = typer.Argument(..., help="Harness to use (claude|omp|opencode|antigravity|codex)"),
     path: Optional[str] = typer.Argument(None, help="Project directory (default: cwd)"),
     stack: Optional[str] = _STACK_OPT,
@@ -3622,7 +3632,18 @@ def container_run(
     `harnessed list`, the staleness check and both GCs treat it like any other stack. An identical
     set in another repo resolves to the same stack and shares its image and volumes — that is what
     collapses proliferation rather than relocating it.
+
+    Also registered as `container-exec` — the same launch with nobody at the keyboard. See
+    `_can_prompt`.
     """
+    exec_mode = ctx.info_name == "container-exec"
+    set_exec_mode(exec_mode)
+    if exec_mode and shell:
+        # --shell starts no harness and drops into an interactive bash. There is nothing for a
+        # non-interactive caller to do with that, and `-i` with no pty would hand it a shell it
+        # cannot drive. Refuse rather than silently pick one of the two meanings.
+        _err.print("[bold red]error:[/bold red] --shell is interactive; use `container-run --shell`")
+        raise typer.Exit(2)
     _require_supported_harness(harness)
     stack, minted_dir = _resolve_stack(stack, recipe, extends, no_extends, service)
 
@@ -3700,7 +3721,7 @@ def container_run(
         # silent-outdated-image failure this guard exists to prevent. Skipped outside a tty
         # (headless/scripted), matching the confirms above and below.
         _err.print(f"[yellow]warning:[/yellow] {exc}.")
-        if not sys.stdin.isatty() or not typer.confirm(
+        if not _can_prompt() or not typer.confirm(
             f"Rebuild '{stack}' ({harness}) now to continue?", default=True
         ):
             _err.print(f"[bold red]error:[/bold red] cannot launch a stale profile — run: harnessed build {stack} {harness}")
@@ -3825,7 +3846,7 @@ def container_run(
             rt, inst, launch_servers, stk, headless=headless, reauth=reauth
         )
         if _container_stale(rt, inst, harness_image):
-            if sys.stdin.isatty() and typer.confirm(
+            if _can_prompt() and typer.confirm(
                 f"'{inst}' is running on an older build of {harness_image}. "
                 "Recreate it with the new build?",
                 default=True,
@@ -3995,8 +4016,13 @@ def _attach(
     shell_cmd = " && ".join(parts)
 
     _touch_attach_marker(inst)
+    # `-t` allocates a pty, and under `container-exec` (#450) that is wrong twice over: the harness
+    # switches to its fullscreen renderer when it sees one, so the answer the caller asked for gets
+    # drawn on the alternate screen buffer and is gone at exit, and the escape sequences that do
+    # survive land in whatever the caller piped the output into. `-i` stays either way — a piped
+    # prompt on stdin has to reach the agent.
     exec_argv = [
-        rt, "exec", "-it",
+        rt, "exec", "-i", *([] if exec_mode() else ["-t"]),
         "-e", "TERM=xterm-256color",
         "-w", str(start_dir or project_path),
         inst,
@@ -4018,6 +4044,45 @@ def _attach(
         _out.print(f"[blue][INFO][/blue] --rm: tearing down pod {pod or inst}")
         _pod_teardown(rt, inst, pod or inst)
         _attach_marker(inst).unlink(missing_ok=True)
+
+
+# --- The `-exec` verbs (#450) --------------------------------------------------------------------
+#
+# The SAME function under a second name, never a wrapper that forwards arguments. `host_run` and
+# `container_run` carry twenty-odd options between them; a second signature is a second place for
+# one to be added and a guaranteed drift. Typer builds one click command per registration, so
+# `ctx.info_name` is what each body reads to tell which verb the operator typed.
+# `<path>`, not `[path]` — rich parses a bracketed word in help text as a style tag and drops it
+# silently, which is the same trap `_prompt_setup_notices` escapes its author prose against.
+_EXEC_HELP = """Run a stack NON-INTERACTIVELY and exit with the agent's status ({backend} backend).
+
+    harnessed {verb} <harness> <path> -- -p "summarize the diff"
+
+Same flags and same grammar as `{run_verb}`; what changes is that nobody is at the keyboard. Args after a standalone `--` are appended verbatim to the harness command, which is where the harness's own headless flag goes.
+
+Output streams to this terminal and the exit code is the agent's, so it pipes and it scripts. Nothing blocks on a question: a pending `setup:` notice, a stale profile and an older-build instance all take the branch a piped launch already takes, and are reported rather than asked about.{extra}
+
+Backgrounding is the caller's job — `&`, `nohup`, or whatever supervisor already runs the job.
+"""
+
+app.command(
+    "host-exec",
+    help=_EXEC_HELP.format(
+        backend="host", verb="host-exec", run_verb="host-run",
+        extra="",
+    ),
+)(host_run)
+
+app.command(
+    "container-exec",
+    help=_EXEC_HELP.format(
+        backend="container", verb="container-exec", run_verb="container-run",
+        extra=(
+            " No pty is allocated for the agent, so its output is plain text rather than a "
+            "fullscreen redraw. `--shell` is rejected: it starts no harness."
+        ),
+    ),
+)(container_run)
 
 
 @app.command("build")
@@ -5337,6 +5402,9 @@ _passthrough: list[str] = []
 # not be conflated: see `_typed_invocation`.
 _invocation: Optional[list[str]] = None
 
+# Each run verb and the `-exec` name the SAME function is also registered under (#450).
+_EXEC_ALIAS = {"host-run": "host-exec", "container-run": "container-exec"}
+
 
 def _typed_invocation(verb: str) -> Optional[list[str]]:
     """The argv for this launch's `# as typed:` line, or None to write no line at all.
@@ -5355,8 +5423,14 @@ def _typed_invocation(verb: str) -> Optional[list[str]]:
     Neither can happen on the real CLI path, where `main` parses once and runs one command. They are
     refused anyway: the cost is one absent comment, and the alternative is a file that misreports a
     launch in somebody's repository.
+
+    The `-exec` alias counts as the same verb (#450). `host-exec` IS the `host-run` launch — one
+    function, one backend, one script — so rejecting it would drop the comment from every scripted
+    launch while none of the two hazards above is present. The alias is named explicitly rather than
+    matched by prefix, so a `container-exec` invocation still cannot caption a `host-run` script.
     """
-    if not _invocation or _invocation[0] != verb:
+    accepted = (verb, _EXEC_ALIAS.get(verb))
+    if not _invocation or _invocation[0] not in accepted:
         return None
     return ["harnessed", *_invocation]
 

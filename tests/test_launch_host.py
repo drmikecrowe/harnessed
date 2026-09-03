@@ -1155,7 +1155,7 @@ class TestHostRunVerb:
     def _stub(self, monkeypatch, calls):
         monkeypatch.setattr(
             launcher, "_launch_host",
-            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None: calls.append((stack, harness, path, rm)),
+            lambda stack, harness, path, *, rm=False, extra=None, create_aoe_only=False, no_strict_mcp=False, aoe_group=None, aoe_title=None, exec_mode=False: calls.append((stack, harness, path, rm)),
         )
 
     def test_host_run_dispatches_to_the_host_backend(self, monkeypatch, tmp_path):

@@ -47,6 +47,13 @@ CONTAINER_ONLY: dict[str, str] = {
     "_image_exists": "inspects the image store",
     "_container_running": "inspects a container",
     "_container_stale": "inspects a container",
+    # `set_exec_mode` is NOT here: both paths declare it, at the same layer, on purpose (#450).
+    # Only the DIRECT `_can_prompt` calls are container-only, and both name a container: "rebuild
+    # this stale image?" and "recreate this older-build instance?". A host launch assembles
+    # in-process every time and has no instance to recreate, so neither question exists there. The
+    # predicate itself is shared — both paths reach it through `_prompt_setup_notices` and
+    # `_acknowledge_warnings`, which this scanner does not recurse into.
+    "_can_prompt": "gates two confirms about an image and an instance; a host launch has neither",
     "_stopped_leftover": "removes a dead container",
     "_pod_teardown": "tears down a pod",
     # --- the varlock secrets broker (#437, epic #388 Topology B) ---
