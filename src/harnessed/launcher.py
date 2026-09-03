@@ -150,7 +150,6 @@ from .setupenv import (
     _repo_primitives,
     _script_env,
     _setup_script_mounts,
-    _stack_tools_dirs,
     _subst,
     _write_project_tool_env,
     harnessed_env,
@@ -1902,7 +1901,10 @@ def _ensure_service(
         headless = os.environ.get("HARNESSED_HEADLESS", "false").lower() == "true"
         _err.print(f"[yellow]warning:[/yellow] service '{name}' needs recreating: {reason}.")
         _err.print(f"  Will run: {rt} rm -f {cname}  (data — named volume or bind mount — is preserved)")
-        if not headless and sys.stdin.isatty():
+        # `_can_prompt`, not a bare isatty: an `-exec` launch has a real TTY and nobody at it, so
+        # this confirm hung a scripted launch after assembly and before the service came back (#450,
+        # adversary finding 1). Both backends route here through `wire_services`.
+        if not headless and _can_prompt():
             if not typer.confirm("Recreate now to continue?", default=True):
                 _err.print(
                     f"[bold red]error:[/bold red] cannot launch with stale service '{name}'. "
@@ -2788,10 +2790,9 @@ def _launch_host(
     # The stack's `tools:` join it (bd harnessed-1t4.3): a binary the agent cannot resolve is the
     # same as one that was never installed. Their REAL install dirs, never mise's shims dir — see
     # `_host_tool_bin_dirs` and #449 for the two ways that dir shadowed the user's PATH, one of
-    # which killed the agent binary itself. A no-op on a first launch (nothing installed yet);
-    # `_host_install_tools` makes the same call once the installs exist.
-    _, stack_bin, _ = _stack_tools_dirs(stack)
-    os.environ["PATH"] = os.pathsep.join([str(stack_bin), os.environ.get("PATH", "")])
+    # which killed the agent binary itself. `_apply_host_tool_path` writes BOTH entries, in the
+    # order `_stack_tool_path_prefix` fixes; `_host_install_tools` makes the same call once a first
+    # launch's installs exist, and the two agree because neither composes the order itself.
     _apply_host_tool_path(os.environ, stack)
     # Any `mise` the agent or a recipe script runs needs this. Unset, it reads the user's
     # ~/.local/share/mise, where the stack installed nothing, so a `mise x`/`mise run` inside the
@@ -3266,7 +3267,10 @@ class ContainerBackend(ExecutionBackend):
                     "  Load role:  [cyan]aws-sso ecs load[/cyan]\n"
                     "Without it, AWS calls inside the container will fail to find credentials."
                 )
-                if self.headless or not sys.stdin.isatty() or not typer.confirm(
+                # Same guard, same reason as the service confirm above (#450, adversary
+                # finding 2): under `-exec` this took the confirm branch and parked a supervised
+                # launch here. The non-interactive answer is the designed Exit(1).
+                if self.headless or not _can_prompt() or not typer.confirm(
                     "Continue launching without AWS credentials?", default=False
                 ):
                     raise typer.Exit(1)

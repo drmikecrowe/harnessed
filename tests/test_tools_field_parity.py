@@ -79,7 +79,7 @@ class TestHostLaunchHonoursTools:
         self._fake_mise(monkeypatch, calls)
         launcher._host_install_tools("s", [Recipe(name="a", root=tmp_path, tools=["pipx:x@1"])])
         env = calls[0][1]
-        stack_root = str(launcher._stack_tools_dirs("s")[0])
+        stack_root = str(hostrun._stack_tools_dirs("s")[0])
         # NOT MISE_STATE_DIR. It holds mise's TRUST store, which is a fact about the user and a
         # config file rather than about a stack, and scoping it here threw the user's trust away on
         # every launch — see TestHostLaunchKeepsTheUsersMiseTrustStore.
@@ -100,10 +100,11 @@ class TestHostLaunchHonoursTools:
 
     def test_the_tool_bin_dir_is_on_the_launch_path(self, monkeypatch):
         # Installing into a stack-scoped dir is useless if the agent cannot resolve the binary.
+        # Behind the stack bin dir — see TestTheStackBinDirLeadsThePath for why that order.
         env = {"PATH": "/usr/bin"}
         _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0"])
         hostrun._apply_host_tool_path(env, "s")
-        assert env["PATH"].split(":")[0] == "/t/installs/rtk/0.45.0"
+        assert "/t/installs/rtk/0.45.0" in env["PATH"].split(":")[:2]
 
     def test_tools_are_installed_before_install_scripts_run(self):
         # serena's install.sh keeps `serena init` — it configures a binary that tools: now provides,
@@ -271,7 +272,10 @@ class TestTheToolPathIsScopedToTheStacksOwnTools:
         env = {"PATH": "/usr/bin"}
         _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0", "/t/installs/pulumi/3.251.0/pulumi"])
         hostrun._apply_host_tool_path(env, "s")
-        assert env["PATH"] == "/t/installs/rtk/0.45.0:/t/installs/pulumi/3.251.0/pulumi:/usr/bin"
+        bin_dir = str(hostrun._stack_tools_dirs("s")[1])
+        assert env["PATH"] == ":".join(
+            [bin_dir, "/t/installs/rtk/0.45.0", "/t/installs/pulumi/3.251.0/pulumi", "/usr/bin"]
+        )
 
     def test_the_shims_dir_is_not_on_the_path(self, monkeypatch):
         # The whole point. A regression here reinstates both failure modes above at once.
@@ -286,7 +290,7 @@ class TestTheToolPathIsScopedToTheStacksOwnTools:
         calls = _fake_bin_paths(monkeypatch, [])
         hostrun._host_tool_bin_dirs("s")
         assert calls[0]["cmd"] == ["mise", "bin-paths"]
-        assert calls[0]["cwd"] == str(launcher._stack_tools_dirs("s")[0] / "mise")
+        assert calls[0]["cwd"] == str(hostrun._stack_tools_dirs("s")[0] / "mise")
 
     def test_a_second_call_does_not_double_the_path(self, monkeypatch):
         # _launch_host and _host_install_tools BOTH call it — the first is the only one that fires
@@ -297,12 +301,13 @@ class TestTheToolPathIsScopedToTheStacksOwnTools:
         hostrun._apply_host_tool_path(env, "s")
         assert env["PATH"].count("/t/installs/rtk/0.45.0") == 1
 
-    def test_a_failing_mise_warns_and_leaves_the_path_alone(self, monkeypatch, capsys):
-        # Never a silent empty PATH contribution: the tools are missing and the user must know.
+    def test_a_failing_mise_warns_and_contributes_no_tool_dirs(self, monkeypatch, capsys):
+        # Never a SILENT empty contribution: the tools are missing and the user must know. The stack
+        # bin dir is still placed — `install.sh` fills that one, and mise has no say in it.
         env = {"PATH": "/usr/bin"}
         _fake_bin_paths(monkeypatch, [], returncode=1, stderr="boom")
         hostrun._apply_host_tool_path(env, "s")
-        assert env["PATH"] == "/usr/bin"
+        assert env["PATH"] == f"{hostrun._stack_tools_dirs('s')[1]}:/usr/bin"
         out = capsys.readouterr()
         assert "bin-paths" in (out.err + out.out)
 
@@ -323,7 +328,7 @@ class TestTheSessionGetsTheUsersOwnMiseBack:
 
     def _outer_stack_mise_root(self) -> str:
         """A value shaped exactly like the one `_host_mise_env` emits, for some other stack."""
-        return str(launcher._stack_tools_dirs("outer")[0] / "mise")
+        return str(hostrun._stack_tools_dirs("outer")[0] / "mise")
 
     def test_a_users_own_value_is_restored(self):
         env = {"MISE_DATA_DIR": "/stack/redirect"}
@@ -365,3 +370,36 @@ class TestTheSessionGetsTheUsersOwnMiseBack:
         # Narrowness rule: only the shape harnessed itself emits is eligible to be dropped.
         assert not hostrun._is_a_harnessed_stack_data_dir(str(tmp_path))
         assert not hostrun._is_a_harnessed_stack_data_dir("")
+
+
+class TestTheStackBinDirLeadsThePath:
+    """#449 adversary finding 5 — a recipe's own binary must keep beating the stack's `tools:`.
+
+    An `install.sh` installs into the stack bin dir (via the UV_TOOL_BIN_DIR / PNPM_HOME redirects)
+    and may install a name `tools:` also declares. The old PATH was `[stack_bin, shims, …]`, so the
+    recipe's copy won. Prepending the bin dirs as a separate step put them in front instead —
+    silently, since only a same-name collision shows it.
+    """
+
+    def test_the_bin_dir_comes_before_the_tool_dirs(self, monkeypatch):
+        _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0"])
+        env = {"PATH": "/usr/bin"}
+        hostrun._apply_host_tool_path(env, "s")
+        entries = env["PATH"].split(":")
+        assert entries[0] == str(hostrun._stack_tools_dirs("s")[1])
+        assert entries[1] == "/t/installs/rtk/0.45.0"
+        assert entries[-1] == "/usr/bin"
+
+    def test_the_second_call_lands_on_the_same_order(self, monkeypatch):
+        # `_launch_host` calls it against an empty tools tree on a first launch; `_host_install_tools`
+        # calls it again once the installs exist. Skipping entries already present would leave the
+        # freshly-installed tool dir ahead of the bin dir the first call placed.
+        env = {"PATH": "/usr/bin"}
+        _fake_bin_paths(monkeypatch, [])
+        hostrun._apply_host_tool_path(env, "s")
+        _fake_bin_paths(monkeypatch, ["/t/installs/rtk/0.45.0"])
+        hostrun._apply_host_tool_path(env, "s")
+        entries = env["PATH"].split(":")
+        assert entries[0] == str(hostrun._stack_tools_dirs("s")[1])
+        assert entries[1] == "/t/installs/rtk/0.45.0"
+        assert entries.count(entries[0]) == 1, "repeated launches must not grow the PATH"

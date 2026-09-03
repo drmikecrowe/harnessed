@@ -15,7 +15,6 @@ import os
 import re
 import shlex
 import subprocess
-import sys
 
 from pathlib import Path
 from typing import Optional
@@ -508,7 +507,9 @@ def _container_setup_env(stack: str, project_path: Path, pending, *, harness: st
     primitives = _repo_primitives(project_path)
     env: dict[str, str] = {}
     for recipe in pending:
-        values = _resolve_setup_config(recipe.setup, primitives, interactive=sys.stdin.isatty())
+        # `_can_prompt`, not a bare isatty — the container half of the same site (#450,
+        # adversary finding 3). See the note at the host call in `hostrun._host_run_setups`.
+        values = _resolve_setup_config(recipe.setup, primitives, interactive=_can_prompt())
         env.update(_script_env(
             stack, project_path, values, mode="container", harness=harness, recipe=recipe
         ))

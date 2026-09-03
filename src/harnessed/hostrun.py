@@ -11,7 +11,6 @@ import os
 import shlex
 import shutil
 import subprocess
-import sys
 import tempfile
 import tomllib
 
@@ -26,7 +25,7 @@ from . import paths, toollock
 from .assemble import _merge_servers
 from .hosthome import _host_omp_claude_dir, _relink
 from .schema import load_stack_with_recipes
-from .console import _err
+from .console import _can_prompt, _err
 from .proc import _say
 from .setupenv import (
     _confirm_setup,
@@ -94,8 +93,20 @@ def _host_tool_bin_dirs(stack: str) -> list[Path]:
     return dirs
 
 
+def _stack_tool_path_prefix(stack: str) -> list[str]:
+    """The stack's own PATH entries, in the order they must appear (#449).
+
+    THE STACK BIN DIR LEADS. An `install.sh` installs a binary there (via the UV_TOOL_BIN_DIR /
+    PNPM_HOME redirects) and may install one the stack's `tools:` also declares; the recipe's copy
+    won before this change and has to keep winning. Prepending the two separately inverted that,
+    silently, because each prepend went to the front — reported by adversarial review of #449.
+    Composing the whole prefix in ONE place is what stops the two call sites disagreeing.
+    """
+    return [str(_stack_tools_dirs(stack)[1]), *(str(d) for d in _host_tool_bin_dirs(stack))]
+
+
 def _apply_host_tool_path(env: MutableMapping[str, str], stack: str) -> None:
-    """Prepend `_host_tool_bin_dirs` to `env["PATH"]`, skipping what is already there (#449).
+    """Put `_stack_tool_path_prefix` at the front of `env["PATH"]`, exactly once (#449).
 
     Called TWICE per launch, and both are needed. `_launch_host` calls it while composing the PATH,
     which is the only call that fires when the fingerprint matched and the installs were skipped;
@@ -103,14 +114,14 @@ def _apply_host_tool_path(env: MutableMapping[str, str], stack: str) -> None:
     yet at the first call and `install.sh` — which runs next, and configures binaries `tools:`
     provides — has to resolve them.
 
-    Deduplicating is what makes calling it twice safe rather than a PATH that doubles every launch.
+    So it REMOVES the prefix's entries before prepending, rather than skipping ones already present.
+    Skipping is idempotent but not order-stable: the second call would leave a freshly-installed
+    tool dir ahead of the stack bin dir that the first call had already placed. Rebuilding the front
+    of the PATH makes both calls land on the same order, whichever runs.
     """
-    dirs = [str(d) for d in _host_tool_bin_dirs(stack)]
-    current = env.get("PATH", "")
-    seen = set(current.split(os.pathsep))
-    added = [d for d in dirs if d not in seen]
-    if added:
-        env["PATH"] = os.pathsep.join([*added, current]) if current else os.pathsep.join(added)
+    prefix = _stack_tool_path_prefix(stack)
+    kept = [entry for entry in env.get("PATH", "").split(os.pathsep) if entry and entry not in prefix]
+    env["PATH"] = os.pathsep.join([*prefix, *kept])
 
 
 # Every variable `_apply_host_mise_env` writes or removes. Named once so the snapshot below and the
@@ -738,7 +749,10 @@ def _host_run_setups(stack: str, project_path: Path, *, harness: str) -> None:
             continue
         if primitives is None:
             primitives = _repo_primitives(project_path)
-        values = _resolve_setup_config(setup, primitives, interactive=sys.stdin.isatty())
+        # `_can_prompt`, not a bare isatty (#450, adversary finding 3). `_confirm_setup` two
+        # lines up was converted and this was not, so an `-exec` launch stopped on the SECOND
+        # prompt in the same loop — the one hidden behind a boolean rather than at a confirm call.
+        values = _resolve_setup_config(setup, primitives, interactive=_can_prompt())
         script = recipe.root / setup.script
         bin_dir.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ)

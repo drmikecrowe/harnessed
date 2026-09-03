@@ -166,7 +166,13 @@ class TestARecipeConflictIsReportedNotRaised:
 
         monkeypatch.setattr(hostrun.shutil, "which", lambda _n: "/usr/bin/mise")
         monkeypatch.setattr(hostrun.subprocess, "run", lambda *a, **k: _Ok())
-        monkeypatch.setattr(hostrun, "_stack_tools_dirs", lambda _s: (tmp_path / "tools",))
+        # The real signature is (tools_root, bin_dir, uv_tool_dir); a 1-tuple stub was enough
+        # while only [0] was read, and `_stack_tool_path_prefix` now reads [1] too (#449).
+        monkeypatch.setattr(
+            hostrun, "_stack_tools_dirs",
+            lambda _s: (tmp_path / "tools", tmp_path / "tools" / "bin",
+                        tmp_path / "tools" / "uv-tools"),
+        )
         monkeypatch.setattr(hostrun, "_apply_host_mise_env",
                             lambda env, _s: env.__setitem__(
                                 "MISE_CONFIG_DIR", str(tmp_path / "tools" / "mise" / "config")))
@@ -202,7 +208,13 @@ class TestTheHostPath:
         monkeypatch.setattr(hostrun.shutil, "which", lambda _n: "/usr/bin/mise")
         monkeypatch.setattr(hostrun.subprocess, "run",
                             lambda cmd, **kw: (calls.append(cmd), _Ok())[1])
-        monkeypatch.setattr(hostrun, "_stack_tools_dirs", lambda _s: (tmp_path / "tools",))
+        # The real signature is (tools_root, bin_dir, uv_tool_dir); a 1-tuple stub was enough
+        # while only [0] was read, and `_stack_tool_path_prefix` now reads [1] too (#449).
+        monkeypatch.setattr(
+            hostrun, "_stack_tools_dirs",
+            lambda _s: (tmp_path / "tools", tmp_path / "tools" / "bin",
+                        tmp_path / "tools" / "uv-tools"),
+        )
         monkeypatch.setattr(hostrun, "_apply_host_mise_env",
                             lambda env, _s: env.__setitem__(
                                 "MISE_CONFIG_DIR", str(tmp_path / "tools" / "mise" / "config")))

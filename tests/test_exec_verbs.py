@@ -25,7 +25,9 @@ def _reset_exec_mode(monkeypatch):
 
 
 def _command_names() -> set[str]:
-    return {c.name for c in launcher.app.registered_commands}
+    # `name` is Optional on a Typer command; every verb here sets one, and dropping the Nones is
+    # what keeps this at the gate's pyright-zero rather than only at ruff's.
+    return {c.name for c in launcher.app.registered_commands if c.name}
 
 
 class TestBothBackendsGetTheVerb:
@@ -95,6 +97,47 @@ class TestExecModeNeverBlocksOnAQuestion:
         recipe = Recipe(name="r", root=tmp_path)
         recipe.setup = SetupSpec(summary="s", reference="r", confirm="this will commit files")
         assert setupenv._confirm_setup(recipe, "s", tmp_path, harness="claude") is False
+
+    def test_the_setup_config_prompt_is_skipped_on_both_backends(self, monkeypatch):
+        """#450 adversary finding 3 — the SECOND prompt in the setup loop, behind a boolean.
+
+        `_confirm_setup` was converted and this was not, so an `-exec` launch cleared the confirm
+        and then stopped on `setup.config:`'s own `prompt:`. It is not at a confirm call site; it
+        rides in as `interactive=`, which is exactly how it escaped the first enumeration.
+        """
+        import inspect
+
+        from harnessed import hostrun, setupenv
+
+        for fn in (hostrun._host_run_setups, setupenv._container_setup_env):
+            src = inspect.getsource(fn)
+            assert "interactive=_can_prompt()" in src, (
+                f"{fn.__name__} still decides `interactive` from a bare isatty; an -exec launch "
+                "hangs on the first `setup.config:` item carrying a `prompt:`"
+            )
+            assert "interactive=sys.stdin.isatty()" not in src
+
+    def test_no_launch_blocking_prompt_still_gates_on_a_bare_isatty(self):
+        """The enumeration itself, as a test — three sites were missed by hand (#450).
+
+        A bare `sys.stdin.isatty()` is correct for CI and for a piped run and WRONG for `-exec`,
+        which has a real TTY and nobody at it. Rather than list the sites again here (a list is
+        what was already incomplete), assert that the launch modules hold none of the spelling.
+        `console._can_prompt` is where the one remaining `sys.stdin.isatty()` belongs.
+        """
+        import inspect
+
+        from harnessed import hostrun, launcher, setupenv
+
+        offenders = []
+        for module in (launcher, hostrun, setupenv):
+            for num, line in enumerate(inspect.getsource(module).splitlines(), 1):
+                if "sys.stdin.isatty()" in line and not line.lstrip().startswith("#"):
+                    offenders.append(f"{module.__name__}:{num}")
+        assert not offenders, (
+            "these gate on a bare TTY check rather than `_can_prompt()`, so an `-exec` launch "
+            f"blocks on them: {offenders}"
+        )
 
 
 class TestTheContainerExecAllocatesNoPty:
