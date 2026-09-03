@@ -70,6 +70,7 @@ from .hosthome import (
     _HOST_STACK_FINGERPRINT,
     _LEGACY_PROJECT_DIR_RE,
     _OAUTH_TOKEN_VAR,
+    _host_fresh_wipe,
     _host_home_lock,
     _host_omp_claude_dir,
     _host_stack_fingerprint,
@@ -2654,7 +2655,7 @@ def _launch_host(
     extra: Optional[list[str]] = None, create_aoe_only: bool = False,
     no_strict_mcp: bool = False,
     aoe_group: Optional[str] = None, aoe_title: Optional[str] = None,
-    exec_mode: bool = False,
+    exec_mode: bool = False, fresh: bool = False,
 ) -> None:
     """Host-native launch: no podman. Materialize the assembled profile into a host CLAUDE_CONFIG_DIR,
     start any host daemons (beads-server, hatago MCP hub), and exec the harness on the host so it sees
@@ -2667,7 +2668,11 @@ def _launch_host(
     sources (project `.mcp.json`, user config) in addition to the stack's file.
 
     `exec_mode` (`host-exec`, #450) says nobody is at the keyboard — declared HERE rather than in the
-    Typer command so the sequencer owns it, which is also where `container_run` declares its own."""
+    Typer command so the sequencer owns it, which is also where `container_run` declares its own.
+
+    `fresh` (--fresh, #452) discards this stack's build stamp and host tool tree so the config dir
+    rebuilds and every `tools:` pin is reinstalled. Nothing to do with the container verb's --fresh,
+    which tears down a pod: there is no pod here, and the stamp gate is host-only."""
     set_exec_mode(exec_mode)
     if harness not in _HOST_HARNESSES:
         _err.print(
@@ -2840,6 +2845,14 @@ def _launch_host(
     # let a second launch skip installs that are still running. `seed_auth` joins them inside it,
     # exactly where `_host_launch_plan` used to perform it.
     with _host_home_lock(paths.host_home(stack, harness)):
+        # INSIDE the lock and BEFORE materialize: the gate `_host_fresh_wipe` defeats is read by
+        # materialize_config, and a concurrent launch of this stack+harness must not observe a
+        # half-wiped tree.
+        if fresh:
+            _err.print(
+                f"[blue][INFO][/blue] --fresh: discarding the build stamp and tool tree for '{stack}'"
+            )
+            _host_fresh_wipe(stack, harness)
         backend.materialize_config(spec)
         backend.seed_auth(spec)
         # `install:` — the host half of the derived image's `RUN bash install.sh`, i.e. the content
@@ -3040,6 +3053,11 @@ def host_run(
     rm: bool = typer.Option(
         False, "--rm", help="Stop host daemons this launch started when the session exits"
     ),
+    fresh: bool = typer.Option(
+        False, "--fresh",
+        help="Discard this stack's build stamp and host tool tree, so the config dir rebuilds and "
+             "every `tools:` pin is reinstalled instead of skipped as unchanged.",
+    ),
     no_strict_mcp_config: bool = _NO_STRICT_MCP_OPT,
     aoe_group: Optional[str] = _AOE_GROUP_OPT,
     aoe_title: Optional[str] = _AOE_TITLE_OPT,
@@ -3052,9 +3070,13 @@ def host_run(
     """Run a stack HOST-NATIVELY — no podman, no container.
 
     The host backend's own verb (bd harnessed-ltj), separate from `container-run` because the two
-    share no flags but `--rm`. `--fresh`, `--no-firewall`, `--mount-folder`, `--agent-start-folder`
-    and `--shell` all describe a pod that does not exist here, so a combined verb could only accept
-    them and do nothing.
+    share no flags but `--rm` and `--fresh`. `--no-firewall`, `--mount-folder`,
+    `--agent-start-folder` and `--shell` all describe a pod that does not exist here, so a combined
+    verb could only accept them and do nothing.
+
+    `--fresh` is a SHARED SPELLING, not shared behaviour (#452). On the container verb it tears down
+    the pod; here it discards the fingerprint stamp and the stack's host tool tree, which is the
+    host backend's own staleness cache and had no escape hatch at all before.
 
         harnessed host-run <harness> [path]                        # the `default` baseline
         harnessed host-run <harness> [path] --stack <name>
@@ -3087,7 +3109,7 @@ def host_run(
             stack_name, harness, path, rm=rm, extra=_passthrough,
             create_aoe_only=create_aoe_only, no_strict_mcp=no_strict_mcp_config,
             aoe_group=aoe_group, aoe_title=aoe_title,
-            exec_mode=ctx.info_name == "host-exec",
+            exec_mode=ctx.info_name == "host-exec", fresh=fresh,
         )
     except typer.Exit as exc:
         # typer.Exit(0) is a SUCCESS that unwinds like a failure, and it must not clean up:
