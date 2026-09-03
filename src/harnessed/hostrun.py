@@ -45,6 +45,11 @@ def _host_tool_shims_dir(stack: str) -> Path:
     """
     return _stack_tools_dirs(stack)[0] / "mise" / "shims"
 
+# The pnpm a HOST launch installs into the stack's own mise tree when any `tools:` spec is `npm:`
+# (see `_host_install_tools`). Same MAJOR pin as the base image's `pnpm@11` (Dockerfile.harnessed-
+# base), so host and container installs run the same supply-chain defaults — keep the two in step.
+_HOST_PNPM_PIN = "pnpm@11"
+
 
 def _host_tool_bin_dirs(stack: str) -> list[Path]:
     """The dirs a host launch puts on PATH to deliver the stack's `tools:` (#449).
@@ -508,6 +513,27 @@ def _host_install_tools(stack: str, recipes) -> None:
     lock = toollock.write_stack_lock(Path(env["MISE_CONFIG_DIR"]), body)
     if lock is not None:
         _err.print(f"[blue][INFO][/blue] tools: verifying checksums from {lock}")
+    if any(s.startswith("npm:") for s in specs):
+        # mise's `npm:` backend shells out to `pnpm add --global <pkg> --global-dir <dir>
+        # --global-bin-dir <dir>/bin`, resolving `pnpm` from PATH. pnpm refuses to run when that
+        # bin dir is not itself on PATH ("Run pnpm setup") — and a user-resolved pnpm may not even
+        # accept the flags (pnpm 12 exits 2 on them). The container never hits this because the
+        # base image pins `pnpm@11` in the SAME global config `mise use -g` writes and puts mise's
+        # shims on PATH: a shim-exec'd pnpm gets the config's tool bin dirs injected into its own
+        # PATH. Reproduce exactly that here — bootstrap pnpm into the stack's own tree, then
+        # resolve it via the tree's shims. The shims stay OFF the agent's launch PATH (#449);
+        # this PATH is private to the install subprocesses below. Verified end-to-end against
+        # mise 2026.9.1 / pnpm 11.25.0, including a scoped spec (`npm:@agentmemory/mcp`) and a
+        # merged recipe mise.lock (#452's fresh-wipe first install was what first exposed this).
+        _err.print(f"[blue][INFO][/blue] tools: mise use -g {_HOST_PNPM_PIN} (host)")
+        if subprocess.run(
+            ["mise", "use", "-g", _HOST_PNPM_PIN], env=env, cwd=str(mise_root)
+        ).returncode != 0:
+            _err.print(
+                "[bold red]error:[/bold red] installing pnpm for the stack's npm: tools failed"
+            )
+            raise typer.Exit(1)
+        env["PATH"] = os.pathsep.join([str(_host_tool_shims_dir(stack)), env.get("PATH", "")])
     _err.print(f"[blue][INFO][/blue] tools: mise use -g {' '.join(specs)} (host)")
     if subprocess.run(
         ["mise", "use", "-g", *specs], env=env, cwd=str(mise_root)

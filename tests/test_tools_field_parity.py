@@ -202,6 +202,61 @@ class TestNpmToolsResolveThroughPnpmNotAube:
         ), f"{self.ENV_VAR} must be inline on the RUN, not a persistent image ENV"
 
 
+class TestNpmToolsBootstrapAPnpmTheShimsCanResolve:
+    """#452 — a from-scratch host install of `npm:` tools dies inside pnpm without this.
+
+    mise's `npm:` backend runs `pnpm add --global <pkg> --global-dir <dir> --global-bin-dir
+    <dir>/bin`, resolving `pnpm` from PATH. pnpm refuses to start unless that bin dir is itself on
+    PATH ("Run pnpm setup"), and a user-resolved pnpm may not even accept the flags (pnpm 12 exits
+    2). Every prior host launch no-op'd — mise skipped already-installed versions — so #452's
+    --fresh tool-tree wipe was the first time the bridge ever ran from scratch on a host.
+
+    The fix mirrors the container: pin pnpm into the stack's own tree and let mise's SHIMS resolve
+    it, because a shim-exec'd pnpm gets the config's tool bin dirs injected into its PATH.
+    """
+
+    def test_an_npm_stack_bootstraps_pnpm_before_installing_its_tools(self, tmp_path, monkeypatch):
+        calls: list = []
+        TestHostLaunchHonoursTools()._fake_mise(monkeypatch, calls)
+        launcher._host_install_tools(
+            "s", [Recipe(name="a", root=tmp_path, tools=["npm:context-mode@1.0.169"])]
+        )
+        assert calls[0][0] == ["mise", "use", "-g", hostrun._HOST_PNPM_PIN], (
+            "pnpm must be pinned into the stack's tree BEFORE the npm: specs install, or mise "
+            "resolves pnpm from the user's PATH and the install dies in pnpm's flag/PATH checks"
+        )
+        assert any("npm:context-mode@1.0.169" in " ".join(c[0]) for c in calls[1:])
+
+    def test_the_tools_install_resolves_pnpm_via_the_stack_shims(self, tmp_path, monkeypatch):
+        # The mechanism, not the incantation: only a SHIM-exec'd pnpm sees the config's tool bin
+        # dirs on PATH, so the install subprocesses must run with the stack's shims dir first.
+        calls: list = []
+        TestHostLaunchHonoursTools()._fake_mise(monkeypatch, calls)
+        launcher._host_install_tools(
+            "s", [Recipe(name="a", root=tmp_path, tools=["npm:x@1"])]
+        )
+        specs_calls = [c for c in calls if "use" in c[0] and "npm:x@1" in c[0]]
+        installs = [c for c in calls if c[0][:2] == ["mise", "install"]]
+        assert specs_calls + installs, "the tools install never ran"
+        shims = str(hostrun._host_tool_shims_dir("s"))
+        for _argv, env in specs_calls + installs:
+            assert env.get("PATH", "").split(":")[0] == shims, (
+                "the stack's shims dir must lead PATH for the install subprocesses only — it is "
+                "how pnpm's global-bin-dir-in-PATH check passes"
+            )
+
+    def test_a_stack_without_npm_tools_bootstraps_nothing(self, tmp_path, monkeypatch):
+        # The bootstrap costs an install and a config entry; only npm: stacks pay it.
+        calls: list = []
+        TestHostLaunchHonoursTools()._fake_mise(monkeypatch, calls)
+        launcher._host_install_tools(
+            "s", [Recipe(name="a", root=tmp_path, tools=["pipx:serena-agent@1.5.3"])]
+        )
+        assert all(hostrun._HOST_PNPM_PIN not in " ".join(c[0]) for c in calls)
+        for _argv, env in calls:
+            assert str(hostrun._host_tool_shims_dir("s")) not in (env.get("PATH") or "").split(":")
+
+
 class TestMiseShimsResolveAtRunTimeNotJustInstallTime:
     """A mise shim is a symlink to the mise binary — it re-resolves the tool by argv[0] against
     MISE_DATA_DIR EVERY TIME IT RUNS, not once at install.
