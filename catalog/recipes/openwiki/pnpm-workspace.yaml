@@ -1,0 +1,17 @@
+# Project-scoped pnpm policy for the openwiki install tree, copied into place by install.sh.
+#
+# This file exists for ONE reviewed exception. catalog/base/pnpm/config.yaml sets
+# `strictDepBuilds: true` (lifecycle default-deny) and cannot carry the allowlist itself: pnpm v11
+# rejects `allowBuilds` from the global config and the allowlist does not apply to global installs.
+# Project scope is the only scope where it works, which is what that file's own comment says.
+#
+# better-sqlite3 reaches openwiki transitively via @langchain/langgraph-checkpoint-sqlite. Its
+# `install` script is `prebuild-install || node-gyp rebuild --release`, which fetches or compiles
+# better_sqlite3.node. openwiki statically imports SqliteSaver, so a denied build does not degrade
+# openwiki — it makes the CLI fail to load at all, for every subcommand.
+#
+# Denied, pnpm exits 1 naming the package, so a future dependency that adds a build script fails
+# loudly here rather than shipping a half-installed tree. Add an entry only after reviewing what
+# that package's script does.
+allowBuilds:
+  better-sqlite3: true

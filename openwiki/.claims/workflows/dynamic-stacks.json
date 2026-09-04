@@ -1,0 +1,502 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:aab9125935541d3ae430443e3890a80fd3b020aa19f95a66ae146c0ab9de3b9e",
+  "claims": [
+    {
+      "id": "claim_1eb0f66fba014692a026a6fb1af5170b",
+      "statement": "dynstack derives a dynamic stack's name from the CONTENT of the recipe set, so the same set resolves to the same stack in every repo that asks for it — one image, one pair of volumes, shared — which is what stops ad-hoc `--recipe` composition from multiplying build artifacts.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L1-L11",
+          "version": "repo-lines-v1:sha256:5e7570516ec3a55181cf0add183944e3d438ebb1a9e7f9e0c31ca98a7b7ef1b6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4NjYyMGY3ZDBlN2Y2YWVkNzU0ZGEzMzk4ODUzOTg2ZTA3ODk4YzRhYTliNGIzZmVmYzdjYzMyMGIwNDNiOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3NGZkMjJkNmU3YzU3NzlmODc2MTdlZWZhODlhZTk2ZDdkYWIwNzBlODBiNDllYWQ5MDg5ZGEwNzA4ZDA5NzEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3512-L3516",
+          "version": "repo-lines-v1:sha256:70f8f9a773cd1bbdbcd361784dbaf6a5209a8428152c82f1596fcf1ab33de3ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FiMmMzODlhNmE5Yzk3YTZlZjlhYjE5YzAxYzY2MjMxYmQ3YWIwMzhhMGUwNWU4NTNlNDdlNDkwNzUxNTE0MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODM1MmRjZThlYjIwYzdiOTMyMWYyMGQ5YzU5MWQ3N2MzOTA1Nzk5YmE2ODBlNmQ1M2I3NjUwYjI3MjZmZWFhMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWFiM2RjZDgzYmE0NzhjOTdlNjUxZTY5YjE3NDU4NThmZGNmMGY2Yzk2ZTcwMzY4MzUwZTEzNzkyNjE0YzIyZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjhmOTNmMjk4MWQxMDBhOTEzMGI0ZTI2YmRhZDkxNTUwMTljNmExYTE5OGYxZWQ5ZGIyMjQxOTgyY2NhMTU3NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_dec075820acc43a49401112bcef1db35",
+      "statement": "Both run verbs (`container-run` and `host-run`) resolve their stack through the same `launcher._resolve_stack`, so the two grammars cannot drift: they differ in backend and never in how a stack is chosen (bd harnessed-s84).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2838-L2848",
+          "version": "repo-lines-v1:sha256:f2695176e5c2a40f14356a0fa070cbc7b49088853dd6be25fb5142ad176023a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZjc3MTFiYWFhNTAzZGZlNjE1YmJmYjEyOTBkYTQyMzAwNzA3ZTUzMWUxOTIyYjQ0YzY4NTNkZmNkN2ZmMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkYWUyNDkyZjJiNjhhNDY3ZjUwZGYxZWE1YjRhZDI1NzE1YzVhMDdjNDk1MGI0ZDUxNTgxZDQ4NzE2NjRkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZWIxMzQ3M2MxYTQxZWU3M2UzZmEyNjBkMWMwZjg4OGRiYTU0NjMwMGE5NWVhZmIyMjJlNjcyZDBiNjVmZWYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2987-L2987",
+          "version": "repo-lines-v1:sha256:aa37ed43ff4d430256285042e06c3f6472b9ca01fad3c1b4f2a41c40699af4f6:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWEzN2VkNDNmZjRkNDMwMjU2Mjg1MDQyZTA2YzNmNjQ3MmI5Y2EwMWZhZDNjMWI0ZjJhNDFjNDA2OTlhZjRmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWEzN2VkNDNmZjRkNDMwMjU2Mjg1MDQyZTA2YzNmNjQ3MmI5Y2EwMWZhZDNjMWI0ZjJhNDFjNDA2OTlhZjRmNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjgyYWFjMzBiMjliY2ZhNjQxMGZhOTZiMGYwMDhhMTQ5M2FjMWY1ZTgzNjg2N2UwZDczMTBkMjhiMmVjZWZlYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjVkNTViZmZhMjlhMGQ2MmRiNGJmZWVhNWE0MWUxMWFhNjE4NmQxYzU5ZmExOTJmYmVhMTVhODViMmM5NmRhYyJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3519-L3519",
+          "version": "repo-lines-v1:sha256:3ee9c082153ecd3b36b8ddc4b15c9d1fa271640ae7a4d419588209403f47a5ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2VlOWMwODIxNTNlY2QzYjM2YjhkZGM0YjE1YzlkMWZhMjcxNjQwYWU3YTRkNDE5NTg4MjA5NDAzZjQ3YTVlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2VlOWMwODIxNTNlY2QzYjM2YjhkZGM0YjE1YzlkMWZhMjcxNjQwYWU3YTRkNDE5NTg4MjA5NDAzZjQ3YTVlYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjAzOTc3NDVlZjMxYjY0MDRhMDIyZDI5YzVkNjZkMmViNTcyMzYxMzMyYWIzMTAzM2Q2MmM5OTVmMTQ1ODBiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjJjN2RiMWE1MWRmNGU3ZDE1MTc5MWQxZWUxNmE5MDcwZDNlOWUxNzY4YjBjYzU4M2RlZmRiNDdkNTdmYjJkZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_01095e3ef8524ef8b3dbe9812e07a675",
+      "statement": "`launcher._resolve_stack` calls `_seed_user_default_recipe()` first, because resolution is the step that needs the shipped baseline to exist (a `--recipe` set mints `extends: default`) and one shared call site is what keeps the two backends in step.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/catalogseed.py#L170-L192",
+          "version": "repo-lines-v1:sha256:69bb334a78ac8bd70a97200d0334d1a936b6146f15a1263e0093009d3e78424f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzQ2MWFkYmMwNjI5NWQ3NzYxY2VhN2MxYTJiM2I4YzBlNzI2ZmJiZmY1NzAzMTUzODAzNzZhYzVlMDFkYzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjY2M5OGI2OGQ3YTIwZjVjNTRhZDAyN2YxZWY2OTM5N2Q3ZjdlZTViYTYzNjA5OGI4ODI2YWI2N2QwOTliZjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4YWU2MGEwOWE3ODRiNDdlYTA4NTMxNmJmZjkyYzY4MDExZGQ2NzBkODlmMjhkYWY1ZGE5YmI2YWU0MWJjNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5NjZiY2NkOTMwMjg0ZTY0ZWFhYmU0NDUyYzFjZGY0ODlhYmIyMzllMWViYTE3NjU1N2Y1Mjg1YzBhMTlkNzkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2849-L2854",
+          "version": "repo-lines-v1:sha256:4fcc55a65702fd8cc7471b86e31f27ad4fe067534281e744eebf74eb61a1dc4c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTUzNTFkNDJkN2IxOGFjZTkwZTJiZGEyMDc5NjAxNzcyNWE1Y2FkYzZiNTlmNTA1MzY0MmZmMDZkOGFmOTBjYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDkwNTdmNzMwYjAwNmNlYzg2OTAwNDUwOGRmMWU2YzgwY2ZiMGYyMWVlOTBjMjM5NWExZGQwOGI2YTM3ZTIzOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzQ3NGRiZmExYjBlOGUxYTdkMTU5Mzk0NzE2MDE4ODI1NzM1N2Q4MzNlZTBjMzkxODMzZWRjM2VkYzQ1Y2IxNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDBiZGZhMTMzNzIwYzFkZmUzYzg1NTE3NzY2NWE1ODFmNGE2ZjMyNDIzYjI3NDI4NWI3MTk5OTJkZjYwNjJhZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1e821f934f7c426485620d4231f363e4",
+      "statement": "Supplying both `--stack` and `--recipe` is rejected with exit 1; supplying neither runs the `--extends` baseline as the stack itself (composing nothing on top of the baseline is a legitimate launch, bd harnessed-jhj), and `--no-extends` with no recipes is rejected because it inherits nothing and there is nothing left to run.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2856-L2874",
+          "version": "repo-lines-v1:sha256:30bf9276316d4835820302d7c3c66ddb961f175703f47b75ff4a47712afd98e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZWRjOThhMDY1MDNhNzc4ZDBhYmM2YWFhZjNkODQ3YTBjOGI3YTFkZmFkNjFmMTkyNTBjMWE3YWU2OWQwMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmYWFjOWYxZjQ0NDczMjUyOTBjNTk2MzRiZDc5NTgxNDZiZTIwNWUxMDcyMGNhNjc0ZWJjM2ZkMzgyODMyMWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0ZTJkNDY0MGQ2ZDAwMjMyMjkzZTVjNTRhODJmNDJlOWIzMmNkNjdkMDMwN2E0ZWUzZDAwNDExYmNmYjk0YzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwY2JmZjI0NGZiYmE3OTEyNDQwMDMyMTBjNDljYzUxNmQ5NTllMGJiZWRlODU4MWQ4ODIwMzZjZDY3NTE0ZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2f7647ca097a4012a0a2bb2ad52f6378",
+      "statement": "`--extends` defaults to `_EXTENDS_DEFAULT = \"default\"` only on the DYNAMIC (`--recipe`) path: an authored `--stack foo` returns immediately without consulting `--extends` or folding in any baseline, so an authored stack.yaml does not implicitly extend the baseline.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2873-L2876",
+          "version": "repo-lines-v1:sha256:e9958c0ab7165f827022a0105f70ebc92c0d7b00687f7f03d5d3c51f0f964f3f:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTVkOGM5MDliODI4YmM4NTg3Nzg5ZjUzYzAxOWNiMDVhNTFlY2M0NjVkOGMyZmIzODM0YWQ2NjkzN2FhNWYwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjczYTUzNzRlYzViYjlkMGQwYzUzNjU4ZGIzMTM1ZDE4ODZhMDg1ODgwNzA0Zjg1MjU5OWZkNmJmOTk2MmVmOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2UzMzZlMDkxYmI3N2RkYzNjOGNjNmQ2MmI2NzYwNzk2Y2VlNGVhNzBkNTk1YTgyYWViZDJmYTczYzcxNmZlYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjVmNzIzZWExOWVjYjdkZGEyMzc1YTA4MTlmNmZmMmFkYWI4OGI0ZjQ2NjU3NzhiNGVlZDg3MmE0Nzc0ZTFjOCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2903-L2909",
+          "version": "repo-lines-v1:sha256:7fad2a53fdfbdcfeb6a3f09e8a8f36c15b90df79cb51a356bd29f855de3daa15:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTE4NmVhMWE4MDhhYzlhYzUwYTY0YWYyODE0MDhlMjJhMDAwN2VmM2NhYzMzNDRjNTJiN2QxYjJiNTEwODcxZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFmYmEwNTI3YzM5NTNjNGI2ZTBlNWI1NzM5YmE4MzYxMmY4MDUzYmNkYzk0NjY3MzAxOTNjZDFkNTkwYjQwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIzNzBkMjBmM2IwNzkzNjcxMzQ4OWFhODAxNDIyMTdiOTUwOTNkZWVmNTFiMzgzYjcxMDViZjdmZGY1Zjg4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzczODU4NTc4MTU2YTQ2OWNiNzZlOTQ0NzFmZWIwYTMyZTI0NzdmYWY2ZTU5MjczZWNmMzZkMjc3NGRkY2NjNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_27af663f765947dd9f841dc258f8fbfb",
+      "statement": "The derived name carries the base as its first component: `derive_name([\"serena\"], \"default\")` yields `default.serena`, distinct from `derive_name([\"serena\"], None)` which yields `serena`.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L104-L109",
+          "version": "repo-lines-v1:sha256:3640937d475f123990ce759de75ffb106597bcf650fb242867d08c16962138df:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg4Y2IyZmJmODFhYTI5OWUzYmVjMDUwMWFiZWQ0NjgyNzFmMmNlOGVjNGVjNzNmNmZlZDczZDczYmY4YWJlZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWIyNGUyNmY1MjRkZjUzYmVhMGEzMjNhOGJhNGNjOTAyYjRlMTQ0YjViMmYyZjliMmU0MDFkNGVjZWJiZTZiMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWUyYTMzMGY2MTU5ZTUxYjQyNWE4Mzg3OGFlYTc4ZjVjOGE1YjViMDVjZjA1M2M0MDgzYTFiYmFlMzRmMzkxNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjNkY2E4ZjE4MjM3YTc1MTU3NjlhNjYzM2RjOWYyYTJiZmEyMWUzZjMyN2E3ZmM5YzIzNmZiZWY1ODFhOTEyZCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L118-L127",
+          "version": "repo-lines-v1:sha256:3a4d2fa6d99e8644f2b9762bf84f88baf05a21d98af4c5c1f6592623a245b3c8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2MzVhNTg5MzkzM2VhZWViMGQ1NTZmYzk5Mjg5ZmYyMzMyYzNlZTc3MmM5Mjc0NDM3NDQyMGUxYzUyYmYxMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyYWI3Yzc1NjBjNzc3MDNlZmFiYTQ2MjQwYjY5NzA1OGU4MzE2Y2I4NGUxMzI2OWNjMDc4NDgzZDFjNTdhOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4ZGQ1MjJhNjMzYTEzMzJkYmIyOTg1ZWQ2NTg3MDFjOTVkZmIzNzhkMzY3MDY3MmFlYzIwNzQ5Y2IwNzg1OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzMTFmNWEwNDJhNmVhNTRjNjZmMmQ1ZGJiZjE4ZDEzZTcyYWY4ODI4YzE3MmJjMmY2MGI1OWNiNTY2YjRhNTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5150eb53095742cf9967bd0569c42e17",
+      "statement": "`normalize` dedupes and sorts the recipe refs (dropping whitespace-only entries), which is what makes `--recipe a --recipe b` and `--recipe b --recipe a` the same stack; `_normalize_services` does the same for `--service` names.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L46-L51",
+          "version": "repo-lines-v1:sha256:60c79a81d6bb77b515d56bf85acae151ea68ad3b4ba23fe88815deff952a096f:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODBiY2I0NjI0ZjMxZmJmZTA3Y2YzYmQwMmQ1MTcyN2JhYTBjYjc3MGExZGIxZWU0Y2EzMjJhMmNlYzliNTg1ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjU0Y2JmYTMxNmJhNmYwMjA5OTU0ZmJkOTczNTg4M2JlZDYyN2UwMjk4YzA2NzFjYmQ2M2RjZjQwMjA1OWRjMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmY0Zjc4ZDczNWVkNDkwZWYxOTBhYTEzZTk1MmI0MzRiMTQyYjhiY2QyZWQ0NDkzN2RlNTVjYmJlMDQ2MTgyZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWI3N2JiYjBjYjllODc3ODI3Njc2NjAyOWZhNTk3NjY4OTZhMGRjMTRiMTJhMDEyN2U2YTc0YjI5NWExNjEyNyJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L73-L77",
+          "version": "repo-lines-v1:sha256:dfd31ba729bc0c1ba2694dd9e63dacefbaa2ccba5b6d789b6ac91413a55d84dc:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDliNTQ5MWFmMDRkYzFhN2Q1ZGFkYTg2MDhjNmRlYjBmNjAwYjVmNTliNDY0ZmJlNDVmNjQ2ZTNiMmQyOTkzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWJkOGFiNzRiNmU1NjVjNDRkOTZlNTA0MjQ2YzFkNjVkNzhiNjJlZjI5Y2EzNGZiMTM4NTQ2Njk2MTFiZWVmNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDc3MmE4NDFiYzcyMGVhNzJlMDRhZDU3NmRlYmM4ZjZmYTU5NWI3OTMwOTkzNGU4MmUwYTlkOGU3ODhlZDNhYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWFmNzgyMTE3YWM3ZGJmY2RiN2NmOWUxZDExNTI3NzYxNTBlN2FlODUwZmJlOGMzZDE3MTU2NDJkMGU5NWEyZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_caefa9eeffb641ed8c55dddaecfb0132",
+      "statement": "`_sanitize` is lossy by design: it lowercases, replaces `/` with `-`, folds every run of characters outside `[a-z0-9-]` to `-`, and strips edge `-`s — so `Foo`/`foo` and `foo bar`/`foo-bar` collapse together, and a catalog ref like `fam/var` flattens to `fam-var`.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L62-L70",
+          "version": "repo-lines-v1:sha256:46f6ae3debf5497105ccd2743cb071550aa5864076a3a73087daac73a23f4fc5:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzkyNmZmNjI1MmRjMGQ0NDIwZGI4OTRmYjhiMjQwMDg3YjNjMTJlOGUxODM3YmRiOWM0OGMwZGVmYWRiM2YxNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGVlNTM2MTVhYTM3ZmRlODc0ZjQ4NzBkMWE4ZTNhOWUwMTZmMTk4MTA5N2M0ZTMxM2IyMmY5ZDEwZWU2NzJkZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjFmNjYxZTg2YzkzNjY4NDg1ZGI2N2QyZDM0Yzg5YmIyMGFkZjg1MDllNjY5YjJhNDI2MjRjNTA0YjZlNWExMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmZhZDNjMTFhY2Q5MWY5ZDNmOGVmOGZmNDU0NzcyY2UxYTI4MWViODJjNzdmZDI3NjQ0ZDU0ZTMxN2M5ZjQxNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3eeb011a24ca473fbe43fc186d078671",
+      "statement": "`derive_name` refuses an empty recipe list (`ValueError: a dynamic stack needs at least one recipe`) and refuses any value whose sanitized form lands in `_RESERVED = {\"\", \".\", \"..\"}` — an all-unsafe ref like `***` sanitizes to empty and `.`/`..` fold to `-` which the trailing strip removes, so mint would otherwise write into the stacks dir itself or its parent. `.` and `..` stay listed because the check must hold whatever the alphabet is.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L104-L117",
+          "version": "repo-lines-v1:sha256:95c74fdc8ff179dca5668f3d62aec476df728aeda3871fc13c8651a6084c8812:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4OGNiMmZiZjgxYWEyOTllM2JlYzA1MDFhYmVkNDY4MjcxZjJjZThlYzRlYzczZjZmZWQ3M2Q3M2JmOGFiZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlMmEzMzBmNjE1OWU1MWI0MjVhODM4NzhhZWE3OGY1YzhhNWI1YjA1Y2YwNTNjNDA4M2ExYmJhZTM0ZjM5MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4ZTQ1NTBiNzQ3YjRkOTg1OGNlNTkyN2IxM2NiNGZkNmY4ODJmZmRiNzRiNjMwZDU0ZDU5NTdkM2NlMTY0OWMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L54-L59",
+          "version": "repo-lines-v1:sha256:71ab8eb26e716bc1459ff1a4b8f300dcc0c1893d20894e5b19c066bb504e28b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTRjOTRiNjYwMTllYzYwN2Q5Yzg4ZTdlYTQ5MTEwZmVjMTNjMmQ0YzlmMjAxZGI5NzM0OWVmYWM3ZThlNjdjZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2JlOWJjMGRhZDFlYTI1YzYzMmZlYjU2Y2IxNWQzMzlmNjcxMjk3MmU2NDAyNzNkMGYyNWI0MDk3YzgyNzVlMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmVhMjk4NmVjODIyZmFiNjZlNTA0MTdkODRiZTQ4YTkzZDZkOTIxNTk4YjU0NDI0ZTBiZmQ3MjQ0OWIyMjExMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjhlMTI1ZDJjYzNjNDE2MmNiZTM3NjYxMjlmOWIxZjZlNTM2ZGVkNmQ3NDY0YzE4MmY3YzZjMmEzMDc5Y2M4ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3faf785b35ab47c188b017bd3d3d64cb",
+      "statement": "`derive_name` appends an 8-hex digest (`-<sha256[:8]>`) whenever the readable join is not a faithful encoding: any ref was sanitized lossily (checked as any difference between original and sanitized, not just `/`), the join exceeded `NAME_MAX` (64), or explicit services were selected; the truncation strips trailing `.`/`-` so the cut cannot leave an illegal separator before the suffix's dash.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L21-L24",
+          "version": "repo-lines-v1:sha256:cff4b46ddeb42464062f84f9415f9319f222ac44296a6713e7c3d0029de1d4d7:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGNiOWRmMDYzYWU1NjBiOGEwMDZkN2U5MThkNjQyMWM4M2Q4NDBhMzI3YjMyODIyZjU4OWY0MTg0NWRjZDc5ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzYxZDU4ZGFlM2QyMmY3ZWU4MDQwNWYwN2JiOGMxODYwYzJhNjk4NTA5YzRmOGEyMDYzMTAyNmNlY2YwMDgyNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzVlZWVkMmM4OWNlNzU4ZWRhZmQ0NDkzYzQwMTk3YTY4YzA5YWM1MzAzNWYyNDBiY2RkOGYxZTU5ZGI4MTM5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2UzMzJmZTUxYjE2ZWU0OWFjNmM0MDAxMTk5OGExMTVhNWU4OGQwNjc3NGQ4ZGRjOTc1NmFjNWU5ZDI2YWZiNyJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L91-L132",
+          "version": "repo-lines-v1:sha256:c807e172da41d75b8b31187b5a7f3aca08aaf4475d4ae60bf29d498bcd0782d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwZjk5NmE2ZGVhYzRlMGExNGFlNzEwYmJlMjkzNTc2ZWU0MzJhOTE1MTIwYTRiZWU0ZmY4MDU1NTg4NGNlODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyYzNhZWIzNDE5NDcyYWY1MWYyZGVjODkyNTU1YWEwZTQwOWViMTJmNmIzNzAyNmQ3OGZhNWNiMjM5Y2VlN2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc4NGM1NjM0NzU4M2UwMDQ5ZGEwNjkwZWI3ZjZmNGE2NWJmNjBkNDNmMGQwMmFkMTVlNDIxMDBlY2NkN2EwYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NjFjYzIyYzRiOWVmYzFjNmE0Y2JhOTBiNDIxZjU4NDVmNGUwYjNhMTJiMzVjNWU5YjQxMDdiODk4NzZjNmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_74f987284aa7422fb75822004107c98c",
+      "statement": "The digest is computed from the UNSANITIZED inputs, so two sets that sanitize to the same readable string still hash differently (e.g. `beads/team` mints `beads-team-55bfd6ac` while a recipe literally named `beads-team` mints `beads-team`), and a `\\x1f` between the refs group and the services group keeps `(refs=(\"a\",\"b\"), svcs=())` distinct from `(refs=(\"a\",), svcs=(\"b\",))`.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L80-L88",
+          "version": "repo-lines-v1:sha256:8a0a8b6b0a1b62a287e61ac0c43ca2e7d4ddb5296f806ffbbc0269a0a18efd24:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmU4NTcxMTdlZmFhYzI3MjQzNDc5NjkxZWQyYzEyMzE0MDI1MWU5Mjc0OGNjYTdmM2E3MDQ1ZjdmMmY4ZGZhNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjQ1YzZkYjAyOTIzYTNkNzUyMDQwN2MyNmRjZTk1NDRiNDczOWFiMWMyNzM2M2JlMzNhMGNlMGIxZmQ1NGE2ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTE1ODEyZGE4ZmVjMWMyMWUwNGM0YjlmNzFjNmY1ODFhMjkwNzZlZWRjMzQ3MmM0MmU2MDU5ODY3Y2MwN2IyYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTJmZmQ2MTE4OWMwYmY1MTBiNDEyYTMyYzlhOWUyZDBlZWMxOWFlNGMxZTlhOTI4NDliMTA2MTY5YTE3NTdlMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4617e9d81459435fa9441c2454d7adc8",
+      "statement": "`_JOIN = \".\"` must be legal in an OCI image tag AND impossible for `_sanitize` to emit: the name is interpolated into the podman tag `harnessed-<harness>-<stack>:latest` (`layout._derived_image`), so it must satisfy the OCI name-component grammar, and if a sanitized ref could contain the separator, `[\"a.b\",\"c\"]` and `[\"a\",\"b.c\"]` would both join to `a.b.c` with neither flagged lossy — a silent collision onto one manifest, one image and one pair of volumes.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L26-L42",
+          "version": "repo-lines-v1:sha256:b229d41379d6d316624f4b0bcccfcec3f4c3e260c3da184c845a0fa2bce98df7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhMjdhZmZhOWZhNTI5ZTVkMzg0NTJkNjMxZTIyOTczZGY0NTA4YTNlMTUxMDZmNDdlNDU3NWUzZTAxNmNlMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhMzU2ZDUyYWVmN2M4MDI3ZWQzMDU0N2U4ODdiYWJkNzIxYzI4NTJiZmU5ZTY1NTlkODdhYjdjZjMwMjIwMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2MmFjNmM5ZjlhZDA0ODU2YWJjMGQ5ZGJlOTVhYTFkYWFlNjJkZTQ2YmViYzA4MzIxZmY5NDkwMTdjNDYyODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmNGY3OGQ3MzVlZDQ5MGVmMTkwYWExM2U5NTJiNDM0YjE0MmI4YmNkMmVkNDQ5MzdkZTU1Y2JiZTA0NjE4MmQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/layout.py#L48-L49",
+          "version": "repo-lines-v1:sha256:9d33d1e65956e2899bbb008b2d0006bcbcdee048ea12789dfec22f14265bde8e:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDc1MDE4ZTVmZWZmYTg3NTI1NjE2N2FkNjMxODIzZjdiOTBlY2Y3ZDMzMTI1NGNiZDgwZjczZTdmM2MwZjA1OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjFlYWU2ZTI2ZGJjZmI2ZmIxMDhhZmQ2ZmQ4NGQ1OGRmYWNjZmFhNDcxZWQyODdkZjQ0MTYyZjcwN2NmZTRhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjcxMTdkNjhlMmI5MGZkMzY3MzUyMDlhYWZlOGY4M2YxNjVmOGI2OGI1MjI0YjY1ZjJlZDgwNDE2ZjJhODRlYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_76aa20858c6b414e8d612254d573473a",
+      "statement": "Because `.` and `_` are the only tag-legal separators, `_sanitize`'s output alphabet is narrowed to `[a-z0-9-]` with `.` reserved for the join; folding `_` and `.` into `-` also closes the leading-separator hole, since a ref like `_foo` or `.foo` would otherwise survive intact and produce a component starting with a separator, which the grammar forbids.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L37-L43",
+          "version": "repo-lines-v1:sha256:6cd47023ca281782b18760650b5aac468a5c0c54bad8bd7f78e58320aa594c46:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjYyYTUwNzA1MzFkOTI3MmE0ZTc4MzJlODI0ZDk4ZmUxOWYzMGUwNzE5ZTM2YzcwMTYyYzQyNTNiYmE4N2YzNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2QzNjVkYzUzMDAyM2I5YTcyMDBlYjcyZWFiNjQ5NWYwOTViODAwZTkyOTU3ZTUyMTg0YWRjZmQ1MjE5ZDBlOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmMyYmUzNjAwMWZhOTUyYzI2NTViOTViYjRlYTA0NDAxNTEwODkwYTg0OTc5ZjRjYTA1NTNlYzEwYTQ1Y2NkNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWU3MmZhMmIyNjY4Mjc3NTdjOTU0NjBkMzNhMmIwYjQ0NDc2NmY0ODhmMzQzNjRiZmYxYWQ3YzcwY2RhN2I2ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e38676c1eebf44178c097abc9e6aa9b5",
+      "statement": "Services are the third input to a dynamic stack's identity alongside the base and the recipe set, and they never appear in the readable join (that would bloat every name for a rarely-used escape hatch), so the digest is their only carrier — `svcs` being non-empty therefore forces a digest, while an empty service list must not put one on the common case.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L124-L127",
+          "version": "repo-lines-v1:sha256:68e35836e74a630992b7ef4cce91fa376b6f51cf5255c0443985731cc9ea5ede:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTkyZjA1ZTI5OTc4ZTY2MTJkYTBiMDU5NTM3YzMyNjkwNzJlNDEyYjkwY2NkNDJhMWViZDk3ZGVkMzhhOGU0OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTJhYjdjNzU2MGM3NzcwM2VmYWJhNDYyNDBiNjk3MDU4ZTgzMTZjYjg0ZTEzMjY5Y2MwNzg0ODNkMWM1N2E5ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzRjNDhhOGJlMDAxZjYwZDUwNTE2YzI0MzFiNzUxMjdmNTNjYTg4ZWJkNWRkMDFiZjVjMzZmZjhmYzhiNWE5MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDMxMWY1YTA0MmE2ZWE1NGM2NmYyZDVkYmJmMThkMTNlNzJhZjg4MjhjMTcyYmMyZjYwYjU5Y2I1NjZiNGE1NyJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L73-L77",
+          "version": "repo-lines-v1:sha256:dfd31ba729bc0c1ba2694dd9e63dacefbaa2ccba5b6d789b6ac91413a55d84dc:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDliNTQ5MWFmMDRkYzFhN2Q1ZGFkYTg2MDhjNmRlYjBmNjAwYjVmNTliNDY0ZmJlNDVmNjQ2ZTNiMmQyOTkzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWJkOGFiNzRiNmU1NjVjNDRkOTZlNTA0MjQ2YzFkNjVkNzhiNjJlZjI5Y2EzNGZiMTM4NTQ2Njk2MTFiZWVmNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDc3MmE4NDFiYzcyMGVhNzJlMDRhZDU3NmRlYmM4ZjZmYTU5NWI3OTMwOTkzNGU4MmUwYTlkOGU3ODhlZDNhYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWFmNzgyMTE3YWM3ZGJmY2RiN2NmOWUxZDExNTI3NzYxNTBlN2FlODUwZmJlOGMzZDE3MTU2NDJkMGU5NWEyZCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L91-L103",
+          "version": "repo-lines-v1:sha256:b017426d20939361bed8b6bea8fc0c39e0a1e82b7987566a33b7cc6a627ca7e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwZjk5NmE2ZGVhYzRlMGExNGFlNzEwYmJlMjkzNTc2ZWU0MzJhOTE1MTIwYTRiZWU0ZmY4MDU1NTg4NGNlODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc4NGM1NjM0NzU4M2UwMDQ5ZGEwNjkwZWI3ZjZmNGE2NWJmNjBkNDNmMGQwMmFkMTVlNDIxMDBlY2NkN2EwYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNWY3NGJkM2MzMmQ0YmE5MzYwYjdjOWY2ZDNlNjlkMDMyYjI3ZTgzYzQ3NjA0NGMyMWVkMTIwMzA2MjA2N2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_96fab708dfc64d4dbe495025d99bad6b",
+      "statement": "`services` MUST be passed to BOTH `derive_name` and `mint` by every caller: deriving without them computes a different name than `mint()` does, so the preexisting-stack check would inspect the wrong path, and omitting them from either call lets two different service selections mint over each other's manifest and share one image and volume pair. `launcher._resolve_stack` passes `services=list(service)` to both.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L91-L103",
+          "version": "repo-lines-v1:sha256:b017426d20939361bed8b6bea8fc0c39e0a1e82b7987566a33b7cc6a627ca7e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwZjk5NmE2ZGVhYzRlMGExNGFlNzEwYmJlMjkzNTc2ZWU0MzJhOTE1MTIwYTRiZWU0ZmY4MDU1NTg4NGNlODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc4NGM1NjM0NzU4M2UwMDQ5ZGEwNjkwZWI3ZjZmNGE2NWJmNjBkNDNmMGQwMmFkMTVlNDIxMDBlY2NkN2EwYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNWY3NGJkM2MzMmQ0YmE5MzYwYjdjOWY2ZDNlNjlkMDMyYjI3ZTgzYzQ3NjA0NGMyMWVkMTIwMzA2MjA2N2EifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2877-L2886",
+          "version": "repo-lines-v1:sha256:85c592a65a8187f694106c26692f58f6e1bd7ef19eae61002d189d70cec95c76:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYTVjNjZlMTdiMTQ1Mzk3ODM0YjhjODU0ZGM0MTkzZTIxMjUxODBhODk5NmExNGMzMTg4MzMyNmIyZWZiY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmNDk4N2YzODczYmI1NmQ0ODZlMWM4MjYzZTgyOTg4NDcxOGIxYzNkZTZiNmM5YTJlZGZlMzE0NWM2YzVhNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4ZDdhOGQwYTJhN2Y4MmNkODcyNDI1MmRlM2RhMGUxMGJmZjBhMjgzNTE3MGEzNWY0ODMxMDFmNzJlYzUxNTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjODQ5NWRlZDIxZmUxOWRmNGY4OWIwZTZhZjE2YTExYzIzZGQ4Njg5YzNhZTFmNzI2MTA0Y2RkZmVjYmQzYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3cb0597f5e544c39a58ef6f4df2f77d7",
+      "statement": "`mint` writes (or refreshes) the manifest at `<generated_catalog_root>/stacks/<name>/stack.yaml`, rendering the sorted deduped recipe list, an `extends:` key only when a base was given (`--no-extends` emits none), and `services: []` when no services were selected.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L135-L183",
+          "version": "repo-lines-v1:sha256:92110133ddc737e22d2fabf8f951811226480fd06dbca6ba09014a9ea98a18b5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2Njk5NmRhNGM1ZGU3ZjdjNDc2NDU2NjA2NGIwMTkxZmM0ZTBlNTUzN2RjYWNiZmQ3NGRhZjhmZGE2MDE0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjYmVmOWQ5NjhhZWUyYTc1ZDMyY2JiZjBlZTQxMzAzNTY2MmUzMjg3ZGQ2OTEwNTg2ZjNjOTRlMWU5MmYxOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxMjAyODU2NDE3MGFiZjk0YTFmYzkxZDIyYzc5MGNmZDBhZGMxZmYzNWNmZTk4ZDFlNzAxNTI0ZWVlZDg5NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0NDRjMjU5MDIyOGEyYzQzYTQ1MGUzNjcyODUxNDljNWM0NzM4MzdlYmQ3Y2I3ZDU5OTk2NTAyMGQzMDgwY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a6af4cc7bbf64976b644fcad4af8a0c0",
+      "statement": "`mint` is idempotent and mtime-honest: identical inputs rewrite identical bytes and the file is written only when the content differs, so a repeat launch does not perturb the staleness check and the file's mtime tracks real change.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L137-L142",
+          "version": "repo-lines-v1:sha256:03f637306d07eecc6325765699edb63b39f86216ef23e44a0e5e2c1f15dc757e:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTZiY2JhYmZlYmEyOGEzNTU1MjQ3OGU4ZDE5YmNjNDk1NDllNDg0YjE3YTY3NWQ0MWU2MThkMDJlYjllYzM4ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmE3ZWM3MDFlNGJjMTU4NDBmYWYwZmJlOGRhYzZlNTNmMDA5ZTRkOWU3MzViMmM4MTRlMzAzODM5MDcwYTA1YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGFmOGU2MzU4MjZjYmNmOThmZTRiYmE5NDliZGE2YmUzNDZlZWQ4YWNhMzNhYTJhMmQ5NzM2OGVmYjU5YWQ4NSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L180-L184",
+          "version": "repo-lines-v1:sha256:58eda2d50c7b2da3daaeb0597b0c08f88989323b33e6d8e8fb4be977ea808cdc:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY4ZTBhMDMyMDJkOWZmNzFjODZlMzVhMTM3MzUzZDBiODUxYWM2MDg0YTMzYjAwZWRkZWExMWNkYmEwMzcyOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTQ0NGMyNTkwMjI4YTJjNDNhNDUwZTM2NzI4NTE0OWM1YzQ3MzgzN2ViZDdjYjdkNTk5OTY1MDIwZDMwODBjYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmM3ZjQ5NjRhMGMzZWE4YzkwMjkxMTQ2NTFiMTU3MzJjMjU3Nzk2M2M5ODI4OTRiYWNmYTAzNmFjZjVmMTZlYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_977275973dda4956aa418a573e673dee",
+      "statement": "Being machine-made is expressed by LOCATION under the generated catalog root, not by a manifest key: a stack manifest rejects unknown fields unconditionally, so `generated` is a comment, not a key.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L162-L168",
+          "version": "repo-lines-v1:sha256:b3b3e9266acdf0e00919bb9aeb7cb8fe241205abe342c6980d9a7336dbf8f2e4:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjAzNjY4Y2NjMzUwNjM4Nzg3ZTUwMjI0NjhiMmI5MTEyNzYzMDI2ODMxMTZhODU2NjVhMTc1ZmE1ZDIzMDM5NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjIzNjRjZTcyNDFiMWQ5YjAxZGQyODg1M2Q2NjJiNWZlZTJhZjY2NjRlN2I4MDlkMDAyZDIwZGE0YWYwZWY3NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2FmM2QxZjA0MjE2ZTA2NGJhMDYwOTUyMGVjYTY1ODcyZjcxM2RiN2ViZGM2Y2IwZDBlMjc1MGVhYjhlOGM1YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjA0MTY5N2I1YWY0NDYyOWJmNDYwZmQyYmRmMWYwZTYyYjEzYmQ4N2EyOWYzMjI4ZmJlM2E4MDQzNzgwZDIxNCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L1886-L1905",
+          "version": "repo-lines-v1:sha256:aeadd2691430a44898072e08b9a7c0754606e5e11d8c0afd76398b83ff6a7413:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjNTRkZmFkNDE0NmNlMzI1MzJiNzc5MmYyYjM5NGY0MGIxMjVhODMzMTEyZDliZjVkZGQ2MjE4MDM4NDQ1MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzYmUwMjY3NDA3MzRkNzA3MTFmOGViZDdjMzY1ZmNjZTY5NWM0OWM2NWEzMmFhYTJjMTdiNDI5NzYzNmJhM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5MGNhNWJkODhjMDAxNjM4ZGRkZmJkMGM3YWUxZTM4NmRlYWVlM2EwMjFlYjRiYzRjOGEyMTFjZjhkOTgxNzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_03551848349841eba1b4b1d39a031875",
+      "statement": "`mint` REFUSES (raises `ValueError`) rather than shadows when the derived name collides with an authored stack: the generated root is deliberately last in `paths.catalog_roots()` precedence, so an authored stack of the same name wins resolution and `find_in_catalog` would hand both build and launch the authored manifest while the minted one sat ignored — `run` would silently execute something the user did not ask for (reported on PR #176). A pre-existing manifest under the generated root is not a collision; minting over it is the refresh it exists for.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L147-L157",
+          "version": "repo-lines-v1:sha256:04a6303f22ab3d04c9f9800307c613f35a5841093573a7fe65beaa170c12f547:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5OGMzMTE0ZmJiNTUwM2IwYWIwNWVkNWQwYmNiODg1N2YxMGZmZmYzMmM3MjUwOGE3ZGMxMTU3MDlkNTMyYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhM2RkYmU5NmUxYTkxMWZkMWJjZjNiMzUwMzQ0ZTlhMTNmZDY4MDg1YmM4N2ZiMTJkNWRmYjE5ZDQ0NGE2NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1ODU4MmRjYzQwNzY0ZGI0YTdlODE2MzM1OGQ0NTVkYzYxNDk0NWIzM2U3OGNkNzMxOGY1Zjc1NWQ4ZTkyMTYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L198-L216",
+          "version": "repo-lines-v1:sha256:eec03cdd379568ca0d82aa51ba928a7c6a57b63873944a177f9a1bc8c04ad0bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjJlYTEzMTM1NzY4ZjhmNzRiMjkzOGFiODQ5MDVlMzVlN2ViZjAwNGQxNDAwZTk3OWVkYmU2OTYxNWU3YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwNDY4YTUyNGQ5OGE4Yzc0ZDg1ODJmYmYxNmFmMDU0YzU4NjkyZGEzMDNmMzcwZjk3YjNmNjVlZTYwOTIxOGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2ZTdhNzcyMjU4NzUyYjY0YTRlN2I5Mjk1MzkzMzFmZDU2NWFmZTVhNDUxNjlkMDllYzIyN2I1YmI5NWYyMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5N2U2MTQwMjhjYmE2OTc4YzFhZjRkMmI1OWRiMWY5OWRkNmE4NDE1YjU3NTQ5ZGI1ZWZiNTRkMTI2ZDQxMTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e82ecc81e8f84b61ada41fcedcab7596",
+      "statement": "`launcher._resolve_stack` serializes the is_file→mint sequence for one derived name under `launcher._mint_lock(derived)`, an exclusive flock on `<generated>/stacks/{derived}.lock` — a SIBLING of the stack dir so it survives an rmtree of the guarded directory, released before `_resolve_stack` returns and never held across a build (#287).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2817-L2835",
+          "version": "repo-lines-v1:sha256:9c77d96c54ca6c0c0a3b8e0018e07c035382b461eea38212442ce8d2cfad8ca5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2MWYzM2MxMzI1NjlhNzQ5NDZiMmZjZjU0NmNhM2M0NDI1ZGEwY2E1Y2Y2YjY4NmMyNjA5MGZhYTlkMTEyYjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlNzNiN2Y1ZGZhZDQxYTg1MmFlYTJjMGQ2NWI2NDEzZTM5YWNiNjVkZTE3Y2NjZmNlNmIwNTFlZmMxYTg2ZjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ODczMGFmMzQ5ZTY2NmVhNWFiYzlhZThkOGIzZGM4ZDFjZmZiYzM1OWM0NjZkNzdhYTIwM2ExMGFiOGI2Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljMmMzMWIxODZhMWRhOWU4OWMyNmI1MDRiNGZkYTQzNjY2MGRmNzQ0NDU4NWMwMTJlOTM1NTM0Y2I4NWIxZjQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2884-L2886",
+          "version": "repo-lines-v1:sha256:91f4a3042c49719786bf94f7b378bcca7e71eba8c8b80fd01dfd4f1162266d64:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWI4ZWE1M2RhMTZkZWMzMGMxMWQzODkwMjYwNTQwMDgyZWIyZDRhZjI4Yzg3NmZiNzc5OTA0OTdmMDNiMTJkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWY0OTg3ZjM4NzNiYjU2ZDQ4NmUxYzgyNjNlODI5ODg0NzE4YjFjM2RlNmI2YzlhMmVkZmUzMTQ1YzZjNWE0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTk1NDNjYjIyMDdiMjBkNjgzNGYzNTE5Yzg2MjRkYTIwZWNjYjRjMjMwNzM4OWQ0NjhlMzJiMDZjOGU2OWQyNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWM4NDk1ZGVkMjFmZTE5ZGY0Zjg5YjBlNmFmMTZhMTFjMjNkZDg2ODljM2FlMWY3MjYxMDRjZGRmZWNiZDNjNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_845b0681c2854502b3153c4b4eb827e5",
+      "statement": "`derive_name` is pure computation and its return value IS the lock key, so calling it outside the lock is correct by design — issue #287, reviewed and confirmed; moving it inside would deadlock on a key that does not exist yet.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2876-L2883",
+          "version": "repo-lines-v1:sha256:43e74397a181c88b49079e7d8b8e0ca44e5b5399628d13adcb25b7492c4daafa:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjczYTUzNzRlYzViYjlkMGQwYzUzNjU4ZGIzMTM1ZDE4ODZhMDg1ODgwNzA0Zjg1MjU5OWZkNmJmOTk2MmVmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTkyNTIzZGI4Y2I1NDZiMTQyYmNiMjMwYmJmN2U1MmNhNWZkMDE0M2I4ZjdkNTc3YmFiY2FjMWViODIyYTAyMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmNmMmZjMjA0ZTNjNWJiODkwZTMwM2ZiZjM4MWNjZGM5NzMxNjk3MWIxYWNkZjEyNzI5MDFjN2IzZWYzNzNkNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTFmNGEzMDQyYzQ5NzE5Nzg2YmY5NGY3YjM3OGJjY2E3ZTcxZWJhOGM4YjgwZmQwMWRmZDRmMTE2MjI2NmQ2NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_57cff6be25d7430badb247645b9932d9",
+      "statement": "`_resolve_stack` returns `(name, minted_dir)` where `minted_dir` is non-None only when THIS call created the manifest — the `preexisting` probe is read under the lock before mint — so an authored stack and a dynamic one whose manifest already existed both yield None and are not the caller's to delete.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2845-L2847",
+          "version": "repo-lines-v1:sha256:9ad398a17cbbd21320fe30cac565fcac82a124f401cf4c5cde9b7365715fa2d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTk5NTIyODBhYTY1YTQyYmI5ZjllN2RiNTI2ZDM1YTA4MTMzODAxYTVlNTRkN2NjZTM5NGUxNzZmZjY2ZDAyMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWZiMDM4YTM3YTUxZTg0YmFjNmZlMjE2MWFhYTdjZGJkMDRlNjNhOGE4YjUyNTgxNDA2ZDgzZWQxNzdmODNhMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzlmZmI5NjZkYzIyMzZiZGVhMTliMDU5NjZjNjVhNDY0MzQ5MmZhYWQxZjc3YjI4NWVlYjNiNTgxMmU3Yzg4YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDMwZTlhZTU0MGUyYzAzY2ZmMzE5YjMyOWY5ZDM3OTllMmNhNTM4NDBmMTUyMjZiZDlhOGJiNmE2NGY1NWJmZCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2884-L2890",
+          "version": "repo-lines-v1:sha256:7408e954ffe99e3d74a2223870970e3f2cbfda64326eb1aa6770abe0773d4357:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWI4ZWE1M2RhMTZkZWMzMGMxMWQzODkwMjYwNTQwMDgyZWIyZDRhZjI4Yzg3NmZiNzc5OTA0OTdmMDNiMTJkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzZlMGMzZjI3NGJkYjMyOGVlN2RlZTdiZGY4Mjg3MjU4NzRiMDBmMTFiZDA1ZGI0YTA2NThkM2MxYmMxNWU0YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTk1NDNjYjIyMDdiMjBkNjgzNGYzNTE5Yzg2MjRkYTIwZWNjYjRjMjMwNzM4OWQ0NjhlMzJiMDZjOGU2OWQyNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGM0Y2VkNGNjYjkxNGFlN2IxNGE3ZjY2Yjk4Zjc4MDgzZjk3ZjRiNjg3NWRjNTQ5NDZmZjBjOTNlODdlZWZlZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_eae8ebb375664eeba85e8269d43be81c",
+      "statement": "`container-run` calls `_build_stack` immediately on the `--recipe` form (a freshly minted stack has no assembled profile and everything below hard-errors without one), unconditionally because the build is fingerprint-gated downstream and deliberately not skipped under `--create-aoe-only`; on failure it rmtree's `minted_dir`, because a stack that never built lingers in the catalog, appears in `harnessed list`, and no GC reclaims it (`volume-gc` keys on volumes, and a stack that never built owns none). A pre-existing manifest is left alone.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3521-L3537",
+          "version": "repo-lines-v1:sha256:2d4219a70d2b35fd0085843015bf3418030fb6d899fb2df955cbf19faf66e475:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMmIzZTg2ZmI4MzUzZDM1OWJhZmY5YzE1OTY2ZmU4MDk3ZDdjMmMxODIwYzY0MjU0MjQzYmNhMWFhNmUzZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyOWM1MjQ0MzRjMDA5YWFmMGQ3ZmU5ZTJmZmU3MjJiMTcwY2Y4ZWIxYzhjMTU3NWU0ZTNiZDUxZTkyNmM3MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyZjVkNTE1YmJiYzVlODRiMjJkYTViZTg2MzAwOWY1MGRkYjk2YzVjNTEyZDIxNWRkZGI2NDU0Yjc1NjQwZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3ODZmY2UxMDViNzJjZTFiZTUwMDIxMGMyYzRiNTE2NTBkYTE3MTQ3MWE4YTk3YjdkOTVkMGY0MjJjYzViOWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_60be0c4d1bec429bbf6299b5abe89387",
+      "statement": "`host-run` removes `minted_dir` on a non-zero `typer.Exit` or unexpected exception but NOT on `typer.Exit(0)`: exit 0 is `--create-aoe-only` succeeding after writing an aoe row whose recorded command names this manifest, so deleting it would manufacture precisely the dead-on-arrival row the flow avoids. Host mode has no build to fail, but `_launch_host` assembles in-process and a `SchemaError`/`CollisionError` from a bad recipe set reaches the cleanup.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2994-L3014",
+          "version": "repo-lines-v1:sha256:f23f9811c07973f30ed07c37d8d9a5fab5bc8e088803b3384e5db3da413f0319:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0ODAxM2Y2YTBlYjdmNWVhYmNhMmZiMzA4MTYzMjNlYjkwZWQyZTc4MDg4OWNhNjBkYjY2N2IyM2MzNDFkZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzYjIyMzQzZTljNzU1OTIzM2RjNDZkY2VhNTg5OTY1OGY2Yzg2YTczMTRmYTQ2MjA5OGYyOTI4YWY2YWQzZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1OWUwMmRlOWFkYWRhMTJlZmQ1NDE2YmY2ZWFlM2IzYWRlOTg0NmQwMDg1OWI2YWQ5OWI0MjdmOTcyY2NmZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZTU2YjI0YzllZmE2MjQ0YWYwN2U5OTdkZTViODU3NjU1YmQ4NTBkN2EzYWYwNjExN2IzZWJjMjE5NWFiNWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5e1baa1c36844d478c56046820c6729b",
+      "statement": "`host-run` mints exactly like `container-run` but performs no image build even for a minted recipe set: `_launch_host` assembles in-process on every launch.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2603-L2614",
+          "version": "repo-lines-v1:sha256:c5294b5820a2e21d9d5c5e17641cac827994dc658c47f14cc9ab9bb8e60dc7d5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZTE1ZTdlZDY2ZjIxY2VhMzI0NmFkOTBiNzBmOGMxOGNjMjRjOTRlMjU4MWVjMGZlZThlZmViMGZiODkzY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNDUwZjQyZTgzZDk1ZDVmODk2MTNmY2E1MzBjNjE2YzgwYWEwZGQ0N2RkOWQ0ZmY4ZjczNTFiOWYxZjM4MmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyZjcyMDYxNjg5MzJmYmIxNDI3YTc0MjVmODBkNTJmODU0NjhhYWY3ZWE4YTY0YWE2NThkNGEwOTdmZWQ3ZDcifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2983-L2984",
+          "version": "repo-lines-v1:sha256:0e19af1fe139d7004b36c350a88bec4ec20910180e7fc9b50af10466f97887f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU0YzQ3MDg3NTJjNmJiYzQ0Y2JhZTY3MmE2NDk4NmE1ODcxY2YzYTk2NzYwMTU1MzY1YzJlMjhhMWUzNmQ0YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBmYzczODBjM2YzYjk1YTlkNDgyY2Y0MzMyYzJmOTQ3NmNlYzRjNDdhZjMyZDNiOTcwNzA0ZWNhZGJiNDQ4YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzRmOTI3Mzk2MzAyYmVmYWZmZWE1MmZiMjk2Yzc4YjQyMjc4YmI1ZDk5ODU3N2E5MDQxNjYyYWMyNzQ4NjhhNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2VjZGIwNDc3ZDNlYzQxN2JmMGE2NzA3MmEzN2Q5OGRmZTRmY2YzM2UzNzhmMzMzYTdlZWRjYmNmYWQyZTU5YSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_fd7cd2bcc27c4e9d85d45478c27f1a71",
+      "statement": "`_resolve_stack` converts the `ValueError`/`OSError` raised by `derive_name` or `mint` (reserved component, empty recipe set, authored-stack collision) into a one-line error and exit 1.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2876-L2889",
+          "version": "repo-lines-v1:sha256:d8cc74cfa675e9277488c8ceca06f8e5d9c813cab7f2035e658ec3d152ce9a44:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3M2E1Mzc0ZWM1YmI5ZDBkMGM1MzY1OGRiMzEzNWQxODg2YTA4NTg4MDcwNGY4NTI1OTlmZDZiZjk5NjJlZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMGYyZDM4MzY3MzU3ZjE2OWRmMGIzODFiODliZjE4YzJhMDliZmZhNTIyOGIzZjIxNWU4M2I0YmQzZGMyYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjZjJmYzIwNGUzYzViYjg5MGUzMDNmYmYzODFjY2RjOTczMTY5NzFiMWFjZGYxMjcyOTAxYzdiM2VmMzczZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1MjUzMzMwZTNjM2U2OTc5ODc1MGJiZjc2ODNmZWQzOGYwOTM3NGEyM2FmMWJhM2EwOWI0NDQ0NzAzOTE5MDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_86c6d9ca1eee4fa1995b94533d6513ac",
+      "statement": "A real `stack.yaml` is minted rather than passing a recipe list straight to the assembler because profile location, volume labels, staleness checks, `harnessed list`, and BOTH garbage collectors are already keyed on \"a stack that resolves in the catalog\"; minting makes all of them work unchanged, while skipping it would mean teaching five subsystems about a new kind of thing.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L1-L11",
+          "version": "repo-lines-v1:sha256:5e7570516ec3a55181cf0add183944e3d438ebb1a9e7f9e0c31ca98a7b7ef1b6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4NjYyMGY3ZDBlN2Y2YWVkNzU0ZGEzMzk4ODUzOTg2ZTA3ODk4YzRhYTliNGIzZmVmYzdjYzMyMGIwNDNiOWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3NGZkMjJkNmU3YzU3NzlmODc2MTdlZWZhODlhZTk2ZDdkYWIwNzBlODBiNDllYWQ5MDg5ZGEwNzA4ZDA5NzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dfe0c20de378407d911b1651fa65e799",
+      "statement": "Both garbage collectors key orphan detection on catalog resolution: `host-gc` marks a host config dir an orphan when `find_in_catalog(\"stacks\", <name>)/stack.yaml` is not a file, and `volume-gc` reads the stack name off the volume's `harnessed.stack` label (never by parsing the volume name) and applies the same test — which is what makes a minted stack GC-eligible and authored-stack-protected through the identical mechanism, with no special case for generated stacks in either collector.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4767-L4775",
+          "version": "repo-lines-v1:sha256:7676c0ebe06a0282f91ab611d00361871763454a4fe1cb5b96370e9fad306cca:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzYzOTMzMTA3MjcxMTQ2MTE1NmFkOTVmNDRkMDllYjllMGQ4MzI4ZThhODQ5ZDhmOTZkMjZhYWI5MGU2ZmQ1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmExZTI2NjUzZGFkZTdmMzYxYzM4MmVjMjk3MWE4N2FmOTQyYmU1YzRkMjY0NjU1NjhiMWI0ODExNDllM2FiYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTgxOTk2OTEwNzM2ZGMyM2M1OWFjNDMxM2M0OWMzMmE3NzY4OTA5ZWZkYzA0ZGEzYzY4YjMzNmM3NDJiM2Q4NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2NlYWJmMmIxYTc1ZDQ0MmYxZGMwZmUwOGMyYzIzMTQ1NzZjNjUzZDg1NmNhMWI1YTc2OGFmMjc2MTlhYjI3NyJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4849-L4895",
+          "version": "repo-lines-v1:sha256:a6e4ab127a8820967da93610b6126d1031f5b8bafd2f36aa2798081b8bc0ce0a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3OTY2MDc3N2MwY2E1MDhmMDQzZDEwODFhOGNiMGNmNWZhYTNmYjk3ZjdmOWRmZTQwMmU0YzQ0OWE3NzQzNTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhZTg2MTZkMjFhMjVmMWY0NTZkOGYxYzNkNDg5OTliYWUyMWY1OWJjZGQ1NzJhZjJkYmEyOWFjYjQ3OGRhNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImExYzk3Nzg3NDUyZDQ4NWNmZTY5NGVkYjllNDRjZWQ0OGJkMDQ3YWNjMjhmNTY1NzMwYzk4ZTJiYjA5NjNjMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5NTgxMjNlMmY0MjFhOGU1YzM5NDk4ZDZhODU4MjY1OWQwY2QwZjUwZWI3NmNjYWFmMWY4MDQzOTljMzYyOTIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L170-L187",
+          "version": "repo-lines-v1:sha256:d5139c5ef84c41bad7a6a530d23e14e4de8e4128ab2565ee471739bbe2d53522:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OWUxNzMyZGRmODdmZDE3ODhlMTMzZjAyYzlhMTYwMWE1YjBkNmViYTIyOTVmODNiOTk4MTIyMmI0ZTNjZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjMjVmMTQwMTE2MDUwMDkzN2ViYjhkNTE3ZDM4NDk0YmVmNzg0MzJhZjgyZDk2MjFhODllNTdhN2QyYzRlMjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiMjFhOTE1MGY5ZTdiZDRjNGY0MmEwM2FjN2RlYzQ1YmM4NjYzYmVmMjhhYTQ1Y2RkZWU1MTg5MWY2MDY4NDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_73f17e106a1444bfa8721b9b65c8915d",
+      "statement": "`harnessed list` enumerates generated stacks alongside authored ones because `paths.list_catalog_stacks()`/`list_catalog(kind)` walk every catalog root including the generated root, deduping by name with the overlay first.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4045-L4056",
+          "version": "repo-lines-v1:sha256:0a7f3953062d3c65c3379bd38190625d9f7fdaf8aadbc4f809d309a5e092538f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0ZTU1N2E0YmJkMjM2MmJkZTUzYTAyYzBkZTg5NDhjYWY3ZmMxYWQ5NjZkMWFlYWRjOTcxNWUxMjNkN2I4NWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlNzE4MWI5NDg3ZWJmMDhiMjQyYjNkODIzYmQ4ZGQ2Y2FhM2ExYzljZTRiODBjOTQ1YTZhNTg2ZDgxODRkMjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzNDQ1ZGMzMDYyOTNmMzAxMWU0YmRkN2UxNzIyN2ExMzI3NjRkMzkwMWYwN2ZjNGNiN2E2N2QyMTMzNjJhNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNjhlNDVlOTBlMWViZTQwMGExMDg0ZTg1OTk3ODk1N2M1NTY3OTIzNDlmNzc2MWE3NzI4YzY2NTEwZTJiZjQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L280-L322",
+          "version": "repo-lines-v1:sha256:2b3cd33a21e4d4c1ab8557a9187f3fd422bb563166ccebda54652f3f48ea8e3f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4YzA5ZmE3ZDNiMGU4ZWVmNDE2NzhjYWVkZDkyOTIzMmE1MjJhOTk5Mzg2MDdlZGNhNTBmNDdkZjRkM2M1ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjYTU1NzUxOGIxZDFkNWYwYTMxMTRlMmZlNDZlYjdjMzU1ZDU3ZmEwZTI0NmNkZjllYjI5ZTk3Njc1NTM4YmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZjkzMDgzYzE5NzEyMWI5ODI3MDBiYThhZmFiZDE3MjJjZjFkM2U3NDA0NTA5ZTgwZWZhMjcyNDdmNjJmMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1ZDU0MjNlMWYzMjQxOGVlMGRjNDcxOWEyNDNiNjdhYTJjNzA3ZGU4NTBmYTMyOWZhYTIwMDEyZjQ1N2UwOWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b4e840113d3c4e7fb7b3c3368416d060",
+      "statement": "The generated catalog root is `$XDG_DATA_HOME/harnessed/generated` (XDG DATA, not the user's `~/.config/harnessed/catalog` overlay): mixing generated manifests into the overlay would mean `harnessed list` cannot tell them apart and a regenerated file silently clobbers a hand edit; it is included in `catalog_roots()` only when it exists, so a user who never ran a dynamic launch sees exactly the previous two roots.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L198-L216",
+          "version": "repo-lines-v1:sha256:eec03cdd379568ca0d82aa51ba928a7c6a57b63873944a177f9a1bc8c04ad0bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjJlYTEzMTM1NzY4ZjhmNzRiMjkzOGFiODQ5MDVlMzVlN2ViZjAwNGQxNDAwZTk3OWVkYmU2OTYxNWU3YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwNDY4YTUyNGQ5OGE4Yzc0ZDg1ODJmYmYxNmFmMDU0YzU4NjkyZGEzMDNmMzcwZjk3YjNmNjVlZTYwOTIxOGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2ZTdhNzcyMjU4NzUyYjY0YTRlN2I5Mjk1MzkzMzFmZDU2NWFmZTVhNDUxNjlkMDllYzIyN2I1YmI5NWYyMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5N2U2MTQwMjhjYmE2OTc4YzFhZjRkMmI1OWRiMWY5OWRkNmE4NDE1YjU3NTQ5ZGI1ZWZiNTRkMTI2ZDQxMTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L325-L336",
+          "version": "repo-lines-v1:sha256:81fe20d431bd2af42018ac4d88d5097a68a7b48d2c028800224e089111ab2bb9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNTIxMjAzOWEzYWVkNDBmZDUzMWZmYmZkZTMxMDhhMjA0MjhmNzBkODQ3NDAxZGQyY2VmMWI5NmJiY2VkYjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxYmYyYzIxMmQxNmRiN2VhZjVlNGI1ODM2ZGEwMjVmM2UyZmYzNzdkMDRiODNlZWZhNTE4OWFlNDc4NTk0NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1ZjAyYWI4N2VhZTdhZmU0MDM4Yjc5ZDI1YzMyMzMzOGU0ZGU2ZjRiNTdjY2Q1NzY1NDFiY2Y4OWE0NzkzMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlZDViOTNjZGE1NDliODk4Yjk4NGRlYWJhZDViZjEyZTE1MGExMTA0NjczZTA2YjdjYTczMWQwM2NjM2NkY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bfaeb77414ef4e61a00053c8fbd8eeb7",
+      "statement": "The content-derived name is what makes the same recipe set across multiple repos share one derived image (`harnessed-<harness>-<stack>:latest` via `layout._derived_image`) and one volume pair (`harnessed-cfg-<harness>-<stack>` / `harnessed-tools-<harness>-<stack>`).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3512-L3516",
+          "version": "repo-lines-v1:sha256:70f8f9a773cd1bbdbcd361784dbaf6a5209a8428152c82f1596fcf1ab33de3ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2FiMmMzODlhNmE5Yzk3YTZlZjlhYjE5YzAxYzY2MjMxYmQ3YWIwMzhhMGUwNWU4NTNlNDdlNDkwNzUxNTE0MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODM1MmRjZThlYjIwYzdiOTMyMWYyMGQ5YzU5MWQ3N2MzOTA1Nzk5YmE2ODBlNmQ1M2I3NjUwYjI3MjZmZWFhMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWFiM2RjZDgzYmE0NzhjOTdlNjUxZTY5YjE3NDU4NThmZGNmMGY2Yzk2ZTcwMzY4MzUwZTEzNzkyNjE0YzIyZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjhmOTNmMjk4MWQxMDBhOTEzMGI0ZTI2YmRhZDkxNTUwMTljNmExYTE5OGYxZWQ5ZGIyMjQxOTgyY2NhMTU3NCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/layout.py#L48-L49",
+          "version": "repo-lines-v1:sha256:9d33d1e65956e2899bbb008b2d0006bcbcdee048ea12789dfec22f14265bde8e:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDc1MDE4ZTVmZWZmYTg3NTI1NjE2N2FkNjMxODIzZjdiOTBlY2Y3ZDMzMTI1NGNiZDgwZjczZTdmM2MwZjA1OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjFlYWU2ZTI2ZGJjZmI2ZmIxMDhhZmQ2ZmQ4NGQ1OGRmYWNjZmFhNDcxZWQyODdkZjQ0MTYyZjcwN2NmZTRhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjcxMTdkNjhlMmI5MGZkMzY3MzUyMDlhYWZlOGY4M2YxNjVmOGI2OGI1MjI0YjY1ZjJlZDgwNDE2ZjJhODRlYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L190-L198",
+          "version": "repo-lines-v1:sha256:0a76ab50df3b99c22119275b0cd5e48c59520de9a6d380d22e16356c438801e2:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTU3ZmJmOTU2ZDI4MWRmODdkYWMwM2EwZTExM2FmY2Y0Mjc5OTgwNTg1NDI4YTRjZDAwMmI2ZWRkM2E4MTM3ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWRmYTY0Y2QyMDM5YzQzMTA1MzBmMjAzYTI0ODgxYmRkZDUwNTNmYzUxNWYzYzJiZjBjN2Y5ZGU3NjgyMWI5ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWE4MmViZTllZDQwN2MzYTZiYTRiMDAzNDI5MmJhYTUyYzExY2U1YWUyODYxMDc0MDJkZTQ3OTJlZWVjYWNmYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmYyNzM1Y2ZlNGQyOTMwNDc2OTg2ZWE3MWY3NTYxMjdhYWI3NjdiNTEyMGM1NWM3YjJkY2JlMzQ3ZWQwNzE5MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_96d90637255d4fae9c762e17db6efb54",
+      "statement": "A content-derived stack name is what can push an instance name past Linux's 64-character HOST_NAME_MAX, and podman derives the hostname from the pod name, so `harnessed-omp-default.beads-team.serena.superpowers-f6eb0941-59258991` (69 chars) killed every launch with `sethostname: Invalid argument` on the infra container until `paths.container_hostname` began truncating the middle — keeping the `harnessed-<harness>-` head and the whole trailing project hash, purely cosmetic because nothing keys on the hostname.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/paths.py#L414-L436",
+          "version": "repo-lines-v1:sha256:ddc464462eaf9b412833f1b72374343c60ce438e1c75b4265edd44f7b0dea2d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwMWIwZTAzOTY5OTkyNTA5OGY0Yjg4OTBkNTEzMDA2NTU4ZmMwOTExNzk4NjM2YmM1MWM3YzcxZTIzODQzNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4NTFhMGY0ZTQ1NzI5ODk1MDE3MTQ3NmQwNmM0OWFiY2E4NDIxZDMyNGZjNTY1YTE4NjU5ZDA5YmEwZDRjZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxODViMzdjNTY4N2QzODA1YzY2ZGYwNjZiNTUxMmYxYmNlM2Q1NzQ2YzdkZWE1MmFiNDRiYjkzMDliNzMxOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzODlhY2FlNTlmMGIxZDc4YmU5NGQ3NWU3NWYxNDBkYWMyMzhmOTExMzc2ODUxNGQzNTcwZmM1MWZlMTA1MWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ca53f7c979646488391483e56b82748",
+      "statement": "`aoe.command_for` records the RESOLVED stack name as `--stack <derived-name>`, never the user's original argv: a dynamic stack is minted into the generated catalog root before this is called, so `--stack <derived-name>` replays it exactly and one canonical form serves every verb that reaches there — a row records the same shape whether the user typed `--stack` or a `--recipe` set.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/aoe.py#L259-L301",
+          "version": "repo-lines-v1:sha256:57c7e7d46f41ec16dec7b7943414618a052c5701e56d5e992f3edbd198094692:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NjNiMDk0ODQ5ZmRhOWZjYWFjNWI4MGZhYWY2Zjg2OWY2MzRiNjQ3NzhkZjIxMTQxZGU4MGNiNmZhOWUyZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMWM1NTNjZDdlZmMwODJhZjE3MDUwMWI2Y2U2OWE5NmIwMDYxNGIxNzhiNDI3ZGM1YmExN2Q4YTY3MjM4NjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNWI4MzVhY2JiNmNiNzQ2NmMyMjcxYTlhYzRhNmNhMzlmNzRkNGYyNDk5MTlmZjlmNTg0ZmFkZTdlYzA2ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjOTliZjhhMTU5ZDc1MTg4YmU3MDRkZjExNGY4MzI1ZmQyOWMzOThkY2I4NjJlMWRiYWMzMzcyOGUzYjgwOGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3e7647cb97ad440eabd2f94f69fd1793",
+      "statement": "The derived name is NOT parseable back into recipe refs, and `aoe._composed_recipes` therefore reads the RAW manifest rather than `load_stack` or the name: `derive_name` joins on `.` after sanitizing and appends a digest when lossy or over-long, so the single recipe `beads/team` mints as `default.beads-team-55bfd6ac`, and splitting that on `.` yields `beads-team-55bfd6ac`, which is neither the recipe nor recoverable. It also uses location (under the generated root) to decide a stack is machine-made — an authored stack returns `[]` — and a missing, unreadable or malformed manifest costs only the delta, never a failed launch.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/aoe.py#L355-L385",
+          "version": "repo-lines-v1:sha256:49f5139f744937cba7036a9b17b425d494452c4b3ed20e97704ec893a0bb8fd2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ODMyZmYzYzE0N2I4NmFhNzk5NDVlNTE5ZDUyMmY3NDE4ODc1MTUyNzE1NmQ1Mjg3OWJjZGI1YmEyZjllMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiMWJmOTJmNWMwNDFkN2FkNzcxNGUwMDM5ZGI5NzBjMmU4ZDViY2ZmZjFmN2RiMTIwY2YzNDkzODJmNWNlY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmMzZhOTIyYjY3MDM4YjE1NWQ0NzI0OThlNGYwMDQ5YmY2ZWEwNzEzNzMwOWFhYTY3MjBkYzYwYzc3ZjRlYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhNzM3YjVlZWM0NmI1ZDUxYzNjNTdjNmY5MTJiOTNlMWFjODhjZjllZmFkMDNjMzM0MDEwNmQ1YWM4NjIxMDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e18f71cc70bd418a8669cc8855edad81",
+      "statement": "`ssh_keys` (private-key mounts) are always dropped for a generated stack: `mint` never writes an `ssh_keys:` key, and a generated stack resolves under the generated root rather than the user's overlay, so `credmounts._stack_from_overlay` is False and `_trusted_ssh_keys` drops any keys inherited through `extends:` with a warning — private-key mounting is the key owner's decision, honored only from the user's own overlay catalog.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/credmounts.py#L251-L276",
+          "version": "repo-lines-v1:sha256:44f42518f7e9536f7367f05abb6fc9ca0dfd4b626eda8b95eec172d03ac6965c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwMDAzMDM2N2IzNzc5ZDA2ZjhmOWI2ZTEzNzY5YTVmZWU5NDliNzA0NjgzOTMxMjQ1MzFmZTk1NWQyNDY4MzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3MmVjZDk0NDNlNDQ1YTkxYzg5ZWJiZGYwZjYyMjA3YmU1YWM5YTVmNDkxYTk0YWM0ZTA1NzZiYmNjYWFmM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyMjFmY2M1YmU1ODI4NTg4Y2RjYTBhYzZhYTZiZDc2N2ZjYzAxYzM0ZDgxZWUyN2EyZDY5NjI5ZDc2ZTFmZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzNGE4MWZlYmJiZDRhZjIwY2VhM2EzZmUxYTMwYmRkMTc1NWVhOTNlYzI4YWY3NDY5YTI0ODMxNTVmMmY2ZTAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L162-L183",
+          "version": "repo-lines-v1:sha256:c26ba0d72cd7de31a2ebdbf9ae8c0ace2a83fc56fe35339469ee690b03fe897a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwMzY2OGNjYzM1MDYzODc4N2U1MDIyNDY4YjJiOTExMjc2MzAyNjgzMTE2YTg1NjY1YTE3NWZhNWQyMzAzOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjYmVmOWQ5NjhhZWUyYTc1ZDMyY2JiZjBlZTQxMzAzNTY2MmUzMjg3ZGQ2OTEwNTg2ZjNjOTRlMWU5MmYxOTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhZjNkMWYwNDIxNmUwNjRiYTA2MDk1MjBlY2E2NTg3MmY3MTNkYjdlYmRjNmNiMGQwZTI3NTBlYWI4ZThjNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0NDRjMjU5MDIyOGEyYzQzYTQ1MGUzNjcyODUxNDljNWM0NzM4MzdlYmQ3Y2I3ZDU5OTk2NTAyMGQzMDgwY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f55f4764a2af4308a44246b2fa6300df",
+      "statement": "The shipped `catalog/stacks/default/stack.yaml` exists so the documented `--extends` default works out of the box: until it existed the repo shipped no `default` stack, so a fresh install running a `--recipe` launch failed on `extends: 'default' — no such stack`. It is deliberately minimal (one recipe, no services, no policy fields) because a shipped baseline that set `permissions:` or turned on credential forwarding would silently apply that policy to every dynamic stack on every install; authoring `~/.config/harnessed/catalog/stacks/default/stack.yaml` replaces it wholesale because the overlay wins the name clash.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/stacks/default/stack.yaml",
+          "version": "repo-file-v1:sha256:52f03aa81e90a7f940ada285fd679a108922161039d44fcf52d79b4e9377e8b2"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L198-L216",
+          "version": "repo-lines-v1:sha256:eec03cdd379568ca0d82aa51ba928a7c6a57b63873944a177f9a1bc8c04ad0bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjJlYTEzMTM1NzY4ZjhmNzRiMjkzOGFiODQ5MDVlMzVlN2ViZjAwNGQxNDAwZTk3OWVkYmU2OTYxNWU3YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwNDY4YTUyNGQ5OGE4Yzc0ZDg1ODJmYmYxNmFmMDU0YzU4NjkyZGEzMDNmMzcwZjk3YjNmNjVlZTYwOTIxOGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2ZTdhNzcyMjU4NzUyYjY0YTRlN2I5Mjk1MzkzMzFmZDU2NWFmZTVhNDUxNjlkMDllYzIyN2I1YmI5NWYyMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5N2U2MTQwMjhjYmE2OTc4YzFhZjRkMmI1OWRiMWY5OWRkNmE4NDE1YjU3NTQ5ZGI1ZWZiNTRkMTI2ZDQxMTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d4d83a102c234143b864e6859b1bdca2",
+      "statement": "`--service` selections only enter stack identity on the mint path: with `--stack`, or on the bare baseline launch, `_resolve_stack` returns before the service list is read, so those services are dropped rather than applied (not an error).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2856-L2876",
+          "version": "repo-lines-v1:sha256:aee5c7dc346fa520ec4ba85539658d4c548b7455c43c94a1d6c9d1694e151e96:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZWRjOThhMDY1MDNhNzc4ZDBhYmM2YWFhZjNkODQ3YTBjOGI3YTFkZmFkNjFmMTkyNTBjMWE3YWU2OWQwMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3M2E1Mzc0ZWM1YmI5ZDBkMGM1MzY1OGRiMzEzNWQxODg2YTA4NTg4MDcwNGY4NTI1OTlmZDZiZjk5NjJlZjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0ZTJkNDY0MGQ2ZDAwMjMyMjkzZTVjNTRhODJmNDJlOWIzMmNkNjdkMDMwN2E0ZWUzZDAwNDExYmNmYjk0YzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1ZjcyM2VhMTllY2I3ZGRhMjM3NWEwODE5ZjZmZjJhZGFiODhiNGY0NjY1Nzc4YjRlZWQ4NzJhNDc3NGUxYzgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2913-L2916",
+          "version": "repo-lines-v1:sha256:d902287e8977364ef7a59cf15ad1e8b46641dfb98c98133bf590667330301835:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGFlNGUwODM2MzI3ZTI4NmQ1MzEwMzRjN2Y2OTAxNjFhOTk2YjUwNTVlMGEwYjliNTQ4YjU0Njg3ZTIwMWQxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFmYmEwNTI3YzM5NTNjNGI2ZTBlNWI1NzM5YmE4MzYxMmY4MDUzYmNkYzk0NjY3MzAxOTNjZDFkNTkwYjQwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzczODU4NTc4MTU2YTQ2OWNiNzZlOTQ0NzFmZWIwYTMyZTI0NzdmYWY2ZTU5MjczZWNmMzZkMjc3NGRkY2NjNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDY3NWNlNjliNDJjMzE1Zjg2MGJiODA0MjdjZWY1NTNkOWU2OTUxZTA4MzM3N2FlZWE0MDVhMTkxMTNlMTU4NiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5316512bedfa4acf826f63ca0a4d81de",
+      "statement": "The OCI-tag-grammar constraint is enforced by construction rather than by launch-time checking because podman rejects a bad tag only at build time and the test suite runs no podman — so a character legal in a directory name but illegal in a tag would pass every unit assertion and die only in a real `podman build`; the live contract tests behind `HARNESSED_PODMAN=1` are the only layer that can observe it.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/dynstack.py#L26-L35",
+          "version": "repo-lines-v1:sha256:e5b0489a5619871dec43129d2f3f80482e26024c342ae0a40c9c801886514057:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhMjdhZmZhOWZhNTI5ZTVkMzg0NTJkNjMxZTIyOTczZGY0NTA4YTNlMTUxMDZmNDdlNDU3NWUzZTAxNmNlMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1M2FhZTk5ZDc5Y2VkYWU3NjFjNDU3YjQ0MzI3M2NiM2MwZjNkMDZmMjNjODRjYTg2MjA5NmVjZmUzMzJlZGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2MmFjNmM5ZjlhZDA0ODU2YWJjMGQ5ZGJlOTVhYTFkYWFlNjJkZTQ2YmViYzA4MzIxZmY5NDkwMTdjNDYyODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5ZWY2NmExN2FmZTBiNjE5YWVmOTkwZTYxNmM0MDFmMWJkYjMzMDEzZDZkOWQzM2RkZmZiMzRhYTczNTA1ZmUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-01T11:08:21.365Z"
+  }
+}

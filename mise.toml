@@ -8,6 +8,20 @@ shellcheck = "0.11.0"
 # varlock resolves .env.schema files; required by A6 in test_external_contracts_live.py.
 # Version 1.16.1 is verified against this tree (2026-08-18). The binary name is `varlock`.
 "npm:varlock" = "1.16.1"
+# openwiki generates and maintains the agent-facing wiki under openwiki/ (see the openwiki-* tasks
+# below). 0.4.3 is the version verified against this tree (2026-08-29); `latest` would make the
+# provider env-var contract in tools/openwiki.sh an unpinned assumption.
+#
+# The two escape hatches are both REQUIRED, and both fail in a way that does not look like a
+# packaging problem:
+#   * trust_policy_excludes — fastq ships no provenance attestation at 1.20.2, so aube's
+#     no-downgrade trust policy refuses the whole install.
+#   * allow_builds — mise installs through aube, which DENIES dependency lifecycle scripts by
+#     default. better-sqlite3 is a native addon whose `install` script is what produces
+#     better_sqlite3.node; denied, the install still reports success and every openwiki run dies
+#     at "Could not locate the bindings file" with a 14-line list of paths it tried. It reaches
+#     openwiki transitively, through @langchain/langgraph-checkpoint-sqlite.
+"npm:openwiki" = { version = "0.4.3", trust_policy_excludes = ["fastq@1.20.2"], allow_builds = ["better-sqlite3"] }
 
 [env]
 # Keep the venv outside the repo: `uv` running inside a podman container that
@@ -59,3 +73,62 @@ gh pr create --base main --head "$branch" \
   --body "Automated pin upgrade for $day. Covers \`catalog/\` and \`mise.toml\`."
 git switch main
 '''
+
+# openwiki writes the agent-facing wiki to openwiki/ and keeps a pointer block in AGENTS.md and
+# CLAUDE.md current. Its whole provider config lives in ~/.config/harnessed/.env.schema, so these
+# tasks are just `varlock run` — nothing here needs to know a variable name or an endpoint.
+#
+# The --filter narrows resolution to openwiki's own keys. Without it a wiki run also pulls
+# CLAUDE_CODE_OAUTH_TOKEN and the scanner tokens out of 1Password and exports them into a process
+# that talks to a third-party inference endpoint.
+#
+# RUN THESE FROM main/, NOT FROM A WORKTREE. docs/ is a gitignored live clone of the GitHub wiki, so
+# a worktree checkout does not have it and the generated wiki would be written from an incomplete
+# view of the project's own documentation.
+#
+# `interactive = true` throughout: openwiki's UI is Ink, which needs the real stdin/stdout. Under
+# mise's default output capture a prompt draws but cannot be answered, so it re-prompts forever.
+[vars]
+# `env -u` FIRST, and deliberately: varlock lets a process.env value OVERRIDE the schema, so a
+# stale export in whatever shell invokes this task silently repoints a 13-hour run at the wrong
+# provider — exactly what happened on 2026-09-04, when leftover OPENWIKI_PROVIDER=openai-compatible
+# + OPENWIKI_OPENAI_COMPATIBLE_STREAMING=true exports made every schema correction look broken.
+# Same stance harnessed's own host launcher takes: the schema is the declared source of truth,
+# and a shell export must not outrank it. The -u list is the full provider surface.
+openwiki_env = "env -u OPENWIKI_PROVIDER -u OPENWIKI_MODEL_ID -u OPENWIKI_OPENAI_COMPATIBLE_STREAMING -u OPENAI_COMPATIBLE_API_KEY -u OPENAI_COMPATIBLE_BASE_URL -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL varlock run -p $HOME/.config/harnessed --filter 'OPENWIKI_*,ANTHROPIC_*,LANGCHAIN_TRACING_V2,LANGSMITH_API_KEY' --"
+
+# Not interactive, no varlock, no model: it recomputes each Claim's evidence digest against the tree
+# and exits non-zero when cited code actually changed. That makes "which pages are lying" a check
+# rather than a regeneration, so it is the cheap thing to run before deciding to run openwiki-update.
+[tasks.openwiki-drift]
+description = "Report which openwiki Claims cite code that has changed (exit 1 when any have)"
+run = "tools/openwiki-drift.py"
+
+# THE ENTRY POINT, including for the very first run: upstream's own CI example notes that
+# `--update` "also handles the first run for code docs when env vars are set", and unlike `--init`
+# it does not force the setup wizard. --print makes it one-shot and exits.
+[tasks.openwiki-update]
+description = "Generate or refresh openwiki/ with no prompts (handles the first run too)"
+interactive = true
+run = "{{vars.openwiki_env}} openwiki code --update --print"
+
+# DELIBERATELY INTERACTIVE. `--init` walks every setup step unconditionally — dist/cli/app/app.js:96
+# is `needsCredentialSetup(...) || (isInitCommand && !initWizardConsumed)` — so a fully configured
+# environment does NOT skip it. Use this only to reconfigure or to discard the generated wiki and
+# start over; use openwiki-update for ordinary generation.
+[tasks.openwiki-init]
+description = "Discard the generated wiki and reconfigure from scratch (walks the setup wizard)"
+interactive = true
+run = "{{vars.openwiki_env}} openwiki --init"
+
+[tasks.openwiki-chat]
+description = "Interactive openwiki session against this repository"
+interactive = true
+run = "{{vars.openwiki_env}} openwiki"
+
+# No credential and no varlock: this only serves the Markdown already on disk, so routing it through
+# `varlock run` would touch 1Password for nothing.
+[tasks.openwiki-visualize]
+description = "Serve the openwiki/ graph and Markdown reader on 127.0.0.1"
+interactive = true
+run = "openwiki visualize"

@@ -10,6 +10,7 @@ repo-blind. Open `src/` only with a specific question the docs did not answer, o
 | --- | --- |
 | What do *agent / recipe / service / stack / catalog* mean? How does build/launch work? | **[ARCHITECTURE.md](ARCHITECTURE.md) — first, always.** The vocabulary is precise. The words are not interchangeable. |
 | Where does code live? What calls what? | [docs/codebase/](docs/codebase/) — STRUCTURE, ARCHITECTURE, INTEGRATIONS |
+| Who wins when two config sources conflict? What is the launch order? What does a gate prove? | [openwiki/](openwiki/) — `concepts/precedence.md`, `workflows/{container-run,host-run}.md`, `testing/verification-ladder.md`. See [AGENTS.md](AGENTS.md) §Generated wiki for the full routing **and its one hard limit**. |
 | Who calls this symbol? What does a change reach? Show me one function. | `codebase-memory-mcp` — see [AGENTS.md](AGENTS.md) §Codebase graph for the tools **and their warnings**. Beats `rg` + `Read`. |
 | How is code written? What is tested or known-weak? | [docs/codebase/](docs/codebase/) — CONVENTIONS, TESTING, CONCERNS |
 | How do I author a recipe/service/stack? Set up a dev env? | [docs/guides/](docs/guides/), [CONTRIBUTING.md](CONTRIBUTING.md) |
@@ -18,6 +19,10 @@ repo-blind. Open `src/` only with a specific question the docs did not answer, o
 | What must I not do operationally? | [AGENTS.md](AGENTS.md) |
 | What work is open or decided? | GitHub Issues — never a markdown TODO |
 
+- **`openwiki/` is generated and drift-gated.** Each claim carries `repo://path#Lx-Ly` evidence and
+  the digest observed when written, so `mise run openwiki-drift` can tell you which pages now lie.
+  Run it before acting on a page. Never hand-edit a generated page; fix the source and regenerate.
+  Scoping unbuilt work is the one thing it is bad at — grep the source for that.
 - **`docs/codebase/` is generated** (`/map-codebase`) and reproduces stale claims across
   regenerations. Code wins on conflict — fix the map. Re-running does not fix it.
 - **`docs/` is the GitHub wiki** — separate repo (`harnessed.wiki.git`), gitignored, and present
@@ -126,3 +131,11 @@ Durable work lives in GitHub Issues. The working rules ship as a rule, not from 
 Source comments still cite `bd <id>` tokens. These are **not** a tracker and nothing reads them —
 treat one as an opaque marker on the comment it sits in, and never as a place to look something up.
 Do not add new ones.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+See [AGENTS.md](AGENTS.md) for OpenWiki agent instructions.
+
+<!-- OPENWIKI:END -->

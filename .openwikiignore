@@ -1,0 +1,59 @@
+# Read boundary for `openwiki` (mise run openwiki-init / openwiki-update). Paths listed here are
+# never read, scanned, or reproduced in the generated wiki.
+#
+# This is not a taste filter. Everything below is either a byte-for-byte duplicate of source that
+# openwiki already reads, or generated output whose staleness would be laundered into the wiki as
+# fresh evidence.
+
+# Task worktrees are FULL CHECKOUTS of this same repository, each on a different branch. Left
+# readable, openwiki would ground claims in dozens of divergent copies of every file it documents.
+.claude/worktrees/
+
+# Generated agent documentation (output of /map-codebase). Grounding a generated wiki on an older
+# generated map turns "the map said so" into evidence, which is exactly the drift openwiki's Claims
+# exist to catch. The hand-written docs/guides/ and docs/harnessed-design.md stay readable.
+docs/codebase/
+
+# `tests/` is NOT ignored, deliberately. It is where this project's contracts are actually pinned —
+# `mise.toml` cites `test_external_contracts_live.py` by name as the reason varlock is pinned, and
+# `install.sh` precedence is asserted as ORDER in `test_install_script.py::TestPrecedence`. Excluded,
+# the wiki has to infer those guarantees instead of citing them. See INSTRUCTIONS.md for the rule
+# that keeps that from turning into 2 MB of enumerated test bodies.
+#
+# `tools/` is NOT ignored either, narrowed back to the generated fixture profiles it was meant to
+# cover. Excluding the whole directory made the wiki describe `tools/run-tests.sh`,
+# `tools/preflight.sh` and `tools/openwiki-drift.py` from `mise.toml` and the CI workflows alone,
+# without being able to open any of them — which is how `testing/verification-ladder.md` came to
+# overstate what the drift gate verifies (raised in review on #445).
+
+# Build and analysis artifacts.
+/profiles/
+/catalog-local/
+catalog-local/
+tools/test-fixtures/profiles/
+mutants/
+__pycache__/
+*.egg-info/
+.venv/
+/build/
+/dist/
+.hypothesis/
+.coverage
+coverage.xml
+.pytest_cache/
+.ruff_cache/
+
+# Editor, agent and tool state — nothing about this project, and `.claude/worktrees/` above is the
+# consequential half of `.claude/`.
+.serena/
+.vscode/
+.agents/
+.claude/
+
+# Not part of the shipped project: `web/` is unrelated, and recipes.backlog holds PLAN.md drafts for
+# recipes that do not exist yet — documenting them would describe capabilities the catalog lacks.
+web/
+catalog/recipes.backlog
+
+# Machine-generated dependency graph: tens of thousands of lines, no prose signal.
+uv.lock

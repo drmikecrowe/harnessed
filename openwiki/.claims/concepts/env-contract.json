@@ -1,0 +1,502 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:28d1a09c57218cf97a28660f171bb0c8f651b381751483f6c37c86cfd88848b8",
+  "claims": [
+    {
+      "id": "claim_89b9018576c54312a09266c5c908552c",
+      "statement": "setupenv.harnessed_env is the single definition of the folder-env contract: one set of variable names with the same meanings injected at every surface catalog-authored content runs on — the container attach shell prologue (_init_shell_prologue), the container itself via podman run -e, both setup.condition eval sites (_collect_setup_notices and _confirm_setup), the setup.script env (_script_env), the host init.run shell (_host_run_inits), and the host agent process (os.environ in _launch_host) — so a recipe author writes ${MAIN_REPO_DIR} once and it resolves the same everywhere.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L365-L392",
+          "version": "repo-lines-v1:sha256:17d5eb24b53475676a2b29315d0707c6e9064f9491f5e86ea3a15eeeb63ef505:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNWYwYmNiZmFlODFlMDMxZjNiMDQ2NmU3YTMxMjY0MmZmZGUwYjkyMzAwODM4YjUyZjJmZGZlZWZjZmRkMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NDAxMjUyNGVkZWUzMjQxYTM3OGYxMTRkNWIxMWRhNjg2M2I4NTFjNWY4YTJhMGM3ZmNiNjdhZDFiNzVjYTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyOGQwNmQxZDc4MTgwYWZkZTM2MTA4ZWUwZmNmMTA0MGJiZjJmZDIxYmQzZjAwZmNmYTRiNWJlNjY2MTdjNGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkY2QxNjhmMzVmZDY5NmYxN2UwNDhiMzIyZDlmYzRkOGQwZWE0NTU5NjZmYzVjZDAyOWQ4MzM3Y2UwZGFiNjYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L544-L552",
+          "version": "repo-lines-v1:sha256:7083544892e13dcfa77f34d5112746f649d06f537a834b6e8c463220471f17f4:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWFjNDM3NmRiZTZlYmNhYzQwZWZmMzY3NjExZDkwMWEzMjdiNzczMzkxY2JlMmRiYWI2ZWQwNWIxYzNjOGNjMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGI0OTk3MzRkZjRmODJlMDNlZTIwZmUyODNlMWEyODE2NjhmYTk5M2Y0MTRmNGJmZWEzMjVlM2YzMmIyYWVhMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTUyNmNmMTM1ZWVmZTE4ZWQxNjY5MTg1MTEyODBhYzQyZDZiOGVmYWE4YjcwZTU3NjhlZGJiZjczMzNkNDE5MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjEwNGZiMzA4NzljOTNkMTgwZmUzNWM3YTg4NDM3ODQ2NDMxMTk5Y2I4ZGZkNmQxMWMyZTI2NjY4YWQzODBhOCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2718-L2723",
+          "version": "repo-lines-v1:sha256:67cf2ace718fdcddd33438bd763ed0beac2f6b0f7cdd422b2878c4d27163e29e:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZThmYzUyZDI3ZDJmMDBiNzllMThlN2Y4ZmZkYjI5YTg1MTJkNWFhNDQ0NWJhNDNmZTk2ODA0ZmNlZjQ4ZTMzNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTY4ZmM4NzUxZjdlYmI5Y2FiZjdlOGM2NTJkYzVkNTM4YjU5MDUxZmI4OTI3Y2RjMjYwNjc3NjljOWFmOGRlYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGRhYWEzYTUxMDY4ZTY5M2EwYzJhNTcwYTQ5MmYyMzIxZDAyNzdlZjkwM2IzZGRhMWQyNjUzZjM2MDQ1MWVmNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTBjMzBmMmZjOWI2MjliZmVkZTgxNjRmY2JhZTY1YjY2NmVmM2Q2YThkMDI0ODJmNmJkMzQxYzYzODkzN2I5ZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L61-L137",
+          "version": "repo-lines-v1:sha256:ce33b1717585e2b502fbb80a0450ca8e7ed927008f494ab66b79325097ee21e3:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1OWE3MTE4YjI3N2NiMTViNWY3NmJjNzEzZDcwOWQ2Y2FhZDFjODk5ZTQ4MWY1NTRjOGY5MWYwODMxYjNkYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNmZlNGE4Zjk2NjEyZGE3ZTE1N2UwODAwMGZjNjY1MjBjYjlmMWI2NDBkMzNlYTI4ODcyOTc1M2NlYWMwNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0ZDQ5YTNhZGMxNzhhMTgxNWQxOWMwN2Y4ZTVmMTQ1YWQ3ZDU1Nzg0ZWZmZjcwNzNlNWZjMGRjODg3YTFjNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlZGY4M2E4NDRlOTA5YWQxODcwMGJmMzY1MzNmMDAzODRlZGRiMTM0MWE1Zjc2MmZhZDlhZWVjYWM5NWIzNmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_afcdc8e4548c4c7f93122449ba5ed66b",
+      "statement": "The folder-env contract comprises: HARNESS, PROJECT_DIR, MAIN_REPO_DIR (the git common dir, falling back to PROJECT_DIR outside a repo), HARNESSED_GIT_COMMON_DIR (same value under an explicit name), HOST_WORKSPACE_DIR and CONTAINER_WORKSPACE_DIR (identical strings because the project is bind-mounted at its own host path), HOST_HOME (the host $HOME, distinct from the container's /home/harnessed), HARNESSED_BIN_DIR (mode-resolved: the image's ~/.local/bin container-side, the stack's tools/<stack>/bin host-side), the recipe-scoped HARNESSED_RECIPE_DIR, the per-service HARNESSED_<NAME>_SOCKET vars, and each project-scoped service's declared client_env injected under the service's own names.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L365-L382",
+          "version": "repo-lines-v1:sha256:c0867035b3163d458cadff034960e36a8a2d31972bd3a21b6afa999ea4b8189f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNWYwYmNiZmFlODFlMDMxZjNiMDQ2NmU3YTMxMjY0MmZmZGUwYjkyMzAwODM4YjUyZjJmZGZlZWZjZmRkMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0ZTMyMzcxNTVjZGEyMzIxNzI3YzZiZTVmZTM4N2RiYjYwYzc1YmI3NTU5ZjMyMzRjMmNmYmI0MzgyNWE1YmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyOGQwNmQxZDc4MTgwYWZkZTM2MTA4ZWUwZmNmMTA0MGJiZjJmZDIxYmQzZjAwZmNmYTRiNWJlNjY2MTdjNGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmODFhODBkN2Q0ODE0M2EzY2ViOTQ3NTk0OTljYTU2NzNkZWM3ZTVkNmRlNjJkZjY5ODIzZmJkYTQ3NTQxZmEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L1032-L1059",
+          "version": "repo-lines-v1:sha256:df18a9db8edceaf194a56120d203be2b2e2fe42f6102f93682cf66ed485a4c1e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2NzdmZTFmMWNkMWJhMmNmY2M3MGE2NjFlZWIxYWI4YTljMmY0ZTJkMTJhOWVmMjRkNTE5ODY2NDJjMDE3OWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3NjVkMzA4OGUxOWUzYjBiOGU4MjM2MDAyZDcyNDQ0OWU1YjEzZTA4YTRhNzNmZmY2ODY2ODhhODU0NGU4YjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxYzQ3ZWI1ZDRkNGIxM2I0YmU1ZGMxNWI2ZWZjNTA3NGQzYjc1MjhlNjg0YzkxY2VkNDU3MWQyYjQ3ZDYxOGUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L94-L137",
+          "version": "repo-lines-v1:sha256:bffbc34fa9ed7166dd8e13f57c99db8c1eb5a6700ae93af3e497f7b01a7aa06d:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlY2JmMWZlMTdmOWUwOGJkNzYzOWI0NDlkNGU5NmZkMDRiZWE0YTg1MTJhYjJiYWUwNGVkNzhhYTAxMGQ2OGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNmZlNGE4Zjk2NjEyZGE3ZTE1N2UwODAwMGZjNjY1MjBjYjlmMWI2NDBkMzNlYTI4ODcyOTc1M2NlYWMwNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyZmMyMDQ3YmI4NTdiY2JlNTg0MDEyY2FjZDJkMjFiMjNkODdmOTY0NDc4NTA3ZWIwYzYyNjYwNjU4NGRjYzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlZGY4M2E4NDRlOTA5YWQxODcwMGJmMzY1MzNmMDAzODRlZGRiMTM0MWE1Zjc2MmZhZDlhZWVjYWM5NWIzNmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2b69b5f5dcb446a49dad12d228eaf7b4",
+      "statement": "A bare GIT_COMMON_DIR is never exported anywhere in the contract because git itself consumes that variable and exporting it would hijack common-dir resolution the moment the agent cds into a different repository; the same value is exposed instead under the explicit name HARNESSED_GIT_COMMON_DIR, equal to MAIN_REPO_DIR.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L375-L376",
+          "version": "repo-lines-v1:sha256:b0ed9be61fb59f704a4cf6f6b88964f1d7fc42e874a2b2934996250e93db0ecd:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzZjMWJiMDc3MjdmZGI1N2E2MjZkYmEwNWFjYmQ3YTI3Nzk3M2Q5NzQ0MGI3YWNhNjQ4Njc5YzdkYWMwYmFkYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzc0MzIwZDNkZGZhMWIzYWQ1ZDViOWM3OTI1ZDViMGRiYTFiOTdmNTQ2NDAwMDIzZmEyOGVmNDUwNWZlYmJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWZhOTNhOTJkNzAwMjc2NzM5MDlmYTljY2Y1OTViM2JmOGI3OTk0YTJiMjY3YTIzMzY1NzVkMDE4MjE4NWJhZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM4NDJiZTI3Mjc0ZDczNTQ1ZmQzNDljOGI2ZmYwZGJhMGEwY2RmOGVmNmY1Y2NjNDA4ODkxMzAwYTJkYWFhZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L81-L85",
+          "version": "repo-lines-v1:sha256:2fc6908ac3e4d4ad4ac2b7f70589662609e1ae6472f3ab862d9df6939f8c5eb7:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTMyZDhmNjA3ZTE5MzlkY2NiMDI3ZmZmYmZjNjFlN2NiZmM3NGNjNmJlNWRhYTYyN2Q2YzgzMjk4M2JiNjczYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODM2YjViNWVkNjI3MDc3ZDdmMGM2Mjc5MGJiNGFlNjE5ZmM0N2FkYjliMjllMTFkYzVjZDE3YmVjYzUyZGNlNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzRmNjY2NDMwOTFmYjFkODhiNGRhMTE0ZWM0MGYxY2MyMWE5MzNiYjYyODVmN2RhMDc2NTQ0NmRlZDc0ZjU2YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmRmNzQwODViN2Y3MTdlOGIyYWU0NjQzOWJkNjA0NDNkMjIyZGVmOTE2ZjIzMjYxMjg4MzYyNDQxNTFlYzdiZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L94-L102",
+          "version": "repo-lines-v1:sha256:cc71a15fc416a463bfad5e6c6cb0cbd7696ceb93dbdd83017378209b767c01fb:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWVjYmYxZmUxN2Y5ZTA4YmQ3NjM5YjQ0OWQ0ZTk2ZmQwNGJlYTRhODUxMmFiMmJhZTA0ZWQ3OGFhMDEwZDY4ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjVhZTQ0MTg0MjZmNDE5NDZhMDk1MWRiMmJmMDAzYTc3NGVmZjU5MThhZmFhOTQ0ZDZmMTEzY2VjOGMwOTExMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzJmYzIwNDdiYjg1N2JjYmU1ODQwMTJjYWNkMmQyMWIyM2Q4N2Y5NjQ0Nzg1MDdlYjBjNjI2NjA2NTg0ZGNjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDE2ZWI0NDBhYmI5M2FhNzlmZjk4OWVmYjg2N2M1NTI5M2E1MTliNmZkMjk2Njc2ZTVkZGM4NGRkMjQ5NmUxMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f2dc44e7ad7f4569b2362160e64c541b",
+      "statement": "HARNESS is deliberately unprefixed: it is already the token a recipe Dockerfile branches on via ARG HARNESS, so $HARNESS in a setup script means exactly the same thing as ${HARNESS} in a recipe Dockerfile, keeping one spelling of the per-harness decision across build and runtime surfaces.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L372-L373",
+          "version": "repo-lines-v1:sha256:dcb38e9d16533e4f73143145b457cbfdec943c0ca6ded84a66b8e84c80f703f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDU4OTk2ZDFmODQ4ZmMyYzk1YTI0YzY0NDdhNGQ2NjNkYzI5OGM2NWE3MTEyYmM2MjMwYTM4NTU4ZmQ4ZjUwZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ5MWUwMTRmNTUwM2ViNWIyZmNhODFkYjQyZjZmNzI3NjU5ODBiYTViNWU0OGVmMTM1YjZjZjY5ZDdmOTJjYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzYxMTZjZWEzNzcwODkxMzIyZmMzNWJiMjBkYzhhNzU1MDc3ZGU2ZTg5MzczODFlMTZkMmU2NWZhYjgwZGI5MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWZhOTNhOTJkNzAwMjc2NzM5MDlmYTljY2Y1OTViM2JmOGI3OTk0YTJiMjY3YTIzMzY1NzVkMDE4MjE4NWJhZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L1112-L1117",
+          "version": "repo-lines-v1:sha256:59cc30c7fd74d3227124955d61d0a07c453c5511ca17387093474933eda006e3:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTQxOGYxNzkxNWFkMjRhZDZhMjI2MDlkYTRiMTZlZjczMzE4M2U2MDc2NmZmMDJkOTQ4YWYyMjQwOWI2OTQxOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWQ1NTgyMmIyMzhjNWM2YzUxOGVhZjA3NDg4NDVkYWJhZGE2YTkxNTQxNTYzMWMwM2QzMTI4YjBiMWM3N2YzNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWVkNjhlY2U4M2ViNWNlNGZhYWI0N2ZjYjA0MzVhMTE0NjYxZmE5OTY4NDIxMGNkZDc4MzBkNmU3ZGI1NDFmYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmRhZWFiNTU4NzJlOTEyZDI4ODk2OTRiOWI1ZWQxYjRmMDNlMGU3Y2FmNmQ2ZmM3MDhhZmUwMzQzNWEyMTViZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L85-L86",
+          "version": "repo-lines-v1:sha256:65c3ba1129cbaa4583ea9ef026da623edf38394ea6c4ec382063f5100550eb38:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODM2YjViNWVkNjI3MDc3ZDdmMGM2Mjc5MGJiNGFlNjE5ZmM0N2FkYjliMjllMTFkYzVjZDE3YmVjYzUyZGNlNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzM1NjZlNGQ2ZTNiNDkxOGQ2YTM1MmZmYTVjYTc5YjJmODFkZjQyYjkyZjYxM2MyZmY3MDIwZWIxNWEzMmM0MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzRkZTA0Y2Q4ODcxNWI4YzE2MGMxZGRjOTQ5MWE1MTZmNWZmZDZjOGI5YjY1ZGEyZjUwMWQxM2RiYzNjMmM1MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWUxMGU5ZmU3MWY1ZDcwMzk3ZThkMWQxOTk3MzdmZjQzYzkzZDdlNmM1ZmRlYzc2NWI4MGM0MTZhMjdlOWYxYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7bf60d7ec7344c569454db99cd6ff8e9",
+      "statement": "setup.condition strings are evaluated with the folder-env contract in env (host-side, in the project directory), which is what lets a condition test a real path such as [ ! -f \"${MAIN_REPO_DIR}/…\" ]; under an env-less eval the variable expanded to the empty string and the test passed falsely. This holds at both eval sites, _collect_setup_notices and _confirm_setup.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L390-L392",
+          "version": "repo-lines-v1:sha256:ed11e938dc80836458dffef9514718ed9843c63fb61cfccb22c06e0d46445eff:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTg0MDEyNTI0ZWRlZTMyNDFhMzc4ZjExNGQ1YjExZGE2ODYzYjg1MWM1ZjhhMmEwYzdmY2I2N2FkMWI3NWNhMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzQ0YmExZDMyZTY4ODk4Y2QzOTM1OTE3NGU4ZTNiMzcyYjI5MzFlOWYxMzkxYzY5Y2UxOTRlYWJjYzQ1N2U0ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTAzYjgyZjM0NWY3MGYwZDRhYWE5YmU5MTc2NjRlOWZjYWUzMDQ1MzY3NWNhNmY3YzNiMGJkYWUyMTlkYWRiZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODc2MmU4YzVjOGNjMTE4NTk4ODFlZWU5YjMwOTI4ZGI3YzY2NmQyZTk2MzNmMzM0YjA0N2FiNTkyNzllZDY3ZiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1994-L2053",
+          "version": "repo-lines-v1:sha256:c5b32c1c02bab3026637cd65478e78cc01fb6b6273a35ffafe28a4bc5854ae06:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMDVjNDcyNDAzMTlkNjBkNTM2ODg3MzMxZTBmNmU0NzgxOTdiZjMyNGUxNzI1OGZjNGUzYjI1NzQ4MzNmYjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmZGZmYTIxMjNmY2UxYzRjMTY3NWY4MjM2ODhkYmRmYjdjNGEwYTQxOGRiZWE0Mzg0MzIwNzJiMmI0NTMwMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyNzM3NGUwMDIyMWM4OWJlOTQ0MWViNWU3MjI4MTljODFiOWVhNGU4ZWMyOGQxNjVkYTZlMmM0ODJhY2YzMDkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L518-L551",
+          "version": "repo-lines-v1:sha256:a9a899f96db756685cf9d9a8b70dfb985a3d985038cf9b4879cd4a585dfe0ebb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhNWUyYTljN2JhODM2YjE2ZWJjYzY5MDYwOTBjMmYyY2NhYmM3MjZkZjU1OGIyMWZhZTE1NjBjODE4Y2E3NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2M3MTI0N2FmM2NkMWVkZjU1NWE3ZDEwNzU5MzE1N2Y2ZGMyYTIyYWYwZGU4MmU3Nzc0YWJmMTBmOGFkZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlYzIzZTJjMTE3YTU5Y2M2NzEwNzBiZDcwY2E0NzY1OWJkNzE4YTA1NTJkNDJlNWQ1ODlmOWQwNTBiMmE5ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyNTBiOTRjZDU3MWVlOWJhN2QxZTg5M2NmMWY2MTBlNzY5ZWM3MDMyN2IwNjU5ZDU2Y2I2ZmExOTAxMWZkYWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_366e6f75e4824d77af0726494ae69e7d",
+      "statement": "The folder-env contract is set on the container via podman run -e (real container env), not only exported in the attach shell, because hooks and later podman execs never run in that shell; without box-wide socket vars, bd silently accepted an empty --server-socket and fell back to its old TCP config instead of failing. The setup env is likewise resolved host-side and set on the container so a hook or later exec sees what the setup script saw.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2265-L2281",
+          "version": "repo-lines-v1:sha256:d3042fe7f863b7acdb2c6a3c7462673b090e4c8995bc3e519629419d3097d0ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjOWJkZjQzZGVkOTBlOWNjYjQ5N2U5OWU5OWM2MzllNGVhZjFmMTBhMzFiMTgwNjA3YWNmMDlhMGM3NWI3ZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlODdjNzhlMGU4ZWJiZTZiZTc5MzE2MWQzNzc1NDc2NjA0MzRjMTIyYmNjNWRiNDU5NWNiNzE3MWYwNTZlOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5ZGU0ZjQ1NGY5YTBiODNhNGZkMjg4ZjZhM2FjMzczMzFkMjI3MWI2OWY1NWY5ZWU0M2VkNzY1MjI0ZTgzN2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkYjZmYzE1ZTUzMzAwNDBmZThkMmM2MzRjMDg5NjJkODZkMmI4OGQ0MTBmODk0NTM0ODA2NmUzOTM3NDlmZDIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3325-L3343",
+          "version": "repo-lines-v1:sha256:717664d29d639aac53163f9bbe8d9f78180304951df18c15f5572602b97b482e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmNTI5Y2ZhZTRmNzU0OGNjY2Y5Y2QzODBjYTY1MzE3NjdhNWY4MDZhODBhNzk5ZmNhZmIxNTcwZjdkMmFhN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzMDFkNzc5ZWE2MDIwMWFiMTY2OTA2YzVjNzIyMjU3NWZhZjBmNmQ2ZTliZjRmNDNlYWZlY2Y0YTU3ZjgxZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4Y2VkMGQwOTFmNDcyMmY2OTEyOThjYjVjOWVjOGU0M2ZmODMwODQ5Y2YwZDIwNTcwZGRiNDgzNjUzMDk1M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1MGE3MDNkODYzNTdjYjY2MDZmOGVkMTMwNjcxZDgwYzZjOGYyNTcyNmFlNzQ5ZWI1ZjdjZGZmZTgwM2IwMWYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L497-L515",
+          "version": "repo-lines-v1:sha256:a6c03259fff70c4f29936de3dc90ad458b7547cd693df02b76d8e4bc4f512d86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMDYwNWIzOTg1YjNlNGY5OWFhMDYwYzllYmRhMGQyMDYxNDg5YTIzNmQwMTJjOGUwN2ZkYzUwMjFlYTEzMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNmZlNGE4Zjk2NjEyZGE3ZTE1N2UwODAwMGZjNjY1MjBjYjlmMWI2NDBkMzNlYTI4ODcyOTc1M2NlYWMwNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlYzIzZTJjMTE3YTU5Y2M2NzEwNzBiZDcwY2E0NzY1OWJkNzE4YTA1NTJkNDJlNWQ1ODlmOWQwNTBiMmE5ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI4NWFjMzlkMDdmZjhhNjEwNGEwY2YwMTlmOGIzN2JjYTEwNGVlN2QzM2JiY2U4ZDMxMzJkNTdmZmY5NmRmMzcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0e2ea68fcc5f41e4934ad8abf04a2be1",
+      "statement": "On the host backend there is no container to set env on, so _launch_host updates os.environ directly with recipe env, the mise redirections, and the folder-env contract (before setups run so they see it too); the exec'd agent inherits everything because os.environ IS the host's box — the host analog of podman run -e.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2692-L2723",
+          "version": "repo-lines-v1:sha256:2f6d78dd642c2a29b900063c30a9b0d68e203f24516eb3629d301299a5bd75d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYWMxOTRiOTRlN2U3MjllZjMxM2JlOTU0MWFhZjZhNTFhMmU1YjhiZWY1NWE2NjU3NWJiNjc5ZmE3NjM3MTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2OGZjODc1MWY3ZWJiOWNhYmY3ZThjNjUyZGM1ZDUzOGI1OTA1MWZiODkyN2NkYzI2MDY3NzY5YzlhZjhkZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4YTEwODkwYTIzZWQ0YTRmMGNiMTVhM2E0MDQ4NGI2N2U5OTE1ZWU2MDRlNzkwMGQ5MmUxMWRmODYxNmRkNTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwYzMwZjJmYzliNjI5YmZlZGU4MTY0ZmNiYWU2NWI2NjZlZjNkNmE4ZDAyNDgyZjZiZDM0MWM2Mzg5MzdiOWUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2784-L2799",
+          "version": "repo-lines-v1:sha256:a5f092df35a8c4f1a7c8f5af83e0726c739758935be56c1cec19faac1d2d6bae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5Yjg0YjU0MzlkZjAxNDgwY2ZlY2ZlNWU3YzNhYjJkNzk0Njk3NTdkN2U2MTExYzQ5N2EzMDkwYTgwN2RlZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2YTU2ZWI1ZGRjM2U5MjlhMWFhMmM5Yjg2NDczMDVlMGQxMWI2Zjc5NTA4OTgzNGUyNWUxYzQyZjBmMzNkNzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyN2FiODM3ZjBmYWQ5ODhiMWE4ZWFiYWFlZGNlZTgwMjRjN2VjNmUyNTdiZDdmMzYyMTVmMDIwMjZkYTU5NDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2MjI5MjY3ZjE1MDk0YjlmYTQwYTYzMmZhZjZjNjRhZTY1ZWU3NmFhYTUzNzdjYWJkNmMyYWZkMTY2MTJhYzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_510ed94d9d6b499999d2844629204639",
+      "statement": "HARNESSED_<SVC>_SOCKET and service client_env values are resolved per launch and per mode: _service_data_dir returns the agent-visible path for the given mode (the container-side $CONTAINER_HOME/<name> in a pod, the real host persist dir on a host launch), so a host launch never receives a container path; the socket vars and client_env are added last in harnessed_env so a service declaring both resolves them from the same launch, and {host} in client_env resolves to 127.0.0.1 on the host and host.containers.internal in a container.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L118-L129",
+          "version": "repo-lines-v1:sha256:4dbe8bc2dd3d9d1d4747fdecb6a99b9a0364f00047f8b78cfe91c59c2ba8923c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmZDQ1NGJlZDkxNGNjODVhM2JjOWI4OWQzZGVhZGZmOTE3YWRiYTI1NGY1M2M0YWExZDRhMjc0MmI1MjEzOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YTc2OTIwNTc5ODRjNmIxYzFiNzQxMDIwNmY1YWZkYTQxNGZiMDQxYTJjYTRmYmYwZjFmZjZiZDU5N2IwY2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhMjUyM2MwZjgwYmQ1ODhjMWE3ZmZmYjRhNjE1MzUyMzgwYTg4NDcxZjMzZGIyMDllNjI2NWUyYWIxOWM4OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNGYwY2ZhNzZhNDkxNzY0NmE3NDc1Y2M2NWVmM2JmYTZiMzFkOTY0ZWYyOGNkNTU4OGQ3OTQ0NmI0N2UzMTQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L235-L279",
+          "version": "repo-lines-v1:sha256:fb8a78d07724a1e23121c57e61090ae1ad98b2f518b1eb63d83bae4e176be620:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlZWY1ZTA4MDIxMTk4MDg2ZWU5ZDMxNDg5OTMzMzM1NTJlOWEwNTNjYTM0YTMyZmNhZDQyODFhZDdmZDk3ODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNmZlNGE4Zjk2NjEyZGE3ZTE1N2UwODAwMGZjNjY1MjBjYjlmMWI2NDBkMzNlYTI4ODcyOTc1M2NlYWMwNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1NzIyYjhjNGYyODMxYTA4YTZmZjE2OGQxNjUxMTRiNmZkYmFjZjk4NDIxNTM2NjI3NzY5M2JkY2IzYmQwMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3YmZhN2U1MjhkOWU2MTAxMGNiZDY3Yjg4YTI4NWM1MjIyZTczYzYwYWYzNjFlODAwNGQyYjM2YWZiMDE0ZTEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L61-L102",
+          "version": "repo-lines-v1:sha256:fafe0c2d3de3158d5393c68d78aa4d29b9418b0d6c1394c531c383edb7473903:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5ODU2N2QxNzNjZmI4NDlmZWE0ZGUxM2FhYjNjZGEzYzhlNGUyYjg3MGMzYjk2N2JjOGFkYzdkMzRlZDk0OTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiNWM5ZjljMTNlOWJiMTcxOTg1M2ZmNDlmMDQzN2VkZjU4NmU3NDFiZDc0NzM4OTM4NTc0ZjUwYmU5YThlNTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhYWI1MTczNjc2NTM1YjczNDkzZThmZjY1MzA5MDY4MTYzOTYzMjMxMWZhZWQ1ZTQ5YmVkZGQ5MmRiMDM0N2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5f2b1f41124a49dcb404a8ec0ae863c5",
+      "statement": "_script_env builds the setup.script env with an identical KEY SET in both modes — harnessed_env (sockets=False) plus HARNESSED_MODE, HARNESSED_STACK, HARNESSED_PROJECT_DIR, HARNESSED_HOST_HOME, the HARNESSED_CFG_<KEY> values from setup.config, and the host-injected repo-identity primitives (repo, gcd_db, gcd_hash, project_hash) which are not recomputable in the container because the git common dir (.bare/) is outside the mount; env rather than templating is what makes one script file runnable on every backend, and sockets=False exists precisely because the key set must not differ per mode.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L253-L295",
+          "version": "repo-lines-v1:sha256:03913e148e67f94cab6ee62fee5d881773cfc9e4ed91ad875e54a8821444a603:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2YjlmYTUyODhiMzIxOTQ1OGJhNjhlYmExNzRlYzFmMDNjYjQ4NGUyNDliYjA4ZjRlM2Q2NWFiMjYyNGRiNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNmZlNGE4Zjk2NjEyZGE3ZTE1N2UwODAwMGZjNjY1MjBjYjlmMWI2NDBkMzNlYTI4ODcyOTc1M2NlYWMwNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkYzgyOWI0MWFlYzZlNzdiMzA5YjQ4ZTBlYmU4NWY4NWYzOTViOTJlNDBhMzYwOTVmYmFiOTRiMWRhMDdmNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxYzMwMjZiODljZjBhYmQ5OThhYzBhM2M1OTNiNDM0NWZkMTYwYmIzYzBkMGQ5MGQyODg4OTRkMTk5YTNlY2YifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L88-L93",
+          "version": "repo-lines-v1:sha256:9f1172d5e36a6a567d24099f46b9319fc13a754d917c6a00fa4f028ba6df1c1c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODE1M2RlMjcwNTY0ZmNjMjljNGU2YTVmMmYzYThjYzk0YjdlMjkwNTI0ZTMzNWQ3OGU1MzE3MjZlZDZhNDliOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWM5ZTljNzg0OWIwZTE2OTYzNTA3ZDJiYTZiMmYxY2U3Yzk0OTBkNDdmMTI2NjdlYzZjMWQzZWQxNmRkZjdjMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGJiY2Y1Zjg3NDM2YTg3MDU2YjBiZDgxY2U0MzlhZWU3MmI3MTRlNjA1NTY5Mjg5MDM0YTI4ODEzM2VkOGUwYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_46fcbc38d485443f86f23b463785568e",
+      "statement": "emit.install_env — the install.script contract with identical keys in host and container mode — is deliberately a subset of the folder-env contract: PROJECT_DIR, MAIN_REPO_DIR and the workspace vars are absent on purpose because install runs where no project is bind-mounted (container-side in a fingerprint-gated throwaway container writing the per-stack volumes), so the values are unknowable; exporting them host-side only would hand authors a variable that works on the host and silently expands to empty in the other mode, and anything needing project context belongs in setup.script whose phase has a project.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L404-L412",
+          "version": "repo-lines-v1:sha256:379422bef8562e39eb0c2b7dcdc8f3fa8acfea0e28f1bbb5a1f94ef8eec0b3f8:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTY2ZWJiZDE5Yzg5NmQ3MjU5MGVlOTU1NThlN2Q3YmE0Njg5YjYxNDdmN2VlNTNiOTgxYWE0NjVmZWExNTdiYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI3NTNiODIzNGM0ZDQ0MjMzOGYwYTQzYjNhY2E5NDQ2ZDllMjA3OWY3ZWMwMTc5MGI3ZDk1YzZjMGM4ZjFkZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODNkM2Q4YjM5NTQ3OGE4NDc3YTczMzcxNzNkMDQyZGU1NDAxODY0ZTI2Y2Q1ZTQ0NjY0YTJlMTlmY2UxMTg2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzIzNDE5NTZjODU3NmVjZTlmOWMyNzRjYWRjOTI5ZDkwZTQ5Nzk3YzAzNzIzMjFkNjkxZDNjYjg0MzcwZjllMiJ9"
+        },
+        {
+          "resource": "repo://ARCHITECTURE.md#L423-L437",
+          "version": "repo-lines-v1:sha256:2fdcad97461a34c4583e21f80eff9f8ac682e221e90b12e0f55b4e77a4c1129a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjcxZGE5OTc3NzJlMTYwZmNkNDc5NTZhNGNkZGQ1NmE1ZWY3NjgyNTA3ODBjMjBhNjk5MDVmNzkwNDhiOTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4NzQ5ZGFmYWY1YjVlNTBhZGQ4YzE1MDE3OTA0YjNkNTAxMjM0ODUyNTU0NjEwYjAxN2U5ZjBmYzQ2ZGE2MTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2NTFkNGI2N2RmZjA4NzdmYjBkODZlYTg3MTM1MDJmNWI3NjQ5N2IwNTRlYmQ4ODQxYjljOWY2NzJjY2FjN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxOWE5NjQ1N2U0MWRmNTE2MTRjZjdmYjg2NmU4MTAxYjY5MTQ3MDFmZWZmNWNiYTM2NDI0MjQwNzU4NjIyODMifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/serena/setup.sh#L1-L15",
+          "version": "repo-lines-v1:sha256:710dc7ceb9b7014ecd2b3f0f44422026ad4e7fda258f94d4b6b8d26ff7ab01ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4ZmM2MzM2NjdkMDMwMDczMWJkZDg0NDcyZGM0MjRlMWY5YzY0MTc1ZWEyYmFkYjY2NjQ3MmQ5MWFlYjRlZmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2YjFkNDlhYjJiY2MxN2Q3MzQxMDMwZDE1NTJhYWU2MmVkNThlNzdhZDM1ODcyZWJlMTZhOWQ1ZTRjNTM4NjIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L997-L1008",
+          "version": "repo-lines-v1:sha256:40146db82b1507bb12ca42d0d898a9e75e9bbf69d29016ca6776a5bd4aded5a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjN2EwNTkyOGVmMmZmYmYxNjYxOTY4OGJjNjc4ODAzMGVlZmE3MDBhOTc1OWIzOTYwZDEyNDdhY2EwNjYxNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyMTk5MjZhYzUzODA1ZWQyOWQ2MDI1MmE1Yzg0ZmE1ODM0ODhmODVlN2QzZmExN2JlNGRmYTVkNDY2ZTBlYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwMTY3ZTI4NmE2ZjBlNDU2NTMyMmEwMGQyZmYwNmIxNmE4MDk2OTljODQ2Nzk0MTE4MzA5ZGZjOTdkMjI4OWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxN2Y2OTM4MTlmZWVjNWUyZTM1YTUyYjY5ZTI0MWQwMzE1MmVkZGU4Y2IyZGM2NTcxZTg4YWNiN2E3NmFlYWIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L830-L847",
+          "version": "repo-lines-v1:sha256:3502ccf7a0c19f2f60e725de7ea7e13396618d2b3da89b294159ba29404d3682:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhYmRlZGY4OWY3NjViY2JiNmY1NjMzM2MwZDIxMjJlNzgxM2M3YmE2Y2ZkNGMwNDc2OGExYmIwMjllMjc2OWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fb46d7143fc14f0ba326adcb13479faa",
+      "statement": "The install-env contract keys are: HARNESS, HARNESSED_MODE, HARNESSED_RECIPE_DIR (mode-resolved: /opt/harnessed/recipes/<recipe> container-side, the catalog dir host-side, both single-sourced through emit.CTR_RECIPE_DIR), HARNESSED_CONFIG_DIR (the agent config dir to install into — the config volume's ~/.claude container-side, the materialized host home host-side), HARNESSED_INSTALL_CACHE, HARNESSED_BIN_DIR, HARNESSED_HOME_SHIM, and per-ref HARNESSED_REF_<KEY>/HARNESSED_REPO_<KEY> derived from install.refs by upper-casing only (repo is owner/repo, not a URL, so the script composes the fetch URL); the per-ref keys vary by recipe but never by mode.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py#L986-L1059",
+          "version": "repo-lines-v1:sha256:d8fc9c7aaee69a27fd1b65644c65d6d9ba3a5793a9f23b674b5a8ab225d05dd1:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzZmY2ZjA0YTFjZThmNTQxNGE0NWJmMWQ0MjVmNjQ5MGEyZmM1MTUwZDcyOGRmN2U5ZmU4NTEzNTY2NGE0MjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMWU5Y2EyZDEwMDBiYjg5NTBmZTU2MzM0MDhkZTAzOTYwMjY5YTg1OGE1MTVlODZiZmUxN2ExOTYxNzliZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxYzQ3ZWI1ZDRkNGIxM2I0YmU1ZGMxNWI2ZWZjNTA3NGQzYjc1MjhlNjg0YzkxY2VkNDU3MWQyYjQ3ZDYxOGUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L298-L304",
+          "version": "repo-lines-v1:sha256:b9be8ccd100f7888814131cf4f07a2030199d840c53b08ff9dd6c95331af3113:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWExYzg0MDg2NGQzMWZiYTk5YTkzMTlmNjRmYzE1ZDMxYmI5ZDZmNGI3NWFjMjY5ZDRhMTkzMWRhYWFkMTU3NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDkxNWU5MjYwMDgwOWY0NjJiNWFmNmI2MzdhMjk1YTU2NDVjZDk5YTY4NDQzM2JkYmNiYmM5YTczMjYyN2RjYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWVjMjNlMmMxMTdhNTljYzY3MTA3MGJkNzBjYTQ3NjU5YmQ3MThhMDU1MmQ0MmU1ZDU4OWY5ZDA1MGIyYTlkYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTQ0ZjNiYTAxZDA4MDY5YmQ5ZjYyNDg1ODhlNTdkYjVjZTg1NDc4ZTA0MmMzYzkzYTQzZTJjZTY0OGE4NGEzOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7d9f3dd06620445197934bc359e32ab8",
+      "statement": "HARNESSED_INSTALL_CACHE is $XDG_CACHE_HOME/harnessed/install/<recipe>/<install.cache> keyed on the recipe's pinned ref (floating keys like latest/main are rejected at schema load; with install.refs the key is derived as the first 16 hex of a sha256 over the canonical key=repo@ref list, and a hand-written cache: alongside refs: is rejected), or the empty string when no cache: is declared. Cache miss is defined as the directory not existing — harnessed creates only the parent and the script populates the leaf and copies out of it — so bumping the pin yields a new directory and an upgrade can never read stale content.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L411-L416",
+          "version": "repo-lines-v1:sha256:15c451aa761a12c47e70e55d3f3441814afcbd5e8b7952329dad1fa3037ca924:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmU3YjA3YzAwZTVhZGQ0OGY5YjY2ODI3NDAwZTM5NmQ5NWU3ODdkYjZiMGIwZTA3NGI4Y2RkYzQzMDNiZjA4NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTdiNzg2NDY1NzdjY2NlMWY5MzgyM2I1MmFiN2E3NTU0YTU1MTQ2NDIxZWI1OTk4NzgzYTQxMTQ2ZmZlMzliOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzIwNjZhYjc5NWI4MzdkMmI0YzIxMjlkMjg1OTk4NDBhMzA0NTliY2VhNTY4ZTA0NGVhNmYxNWRjNGY5YTIyMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzkwYzQ0MjQ0YzU4ZGU1N2I0OGYxNmRmMDIyNTQ5ZDcwMDQzNjM1Y2M0ZWZmZjdmMThiYzdiMGQzODFhYjU1MSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L120-L131",
+          "version": "repo-lines-v1:sha256:b63497578692f0d3522f6164307d465a6f967f12cc5efc492bb1fa3d7b40aab7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNTA4N2RjYTdjNWU2NThiYTEzZTdjNDZhM2JlMjkzZTMyYjA3NTUwZWMwZmM5ZTUxYTMxOWMyYTgyOTdlN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5Zjg5NGRhYWRkZGEzNGJmMzc4NjgzYzUzOTYzNWI4ZTViZTdjNjM3ODk4OTMwZGIzYzk2NWVmZjhlY2YwOTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3OGFiMDE2OWY3NDlhZGFhNThmMGNiOGQ1ZjIyMmFkZWRiMmE4YzIyYjRiM2ZjYTZhMTkzZjdlN2EwNGZmOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhOGY3ODNjYjk1NDY2MTQxODc0MDMzYTNhOGY5MmY0NzVlOWY4ODJiMzJlYTZmOGI5MjMxMDM3YTdmNzliOGEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L765-L784",
+          "version": "repo-lines-v1:sha256:b68826c2fcff3c339dd6c26a7e36fc967ee2fa25a8caa19cb75b89a452f725d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5NDQ2YjQzYTYxM2YyOTZjY2I4MmRmMmE5NDgyNGMxZjM4ZjM5YjQ2ZWUyN2Y5ZWQ1OWRkNTM4NWIwOGJhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1OTU5ZDNiZTEzOTEzN2I4ZTYyMjMyZDg1ZWMxMWNlMmJmMmU3ZGU3YmIzYTNkZGM2MGNkOTZjMGY5MTJjYzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlMzU3ZTY2NTU4NjJiNDNmYzMwOTQzODg1MTg4Y2RkZTJjYjljOGFiZmFlOWU2MzkwYzdjMmU1YmY5ZTZhZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4OGU4Njc0OTIwMWE3OTEzZDA1MjRmNTAzMzU5MWRjYjY0YmQ0MDQ1YzIxNGU5YjI1NmMwYjQ3MWM4NDA0YzAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L854-L937",
+          "version": "repo-lines-v1:sha256:ca30c3d5a06f1d830264dbae9850e10f15d89b4e0e0a9a3b514dee971fa6d899:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4MGNjODBlZTc1NmY2Njc5YzMwOTg0MTgxYjI2NWFiZTA0NDI3NTJjNWE0ODA1ZjhkYjkwYjFlOGI2MDRhYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0NjM0Zjc0OGI4OWIzNTQ2OTg5ODAwODAxNGJiZmFkNGE4N2RjNmVmMTcyN2Y4YzM0NTBmOGQzMjc1ZjI2NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiYzc1NTBkMTg2MDc5MmJkMjFhM2QxMGM1OWU2YTgxNjlkYzZiZDhhYjFlM2FmZjNlZTVkOTVhNDQ1MDA5YmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3ODA3ODY0NjU5NTA4ODQ5NzI4M2JjMmY1OTVlZWZhN2QyOWJmZGFiOGZmN2E5MmZhODM1OWJiZmIyZWRhM2IifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cf13a6e1b395498ab2391ba0ac50ce43",
+      "statement": "The install cache is the same host directory in both modes: host installs use it directly, and container-side its parent is bind-mounted rw into the install container at /tmp/harnessed-install-cache/<recipe> (the leaf is never mounted, because podman statfs's a bind source before the script runs and a missing leaf would turn every first build into a statfs failure, and the parent keeps populate-.partial-then-rename atomic), so the cache is shared across stacks — the build path used to rm -rf the clone in the same layer and every stack re-fetched what another had already fetched.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L431-L431",
+          "version": "repo-lines-v1:sha256:00d004ad8a92d163863ea4587b696bdf2d4ff92a883075177b2219e1a0291e89:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBkMDA0YWQ4YTkyZDE2Mzg2M2VhNDU4N2I2OTZiZGYyZDRmZjkyYTg4MzA3NTE3N2IyMjE5ZTFhMDI5MWU4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDBkMDA0YWQ4YTkyZDE2Mzg2M2VhNDU4N2I2OTZiZGYyZDRmZjkyYTg4MzA3NTE3N2IyMjE5ZTFhMDI5MWU4OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNkZmJlNDE4ODFlMjdlNTlkNGE5MGU1YzliYmFkZWIzODgxZjVkZGQ1NTQ1ODE3NmJkNWJiNmYyMGYzMDE1MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzY1OTZjYTNjMjNiNDMzNGEwNTBjMTM3YjgwNWIyNWViMzUyNGUwZTI1ZGE0ODdmNzE2N2FjNjU3ZDgyMDVmMSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L991-L994",
+          "version": "repo-lines-v1:sha256:fe98cac90c33df1f796f2ef3bb2edf00e21b3a02f98fa59e1fce62dcfd586c28:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg1ZTY3YmM2ZTI5YzRkOTdiODk0MDQxNTIyYmQzMjA4MWFiMDM0MzI5Mzg2MDI4ZTM1ZGZjN2E0OTEzY2Y2ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWUyNDcxYzA2YTMyYmM3YzM0NDA2ZTBmMzZhYTgwZGM2NzE4NzlhYWI5NmYzNTZhNTFhYjQ4NTJmZTdkMzJjYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjU2YWNmN2Y3ZGZlZWViMmY4YTA1ZTNkNjQxNDQ5ZjMxZjUwZmQ5YmIxODU5YmNlYmViNjc5NTg4MDhjODMwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWI2ZDBhOGQ1ZTlkMTIwNzc3MTIxMTkyNDYzZGRmNzMxNGNiYTUxYzY0NzIxNmI4Y2E0MGYzOGVhYmJjNDIxMCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L308-L347",
+          "version": "repo-lines-v1:sha256:505ae523de3a84a16822c0d152fc8ff3f5ad47ad41e8a62e091857c3b29573a2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyNjEyZjBjYzc4YWI2ZDc0NzYxN2ZmMTBlOTJlYmY0OTVmZGMzZjUxMWI3NmYzZTk3OTExNWIwNzk0NmVlMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNGUyZGM3ZTE5MzMzZmViMzcwMGM0MTM4MDgyNmY2ZTFjZjdhMzkzMzg1MDEzNDMyZDhhNTYzYTVjZTBjYzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzMjlmMGRiMmRlODViMTVjMDBjYzliOTRjZjVhMWJiMTgwYjljNzU2NzM2YTM4NWZjMWEzODk1YzdhMTI0ZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3ODQ0MjZiZTJmNWU3ZjdlYmM3M2RjMzgxMTc3OWIzM2Q3MzNlOGU5ZDgzMDQ5MzUwMDkxM2FkNWJhNzZlNTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2cf6038197494eee8bbcc00e8085ce6e",
+      "statement": "HARNESSED_HOME_SHIM is a dir whose .claude is $HARNESSED_CONFIG_DIR, for upstream installers that only know how to install 'globally' into $HOME/.claude: container-side it is the image home (a no-op, since $HOME/.claude already is the config dir), host-side it is paths.host_home_shim — a stable per-project sibling (<home>.home) of the config dir, created once and re-linked each launch so the symlink tracks the rebuilt home's inode. Stability is the point: recipes previously improvised with mktemp -d plus a trap, and gsd-core's installer baked 12 absolute hook paths that died with the temp dir; scripts must use this variable, never roll their own shim.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/default/skills/harnessed-catalog/recipe-fields.md#L160-L175",
+          "version": "repo-lines-v1:sha256:b11ad2120875cf706c07741fbcdbd5a5c86f5f3efb2fe85559e2f5013863d959:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxMjY5MzQ1NWE1MWJlODAyMmNjNzY4ODhjYzhiOTQyZDdjMzY2Njk3MGUwYmU4NTg4ZWQ4YzBjNGUyZjlmMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3MDhlZWU0NGExZmM0NmJlNzZlOWI1NDI3ZGRkMTQwNGRiNzIxZGMxMGU0MDdmZDE2ZDM0MjgyNTE5OWQwZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3NDVlMjk3YWMzYjJiMWNiOWE1YjBkOTZkMTE2MDgxZGNkZDNmMjZjNjQzNGIzYTFjM2U2MzNhNGMxM2Q4NTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwNDEwNjdmZWFmZGZkZTdiYzhhODEzNzg4YWZiNWEzZGIzNmRkZGI1YzY5NzIwN2JiN2I0ZTU2YTA4MjU0MjQifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/gsd-core/install.sh#L37-L58",
+          "version": "repo-lines-v1:sha256:1d53e2900c3d9ecbd7ffe705692bda2016d346ab24e8a74b2623ea41a72399e4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2NTU3OGU4NjYzY2ExZjZjZGZlM2NhMjkwZDUyZjRkNTA5YTMyNTlhM2FjMThmYWY3ZDI0Y2NiMDUzNDdhNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4ODllNGI4NjQ4NGNmZmJhZjI2NWQyY2NlNjNmNzZhNjRiOTBiODMxZWQyM2QzODI2OGQ3ZDZjZDg5MmRkNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L1052-L1058",
+          "version": "repo-lines-v1:sha256:b86152d1a8782d6068d79619707a5ab7e71bfa0711d2618577d567d941b1cb36:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjEyZTg2M2MwZGM1MTZmYWQ5NDk1OGY4ZjMyODdkMGFjYjhlYzBjN2FkMWRmNmVhOTAyMzM1OGM0ZGRlYzc0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2RkZGE5NTBmMmExZGQzNjNkNDM0OTUzZWU0ODI3MzIzYjhhZWY2MjM2YTQ1MDZjNWM5ZjIzYzk0YTJlY2RlNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWZmOTVlYTdkNGJlZGMxZTQ5YzVhMzJhOWQ0NjBmNmM4ZTk4ZjA5YjM5NTZhMThhZTUyN2YxZmExNjczMDQxMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGZiZDAwOTMxNGJjMjcwODQxNjczNGEwMmFlNWZmMzlhMWU0OGEwNTBiZTkxZjQzYjJmYWE5MjAwMmM2MmJmYyJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L389-L394",
+          "version": "repo-lines-v1:sha256:61c347cc2a47099de3618d944a40b800e73f37a3c5b48ad8b7852e0aba8f91dc:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjk3MjUxMzUwNDFlYWUwZDM3YTk4NjZiYWYxZTU4MWVjMWVjY2QyYTgxNjY5MTE1ZTBiOGNjNmFmNWYwOTExYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ0M2QzMjY0NjM2Y2JiNTFmOWQ5N2ZkN2ZhODAxY2RhMDhkYzM0N2Y5ODBjMjMwZjExMDczODhkMzg0NzE5MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTFkZTU1ZmUyZTE1MDFlM2E3MjgzMGY0MzVkNjY3ZWQzMmE5NjEyMjQ1ZjUwY2ZhMWU2NzVjNzAyMjVlOWI3YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDNiN2UzOTk3Zjk1NTBmZTUwZjA1ZDc5YjVlYzdmNzEyZmFiODUwNDRhNTZiODk2ZmMxYTc1NjhlNmJmYmFjYiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L378-L394",
+          "version": "repo-lines-v1:sha256:ee6217eb875d2745365c094fa1bfca1d7ab50467f6003fccd93720d3c3faa445:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZjhlOGEyYjg5Yzc0NmJhMjVmZjBiZTY4MTk5OTE4NTRiMmYxZWJkNzU3YTc1ZTM4ZjU3MDI5OGVmMDZiMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4M2ExOTU2ZTNkMDFjZDJjMTI5NWZkNTYwNTYyODRiNTRkNGExNDFiMDI0YTAyMTVlMDc3OGY2ZTEzOThiNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViMTY4Y2I0YTNhMTg5Y2FmYzYwNTg1YTgyYzlhMWFmNzc2ZDQ4ZTM4ZmNlNGMwYTVjMjU4OTMwOTkwZTQzNmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhNDE5MDMzNTk2OGUxYjY3Zjc1MzM4MmI2MDE3M2E0ZWJlYzJmODJkNDJhM2NiYWY4NjAwNjViMjhkOTQ2ZjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3e4cb30bc08a41d7a16f024edbfc7c0c",
+      "statement": "HARNESSED_BIN_DIR is the bridge between the two contracts: the folder-env contract hands the attach/agent surface the same value the install contract hands the install script (emit.install_env's bin_dir), so a wrapper installed at build time can be put on PATH at attach time (e.g. init: run: export PATH=\"${HARNESSED_BIN_DIR:?}/…:$PATH\"); container-side it is /home/harnessed/.local/bin, host-side the stack's own bin dir.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L378-L380",
+          "version": "repo-lines-v1:sha256:2c0aee301f8c991623422012019601295a3115e5b59a65fab13766a51c23dde2:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzc0MzIwZDNkZGZhMWIzYWQ1ZDViOWM3OTI1ZDViMGRiYTFiOTdmNTQ2NDAwMDIzZmEyOGVmNDUwNWZlYmJiNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjNkNjFmMWFhNjY3MWM4ZTI5YTJmYjIwNWNhMzcxNDY2ODlhY2M5MDI0NDk0MmRiODkzNmFmNTZlMGFjYTMwZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMThjYWIwNDc1MDhmYTA0NjY1NDRhNTEzZGJlZTAzY2FmYzM5YzVmNjI5ZmRlYmFkNTZkMjE4ODE3YjdiNTMwZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTA3YTU0ZGQ5MWI1M2Y3NGRmZDZhY2Q5MmQxN2JhZjlhYzE1NGU0N2FhNzkyMjgyYWIzNDU1ZWE0NGM5ODQzMCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L1046-L1051",
+          "version": "repo-lines-v1:sha256:890d8b9d584103f7bf94dadbd54b69b319ed17a77ac8436cd43e797b7ce72163:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2ZiY2JhMGQ2Yzc2ZTNhMTFmNzAyNGZhNjcyM2Q1NDY0ZTk3MDM3OTRmOWI4ZDc0ZDVlZDE5ZTRiNGNkNmM0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmI4Yzg4ODZlYzU4YWQwNDQxYmUxYWM2YmFkMGZlODg4OTljNjQxMTI1NzA4ZTFkZWVhM2MwNTQzY2Y3YjhhYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWUzY2JhMjBmODljZTJhMzEyNzUwZWFmNDg5ZDg3NTI0NjVhYjg1MGE2NGU4MWM4NTc0MWQ2MzRkZTkyMGU1YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTJkODhhMWFkZjU5ZDZjYmMxMDczMGFiMmQxZmIwOGE4ODUxZDQ4YmE1YTQ5MjliZTA5OGRlNjczMzU0ODhhZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L108-L116",
+          "version": "repo-lines-v1:sha256:6f9dd9322466c58e02fd5408d0c734741eeb5282f46ae0e558694242b25e9b5c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzAxYjlhY2M2MTMwOTQ2NzRlNThmZjExNzE3Mzk1ZGU4ODM3YWQ2MWJlMzA0Mjc1MzI3ZDIxZGNjMmEwYzIzZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQzM2QwZWE5ZWNmMmYzOWM5YTUwNDA3Mzk1ZWU0MTE3MmZlNjgyYzljODg1YTM1MDhmNzViZGVlMTUxZWZmZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjY0Y2Q5M2M0NjgxZWFkYjJhYzU5MDg1ODNiNTgxYjFlZTFjYzFlM2E2MTUyNjY0NTUxNTBkZjY2OTI1OTgyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWIwNThjNDFkNTY4ZTZiZDdlMDI0YTMyMDVjYWEyNjNkMjJjNjVhNTYxMzc4NjdkNDQyN2Q0YmNhZTFmYWI3ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_72bd067352ef4ffab3249ec954132bed",
+      "statement": "_host_run_installs and _host_run_setups additionally export host-only redirections — UV_TOOL_DIR and UV_TOOL_BIN_DIR at the stack's uv tool dirs, npm_config_prefix at the stack tools dir, and a PATH led by HARNESSED_BIN_DIR so a just-installed tool resolves on the next line of the same script — so tools land in the stack's tree rather than the user's global one. These are host-only by design (container-side the image already provides containment), are NOT part of either contract, and scripts must not depend on their values: for a path a script needs to name, HARNESSED_BIN_DIR is the contractual handle.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L441-L453",
+          "version": "repo-lines-v1:sha256:8fb7cd3abcde65a3fecddc8612b97600aaf6f637afbeaa6af7109a0d70e95d95:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0M2I2MDZlYTdmNTg2MTQ2MTVmN2VjMWVhZWRlZTBmMDMyMDUxNDI5NGYwN2E1NzZkYTBmODBiMGE4N2M3NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1Y2RjZWI4NjRkYzY4N2NmN2U5ZjVkZWE5MWRmMzE3YTM2YzgzNTA3YWYyNGI3NzQyYjY4MmZhZWNkY2U1ODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQxOWE5NjQ1N2U0MWRmNTE2MTRjZjdmYjg2NmU4MTAxYjY5MTQ3MDFmZWZmNWNiYTM2NDI0MjQwNzU4NjIyODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1MzY5ZGFmMjIyYzAxNTRiNmMyMjI4NmVmOGM4YzAxYjBiM2ZhYTE4MTg4NDJlZGM4Mjg2NGQ5NGIyNGU3Y2YifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L426-L433",
+          "version": "repo-lines-v1:sha256:b77ae765a11219b68a7b0438a18860a5d23d7035a151e4426702d21bf288e661:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2U5ZDUzNzU0MzAzMzRkMzdhOTU2M2E2ZjAxMDA5ODFkOWMyMWQzNTM2N2JiZTdkYmU2ZTExMDkwNmQ5MWJlMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE3OGQxMzMzZTUyMjVlM2FmNThhODNjOWMxM2Y1NDY1YmIwZmEzY2RmNzUyMGVmYjVjMzA3YzA4MGViY2U1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmEyMmQzYzdiNTMzNjMyODQyMjExZmVlODFmY2I4NDk0ZDg4YjA1OTY4OTYxZTBmZDc3Yjk5ZTE3MmUyNzNjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjI2NjI5OWRiMDI2M2IyZTg4NmI4YWQ2NjRjZmM2ZDc0ODVmZDQ2OGYxMGU3OGQ2ODlmOWM4NTJjNzdmNmY4NiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L594-L600",
+          "version": "repo-lines-v1:sha256:ab435f2853c38a43700dee6460b783c9dbb0045a73b13dbcfcf8b6806dbe3381:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzQ0M2VlYzVjY2U4NjRmMzUzMjRmNzIzNDNmZmY5NzA4YTJhMTA1ODNmYWRkYzJiNDU2NzI5NmExMzZlZGYyNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGZkMjFmNTRmZGQzZjNkYTczZGUzMTQ1N2Q4MTdlYWE5ZGE5OThmNDUyMDkyZjZjYWJmZTg5OGM0MjgzZGJkZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTBkYTgxNjkyZjFmMTk1MTNlMGU2YTdmYzllN2Q5NWUwYTlhYTNjZDQwZGVhNzNiMzFkMDNmMzVkOTM0Mjk1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWE5NjliZGRiNWRlNmFlY2QwYTk2OWE4MjA4ZGViNjY0NGZkOTI1YWFkMjE5ZDI4ZjExNWU0MWY3OWZiN2EwZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_050d9a514c4e4714be14129b812c52e0",
+      "statement": "hostrun._harness_config_env pins the harness's own config-dir variables (CLAUDE_CONFIG_DIR at the stack home for claude; PI_CODING_AGENT_DIR at the stack home plus CLAUDE_CONFIG_DIR at the nested bridge dir for omp) applied LAST wherever catalog-authored content runs host-side, so an inherited value from a parent stack's session cannot redirect an installer's writes into an unrelated stack's home — demonstrated when gsd-core's install.sh with an inherited CLAUDE_CONFIG_DIR wrote 69 skills into the wrong stack; values are pinned rather than unset because unsetting would land such installers in the user's real ~/.claude.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L320-L364",
+          "version": "repo-lines-v1:sha256:81f44e79cb1fde17a4eccaff0323601b1a0306b657538f87b5d3c435564050b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNDMxMGExMGFjOWJlM2Q5ZTM5OGI0N2Y4NTY2NjkxYjI0MjM3MGY3NTU5ZmQ5YzliYTZlZThkMzE2YTNjNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ODczMGFmMzQ5ZTY2NmVhNWFiYzlhZThkOGIzZGM4ZDFjZmZiYzM1OWM0NjZkNzdhYTIwM2ExMGFiOGI2Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzZTU2YjRhMjJhZDRlN2VkZjk0YjFmNWMwZjYxMTAxOGU0YTZkYzA4Zjg0Mzg2ZjY4YmFmNzdkYzZmMzVhYTYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L432-L433",
+          "version": "repo-lines-v1:sha256:b5d6204cc72b6fdd459f6217a4742ce4e6164c4a92d7c46cd82aebafaeb87d98:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzhlYTUzN2FmMjM0NGNiNTBlN2VjYTdkYjRmNTEyZTk1NzkyYTM5N2EzNWQ4YzIzNWYyMTgzZjIwNGUyNWJjMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGE3OGQxMzMzZTUyMjVlM2FmNThhODNjOWMxM2Y1NDY1YmIwZmEzY2RmNzUyMGVmYjVjMzA3YzA4MGViY2U1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjY5MTg4ODRhYTg0MGVmNDc5MDI2ZWYwOGViOGQ3YWFiMjkwOWM3MjA5MWQ4YTFmZjc4NmIyNjlhYzI3MWY4ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjI2NjI5OWRiMDI2M2IyZTg4NmI4YWQ2NjRjZmM2ZDc0ODVmZDQ2OGYxMGU3OGQ2ODlmOWM4NTJjNzdmNmY4NiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L574-L600",
+          "version": "repo-lines-v1:sha256:fe883a340a1aaa154e69640ecc232a348962e39623254e7fe3480c3585f8a0a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyY2YxOWE4ZjEyZDA4YTQ1YTIwYTYyM2Q4NDZmM2VkY2FlY2ZlZGM3OTAzY2RiOWEyYmI3OWViYzA3N2MwMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmZDIxZjU0ZmRkM2YzZGE3M2RlMzE0NTdkODE3ZWFhOWRhOTk4ZjQ1MjA5MmY2Y2FiZmU4OThjNDI4M2RiZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmOTBkOGYyYmQ4NGM0YmZmMWU5MWVhYTgwYzE4NDU5OTJiMWY4YzEwZGY3ODExNzQ0ZWNlNzZiNWFkNzEyNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTY5YmRkYjVkZTZhZWNkMGE5NjlhODIwOGRlYjY2NDRmZDkyNWFhZDIxOWQyOGYxMTVlNDFmNzlmYjdhMGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_24650907612c4b36a37ed1672cefc099",
+      "statement": "Env precedence is identical in both modes: inherited environment, then recipe env:, then the harnessed-owned contract, which always wins. Container install mode gets this from a dict merge {**resolve_recipe_env(...), **install_env(...)} passed as inline -e VAR=… assignments (recipe first, contract second), which also beat the image's preceding ENV lines; container launch mode from podman run -e applying -e left-to-right with recipe env first among -e (reversing the pair would silently invert precedence between the modes); host mode from env.update(install_env(...)) running after env.update(recipe_env). The host-only extras and _harness_config_env layer after the contract.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L471-L474",
+          "version": "repo-lines-v1:sha256:62e13ff471f287fcb1f267951ce634018aa41e92c3ef1155ddba580f39db3015:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmI5Nzk0ZWM5NzNkZjU3YzYwZjA1MTc5NWVjYTE5YzE1OGFjOTg3NDkxNTdjMzg1ZjQ1M2FjYTQ1NGE5ZWYyYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjVjOGI4MDA0YmFkYmVkMTNlNzdhMzM2ZTZmNWU3M2VlOWRjZWEzZWI0ZTUyNDI1NmY4MTAxYWY3OWQ3NDIyYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTc1ODVjN2RkMjNlNzU4NTU4YTY3N2MxMjgyOGY0NWU0MTM4MDAzMWJkMGM5OWVjYTgxYWFkOTAyNmI4M2JkZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzMzYmEyZTE3NzY1MTU0MzllOWQzZGY3ODU1Njg0ZTE5MWUxMjU0NDFhMjAxYTMzYjUyYjVjNjJhYmM1ZmI4MSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L1010-L1015",
+          "version": "repo-lines-v1:sha256:7fd05362ee0b765a742daa4b9d0f7867b76291c34a7c8ab4c9c5f3782633627e:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDQ4NDAyYTdlMTQ0NTMzYjE3Y2ViOThlMWIyOTIxMDNlNWVjNDc1ZjE2Y2NiYWZjZTZmZTRhNTA0YzYzNWJmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZhNzE1MjU3MmVlODRmMTA5MDZjNzRiOWYyYTkyNDM0ZGRhYjBlM2M0MjgxM2IwNGU1OTdlZmNlYzk1MWIyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTcwMWI0Mzg2MjJkMzBkYjlhNTcwZmNkZTc0OGYyNmVmMDc0YjU1ZGUxNTdlYWM1MmQ4MDY2YzY0YWFmYmUzOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjNiY2FhYjEzNTVhMmYwNTNjYzE1MjllNWJiN2I5N2Q1ZWU1M2E2YWZlMWM4ZTY5MTdjOTA5NmE4ZGFmZDM3NiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L417-L433",
+          "version": "repo-lines-v1:sha256:fef03330392c43ce7ccd242dbcd1138ef9b16956c54b4b227c6fa314829c32ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNjRlNGE0YTFiOTMzNDQ4OGU3ZWQ1Mjk4YzQ5OTlhZjYxNWRhNzJlMmY2MmY3ODNjOWQ4NzU3YjNiNjVmZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzhkMTMzM2U1MjI1ZTNhZjU4YTgzYzljMTNmNTQ2NWJiMGZhM2NkZjc1MjBlZmI1YzMwN2MwODBlYmNlNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyODA0M2ZiY2IwOWFkOTNiNmVkMjkyMGE4NTU1MjNlMzhhNDU0ZmNmOTI2MGE1MTExN2NiNzZlN2FkZGVjOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyNjYyOTlkYjAyNjNiMmU4ODZiOGFkNjY0Y2ZjNmQ3NDg1ZmQ0NjhmMTBlNzhkNjg5ZjljODUyYzc3ZjZmODYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3373-L3390",
+          "version": "repo-lines-v1:sha256:8d493c7da1bcf6fe510cc3901bf10d5230b2f03a55cb0e11fab1a91154a62266:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5NzgwYWY5Y2NkNWQzZmE3M2RhZGQwNDY5ZmExNGUwZGY2M2Y5YTIzMWY3MWE5ZjUyMDBkMDMxODVmM2QwNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxMGQ2NWI5ZWRjOGZjMWY4ZmM3NjQ2OTRlMDY5NjAyODQwY2Y4Y2FiMjIxODRhMmM4ZTdjZDA5ZGM5MjUyMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNlNDMxM2YwOTQxMGNkOGFjMzBiYjhiYWU3ZjlmNDgyNjcxMTE5ZjE5MzFmYjA2ODM1M2RkODVmNjc0MTA5OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE0MTk2MWY2NWJjYzAwOTRjMDBiMDIwMGMwNGYzMDBlOWZmZmUxMjZmMmZmNjMwNmQwM2NiMzZkOGQwZTg2OGUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L325-L327",
+          "version": "repo-lines-v1:sha256:0a6988f9a7210da899cc7b40cae6dcc16abedbec00839a8f785070158af002b8:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWM3ODRkODU3OWUzMjczYjZjMGUyOTE3NzQxNDM5OTRiN2MzZDQ3ZTRlZTljYmRiMDM1OGZkMGNhMWI1MzlmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDhjYTA5ZDRjZDI4MTQyZGU0ZjA1MGY3OTBlNzFmMGIzOWE1MDY4ODNlY2NlYzZiY2RjYjI4ZWQzMjlmNjZmMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzA4YzQxNWMzMmMyMGFhMjhiOWE4YjAyMWFkMDcwZGJmNWMwMWQ1ZjcyNDQ4ZDU4NmIyNTkxMjljM2M2ZWZlOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzRjNjQ5NzliYzE4NDNmMTgxMmUwN2ZmYmQ5NDE0ZGE0NTE0YTQyNzJmODI3OGIwMTQzNWYwZmZmMmVjZDFkNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8e156968702145efb03ff88f60d5dc82",
+      "statement": "Recipe-authored tests/*.sh run in the same env as their install: the host seam passes the install env straight through (emit.install_env is the single authority and a second copy could drift silently), and the container seam re-runs the install argv with only the script path swapped, so a test asserts what its own install produced and host/container drift is not expressible in this mechanism.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capability.py#L452-L478",
+          "version": "repo-lines-v1:sha256:4fa2f15de2769142df70e2afc7078dc18e594a7d7cc239214b11fb1dc2292b8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2ZDkzZGMwOTU5NjZkOTliZmY5NDc5ODk5Njk3ZDFlZjY4ZjU5ODUyYmVkMzkzZjQzNGM0YWYzYWIwOWE1ZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzM2U2ZTY0OTY1OGE3ODcyMzA4YjhjMjAxYTY2M2ZmNWFlNzMyMDcyNDk3OTk1N2I3ZWNkMGNlYjQ5ZWE0MzgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L440-L457",
+          "version": "repo-lines-v1:sha256:2be3f88cced036ac7606b063c7b31d5a17a7b93ec81159fe8a7cac28a30fa5b3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhY2U1ODYzZmNmM2NjMjE4YzBiNWQ1ZmRkMDhiN2YwYjkxZWY2ZTRiOWU0NWMwYzNiYzdkMGIzZmRkMTU5ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkMGJhYTU2ZTQ4OGUzM2EzZGRlNmNjNmMwYzEzMjc1MDAwMGQ4MGI0ZDk5MzBkNzgwNzlkNTEyZDRhZjk4N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxM2ZmN2RkOWM1YzVlZTZmMjUxOTc1YzczNjA0ODliZGFhNGE2MGYxYzMwZWJiNTYxZmMyOTQyNTkxMDllMmYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L350-L387",
+          "version": "repo-lines-v1:sha256:928316e2c82d34935b059909f6f7f6bef6a37966aa09f79cc5e908cdadc9c474:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhZjAwZTVjODE3NzU4ZDRkY2M1NjRmNzRlYmI1NzI2MzdjZWJmYTNmNjk5NWMwMWY5N2Q1ZDdmYWVmMWIyMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3MGJiZThiYjZiMTIyMTU2NzNiZGE0MDI1NTZmYmVmYmEyMjI0ODc0Yzc4OWRkMTRhODVlMDI1MjlkOGIxMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4YTcyNjVkYzcxYTVhMDJhYmRmOWQ1N2I0MWVlODI1ODQzMTk4ZGE3NWNhNGE5ZTQ3MDFlMGY0Y2M3YjhlN2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ccd5aa8560e74ff4b320ceb4d879e9f6",
+      "statement": "Catalog lints guard the contracts' boundaries: validate_no_claude_writes rejects a recipe Dockerfile referencing ~/.claude (that content is invisible to a host launch and hidden by the profile bind-mount in a container — it belongs in install.script writing $HARNESSED_CONFIG_DIR), and validate_container_only_declared rejects a recipe with an install: whose Dockerfile still has a RUN but declares no install.system: reason, because that shape silently delivers less on a host launch than the recipe promises.",
+      "evidence": [
+        {
+          "resource": "repo://ARCHITECTURE.md#L453-L467",
+          "version": "repo-lines-v1:sha256:0e2750e2d222bde18bb9906a0e5f8a2a56c6891c3637372e2a966228659f8459:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNTMxNGZiNjExNzliODRhODVlNDEwMTlmYjI3N2IzZjEzM2EwNTBhNjVmMzYxNDdmMTVmNTA2NDNhZjY3YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0MmRmMDQ4MjRmYTk4ZmE1NTJiMmQ0MjE3OTY0NzEwMTQ4MjRjZWU1ODkyZTE0MzEyNWU5Mjc4ZmFiYTkzMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2NjNjNzkyYTY3MjM0ZDQ5ZjIyYWUwZjUwZTg2YWFiODY0YWRlMzZhNjJiN2FhZjQzMzFhNTM1MmNiYzNhYjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwN2U2MWZkMzFhNDg2ZDRhNzZlNDY0NDg5YzIzOWFiMzljZWVjZTVkZTU3NWRjZWI2YzkyNjFjNDkxNWEzNWMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L3240-L3290",
+          "version": "repo-lines-v1:sha256:b6eb1d19c610ec8364a24b792a4005948384eceb134f0334f2e7d6a909c476ac:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkNzZiMzlmYjI3NDVkZGUyYzQ0MTY2M2VjZmYzMTE1ZjY1MGM5YmE2NzdlODA3MWM3MGQ2NDJlZWExM2E5MmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMjQzZGJlNTY3NDcyMTJiOWM3MDgwZTgzY2Q0MmNmMTdkMjIxMzFmZWU2N2JkZWEyY2U5MWNmMmU5Nzk0NTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_49791c6111d64e298aa8daa65cf1f806",
+      "statement": "Shipped install scripts rely only on the contract and defend themselves with it: they open with : \"${HARNESSED_CONFIG_DIR:?…}\" guards, read HARNESSED_REF_*/HARNESSED_REPO_* from install.refs instead of carrying pins in the script text, run upstream global installers under HOME=\"$HARNESSED_HOME_SHIM\", and note explicitly that PROJECT_DIR-style variables are absent by design — making the contract the only sanctioned input surface for install.sh.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/caveman/install.sh#L14-L36",
+          "version": "repo-lines-v1:sha256:23324524dfcbb1fcad38f402a4590845ec82096aa9682420b2d0bbfd65afab9a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmZGE2ODU3ZWIyMDE0NjA2MWY2NTg3Mjg5MmQyNTM4Y2MzMGY2ZmY1NDVmYzNkOTU5YTNlNmFhYzlmNGFmZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwM2RiNDY0ZWM3NzUxOWFiYmMzMmIzYTM2ZTFiOWI4MDg3MWMyODhlNTQ1YjQ0OGMxNmY2MGY4NzA1ZDAxNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhOWQ5ZWNmYjhlMTQ4MTgzY2MzZWRmYmQyZWZkMmJkNjBjMzI4Njc4ZDViMDFiYjQ3NGMyNmQxMzIxYjM1M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5MzFkMmIzZjlmZjNhZjVhNThlMDdhNmE4YzhhMGQ4YjliYWRkYjdjMGQ4NjU4ODBkZTJlNDIyMDljNmQ5YWEifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/gsd-core/install.sh#L5-L19",
+          "version": "repo-lines-v1:sha256:68695147cb2b859f8ac8a138f784431cbcd4fc97607311d950aba57e6b994d25:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmOTE3YjhlN2MyOTVhNDg0ZTc1ZmZmMWJjMjVkYzJkNWU3MTViNWRmMzRhNDMyZWE2YTNiZmE0ODE1MDAxZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzM2Y0YzBmYTNkZjc0ZWJlZTQ2ZmIyZDk4ODM2NjM4N2ZlOTU1MzUxMjk1NDE0ZTkzOWRiOTI5YWU5ODg3YmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3ZjBiNTEwMGUyMTg3OGI2MWY2NzY2ZGRkN2QxMjZkMjBjODhmNzRiNDE4YjZkZTRmNjBjZjhhZTcyMTFhNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2Mjg0YTEwMGUzNGE4ODBiOWM0MDQ5MjM5OGRjYjY5M2I1NmFlZTVkZTExNjJkZTUwNWY1NmUyNGZjNGFhZDAifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/superpowers/install.sh#L8-L30",
+          "version": "repo-lines-v1:sha256:e2bb45727709a4150eebdbdeb33ea3fdf81d41d5cf3409e78153a71b77e83bf3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NGM1Y2NhZWQ5YWYwZmJiNDNhZDYxOWY4NTkyOWRlN2M1YjM0YjBmYzhmYThlYjM3ZjNhZWI2ZWUwYTc4NDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYzEwYzVhOGM2MTc2MjI2MTAwNWNiYmI2NmNhZmU5Zjg4NjJlMTI0OTdkNWNmZWI4YWI5YWYzYzYyNGUwOGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3YzM5MGQzYTAwNTRkN2Q1ZGEyMzUzZmMwOWVkYzk5MWVlMTQ3ZTZhZjMyMTUyYjI0NzA0N2MwYTRiNzIxODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5MzFkMmIzZjlmZjNhZjVhNThlMDdhNmE4YzhhMGQ4YjliYWRkYjdjMGQ4NjU4ODBkZTJlNDIyMDljNmQ5YWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d91e43824d68454a92a6d6c87e697ed1",
+      "statement": "For a container launch the whole setup env is resolved host-side (because a setup.config item may prompt, which must happen before the container starts) and passed as real container env at podman run, so the subsequent podman exec of each pending setup.script passes no env at all — the exec inherits what the container already carries, and the exec runs before the egress firewall closes since first-run setup is the step that downloads.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2265-L2281",
+          "version": "repo-lines-v1:sha256:d3042fe7f863b7acdb2c6a3c7462673b090e4c8995bc3e519629419d3097d0ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjOWJkZjQzZGVkOTBlOWNjYjQ5N2U5OWU5OWM2MzllNGVhZjFmMTBhMzFiMTgwNjA3YWNmMDlhMGM3NWI3ZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlODdjNzhlMGU4ZWJiZTZiZTc5MzE2MWQzNzc1NDc2NjA0MzRjMTIyYmNjNWRiNDU5NWNiNzE3MWYwNTZlOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5ZGU0ZjQ1NGY5YTBiODNhNGZkMjg4ZjZhM2FjMzczMzFkMjI3MWI2OWY1NWY5ZWU0M2VkNzY1MjI0ZTgzN2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkYjZmYzE1ZTUzMzAwNDBmZThkMmM2MzRjMDg5NjJkODZkMmI4OGQ0MTBmODk0NTM0ODA2NmUzOTM3NDlmZDIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3339-L3343",
+          "version": "repo-lines-v1:sha256:c564c98ff46207e562241a02cd1ababacbd87fe62aa2d5f041c4c80211f5ceee:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWJlZDkzZmI1NmY2MjhiNmM1ZGIwMjNjMDRlNmVkZGFlZDBhYWE4Y2ZhNzUzYjMyNjQ3MjlkNmI5ZTViMjcxZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDMwMWQ3NzllYTYwMjAxYWIxNjY5MDZjNWM3MjIyNTc1ZmFmMGY2ZDZlOWJmNGY0M2VhZmVjZjRhNTdmODFlMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTEwYmMxOTgwMDk3OTA1NTI4YWM3ZWQ4ZTVhNmEzY2FlNTc1NjRkYTVmMTZkYjcyY2I3NTMzODFiNzVhODE0ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjUwYTcwM2Q4NjM1N2NiNjYwNmY4ZWQxMzA2NzFkODBjNmM4ZjI1NzI2YWU3NDllYjVmN2NkZmZlODAzYjAxZiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L497-L515",
+          "version": "repo-lines-v1:sha256:a6c03259fff70c4f29936de3dc90ad458b7547cd693df02b76d8e4bc4f512d86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMDYwNWIzOTg1YjNlNGY5OWFhMDYwYzllYmRhMGQyMDYxNDg5YTIzNmQwMTJjOGUwN2ZkYzUwMjFlYTEzMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNmZlNGE4Zjk2NjEyZGE3ZTE1N2UwODAwMGZjNjY1MjBjYjlmMWI2NDBkMzNlYTI4ODcyOTc1M2NlYWMwNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlYzIzZTJjMTE3YTU5Y2M2NzEwNzBiZDcwY2E0NzY1OWJkNzE4YTA1NTJkNDJlNWQ1ODlmOWQwNTBiMmE5ZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI4NWFjMzlkMDdmZjhhNjEwNGEwY2YwMTlmOGIzN2JjYTEwNGVlN2QzM2JiY2U4ZDMxMzJkNTdmZmY5NmRmMzcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b0474b3468ba4331a76ce9577939be79",
+      "statement": "A delivery mechanism wired into only one of the two modes produces a mode drift, not an error: the declaration then works on one surface and is a silent no-op on the other, because the container path delivers via podman run -e / attach-shell export while the host path delivers via os.environ updates. Historical instances of exactly this shape include init: wired only into the container attach shell (silent no-op under host-run), the socket vars once container-only (a host launch's :? guard always aborted), and _service_data_dir once returning a container path in host mode.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L505-L527",
+          "version": "repo-lines-v1:sha256:c922f9e3e866b4a81efc257791c2be6e1f4509dbd8fcf6956327905df40bd3d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxMmMwOTg4ZDM1YWIxNTEzM2Q5NjkxOGQxYTZmMGMwMGQzNzA5MDRlNTFhNzE3NGI5NjAyYmVlOTQ1ZWJiZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM0ODFjNzU0OTBmMmQ0OTcyN2UxNmFmOWEwZTljYmRhNWZjMzViYjJlZmYwM2NiMTUzOGMyNWNkMWZkZGY1OTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1NTViZmUwNzNhNzk4ODJhYzIyZDI0MDdiZGE1NWIwYWQ4MGEyZTc1YjNlYTNiY2Y3ZjZhY2M4ZDQyNzA3NTAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3325-L3335",
+          "version": "repo-lines-v1:sha256:9c1fb5ad84af4dfd1027bce70ea14d5cc5c4661983896fb4c7c2e315300858c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmNTI5Y2ZhZTRmNzU0OGNjY2Y5Y2QzODBjYTY1MzE3NjdhNWY4MDZhODBhNzk5ZmNhZmIxNTcwZjdkMmFhN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0YzlhY2JmODczNTZjYjI3NGY4Yzg2YmQzMWZkODk0OTE5MjM0MGIyZGUwYmIwNGZhOGY2NDkxYTYxOGM5YzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4Y2VkMGQwOTFmNDcyMmY2OTEyOThjYjVjOWVjOGU0M2ZmODMwODQ5Y2YwZDIwNTcwZGRiNDgzNjUzMDk1M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxMGJjMTk4MDA5NzkwNTUyOGFjN2VkOGU1YTZhM2NhZTU3NTY0ZGE1ZjE2ZGI3MmNiNzUzMzgxYjc1YTgxNGYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L118-L129",
+          "version": "repo-lines-v1:sha256:4dbe8bc2dd3d9d1d4747fdecb6a99b9a0364f00047f8b78cfe91c59c2ba8923c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmZDQ1NGJlZDkxNGNjODVhM2JjOWI4OWQzZGVhZGZmOTE3YWRiYTI1NGY1M2M0YWExZDRhMjc0MmI1MjEzOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YTc2OTIwNTc5ODRjNmIxYzFiNzQxMDIwNmY1YWZkYTQxNGZiMDQxYTJjYTRmYmYwZjFmZjZiZDU5N2IwY2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhMjUyM2MwZjgwYmQ1ODhjMWE3ZmZmYjRhNjE1MzUyMzgwYTg4NDcxZjMzZGIyMDllNjI2NWUyYWIxOWM4OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNGYwY2ZhNzZhNDkxNzY0NmE3NDc1Y2M2NWVmM2JmYTZiMzFkOTY0ZWYyOGNkNTU4OGQ3OTQ0NmI0N2UzMTQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/svcstate.py#L90-L97",
+          "version": "repo-lines-v1:sha256:73cfc6a2ff0442e4a51bacd5a3f7ceab047e2631935cd90023a985d25c483578:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODdmMDY4MjgwOWZiMjc1Zjg3YjdhODBiMTBkNjA0YTdlOTE3Yjg2NWFhMjI1ZDI0M2FjMTk5NmNjYTAzYTMwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjU2YmQwYTQ5NzRiNTA4MWY4OGM5MDdkMzkwMGIwNTNjN2NjMzE1M2M0NmJmMGQ0ZjFjYzY5Mzg0ZTAwOGZjOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzYyM2Q4ZjQ2NmU2ZTg2NmQ0MWI2MDc4OTMwYjI1YTY1YzczMGI0ZDZjNzVlYjMxNzgyOTRiYzFjMzVmZGQyYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjY4NGIyNjE3MzUwZDk1MjI2ZGVkN2M5ZDY2NTZhNTJjYTcwNzI0MWU2Zjg4Yjg2M2IwMjhkNDI5YmE5NTcxZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3e8214e65ef3488dabb0faeb1401fa50",
+      "statement": "setupenv.py is the module shared by both launch paths (the container path hands its outputs to podman, the host path applies them in-process) precisely so the two modes cannot drift, and _recipe_env is the single declaration behind all three recipe-env consumers — the install step, the setup script, and the agent process itself.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py#L1131-L1141",
+          "version": "repo-lines-v1:sha256:a11b8fed190f99b3ec75e17f4181d68c3dfe16ac75e1e8c1230bd439afb15bbc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyNjEyZjBjYzc4YWI2ZDc0NzYxN2ZmMTBlOTJlYmY0OTVmZGMzZjUxMWI3NmYzZTk3OTExNWIwNzk0NmVlMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjMmQxMmY3YTU5ZmRmY2VhNTRkZTM2ODJmNmMxYmE1NTZhOGQ3MzQ5ZWQ2ODQ0ZTlmZTczYjkyNDNjZmRiODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmNmQ1YjY3OGVjNGY3MjA4ZGMwMjQwYTdiZGQ0MDgwODY3M2UzODhhNTBhOGM5NjNiYmY0ZWM1Y2U5NWRhNGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5ZWUwYmFlNmIzNDA5Zjg2OWZhZTU0OGEzYTBiZDczODNiNjYxMDE0ZDA3ZTE5ODk4ZmNjM2IwZDZkYzQ0YzYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L1-L7",
+          "version": "repo-lines-v1:sha256:c59401958b129bdafa46e17e1e5382710725af66e8868c2c724056c59f5b3cd3:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzAxNzdjMzZlZWVjMTk4YTI1NTA3ODRmNGUxYWZmNzdhZWRkMmQwOTZjYTBiNzdlMzc3NGViNzFkMmU3OGRkZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmRlNjg0MmQ1YzUyNDdmY2IxOGVjMmM0MzllNDQ1MWRjZDZjZTljYzZkNjEyOTQ1YmU4YThkYzZkMTUzNTFlZiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3344-L3350",
+          "version": "repo-lines-v1:sha256:fa7dd7fbaca374024828a774bc2a0603c57abc474c973a9950d0225b439ac373:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWU4MDVkNDAzOTJhNzAyZjkzOGU4MGM5YTNjN2JlOTBiMGRiMjQ2MjYxNGZjNGNkMWE3NjM2MmQ0MzYwZDJiMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjE2NGNlMjNkNTJjNjRkNTE1OTlkMDY2ZTMyYzJjZTA1YjAzOGNmYTJiMjM2NWQ4Y2Q4ZWRhYjgyMDgxYWUxMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjAwNzg4NzU3MzVlOWU4M2VjOGYzY2UxNGRkZTM1MWYyNGNiODVjNDlkYjc3NDg2MTIyZTI3NWEwNTQ1ZjczYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDYwYTc2NWIwZjEyMmU3MzM3ZTZmMWFjMmE0M2EwZDBhMTU4ZjQ0Y2QwYWVkODc5OTgyMWMxNTM1MTJjMTJhMyJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L1-L10",
+          "version": "repo-lines-v1:sha256:1fb48f21dab0cbcfd2cff80f3fc1407eefd943746b0079ac9fdbac92208c85dc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmOTUzM2M3ODU5YWVlM2M1YmFjOWQ0YjBhOWRkMjY5ZTVmODVlMGMxZjA2ZjJlNTI5MDM2OTM4NGQ0ZDc1ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3NGZkMjJkNmU3YzU3NzlmODc2MTdlZWZhODlhZTk2ZDdkYWIwNzBlODBiNDllYWQ5MDg5ZGEwNzA4ZDA5NzEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L484-L494",
+          "version": "repo-lines-v1:sha256:a977eb23f5a31f2763a29acfccc28e687ac30a00e5a14e5097ae329e6a94f9be:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3ZjhiMTYzODEzNzRmOTk3MmVjMGJhZTAzZjk0NWFmYmJjNTIzNmQyZjFkZWY3MmE3YzM5ZWNkZmE5NGE0ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNmZlNGE4Zjk2NjEyZGE3ZTE1N2UwODAwMGZjNjY1MjBjYjlmMWI2NDBkMzNlYTI4ODcyOTc1M2NlYWMwNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhMTQ5NTQ5YTI0YmFlYmMwNmRjNjYxZjYzYzE5NjMzMTI1MzU0YzI4OGE2MjMyZmYxY2MyNmJiZGJkNGZmNTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d82a76e18d174256ac00414062da4af8",
+      "statement": "The .sh bodies both contracts carry are linted as files by _lint_script_file, shared by validate_setup_script and validate_install_script, which rejects floating refs and raw npm/npx inside the script text — because the pin gates that read manifest strings and Dockerfile text never see a file, so without this gate the pin would drift back into the script body and out of the contract's env keys.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py#L275-L287",
+          "version": "repo-lines-v1:sha256:608ddd61f9e45871cc78680e40ea64603520b181b049e55f4daa08c1f5e369c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0MWQ0N2IwOTBlNjYyZDFlZjgzOGZiNjA0MGE5ZDFjZWI1YWVkZGUxMWJhYjQ2ZGE1YTdiZjk3M2FkZWY5NTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4ZTdjMTExMzI3ODA1NDIyMTYyYTYxYmUyYjZhZjhhNmIwZmYwNjg4ZTQyYWFhYjUzODA5YjViOTIxNzMyM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhOTk5YjBhMWQyYjM5NDE3OWUyMzE3YWZiZTA3NmM1M2RmM2ViM2FiMzQ3NDMxM2QxMjNjMzRkMzE2ZGVmYjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3NTU1YWRkODg5ODM5ZGFkYzdlMDEyZTY4MTY2OTRkMWQ2MjBmZTdlZjc0YzRmYzlmMDUxMGQ4MjA1YThjNmIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L3131-L3205",
+          "version": "repo-lines-v1:sha256:83a29834fdc8286b9f7f691fca4344a3dcaf08e526f3502c4e103d885b8f1bd3:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxMWRjZTdlZGNlNGY0NWZlMmI2ODU1OWE3MzY4NzVlMGRmYjAzOTlmOTljNzg1M2ExYTZjYzI2ZmE0ODA4YWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1ZjY4OGQ2YjE5MGQwZjk2MWEwY2ViY2ZhODk5MTUxOTc4ZTEzNGM1NTI4MzAyMmQ1YTU3NzU4YjhlZmEzYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxNTljZmVkZTE1NDVhOTJkYWE0YTMzNzJhN2I1ZWExNGVmZWE5MGIwMjNjMTQ5YzQyZjVhZmZhODU3MWRkMDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c646eab384eb49e3958e74ec9bdc929e",
+      "statement": "HOST_WORKSPACE_DIR and CONTAINER_WORKSPACE_DIR are deliberately the same string in both modes — not a mode-resolved pair — because mounts.py's _build_mount_args bind-mounts the mount root at its own host absolute path (-v {mount_path}:{mount_path}, the MNT2-02 path-mirroring rule), so the same absolute path is valid on both sides; that is also why HARNESSED_PROJECT_DIR in the setup env is mode-invariant for free.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/mounts.py#L141-L145",
+          "version": "repo-lines-v1:sha256:6704482514d151829daf4313374a3b06964b9955860c1730847d4889d64d2334:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjNhM2Y0YWMxOGVjOWNlMWI3YTNjOTljYzAzNDgxYzM0OGI1NmI4ZWE4M2VkZjIwMjEyOWFhYTNjNTI0YmVhNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTg0OTYwOTRjYWM3NWI1MWVjOGI1ZTdiMTY2MGI3Nzg5YTlhNTYxOTc2ZTBkMjBjZGNkMzI5ZTE5OWJkOTA5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjc2ZDNkNzZmZGFkNjk4NTc4N2MyYjhiMjdkNGY4MWZiNWY5MDgwZjU0NDZiYzFkODZhMmYzYzlhNDVmNDgwMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWIyN2I2OGViNzJiNjZjM2E5ODc3OWMwMDBhOTA0MzA5YjhlZTBmNmVhZGQyYTJiNzk2NDFlZGE2NWUwOGUyMiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L270-L283",
+          "version": "repo-lines-v1:sha256:48dbab16946cd8ee534634d9c3c09eec2ed3e13810ff9d96637a4cb06c812a46:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjY2EyYWMwMjkzZjZmOGZkZGNiNWNmYzhjZDEyMzM5NWQ5MTEzODRmYTBmOWEzOGVkMjc5NjFkYjQxMjA5YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1ODkwNzQzMzk0MzMxYTdmMGE4Nzg0OGE2MGJlNTc0MmU3YWY3ZTI0NWEyNzUwNDEzNTNhNzg0MGMzYjQwOGQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L94-L102",
+          "version": "repo-lines-v1:sha256:cc71a15fc416a463bfad5e6c6cb0cbd7696ceb93dbdd83017378209b767c01fb:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWVjYmYxZmUxN2Y5ZTA4YmQ3NjM5YjQ0OWQ0ZTk2ZmQwNGJlYTRhODUxMmFiMmJhZTA0ZWQ3OGFhMDEwZDY4ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjVhZTQ0MTg0MjZmNDE5NDZhMDk1MWRiMmJmMDAzYTc3NGVmZjU5MThhZmFhOTQ0ZDZmMTEzY2VjOGMwOTExMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzJmYzIwNDdiYjg1N2JjYmU1ODQwMTJjYWNkMmQyMWIyM2Q4N2Y5NjQ0Nzg1MDdlYjBjNjI2NjA2NTg0ZGNjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDE2ZWI0NDBhYmI5M2FhNzlmZjk4OWVmYjg2N2M1NTI5M2E1MTliNmZkMjk2Njc2ZTVkZGM4NGRkMjQ5NmUxMSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-01T11:08:21.365Z"
+  }
+}
