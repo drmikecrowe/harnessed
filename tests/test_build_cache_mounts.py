@@ -15,10 +15,23 @@ import pytest
 
 from harnessed import paths
 from harnessed.emit import write_derived_dockerfile
+from harnessed.launcher import _BASE_IMAGE
 from harnessed.schema import InstallSpec, Recipe
 from support import patch_all
 
-from support import podman  # the one gate definition
+from support import PODMAN_REQUESTED, podman  # the one gate definition
+
+
+def _base_image_present() -> bool:
+    """Whether this podman has the base image the artifact assertions inspect.
+
+    live.yml builds it before the suite runs, so in CI this is always true; locally it keeps a
+    `HARNESSED_PODMAN=1` run from failing on a machine that simply has not built yet.
+    """
+    return subprocess.run(
+        ["podman", "image", "exists", _BASE_IMAGE], capture_output=True
+    ).returncode == 0
+
 
 # The downloaders every build path uses, and the cache each one must be given. Paths verified by
 # probing the built base image (`pnpm store path`, `uv cache dir`, ~/.cache) — not assumed defaults.
@@ -249,6 +262,44 @@ class TestContainerExecutorCachesDownloads:
         a = self._cache_mount(self._steps(tmp_path / "a", monkeypatch, stack="stack-one")[0])
         b = self._cache_mount(self._steps(tmp_path / "b", monkeypatch, stack="stack-two")[0])
         assert a == b and a
+
+
+@podman
+@pytest.mark.skipif(
+    PODMAN_REQUESTED and not _base_image_present(),
+    reason=f"{_BASE_IMAGE} not built — run `harnessed build` first",
+)
+class TestTheShippedImageDoesNotHandOverARootOwnedHome:
+    """What the cache mounts cost is paid at COMMIT, so the assertion belongs on the ARTIFACT.
+
+    A `--mount=type=cache` leaves the PARENTS of its target owned by root in the committed layer.
+    Every layer running as `harnessed` kept working — appending to a file it already owns needs no
+    write bit on the directory — so the base image shipped `/home/harnessed` and
+    `/home/harnessed/.cache` root-owned and only broke when something CREATED a dot-directory:
+    `npm install -g` on ~/.npm, and later the Claude installer on `mkdir ~/.claude/downloads`
+    (live.yml run 31699857493).
+
+    The Dockerfile-text test above and the in-build probe (the last layer of
+    Dockerfile.harnessed-base) both assert the FIX IS WRITTEN and that it holds at build time. This
+    asserts the PROPERTY IN THE SHIPPED IMAGE, which is where the defect actually lived — and it
+    checks OWNERSHIP, not just the ability to mkdir: a root-owned home left 0777 satisfies the probe
+    and still breaks every runtime that checks who owns its config directory.
+    """
+
+    def _run(self, script: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["podman", "run", "--rm", _BASE_IMAGE, "bash", "-lc", script],
+            capture_output=True, text=True,
+        )
+
+    @pytest.mark.parametrize("path", ["$HOME", "$HOME/.cache"])
+    def test_the_cache_mount_parents_are_owned_by_the_image_user(self, path):
+        want = f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}"
+        got = self._run(f'stat -c "%u:%g" {path}')
+        assert got.stdout.strip() == want, (
+            f"{path} in {_BASE_IMAGE} is {got.stdout.strip()!r}, want {want!r} — a cache mount "
+            f"re-rooted it: {got.stderr}"
+        )
 
 
 @podman
