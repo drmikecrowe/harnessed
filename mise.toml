@@ -89,10 +89,13 @@ git switch main
 # `interactive = true` throughout: openwiki's UI is Ink, which needs the real stdin/stdout. Under
 # mise's default output capture a prompt draws but cannot be answered, so it re-prompts forever.
 [vars]
-# LANGSMITH_API_KEY is in the filter because tracing without it silently exports nothing — the
-# client gets LANGCHAIN_TRACING_V2=true but no credentials. That combination cost a full 13h run
-# of instrumentation before it was noticed (2026-09-04).
-openwiki_env = "varlock run -p $HOME/.config/harnessed --filter 'OPENWIKI_*,OPENAI_COMPATIBLE_*,LANGCHAIN_TRACING_V2,LANGSMITH_API_KEY' --"
+# `env -u` FIRST, and deliberately: varlock lets a process.env value OVERRIDE the schema, so a
+# stale export in whatever shell invokes this task silently repoints a 13-hour run at the wrong
+# provider — exactly what happened on 2026-09-04, when leftover OPENWIKI_PROVIDER=openai-compatible
+# + OPENWIKI_OPENAI_COMPATIBLE_STREAMING=true exports made every schema correction look broken.
+# Same stance harnessed's own host launcher takes: the schema is the declared source of truth,
+# and a shell export must not outrank it. The -u list is the full provider surface.
+openwiki_env = "env -u OPENWIKI_PROVIDER -u OPENWIKI_MODEL_ID -u OPENWIKI_OPENAI_COMPATIBLE_STREAMING -u OPENAI_COMPATIBLE_API_KEY -u OPENAI_COMPATIBLE_BASE_URL -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL varlock run -p $HOME/.config/harnessed --filter 'OPENWIKI_*,ANTHROPIC_*,LANGCHAIN_TRACING_V2,LANGSMITH_API_KEY' --"
 
 # Not interactive, no varlock, no model: it recomputes each Claim's evidence digest against the tree
 # and exits non-zero when cited code actually changed. That makes "which pages are lying" a check
