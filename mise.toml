@@ -89,7 +89,10 @@ git switch main
 # `interactive = true` throughout: openwiki's UI is Ink, which needs the real stdin/stdout. Under
 # mise's default output capture a prompt draws but cannot be answered, so it re-prompts forever.
 [vars]
-openwiki_env = "varlock run -p $HOME/.config/harnessed --filter 'OPENWIKI_*,OPENAI_COMPATIBLE_*,LANGCHAIN_TRACING_V2' --"
+# LANGSMITH_API_KEY is in the filter because tracing without it silently exports nothing — the
+# client gets LANGCHAIN_TRACING_V2=true but no credentials. That combination cost a full 13h run
+# of instrumentation before it was noticed (2026-09-04).
+openwiki_env = "varlock run -p $HOME/.config/harnessed --filter 'OPENWIKI_*,OPENAI_COMPATIBLE_*,LANGCHAIN_TRACING_V2,LANGSMITH_API_KEY' --"
 
 # Not interactive, no varlock, no model: it recomputes each Claim's evidence digest against the tree
 # and exits non-zero when cited code actually changed. That makes "which pages are lying" a check
