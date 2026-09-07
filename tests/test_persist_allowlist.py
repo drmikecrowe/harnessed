@@ -167,6 +167,11 @@ class TestOwnershipGuard:
         assert f"keep-id:uid={paths.CONTAINER_UID}" in msg, (
             f"the guard still describes the stale unpinned mapping: {msg}"
         )
+        # The mapping is quoted BARE, with the `--userns=` flag stripped: the sentence reads
+        # "the pod runs `keep-id:uid=1000,gid=1000`", not "...runs `--userns=keep-id:...`".
+        # Without this, `removeprefix` -> `removesuffix` is a surviving mutant (#456): the
+        # substring assertion above holds either way, so nothing pinned the strip.
+        assert "--userns=" not in msg, f"the flag should be stripped from the quoted mapping: {msg}"
         assert f"chown -R {owner + 1}" in msg  # remediation targets the CALLER, who can write
 
 

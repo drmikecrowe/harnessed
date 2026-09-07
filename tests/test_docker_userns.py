@@ -30,8 +30,9 @@ from pathlib import Path
 import pytest
 import typer
 
-from harnessed import ctrquery, launcher, paths, persist
+from harnessed import ctrquery, launcher, paths, persist, volumes
 from harnessed.backend import LaunchSpec
+from harnessed.hosthome import _HOST_STACK_FINGERPRINT
 from harnessed.schema import load_recipe
 from support import patch_all
 
@@ -135,11 +136,33 @@ class TestTheDerivedHostUid:
         assert paths.pod_host_uid() is None
 
     def test_rootless_docker_makes_the_ownership_guard_raise(self, monkeypatch, tmp_path):
-        """S6 continued — the uid answer only matters through the guard it feeds."""
+        """S6 continued — the uid answer only matters through the guard it feeds.
+
+        Asserting the message CONTENT, not merely that something raised. The SPEC promises this
+        message "names the cause and a remediation", and a promise about a message that no test
+        reads is a claim the gauntlet reports as verified while nothing checks it. Mutation found
+        this: 32 mutants inside this message survived, because the only assertion was one
+        substring."""
         _pin(monkeypatch, "docker", rootless=True)
         with pytest.raises(persist.PersistOwnershipError) as ei:
             persist.guard_ownership(tmp_path)
-        assert "rootless" in str(ei.value).lower()
+        msg = str(ei.value)
+        assert str(tmp_path) in msg, "the message must name the path it refused"
+        assert "rootless" in msg.lower(), "the message must name the CAUSE"
+        assert str(paths.CONTAINER_UID) in msg, "the message must name the uid that is unmappable"
+        assert "subuid" in msg.lower(), "the message must say WHY that uid cannot be resolved"
+        # The remediation, which is the half a user can act on.
+        assert "rootful" in msg.lower() and "podman" in msg.lower()
+
+    def test_an_unreadable_daemon_names_the_probe_that_failed(self, monkeypatch, tmp_path):
+        """S7 continued. "Could not tell" and "is rootless" are different situations with different
+        fixes, so they must not share one message."""
+        _pin(monkeypatch, "docker", rootless=None)
+        with pytest.raises(persist.PersistOwnershipError) as ei:
+            persist.guard_ownership(tmp_path)
+        msg = str(ei.value)
+        assert "docker info" in msg, "the message must name the probe that could not be read"
+        assert "rootful" in msg.lower() and "rootless" in msg.lower()
 
     def test_the_rootless_probe_runs_at_most_once_per_process(self, monkeypatch):
         """S8. `guard_ownership` is called once per persist entry; an uncached probe would shell
@@ -244,16 +267,31 @@ class TestRootlessDockerIsRefusedBeforeAnythingIsCreated:
     the subuid breakage that picking `--userns=host` was supposed to avoid."""
 
     def test_rootless_docker_stops_the_run(self, monkeypatch, capsys):
+        """Message content asserted for the same reason as the guard's: S16 promises it "names
+        rootless and says what the user can do about it", and 15 mutants inside this message
+        survived while the only assertion was one substring."""
         _pin(monkeypatch, "docker", rootless=True)
-        with pytest.raises(typer.Exit):
+        with pytest.raises(typer.Exit) as ei:
             launcher._preflight_runtime("docker")
-        out = capsys.readouterr()
-        assert "rootless" in (out.out + out.err).lower()
+        # The CODE, not just the type. `typer.Exit(None)` and `typer.Exit(0)` both raise Exit and
+        # both mean SUCCESS -- a refusal that exits 0 is a refusal the shell, CI and every caller
+        # reads as "fine". Two surviving mutants sat exactly here.
+        assert ei.value.exit_code == 1
+        captured = capsys.readouterr()  # consumes; one call only
+        msg = (captured.out + captured.err).lower()
+        assert "rootless" in msg, "must name the cause"
+        assert str(paths.CONTAINER_UID) in msg, "must name the uid that cannot be mapped"
+        assert "subuid" in msg, "must say why that uid is unpredictable"
+        assert "rootful" in msg and "podman" in msg, "must name both remediations"
 
-    def test_an_unreadable_daemon_also_stops_the_run(self, monkeypatch):
+    def test_an_unreadable_daemon_also_stops_the_run(self, monkeypatch, capsys):
         _pin(monkeypatch, "docker", rootless=None)
-        with pytest.raises(typer.Exit):
+        with pytest.raises(typer.Exit) as ei:
             launcher._preflight_runtime("docker")
+        assert ei.value.exit_code == 1
+        captured = capsys.readouterr()
+        msg = (captured.out + captured.err).lower()
+        assert "docker info" in msg, "must name the probe that could not be read, not blame rootless"
 
     def test_rootful_docker_passes_the_preflight(self, monkeypatch):
         _pin(monkeypatch, "docker", rootless=False)
@@ -262,6 +300,164 @@ class TestRootlessDockerIsRefusedBeforeAnythingIsCreated:
     def test_podman_passes_the_preflight(self, monkeypatch):
         _pin(monkeypatch, "podman")
         launcher._preflight_runtime("podman")  # no raise
+
+
+class TestTheRootlessProbeItself:
+    """The probe's OWN failure paths, driven through `subprocess`.
+
+    `TestTheDerivedHostUid` patches `docker_is_rootless` wholesale, so it proves what
+    `pod_host_uid` does with an answer and NOTHING about how that answer is reached. Both sides of
+    that seam need driving: `diff-cover` reported these four lines unexecuted, and the missing
+    half is the half where "refuse rather than guess" is actually implemented.
+    """
+
+    def test_the_probe_asks_docker_the_right_question(self, monkeypatch):
+        """Assert the ARGV and the kwargs, not just what we do with the answer.
+
+        Mocking `subprocess.run` and checking only the return value leaves the call itself
+        unconstrained, and mutation showed what hides there: `"docker"`->`"DOCKER"`,
+        `"info"`->`"INFO"`, `"--format"`->`"--FORMAT"` all survive (and all fail on a
+        case-sensitive filesystem), and so does lowercasing the Go template — which returns EMPTY,
+        so `name=rootless` is never found and every rootless daemon reads as ROOTFUL. That last one
+        is the exact fail-open this function exists to prevent, and no assertion here saw it.
+        """
+        seen: dict[str, object] = {}
+
+        def _capture(cmd, **kwargs):
+            seen["cmd"] = list(cmd)
+            seen.update(kwargs)
+            return subprocess.CompletedProcess(cmd, 0, stdout="name=seccomp\n", stderr="")
+
+        monkeypatch.setattr(paths.subprocess, "run", _capture)
+        paths._probe_docker_rootless()
+
+        assert seen["cmd"] == [
+            "docker", "info", "--format", "{{range .SecurityOptions}}{{.}} {{end}}",
+        ], "the probe must ask docker for SecurityOptions, spelled exactly as docker spells it"
+        # stdout must be captured as TEXT, or the membership test below explodes on None/bytes.
+        assert seen["capture_output"] is True
+        assert seen["text"] is True
+        # Unbounded, this blocks a launch forever on a wedged daemon.
+        assert seen["timeout"] == paths._DOCKER_INFO_TIMEOUT
+
+    def test_a_rootless_daemon_is_detected(self, monkeypatch):
+        monkeypatch.setattr(paths.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+            a[0] if a else [], 0, stdout="name=seccomp name=rootless name=cgroupns\n", stderr="",
+        ))
+        assert paths._probe_docker_rootless() is True
+
+    def test_a_rootful_daemon_is_detected(self, monkeypatch):
+        monkeypatch.setattr(paths.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+            a[0] if a else [], 0, stdout="name=seccomp name=cgroupns\n", stderr="",
+        ))
+        assert paths._probe_docker_rootless() is False
+
+    def test_a_daemon_that_cannot_be_reached_is_undetermined(self, monkeypatch):
+        """`docker info` exits nonzero — daemon down, or the socket refuses this user. NOT False:
+        answering "rootful" here would be a guess, and the guess is the fail-open direction."""
+        monkeypatch.setattr(paths.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+            a[0] if a else [], 1, stdout="", stderr="Cannot connect to the Docker daemon",
+        ))
+        assert paths._probe_docker_rootless() is None
+
+    @pytest.mark.parametrize("boom", [
+        FileNotFoundError("docker"),                       # vanished between PATH check and here
+        PermissionError("/var/run/docker.sock"),           # socket not readable by this user
+        subprocess.TimeoutExpired(["docker", "info"], 30),  # daemon wedged
+    ])
+    def test_a_probe_that_raises_is_undetermined(self, monkeypatch, boom):
+        """Every one of these is a live failure mode, and none may become an exception escaping
+        into a launch: the caller's contract is three-valued, and this is the third value."""
+        def _raise(*_a, **_k):
+            raise boom
+        monkeypatch.setattr(paths.subprocess, "run", _raise)
+        assert paths._probe_docker_rootless() is None
+
+
+class TestNoRuntimeAtAll:
+    """`active_runtime` is the one place that can answer "neither"; `ctrquery._runtime` is the one
+    place that turns that into something a user can read."""
+
+    def test_active_runtime_is_none_when_neither_binary_exists(self, monkeypatch):
+        monkeypatch.setattr(paths.shutil, "which", lambda _name: None)
+        assert paths._detect_runtime() is None
+
+    @pytest.mark.parametrize("installed, expected", [
+        ({"podman"}, "podman"),
+        ({"docker"}, "docker"),
+        ({"podman", "docker"}, "podman"),  # PREFERENCE, not accident of iteration
+    ])
+    def test_it_looks_for_the_right_binaries_and_prefers_podman(
+        self, monkeypatch, installed, expected,
+    ):
+        """The binary NAMES and their ORDER are both behaviour.
+
+        Testing only the neither-installed case left the two string literals unconstrained:
+        `"podman"`->`"PODMAN"` survived, and on a case-sensitive filesystem that detector finds
+        nothing and every launch reports "neither podman nor docker found". The podman-first
+        ordering is a real preference (pods, pasta, keep-id), not an implementation detail.
+        """
+        monkeypatch.setattr(
+            paths.shutil, "which", lambda name: f"/usr/bin/{name}" if name in installed else None,
+        )
+        assert paths._detect_runtime() == expected
+
+    def test_ctrquery_exits_with_a_readable_error(self, monkeypatch, capsys):
+        monkeypatch.setattr(paths, "active_runtime", lambda: None)
+        with pytest.raises(typer.Exit) as ei:
+            ctrquery._runtime()
+        assert ei.value.exit_code == 1, "a runtime-less box must FAIL, not exit 0 with a warning"
+        out = capsys.readouterr()
+        assert "neither podman nor docker" in (out.out + out.err)
+
+
+class TestTheBuildPathRefusesToo:
+    """S16 reaches `container_run`; `_build_stack` is the OTHER entry point, and a refusal that
+    covers only one of them leaves `harnessed build` walking into the same breakage."""
+
+    def test_build_refuses_rootless_docker_before_touching_the_catalog(self, monkeypatch):
+        _pin(monkeypatch, "docker", rootless=True)
+        looked_up: list[str] = []
+        monkeypatch.setattr(
+            launcher.paths, "find_in_catalog",
+            lambda kind, name: looked_up.append(name),  # type: ignore[func-returns-value]
+        )
+        with pytest.raises(typer.Exit) as ei:
+            launcher._build_stack("docker", "s", "claude")
+        assert ei.value.exit_code == 1
+        assert not looked_up, "the preflight must refuse BEFORE any stack resolution happens"
+
+
+class TestTheFingerprintStepMatchesItsRuntime:
+    """`_ensure_stack_volumes` writes the stack fingerprint in its own container, after the
+    installs. It is the last write into the config volume, so a mapping that differs there leaves
+    a file the agent cannot read — the same class as bd harnessed-8px.21.1, one step later."""
+
+    @pytest.mark.parametrize("rt", ["podman", "docker"])
+    def test_the_fingerprint_write_carries_the_mapping(self, rt, tmp_path, monkeypatch):
+        calls: list[list[str]] = []
+        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
+        monkeypatch.setattr(volumes, "_ensure_config_volume", lambda *a, **k: "cfgvol")
+        monkeypatch.setattr(volumes, "_run_container_installs", lambda *a, **k: None)
+        monkeypatch.setattr(volumes, "_container_stack_fingerprint", lambda *a, **k: "fp")
+        # A fingerprint that does NOT match forces the install+stamp path; matching would return
+        # early and this test would assert over an empty list.
+        monkeypatch.setattr(volumes, "_volume_read", lambda *a, **k: "stale")
+
+        volumes._ensure_stack_volumes(rt, "s", "claude", tmp_path, "img", [])
+
+        # `_run` also builds the two `volume create` calls, which carry no mapping and should not.
+        # Select the stamping container by the file it writes, so the assertion cannot drift onto
+        # some other step that happens to say `run`.
+        stamps = [c for c in calls if any(_HOST_STACK_FINGERPRINT in a for a in c)]
+        assert stamps, "no fingerprint step ran — this test would pass vacuously"
+        want = paths.userns_args(rt)
+        for cmd in stamps:
+            assert [a for a in cmd if a.startswith("--userns")] == want, cmd
+        # ...and the volume-create calls must stay clean: `--userns` is meaningless there.
+        for cmd in calls:
+            if "volume" in cmd:
+                assert not [a for a in cmd if a.startswith("--userns")], cmd
 
 
 @DOCKER

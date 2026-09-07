@@ -57,6 +57,20 @@ DOCKER_USERNS_ARG = "--userns=host"
 _DOCKER_INFO_TIMEOUT = 30
 
 
+def _detect_runtime() -> str | None:
+    """The uncached detection itself — see `active_runtime`, which is this behind a cache.
+
+    Split from the cache deliberately. `mutmut` does not mutate `lru_cache`-decorated functions: it
+    generated zero mutants for the combined version and reported nothing, so the mutation layer was
+    silently blind to this logic while looking green. Separating them makes the behaviour mutable,
+    and makes it testable without `cache_clear` gymnastics.
+    """
+    for rt in ("podman", "docker"):
+        if shutil.which(rt):
+            return rt
+    return None
+
+
 @functools.lru_cache(maxsize=1)
 def active_runtime() -> str | None:
     """The container runtime in force — 'podman', 'docker', or None when neither is installed.
@@ -71,10 +85,7 @@ def active_runtime() -> str | None:
     podman is preferred where both exist: it is the runtime this project is built around, and the
     only one with pods, pasta networking and `keep-id`.
     """
-    for rt in ("podman", "docker"):
-        if shutil.which(rt):
-            return rt
-    return None
+    return _detect_runtime()
 
 
 def userns_args(rt: str) -> list[str]:
@@ -99,6 +110,25 @@ def userns_args(rt: str) -> list[str]:
     )
 
 
+def _probe_docker_rootless() -> bool | None:
+    """The uncached probe itself — see `docker_is_rootless`, which is this behind a cache.
+
+    Split from the cache for the same reason as `_detect_runtime`: `mutmut` generates no mutants
+    for an `lru_cache`-decorated function, so all three of the refuse-rather-than-guess branches
+    below were unmutated while the layer reported no findings.
+    """
+    try:
+        proc = subprocess.run(
+            ["docker", "info", "--format", "{{range .SecurityOptions}}{{.}} {{end}}"],
+            capture_output=True, text=True, timeout=_DOCKER_INFO_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return "name=rootless" in proc.stdout
+
+
 @functools.lru_cache(maxsize=1)
 def docker_is_rootless() -> bool | None:
     """True when the docker daemon runs rootless, False when rootful, None when UNDETERMINED.
@@ -114,16 +144,7 @@ def docker_is_rootless() -> bool | None:
     rootful". Guessing rootful here would be a fail-OPEN answer in precisely the state where
     nothing is known.
     """
-    try:
-        proc = subprocess.run(
-            ["docker", "info", "--format", "{{range .SecurityOptions}}{{.}} {{end}}"],
-            capture_output=True, text=True, timeout=_DOCKER_INFO_TIMEOUT,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode != 0:
-        return None
-    return "name=rootless" in proc.stdout
+    return _probe_docker_rootless()
 
 
 def pod_host_uid() -> int | None:
