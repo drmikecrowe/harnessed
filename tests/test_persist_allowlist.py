@@ -17,6 +17,13 @@ from harnessed.persist import (
 )
 
 
+# Every ownership assertion below is about PODMAN's `keep-id` mapping, which `paths.pod_host_uid`
+# reads off `USERNS_ARG`. Until #456 that was the only branch, so these tests reached it without
+# saying so — and therefore reached it only on a machine where podman is what PATH offers. The pin
+# that makes them measure the branch they name is `conftest._pin_container_runtime`. No assertion
+# in this file changed for #456.
+
+
 @pytest.fixture
 def home(monkeypatch, tmp_path):
     """An isolated $HOME (+ XDG_CONFIG_HOME under it) so Path.home() / the allowlist are sandboxed."""

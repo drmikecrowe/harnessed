@@ -7,10 +7,9 @@ that imported them from launcher would invert the dependency the split depends o
 """
 from __future__ import annotations
 
-import shutil
-
 import typer
 
+from . import paths
 from .console import _err
 from .proc import _bounded
 
@@ -20,12 +19,20 @@ _PODMAN_QUERY_TIMEOUT = 30
 
 
 def _runtime() -> str:
-    """Return 'podman' or 'docker', whichever is on PATH (prefer podman)."""
-    for rt in ("podman", "docker"):
-        if shutil.which(rt):
-            return rt
-    _err.print("[bold red]error:[/bold red] neither podman nor docker found on PATH")
-    raise typer.Exit(1)
+    """Return 'podman' or 'docker', whichever is on PATH (prefer podman).
+
+    Delegates to `paths.active_runtime` rather than scanning PATH itself. The detection moved down
+    to `paths` when `pod_host_uid` started needing it (#456): that function reasons about the
+    mapping without an `rt` in scope, and a second scan here would be a second source of truth for
+    "which runtime is this" — argv could then be built for one runtime while ownership was checked
+    against the other. This wrapper keeps the CLI-facing part (an error the user can read, and a
+    non-optional return type) that `paths`, which imports nothing of ours, cannot own.
+    """
+    rt = paths.active_runtime()
+    if rt is None:
+        _err.print("[bold red]error:[/bold red] neither podman nor docker found on PATH")
+        raise typer.Exit(1)
+    return rt
 
 
 def _image_exists(rt: str, image: str) -> bool:

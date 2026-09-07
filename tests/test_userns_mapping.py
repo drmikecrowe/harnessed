@@ -78,13 +78,21 @@ class TestNoCallSiteRegresses:
         )
 
     def test_the_sweep_is_not_vacuous(self):
-        """Guard the guard: deleting every userns argument would also make the sweep above pass."""
+        """Guard the guard: deleting every userns argument would also make the sweep above pass.
+
+        Bound to `paths.userns_args(` — the CALL, parentheses included — and not to the constant.
+        #456 moved the emit sites from `paths.USERNS_ARG` to `paths.userns_args(rt)`, and for one
+        run this assertion kept passing while every executable reference was gone: `USERNS_ARG` was
+        still named in three DOCSTRINGS in these two files, which is exactly the "passing
+        vacuously" state the assertion is worded to prevent. Matching the call is what makes prose
+        unable to satisfy it.
+        """
         users = {
             path.name for path in SRC.rglob("*.py")
-            if path.name != "paths.py" and "paths.USERNS_ARG" in path.read_text(encoding="utf-8")
+            if path.name != "paths.py" and "paths.userns_args(" in path.read_text(encoding="utf-8")
         }
         assert {"launcher.py", "volumes.py"} <= users, (
-            "the modules that launch containers no longer reference paths.USERNS_ARG, so the sweep "
+            "the modules that launch containers no longer CALL paths.userns_args, so the sweep "
             f"above is passing vacuously; found only {sorted(users)}"
         )
 

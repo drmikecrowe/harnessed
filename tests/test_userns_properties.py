@@ -31,6 +31,10 @@ from hypothesis import given, strategies as st
 
 from harnessed import launcher, paths
 
+# `pod_host_uid` grew a docker branch in #456 that does not consult `USERNS_ARG` at all. These
+# properties are about PODMAN's mapping; the runtime pin that makes them measure it lives in
+# `conftest._pin_container_runtime`, which covers the whole suite for the reasons given there.
+
 # Argv fragments as they really appear: flags, `-v host:ctr` pairs, paths, and userns in every
 # spelling the tree has ever emitted.
 _USERNS = st.sampled_from([

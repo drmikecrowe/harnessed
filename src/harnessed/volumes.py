@@ -154,7 +154,7 @@ def _ensure_config_volume(
         f"{settings_step}"
     )
     _run([
-        rt, "run", "--rm", paths.USERNS_ARG,
+        rt, "run", "--rm", *paths.userns_args(rt),
         "-v", f"{vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{prof}:{_CTR_PROFILE_DIR}:ro",
         *settings_env,
@@ -222,7 +222,7 @@ def _volume_read(rt: str, volume: str, image: str, rel: str) -> str | None:
     (keep the floor) from "empty file".
     """
     out = subprocess.run(
-        [rt, "run", "--rm", paths.USERNS_ARG,
+        [rt, "run", "--rm", *paths.userns_args(rt),
          "-v", f"{volume}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image,
          "-c", f"cat {_CONTAINER_HOME_STR}/.claude/{rel}"],
         capture_output=True, text=True,
@@ -251,7 +251,7 @@ def _run_container_installs(
     any other mapping is unreadable by the agent (harnessed-8px.21.1).
     """
     common = [
-        paths.USERNS_ARG,
+        *paths.userns_args(rt),
         "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
         # The download cache, and the direct successor to the build's `--mount=type=cache` (bd
@@ -429,7 +429,7 @@ def _ensure_stack_volumes(
         return cfg_vol, tools_vol
 
     _run_container_installs(rt, stack, harness, image, recipes, cfg_vol, tools_vol)
-    _run([rt, "run", "--rm", paths.USERNS_ARG,
+    _run([rt, "run", "--rm", *paths.userns_args(rt),
           "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image, "-c",
           f"printf %s {shlex.quote(want)} > {_CONTAINER_HOME_STR}/.claude/{_HOST_STACK_FINGERPRINT}"],
          capture_output=True)

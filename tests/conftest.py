@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from harnessed import paths
+
 # WHY THIS EXISTS (bd harnessed-3x1). This suite carries a live-verification layer — tests that run
 # real podman, real binaries — behind env gates. For a long time it ran NOWHERE: `tools/run-tests.sh`
 # never set the gate and CI deliberately does not ("Hermetic: no podman on the runner"). Every run
@@ -389,6 +391,36 @@ def _isolated_user_state(monkeypatch, tmp_path_factory):
     `paths.xdg_state_home`) themselves; their own monkeypatch runs after this one and wins.
     """
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path_factory.mktemp("xdg-state")))
+
+
+@pytest.fixture(autouse=True)
+def _pin_container_runtime(monkeypatch):
+    """Pin the container runtime to podman for the hermetic suite, and empty both runtime caches.
+
+    TWO problems, one fixture, both introduced the moment `paths.pod_host_uid` stopped being a pure
+    parse of `USERNS_ARG` and grew a docker branch (#456).
+
+    1. THE SUITE'S RESULT DEPENDED ON WHICH BINARY THE DEVELOPER HAD INSTALLED. `active_runtime()`
+       reads PATH, so on a podman box the ownership tests took the podman branch and on a
+       docker-only box they took the docker one. Measured: 17 of them changed outcome across the
+       two, and `test_pod_host_uid_follows_the_pinned_mapping` went green on BOTH — for different
+       reasons, since rootful docker derives uid 1000 and a great many developers are uid 1000.
+       A hermetic suite whose answers move with the host's tooling is not hermetic.
+
+    2. `docker_is_rootless()` IS `lru_cache`D, so it holds a live daemon's state for the life of
+       the process. Whichever test reached it first — under whatever HOME, PATH and `subprocess`
+       patching that test had in force — decided the value every later test saw. That is a genuine
+       order dependency, and it presented as 31 unrelated failures under `pytest-randomly` that all
+       vanished when the same files were run alone.
+
+    Podman is the pin because it is what this project is built around and what `live.yml` runs.
+    Tests that are ABOUT the docker branch override this inside the test body, where a
+    function-scoped `monkeypatch` beats an autouse fixture; `tests/test_docker_userns.py` does
+    exactly that, and restores the real detector where it needs to observe it.
+    """
+    paths.active_runtime.cache_clear()
+    paths.docker_is_rootless.cache_clear()
+    monkeypatch.setattr(paths, "active_runtime", lambda: "podman")
 
 
 @pytest.fixture(autouse=True)

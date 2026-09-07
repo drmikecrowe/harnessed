@@ -148,6 +148,9 @@ class TestTheContainerExecAllocatesNoPty:
     stdin has to reach the agent.
     """
 
+    class _Execed(Exception):
+        """Stands in for `os.execvp` replacing the process image."""
+
     def _exec_argv(self, monkeypatch, tmp_path, *, exec_mode: bool) -> list[str]:
         captured: list[list[str]] = []
         monkeypatch.setattr(console, "_EXEC_MODE", exec_mode)
@@ -155,11 +158,27 @@ class TestTheContainerExecAllocatesNoPty:
         monkeypatch.setattr(launcher, "_acknowledge_warnings", lambda: None)
         monkeypatch.setattr(launcher, "_init_shell_prologue", lambda *a, **k: "true")
         monkeypatch.setattr(launcher, "_keyring_init", lambda _h: "")
-        monkeypatch.setattr(launcher.os, "execvp", lambda _f, argv: captured.append(argv))
-        launcher._attach(
-            "podman", "claude", "inst", tmp_path, stack="s", mount_path=tmp_path,
-            extra=["-p", "hi"],
-        )
+
+        # The mock must NOT return. `os.execvp` replaces the process image, so in the real
+        # non-ephemeral path nothing after it ever runs. A mock that returns lets `_attach` fall
+        # through into the `ephemeral` branch below the exec — `subprocess.run(exec_argv)` — and
+        # actually execute `podman exec`. That call is unreachable in production for these
+        # arguments, and it made the outcome of all three tests depend on the machine: where a
+        # `podman` BINARY exists it fails harmlessly (no container named `inst`), nobody checks
+        # the return code, and the assertions below still pass; on a docker-only host it raises
+        # FileNotFoundError and all three go red for a reason unrelated to what they assert.
+        # Raising models execvp's defining property and pins the tests to the branch they name
+        # (#456 — found when the suite was first run on a host with no podman).
+        def _never_returns(_f, argv):
+            captured.append(argv)
+            raise self._Execed
+
+        monkeypatch.setattr(launcher.os, "execvp", _never_returns)
+        with pytest.raises(self._Execed):
+            launcher._attach(
+                "podman", "claude", "inst", tmp_path, stack="s", mount_path=tmp_path,
+                extra=["-p", "hi"],
+            )
         assert captured, "_attach must have reached the exec handoff"
         return captured[0]
 

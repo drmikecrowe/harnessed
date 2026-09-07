@@ -9,9 +9,11 @@ the install clone as immutable source; profiles are DATA, not cache or throwaway
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -42,6 +44,88 @@ CONTAINER_GID = 1000
 USERNS_ARG = f"--userns=keep-id:uid={CONTAINER_UID},gid={CONTAINER_GID}"
 
 
+# Docker has no `keep-id`; it exits 125 with `--userns: invalid USER mode` (#456). `host` rather
+# than an OMITTED flag, which behaves identically on a default daemon but not on one started with
+# `userns-remap`: there, the default would map the image's uid 1000 into a subuid range and every
+# bind-mount write would fail exactly the way bd harnessed-rv2.1 describes. Saying `host` opts this
+# container out of that remap, so the assumption `pod_host_uid` makes below stays true.
+DOCKER_USERNS_ARG = "--userns=host"
+
+# `docker info` is a daemon round-trip. Same 30 s bound the rest of the codebase uses for a runtime
+# query (ctrquery._PODMAN_QUERY_TIMEOUT); duplicated rather than imported because ctrquery imports
+# THIS module, and paths must not grow an inbound dependency on a module that depends on it.
+_DOCKER_INFO_TIMEOUT = 30
+
+
+@functools.lru_cache(maxsize=1)
+def active_runtime() -> str | None:
+    """The container runtime in force — 'podman', 'docker', or None when neither is installed.
+
+    THE detector. `ctrquery._runtime` delegates here rather than scanning PATH again, so there is
+    one answer rather than two that agree today. That matters because the two are consumed
+    differently: argv-building sites take `rt` explicitly (the flag must match the binary actually
+    being executed), while sites that only REASON about the mapping — `pod_host_uid`, and through
+    it `persist.guard_ownership` — call this. Two detectors drifting apart would mean argv built
+    for one runtime and ownership checked against the other, with nothing on the host saying so.
+
+    podman is preferred where both exist: it is the runtime this project is built around, and the
+    only one with pods, pasta networking and `keep-id`.
+    """
+    for rt in ("podman", "docker"):
+        if shutil.which(rt):
+            return rt
+    return None
+
+
+def userns_args(rt: str) -> list[str]:
+    """The `--userns` fragment for `rt`, as argv elements ready to splice.
+
+    A LIST, not a string, because the right answer for some runtime may one day be "no flag at
+    all" — a caller that splices `*userns_args(rt)` needs no edit for that, while one that splices
+    a bare string would have to grow a conditional at every site.
+
+    Refuses an unrecognized runtime rather than defaulting. A default here would be a guess about
+    id mapping applied to a real bind mount, and the failure it produces (EACCES deep inside a
+    container, or files owned by an unrelated subuid) carries nothing that points back to this
+    function.
+    """
+    if rt == "podman":
+        return [USERNS_ARG]
+    if rt == "docker":
+        return [DOCKER_USERNS_ARG]
+    raise ValueError(
+        f"harnessed does not know how to map user namespaces for container runtime {rt!r}; "
+        f"supported runtimes are 'podman' and 'docker'."
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def docker_is_rootless() -> bool | None:
+    """True when the docker daemon runs rootless, False when rootful, None when UNDETERMINED.
+
+    The distinction is load-bearing, and None is not a synonym for False. Under ROOTFUL docker no
+    id mapping happens, so the container's uid 1000 is host uid 1000 and `pod_host_uid` can answer.
+    Under ROOTLESS docker the daemon itself lives in a user namespace and the image's uid 1000 is
+    drawn from the host's subuid range — the same unpredictable-owner situation podman's bare
+    `keep-id` produces, and it is refused for the same reason.
+
+    An unreadable daemon (not running, permission denied, timeout, `docker` vanished between the
+    PATH check and here) returns None, which callers must treat as "refuse", never as "probably
+    rootful". Guessing rootful here would be a fail-OPEN answer in precisely the state where
+    nothing is known.
+    """
+    try:
+        proc = subprocess.run(
+            ["docker", "info", "--format", "{{range .SecurityOptions}}{{.}} {{end}}"],
+            capture_output=True, text=True, timeout=_DOCKER_INFO_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return "name=rootless" in proc.stdout
+
+
 def pod_host_uid() -> int | None:
     """The HOST uid the pod's process writes as, or None when the mapping does not determine it.
 
@@ -69,6 +153,13 @@ def pod_host_uid() -> int | None:
     did — a rootful daemon or a missing subuid range still yields a silent EACCES, and only the
     runner's `podman info --format '{{.Host.IDMappings}}'` (bd harnessed-rv2.3) shows that.
     """
+    if active_runtime() == "docker":
+        # Not a parse: docker takes DOCKER_USERNS_ARG (`host`), and what "host" means depends on
+        # something the argument cannot express — whether the daemon is itself inside a user
+        # namespace. Rootful: no mapping, so the container's uid 1000 IS host uid 1000, and that
+        # number is DERIVED from the daemon's mode rather than assumed (SPEC Decide #4 / N3).
+        # Rootless or unreadable: the image's uid comes from the subuid range, so refuse.
+        return CONTAINER_UID if docker_is_rootless() is False else None
     if USERNS_ARG == "--userns=host":
         return CONTAINER_UID
     if not USERNS_ARG.startswith("--userns=keep-id"):

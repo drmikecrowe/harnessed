@@ -672,6 +672,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     `strict` (default True — the authoring gate for `build`/`test`) rejects unknown recipe-manifest
     fields so a typo like `skkills:` fails loudly instead of silently dropping the capability.
     """
+    _preflight_runtime(rt)
     stack_dir = (root / "stacks" / stack) if root else paths.find_in_catalog("stacks", stack)
     if not (stack_dir / "stack.yaml").is_file():
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir}/stack.yaml)")
@@ -723,7 +724,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     _, build_recipes = load_stack_with_recipes(root, stack)
     cfg_vol, tools_vol = _ensure_stack_volumes(rt, stack, harness, prof, derived, build_recipes)
     vol_args = [
-        paths.USERNS_ARG,
+        *paths.userns_args(rt),
         "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
     ]
@@ -1263,6 +1264,34 @@ def _without_userns(args: list[str]) -> list[str]:
     return [a for a in args if not a.startswith("--userns")]
 
 
+def _preflight_runtime(rt: str) -> None:
+    """Refuse a runtime whose id mapping harnessed cannot name — BEFORE anything is created (#456).
+
+    `persist.guard_ownership` already refuses an unresolvable mapping, but only where it is
+    CONSULTED: a stack that declares no persist entry never reaches it, and would run all the way
+    into the bind-mount failure this check exists to prevent. So the refusal is here too, at the
+    top of the launch, where it costs one `docker info` and stops with something a user can act on.
+
+    Podman is unconditionally fine: `paths.USERNS_ARG` names the mapping outright. Docker is fine
+    only when the daemon is ROOTFUL — see `paths.docker_is_rootless`.
+    """
+    if rt != "docker" or paths.docker_is_rootless() is False:
+        return
+    detail = (
+        "the docker daemon is running ROOTLESS"
+        if paths.docker_is_rootless()
+        else "harnessed could not read `docker info` to tell whether the daemon is rootless"
+    )
+    _err.print(
+        f"[bold red]error:[/bold red] {detail}. Under a rootless daemon the container's uid "
+        f"{paths.CONTAINER_UID} is drawn from your subuid range, so every file harnessed writes "
+        "through a bind mount would land owned by an id it cannot predict, and the agent could not "
+        "read its own config back.\n"
+        "Use a rootful docker daemon, or podman, which maps the invoking user onto the image's uid."
+    )
+    raise typer.Exit(1)
+
+
 def _secrets_disabled() -> bool:
     """Whether this launch was told to skip the secrets broker (`--no-secrets`).
 
@@ -1787,7 +1816,7 @@ def _svc_run_cmd(
         # bytes stay host-owned (a dolt data dir written by a foreign uid would EACCES for every
         # agent container). Unpinned, this was the loudest symptom of bd harnessed-rv2.1 — the
         # entrypoint's `mkdir -p /data/dolt` died with EACCES on any host whose uid is not 1000.
-        run_cmd += [paths.USERNS_ARG, "-v", f"{host_dir}:/data:rw"]
+        run_cmd += [*paths.userns_args(rt), "-v", f"{host_dir}:/data:rw"]
         # Path-preserving mirror: a host-side client (e.g. `bd`) that passes its absolute path to
         # the containerised Dolt server (e.g. via `CALL dolt_backup('add', ..., '<abs-path>')`)
         # will have Dolt resolve that path against the CONTAINER filesystem. Without this second
@@ -3358,11 +3387,16 @@ class ContainerBackend(ExecutionBackend):
         inst_cfg_dir.mkdir(parents=True, exist_ok=True)
         hatago_cfg_host = emit.write_hatago_config(inst_cfg_dir, self.servers, spec.project_path)
         hatago_cfg_ctr = str(paths.hatago_config_container())
-        # Filter --userns out of the member args (it is a pod-level property). Mount the hatago
+        # Filter --userns out of the member args ON PODMAN ONLY: it is a POD-level property there,
+        # and podman rejects it on a member. That is a statement about pods, not about containers —
+        # a pod-less runtime has no infra container to inherit the mapping from, so stripping it
+        # would drop the mapping entirely and nothing else on that path sets it (#456). Mount the hatago
         # config (ro) into the HARNESS container — after the hatago-consolidation, hatago runs IN
         # this container (not a separate pod member), so the hub and the stdio children it spawns
         # share this container's home and see the project bind-mount.
-        self.member_mounts = _without_userns(self.mount_args)
+        self.member_mounts = (
+            _without_userns(self.mount_args) if _rt_uses_pods(self.rt) else list(self.mount_args)
+        )
         self.member_mounts += ["-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro"]
         self.member_mounts += _setup_script_mounts(self.recipes)
 
@@ -3442,7 +3476,7 @@ class ContainerBackend(ExecutionBackend):
             # members share the pod's UTS namespace, so this is the one that governs.
             pod_cmd = [
                 self.rt, "pod", "create", "--name", self.pod,
-                "--hostname", paths.container_hostname(self.pod), paths.USERNS_ARG,
+                "--hostname", paths.container_hostname(self.pod), *paths.userns_args(self.rt),
             ]
             # Publish mcp-remote's OAuth callback port (loopback only) so the redirect can reach the
             # process waiting for it. Without this the pod publishes nothing, the browser opens
@@ -3708,6 +3742,7 @@ def container_run(
         os.environ["NO_SECRETS"] = "true"
 
     rt = _runtime()
+    _preflight_runtime(rt)
     anchor_path = Path(path).resolve() if path else Path.cwd()
 
     if not anchor_path.is_dir():
