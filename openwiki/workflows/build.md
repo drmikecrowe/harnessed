@@ -3,9 +3,6 @@ type: workflow
 title: "Build pipeline: from stack and harness to profile, images, and populated volumes"
 description: "The end-to-end harnessed build: in-process emit-only assembly, the staged podman build context, the base/agent/derived image lineage, fingerprint-gated volume population, the baked-settings merge, and the two scan passes — naming the module that owns each stage and the exact order they run in."
 tags: [build, assemble, emit, profile, derived-image, agent-image, build-context, cache-mounts, recipe-hash, volumes, parallel-builds, scan, podman]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
 sources:
   - id: openwiki-source-e916c387e9195be48f6d9d41
     resource: repo://catalog/base/Dockerfile.harnessed-base
@@ -23,6 +20,8 @@ sources:
     resource: repo://src/harnessed/emit.py
   - id: openwiki-source-3d73552d55725e6e392c06df
     resource: repo://src/harnessed/hosthome.py
+  - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
+    resource: repo://src/harnessed/launchenv.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-7b2070fd28fc0a337d8c3539
@@ -39,7 +38,10 @@ sources:
     resource: repo://src/harnessed/synclinks.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-02T20:26:19.165Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-02T20:26:19.165Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes
@@ -64,6 +66,8 @@ validates and how roots resolve), [state, staleness, and GC](/openwiki/architect
 [invariants](/openwiki/concepts/invariants.md) (the deliberate deviations this page explains in
 place), [supply chain](/openwiki/operations/supply-chain.md) (the scanners in depth),
 [credentials](/openwiki/concepts/credentials.md) (the corporate proxy CA SOP),
+[secrets broker](/openwiki/architecture/secrets-broker.md) (the launch-time subsystem the build
+deliberately does not touch),
 [container launch](/openwiki/workflows/container-run.md) (the other caller of the volume step).
 
 ```mermaid
@@ -555,9 +559,11 @@ the scripts' populate-a-sibling-then-rename idiom atomic.
 
 ## Stage 8 — the two scan passes
 
-`harnessed build` is **deliberately credential-free**: `_build_derived_image` never passes a secret,
-so recipe verification never depends on 1Password being authorized. The consequence is that the
-build performs one scan, and the token-gated scanners sit it out:
+`harnessed build` is **deliberately credential-free** as far as tokens go: `_build_derived_image`
+never passes a secret, so recipe verification never depends on 1Password being authorized, and
+build never starts or resolves the launch-time secrets broker — that is a `launch` subsystem whose
+gate (a `@proxy` annotation plus an unset `--no-secrets`) simply never fires on a build. The
+consequence is that the build performs one scan, and the token-gated scanners sit it out:
 
 1. **Credentialed in-image scan** (`launcher._scan_image_in_container`) — the one `_build_stack`
    runs, after the volumes and before the settings merge. It runs the image's baked `harnessed-scan`

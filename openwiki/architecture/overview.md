@@ -3,14 +3,13 @@ type: concept
 title: "Architecture: what harnessed is and how the modules fit"
 description: "Orientation for harnessed: a host-native Python CLI that assembles catalog content into profiles in-process and launches composed stacks through pluggable execution backends. Maps the vocabulary, the module graph by responsibility, and the dependency-direction invariant (emit-only assembly never touches a runtime; only the launch path drives podman)."
 tags: [architecture, overview, module-map, vocabulary, execution-backends, entrypoints, dependency-direction]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
 sources:
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
   - id: openwiki-source-f2bd22307a3451ac2519580c
     resource: repo://BACKENDS.md
+  - id: openwiki-source-f82224b7b5b27300d9ecc2dc
+    resource: repo://catalog/base/egress-firewall.sh
   - id: openwiki-source-e9cc6c20ea9b111b6ff0861e
     resource: repo://catalog/stacks/default/stack.yaml
   - id: openwiki-source-05ccef8d4cf1698187f20464
@@ -25,6 +24,8 @@ sources:
     resource: repo://src/harnessed/attachcmd.py
   - id: openwiki-source-f566bbdd90ebc6ec3b85626a
     resource: repo://src/harnessed/backend.py
+  - id: openwiki-source-085f2349c58adb4062c2803f
+    resource: repo://src/harnessed/broker.py
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
   - id: openwiki-source-9a53d80e292611f0100f90b1
@@ -49,6 +50,8 @@ sources:
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-543fcb721a3a990cb4f9dbbb
     resource: repo://src/harnessed/layout.py
+  - id: openwiki-source-9e1601e7fac817552c717cd7
+    resource: repo://src/harnessed/mounts.py
   - id: openwiki-source-7b2070fd28fc0a337d8c3539
     resource: repo://src/harnessed/paths.py
   - id: openwiki-source-45fc664cf0f379264630be81
@@ -73,7 +76,12 @@ sources:
     resource: repo://src/harnessed/toollock.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-bbf9cc1f144f5efff8ae1505
+    resource: repo://tests/test_module_boundaries.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-02T20:26:19.165Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-02T20:26:19.165Z
 ---
 
 # Architecture: what harnessed is and how the modules fit
@@ -138,12 +146,15 @@ product. Two conforming backends exist today:
 | `harnessed container-run <harness> [path]` | container (podman pod + in-container hatago + services) | filesystem, network, **and** configuration | `os.execvp` into `podman exec -it` |
 | `harnessed host-run <harness> [path]` | host-native — no podman, no MCP hub | **configuration only** (per-stack `CLAUDE_CONFIG_DIR` / `PI_CODING_AGENT_DIR`) | `os.execvpe` of the harness on the host |
 
-The verb picks the backend; a flag picks the stack. Both verbs share one option set and one stack
-resolution path (`_resolve_stack`), and they share **no flags except `--rm`** — `--fresh`,
-`--no-firewall`, `--shell`, `--mount-folder` and `--agent-start-folder` all describe a pod, so a
-combined verb could only accept them and do nothing. Both verbs end by *replacing* the launcher
-process so the agent owns the terminal — which is also why launch-time warnings are counted by the
-console and re-printed just before the handoff.
+The verb picks the backend; a flag picks the stack. Both verbs share one stack-selection grammar
+(`--stack/-s`, `--recipe/-r`, `--extends`, `--no-extends`, `--service` — literally the same shared
+Typer option objects) and one stack resolution path (`_resolve_stack`), and beyond that they share
+**no flags except `--rm`** — `--fresh`, `--no-firewall`, `--no-secrets`, `--reauth`, `--shell`,
+`--mount-folder` and `--agent-start-folder` all describe a pod, so a combined verb could only
+accept them and do nothing. `host-run`'s own docstring states that as the reason it is a separate
+verb rather than a mode of `container-run`. Both verbs end by *replacing* the launcher process so
+the agent owns the terminal — which is also why launch-time warnings are counted by the console
+and re-printed just before the handoff.
 
 The six-capability contract, the deliberately backend-owned sequencing, and
 `harnessed.capmatrix` are treated on the [backends page](/openwiki/architecture/backends.md); the
@@ -159,7 +170,13 @@ step-by-step runs live on the [container launch](/openwiki/workflows/container-r
 - the order asymmetry between them is load-bearing (the host backend materializes *before* it
   provisions; the container backend provisions the volumes *before* it materializes), and both
   start the same service sidecars — a `services:` entry is a property of the *stack*, not of the
-  backend.
+  backend;
+- the container path adds the **host secrets broker** (Epic #388 Topology B): when the composed
+  schema opts in with a `@proxy` annotation, `varlock` is on PATH, and `--no-secrets` was not
+  passed, `broker.start` spawns one `varlock proxy` on the host's loopback — where 1Password, the
+  keychain and a YubiKey can actually authenticate — and the pod holds placeholders and reaches it
+  through the pasta door described above. A failed broker start is fatal by design; a broker whose
+  pod is gone is reaped.
 
 ## Where things land on disk — and why never in the repo
 
@@ -168,7 +185,12 @@ step-by-step runs live on the [container launch](/openwiki/workflows/container-r
   cache, and **never** written into the repo or into the installed package: the clone/wheel stays
   immutable source. `paths.py` is the single source of truth for this and every other derived path
   (host homes at `.../harnessed/home/<stack>/<harness>`, persist roots, instance names); no caller
-  computes these independently.
+  computes these independently. That mandate includes literals: `paths.BROKER_HOST_DOOR`
+  (`169.254.1.1`) is the address a pod uses to reach a `varlock proxy` broker bound to the host's
+  loopback, and it works only because three places agree on it — `paths.py` (the literal), the
+  pod's pasta `--map-host-loopback` argument (`mounts._mcp_remote_pasta_net_args`), and the egress
+  firewall's `ACCEPT` rule (`catalog/base/egress-firewall.sh`). That is exactly why the constant
+  lives in `paths.py` rather than in any one of the three (epic #388 Topology B; #436, #437).
 - **The catalog ships inside the wheel.** `src/harnessed/catalog` is a *symlink* to the repo-root
   `catalog/` that setuptools materializes as real files (so an installed harnessed needs no repo on
   disk). `paths.harnessed_home()` resolves through it to a real directory — the repo root in a
@@ -211,6 +233,7 @@ flowchart LR
         procm["proc.py"]
         consolem["console.py"]
         ctrqm["ctrquery.py"]
+        broker["broker.py - varlock proxy lifecycle"]
     end
     verb --> hostb
     verb --> ctrb
@@ -240,8 +263,11 @@ first standalone `--` *before* Typer parses — the tail is appended verbatim to
 command — and catches the persist gate's three exception types so a default-deny refusal prints as
 a one-line error with its remediation instead of a traceback. `harnessed-tools` is `cli.py`'s
 argparse entrypoint (`assemble`, `test`, `scan-image-online`, `persist-list`, `persist-prune`,
-`lint-prose`); its `assemble` subcommand is the standalone emit-only path — you can produce a
-committed profile on a machine with no container runtime at all.
+`lint-prose`). Its `assemble` subcommand is the standalone emit-only path — you can produce a
+committed profile on a machine with no container runtime at all. **`harnessed-tools test` is
+*not* runtime-free**: it wraps `harnessed.cli test`, which launches the stack `--fresh` headless,
+so it needs podman/docker just like `harnessed test` does. Only `assemble`, `persist-list`,
+`persist-prune` and `lint-prose` are emit-only / host-only.
 
 **The emit-only assembly chain.** `schema.py` parses and validates `stack.yaml`/`recipe.yaml`/
 `agent.yaml`/`service.yaml` into typed objects — reads only, writes nothing, tolerant of unknown
@@ -284,7 +310,16 @@ Adding a fixed-order driver to the contract would be a behavior change wearing a
 clothes. Both backends start the same service sidecars — a `services:` entry is a property of the
 *stack*, not of the backend, so `host-run` brings up the same sidecars `container-run` does.
 
-**The shared-support layer.** These five exist so nothing else has to import `launcher.py`:
+On the container backend, the single `podman run` is both the isolation boundary and the only way
+mounts and env cross it, so `apply_isolation(BOUNDARY)` is where its env is assembled — and
+**order is precedence**: podman applies `-e` left-to-right and the last one wins, which is why
+catalog-authored recipe `env:` goes FIRST (it must not be able to clobber harnessed-owned values)
+and the harnessed-owned `HATAGO_TRANSPORT`, socket env, setup env and mise-trust assignments come
+after. That matches host mode, where `_launch_host` applies the recipe env to `os.environ` and
+*then* overwrites with harnessed-owned values — reversing the order on one path silently inverts
+the precedence between the two modes.
+
+**The shared-support layer.** These modules exist so nothing else has to import `launcher.py`:
 `paths.py` is the single source of truth for every derived path, instance name
 (`harnessed-<harness>-<stack>-<project_hash>`), and catalog root, and for `USERNS_ARG` (keep-id
 pinned to the image's uid/gid 1000). `layout.py` holds the tiny derivations a module needs before
@@ -293,7 +328,13 @@ the launcher can act (image tags, the profile dir). `proc.py` supplies the three
 deadlines. `console.py` owns the *two* process-wide Rich consoles; the warning counter must be
 single, because `_acknowledge_warnings` reads it just before the terminal handoff. `ctrquery.py`
 is the inspect-only layer: predicates and ID lookups about the runtime (running? stale image?
-stopped leftover?) that never create, start, stop, or remove anything.
+stopped leftover?) that never create, start, stop, or remove anything. `broker.py` — the host secrets broker — is
+imported by `launcher.py` (`_broker_start_for` / `_broker_stop_for` / `_broker_report`) and reports
+through the shared console, so it is held to the same boundary rule, but it never lived in
+`launcher.py`: it is Epic #388 Topology B's one `varlock proxy` per instance, started only when the
+composed schema opts in with a `@proxy` annotation and `--no-secrets` was not passed, recorded
+atomically to `$XDG_STATE_HOME/harnessed/brokers/` as a five-field record that leaks no secret by
+construction, torn down with the pod, and reaped by `reconcile()` when a teardown never ran.
 
 **The domain layer** (one line each; each has its own page or section):
 `hosthome.py`/`hostrun.py` — the per-stack host home and the host-mode installs/setups/inits;
@@ -318,15 +359,19 @@ The one structural rule that holds the map together:
 > **Modules extracted from `launcher.py` import INTO the contract and into shared support — they
 > never import `launcher.py`.** The module-boundary tests enforce this, and the extracted modules
 > say so in their docstrings (`backend.py`: "This module imports nothing from launcher.py and
-> never will"; `capmatrix.py`, `ctrquery.py`, `proc.py`, `console.py` likewise — each exists
-> *because* importing it from `launcher.py` would invert the dependency).
+> never will"; `capmatrix.py`, `ctrquery.py`, `proc.py`, `console.py`, `broker.py` likewise — each
+> exists *because* importing it from `launcher.py` would invert the dependency).
 
 `launcher.py` is the top of the graph and also a facade: it re-exports the names the extracted
 modules formerly held, because the test suite binds to them by attribute — deleting a re-export
-breaks tests even when the code moved. The practical corollary for adding code: **a new helper
-goes beside its callers or below them, never above.** If two non-launcher modules need the same
-helper, it belongs in a support module both can import — not in `launcher.py`, which would force
-one of them to point back up.
+breaks tests even when the code moved (recorded as issue #327 / PR #325, whose `__all__` block is
+the explicit contract). The practical corollary for adding code: **a new helper goes beside its
+callers or below them, never above.** If two non-launcher modules need the same helper, it belongs
+in a support module both can import — not in `launcher.py`, which would force one of them to point
+back up. The boundary ledger `tests/test_module_boundaries.py::EXTRACTED` lists every module held
+to the rule (the test also fails when a console-importing module is missing from it), and
+`broker.py`'s entry carries the note that it never lived in `launcher.py` — it is listed because
+it reports through the shared console.
 
 ## How a build traverses the map
 
@@ -339,9 +384,12 @@ every declared/previously-built (stack, harness) pair against the `harnessed.rec
 label. The full walk, with the emit-only boundary, is on the
 [build pipeline page](/openwiki/workflows/build.md).
 
-`harnessed test <stack> <harness>` — exposed on **both** CLIs — is the integration oracle: it
-launches the stack `--fresh` headless and diffs the manifest-derived expectation against the live
-instance; its pure manifest→expected half is what makes it unit-testable without podman.
+`harnessed test <stack> <harness>` — exposed on **both** CLIs (`launcher.py` shells out to
+`harnessed.cli`) — is the integration oracle: it launches the stack `--fresh` headless and diffs
+the manifest-derived expectation against the live instance, which means the verb as a whole needs
+podman/docker. What is runtime-free is its **pure manifest→expected half**
+(`schema.expected_capabilities` plus the recipes' `expect:` blocks and the expected-vs-live diff)
+— that is what makes the oracle unit-testable without podman, not the verb.
 
 ## Reading order
 

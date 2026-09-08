@@ -1,11 +1,11 @@
 ---
 type: architecture
-title: "Execution backends: the capability contract and why there is no shared driver"
-description: "The backend.ExecutionBackend seam — six capabilities (materialize config, provision tools, wire MCP, seed auth, wire services, apply isolation), backend-owned sequencing with no shared driver, the two-phase capabilities FIRST_START/ATTACH and BOUNDARY/EGRESS, LaunchSpec versus backend-instance state, the registry, and the module-boundary rule that keeps backend.py free of launcher imports."
-tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, capmatrix, module-boundaries, hostbackend, containerbackend]
+title: "Execution backends: the six-capability contract and backend-owned sequencing"
+description: "The backend.ExecutionBackend seam — six capabilities (materialize config, provision tools, wire MCP, seed auth, wire services, apply isolation), backend-owned sequencing with no shared driver, the two-phase capabilities FIRST_START/ATTACH and BOUNDARY/EGRESS (with the secrets broker started inside the container BOUNDARY), LaunchSpec versus backend-instance state, the registry, and the module-boundary rule that keeps backend.py free of launcher imports."
+tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, secrets-broker, capmatrix, module-boundaries, hostbackend, containerbackend]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-02T20:26:19.165Z
 sources:
   - id: openwiki-source-f2bd22307a3451ac2519580c
     resource: repo://BACKENDS.md
@@ -21,10 +21,12 @@ sources:
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
     resource: repo://src/harnessed/schema.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-f725ea11f1806a58b06d7f3e
+    resource: repo://tests/test_launch_parity.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-02T20:26:19.165Z" }
 ---
 
-# Execution backends: the capability contract and why there is no shared driver
+# Execution backends: the six-capability contract and backend-owned sequencing
 
 harnessed's product is the **composition layer** — recipes compose into stacks. *Where* a composed
 stack runs (naked host, container, devcontainer, microVM) is a pluggable **execution backend**, and
@@ -38,6 +40,7 @@ every backend implements, so a new backend is a class to write rather than a for
 them in `BACKENDS.md`. This page follows that vocabulary and does not invent synonyms.
 
 Related: [architecture overview](overview.md),
+[secrets broker](/openwiki/architecture/secrets-broker.md),
 [invariants](/openwiki/concepts/invariants.md),
 [container-run](/openwiki/workflows/container-run.md),
 [host-run](/openwiki/workflows/host-run.md).
@@ -87,25 +90,29 @@ flowchart TB
         H4 --> HU["lock released"]
         HU --> H5["provision_tools ATTACH"]
         H5 --> H6["wire_mcp"]
-        H6 --> H7["apply_isolation BOUNDARY"]
-        H7 --> H8["apply_isolation EGRESS"]
+        H6 --> H7["apply_isolation BOUNDARY - no-op"]
+        H7 --> H8["apply_isolation EGRESS - no-op"]
     end
     subgraph CTR["container backend - sequenced by container_run"]
         C1["wire_services"] --> C2["provision_tools FIRST_START"]
         C2 --> C3["materialize_config"]
         C3 --> C4["seed_auth"]
         C4 --> C5["wire_mcp"]
-        C5 --> C6["apply_isolation BOUNDARY"]
-        C6 --> C7["provision_tools ATTACH"]
+        C5 --> C6["apply_isolation BOUNDARY - broker start"]
+        C6 --> C6b["pod create"]
+        C6b --> C6c["podman run member"]
+        C6c --> C7["provision_tools ATTACH"]
         C7 --> C8["apply_isolation EGRESS"]
     end
 ```
 
 *What each sequencer's capability order looks like. The host's `apply_isolation` calls are no-ops on
 that backend (isolation `none`); they are made anyway so the host path exercises the whole contract
-rather than quietly implementing five sixths of it. Non-contract sequencer steps (assembly, aoe
-registration, env setup, the re-attach branch, the CA install between `BOUNDARY` and `ATTACH` on the
-container path) are elided.*
+rather than quietly implementing five sixths of it. The container `BOUNDARY` phase is expanded into
+the three steps it actually performs — the secrets broker start, `pod create`, and the member
+`podman run` — because on this backend that single `podman run` is both the isolation boundary and
+the delivery mechanism. Non-contract sequencer steps (assembly, aoe registration, env setup, the
+re-attach branch, the CA install between `BOUNDARY` and `ATTACH` on the container path) are elided.*
 
 A backend therefore **implements the capabilities and orders its own launch**. What a fixed-order
 driver would break is precise: it would have to reorder one of the two existing paths, and reordering
@@ -118,6 +125,19 @@ The two conforming implementations live in `launcher.py`:
 | --- | --- | --- | --- |
 | backend #1 | `harnessed container-run` | `launcher.ContainerBackend` (`isolation = ISOLATION_CONTAINER`) | `launcher.container_run` |
 | backend #2 | `harnessed host-run` | `launcher.HostBackend` (`isolation = ISOLATION_NONE`) | `launcher._launch_host` |
+
+The host backend has its **own verb**, and that is deliberate (bd harnessed-ltj): the two verbs share
+**no flags but `--rm`** — `--fresh`, `--no-firewall`, `--mount-folder`, `--agent-start-folder` and
+`--shell` all describe a pod that does not exist on the host path, so a combined verb could only
+accept them and do nothing. What host mode isolates is **CONFIGURATION, not the filesystem**: the
+stack's assembled profile is materialized into a per-stack `CLAUDE_CONFIG_DIR` and the harness is
+exec'd against your real machine, in your real project, with your real credentials. `container-run`
+is what adds the container boundary too.
+
+**Pod launching is the container backend's, not the host backend's.** `pod create` and the member
+`podman run` both live inside `ContainerBackend.apply_isolation(BOUNDARY)`, and `HostBackend`
+creates neither a pod nor a container — the launch-parity ledger records even `instance_name` as
+container-only for exactly that reason ("names the container/pod; a host launch creates neither").
 
 The verb picks the backend and nothing else; both share one grammar and one stack-resolution path
 (`launcher._resolve_stack` — they "differ in backend, never in how a stack is chosen", bd
@@ -167,6 +187,27 @@ That is why the container's env assembly (folder-env contract, setup env, recipe
 than in `materialize_config`. The setup env is resolved there too, because a `setup.config` item may
 prompt and that must happen before the container starts.
 
+`BOUNDARY` is also where the launch's **secrets broker** is started — the container backend's only
+interaction with it, and the host backend's none at all:
+
+- `_broker_start_for` runs **before `pod create`** because the pod's network args depend on whether
+  a broker exists: without one, the pod must not be handed a route to the host's loopback it has no
+  use for. If `pod create` then fails, the started broker is stopped before re-raising — a broker
+  that outlives the launch it was started for is a host process holding live secrets that nothing
+  will ever reap by name.
+- The **host backend never starts one**: a host-native launch runs the harness in the user's own
+  session with their own credentials, so there is no boundary for the broker to sit on and varlock
+  resolves natively there already. The launch-parity ledger records `_broker_start_for`,
+  `_broker_stop_for` and `proxy_schema_dirs` as container-only **BY NATURE**, not by decision.
+- A **failed broker start is fatal** (issue #437, SPEC decision 2): launching without the broker
+  would leave the pod half-wired to a proxy that is not there — the silent half-wiring epic #388
+  exists to remove — and it gets worse once the pod's env becomes placeholders only the broker can
+  redeem. `--no-secrets` is the way past it. The failure message names the instance and that flag
+  rather than echoing the exception, because resolved values must stay value-free by construction.
+
+The broker's own lifecycle — how it starts, serves `169.254.1.1`, and is reaped — is the
+[secrets broker](/openwiki/architecture/secrets-broker.md) page's subject, not this one's.
+
 `EGRESS` runs `_apply_firewall` with the union of the recipes' `egress:` domains (default-DROP
 otherwise). Its failure semantics are **fail-closed twice over**: a non-zero exit from the firewall
 runner refuses to continue (`NO_FIREWALL=true` is the supported way to say "I do not want one"), a
@@ -190,8 +231,8 @@ flags that survive into the agent's own argv.
 
 Backend-specific state — podman instance and pod names, the host config dir, resolved mount args,
 whether the host home was rebuilt, the agent's argv, the pending setup list, the resolved
-`--env-file` list — lives on the **backend instance** instead. Both classes say so explicitly, and
-the reason is the same design decision as the missing driver:
+`--env-file` list, the instance's broker — lives on the **backend instance** instead. Both classes
+say so explicitly, and the reason is the same design decision as the missing driver:
 
 > a field only one backend can honor is a fixed-order driver in disguise.
 
@@ -199,8 +240,9 @@ the reason is the same design decision as the missing driver:
 `cwd`, `rebuilt`, `argv`. `ContainerBackend.__init__(...)` carries `rt`, `inst`, `pod`, `prof`,
 `harness_image`, `mount_path`, the recipe closure, the resolved server set, and accumulates
 `mount_args`, `member_mounts`, `config_volume`, `tools_volume`, `pending_setups`,
-`secrets_env_files`. If any of that moved into `LaunchSpec`, the spec would begin encoding one
-backend's order into a shared type.
+`secrets_env_files` — plus `broker`, set at `BOUNDARY` or `None` when the launch gets none. If any
+of that moved into `LaunchSpec`, the spec would begin encoding one backend's order into a shared
+type.
 
 Ordering between operations is likewise **enforced by the sequencer, not the contract**: the
 implementations use `assert` with an "ordering enforced by caller" note (`seed_auth` and
@@ -222,9 +264,9 @@ Backends are addressed by name:
 ## The module-boundary rule
 
 `backend.py` imports nothing from `launcher.py` and never will, and `capmatrix.py` makes the same
-pledge. Both cite `tests/test_module_boundaries.py` as the enforced boundary. (That file lives under
-`tests/`, which is outside this wiki's read boundary — the citation is carried from the source
-comments, where it is the authority.)
+pledge. Both cite `tests/test_module_boundaries.py` as the enforced boundary: every module in its
+`EXTRACTED` ledger is parametrized over one test that rejects any `launcher` import, including a
+function-local one, so the citation is an assertion rather than a comment.
 
 The direction of the dependency is the point: the **implementations live in `launcher.py`, beside
 the ~100 private helpers they call**, so the dependency points *into* the contract and the seam adds
@@ -336,6 +378,9 @@ directory shape), not threading a second `if harness ==` through five call sites
 - [BACKENDS.md](repo://BACKENDS.md) — the authority for the contract vocabulary, the isolation
   spectrum, and the standing decisions (container-primary; container auth as a host token proxy; the
   unified folder-env contract; first-run setup refuses rather than guesses).
+- [secrets broker](/openwiki/architecture/secrets-broker.md) — the varlock broker lifecycle: what
+  `@proxy` opts a schema into, why a failed broker start is fatal (#437), and what `--no-secrets`
+  trades away.
 - [architecture overview](overview.md) — where the seam sits in the module graph.
 - [container-run](/openwiki/workflows/container-run.md) and
   [host-run](/openwiki/workflows/host-run.md) — the two sequencers step by step.

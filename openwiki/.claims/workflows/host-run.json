@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e017476168ccacd4bb316cc201e6f5613a1c444b28bc473d13d738e1762a1815",
+  "pageVersion": "sha256:11a4a7f60b7fc0c0313cf9f2c56a3c5c364585a896cafdaca905e62a801320d7",
   "claims": [
     {
       "id": "claim_43a776daac44445ca2877b7331bbdf10",
@@ -14,10 +14,14 @@
     },
     {
       "id": "claim_95861359514b4be38bd8c8e0def2d447",
-      "statement": "_launch_host assembles the stack in-process on every launch via assemble(..., strict=True, shared_identity=False) — emit-only, no podman and no image build — which is what keeps host-run container-free end to end; assembly itself is this backend's validation gate in place of the container path's is_built/staleness checks.",
+      "statement": "_launch_host assembles the stack in-process on every launch via assemble(..., strict=True, shared_identity=False) — emit-only, no podman and no image build — which is what keeps the agent path container-free; assembly skips the container path's is_built/staleness validation gates entirely, but the wholesale host-home rebuild keeps its own gate, the _host_stack_fingerprint fingerprint (harnessed __version__ plus recipe-closure hash).",
       "evidence": [
         {
-          "resource": "repo://src/harnessed/launcher.py#L2603-L2617",
+          "resource": "repo://src/harnessed/hosthome.py#L36-L50",
+          "version": "repo-lines-v1:sha256:936f015b28448abb8fffec2ee7651dff3b436e6cc8bf0b808a193c8ccdde53e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MTE5YTExM2ZhYmNhOTNjZWIxMjRhNjYyOThiMWZhNjdjNDZmYjJiNzBmMzZlNzgzNTQ5ZTRjMzFjNDlkNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkY2EwZWZlNzc5NmI0Y2ExNDliN2Q4NzZiMWI1ZmRhZWU0MDI0MjBlYTkzNGZlYTBiYzdiOGMyNDRkNjM0MDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1YjE1OTM5ZjljYzRiOGY0ZTgxYWRmYmZkNWY1NzU3MmZkYzhiYTMzYWFjZGM5MTM5ZjcxYmYxZWMwZmMxZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjM2MxNzgxY2I5NWUxMzMxMWM1MWQyOGI5ZjRkNzQ1ZTlkNWM5OWJmNjg4YjVhZjVmNzVkOTg4OGE5NzY0MTEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2679-L2693",
           "version": "repo-lines-v1:sha256:d708cc024d4a48dc78d3a99358071d27bc13e632ecc64cc3c92891973e69944c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZTE1ZTdlZDY2ZjIxY2VhMzI0NmFkOTBiNzBmOGMxOGNjMjRjOTRlMjU4MWVjMGZlZThlZmViMGZiODkzY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMGYyZDM4MzY3MzU3ZjE2OWRmMGIzODFiODliZjE4YzJhMDliZmZhNTIyOGIzZjIxNWU4M2I0YmQzZGMyYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNDUwZjQyZTgzZDk1ZDVmODk2MTNmY2E1MzBjNjE2YzgwYWEwZGQ0N2RkOWQ0ZmY4ZjczNTFiOWYxZjM4MmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2ZDNmYTZjYWUwMWU0ZjI4NGI5ZTk0ZDFkYzVmZWE1Y2U1ZDc0M2NkODBlYWYxMDk2M2FiOTcyMGJmMGU1ZDkifQ"
         }
       ]
@@ -705,10 +709,42 @@
           "version": "repo-lines-v1:sha256:46edfa3d1ae525ed0fdb0966c316e13df213425f17605f954466b8e321023148:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZWM2NjlhY2Q2MWU2MmFiMzY2MTc1ZGJhYzE5YmRmYzhhOWMyZDY3YmRiMTI1NTdkYTk1ZGZmNzA5NTRhOGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4N2E4MGIwYTMzZTE2YWYwYTNmZGM3NzQzYmZjOTcwMGIyNTU5NjljM2QwOTgwODc3MWVhY2UwNjZmYjc0MTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiNWU5OTA4MjJiOTMwYzBjOTQxNzc1MmZiNmI1ODBkMTUwNmZkY2NjNDE4MzI5ODYxNTkyMmM5YzhkOTU4N2MifQ"
         }
       ]
+    },
+    {
+      "id": "claim_728ef2abef73436895778e09ce890386",
+      "statement": "A host launch never starts the secrets broker: _broker_start_for is container-only by nature — the broker exists so a POD can hold placeholders while real values are injected across the boundary — because a host-native launch resolves varlock natively into os.environ; there is no pod boundary for a broker to sit on. The parity lint's CONTAINER_ONLY ledger records exactly this and forces every container-side helper the host path omits to carry a written reason.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L535-L546",
+          "version": "repo-lines-v1:sha256:ea1ed4aaaa7c6d1dfe73db91f7b1033bf9452166b203b3b983d642df290bf30a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmYTg3N2MyZTIyMGUxNDY0MzM1Y2E2MDBjNDAxMzNlNGRjZTM3YWI4MTBiMjEyZWYxOTFhYTY1MjJhOWMwODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkZmY3Y2E2ZGZjZDk5NDdkZmU5MjJkZWZmMTAxYTY3NDdkZmI1MjI3OGZjOTc0OTU1NDUxZDRhZjIzNjMwODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkODc2MDU0ZjMxOWE0YTMxYTc3N2I3YmJjMzQ1NTAwYTUxZmU4ZDdjYWNlZjdhZTExM2VkZDgwNTE5OGNjNzAifQ"
+        },
+        {
+          "resource": "repo://tests/test_launch_parity.py#L52-L60",
+          "version": "repo-lines-v1:sha256:5bcda2644ab3ec6388325b560972ea0105fe4742371b1f743651104b1223d133:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTk0MWJlOGViYTViYTczMjllMDJlNGYwYzg1YzJjMDk5MWE0YmU0YjQwMDlhNzI1MjMwMGY2YjMyZWUxOGY4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjUyZTQxMjI1NTQyY2QwNDM0ODIyZGIwMTBiMzkxOGRkMThkOGRmYjY2ZWEyYjIwYTMyY2YxYTdiNDUwZjYyYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2E4NmY3MWIwODc3YzZmNzIwYWY3MDYxNzgzZDllYTkyZGZjNzU1OTUyOTUxN2I5OGQwMDZhMmRmNmJjZDE4MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzAwNzI5MTEzZmJmNDQzMjEyNDdmN2YyM2U1ODVmYWM3MTQzMGVjZGY5OWNjMjQzOTJmYzk2MmI2NjM2MjYxYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c44a8f1743d348f5a62938263f0db1e3",
+      "statement": "A host launch of a service-backed stack is the one place the path touches the container runtime: HostBackend.wire_services → _ensure_service builds a missing service image and starts or revives the sidecar container, and neither the execvpe handoff nor the --rm supervision branch stops it (the --rm branch deliberately tears down nothing — bd owns its shared server) — so sidecar containers can outlive the agent session. A stack declaring no services needs no container runtime at all.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1877-L1878",
+          "version": "repo-lines-v1:sha256:75a9ac161e71673223999b44910ae94c77f6356c9105fdde93ffb27747514e2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmVlYzcwZGU2YzU5Njc4YzhlMWQ3OTIzNGMzNjJiOGU5MDRmOWIxNGZjZTBjNjFkMzNhYWQ3Mzc1ZWE0YmU1NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTJiZDY3OGYzYzJhNDc5MmY0NmQ2MDk5ZjZkZGFhNDJkYjA3NWY4NDY3NmY1ZjY4MGRjMmYxMmViMzU2Y2EzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDkzZmFjY2VmMzQyNWUzZTc3MTU3ZTUwMmEyMDRkNzZlNTJhMjNkZjcyYmFjNjgyYjJlNDg0OWFhNmQ3NGEwMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODIyZjU5YTMwOTMwYTE2ZjNhNzUzNzliZmNhOTU5YWUwMjVhNDI5MDMxZWY1NDUwYzRiMWJhNDAyZDczZWRkYSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2613-L2636",
+          "version": "repo-lines-v1:sha256:2246a7e9d867f95e197b11694671800b8042f5e76a7e012af09f7f6b01977f93:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5ZjkxMTcwMWI3ODUwNjBiN2VhY2MyMGUzZmY1NDk2ZDBmNDBmYzVmMzFlNzA3ODkxNTAyZDRiOWRmYzNiOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhYjE5NDEwZDE3Mzg3MmM4Y2U0N2Q1MjlhNGRjZmI5Y2Y5ZjIwNGY2YzE1NTQyMDI5OTc5YmVlYmI4OTBkODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2MmFjMTBlZGNiZjUxN2FmNDAxMzFjMDAyZDhmMjYyYzA5ODU2YjYxNDQ5ZmYxYzE2Zjk3ZmUyMGE0OTllY2YifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2871-L2880",
+          "version": "repo-lines-v1:sha256:d581d6391b57ae914c4d3965a12f9aa2936d2bb695dafb30e5f7056d6de5ffaf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzOWQ0MDEzYjhlZjFiZTAzNDQ0ZjI2YTQyNGU1ZWRhZWUwNzUzNzRjN2FjNDkxYTUzY2JkMzIyYTYxMjk0M2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzM2Q4ODIzZTdiYTkzNGRhOTMyMTY3YjliZDI0NTg0Nzg2Mzc4NjRkMGZiZmJiYWJmNjFjMDQ4MTU3MzhlMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiMTI4YWJlYzRkYWMyODZiYzY3ZDZmZGRkNDE3Yjk3MzI4MTZhNWMxNmUyYTZhMDcyZWU3MjViZTQ5YWY4OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3MjcyNjg2MmUyMzAxMDhhOGMyODVmY2E0ODQ4Y2ZhYThjOTdlNGM0ZjdhMjliYmJlYThiYWEyMDdjMmY0ZDUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.4.3",
-    "at": "2026-09-01T11:08:21.365Z"
+    "at": "2026-09-02T20:26:19.165Z"
   }
 }

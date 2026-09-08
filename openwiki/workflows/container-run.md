@@ -3,9 +3,6 @@ type: workflow
 title: "Container launch: container-run end to end"
 description: "The podman backend's launch sequence — stack resolution and minting, freshness gates, idempotent service revival, the composed config volume, the ordered mount set, auth seeding, the pod boundary, attach-phase setups, the fail-closed egress firewall, and the execvp attach — with the invariant each step upholds."
 tags: [container-run, containerbackend, launcher, podman, egress-firewall, userns, copy-up, mount-set, seed-auth, attach]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
 sources:
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh

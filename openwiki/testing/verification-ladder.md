@@ -1,48 +1,20 @@
 ---
-type: concept
-title: The verification ladder
-description: What each gate proves and what it does not — the hermetic pytest suite and its asset-asserting checks, the live layer behind HARNESSED_PODMAN=1 with its fail-closed skip accounting, the ruff/pyright/shellcheck layers held at zero, the weekly pin check, the capability-test oracle, wheel packaging, mutation testing, and the local preflight that replays CI's order.
-tags: [testing, ci-gates, live-layer, lint, pin-check, capability-test, wheel-packaging, mutation-testing, preflight, openwiki-drift]
+type: "Reference"
+title: "The verification ladder"
+openwiki_generated: true
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-07T12:53:44.965Z
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
-  - id: openwiki-source-3b6f61ac560f049f559456d0
-    resource: repo://.github/workflows/live.yml
-  - id: openwiki-source-6d4b4e707b8d60b6ccfa3425
-    resource: repo://.github/workflows/openwiki-update.yml
-  - id: openwiki-source-4e2e2b93eeb15847052a26fb
-    resource: repo://.github/workflows/pin-check.yml
   - id: openwiki-source-4f2678f93d3fd3835f9f2909
     resource: repo://.github/workflows/test.yml
-  - id: openwiki-source-92fc0215b9c6f99519258ab6
-    resource: repo://catalog/recipes/rtk/recipe.yaml
-  - id: openwiki-source-abbd21b9b9170a1f6cc67ff4
-    resource: repo://catalog/recipes/superpowers/recipe.yaml
   - id: openwiki-source-a2371d6362e5db4bc834ad03
     resource: repo://CLAUDE.md
-  - id: openwiki-source-f317ee207e1653d2033c81a4
-    resource: repo://CONTRIBUTING.md
-  - id: openwiki-source-72b5d686f860ea86c8592080
-    resource: repo://mise.toml
-  - id: openwiki-source-05ccef8d4cf1698187f20464
-    resource: repo://pyproject.toml
-  - id: openwiki-source-0f0f277c40d34909acb07908
-    resource: repo://src/harnessed/capability.py
-  - id: openwiki-source-0852603a38d760a77db2bc8a
-    resource: repo://src/harnessed/cli.py
-  - id: openwiki-source-6645354f3fef484959520bc4
-    resource: repo://src/harnessed/console.py
-  - id: openwiki-source-ecbe6256d6933ca2c8c9678f
-    resource: repo://src/harnessed/launcher.py
-  - id: openwiki-source-8eaa0f25ca9e5f6b6822e5f9
-    resource: repo://src/harnessed/report.py
-  - id: openwiki-source-7536da5c015fc2813c7693c5
-    resource: repo://src/harnessed/schema.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-07T12:53:44.965Z" }
 ---
+
 
 # The verification ladder
 
@@ -506,14 +478,39 @@ everything, while a single change runs
 
 ## A fifth check that is not a rung: openwiki drift
 
-The wiki you are reading is itself held to a check. `mise run openwiki-drift` recomputes every
-Claim's evidence digest against the tree and **exits non-zero when cited code actually changed** —
-which turns "which pages are lying" into a check rather than a regeneration, and makes it the cheap
-thing to run before deciding to regenerate. Its generation counterpart, `openwiki-update.yml`
-(nightly 08:00 UTC plus dispatch), is deliberately *not* fail-fast: openwiki's page-job queue is
-durable, a run that dies partway has already written every page it finished, and the PR step banks
-that progress as the next baseline — the failure is re-raised at the end so the job still reports
-red. That is the opposite trade-off from the lint gate, and it is the right one for a job whose
+The wiki you are reading is itself held to a check — a precisely bounded one. `mise run
+openwiki-drift` (`tools/openwiki-drift.py`) recomputes each Claim's evidence digest against the tree
+and **exits non-zero when cited code has actually changed**, which turns "which pages are lying"
+into a check rather than a regeneration and makes it the cheap thing to run before deciding to
+regenerate. It is *not* a verifier of every Claim, and the boundary is deliberate:
+
+- **Only line-ranged evidence anchors are verified** — `repo://<path>#L<a>-L<b>` whose version
+  records the known `repo-lines-v1` digest. Whole-file evidence (no `#L` range) carries nothing to
+  hash against, and an unknown version scheme must be reported as unverifiable rather than checked
+  with v1 rules — that would let the gate go quietly green. Both are skipped, counted, and printed
+  as a separate `skipped` line: never silently treated as verified.
+- **A block that moved is not drift.** Ordinary development shifts line numbers constantly. An
+  anchor that misses its exact lines is re-found by scanning the file for any same-length window
+  with a matching digest and classified `moved` — identical content, different line numbers —
+  which is reported but never fails the check. Only `changed` (cited code genuinely differs) and
+  `missing` (file gone) are drift. The tool carries its own dated measurement of why the split is
+  the whole point: on a one-week window of normal work, **27.5% of anchors had moved versus 4.7%
+  that genuinely changed — and only the second number is a review queue.** A check that treated
+  every moved block as drift would report ~30% of Claims stale after a week, which is noise that
+  trains you to ignore it.
+- **The exit contract makes it a gate**: `0` no Claim's evidence changed, `1` at least one Claim's
+  cited code changed or its file is gone, `2` the wiki or its Claims are unreadable or malformed —
+  an explicit exit 2, because an accidental exit 1 would collide with the one status a caller gates
+  on. `--rev` diffs against a git revision instead of the working tree (what a wiki generated then
+  would say about now), `--quiet` prints nothing but the exit status, and `--strict-lines`
+  collapses the moved/changed distinction for when a reformat *should* count.
+
+Its generation counterpart, `openwiki-update.yml` (nightly 08:00 UTC plus `workflow_dispatch`),
+checks out full git history so the diff against the last-documented commit is nonempty and sets
+`persist-credentials: false`; it is deliberately *not* fail-fast, because openwiki's page-job queue
+is durable — a run that dies partway has already written every page it finished, and the PR step
+banks that progress as the next baseline — so the failure is re-raised at the end and the job still
+reports red. That is the opposite trade-off from the lint gate, and the right one for a job whose
 output is cumulative rather than binary.
 
 ---
@@ -529,7 +526,7 @@ output is cumulative rather than binary.
 | capability test | `harnessed test <stack> <harness>` | inside the live layer, or by hand | the manifest's declared capabilities are present in a running instance | undeclared capabilities, host-mode behaviour, interactive attach |
 | wheel packaging | `tests/test_wheel_packaging.py` (in the suite) | every pytest run | the shipped wheel carries the catalog and no host-local content | installed-wheel runtime behaviour — still the live layer's job |
 | mutation | `mutmut run` (config in `pyproject.toml`) | on demand | a failing change fails a container-free test | anything reachable only through a gated test |
-| wiki drift | `mise run openwiki-drift` | on demand | which wiki pages cite code that has changed | anything a page never cited |
+| wiki drift | `mise run openwiki-drift` | on demand | which Claims' line-cited code has changed or its file is gone — a moved-but-identical block is not drift | whole-file and unknown-scheme evidence (skipped and counted, never verified); anything a page never cited |
 
 ---
 

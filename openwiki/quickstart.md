@@ -1,247 +1,284 @@
 ---
-type: "Reference"
+type: quickstart
 title: "Quickstart: set up, build, launch, and where to read next"
-description: "Entry point for working on harnessed: the host-native dev environment (uv sync --extra dev, tools/run-tests.sh, tools/preflight.sh), the two console entrypoints, a safe first end-to-end slice, the ban on the interactive run verbs, and the task-routing table into every other page."
-tags: [quickstart, dev-environment, entrypoints, verification, run-verbs, routing]
+description: "Entry point for working on harnessed: the mise/uv toolchain and the venv that deliberately lives outside the repo, the only correct ways to run the three verification entry points (tools/run-tests.sh, tools/preflight.sh, mise run openwiki-drift), the two console entrypoints and the ban on automating the interactive run verbs, a safe first end-to-end slice, and the task-routing table into every other page."
+tags: [quickstart, dev-setup, mise, uv, run-tests, preflight, openwiki-drift, cli, task-routing]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-04T00:21:37.938Z
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
+  - id: openwiki-source-3b6f61ac560f049f559456d0
+    resource: repo://.github/workflows/live.yml
+  - id: openwiki-source-4e2e2b93eeb15847052a26fb
+    resource: repo://.github/workflows/pin-check.yml
+  - id: openwiki-source-4f2678f93d3fd3835f9f2909
+    resource: repo://.github/workflows/test.yml
   - id: openwiki-source-8037e2358a2c4f9b2c722a11
     resource: repo://AGENTS.md
-  - id: openwiki-source-99af78c0b5e16c14ce8e236b
-    resource: repo://catalog/stacks/hostmcp/stack.yaml
-  - id: openwiki-source-aa0d39e1756605ac6d53964f
-    resource: repo://catalog/stacks/openwiki/stack.yaml
+  - id: openwiki-source-e9cc6c20ea9b111b6ff0861e
+    resource: repo://catalog/stacks/default/stack.yaml
   - id: openwiki-source-a2371d6362e5db4bc834ad03
     resource: repo://CLAUDE.md
-  - id: openwiki-source-f317ee207e1653d2033c81a4
-    resource: repo://CONTRIBUTING.md
-  - id: openwiki-source-03ffc32a0ca502ab67c54b25
-    resource: repo://install.sh
   - id: openwiki-source-72b5d686f860ea86c8592080
     resource: repo://mise.toml
   - id: openwiki-source-05ccef8d4cf1698187f20464
     resource: repo://pyproject.toml
-  - id: openwiki-source-23775c3de52f3ab95a13cb8b
-    resource: repo://README.md
-  - id: openwiki-source-4cb5323446a15f50f3dc0069
-    resource: repo://src/harnessed/__init__.py
-  - id: openwiki-source-f566bbdd90ebc6ec3b85626a
-    resource: repo://src/harnessed/backend.py
+  - id: openwiki-source-0f0f277c40d34909acb07908
+    resource: repo://src/harnessed/capability.py
   - id: openwiki-source-0852603a38d760a77db2bc8a
     resource: repo://src/harnessed/cli.py
-  - id: openwiki-source-3d73552d55725e6e392c06df
-    resource: repo://src/harnessed/hosthome.py
+  - id: openwiki-source-6f84913afc580e4d73fac66a
+    resource: repo://src/harnessed/ctrquery.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
-  - id: openwiki-source-8eaa0f25ca9e5f6b6822e5f9
-    resource: repo://src/harnessed/report.py
-  - id: openwiki-source-7536da5c015fc2813c7693c5
-    resource: repo://src/harnessed/schema.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-f0a6e7dc03522b2682f88655
+    resource: repo://tests/conftest.py
+  - id: openwiki-source-3f192931254be5f292f00ca4
+    resource: repo://tests/test_live_workflow.py
+  - id: openwiki-source-6b70da595cfd5823cd7cabe6
+    resource: repo://tools/openwiki-drift.py
+  - id: openwiki-source-42360cb3e257ef7023d23d39
+    resource: repo://tools/preflight.sh
+  - id: openwiki-source-bb9438d561f4cbb6d5d38c49
+    resource: repo://tools/run-tests.sh
+generated: { by: "openwiki/0.4.3", at: "2026-09-04T00:21:37.938Z" }
 ---
 
 # Quickstart: set up, build, launch, and where to read next
 
-harnessed is a **host-native Python CLI** (`src/harnessed/`) that composes catalog content into
-profiles and launches the result through pluggable execution backends, driving **podman** directly —
-no tool container, no daemon socket. That has one consequence that shapes everything on this page:
-**the CLI runs on your host, so an edit under `src/harnessed/` is live immediately, with no image
-rebuild.** The images are a *delivery* artifact for launched stacks, not the thing you are editing.
+harnessed is a host-native Python CLI that assembles catalog content into profiles and launches
+composed coding-agent stacks. This page is the working entry point: what must be installed before
+anything runs, the sanctioned ways to run the verification entry points, the two console
+entrypoints, the launch verbs an agent must never invoke, a safe first slice, and where every other
+wiki page lives.
 
-## 1. Prerequisites, then the dev loop
+Related: [what each gate proves](/openwiki/testing/verification-ladder.md),
+[the command surface](/openwiki/operations/cli.md),
+[system overview](/openwiki/architecture/overview.md).
 
-Two host dependencies: **podman** (rootless — the reference runtime; Docker support is pending) and
-**uv**. `install.sh` is the end-user path: it *detects* both but never installs podman for you
-(privileged and distro-specific), and it installs the CLI from a **pinned git tag** — and no release
-tag has been cut yet. So for working *on* harnessed, ignore the installer and use the editable dev
-environment:
+## Prerequisites
+
+| Tool | Required? | Why |
+| --- | --- | --- |
+| **mise** | yes | Owns the venv activation and the non-Python analysis tools. `pyright` and `shellcheck` are installed by `mise.toml`'s `[tools]` (pinned `npm:pyright` and `shellcheck` versions), so **the lint layers cannot run without mise** — `tools/preflight.sh` reports them as skipped rather than passing silently. `tools/run-tests.sh` shells out to mise on its first line and fails with "is mise installed and on PATH?" without it. |
+| **uv** | yes | Creates the Python venv, installs harnessed editable plus the `dev` extra (pytest, ruff, hypothesis, pytest-randomly, …). |
+| **podman** or **docker** | only for live work | Needed by the live test layer behind `HARNESSED_PODMAN=1`, by `harnessed test`, and by `container-run`. The hermetic suite and `harnessed-tools`' emit-only verbs run with no runtime installed at all. `_runtime()` prefers podman and exits when neither is on PATH. |
+
+Python versioning is a floor, not a preference: `mise.toml` pins `UV_PYTHON = "3.12"` — the floor of
+`requires-python = ">=3.12"` and what CI's default job runs — because an unpinned uv picks the newest
+interpreter on the box, leaving no local run that exercises the supported version. That hid a real
+crash through a full local review once (`Path.resolve()` raises on a failing readlink under 3.12 and
+swallows it under 3.13, bd harnessed-925). CI covers the top of the range with a separate 3.13 job.
+
+The operational ground rules live in [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md)
+(git workflow, the launch-verb ban), [CLAUDE.md](https://github.com/drmikecrowe/harnessed/blob/main/CLAUDE.md)
+(non-negotiable constraints), and [CONTRIBUTING.md](https://github.com/drmikecrowe/harnessed/blob/main/CONTRIBUTING.md)
+(catalog authoring). This page links to them instead of restating them.
+
+## The toolchain: one venv per branch, outside the repo
+
+`mise.toml` points `UV_PROJECT_ENVIRONMENT` at
+`~/.local/share/harnessed/venvs/<branch>/.venv` — the venv is keyed to the git branch and
+deliberately lives outside the repository. Two reasons, both load-bearing:
+
+- A podman container that bind-mounts this repo cannot corrupt a `.venv` it does not contain.
+- One venv per branch avoids cross-branch dependency clobbering — which means **a fresh worktree
+  starts with no venv** and does not inherit `main`'s.
+
+With mise active, the venv is activated automatically (`_.source` in `mise.toml`), so `uv run …` and
+`harnessed` resolve against the right environment without a manual `export PATH`. Both
+`tools/run-tests.sh` and `tools/preflight.sh` run `mise trust` (a no-op once trusted) and
+`uv sync --extra dev` (a fast no-op when already in sync) before doing anything else, so first-run
+setup and repeat runs are the same command.
+
+## Running the suite: `tools/run-tests.sh`, and nothing else
+
+The suite is invoked **only** through the script — never a bare `pytest`, never a hand-composed
+`mise exec -- uv run pytest`. The script exists because three separate things make the suite fail
+locally while CI stays green, and the script handles all three so nobody has to remember them:
+
+1. **Per-branch venv outside the repo.** A fresh worktree starts with no venv (see above).
+2. **pytest is an optional extra** (`[project.optional-dependencies].dev`). A plain `uv sync`
+   installs the project without it, and `uv run pytest` then silently falls through to a system
+   pytest on a different Python, where every test errors with
+   `ModuleNotFoundError: No module named 'harnessed'` — which reads like a broken checkout.
+3. **mise refuses an untrusted config** in a new worktree. The script runs `mise trust` first.
 
 ```bash
-uv sync --extra dev                    # NOT plain `uv sync` — see below
-export PATH="$PWD/.venv/bin:$PATH"     # put the `harnessed` CLI on PATH
-
-uv run pytest -q                                    # hermetic: fast unit + assembly, no containers
-HARNESSED_PODMAN=1 uv run pytest tests/test_recipes_integration.py   # live: real podman builds
-
-tools/run-tests.sh                   # the suite — always through this script
+tools/run-tests.sh                        # whole suite, quiet
 tools/run-tests.sh tests/test_schema.py   # one file
 tools/run-tests.sh -k install -x          # filter, stop on first failure
-
-tools/preflight.sh                   # before every PR: every CI gate, in CI's order
 ```
+
+CI is held to the same entry point: `live.yml` invokes `tools/run-tests.sh -v` with
+`HARNESSED_PODMAN=1`, and `tests/test_live_workflow.py` fails the workflow definition if it ever
+invokes a hand-composed pytest line or drops the gate — a local green and a CI green are evidence
+about the same thing **by construction**.
+
+Record the baseline test count before a change: **a drop is a regression even if your new tests
+pass.**
+
+### What a green suite does not prove
+
+The hermetic suite runs **no real podman** — no `podman build`, no `harnessed container-run`. The
+`HARNESSED_PODMAN`-gated tests skip on a podman-less machine, and `tests/conftest.py` prints a
+"live verification" section naming exactly what did not execute; **a skip is not a pass**. The
+gated layer has one home: `live.yml`, behind `HARNESSED_PODMAN=1`, on pushes to `main` and a
+nightly schedule — deliberately never on pull requests. When the gate is open, the run is
+fail-closed about it: if any `live_podman`-marked test skips anyway, the session refuses to exit
+green, and that decision keys on the marker rather than on skip wording, so a broken podman cannot
+masquerade as success.
+
+The full ladder — what every gate proves and what it does not — is
+[the verification ladder](/openwiki/testing/verification-ladder.md).
+
+## Before a PR: `tools/preflight.sh`
+
+`tools/preflight.sh` replays every gate CI runs, **in CI's order**: pytest, then `ruff` →
+`pyright` → `shellcheck`. The order matters and is not cosmetic: `lint.yml` has no
+`continue-on-error` and ruff is its first step, so on CI a ruff finding means pyright and
+shellcheck **never ran** — a red lint job understates how much is still unverified. That is not
+hypothetical: PR #431 went red on two RUF005 findings invisible locally, with pytest fully green.
+
+```bash
+tools/preflight.sh              # pytest + ruff + pyright + shellcheck
+tools/preflight.sh --all        # also the catalog pin check (network, slow)
+tools/preflight.sh --no-tests   # lint layers only, for a docs- or shell-only change
+```
+
+The pin check (`harnessed update --check`) is opt-in locally on purpose: it queries live upstream
+release feeds, so it needs the network and is irrelevant to any change that does not touch
+`catalog/`. CI runs it as a weekly scheduled workflow (Mondays 06:00 UTC) rather than a PR gate,
+for the same reason a live registry query would fail unrelated branches through nobody's fault.
+
+Two things to know about how preflight reports:
+
+- **Its one deliberate divergence from CI:** every gate runs even after an earlier one fails, and
+  each layer that did not run is reported **by name** in the summary. CI stops at the first failure
+  and leaves you guessing; preflight hands you the whole list in one pass. A bare "all clear" is
+  never printed while a layer was skipped — that overstatement is what the script exists to
+  prevent.
+- **pyright gets the venv interpreter explicitly** (`--pythonpath` resolved from the same uv venv).
+  Because the venv lives outside the repo, a bare `pyright` inherits no activation, resolves none of
+  the installed packages, and reports hundreds of phantom `reportMissingImports` on a tree that is
+  genuinely clean.
+
+## The wiki's own gate: `mise run openwiki-drift`
+
+Before trusting any page in `openwiki/` — including this one — run:
+
+```bash
+mise run openwiki-drift
+```
+
+The task runs `tools/openwiki-drift.py`: no model call, no network, no credentials. It recomputes
+each Claim's line-ranged evidence digest against the tree and exits non-zero when cited code
+actually changed (exit `0` nothing changed, `1` at least one Claim's code changed or its file is
+gone, `2` the wiki or its Claims are unreadable/malformed). Its coverage is precise, and the
+boundaries matter:
+
+- It verifies evidence carrying a `repo://<path>#L<a>-L<b>` range. **Whole-file evidence and
+  unknown version schemes are counted and reported as `skipped`, never verified.**
+- A block that **moved** (identical content, different line numbers) is separated from one that
+  **changed** — ordinary development shifts lines constantly, and a check that reported moved
+  blocks as drift measured 27.5% moved against 4.7% genuinely changed on a one-week window. Only
+  the second number is a review queue.
+
+So a green drift run means **"nothing it cites has moved"**, not "everything it says is true" — no
+digest can catch a claim that misreads code which has not changed; only a reader can. AGENTS.md
+§Generated wiki carries that rule and the drift-check limits.
+
+## The two console entrypoints
+
+`pyproject.toml` defines two scripts with one division of labor:
+
+| Entrypoint | Code | What it owns |
+| --- | --- | --- |
+| **`harnessed`** | `harnessed.launcher:main` (Typer) | Every verb that can touch the container runtime, launch an agent, or manage host-side state: `build`, `container-run`, `host-run`, `test`, `svc`, `update`, the GCs, … |
+| **`harnessed-tools`** | `harnessed.cli:main` (argparse) | The emit-only / analysis surface: `assemble` (reads the catalog, writes a profile — never invokes podman/docker), `persist-list`/`persist-prune`, `lint-prose`, `scan-image-online` — **plus `test`, which launches a headless instance and needs podman/docker** |
+
+Two invocation rules for `harnessed` that prevent real usage errors:
+
+- There is **no bare-stack shortcut**: the leading token is always a subcommand. The earlier
+  "stack name unless it matches a registered command" design made every new verb require
+  hand-registration and read its failures as usage errors.
+- Args after a standalone `--` are **passthrough**, appended verbatim to the harness command
+  (`harnessed container-run claude -s S -- --resume` runs `claude … --resume`).
+
+### The interactive run verbs are the user's
+
+`harnessed container-run` and `harnessed host-run` hand the terminal to a live agent session: both
+end by **replacing the launcher process** — `os.execvp` hands the TTY to the runtime attach on the
+container path, `os.execvpe` execs the harness against your real home on the host path — so nothing
+after the launch point can observe, bound, or reap it. They are for the user, not for automation;
+the rule and its rationale are stated at the top of
+[AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) and mirrored in
+[CLAUDE.md](https://github.com/drmikecrowe/harnessed/blob/main/CLAUDE.md).
+
+To reason about behavior, use `harnessed build`, `harnessed test`, `harnessed list`, or read the
+source. **`harnessed test <stack> <harness>` is the headless equivalent of a launch**: it launches
+`container-run <harness> <project> --stack <name> --fresh` under `HARNESSED_HEADLESS=true` — pod up,
+no interactive attach — introspects the live instance against the manifest oracle, and tears the
+instance down as part of the contract.
+
+## A safe first end-to-end slice
+
+```bash
+tools/run-tests.sh               # the whole suite — fast, hermetic, no podman needed or used
+harnessed build default claude   # assemble the shipped baseline in-process + build its images
+harnessed test default claude    # headless capability oracle (needs podman or docker)
+```
+
+`default` is the shipped baseline stack — one recipe, no services, no policy fields — and the
+baseline every dynamic (`--recipe`) stack extends, so this slice works on a fresh install. The
+first command needs no runtime; the second and third build and exercise real images, which is
+exactly the territory the hermetic suite does not cover. `test` auto-assembles first when the
+profile is missing or stale, so it is also the quickest "does my change still launch" probe.
 
 ```mermaid
 flowchart TD
-    setup["uv sync --extra dev and put the venv on PATH"] --> unit["uv run pytest -q hermetic suite"]
-    unit --> pre["tools/preflight.sh before every PR"]
-    unit --> live["HARNESSED_PODMAN=1 live suite via tools/run-tests.sh"]
-    live --> build["harnessed build hostmcp claude"]
-    build --> cap["harnessed test hostmcp claude"]
-    cap --> user["interactive launch is the user's job: container-run or host-run"]
+    change["a change to verify"] --> suite["tools/run-tests.sh - the suite, always through the script"]
+    suite --> what{"what did the change touch"}
+    what -->|"docs or shell scripts only"| lintonly["tools/preflight.sh --no-tests - lint layers only"]
+    what -->|"catalog pins"| allgates["tools/preflight.sh --all - adds the networked pin check"]
+    what -->|"code"| pre["tools/preflight.sh - pytest, ruff, pyright, shellcheck in CI order"]
+    lintonly --> wiki{"reading or editing openwiki pages"}
+    allgates --> wiki
+    pre --> wiki
+    wiki -->|"yes"| drift["mise run openwiki-drift - before trusting any page"]
+    wiki -->|"no"| pr["open the PR"]
+    drift --> pr
 ```
 
-*The loop. Every step terminates; the only non-terminating step in the system is the one handed to
-the user.*
+*The local verification loop. Every arrow is a command from this page; the flags map one-to-one to
+`tools/preflight.sh`'s argv.*
 
-Four things in that block are load-bearing:
+## Where to go next
 
-- **`--extra dev` is mandatory, not stylistic.** The runtime dependencies are only
-  `ruamel.yaml`/`rich`/`pip-audit`/`typer`; pytest and the Python-installable analysis toolchain
-  (ruff, mutmut, diff-cover, hypothesis, pytest-randomly, …) live in the optional `dev` extra. Plain
-  `uv sync` succeeds, installs no `pytest`, and the suite "breaks" with a command-not-found rather
-  than a test failure. `pyright` and `shellcheck` are not Python packages at all — they are pinned
-  as **mise tools in `mise.toml`**, which is why the lint layers still need mise on the box.
-- **The live gate is what the hermetic suite cannot give you.** `HARNESSED_PODMAN=1 uv run pytest
-  tests/test_recipes_integration.py` builds each catalog stack and asserts every declared
-  skill/command/plugin/MCP server is present *in the running container* — a stack you add to the
-  catalog is covered automatically. It is also the README's documented way to verify a host against
-  the reference runtime.
-- **Always invoke the suite through `tools/run-tests.sh`, never a hand-composed mise/uv/pytest
-  line.** It absorbs the traps that fail locally while CI stays green — the per-branch venv that
-  lives *outside* the repo (`mise.toml`'s `UV_PROJECT_ENVIRONMENT`, which keeps a `.venv` out from
-  under a podman bind mount), the mandatory `--extra dev`, and mise's untrusted-config refusal. CI's
-  live job invokes the same script.
-- **A green `pytest` run is one gate of four.** It proves no container behaviour: no `podman build`,
-  no `harnessed container-run`. `tools/preflight.sh` runs pytest, then `ruff` → `pyright` →
-  `shellcheck` in CI's exact order and with CI's exact argv (`--all` adds the catalog pin check,
-  `--no-tests` runs the lint layers only). Record the baseline test count before your change — **a
-  count drop is a regression even when your new tests pass.**
+Route by task, not by directory. The index files under each directory list the same pages.
 
-What each gate proves — and, more usefully, what it silently does not — is the whole subject of the
-[verification ladder](/openwiki/testing/verification-ladder.md).
-
-## 2. Two console entrypoints, one package
-
-`pyproject.toml` declares exactly two console scripts, and the split is the system's most important
-seam:
-
-| entrypoint | module | role |
-| --- | --- | --- |
-| `harnessed` | `harnessed.launcher:main` | the Typer verb surface — `build`, `test`, `list`, `new`, `svc`, `stop`/`rm`, `install`/`uninstall`, `update`, `rescan`, the GCs, and both interactive run verbs. This half **drives podman**. |
-| `harnessed-tools` | `harnessed.cli:main` | the emit-only assembler (`assemble`, `scan-image-online`, `persist-list`, `persist-prune`, `lint-prose`) plus the `test` subcommand that `harnessed test` delegates to. This half **never invokes a container runtime**. |
-
-Assembly (`schema.py`, `assemble.py`, `emit.py`, `synclinks.py`) only reads the catalog and writes
-the profile; the host runs `podman build` on the emitted artifacts. Only the launcher — and
-`volumes.py`, which it drives — touch the runtime. Two consequences for a change plan: adding a
-podman call to any emit module breaks `harnessed-tools assemble` on machines with no runtime, and a
-launcher-only bug will not reproduce under `harnessed-tools`. The
-[build pipeline](/openwiki/workflows/build.md) page names the module that owns each stage.
-
-## 3. The first end-to-end slice
-
-The README's quickstart reads:
-
-```bash
-harnessed build time claude && harnessed time claude
-```
-
-**Two parts of that line no longer describe the shipped CLI**, and knowing why is the fastest way
-to learn the grammar:
-
-1. **There is no `time` stack.** `catalog/stacks/` ships `default`, `gsd-core_repowise`, `hostmcp`,
-   `hostspike`, `openbrain-example`, `openwiki`. The stack that composes the `time` recipe — one
-   pinned stdio MCP server (`uvx --with mcp==1.29.0 mcp-server-time@2026.7.10`) plus one standalone
-   skill — is **`hostmcp`** (`recipes: [time]`). (`openwiki`, the newest, composes `default` +
-   `openwiki`.)
-2. **The bare `harnessed <stack> <harness>` shorthand is gone.** `launcher.main` treats the leading
-   token as a subcommand, full stop: the old `_COMMANDS` dispatch meant every newly registered verb
-   silently became unreachable (`harnessed update` parsing as a launch and failing with a
-   usage-shaped error). A stack is named by `--stack`, and the harness is the leading positional of
-   the verb. The short `time claude`-shaped command still exists — delivered by
-   `harnessed install <stack>`, which writes a `~/.local/bin/<stack>` shim expanding to
-   `harnessed container-run --stack <stack> "$@"`.
-
-(`install.sh`'s printed "next steps" — `harnessed build claude_time` — carries the same stale
-shape.)
-
-What actually works today, and is safe for an agent to run because every step terminates:
-
-```bash
-harnessed build hostmcp claude      # assemble in-process, build base + agent + derived images, populate volumes, scan
-harnessed test hostmcp claude       # the capability oracle: launch --fresh headless, assert declared capabilities, tear down
-harnessed list                      # authored stacks (which harnesses are built) + instances
-```
-
-`harnessed test` is the safe substitute for a launch: it validates the harness name, auto-assembles
-first when the profile is missing or stale, then delegates to the `harnessed-tools test` entrypoint
-(module form `python -m harnessed.cli test`) in a subprocess with no outer timeout and propagates
-the child's exit code. Its output is **printed, not written to a file**: a rich markdown capability
-table on the terminal, or the structured result on clean stdout under `--json`, with the *same*
-structured result driving the exit code. (The README's claim that the report lands at
-`$XDG_DATA_HOME/harnessed/profiles/<stack>/<harness>/capability-report.md` no longer matches the
-code.) The [capability test](/openwiki/workflows/capability-test.md) page explains the oracle.
-
-The supported harnesses are exactly the keys of `schema.HARNESS_CONFIG_DIR` — **claude, omp,
-opencode, antigravity, codex** — and the run verbs reject any other name at the CLI boundary via a
-shared helper, so the two entrypoints cannot drift apart.
-
-### The launch verbs are the user's, not yours
-
-**`harnessed container-run` and `harnessed host-run` are interactive and are for the user, never
-the agent.** Both end by *replacing* the harnessed process with the agent session — `container-run`
-terminates in an `os.execvp` that hands the TTY to a shell inside the pod, and `host-run` terminates
-in an `os.execvpe` that execs the harness directly on the machine, against your real home and
-credentials, with no container. There is no prompt to answer and no way back. `AGENTS.md` states
-this as a hard rule; `harnessed build`, `harnessed test`, `harnessed list`, and reading the source
-are the sanctioned ways to reason about behaviour.
-
-| Instead of | Run / read |
+| Task or question | Page |
 | --- | --- |
-| `harnessed container-run claude --stack S` | `harnessed build S claude`, `harnessed test S claude`, or [container launch](/openwiki/workflows/container-run.md) |
-| `harnessed host-run claude --stack S` | `harnessed test S claude`, or [host launch](/openwiki/workflows/host-run.md) |
-| "what exists / what is built?" | `harnessed list`, or [system overview](/openwiki/architecture/overview.md) |
-
-For a human, the equivalent one-off forms are `harnessed container-run claude --stack hostmcp` /
-`harnessed host-run claude --stack hostmcp`, or a dynamic stack with no manifest at all:
-`harnessed container-run claude --recipe time`. Both verbs pick the stack through the *same*
-`_resolve_stack` call — they differ in **backend**, never in how a stack is chosen — and they are
-the two implementations behind the `ExecutionBackend` contract in `src/harnessed/backend.py`: six
-capabilities, backend-owned ordering, no shared driver. The
-[execution backends](/openwiki/architecture/backends.md) page is that contract.
-
-## 4. Task routing
-
-| Task | Read first |
-| --- | --- |
-| **Change how images build** (assembly, Dockerfiles, image lineage, scans) | [build pipeline](/openwiki/workflows/build.md) |
-| **Touch secrets** or anything credential-shaped | [credential handling](/openwiki/concepts/credentials.md) — the constraint is *referenced, never replicated* |
-| **Reason about the credential-proxy migration** (the four modes, `@proxy`, the readiness warning) | [the credential proxy model](/openwiki/concepts/credential-proxy.md) |
-| **Add or alter a launch path** (a backend, or either verb's sequence) | [execution backends](/openwiki/architecture/backends.md), then both launch pages: [container-run](/openwiki/workflows/container-run.md) and [host-run](/openwiki/workflows/host-run.md) |
-| **Compose a stack at launch time** (`--recipe` / `--extends` / `--service`, the minted name) | [dynamic stacks](/openwiki/workflows/dynamic-stacks.md) |
-| **Author catalog content** (recipe / stack / agent / service) | [catalog and schema](/openwiki/architecture/catalog-and-schema.md) |
-| **Before opening a PR** | [verification ladder](/openwiki/testing/verification-ladder.md) |
-| Orient: vocabulary, module map, dependency direction | [architecture overview](/openwiki/architecture/overview.md) |
-| Add or change a service sidecar | [service sidecars](/openwiki/architecture/services.md) |
-| Understand what a build left on disk, staleness, or a GC | [state and staleness](/openwiki/architecture/state.md) |
-| Reason about who wins a layered value | [precedence](/openwiki/concepts/precedence.md) |
-| Change env injection or recipe install/setup phases | [the env contracts](/openwiki/concepts/env-contract.md) |
-| Something reads like a defect — check before "cleaning it up" | [invariants and deliberate deviations](/openwiki/concepts/invariants.md) |
-| Understand the full verb surface (`svc`, `update`, `rescan`, GCs, …) | [operations: the command surface](/openwiki/operations/cli.md) |
-| Change scans, pins, or tool locks | [supply chain](/openwiki/operations/supply-chain.md) |
-| Understand how the five harnesses read one profile | [harness integrations](/openwiki/integrations/harnesses.md) |
-| Change the aoe bridge or the per-project launcher scripts | [aoe and launch scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |
-
-## 5. The repo's own rulebooks — read them, this page does not restate them
-
-Three files at the repo root govern workflow and safety, and they outrank anything summarized here:
-
-- **`AGENTS.md`** — the operational rules: the ban on running `container-run`/`host-run` yourself,
-  the git workflow (no commits to `main`; worktree → passing full suite → PR), the worktree rules,
-  and where authorable content lives. Also the boundary that an agent may modify only files **in
-  this repository** and must not touch the user's home directory unless explicitly asked.
-- **`CLAUDE.md`** — the non-negotiable technical constraints (host-native CLI, Claude format
-  canonical, recipes harness-independent, pnpm everywhere, pinned downloads, credentials referenced
-  never replicated) plus the test-invocation rules and PR conventions, including signed commits.
-- **`CONTRIBUTING.md`** — dev setup and how to add catalog content: recipe authoring rules,
-  `expect:` declarations, the `catalog/`-ships-in-the-wheel consequences, and the compose + test
-  loop.
-
-For vocabulary and the build/launch model, `ARCHITECTURE.md` is the first read both of them point
-at; `BACKENDS.md` is the authority for the backend vocabulary the
-[execution backends](/openwiki/architecture/backends.md) page follows. Read `AGENTS.md` and
-`CLAUDE.md` before your first change; they are short, and every rule in them was written after
-something went wrong.
+| What harnessed is; the module map; the precise vocabulary (agent, recipe, service, stack) | [architecture/overview](/openwiki/architecture/overview.md) |
+| What a backend is; the six-capability contract; what container vs host mode honors | [architecture/backends](/openwiki/architecture/backends.md) |
+| How catalog content is validated, resolved across roots, overlaid, and shipped in the wheel | [architecture/catalog-and-schema](/openwiki/architecture/catalog-and-schema.md) |
+| What lives where on disk; staleness detection; what each GC keys on | [architecture/state](/openwiki/architecture/state.md) |
+| How service sidecars get identity, ports, sockets, and guards | [architecture/services](/openwiki/architecture/services.md) |
+| The host secrets broker: the proxy per instance, the spawn/stop lifecycle, the pod's door | [architecture/secrets-broker](/openwiki/architecture/secrets-broker.md) |
+| How a stack + harness becomes a profile, images, and populated volumes — stage by stage | [workflows/build](/openwiki/workflows/build.md) |
+| The container launch sequence end to end, with the invariant each step upholds | [workflows/container-run](/openwiki/workflows/container-run.md) |
+| The host launch sequence end to end; what "configuration-only isolation" means | [workflows/host-run](/openwiki/workflows/host-run.md) |
+| How `--recipe`/`--extends` mints a real stack at launch time | [workflows/dynamic-stacks](/openwiki/workflows/dynamic-stacks.md) |
+| How `harnessed test` proves a build against the manifest oracle | [workflows/capability-test](/openwiki/workflows/capability-test.md) |
+| Who wins when two config sources conflict — one row per conflict | [concepts/precedence](/openwiki/concepts/precedence.md) |
+| Constraints that read like defects but are load-bearing — check before "fixing" | [concepts/invariants](/openwiki/concepts/invariants.md) |
+| The credential SOP: referenced, never replicated | [concepts/credentials](/openwiki/concepts/credentials.md) |
+| The credential-proxy vocabulary: four modes, the annotation gate, the readiness warning | [concepts/credential-proxy](/openwiki/concepts/credential-proxy.md) |
+| The folder-env and install-env contracts recipes may rely on | [concepts/env-contract](/openwiki/concepts/env-contract.md) |
+| What each verification gate proves and what it does not | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |
+| The full verb surface and the lifecycle each verb manages | [operations/cli](/openwiki/operations/cli.md) |
+| Image scans, catalog pins, and per-recipe tool locks | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
+| How the five harnesses read the one Claude-canonical profile | [integrations/harnesses](/openwiki/integrations/harnesses.md) |
+| The aoe tmux bridge and the per-project launch scripts a launch writes | [integrations/aoe-and-launch-scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |

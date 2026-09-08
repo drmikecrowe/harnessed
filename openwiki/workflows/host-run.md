@@ -1,11 +1,11 @@
 ---
 type: workflow
 title: "Host launch: host-run end to end"
-description: "The host backend's launch sequence — in-process assembly on every launch, the fingerprint-gated per-stack home materialization, installs that must follow the wipe, the os.environ-is-the-box env delivery with the harness config-dir pinning last, share-back symlinks for claude and omp, and the execvpe handoff. Configuration-only isolation: no pod, no network namespace, no egress firewall, your real home."
+description: "The host backend's launch sequence — in-process assembly on every launch, the fingerprint-gated per-stack home materialization (skipping the container path's image/presence gates), installs that must follow the wipe, the os.environ-is-the-box env delivery with the harness config-dir pinning last, share-back symlinks for claude and omp, wire_services sidecars as the one container-runtime touch, and the execvpe handoff. Configuration-only isolation: no pod, no network namespace, no egress firewall, your real home."
 tags: [host-run, hostbackend, hosthome, hostrun, execvpe, materialize, fingerprint, share-back, mise, claude-config-dir, pi-coding-agent-dir, isolation-none]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-02T20:26:19.165Z
 sources:
   - id: openwiki-source-c45652791b6bc8bb3a3f3d3e
     resource: repo://src/harnessed/assemble.py
@@ -29,19 +29,26 @@ sources:
     resource: repo://src/harnessed/setupenv.py
   - id: openwiki-source-4d719c6f3a70a2ece04f213b
     resource: repo://src/harnessed/toollock.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-f725ea11f1806a58b06d7f3e
+    resource: repo://tests/test_launch_parity.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-02T20:26:19.165Z" }
 ---
 
 # Host launch: `host-run` end to end
 
 `harnessed host-run <harness> [path]` runs a composed stack with **no podman, no image, and no
-container anywhere on the path**. The assembled profile is laid down as a real per-stack directory
-tree, the harness is exec'd as a process on the machine with the host's own auth, filesystem and
-network, and `harnessed` is gone by the time the agent starts. What this backend isolates is
-**configuration** — which skills, rules, commands and hooks are live — and nothing else. That is a
-declared boundary (`HostBackend.isolation = ISOLATION_NONE`), not a missing one.
+container on the agent's path** — the agent itself is exec'd directly on the machine. The one
+deliberate exception runs *before* the agent: when the stack declares `services:`,
+`HostBackend.wire_services` ensures those sidecars **through the container runtime**
+(`_ensure_services`, bd harnessed-2sm), and they can outlive the agent session. A service-less
+stack is the case that needs no container runtime at all. The assembled profile is laid down as a
+real per-stack directory tree, the harness is exec'd as a process on the machine with the host's
+own auth, filesystem and network, and `harnessed` is gone by the time the agent starts. What this
+backend isolates is **configuration** — which skills, rules, commands and hooks are live — and
+nothing else. That is a declared boundary (`HostBackend.isolation = ISOLATION_NONE`), not a missing
+one.
 
-### What `host-run` never gives you
+## What `host-run` never gives you
 
 Say it plainly, because it is the safety-relevant asymmetry between the two backends: **no pod, no
 network namespace, no egress firewall, and no separate home.** The agent is a plain process running as
@@ -58,6 +65,24 @@ machine's full network reach. Three consequences follow, and each is named elsew
 
 If a stack's declarations need a boundary, that stack belongs under
 [`container-run`](/openwiki/workflows/container-run.md).
+
+Two more container-shaped things this path deliberately does *not* do, and one it does:
+
+- **The secrets broker is never started.** `_broker_start_for` is container-only **by nature**, not
+  by decision: the broker exists so a *container* can hold placeholders while real values are
+  injected across the boundary. A host-native launch runs the harness in the user's own session
+  with their own credentials — there is no pod boundary for a broker to sit on, and varlock
+  resolves natively into `os.environ` there already. The parity ledger
+  (`tests/test_launch_parity.py` `CONTAINER_ONLY`) records it verbatim:
+  `"_broker_start_for": "starts a host broker for a POD; a host launch resolves varlock natively"`.
+- **No image and no presence gate.** The container path refuses to launch until
+  `is_built(stack, harness)` and then re-validates the profile with
+  `staleness.check_profile_fresh`. The host path has no image and **assembles in-process on every
+  launch**, so assembly *is* its validation gate — yet the home rebuild keeps its own
+  fingerprint gate; both halves are described below.
+- **Sidecars are the exception.** For a stack with `services:`, the launch does reach the container
+  runtime (build/revive sidecars via `_ensure_service`) even though the agent never does —
+  [wire_services](#wire_mcp-native-servers-no-hub) has the details.
 
 The sibling verb is [`container-run`](/openwiki/workflows/container-run.md): same grammar, same
 stack resolution (`launcher._resolve_stack`), inverted capability order. The contract both
@@ -77,6 +102,7 @@ sequenceDiagram
     participant RUN as launcher.host_run
     participant LH as _launch_host
     participant BE as HostBackend
+    participant RT as container runtime
     participant HH as hosthome
     participant HR as hostrun
     participant AG as agent process
@@ -88,7 +114,8 @@ sequenceDiagram
     LH->>LH: launchscript.write then _aoe_register
     LH->>LH: _resolve_launch_env onto os.environ
     LH->>LH: _warn_capability_gaps plus _note_host_omp_skill_gap
-    LH->>BE: wire_services spec
+    LH->>BE: wire_services spec services only
+    BE->>RT: _ensure_services builds or revives sidecars
     LH->>LH: _write_project_tool_env
     LH->>LH: _recipe_env onto os.environ
     LH->>LH: PATH prepend stack bin plus mise shims
@@ -111,10 +138,13 @@ sequenceDiagram
     LH->>BE: wire_mcp spec
     BE->>LH: apply_isolation both phases no-op
     LH->>AG: os.execvpe with the harness config dir var
+    Note over AG,RT: sidecars keep running after the agent exits
 ```
 
 *One interactive launch. The grey block is the home lock — the only span across which a concurrent
-launch of the same `(stack, harness)` must wait.*
+launch of the same `(stack, harness)` must wait. The wire_services step is the path's single
+container-runtime dependency: it fires only when the stack declares services, and the sidecars it
+starts outlive the agent. A service-less stack skips it and never touches a runtime.*
 
 ---
 
@@ -167,10 +197,13 @@ row whose recorded command names that manifest.
 assemble(None, stack, paths.profiles_root().parent, harness, strict=True, shared_identity=False)
 ```
 
-This is emit-only — no podman invocation, no image build — and it is what keeps `host-run`
-container-free end to end. Assembly is sub-second, so a rebuild-per-launch also sidesteps
-staleness bookkeeping entirely: there is no `is_built` / `staleness.check_profile_fresh` gate on
-this path because assembly *is* the gate. Two consequences worth knowing:
+This is emit-only — no podman invocation, no image build — and it is what keeps the *agent path*
+container-free. Assembly is sub-second, so a rebuild-per-launch also sidesteps
+staleness bookkeeping entirely: the container path's `is_built` / `staleness.check_profile_fresh`
+gates are simply skipped, because assembly *is* this backend's validation gate. **That is not the
+same as ungated**: the per-stack home rebuild keeps its own gate, `_host_stack_fingerprint`, which
+gates the expensive filesystem work the image build would otherwise have forced a refresh of —
+see [the materialize contract](#the-materialize-contract). Two consequences worth knowing:
 
 - `shared_identity=False` suppresses the one emit step that writes outside the profile — omp's
   delimiter-marked blocks in the shared `~/.omp/agent`. A host launch reads a per-stack agent dir
@@ -360,6 +393,12 @@ every launch of every project (bd harnessed-8px.12).
 (skills/commands/rules/agents + CLAUDE.md) plus the settings.json floor — exactly what the container
 bind-mounts onto `~/.claude`, minus the container-only artifacts (`.mcp.json` hub wiring,
 `hatago.config.json`, the derived Dockerfile), because **there is no hub host-side**.
+
+Gating differs from the container path in both directions: a host launch **skips** the container
+path's presence and staleness gates (`is_built`, `staleness.check_profile_fresh`) — there is no
+image, and assembly runs in-process every launch — yet it still **gates the home rebuild** on
+`_host_stack_fingerprint`. Skipping the build gates is cheap; skipping the rebuild gate would put a
+destructive wipe on every launch, which is exactly what the fingerprint exists to prevent.
 
 Three properties hold together and must not be split:
 
@@ -728,15 +767,34 @@ named.
   than inheriting the user's own. `--no-strict-mcp-config` for omp is accepted-and-inert, reported
   at launch — a silent case this codebase names rather than tolerates.
 
-`HostBackend.wire_services` is the other half of "the stack, not the backend, owns its services": it
-calls `_ensure_services` with the same sidecars `container-run` ensures, guarded on the stack
-actually declaring services, so a host launch of a service-less stack still needs no container
-runtime at all. A socket-backed sidecar composes with a host agent for free — the socket is a
-filesystem object inside the persist dir the service bind-mounts, so the host process dials exactly
-the path the container serves it on. It passes `_resolve_mount_path` (not the project path) so the
-create-time config hash — and the `harnessed.svc-config-hash` label — is identical whichever entry
-point started the sidecar; otherwise alternating host-run with container-run would flag drift and
-recreate the container every single time.
+`HostBackend.wire_services` is the other half of "the stack, not the backend, owns its services"
+(bd harnessed-2sm) — and it is the **one place this container-free path still touches the container
+runtime**. It calls `_ensure_services` with the same sidecars `container-run` ensures, because a
+`services:` entry is a property of the stack rather than the backend: host mode makes the *agent*
+host-native, it does not remove a service the stack says it needs. Omitting it left every beads
+stack under `host-run` with no server, no socket and no data dir.
+
+Two lifecycle consequences follow, and both are visible to the operator:
+
+- `_ensure_service` **builds or revives real containers** — if the service image is missing it is
+  built, if the sidecar is not running it is started, and a drifted one is (after a prompt, or
+  automatically headless) recreated. That work happens through podman/docker even though the agent
+  itself never will.
+- **Sidecars outlive the agent in both exec and `--rm` modes.** Under plain `host-run` the process
+  is replaced by `os.execvpe` and never regains control; under `--rm` the supervision branch
+  deliberately tears nothing down ("No host daemons to tear down — bd owns its shared server").
+  A service-backed stack therefore leaves a running container behind any host-run session — which
+  is the desired behaviour (the next launch, or a plain `bd` in a terminal, dials the same socket)
+  but is not "no containers involved".
+
+A socket-backed sidecar composes with a host agent for free — the socket is a filesystem object
+inside the persist dir the service bind-mounts, so the host process dials exactly the path the
+container serves it on. It is guarded on the stack actually declaring services (`_service_refs`),
+so a host launch of a service-less stack still needs no container runtime at all. It passes
+`_resolve_mount_path` (not the project path) so the create-time config hash — and the
+`harnessed.svc-config-hash` label — is identical whichever entry point started the sidecar;
+otherwise alternating host-run with container-run would flag drift and recreate the container every
+single time.
 
 ---
 
@@ -783,9 +841,11 @@ Then either:
   the exec, Claude Code's fullscreen renderer draws on the alternate screen buffer and anything
   already printed is hidden until the session ends. Skipped when stdin is not a TTY so headless/CI
   launches never block.
-- **under `--rm`**: `subprocess.run(argv, env=env)` — supervise (fork, wait). No host daemons to
-  tear down, bd owns its shared server. The wait is unbounded because this *is* the agent session:
-  its duration is however long the user works, and any deadline kills a live session mid-thought.
+- **under `--rm`**: `subprocess.run(argv, env=env)` — supervise (fork, wait). Any service sidecars
+  the launch ensured are left running — there are no *host daemons* of harnessed's own to tear down
+  (bd owns its shared server) — so the sidecar containers outlive the session in this mode too.
+  The wait is unbounded because this *is* the agent session: its duration is however long the user
+  works, and any deadline kills a live session mid-thought.
 
 Because the process never regains control after the exec, several mechanisms on this path are
 deliberately **self-healing rather than hooked to an exit**: the credential rescue runs before the

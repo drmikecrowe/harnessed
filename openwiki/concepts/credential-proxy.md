@@ -1,22 +1,36 @@
 ---
-type: "Reference"
+type: Reference
 title: "The credential proxy model: four modes, the cheap annotation gate, and the readiness warning"
-openwiki_generated: true
+description: "The reference for the credential-proxy migration vocabulary in launchenv.py: the four per-item classification modes (proxied, passthrough, placeholder, omit), _schema_declares_proxy's cheap annotation gate and its entry-schema-only limitation, the value-blind launch-time readiness warning, and the broker launch gate (proxy_schema_dirs, fail-fatal broker startup, the pod's 169.254.1.1 door) that the same annotation gate now feeds."
+tags: [credential-proxy, varlock, secrets-broker, env-schema, proxy-modes, readiness-warning, launch-gate]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-07T12:53:44.965Z
 sources:
   - id: openwiki-source-e7286046ccb85d63b8a07621
     resource: repo://.env.schema.example
+  - id: openwiki-source-f82224b7b5b27300d9ecc2dc
+    resource: repo://catalog/base/egress-firewall.sh
+  - id: openwiki-source-72b5d686f860ea86c8592080
+    resource: repo://mise.toml
   - id: openwiki-source-72fe826953aaa47d17a811e4
     resource: repo://ROADMAP.md
+  - id: openwiki-source-085f2349c58adb4062c2803f
+    resource: repo://src/harnessed/broker.py
   - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
     resource: repo://src/harnessed/launchenv.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-9e1601e7fac817552c717cd7
+    resource: repo://src/harnessed/mounts.py
+  - id: openwiki-source-7b2070fd28fc0a337d8c3539
+    resource: repo://src/harnessed/paths.py
+  - id: openwiki-source-40ea6de9292ca7a5603003bd
+    resource: repo://tests/test_broker_launch_gate.py
+  - id: openwiki-source-f725ea11f1806a58b06d7f3e
+    resource: repo://tests/test_launch_parity.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-07T12:53:44.965Z" }
 ---
-
 
 # The credential proxy model: four modes, the cheap annotation gate, and the readiness warning
 
@@ -25,14 +39,34 @@ resolving a secret without ever holding the backend credential (issue #388, on t
 "Secrets that never land in the stack"). That migration introduces a vocabulary — four per-item
 classification *modes*, an opt-in *annotation* on the schema, and a launch-time *readiness warning* —
 that appears in open work and has no other home in this wiki. This page is that home;
-`src/harnessed/launchenv.py` is the source of record. See also
+`src/harnessed/launchenv.py` is the source of record for the classification model. See also
 [credentials](/openwiki/concepts/credentials.md) for the resolution machinery this sits on top of and
 [precedence](/openwiki/concepts/precedence.md) for the env-file layering the warning rides on.
 
-Today the proxy model is **advisory only**. `_varlock_resolve` still runs `varlock load`, which hands
-back the real value for every item whatever its mode. Nothing in the launch changes behaviour yet;
-what changes is that harnessed can *name*, at launch, the items that will silently stop working the
-day the broker delivers the environment instead.
+## Where the model stands now that the broker has landed
+
+Epic #388 Phase 1 landed **Topology B**: a launch whose composed schema opts in now starts a real
+host-side `varlock proxy` broker (`src/harnessed/broker.py`) — **fail-fatal** if it cannot start —
+and wires the pod to it through pasta's `--map-host-loopback` at `169.254.1.1`. The broker's own
+lifecycle (spawn, poll, record, stop, reconcile) belongs to
+[the secrets broker page](/openwiki/architecture/secrets-broker.md); this page stays with the
+classification model, the annotation gate both consumers share, and the warning.
+
+Two facts keep the rest of this page true after that landing:
+
+- The classification layer is still **advisory for env delivery**. `_varlock_resolve` still runs
+  `varlock load`, which returns the real value for every item whatever its proxy mode, and the pod's
+  env still arrives through the unchanged `--env-file` path — even on a launch that started a
+  broker. The switch that makes an unrouted item actually break, the pod's env becoming
+  placeholders only the broker can redeem, is **#439** and has not landed.
+- The readiness warning therefore still **states both tenses** (below), and the shipped
+  `.env.schema.example` still carries no `@proxy` annotation: a schema with no `@proxy` is every
+  schema shipped today.
+
+One version note, carried unnormalized because the two halves were measured against different
+releases: launchenv.py's annotation shapes (`@proxy(domain=…)`, `@proxy=passthrough`,
+`@proxyConfig={…}`) are measured against **varlock 1.17.0**; `broker.py`'s three lifecycle
+measurements and the `mise.toml` pin cite **1.16.1**, the version verified against this tree.
 
 ## The four modes, and which of them are broken
 
@@ -57,22 +91,25 @@ make the report unreadable for schemas that deliberately opt every item out.
 
 ```mermaid
 flowchart TD
-    S["schema dir, user-global or project, schema present and varlock on PATH"]
-    G{"_schema_declares_proxy on the entry schema text"}
+    S["schema dirs: user-global then project, .env.schema present, varlock on PATH"]
+    G{"_schema_declares_proxy: one text read per dir, matches annotation forms only"}
     S --> G
-    G -->|"no @proxy annotation"| SKIP["no subprocess, no output, every schema shipped today"]
-    G -->|"annotation form matched"| RULES["varlock proxy rules subprocess, RESOLVES values, 60s deadline"]
+    G -->|"no @proxy annotation"| SKIP["no subprocess anywhere, every schema shipped today"]
+    G -->|"annotation form matched"| RULES["readiness warning: varlock proxy rules subprocess, RESOLVES values, 60s deadline"]
+    G -->|"annotation form matched"| BGATE["launch gate proxy_schema_dirs: two text reads, no subprocess"]
     RULES --> TRUST{"both headers seen and parsed count equals the Secrets count"}
-    TRUST -->|"no"| REFUSE["returns None, prints could not be classified"]
+    TRUST -->|"no"| REFUSE["returns None and says could not be classified"]
     TRUST -->|"yes"| MAP["KEY to mode map, memoized per dir"]
-    MAP --> REPORT["_warn_unproxied_secrets reports NAMES and MODES only"]
-    REPORT --> U["unusable list, placeholder and unknown modes"]
-    REPORT --> W["withheld list, omit items, named as resolver failures"]
-    REPORT --> P["dim note listing passthrough items"]
-    REPORT --> OK["proxied items are not reported at all"]
+    MAP --> U["unusable: placeholder plus any unknown mode"]
+    MAP --> W["withheld: omit items named as resolver failures"]
+    MAP --> P["dim note listing passthrough items"]
+    MAP --> OK["proxied items are not reported at all"]
+    BGATE -->|"opted in and --no-secrets unset"| BROKER["host broker starts, failed start is fatal, pod wired via pasta to 169.254.1.1"]
+    BGATE -->|"--no-secrets or nothing opted in"| NOB["no broker and no varlock subprocess at all"]
 ```
 
-*The gate, the guarded subprocess, the trust check on its output, and the three report groups.*
+*The shared annotation gate and its two consumers: the guarded `proxy rules` subprocess behind the
+readiness warning, and the subprocess-free launch gate that now starts the broker.*
 
 ## The cheap annotation gate: one file read, and why the bare word does not open it
 
@@ -143,13 +180,14 @@ values are never read or printed. That value-blindness is what makes it safe to 
 
 Its central property is the tense it is written in. Today `_varlock_resolve` runs `varlock load`,
 which returns the real value for every item whatever its proxy mode — so an unrouted item still
-works. It stops working the moment the launch switches to the broker's placeholder env (**#388 Phase
-1**), and at that point the failure is invisible: a real-looking placeholder no API accepts,
-surfacing far away as a 401. The warning therefore **states both tenses** — "once harnessed brokers
-secrets (#388) each will reach neither the agent nor any upstream… They still arrive as real values
-today" — and must not be tightened to the present until the broker path is the one actually
-delivering these values. Saying so while the schema is still being authored is the entire value; a
-warning that arrives only after the cutover arrives too late to be cheap.
+works, *including on a launch that started a broker*, because the pod's env still comes from the
+`--env-file` path until **#439** flips it to the broker's placeholders. At that cutover the failure
+becomes invisible: a real-looking placeholder no API accepts, surfacing far away as a 401. The
+warning therefore **states both tenses** — "once harnessed brokers secrets (#388) each will reach
+neither the agent nor any upstream… They still arrive as real values today" — and must not be
+tightened to the present until the broker path is the one actually delivering these values. Saying
+so while the schema is still being authored is the entire value; a warning that arrives only after
+the cutover arrives too late to be cheap.
 
 The report groups items by what actually goes wrong, because the fix differs:
 
@@ -163,7 +201,8 @@ The report groups items by what actually goes wrong, because the fix differs:
   failures, not routing mistakes; check the backing item exists and the secrets backend is reachable.
   Worth printing even though `_varlock_resolve` also fails on this schema, because its error names
   the *directory* while this names the *item* — the difference between "varlock broke" and "this one
-  credential is gone".
+  credential is gone". The item list also carries the tense forward: today an `omit` fails the whole
+  schema's resolution; under the broker it would withhold just these items.
 - **`passthrough`** — a dim note, not a warning. "Which real secrets are still in the container" is
   exactly the question the proxy exists to make answerable, and a passthrough item keeps the full
   pre-proxy exposure — so it is listed, not scolded.
@@ -171,12 +210,49 @@ The report groups items by what actually goes wrong, because the fix differs:
 `proxied` items are **not reported at all**: the whole point is that they work, and naming them would
 train the reader to skip the block.
 
+## The gate's second consumer: the broker launch gate
+
+The same annotation gate now decides more than whether the warning runs. `proxy_schema_dirs(project_path)`
+returns the schema dirs that opted into the proxy model, in `--env-file` order (user-global
+`~/.config/harnessed` first, then the project), and is the gate on starting a secrets broker at all.
+It reuses `_schema_declares_proxy` rather than inventing its own test, so it costs two file reads and
+**no subprocess** — a launch that opted into nothing must not buy a `proxy rules` call that can sit
+on a 1Password unlock prompt. It returns `[]` when `varlock` is not on `PATH`.
+
+The mirroring is the point, not a convenience: `proxy_schema_dirs` deliberately repeats the dir
+selection of `_resolve_launch_secrets` so the broker resolves the **same composed set** the
+`--env-file` path resolves. A broker that loaded a subset would hand the pod placeholders (#439) for
+items it never loaded — the mismatch #388 exists to make impossible.
+
+On the container path, `launcher._broker_start_for` starts the broker **only** when the composed
+schema carries a `@proxy` annotation and `--no-secrets` was not passed (the flag reaches the backend
+as the `NO_SECRETS` environment variable, the same mechanism as `--no-firewall`). **A failed start is
+fatal** (issue #437, SPEC decision 2): the alternative is a pod wired half-way to a proxy that is not
+there, which gets worse at #439 when placeholders need the broker to redeem them. The failure message
+is fixed and **value-free by construction** — it names the instance and the `--no-secrets` escape
+hatch, never the exception, because echoing a raiser's message would make "no resolved value reaches
+the user" a convention instead of a property of the code.
+
+The pod's route to the broker is the address `paths.BROKER_HOST_DOOR = "169.254.1.1"`: the broker
+binds the host's `127.0.0.1` only, the pod is created with pasta's `--map-host-loopback,169.254.1.1`
+on `pod create`, and the egress firewall `require`s an ACCEPT for the same address. The broker starts
+**before** `pod create` — the pod's network args depend on whether one exists — and the door never
+appears without a broker. A runtime that does not use pods gets a *note* instead of a half-wired
+broker: with no `pod create` there is no way to deliver `169.254.1.1` into the container, so secrets
+resolve into the env as before. The broker is container-only **by nature** (the launch-parity ledger
+records `_broker_start_for`, `proxy_schema_dirs` and `_broker_stop_for` in `CONTAINER_ONLY`): a
+host-native launch runs the harness in the user's own session with their own credentials, and varlock
+resolves natively there already.
+
+Spawn/poll/record/stop/reconcile mechanics, the five-field state record, and the teardown ordering
+are documented in [the secrets broker page](/openwiki/architecture/secrets-broker.md).
+
 ## Where it fires, and what is memoized
 
 There are **four call sites** — the two launch paths (`_resolve_launch_secrets` for the container
-backend's `--env-file` set, `_resolve_launch_env` for the host backend's `os.environ`) each ask about
-the user-global dir and the project dir. The warn runs *ahead of* resolution, in the same
-global → project layering, and only where a `.env.schema` is present and `varlock` is on PATH; a
+backend's `--env-file` set, `_resolve_launch_env` for the host backend's in-process `os.environ` map)
+each ask about the user-global dir and the project dir. The warn runs *ahead of* resolution, in the
+same global → project layering, and only where a `.env.schema` is present and `varlock` is on PATH; a
 schema always wins over a sibling plain `.env`, and the plain-`.env` branch never warns because there
 is no proxy vocabulary in a dotenv. The global site is also the one `harnessed rescan` reuses
 (`_resolve_launch_secrets(project_path=None)`), so a credentialed rescan sees the same report.
@@ -192,3 +268,16 @@ Two pieces of process state keep that cheap:
   cached too, so an unparseable output reports once per dir rather than once per caller.
 
 Both are dropped by `_varlock_cache_clear()`, which is the reset point tests use.
+
+## Related
+
+- [The host secrets broker](/openwiki/architecture/secrets-broker.md) — the lifecycle behind the
+  launch gate: spawn, poll, record, stop, reconcile, and the pod's door.
+- [Credentials](/openwiki/concepts/credentials.md) — the resolution machinery (`varlock load`) that
+  still delivers real values to the pod, and the 60-second unlock timeout.
+- [Precedence](/openwiki/concepts/precedence.md) — the global-then-project `--env-file` layering the
+  warn call sites and the broker's composed dir order ride on.
+- [Container launch](/openwiki/workflows/container-run.md) — where `_broker_start_for` and the warn
+  sit in the launch sequence.
+- [Host launch](/openwiki/workflows/host-run.md) — the host path that shares the same warning and
+  needs no broker.

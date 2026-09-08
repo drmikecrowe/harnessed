@@ -3,9 +3,6 @@ type: concept
 title: "Service sidecars: identity, scopes, guards, and sockets"
 description: "How shared services work: container name, project key, data dir, port, password, client env and drift are computed from the manifest plus the project path at every launch; global scope is one host-published container on a static port while project scope is one container per project reached through a unix socket in a recipe-declared persist dir; svcguards refuses destructive starts before the container exists."
 tags: [services, sidecars, derived-identity, project-scope, unix-socket, svcguards, drift, stable-port, client-env, wire-services]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
 sources:
   - id: openwiki-source-5ad131422ad3ec350915f307
     resource: repo://catalog/recipes/ping/recipe.yaml
@@ -34,6 +31,9 @@ sources:
   - id: openwiki-source-5e89566b7a4e43a53be5c7b2
     resource: repo://src/harnessed/svcstate.py
 generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-01T11:08:21.365Z
 ---
 
 # Service sidecars: identity, scopes, guards, and sockets
