@@ -1003,11 +1003,17 @@ class TestAgainstARealDockerDaemon:
         """S15. The write that #456 was standing in front of."""
         target = tmp_path / "data"
         target.mkdir()
+        # `container_user_args`, not a hand-written `--user`: this must run the argument PRODUCTION
+        # emits, or it verifies a command nothing sends. The literal `CONTAINER_UID` it used to pass
+        # is the pre-#457 rule, and against a bind mount owned by the invoker it is also just wrong
+        # off a uid-1000 box -- it failed on the runner (uid 1001) with "Permission denied", which
+        # is the very error #456/#457 exist to remove.
         proc = subprocess.run(
             ["docker", "run", "--rm", *paths.userns_args("docker"),
-             "--user", f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}",
+             *paths.container_user_args("docker"),
              "-v", f"{target}:/data:rw", "--entrypoint", "mkdir", self.IMAGE, "-p", "/data/dolt"],
             capture_output=True, text=True, timeout=180,
         )
         assert proc.returncode == 0, proc.stderr
-        assert (target / "dolt").stat().st_uid == paths.CONTAINER_UID
+        # The INVOKER owns it. That is the whole point of the docker `--user` mapping.
+        assert (target / "dolt").stat().st_uid == os.getuid()

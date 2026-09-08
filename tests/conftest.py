@@ -420,6 +420,14 @@ def _pin_container_runtime(monkeypatch):
     """
     paths.active_runtime.cache_clear()
     paths.docker_is_rootless.cache_clear()
+    # THIRD ambient input, and the one the pin above does not cover: `_detect_runtime` honours
+    # `CONTAINER_RUNTIME` BEFORE it looks at PATH, so any test calling it directly answers whatever
+    # the surrounding shell exported. The `live-docker` CI job exports `CONTAINER_RUNTIME=docker`
+    # for the whole step, which made `test_it_looks_for_the_right_binaries_and_prefers_podman`
+    # return "docker" for a PATH holding only podman -- green on every developer box, red only in
+    # the one job that sets it. Tests that are ABOUT the override set it themselves with
+    # `monkeypatch.setenv`, which still wins over this.
+    monkeypatch.delenv("CONTAINER_RUNTIME", raising=False)
     monkeypatch.setattr(paths, "active_runtime", lambda: "podman")
 
 
