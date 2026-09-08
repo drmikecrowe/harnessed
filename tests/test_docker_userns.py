@@ -806,6 +806,7 @@ class TestDockerNamedVolumesAreChowned:
         """argv AND kwargs. `_calls` drops the kwargs, which left `check=` and `capture_output=`
         unconstrained -- mutation found `check=False` -> `check=True` surviving, i.e. the suite did
         not encode the decision the code's own comment argues for."""
+        self._pin_invoker(monkeypatch)
         seen: list[tuple[list[str], dict]] = []
         monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: seen.append((list(cmd), dict(k))))
         volumes._chown_volume_for_docker(rt, "thevol", "img")
@@ -840,13 +841,29 @@ class TestDockerNamedVolumesAreChowned:
         assert argv[11] == "-c"
         assert len(argv) == 13, argv
 
+    # 4242:4243 -- a value no developer box and no GitHub runner has. Since #457 the docker owner
+    # is the INVOKING uid, so an assertion written against `paths.CONTAINER_UID` is only true where
+    # the invoker happens to be uid 1000. It passed on the author's box and went red on the runner
+    # (uid 1001) the first time CI saw the #457 commits. That is the same uid-1000 coincidence
+    # `conftest._pin_container_runtime` documents, in the branch that exists to remove it.
+    OWNER_UID = 4242
+    OWNER_GID = 4243
+
+    def _pin_invoker(self, monkeypatch):
+        monkeypatch.setattr(paths.os, "getuid", lambda: self.OWNER_UID)
+        monkeypatch.setattr(paths.os, "getgid", lambda: self.OWNER_GID)
+
     def _calls(self, monkeypatch, rt: str) -> list[list[str]]:
+        self._pin_invoker(monkeypatch)
         calls: list[list[str]] = []
         monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
         volumes._chown_volume_for_docker(rt, "thevol", "theimage")
         return calls
 
-    def test_docker_chowns_the_volume_to_the_image_uid(self, monkeypatch):
+    def test_docker_chowns_the_volume_to_the_invoking_ids(self, monkeypatch):
+        """Renamed from `..._to_the_image_uid`, because since #457 that is no longer what happens:
+        docker gets `--user <invoker>`, so the volume must be owned by the INVOKER. The old name
+        described the podman rule, and the old assertion only held where the invoker was uid 1000."""
         calls = self._calls(monkeypatch, "docker")
         assert len(calls) == 1, f"expected exactly one chown container: {calls}"
         cmd = calls[0]
@@ -858,7 +875,7 @@ class TestDockerNamedVolumesAreChowned:
         # rather than argv elements. Same three properties, read where they now live.
         assert cmd[-2] == "-c" and "sh" in cmd, f"the gate needs a shell: {cmd}"
         script = cmd[-1]
-        assert f"chown -R {paths.CONTAINER_UID}:{paths.CONTAINER_GID} /mnt" in script
+        assert f"chown -R {self.OWNER_UID}:{self.OWNER_GID} /mnt" in script
         # It must carry the mapping too, or the chown lands in a different namespace than the
         # agent and writes an ownership the agent still cannot use.
         assert "--userns=host" in cmd
@@ -888,7 +905,7 @@ class TestDockerNamedVolumesAreChowned:
         """It is created by the root gate container, so without this it lands root-owned inside a
         tree the agent otherwise owns."""
         script = self._calls(monkeypatch, "docker")[0][-1]
-        owner = f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}"
+        owner = f"{self.OWNER_UID}:{self.OWNER_GID}"
         assert f"chown {owner} {volumes._VOLUME_OWNED_SENTINEL}" in script, script
 
     def test_the_config_volume_is_chowned_when_it_is_created(self, tmp_path, monkeypatch):
