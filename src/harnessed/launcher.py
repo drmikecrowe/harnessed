@@ -1434,6 +1434,32 @@ def _firewall_policy_is_drop(rt: str, netns_anchor: str, image: str) -> bool:
     return any(line.strip() == "-P OUTPUT DROP" for line in out.splitlines())
 
 
+def _agent_placement_args(rt: str, pod: str, inst: str) -> list[str]:
+    """Where the agent container lives: its netns, its hostname, and its user namespace.
+
+    Extracted from the `harness_run` argv for ONE reason — the userns half of it was wrong on
+    docker and no test could see it. `mount_args` is built entirely by the `mounts.py` builders and
+    not one of them emits `--userns` (`rg 'userns' src/harnessed/mounts.py` is empty), so on a
+    pod-less runtime the agent was created with no mapping at all. The test that was supposed to
+    cover this hand-assigned a `--userns` into `mount_args` and asserted it survived, which is a
+    state production never produces. A pure function returning argv can be asserted against
+    directly, which is the difference between a covered property and a covered line (#456).
+
+    PODMAN: the mapping is a POD property. `pod create` sets it and every member inherits it;
+    podman REJECTS `--userns` on a member, so it must not appear here.
+    POD-LESS (docker): there is no infra container to inherit from, so the agent states its own
+    netns anchor, its own hostname (podman gets one from the pod's UTS namespace) and its own
+    mapping.
+    """
+    if _rt_uses_pods(rt):
+        return ["--pod", pod]
+    return [
+        f"--network=container:{pod}",
+        "--hostname", paths.container_hostname(inst),
+        *paths.userns_args(rt),
+    ]
+
+
 def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
     """Argv prefix for a throwaway container that shares the pod's network namespace and MAY
     change its firewall.
@@ -1456,7 +1482,12 @@ def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
         # Pod members share the infra container's netns; the pod-less runtimes join the first
         # container's instead. Either way this must land in the SAME namespace as the agent, or
         # the rules confine an empty netns and the agent runs wide open.
-        *(["--pod", netns_anchor] if _rt_uses_pods(rt) else [f"--network=container:{netns_anchor}"]),
+        # Same split as the agent's own placement: on podman the mapping is inherited from the pod,
+        # on a pod-less runtime it must be stated here. It must MATCH the agent's, not merely be
+        # present — iptables run from a different user namespace than the netns it is configuring
+        # returns EPERM, so a mismatch confines nothing and the agent runs wide open (#456).
+        *(["--pod", netns_anchor] if _rt_uses_pods(rt)
+          else [f"--network=container:{netns_anchor}", *paths.userns_args(rt)]),
         "--cap-add", "NET_ADMIN",
         # NET_ADMIN in the bounding set is not enough: the image's default user is unprivileged and
         # iptables carries no file capabilities, so an effective set of 0 makes every call fail
@@ -3548,8 +3579,7 @@ class ContainerBackend(ExecutionBackend):
             # No --hostname in the pod branch: a member inherits the pod's UTS namespace, and the pod
             # create above already set it. The pod-less runtime has no infra container to inherit from,
             # so it needs its own bound (same EINVAL, from the container's own name).
-            *(["--pod", self.pod] if _rt_uses_pods(self.rt)
-              else [f"--network=container:{self.pod}", "--hostname", paths.container_hostname(self.inst)]),
+            *_agent_placement_args(self.rt, self.pod, self.inst),
             "--name", self.inst,
             *[arg for f in self.secrets_env_files for arg in ("--env-file", str(f))],
             # ORDER IS PRECEDENCE: podman applies `-e` left-to-right, so the LAST wins. Recipe `env:` goes

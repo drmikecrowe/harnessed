@@ -133,8 +133,12 @@ def _probe_docker_rootless() -> bool | None:
 def docker_is_rootless() -> bool | None:
     """True when the docker daemon runs rootless, False when rootful, None when UNDETERMINED.
 
-    The distinction is load-bearing, and None is not a synonym for False. Under ROOTFUL docker no
-    id mapping happens, so the container's uid 1000 is host uid 1000 and `pod_host_uid` can answer.
+    The distinction is load-bearing, and None is not a synonym for False. Under a ROOTFUL daemon
+    `pod_host_uid` can answer, because harnessed passes `DOCKER_USERNS_ARG` (`--userns=host`) on
+    every container it creates: that opts the container out of any daemon-level `userns-remap`, so
+    its uid 1000 is host uid 1000 whether or not remap is configured. THE TWO ARE COUPLED — this
+    function's answer is only true while every creation site emits that flag, which is why the
+    agent container and the firewall runner both assert it (#456).
     Under ROOTLESS docker the daemon itself lives in a user namespace and the image's uid 1000 is
     drawn from the host's subuid range — the same unpredictable-owner situation podman's bare
     `keep-id` produces, and it is refused for the same reason.

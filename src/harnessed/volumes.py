@@ -84,6 +84,36 @@ def _merged_settings_text(
     return json.dumps(merged, indent=2) + "\n"
 
 
+def _chown_volume_for_docker(rt: str, vol: str, image: str) -> None:
+    """Give a freshly created NAMED VOLUME the image's uid, on docker only.
+
+    podman chowns a new named volume to match the container's user namespace, so a keep-id pod
+    finds it writable. Docker does not: unless the mount point exists in the image (in which case
+    docker copies its content AND ownership), a new named volume is an empty directory owned by
+    `root:root`. The container runs as uid 1000, so the very first populate step fails with
+
+        cp: cannot create directory '/home/harnessed/.claude/./skills': Permission denied
+
+    which is where `harnessed` stops on docker once the `--userns` defect (#456) is out of the way.
+
+    A throwaway `--user root` container is what podman does implicitly, made explicit. It is
+    deliberately NOT "run the populate steps as root and chown afterwards": that would let every
+    recipe install script run as root inside the container, which is a real change in what recipe
+    authors can do and a divergence from the podman path that nothing would catch.
+
+    No-op on podman -- not because it would be harmful, but because podman already did it, and a
+    second chown would state a rule in two places that could then disagree.
+    """
+    if rt != "docker":
+        return
+    _run(
+        [rt, "run", "--rm", *paths.userns_args(rt), "--user", "0:0",
+         "-v", f"{vol}:/mnt", "--entrypoint", "chown", image,
+         "-R", f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}", "/mnt"],
+        check=True, capture_output=True,
+    )
+
+
 def _ensure_config_volume(
     rt: str, stack: str, harness: str, prof: Path, image: str, *, fresh: bool = False,
 ) -> str:
@@ -128,6 +158,7 @@ def _ensure_config_volume(
         _run([rt, "volume", "rm", "-f", vol], check=False, capture_output=True)
     _run([rt, "volume", "create", *_volume_labels(stack, harness, "config"), vol],
          check=False, capture_output=True)
+    _chown_volume_for_docker(rt, vol, image)
     # Read BEFORE composing — the compose step is what would overwrite the file we need to keep.
     merged_settings = _merged_settings_text(rt, vol, image, prof, fresh=fresh)
     if merged_settings is None:
@@ -412,6 +443,12 @@ def _ensure_stack_volumes(
          check=False, capture_output=True)
     _run([rt, "volume", "create", "--label", f"{_VOL_LABEL}=shared", _SHARED_DL_CACHE_VOLUME],
          check=False, capture_output=True)
+    # AFTER both `volume create` calls, and this ordering is the whole point: chowning a volume
+    # that does not exist yet would create it implicitly with default ownership and leave the very
+    # state this is fixing. Every named volume the agent writes needs it, not just the config one —
+    # the tools volume takes `mise` installs and the shared cache takes downloads, both as uid 1000.
+    _chown_volume_for_docker(rt, tools_vol, image)
+    _chown_volume_for_docker(rt, _SHARED_DL_CACHE_VOLUME, image)
 
     want = _container_stack_fingerprint(rt, stack, recipes, image)
     have = _volume_read(

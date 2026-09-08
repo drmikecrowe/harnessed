@@ -25,13 +25,11 @@ from __future__ import annotations
 
 import os
 import subprocess
-from pathlib import Path
 
 import pytest
 import typer
 
 from harnessed import ctrquery, launcher, paths, persist, volumes
-from harnessed.backend import LaunchSpec
 from harnessed.hosthome import _HOST_STACK_FINGERPRINT
 from harnessed.schema import load_recipe
 from support import patch_all
@@ -180,33 +178,62 @@ class TestTheDerivedHostUid:
         assert len(calls) == 1, f"docker info ran {len(calls)} times, expected 1: {calls}"
 
 
-class TestThePodMemberStrip:
-    """S9, S10 — `--userns` is a POD-level property, which is a PODMAN statement, not a universal
-    one. Docker has no pod, so the harness container is where the mapping has to land."""
+class TestTheAgentContainerActuallyGetsTheMapping:
+    """The site that DELIVERS the mapping to the agent — `launcher._agent_placement_args`.
 
-    def _backend(self, rt: str, tmp_path: Path) -> launcher.ContainerBackend:
-        backend = launcher.ContainerBackend(
-            rt, "inst", "pod", tmp_path / "prof", "img", tmp_path / "proj",
-            [], [], None, stack_from_overlay=False, headless=True,
+    An earlier version of this class asserted against a `mount_args` list the test itself had
+    filled with `--userns`. Production never puts one there: every element of `mount_args` comes
+    from the `mounts.py` builders, and `rg 'userns' src/harnessed/mounts.py` is EMPTY. So the test
+    passed, `_without_userns` had nothing to strip on either branch, and the docker agent was
+    created with no user-namespace mapping at all. Found by adversarial review, not by the
+    gauntlet: coverage, mutation and 3582 green tests all reported it absent, because a test that
+    fabricates its own input measures the fabrication.
+
+    These assert the real function's real output."""
+
+    def test_podman_inherits_the_mapping_from_its_pod(self):
+        """podman REJECTS `--userns` on a pod member — `pod create` carries it instead."""
+        args = launcher._agent_placement_args("podman", "thepod", "theinst")
+        assert args == ["--pod", "thepod"]
+        assert not any(a.startswith("--userns") for a in args)
+
+    def test_docker_states_the_mapping_on_the_container_itself(self):
+        """No pod means nothing to inherit from, and nothing else on this path sets it."""
+        args = launcher._agent_placement_args("docker", "theanchor", "theinst")
+        assert "--userns=host" in args, (
+            "the docker agent container must carry the mapping itself; there is no pod to "
+            f"inherit it from and no mount builder emits it: {args}"
         )
-        backend.mount_args = [*paths.userns_args(rt), "-v", "/host/a:/ctr/a", "-e", "FOO=1"]
-        return backend
+        assert "--network=container:theanchor" in args
+        assert "--hostname" in args
 
-    def test_podman_strips_it_from_the_member(self, tmp_path):
-        """S9 — unchanged: podman rejects `--userns` on a pod member outright."""
-        backend = self._backend("podman", tmp_path)
-        backend.wire_mcp(LaunchSpec(stack="s", harness="claude", project_path=tmp_path / "proj"))
-        assert not any(a.startswith("--userns") for a in backend.member_mounts)
-        assert "-v" in backend.member_mounts and "/host/a:/ctr/a" in backend.member_mounts
-        assert "FOO=1" in backend.member_mounts
+    def test_the_two_runtimes_do_not_share_a_placement(self):
+        """Guard the guard: if these ever returned the same list, one of the two is wrong."""
+        assert (launcher._agent_placement_args("podman", "p", "i")
+                != launcher._agent_placement_args("docker", "p", "i"))
 
-    def test_docker_keeps_it_because_there_is_no_pod_to_inherit_from(self, tmp_path):
-        """S10. Stripping here is a pure loss: nothing else on the docker path sets the mapping."""
-        backend = self._backend("docker", tmp_path)
-        backend.wire_mcp(LaunchSpec(stack="s", harness="claude", project_path=tmp_path / "proj"))
-        assert "--userns=host" in backend.member_mounts
-        assert "-v" in backend.member_mounts and "/host/a:/ctr/a" in backend.member_mounts
-        assert "FOO=1" in backend.member_mounts
+
+class TestTheFirewallRunnerSharesTheAgentsMapping:
+    """The egress-firewall runner joins the agent's netns to install iptables rules.
+
+    It must sit in the SAME user namespace as the agent, not merely have some mapping: iptables run
+    from a different userns than the netns it configures returns EPERM, so a mismatch installs
+    nothing and the agent it was meant to confine runs wide open. This emit site was missing from
+    the original enumeration entirely."""
+
+    def test_docker_runner_carries_the_same_mapping_as_the_agent(self):
+        runner = launcher._firewall_runner_argv("docker", "anchor", "img")
+        agent = launcher._agent_placement_args("docker", "anchor", "inst")
+        runner_ns = [a for a in runner if a.startswith("--userns")]
+        agent_ns = [a for a in agent if a.startswith("--userns")]
+        assert runner_ns == agent_ns == ["--userns=host"], (
+            f"runner {runner_ns} must match agent {agent_ns} or the rules confine a foreign netns"
+        )
+
+    def test_podman_runner_carries_none_because_the_pod_owns_it(self):
+        runner = launcher._firewall_runner_argv("podman", "anchor", "img")
+        assert not any(a.startswith("--userns") for a in runner)
+        assert "--pod" in runner
 
 
 class TestOneRuntimeDetector:
@@ -352,6 +379,23 @@ class TestTheRootlessProbeItself:
         ))
         assert paths._probe_docker_rootless() is False
 
+    def test_a_userns_remapped_daemon_is_rootful_because_we_opt_out_per_container(self, monkeypatch):
+        """A daemon started with `--userns-remap` reports `name=userns`, NOT `name=rootless`.
+
+        It is a THIRD state, and classifying it as rootful is only correct because harnessed passes
+        `--userns=host` on every container it creates, which opts that container out of the remap.
+        The claim and the flag are coupled: if any creation site stops emitting the flag, this
+        classification becomes a fail-open — `pod_host_uid` would answer 1000 for a container whose
+        host writer is a subuid like 165536. `TestTheAgentContainerActuallyGetsTheMapping` and
+        `TestTheFirewallRunnerSharesTheAgentsMapping` are what hold the other half."""
+        monkeypatch.setattr(paths.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+            a[0] if a else [], 0, stdout="name=seccomp name=userns name=cgroupns\n", stderr="",
+        ))
+        assert paths._probe_docker_rootless() is False
+        assert paths.DOCKER_USERNS_ARG == "--userns=host", (
+            "the rootful classification above is only sound while this flag is what we emit"
+        )
+
     def test_a_daemon_that_cannot_be_reached_is_undetermined(self, monkeypatch):
         """`docker info` exits nonzero — daemon down, or the socket refuses this user. NOT False:
         answering "rootful" here would be a guess, and the guess is the fail-open direction."""
@@ -458,6 +502,43 @@ class TestTheFingerprintStepMatchesItsRuntime:
         for cmd in calls:
             if "volume" in cmd:
                 assert not [a for a in cmd if a.startswith("--userns")], cmd
+
+
+class TestDockerNamedVolumesAreChowned:
+    """PHASE 2 (issue filed separately): docker does not chown a new named volume.
+
+    podman chowns a fresh named volume to match the container's user namespace. Docker only copies
+    ownership when the mount point already exists in the image; otherwise the volume is an empty
+    dir owned by root:root. The container runs as uid 1000, so the first populate step dies with
+
+        cp: cannot create directory '/home/harnessed/.claude/./skills': Permission denied
+
+    which is exactly where `harnessed build` stopped on docker once #456 was fixed -- observed on a
+    real daemon, not hypothesised."""
+
+    def _calls(self, monkeypatch, rt: str) -> list[list[str]]:
+        calls: list[list[str]] = []
+        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
+        volumes._chown_volume_for_docker(rt, "thevol", "theimage")
+        return calls
+
+    def test_docker_chowns_the_volume_to_the_image_uid(self, monkeypatch):
+        calls = self._calls(monkeypatch, "docker")
+        assert len(calls) == 1, f"expected exactly one chown container: {calls}"
+        cmd = calls[0]
+        assert cmd[:3] == ["docker", "run", "--rm"]
+        assert "--user" in cmd and "0:0" in cmd, "the chown must run as root; uid 1000 cannot"
+        assert "thevol:/mnt" in cmd
+        assert f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}" in cmd
+        assert "-R" in cmd, "the volume may already hold copied-up content"
+        # It must carry the mapping too, or the chown lands in a different namespace than the
+        # agent and writes an ownership the agent still cannot use.
+        assert "--userns=host" in cmd
+
+    def test_podman_is_left_alone(self, monkeypatch):
+        """podman already did this. A second chown would state the rule in two places, and two
+        statements of one rule can disagree."""
+        assert self._calls(monkeypatch, "podman") == []
 
 
 @DOCKER

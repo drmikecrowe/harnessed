@@ -69,6 +69,8 @@ CONTAINER_ONLY: dict[str, str] = {
     "_without_userns": "strips a pod-level --userns; a host-native launch has no user namespace",
     "_preflight_runtime": "refuses a container runtime whose id mapping cannot be named; a "
                           "host-native launch runs as the invoking user and maps nothing",
+    "_agent_placement_args": "netns/hostname/userns placement for a CONTAINER; a host-native "
+                             "launch has no namespace to place the agent in",
     "_run": "shells out to podman/docker",
     "_attach": "attaches to a container's TTY; the host execs the harness directly",
     # --- bind mounts: the host already has these paths, so there is nothing to map in ---
