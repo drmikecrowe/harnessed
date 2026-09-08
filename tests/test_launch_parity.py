@@ -73,6 +73,9 @@ CONTAINER_ONLY: dict[str, str] = {
                              "launch has no namespace to place the agent in",
     "_netns_anchor": "names the pod or container others share a netns with; a host-native launch "
                      "runs in the host's own namespace and has nothing to anchor on",
+    "api_endpoint_egress_hosts": "adds the agent's model API host to the EGRESS FIREWALL allowlist; "
+                                 "a host-native launch installs no firewall, so there is no "
+                                 "allowlist to extend and the host's own routing already applies",
     "_run": "shells out to podman/docker",
     "_attach": "attaches to a container's TTY; the host execs the harness directly",
     # --- bind mounts: the host already has these paths, so there is nothing to map in ---

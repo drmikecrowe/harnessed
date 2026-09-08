@@ -1280,20 +1280,11 @@ def _preflight_runtime(rt: str) -> None:
     if rt != "docker":
         return
     if paths.docker_is_rootless() is False:
-        # Rootful, so the mapping is nameable. One more question before proceeding — see #457.
-        if os.getuid() != paths.CONTAINER_UID:
-            _err.print(
-                f"[bold red]error:[/bold red] you are uid {os.getuid()}, but under docker "
-                f"harnessed's agent runs as uid {paths.CONTAINER_UID} on the host.\n"
-                "podman's `keep-id` maps the invoking user ONTO the image's uid, so the agent "
-                "writes as you. docker has no such mode: `--userns=host` performs no mapping at "
-                f"all, so the agent would write as uid {paths.CONTAINER_UID} — not as you — and "
-                "every write into your project would fail with a permission error the agent "
-                "cannot explain.\n"
-                "Use podman, or run harnessed as a uid-"
-                f"{paths.CONTAINER_UID} user. Tracking a proper fix in #457."
-            )
-            raise typer.Exit(1)
+        # Rootful: `container_user_args` runs the agent as the invoking user and
+        # `_chown_volume_for_docker` gives the volumes the same ids, so any uid works. An earlier
+        # version refused every uid but 1000 here — correct while the agent ran as the image's uid,
+        # and it would now reject exactly the case `--user` was added to support, including every
+        # GitHub runner (uid 1001). Removed with the defect it guarded (#457).
         return
     detail = (
         "the docker daemon is running ROOTLESS"
@@ -1471,6 +1462,11 @@ def _agent_placement_args(rt: str, pod: str, inst: str) -> list[str]:
     """
     if _rt_uses_pods(rt):
         return ["--pod", pod]
+    # `--user` on the pod-less branch only. podman's `keep-id` already maps the invoking user onto
+    # the image's uid, so adding `--user` there would fight the mapping. docker maps nothing, so
+    # without this the agent writes as host uid 1000 whoever launched it — correct only by
+    # coincidence, and wrong on a GitHub runner (uid 1001), which is what kept docker out of CI
+    # (#457). Paired with `volumes._chown_volume_for_docker`, which chowns to the SAME ids.
     # NO `--network=container:` here. On a pod-less runtime the agent IS the namespace owner --
     # the role podman's infra container plays -- so it creates its own netns and everything else
     # (firewall runner, service sidecars) joins IT via `_netns_anchor` below.
@@ -1483,6 +1479,7 @@ def _agent_placement_args(rt: str, pod: str, inst: str) -> list[str]:
     return [
         "--hostname", paths.container_hostname(inst),
         *paths.userns_args(rt),
+        *paths.container_user_args(rt),
     ]
 
 

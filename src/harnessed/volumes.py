@@ -116,7 +116,7 @@ def _chown_volume_for_docker(rt: str, vol: str, image: str) -> None:
     _run(
         [rt, "run", "--rm", *paths.userns_args(rt), "--user", "0:0",
          "-v", f"{vol}:/mnt", "--entrypoint", "chown", image,
-         "-R", f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}", "/mnt"],
+         "-R", "{}:{}".format(*paths.container_owner_ids(rt)), "/mnt"],
         check=False, capture_output=True,
     )
 

@@ -234,12 +234,16 @@ def pod_host_uid() -> int | None:
     runner's `podman info --format '{{.Host.IDMappings}}'` (bd harnessed-rv2.3) shows that.
     """
     if active_runtime() == "docker":
-        # Not a parse: docker takes DOCKER_USERNS_ARG (`host`), and what "host" means depends on
-        # something the argument cannot express — whether the daemon is itself inside a user
-        # namespace. Rootful: no mapping, so the container's uid 1000 IS host uid 1000, and that
-        # number is DERIVED from the daemon's mode rather than assumed (SPEC Decide #4 / N3).
-        # Rootless or unreadable: the image's uid comes from the subuid range, so refuse.
-        return CONTAINER_UID if docker_is_rootless() is False else None
+        # Not a parse: docker takes DOCKER_USERNS_ARG (`host`) plus `container_user_args`, which
+        # runs the agent AS THE INVOKING USER. Under a rootful daemon that combination means the
+        # container's process is host uid `os.getuid()` — the same answer podman's `keep-id` gives,
+        # reached by a different mechanism. Rootless or unreadable: the mapping is a subuid the
+        # argument cannot name, so refuse.
+        #
+        # This tracks `container_owner_ids`: change one and the other is wrong. It previously
+        # answered CONTAINER_UID, which was right only while the agent ran as the image's uid and
+        # was the fail-open half of #457.
+        return os.getuid() if docker_is_rootless() is False else None
     if USERNS_ARG == "--userns=host":
         return CONTAINER_UID
     if not USERNS_ARG.startswith("--userns=keep-id"):

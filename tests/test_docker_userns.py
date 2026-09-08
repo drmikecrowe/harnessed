@@ -115,13 +115,18 @@ class TestTheDerivedHostUid:
         assert paths.pod_host_uid() == self._NOT_THE_IMAGE_UID
         assert paths.pod_host_uid() != paths.CONTAINER_UID  # the branches are distinguishable
 
-    def test_rootful_docker_resolves_to_the_image_uid(self, monkeypatch):
-        """S5. Rootful docker performs no id mapping, so the container's uid 1000 IS host uid 1000.
-        DERIVED from that fact, not assumed — see SPEC Decide #4 and N3."""
+    def test_rootful_docker_resolves_to_the_invoking_user(self, monkeypatch):
+        """S5, revised by #457. Rootful docker plus `container_user_args` runs the agent AS THE
+        INVOKING USER, so the host uid it writes as is `os.getuid()` — the same answer podman's
+        `keep-id` gives, reached by a different mechanism.
+
+        This assertion used to read `== CONTAINER_UID`, which was true only while the agent ran as
+        the image's uid, and was the fail-open half of #457: it encoded the defect as expected
+        behaviour, which is why every mechanical layer reported the bug absent."""
         _pin(monkeypatch, "docker", rootless=False)
         monkeypatch.setattr(paths.os, "getuid", lambda: self._NOT_THE_IMAGE_UID)
-        assert paths.pod_host_uid() == paths.CONTAINER_UID
-        assert paths.pod_host_uid() != self._NOT_THE_IMAGE_UID
+        assert paths.pod_host_uid() == self._NOT_THE_IMAGE_UID
+        assert paths.pod_host_uid() != paths.CONTAINER_UID
 
     def test_rootless_docker_is_unresolvable(self, monkeypatch):
         """S6. The image's uid is drawn from the host's subuid range and no argument says where."""
@@ -218,6 +223,52 @@ class TestTheAgentContainerActuallyGetsTheMapping:
         )
         # ...and owning it is what makes --hostname legal: docker refuses the two together.
         assert "--hostname" in args and "theinst" in " ".join(args)
+
+
+class TestTheAgentRunsAsTheInvokingUserOnDocker:
+    """#457. The two halves that must not be split.
+
+    podman `keep-id` maps the invoking user onto the image's uid, so the agent writes as you.
+    Docker maps nothing, so without `--user` it writes as host uid 1000 whoever launched it —
+    correct only by coincidence, and wrong on every GitHub runner (uid 1001), which is precisely
+    what kept docker out of CI.
+
+    Running as uid N against volumes owned by 1000 is not an improvement on the reverse; it is the
+    same defect with different numbers. So `container_user_args` and `container_owner_ids` are
+    asserted to agree, and the volume chown is asserted to use the second."""
+
+    def test_docker_runs_the_agent_as_the_invoking_user(self, monkeypatch):
+        monkeypatch.setattr(paths.os, "getuid", lambda: 1001)
+        monkeypatch.setattr(paths.os, "getgid", lambda: 1002)
+        assert paths.container_user_args("docker") == ["--user", "1001:1002"]
+
+    def test_podman_gets_no_user_flag(self):
+        """`keep-id` already did this job; `--user` on top would fight the mapping."""
+        assert paths.container_user_args("podman") == []
+
+    def test_the_ids_the_agent_runs_as_and_the_volume_is_chowned_to_are_the_same(self, monkeypatch):
+        monkeypatch.setattr(paths.os, "getuid", lambda: 1001)
+        monkeypatch.setattr(paths.os, "getgid", lambda: 1002)
+        uid, gid = paths.container_owner_ids("docker")
+        assert paths.container_user_args("docker") == ["--user", f"{uid}:{gid}"]
+
+    def test_podman_volumes_stay_on_the_image_uid(self):
+        """podman's mapping makes the image uid the right owner; only docker moves."""
+        assert paths.container_owner_ids("podman") == (paths.CONTAINER_UID, paths.CONTAINER_GID)
+
+    def test_the_agent_placement_carries_the_user_flag_on_docker(self, monkeypatch):
+        monkeypatch.setattr(paths.os, "getuid", lambda: 1001)
+        monkeypatch.setattr(paths.os, "getgid", lambda: 1002)
+        args = launcher._agent_placement_args("docker", "anchor", "inst")
+        assert "--user" in args and "1001:1002" in args
+
+    def test_the_volume_chown_uses_the_invoking_ids(self, monkeypatch):
+        monkeypatch.setattr(paths.os, "getuid", lambda: 1001)
+        monkeypatch.setattr(paths.os, "getgid", lambda: 1002)
+        calls: list[list[str]] = []
+        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
+        volumes._chown_volume_for_docker("docker", "thevol", "theimage")
+        assert "1001:1002" in calls[0], calls[0]
 
 
 class TestEverythingElseJoinsTheAnchor:
@@ -359,26 +410,16 @@ class TestRootlessDockerIsRefusedBeforeAnythingIsCreated:
         monkeypatch.setattr(launcher.os, "getuid", lambda: paths.CONTAINER_UID)
         launcher._preflight_runtime("docker")  # no raise
 
-    def test_a_non_1000_user_is_refused_on_docker(self, monkeypatch, capsys):
-        """#457. podman's keep-id maps the INVOKING user onto the image's uid, so the agent writes
-        as you. docker's `--userns=host` maps nothing, so the agent writes as uid 1000 whoever you
-        are — and on a uid-1001 box every write into the user's own project fails with a
-        permission error the agent cannot explain.
+    def test_a_non_1000_user_is_supported_on_docker(self, monkeypatch):
+        """#457, resolved. `container_user_args` runs the agent as the invoking user and
+        `_chown_volume_for_docker` gives the volumes the same ids, so any uid works.
 
-        This is the `bd harnessed-rv2.1` shape: a mapping that is correct only by numeric
-        coincidence. It passes on any developer who happens to be uid 1000, which is most of them,
-        which is exactly why it has to be refused rather than documented."""
+        This test previously asserted a REFUSAL. That was correct while the agent ran as the
+        image's uid — and it would now reject the case `--user` exists to support, including every
+        GitHub runner, which is uid 1001. Inverted deliberately, with the behaviour it covers."""
         _pin(monkeypatch, "docker", rootless=False)
         monkeypatch.setattr(launcher.os, "getuid", lambda: paths.CONTAINER_UID + 1)
-        with pytest.raises(typer.Exit) as ei:
-            launcher._preflight_runtime("docker")
-        assert ei.value.exit_code == 1
-        captured = capsys.readouterr()
-        msg = (captured.out + captured.err).lower()
-        assert str(paths.CONTAINER_UID + 1) in msg, "must name the uid the user actually has"
-        assert str(paths.CONTAINER_UID) in msg, "must name the uid the agent would write as"
-        assert "podman" in msg, "must name the runtime that does not have this problem"
-        assert "457" in msg, "must point at the tracking issue for a real fix"
+        launcher._preflight_runtime("docker")  # no raise
 
     def test_podman_does_not_care_about_the_invoking_uid(self, monkeypatch):
         """keep-id maps whoever you are onto the image uid, so there is nothing to refuse."""
