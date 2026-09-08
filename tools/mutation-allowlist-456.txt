@@ -19,6 +19,7 @@
 #   * _runtime          -- names "neither podman nor docker", and exits 1.
 # Mutants that changed EXIT CODES or COMMAND ARGV were fixed with tests, never listed here.
 
+
 #
 # Regenerate: python3 tools/regen-allowlist-456.py <mutmut-run-log>
 
@@ -33,13 +34,25 @@ harnessed.launcher.x__preflight_runtime__mutmut_9
 harnessed.launcher.x__preflight_runtime__mutmut_10
 harnessed.launcher.x__preflight_runtime__mutmut_11
 harnessed.launcher.x__preflight_runtime__mutmut_12
+harnessed.launcher.x__preflight_runtime__mutmut_13
 harnessed.launcher.x__preflight_runtime__mutmut_14
 harnessed.launcher.x__preflight_runtime__mutmut_15
 harnessed.launcher.x__preflight_runtime__mutmut_16
 harnessed.launcher.x__preflight_runtime__mutmut_17
 harnessed.launcher.x__preflight_runtime__mutmut_18
 harnessed.launcher.x__preflight_runtime__mutmut_19
-harnessed.launcher.x__preflight_runtime__mutmut_20
+harnessed.launcher.x__preflight_runtime__mutmut_23
+harnessed.launcher.x__preflight_runtime__mutmut_24
+harnessed.launcher.x__preflight_runtime__mutmut_25
+harnessed.launcher.x__preflight_runtime__mutmut_26
+harnessed.launcher.x__preflight_runtime__mutmut_27
+harnessed.launcher.x__preflight_runtime__mutmut_29
+harnessed.launcher.x__preflight_runtime__mutmut_30
+harnessed.launcher.x__preflight_runtime__mutmut_31
+harnessed.launcher.x__preflight_runtime__mutmut_32
+harnessed.launcher.x__preflight_runtime__mutmut_33
+harnessed.launcher.x__preflight_runtime__mutmut_34
+harnessed.launcher.x__preflight_runtime__mutmut_35
 
 # harnessed.persist.x_guard_ownership: error-message text only; path/cause/uid/subuid/both remediations and the bare-mapping quoting are asserted
 harnessed.persist.x_guard_ownership__mutmut_6

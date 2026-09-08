@@ -71,6 +71,8 @@ CONTAINER_ONLY: dict[str, str] = {
                           "host-native launch runs as the invoking user and maps nothing",
     "_agent_placement_args": "netns/hostname/userns placement for a CONTAINER; a host-native "
                              "launch has no namespace to place the agent in",
+    "_netns_anchor": "names the pod or container others share a netns with; a host-native launch "
+                     "runs in the host's own namespace and has nothing to anchor on",
     "_run": "shells out to podman/docker",
     "_attach": "attaches to a container's TTY; the host execs the harness directly",
     # --- bind mounts: the host already has these paths, so there is nothing to map in ---

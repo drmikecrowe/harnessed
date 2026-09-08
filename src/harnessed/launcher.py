@@ -1272,10 +1272,27 @@ def _preflight_runtime(rt: str) -> None:
     into the bind-mount failure this check exists to prevent. So the refusal is here too, at the
     top of the launch, where it costs one `docker info` and stops with something a user can act on.
 
-    Podman is unconditionally fine: `paths.USERNS_ARG` names the mapping outright. Docker is fine
-    only when the daemon is ROOTFUL — see `paths.docker_is_rootless`.
+    Podman is unconditionally fine: `paths.USERNS_ARG` names the mapping outright. Docker needs
+    BOTH a rootful daemon (`paths.docker_is_rootless`) AND an invoking user whose uid is the
+    image's — see the second check below.
     """
-    if rt != "docker" or paths.docker_is_rootless() is False:
+    if rt != "docker":
+        return
+    if paths.docker_is_rootless() is False:
+        # Rootful, so the mapping is nameable. One more question before proceeding — see #457.
+        if os.getuid() != paths.CONTAINER_UID:
+            _err.print(
+                f"[bold red]error:[/bold red] you are uid {os.getuid()}, but under docker "
+                f"harnessed's agent runs as uid {paths.CONTAINER_UID} on the host.\n"
+                "podman's `keep-id` maps the invoking user ONTO the image's uid, so the agent "
+                "writes as you. docker has no such mode: `--userns=host` performs no mapping at "
+                f"all, so the agent would write as uid {paths.CONTAINER_UID} — not as you — and "
+                "every write into your project would fail with a permission error the agent "
+                "cannot explain.\n"
+                "Use podman, or run harnessed as a uid-"
+                f"{paths.CONTAINER_UID} user. Tracking a proper fix in #457."
+            )
+            raise typer.Exit(1)
         return
     detail = (
         "the docker daemon is running ROOTLESS"

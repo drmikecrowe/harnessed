@@ -356,7 +356,35 @@ class TestRootlessDockerIsRefusedBeforeAnythingIsCreated:
 
     def test_rootful_docker_passes_the_preflight(self, monkeypatch):
         _pin(monkeypatch, "docker", rootless=False)
+        monkeypatch.setattr(launcher.os, "getuid", lambda: paths.CONTAINER_UID)
         launcher._preflight_runtime("docker")  # no raise
+
+    def test_a_non_1000_user_is_refused_on_docker(self, monkeypatch, capsys):
+        """#457. podman's keep-id maps the INVOKING user onto the image's uid, so the agent writes
+        as you. docker's `--userns=host` maps nothing, so the agent writes as uid 1000 whoever you
+        are — and on a uid-1001 box every write into the user's own project fails with a
+        permission error the agent cannot explain.
+
+        This is the `bd harnessed-rv2.1` shape: a mapping that is correct only by numeric
+        coincidence. It passes on any developer who happens to be uid 1000, which is most of them,
+        which is exactly why it has to be refused rather than documented."""
+        _pin(monkeypatch, "docker", rootless=False)
+        monkeypatch.setattr(launcher.os, "getuid", lambda: paths.CONTAINER_UID + 1)
+        with pytest.raises(typer.Exit) as ei:
+            launcher._preflight_runtime("docker")
+        assert ei.value.exit_code == 1
+        captured = capsys.readouterr()
+        msg = (captured.out + captured.err).lower()
+        assert str(paths.CONTAINER_UID + 1) in msg, "must name the uid the user actually has"
+        assert str(paths.CONTAINER_UID) in msg, "must name the uid the agent would write as"
+        assert "podman" in msg, "must name the runtime that does not have this problem"
+        assert "457" in msg, "must point at the tracking issue for a real fix"
+
+    def test_podman_does_not_care_about_the_invoking_uid(self, monkeypatch):
+        """keep-id maps whoever you are onto the image uid, so there is nothing to refuse."""
+        _pin(monkeypatch, "podman")
+        monkeypatch.setattr(launcher.os, "getuid", lambda: paths.CONTAINER_UID + 1)
+        launcher._preflight_runtime("podman")  # no raise
 
     def test_podman_passes_the_preflight(self, monkeypatch):
         _pin(monkeypatch, "podman")

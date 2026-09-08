@@ -24,6 +24,9 @@ mkdir -p "$LOGS"
 # after the branch is rebased or renamed.
 BASE="${GAUNTLET_BASE:-main}"
 
+# Layers that failed, collected rather than aborted on — see `run`.
+FAILED_LAYERS=""
+
 run() {
   local name="$1"; shift
   printf '\n=== %s ===\n' "$name"
@@ -35,7 +38,17 @@ run() {
   "$@" > "$LOGS/gauntlet-$name.log" 2>&1 || rc=$?
   printf '%s exit=%d (%s)\n' "$name" "$rc" "$LOGS/gauntlet-$name.log"
   tail -3 "$LOGS/gauntlet-$name.log"
-  return "$rc"
+  # RECORD the failure and CONTINUE, rather than aborting the run.
+  #
+  # Fail-fast was wrong here, and measured wrong three times: diff-cover going red meant the two
+  # randomised-order runs and the entire mutation layer never executed, so the report could say
+  # nothing about them at all. A gauntlet exists to tell you the state of EVERY layer; one that
+  # stops at the first red tells you the state of one. Still fail-CLOSED — each failure is
+  # remembered and the script exits nonzero at the end — just no longer fail-EARLY.
+  if [ "$rc" -ne 0 ]; then
+    FAILED_LAYERS="$FAILED_LAYERS $name"
+  fi
+  return 0
 }
 
 # --- merge gate: lint.yml ---------------------------------------------------------------------
@@ -139,4 +152,8 @@ trap - EXIT INT TERM
 
 run mutation-verdict "$(dirname "$0")/mutation-verdict-456.sh" "$LOGS/gauntlet-mutmut.log"
 
+if [ -n "$FAILED_LAYERS" ]; then
+  printf '\nFAILED LAYERS:%s\n' "$FAILED_LAYERS"
+  exit 1
+fi
 printf '\nall layers passed\n'
