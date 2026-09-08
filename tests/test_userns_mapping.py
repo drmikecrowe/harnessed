@@ -140,12 +140,14 @@ class TestEveryMappedContainerAlsoStatesItsUser:
         """
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            children = (
-                node.elts if isinstance(node, ast.List)
-                else node.args if isinstance(node, ast.Call)
-                else None
-            )
-            if children is None:
+            # if/elif rather than a conditional expression: the expression form leaves `node` as
+            # a bare `AST` for the type checker, and `AST` has no `lineno`. Narrowing here keeps
+            # the yield below checkable.
+            if isinstance(node, ast.List):
+                children = node.elts
+            elif isinstance(node, ast.Call):
+                children = node.args
+            else:
                 continue
             names = {
                 c.value.func.attr for c in children
