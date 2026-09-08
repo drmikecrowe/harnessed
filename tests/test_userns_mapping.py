@@ -19,6 +19,7 @@ constant and nothing here.
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
@@ -80,17 +81,32 @@ class TestNoCallSiteRegresses:
     def test_the_sweep_is_not_vacuous(self):
         """Guard the guard: deleting every userns argument would also make the sweep above pass.
 
-        Bound to `paths.userns_args(` — the CALL, parentheses included — and not to the constant.
+        Bound to an `ast.Call` of `paths.userns_args`, not to the SOURCE TEXT of one.
         #456 moved the emit sites from `paths.USERNS_ARG` to `paths.userns_args(rt)`, and for one
         run this assertion kept passing while every executable reference was gone: `USERNS_ARG` was
         still named in three DOCSTRINGS in these two files, which is exactly the "passing
-        vacuously" state the assertion is worded to prevent. Matching the call is what makes prose
-        unable to satisfy it.
+        vacuously" state the assertion is worded to prevent.
+
+        A substring search for `paths.userns_args(` fixed that ONE instance and left the class of
+        defect open — the guard's own docstring, four lines up, contains that text, and so would
+        any prose written about the call. It escaped only because no docstring in the two SUBJECT
+        files happens to name it today, which is a coincidence, not a property. Raised on PR #461
+        review. Parsing is what makes the guard unable to be satisfied by prose at all.
         """
-        users = {
-            path.name for path in SRC.rglob("*.py")
-            if path.name != "paths.py" and "paths.userns_args(" in path.read_text(encoding="utf-8")
-        }
+        users = set()
+        for path in SRC.rglob("*.py"):
+            if path.name == "paths.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            if any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "userns_args"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "paths"
+                for node in ast.walk(tree)
+            ):
+                users.add(path.name)
         assert {"launcher.py", "volumes.py"} <= users, (
             "the modules that launch containers no longer CALL paths.userns_args, so the sweep "
             f"above is passing vacuously; found only {sorted(users)}"
