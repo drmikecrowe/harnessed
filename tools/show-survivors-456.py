@@ -41,6 +41,15 @@ def main() -> int:
     for full in names:
         _, module, mutant = full.split(".", 2)
         path = pathlib.Path("mutants/src/harnessed") / f"{module}.py"
+        # REPORTED, not raised. `_funcs` opens the file, so a mutants tree that does not carry this
+        # module (a deleted tree, a selector naming a module mutmut never mutated) killed the whole
+        # walk with FileNotFoundError before a single survivor was printed -- the tool that exists
+        # to enumerate survivors failing closed on the first one it cannot resolve. Raised on
+        # PR #461 review. `missing` is already the counter the verdict reads.
+        if not path.is_file():
+            print(f"### {full}: NO MUTANTS FILE at {path}")
+            missing += 1
+            continue
         if module not in cache:
             cache[module] = _funcs(path)
         funcs = cache[module]

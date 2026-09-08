@@ -22,18 +22,37 @@
 
 #
 # Regenerate: python3 tools/regen-allowlist-456.py <mutmut-run-log>
+#
+# REGENERATION IS NOT A FIX. Rerunning the script over a fresh log makes every survivor listed and
+# therefore passing, which is the gaming move this gate exists to prevent. Each entry is read and
+# justified, and a removal is explained here.
+#
+# Removed on the PR #461 review pass, for two DIFFERENT reasons the verdict script reports with one
+# message ("no longer survives"):
+#   * `_preflight_runtime__mutmut_12` -- still exists, now KILLED. Good news; the entry had to go.
+#   * `_preflight_runtime__mutmut_23`..`_35` -- NO LONGER EXIST. The function generates 21 mutants
+#     now, so these numbers name nothing. That is not a test getting stronger, it is the allowlist
+#     having been written against a different source state, and it is why numbering-keyed entries
+#     have to be re-read rather than trusted.
 
 
 # harnessed.ctrquery.x__runtime: error-message text only; the named runtimes and exit code 1 are asserted
 harnessed.ctrquery.x__runtime__mutmut_4
 harnessed.ctrquery.x__runtime__mutmut_5
 
+# harnessed.capability.x__runtime: error-message text only; the two runtime NAMES are asserted, and
+# the raise itself is asserted -- added on the PR #461 review pass, when this function entered the
+# selectors. Same class and same wording as its ctrquery sibling above, which is the point: they
+# are the same message in the two entry points.
+harnessed.capability.x__runtime__mutmut_4
+harnessed.capability.x__runtime__mutmut_5
+
 # harnessed.launcher.x__preflight_runtime: error-message text only; cause/uid/subuid/both remediations and exit code 1 are asserted
+harnessed.launcher.x__preflight_runtime__mutmut_7
 harnessed.launcher.x__preflight_runtime__mutmut_8
 harnessed.launcher.x__preflight_runtime__mutmut_9
 harnessed.launcher.x__preflight_runtime__mutmut_10
 harnessed.launcher.x__preflight_runtime__mutmut_11
-harnessed.launcher.x__preflight_runtime__mutmut_12
 harnessed.launcher.x__preflight_runtime__mutmut_13
 harnessed.launcher.x__preflight_runtime__mutmut_14
 harnessed.launcher.x__preflight_runtime__mutmut_15
@@ -41,18 +60,6 @@ harnessed.launcher.x__preflight_runtime__mutmut_16
 harnessed.launcher.x__preflight_runtime__mutmut_17
 harnessed.launcher.x__preflight_runtime__mutmut_18
 harnessed.launcher.x__preflight_runtime__mutmut_19
-harnessed.launcher.x__preflight_runtime__mutmut_23
-harnessed.launcher.x__preflight_runtime__mutmut_24
-harnessed.launcher.x__preflight_runtime__mutmut_25
-harnessed.launcher.x__preflight_runtime__mutmut_26
-harnessed.launcher.x__preflight_runtime__mutmut_27
-harnessed.launcher.x__preflight_runtime__mutmut_29
-harnessed.launcher.x__preflight_runtime__mutmut_30
-harnessed.launcher.x__preflight_runtime__mutmut_31
-harnessed.launcher.x__preflight_runtime__mutmut_32
-harnessed.launcher.x__preflight_runtime__mutmut_33
-harnessed.launcher.x__preflight_runtime__mutmut_34
-harnessed.launcher.x__preflight_runtime__mutmut_35
 
 # harnessed.persist.x_guard_ownership: error-message text only; path/cause/uid/subuid/both remediations and the bare-mapping quoting are asserted
 harnessed.persist.x_guard_ownership__mutmut_6

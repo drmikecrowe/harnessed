@@ -131,19 +131,16 @@ EOF
 # catch fail-opens.
 if [ -d mutants ]; then rm -r mutants; fi
 
-# One filter per CHANGED function, derived from the diff above rather than from where the logic
-# feels like it lives. mutmut names mutants `harnessed.<module>.x_<function>__mutmut_N`; a filter
-# matching nothing is SILENT (exit 0, every mutant `not checked`), which is why `mutmut results`
-# runs unconditionally afterwards and its output is read, not just its exit code.
-run mutmut env HARNESSED_DIR="$PWD" mise exec -- uv run --extra dev mutmut run \
-  'harnessed.paths.x__detect_runtime*' \
-  'harnessed.paths.x_userns_args*' \
-  'harnessed.paths.x__probe_docker_rootless*' \
-  'harnessed.paths.x_pod_host_uid*' \
-  'harnessed.persist.x_guard_ownership*' \
-  'harnessed.ctrquery.x__runtime*' \
-  'harnessed.launcher.x__preflight_runtime*' \
-  'harnessed.launcher.x__without_userns*'
+# One filter per CHANGED function, derived from the diff rather than from where the logic feels
+# like it lives. The list lives in `mutation-targets-456.txt` because the VERDICT needs the same
+# one; see that file for why it is not written out twice. A filter matching nothing is SILENT
+# (exit 0, every mutant `not checked`), which is why `mutmut results` runs unconditionally
+# afterwards and its output is read, not just its exit code.
+MUT_TARGETS="$(dirname "$0")/mutation-targets-456.txt"
+mapfile -t MUT_FILTERS < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/$/*/' "$MUT_TARGETS")
+[ "${#MUT_FILTERS[@]}" -gt 0 ] || { echo "no mutation targets read from $MUT_TARGETS" >&2; exit 1; }
+
+run mutmut env HARNESSED_DIR="$PWD" mise exec -- uv run --extra dev mutmut run "${MUT_FILTERS[@]}"
 
 run mutmut-results env HARNESSED_DIR="$PWD" mise exec -- uv run --extra dev mutmut results
 

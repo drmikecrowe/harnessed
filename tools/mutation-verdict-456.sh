@@ -28,15 +28,12 @@ ALLOWLIST="${2:-$(dirname "$0")/mutation-allowlist-456.txt}"
 #      because it measured nothing. Checked by counting what the RUN log actually executed.
 printf '\n=== mutation verdict ===\n'
 mutation_failed=0
-for fn in \
-  'harnessed.paths.x__detect_runtime' \
-  'harnessed.paths.x_userns_args' \
-  'harnessed.paths.x__probe_docker_rootless' \
-  'harnessed.paths.x_pod_host_uid' \
-  'harnessed.persist.x_guard_ownership' \
-  'harnessed.ctrquery.x__runtime' \
-  'harnessed.launcher.x__preflight_runtime' \
-  'harnessed.launcher.x__without_userns'
+# Same list the run used -- see `mutation-targets-456.txt`. Reading it here rather than repeating
+# it is what stops the verdict from certifying a set of functions the run never mutated.
+MUT_TARGETS="$(dirname "$0")/mutation-targets-456.txt"
+mapfile -t MUT_FNS < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$MUT_TARGETS")
+[ "${#MUT_FNS[@]}" -gt 0 ] || { echo "no mutation targets read from $MUT_TARGETS" >&2; exit 1; }
+for fn in "${MUT_FNS[@]}"
 do
   killed=$(grep -c "🎉 $fn" "$LOG" || true)
   survived=$(grep -c "🙁 $fn" "$LOG" || true)
@@ -75,7 +72,19 @@ done
 while read -r m; do
   case "$m" in ''|\#*) continue ;; esac
   if ! grep -q "🙁 $m\$" "$LOG"; then
-    printf '  FAIL: %s is allowlisted but no longer survives -- remove the stale entry\n' "$m"
+    # WHICH KIND of stale, because the two demand different responses and the single message sent
+    # a reader after the wrong one. A mutant that still EXISTS and stopped surviving means a test
+    # got stronger -- delete the entry and move on. A mutant that no longer exists at all means the
+    # allowlist was written against a different source state, so every OTHER numbered entry for
+    # that function is suspect too and has to be re-read, not just this one. Found on the PR #461
+    # review pass: 13 `_preflight_runtime` entries reported as "no longer survives" were numbers
+    # the function does not generate any more.
+    mfile="mutants/src/harnessed/$(printf '%s' "$m" | cut -d. -f2).py"
+    if [ -f "$mfile" ] && grep -q "def $(printf '%s' "$m" | cut -d. -f3-)(" "$mfile"; then
+      printf '  FAIL: %s is allowlisted but is now KILLED -- remove the entry\n' "$m"
+    else
+      printf '  FAIL: %s is allowlisted but NO LONGER EXISTS -- the source moved; re-read every entry for this function\n' "$m"
+    fi
     mutation_failed=1
   fi
 done < "$ALLOWLIST"
