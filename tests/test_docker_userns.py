@@ -29,7 +29,7 @@ import subprocess
 import pytest
 import typer
 
-from harnessed import ctrquery, launcher, launchenv, paths, persist, volumes
+from harnessed import capability, ctrquery, launcher, launchenv, paths, persist, volumes
 from harnessed.hosthome import _HOST_STACK_FINGERPRINT
 from harnessed.schema import load_recipe
 from support import patch_all
@@ -268,7 +268,8 @@ class TestTheAgentRunsAsTheInvokingUserOnDocker:
         calls: list[list[str]] = []
         monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
         volumes._chown_volume_for_docker("docker", "thevol", "theimage")
-        assert "1001:1002" in calls[0], calls[0]
+        # In the `sh -c` script since the chown became sentinel-gated, not a bare argv element.
+        assert "chown -R 1001:1002 /mnt" in calls[0][-1], calls[0]
 
 
 class TestEverythingElseJoinsTheAnchor:
@@ -331,8 +332,17 @@ class TestOneRuntimeDetector:
 
     def test_the_two_entry_points_agree(self, monkeypatch):
         """The REAL detector on both sides. Left pinned by conftest, both sides would return the
-        pinned value and this would assert that a constant equals itself."""
+        pinned value and this would assert that a constant equals itself.
+
+        SKIPPED where neither binary exists. Unpinning the detector is the whole point of this
+        test, and with no runtime installed the real one returns None, which `ctrquery._runtime`
+        turns into `typer.Exit(1)` before the comparison — an ERROR in the hermetic suite, on a
+        machine that simply cannot host the agreement this asserts. The runtime-less path is not
+        left uncovered: `TestNoRuntimeAtAll` owns it, with the detector faked rather than absent.
+        """
         monkeypatch.setattr(paths, "active_runtime", _REAL_ACTIVE_RUNTIME)
+        if _REAL_ACTIVE_RUNTIME() is None:
+            pytest.skip("no container runtime installed; agreement is unobservable here")
         assert ctrquery._runtime() == _REAL_ACTIVE_RUNTIME()
 
     def test_ctrquery_delegates_rather_than_scanning_again(self, monkeypatch):
@@ -521,6 +531,179 @@ class TestTheRootlessProbeItself:
         assert paths._probe_docker_rootless() is None
 
 
+class TestTheFirewallRunnerArgvIsPinnedElementForElement:
+    """`_firewall_runner_argv` builds a container that is handed CAP_NET_ADMIN over the agent's
+    network namespace. Every element is security-relevant, and before this class only
+    `--network=container:` was asserted.
+
+    Mutation found 19 survivors here once PR #461 review added the function to the selectors:
+    `"run"` -> `"XXrunXX"`, `"--cap-add"` -> `"--CAP-ADD"`, `"root"` -> `"ROOT"`, `"-v"` -> `"-V"`.
+    Each produces a runtime error or, worse, a runner that starts without the capability and
+    silently installs no rules -- the shape of #429, where an effective set of 0 kept the defect
+    hidden behind a container that appeared to run fine.
+    """
+
+    def _expected_tail(self):
+        return [
+            "--cap-add", "NET_ADMIN",
+            "--user", "root",
+            "-v", f"{launcher._catalog_base('egress-firewall.sh')}:/usr/local/sbin/egress-firewall:ro",
+            "--entrypoint", "",
+            "img",
+        ]
+
+    def test_podman_joins_the_pod_and_carries_no_mapping_of_its_own(self):
+        """On podman the mapping is a POD property, inherited. Stating it on a member is rejected."""
+        argv = launcher._firewall_runner_argv("podman", "thepod", "img")
+        assert argv == ["podman", "run", "--rm", "--pod", "thepod", *self._expected_tail()]
+
+    def test_docker_joins_the_agent_netns_and_states_the_mapping(self):
+        """No pod exists, so the runner must name the agent container AND repeat its userns. A
+        mismatch is not cosmetic: iptables run from a different user namespace than the netns it
+        configures returns EPERM, so the rules confine nothing and the agent runs wide open."""
+        argv = launcher._firewall_runner_argv("docker", "theinst", "img")
+        assert argv == [
+            "docker", "run", "--rm",
+            "--network=container:theinst", "--userns=host",
+            *self._expected_tail(),
+        ]
+
+    def test_the_capability_is_granted_and_the_user_is_root(self):
+        """Named separately because these two are the reason the container exists. NET_ADMIN in the
+        bounding set alone is not enough -- the image's default user is unprivileged and iptables
+        carries no file capabilities."""
+        argv = launcher._firewall_runner_argv("docker", "i", "img")
+        assert argv[argv.index("--cap-add") + 1] == "NET_ADMIN"
+        assert argv[argv.index("--user") + 1] == "root"
+
+
+class TestTheApiEndpointHostsAreParsedNotGuessed:
+    """`api_endpoint_egress_hosts` -- the DROP-policy firewall opens only what it is told about, and
+    a repointed `ANTHROPIC_BASE_URL` is told to it by nothing else. A host dropped here presents to
+    the user as an authentication failure, because the request never arrives to be authenticated."""
+
+    def test_a_normal_url_yields_its_hostname(self):
+        assert launchenv.api_endpoint_egress_hosts(
+            {"ANTHROPIC_BASE_URL": "https://api.z.ai/v1"}
+        ) == ["api.z.ai"]
+
+    def test_a_scheme_less_value_strips_both_the_port_and_the_path(self):
+        """The fallback branch, and the one mutation reached: `urlsplit` parses a bare host as a
+        PATH, not a netloc, so without this a scheme-less value yields no host and is silently
+        dropped -- reinstating the exact defect the function exists to close. Both separators are
+        behaviour; mutation turned each of `"/"` and `":"` into whitespace with nothing failing."""
+        assert launchenv.api_endpoint_egress_hosts(
+            {"ANTHROPIC_BASE_URL": "gateway.internal:8443/v1/messages"}
+        ) == ["gateway.internal"]
+        # WITHOUT a port, deliberately. With one, the `":"` split alone produces the right answer
+        # for every mutation of the `"/"` split, so the port case cannot distinguish them -- it let
+        # `split("/")` -> `split(None)` and `-> split("XX/XX")` both survive. A path-only value is
+        # the input where the two separators do different work.
+        assert launchenv.api_endpoint_egress_hosts(
+            {"ANTHROPIC_BASE_URL": "gateway.internal/v1/messages"}
+        ) == ["gateway.internal"]
+
+    def test_blank_and_absent_values_contribute_nothing(self):
+        assert launchenv.api_endpoint_egress_hosts({}) == []
+        assert launchenv.api_endpoint_egress_hosts({"ANTHROPIC_BASE_URL": "   "}) == []
+
+    def test_all_three_variables_are_read_and_duplicates_collapse(self):
+        assert launchenv.api_endpoint_egress_hosts({
+            "ANTHROPIC_BASE_URL": "https://one.example",
+            "ANTHROPIC_BEDROCK_BASE_URL": "https://two.example",
+            "ANTHROPIC_VERTEX_BASE_URL": "https://one.example",
+        }) == ["one.example", "two.example"]
+
+
+class TestCapabilityRuntimeDelegates:
+    """`capability._runtime` -- six mutants reported "no tests" until PR #461 review put it in the
+    selectors. It was the second detector #456 removed, and it is where `CONTAINER_RUNTIME` used
+    to be honoured, so a body that drifts back to scanning PATH itself would be invisible."""
+
+    def test_it_returns_what_the_single_detector_returns(self, monkeypatch):
+        monkeypatch.setattr(capability.paths, "active_runtime", lambda: "nerdctl")
+        assert capability._runtime() == "nerdctl"
+
+    def test_it_raises_rather_than_naming_a_runtime_that_is_not_installed(self, monkeypatch):
+        """The body this replaced answered "docker" whenever podman was absent, WITHOUT checking
+        docker exists -- so on a box with neither it returned a runtime and exec'd it (#459)."""
+        monkeypatch.setattr(capability.paths, "active_runtime", lambda: None)
+        with pytest.raises(RuntimeError) as exc:
+            capability._runtime()
+        assert "podman" in str(exc.value) and "docker" in str(exc.value)
+
+
+class TestContainerRuntimeOverride:
+    """`CONTAINER_RUNTIME` — the FIRST branch of `_detect_runtime`, and, before this class, the
+    only part of #456 with no test naming it at all.
+
+    It is the whole mechanism the `live-docker` CI job turns on: a GitHub runner has BOTH binaries
+    installed, so PATH order alone always yields podman and a docker job is inexpressible. That
+    job's own comment states the failure mode — without the override it "would silently retest the
+    podman path while reporting itself as docker coverage", which is a green tick over a runtime
+    nobody exercised.
+
+    Mutation is what surfaced the gap (PR #461 review added this function's siblings to the
+    selectors): `forced = None` — deleting the env read outright — survived, along with the
+    variable's own NAME and both literals in the validation tuple. Ten mutants, no failing test.
+    """
+
+    def _detect(self, monkeypatch, *, env: str | None, installed=("podman", "docker")):
+        if env is None:
+            monkeypatch.delenv("CONTAINER_RUNTIME", raising=False)
+        else:
+            monkeypatch.setenv("CONTAINER_RUNTIME", env)
+        monkeypatch.setattr(
+            paths.shutil, "which", lambda name: f"/usr/bin/{name}" if name in installed else None
+        )
+        return paths._detect_runtime()
+
+    def test_it_selects_docker_even_though_podman_is_installed_and_preferred(self, monkeypatch):
+        """The load-bearing case. With both binaries present, PATH order yields podman; only the
+        override can reach docker, so this is what makes the `live-docker` job mean anything."""
+        assert self._detect(monkeypatch, env="docker") == "docker"
+
+    def test_it_selects_podman_when_asked_for_podman(self, monkeypatch):
+        """Not redundant with the default: it pins the `"podman"` literal in the validation tuple,
+        which is otherwise satisfied by the fall-through and reads as tested when it is not."""
+        assert self._detect(monkeypatch, env="podman") == "podman"
+
+    def test_the_variable_name_is_the_behaviour(self, monkeypatch):
+        """A misspelled name reads as unset and falls through to podman-first — silently, which is
+        the same green-over-nothing this class exists to stop."""
+        monkeypatch.setenv("CONTAINER_RUNTIME", "docker")
+        monkeypatch.setattr(paths.shutil, "which", lambda name: f"/usr/bin/{name}")
+        assert paths._detect_runtime() == "docker", (
+            "the override was not read under its documented name"
+        )
+
+    def test_an_unset_or_blank_value_falls_through_to_detection(self, monkeypatch):
+        """Blank is NOT an error: `CONTAINER_RUNTIME=` is how a caller clears an inherited value,
+        and `.strip()` is what makes whitespace mean the same thing."""
+        assert self._detect(monkeypatch, env=None) == "podman"
+        assert self._detect(monkeypatch, env="") == "podman"
+        assert self._detect(monkeypatch, env="   ") == "podman"
+
+    def test_it_refuses_an_unrecognised_value_rather_than_ignoring_it(self, monkeypatch):
+        """A typo'd `dcoker` that fell through to podman would run the whole suite against the
+        wrong runtime and report a pass — the failure `paths.py` says this branch exists to stop."""
+        with pytest.raises(ValueError) as exc:
+            self._detect(monkeypatch, env="dcoker")
+        # The BAD VALUE must appear: a message that does not name it cannot be acted on, and this
+        # is what kills the mutant replacing the whole f-string with `None`. Asserting the value
+        # rather than the prose keeps it off the brittle-message path anti-gaming rule 4 warns of.
+        assert "dcoker" in str(exc.value)
+
+    def test_a_forced_runtime_that_is_not_installed_is_none_not_a_lie(self, monkeypatch):
+        """`shutil.which` still decides. Returning the name of a binary that is absent would hand
+        every later call an argv whose first element cannot execute."""
+        assert self._detect(monkeypatch, env="docker", installed=("podman",)) is None
+
+    def test_the_override_beats_the_podman_preference_both_ways(self, monkeypatch):
+        """Guard the guard: if the override were dropped, BOTH values would answer podman here."""
+        assert self._detect(monkeypatch, env="docker") != self._detect(monkeypatch, env="podman")
+
+
 class TestNoRuntimeAtAll:
     """`active_runtime` is the one place that can answer "neither"; `ctrquery._runtime` is the one
     place that turns that into something a user can read."""
@@ -619,6 +802,44 @@ class TestDockerNamedVolumesAreChowned:
     which is exactly where `harnessed build` stopped on docker once #456 was fixed -- observed on a
     real daemon, not hypothesised."""
 
+    def _invocations(self, monkeypatch, rt: str) -> list[tuple[list[str], dict]]:
+        """argv AND kwargs. `_calls` drops the kwargs, which left `check=` and `capture_output=`
+        unconstrained -- mutation found `check=False` -> `check=True` surviving, i.e. the suite did
+        not encode the decision the code's own comment argues for."""
+        seen: list[tuple[list[str], dict]] = []
+        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: seen.append((list(cmd), dict(k))))
+        volumes._chown_volume_for_docker(rt, "thevol", "img")
+        return seen
+
+    def test_the_chown_does_not_raise_on_failure(self, monkeypatch):
+        """`check=False`, deliberately, and now asserted rather than argued in a comment.
+
+        Raised on PR #461 review as a defect ("use check=True"); dismissed, because `proc._run`
+        defaults to `check=True` and `_run_container_installs` uses that default, so a volume left
+        root-owned fails at the very next step with stderr surfaced in the user's terms rather than
+        as a bare CalledProcessError traceback out of `harnessed build`. A dismissal that lives
+        only in prose is not a decision the suite protects -- this is the same claim, executable.
+        """
+        _, kwargs = self._invocations(monkeypatch, "docker")[0]
+        assert kwargs.get("check") is False, kwargs
+
+    def test_the_chown_captures_output_rather_than_printing_it(self, monkeypatch):
+        """It is a repair step, not a build step. Streaming a root chown's output into the build log
+        would put a `chown: changing ownership` line in front of the user for every volume."""
+        _, kwargs = self._invocations(monkeypatch, "docker")[0]
+        assert kwargs.get("capture_output") is True, kwargs
+
+    def test_the_whole_argv_is_pinned_not_just_the_parts_that_moved(self, monkeypatch):
+        """Element for element. Asserting only the interesting flags left the rest free: mutation
+        turned `-v` into `-V` and `--entrypoint` into `--ENTRYPOINT` with nothing failing, and
+        either produces a container that does not start."""
+        argv, _ = self._invocations(monkeypatch, "docker")[0]
+        assert argv[:3] == ["docker", "run", "--rm"]
+        assert argv[3:6] == ["--userns=host", "--user", "0:0"]
+        assert argv[6:11] == ["-v", "thevol:/mnt", "--entrypoint", "sh", "img"]
+        assert argv[11] == "-c"
+        assert len(argv) == 13, argv
+
     def _calls(self, monkeypatch, rt: str) -> list[list[str]]:
         calls: list[list[str]] = []
         monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
@@ -632,11 +853,43 @@ class TestDockerNamedVolumesAreChowned:
         assert cmd[:3] == ["docker", "run", "--rm"]
         assert "--user" in cmd and "0:0" in cmd, "the chown must run as root; uid 1000 cannot"
         assert "thevol:/mnt" in cmd
-        assert f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}" in cmd
-        assert "-R" in cmd, "the volume may already hold copied-up content"
+        # The chown moved INSIDE an `sh -c` when it became sentinel-gated (PR #461 review): the
+        # gate and the chown have to be one container, so the ids and `-R` are now script text
+        # rather than argv elements. Same three properties, read where they now live.
+        assert cmd[-2] == "-c" and "sh" in cmd, f"the gate needs a shell: {cmd}"
+        script = cmd[-1]
+        assert f"chown -R {paths.CONTAINER_UID}:{paths.CONTAINER_GID} /mnt" in script
         # It must carry the mapping too, or the chown lands in a different namespace than the
         # agent and writes an ownership the agent still cannot use.
         assert "--userns=host" in cmd
+
+    def test_the_chown_is_skipped_once_the_sentinel_exists(self, monkeypatch):
+        """The gate is a `[ -f … ] ||` in the SAME container, not a second probe run.
+
+        `_ensure_stack_volumes` runs on every build and every FIRST_START launch, and one of the
+        volumes it chowns is `harnessed-dl-cache` — shared by every stack and, per `volume-gc`'s
+        `role == "shared"` branch, never pruned. An ungated `chown -R` therefore walks an
+        unbounded tree on every launch. Raised on PR #461 review and by the round-2 adversary.
+        """
+        calls = self._calls(monkeypatch, "docker")
+        script = calls[0][-1]
+        assert script.startswith(f"[ -f {volumes._VOLUME_OWNED_SENTINEL} ] ||"), script
+        assert len(calls) == 1, f"the gate must not cost a second container: {calls}"
+
+    def test_the_sentinel_is_written_only_after_the_chown_succeeds(self, monkeypatch):
+        """`&&`, never `;`. A sentinel written next to a FAILED chown certifies ownership that was
+        never set, and every later launch then skips the fix for a volume the agent cannot write —
+        the same stamp discipline `_ensure_config_volume` holds for its fingerprint."""
+        script = self._calls(monkeypatch, "docker")[0][-1]
+        _, _, rest = script.partition("chown -R")
+        assert rest.split(f"touch {volumes._VOLUME_OWNED_SENTINEL}")[0].rstrip().endswith("&&"), script
+
+    def test_the_sentinel_is_owned_by_the_agent_not_root(self, monkeypatch):
+        """It is created by the root gate container, so without this it lands root-owned inside a
+        tree the agent otherwise owns."""
+        script = self._calls(monkeypatch, "docker")[0][-1]
+        owner = f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}"
+        assert f"chown {owner} {volumes._VOLUME_OWNED_SENTINEL}" in script, script
 
     def test_the_config_volume_is_chowned_when_it_is_created(self, tmp_path, monkeypatch):
         """Through `_ensure_config_volume`, not by calling the helper directly.
@@ -649,7 +902,7 @@ class TestDockerNamedVolumesAreChowned:
 
         volumes._ensure_config_volume("docker", "s", "claude", tmp_path, "img", fresh=True)
 
-        chowns = [c for c in calls if "chown" in c]
+        chowns = [c for c in calls if any("chown" in part for part in c)]
         assert len(chowns) == 1, f"the config volume was not chowned: {calls}"
         # ...and it must happen AFTER `volume create`: chowning first would create the volume
         # implicitly with default ownership, which is the state being fixed.

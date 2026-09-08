@@ -84,6 +84,12 @@ def _merged_settings_text(
     return json.dumps(merged, indent=2) + "\n"
 
 
+# Marks a named volume as already chowned for docker. Inside the volume, not on the host: the
+# state it records is a property of the VOLUME, so it has to survive on the same medium and be
+# visible to any host that mounts it. Named `.` so it never collides with content a recipe writes.
+_VOLUME_OWNED_SENTINEL = "/mnt/.harnessed-docker-owned"
+
+
 def _chown_volume_for_docker(rt: str, vol: str, image: str) -> None:
     """Give a freshly created NAMED VOLUME the image's uid, on docker only.
 
@@ -113,10 +119,26 @@ def _chown_volume_for_docker(rt: str, vol: str, image: str) -> None:
     # traceback out of `harnessed build` instead of the one-line error the surrounding code takes
     # care to produce. The populate step immediately after is what actually reports a volume the
     # agent cannot write, and it reports it in the user's terms.
+    # SENTINEL-GATED, and the gate is inside the SAME container invocation as the chown. Two
+    # reasons it is one `sh -c` rather than a read followed by a conditional write: a separate
+    # probe container costs the same process start it is trying to save, and a read-then-write pair
+    # is a race between concurrent builds. Raised on PR #461 review, and independently by the
+    # round-2 adversary; the fact that decided it is `volume-gc`'s `role == "shared"` branch
+    # (launcher.py) -- the download cache is NEVER pruned, so it grows without bound across every
+    # stack, and `_ensure_stack_volumes` runs on every build AND every FIRST_START launch. An
+    # unbounded tree walked on every launch is not the "one cheap chown" this was accepted as.
+    #
+    # The sentinel is written only AFTER a successful chown (`&&`), matching the stamp discipline
+    # in `_ensure_config_volume`: a failed chown must never certify ownership that was not set, or
+    # every later launch skips the fix for a volume the agent still cannot write. It is chowned
+    # itself in the same step, so a re-run reads it as the owner rather than as root.
+    owner = "{}:{}".format(*paths.container_owner_ids(rt))
     _run(
         [rt, "run", "--rm", *paths.userns_args(rt), "--user", "0:0",
-         "-v", f"{vol}:/mnt", "--entrypoint", "chown", image,
-         "-R", "{}:{}".format(*paths.container_owner_ids(rt)), "/mnt"],
+         "-v", f"{vol}:/mnt", "--entrypoint", "sh", image, "-c",
+         f"[ -f {_VOLUME_OWNED_SENTINEL} ] || "
+         f"{{ chown -R {owner} /mnt && touch {_VOLUME_OWNED_SENTINEL} "
+         f"&& chown {owner} {_VOLUME_OWNED_SENTINEL}; }}"],
         check=False, capture_output=True,
     )
 
