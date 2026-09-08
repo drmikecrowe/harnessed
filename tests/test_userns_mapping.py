@@ -113,6 +113,76 @@ class TestNoCallSiteRegresses:
         )
 
 
+class TestEveryMappedContainerAlsoStatesItsUser:
+    """The mapping and the USER travel together, and this enumerates from the tree rather than
+    from a list someone has to remember to update.
+
+    #456 gave every volume-writing container `paths.userns_args(rt)`. #457 then made the docker
+    agent run as the INVOKER and chowned the volumes to match -- but the volume-writing containers
+    kept the image's default uid, so they wrote to a tree they did not own. It is invisible on a
+    uid-1000 box, because there the two ids coincide; on a uid-1001 runner the config compose step
+    died with `cp: cannot create directory` AFTER the agent itself launched cleanly.
+
+    The rule is therefore: if a call emits the mapping, it must also state the user. The one
+    exception is the chown container, which is deliberately `--user 0:0` -- it exists to fix
+    ownership, so it cannot run as the user that cannot write yet.
+    """
+
+    def _mapped_argvs(self, path):
+        """Every argv construct that splats `paths.userns_args`, with the string literals in it.
+
+        Scans `ast.List` AND `ast.Call`, looking only at DIRECT children. Both are needed and the
+        first is the one that matters: the install steps build their prefix as a bare list
+        (`common = [*paths.userns_args(rt), ...]`), which is not a Call at all. A first version of
+        this sweep walked Calls only, so it missed that site -- the exact site the docker uid defect
+        lived in -- and its negative control passed while the code was broken. Direct children only,
+        so a `_run([...])` yields the list once rather than once per enclosing node.
+        """
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            children = (
+                node.elts if isinstance(node, ast.List)
+                else node.args if isinstance(node, ast.Call)
+                else None
+            )
+            if children is None:
+                continue
+            names = {
+                c.value.func.attr for c in children
+                if isinstance(c, ast.Starred)
+                and isinstance(c.value, ast.Call)
+                and isinstance(c.value.func, ast.Attribute)
+            }
+            if "userns_args" not in names:
+                continue
+            literals = {
+                e.value for e in ast.walk(node)
+                if isinstance(e, ast.Constant) and isinstance(e.value, str)
+            }
+            yield node.lineno, names, literals
+
+    def test_every_mapped_container_states_its_user(self):
+        found = list(self._mapped_argvs(SRC / "volumes.py"))
+        assert found, "the sweep found no mapped containers at all; it is measuring nothing"
+        offenders = [
+            line for line, names, literals in found
+            if "container_user_args" not in names and "0:0" not in literals
+        ]
+        assert not offenders, (
+            "these volume containers carry the userns mapping but not the user, so on docker they "
+            f"run as the image uid and write a tree the invoker owns: volumes.py lines {offenders}"
+        )
+
+    def test_the_chown_container_is_the_only_exemption(self):
+        """Guard the guard: the exemption is `--user 0:0`, and exactly one call may claim it. If a
+        second appears, someone silenced this sweep instead of satisfying it."""
+        exempt = [
+            line for line, names, literals in self._mapped_argvs(SRC / "volumes.py")
+            if "container_user_args" not in names and "0:0" in literals
+        ]
+        assert len(exempt) == 1, f"expected only the chown container to run as root: {exempt}"
+
+
 class TestVolumeStepsCarryTheMapping:
     """Real argv, not a source scan: a volume written under any other mapping is unreadable by the
     agent (harnessed-8px.21.1), so every populate/install/seed step must match the pod."""
