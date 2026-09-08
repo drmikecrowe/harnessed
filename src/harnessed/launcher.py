@@ -222,6 +222,7 @@ from .launchenv import (
     _resolve_launch_env,
     _resolve_launch_secrets,
     _strip_var_from_env_files,
+    api_endpoint_egress_hosts,
     _varlock_cache_clear,
     _varlock_resolve,
 )
@@ -3506,7 +3507,15 @@ class ContainerBackend(ExecutionBackend):
             # Recipe-declared egress: union the extra allowlist hosts across this stack's recipes so
             # the firewall opens them ONLY when a recipe that needs them is present (default-DROP
             # otherwise).
-            egress_domains = sorted({d for r in self.recipes for d in r.egress})
+            # Recipe-declared hosts, PLUS the agent's own model API endpoint when the user has
+            # repointed it (`ANTHROPIC_BASE_URL` and friends live in the user's .env.schema, which
+            # no recipe can see). Without this the firewall drops every request the agent makes to
+            # its own API and the client reports an auth failure — see
+            # `launchenv.api_endpoint_egress_hosts`.
+            egress_domains = sorted(
+                {d for r in self.recipes for d in r.egress}
+                | set(api_endpoint_egress_hosts(_resolve_launch_env(spec.project_path)))
+            )
             try:
                 _apply_firewall(
                     self.rt, self.inst, egress_domains,

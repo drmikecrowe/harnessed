@@ -277,8 +277,17 @@ def fold_test_result(
 
 
 def _runtime() -> str:
-    """Container runtime — matches the bash dispatcher's detect_runtime (podman, docker fallback)."""
-    return os.environ.get("CONTAINER_RUNTIME") or ("podman" if shutil.which("podman") else "docker")
+    """Container runtime — delegates to `paths.active_runtime`, the single detector.
+
+    This used to scan PATH itself, and answered `"docker"` whenever podman was absent WITHOUT
+    checking docker exists — so on a box with neither it returned a runtime that is not installed
+    and exec'd it. It was also the only place `CONTAINER_RUNTIME` was honoured, which is why the
+    override moved down into `paths` rather than disappearing with this body (#459).
+    """
+    rt = paths.active_runtime()
+    if rt is None:
+        raise RuntimeError("neither podman nor docker found on PATH")
+    return rt
 
 
 def _harnessed_bin(explicit: str | None = None) -> str:

@@ -65,6 +65,23 @@ def _detect_runtime() -> str | None:
     silently blind to this logic while looking green. Separating them makes the behaviour mutable,
     and makes it testable without `cache_clear` gymnastics.
     """
+    # `CONTAINER_RUNTIME` is honoured FIRST, and is what makes a docker CI job expressible at all:
+    # a GitHub runner has BOTH binaries installed, so PATH order alone always yields podman and a
+    # docker job could not be written. The name is not new — `capability._runtime` already read it,
+    # as a second detector this function was introduced to replace. Reading it here is what lets
+    # that duplicate go away instead of taking the override with it.
+    #
+    # An unrecognised value is REFUSED rather than ignored: a typo'd `CONTAINER_RUNTIME=dcoker`
+    # that silently fell through to podman would run the whole suite against the wrong runtime and
+    # report it as a pass, which is exactly the shape of failure this module exists to prevent.
+    forced = os.environ.get("CONTAINER_RUNTIME", "").strip()
+    if forced:
+        if forced not in ("podman", "docker"):
+            raise ValueError(
+                f"CONTAINER_RUNTIME={forced!r} is not a container runtime harnessed knows; "
+                f"expected 'podman' or 'docker'."
+            )
+        return forced if shutil.which(forced) else None
     for rt in ("podman", "docker"):
         if shutil.which(rt):
             return rt
@@ -108,6 +125,44 @@ def userns_args(rt: str) -> list[str]:
         f"harnessed does not know how to map user namespaces for container runtime {rt!r}; "
         f"supported runtimes are 'podman' and 'docker'."
     )
+
+
+def container_user_args(rt: str) -> list[str]:
+    """The `--user` fragment, so the agent writes to bind mounts AS THE INVOKING USER.
+
+    THE ASYMMETRY THIS EXISTS FOR. podman's `keep-id:uid=1000` maps the invoking user ONTO the
+    image's uid, so the container's uid-1000 process IS you, whatever your host uid. Docker has no
+    such mode: `--userns=host` performs no mapping at all, so the image's uid 1000 is host uid 1000
+    and the agent writes as 1000 no matter who launched it. Those agree only when the invoking user
+    happens to be uid 1000 — and a GitHub runner is uid 1001, which is why docker could not be put
+    under CI at all until this existed (#457).
+
+    So on docker the invoking uid is stated explicitly. `podman` gets nothing here: its mapping
+    already did this job, and adding `--user` on top would fight it.
+
+    THE COUPLING, which is the part that must not be split. Running as uid N against a volume owned
+    by 1000 is not an improvement on the reverse — it is the same defect wearing different numbers.
+    `volumes._chown_volume_for_docker` therefore chowns to THIS uid, not to `CONTAINER_UID`. Change
+    one without the other and every write into the config and tool volumes fails.
+    """
+    if rt != "docker":
+        return []
+    return ["--user", f"{os.getuid()}:{os.getgid()}"]
+
+
+def container_owner_ids(rt: str) -> tuple[int, int]:
+    """The (uid, gid) that must own anything the agent writes, for `rt`.
+
+    podman: the image's uid — `keep-id` maps the caller onto it, so the volume is correct when it
+    is owned by `CONTAINER_UID` and the pod's process reaches it as the caller.
+    docker: the INVOKING user's ids, because `container_user_args` runs the agent as them.
+
+    One function so the two runtimes cannot drift: this is the number `--user` is derived from and
+    the number the volume chown targets, and the whole point is that they are the same number.
+    """
+    if rt == "docker":
+        return (os.getuid(), os.getgid())
+    return (CONTAINER_UID, CONTAINER_GID)
 
 
 def _probe_docker_rootless() -> bool | None:

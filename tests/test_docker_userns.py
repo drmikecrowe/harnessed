@@ -29,7 +29,7 @@ import subprocess
 import pytest
 import typer
 
-from harnessed import ctrquery, launcher, paths, persist, volumes
+from harnessed import ctrquery, launcher, launchenv, paths, persist, volumes
 from harnessed.hosthome import _HOST_STACK_FINGERPRINT
 from harnessed.schema import load_recipe
 from support import patch_all
@@ -619,6 +619,54 @@ class TestDockerNamedVolumesAreChowned:
         """podman already did this. A second chown would state the rule in two places, and two
         statements of one rule can disagree."""
         assert self._calls(monkeypatch, "podman") == []
+
+
+class TestTheAgentsOwnApiEndpointIsAllowlisted:
+    """The egress firewall defaults to DROP and opens only recipe-declared `egress:` hosts.
+
+    `ANTHROPIC_BASE_URL` comes from the user's `.env.schema`, which no recipe can see — so when a
+    user points the agent at a gateway, the one host it cannot work without is the one host not
+    allowlisted. `api.anthropic.com` IS baked in, which is why this is invisible on a default setup
+    and total on a gateway setup, and why it presents as an auth failure: the request never arrives
+    to be authenticated.
+
+    Measured on a real docker container with `ANTHROPIC_BASE_URL=https://api.z.ai`: requests to
+    api.z.ai timed out at the DROP policy while api.anthropic.com returned 404."""
+
+    def test_a_repointed_base_url_is_allowlisted(self):
+        hosts = launchenv.api_endpoint_egress_hosts({"ANTHROPIC_BASE_URL": "https://api.z.ai"})
+        assert hosts == ["api.z.ai"], "the agent cannot reach its own API without this"
+
+    def test_the_port_and_path_are_stripped(self):
+        """The firewall script resolves NAMES to IPs; a host:port would not resolve."""
+        hosts = launchenv.api_endpoint_egress_hosts(
+            {"ANTHROPIC_BASE_URL": "https://gw.internal:8443/v1/messages"},
+        )
+        assert hosts == ["gw.internal"]
+
+    def test_a_bare_host_with_no_scheme_still_yields_a_host(self):
+        """`urlsplit` parses a scheme-less value as a PATH, so hostname is None. Dropping it there
+        would silently reinstate the defect for anyone who omits https://."""
+        assert launchenv.api_endpoint_egress_hosts({"ANTHROPIC_BASE_URL": "api.z.ai"}) == ["api.z.ai"]
+
+    def test_the_bedrock_and_vertex_forms_count_too(self):
+        hosts = launchenv.api_endpoint_egress_hosts({
+            "ANTHROPIC_BEDROCK_BASE_URL": "https://bedrock.example",
+            "ANTHROPIC_VERTEX_BASE_URL": "https://vertex.example",
+        })
+        assert sorted(hosts) == ["bedrock.example", "vertex.example"]
+
+    def test_an_unset_or_empty_endpoint_adds_nothing(self):
+        """The default setup must stay exactly as it was: api.anthropic.com is already baked in."""
+        assert launchenv.api_endpoint_egress_hosts({}) == []
+        assert launchenv.api_endpoint_egress_hosts({"ANTHROPIC_BASE_URL": "   "}) == []
+
+    def test_duplicates_collapse(self):
+        hosts = launchenv.api_endpoint_egress_hosts({
+            "ANTHROPIC_BASE_URL": "https://gw.example/v1",
+            "ANTHROPIC_VERTEX_BASE_URL": "https://gw.example/other",
+        })
+        assert hosts == ["gw.example"]
 
 
 @DOCKER

@@ -14,6 +14,9 @@ Pure resolution only — nothing here knows about podman, containers, or the Typ
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+from urllib.parse import urlsplit
+
 import json
 import os
 import re
@@ -530,6 +533,38 @@ def _strip_var_from_env_files(var: str, env_files: list[Path]) -> None:
         kept = [ln for ln in lines if (pair := _parse_plain_env_line(ln)) is None or pair[0] != var]
         if len(kept) != len(lines):
             f.write_text("".join(f"{ln}\n" for ln in kept))
+
+
+def api_endpoint_egress_hosts(env: Mapping[str, str]) -> list[str]:
+    """Hosts the AGENT'S OWN model API lives on, taken from the resolved launch environment.
+
+    The egress firewall defaults to DROP and opens only what a recipe declares in `egress:`. That
+    covers what a recipe knows about — and misses the one host the agent cannot work without, when
+    the user has repointed it: `ANTHROPIC_BASE_URL` is set from the user's `.env.schema`, not by any
+    recipe, so nothing tells the firewall about it. `api.anthropic.com` is in the baked allowlist,
+    which is exactly why this is invisible on a default setup and total on a gateway setup.
+
+    Measured: with `ANTHROPIC_BASE_URL=https://api.z.ai`, every request from inside the container
+    timed out at the DROP policy while `api.anthropic.com` answered. The agent reports that as an
+    authentication failure, because the request never arrives to be authenticated — which sends the
+    reader looking at tokens instead of at routing.
+
+    Takes the resolved env as a MAPPING rather than re-reading the env-files: `_resolve_launch_env`
+    and `_resolve_launch_secrets` already resolve the same sources with the same precedence, and a
+    third reader here would be a third place for that precedence to drift. Returns hostnames only;
+    the firewall script resolves each to its current IPs.
+    """
+    hosts: list[str] = []
+    for var in ("ANTHROPIC_BASE_URL", "ANTHROPIC_BEDROCK_BASE_URL", "ANTHROPIC_VERTEX_BASE_URL"):
+        raw = (env.get(var) or "").strip()
+        if not raw:
+            continue
+        # A bare host with no scheme parses as a path, not a netloc, so fall back to the raw value
+        # with any port and path stripped. Silently dropping it would reinstate the defect.
+        host = urlsplit(raw).hostname or raw.split("/")[0].split(":")[0]
+        if host and host not in hosts:
+            hosts.append(host)
+    return hosts
 
 
 def _resolve_launch_env(project_path: Path | None = None) -> dict[str, str]:
