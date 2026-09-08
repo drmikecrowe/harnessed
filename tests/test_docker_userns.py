@@ -204,8 +204,42 @@ class TestTheAgentContainerActuallyGetsTheMapping:
             "the docker agent container must carry the mapping itself; there is no pod to "
             f"inherit it from and no mount builder emits it: {args}"
         )
-        assert "--network=container:theanchor" in args
         assert "--hostname" in args
+
+    def test_docker_agent_owns_its_netns_rather_than_joining_one(self):
+        """#458. The agent is the anchor on a pod-less runtime, so it joins nothing.
+
+        The old shape emitted `--network=container:{pod}`, naming a container that is never
+        created when there is no pod. Docker rejected the `--hostname` + network-mode conflict
+        first, so the dangling anchor was never reached — one defect masking another."""
+        args = launcher._agent_placement_args("docker", "theanchor", "theinst")
+        assert not any(a.startswith("--network") for a in args), (
+            f"the agent must OWN the netns, not join one: {args}"
+        )
+        # ...and owning it is what makes --hostname legal: docker refuses the two together.
+        assert "--hostname" in args and "theinst" in " ".join(args)
+
+
+class TestEverythingElseJoinsTheAnchor:
+    """`_netns_anchor` — the pod on podman, the agent container on docker."""
+
+    def test_podman_anchors_on_the_pod(self):
+        assert launcher._netns_anchor("podman", "thepod", "theinst") == "thepod"
+
+    def test_docker_anchors_on_the_agent_container(self):
+        assert launcher._netns_anchor("docker", "thepod", "theinst") == "theinst"
+
+    def test_it_asks_which_runtime_not_which_value_is_truthy(self):
+        """The site this replaced read `self.pod or self.inst`, which looks like a fallback for a
+        missing pod name. `self.pod` is ALWAYS set, so on docker it always chose the pod — a
+        container that does not exist. A non-empty pod name must still yield the instance."""
+        assert launcher._netns_anchor("docker", "a-non-empty-pod-name", "theinst") == "theinst"
+
+    def test_the_firewall_runner_joins_the_agent_on_docker(self):
+        """End of the chain: the runner must land in the agent's netns or it confines nothing."""
+        anchor = launcher._netns_anchor("docker", "thepod", "theinst")
+        argv = launcher._firewall_runner_argv("docker", anchor, "img")
+        assert "--network=container:theinst" in argv
 
     def test_the_two_runtimes_do_not_share_a_placement(self):
         """Guard the guard: if these ever returned the same list, one of the two is wrong."""
@@ -534,6 +568,24 @@ class TestDockerNamedVolumesAreChowned:
         # It must carry the mapping too, or the chown lands in a different namespace than the
         # agent and writes an ownership the agent still cannot use.
         assert "--userns=host" in cmd
+
+    def test_the_config_volume_is_chowned_when_it_is_created(self, tmp_path, monkeypatch):
+        """Through `_ensure_config_volume`, not by calling the helper directly.
+
+        The helper being correct says nothing about it being CALLED, and the call is the half that
+        was missing before phase 2. diff-cover flagged this exact line as unexecuted."""
+        calls: list[list[str]] = []
+        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
+        monkeypatch.setattr(volumes, "_merged_settings_text", lambda *a, **k: None)
+
+        volumes._ensure_config_volume("docker", "s", "claude", tmp_path, "img", fresh=True)
+
+        chowns = [c for c in calls if "chown" in c]
+        assert len(chowns) == 1, f"the config volume was not chowned: {calls}"
+        # ...and it must happen AFTER `volume create`: chowning first would create the volume
+        # implicitly with default ownership, which is the state being fixed.
+        creates = [i for i, c in enumerate(calls) if c[1:3] == ["volume", "create"]]
+        assert creates and calls.index(chowns[0]) > creates[0]
 
     def test_podman_is_left_alone(self, monkeypatch):
         """podman already did this. A second chown would state the rule in two places, and two

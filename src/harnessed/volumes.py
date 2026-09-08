@@ -106,11 +106,18 @@ def _chown_volume_for_docker(rt: str, vol: str, image: str) -> None:
     """
     if rt != "docker":
         return
+    # `check=False`, matching every other runtime call on this path (`volume create` x3,
+    # `_volume_read`). Adversarial review: this was the only `check=True` here and no caller
+    # handles CalledProcessError, so a chown that failed for any reason — no `chown` on the image's
+    # PATH, the volume held by a live container, a transient daemon error — surfaced as a bare
+    # traceback out of `harnessed build` instead of the one-line error the surrounding code takes
+    # care to produce. The populate step immediately after is what actually reports a volume the
+    # agent cannot write, and it reports it in the user's terms.
     _run(
         [rt, "run", "--rm", *paths.userns_args(rt), "--user", "0:0",
          "-v", f"{vol}:/mnt", "--entrypoint", "chown", image,
          "-R", f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}", "/mnt"],
-        check=True, capture_output=True,
+        check=False, capture_output=True,
     )
 
 

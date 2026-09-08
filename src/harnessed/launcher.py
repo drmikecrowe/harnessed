@@ -1453,11 +1453,32 @@ def _agent_placement_args(rt: str, pod: str, inst: str) -> list[str]:
     """
     if _rt_uses_pods(rt):
         return ["--pod", pod]
+    # NO `--network=container:` here. On a pod-less runtime the agent IS the namespace owner --
+    # the role podman's infra container plays -- so it creates its own netns and everything else
+    # (firewall runner, service sidecars) joins IT via `_netns_anchor` below.
+    #
+    # The previous shape pointed the agent at `--network=container:{pod}`, but nothing ever creates
+    # a container by that name when there is no pod: `pod create` runs only under
+    # `_rt_uses_pods`. Docker rejected the `--hostname` + network-mode conflict first, so the
+    # dangling anchor was never even reached (#458). Owning the netns also makes `--hostname`
+    # legal again: docker refuses it for a container joining someone else's UTS namespace.
     return [
-        f"--network=container:{pod}",
         "--hostname", paths.container_hostname(inst),
         *paths.userns_args(rt),
     ]
+
+
+def _netns_anchor(rt: str, pod: str, inst: str) -> str:
+    """The container or pod whose network namespace everything else joins.
+
+    podman: the POD -- members share the infra container's netns by construction.
+    pod-less: the AGENT container, which owns the netns per `_agent_placement_args`.
+
+    One function rather than `pod or inst` at each call site: that idiom reads as a fallback for a
+    missing pod name, but `self.pod` is always set, so on docker it always chose the pod -- a
+    container that does not exist. The question is which RUNTIME, never which value is truthy.
+    """
+    return pod if _rt_uses_pods(rt) else inst
 
 
 def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
@@ -3419,9 +3440,15 @@ class ContainerBackend(ExecutionBackend):
         hatago_cfg_host = emit.write_hatago_config(inst_cfg_dir, self.servers, spec.project_path)
         hatago_cfg_ctr = str(paths.hatago_config_container())
         # Filter --userns out of the member args ON PODMAN ONLY: it is a POD-level property there,
-        # and podman rejects it on a member. That is a statement about pods, not about containers —
-        # a pod-less runtime has no infra container to inherit the mapping from, so stripping it
-        # would drop the mapping entirely and nothing else on that path sets it (#456). Mount the hatago
+        # and podman rejects it on a member.
+        #
+        # HONEST NOTE, because the first version of this comment was wrong: `mount_args` does not
+        # currently contain a `--userns` on either runtime — every element comes from the mounts.py
+        # builders and `rg 'userns' src/harnessed/mounts.py` is empty. So this conditional is inert
+        # TODAY, and the claim it once carried ("stripping it would drop the mapping entirely") was
+        # false: the docker mapping is delivered by `_agent_placement_args`, not from here. It is
+        # kept because the strip is only ever correct for a pod, and an unconditional strip would
+        # silently swallow a mapping the moment any builder starts emitting one. Mount the hatago
         # config (ro) into the HARNESS container — after the hatago-consolidation, hatago runs IN
         # this container (not a separate pod member), so the hub and the stdio children it spawns
         # share this container's home and see the project bind-mount.
@@ -3466,7 +3493,8 @@ class ContainerBackend(ExecutionBackend):
             try:
                 _apply_firewall(
                     self.rt, self.inst, egress_domains,
-                    netns_anchor=self.pod or self.inst, image=self.harness_image,
+                    netns_anchor=_netns_anchor(self.rt, self.pod, self.inst),
+                    image=self.harness_image,
                 )
             except BaseException:
                 # By this phase BOUNDARY has already started the pod, so simply propagating would
