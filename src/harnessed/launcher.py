@@ -1742,13 +1742,24 @@ def _authorize_mcp_remote_servers(
             )
 
 
-def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> bool:
+def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 90) -> bool:
     """Poll until the in-container hatago hub accepts connections on `port`.
 
     Returns True once the port is live, False on timeout. hatago starts asynchronously via the
     container entrypoint (harnessed-start), so the launch never sees a non-zero exit when hatago
     fails to bind — a missing binary, a bad config, or a crashed hub all look identical to a slow
     start. The caller must surface a False so we don't report `[SUCCESS]` over a dead MCP hub.
+
+    90s, not 30. MEASURED, not guessed: on docker, container start 11:52:38.6 -> hub listening
+    11:53:12.2, i.e. **33.5s**. The old bound lost by three and a half seconds every time, so this
+    was not flaky — it failed deterministically while looking like a slow start, and the resulting
+    "MCP tools will be unavailable" sent two separate investigations after tokens and secrets
+    before anyone timed the hub.
+    #456: hatago binds only AFTER connecting its configured MCP servers, so the floor is not the
+    hub's own startup — it is the hub plus every stdio child, plus the retry budget of any server
+    that cannot be reached (3 attempts with backoff, ~33s on its own). 90 covers the measured case
+    with headroom for one unreachable server; a stack whose servers are all unreachable will still
+    fail, which is correct.
     """
     import time
     if port is None:
