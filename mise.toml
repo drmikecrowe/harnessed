@@ -107,10 +107,17 @@ run = "tools/openwiki-drift.py"
 # THE ENTRY POINT, including for the very first run: upstream's own CI example notes that
 # `--update` "also handles the first run for code docs when env vars are set", and unlike `--init`
 # it does not force the setup wizard. --print makes it one-shot and exits.
+#
+# The retry patch runs FIRST and re-applies itself after any `mise install` that
+# restores the stock runner: a page worker that ends without calling submit_page
+# (seen with glm-5.3-flash, PR #445 run 6) is marked skipped and the run
+# finalizes "interrupted" without advancing the diff base, costing the next run
+# a full regeneration. Upstream 0.4.3/0.5.0 have no retry; the patch fails
+# loudly on version drift rather than patching blind.
 [tasks.openwiki-update]
 description = "Generate or refresh openwiki/ with no prompts (handles the first run too)"
 interactive = true
-run = "{{vars.openwiki_env}} openwiki code --update --print"
+run = "python3 tools/openwiki-retry-patch.py && {{vars.openwiki_env}} openwiki code --update --print"
 
 # DELIBERATELY INTERACTIVE. `--init` walks every setup step unconditionally — dist/cli/app/app.js:96
 # is `needsCredentialSetup(...) || (isInitCommand && !initWizardConsumed)` — so a fully configured
