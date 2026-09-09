@@ -22,7 +22,7 @@
 set -euo pipefail
 
 # `:?` rather than a default: an unset ref means the manifest and this script disagree about the key
-# name, and a default would paper over that by fetching the default branch. Eight variables, eight
+# name, and a default would paper over that by fetching the default branch. Six variables, six
 # guards — each earns its own, so none can be deleted silently. `:?` fires on empty as well as
 # unset, which is what a key-name mismatch actually produces.
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
@@ -32,8 +32,6 @@ set -euo pipefail
 : "${HARNESSED_REPO_BLADER:?install.sh requires HARNESSED_REPO_BLADER (install.refs.blader.repo)}"
 : "${HARNESSED_REF_AMINBLG:?install.sh requires HARNESSED_REF_AMINBLG (install.refs.aminblg.ref)}"
 : "${HARNESSED_REPO_AMINBLG:?install.sh requires HARNESSED_REPO_AMINBLG (install.refs.aminblg.repo)}"
-: "${HARNESSED_REF_PETERGYANG:?install.sh requires HARNESSED_REF_PETERGYANG (install.refs.petergyang.ref)}"
-: "${HARNESSED_REPO_PETERGYANG:?install.sh requires HARNESSED_REPO_PETERGYANG (install.refs.petergyang.repo)}"
 
 # The URL is built by the CALLER, not inside fetch(), and that is deliberate. The pin gate
 # (`_mutable_archive_ref`) resolves a NAMED variable in an archive URL against `install.refs:`, but
@@ -54,7 +52,6 @@ fetch() {  # $1=archive URL  $2=dest dir → leaves the archive's <repo>-<ref>/ 
 oak_url="https://github.com/${HARNESSED_REPO_OAKOSS}/archive/${HARNESSED_REF_OAKOSS}.tar.gz"
 hum_url="https://github.com/${HARNESSED_REPO_BLADER}/archive/${HARNESSED_REF_BLADER}.tar.gz"
 ste_url="https://github.com/${HARNESSED_REPO_AMINBLG}/archive/${HARNESSED_REF_AMINBLG}.tar.gz"
-slop_url="https://github.com/${HARNESSED_REPO_PETERGYANG}/archive/${HARNESSED_REF_PETERGYANG}.tar.gz"
 
 # Populate the pinned-content cache atomically (temp+rename), so an interrupted download can never be
 # mistaken for a populated cache. Falls back to a throwaway tmp when no cache is declared.
@@ -65,7 +62,6 @@ if [ -n "$cache" ]; then
         fetch "$oak_url" "$tmp/oakoss"
         fetch "$hum_url" "$tmp/blader"
         fetch "$ste_url" "$tmp/aminblg"
-        fetch "$slop_url" "$tmp/petergyang"
         mv "$tmp" "$cache"
     fi
 else
@@ -73,7 +69,6 @@ else
     fetch "$oak_url" "$cache/oakoss"
     fetch "$hum_url" "$cache/blader"
     fetch "$ste_url" "$cache/aminblg"
-    fetch "$slop_url" "$cache/petergyang"
 fi
 
 mkdir -p "$HARNESSED_CONFIG_DIR/skills"
@@ -100,12 +95,3 @@ ste="$cache/aminblg/${HARNESSED_REPO_AMINBLG##*/}-${HARNESSED_REF_AMINBLG}/skill
 rm -rf "$HARNESSED_CONFIG_DIR/skills/simple-english"
 cp -rL "$ste" "$HARNESSED_CONFIG_DIR/skills/simple-english"
 test -f "$HARNESSED_CONFIG_DIR/skills/simple-english/SKILL.md"
-
-# petergyang (ref key): a directory-skill at skills/no-ai-slop/ (SKILL.md + eval.md + agents/).
-# eval.md is NOT optional — SKILL.md step 4 sends the model to it by name, so a copy of SKILL.md
-# alone ships a skill that dangles at its own checklist.
-slop="$cache/petergyang/${HARNESSED_REPO_PETERGYANG##*/}-${HARNESSED_REF_PETERGYANG}/skills/no-ai-slop"
-rm -rf "$HARNESSED_CONFIG_DIR/skills/no-ai-slop"
-cp -rL "$slop" "$HARNESSED_CONFIG_DIR/skills/no-ai-slop"
-test -f "$HARNESSED_CONFIG_DIR/skills/no-ai-slop/SKILL.md"
-test -f "$HARNESSED_CONFIG_DIR/skills/no-ai-slop/eval.md"

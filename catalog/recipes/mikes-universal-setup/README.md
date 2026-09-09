@@ -1,8 +1,8 @@
 # mikes-universal-setup
 
 A personal baseline: 9 always-on rules (coding stance, precedence, response style, confirmation
-gates, prompt defense, token economy, cwd stability, denied shell commands, anti-drift) plus 21
-skills — 13 vendored in-tree and 8 fetched at build time from pinned upstreams. Serves as the
+gates, prompt defense, token economy, cwd stability, denied shell commands, anti-drift) plus 20
+skills — 13 vendored in-tree and 7 fetched at build time from pinned upstreams. Serves as the
 worked example of what a personal "how I want my agent to behave" recipe looks like.
 
 A rule here is injected on every turn; a skill loads when its description matches the work. Seven
@@ -26,7 +26,6 @@ byte-identical to upstream despite being long believed original.
 | `application-security`, `mermaid-diagrams`, `mise`, `python-uv`, `skill-management` | [oakoss/agent-skills](https://github.com/oakoss/agent-skills) | MIT *(frontmatter only — see below)* | **fetched at build**, pinned SHA — not vendored |
 | `humanizer` | [blader/humanizer](https://github.com/blader/humanizer) | MIT | byte-identical at `1b48564` — **fetched at build**, pinned SHA — not vendored |
 | `simple-english` | [AminBlg/SimpleEnglish](https://github.com/AminBlg/SimpleEnglish) | MIT *(repo LICENSE file)* | unmodified at `379728b5` — **fetched at build**, pinned SHA — not vendored |
-| `no-ai-slop` | [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop) | MIT *(repo LICENSE file)* | unmodified at `000650b1` — **fetched at build**, pinned SHA — not vendored |
 | `map-codebase` | [open-gsd/gsd-core](https://github.com/open-gsd/gsd-core) | MIT | derived, then decoupled + modified — stays vendored |
 | `tdd` | **origin unresolved** (not mattpocock — matches no upstream commit) | — | treated as authored-here |
 | `defuddle` | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) | MIT | derived + locally modified (stronger trigger) — vendored **with LICENSE + PROVENANCE.md** |
@@ -38,16 +37,6 @@ The oakoss five and `humanizer` were verified byte-for-byte against their upstre
 work, so they are fetched, not vendored — see below. `simple-english` was added the same way on
 2026-08-01 (`AminBlg/SimpleEnglish@379728b5`): a directory-skill taken unmodified, only
 `skills/simple-english/` copied — the repo's `evals/`, `prompts/`, and `examples/` are not installed.
-
-`no-ai-slop` was added the same way (`petergyang/no-ai-slop@000650b1`): only `skills/no-ai-slop/` is
-copied, which is `SKILL.md` + `eval.md` + `agents/openai.yaml`. `eval.md` ships because `SKILL.md`
-step 4 sends the model to it by name. The repo's `.codex-plugin/`, `scripts/`, and `assets/` are not
-installed. All three files were read in full before the pin was taken.
-
-It overlaps `humanizer`, `simple-english`, and `mikes-voice` — four skills now touch prose quality.
-They are scoped differently (slop patterns, AI-tells, ASD-STE100, Mike's own voice) and their
-triggers are distinct, but expect more than one to match a vague "clean this up" and say which you
-want.
 
 **Removed 2026-07-23** (unused or unattributable): `create-skill`, `handoff`, `security-review`
 (GSD-derived, not needed here), and `code-optimizer`, `frontend-design` (provenance never
