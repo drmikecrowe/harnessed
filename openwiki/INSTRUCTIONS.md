@@ -87,6 +87,12 @@ Review of #445 found these statements wrong against the code. A digest check can
 that misreads code which has not changed, so they are recorded here instead. Verify each against
 the source before rewriting — do not take this list on faith.
 
+- **Who launches the pod in the capability oracle.** `capability-test.md`'s does-not-prove list
+  says "Anything about the host backend (it launches a pod)" — ambiguous, and readable as the
+  original misattribution. Rewrite to name the actor explicitly: the oracle launches a pod via
+  the **container** backend, which is why it proves nothing about the host backend. (#445 thread
+  left open pending exactly this.)
+
 - **Global service address.** `host.containers.internal:<port>` is the containerized-agent address
   only; a host-run client reaches the same service at `127.0.0.1:<port>`. Describe both.
 - **Service identity versus allocation state.** Container identity and ephemeral ports are
