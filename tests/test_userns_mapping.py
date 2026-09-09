@@ -164,6 +164,14 @@ class TestEveryMappedContainerAlsoStatesItsUser:
             yield node.lineno, names, literals
 
     def test_every_mapped_container_states_its_user(self):
+        # NOT under mutmut. Its instrumented copy expands each function into dozens of variants,
+        # and the mutants that DELETE `container_user_args` are exactly the ones this sweep is
+        # written to reject -- so it fires on the instrumented tree by construction, fails during
+        # stats collection, and takes the whole mutation layer down with it (measured: every one of
+        # the 16 filters then reported "matched no mutant at all"). The guard is a statement about
+        # the real source tree; there is nothing for it to say about a file mutmut rewrote.
+        if "mutants" in SRC.parts:
+            pytest.skip("mutmut's instrumented copy omits the flag by construction")
         found = list(self._mapped_argvs(SRC / "volumes.py"))
         assert found, "the sweep found no mapped containers at all; it is measuring nothing"
         offenders = [
@@ -178,6 +186,8 @@ class TestEveryMappedContainerAlsoStatesItsUser:
     def test_the_chown_container_is_the_only_exemption(self):
         """Guard the guard: the exemption is `--user 0:0`, and exactly one call may claim it. If a
         second appears, someone silenced this sweep instead of satisfying it."""
+        if "mutants" in SRC.parts:
+            pytest.skip("mutmut's instrumented copy multiplies the exempt container")
         exempt = [
             line for line, names, literals in self._mapped_argvs(SRC / "volumes.py")
             if "container_user_args" not in names and "0:0" in literals
