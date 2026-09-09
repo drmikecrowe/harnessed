@@ -6,6 +6,7 @@ is about what a rebuild costs, so the tests check the two build inputs an author
 inside of — the base Dockerfile we ship and the Dockerfile the assembler emits — plus one live
 podman build that proves the emitted syntax actually caches under rootless podman.
 """
+
 from __future__ import annotations
 
 import re
@@ -28,9 +29,10 @@ def _base_image_present() -> bool:
     live.yml builds it before the suite runs, so in CI this is always true; locally it keeps a
     `HARNESSED_PODMAN=1` run from failing on a machine that simply has not built yet.
     """
-    return subprocess.run(
-        ["podman", "image", "exists", _BASE_IMAGE], capture_output=True
-    ).returncode == 0
+    return (
+        subprocess.run(["podman", "image", "exists", _BASE_IMAGE], capture_output=True).returncode
+        == 0
+    )
 
 
 # The downloaders every build path uses, and the cache each one must be given. Paths verified by
@@ -49,15 +51,15 @@ def _run_instructions(body: str) -> list[str]:
     """Every RUN instruction in a Dockerfile, line-continuations joined."""
     joined = re.sub(r"\\\n", " ", body)
     return [
-        ln for ln in joined.splitlines()
+        ln
+        for ln in joined.splitlines()
         if ln.lstrip().upper().startswith("RUN ") and not ln.lstrip().startswith("#")
     ]
 
 
 def _cache_targets(instruction: str) -> set[str]:
     return {
-        m.group(1)
-        for m in re.finditer(r"--mount=type=cache,[^\s]*?target=([^\s,]+)", instruction)
+        m.group(1) for m in re.finditer(r"--mount=type=cache,[^\s]*?target=([^\s,]+)", instruction)
     }
 
 
@@ -80,7 +82,8 @@ class TestShippedImagesCacheTheirDownloads:
     @pytest.mark.parametrize("downloader,cache", sorted(DOWNLOADERS.items()))
     def test_every_downloading_layer_mounts_its_cache(self, downloader, cache):
         offenders = [
-            run for run in _run_instructions(_base_body())
+            run
+            for run in _run_instructions(_base_body())
             if downloader in run and cache not in _cache_targets(run)
         ]
         assert offenders == [], f"{downloader} without a {cache} cache mount: {offenders}"
@@ -96,9 +99,9 @@ class TestShippedImagesCacheTheirDownloads:
         # Podman creates a missing mount point AND its parents as root. The pnpm store lives under
         # ~/.local/share, so an un-pre-created mount left that dir root-owned and every later
         # `mise install` failed with "Permission denied" — a real build failure, not a theory.
-        base = (paths.harnessed_home() / "catalog" / "base" / "Dockerfile.harnessed-base").read_text(
-            encoding="utf-8"
-        )
+        base = (
+            paths.harnessed_home() / "catalog" / "base" / "Dockerfile.harnessed-base"
+        ).read_text(encoding="utf-8")
         for target in sorted(CACHE_TARGETS):
             mkdir_at = base.find(target.replace("/home/harnessed", "/home/${USERNAME}"))
             first_mount = base.find(f"target={target},")
@@ -138,7 +141,11 @@ class TestEveryCacheMountRestoresWhatItTook:
 
     def _instructions(self, body: str) -> list[str]:
         joined = re.sub(r"\\\n", " ", body)
-        return [ln.strip() for ln in joined.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+        return [
+            ln.strip()
+            for ln in joined.splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#")
+        ]
 
     def test_each_cache_mounted_run_is_followed_by_the_restore(self):
         for path in _shipped_image_dockerfiles():
@@ -146,7 +153,7 @@ class TestEveryCacheMountRestoresWhatItTook:
             for i, instr in enumerate(instrs):
                 if not (instr.upper().startswith("RUN ") and "type=cache" in instr):
                     continue
-                after = instrs[i + 1:i + 3]
+                after = instrs[i + 1 : i + 3]
                 assert after[:1] == ["USER root"], (
                     f"{path.name}: cache-mounted RUN is not followed by the ownership restore "
                     f"(found {after[:1]}) — see the comment on the first restore in the base"
@@ -180,7 +187,8 @@ class TestEveryCacheMountRestoresWhatItTook:
         """
         base = next(p for p in _shipped_image_dockerfiles() if p.name.endswith("harnessed-base"))
         probes = [
-            ins for ins in self._instructions(base.read_text(encoding="utf-8"))
+            ins
+            for ins in self._instructions(base.read_text(encoding="utf-8"))
             if "harnessed-home-probe" in ins
         ]
         assert probes, "harnessed-base no longer probes its home directory at all"
@@ -231,7 +239,13 @@ class TestContainerExecutorCachesDownloads:
         calls: list[list[str]] = []
         patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(cmd))
         launcher._run_container_installs(
-            "podman", stack, "claude", "img", [r], "cfgvol", "toolsvol",
+            "podman",
+            stack,
+            "claude",
+            "img",
+            [r],
+            "cfgvol",
+            "toolsvol",
         )
         return calls
 
@@ -289,17 +303,42 @@ class TestTheShippedImageDoesNotHandOverARootOwnedHome:
     def _run(self, script: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["podman", "run", "--rm", _BASE_IMAGE, "bash", "-lc", script],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
 
     @pytest.mark.parametrize("path", ["$HOME", "$HOME/.cache"])
     def test_the_cache_mount_parents_are_owned_by_the_image_user(self, path):
-        want = f"{paths.CONTAINER_UID}:{paths.CONTAINER_GID}"
-        got = self._run(f'stat -c "%u:%g" {path}')
-        assert got.stdout.strip() == want, (
-            f"{path} in {_BASE_IMAGE} is {got.stdout.strip()!r}, want {want!r} — a cache mount "
-            f"re-rooted it: {got.stderr}"
+        # The contract changed shape in #461 (docker userns) and this test was written before it,
+        # on a branch that never saw either half — two green PRs merged to a red main
+        # (live run 34400365502). The agent runs as <invoker>:0 on docker, so the shipped
+        # home is DELIBERATELY uid 1000, GROUP 0, mode 2775 (setgid + group-write): group 0
+        # is what docker's volume copy-up cannot strip, and the write bit is what lets a
+        # uid this image has never heard of create dot-directories — the property the
+        # Dockerfile's own 4242:0 build probe proves. On podman uid 1000 owns the paths and
+        # the group is irrelevant. So: uid must never be root (the original defect), and
+        # $HOME carries the full #461 shape.
+        #
+        # ~/.cache is NOT held to the group contract: the runtime chowns it to the invoker
+        # (volumes._chown_volume_for_docker), so its image-side gid/mode are not promised —
+        # only the uid guard applies there. Asymmetry deliberate; see the probe comment in
+        # Dockerfile.harnessed-base.
+        got = self._run(f'stat -c "%u:%g:%a" {path}')
+        fields = got.stdout.strip().split(":")
+        assert len(fields) == 3, (
+            f"{path}: unexpected stat output {got.stdout.strip()!r}: {got.stderr}"
         )
+        uid, gid, mode = fields
+        assert uid == str(paths.CONTAINER_UID), (
+            f"{path} in {_BASE_IMAGE} is {got.stdout.strip()!r}, uid {uid!r} — a cache mount "
+            f"re-rooted it back to root: {got.stderr}"
+        )
+        if path == "$HOME":
+            assert (gid, mode) == ("0", "2775"), (
+                f"$HOME in {_BASE_IMAGE} is {got.stdout.strip()!r}, want "
+                f"{paths.CONTAINER_UID}:0:2775 — the docker-userns ownership layer (#461) "
+                f"was dropped or narrowed: {got.stderr}"
+            )
 
 
 @podman
@@ -330,9 +369,19 @@ class TestLiveCacheBehaviour:
 
         def build(bust: str) -> str:
             out = subprocess.run(
-                ["podman", "build", "--quiet=false", "--build-arg", f"BUST={bust}",
-                 "-t", "harnessed-cache-probe", str(tmp_path)],
-                capture_output=True, text=True, check=True,
+                [
+                    "podman",
+                    "build",
+                    "--quiet=false",
+                    "--build-arg",
+                    f"BUST={bust}",
+                    "-t",
+                    "harnessed-cache-probe",
+                    str(tmp_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
             )
             return out.stdout + out.stderr
 
