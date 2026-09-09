@@ -59,6 +59,17 @@ jobs:
           fi
           openwiki --help >/dev/null
 
+      - name: Apply the page-worker retry patch
+        # openwiki 0.4.3 AND 0.5.0 mark a page worker "skipped" when its stream ends without
+        # calling submit_page (observed with glm-5.3-flash: a final turn that ends thinking-only,
+        # no text, no tool call — the model spends its whole completion budget on reasoning), and
+        # the run then finalizes `interrupted` without advancing the diff base. The patch gives
+        # each worker one fresh retry before skipping. The mise task applies it automatically to
+        # the mise-installed runner; here the install is npm-global, so the path is explicit.
+        # Verified: patching an npm-global-layout copy produces a runner byte-identical to the
+        # locally patched one, and the patch is idempotent + version-gated (refuses non-0.4.3).
+        run: python3 tools/openwiki-retry-patch.py "$(npm root -g)/openwiki/dist/agent/repository-runner.js"
+
       - name: Run OpenWiki
         id: openwiki
         # NOT fail-fast, deliberately. openwiki's page-job queue is durable: a run that dies partway
