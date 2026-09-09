@@ -297,7 +297,7 @@ class TestTheAgentRunsAsTheInvokingUserOnDocker:
         monkeypatch.setattr(paths.os, "getgid", lambda: 1002)
         calls: list[list[str]] = []
         monkeypatch.setattr(volumes, "_run", _recorder(calls))
-        volumes._chown_volume_for_docker("docker", "thevol", "theimage")
+        volumes._chown_volume_for_docker("docker", "thevol", "theimage", "/home/harnessed/.claude")
         # Group 0, matching what the agent runs as -- see the --user test above.
         assert "1001:0" in calls[0], calls[0]
 
@@ -839,7 +839,7 @@ class TestDockerNamedVolumesAreChowned:
         self._pin_invoker(monkeypatch)
         seen: list[tuple[list[str], dict]] = []
         monkeypatch.setattr(volumes, "_run", _recorder(seen, with_kwargs=True))
-        volumes._chown_volume_for_docker(rt, "thevol", "img")
+        volumes._chown_volume_for_docker(rt, "thevol", "img", "/home/harnessed/.claude")
         return seen
 
     def test_the_chown_does_not_raise_on_failure(self, monkeypatch):
@@ -867,9 +867,30 @@ class TestDockerNamedVolumesAreChowned:
         argv, _ = self._invocations(monkeypatch, "docker")[0]
         assert argv == [
             "docker", "run", "--rm", "--userns=host", "--user", "0:0",
-            "-v", "thevol:/mnt", "--entrypoint", "chown", "img",
-            "-R", f"{self.OWNER_UID}:{self.OWNER_GID}", "/mnt",
+            "-v", "thevol:/home/harnessed/.claude", "--entrypoint", "chown", "img",
+            "-R", f"{self.OWNER_UID}:{self.OWNER_GID}", "/home/harnessed/.claude",
         ]
+
+    def test_the_volume_is_mounted_where_it_will_actually_live(self, monkeypatch):
+        """NOT at a scratch path like /mnt, and this is the ordering the whole helper turns on.
+
+        Docker performs copy-up when the container STARTS, seeding an empty volume from the image's
+        copy of the mount point -- and it sets the volume root to that directory's owner, uid 1000.
+        A chown done at /mnt is therefore undone the moment the volume is mounted where it belongs.
+        The agent at uid 1001 could still create files inside (group 0, mode 2775) but not set
+        timestamps ON the directory, since utimes() needs ownership:
+
+            cp: preserving times for '/home/harnessed/.claude/.': Operation not permitted
+
+        Mounting at the real path puts copy-up and the chown in one container, in that order.
+        """
+        argv, _ = self._invocations(monkeypatch, "docker")[0]
+        mount = argv[argv.index("-v") + 1]
+        assert mount.endswith("/home/harnessed/.claude"), f"the volume must be mounted where it lives: {argv}"
+        assert "/mnt" not in argv, (
+            f"a scratch mount path puts the chown before copy-up, which then overwrites it: {argv}"
+        )
+        assert argv[-1] == "/home/harnessed/.claude", argv
 
     # 4242:4243 -- a value no developer box and no GitHub runner has. Since #457 the docker owner
     # is the INVOKING uid, so an assertion written against `paths.CONTAINER_UID` is only true where
@@ -889,7 +910,7 @@ class TestDockerNamedVolumesAreChowned:
         self._pin_invoker(monkeypatch)
         calls: list[list[str]] = []
         monkeypatch.setattr(volumes, "_run", _recorder(calls))
-        volumes._chown_volume_for_docker(rt, "thevol", "theimage")
+        volumes._chown_volume_for_docker(rt, "thevol", "theimage", "/home/harnessed/.claude")
         return calls
 
     def test_docker_chowns_the_volume_to_the_invoking_ids(self, monkeypatch):
@@ -901,7 +922,7 @@ class TestDockerNamedVolumesAreChowned:
         cmd = calls[0]
         assert cmd[:3] == ["docker", "run", "--rm"]
         assert "--user" in cmd and "0:0" in cmd, "the chown must run as root; uid 1000 cannot"
-        assert "thevol:/mnt" in cmd
+        assert "thevol:/home/harnessed/.claude" in cmd
         # The chown moved INSIDE an `sh -c` when it became sentinel-gated (PR #461 review): the
         # gate and the chown have to be one container, so the ids and `-R` are now script text
         # rather than argv elements. Same three properties, read where they now live.

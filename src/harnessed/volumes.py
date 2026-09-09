@@ -95,7 +95,7 @@ def _volume_exists(rt: str, vol: str) -> bool:
     ).returncode == 0
 
 
-def _chown_volume_for_docker(rt: str, vol: str, image: str) -> None:
+def _chown_volume_for_docker(rt: str, vol: str, image: str, mount_at: str) -> None:
     """Give a freshly created NAMED VOLUME the image's uid, on docker only.
 
     podman chowns a new named volume to match the container's user namespace, so a keep-id pod
@@ -139,10 +139,23 @@ def _chown_volume_for_docker(rt: str, vol: str, image: str) -> None:
     # surfaced as a bare traceback out of `harnessed build` rather than the one-line error the
     # surrounding code takes care to produce. The populate step immediately after is what reports a
     # volume the agent cannot write, in the user's terms.
+    # MOUNTED AT ITS REAL PATH, not at /mnt, and that ordering is the entire point. Docker performs
+    # copy-up when the container STARTS, so seeding from the image happens before this entrypoint
+    # runs -- and the chown therefore lands on the seeded tree rather than being overwritten by it.
+    #
+    # At /mnt the two fought. Copy-up sets the volume root to the IMAGE dir's owner (uid 1000), so
+    # a volume chowned at /mnt came back owned by 1000 the moment it was mounted where it belongs.
+    # The agent at uid 1001 could then create files inside it (group 0, mode 2775) but not set
+    # timestamps ON it, because utimes() needs ownership rather than write permission:
+    #
+    #     cp: preserving times for '/home/harnessed/.claude/.': Operation not permitted
+    #
+    # which is `cp -a` in the compose step failing on the destination directory itself, not on any
+    # file it was copying.
     _run(
         [rt, "run", "--rm", *paths.userns_args(rt), "--user", "0:0",
-         "-v", f"{vol}:/mnt", "--entrypoint", "chown", image,
-         "-R", "{}:{}".format(*paths.container_owner_ids(rt)), "/mnt"],
+         "-v", f"{vol}:{mount_at}", "--entrypoint", "chown", image,
+         "-R", "{}:{}".format(*paths.container_owner_ids(rt)), mount_at],
         check=False, capture_output=True,
     )
 
@@ -196,7 +209,7 @@ def _ensure_config_volume(
     _run([rt, "volume", "create", *_volume_labels(stack, harness, "config"), vol],
          check=False, capture_output=True)
     if was_new:
-        _chown_volume_for_docker(rt, vol, image)
+        _chown_volume_for_docker(rt, vol, image, f"{_CONTAINER_HOME_STR}/.claude")
     # Read BEFORE composing — the compose step is what would overwrite the file we need to keep.
     merged_settings = _merged_settings_text(rt, vol, image, prof, fresh=fresh)
     if merged_settings is None:
@@ -496,9 +509,10 @@ def _ensure_stack_volumes(
     # state this is fixing. Every named volume the agent writes needs it, not just the config one —
     # the tools volume takes `mise` installs and the shared cache takes downloads.
     if tools_was_new:
-        _chown_volume_for_docker(rt, tools_vol, image)
+        _chown_volume_for_docker(rt, tools_vol, image, f"{_CONTAINER_HOME_STR}/.local")
     if cache_was_new:
-        _chown_volume_for_docker(rt, _SHARED_DL_CACHE_VOLUME, image)
+        _chown_volume_for_docker(rt, _SHARED_DL_CACHE_VOLUME, image,
+                                 f"{_CONTAINER_HOME_STR}/.cache")
 
     want = _container_stack_fingerprint(rt, stack, recipes, image)
     have = _volume_read(

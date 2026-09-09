@@ -340,9 +340,19 @@ RUN git config --system --add safe.directory '*'
 #
 # Fixing it here rather than in the chown is what makes it stick: copy-up carries these bits, so
 # the volume is born correct instead of being corrected and then overwritten.
+#
+# ~/.claude IS DELIBERATELY ABSENT FROM THIS LIST, and creating it here was a real regression.
+# Copy-up re-applies the image directory's ownership on EVERY mount while the volume is still
+# empty — and an empty ~/.claude in the image copies nothing, so the volume never stops being
+# empty and never stops being re-owned to uid 1000. Measured on one volume: mounted at
+# ~/.claude it reports `1000:0 2775`, mounted at /mnt the same volume reports `0:0 755`. The
+# runtime chown then cannot stick, and `cp -a` in the compose step fails with
+# `preserving times for '/home/harnessed/.claude/.': Operation not permitted` — utimes() needs
+# ownership, which group 0 does not confer. With no image directory there is no copy-up, so the
+# chown persists and the compose step owns what it writes into.
 RUN chown ${USERNAME}:0 /home/${USERNAME} && chmod 2775 /home/${USERNAME} && \
     chgrp 0 /home/${USERNAME}/.ssh && chmod 0750 /home/${USERNAME}/.ssh && \
-    for d in .cache .local .claude; do \
+    for d in .cache .local; do \
       mkdir -p "/home/${USERNAME}/$d" && \
       chown ${USERNAME}:0 "/home/${USERNAME}/$d" && \
       chmod 2775 "/home/${USERNAME}/$d"; \
