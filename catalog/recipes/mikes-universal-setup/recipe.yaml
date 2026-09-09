@@ -67,7 +67,7 @@ rules:
 #      no licence). This is a BRIDGE (bd harnessed-197): the vercel `skills` CLI is the intended
 #      end state but cannot yet pin to a SHA or verify content on restore, so install.sh supplies the
 #      pin+verify the ecosystem lacks. Sources: oakoss/agent-skills (5), blader/humanizer (1),
-#      AminBlg/SimpleEnglish (1).
+#      AminBlg/SimpleEnglish (1), petergyang/no-ai-slop (1).
 #   2. `skills:` below vendors the ones MODIFIED here (a fetch would discard the edits) or authored
 #      here. Owner tags: [gsd] open-gsd/gsd-core, [kepano] kepano/obsidian-skills, [mine] here — MIT.
 #      See README.md for the full provenance table and the outstanding LICENSE-notice obligations.
@@ -88,12 +88,12 @@ install:
   # not a precedence rule.
   #
   # Every ref carries its OWN `hold:` naming its CLASS, because acceptance here is per REF and these
-  # three are not all the same kind (#329 AC-2, §1 Family B, measured 2026-08-09):
+  # four are not all the same kind (#329 AC-2, §1 Family B, measured 2026-08-09):
   #   * oakoss  — Class B. Upstream publishes no releases and no tags, so no resolver has anything
   #     to return. STRUCTURAL: lifting the policy would change nothing.
-  #   * blader, aminblg — Class C. Releases exist and the resolver CAN order the pinned SHA against
-  #     them, but every tag postdates the pinned commit, so no tag re-expresses the shipped tree.
-  #     POLICY, in D8's words, quoted rather than paraphrased.
+  #   * blader, aminblg, petergyang — Class C. Releases exist and the resolver CAN order the pinned
+  #     SHA against them, but every tag postdates or predates the pinned commit, so no tag
+  #     re-expresses the shipped tree. POLICY, in D8's words, quoted rather than paraphrased.
   refs:
     oakoss:
       repo: oakoss/agent-skills
@@ -113,11 +113,18 @@ install:
       hold: >-
         policy (D8): SHA-pinned by design; the nearest tag is a content change, not a re-expression
         of this commit.
+    petergyang:
+      repo: petergyang/no-ai-slop
+      ref: 000650b156983f5159695b441477f4e63b25dc85
+      hold: >-
+        policy (D8): SHA-pinned by design; the nearest tag is a content change, not a re-expression
+        of this commit. Here the newest release (v1.0.6, 2026-08-01) PREDATES the pinned commit
+        (2026-09-02) rather than postdating it, so the tag is a month of content behind.
 
 # Fetched by install.sh — the capability test verifies they landed (the assembler cannot see what an
 # install script installs, so we declare it). Keep in sync with install.sh.
 expect:
-  skills: [application-security, mermaid-diagrams, mise, python-uv, skill-management, humanizer, simple-english]
+  skills: [application-security, mermaid-diagrams, mise, python-uv, skill-management, humanizer, simple-english, no-ai-slop]
 
 skills:
   # --- Converted from always-on rules. See "RULES vs SKILLS" above for the test applied. Each
