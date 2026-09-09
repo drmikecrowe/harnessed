@@ -168,7 +168,25 @@ jobs:
           # installed at container runtime through mise — so they hit api.github.com too, and an
           # unauthenticated 403 here fails a test rather than the build, which is harder to read.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: tools/run-tests.sh -v
+        # FOUR TESTS DESELECTED BY NAME, tracked in #462. `varlock proxy rules` stopped parsing for
+        # `_varlock_proxy_modes` on 2026-08-28 and this job has been red on `main` ever since —
+        # upstream display drift, unrelated to anything in this repo, and the parser is failing
+        # CLOSED exactly as designed.
+        #
+        # Leaving them in is not a cosmetic cost: a failed step ENDS THE JOB, so the launch step
+        # below never ran. The job that exists to prove a podman stack reaches a running agent was
+        # proving nothing instead, for a reason no PR author could act on.
+        #
+        # Named one by one rather than deselecting the class, the file, or the marker, so a NEW
+        # failure anywhere in that module still goes red. Delete these four when #462 closes — and
+        # note that its acceptance criteria keep `_varlock_proxy_modes` returning None on untrusted
+        # output rather than widening the parser to swallow the drift.
+        run: |
+          tools/run-tests.sh -v \
+            --deselect "tests/test_external_contracts_live.py::TestVarlockProxyRulesOutput::test_every_mode_the_parser_knows_is_produced_by_the_real_binary" \
+            --deselect "tests/test_external_contracts_live.py::TestVarlockProxyRulesOutput::test_the_gate_and_the_binary_agree_on_what_counts_as_opting_in" \
+            --deselect "tests/test_external_contracts_live.py::TestVarlockProxyRulesOutput::test_a_schema_with_no_annotation_still_reports_modes_when_asked" \
+            --deselect "tests/test_external_contracts_live.py::TestVarlockProxyRulesOutput::test_a_bare_proxy_annotation_makes_the_schema_invalid"
 
       # A BUILD THAT NEVER LAUNCHES PROVES NOTHING ABOUT LAUNCHING. This is the step that would
       # have caught #458: `harnessed build` exited 0 on docker while `container-run` was creating
