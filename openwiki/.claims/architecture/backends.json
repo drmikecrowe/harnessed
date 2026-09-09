@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:062a92fde60e40922d0502379a835c3b3ac9d44bc03f1e7dad3a48d5585d2a28",
+  "pageVersion": "sha256:7cb0c3e0ff4725d07b8be26f1f63f5441fb2b4dfb96d246a4a46d6ffc13dba5d",
   "claims": [
     {
       "id": "claim_bb6a98608e1546bdaa0420599c092f05",
@@ -541,10 +541,86 @@
           "version": "repo-lines-v1:sha256:46edfa3d1ae525ed0fdb0966c316e13df213425f17605f954466b8e321023148:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZWM2NjlhY2Q2MWU2MmFiMzY2MTc1ZGJhYzE5YmRmYzhhOWMyZDY3YmRiMTI1NTdkYTk1ZGZmNzA5NTRhOGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4N2E4MGIwYTMzZTE2YWYwYTNmZGM3NzQzYmZjOTcwMGIyNTU5NjljM2QwOTgwODc3MWVhY2UwNjZmYjc0MTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiNWU5OTA4MjJiOTMwYzBjOTQxNzc1MmZiNmI1ODBkMTUwNmZkY2NjNDE4MzI5ODYxNTkyMmM5YzhkOTU4N2MifQ"
         }
       ]
+    },
+    {
+      "id": "claim_b548424552dc4568b6451104d0f487a9",
+      "statement": "The host backend runs neither of the container path's staleness gates — profile freshness (staleness.check_profile_fresh, run only by container-run) and image staleness on re-attach (_container_stale, which compares the running container's image ID to the current image) — because it assembles in-process on every launch and builds no image. Its substitute is _host_stack_fingerprint over the stack's recipe closure: computed in _host_launch_plan before the materialize and stamped into the config dir by _stamp_host_home only after the first-start installs succeed, so a failed install is retried rather than certified. The fingerprint carries harnessed's own __version__ because a host launch has no image build to force a refresh; the container fingerprint adds the image's identity to the same string instead, because podman's copy-up runs exactly once per volume.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/ctrquery.py#L98-L102",
+          "version": "repo-lines-v1:sha256:d545e7cb8ccbdffbce9747effa3a026d0ddfafe94542b908b3375ce128b5b875:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDBiZTcwNjU4OTRiODI3NDI3M2U3MDVhYjg3NGVhNzNmOTAzMDI1MDQ5ZDRjZjg2Y2E5Zjk4NjlkODUwNDdkMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWEwYjMxMDFhM2IwNTk3OTk3MDBkMjQyYTAxMWU4MDYxNzQ0YWU4MzM0NmY2NTBkNTA0MzVhMGIyYjRhYzZhNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDVlOGFlZWRlNmFjNjQ0OTA0MWYxOWZjYTE0NGUxNjUwN2ExYzAzMGZjZjJjYjFlNjJmZDhiOTBhYjIxMzU3MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmVhNjllZTgwZmNlYzkxMzY5OWQ3YjA3M2RmOWUwZDVmYzVkYzg5ZjgwYTI4NmQ5M2QwOWMyZGRmYTcyOTcwOCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L36-L50",
+          "version": "repo-lines-v1:sha256:936f015b28448abb8fffec2ee7651dff3b436e6cc8bf0b808a193c8ccdde53e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MTE5YTExM2ZhYmNhOTNjZWIxMjRhNjYyOThiMWZhNjdjNDZmYjJiNzBmMzZlNzgzNTQ5ZTRjMzFjNDlkNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkY2EwZWZlNzc5NmI0Y2ExNDliN2Q4NzZiMWI1ZmRhZWU0MDI0MjBlYTkzNGZlYTBiYzdiOGMyNDRkNjM0MDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1YjE1OTM5ZjljYzRiOGY0ZTgxYWRmYmZkNWY1NzU3MmZkYzhiYTMzYWFjZGM5MTM5ZjcxYmYxZWMwZmMxZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjM2MxNzgxY2I5NWUxMzMxMWM1MWQyOGI5ZjRkNzQ1ZTlkNWM5OWJmNjg4YjVhZjVmNzVkOTg4OGE5NzY0MTEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2313-L2315",
+          "version": "repo-lines-v1:sha256:9a863db576b5e0a500b372697d3ff3c546b04ad508b6dcc2338d88408af2aefa:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2RjYWZiMTkwODNiNDc3OWJmZWM0MzhjM2ZiMTg3OTA4YmU3Y2MwOWE3MjUzNTQ3YmIwOGVjM2YxOTQ2MTRiOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmNlZDg0MGM2NmI5MzAyMzRkZTNlOWVhYjczZmY3MTA4NmNlNGJmYzBkYjIyMmFhYjI0MmRmZWMwM2VmYTVlNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTI3ZGIwMmRlMDY4OGRkNzVjODdkMDU1NTkxOWRjMjYxMzM0OTAwMGMwNjJhN2UyYWQ5MDViMDZjYzA2MGEwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDMwMDJmNmI3NDQ4MDYxZDU2MmNhZWI0NWYwZTc3ZTg5OTc5NmQyYzU1YTBkZGVlZDQxZjEwNDcxZGQxMzcwYiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2554-L2557",
+          "version": "repo-lines-v1:sha256:615ebf7ded634170936365632367c13d6d4ccc6498a98615eb052761b1817891:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTI5NGNiZmE2MGY3NzRjMzY0YTQ4ZWU4MzE4NTlkOTI5ZjcwYTE5NjM3ZWZlM2EyYWIyZDEwMzMxMTk0NTc2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRjM2M4YTM5MzRhMmQwNTVhMzcxODNhOWQzMTU5NDY3YjhlNDhlOGUzZWIzNDk0Mjk5NWFkODcyMTQyOWNiOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWJhYTY4NTRmODI5MDhhNGVhMmY4YjBmYmJmZTJjMWY1ODc3MTRkZjRkYWQ0MGFlMWE1YjZkNDBkYTJjMzZhNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmRlOGY5YTcxNmNhNzE4MGQzZjBkZDQ4NDAwYWUyMGY5Mjk4MDNhMGRjYzJkNzYyZTBlNmQ2ZmFiZWE1YTVmZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2679-L2684",
+          "version": "repo-lines-v1:sha256:bcefa911aaa56e7f858fbb0ca3e1a3afa8ff241b4c9a22baf993eeb6def73b19:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWNlMTVlN2VkNjZmMjFjZWEzMjQ2YWQ5MGI3MGY4YzE4Y2MyNGM5NGUyNTgxZWMwZmVlOGVmZWIwZmI4OTNjYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGFmZGU1ZmM5NjdiMjU0NzRkOTYxMjNkNzJlZWFjNjJlNTlkOWE2ZTVmNzY2ODQ5ZGIzY2QwYzU5YWMxNTc0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmU0NTBmNDJlODNkOTVkNWY4OTYxM2ZjYTUzMGM2MTZjODBhYTBkZDQ3ZGQ5ZDRmZjhmNzM1MWI5ZjFmMzgyYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODNmMDhlODhjZDg4NmJjNDQyY2U4NmU3NTcwNzRhODNlYTBmNTliNzI3MzU0ZGZjZTdjYjliNGIwM2I4OTk4ZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3679-L3693",
+          "version": "repo-lines-v1:sha256:4dbeeac156d61a755ec208b8230193f4087de792c8cefa12416ae6c8cd6ca6e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjMWNhNzM0MTBhOWIxZmI5Y2FiZGJmZjNjNDUyMWI2NjMyODhmOGUxMmU0MDQ4ZjQxNDY5MzViOGJhMGY2ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMGYyZDM4MzY3MzU3ZjE2OWRmMGIzODFiODliZjE4YzJhMDliZmZhNTIyOGIzZjIxNWU4M2I0YmQzZGMyYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkODFiM2ZiMWI0YmEwYjY2YWVjYjE1NzM0ZjU5MDYwZGQ0ZjQ0NTNjNTJhYmYxMWIzMzBjMzcyMTQ1MWQ0N2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZlODRmZTY0NTc3YjVlNTZmZjZhZmQ1YTMxNzZiZWY2ZGM3Mjg2ODkyYWUyYzM0ZTBkNGZiZTVjODYwOTlmYjIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L201-L215",
+          "version": "repo-lines-v1:sha256:ef0aa4cb8b00b1a39d7efc721f4d4c208314c89fef741c5e483a02dca1d80cf7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZWJiN2I1YTZhOGIxODlmOTUwNWE4MDcyMzg1Y2RlMzk4Y2RmZmEyNDc4NmI5YTA4OGM3YWU4ODk1NzJlMDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NzViOTNmZWE0YjU5OWI4YTg1ZjdhNjIwNmExM2UxYTlkZmJhYjlkODg1NWI4YmY4ZWUzZDMyZmVjMTA0MWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4YjBiNGM5OTkwY2NlY2ZmNWUyNjE2N2Y2MTc1ZDhkOWRhNWJjZTIwOWNlNWM4ZmE5NTVkMzM0NGVmZDRmNGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlOWQ5ZGZhNjllYzA0ZTUyYTM3MDg4NmExNDY5MWNjMDE0NDdhYTMzMjZiZjkzNDUxNjg2OTJmMzNkNTY2NGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_45825eba8f324419977d0b82eac5c3cc",
+      "statement": "Both halves of the mcp-remote OAuth fix — _mcp_auth_store_mount and _mcp_remote_pod_args (the callback-port publish plus pasta forwarding the pod netns needs) — are container-only BY NATURE, not by decision, per tests/test_launch_parity.py's CONTAINER_ONLY ledger: each exists purely to undo something the pod boundary breaks. A host-native mcp-remote writes the host's real ~/.mcp-auth and binds the host's own loopback, which the browser redirect already reaches, so there is nothing for either helper to do on the host path.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_launch_parity.py#L90-L98",
+          "version": "repo-lines-v1:sha256:6158d86237bd540d5bf27754494eaf95d44f7e57e933317ea5a58a7a9c3728cb:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTVkMDk3MjMzZDQ3Nzk1ZTdiYjljMThhMjFmMWIxMjMxZGIyMzg2MzYwY2M4MWMyMWUxNzcwNjI5Njg5OTM5MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzAyYzQxNGI1NGNmODZkZmI0ZjkwZGZlN2Q3YmRiZmE2NjZiN2RkZGQzMmYxMjg2ZjIzMGE1YjUzMjQxODE4YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjFiNmUwMzQ5YzJmYTE1ZWU0MmQ5MmJhODc2MThmZDk0NTllMDUxYjlkMjY2ZjQ3MjA3Mzc4NDRiMjM0ZGNmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmQ0MDg2YmFlY2I0OTYxNzA5YzFiYTEzY2MzNTQ0ZmVkMjgzMDVmODA0NGZjYWI1NWU5OTg1ZGFhMWI2NGY1YiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8dfee2af6f204f2e9256dd6efb05792d",
+      "statement": "The direction rule (bd harnessed-4l8) is enforced by two tests in tests/test_module_boundaries.py: every module in the EXTRACTED ledger is parametrized over one check that parses the module's AST and rejects any `launcher` import at any depth — including a function-local one, which keeps the coupling while looking clean at the top of the file — and a second test fails the build when a module importing the shared harnessed console is missing from the ledger, so unlisted cannot mean unenforced. broker.py and schema.py are ledger entries although neither ever lived in launcher.py: they report through the shared console, which is the property the ledger tracks.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_module_boundaries.py#L27-L49",
+          "version": "repo-lines-v1:sha256:8a653c077ec359c7bb854ad6831ba0bcd0d53edd3e622d0d7528418c85f581b0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjNTE0MDdiNDQ3NWZkMGY5ZGYxMjg3MzZlYTAzZjM1MmQwMmI0Yzg0YzlkMzI0YmM4ZjQ1OTVkM2E0Njk1ODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5NDE2ZTA5Zjc4YmEzMTZjMDMyNTY4MjEzYjg1NWVlNzU2ZTQxNTY1ZDkxOGYwOTUxOWM4MWZkNjIwZjQwNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5Y2E0NTAwNDAxOTZjM2RlYjEyMWQ4NjA5ODA5ZmM3MjI3NjRhZDdiYTc3M2YzNTJlNGJhOWI1M2Q5MzA3NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzZDBjZTY1NmRiZWIyNDM2MWRmYWMzNmYyODcwY2Q0NzBkMjE3NGJjZjcyMmI0MWQ2YWVhZDAwZTk3MzQwZWUifQ"
+        },
+        {
+          "resource": "repo://tests/test_module_boundaries.py#L52-L78",
+          "version": "repo-lines-v1:sha256:5a29d2a639d7f2980d0ccdd144af0007b7f79e3a15c4c7afc3055f6cd4b14e8d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0YjA2NzJlZjJlNzQyMmRkZTA3MWZhZWYzMGY4OWEzODk1NDc1Y2M5ODcxM2YzMWIwM2I2NjNjZDY2ZDViOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzZDE3MWRlNzU0MzFhMDIxYTBkOTRmYTc2ZmFiZjBkNzEzOWM4OThjMWEwYjQ0YjQzY2E2MDkwM2ZhMWI4NDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4NDBhY2UyZGUzMjNmNzY3YzFjYTc3NTg4YzE4MTQwOThhYmFlN2ZmNjNlNDI2OWYyOGM2Zjc5MmE4M2EzYTQifQ"
+        },
+        {
+          "resource": "repo://tests/test_module_boundaries.py#L81-L103",
+          "version": "repo-lines-v1:sha256:83fc418706bc424f8b82569fdcc2e1ed48c4666a1ecbf5ced72ea54aae3ac683:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmMjAwZDIwZmUxMDliNjEyNDU2OTMwZjhjMzcyNGY4OTI2NDU4NDdmMzQxNmQ1NDk2NmMzNjAxOWUzNmJlMDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMjAxYjZjNTU4MTViMDM5MmYwOGI4ZmIxOTQ0M2I3YWJiMzFjNGM1NWUyZmY5ODc1ODVkMGYxYjk5MzRmNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6c70aabeaa2e4c5c9d0d836c56ebce4d",
+      "statement": "The launch-parity ledger is a test, not prose: tests/test_launch_parity.py AST-walks each sequencer together with the backend class it drives (package-wide, so launcher.py's module split cannot blind the scan), fails when container-run calls a harnessed helper the host path does not unless CONTAINER_ONLY records a written reason, and fails in the other direction when the ledger names a helper container-run no longer calls — a stale entry would pre-authorise a future helper reusing the name. The backend class each path constructs is excluded from the scan as the seam itself, and the contract operations were folded into the scan (bd harnessed-0tk.1) so a capability moved out of the Typer command stays counted.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_launch_parity.py#L149-L202",
+          "version": "repo-lines-v1:sha256:6408ea802c81a635daba6bdc07b05bfe9b60e88a45f8645e34abcfe3a9afa6ad:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllZDE4Zjk0MDFjODYxNGM4OGUyZDcxMzVlNTllNjA5ZmE1ZjQ5ZGE1MTY4MGZhYTUxZmRmNzdiYzUyNWI0ZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NTAxMWUyOTJhN2VhZTIwMGE4YTg5MjQ1ZjdjN2ExYjU3NDBmMTQzODE2YzVhZWIxYTgzZjA4MWM4YjBiOTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZjkzMDgzYzE5NzEyMWI5ODI3MDBiYThhZmFiZDE3MjJjZjFkM2U3NDA0NTA5ZTgwZWZhMjcyNDdmNjJmMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0OTdjN2FiZjA2YTgxOWNkMDkzNjExMTMxOGI3ODYxYzgzOWU0ZGRmNDI3NmUwZTRmYmYzOWY3OTBjNjZkNDMifQ"
+        },
+        {
+          "resource": "repo://tests/test_launch_parity.py#L205-L233",
+          "version": "repo-lines-v1:sha256:095a3c67567f82d565c9c7b4fd2dcef508528b20d9ed3515473aaa2ae1e29d54:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhYTliZjEwNWZkM2Y4ZGVhZDBmZmYyMzk0MzU2Y2EwMzQ3MWE3N2E1M2FhNDFhNTAxZTZhM2IzMWM5ZDM5ZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzYTA1YzJkNGRlNGQ5MzY0YTA2MjQzZDI3NDA2NTg4Mzc0ZjUzMWIxMDZhM2U1NDNhOWM3YzlmZjEyMjk0ZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkZjU3NTZkMjA1ODJkMGFmYzNlNzM3NGZkMjAzMTdmOGY1NWRiYTBkYzE3MmNlM2I2ODU1MzM3NmEyZjViMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.4.3",
-    "at": "2026-09-02T20:26:19.165Z"
+    "at": "2026-09-08T23:17:55.419Z"
   }
 }

@@ -5,7 +5,7 @@ description: "The backend.ExecutionBackend seam — six capabilities (materializ
 tags: [execution-backends, backend-contract, capability-set, sequencing, launchspec, provision-tools, apply-isolation, seed-auth, secrets-broker, capmatrix, module-boundaries, hostbackend, containerbackend]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-02T20:26:19.165Z
+    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-f2bd22307a3451ac2519580c
     resource: repo://BACKENDS.md
@@ -13,6 +13,8 @@ sources:
     resource: repo://src/harnessed/backend.py
   - id: openwiki-source-9a53d80e292611f0100f90b1
     resource: repo://src/harnessed/capmatrix.py
+  - id: openwiki-source-6f84913afc580e4d73fac66a
+    resource: repo://src/harnessed/ctrquery.py
   - id: openwiki-source-3d73552d55725e6e392c06df
     resource: repo://src/harnessed/hosthome.py
   - id: openwiki-source-154371253083f8b9b656eefa
@@ -21,9 +23,13 @@ sources:
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
     resource: repo://src/harnessed/schema.py
+  - id: openwiki-source-0d783cb9b16f618063f9ca7b
+    resource: repo://src/harnessed/volumes.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-02T20:26:19.165Z" }
+  - id: openwiki-source-bbf9cc1f144f5efff8ae1505
+    resource: repo://tests/test_module_boundaries.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 ---
 
 # Execution backends: the six-capability contract and backend-owned sequencing
@@ -143,6 +149,11 @@ The verb picks the backend and nothing else; both share one grammar and one stac
 (`launcher._resolve_stack` — they "differ in backend, never in how a stack is chosen", bd
 harnessed-s84). Neither backend is a subclass of the other, and neither inherits a launch order.
 
+That parity ledger is a test, not prose (`tests/test_launch_parity.py`): it fails when
+`container-run` calls a stack-derived helper `_launch_host` does not, unless the ledger records a
+written reason — and it fails the other way too, when the ledger names a helper the container path
+no longer calls, so a stale entry is a licence nobody needs.
+
 ## The two-phase capabilities, and why they take a `phase` argument
 
 Two of the six capabilities have **two moments on both backends**, which is why they carry a phase
@@ -157,6 +168,19 @@ scripts run on first start (fingerprint-gated), `setup.script` at attach time."*
 | --- | --- | --- |
 | **host** | `tools:` then `install:` (`_host_install_tools`, `_host_run_installs`), gated on `self.rebuilt`; the fingerprint stamp is written only after the installs succeed | `_host_run_setups` then `_host_run_inits` |
 | **container** | `_ensure_stack_volumes` — composes **both** volumes in one call, because podman's copy-up populates them together | `_run_container_setups` — `podman exec` each pending script |
+
+The gate behind `self.rebuilt` is the host backend's substitute for staleness checks it does not
+run. The container sequencer gates its launch on two of them — `staleness.check_profile_fresh` (the
+assembled profile can predate its recipes) and the re-attach image check `_container_stale` (a
+running container can predate an image rebuild). The host path has neither problem to have: it
+assembles in-process on every launch and builds no image. What it gates instead is the **wholesale
+rebuild of the config dir**: `_host_stack_fingerprint` (hosthome.py) hashes the stack's recipe
+closure, is computed in `_host_launch_plan` before the materialize, and is stamped into the dir by
+`_stamp_host_home` only after the first-start installs succeed — a stamp certifies finished content,
+so a failed install is retried rather than trusted. And because a host launch has no image build to
+force a refresh, that fingerprint carries harnessed's own `__version__`; volumes.py notes the
+container fingerprint adds the image's identity to the same string instead, because podman's copy-up
+runs exactly once per volume and would otherwise hide image updates forever.
 
 The host's lock discipline is the reason the two phases cannot merge. `_launch_host` takes the
 `_host_home_lock` **across** `materialize_config`, `seed_auth` and `provision_tools(FIRST_START)`,
@@ -204,6 +228,13 @@ interaction with it, and the host backend's none at all:
   exists to remove — and it gets worse once the pod's env becomes placeholders only the broker can
   redeem. `--no-secrets` is the way past it. The failure message names the instance and that flag
   rather than echoing the exception, because resolved values must stay value-free by construction.
+
+The parity ledger applies the same **by nature, not by decision** logic to both halves of the
+mcp-remote OAuth fix: `_mcp_auth_store_mount` (the token store the container reaches only through a
+mount) and `_mcp_remote_pod_args` (the callback-port publish plus pasta forwarding the pod netns
+needs) exist purely to undo what the pod boundary breaks. A host-native mcp-remote writes the real
+`~/.mcp-auth` and binds the host's own loopback — which is the loopback the browser redirect already
+reaches — so there is nothing for either helper to do on the host path.
 
 The broker's own lifecycle — how it starts, serves `169.254.1.1`, and is reaped — is the
 [secrets broker](/openwiki/architecture/secrets-broker.md) page's subject, not this one's.
@@ -264,9 +295,15 @@ Backends are addressed by name:
 ## The module-boundary rule
 
 `backend.py` imports nothing from `launcher.py` and never will, and `capmatrix.py` makes the same
-pledge. Both cite `tests/test_module_boundaries.py` as the enforced boundary: every module in its
-`EXTRACTED` ledger is parametrized over one test that rejects any `launcher` import, including a
-function-local one, so the citation is an assertion rather than a comment.
+pledge. Both cite `tests/test_module_boundaries.py` — bd harnessed-4l8, the launcher.py split's
+direction rule — as the enforced boundary, and the enforcement is two tests. The first parametrizes
+every module in the file's `EXTRACTED` ledger over one check that parses the module and rejects any
+`launcher` import at any depth, including a function-local one (which keeps the coupling while
+looking clean at the top of the file). The second fails the build when any module that imports the
+shared `harnessed` console is missing from the ledger, so "unlisted" cannot quietly mean
+"unenforced". Two ledger entries never lived in `launcher.py` at all: `broker.py` and `schema.py`
+are listed because they report through the shared console — the property the ledger actually
+tracks, which is why the completeness test keys on console imports rather than extraction history.
 
 The direction of the dependency is the point: the **implementations live in `launcher.py`, beside
 the ~100 private helpers they call**, so the dependency points *into* the contract and the seam adds

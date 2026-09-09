@@ -5,7 +5,7 @@ description: "The optional register-only aoe tmux bridge and the per-project lau
 tags: [aoe, agent-of-empires, launch-script, register-only, drift-repair, tmux, git-exclude, launcher-script]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-3b6f61ac560f049f559456d0
     resource: repo://.github/workflows/live.yml
@@ -21,7 +21,15 @@ sources:
     resource: repo://src/harnessed/paths.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
     resource: repo://src/harnessed/schema.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-2e234f8645cb88b1fd759f98
+    resource: repo://src/harnessed/setupenv.py
+  - id: openwiki-source-a3323599b6c6e77e30c7c089
+    resource: repo://tests/test_aoe_real.py
+  - id: openwiki-source-fb3265310b47294af9c919ae
+    resource: repo://tests/test_aoe.py
+  - id: openwiki-source-243e17ac0ee3e9beb4dfdaf9
+    resource: repo://tests/test_host_run_recipes.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 ---
 
 # Agent of Empires mirror and per-project launch scripts
@@ -40,6 +48,7 @@ launch was. `src/harnessed/aoe.py` is the whole bridge; `launchscript.write` and
 both after the backend's last validation gate.
 
 Related: [invariants](/openwiki/concepts/invariants.md),
+[state](/openwiki/architecture/state.md),
 [container run](/openwiki/workflows/container-run.md),
 [host run](/openwiki/workflows/host-run.md),
 [dynamic stacks](/openwiki/workflows/dynamic-stacks.md).
@@ -76,8 +85,9 @@ Both run verbs call `launchscript.write` and then `_aoe_register`, and the place
 load-bearing in both directions:
 
 - **After the backend's last validation gate.** On `container-run` that is the `is_built` check
-  plus `staleness.check_profile_fresh`; on `host-run` it is the in-process `assemble()` (the
-  analogue of those checks — sub-second, emit-only, no podman). A row registered earlier becomes a
+  plus `staleness.check_profile_fresh` (a tripped staleness gate either aborts the launch or
+  rebuilds inline — still before registration); on `host-run` it is the in-process `assemble()`
+  (the analogue of those checks — sub-second, emit-only, no podman). A row registered earlier becomes a
   bookmark for a launch that died on a renamed recipe — a row that fails identically every time it
   is started from the dashboard.
 - **Before the podman work.** The row exists even if the container half goes wrong.
@@ -107,9 +117,11 @@ non-zero if registration fails. It costs one assembly on the host path (sub-seco
 `container-run`, a `--recipe` set is still minted **and built** — the row replays
 `container-run`, which hard-errors without an assembled profile, so skipping the build would
 create a row that is dead on arrival. Because `_aoe_register` ends a successful
-`--create-aoe-only` with `typer.Exit(0)`, the CLI wrappers must **not** treat a zero exit as
-failure cleanup: deleting the manifest the invocation just minted would manufacture exactly the
-dead row the build-ahead avoids.
+`--create-aoe-only` with `typer.Exit(0)`, the `host-run` wrapper must **not** treat a zero exit as
+failure cleanup: its `except typer.Exit` removes a manifest the invocation minted only on a
+non-zero exit, and deleting it on success would manufacture exactly the dead row the build-ahead
+avoids. On `container-run` the minted manifest's only cleanup wraps the build itself, which runs
+before registration — so a successful registration never has its manifest deleted.
 
 ## Reads inline, writes detached
 
@@ -195,7 +207,7 @@ flowchart TD
     Q1 -->|yes| DONE["nothing to do"]
     Q1 -->|no| D["scan for drifted rows: same (title, path), different command"]
     D --> Q2{"any drifted?"}
-    Q2 -->|no| B["batch: profile create, group create, add --tool harness, plain add"]
+    Q2 -->|no| B["batch: profile create, group create, renames, add --tool harness, plain add"]
     Q2 -->|yes| Q3{"is every drifted row one harnessed wrote?"}
     Q3 -->|no - a foreign row holds the key| STOP["report every row, register nothing, return False"]
     Q3 -->|yes| RN["plan session rename of each to title + (stale id)"]
@@ -227,6 +239,30 @@ assert something the process cannot know. Only `--create-aoe-only` blocks long e
 out — and its three failure messages distinguish "the repair failed part-way (the row may already
 have been renamed aside)" from "left the existing row as it is" from "could not register (is aoe
 installed?)", because sending a user to inspect the wrong row is worse than no message.
+
+### Reading the session list: the trash is subtracted, and the read fails open
+
+`_sessions` is the read every decision runs on, and it is defensive in both directions. Any
+transport or parse failure returns `[]` — aoe prints a human "No sessions found" line instead of
+`[]` for an empty profile, so a decode failure is an ordinary outcome here, not an anomaly. And
+the live/trash distinction does **not** exist in the JSON: `aoe list --json` returns a trashed
+session with the same fields and the same shape as a live one — no status, no `trashed_at`,
+nothing to filter on (verified against 1.14.1). The only filtering that exists is therefore done
+by harnessed itself: `aoe session list-trash` (which has no `--json`) is scraped for ids, matched
+as the one fixed-width hex token on a line because titles are free text, and subtracted from the
+list.
+
+The trash read **fails open**: when it cannot say, every row `list` returned is kept — at worst a
+trashed row suppresses one registration, which is today's behavior. Failing closed (dropping the
+session list because the trash could not be read) would make every launch re-add rows that
+already exist, the duplicate class this module exists to prevent; and with no subtraction at all,
+a trashed row would match `_registered` on (command, path) forever — the user deletes a row,
+relaunches to recreate it, and is told it registered while the dashboard stays empty.
+
+Two more properties of the match: `_registered` compares the recorded **path resolved, not as a
+string** — aoe stores whatever it was given, so a session added through a symlinked route would
+otherwise register twice — and it accepts both `group` and `group_path` as the field name, so an
+upstream rename degrades to a duplicate row rather than an exception.
 
 ### `--no-strict-mcp-config` is carried by the script, and named by the title
 
@@ -308,7 +344,9 @@ accept: `-p`, `-g`, `-t`, `--cmd-override`, and `--tool`.
 `launchscript.write` leaves `<harness>-<verb>` in the project folder — `claude-host` /
 `claude-container`. The verb is in the **filename** rather than a flag, so the two backends cannot
 collide in one folder and an aoe row cannot restart a backend it does not name. It is the *only*
-file harnessed puts in a project — the `mise.local.toml` alternative was removed precisely because
+file harnessed puts in a project (the project tool env a launch computes goes to a 0600 dotenv
+under `$XDG_STATE_HOME`, keyed on the git common dir — referenced, never copied into the repo) —
+the `mise.local.toml` alternative was removed precisely because
 a mise config file re-prompts for trust in every new worktree and can carry `_.source`, so
 trusting one grants code execution; a script needs no trust decision because nothing but the user
 executes it. The file it writes:
@@ -458,6 +496,13 @@ stale one, because `rm` is destructive and unattended.
   exactly this.
 - **Test posture:** the aoe behaviour the bridge depends on is not in any contract harnessed
   controls, so it was verified against live aoe (1.13.2 and 1.14.1 — trash visibility, trimmed
-  title dedupe, `--cmd` substitution, exit-code drift between versions). The hermetic suite and
+  title dedupe, `--cmd` substitution, exit-code drift between versions). Three layers keep that
+  honest today: `tests/test_aoe.py` is hermetic — no test shells out to a real `aoe` (`_run` and
+  `_spawn` are the seam) — and pins the load-bearing negative property (absent, disabled, broken
+  or slow aoe does nothing and raises nothing) plus identity; `tests/test_aoe_real.py` runs the
+  real binary in a throwaway profile it creates and deletes, skipped when aoe is absent, to pin
+  exactly what a mock cannot prove — the duplicate refusal, that `remove` only trashes, and that
+  `_sessions` hides trashed rows; and `tests/test_launchscript.py` pins the sentinel, the two
+  refusals, and the quoting against `aoe.command_for` as the authority. The hermetic suite and
   CI deliberately do **not** provision aoe: its tests are reported as skipped and never fail a
   run — a declared choice, not a gap.

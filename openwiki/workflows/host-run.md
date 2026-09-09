@@ -1,11 +1,11 @@
 ---
 type: workflow
 title: "Host launch: host-run end to end"
-description: "The host backend's launch sequence — in-process assembly on every launch, the fingerprint-gated per-stack home materialization (skipping the container path's image/presence gates), installs that must follow the wipe, the os.environ-is-the-box env delivery with the harness config-dir pinning last, share-back symlinks for claude and omp, wire_services sidecars as the one container-runtime touch, and the execvpe handoff. Configuration-only isolation: no pod, no network namespace, no egress firewall, your real home."
-tags: [host-run, hostbackend, hosthome, hostrun, execvpe, materialize, fingerprint, share-back, mise, claude-config-dir, pi-coding-agent-dir, isolation-none]
+description: "The host backend's launch sequence — in-process assembly on every launch, the fingerprint-gated per-stack home materialization (skipping the container path's profile and image-label staleness gates), installs that must follow the wipe, the os.environ-is-the-box env delivery with the harness config-dir pinning last, share-back symlinks for claude and omp, wire_services sidecars as the one container-runtime touch (container-free for the AGENT only), the parity lint that keeps host launches in step with container launches, and the execvpe handoff. Configuration-only isolation: no pod, no network namespace, no egress firewall, your real home."
+tags: [host-run, hostbackend, hosthome, hostrun, execvpe, materialize, fingerprint, share-back, parity-lint, mise, claude-config-dir, pi-coding-agent-dir, isolation-none]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-02T20:26:19.165Z
+    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-c45652791b6bc8bb3a3f3d3e
     resource: repo://src/harnessed/assemble.py
@@ -31,18 +31,23 @@ sources:
     resource: repo://src/harnessed/toollock.py
   - id: openwiki-source-f725ea11f1806a58b06d7f3e
     resource: repo://tests/test_launch_parity.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-02T20:26:19.165Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 ---
 
 # Host launch: `host-run` end to end
 
-`harnessed host-run <harness> [path]` runs a composed stack with **no podman, no image, and no
-container on the agent's path** — the agent itself is exec'd directly on the machine. The one
-deliberate exception runs *before* the agent: when the stack declares `services:`,
+`harnessed host-run <harness> [path]` runs a composed stack with the **agent exec'd directly on the
+machine — no podman, no image, and no container on the agent's path**. Read that headline scoped,
+because it is easy to over-read: *container-free describes the agent, not the verb.* One deliberate
+exception runs *before* the agent: when the stack declares `services:`,
 `HostBackend.wire_services` ensures those sidecars **through the container runtime**
-(`_ensure_services`, bd harnessed-2sm), and they can outlive the agent session. A service-less
-stack is the case that needs no container runtime at all. The assembled profile is laid down as a
-real per-stack directory tree, the harness is exec'd as a process on the machine with the host's
+(`_ensure_services`, bd harnessed-2sm — the wiring `capmatrix.py` records as the host column's
+`services: SUPPORTED` cell), so a service-backed stack builds or revives real sidecar containers and
+leaves them running after the agent exits. The verb therefore needs a container runtime exactly as
+far as its services do; a service-less stack is the case that needs none at all. Host-side `--rm`
+stops only the daemons *this launch started* — and on today's path that set is empty (bd owns its
+shared server), so the supervision branch tears down nothing. The assembled profile is laid down as
+a real per-stack directory tree, the harness is exec'd as a process on the machine with the host's
 own auth, filesystem and network, and `harnessed` is gone by the time the agent starts. What this
 backend isolates is **configuration** — which skills, rules, commands and hooks are live — and
 nothing else. That is a declared boundary (`HostBackend.isolation = ISOLATION_NONE`), not a missing
@@ -66,20 +71,25 @@ machine's full network reach. Three consequences follow, and each is named elsew
 If a stack's declarations need a boundary, that stack belongs under
 [`container-run`](/openwiki/workflows/container-run.md).
 
-Two more container-shaped things this path deliberately does *not* do, and one it does:
+Three container-shaped things this path does *not* do, and the one it does:
 
 - **The secrets broker is never started.** `_broker_start_for` is container-only **by nature**, not
   by decision: the broker exists so a *container* can hold placeholders while real values are
   injected across the boundary. A host-native launch runs the harness in the user's own session
   with their own credentials — there is no pod boundary for a broker to sit on, and varlock
-  resolves natively into `os.environ` there already. The parity ledger
-  (`tests/test_launch_parity.py` `CONTAINER_ONLY`) records it verbatim:
-  `"_broker_start_for": "starts a host broker for a POD; a host launch resolves varlock natively"`.
-- **No image and no presence gate.** The container path refuses to launch until
-  `is_built(stack, harness)` and then re-validates the profile with
-  `staleness.check_profile_fresh`. The host path has no image and **assembles in-process on every
-  launch**, so assembly *is* its validation gate — yet the home rebuild keeps its own
-  fingerprint gate; both halves are described below.
+  resolves natively into `os.environ` there already (the host resolution path is
+  [credential handling](/openwiki/concepts/credentials.md)'s to tell). The parity ledger
+  (`tests/test_launch_parity.py` `CONTAINER_ONLY`) records it verbatim, and the broker epic's own
+  backend matrix agrees: `"host: n/a (native varlock)"`.
+- **No image and no presence/staleness gate.** The container path refuses to launch until
+  `is_built(stack, harness)`, then re-validates the profile with
+  `staleness.check_profile_fresh`; the image side of the same question is handled by the
+  `harnessed.recipe-hash` label baked into derived images (read back by `_built_image_hash` for
+  the build sweep) and by `_container_stale` (an instance running on an older build than the
+  current image). The host path has no image and **assembles in-process on every launch**, so
+  assembly *is* its validation gate — it skips the profile gates and the image-label staleness
+  machinery wholesale. **That is not the same as ungated**: the home rebuild keeps its own gate,
+  `_host_stack_fingerprint`; both halves are described below.
 - **Sidecars are the exception.** For a stack with `services:`, the launch does reach the container
   runtime (build/revive sidecars via `_ensure_service`) even though the agent never does —
   [wire_services](#wire_mcp-native-servers-no-hub) has the details.
@@ -93,6 +103,69 @@ order and cannot be made to. The host implementation is `launcher.HostBackend`, 
 `hostrun.py` (tools/installs/setups/inits/native MCP) and `launchenv.py` (launch-time secrets).
 Related: [credentials](/openwiki/concepts/credentials.md),
 [invariants](/openwiki/concepts/invariants.md), [harnesses](/openwiki/integrations/harnesses.md).
+
+## Parity with `container-run`: a lint, not a guarantee
+
+`launch` and `host-run` must stay in step on everything derived from the STACK — and five separate
+capabilities were implemented container-side and silently skipped in `_launch_host` before any test
+existed. `tests/test_launch_parity.py`'s module docstring is the roster:
+
+- **harnessed-2sm** — sidecars: `_ensure_services` was called from `launch` only;
+- **harnessed-162** — socket env: `svc_socket_env` was gated on `mode == "container"`;
+- **harnessed-5ek** — agent path: `_service_data_dir` returned the CONTAINER path for
+  `location: host`;
+- (unnumbered) — recipe `init:` ran only from `_init_shell_prologue`, the container attach shell;
+- (unnumbered) — setup notices: `_prompt_setup_notices` was called from `launch` only.
+
+Every one was found by a person hitting it rather than by a test. Five is a pattern, not five
+accidents: a host launch reads the same stack, the same recipes and the same services as a container
+launch, so anything derived from those should either apply in both modes or be a written-down
+exception.
+
+**Read a failure of this test honestly: it is a LINT, not a semantic guarantee.**
+
+- It catches **ABSENCE** — a harnessed helper called on one path and not the other. harnessed-2sm
+  and -162 would both have failed it.
+- It cannot catch **WRONGNESS** — harnessed-5ek called the right helper and got the wrong value
+  back, and this test would have passed throughout.
+
+The structural fix — one shared stack-semantics routine that both verbs call, so parity cannot be
+forgotten rather than merely being tested — is tracked separately as **harnessed-w3g**. Until that
+lands, the lint works in three moves: every harnessed helper `container-run` calls that
+`_launch_host` does not must carry a written reason in the `CONTAINER_ONLY` ledger; a ledger entry
+`container-run` no longer calls fails the test as stale (a licence nobody needs, and one that would
+silently pre-authorise a future helper reusing the name); and the five known misses are pinned
+independently — `_ensure_services`, `_host_run_inits` and `_prompt_setup_notices` must appear on the
+host path, the socket-env mode gate must be gone from `harnessed_env`, and `_service_data_dir` must
+take `mode` — because the ledger could be edited to silence the general test, and these five were
+real. The scan is package-wide and covers the backend object as well as the sequencer, deliberately:
+a `__module__ == launcher` test or a command-only scan would silently stop seeing each helper as
+launcher.py is split into modules (bd harnessed-4l8, harnessed-0tk.1), and the lint would decay to
+nothing exactly as the file it guards is rearranged.
+
+The ledger is grouped **by why**, because the reason is the part a future reader needs — a bare list
+of ~50 names would just be re-derived from scratch at every failure: image + container lifecycle
+("there is no image and no container on the host"), bind-mount builders ("the host already has these
+paths"), credential/socket forwarders ("the host reaches these natively"), network/namespace work
+("nothing to isolate or proxy on the host"), and same-capability-different-executor rows pairing
+each container half with its host twin (`_resolve_launch_secrets` ↔ `_resolve_launch_env`,
+`_run_container_setups` ↔ `_host_run_setups`, `_ensure_stack_volumes` ↔
+`_materialize_host_home` + `_host_run_installs`).
+
+The broker rows are container-only **by nature**, not by decision: each exists purely to move
+something across the pod boundary, and on the host there is no boundary to move it across — the
+epic's backend matrix records exactly this as `host: n/a (native varlock)`.
+
+One row is container-only **by decision**, and its comment is worth carrying in full because it
+shapes how to treat this backend. `isolated_auth` (a stack running as a *different* Claude account)
+could in principle exist host-side, "but not this way: `_materialize_host_home` rmtree's the
+per-stack home, so the store would need a home outside it plus its own rescue path, and host mode's
+auth is a symlink to the user's live store rather than a mount that can be swapped. Tracked
+separately; **the host backend is deliberately the maintained-secondary that gets no new
+investment**." Do not reach for host mode when designing identity or isolation features — reach for
+the container backend, or change the decision explicitly first.
+
+---
 
 ## The sequence
 
@@ -198,12 +271,17 @@ assemble(None, stack, paths.profiles_root().parent, harness, strict=True, shared
 ```
 
 This is emit-only — no podman invocation, no image build — and it is what keeps the *agent path*
-container-free. Assembly is sub-second, so a rebuild-per-launch also sidesteps
-staleness bookkeeping entirely: the container path's `is_built` / `staleness.check_profile_fresh`
-gates are simply skipped, because assembly *is* this backend's validation gate. **That is not the
-same as ungated**: the per-stack home rebuild keeps its own gate, `_host_stack_fingerprint`, which
-gates the expensive filesystem work the image build would otherwise have forced a refresh of —
-see [the materialize contract](#the-materialize-contract). Two consequences worth knowing:
+container-free. Assembly is sub-second, so a rebuild-per-launch also sidesteps staleness bookkeeping
+entirely. The gates the host path skips are the container path's whole battery: `is_built`'s
+presence check, `staleness.check_profile_fresh`'s `.build-stamp` profile stamp, and the image-side
+staleness machinery — the `harnessed.recipe-hash` label baked into every derived image and read back
+by `_built_image_hash`/`_stale_pairs`, plus `_container_stale`'s check that a running instance was
+not created from an older build. None of that has anything to attach to here, because assembly *is*
+this backend's validation gate and there is no image to go stale. **That is not the same as
+ungated**: the per-stack home rebuild keeps its own gate, `_host_stack_fingerprint`
+(launcher.py:2315/:2557, hosthome.py:36), which gates the expensive filesystem work the image build
+would otherwise have forced a refresh of — see
+[the materialize contract](#the-materialize-contract). Two consequences worth knowing:
 
 - `shared_identity=False` suppresses the one emit step that writes outside the profile — omp's
   delimiter-marked blocks in the shared `~/.omp/agent`. A host launch reads a per-stack agent dir
@@ -395,8 +473,9 @@ bind-mounts onto `~/.claude`, minus the container-only artifacts (`.mcp.json` hu
 `hatago.config.json`, the derived Dockerfile), because **there is no hub host-side**.
 
 Gating differs from the container path in both directions: a host launch **skips** the container
-path's presence and staleness gates (`is_built`, `staleness.check_profile_fresh`) — there is no
-image, and assembly runs in-process every launch — yet it still **gates the home rebuild** on
+path's presence, profile-staleness and image-label staleness gates (`is_built`,
+`staleness.check_profile_fresh`, the `harnessed.recipe-hash` label read-backs) — there is no image,
+and assembly runs in-process every launch — yet it still **gates the home rebuild** on
 `_host_stack_fingerprint`. Skipping the build gates is cheap; skipping the rebuild gate would put a
 destructive wipe on every launch, which is exactly what the fingerprint exists to prevent.
 
@@ -772,7 +851,12 @@ named.
 runtime**. It calls `_ensure_services` with the same sidecars `container-run` ensures, because a
 `services:` entry is a property of the stack rather than the backend: host mode makes the *agent*
 host-native, it does not remove a service the stack says it needs. Omitting it left every beads
-stack under `host-run` with no server, no socket and no data dir.
+stack under `host-run` with no server, no socket and no data dir. This is the headline correction in
+concrete terms: **`host-run` is container-free for the agent only.** `capmatrix.py`'s host column
+records it as `services: SUPPORTED` — `HostBackend.wire_services -> _ensure_services (bd
+harnessed-2sm)` — and that module exists precisely because the prose BACKENDS.md §4 kept saying the
+opposite long after the wiring landed ("service sidecars — host: ✗ (yet)"): a table no test reads
+rots, and the conformance tests over `MATRIX`/`PRIMITIVES` are the anti-rot mechanism.
 
 Two lifecycle consequences follow, and both are visible to the operator:
 
@@ -841,11 +925,12 @@ Then either:
   the exec, Claude Code's fullscreen renderer draws on the alternate screen buffer and anything
   already printed is hidden until the session ends. Skipped when stdin is not a TTY so headless/CI
   launches never block.
-- **under `--rm`**: `subprocess.run(argv, env=env)` — supervise (fork, wait). Any service sidecars
-  the launch ensured are left running — there are no *host daemons* of harnessed's own to tear down
-  (bd owns its shared server) — so the sidecar containers outlive the session in this mode too.
-  The wait is unbounded because this *is* the agent session: its duration is however long the user
-  works, and any deadline kills a live session mid-thought.
+- **under `--rm`**: `subprocess.run(argv, env=env)` — supervise (fork, wait). The flag's contract is
+  to stop only daemons **this launch started**; today's launch starts none of its own (bd owns its
+  shared server), and the sidecars `wire_services` ensured are shared stack infrastructure rather
+  than this launch's property — so the branch tears down nothing, and a service-backed stack leaves
+  its sidecars running in this mode too. The wait is unbounded because this *is* the agent session:
+  its duration is however long the user works, and any deadline kills a live session mid-thought.
 
 Because the process never regains control after the exec, several mechanisms on this path are
 deliberately **self-healing rather than hooked to an exit**: the credential rescue runs before the
@@ -882,7 +967,8 @@ scan skips the `<harness>.lock` file (not a dir) and the `<harness>.home` shim (
 - **A new harness** — fill in a `HostHarness` row in `launcher._HOST_HARNESSES`
   (`config_dir_var`, `argv0`, `share_state`) and add a branch in `_host_launch_plan` for the
   directory shape. Add the corresponding rows to `hostrun._HARNESS_CONFIG_DIR_ENV` so
-  catalog-authored scripts are pinned to the stack home.
+  catalog-authored scripts are pinned to the stack home. Expect to do this against headwinds: per
+  the parity ledger's own comment, the host backend is the deliberately maintained-secondary.
 - **A new backend** — implement `backend.ExecutionBackend`'s six capabilities and sequence your own
   launch; fill in a `capmatrix.MATRIX` column deliberately rather than inheriting silence (the
   conformance tests iterate `PRIMITIVES` and fail on an unfilled cell).
@@ -893,6 +979,11 @@ scan skips the `<harness>.lock` file (not a dir) and the `<harness>.home` shim (
 - **A new env layer** — apply it to `os.environ` in `_launch_host`, and place it against the
   existing precedence deliberately: launch env before recipe env (recipes win), harnessed-owned
   install keys after everything (the contract wins), `_harness_config_env` last of all.
+- **A new stack-derived capability** — wire it into BOTH `_launch_host` and the container sequencer,
+  or add it to `CONTAINER_ONLY` with the reason it cannot apply host-side. That is exactly the lint
+  at the top of this page; and remember what it cannot see — a helper called with the wrong value
+  passes green (harnessed-5ek), which is what harnessed-w3g's shared stack-semantics routine would
+  fix structurally.
 
 ---
 
@@ -903,8 +994,13 @@ scan skips the `<harness>.lock` file (not a dir) and the `<harness>.home` shim (
   the volume the mount set then delivers).
 - [Execution backends](/openwiki/architecture/backends.md) — the six-capability contract, why there
   is no shared driver, and the isolation spectrum this backend sits at the `none` end of.
+- [Services](/openwiki/architecture/services.md) — the sidecar lifecycle `wire_services` shares with
+  the container backend, and why a socket-backed sidecar composes with a host agent for free.
+- [State](/openwiki/architecture/state.md) — where the per-stack host homes sit among harnessed's
+  other on-disk state (profiles, volumes, install caches).
 - [Credential handling](/openwiki/concepts/credentials.md) — the referenced-never-replicated SOP
-  behind `seed_auth`, the replace-on-refresh hazard, and why sharing session state up is deliberate.
+  behind `seed_auth`, the host-native varlock resolution into `os.environ`, the replace-on-refresh
+  hazard, and why sharing session state up is deliberate.
 - [Precedence](/openwiki/concepts/precedence.md) — the full conflict table this page's ordering
   facts (launch env vs recipe env, pinned `CLAUDE_CONFIG_DIR`, settings merge direction) come from.
 - [The env contracts](/openwiki/concepts/env-contract.md) — the folder-env and install-env

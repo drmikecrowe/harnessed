@@ -1,0 +1,370 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:c86ea58795992a044f2435f7cc7d967d0a87d976507cf4584c7074fbe550466d",
+  "claims": [
+    {
+      "id": "claim_b90a0ef34e7e4e1d815bf6dd523d7df3",
+      "statement": "Two entry points regenerate this repository's wiki and both run the same command, `openwiki code --update --print`: locally `mise run openwiki-update`, and in CI `.github/workflows/openwiki-update.yml`, which triggers on workflow_dispatch and a daily `cron: \"0 8 * * *\"`.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L3-L6",
+          "version": "repo-lines-v1:sha256:ae3cfd11fbd2aec9ba8022f9055a23900230776141f0fd80f6908edd097fed23:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTk2ZGM0ODE0OWY1YTgzZDFlZDZkYmIzOWJiYzdlMmI5MDJhYTNkMzRkNmJkNWFlNGIyOTFiNjhkZjBjYTc5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTNhZWQ1MDJhNWFkZWU3YmIwY2FkZDQ2Y2Q3NDYzYjUzMjBjNmNjZWU0NDgwZDY2ODU0ODg0MzEwNjM3NjExOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjIsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzViMWYyNGU2MTgwNWVlMWE5YmM3ODA0N2UxZTRiM2Q4NjE1N2Q2ZTM3ZDhhYzBiY2JlYmQ1ZTY1ZTVlZjFhYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzk0NjJkNWYyYzIwN2U2YjRmODI4NDNkOTE1NGZmMGJiYWQwMzQzOTI0YjJjM2M0YmFiZDk5Yjg3Y2NkNGI4MiJ9"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L70-L70",
+          "version": "repo-lines-v1:sha256:941c60d83597c76cca696aac74dfb7ac5dc3362fe651f8cab5a3049963017d43:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQxYzYwZDgzNTk3Yzc2Y2NhNjk2YWFjNzRkZmI3YWM1ZGMzMzYyZmU2NTFmOGNhYjVhMzA0OTk2MzAxN2Q0MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQxYzYwZDgzNTk3Yzc2Y2NhNjk2YWFjNzRkZmI3YWM1ZGMzMzYyZmU2NTFmOGNhYjVhMzA0OTk2MzAxN2Q0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmQzZDgyNjUyYjE3YjBmMTBjNjgzYjBkMzMwNDMwZjEzYzYwNDViYzFmNTQ5OWU5Y2UzY2UzNmNiNzk0N2UzMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmY3ZTQ2ODM3NDgxNGViZTgxZmFjOTBlMDY2NWNhOTBkMzg3MTliNTE0ZmMyZjFlYTEzOWM2MjkwZjA1N2M4NCJ9"
+        },
+        {
+          "resource": "repo://mise.toml#L122-L125",
+          "version": "repo-lines-v1:sha256:a0f5ec4381cd2daeb1a6caf5c9a9b8be6054c6ac0a15eb65da8beaa80254b6b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTk0NjFhZGE2MjczODcwODk5ZTM0ZGY5ODg4NzE4ZmZmZDZhOTEzNjBkMjcxZmU0MjNhMWRiZmNjNmI2YTU3NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODAxMWM5NDUxMzQ1YjZmYTY5MGI4MDM1ZGFlNGU1NTlmZTMyNzQ3ODI5ZDIzZmFiOTM3NGRjNDFhZjE3NWE2YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDE2MWQ0NTVkYTk1MTBmMmYyNDczMzJmMzM1NWU2YjY0NzliZmJlNTllYjA3Njg4N2I1NDEyYjNlMDUyN2RjNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNlMDYyYjE5MzRjOWZhZGU4N2IzMzkwN2I4YzliMDM3NmI4ZTA1YTllMDU5MzczYzkxNDI3MzA5OTAwZmUyYiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5bd10753340a47b4a1e64e252fc29671",
+      "statement": "`mise run openwiki-update` is the one local generation entry point, including for a repository's very first wiki: `--update` handles the first run for code docs when env vars are set and, unlike `--init`, does not force the setup wizard, while `--print` makes it one-shot; the task runs the retry patch before every generation.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L112-L125",
+          "version": "repo-lines-v1:sha256:21197124ccc9e9aae881b04bd684d2ca45abe06c49e3481da1b7ec2b87c16a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ODk3MmRlYWQ4MTY1YjQ5MTU0NTlkMGIyOTdhZWE5ZTI2NTRkZDUyMmUyYzkwMDYwNjEzNWZkYWFlZTlkZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMTFjOTQ1MTM0NWI2ZmE2OTBiODAzNWRhZTRlNTU5ZmUzMjc0NzgyOWQyM2ZhYjkzNzRkYzQxYWYxNzVhNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzOTZmMmJkMmMzZDA3ZTYwNDQ2Njk2YjkwYmI2MzlkZjc4NDQ5NjNhZjliNWUxZWVlYTQ5NTNlMDlkZDczMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzZTA2MmIxOTM0YzlmYWRlODdiMzM5MDdiOGM5YjAzNzZiOGUwNWE5ZTA1OTM3M2M5MTQyNzMwOTkwMGZlMmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d38371d5a8de4b6680b163b3caf7c03b",
+      "statement": "Every openwiki generator task is marked `interactive = true` because openwiki's UI is Ink and needs the real stdin/stdout: under mise's default output capture a prompt draws but cannot be answered, so it re-prompts forever.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L122-L146",
+          "version": "repo-lines-v1:sha256:63d4f2ba209ad436c539c217464e268d6fedd60e08bfc2848b7203b232c7681d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5NDYxYWRhNjI3Mzg3MDg5OWUzNGRmOTg4ODcxOGZmZmQ2YTkxMzYwZDI3MWZlNDIzYTFkYmZjYzZiNmE1NzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlNmM5YzhlZjMzNmZiZjI2MDM2OWRlZTBkZmY2OWYxYjRjMzNhOTM5Y2FjOGQwYzFiZWIzOWU5MDUwNzE4ODQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxNjFkNDU1ZGE5NTEwZjJmMjQ3MzMyZjMzNTVlNmI2NDc5YmZiZTU5ZWIwNzY4ODdiNTQxMmIzZTA1MjdkYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://mise.toml#L89-L90",
+          "version": "repo-lines-v1:sha256:8067021c341d1afe26cb5d1092294dc880274cfc26d93518e90adafbfa2336cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzdmMDZmMjE1MjZmMzFkZjgzNTZmNjAxNmE5ZWE2MWRlMTAwNTU1Mzc0Yzc5ODljZDUyYTdhZjBhMTYyNjkxMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWI0MGY0YjM2MDZkZWM2YWM4ZmVjNzJmZTY5MjAyMDdlYmJhYzM5YTNkMjViNTdiNmIyMmZjYWNkNjBjOGMwMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjhkYmRkNTQ1ZTczODY5NzEyMTAzZTA3NTgyMWM0MWYyZDg1YjlmMTk4Zjc1YzE3MmJjZWQ0N2FmZDMzZjQyOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTEyZTA2N2ViMjg4YTZjMjY5NTE4ODZhNDFjMjU3M2ZkYjczMzlhNjhiYjA0ODdjNzdhYzYxNmI5YjQ2MDUyZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_52caea0abd394626b122c9a21dd57efc",
+      "statement": "All provider configuration for the openwiki mise tasks lives in ~/.config/harnessed/.env.schema, so the tasks are just `varlock run` — no task hard-codes a variable name or an endpoint.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L103-L103",
+          "version": "repo-lines-v1:sha256:ded4ad3fa84555e73747ac76ce65a05ae948c247675244f616446dfae7e6ad38:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGVkNGFkM2ZhODQ1NTVlNzM3NDdhYzc2Y2U2NWEwNWFlOTQ4YzI0NzY3NTI0NGY2MTY0NDZkZmFlN2U2YWQzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGVkNGFkM2ZhODQ1NTVlNzM3NDdhYzc2Y2U2NWEwNWFlOTQ4YzI0NzY3NTI0NGY2MTY0NDZkZmFlN2U2YWQzOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2E3Y2ZmYWUxNTk2ZjlmNzM5NzdjOWU5NTk3MjYzZjBhZGJkYjQwNWUwNGFiMmUzMTY3MTM4MGU1MDU1NTYxMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTk1ZjlkMzM0ZGNkNTE0N2ZkNTRiZDFlMGI3ZmNjZTlmODk3YTlhMmU5OTI2OTU0ZmY1ZmVmNzEwZmM5NTE4ZiJ9"
+        },
+        {
+          "resource": "repo://mise.toml#L77-L79",
+          "version": "repo-lines-v1:sha256:8d9d9ccc7250593bec1405c15cb68b8f03624e19e1a35dc5f0ea8b9822b52f14:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTc2YjVkZjI1MGUxZGMwNDU1ZTMwNmZlMjhkZDczZjNmM2RlNzQ4MzdmNDE5MDU0N2MyM2I0MjFmOTY3YzJhNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGRlNjNmN2UxOTE2Y2NmYjVhM2MzMzM3YTEzODkxOWQ2OTM3OWU3NGYxOTAzN2Q4NDkwNjQxMGVkOGZmYzQ0NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGEwN2YzN2QyODUyZDM5MTgzMTg0NzA2NDNjMmVjYmJiMjZjNDQ3NGRjZjcyY2M3ZWI4OTEzZGMyOTJhM2I4NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGVlYjU5ODYxMmZkYmQxMTk4ZjA0ZmMxZTg2MmVjYjkzYTAxZWZlZmM3NDAzZjk5MzhlOTMyYmY1Y2YwNmZiZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bd5d8cd8a6f74d819302840d1efd51f3",
+      "statement": "The `openwiki_env` var strips the full provider surface from the environment with `env -u` ahead of `varlock run`, because varlock lets a process.env value override the schema: on 2026-09-04 stale `OPENWIKI_PROVIDER=openai-compatible` plus streaming exports repointed a 13-hour run at the wrong provider. The schema is the declared source of truth and a shell export must not outrank it — the same stance harnessed's host launcher takes.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L91-L103",
+          "version": "repo-lines-v1:sha256:81eb32dadcdbe1298c227c3df06a54f3cbb0e0b88d9cd6bcc2c3190d3c467ba7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4ZmM2YjkwZDAzYWZlYmRkY2RhNTM1MWI5MzVlNzdmMGY3ZmQzODA5NTA0N2Q5OTQ5MzJmOTdjMzU1YmYyZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlZDRhZDNmYTg0NTU1ZTczNzQ3YWM3NmNlNjVhMDVhZTk0OGMyNDc2NzUyNDRmNjE2NDQ2ZGZhZTdlNmFkMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmZGM4MGZkODY0NzI5YzQxMGRmZmJlYjFkNjdlNGFkYzVjYWQ4NjNlZjcyOTgzYzI4OTQzYzBkMmYzZGYxMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5NWY5ZDMzNGRjZDUxNDdmZDU0YmQxZTBiN2ZjY2U5Zjg5N2E5YTJlOTkyNjk1NGZmNWZlZjcxMGZjOTUxOGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7065bd0396ce4b97854aadadbb1245b3",
+      "statement": "The `env -u` list includes OPENWIKI_MAX_OUTPUT_TOKENS because a shell export beats the schema: in run 7 (2026-09-08) an exported 32768 overrode the schema's 20000, and the @anthropic-ai/sdk client guard (_calculateNonstreamingTimeout: 3600*maxTokens/128000 > 600s) refuses any non-streaming call whose cap exceeds 21,333 — the planner is that one non-streaming call, so the run died there twice, the only failures in an otherwise clean 1.7h update.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L98-L102",
+          "version": "repo-lines-v1:sha256:4727f12a957a2e409105151138b8e584e36e95ee35d8d92c2359a728091df403:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2QwNjhlMDQxNGE1NzgyMzBhMzdiZjk4YjkxMTFiOTMzMmZlZDE3ZDZlYjc2ZTdmMTA0NDUwOGJmY2E3OWVhMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2QwMTQwMWRhNGJjMzQ4MDFlNGVhYzJmOGQ5NGU1ZWJhYzlmNTI1ODY4MGY0MDZiZWNkYjA4YjIxNDU1NDlhZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjczNzBkNGM5ZmFkYzAwOTEwYmUwM2I3ZWFjMjg0MzliNGE1NTQxMzkzYjk1YjBjZjM0N2E1NTc2ZTk1ZjcxYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODZiZTQ5OTJlNjdjYTBmOWVmZmFlNGJiNGEzOTY4YWY5OGI2MjNlYzg1OTUxNmY1MjBhOTViZmYyYmMwMjVlOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_fc30aec19c9b4832b04136955309f0c7",
+      "statement": "`openwiki_env` passes `--filter` to varlock narrowing resolution to openwiki's own keys (`OPENWIKI_*,ANTHROPIC_*,LANGCHAIN_TRACING_V2,LANGSMITH_API_KEY`); without it a wiki run would also pull CLAUDE_CODE_OAUTH_TOKEN and the scanner tokens out of 1Password and export them into a process that talks to a third-party inference endpoint.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L103-L103",
+          "version": "repo-lines-v1:sha256:ded4ad3fa84555e73747ac76ce65a05ae948c247675244f616446dfae7e6ad38:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGVkNGFkM2ZhODQ1NTVlNzM3NDdhYzc2Y2U2NWEwNWFlOTQ4YzI0NzY3NTI0NGY2MTY0NDZkZmFlN2U2YWQzOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGVkNGFkM2ZhODQ1NTVlNzM3NDdhYzc2Y2U2NWEwNWFlOTQ4YzI0NzY3NTI0NGY2MTY0NDZkZmFlN2U2YWQzOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2E3Y2ZmYWUxNTk2ZjlmNzM5NzdjOWU5NTk3MjYzZjBhZGJkYjQwNWUwNGFiMmUzMTY3MTM4MGU1MDU1NTYxMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTk1ZjlkMzM0ZGNkNTE0N2ZkNTRiZDFlMGI3ZmNjZTlmODk3YTlhMmU5OTI2OTU0ZmY1ZmVmNzEwZmM5NTE4ZiJ9"
+        },
+        {
+          "resource": "repo://mise.toml#L81-L83",
+          "version": "repo-lines-v1:sha256:0a351ab46e0457337b1697c12acc8a567ce1e839ee7a45464c42ef6d3436cb2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjllOWE1MzYzZDc0ODA0ZmRiNzlhYWNhMzRlN2UyOGZjMmNiNWEzOWNjYjNmNDE1MDYxMzRiYWI1Nzk2Y2NlOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTUyZmE4MGM3NmVlYWU3M2I0YTMzMGQ4NDNjYjVkZmQ0ZTM4MWRhNjRlNzhkYjNhZmRjMGFkZmM1M2UxNzExMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWY1ZTZiZTc5NzhjNmVhYjI2YmFjZDhlYWVjYWIwNjMwZjNiMGNiNjAyYWUyNTYyOTU2MTljZWNhYzQzOTEwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTc2NjliNmYxYzI5ZTQ4MTJhM2Y4OWJjZTM3ZGM5ZjBiNzIyYWU5YWQ3ZWZjZjY5YWQyMDQ2NzRiNmRjYzgyZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d0f830680d754c05a9c59deb2efc15c1",
+      "statement": "The openwiki mise tasks must run from main/, not from a worktree: docs/ is a gitignored live clone of the GitHub wiki, so a worktree checkout does not have it and the generated wiki would be written from an incomplete view of the project's own documentation.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L85-L87",
+          "version": "repo-lines-v1:sha256:0f21583e853762bf136114815cf32191d9dbca01d3eef8576f9745ddf6ef60c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTZlYzI5NTJhODkxNGM5ZDRiMDhlYzU3NDFiNTQ3ZTNiYWFjMmQ4OWViYmNlOTFkOWUxYzk0MzRjNTFkMzhmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMwZjMxM2E3ZDRlMjQxZTJhZWUxNDk4MzAxNmM4ZDhjZmI3YWM5NDk0NjA0ZWE0ZjYwZjIzYWY1OTA3MGJkNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODBiNTY3M2ZhNGM0ZTI4ZTU3YWM5MGFkMWEwOWVkZDNiNzVlYzgxMzY5ZDQwZTg0NmNiZmY5MjY3N2ViOWEwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2ZkYzgwZmQ4NjQ3MjljNDEwZGZmYmViMWQ2N2U0YWRjNWNhZDg2M2VmNzI5ODNjMjg5NDNjMGQyZjNkZjEyOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_eeaed4dbd9184415adc14ddfa9a571f2",
+      "statement": "`openwiki --init` walks every setup step unconditionally even in a fully configured environment — dist/cli/app/app.js:96 is `needsCredentialSetup(...) || (isInitCommand && !initWizardConsumed)` — so `mise run openwiki-init` exists only to reconfigure or to discard the generated wiki and start over; ordinary generation goes through openwiki-update.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L127-L134",
+          "version": "repo-lines-v1:sha256:60fa59079503bb836ff14d703e5f169125e793fdfcd59bf6e1fcb861448a6c73:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWRkNjk0Y2I0NmY4NjdiYjcwM2YzNjAxYjhhMWU5MGU4YTAwMjNkM2NjZjM2M2EwNWI2YWFkMzZkZGI1ODlmNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTc5YmEyM2I4OGRiMjJkMzJjYmUwNDU4ZjVmODNmMzc3YWRhYmJkNzUzOWQ3ZWU4N2ZmY2EyODk3YzlhZjk3NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjM4OTJiZGVhYjU4MWFmMTYwYWI4N2Y1MGZhOGFjZWI4MTA5ZWQ5MDEyYjE0N2ViNjNjOWQ4Mzk1NzYwYTQyMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODQzOWZjYzBlZDJiZDMyZmNjNzI5NWIzOWM0MGJhYjdmNGVjNWIxYjg5ZGQ0YjNjMmE3ZWNkOGMyZmEyZjNlNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_58ced0af018949df8a2a7abb65b92cb2",
+      "statement": "`openwiki-visualize` deliberately skips varlock: it only serves the Markdown already on disk, so routing it through `varlock run` would touch 1Password for nothing.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L141-L146",
+          "version": "repo-lines-v1:sha256:eadb75898b59fe2a105f802ae546c8433ad329cea8335ceaabd01b75f88f5bf0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGVlMTE0YTkzZDU1ODM3NjcwNTc2ZGI2ZGYzN2MxNGI2OThjNzk4MTM3Y2ViYTYwYjY2M2ViODk5ODVlOTcyOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2U2YzljOGVmMzM2ZmJmMjYwMzY5ZGVlMGRmZjY5ZjFiNGMzM2E5MzljYWM4ZDBjMWJlYjM5ZTkwNTA3MTg4NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzRiMjU0NTMxZjA1YWQ5YmJjOWQxZDhhMGU4NjU0NTM2NGVhMWU1ZGRkNTJkMDVjOGZkZWVjZmMwMzk2YWZhZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b542eff7d24547d98559c421a91a670c",
+      "statement": "`mise run openwiki-drift` runs tools/openwiki-drift.py with no model call, no network, and no varlock, which turns \"which pages are lying\" into a check rather than a regeneration — the cheap thing to run before deciding to run openwiki-update; its gate semantics are documented in testing/verification-ladder.md.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L105-L110",
+          "version": "repo-lines-v1:sha256:a09f9a1de444ca12cebd8c5b00321b50dddaef073ab9c016f42d7fb696acc3a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDE3ODZmYzk3ODcyZGFkN2UzMDA4ZTZlOWQwYWVjMGU3NDBjNzgxYWM4NWE2NTE2NDlmOTg4NWIxZjEyYjMwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmZhN2Q4M2FjYzY1YjFjM2FhODUwZjE1NmU0OTlkN2MxOWQ1NTllMTUwZGEzYzVmNTdhZTk2M2FkNzZmYzYzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjViNjAzN2M0MDYyNTg1YzY5N2VjYTljYjkzMjJiZDExMGQ1NzM1OGZiYjQzMTYwMTliZjFmNzRiOWFiNmEwZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWVjODJhZGZkMzVjNDIyMWI2ZmNmYzc1Y2I3ZGZkMGZjMTM2NTcyYjJlOWM1NGMwNDBjMjQyODI0ODRhNWY3ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b872f77d4103480db3576b0e1affb473",
+      "statement": "The mise pin for openwiki is 0.4.3, the version verified against this tree (2026-08-29); `latest` would make the provider env-var contract an unpinned assumption.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L11-L13",
+          "version": "repo-lines-v1:sha256:9a6933c1a024ea4f527cfb3b8d55ba425793994b6532a7c1013ac59df625c4fb:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTJkMDJlYjI4MjdhZTVmMGRkMjJhMmY2YWVmZjhkOWY2ZGVmMGZkZmFlODUwY2I5Mjg2ZjFiYzFiYjNlNzk2MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzlkYjI5YjE5OTZhN2Q3MTQzMzg2MjI1OWQ5ZTlhNWJkZThhOGU4N2IzZWEyYjg4NDUxMDY0M2UyZGQ4NGMwMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODc0NjNjNjM1YTU2M2E5MTFiMzI5MDRlNjljMTI0YWEwZmFhZjM5MzJiNTk0NTgwN2M1YzYwZWRiMjI2Zjc0MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGNjMjBiNGJkZjhjMzBkZTI2ZDY2MGEwY2EyYjBjYWU0ZjRmMDExNDA1ODAzYzAyM2NkZGE5MGQ2YTlhZGVhZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_85501c5af80546acab76024806a6ab85",
+      "statement": "The openwiki tool entry in mise.toml carries two required options: `allow_builds = [\"better-sqlite3\"]` because mise installs through aube, which denies dependency lifecycle scripts by default — denied, the install still reports success and every openwiki run dies at \"Could not locate the bindings file\" (better-sqlite3 reaches openwiki transitively through @langchain/langgraph-checkpoint-sqlite) — and `trust_policy_excludes = [\"fastq@1.20.2\"]` because fastq ships no provenance attestation at 1.20.2, so aube's no-downgrade trust policy refuses the whole install.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L14-L24",
+          "version": "repo-lines-v1:sha256:dd0288c5e1b17dd1ea7d069c0855ea92a2f3cd104aca59296dd13dad120266ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyYzQ4NThlMjJjYzJjOTY3YjQyMTUwZmE1NTA1NjJhMmM4MzljMmNlYmNhYWI5MWNhYmRmNmY0ZGEwMjAwMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyZGZhZjNmNTlmYzRiNmUyYWE0NTc3ZjJjNzEyN2Y3YmRkOWMzNWM5OWQ5NjQ5NzZkZDY5ZmIxNWNkYzI5NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhNjkzM2MxYTAyNGVhNGY1MjdjZmIzYjhkNTViYTQyNTc5Mzk5NGI2NTMyYTdjMTAxM2FjNTlkZjYyNWM0ZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDlmODFhYmU0ZGNkMDY3NmRlZjM3NDlmMzEwMTFjYzFmYjk1NDBmZjJhZDM4M2Q1NWQ4YzQzOWEwYTdlYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9a2ce4e89e5e4447a5c32753d3bf8b05",
+      "statement": "A page worker whose stream ends without calling submit_page is marked skipped by openwiki, the page snapshot is restored, and the run finalizes \"interrupted\" without advancing the diff base — one quit costs the next run a full regeneration of the whole changeset. Observed with glm-5.3-flash: 94 LLM calls, a clean exit, no tool call, no error (PR #445 run 6). Neither upstream 0.4.3 nor 0.5.0 retries a skipped page (verified against the 0.5.0 tarball, 2026-09-08).",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L1-L17",
+          "version": "repo-lines-v1:sha256:f30f54f9884b06a3712ec848be984d17a7c8e27aa2b446f7b8a78be024fe5154:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2NzM5NmQ3ZGJjNzJjMjgxMGRlZjIxYWE0OGEwNWUzNzJiM2VjNmUwZTk0Yjc5YWI2NmRhZTE3N2YzNzAyYjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwMTY3OWU2YmIyYWU2YzA5N2RmNDBlODgxMjJlODI1YzI0N2ViMTcxODAwNTcwMzk2MDRiZTc2YTIyMzM1NmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1836ac2dcb3a4dd1a9b783dd7e029454",
+      "statement": "tools/openwiki-retry-patch.py gives each page worker one fresh second attempt before the page is skipped: it rewrites runPageAgent in the mise-installed dist/agent/repository-runner.js, converting the single `const agent = createDeepAgent({...})` into a `createWorkerAgent` factory wrapped in a two-attempt loop; the retry shares the worker's virtual backend so attempt 2 sees the page markdown attempt 1 already wrote, a first miss emits a named retry event, and only a second miss falls through to skipRepositoryPage plus the deferred warning exactly as stock code does.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L34-L39",
+          "version": "repo-lines-v1:sha256:9eddeca3dfbe94c54844c43833f250bcbfd6f78d7e3ccc02920de3f4c00afbe5:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2Q3NWM1YmI0ZDYwMmFiMGU2ZTk0ZWVkNmRhOGYwOWE0NzY3YjJkZTRiYjhhODdmZjgwNjRkOWZjODcwYjg0ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjk3YTNkMDhjMmI2MzYzMmY3ZjE1ZTE4NmQ1ZTA3MzU1MmE2N2U1YWUyNDNiODM0ZmM4ZjQ0MTAwYjU5NmNlNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjE0NGI0MDc5NTVkY2RlMjRjMjJlMWRlNTYxOWJkZmUzOWQ3MWU2MWE1N2U0OWEwNGUwNDQ1ZDEyNWE1Mjg3MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGZmNmQzNTg5ZWFiYzZkZTBmYzliOTcyMzNhMTRmMTVkYTI1ZjYyNWMyYTA1ZGM2YWI4MTcyMDZlODg4NzZlYiJ9"
+        },
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L67-L104",
+          "version": "repo-lines-v1:sha256:4f94394fc5c9dfa3e0400398eca5536dde5dd30a5a96beb7115fe345944d73fd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwY2RhNDhiMTk1ZWVmYTI4ZTRhY2RlZDc4ZmMwYjljMTM5YTYyNGFkNjcyMjAwNjUwZTI4NmJiZGMzODIwMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2OGE3ZThmZmU3OTc5OTFlOTViODJmMmZjZTk0YjU4NTA4NjExYTdjYjk4YjdkNDQ0NTdlYzJiMjdiOWFmMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNDgwYWE5MDI0ZjkzZjNkMWViMDg5NTVhYjEzNzBiN2ZiNzJiYTllOTYyZjUwMjY1YzViMDg1NjRmYjcwZmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3f9701b8eed14dc89264f81b27b8cc86",
+      "statement": "The retry patch fails loudly rather than patching blind: it refuses any install whose version is not the verified 0.4.3, and it exits when its anchors — runPageAgent, exactly one agent declaration, exactly one worker try-block — are not found exactly once, with the message \"anchor drift, re-derive the patch\". Version drift means a human re-derives the patch against the new layout; the tool never patches blind.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L161-L191",
+          "version": "repo-lines-v1:sha256:a20d89ed0003b5cc1396d45f2bcd91717f3199d81af28a60c5b309a774c69a2c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZmQ3NjJjYmZlZmVkMDIzZGUxM2RmOWM4YmU2NWU3MjhhMmVkZWQxYmY3NWIzZDg2ZjE3YjI2MGJmNWNmNTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5MTgyNWY2NjYxOWQ4NDM0MzMxZjA1ODk1OWQ4MDZjOWY1ZTYyZDJkYWMyNjI1NWIzMWY4OTVhZDM5N2ViMzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwM2UzMTAxZTUxZWQxODg4N2M1NDcwNmViZGNhZTYxZWVmNzhhYmZmOTU2NzllMmU2NmIzYjM0ZDYyNjUzYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_433c1bd52d58444a974b598da1f66671",
+      "statement": "The retry patch is idempotent and reversible: a marker identifies an already-patched runner, `--check` reports patched state (exit 0/1) without touching anything, `--revert` restores the `.orig` backup, and every write is followed by a `node --check` syntax check.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L139-L143",
+          "version": "repo-lines-v1:sha256:db1ac5692ca1e37e742430f3c0cab60b708e638fe5fe014e50a0e03a00fa1a11:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2YzZjVhNjBkNGNhYzgyZGRkN2M1NTZlMmM5ZWM5YmFlMTA3ODMxN2M4NmRmYTg4ZmY3ODE4OGU1YzJhNzQ4ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmVlMTlkNTc3ZWI1ZWM3ZmMyNGNhOWIwYzNjYzg2OGU5ZWRjM2E1NjYzNWZhMzQzNTk5MDVlOTNiZTk4MzNiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDlmODM2NWQ3MjY0YWIwNDRjMTA5ZTdhZGRlNjQ1YTlkM2RmMGI2M2VlNzlhODA5YzFmZDI5YWVmMzQzZWJjZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjg3OGViNDI5NzgwMWNlMWVjYjQ4YmY2YjFjOTdhNmY0NDllMjgzZjk4NDFhNTFlMmUyM2MyZDQ2MTI4Njk2MSJ9"
+        },
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L154-L176",
+          "version": "repo-lines-v1:sha256:f4ff6b68335d6f3b64a67c74fc46b988def18c10421719b1ad8c50f23e5465a2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNGE5NTI3NWY2YjUwZDUyMGNlZjgxZDc5NjdjYzhkMjliOTQ1MjUxZjdlOTEzMmRmNGJiYzcwY2NhNjRiMDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxZDI5YTZhYWEzZTZlZGMyM2VjNzNhZjUwMjBhYjVkNGQyZWIzNTVhMTJhYjdhMTA3YTk0ZDk1YmU2YzkyNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlYzE2OWNlN2I4MjAxYTBlY2E2OGUwYjg2NjEzM2EwNjM4ZGQ3M2M2MGM0OTk3NzZhNjc3NThiMjRlZmYxNWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiM2U0NjVjYmZlOGRkNTMzMDA2YjFkZmI1MGJiNWQzNTA5YjE1YmQxNTdlMmI2OWJiNTM0YmM1ODUwZTYyODcifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L19-L23",
+          "version": "repo-lines-v1:sha256:6a392c8f2ec22a42dff50d08aa0d81c5044c32085d8ebacd382ba6edd2353bea:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDE2YTg0ZGQxZmIxZjUxODIyOGFmODViMjJiNDU4OTI1YmJiYTBjNGYxYTYwMjFmMjBmY2NjMTliNmUzNmRhMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGMzYTE3NmU4M2M1YzY2OTVlYTI2Y2Q3YTIyZjAxYzkyZDBjYzkxOWY3Mzg0NzVjNzg0NTgxYjQ2ODQyZjI4YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTViNmU4NzA2YjQzMDQ3ZjJhNmRiNjdmMTMyNjM4NTk1NjA0ZTY3ZjM2OTY2ODc2Y2UwMTU4ZjAwNTNlNmJkMSJ9"
+        },
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L197-L203",
+          "version": "repo-lines-v1:sha256:4a988e26326e267bb18baf1cb1fdda6f8c8afc8f8593300c9fa601d7ad2bf588:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg1OWQzZDJjYWJkZTYwMTVkYWIzMjlhYWViODU5NmMyZDdlYTk5MWU0NDAzM2JmMWFjMWE1MGQwZDZjMTcwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNThjZjkxNTk4OGY4MmYwNmU3YTQwYjA4NDczMmVhN2UzZjQ0ZTYwYTM3NGIxZjI4YTU2MTFhMjMwNGVlOGJiMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWE0ZGFhMTI5ZWQ2Y2U1YjBkMzNhZmY1NjdhZDlhY2JjN2JiOWE1ODQyZTU1Yzc4NzVmMjc1Yjc2OTJkZWE2YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2Q0MTM0MGNjMjM5YTE1OWNlOWI2MDIyZTlmNjMyMjgzMmUyZWFkNzZjYWU5ZTQ3NTRkMjEwZWI4ZmI2ZDVlOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d3a916deb4554fef8b08106554586fe0",
+      "statement": "The retry patch is wired into the local task only: its default target glob is the mise install layout (~/.local/share/mise/installs/npm-openwiki/0.4.3/...), and openwiki-update.yml runs the stock npm-installed runner with no patch step, so a skipped page in CI still finalizes the run interrupted — survivable there because the durable page-job queue plus the PR banking step make finished pages the next run's baseline.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L62-L70",
+          "version": "repo-lines-v1:sha256:c4e6b15101820e0ad09bc9f2c82f5f1ab0d5436d73ee9b5e3683da5dda2e0a59:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzBlOGY5ZmE0MGU3YmQwNDk5ZDFjMGQ4M2ZkNzU4YWE4NWIzMDg0MmRiZDYxZjBlYTZiN2FlMTBlZmVjNzZkMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQxYzYwZDgzNTk3Yzc2Y2NhNjk2YWFjNzRkZmI3YWM1ZGMzMzYyZmU2NTFmOGNhYjVhMzA0OTk2MzAxN2Q0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDlmYjM0OWYxMzlmZWU3YWM1YWU0MmIzZWIyM2Y3NzAwNGY0ZGQzMDFiYWFlNzVmMTgzMjBiMGMzMWQ4OWJhNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmY3ZTQ2ODM3NDgxNGViZTgxZmFjOTBlMDY2NWNhOTBkMzg3MTliNTE0ZmMyZjFlYTEzOWM2MjkwZjA1N2M4NCJ9"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L85-L96",
+          "version": "repo-lines-v1:sha256:5e931f8b4bba9d1a9d20dabb1c0ff7e64a7bba5c641b73814e94dfc8bfd9f1aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViYmQ0MWQ5MWI3YzdlZWUzMTI4MDM5OGE3MTI1OTk2MDEzODQ2MTk2MDI4OTUzMWU5YWQxNWQ4NDIyZGRmNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkNTlmZWJlZDUzYjg4ZWQxZmQ3MTIzN2VlMWQ5MjY1ZjBkYjg2YmM1OGMwMjUyYzExNTJlMjFmNzdhNTU3OGIifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L34-L36",
+          "version": "repo-lines-v1:sha256:ba84ba3797598f9d8898b350df00c67a2efb2f12aaf5eff4036d30dfac4ace40:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2Q3NWM1YmI0ZDYwMmFiMGU2ZTk0ZWVkNmRhOGYwOWE0NzY3YjJkZTRiYjhhODdmZjgwNjRkOWZjODcwYjg0ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDkyZGQ3MmFkYTkzYjNlMjNhYThhZDQwZWFlOTJjODRlMWY3ZTYzMjY5YjRhNzFkNjFkOTM2ZjMxNGZmYWMzMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjE0NGI0MDc5NTVkY2RlMjRjMjJlMWRlNTYxOWJkZmUzOWQ3MWU2MWE1N2U0OWEwNGUwNDQ1ZDEyNWE1Mjg3MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGU2YTMwN2JlYzk5ZTdhMzgxMTg4MTQxNDU5NmUxNTI0NjU0MmVkMjMyNjEyZGE0NmE5ZGFiYjFhMjcxZjdmYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7b6d16692eea4bee9b0b63270520709d",
+      "statement": "The workflow checks out with `fetch-depth: 0` because `openwiki code --update` diffs HEAD against the commit it last documented — a shallow clone hides that commit and the update runs against an empty change summary — and with `persist-credentials: false` because the openwiki step runs third-party code over the whole repository: persisted git credentials would sit in the job's git config for it to find, and create-pull-request takes its own token input and does not read them.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L16-L26",
+          "version": "repo-lines-v1:sha256:8feb1ba3bc08ebc9c239a0b8bc6f6857b24603d4485985ee8c81054c36c5e27b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ZDZjZjdkNDI4Y2E4MTE1ZmM0YmFiYjY4MDczOTAyMzMyN2E3YTlkOTE2M2Y3MDZhMjc2ODdkZDUxNmYzOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4MmMwOGVjOGZlM2Y4NjFkZTY1MjY0MTMxNmY5MjFmZmE4NzZhNGUzYTQ5MjRlZGI2YzA4Nzg4NjZmYjAxYmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjNWE4OTI3NzBhZTRmNTMzM2ZkN2M5ZTEyZTBhNmJjNDViMjZiNWJiNzc1M2UwMzlkZjhlZDQ5Yzk3Yjk2MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlZjE2ZTNjOGI1NGUyYjIwNDgxOTZhYmI0Y2Q4MGQyMmE1MDhlY2Q2MDc0NjEyNGEyZWEyZGNjMzQxNzk5ZDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8f19c473eb8d4ffcbbee07f90dc0de71",
+      "statement": "CI installs openwiki with `npm install --global` (plus mermaid and jsdom for high-fidelity Mermaid validation), deliberately not the recipe's project-scoped pnpm install: the runner has no strictDepBuilds policy, and npm 10/11 still runs dependency lifecycle scripts by default, so better-sqlite3 builds with no allowlist at all.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L33-L47",
+          "version": "repo-lines-v1:sha256:2f1b328a0e4cc125b767d9760cb5cba4de6bc4e95667e804acad6ae012934ad9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2Y2UwYjBkM2IzODEyMmJjMjc1MTVhOGQ5Njk2MTVkOWUxMGUyODA2NDRmNzYxMjIxZDA0NDc5YWQyNTM5M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NjQ2ZTRmMjc0OTQ1NmNmNWZlNWQ3MzIwNjgxMGVkYjFiYzgxMmU5ODUwNjY5ZGMwOTI0NjAxYTg3OTA4YzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzZjNiODgwMmIzMTBmZjJhZGQwMDI2YjgyZWUyZTllNTcxNTkxMmVhZjA4MWFmODZjZTExMGRkNjQyZmMxYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkOTM0ZGIwMzcyZDIyNzI3MmQ4Zjk2ZDMzMDZjY2Q1Mjc2ZmFhYTcyMzg3ODFkODlmZWZlNjgzYjYxMmU0MjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d36a90b9265d4c31aa67b3bad9a1e55a",
+      "statement": "A dedicated verify step searches the global node_modules for better_sqlite3.node and fails with the fix in the error message (npm 12 blocks dependency lifecycle scripts by default; add --allow-scripts=better-sqlite3, or install via pnpm with an allowBuilds entry as the recipe does), because openwiki imports SqliteSaver at module load, so a missing native addon breaks every subcommand — surfacing as \"Could not locate the bindings file\" mid-generation rather than as a failed install.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L49-L60",
+          "version": "repo-lines-v1:sha256:f6e18a9b0a675d1db3e29d09e3c4791feb6c5dab81e8b4066e4502988fe21258:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYmNhNmQ5MTEwODEwNjJjMjc5MTUyN2ZhZjI4OGEyYzA4MmM2NzZiYjllMDQ1OTllYzcwMzVhNzU2NTBiYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OTYyODIzNmY2ODc1MTVkZDRlMGJiOTZhNGZmNjM1M2Q3MjYxNzdkYTczNTI0NzFjMDFlZDRjODIxMmNhN2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0YzlmMDJlZWJjZDM3YTEzOTQ0YWJmYTE1NGM3OWViNTFmMWVjOTAxMjkyZWVlOTNiZDYzNzgzYzdmNTNiN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzNzY5ZDI5MmFhYTAwYzJkM2QwMjcwZGZjOTIyMzg2YTBkZTRkYTM4YzkwNzAwNTU4ZWIyMzJiOGRiMmI3YjcifQ"
+        },
+        {
+          "resource": "repo://mise.toml#L18-L23",
+          "version": "repo-lines-v1:sha256:ecd9b6b7ee4e73f0a9c303eb13d571241d2309986bb3a570f5cdd6ac701ab777:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQyYjk0MzAxYzM0ZmFhZDY3OTAwNmUyYmY3YmJkNjMzZmI3YzIxYWVkNDJmN2U5ODg1MmRjYjUzZTc1NjMwNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmIxNjhjNzUzOWE2M2Q5NTI1YjA4NDQ0MWE1Yjg0NTU1YzdlZjg5ZGU1MGMxNmIyOWI0ZGFiZDkyOGEzZTE4MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDVkYjhkOGFmMTc0ZDgyYzJkZjg5M2ZjY2U5NDEzZTBjNDY2NjEzMWNiM2QwMDQ2OWU2MmIxNzA2MzFjMGM3NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWEzNjNhMTY2YTFhZjExNDZlOTZhNTRiZTQ4MjNiMWY1NjEyOTQ0ODczMGUzMmUyZGEyMmVhNDgzYWZjZWVkYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_31478edd875348b0ab014c3cc987e7e7",
+      "statement": "The openwiki step in CI is deliberately not fail-fast (`continue-on-error: true`): the page-job queue is durable, so a run that dies partway has already written every page it finished and the create-pull-request step banks that progress as the next run's baseline; the last step re-raises when `steps.openwiki.outcome == 'failure'` so the job still reports red.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L114-L117",
+          "version": "repo-lines-v1:sha256:378f4614272e5f45090aaeb41559a66ac3447e2c9af99263ba09555e4b6c44c7:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjA1ODRhOTc2NjVmNWNlZDg5ODlhNTBkMzI0M2Y4NjAyNDkyZmYxNzczNTdkODYxYzRmNzZkYTg1MjQ3ZTUzYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzY3MThmMDY3YjVlNWMxZjA5OTFhNmU3NDcyNmZlMmEyM2QyNjQzNDVlMDhlNGVhZDA0ZmFmNzNjMjdlZDQ0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWE3YjI2ZmJiYWVkNjBiYzliMDBkMGIyOTJiYmYyY2NiNGVkMGE3Njk1MjUyOWE4MGVkMTFiZWE1OGQ3NzY1YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L62-L70",
+          "version": "repo-lines-v1:sha256:c4e6b15101820e0ad09bc9f2c82f5f1ab0d5436d73ee9b5e3683da5dda2e0a59:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzBlOGY5ZmE0MGU3YmQwNDk5ZDFjMGQ4M2ZkNzU4YWE4NWIzMDg0MmRiZDYxZjBlYTZiN2FlMTBlZmVjNzZkMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQxYzYwZDgzNTk3Yzc2Y2NhNjk2YWFjNzRkZmI3YWM1ZGMzMzYyZmU2NTFmOGNhYjVhMzA0OTk2MzAxN2Q0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDlmYjM0OWYxMzlmZWU3YWM1YWU0MmIzZWIyM2Y3NzAwNGY0ZGQzMDFiYWFlNzVmMTgzMjBiMGMzMWQ4OWJhNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmY3ZTQ2ODM3NDgxNGViZTgxZmFjOTBlMDY2NWNhOTBkMzg3MTliNTE0ZmMyZjFlYTEzOWM2MjkwZjA1N2M4NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_92a9f9407e1d409093558fbce9343382",
+      "statement": "The create-pull-request step runs `if: ${{ !cancelled() }}` so it opens even after a failed generation; `add-paths` limits the PR to openwiki/, AGENTS.md, CLAUDE.md and the workflow itself (the wiki plus the two pointer blocks the run keeps current), the branch is `openwiki/update`, and the PR body tells reviewers to check claims with `mise run openwiki-drift` before merging because a failure PR intentionally preserves only the pages completed before the failure.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L85-L112",
+          "version": "repo-lines-v1:sha256:25d259b860c3e73eb304f957e246c66cfccebbd8947210c6a3a57c69487d3176:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxY2ZmNGFkMzNiYTkxYjE0OGUxYjFiODI5MGI4ZmZmMjdiMjAzZmFiZmVlNTg3MDI4MmRlMzY3MzgzYjFiZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5OTVkZTUxODA0M2Y5OTUwOTJmYWY0MDk0M2YxYTg1ZmVlNThmNDU5ODNkYmU2YmYyNjU0ODYxODQyMGVkZTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0MTRhZTc3N2Q2ZGIzNjY1MjVkNTFhNjdiZWJmNmY5OWM3ZDUwYTE0ZTNlOGU3YmIwOGI5YWZjYjU1MmFiNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4MzIzNzkyMDJjNzAxNTIxNGJmOGQxZTg5YTE4ODBkYTJjZWY4YTI4MDMyZGRlNmZmMDNhOTJkNjU0MjFmMmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4722a0ff3a3f46b6a0449c4296f35ec0",
+      "statement": "CI deliberately leaves OPENWIKI_MAX_OUTPUT_TOKENS unset for glm-5.3: it is a reasoning model, reasoning tokens are drawn from the completion budget, so a tight output cap returns HTTP 200 with empty content and no error — a silently blank page; the model's own ceiling is left in force, and the variable must not be added without re-measuring against this model.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L71-L79",
+          "version": "repo-lines-v1:sha256:b93c6452811f42acb32ef80db02fdf5825c05def179951c092a004e696406a33:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2IwNzg0OGE0MzY2NjU2YjJiYTYxOTdiZTAyYjkyMDgxNDU0NmY5ZDlhZDBiNTMzOWU0YzI2YTJjOTQ2NTExNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjQ5NDgyOGM4OTIwZTU2ZDUyZDRkYWNmOGQwNzViMDI4MDI3ZTY5MTkyYzI5MDk2ZDE4NWQ5NWNiMzI3MjdjNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmQ2Y2QyYzAwODFhNzM1Yzk1YzAyMzhjYTI2OTJiZTdiZDg1N2NjMzEzMzJkZTI4ZmM3OTZmZTFiNWU5NDEwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzRhZTY0YmE2NzEwM2RlZmI4OTQxMzgwYTQ3NGYxODY0ZGI4OTFiZmI0MWM4YWUyZmQ2YTk2MzdmMWE1YjBhZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0441a1d33f6146c8acf2e0cc96359ab9",
+      "statement": "The workflow sets no LANGCHAIN_TRACING_V2: that variable gates openwiki's interactive setup wizard (setup/credentials/steps.js), which additionally requires a TTY (cli/app/app.js) that CI does not have, so it is needed for a terminal run and redundant in CI.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L81-L83",
+          "version": "repo-lines-v1:sha256:e8bff66ce4f8bea434282e8cc09fe25628a8f96ded1cb1d788ccfe5cc2840be8:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTMwMjJlNjhiYzY1MGI4NzhhZThlODRiYWFiMmEyNjA1MzlhODNmZmNmYjU0MGEzNzZjMWYwYWU2ZjVmOTA2YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzE5NzVjYWVhM2EzYTkxZTRiNmE1OWYyOTVhNTRjZmVmZjU4Y2UyMzE0OTIyMzYzYWEyZWFjMzMxZDVjMDllMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWVjZjJmYjU2Yzc4N2M2MDZmYTI3MTIxOGE3NWQ0ZDNkNDU2Y2RjYzM3ZTBlZTY2MTlhOTNmOGIzYzZmYzYwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTUxYWQxM2IwNmFkOTA1NDA0NDNmNGIxY2UwYjljZmI4YWQ3NDY0ZmRmMGM3ZTVmNjQ3MzBlNTE1NzhiYjdmNiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_15ca90cb39b0477fb62fef45f706f460",
+      "statement": "openwiki/.run.json — the resumable-run checkpoint — is gitignored in this repository while the generated wiki itself (openwiki/*.md and openwiki/.claims/) is committed, because a half-finished run's queue state is meaningless in any other checkout; consequently, unlike upstream's scheduled-workflow example, the CI workflow needs no transient run-state cleanup before opening its PR.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L85-L89",
+          "version": "repo-lines-v1:sha256:5ad12f1e5ab3e3378917042b2727f54c019a0800811ea6f4b7c4fdeb51fc02f6:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDFjZmY0YWQzM2JhOTFiMTQ4ZTFiMWI4MjkwYjhmZmYyN2IyMDNmYWJmZWU1ODcwMjgyZGUzNjczODNiMWJlMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjA3MjQwZWE4Y2RhMjI4MDJkMGY2ZGFkZTZmNjExNTRhYzMwZjY3ZWNlZGFkMjllZWIwZDU5ODUwZDU4YWIwNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQxNGFlNzc3ZDZkYjM2NjUyNWQ1MWE2N2JlYmY2Zjk5YzdkNTBhMTRlM2U4ZTdiYjA4YjlhZmNiNTUyYWI2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWU1ZDY0NmQ1OWFkZmVkYmI0ZmYxZjAxNDc4MzFiMjliN2UyM2U5MDhmNzhkODNmMDEzMmNlNzVmZmE4YzlhMyJ9"
+        },
+        {
+          "resource": "repo://.gitignore#L70-L73",
+          "version": "repo-lines-v1:sha256:4772f3ba1f28799fbb79508d7c1b0d5c22a0e9b4917337fe50f3f2341c950dda:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDU3MWEyOGU3M2FiYWM5OThhYzI2ZDQ3ODIzN2Q4MWE3MGNlNGNmMjBlMzQ5MTJjNjdhODQyOGZhZjFhYjI5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTk5YjFiMDAzNjVlMjAwNTg0YjBhMjYwNWQyNjI3ZGY2ZmY5ODU1MjdjMDYyZjVhMGFlN2E0Njc2NjM5OGQ2YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzE3MmFlNTQ2NWUwOGY2Njc0MzA3MjkwYmUwNDM5ZjNmZmE3MzE0ZGFmMjBhM2RjNWE0ZjNmN2I2MjYzYWEyNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_84186b3ff6d947afb97c52c26efc3bf3",
+      "statement": ".openwikiignore is the read boundary for wiki runs: paths listed there are never read, scanned, or reproduced in the generated wiki — and tests/ and tools/ are deliberately kept readable because that is where this project's contracts are pinned; the rationale lives in the file.",
+      "evidence": [
+        {
+          "resource": "repo://.openwikiignore#L1-L27",
+          "version": "repo-lines-v1:sha256:37edbf1cb8f42e32ce88b8ea39ba016e9ed1a8357b07164e90a10c8d6e84db96:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzY2VjZDljOGFjZDFiMjk4ZGQ3NWYzNDllMzhkNmE3NTRmZjU4MTVlNTY3ZDNiZWE4Nzc5MGExYjMzYTNlYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYzNkNzc5YWRlNmY2ZDEzMDI1YjY0MmZmNWZkMDAxZDMyMjJmMDUyMmZhMDEyMmYwNGEzN2UzMDk5Njc1N2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyZGU1ZjBiZmYyN2Y4ZjdhYzA0OGJiMzE3OTEyZGYzYTY2N2YzMmFhZGYwZDEzYmE0MGNkZjA5NDk3NjJjMjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_974c62d351e84a2baf22d83767a2a385",
+      "statement": "The .openwikiignore exclusions .claude/worktrees/ and docs/codebase/ each block evidence that would launder wrongness into the wiki: agent task worktrees are full checkouts of the same repository on divergent branches, so left readable openwiki would ground Claims in dozens of divergent copies of every file it documents, and docs/codebase/ is the output of an older /map-codebase run, so grounding on it turns \"the map said so\" into evidence — exactly the drift openwiki's Claims exist to catch — while the hand-written docs/guides/ and docs/harnessed-design.md stay readable.",
+      "evidence": [
+        {
+          "resource": "repo://.openwikiignore#L8-L15",
+          "version": "repo-lines-v1:sha256:18699f8b7ebd0dd4af2bd35695478ce7a75626306c21b97e031367641167218e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzNkYzZmMWI5ZmJlM2Y1ZTNlOTE3MzI5YTRlYjViNDk3MzE3N2FiZTcyZGRiNzQyM2NhMjZiZmVlMjY1MmQ0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjhjODFjODhlMDQ2OTBmNzQ3YTI2MWNiNjA3MTU3MTJjYjZlNGVmOGFiNmU0M2I0MmEyNzhkZjIxNTUyNTM2MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGFjMWUwZDllMGFjZjQ3OWY3NzJiZjlmNDE4ZTc4MmYzZDRhOWIzNmFkZTg2MDhhOWE2ZmRhY2NiZTgzZWVhZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTkyNmE3OTMyNDE5ZWY3NjFkOGE4ZDkwOWM4ZjYwNzcyYzQ5N2E4MjZjODBkYWIxYzg3MTUzNWY3ZmYyZDEyZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_862e938d7c5a408d8ef30945467df976",
+      "statement": "tests/ and tools/ are deliberately not in the read boundary because that is where the project's contracts are pinned — mise.toml cites test_external_contracts_live.py by name as the reason varlock is pinned, and install.sh precedence is asserted as order in test_install_script.py::TestPrecedence — and the tools/ exclusion was narrowed back to the generated fixture profiles it was meant to cover (tools/test-fixtures/profiles/) because excluding the whole directory made the wiki describe tools/run-tests.sh, tools/preflight.sh and tools/openwiki-drift.py from mise.toml and the CI workflows alone, which is how testing/verification-ladder.md came to overstate what the drift gate verifies (raised in review on #445).",
+      "evidence": [
+        {
+          "resource": "repo://.openwikiignore#L17-L33",
+          "version": "repo-lines-v1:sha256:4e51b0e25ba73892f1a47dfa368d7fc82d9bf50a529fd4df7ae87ad72772a358:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkODI5ZDYxZDlmNjVjNDFjNGVjNjNlMTVlMGVjNzZkMTAxYzhkNDNmZjk5NDJkOTQ3ZjIxMzkzYzQ0MzZiODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiMjcxZDI5NTlhYjc2ZWY1ODgxMTdkZTc5YjUyODAzOGU0ZGFjYWU2NDQyN2ViNGJjMDgwYzc4MzUwNWQ2NDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5YjEwNzE0Y2JlMjUyM2YwYzYwZWNmMjAyNjNkOGM1ODQ2MmE3ZGUxNjRiODIxMzFlZGUzNTkwNjdkY2U1MWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljYmZiMDc4Y2NjZTY0YzZjNDcyNmVlYWZkMzQ5OThiMzAxNzI4M2ZiMDQ2ZWYwZmFhOGJhOWViZjIwNzZiNDAifQ"
+        },
+        {
+          "resource": "repo://mise.toml#L8-L9",
+          "version": "repo-lines-v1:sha256:f485379bc6542f3896a28efe376e46b68ade476f325b057296e6bdcea4ce98cf:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2EyOTE5OGE4NWM4NDczODhlODVmZDNkMjIwMjY1NTc1ODI2Y2QyNzkzYWY5YmJlODZmOWRmZDExNzcyODRiNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGY4NDE3Y2Q2NjE2ZDViNjU5NGQ5Y2QyZGM0ZjNmMmMyMjAxOGM1NGE2Nzc4NmU1MWJkNzFjMDY0ODEwYWQ1MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2JjZjEzYTIyMzAzODlkNDUwMGExNjI4YWMxZjUzMGM1MjM5Y2U2MDQxNzc1M2NmNDg1YmRhMWJkNDE2ZGU4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWFhODU2MTRiMWU2M2E5NzU5NjI5Yjc3NTc4ODFmOTliYjU2Njc2ZGE2N2IxZTM3Y2E0YmZmN2EzM2Y0YmM1ZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_be4c89763c144654938aa68b86b185fa",
+      "statement": "The remaining .openwikiignore entries are derivations and noise, not project source: build and analysis artifacts (/profiles/, catalog-local/, mutants/, tool caches), editor and agent state (.serena/, .vscode/, .agents/, and the .claude/ remainder whose consequential half is the worktrees entry), web/ as unrelated to the shipped project, catalog/recipes.backlog (PLAN.md drafts for recipes that do not exist yet, which would describe capabilities the catalog lacks), and uv.lock as a machine-generated dependency graph with no prose signal.",
+      "evidence": [
+        {
+          "resource": "repo://.openwikiignore#L29-L59",
+          "version": "repo-lines-v1:sha256:e7d669e4adf993109165b0a8c4eb1820af97c179d6e61816d4e70c59c0437222:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmMjNjZDI1NWIxYThkYjA4N2VjOTQyODUxZTM1OTI0ZmVlYzlhNjg4OWEwZDQ0OGI2NjYwMGE2ODM5M2M4MDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0OWM4OGQ1OTE5YjhiMzRhNDZjMWU3M2NhMTc2MTc4MzI4YmY5Y2U0ODFiNjEzYTNmYTQ3MjA4YTQ5YjkyMTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyN2Y0YWRhOGEyOTVmNjNmN2NhN2E3NjAwOWI2NWExYTBiMWM0NDA3MzNmYTllNmZhYjIwMjI3ODY0NWQxNWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-09T09:34:57.295Z"
+  }
+}

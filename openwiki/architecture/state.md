@@ -1,16 +1,18 @@
 ---
 type: concept
 title: "State: what lives where on disk, staleness, and GC"
-description: "The complete host-side state model: XDG-rooted profiles, per-stack host homes, named podman volumes, persist entries, the generated catalog, and instance identity — plus how staleness is detected (existence, .build-stamp, the harnessed.recipe-hash image label, host/volume fingerprints) and what each garbage collector keys on."
-tags: [state, disk-layout, paths, staleness, fingerprint, garbage-collection, persist, volumes, instance-identity]
+description: "The complete host-side state model: XDG-rooted profiles, per-stack host homes, named podman volumes, persist entries, the generated catalog, the secrets-broker records, and instance identity — plus how staleness is detected (existence, .build-stamp, the harnessed.recipe-hash image label, host/volume fingerprints) and what each garbage collector keys on."
+tags: [state, disk-layout, paths, staleness, fingerprint, garbage-collection, persist, volumes, instance-identity, secrets-broker]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-ea70eb6c045047448e446296
     resource: repo://.gitignore
   - id: openwiki-source-c45652791b6bc8bb3a3f3d3e
     resource: repo://src/harnessed/assemble.py
+  - id: openwiki-source-085f2349c58adb4062c2803f
+    resource: repo://src/harnessed/broker.py
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
   - id: openwiki-source-0852603a38d760a77db2bc8a
@@ -45,7 +47,9 @@ sources:
     resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-7b7c2d242869fee851828868
+    resource: repo://tests/test_stable_port.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 ---
 
 # State: what lives where on disk, staleness, and GC
@@ -65,7 +69,10 @@ of re-deriving it.
 
 Related: [system overview](/openwiki/architecture/overview.md),
 [catalog and schema](/openwiki/architecture/catalog-and-schema.md),
-[service sidecars](/openwiki/architecture/services.md) — sidecar identity and drift —
+[service sidecars](/openwiki/architecture/services.md) — sidecar identity, drift, and the stable-port registry —
+[the host secrets broker](/openwiki/architecture/secrets-broker.md) — the broker record's lifecycle —
+[the host run backend](/openwiki/workflows/host-run.md) — the host home's rebuild lifecycle —
+[credentials](/openwiki/concepts/credentials.md) — the secrets these trees deliberately do not hold,
 [build pipeline](/openwiki/workflows/build.md),
 [dynamic stacks](/openwiki/workflows/dynamic-stacks.md).
 
@@ -94,6 +101,7 @@ flowchart LR
     subgraph ST["XDG_STATE_HOME / harnessed"]
         dism["setup-dismissed/INSTANCE"]
         att["attached/INSTANCE"]
+        brk["brokers/INSTANCE.json + INSTANCE-certs/"]
         sec["svc-secrets/"]
         penv["project-env/HASH.env"]
         iso["INSTANCE/isolated-auth and keyrings"]
@@ -106,7 +114,7 @@ flowchart LR
 ```
 
 *Every harnessed state root, with the module that owns it. `paths.py` computes all of the
-filesystem paths; `volumes.py` names and labels the volumes.*
+filesystem paths; `broker.py` and `volumes.py` name theirs under the same XDG conventions.*
 
 | What | Path | Owner | Notes |
 | --- | --- | --- | --- |
@@ -119,6 +127,7 @@ filesystem paths; `volumes.py` names and labels the volumes.*
 | Stable port registry | `$XDG_DATA_HOME/harnessed/svc-ports.json` | `paths.svc_ports_file` | ONE file per machine, data not state — losing it re-allocates ports already written into projects' `mise.local.toml`. Mutated under an exclusive flock on a sibling `.lock`. |
 | Setup-dismissed flags | `$XDG_STATE_HOME/harnessed/setup-dismissed/<instance_name>` | `paths.setup_dismissed_flag` | Existence means "dismissed", keyed per (stack, harness, project). |
 | Attach markers | `$XDG_STATE_HOME/harnessed/attached/<instance>` | `launcher._attach_marker` | mtime records the last interactive attach; drives `harnessed prune`'s idle threshold. |
+| Secrets-broker records | `$XDG_STATE_HOME/harnessed/brokers/<instance>.json` + `<instance>-certs/` | `broker.state_dir` / `broker.state_path` | Exactly five fields — instance, pod, session, port, cert dir — so "leaks no secret" holds **by construction, not by redaction**. Written atomically (tmp file + `os.replace`) because `harnessed list` and the teardown paths read it while a launch may be writing it. A corrupt record reads as **absent** — which is what `broker.reconcile` reaps. **Not disposable**: see the warning below. Lifecycle: [secrets broker](/openwiki/architecture/secrets-broker.md). |
 | Service secrets | `$XDG_STATE_HOME/harnessed/svc-secrets/<name>-<key>` | `svcstate._svc_password` | Machine-local, `0600` in a `0700` dir — never in a service data dir that might be a repo. |
 | Project tool env | `$XDG_STATE_HOME/harnessed/project-env/<project_hash>.env` | `setupenv.project_env_path` | The one file that hands the *project* (not just the agent) the same tool env, including the service password. Keyed by git-common-dir hash. |
 | Per-instance identity | `$XDG_STATE_HOME/harnessed/<instance>/…` | `mounts._isolated_auth_store`, `mounts._keyring_state_mount` | `isolated-auth/credentials.json` (claude) and `keyrings/` (antigravity) — survive a recreate, wiped only by `--fresh`. |
@@ -132,24 +141,58 @@ throwaway" — only `harnessed clean` deletes them, and nothing else ever does, 
 profile-existence check below is meaningful. The install cache, by contrast, is genuinely
 disposable: a miss costs a re-fetch, never correctness.
 
+**Do not treat `brokers/` as disposable.** Every other state dir here can be deleted at the cost of
+a rebuild or a re-auth; the broker record cannot. It is the *only* thing that tells any cleanup
+path a broker exists: `broker.start` writes it only after the session is confirmed live, so a live
+host process holding real secrets with no record is invisible to `broker.stop`, to pod teardown,
+and to `broker.reconcile` — which reads *filenames* to find its subjects and is the reaper that
+fixes stale and corrupt records, precisely because it cannot see what has no record. Deleting the
+record of a running broker doesn't clean up; it orphans. Corrupt records are the opposite case:
+`read` treats one as absent rather than raising (a cleanup command must not die on the file it is
+cleaning up), and `reconcile` is what removes them. The full spawn/poll/record/stop/reconcile
+lifecycle is on [the secrets broker page](/openwiki/architecture/secrets-broker.md).
+
 ## Instance identity: one hash everywhere
 
 ```python
-project_hash   = sha1(normalized project path)[:8]     # paths.project_hash
+project_hash   = sha1(normalized path)[:8]     # paths.project_hash — ONE hash function
 instance_name  = harnessed-<harness>-<stack>-<project_hash>   # paths.instance_name
 ```
 
-`project_hash` is the **only** per-project key: `instance_name` (the pod name) and the persist-dir
-layout (`persist/<recipe>/<project_hash>/<name>/`) both call it, and no caller recomputes the
-digest independently. That single-sourcing is the invariant that keeps the pod name and its data
-from drifting apart on a trailing slash or a symlink — the same `.rstrip("/")` normalization
-governs both. Consumers of the one format include `harnessed build`'s reconciliation, `harnessed
-stop`/`rm`/`prune` (which match instances by a `-<stack>-[0-9a-f]{8}$` regex), the capability
-test (which derives the pod name from `paths.instance_name` instead of scraping launcher stdout),
-and `svcstate._stack_from_instance_name` (which parses the name back into a stack). Beyond the
-pod name, the *same* key names the per-instance state dirs: `setup_dismissed_flag`,
-`_attach_marker`, and `mounts`' isolated-auth/keyring stores all key on `instance_name`, which is
-why `--fresh` — not "delete the pod" — is what clears an isolated login.
+The rule is **one hash function, two normalized inputs**. `paths.project_hash` — a **one-way
+SHA1[:8]** over the normalized path, one-wayness `persist_gc.py` states as a design constraint — is
+the only digest any caller computes: `instance_name` and the persist-dir resolution both call it,
+and no caller recomputes it independently, so the pod name and its persisted data can never drift
+apart on a trailing slash or a symlink (the same `.rstrip("/")` normalization governs both). But
+there are **two** normalized inputs, and they key different state:
+
+- **The worktree / launch path** keys instance naming — `paths.instance_name`, and through it the
+  per-instance state dirs (`setup-dismissed`, `attached`, the isolated-auth and keyring stores) —
+  plus **workspace-scoped** persist dirs (`persist/<recipe>/<workspace-hash>/<name>/`, one dir per
+  worktree by design).
+- **The git common dir** keys everything project-scoped: `scope: project` persist dirs
+  (`paths.persist_project_dir`), **project-scoped service containers** (`svcstate._svc_project_key`
+  hashes the common dir so every worktree of one checkout shares ONE sidecar — the whole point,
+  since a dolt server holds an exclusive lock on its data dir), and the **project tool-env file**
+  (`setupenv.project_env_path`).
+
+Both inputs go through the same function, so the framing matters operationally: the worktree-path
+digest is *not* "the only per-project key". Deleting state because it does not match "the" project
+hash — a project-scoped service's container or data dir, the `project-env/<hash>.env` file — would
+orphan what every worktree of the checkout shares. The [services page](/openwiki/architecture/services.md)'s
+identity table names the common-dir hash as the service key for exactly this reason.
+
+Consumers of the name all go through `paths.instance_name` rather than their own parsing:
+`harnessed stop`/`rm` match a stack's instances with a `-<stack>-[0-9a-f]{8}$` regex (`prune` needs
+no regex — it enumerates every `harnessed-` container and gates on the `attached/<instance>`
+marker, below); the capability test derives the pod name from `paths.instance_name` instead of
+scraping launcher stdout; and `svcstate._stack_from_instance_name` parses the name back into a
+stack — stripping the **longest** known harness prefix and a known project-hash suffix, never
+splitting on hyphens, because stack names contain them (`harnessed build`'s reconciliation reads
+the sibling image-repo format `harnessed-<harness>-<stack>`, no hash, by the same prefix
+technique). And because the per-instance state dirs key on the instance *name*, they survive any
+number of pod recreations — which is why `--fresh`, not "delete the pod", is what clears an
+isolated login.
 
 Two refinements keep the scheme usable:
 
@@ -171,6 +214,35 @@ Two refinements keep the scheme usable:
   raises rather than falls back for exactly this reason (bd harnessed-654); the lossy
   `git_common_dir` twin stays for the fifteen-odd callers that only want "a repo root if there is
   one".
+
+## Persisted vs. re-derived
+
+The state model's default is **derive, don't store**: names, hashes, container identities, and
+ephemeral ports are pure functions of (manifest, project path) recomputed on every launch —
+svcstate's stated reason is that "deriving rather than storing is what lets a second launch find
+the same service instead of starting a duplicate". Only values whose recomputation would falsify
+something *already written down elsewhere* are persisted. Read the table with that rule in mind,
+so the disk map above never reads as "everything is ephemeral" or "everything survives":
+
+| Survives reboot / `--fresh` / pod recreation | Where | Why it must be persisted |
+| --- | --- | --- |
+| `publish: stable` service port | `$XDG_DATA_HOME/harnessed/svc-ports.json` (XDG **data**) | The project's own `mise.local.toml` names the number, so re-allocating it silently falsifies every config that names it. One machine-wide registry — a per-project file cannot answer "is this port promised to some other project?" — mutated under an exclusive `flock` on a sibling `.lock`, and an entry is kept even while its own sidecar is holding the port. |
+| Service password | `$XDG_STATE_HOME/harnessed/svc-secrets/<name>-<key>` (`0600`, dir `0700`) | Created once, reused forever — clients already hold it. Machine-local, never in a service data dir that might be a repo. |
+| Broker record (while the broker lives) | `brokers/<instance>.json` | The cleanup paths' only handle on the host process (warning above). |
+| Project tool env | `project-env/<hash>.env` | Read by mise/direnv outside any harnessed process; includes the service password. |
+| The content trees — profiles, host homes, volumes, persist dirs, install cache | Disk map above | The expensive part; freshness-gated, never recomputed from scratch except on a fingerprint move. |
+
+| Recomputed every launch — deliberately never stored | Why storing it would be the bug |
+| --- | --- |
+| Instance name, project hash | Pure functions of the launch path; a stored copy is a second thing to keep in sync and a stale-copy failure waiting to happen. |
+| Service container name (`harnessed-svc-<name>-<key>`) | Recomputed from the manifest plus the project key — the property that lets a second launch find the same sidecar instead of starting a duplicate. |
+| `publish: ephemeral` port | Changes whenever the container is recreated; re-read from `podman port` at every launch and deliberately not cached anywhere — a stale copy in a file or an env var is exactly the failure that refusal exists to avoid. |
+
+So the answer to "is harnessed state ephemeral?" is: the **identity** is, the **values other
+systems already consume** are not. Container identity and ephemeral ports evaporate with the
+container and nothing mourns them; the stable port and the password outlive every pod — and
+accordingly no GC targets them, because deleting them would *be* the failure rather than a
+reclamation.
 
 ## Persist entries: three scopes, two locations, one gate
 
@@ -440,6 +512,11 @@ Each GC keys on a different artifact, and the keying is deliberate:
   pure cache; remove it by hand if you want the space. `rm`/`prune` deliberately leave named
   volumes alone, and `clean` purges the profiles root rather than the volumes, so nothing else
   reclaims them.
+- **`broker.reconcile`** — the sweep behind the broker records: stops every recorded broker whose
+  pod is gone and reaps corrupt records, run by `harnessed list` *before* it reports, so it doubles
+  as the periodic cleanup for every teardown path that never ran (a crashed launcher, a hand-run
+  `podman pod rm`, a host reboot — issue #437, F-a). It is the only reaper brokers have, which is
+  why the record must always outlive the broker it names (see the warning above).
 - **`harnessed-tools persist-list` / `persist-prune`** (`persist_gc.py`) — lists every
   `persist/<recipe>/<project_hash>/<name>` triplet with disk usage, and prunes by **re-deriving**
   the hash from the original project path you supply. Because `project_hash` is a one-way SHA1[:8],

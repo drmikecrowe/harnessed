@@ -5,7 +5,7 @@ description: "The host-side secrets broker (Epic #388 Phase 1, Topology B): why 
 tags: [secrets-broker, varlock, credential-proxy, topology-b, pasta, egress-firewall, teardown, reconcile, no-secrets, pod]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-02T20:26:19.165Z
+    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-f82224b7b5b27300d9ecc2dc
     resource: repo://catalog/base/egress-firewall.sh
@@ -31,7 +31,7 @@ sources:
     resource: repo://tests/test_launch_parity.py
   - id: openwiki-source-bbf9cc1f144f5efff8ae1505
     resource: repo://tests/test_module_boundaries.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-02T20:26:19.165Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 ---
 
 # The host secrets broker: one varlock proxy per instance (Topology B)
@@ -389,6 +389,8 @@ and is barred from importing launcher — dependencies point into the modules, n
   that today still delivers real values to the pod, and the 60-second unlock timeout.
 - [Precedence](../concepts/precedence.md) — the global-then-project `--env-file` layering the
   composed schema-dir order mirrors.
+- [State](state.md) — the on-disk neighborhood the broker records live in: the XDG state home and
+  the attach-marker convention `broker.state_dir` mirrors.
 - [Invariants](../concepts/invariants.md) — the fail-closed egress firewall and the deliberately
   unscoped broker door rule.
 - [container-run](../workflows/container-run.md) — the launch sequence the gate and teardown sit in.

@@ -5,7 +5,7 @@ description: "The reference for the credential-proxy migration vocabulary in lau
 tags: [credential-proxy, varlock, secrets-broker, env-schema, proxy-modes, readiness-warning, launch-gate]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-07T12:53:44.965Z
+    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-e7286046ccb85d63b8a07621
     resource: repo://.env.schema.example

@@ -10,6 +10,8 @@ sources:
     resource: repo://catalog/base/Dockerfile.harnessed-claude
   - id: openwiki-source-c799522f988c7842c7395388
     resource: repo://catalog/base/harnessed-scan
+  - id: openwiki-source-23775c3de52f3ab95a13cb8b
+    resource: repo://README.md
   - id: openwiki-source-c45652791b6bc8bb3a3f3d3e
     resource: repo://src/harnessed/assemble.py
   - id: openwiki-source-bfccb812c84b1bb2eeabf062
@@ -38,10 +40,10 @@ sources:
     resource: repo://src/harnessed/synclinks.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-02T20:26:19.165Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-02T20:26:19.165Z
+    at: 2026-09-08T23:17:55.419Z
 ---
 
 # Build pipeline: from stack and harness to profile, images, and populated volumes
@@ -325,23 +327,28 @@ resolve.
 The cache consequence is the one to hold onto: an agent pin bump produces a new parent image, which
 invalidates the cached layers of every derived stack image built `FROM` it — each stack's expensive
 recipe layers (the apt/root bodies the volumes cannot carry) rebuild for a change that touched no
-recipe. That is the cost the launcher's comments say "agent-last" was meant to remove.
+recipe.
 
-**`launcher.py` and `emit.py` currently disagree about the lineage.** Three launcher comments
-assert an "agent-last" design: that the standalone agent image "is no longer the FROM parent of the
-derived stack images" and that `emit.write_derived_dockerfile` "inlines the agent's Dockerfile body
-as their LAST layers instead". The emitter implements no such inlining — `write_derived_dockerfile`
-takes only `(profile_dir, stack_name, harness, recipes)`, reads no agent manifest at all, and emits
-exactly the `FROM harnessed-${HARNESS}` header plus recipe `env:` and bodies; and `_build_stack`
-itself says "Always rebuild the parameterised base first: the derived image is `FROM
-harnessed-base`". So the agent-parent lineage is what the code builds today, and the "agent-last"
-comments are the intended-but-not-implemented half. Anyone touching the lineage must settle it
-deliberately: change the emitter's `FROM`, the launcher's lineage comments, and the agent
-Dockerfiles **together**, and re-check that an agent bump leaves the per-stack recipe layers cached.
-**The invariant is the cache property, not any single line.**
+**The repo disagrees with itself about the lineage, and the code sides with the parent lineage.**
+README's "Why the agent installs last" paragraph and three launcher comments assert an "agent-last"
+design: the standalone agent image "is no longer the FROM parent of the derived stack images"
+because the emitter "inlines the agent's Dockerfile body as their LAST layers instead" — under which
+an agent bump would rebuild only the agent layer plus the scan while the recipe layers stay cached
+and harness-independent (a stack declaring `harnesses: [claude, omp]` would build its recipe layers
+once and both harnesses would share them). The emitter implements no such inlining —
+`write_derived_dockerfile` takes only `(profile_dir, stack_name, harness, recipes)`, reads no agent
+manifest at all, and emits exactly the `FROM harnessed-${HARNESS}` header plus recipe `env:` and
+bodies. So the agent-parent lineage is what the code builds today, and the agent-last rationale —
+including its "an agent bump rebuilds only the agent layer + scan" cache property — is the
+intended-but-not-implemented half; the bump cost that rationale exists to remove is the cost
+currently being paid. Anyone touching the lineage must settle it deliberately: change the emitter's
+`FROM`, the launcher's lineage comments, the README paragraph, and the agent Dockerfiles
+**together**, and re-check that an agent bump leaves the per-stack recipe layers cached. **The
+invariant is the cache property, not any single line.**
 
-`_build_agent_image` still runs once per process, and must keep running: `container-run` falls back
-to the plain agent image for a stack that has no derived image yet
+One half of the agent-last story IS true today, and it is why `_build_agent_image` still runs once
+per process and must keep doing so: the plain agent image is the **fallback** a container launch
+uses for a stack that has no derived image yet
 (`derived if _image_exists(rt, derived) else _agent_image(harness)`).
 
 ### The staged build context

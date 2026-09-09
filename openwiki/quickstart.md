@@ -5,7 +5,7 @@ description: "Entry point for working on harnessed: the mise/uv toolchain and th
 tags: [quickstart, dev-setup, mise, uv, run-tests, preflight, openwiki-drift, cli, task-routing]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-04T00:21:37.938Z
+    at: 2026-09-09T09:34:57.295Z
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
@@ -43,7 +43,7 @@ sources:
     resource: repo://tools/preflight.sh
   - id: openwiki-source-bb9438d561f4cbb6d5d38c49
     resource: repo://tools/run-tests.sh
-generated: { by: "openwiki/0.4.3", at: "2026-09-04T00:21:37.938Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
 ---
 
 # Quickstart: set up, build, launch, and where to read next
@@ -56,15 +56,16 @@ wiki page lives.
 
 Related: [what each gate proves](/openwiki/testing/verification-ladder.md),
 [the command surface](/openwiki/operations/cli.md),
+[wiki automation](/openwiki/operations/wiki-automation.md),
 [system overview](/openwiki/architecture/overview.md).
 
 ## Prerequisites
 
 | Tool | Required? | Why |
 | --- | --- | --- |
-| **mise** | yes | Owns the venv activation and the non-Python analysis tools. `pyright` and `shellcheck` are installed by `mise.toml`'s `[tools]` (pinned `npm:pyright` and `shellcheck` versions), so **the lint layers cannot run without mise** — `tools/preflight.sh` reports them as skipped rather than passing silently. `tools/run-tests.sh` shells out to mise on its first line and fails with "is mise installed and on PATH?" without it. |
+| **mise** | yes | Owns the venv activation and the non-Python analysis tools. `mise.toml`'s `[tools]` declares and pins them rather than assuming them on PATH: `shellcheck` 0.11.0 and `npm:pyright` 1.1.411 (what the lint layers run), plus `npm:varlock` 1.16.1 and `npm:openwiki` 0.4.3 (what the wiki tasks run). **The lint layers cannot run without mise** — `tools/preflight.sh` reports them as skipped rather than passing silently. `tools/run-tests.sh` shells out to mise on its first line and fails with "is mise installed and on PATH?" without it. |
 | **uv** | yes | Creates the Python venv, installs harnessed editable plus the `dev` extra (pytest, ruff, hypothesis, pytest-randomly, …). |
-| **podman** or **docker** | only for live work | Needed by the live test layer behind `HARNESSED_PODMAN=1`, by `harnessed test`, and by `container-run`. The hermetic suite and `harnessed-tools`' emit-only verbs run with no runtime installed at all. `_runtime()` prefers podman and exits when neither is on PATH. |
+| **podman** or **docker** | only for live work | Needed by the live test layer behind `HARNESSED_PODMAN=1`, by `harnessed test`, and by `container-run`. The hermetic suite and `harnessed-tools`' emit-only verbs run with no runtime installed at all. `_runtime()` prefers podman, falls back to docker, and exits when neither is on PATH. |
 
 Python versioning is a floor, not a preference: `mise.toml` pins `UV_PYTHON = "3.12"` — the floor of
 `requires-python = ">=3.12"` and what CI's default job runs — because an unpinned uv picks the newest
@@ -167,17 +168,46 @@ Two things to know about how preflight reports:
 
 ## The wiki's own gate: `mise run openwiki-drift`
 
-Before trusting any page in `openwiki/` — including this one — run:
+Before trusting any page in `openwiki/` — including this one — and before deciding whether a wiki
+update run is worth spending at all, run:
 
 ```bash
 mise run openwiki-drift
 ```
 
-The task runs `tools/openwiki-drift.py`: no model call, no network, no credentials. It recomputes
-each Claim's line-ranged evidence digest against the tree and exits non-zero when cited code
-actually changed (exit `0` nothing changed, `1` at least one Claim's code changed or its file is
-gone, `2` the wiki or its Claims are unreadable/malformed). Its coverage is precise, and the
-boundaries matter:
+The task is the cheap one in the `openwiki-*` family by construction: `[tasks.openwiki-drift]` in
+`mise.toml` is not interactive and wraps nothing — no varlock, no model, no network, no credential.
+It runs `tools/openwiki-drift.py`, which recomputes each Claim's line-ranged evidence digest against
+the tree and signals entirely through its exit status (`0` nothing changed, `1` at least one
+Claim's cited code changed or its file is gone, `2` the wiki or its Claims are unreadable or
+malformed). That is what makes "which pages are lying" a check you can run anywhere, rather than a
+regeneration you have to set up for.
+
+The rest of the family is the expensive path. `mise run openwiki-update` — the regeneration — is
+deliberately `interactive = true` and routes the generator through `vars.openwiki_env`: an
+`env -u` of leftover provider exports wrapped in `varlock run` against `~/.config/harnessed`,
+because that task talks to a model. `openwiki-init` and `openwiki-chat` are interactive sessions
+for the same reason (`openwiki-visualize` needs no credential, but only serves local Markdown).
+Run drift first: exit `0` and there is nothing a regeneration would fix; exit `1` and it names the
+Claims whose cited code changed or whose file is gone. How the update run, its retry patch, and the
+scheduled CI workflow that banks regenerated pages as a PR actually work is
+[wiki automation](/openwiki/operations/wiki-automation.md).
+
+Two placement rules for the family, both easy to trip over:
+
+- The tools it runs through are mise-pinned, not PATH assumptions: `[tools]` pins `npm:varlock`
+  1.16.1 (the resolver behind the `varlock run` wrapper) and `npm:openwiki` 0.4.3 itself — and the
+  openwiki entry carries **two required escape hatches** without which `mise install` fails in ways
+  that do not look like packaging problems: `trust_policy_excludes` (fastq ships no provenance
+  attestation, so the no-downgrade trust policy refuses the whole install) and `allow_builds` (the
+  install backend denies dependency lifecycle scripts, and better-sqlite3's `install` script is
+  what produces its native binding — denied, the install still reports success and every openwiki
+  run dies at "Could not locate the bindings file").
+- Run the family from `main/`, not a task worktree: `docs/` is a gitignored live clone of the
+  GitHub wiki, so a worktree checkout does not have it, and a wiki run from there would be written
+  from an incomplete view of the project's own documentation.
+
+The drift check's coverage is precise, and the boundaries matter:
 
 - It verifies evidence carrying a `repo://<path>#L<a>-L<b>` range. **Whole-file evidence and
   unknown version schemes are counted and reported as `skipped`, never verified.**
@@ -247,7 +277,7 @@ flowchart TD
     lintonly --> wiki{"reading or editing openwiki pages"}
     allgates --> wiki
     pre --> wiki
-    wiki -->|"yes"| drift["mise run openwiki-drift - before trusting any page"]
+    wiki -->|"yes"| drift["mise run openwiki-drift - before trusting any page, before any update run"]
     wiki -->|"no"| pr["open the PR"]
     drift --> pr
 ```
@@ -263,7 +293,7 @@ Route by task, not by directory. The index files under each directory list the s
 | --- | --- |
 | What harnessed is; the module map; the precise vocabulary (agent, recipe, service, stack) | [architecture/overview](/openwiki/architecture/overview.md) |
 | What a backend is; the six-capability contract; what container vs host mode honors | [architecture/backends](/openwiki/architecture/backends.md) |
-| How catalog content is validated, resolved across roots, overlaid, and shipped in the wheel | [architecture/catalog-and-schema](/openwiki/architecture/catalog-and-schema.md) |
+| How catalog content is validated, resolved across roots, overlaid, and shipped in the wheel — plus the weekly pin sweep | [architecture/catalog-and-schema](/openwiki/architecture/catalog-and-schema.md) |
 | What lives where on disk; staleness detection; what each GC keys on | [architecture/state](/openwiki/architecture/state.md) |
 | How service sidecars get identity, ports, sockets, and guards | [architecture/services](/openwiki/architecture/services.md) |
 | The host secrets broker: the proxy per instance, the spawn/stop lifecycle, the pod's door | [architecture/secrets-broker](/openwiki/architecture/secrets-broker.md) |
@@ -279,6 +309,8 @@ Route by task, not by directory. The index files under each directory list the s
 | The folder-env and install-env contracts recipes may rely on | [concepts/env-contract](/openwiki/concepts/env-contract.md) |
 | What each verification gate proves and what it does not | [testing/verification-ladder](/openwiki/testing/verification-ladder.md) |
 | The full verb surface and the lifecycle each verb manages | [operations/cli](/openwiki/operations/cli.md) |
-| Image scans, catalog pins, and per-recipe tool locks | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
+| The image-scan layer: the CVSS severity gate, build-then-scan ordering, and the nightly online rescan | [operations/supply-chain](/openwiki/operations/supply-chain.md) |
+| How this wiki regenerates and validates itself: the mise `openwiki-*` tasks, the retry patch, and the CI update workflow that banks pages as a PR | [operations/wiki-automation](/openwiki/operations/wiki-automation.md) |
 | How the five harnesses read the one Claude-canonical profile | [integrations/harnesses](/openwiki/integrations/harnesses.md) |
 | The aoe tmux bridge and the per-project launch scripts a launch writes | [integrations/aoe-and-launch-scripts](/openwiki/integrations/aoe-and-launch-scripts.md) |
+| The openwiki recipe/stack pairing: this wiki's own generator as catalog content | [integrations/openwiki-recipe](/openwiki/integrations/openwiki-recipe.md) |

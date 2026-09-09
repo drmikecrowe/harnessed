@@ -1,16 +1,17 @@
 ---
 type: concept
 title: "Precedence: who wins when sources conflict"
-description: "The single page of conflict-resolution rules in harnessed: layered env files (global vs project, last-wins, empty=off), recipe env vs harnessed-owned values, the install-contract order in both launch modes, the settings.json merge direction across profile, volume and host, catalog-root shadowing, stack extends unions/overrides, and the shipped default-stack baseline."
-tags: [precedence, env-files, env-contract, settings-merge, catalog-roots, stack-extends, default-stack, last-wins, overlay]
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+description: "The single page of conflict-resolution rules in harnessed: layered env files (global vs project, last-wins, empty=off), declared schema vs stale shell export (both varlock's own semantics and the host launcher), the secrets broker must resolve the same composed set the --env-file path resolves, recipe env vs harnessed-owned values, the install-contract order in both launch modes, the settings.json merge direction across profile, volume and host, catalog-root shadowing, stack extends unions/overrides, the shipped default-stack baseline, and which running stack owns a service sidecar."
+tags: [precedence, env-files, env-contract, settings-merge, catalog-roots, stack-extends, default-stack, last-wins, overlay, secrets-broker, mise]
 sources:
   - id: openwiki-source-147a7f2a13ce71e3e9764942
     resource: repo://catalog/recipes/default/recipe.yaml
   - id: openwiki-source-e9cc6c20ea9b111b6ff0861e
     resource: repo://catalog/stacks/default/stack.yaml
+  - id: openwiki-source-72b5d686f860ea86c8592080
+    resource: repo://mise.toml
+  - id: openwiki-source-085f2349c58adb4062c2803f
+    resource: repo://src/harnessed/broker.py
   - id: openwiki-source-bfccb812c84b1bb2eeabf062
     resource: repo://src/harnessed/catalogseed.py
   - id: openwiki-source-fda34f6ee97382e9146f13b4
@@ -35,24 +36,33 @@ sources:
     resource: repo://src/harnessed/schema.py
   - id: openwiki-source-2e234f8645cb88b1fd759f98
     resource: repo://src/harnessed/setupenv.py
+  - id: openwiki-source-5e89566b7a4e43a53be5c7b2
+    resource: repo://src/harnessed/svcstate.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-568f82b2292ea5e02ccb4db8
+    resource: repo://tests/test_install_script.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-09T09:34:57.295Z
 ---
 
 # Precedence: who wins when sources conflict
 
 harnessed deliberately lets the same value arrive from several places: a user-global secrets schema,
 a per-project `.env`, a stale shell export, a recipe's `env:`, harnessed's own contract keys, an
-install script's output, a parent stack, an overlay catalog. Every one of those overlaps is settled
-by a rule that names a **winner**, and in almost every case the code records the production failure
-the *loser* of that rule once produced. This page is the single list of those rules; each section
-states the winner first and the bug second.
+install script's output, a parent stack, an overlay catalog, the secrets broker's schema set. Every
+one of those overlaps is settled by a rule that names a **winner**, and in almost every case the code
+records the production failure the *loser* of that rule once produced. This page is the single list
+of those rules; each section states the winner first and the bug second.
 
 | Conflict | Winner | The failure the loser produced |
 | --- | --- | --- |
-| global vs project env-file | **LAST assignment wins** (project) | a first-hit presence check left the pod with no usable token *and* no credentials (bd harnessed-7bk) |
+| global vs project env-file | **LAST assignment wins** (project) — the order *is* the mechanism | a first-hit presence check left the pod with no usable token *and* no credentials (bd harnessed-7bk) |
 | env-file vs host shell export | **any env-file declaration, empty included** | a stale export outranked every declared source, so a per-project token could never take effect (bd harnessed-36l) |
+| varlock schema vs the invoking shell | **the schema** — the shell is stripped (`env -u`) before `varlock run`, and the host launcher applies resolved values over `os.environ` | a leftover `OPENWIKI_PROVIDER=openai-compatible` export silently repointed a 13-hour wiki run (2026-09-04); a shell `OPENWIKI_MAX_OUTPUT_TOKENS=32768` beat the schema's 20000 and killed the run's one non-streaming call (2026-09-08) |
+| env-file set vs secrets-broker set | **the same composed set** — the broker gate mirrors `_resolve_launch_secrets` | #439: the pod would hold placeholders for secrets the broker never loaded |
 | empty value vs absent | **empty is a declaration meaning OFF** | forwarding past it would override the very intent that declared it |
 | recipe `env:` vs harnessed-owned keys | **harnessed-owned** | the host and container winners drifted (bd harnessed-8px.2) |
 | baked image ENV vs launch-time re-application | **launch re-application (full resolved set)** | project-templated vars missing from the running agent's env |
@@ -65,6 +75,7 @@ states the winner first and the bug second.
 | parent vs child `extends:` fields | **child overrides; omissions inherit; the four list fields union** | tolerant parsing let a pre-feature `extends:` inherit nothing for months |
 | inherited `CLAUDE_CONFIG_DIR` vs the pinned stack home | **pinned, applied LAST** (bd harnessed-8px.26) | gsd-core's install.sh wrote 69 skills into an unrelated stack's home |
 | shipped `default` stack vs a user's own | **the user overlay replaces it wholesale** | a policy-bearing shipped baseline would silently tax every dynamic stack |
+| running vs stopped instance → which stack owns a sidecar | **running instances win outright**; longest harness prefix parses the name | a stopped stack-you-used-once would quietly decide which persist entry the rebuilt sidecar serves |
 
 ---
 
@@ -72,10 +83,10 @@ states the winner first and the bug second.
 
 Launch-time secrets come from two directories read in a fixed order — the user-global
 `~/.config/harnessed/` first, the project directory second. **The project wins**, and the ordering
-*is* the mechanism: the container path returns the files as an ordered `--env-file` list, and podman
-applies env-files last-wins, so a later project value overrides the global one. The host path
-(`_resolve_launch_env`) reads the same sources in the same order into a `KEY -> value` map; the two
-shapes live in one module precisely so the two backends cannot drift.
+*is* the mechanism, not a set of values: the container path returns the files as an ordered
+`--env-file` list, and podman applies env-files last-wins, so a later project value overrides the
+global one. The host path (`_resolve_launch_env`) reads the same sources in the same order into a
+`KEY -> value` map; the two shapes live in one module precisely so the two backends cannot drift.
 
 Within a single directory the `.env.schema` **wins over a sibling `.env`** — varlock itself cascades
 `.env` / `.env.local` overlays on top of the schema — while a bare `.env` is read literally (no
@@ -119,6 +130,49 @@ otherwise walk straight past the other suppressions. Rewriting them in place is 
 every path `_resolve_launch_secrets` returns is a mode-0600 temp harnessed generated — a plain
 `.env` is copied, never handed to podman directly.
 
+## Declared schema vs the invoking shell
+
+One layer *below* the env-file conflicts sits a conflict inside varlock itself: **varlock lets a
+`process.env` value override the schema it resolves**, so whatever shell invokes a varlock consumer
+is a competing source. Both production consumers now win that conflict explicitly:
+
+- **The mise `openwiki` tasks strip the shell first.** The shared `openwiki_env` variable prefixes
+  `varlock run` with `env -u` of the full provider surface — eight names: `OPENWIKI_PROVIDER`,
+  `OPENWIKI_MODEL_ID`, `OPENWIKI_MAX_OUTPUT_TOKENS`, `OPENWIKI_OPENAI_COMPATIBLE_STREAMING`,
+  `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_BASE_URL`, `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_BASE_URL`. Note the streaming flag is its own `OPENWIKI_`-prefixed variable, not part
+  of the openai-compatible key/URL pair — all four `OPENWIKI_*` names are stripped alongside the
+  two `OPENAI_COMPATIBLE_*` and two `ANTHROPIC_*` ones. Neither incident it guards against was
+  hypothetical: on 2026-09-04 leftover `OPENWIKI_PROVIDER=openai-compatible` +
+  `OPENWIKI_OPENAI_COMPATIBLE_STREAMING=true` exports made every schema correction look broken for a
+  13-hour run, and on run 7 (2026-09-08) a shell export of `OPENWIKI_MAX_OUTPUT_TOKENS=32768` beat
+  the schema's 20000 — the `@anthropic-ai/sdk` client guard refuses any non-streaming call whose
+  cap exceeds 21,333, and the planner is that one non-streaming call, so the run died there twice.
+- **harnessed's host launcher takes the same stance.** `_launch_host` applies
+  `_resolve_launch_env`'s resolved map over `os.environ` unconditionally — a declared schema value
+  overwrites an inherited shell value of the same name, because "letting a stale export in the
+  invoking shell silently beat it is the failure mode that is hardest to see from inside a
+  session". The recipe-env and folder-env layers that follow inherit the same property.
+
+The rule in both places is the same shape: the declared source of truth wins, and a value that
+merely happens to be in the environment loses — removal or overwrite, not "check first".
+
+## The broker must resolve the same set the env-file path resolves
+
+When a schema opts into the credential-proxy model, a secrets broker resolves values on the host and
+the pod holds placeholders. That makes the broker's schema-dir selection a precedence conflict of
+its own: **the broker must resolve the SAME composed set the `--env-file` path resolves.**
+
+`proxy_schema_dirs` therefore does not invent its own selection — it deliberately mirrors
+`_resolve_launch_secrets`: user-global `~/.config/harnessed` first, then the project, in
+`--env-file` order, gated by a cheap text test for a `@proxy` annotation (so a launch that opted into
+nothing buys no resolving subprocess — `varlock proxy rules` can sit on a 1Password unlock prompt).
+The chain is `_broker_start_for` → `proxy_schema_dirs` → `broker.start`, and `broker.start` passes
+each dir to `varlock proxy start` as a repeatable `--path`, "rather than a subset that silently
+omits half the user's secrets". If the two selections ever diverged, #439 is the failure: the pod's
+env becomes placeholders for items the broker never loaded, and the agent holds real-looking values
+no upstream accepts.
+
 ## Recipe `env:` vs harnessed-owned values
 
 Two arenas, one winner in both: **harnessed-owned values beat catalog-authored `env:`, and
@@ -130,7 +184,8 @@ catalog-authored values beat whatever the process inherited.**
 harness owns. That matches host mode, where `_recipe_env` is applied to `os.environ` and the
 folder-env contract overwrites it afterwards. Reversing the pair silently inverts precedence between
 the modes — the drift was caught while merging two changes that were each self-consistent alone
-(harnessed-0tk.7 and harnessed-8px.2).
+(harnessed-0tk.7 and harnessed-8px.2), and is pinned by a test that asserts the ORDER of the argv,
+not its values.
 
 **The host launch.** `os.environ` is the box, and `_launch_host` updates it in a deliberate order:
 launch secrets first, recipe `env:` second, the folder-env contract last. Each layer overrides the
@@ -148,8 +203,8 @@ Container mode gets this from `{**resolve_recipe_env(...), **install_env}` passe
 `-e VAR=…` assignments, which beat the image's preceding `ENV` lines; host mode from
 `env.update(recipe_env)` followed by `env.update(emit.install_env(...))`. Same winner both ways —
 the exact defect the harnessed-8px.2 merge exposed — and the precedence is asserted as *order*,
-not values (`test_install_env_precedence`), so tightening a value cannot pass while breaking the
-ordering.
+not values (`tests/test_install_script.py::TestPrecedence`), so tightening a value cannot pass while
+breaking the ordering.
 
 Two host-only layers sit *after* the contract and are precedence rules in their own right:
 
@@ -315,6 +370,23 @@ copies). The same ownership model applies one level down: first run seeds the sh
 seeded banner says so outright, including the cost that shipped improvements will never reach the
 copy.
 
+## Which stack owns a service sidecar
+
+`svc recreate` rebuilds a sidecar, and a project-scoped sidecar's data dir is chosen by the STACK
+that created it (whichever recipe in that stack declares the persist entry). When the container
+label naming that stack predates the label, harnessed falls back to attributing the sidecar from
+agent instance container names — and that attribution has its own winner:
+
+- **RUNNING instances win outright.** A stopped instance is "a stack you used once", and a stale one
+  from a stack you have moved on from could otherwise be the only candidate and quietly decide which
+  persist entry the rebuilt sidecar serves. Stopped instances are consulted only when nothing is
+  running — the common case being a plain shell where dropping them would fail the very use the
+  fallback exists for.
+- **The name parse is longest-harness-prefix first.** `_stack_from_instance_name` strips a KNOWN
+  harness prefix and the project hash from both ends rather than splitting on `-`, because stack
+  names routinely contain dashes; with `claude` and `claude-extended` both in the catalog, the
+  shorter prefix would yield the plausible-but-wrong stack `extended-mystack`.
+
 ---
 
 ## Invariants an editor must not "simplify"
@@ -331,11 +403,24 @@ copy.
 - **`settings.json` is merged, never copied, on relaunch** — container volume and host live home
   alike. The plain copy is correct only under `--fresh` (volume discarded) or when there is nothing
   to preserve.
+- **Do not shrink the `env -u` list in the mise openwiki task** — it strips eight names
+  (`OPENWIKI_PROVIDER`, `OPENWIKI_MODEL_ID`, `OPENWIKI_MAX_OUTPUT_TOKENS`,
+  `OPENWIKI_OPENAI_COMPATIBLE_STREAMING`, `OPENAI_COMPATIBLE_API_KEY`, `OPENAI_COMPATIBLE_BASE_URL`,
+  `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`), and dropping any one, the streaming flag included,
+  reopens a shell-export channel into the schema — and do not "optimize" the host launcher into
+  conditionally applying `_resolve_launch_env`. varlock's process.env-override
+  semantics make every shell export a live competitor to the schema; the removals are the rule, not
+  a cleanup.
+- **`proxy_schema_dirs` mirrors `_resolve_launch_secrets`; it must never grow its own dir
+  selection.** A divergent selection is exactly the #439 placeholder-for-unloaded-secret failure.
 - **Only the four list fields union under `extends:`.** Making other fields deep-merge would change
   declared-value semantics (`state`, permissions) that every existing stack depends on being
   replace-or-inherit.
 - **The shipped `default` stack stays policy-free.** Adding a permission mode or a forwarding flag
   there taxes every dynamic stack on every install.
+- **Running beats stopped when attributing a sidecar to a stack.** Promoting a stopped instance (or
+  dropping the longest-prefix rule) lets a stale stack name decide where a rebuilt sidecar's data
+  lives.
 
 ## Related pages
 
@@ -345,6 +430,10 @@ copy.
   precedence slice belongs to.
 - [Credential proxy](/openwiki/concepts/credential-proxy.md) — the advisory proxy-mode model and
   readiness warning that ride on this env-file layering.
+- [Secrets broker](/openwiki/architecture/secrets-broker.md) — the broker lifecycle behind the
+  same-composed-set rule.
+- [Services](/openwiki/architecture/services.md) — the derived-not-stored sidecar identity the
+  running-vs-stopped attribution feeds.
 - [Host launch](/openwiki/workflows/host-run.md) — the sequencer that applies the host-side
   ordering.
 - [Container launch](/openwiki/workflows/container-run.md) — the `-e` argument order and the

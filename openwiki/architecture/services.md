@@ -1,8 +1,8 @@
 ---
 type: concept
-title: "Service sidecars: identity, scopes, guards, and sockets"
-description: "How shared services work: container name, project key, data dir, port, password, client env and drift are computed from the manifest plus the project path at every launch; global scope is one host-published container on a static port while project scope is one container per project reached through a unix socket in a recipe-declared persist dir; svcguards refuses destructive starts before the container exists."
-tags: [services, sidecars, derived-identity, project-scope, unix-socket, svcguards, drift, stable-port, client-env, wire-services]
+title: "Service sidecars: scopes, ports, sockets, and what persists"
+description: "How shared services work: container name, project key, data dir, client env and drift are computed from the manifest plus the project path at every launch, while stable ports (a machine-wide registry under XDG data) and service passwords (0600 files under XDG state) are allocated once and persist; global scope is one host-published container that containerized agents reach at host.containers.internal and host-run clients at 127.0.0.1, project scope is one container per git common dir reached through a unix socket in a recipe-declared persist dir, and svcguards refuses destructive starts before the container exists."
+tags: [services, sidecars, derived-identity, stable-port, persistence, project-scope, unix-socket, svcguards, drift, client-env, wire-services]
 sources:
   - id: openwiki-source-5ad131422ad3ec350915f307
     resource: repo://catalog/recipes/ping/recipe.yaml
@@ -14,12 +14,16 @@ sources:
     resource: repo://src/harnessed/attachcmd.py
   - id: openwiki-source-f566bbdd90ebc6ec3b85626a
     resource: repo://src/harnessed/backend.py
+  - id: openwiki-source-085f2349c58adb4062c2803f
+    resource: repo://src/harnessed/broker.py
   - id: openwiki-source-9a53d80e292611f0100f90b1
     resource: repo://src/harnessed/capmatrix.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-7b2070fd28fc0a337d8c3539
     resource: repo://src/harnessed/paths.py
+  - id: openwiki-source-45fc664cf0f379264630be81
+    resource: repo://src/harnessed/persist_gc.py
   - id: openwiki-source-92e9b87061358a8448b6d346
     resource: repo://src/harnessed/persist.py
   - id: openwiki-source-7536da5c015fc2813c7693c5
@@ -30,13 +34,15 @@ sources:
     resource: repo://src/harnessed/svcguards.py
   - id: openwiki-source-5e89566b7a4e43a53be5c7b2
     resource: repo://src/harnessed/svcstate.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-7b7c2d242869fee851828868
+    resource: repo://tests/test_stable_port.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-08T23:17:55.419Z
 ---
 
-# Service sidecars: identity, scopes, guards, and sockets
+# Service sidecars: scopes, ports, sockets, and what persists
 
 A **service** is a sidecar with its own image and `catalog/services/<name>/service.yaml`,
 referenced by a recipe via `mcp.servers[].service:` (an MCP surface) or attached by a recipe or
@@ -51,46 +57,66 @@ to let one entry be both: `service:` with `command:` is rejected ("a service-ref
 network proxy, not a child process"), and so is `service:` with `direct:` — the URL proxy is
 precisely what `direct:` bypasses.
 
-The code splits by verb. `svcstate.py` **derives** everything computable about a sidecar; the
-catalog manifest (`ServiceDef`) declares what only the service itself knows; `svcguards.py`
-**refuses** launches that would corrupt or shadow data; `launcher.py` is the only module that
-starts, stops and health-checks containers. Nothing is written down that can be recomputed — and
-that is the property a second launch relies on to find the same service instead of starting a
-duplicate.
+The code splits by verb. `svcstate.py` **derives** everything computable about a sidecar — and
+reads back the two values that were *allocated once* instead of recomputed; the catalog manifest
+(`ServiceDef`) declares what only the service itself knows; `svcguards.py` **refuses** launches
+that would corrupt or shadow data; `launcher.py` is the only module that starts, stops and
+health-checks containers. Identity is never stored on the containers it names — that is the
+property a second launch relies on to find the same service instead of starting a duplicate — but
+"never stored" must not be overread: the stable port and the password are deliberately written
+down, and sections below say which is which.
 
 Related: [system overview](/openwiki/architecture/overview.md),
 [state, staleness, and GC](/openwiki/architecture/state.md),
+[precedence](/openwiki/concepts/precedence.md),
 [the folder-env contract](/openwiki/concepts/env-contract.md),
 [invariants and deliberate deviations](/openwiki/concepts/invariants.md),
-[container launch](/openwiki/workflows/container-run.md).
+[container launch](/openwiki/workflows/container-run.md),
+[host launch](/openwiki/workflows/host-run.md),
+[the secrets broker](/openwiki/architecture/secrets-broker.md).
 
-## Identity is derived, never stored
+## Two kinds of state: derived every launch, allocated once
 
-| Identity | Derived by | From |
+| Value | Kind | Mechanism |
 |---|---|---|
-| container name | `svcstate._svc_container` | `harnessed-svc-<name>`, plus `-{project_key}` when `scope: project` |
-| project key | `svcstate._svc_project_key` | `paths.project_hash` of the git common dir (the project path itself outside a repo); empty for global |
-| data dir | `svcstate._service_data_dir` | the recipe's persist entry the service names via `data.persist` |
-| stable host port | `svcstate._svc_stable_port` | one machine-wide registry, allocated once |
-| ephemeral host port | `svcstate._svc_published_port` | `podman port <ctr> <port>`, read back every launch |
-| password | `svcstate._svc_password` | one secret file under XDG state, minted once |
-| client env | `svcstate.svc_client_env` | the service's own `client_env:` templates, resolved per launch |
-| drift | `svcstate._svc_drift_reason` | the `harnessed.svc-config-hash` label vs today's re-derived hash |
+| container name | derived | `svcstate._svc_container`: `harnessed-svc-<name>`, plus `-{project_key}` when `scope: project` |
+| project key | derived | `paths.project_hash` of the git common dir (the project path itself outside a repo); empty for global |
+| data dir | derived | `svcstate._service_data_dir`: the recipe's persist entry the service names via `data.persist` |
+| client env | derived | `svcstate.svc_client_env`: the service's own `client_env:` templates, resolved per launch |
+| drift status | derived | the `harnessed.svc-config-hash` label vs today's re-derived hash |
+| ephemeral host port | derived | `svcstate._svc_published_port`: `podman port <ctr> <port>`, read back every launch, never cached |
+| stable host port | **persisted** | `svcstate._svc_stable_port`: one machine-wide registry under XDG **data**, allocated once |
+| password | **persisted** | `svcstate._svc_password`: one secret file under XDG **state**, minted once |
 
-Same inputs, same outputs, every launch — that is the whole mechanism. A stored name or port would
-need invalidation logic and would drift from reality; a computed one cannot.
+The derived rows are pure functions of the service manifest plus the project path: same inputs,
+same outputs, every launch. A stored name or data dir would need invalidation logic and would
+drift from reality; a computed one cannot. This is what lets a second launch — or a launch from a
+sibling worktree — find the same service instead of starting a duplicate.
 
-### The project key is the git common dir
+The last two rows are the deliberate exceptions, and treating them as "just derived" is how their
+state gets deleted by someone tidying up. They *cannot* be recomputed, because their whole job is
+to stay the same across launches, recreates and reboots: the stable port is the number the
+**project** was told about (it is written into the project tool-env file a plain `bd` in a
+terminal loads), and the password is the secret every configured client already holds. Both are
+keyed by `(service, project key)` — the key is derived; the value persists:
 
-`scope: project` services are keyed by `paths.git_common_dir`, not by the worktree: every worktree
-of one checkout resolves to the **same** key and therefore to **one** server container. That is
-the point of the scope — a `dolt sql-server` holds an exclusive lock on its data dir, so one lock
-holder must serve every worktree, while agent *instances* stay keyed per worktree
-(`paths.instance_name`). Separate checkouts get separate servers.
+- **Stable port** (`_svc_stable_port`, `svcstate.py`): allocated once into
+  `paths.svc_ports_file` (`$XDG_DATA_HOME/harnessed/svc-ports.json`) under an exclusive `flock`
+  on a `.lock` sibling; candidates are drawn randomly from 20000–59999 and rejected if already in
+  the registry or unbindable on `127.0.0.1` right now. After that, the recorded entry **is** the
+  answer on every later launch — kept even when the port is momentarily unbindable, the normal
+  case being that our own sidecar is holding it. Re-allocation is contemplated only when the
+  recorded port is unusable **and** no container of ours is listening on it — the "something else
+  moved in while we were away" case — because moving a recorded port silently invalidates every
+  project config that names it.
+- **Password** (`_svc_password`): minted once per service+key with `secrets.token_urlsafe(24)` —
+  never a hash of the project path, which is guessable and a secret must not be — and stored as a
+  `0600` file inside a `0700` dir under `$XDG_STATE_HOME/harnessed/svc-secrets/<name>-<key>`.
 
-A consequence the code has to absorb: the stack that owns the sidecar may be running from a
-*sibling* worktree. `_repo_project_hashes` walks `git worktree list --porcelain` and returns this
-folder's hash plus every sibling's, degrading to just this folder when git does not answer.
+So: `rm`-ing the derived state costs nothing (it comes back identical), but deleting
+`svc-ports.json` re-numbers services that projects already reference, and deleting a secret file
+locks out every client configured with the old value. Both stores are machine-local on purpose;
+neither is a cache of something derivable.
 
 ## Two scopes, two reachability models
 
@@ -117,8 +143,26 @@ nothing to connect to — which is why `publish: ephemeral` is the current answe
 project-scoped service that clients reach by TCP, and the socket form remains supported but
 secondary.
 
-The schema enforces the shape at load (`schema.load_service`): `name` and `image` are required,
-and scope must be `global` or `project`. Beyond that:
+### One published port, two names
+
+A host-published service is **one listener on the host** with two addresses, and which one a call
+site uses is a property of *where the caller runs*, not of the service:
+
+- A **containerized agent** dials `host.containers.internal:<port>`. That is the podman
+  host-gateway alias — the spelling the assembler bakes into the hatago URL — because loopback
+  alone does not answer from inside a pod: the container's `127.0.0.1` is its own netns, and the
+  published port lives on the host's.
+- A **host-run client** dials the very same listener at `127.0.0.1:<port>`. No alias, no
+  translation — the port is published on the host, so the host's loopback reaches it directly.
+
+Both names mean the same published port, which is exactly why `{host}` in `client_env` is
+resolved **per launch** (`"127.0.0.1"` in host mode, `"host.containers.internal"` in container
+mode) instead of baked anywhere: the value depends on the caller's mode, not on the service. A
+socket-backed service has no port and therefore no address split — the socket path is identical
+for both surfaces.
+
+The schema enforces the manifest shape at load (`schema.load_service`): `name` and `image` are
+required, and scope must be `global` or `project`. Beyond that:
 
 - `scope: project` **requires** `data.persist` and gets `volume=""` — a project service never owns
   a named volume; `data.persist` on a global service is rejected.
@@ -132,6 +176,18 @@ and scope must be `global` or `project`. Beyond that:
 - `client_env` values may use only `{host}`, `{port}`, `{socket}`, `{password}` — and only the
   tokens the service actually has (`{host}`/`{port}` are rejected on a socket-only service,
   `{socket}` when no socket is declared).
+
+## The project key is the git common dir
+
+`scope: project` services are keyed by `paths.git_common_dir`, not by the worktree: every worktree
+of one checkout resolves to the **same** key and therefore to **one** server container. That is
+the point of the scope — a `dolt sql-server` holds an exclusive lock on its data dir, so one lock
+holder must serve every worktree, while agent *instances* stay keyed per worktree
+(`paths.instance_name`). Separate checkouts get separate servers.
+
+A consequence the code has to absorb: the stack that owns the sidecar may be running from a
+*sibling* worktree. `_repo_project_hashes` walks `git worktree list --porcelain` and returns this
+folder's hash plus every sibling's, degrading to just this folder when git does not answer.
 
 ## The service follows the recipe's placement
 
@@ -171,17 +227,16 @@ exports **nothing** for that service: no plausible-looking default, because a wr
 failure where the client cannot reach the server and the auto-start that would normally paper over
 it is exactly what harnessed disables.
 
-**`publish: stable`** — a host port the *project* can be told about. Allocated once per
-`(service, project key)` into **one machine-wide registry** (`paths.svc_ports_file`,
-`$XDG_DATA_HOME/harnessed/svc-ports.json`) taken under an exclusive `flock` on a `.lock` sibling —
-one file, not one per project, because an allocation must answer "is this port already promised to
-some *other* project?". Candidates come from 20000–59999 (above everything IANA-registered and
-above the runtime's scratch range) and are rejected if the registry holds them or
-`127.0.0.1:<port>` cannot be bound right now. An entry is **kept even when momentarily
-unbindable** — the normal case is that our own sidecar is holding it — which is what stops the
-number drifting between launches. `svc_client_env` reads the registry, not `podman port`, so the
-value stays knowable while the container is *stopped* — exactly when a plain `bd` in the repo
-still needs a configured environment.
+**`publish: stable`** — a host port the *project* can be told about. The allocation mechanics are
+the ones described above: one machine-wide registry (`paths.svc_ports_file`), one exclusive
+`flock`, one draw from 20000–59999 (above everything IANA-registered and above the runtime's
+scratch range), one permanent entry. One file for the whole machine, not one per project, because
+the question an allocation must answer is "is this port already promised to some *other*
+project?" — and it lives under XDG **data**, not state, because losing it would not merely cost a
+re-derivation: it would re-allocate numbers already written into projects' tool-env files.
+`svc_client_env` reads the registry, not `podman port`, so the value stays knowable while the
+container is *stopped* — exactly when a plain `bd` in the repo still needs a configured
+environment.
 
 Both publish forms bind `127.0.0.1` on purpose: an unqualified `-p` publishes on every interface
 and would put a project's issue database on the LAN. But loopback stops the LAN, not other local
@@ -194,6 +249,31 @@ under XDG state and **never in the service's data dir**: for an `in_repo` placem
 the user's repo, and a secret written there is one `git add -A` from the remote. The container
 receives it as `HARNESSED_SVC_PASSWORD` — a generic name; the entrypoint decides what to call it
 in its own protocol's terms.
+
+## What persists, and what deliberately does not
+
+Everything a service accumulates is designed to outlive the verbs that look like deletion:
+
+- **The data.** `--fresh` tears down only the pod; `svc down` removes only the container; drift
+  recreation and `svc recreate` preserve `/data` (named volume or bind mount). A project service's
+  bytes are a host dir placed by the recipe's persist entry; a global service's are a named
+  volume. The host-side persist tree is `persist/<recipe>/<project_hash>/<name>`, and reclaiming
+  it is explicit: `harnessed persist-list` walks the tree, and `persist-prune` requires the
+  **original project path** — `project_hash` is a one-way SHA1[:8] digest, so orphan
+  auto-detection is unsupported and the correct dir is targeted by re-deriving the hash, never by
+  guessing what it once represented.
+- **The stable port and the password** (above): machine-local files under XDG data and XDG state,
+  keyed by service+project key, read on every launch, minted only on a miss.
+
+The contrast is the **secrets broker** — the other loopback-port story in harnessed, and
+persistently the opposite pole (see [the secrets broker](/openwiki/architecture/secrets-broker.md)):
+one `varlock proxy` per *instance* on the host, whose port is **kernel-assigned per launch**
+(`pick_port` binds `:0`; a fixed constant would turn a second concurrent instance into a launch
+failure), picked racy and deliberately unlocked because varlock failing loudly is cheaper than a
+lock held for the pod's lifetime. Its state record holds five fields (instance, pod, session,
+port, cert dir) and no secret — "the state file leaks no secret" is true by construction — and it
+is torn down with the pod. Nothing about a broker is meant to be found again after its instance
+ends; everything about a service sidecar is.
 
 ## The ensure lifecycle
 
@@ -366,7 +446,8 @@ BEADS_DOLT_SERVER_PORT" — the same separation `data.persist` gives placement. 
 on `{host}`, `{port}`, `{socket}`, `{password}` and resolved **per launch**, because the port does
 not exist until the container runs (so this cannot go through emit-time env resolution). `{host}`
 is the one value that differs by mode — `127.0.0.1` for a host agent, `host.containers.internal`
-for a containerized one — and both mean the same published port.
+for a containerized one — two names for the same published port on the host (see *One published
+port, two names* above).
 
 Two delivery surfaces, both fed from `setupenv.harnessed_env`, which appends
 `svc_socket_env` (a `HARNESSED_<NAME>_SOCKET` var per socket-backed project service, valued at the
@@ -380,9 +461,10 @@ mode-resolved data dir plus the socket name) and then `svc_client_env`:
 - **The project tool-env dotenv** (`_write_project_tool_env` → `harnessed project-env-path`):
   the host-mode `svc_client_env` values land in a `0600` file under XDG state, keyed on the git
   common dir, so a plain `bd` in a terminal — a client harnessed does not launch — is configured
-  too. This is also why `publish: ephemeral` is wrong for a service a project configures directly:
-  an ephemeral port written into that file would be wrong after the next container recreate,
-  which is exactly the property `publish: stable` buys.
+  too. Reference the file, never copy it: it holds real credentials and is regenerated every
+  launch. This is also why `publish: ephemeral` is wrong for a service a project configures
+  directly: an ephemeral port written into that file would be wrong after the next container
+  recreate, which is exactly the property `publish: stable` buys.
 
 Nothing about the socket path is persisted into the server's own container: the old
 `HARNESSED_SOCKET_PATH` (stamped into `.beads/metadata.json` by the entrypoint) is gone, because

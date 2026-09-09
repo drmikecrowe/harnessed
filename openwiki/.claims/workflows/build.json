@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a80f818221e1732c0847bf8adeb20b0f1ee790a4299fd4d063120d573f788e8a",
+  "pageVersion": "sha256:8ceacdcf5585b5de2dbf1f6c781a06c373839b992e6224fde207809af770f424",
   "claims": [
     {
       "id": "claim_252d58a4136d4bab8deb980788528260",
@@ -250,8 +250,12 @@
     },
     {
       "id": "claim_a0a5991670f544818cee7b77b535dfca",
-      "statement": "As the code stands, the standalone per-harness agent image IS the derived image's direct FROM parent (every agent manifest's image: is harnessed-<harness>, matching the emitter's FROM harnessed-${HARNESS}:latest), so base → agent → derived ordering inside _build_stack is required — the derived build's FROM has nothing to resolve until the agent image exists — and _build_derived_image passes no --build-arg because the emitter's in-file ARG HARNESS=<harness> default makes the tag resolve. An agent pin bump therefore produces a new parent image and invalidates the cached layers of every derived stack image — the cache cost launcher.py's three \"agent-last\" comments claim was removed. Those comments and the emitter currently DISAGREE (write_derived_dockerfile reads no agent manifest and inlines nothing), so anyone touching the lineage must change the emitter's FROM, the launcher's lineage comments, and the agent Dockerfiles together and re-check the cache property; _build_agent_image must keep running once per process because container-run falls back to the plain agent image (derived if _image_exists(rt, derived) else _agent_image(harness)).",
+      "statement": "As the code stands, the standalone per-harness agent image IS the derived image's direct FROM parent (every agent manifest's image: is harnessed-<harness>, matching the emitter's FROM harnessed-${HARNESS}:latest), so base → agent → derived ordering inside _build_stack is required — the derived build's FROM has nothing to resolve until the agent image exists — and _build_derived_image passes no --build-arg because the emitter's in-file ARG HARNESS=<harness> default makes the tag resolve. The README's \"Why the agent installs last\" paragraph and the launcher's three \"agent-last\" comments claim otherwise — that the agent image is \"no longer the derived image's parent\" because write_derived_dockerfile \"inlines the agent's Dockerfile body as their LAST layers\", so an agent bump would rebuild only the agent layer + scan while recipe layers stay cached and harness-independent — but the emitter reads no agent manifest and inlines nothing, so that cache property is intended-but-not-implemented and an agent pin bump currently invalidates every derived stack's cached recipe layers. The verified half of the agent-last story is the fallback role: container-run falls back to the plain agent image for a stack with no derived image yet (derived if _image_exists(rt, derived) else _agent_image(harness)), which is why _build_agent_image must keep running once per process. Anyone touching the lineage must change the emitter's FROM, the launcher's lineage comments, the README paragraph, and the agent Dockerfiles together and re-check the cache property.",
       "evidence": [
+        {
+          "resource": "repo://README.md",
+          "version": "repo-file-v1:sha256:dadf9f1040a1b8b66e75349e8360b347b42f44e23f14621fc097cba27d39f97b"
+        },
         {
           "resource": "repo://src/harnessed/emit.py",
           "version": "repo-file-v1:sha256:340247819598a1e5d8b1297e4e645f8c206dbb5abeb7ae29b8653f1fc2c439b0"
@@ -719,6 +723,6 @@
   ],
   "verification": {
     "by": "openwiki/0.4.3",
-    "at": "2026-09-02T20:26:19.165Z"
+    "at": "2026-09-08T23:17:55.419Z"
   }
 }

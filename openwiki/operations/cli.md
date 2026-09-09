@@ -1,14 +1,16 @@
 ---
 type: reference
 title: "Operations: the command surface and lifecycle verbs"
-description: "The full harnessed verb surface across both entrypoints (harnessed and harnessed-tools), each verb mapped to its owning module and the lifecycle stage it manages — build and reconciliation, instance teardown, sidecars, capability tests, pin updates, the garbage collectors, the nightly rescan — plus the per-project launcher scripts a launch leaves behind."
+description: "The full harnessed verb surface across both entrypoints (harnessed and harnessed-tools), each verb mapped to its owning module and the lifecycle stage it manages — the launch-verb grammar (the verb picks the backend, a flag picks the stack), build and reconciliation, instance teardown and secret-broker reporting, sidecars, capability tests, pin updates, the garbage collectors, the nightly rescan — plus the per-project launcher scripts a launch leaves behind."
 tags: [cli, commands, verbs, lifecycle, build, reconcile, svc, rescan, update, test, persist-prune, launch-script, garbage-collection]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
+  - id: openwiki-source-085f2349c58adb4062c2803f
+    resource: repo://src/harnessed/broker.py
   - id: openwiki-source-0f0f277c40d34909acb07908
     resource: repo://src/harnessed/capability.py
   - id: openwiki-source-bfccb812c84b1bb2eeabf062
@@ -17,6 +19,8 @@ sources:
     resource: repo://src/harnessed/cli.py
   - id: openwiki-source-3d73552d55725e6e392c06df
     resource: repo://src/harnessed/hosthome.py
+  - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
+    resource: repo://src/harnessed/launchenv.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-7fc060691d30bff2ff4f6979
@@ -39,7 +43,7 @@ sources:
     resource: repo://systemd/harnessed-rescan.service
   - id: openwiki-source-7af162bd104477b196c3dcdd
     resource: repo://systemd/harnessed-rescan.timer
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 ---
 
 # Operations: the command surface and lifecycle verbs
@@ -47,7 +51,7 @@ generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
 harnessed is driven through **two CLIs with one division of labor**:
 
 - **`harnessed`** — `launcher.py`'s Typer app (`pyproject.toml` wires `harnessed = harnessed.launcher:main`). Every verb that can touch the container runtime, launch an agent, or manage host-side state lives here.
-- **`harnessed-tools`** — `cli.py`'s argparse app. Its verbs are deliberately **emit-only or analysis-only**: assemble a profile without a runtime, run the capability test, drive the nightly online scan, and manage persist dirs. It never invokes podman/docker itself.
+- **`harnessed-tools`** — `cli.py`'s argparse app. Its verbs are **emit-only or analysis-only, with exactly one exception**: assemble a profile without a runtime, drive the nightly online scan, style-check prose, and manage persist dirs never touch podman/docker — but **`test` launches a real headless instance**, shelling out to `harnessed container-run <harness> <project> --stack <name> --fresh`, so it needs podman/docker and can leave service sidecars running after the test's instance teardown. The "emit-only" label describes the **assembler** — which is exactly the scope cli.py's own docstring puts "NEVER invokes podman/docker" on — not the whole CLI.
 
 The operational rule about *who may run what* lives at the top of [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) (and is mirrored in CLAUDE.md): the two interactive run verbs hand the terminal to a live agent session and are not for automation to invoke.
 
@@ -66,7 +70,7 @@ Each verb with its owning module and the lifecycle it manages. Function names ar
 | --- | --- | --- |
 | `harnessed container-run` / `host-run` | `launcher.container_run` / `launcher.host_run` → `ContainerBackend` / `HostBackend` | **Launch** — covered by the container-run and host-run pages |
 | `harnessed build [<stack> [<harness>]]` | `launcher.build` → `_build_stack`, `_build_images_cmd`, `_reconcile_stacks` | **Build** — profile + images + volumes; reconciliation sweep |
-| `harnessed list` | `launcher.list_stacks` | **Inspect** — authored stacks + instances, running and stopped |
+| `harnessed list` | `launcher.list_stacks` | **Inspect** — authored stacks + instances (running and stopped) + live secret brokers |
 | `harnessed stop <stack>` / `rm <stack>` | `launcher.stop` / `launcher.remove` | **Instance teardown** — pods/containers only |
 | `harnessed prune` | `launcher.prune` | **Idle reaping** — instances detached past `--idle` |
 | `harnessed new <stack>` | `launcher.new_stack` | **Authoring scaffold** — `stacks/<name>/stack.yaml` |
@@ -82,7 +86,7 @@ Each verb with its owning module and the lifecycle it manages. Function names ar
 | `harnessed project-env-path` | `launcher.project_env_path_cmd` | **Host helper** — the project tool-env dotenv path |
 | `harnessed aws-sso serve` | `launcher.aws_sso` | **Credentials** — the ECS credential server |
 | `harnessed-tools assemble` | `cli._run_assemble` → `assemble.assemble` | **Emit-only build** — works with no runtime installed |
-| `harnessed-tools test` | `cli._run_test` | **Verification** — same oracle as `harnessed test` |
+| `harnessed-tools test` | `cli._run_test` | **Verification** — same oracle as `harnessed test`; drives a real headless launch (needs the runtime) |
 | `harnessed-tools scan-image-online <tar>` | `cli._run_scan_image_online` → `scan.run_image_scan_online` | **Verification gate** — HIGH+ findings exit 1 |
 | `harnessed-tools persist-list` / `persist-prune` | `cli._run_persist_list` / `cli._run_persist_prune` → `persist_gc.py` | **GC** — persist dirs |
 | `harnessed-tools lint-prose` | `cli._run_lint_prose` → `prose.py` | **Authoring gate** — RULE.md/SKILL.md style check |
@@ -101,14 +105,44 @@ exception types (`PersistDeniedError`, `PersistNotAllowlistedError`, `PersistOwn
 default-deny refusal prints as a one-line error carrying its remediation, not a Rich traceback
 under typer's excepthook — the gate refusing is a *normal outcome of a first launch*, not a crash.
 
-## The launch verbs, in one paragraph
+## The launch verbs: the verb picks the backend, a flag picks the stack
 
 `container-run` and `host-run` share one grammar and one stack-resolution path (`_resolve_stack`)
-and differ in backend and nothing else; both end by replacing the launcher process (`os.execvp`),
-which is why the [AGENTS.md rule](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md)
-exists. The full walks live on the container-run and host-run pages. What this page owns is the
-**minted-manifest cleanup rule** (below) and the **launcher scripts** each launch leaves
-behind (below).
+and differ in **backend** and nothing else; both end by replacing the launcher process
+(`os.execvp`), which is why the
+[AGENTS.md rule](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) exists. The full
+walks live on the container-run and host-run pages. What this page owns is the **verb grammar**
+(below), the **minted-manifest cleanup rule** (below), and the **launcher scripts** each launch
+leaves behind (below).
+
+The grammar is defined once and shared by both verbs — `_STACK_OPT`, `_RECIPE_OPT`, and
+`_EXTENDS_OPT` are module-level option objects, so the two verbs' grammars cannot drift:
+
+```sh
+harnessed container-run <harness> [path]                 # the `default` baseline
+harnessed container-run <harness> [path] --stack <name>
+harnessed container-run <harness> [path] --recipe r1 --recipe r2
+```
+
+- **The harness leads as the first positional**; the project path is the second (default: cwd).
+- **A flag picks the stack — never a positional.** `--stack <name>` names an authored stack;
+  repeatable `--recipe` composes one; the two are **mutually exclusive** (`_resolve_stack` errors
+  with "provide either --stack or --recipe, not both"). The reason the stack is not a positional is
+  recorded in `host-run`'s own docstring: an earlier design put it in the first positional slot,
+  where it was indistinguishable from the project path under `--recipe` — Typer binds positionals
+  by *declaration* order, not by meaning — and `host-run my-stack --recipe serena` silently
+  launched the generated stack with the authored name demoted to a project path, exit 0. Naming the
+  stack with a flag removes the ambiguity at the source rather than policing it.
+- **The bare form is the baseline.** With neither flag, `_resolve_stack` runs the `--extends`
+  baseline (`default`) — exactly as if the user had typed `--stack default`. Composing nothing on
+  top of the baseline is a legitimate launch, not a malformed one (requiring a throwaway
+  `--recipe` made the common "just start the agent" case the only one with mandatory flags).
+  `--no-extends` is the one shape that cannot mean this: it says inherit from nothing, so it needs
+  at least one `--recipe` — the recipe list is then the whole stack.
+- The recipe form is **content-named**: it mints a real manifest under the generated catalog root,
+  which is what lets `harnessed list`, the staleness check and both GCs treat it like any other
+  stack; an identical recipe set in another repo resolves to the same stack and shares its image
+  and volumes — that is what collapses proliferation rather than relocating it.
 
 ### The minted-manifest cleanup rule
 
@@ -196,6 +230,20 @@ distinguishable from "none exist" by return code alone. The origin-blindness of 
 exactly why the minted-manifest cleanup rule exists: `harnessed list` cannot tell a generated stack
 from an authored one, so a minted manifest that failed to build would otherwise be advertised
 forever.
+
+`list` also reports the **host secret brokers**, and that section reconciles *before* it prints:
+`_broker_report` runs `broker.reconcile` first — a record whose pod is gone would otherwise read as
+an attached broker, and reconcile also stops the brokers it reaps, so the section doubles as the
+periodic cleanup for every teardown path that never ran (a crashed launcher, a hand-run
+`podman pod rm`, a host reboot). What survives is printed as `instance  session <id>
+127.0.0.1:<port>` — which is everything the record holds, so there is no redaction step. A
+**corrupt record reads as absent**: `broker.read` swallows the IO/parse errors and returns None,
+so a half-written file cannot crash a command whose job is to clean up — and `reconcile` (which
+walks filenames, corrupt ones included) is what removes the corrupt file. A broker that *would not
+die* keeps its record, so the next `list` still shows it for the next sweep to try. On a failed
+`podman ps`, though, `list` returns **before** reconciling: reconciling off a failed query would
+report every pod absent and reap every live broker — a runtime that cannot be asked is not an
+answer.
 
 **`stop` and `rm`** tear down **by stack** across all harnesses: they list every `harnessed-`
 container and match the instance-name format with the regex `-{stack}-[0-9a-f]{8}$`. They operate
@@ -309,8 +357,9 @@ design it cannot see CVEs disclosed *after* the image was built. Two verbs close
 - **`harnessed scan <stack> [<harness>]`** — the stack-scoped variant. With no harness argument it
   re-scans every supported harness's image for the stack, skipping unbuilt ones; naming an unbuilt
   pair is an error.
-- **`harnessed rescan [<image>]`** — the fleet variant, and **the systemd timer's ExecStart**.
-  With no argument it enumerates every image matching `label=harnessed=true`. That listing goes
+- **`harnessed rescan [<image>]`** — the fleet variant, **the systemd timer's ExecStart** (the
+  SEC-04 nightly re-scan). With no argument it enumerates every image matching
+  `label=harnessed=true`. That listing goes
   through `_listing`, which **aborts on any non-zero runtime exit** — here the guard is
   especially load-bearing: `rescan` is what the nightly fires, and an unanswered listing that
   printed "nothing to rescan" and exited 0 would silently skip the whole nightly vulnerability
@@ -322,8 +371,12 @@ Each image gets two complementary passes (`_scan_image`):
 
 1. **Credentialed in-image scan** (`_scan_image_in_container`) — a throwaway container from the
    image itself runs the baked `harnessed-scan` with scanner tokens injected as a mode-0600 temp
-   `--env-file` (resolved on the *host* from the user-global env files; varlock never runs
-   in-container). **This is the only path on which snyk and socket actually run** — builds never
+   `--env-file`. The tokens are resolved **on the host**, from the user-global
+   `~/.config/harnessed` (`.env.schema` via varlock, else a bare `.env` read literally) —
+   launchenv's `_resolve_launch_secrets` names that user-global dir as the **sole source of
+   scanner tokens**, and the per-project layer is deliberately not applied here: a rescan is about
+   the image, not whichever directory you happen to be standing in. varlock never runs
+   in-container. **This is the only path on which snyk and socket actually run** — builds never
    pass secrets, so they get osv-scanner + pip-audit only. Advisory: `harnessed-scan` always exits
    0, so this reports posture and never gates. The container is deliberately **not** `--rm`: the
    credentialed report is `podman cp`'d out (a bind-mount write from the unprivileged in-image
@@ -528,12 +581,16 @@ Its contract:
   either way the reader sees a different script than the one that runs (a shifted sentinel check,
   an unattributable aoe row).
 
-## `harnessed-tools`: the emit-only surface
+## `harnessed-tools`: the host-side tool surface
 
-`cli.py`'s parser describes itself as "emit-only; never drives the daemon", and the module
-docstring says what that buys: it runs on the host, in-process from `harnessed build` or
-standalone, and never invokes podman/docker — the host runs `podman build` on the emitted
-artifacts. Its verbs:
+`cli.py` titles itself "the emit-only assembler + capability-test entrypoint", and both of its
+self-descriptions scope the emit-only claim to the **assembler**, not to the whole CLI: the module
+docstring says the assembler "only reads the catalog and writes the profile under `--build-dir`; it
+NEVER invokes podman/docker (the host runs `podman build` on the emitted artifacts)", and the
+argparse description ("emit-only; never drives the daemon") describes that same build-time
+assembler. It runs on the host, in-process from `harnessed build` or standalone. Every verb except
+`test` honors that scope — and **`test` is the exception** that keeps the CLI from being describable
+as runtime-free:
 
 - **`assemble <stack> <harness> --build-dir <dir> [--root <dir>]`** — the standalone emit path:
   you can produce a committed profile on a machine with no container runtime. When `--root` is
@@ -542,7 +599,15 @@ artifacts. Its verbs:
   (`root/stacks/<stack>`), and a CWD default would silently demand you be standing in `catalog/`.
 - **`test`** — the same capability oracle as `harnessed test`, taking `--root`, `--project`,
   `--harnessed-bin` (default `$HARNESSED_DIR/harnessed` or PATH, since it must drive a launch),
-  `--keep`, `--no-tests`, `--json`.
+  `--keep`, `--no-tests`, `--json`. This verb is **not runtime-free**: the oracle's
+  `launch_headless` sets `HARNESSED_HEADLESS=true` and shells out to
+  `harnessed container-run <harness> <project> --stack <name> --fresh` (launcher binary resolved
+  from `--harnessed-bin`, 600s subprocess bound), so it needs podman/docker exactly like the
+  launch verbs. The launch's `wire_services` starts any service sidecars the stack's recipes
+  reference, while the oracle's teardown removes **only the instance pod** — nothing in the test
+  path stops sidecars, so they keep running after the report is rendered (idempotent shared
+  state; `svc down` is how you remove one). The headless environment also means a drifted sidecar
+  is recreated automatically, without the interactive confirm.
 - **`scan-image-online <archive>`** — the online image-archive scan as a first-class verb: fresh
   osv.dev DB, exit 1 on any HIGH+ finding. `rescan` shells out to exactly this.
 - **`persist-list` / `persist-prune`** — the persist GC (above).

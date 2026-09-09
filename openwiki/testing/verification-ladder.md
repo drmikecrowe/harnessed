@@ -1,30 +1,79 @@
 ---
 type: "Reference"
-title: "The verification ladder"
+title: "The verification ladder: what each gate proves and what it does not"
+description: "What each verification gate proves and what it does not — the hermetic pytest suite, the HARNESSED_PODMAN live layer, the lint layers, the pin check, the capability oracle, and the wiki's own drift gate with its regeneration path and retry patch."
+tags: [ci, testing, verification, supply-chain, openwiki, drift]
 openwiki_generated: true
-verified:
-  - by: openwiki/0.4.3
-    at: 2026-09-07T12:53:44.965Z
 sources:
   - id: openwiki-source-2ab88915e37908e92fe8ef01
     resource: repo://.github/workflows/lint.yml
+  - id: openwiki-source-3b6f61ac560f049f559456d0
+    resource: repo://.github/workflows/live.yml
+  - id: openwiki-source-6d4b4e707b8d60b6ccfa3425
+    resource: repo://.github/workflows/openwiki-update.yml
+  - id: openwiki-source-4e2e2b93eeb15847052a26fb
+    resource: repo://.github/workflows/pin-check.yml
   - id: openwiki-source-4f2678f93d3fd3835f9f2909
     resource: repo://.github/workflows/test.yml
+  - id: openwiki-source-ea70eb6c045047448e446296
+    resource: repo://.gitignore
+  - id: openwiki-source-567b7c36cfe22d7cb6bb18fc
+    resource: repo://catalog/base/pnpm/config.yaml
+  - id: openwiki-source-25458c596064db655972f6a5
+    resource: repo://catalog/recipes/openwiki/install.sh
+  - id: openwiki-source-240b73d5d05cbc3a1e081634
+    resource: repo://catalog/recipes/openwiki/pnpm-workspace.yaml
   - id: openwiki-source-a2371d6362e5db4bc834ad03
     resource: repo://CLAUDE.md
-generated: { by: "openwiki/0.4.3", at: "2026-09-07T12:53:44.965Z" }
+  - id: openwiki-source-72b5d686f860ea86c8592080
+    resource: repo://mise.toml
+  - id: openwiki-source-05ccef8d4cf1698187f20464
+    resource: repo://pyproject.toml
+  - id: openwiki-source-0f0f277c40d34909acb07908
+    resource: repo://src/harnessed/capability.py
+  - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
+    resource: repo://src/harnessed/launchenv.py
+  - id: openwiki-source-8eaa0f25ca9e5f6b6822e5f9
+    resource: repo://src/harnessed/report.py
+  - id: openwiki-source-7536da5c015fc2813c7693c5
+    resource: repo://src/harnessed/schema.py
+  - id: openwiki-source-dedbae614432467fbfc419d9
+    resource: repo://src/harnessed/update.py
+  - id: openwiki-source-f0a6e7dc03522b2682f88655
+    resource: repo://tests/conftest.py
+  - id: openwiki-source-40ea6de9292ca7a5603003bd
+    resource: repo://tests/test_broker_launch_gate.py
+  - id: openwiki-source-4d3b84558965c7b5921b9989
+    resource: repo://tests/test_broker_pod_args.py
+  - id: openwiki-source-d93dd2b98c101e2e05d79086
+    resource: repo://tests/test_external_contracts_live.py
+  - id: openwiki-source-3ab0707808526f92ef714a7c
+    resource: repo://tests/test_live_verification_debt.py
+  - id: openwiki-source-e4aa10136657cfbe2fe4ad8c
+    resource: repo://tests/test_wheel_packaging.py
+  - id: openwiki-source-6b70da595cfd5823cd7cabe6
+    resource: repo://tools/openwiki-drift.py
+  - id: openwiki-source-d1f45dd4433e3f1723ccd204
+    resource: repo://tools/openwiki-retry-patch.py
+  - id: openwiki-source-42360cb3e257ef7023d23d39
+    resource: repo://tools/preflight.sh
+generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-09-09T09:34:57.295Z
 ---
 
 
 # The verification ladder
 
 Four CI gates, one oracle they share, two packaging/mutation checks, a drift check over this wiki
-itself, and local tools that replay the ladder before a PR. The organizing rule is stated once and
-never relaxed: **a green at one rung says nothing about any rung above it.** A green pytest run
-performs no `podman build` and no `harnessed container-run` — CLAUDE.md says exactly that, in one
-line, at the end of its test section. A green lint run says nothing about types or tests. The live
-layer and the pin check do not run on pull requests at all, so a green PR merge has proven, by
-construction, nothing about containers or about registry drift.
+itself plus the regeneration path that stands behind it, and local tools that replay the ladder
+before a PR. The organizing rule is stated once and never relaxed: **a green at one rung says
+nothing about any rung above it.** A green pytest run performs no `podman build` and no
+`harnessed container-run` — CLAUDE.md says exactly that, in one line, at the end of its test
+section. A green lint run says nothing about types or tests. The live layer and the pin check do
+not run on pull requests at all, so a green PR merge has proven, by construction, nothing about
+containers or about registry drift.
 
 The gates also *understate*: each one stops at its first failure, so a red run tells you what broke
 and silently withholds what was never checked. `tools/preflight.sh` exists to remove that locally
@@ -202,6 +251,45 @@ The division of labour inside that guard is deliberate and was learned the hard 
   list* may be fuzzy; the decision of *whether to fail* may not be.
 
 A skip count is not neutral information on a run that asked for the gated layer.
+
+### What the live tier asserts — and the seam it stops at
+
+The live contract tests point production parsers at real external output: podman's
+`inspect -f {{.State.Running}}` and `{{.Id}}`, the `addr:NNN` lines of `podman port`, the tty
+column of `podman top`, the label-filter repository list, a real `mise trust` flow, and varlock's
+JSON resolution. Each passes only when the external binary still produces the format the parser
+expects — a parser cannot pass here by agreeing with a private copy of itself.
+
+The varlock those resolution tests run is itself a pin: `mise.toml` declares `npm:varlock`
+**1.16.1**, verified against this tree **2026-08-18**, and the live resolution tests are the
+reason the pin exists. Separately, the proxy-shape regexes in `launchenv.py` — what counts as
+opting into the proxy model — are measured against varlock **1.17.0**, a different binary at a
+different date. The sources carry both references deliberately: one is a pinned install, the
+other a measured behaviour, and silently reconciling them into a single "verified version" would
+overstate at least one of them. (Note what the weekly pin check does *not* cover here: it sweeps
+the catalog; `mise.toml`'s own `[tools]` pins land as their own dated PR via the `upgrade-pr`
+task, by hand.)
+
+The broker half of the same feature is where this rung's honesty has to be sharpest. The launch
+gate and pod-args tests are hermetic, and they assert through injected seams: a spy stands in for
+`broker.start`, `shutil.which` is stubbed so a test measures schema content rather than the
+host's PATH, and the port-free predicate is injected. What they settle is real behaviour, stated
+as assertions rather than comments. When nothing opts in — no `@proxy` anywhere in the composed
+schema, project or global — **no varlock subprocess runs at all**, asserted on the spawned argv
+list and not on "no broker was recorded", because `varlock proxy rules` resolves values and can
+sit on a 1Password unlock prompt, so buying one for a schema that opted into nothing is a real
+cost ("capability absent, not merely empty", in the issue's words). And a broker that cannot
+start **fails the launch** — SPEC decision 2, the escape hatch being `--no-secrets` — because the
+alternative is a pod wired half-way to a proxy that is not there; the failure message names the
+hatch and prints no resolved value.
+
+But the pod-args docstring draws the boundary in one line, and the ladder keeps it: these tests
+assert the argv the launcher hands `podman pod create`; **what they cannot show is a packet
+crossing that route — no test in this repo starts a pod.** The composed
+`pasta:--map-host-loopback,169.254.1.1,…` form was verified live once, by the epic #388 Phase 0
+spike; that spike is history, not a rung, so nothing in CI ever proves a secret actually crosses
+the 169.254.1.1 door. Every other gate on this rung exercises a real container; this one seam is
+verified only at the layer below it.
 
 ---
 
@@ -476,7 +564,7 @@ everything, while a single change runs
 
 ---
 
-## A fifth check that is not a rung: openwiki drift
+## A fifth gate that is not a rung: this wiki's drift check and regeneration
 
 The wiki you are reading is itself held to a check — a precisely bounded one. `mise run
 openwiki-drift` (`tools/openwiki-drift.py`) recomputes each Claim's evidence digest against the tree
@@ -505,6 +593,8 @@ regenerate. It is *not* a verifier of every Claim, and the boundary is deliberat
   would say about now), `--quiet` prints nothing but the exit status, and `--strict-lines`
   collapses the moved/changed distinction for when a reformat *should* count.
 
+### The regeneration workflow verifies the native addon it installs
+
 Its generation counterpart, `openwiki-update.yml` (nightly 08:00 UTC plus `workflow_dispatch`),
 checks out full git history so the diff against the last-documented commit is nonempty and sets
 `persist-credentials: false`; it is deliberately *not* fail-fast, because openwiki's page-job queue
@@ -513,6 +603,74 @@ banks that progress as the next baseline — so the failure is re-raised at the 
 reports red. That is the opposite trade-off from the lint gate, and the right one for a job whose
 output is cumulative rather than binary.
 
+The workflow installs openwiki with `npm install --global` — deliberately **not** the recipe's
+project-scoped pnpm install — and then **verifies the native addon actually built before running
+anything**. The constraint is identical wherever openwiki is installed: openwiki statically imports
+`SqliteSaver` (reaching `better-sqlite3` transitively through
+`@langchain/langgraph-checkpoint-sqlite`), so a missing `better_sqlite3.node` does not degrade one
+subcommand — it breaks every subcommand at import. The two runners solve it differently because
+their defaults differ:
+
+- **On the CI runner, npm still runs dependency lifecycle scripts by default** (npm 10/11), so the
+  addon builds today with no allowlist at all. The risk is the known future flip: **npm 12 blocks
+  dependency lifecycle scripts by default** and requires an explicit opt-in, so the day this
+  runner's npm crosses that line the install will still "succeed" while the addon silently never
+  builds. The verify step converts that silent future break into a loud one — it searches the
+  global `node_modules` for `better_sqlite3.node` and fails with the fix in the error message.
+- **Inside this repo's own images, the base pnpm policy sets `strictDepBuilds: true`** — lifecycle
+  default-deny, live in the v11 global config — and pnpm v11 *rejects* `allowBuilds` from that
+  global config, so the allowlist cannot simply be added there. `catalog/recipes/openwiki`
+  therefore installs project-scoped: `install.sh` copies its own `pnpm-workspace.yaml` into a
+  private manifest — a global `pnpm add -g` would ignore the project allowlist entirely, which is
+  the whole reason the recipe does not use `tools:` — carrying a reviewed one-entry
+  `allowBuilds` allowlist (`better-sqlite3: true`), then checks for `better_sqlite3.node` by name,
+  because a denied build surfaces as "Could not locate the bindings file", which reads like a
+  broken Node install rather than a denied script.
+
+**The local path is the third context, and it fixes the constraint on the pin itself.** `mise.toml`'s
+`npm:openwiki` 0.4.3 pin — the install `mise run openwiki-update` runs against, and the tree the
+retry patch anchors to — carries two escape hatches, both required and both failing in a way that
+does not look like a packaging problem: `trust_policy_excludes` for `fastq@1.20.2`, because aube's
+no-downgrade trust policy refuses an install with no provenance attestation, and `allow_builds` for
+`better-sqlite3`, because mise installs through aube, which denies dependency lifecycle scripts by
+default. Denied, the install still reports success and every openwiki run dies at `Could not locate
+the bindings file` with a 14-line list of paths it tried — so the reviewed allowlist is carried
+where it is actually read, not left to the environment.
+
+Three contexts, one constraint — and each fix is the one that fits its runner's defaults.
+
+### Local regeneration: `mise run openwiki-update` and the retry patch
+
+The local entry point is `mise run openwiki-update`, and its first act is to run
+`tools/openwiki-retry-patch.py` **before every run** — which is also what re-applies it after any
+`mise install` that restores the stock runner, because the patch is idempotent.
+
+The patch exists because of how an openwiki run fails: a page worker that ends its turn without
+calling `submit_page` is marked *skipped*, the run finalizes `interrupted` **without advancing the
+diff base**, and the next run therefore regenerates the whole changeset. That was observed with
+glm-5.3-flash (94 LLM calls, a clean exit, no tool call — PR #445 run 6), and upstream 0.4.3 and
+0.5.0 were verified to ship no retry (2026-09-08). The patch gives each page worker **one fresh
+second attempt** sharing the worker's virtual backend — attempt 2 sees the page markdown attempt 1
+already wrote — before the page is skipped.
+
+The patch is defensive about its own applicability, on purpose:
+
+- It is **idempotent**: a marker identifies an already-patched runner; `--check` exits 0/1 to report
+  patched state without touching anything, and `--revert` restores the `.orig` backup.
+- It **fails loudly when its anchor text no longer matches** — the `runPageAgent` anchor, the
+  exactly-one agent declaration, the exactly-one worker try-block — and refuses any install whose
+  version is not the verified 0.4.3. Version drift means a human re-derives the patch against the
+  new layout; the tool must never patch blind.
+
+One paragraph on the task's environment discipline: provider exports are `env -u`-stripped
+**before** `varlock run`, because a shell export outranks the schema — a stale `OPENWIKI_PROVIDER`
+export once repointed a 13-hour run at the wrong provider (2026-09-04), and run 7 (2026-09-08) died
+on a shell export of `OPENWIKI_MAX_OUTPUT_TOKENS` that beat the schema's cap and tripped the SDK's
+non-streaming guard on the planner's one non-streaming call. The `--filter` narrows varlock
+resolution to openwiki's own keys so a wiki run does not pull agent tokens out of 1Password into the
+inference endpoint's process, and the task runs from `main/`, not a worktree (`docs/` is a
+gitignored live clone that only a `main/` checkout has).
+
 ---
 
 ## The ladder in one table
@@ -520,13 +678,14 @@ output is cumulative rather than binary.
 | Gate | Where | Runs on | Proves | Does not prove |
 |---|---|---|---|---|
 | hermetic pytest | `test.yml` jobs `pytest` / `pytest-py313` | PR + push main | pure functions, assembly oracle, emitted text, repo-asset invariants, order independence | any container behaviour — no podman build, no `container-run`; gated tests skip, and a skip is not a pass |
-| live layer | `live.yml` job `live` | push main + nightly 04:00 + dispatch | real `podman build`/run, capability oracle per stack, external contract drift within a day | nothing on PRs; nothing about the host backend |
+| live layer | `live.yml` job `live` | push main + nightly 04:00 + dispatch | real `podman build`/run, capability oracle per stack, external contract drift within a day | nothing on PRs; nothing about the host backend; and no packet across the broker's 169.254.1.1 route — that argv layer is asserted hermetically, through injected seams |
 | lint | `lint.yml` job `lint` | PR + push main | ruff correctness/security at zero, pyright basic at zero, shellcheck over every tracked script | runtime behaviour; layers after a red one never ran |
 | pin check | `pin-check.yml` job `pins` | weekly Mon 06:00 + dispatch | stale, unheld, past-age pins across the catalog | nothing about code correctness; nothing on PRs by design |
 | capability test | `harnessed test <stack> <harness>` | inside the live layer, or by hand | the manifest's declared capabilities are present in a running instance | undeclared capabilities, host-mode behaviour, interactive attach |
 | wheel packaging | `tests/test_wheel_packaging.py` (in the suite) | every pytest run | the shipped wheel carries the catalog and no host-local content | installed-wheel runtime behaviour — still the live layer's job |
 | mutation | `mutmut run` (config in `pyproject.toml`) | on demand | a failing change fails a container-free test | anything reachable only through a gated test |
 | wiki drift | `mise run openwiki-drift` | on demand | which Claims' line-cited code has changed or its file is gone — a moved-but-identical block is not drift | whole-file and unknown-scheme evidence (skipped and counted, never verified); anything a page never cited |
+| wiki regeneration | `openwiki-update.yml` / `mise run openwiki-update` | nightly 08:00 + dispatch; locally on demand | a refreshed, Claim-grounded wiki whose native addon is verified before use; one retry per skipped page worker before the run banks partial progress | that the Claims are still true — that is the drift check's job, run before merging the PR |
 
 ---
 
@@ -549,10 +708,26 @@ alone covers **one gate of four**; a green suite is not a green CI. It runs pyte
 `pyright` → `shellcheck` — CI's exact order and CI's exact lint argv — with two flags: `--all` adds
 the catalog pin check, `--no-tests` runs the lint layers only.
 
+A tooling nuance the identical argv hides: pytest and ruff run through `mise exec` from the
+`dev` extra, but **pyright and shellcheck are looked up on the ambient PATH** — `mise.toml` pins
+the versions CI installs via mise-action, and if the binary is missing locally the layer is
+skipped and named rather than failed. The argv is CI's; the binaries are whatever the box has,
+so a version skew between them is possible, and the skipped lines are how the summary admits it
+(it never prints a bare "all gates passed" over a skipped layer).
+
 Its **one deliberate divergence from CI**: it runs every gate even after an earlier one fails. CI
 stops, and a stopped run *understates* what is unverified — a ruff finding there means pyright and
 shellcheck never ran. Preflight keeps going and reports each skipped layer **by name**, so a local
 run answers "what else is broken" in one pass instead of four.
+
+**The two end-to-end oracles.** A contribution is done when `harnessed test <your-stack>` is green
+and the live integration test passes — those two, not the hermetic suite, are the checks that
+exercise real containers, and nothing on this ladder substitutes for either. For the git workflow
+itself — worktree per change, full suite passing before proposing a merge, PR into `main`, signed
+commits — see [AGENTS.md](https://github.com/drmikecrowe/harnessed/blob/main/AGENTS.md) and
+[CONTRIBUTING.md](https://github.com/drmikecrowe/harnessed/blob/main/CONTRIBUTING.md); this page
+deliberately does not restate it.
+ of four.
 
 **The two end-to-end oracles.** A contribution is done when `harnessed test <your-stack>` is green
 and the live integration test passes — those two, not the hermetic suite, are the checks that

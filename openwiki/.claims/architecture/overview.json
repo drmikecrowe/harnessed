@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5146355b0ee18291f848f1c23242bcc0b1106e23d0a4465a88b2bb497c0fe822",
+  "pageVersion": "sha256:1d8b0bde9da2a8d31b437592ff2c1329d54eba401b767f219ce304d4881e7104",
   "claims": [
     {
       "id": "claim_2fd6b866ccaa44049f2b3f72a0bceff7",
@@ -629,10 +629,104 @@
           "version": "repo-lines-v1:sha256:e819bd4e553bffc03bcc2c7149263f9c7f7cea56c09ff6672f5bfd0321c7a9a8:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGYyMzhiMmQwZGM0NzEzYThkYmQ2MjE0ODVkMDA3Mjc4ZDM3MGE4ZDlkYzc3OTY0YjQyYjIyZTA0OWI3ZjEzMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGFhZjE5OGViZDdhMmE5NTY0NmQ2Mzg3MmNiMWIyZWU2YzVlZjVhY2MxYWUyNWM3ODg2Yzg5OGY4YjMyMjg2OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjVlNzRkM2I2YThmYTU5YjE5MDdiMGM5M2M4ZDU0Yzk1NmI1NTk4ZTczMjU4M2MxMzE4ZmRkODk3ZWY5NTRmMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWM1N2FiODc2MTg5ZWFkYzI4YzkzMTQ0YzZkMWQ1NDEwYjc2ZTBiZGUzYmM2ZmUzODBhNjk1YmFkMTMwMzdlOSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_59a456cd15254df7be262d8e50c48eaa",
+      "statement": "The container create path runs in a fixed order with the secrets-broker slot in the middle: env resolution first (ContainerBackend.seed_auth calls launchenv._resolve_launch_secrets for the ordered global-then-project --env-file list, plus generated temps unlinked the moment podman ingests them), then the broker gate _broker_start_for inside apply_isolation(BOUNDARY) and immediately BEFORE pod create — the pod's --network args depend on whether a broker exists, so without one the pod gets no pasta --map-host-loopback route — then pod create, the single podman run that delivers mounts and env, setup scripts while egress is open, the egress close, and finally attach (os.execvp into podman exec -it). A failed broker start aborts the launch, and if pod create then fails the already-started broker is stopped before the error re-raises.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3255-L3294",
+          "version": "repo-lines-v1:sha256:a94918c6b6e86de0b5093ce0ab66d478a679e1487942561e1070e0f141c5ca4d:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2MzRjYTJjYjc1Y2ZjNDgwMmJkOGQ5ZDFmMzVlOGQ5ZmRhMDliMDUxNDE0MmQwMGVkNWY2Y2YwMDA1MjNhMjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViM2ZiMjA4MzcwMTNiNmFjMjI1ZTQ2ZmEwYmY2OWU2N2E3MzAwZjUxMjRjZWE4NzI4NzllNjAyNjc1NTBiYjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmZTcxYmM2Mzc3NWZiNzQ2NDJiNmZhMjc5ZGZlNDViNGY5NWI1ZjMwYjE5MjU1MDk0OTY2MzY5N2JhMjYwMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkZWQ4ZDA5NmQ2MjRiNTU1ZWJlYWVhZjE1YzQwZGVlYzRhMGFlNzEwYjk4YTIzYTAxOGRiZWQyZjg3NWM2MDUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3411-L3424",
+          "version": "repo-lines-v1:sha256:b908e186da2a361185648fa302e969d435b8505260ee6f56d8c0cdcc61416f74:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkMzk1NjYxNmQyOTkwOTlhN2QzNzZhZTY5ZDBlZTVhMDgzNWRmNWNhNWQyYzAxYmNlYWEyN2VhN2MyNjI3YzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNjFjZTliMTJjOGMxZGQwOWU3MTcwMWUzNzU3Mjk3OGU1MWU3YTQ3ZDA4ZDAwYzEwM2JkODE2NmU3NTFjNzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4YzZlZWRjOWQzOGFkOTg5YTY5ODk1NmY0NGRkNzhlMjg4MDMxMDI2YTA3OWY0MTQ2MzQ2YjNlMDhiMWU2MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5ZTlmZmZlYzhlMGJkOWFkZTg4ODkwMmRlZmRmNzFlZjQwM2NhOWYwYWZhOTcxOTk2OWQzOWViMmQ5ZjA5N2YifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3510-L3521",
+          "version": "repo-lines-v1:sha256:0fcc09a46895431a79bfe03fe64e24ed13648938eb57c49e2ea7a7a6d3533a27:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1NjljYjA5MjgwZWUwNzgxOTQ1ZTQ4ZDQwNDFiZDJkZmFhZTY5MWFkMmVhYmY1ZDNjYmEwODQ2YzcyMTZjYWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3MjhiYzQ5MGQ2OGRiZWMwMDk1YzYxMzRmMzUwODliZDk5MWZkMDQ0ZWI2YzZjZDFiYjk1ZmU0YmE2MjU2MmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxYjM3YTNmNjYxOThjMzI3ZGY5ODBhZTJlYjM4ZjJkN2QwMGJmMzkwMGEyNjA4MjU5NTQwMjQ2NjA0NzliYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyZWMwMmViNTU3MmQ2MTQxODQwOTJjNjcwZDliNWFlYzdhYjRkNGY4MmEzYjdhZDkxOTVjNDViODdmYzQzNDgifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3868-L3886",
+          "version": "repo-lines-v1:sha256:bfa60450e40db7fc0fecaafb4a8b5dce16641a1145fec586e4d1b342bfd35872:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwZGZhN2U2NDk2MTAwMzY1ZWRiYTc2MTJiZmMyMmI4YmI2ZThkOWQzN2ZkZTM4MWMxNmY1NjVjYWNjNjkyMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0NTc0ZjI1Njc4OGRlNmRmNDg5ODg1M2FlMDdmOGRiMzI0NzRlMDM0ODU4NzU2MjhjYWI1MzVkYzczNjJlMGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4YmRkMjM5NzFiMDgyODQwNzYxYjA0OGY5MTc0ZDJhZjMxZmNiMzIwMmRiMGQ2ZjM4NGNiYzgyMjA5ZWE5YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3YzAxYWExZGNiZmMwM2UyNmY0YzRjYzdjMDFmZDg2NzNjODdiYzY2MjNkYzA4Nzc4ZjdkOTg0YjU4ODQ4MDUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L4004-L4008",
+          "version": "repo-lines-v1:sha256:6a6f10e9db0e33b3cae8d28fa3f18e785da1e178948395e46746183394d75e0f:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzVmNjdlYzdkYTM1NjNjYjRhZDg4NDAyODg4MDQzODIwMjRhNGVmNTZlODE1ZmIxMTc5ZWVmNDZjNTYwOTgwNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjhhMzkzM2ZkNzg1YTg5Nzc2MGY1YTNiMjQzZjVmMWM2OTBhNmUwYjk3NjRjNjJkOTA2ZmZjZDRmMWI1YjA2ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmRkOGZjY2ViZGM0MzY4NzAwYTBjYjY0YTNkYmU4NmFiMWMyYzdhZTRmMzJlYjdiYTgzMTkyYjA3MTM4NjNlZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzNmOGU4NjEzODY4ZDU5OGYzMzM2MmU4OTIwZDE3MGFiNjU5MzhlNDcxMzdhMTliZDk0ODlmODg4NjBiNjEwMyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_27d2d93fc63048deb3c6f79cf74caa4f",
+      "statement": "The host launch path stops at env resolution and never touches the broker: _launch_host resolves the same global-then-project secret sources through launchenv._resolve_launch_env — a KEY->value map applied straight to os.environ in-process, never written to disk — then materializes, seeds auth, provisions and execs the harness directly; there is no broker gate, no pod create, and no attach, because a host launch resolves varlock natively with no boundary for a broker to sit on. tests/test_launch_parity.py's CONTAINER_ONLY ledger records _broker_start_for ('starts a host broker for a POD; a host launch resolves varlock natively'), proxy_schema_dirs, and _broker_stop_for as container-only by nature.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L535-L546",
+          "version": "repo-lines-v1:sha256:ea1ed4aaaa7c6d1dfe73db91f7b1033bf9452166b203b3b983d642df290bf30a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmYTg3N2MyZTIyMGUxNDY0MzM1Y2E2MDBjNDAxMzNlNGRjZTM3YWI4MTBiMjEyZWYxOTFhYTY1MjJhOWMwODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkZmY3Y2E2ZGZjZDk5NDdkZmU5MjJkZWZmMTAxYTY3NDdkZmI1MjI3OGZjOTc0OTU1NDUxZDRhZjIzNjMwODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkODc2MDU0ZjMxOWE0YTMxYTc3N2I3YmJjMzQ1NTAwYTUxZmU4ZDdjYWNlZjdhZTExM2VkZDgwNTE5OGNjNzAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2728-L2739",
+          "version": "repo-lines-v1:sha256:d3553556e20ca99ffd2b7d0d6d5cd2144a1606cdd6fe893bdadde8bbb58f7de1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyZTY3NGNhNjgyMjI5NzU3MDhjYTQwZDBlMmVmNGQ4ZTIzMWY3OGY0Y2M3NWYwOGU5ZmRhNzAyMzYyMTc0ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwYjAzZTUyYzk5NDM0N2ViMzlkZTdiMzkzNmEzODQ2YTRiNmNkODE1M2Q3NmFkNTMzOTEwMGFjMDY1MDE5NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNGU2YmRmYjE5Y2ZkYjU5OTAzMDk4NmU4N2FkMzBkMWFiOWYzNjM1NTAwYzA1MTA3ZmFmNDVjNzliYzVmMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3YzJmYzVkMmUzODJjNzdjOWEzZDY2ZWIxYzViNGUzYzBmMmFkNWRhN2FiM2QyNDU3ZDhjNjQ2NGMzZGQ1MTAifQ"
+        },
+        {
+          "resource": "repo://tests/test_launch_parity.py#L52-L61",
+          "version": "repo-lines-v1:sha256:1cba174db6cd0b581c609673fa475fe7e62c7fec452582f2151ab31dbaea0c30:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5NDFiZThlYmE1YmE3MzI5ZTAyZTRmMGM4NWMyYzA5OTFhNGJlNGI0MDA5YTcyNTIzMDBmNmIzMmVlMThmODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMjM0ZDRlMjAyNjZlYzhkNDIxNzAyMDZhNzE1OGIwY2ExZTRhOTEyYzIwNzY5OTllYTAyNzEyMzdjMjIxODciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhODZmNzFiMDg3N2M2ZjcyMGFmNzA2MTc4M2Q5ZWE5MmRmYzc1NTk1Mjk1MTdiOThkMDA2YTJkZjZiY2QxODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNDk1NjRiYjRkZTc5ODA2Y2UzMDg5YmMxMDAxOThlMGZkY2ZjNmYxZjNmZjMxZWFlNmYwN2ViMTg2YmQ0Y2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0d236b39a8284cb1bd8207df07746db0",
+      "statement": "The supply-chain scan is a post-build stage owned by the launcher, not a Dockerfile layer: write_derived_dockerfile emits no scan layer (removed in bd harnessed-8px.21.5 — the layer scanned an image that no longer contained stack content and reported green off one scanner in four), and after the per-stack volumes are populated, `harnessed build` re-scans the just-built derived image credentialed (snyk + socket with tokens resolved host-side, volumes mounted so the scan sees what was installed); it is advisory — it reports posture and never fails the build, and --no-security-scans / HARNESSED_NO_SCANS skip it.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py#L308-L310",
+          "version": "repo-lines-v1:sha256:cda9a1e715d8ba66f4e208049084770803e949b6f55ba889e0159d17e66df685:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmZjNmRjYmNjYTc3OGVhMWE0NTNmZmRjMzA3NDc1ZWJkZWU2MWU1OTg2ZjFjZjJlZDhiOTlhM2I5NDYwMDI0OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDQwMjM5ODg2N2JjMTg4Y2ExNDg3YmVlNmUwNGI1NmZhZDRlZmJmNWQxZWE2Mzk1NWMwMmY0N2FkZjBiYzRiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDVlZTllOGI4Y2ViODJhZTRkYzQ4ZWU1MDc4ZDRhNTZiYTI4YzQ0N2E5MGZjZmMwNGEwOTIxMzQwYjRjY2I2MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDg3NzlhNzViMjY1NzI0NTUzZTcxYzE3NTk1ODlhY2M4MzIzOGZjNWE0ZDA0MTAxMWFjOGIzYTZmODBlMjFlMiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L1156-L1163",
+          "version": "repo-lines-v1:sha256:74aabecd1926c8629bba00f3b8be6a978fe844ac74951611fad4512fd0bd1463:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTM4ZTY5NzY5ZGI1YzZlYzdkZWU2ZDYzMzdlZDRlY2ZhMDNlNjdkZGI4ZmQwNzk4OThlODk5NGM4NjY5YjhjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFlNWNkYjY3MjY0MGQ1MmUwYzNiODU5MjBiNjZmZjNhODE0MzIzOWE0NTBhOTU5Y2IxN2UwYmMwYjc3YmY0MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDNhYzJiMWYzOTBmYTllMjg3OGMwOWVlMWM4MTY2NTk4ZmQ5Zjc4ZDg4OTcxMWMzNzVmYmY1NzNhZTZlZTY4YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTIxNzEzOWUyOWQxMDQ3YzViMTJiYzYwZDFhNDYyMGU5YjkzYWQ2MGUxMjQzYjJhNDg5ZDBkN2JjNTI5YzBkMiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L713-L738",
+          "version": "repo-lines-v1:sha256:fcfc00840824b696871f63ea26ec0b72d87f9ae64b6296a1729bb5dc88cfc7a3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzOWY5MzYyOTUzMTZhZDE0Y2U0YThhOWM3OGNjYzIzNmRlNDBkOWNjZDhiMmRiNDY3NjdlNTI4Zjg3YmQ3ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZTYxNWUxYzU0NWYwMzE1MDdlYWQyYjA2YmIyZmFhMmY2Mzg5MDFlZGVmZmFjOTg3Njc1NTM1ZmVlMzY5ZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiZjRjYzZlNjQ3MWJhZjVmNDM1YzQzNDIxZTI0ZTYwZjk0YjJiODFmOTdiMWE5ZDE1NmMxNGMwNzBkY2U1YzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkMGJlZmVlOWViM2NlMjg0MTU1ZGIxYjE2YjAwNTJjZDAzOTVhNzdmMDUxYmQ4ZDE2NDllYjljNDUyZTcwZDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_484ea99d88ef48f99051af84dfabe366",
+      "statement": "The broker gate's input is deliberately cheap: launchenv.proxy_schema_dirs returns the composed schema dirs (user-global ~/.config/harnessed, then the project) that opt in via a @proxy annotation form, decided by a text test on .env.schema that costs two file reads and NO varlock subprocess (proxy rules resolves values and can sit on a 1Password unlock prompt, so a launch that opted into nothing must not buy one); it mirrors _resolve_launch_secrets' dir selection so the broker resolves the same composed set the --env-file path resolves, and varlock absent from PATH means no broker and no error.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L427-L449",
+          "version": "repo-lines-v1:sha256:e6bd139d38c620ea27f4ba45a94ff140457b63652df1286bd5e9a351f5b97031:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiNjhhZjQ4M2Q4MjEwOTc0ZGNkZWI4NmU5ZTg0NzM4NmYyYTIwNDZiYjc0MGVlMDZhYzc3ZDQxYzZmZTU1YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNjk5NzdkMDA3ZjAzMTUwZWNjNzJiNDZlY2YwNzJjMmNjMmQ5ZTQwYmQ0MDlhZmQ0MjlkNDJiZTcwNzYzNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiMWU3YmRlNGEzNTIwMDMwZWZlNzM0NjU1ZDJiYjY3MDMzZWU0NzgxZDEwN2RmYTEwMzFkZGVlNDg2NmMxMjcifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1274-L1307",
+          "version": "repo-lines-v1:sha256:7884f632e7dd24c992fa236753aca16baccda3a6ba8ea2601c88369235a24057:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0MjEyNmFiZWRlN2UyNThjODc1NTEzZThiOTAyZTQ2Mzc5NzhkZDUxNWJjOGY5NTRjZWQ1ZGE2NDVlMTNiMmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMGYyZDM4MzY3MzU3ZjE2OWRmMGIzODFiODliZjE4YzJhMDliZmZhNTIyOGIzZjIxNWU4M2I0YmQzZGMyYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwY2MwZjAxNmQzYjVhN2JmYmY5NDc5NDJlNjkxNzI1OGYwYzI5NzQwNGI1ZWMwNTI1NjA4MTVhOGZjNTMzNjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxMTY4NTVmZjQ5MTQ0NzI4NDJlMmU4MTQ0YzZmZDA3NGMzNzczMDY4ODUwNGJiNGY5Y2NlZTJmYTg4NmMyOTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_72c3e3b0859d40acaf550698a32578de",
+      "statement": "Pod launching belongs to the container backend alone: pod create, the member podman run, the attach, and every mount helper are container-backend stages, while HostBackend declares isolation=none, never creates a pod or container, and calls apply_isolation as a no-op in both phases precisely so the host path exercises the whole six-capability contract rather than quietly implementing five sixths of it.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2489-L2501",
+          "version": "repo-lines-v1:sha256:0e9f417372f00d80d9233c54849bd8bdab81c46188e3794231c2f45f62070339:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYzJmYmYzN2RiM2E5NjU2NDljMGY4ZDZlYTEzZTYzNjg1NmZlMDQyNjFkMmUzYzdhMDcyYTc2MmE3N2I5N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2ZjFlMDkxMDcxNDc1ZTU2NGY5M2IzYmY2YTU2MjU2ODkwOWVlZGIxYzZlMzFmYWY0YjMzNzVmMDE5MzZmZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0MTEyMDY3ZThhNjEwYzE3MGVmMzBjYjc2ZmEwMGU5NjRjNjQxMWJiZDI4MDYzMjZmOWIwMTlmYTRlNjg3MGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4MjQzNTlkZjM1YWExZjc2ZTY5ODcxNDU1YmEzYTQ2MTA3OTQ5YjdhOTQ1NTA0NWM2MGE0NTAwOTg4ZjYzNzUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2850-L2853",
+          "version": "repo-lines-v1:sha256:edc374fc852f7c91761c412792abd3ce33a149d4a5350470ab819150fdcdacfa:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjY3OTVkNDQ3YzI4MDI1ZDczM2RjOWM3NDJhMjM5N2JlMDdjYWRiZjIyMGY0YTdmNmVhZjc2NjZjZGJkNDRlMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTQ1NzRmMjU2Nzg4ZGU2ZGY0ODk4ODUzYWUwN2Y4ZGIzMjQ3NGUwMzQ4NTg3NTYyOGNhYjUzNWRjNzM2MmUwZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjhkMTc3ZGY5MmYwZDAwN2E1ZDExMGI3YTk4Mjk2YjAwYjg4MjdkM2YyOTk3OWU1YjU2ZjdhYzU1OGE1OTZhMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTcwYmJlYWY2M2RhNTlhYWExNGYzNWZlOGU2NDMzZDcxYmJiNjYzZGJmZjk4ZjgwOTJlNmJkNDVmMWNiMjU0NSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3391-L3417",
+          "version": "repo-lines-v1:sha256:e0e2ab1ab25e78cf99cf9a772f33787e7b9a66eed499e820d7c9aa4bde9d1709:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0OTE0YWE0Y2NkMzk3MjNhOTk4ZTBmYmEyZThjMmY1Y2UzNDJlOGJhNmZmOWFmNWU5NTQ4NGVkNGRiNjAzZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiOWYxNzI5MTU0ZGNhOWUwM2NmOTVmNDVlNjBkYzdhMTVlMmM5ZTMwMWMyZGFiNjI5NGRlYmQyNGM1NTJlY2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1OGVkNDhhZjJjM2E1ZjNkNDgyMDI2YzBjNDQyNWQwNTg0MzRjNDczZDk0ZWVlMzJjNTk3ODQ4ZTcxMmQ2ZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmNzM3NTQ4NDdhNDM5YjgyZjQ0NjQ2NzAzZjBmMWMwMDQwZjhkYjVmNzU1Mjk1ZjU3NGM0NWZlZWFhOTQ5YjgifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.4.3",
-    "at": "2026-09-02T20:26:19.165Z"
+    "at": "2026-09-08T23:17:55.419Z"
   }
 }

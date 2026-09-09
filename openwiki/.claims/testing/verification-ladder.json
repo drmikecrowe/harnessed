@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e2d6f038e9b065154a42d9e55444564e3600854885faab21d67b1c36d0778e1a",
+  "pageVersion": "sha256:1ddb01dd09f78664964f6719d07454dec75d48189e4161770b5740bb2d6410ed",
   "claims": [
     {
       "id": "claim_53d617e673d544d78bcddfca751dbff6",
@@ -39,10 +39,414 @@
           "version": "repo-lines-v1:sha256:f1a2b8947768097af195c4ff26e3afd2bfde826ed14d94ca322091dd43e732a3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlN2Y0YjM2YWM5Y2UwZDA2ZGNkNzJjY2MyNGViMjkwZWNjYTNkYWRjZWUzNmNkNjQxNjg5YTI4MDQ4Yzg1NDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0NDIwZWE4YWFhMWEyMDYxNTdhMjNiNjZhOTE4ZTNlMGNmZGMzNjFlYWNiNTgxNDg5NjliNjdiOWYwY2ZjN2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjMDQxYmQzYjQ3ZjE2ZDZiODFiMWMzNzMxMGExODgyNDAxYzFiNmNhOTMwZjJkYWIyMTg2ZWEwNjQwNTllN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkOTM5MjJjZDMzOWY2MjNlMDczOGU5Mjg1MjNiMDFhMTkxOTY0NTBkMjc4YTIyNjkzN2FiYjJmZjYyYjI1OGEifQ"
         }
       ]
+    },
+    {
+      "id": "claim_b79088cd465e403facd72d9443616648",
+      "statement": "Local Python runs are pinned to the floor of the supported range: mise.toml sets UV_PYTHON=3.12 (the floor of requires-python and what CI's default job runs) because an unpinned uv picks the newest interpreter on the box, so without the pin no local run exercises the version CI uses or the version the project claims to support; the separate pytest-py313 job covers the top of the declared range.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/test.yml#L38-L58",
+          "version": "repo-lines-v1:sha256:c50b929a14233ab9e61c01584c607d3345c5a209874ea0a78b0bdeaf92677bb1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzkzNTU1ODMyYzU4MWYxMWI4ZDNkMTdkMzVkZDc5MWVlZTcxYzQxY2MxOWU4NjExNTYzMzczZDkzYTNjNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YjhkNjAzOTU4ZjgxMWNmYzMwYTY3MWFjZGZmMTU0MGQzNmI1ZDNhNTQyMjBhMDg4NjM1MDYzNWRmZTc5ZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4YzZhNTcxMTViY2Y1NGVhZmE0YWRhOTY2OWUzNmVmMWI4ZGZhNjBiZjUwNWMyOWZmMzUxZTlkMzMxZTM3ZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://mise.toml#L34-L41",
+          "version": "repo-lines-v1:sha256:16f6df75be7c5d38f3a46999614aae45fc2d5d4bd4e643b632bba5472fb03af7:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWE2ZDMyZTI0YzIzNjA1NDdjOGExYWEwZGI5MDA5OGUxN2VjZTlkM2JlMTg1MTFjM2ViYmZlZjQ0MWExZjNiYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTk3ZGI2YjYzOTk0YjMxNWU0YTFkNDAxYjk1NjkyYzc4MGJhM2VjOGNlNzg5NmM3MTA5M2MwNjlhZGZlZjkyZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmIyYjg4ZmUxMWU5NjI2ZmQxMzg1NTM0ZDU3NGJkN2JlNTIwNjU3ZGMzNDVjNjFhMjgzYzkwOTg3YmI1MmRjZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmE0ZjFmNTQyNjcxODEyNmJjMDJmMTAxZGMzNDE1ZWVjNTMzZTI5ZTg1ZTZkNzIxZWI4MTA3NWY3NmZmZTAzOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b3514aae5867481c9c41e617931f4eda",
+      "statement": "The live layer is the home for everything the hermetic runner skips: live.yml triggers on push to main, nightly at 04:00 UTC, and manual dispatch, deliberately never on pull_request — podman-build minutes on every PR would get the job disabled (and a disabled check verifies exactly as much as a skipped one), while post-merge plus nightly catches external-contract drift within a day; the automatic triggers were only enabled after the suite measured green against a real podman.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/live.yml#L1-L39",
+          "version": "repo-lines-v1:sha256:9ac2e6d0414f7a13e85100c974457543adfbdeaa80427c754cfc314eb2b54c49:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkYTA5NWNlOTg4YzA4YzExZjEwNWU4NzVmOWMxODY5ZDEzYzQ0MTI3Y2Q2NTgzZTYyOWRiMDEzNmIwZDA0MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTBmNGNiNWE3MDgyN2Q4NWMxZTE3NTU4YzhhZGEzMjNhMGNkNjFjM2YwN2FkZDdlMGM4NTA5ZTRjNjcxMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyNWFlY2UzZWFlNTZmYTJjZjE5OGNmMmIyMzNjNDFhY2UzYjM1ZjU3NTY1M2JmZDBjNWMyOTY1YjNiNTNmYTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fda43da7903845a190107c76095692dc",
+      "statement": "The live job builds localhost/harnessed-base:latest before pytest starts because the image-precondition skips in test_live_verification_debt.py are evaluated at collection time, and it deliberately runs a bare `build` (base + agent images, then a no-op stack reconciliation) rather than `build <stack> <harness>`, which would also build the derived image, run the credentialed rescan, and pre-create stack volumes the tests must exercise cold.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/live.yml#L93-L123",
+          "version": "repo-lines-v1:sha256:1b3858ba6fb1e683b4d5e940a2c337817d3fc457703f25157058b53c3bf61e17:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1ZjM5NmZhNzhjNmQ1MDBhNjY4OTA0MWY4YjU4OGY3MWUwNTY3N2NiYmU4MGEzNmM0NDhlZWYzNTc5NzIzNGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMWRjOWY5ZTkwMDljOGJlZTQzOWFhZDg0NjRjODg2MWVjZjM0MjA4NTNiZGMwMGQ3ZWM0MzY0MmIyNGFmMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMmYxYzYxMTA2N2FmOThiNmVlZWI2NTU2ZTkyNWJlZTc1MTU1MzQ1MmI3MzY3YjA2YmE0NzNmMGU5ODVmZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmNjBiM2M2YjMxOWI5ODlhN2Y3MDk2MDlmZTRlYjZiZmNhOTQzYjc2NTQyYjI2NDI0YTM5M2E5M2Q1ZmY5NmYifQ"
+        },
+        {
+          "resource": "repo://tests/test_live_verification_debt.py#L42-L57",
+          "version": "repo-lines-v1:sha256:ee5852aa362f1550b770db39df561c6f76ac5bb8b3cbe291a58d0fc1640ba91f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2MWRmYWFlODNkMTMxYTA5NDc0MThiYmE3ZDAzMWMwMzFhZjUzYzhhYjE0ZjQ2ZWY2MzgwYjc1NWMxODg1YWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1MDI5YzgwMmQ0MzJiNjQ5MDA1ZGEzMmY4Nzc1MDRiYmEyMDZiNmRkZjc2YzQzZjhkMTRmODUxZmVjMjg5MjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3YzY3ZjgyYWVjYTEzYTcyZDZkMzg3MzcwNjEwNGM3MGNjODU1YWZkZmZjYmVlMGQxZjZiODgzZjQyYjI3YzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a2dbb523476a4d8baa1331763b707ff7",
+      "statement": "Both live.yml suite steps require GITHUB_TOKEN: mise's aqua backend and runtime tool installs resolve pinned tools through api.github.com, where an unauthenticated runner shares one heavily-used IP rate-limit pool and a 403 mid-layer reads as a broken pin when the pin is fine; the workflow token raises the limit from 60/hr per IP to 1000/hr per repo with no secret to configure.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/live.yml#L109-L123",
+          "version": "repo-lines-v1:sha256:4de9b3b56d38b75d2a283a6ab34edca7c673b5468f354523ccfb944bf3ebf0a8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmZDQ2MThmODAyMWVkZDA1NjQzZDViM2FkOGExNDdjYTNkODRiMDIzY2I1YjM4ODI3OWViZmUzZTgwYjhhYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMWRjOWY5ZTkwMDljOGJlZTQzOWFhZDg0NjRjODg2MWVjZjM0MjA4NTNiZGMwMGQ3ZWM0MzY0MmIyNGFmMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzZmMzNzExYTJiNWNiZTg1YzU5MWZjODdkMGZmYTg5NWFmZDEyODU4YThiZTlhOWE0MmEwOTMxMzFlODBkY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmNjBiM2M2YjMxOWI5ODlhN2Y3MDk2MDlmZTRlYjZiZmNhOTQzYjc2NTQyYjI2NDI0YTM5M2E5M2Q1ZmY5NmYifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/live.yml#L152-L159",
+          "version": "repo-lines-v1:sha256:e3f255613af321281eaecd0ea9086e1c741118222b816e9cdd835f3887866f15:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjk1MmZlY2ZmMjM1MDE2NGRmOTRlYTQyNGIxNTY2ODU2NWU1N2E1MzU0NzhjYmZmODZmMDM4YjU2ZThiOTQ5NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTBkZmFhNDI4MGQxYTI2MmU4MjlmNDk3NmQ5OTI4YWI5NDE0YzZhNTc1MWQwYzExYmFkYTMwNjJkMjI4Y2Q0NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWY0OWJjZjBkMDRkNmU0YjNmODg2MDQ3MDczY2I4MGVhMzU2N2VkNWI4MzZmMTc1ZGYyOTI5OWQ4ODU1M2ViMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGM4MGQ5ZTdjZDNhYWM3ODgxNWFjMjY4MmI1ZmYyN2M4YzQ2NTdjMmYxYTdjMTQyMDhkOGMyMDNmZWQ1ZjE5ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9dec5db1ec8546afa56fd3f394b85152",
+      "statement": "The live suite is invoked through tools/run-tests.sh with HARNESSED_PODMAN=1 — never a hand-composed pytest line, so CI and a developer's box run the same thing by construction — and tests/conftest.py fails the session when the gate is open and any live_podman-marked test skipped; the fail-closed decision uses the marker, never skip-reason wording, which is pattern-matched for the report only.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/live.yml#L145-L159",
+          "version": "repo-lines-v1:sha256:b9ebcd19818d64ff38a6fbfc5c20cbd5fc14689154e973132f7e3860009ce7a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4NDdlNjQxMDEwNmU4MGQ1NTI1OTdhZWZiOGJhMjJhZTEwM2E3ZTVkZTM2YzY1YTQ5MzNkMDIzNzUwNzdmM2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZGZhYTQyODBkMWEyNjJlODI5ZjQ5NzZkOTkyOGFiOTQxNGM2YTU3NTFkMGMxMWJhZGEzMDYyZDIyOGNkNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjljYjVkODlhOThhOTBkMDkwZTg0OWU1YTZjMzkyYzQxODg4MTAxMTZiZDI3OGI3NWZjYWY3MzBmYWE0OTMyYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjODBkOWU3Y2QzYWFjNzg4MTVhYzI2ODJiNWZmMjdjOGM0NjU3YzJmMWE3YzE0MjA4ZDhjMjAzZmVkNWYxOWQifQ"
+        },
+        {
+          "resource": "repo://tests/conftest.py#L125-L136",
+          "version": "repo-lines-v1:sha256:b7f6d1dd0d85ce556a235c51db630fe426371722c7af0811da783013371fa419:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyYWFjNWFiNmVkZGMxYWI2NzA3YTFiMWMwNjQxNDAyMWVhMTBlMmRmOWMxYjlkZmM1ZmMxZTBlNGQxZjcwNDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMTZmZDg4YTI2NDNiOTY1ZjE0NGRkM2U2YTUzMGUzMmZjYWM5NTRhZDg4YzM1NzQwNGMwNzQ4ZmIzNDQ0ZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkMDllMmUyMTU2NzM0MjA0MTIzZjI3NzA1NDU5MzQzZjA0MjQ0ZTU2OTBiZGE1ZmJkYjY1ZGQxMjEwNjc0NWQifQ"
+        },
+        {
+          "resource": "repo://tests/conftest.py#L73-L95",
+          "version": "repo-lines-v1:sha256:2c42d7f985f8b164e590c3b740ec9898c09a09ce9201ad253c9eb28cdb2bebc6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5YjdhMDhhZTcxMTYyZTM1YTIxYzY3MDM5YzE5ZTc0MmE3MDNkOTQ0YzE4MzNmNjcwOGZkNDMxOWU4NmI4ZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiOGRjNTlmMDg2YzM4YmJmYTVmN2E3MTY0ODI1YTA4ZGQ4MjEwNjc0ODVhMDliNDg5MTcyNDlmMzFlYjljNzUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_04d32049bef64d02a5773f2c6fc80801",
+      "statement": "lint.yml runs ruff, pyright and shellcheck as separate steps in that order with no continue-on-error anywhere and the threshold held at zero, making the ordering part of the contract: a ruff finding means pyright and shellcheck never ran, so a red lint run understates what is unverified.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/lint.yml#L54-L78",
+          "version": "repo-lines-v1:sha256:05f1371144f39153bdb5803a19e12194e887b57ef5eca1b6e336cfaf9e8c20ca:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0MjkzMjA4Mzg3ZWE2OGMxNzk2MzhkYjQ0N2ZjNWU1ODQ5MmMxMjE2NzhmODI5MDZkNDUwYmM3MWNlZDJlMzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxNjdmNWQyOGRmYTBmZTFjYmY3Y2U1MjRmYjFiNzcyMzc3MjgzNDk1ODYwMzgyNTI5Y2UwNzQyNjM0ZWZhMGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwNDk4NmQ3Y2VhZWI1ZGU5ZmQwNzcyNGNlMzc3OWEzNjljMjI5Zjk1ZWUyMzk5MDA5N2Q3OWIyYjQxNjgzYTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1f9d92be79e24b929bdbad5f6ea1a2b5",
+      "statement": "The lint job's pyright step passes --pythonpath with uv's resolved interpreter because mise.toml puts the venv outside the repo (per-branch UV_PROJECT_ENVIRONMENT) and a CI run: step gets no such activation — omitting it produced 402 phantom reportMissingImports on a tree genuinely at zero — and pyright/shellcheck versions come from mise.toml via mise-action rather than the runner's PATH or the dev extra.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/lint.yml#L45-L72",
+          "version": "repo-lines-v1:sha256:c3279bfaea77a52166e17b94458c62b840e0802852e42de47c9de739f7391a0c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3OWJjY2ViN2MwNzJmMzhhZmVjN2JiYTFhYTE5YmQ1MDI3MzUzYjhjZGQ0YWZjMzViNTMyZWYxNzU0MzY2YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyMmYyZjljMGJlZDBiYzY5ZjdkMDZhZTliNWQ3MDRkYTcxZDgyNDE3YTkzNDhmYjU1MmE3ZGZjNWJmYjAzMjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMxZGM5YTgwYWU0MmRkZDZlZGY5NDE0OGI0MmQ0MmI2NzczZGYyZjVkNTQwNDY1NDZjMWU5NTFiZTdkMjgxMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmYjY4YTZiOGQ4YTVhYTI1MjA0OGM5MzljNWQwODE1Y2Q1MWUyMTRkOGZhZDg3YzQ0ZjU3NWZjOTFiYjFkYjMifQ"
+        },
+        {
+          "resource": "repo://mise.toml#L26-L32",
+          "version": "repo-lines-v1:sha256:37d132cfb2a13081d6abc7f34e6fc4dffa282d7f1674716ab4857d511524b300:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmU2MDBkNjZiOGE5MTZlYzg0ZThmNjVkZGFkNzAxMGM3ZWQ2NTEzNzU4ZDczYTJjNGE2ZjNjMDcwNTY2YjhkOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjhkYTY4M2ExYjBjOWUyYTQwMzQwYTI3ODBkNjgxMWZjMzVkZDI1MTAwOTY2YTMyZTlmOTVmMDhiYTFlZmQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmFiZWY0OGNkNjk0ZDFmMTNmZTI2Njc0Y2VhZjFjNjk1NTY5NzA3NWQ1MTBlMDRjMTY3Y2IwZjlmNWI1MDk4MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmQxYTQ4M2RkYzViNmVjMWE4ZDA3NjU1NjJlNWJiNjMxZmIzZmZjMzZmOWQ3MjY4MTI2NzkzMGRmNWQ3YmY3ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_84d2ae6f18984bf797e54e4cd5e5b58e",
+      "statement": "The pin check runs weekly (Mondays 06:00 UTC) plus dispatch, deliberately never on pull_request: it resolves live registries, so a third party's release could red an unrelated PR, and a failing scheduled run is the notification. Weekly matches the 7-day minimum release age (DEFAULT_MINIMUM_RELEASE_AGE_MINUTES = 7*1440), and the job exits non-zero only for a pin that is stale, past that age, and not held — held, cooling, and unresolvable pins are reported without failing.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/pin-check.yml#L1-L45",
+          "version": "repo-lines-v1:sha256:6e2af0c6ad7f74d514de1aab064f9809e4e80531aaab80b4d649dab595161fb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjOWUxYjBmNDFmYzY2ODY4YjRiNGM1ZDBiMDViN2NjMmNiNDU5NTA1ZGNmYTY1MTBiZjk2NTE2MjkwZWI5MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1ZDM5NTNmNjU0NjFmOGU1NzNiNmFhZmVjNjNjNTQ5YmYyYzQyMDQ0MmExZjEyYTNiNzFjNWQ1M2M4YzRhZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L77-L77",
+          "version": "repo-lines-v1:sha256:5f40d5359d72f5062ac06a37a408d36f5524b52d25902b879d8b361f08646ea5:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MGQ1MzU5ZDcyZjUwNjJhYzA2YTM3YTQwOGQzNmY1NTI0YjUyZDI1OTAyYjg3OWQ4YjM2MWYwODY0NmVhNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MGQ1MzU5ZDcyZjUwNjJhYzA2YTM3YTQwOGQzNmY1NTI0YjUyZDI1OTAyYjg3OWQ4YjM2MWYwODY0NmVhNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjNlNWQzZWFhZTU1ZjVlMmY3MWJiNTViNWMyMTlkNGZhY2ExMWY2MWM1MzVmODYyMzA1Zjc2ZjAyYjlkZGI2MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjU0OWU5NjgzY2JlYjZiNzI1NWFjOTdhNWI4YzQ0NDQ3YWIxZWI5MTJhZDU0MTFiODk2Y2NmMjQyZDEzM2RlZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_acf022b858714ee2b2e5476bdb789a32",
+      "statement": "pin-check.yml is the only workflow of the verification set whose third-party actions float on mutable tags (actions/checkout@v5, astral-sh/setup-uv@v7, jdx/mise-action@v2); test.yml, lint.yml and live.yml pin every action to a commit SHA and set persist-credentials: false, because a git tag is mutable and an action is a download that executes.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/pin-check.yml#L25-L39",
+          "version": "repo-lines-v1:sha256:9fbc5d6e1778db400656e2b65864e54dfa3cdc94b028c5d6a8d2a19bf6bdccd8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5NWVhZmFjMTU4YzE2NTMwNGJlMGQ5M2FjOGY2ZjY5M2NmZTAzZmQwMjEwYjU3MjUyMzNiZGIxYjRhNTE4NzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MGQxNWIwOTM3Mjg2YjBjNjcxZDFiMDg3NGE2NGQyYTMxNjdhYzU3YjliOTZhYWZjMDdjODQxNzU1M2UyNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgzM2RmMzQxYjk2ZjRlYTU4YmQ1NDlhOTJmZjA3YzgyMjBiMzBmZDVmZmY1ZTUzMTBhZjljNjhjN2E1NzU5M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkNzRmNmY0MTY0NTljMmQ4MDE1NDBiMWU2ZDBhOGZlMDM2YjQwZTE1MDlmYzQ1NDFlOWNmYWQzMDk3ODZiMTEifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/test.yml#L15-L27",
+          "version": "repo-lines-v1:sha256:7b8ff795433a05b17ff10cca106965940ed22bcf6ac7664c1403146d6515103d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZThmY2U3MTNmZGQzNzMxZTM2YzBjNWZmNWRmMzEwZGFiZjliYmUwMDA3OTNkNjFmOTcyNmY1YjEwNzZlN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjZDAwMWZmNDljYjY5OGRhODEwOWY0ZDE2N2QwYmI4ZTQ0Y2EwYmJkYWI3NDU1ZmE2NjYzZjcwYTYxZGRkZjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkZjFlM2Q1NzIyOWJjZWEzZTQ3MWM0MWU5MDdkYTdmM2I2MjUyZmI2YmVkOGUzOGRhYTlmN2RmZmNiZmNjMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjllOGE1NjMxZWRkNWQ0NGVhOTY2Zjg0MGZlODg2MzRmNzZhMDkwZmU2M2I1MThmY2Q5NWNhMzI5OTA1ZDhhZDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9c6aef758a034aebbe702e881f6e9b9d",
+      "statement": "The capability test derives expectations, never hardcodes them: schema.expected_capabilities unions what the assembler can see (mcp.servers plus the fanned skills/commands dirs) with what recipes declare via expect: for capabilities delivered through their Dockerfile or install script, de-duplicated order-preserving — so a recipe that bakes content into its image must declare it, and the manifest is the oracle.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/schema.py#L3313-L3347",
+          "version": "repo-lines-v1:sha256:45456cf402215ad9eaaa6511eb3e5d8fd159f227a0f96005506db6146082b667:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b72ab99b5e444cd5be5c7868ed76f522",
+      "statement": "run_capability_test launches the stack --fresh headless and diffs expected against live into one structured CapabilityReport whose .ok/.exit_code and rendered markdown derive from the same result — one mechanism, two audiences — and the report carries capability names and status only, never config values or log output (threat T-02-07), with a pointer to remediation in place of the hatago log.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capability.py#L106-L142",
+          "version": "repo-lines-v1:sha256:213043c56ab2c5bbd59714ec4fbdb90a1b86bde4c0d1d1792250bceda408d9a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmJhZTBiOTFkNDRmYzBkNDlmNWRlNjkxZGE2ZmM0MzFmMjYwMTM0YmY3MzFlMGUyMWY3NjQ4MDk0MzM0Y2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzMTM1NGJmNmM0ZWU0NjcyOWRmYTU3NmZlMmI1MDE4MTE2YTVlODVjZjdjMjg1YzMyNTkwMjE0ZTNiOTQ1M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMWYwMmZkN2VjMWQ0NjJjMGNiODE4Yjk0OGZmZTRmNzE1YjJjMmM0MzI2MzBjMjMyZGZlMzRkNDI3NDNmYTkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/report.py#L1-L23",
+          "version": "repo-lines-v1:sha256:2684d6cee6ffb5568a21a5de26b3c5e3493ad562d755f3df3dccbc82f87cb956:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1NmRjODViZDQxZGE5MTM5NGU4ZTczMmMzYzk0N2QwNzAzMDdhN2M4N2M2MDY5YWQ2MzY4YjIxZTkwOGEwYzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwMDlmM2MyM2M2MTU5YTJjOWQyNzYwODY0NjAwYTExYjM5OTMzZTVlYmNmMWVlY2Y3NzcwMjQzZTI0ZGRhOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3Y2RjN2JkNjZkMWNlNmY2YmIxNjIxNDY4M2JiZTUwYWZmYzhiMmM3ZGYwNDJmNTgwMTllZjZkNjMzNWVhNWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d6bb2fd7d57b406e9d1e8fc4458346a3",
+      "statement": "Recipe-authored tests are any *.sh under a resolved recipe's tests/ dir — convention over schema — copied into the real running instance and run with a documented auth-free env contract, each bounded at 120 s; every outcome folds into the same CapabilityReport as a TEST-kind result, so a failing script goes red through the same .ok/.exit_code as a missing skill, with no second gating path.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capability.py#L201-L273",
+          "version": "repo-lines-v1:sha256:e46b0b2e48994cebbb81838f840a3d7f6e4e30d710be41f76a6cbd6a2994100a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkZjkyYTQ4MWQ4YjJmN2NmYmE3NGRjMWQ2ZDFjZmZkYTIxYTBlYTVhZDRlZjQ0MTkzZWQ0N2I4ZDA0YjVjNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiYzRkMGNhYzAyOWMwNTI5NTVjNTExZDUxODlmNmQyZGRiYzUyN2ZhYjQ0MDYxYmRhZmEyMzVmZDE3ZDY0M2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2MzI1NmUyMTIzZGI5OWIyNzE5YWFjNDQzZTllNGJhMDcwMTA0MTAxOTZkNWIwYzMzOTI2ZWRiZmYxNjA1ZDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0ODI1MWJkNjMxODNjZTZiYjhhMTZhNGY4Yjg4ZmJhNjQ4ODBlODg3ZWZjMjA5ODExZWM1Y2Y2NGQwMGY3Y2IifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/capability.py#L356-L400",
+          "version": "repo-lines-v1:sha256:6466fe28c604aa9940e6db85c8abbaebca5e6f3af5f05c09546c2cbee59c046c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5OGNkNDU1YzVhNTMzZWYzZTNhMzc2MjQyYWVmZGEzYjFjM2UwM2YyOGI4ZjQ5ZWI4ODk3YmFhYjNkZDBlMmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwZTRmYjRkNDIzZWMzZTYwYTFkMDNkYjA4OGU1N2U4YjM1MjIxZDkxMzg0OTM2YTg4ZmQ5Mzg5NzllZDlkOTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3ZGEwYjFhOTY3NTI2YzIwMTM1MjgwMjBmNWFmNGQ4OTg1MWQ3ZWYxMjAzYTNlY2Y5MmRkNzAyNjc1ZDhmNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZTY4YTdhYjA0YjgxMzRmNjIwMzg2ZTZiMGRmNmYyYzM1YTY2ODZmY2VkYWY0NDFiOGEzN2ZhYTVmNTY1N2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_70b749d20d0b4c8384a47aed5831f6e5",
+      "statement": "The catalog ships inside the wheel through the src/harnessed/catalog symlink plus the package-data glob, and tests/test_wheel_packaging.py builds a real wheel and fails if host-local content appears in it — the catalog/*.local overlay symlinks, the resolved extra-tools.txt, and recipes.backlog that [tool.setuptools.exclude-package-data] keeps out; it proves packaging content only, so an installed wheel's container behaviour remains the live layer's job.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L145-L173",
+          "version": "repo-lines-v1:sha256:0681e6a0916797f3b74cb609569e8822105f8403008bd05db251fd263ac302de:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1MWZiNDc3ZTcxZTFkYTZlMmVjZDVlYTJhN2RhMDBjYjJlNGUxZTM2MjZhYmMwODgyNWExNmRmMWVkYTBmMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5NDE2ZTA5Zjc4YmEzMTZjMDMyNTY4MjEzYjg1NWVlNzU2ZTQxNTY1ZDkxOGYwOTUxOWM4MWZkNjIwZjQwNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlNjg5MzZjOTcyNDY1YTBhOTRhMTM3OTZkYzAzMTc3MGQ2Nzk3NGFjOWEyN2ZiMGQ4MDU0MGQ3ZDI5NTc5YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3MDIxNWEzNzg5OGE2M2EyNTlmYWUwNTQ2OTYyMzA5ODA1NWJhNjYzOTE5MzQ4NmMzZjc2ODc0YTEyMmQyMWMifQ"
+        },
+        {
+          "resource": "repo://tests/test_wheel_packaging.py#L1-L16",
+          "version": "repo-lines-v1:sha256:93bb557d9f87e3c82b2dfe00aee0aa08ef349de7cd30f4692824a21448ad98f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNDkyNGQ4NDEyNDI2MDM1YTNkMWUwYTViNDlmNmVhYzAxY2M3Njg2NjQ1OGVjMjZiY2EzZjFiNDZjYmI5MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxOWZmZTVlOWY4YTNjM2IxZmRlN2I3YjMxY2U4MzBkMGI2NDZmNDBlZDcxYmRmZTQxZDVlYTA3YzJjNjVmYTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ffa26d94698944449caa3b66fbbd89fd",
+      "statement": "The mutation layer's config encodes the two invariants that make its score meaningful: also_copy is wider than tests/ (tests/, .github/, catalog/, tools/, schemas/, mise.toml, README.md) because the suite asserts repo assets and a missing asset errors at collection making every mutant report survived, and a mutant must be killed by a container-free test because the suite is podman-gated, not podman-driven — otherwise the score measures the gate, not the tests.",
+      "evidence": [
+        {
+          "resource": "repo://pyproject.toml#L42-L73",
+          "version": "repo-lines-v1:sha256:dfd36529751677b0fcad9d923cfff1a355911d82e92b5dae185ebc41f15d4b5a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxZjgzM2JlMDI3OWNiZjRiZmE4ZDg1NjhiMzU2NTBiNmRiZTVhYzViMmYxMzhhMGRjMzI4NWI2YjRlNjc1NmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2MmU2NzA1OTBmM2Q1N2I5ZjQ0ZDJmMmVhMjEzM2Y0MjJkNTlkN2E1ZDVjNTQwMjhjYzMyYjZlMDRkNGYwMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzMjdhNmUzZWYzMjEyMzRmZTI1N2IzYTg2OTQ5MTM5MjFlMzU3ZjFjMzJkZTAxNGZhMjQzMWNjMjg0YzJlNjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzYTM2NjkzZTc0ZWRiZjk5NjNiOTUzNDE5NjgyNDRhYWJkYmE3MDcxNzJlOWJiYTY4NGRmOTc5MDdiYTM5NTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_330bd9689eef40c08c09a1d017b31a5d",
+      "statement": "The drift gate verifies only line-ranged evidence anchors whose version records the repo-lines-v1 digest: whole-file evidence carries nothing to hash against and an unknown version scheme must be reported as unverifiable rather than checked with v1 rules — both are skipped, counted, and printed as a separate skipped line, never silently treated as verified.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-drift.py#L101-L146",
+          "version": "repo-lines-v1:sha256:8b1fd17e889fcb6c67beb09118ce3b6a82510865927d9306b27c8d0fdf334556:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlOWIwMzRkYTQ1NzVmNTRlN2YyM2I3OGNkYzg0MGJiZjRlNWExM2MwNTgyOWM1ZjEzYjE1YjkyMjNlMjUwOTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3Mjc4ODdlYjcyMjVmNWE3MGM3YmMxODdlMzFlNmIxYTMyNTc1OGI3MDQyZjFmMzM3OWQ5OTYyMzczNjMxMjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1NWIxOWNjNmNmZDM2OTQzMTk1ODU0NzE3OWQzNzJhNWI1ODM2NWYzMzNhYWMzZTAwNDNmMjBlZmM1MTVmMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5MzljYjgyMzk0N2I2M2I2ODM0ZmM3ZTFlYzdjZDlmOTg5YWYyYWUzMGU3NmI3NDY4OTVmZjhkYzAzNWJmYzAifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-drift.py#L50-L56",
+          "version": "repo-lines-v1:sha256:5c924df424a73d522c3f27db173f825c7dd13bd46db08eb9116c66fde1adbb43:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM0YmEzYWE3YWMzYzczMzczN2M0ODQxM2UwOGE0ZjkzYTQ1MzdhOWUyMGMzNmNiYTI4ZDZiNzA5ODQ1OTkwNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNThhOWIzY2Q4YTkzNGEzNzExZDZkYmY1N2JiYTkxZWNlMWYwMGNmMWZhM2ZiYzU1YTNlOGFmOTIyZjIxNzVhYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGJjMzQxZjE3MWZmMmZlNmYyNjZjM2UzMjU5MDg4OGU2NThkYmQyMWVhNWViZjFmZTMzZmQ4ZjgzN2M1MDA0MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzBjZTNmMjRhYjQ3YzJmNWE5ZDMzN2YzNzdlZDg1NzNmYTU2NTg0MDc2NDAyZjFhZjA1NGEzZGVkNjE5NDYyZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7f618d2123ac4e669d58e943ff62a259",
+      "statement": "In the drift gate a block that moved is not drift: an anchor missing its exact lines is re-found by scanning for any same-length window with a matching digest and classified moved (reported, never failing), with only changed and missing constituting drift — on a one-week window 27.5% of anchors had moved versus 4.7% that genuinely changed — and the exit contract is 0/1/2 with an explicit 2 for unreadable input so it cannot collide with the stale-Claim status a caller gates on.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-drift.py#L179-L213",
+          "version": "repo-lines-v1:sha256:b438a098befe11df9bfefa4089109fe0b50aa6210c28a0213d14ccf00b173e23:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2MmZhZTBiNDJkZDZmNGJlZTczYjk3MmRhNDgxYTRhYzNiMmMyOWM3N2ViODZlNDVhM2JmMjljMTg3ZTIzODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNjY0ZWEzMWUxMzdlMjkyODNkMjk1OTU5MGQ0MDdlYzk3YWVlMDFiNDRhNmI4MjFmMWI3M2U5NjYyNWQxZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0MTU3NzZhOTlmMTQxNTY1OWRlMjZlYjRkYjI2MTg2M2ZhMTIxOTY2NjBjOTU3ODUzYTYzMTMxOWJmZDliODYifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-drift.py#L19-L29",
+          "version": "repo-lines-v1:sha256:36326bceaa7b21afd78e933540ab56dade8d5615d8d13b218107260c5091daf5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmYzQ0ZWE5NDEzNWM0OGNkOWY1NTNmMGM0MzUwMjVkZWVmZDU0N2VmZjU0Y2VkOTRhYmJhNmZkYzUyZjQ4NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3ODgwMTFmODc1NzQ4ODZiNzdjMmU5MGFhNDNjOTVmODFjNjM0ZDQ3YzhiMjJhZmI3NzcwNzI3YzA3NTA5OTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2NWYwMTA5NzdiN2ViMjk1MWQ3NDQxOTZkYTE4NDZjZDZkYThhNjAwZTMxNzdlYmYzMDFkNTgxZTJlYTY3NWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkYzM4ZjY5YTI4ODBiNTJhNzMwM2M3OTc5OGY0N2I1Njk3MzE1YWI3OWQwYWJmODlmNDAzMmZiMTkwZTc0NTUifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-drift.py#L216-L262",
+          "version": "repo-lines-v1:sha256:51a93d822729c92d8bebc0ae22d19e9ea70ddb83f808a60d8e354cde8dfd0935:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NDBhYmY0ZDM3NmViNGUzYWUxZjNiZDU3Y2FhYjlhMTg1OGJlMjBjNTdlNzRmN2YwNGExOGQ1NTI4ZGZmMWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YTc3NzNkODMyOWZmYWM1MDc5MmFlZmZkNWJmMDY5Zjg2MzZlZjU3Zjg5YTQ2OGY1NTA1YzA2ZWVhNzE3NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNDEzNDBjYzIzOWExNTljZTliNjAyMmU5ZjYzMjI4MzJlMmVhZDc2Y2FlOWU0NzU0ZDIxMGViOGZiNmQ1ZTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c186382988a344c9bbf7345befbeefd5",
+      "statement": "openwiki-update.yml (nightly 08:00 UTC plus dispatch) checks out full git history so the diff against the last-documented commit is nonempty, sets persist-credentials: false, and is deliberately not fail-fast: openwiki's page-job queue is durable, the PR step runs even on failure (if: !cancelled()) banking every completed page as the next run's baseline, and the final step re-raises the failure so the job still reports red.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L16-L26",
+          "version": "repo-lines-v1:sha256:8feb1ba3bc08ebc9c239a0b8bc6f6857b24603d4485985ee8c81054c36c5e27b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ZDZjZjdkNDI4Y2E4MTE1ZmM0YmFiYjY4MDczOTAyMzMyN2E3YTlkOTE2M2Y3MDZhMjc2ODdkZDUxNmYzOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4MmMwOGVjOGZlM2Y4NjFkZTY1MjY0MTMxNmY5MjFmZmE4NzZhNGUzYTQ5MjRlZGI2YzA4Nzg4NjZmYjAxYmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjNWE4OTI3NzBhZTRmNTMzM2ZkN2M5ZTEyZTBhNmJjNDViMjZiNWJiNzc1M2UwMzlkZjhlZDQ5Yzk3Yjk2MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlZjE2ZTNjOGI1NGUyYjIwNDgxOTZhYmI0Y2Q4MGQyMmE1MDhlY2Q2MDc0NjEyNGEyZWEyZGNjMzQxNzk5ZDEifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L62-L117",
+          "version": "repo-lines-v1:sha256:d9c2e46c372a2c063f377157394c002b96f58c62ca21d3d2c5b699efcab8f73c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwZThmOWZhNDBlN2JkMDQ5OWQxYzBkODNmZDc1OGFhODViMzA4NDJkYmQ2MWYwZWE2YjdhZTEwZWZlYzc2ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzE4ZjA2N2I1ZTVjMWYwOTkxYTZlNzQ3MjZmZTJhMjNkMjY0MzQ1ZTA4ZTRlYWQwNGZhZjczYzI3ZWQ0NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZmIzNDlmMTM5ZmVlN2FjNWFlNDJiM2ViMjNmNzcwMDRmNGRkMzAxYmFhZTc1ZjE4MzIwYjBjMzFkODliYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3025858172ef47fe9c36bc7eff87f0bf",
+      "statement": "The CI wiki workflow installs openwiki globally with npm and then verifies the native addon actually built before running anything: openwiki statically imports SqliteSaver, so a missing better_sqlite3.node breaks every subcommand, and because npm still runs dependency lifecycle scripts by default at npm 10/11 but npm 12 blocks them, the verify step converts that silent future break into a loud one with the remediation in its error message.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-update.yml#L33-L60",
+          "version": "repo-lines-v1:sha256:c50214c25c902b2abad3b321be14816c4ffac37c8c9a13ab7d0912f0ba1e2d8d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2Y2UwYjBkM2IzODEyMmJjMjc1MTVhOGQ5Njk2MTVkOWUxMGUyODA2NDRmNzYxMjIxZDA0NDc5YWQyNTM5M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OTYyODIzNmY2ODc1MTVkZDRlMGJiOTZhNGZmNjM1M2Q3MjYxNzdkYTczNTI0NzFjMDFlZDRjODIxMmNhN2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzZjNiODgwMmIzMTBmZjJhZGQwMDI2YjgyZWUyZTllNTcxNTkxMmVhZjA4MWFmODZjZTExMGRkNjQyZmMxYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzNzY5ZDI5MmFhYTAwYzJkM2QwMjcwZGZjOTIyMzg2YTBkZTRkYTM4YzkwNzAwNTU4ZWIyMzJiOGRiMmI3YjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4a855c6256774cc0ab8ac5959b90c22d",
+      "statement": "The same native-addon constraint is solved differently in-repo: catalog/base/pnpm/config.yaml sets strictDepBuilds: true (lifecycle default-deny) and pnpm v11 rejects allowBuilds from the global config, so catalog/recipes/openwiki installs project-scoped — install.sh copies its own pnpm-workspace.yaml with a reviewed one-entry better-sqlite3 allowBuilds allowlist into a private manifest (a global pnpm add -g ignores project allowlists) and then checks better_sqlite3.node by name, because a denied build reads as a missing-bindings error rather than a policy failure.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/pnpm/config.yaml#L13-L28",
+          "version": "repo-lines-v1:sha256:772739b0974686f5961836b142ce0f607b7210c6c5681ed996545bb1b6c941eb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0ZWMxZjFmNjMwYjEzZDQxYzMyNjI3YjQyN2M5OThlZjAzYmI1NmZjZDQ3MjNjYjJjYjliNjBiZWQ1Zjg5MjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0MDI1YzBmNzRjODk2Y2U5YTJkYzU0MjAyY2JkY2MzMGUxYjUwOWVkYTFjZjRmYTEzMzExNDdjYmFhMzkwZTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzOGRmNWI1ZjUzYTU3MmE0NjQzZTgxOGE5ZWFkYzY4YTk2OTlkNTgzY2IwMDljYmRlNzQxZTVjYjYxMjk1ZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMzc1MDQ2Y2JhMjM5YWMyYTg2ZDkxMjU2MjdkYzI2ZTUzYTA0ZGM0NjI4N2IyOGVmMjc0ZTQzZmQxZjA3YTIifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L55-L82",
+          "version": "repo-lines-v1:sha256:25a88b2ca6e7a7918a05b142d84a2fd3806e0954503539dcdccfba12701a6aa9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4Y2NlZGRiZTE2MGNhNjVjMDNjYzQzZGY0NGM1YWJhNjVmYTA2MGU2ZTYxNmIwMDJiODZjNmE2ZGFlMzgyMjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NjlkMjM3Y2Q0MjBiOWQzOGI5ODFhMGE0ZjY3NzAxOTBhNGE4M2RjYTFmZTU2YzRmNWJhMWUyY2JjMGVmNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4MDQwMThjZmY3NTJiZDE0NGJiZDNlY2Q4OTU4NDc2MmRkY2YyOWVmMTNiYmE3YmY1NWUzZDNmZWJmYWNlMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlMTg0YzgzNzQ5MDBmNjlmMmJmYjc3NDUzYjU3NDAzODU3OWU1YTNlODlkNWU5YTA0YmRjNTJmZDM1ZThiMTAifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/pnpm-workspace.yaml#L1-L17",
+          "version": "repo-lines-v1:sha256:35beb0fbe8062802cad4c05ca12cbc4f38cb61f30638a9858d56d4f3e7760323:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkODExM2IxNTkwZTY4NTIyYWQ4M2FkMGIwNTJiNzIyZDA5NGYzMTdkMDhiZDFkZTk3MjRjNmRmY2ZiYzVlMjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3ZWZhZDhhMjY0MDlhYmE2OGM3YjY0NzA1ZTdjZjk4Zjg2MjM3NjViNTIxYTk3MDg3MTkwM2U2NjlhYjY5MzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_13873858f7f24170bd4c351f0b368c0f",
+      "statement": "The local regeneration entry mise run openwiki-update runs tools/openwiki-retry-patch.py before every run — which also re-applies it after any mise install that restores the stock runner — because a page worker that ends its turn without calling submit_page is marked skipped, the run finalizes interrupted without advancing the diff base, and the next run regenerates the whole changeset (observed with glm-5.3-flash, PR #445 run 6; upstream 0.4.3 and 0.5.0 verified to ship no retry, 2026-09-08).",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L112-L125",
+          "version": "repo-lines-v1:sha256:21197124ccc9e9aae881b04bd684d2ca45abe06c49e3481da1b7ec2b87c16a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ODk3MmRlYWQ4MTY1YjQ5MTU0NTlkMGIyOTdhZWE5ZTI2NTRkZDUyMmUyYzkwMDYwNjEzNWZkYWFlZTlkZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMTFjOTQ1MTM0NWI2ZmE2OTBiODAzNWRhZTRlNTU5ZmUzMjc0NzgyOWQyM2ZhYjkzNzRkYzQxYWYxNzVhNmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzOTZmMmJkMmMzZDA3ZTYwNDQ2Njk2YjkwYmI2MzlkZjc4NDQ5NjNhZjliNWUxZWVlYTQ5NTNlMDlkZDczMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzZTA2MmIxOTM0YzlmYWRlODdiMzM5MDdiOGM5YjAzNzZiOGUwNWE5ZTA1OTM3M2M5MTQyNzMwOTkwMGZlMmIifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L1-L23",
+          "version": "repo-lines-v1:sha256:1cd5971c8fe50c2d4a2597e98ba6b58735df34c7baa5d8fd7b8b3a76f546a8d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6118c87267674c188f7d90678db43105",
+      "statement": "The retry patch gives each page worker one fresh second attempt sharing the worker's virtual backend — attempt 2 sees the page markdown attempt 1 already wrote — is idempotent via a marker with --check and --revert modes, and fails loudly rather than patching blind: it refuses any install that is not the verified 0.4.3 and exits when its anchors (runPageAgent, the exactly-one agent declaration, the exactly-one worker try-block) no longer match, so version drift forces a human to re-derive the patch.",
+      "evidence": [
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L146-L203",
+          "version": "repo-lines-v1:sha256:76452cc7cd461dee3a2efa0e0689c5a2887f66fe08df765aa7f30e4978e93aec:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwYmM1MTI2NWRhM2M0OTRiZGQyOTQwOGMwZTE3NzY2NWJmZWFkNmZkMjc5MzZmMDU5ZDJjNTU3YjE5YTNjZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4Y2Y5MTU5ODhmODJmMDZlN2E0MGIwODQ3MzJlYTdlM2Y0NGU2MGEzNzRiMWYyOGE1NjExYTIzMDRlZThiYjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0ODk5YjcyMTMxZDcyN2M1MmJiZjU3OWRjZGY0OTAzYzI3MzlhNTlhNDJlMDM2N2Y5ODlkNDFkOGVlODI5ZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNDEzNDBjYzIzOWExNTljZTliNjAyMmU5ZjYzMjI4MzJlMmVhZDc2Y2FlOWU0NzU0ZDIxMGViOGZiNmQ1ZTgifQ"
+        },
+        {
+          "resource": "repo://tools/openwiki-retry-patch.py#L34-L104",
+          "version": "repo-lines-v1:sha256:3f4207197bd0621d76d1af16401431657ff2b20ab1264949c7f1e4d95aa7cd4f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkNzVjNWJiNGQ2MDJhYjBlNmU5NGVlZDZkYThmMDlhNDc2N2IyZGU0YmI4YTg3ZmY4MDY0ZDlmYzg3MGI4NGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxNDRiNDA3OTU1ZGNkZTI0YzIyZTFkZTU2MTliZGZlMzlkNzFlNjFhNTdlNDlhMDRlMDQ0NWQxMjVhNTI4NzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNDgwYWE5MDI0ZjkzZjNkMWViMDg5NTVhYjEzNzBiN2ZiNzJiYTllOTYyZjUwMjY1YzViMDg1NjRmYjcwZmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_28032aa0cf424dfe88cb5952025b7a64",
+      "statement": "The wiki tasks' environment discipline: provider exports are env -u-stripped before varlock run because a shell export outranks the schema — a stale OPENWIKI_PROVIDER export once repointed a 13-hour run at the wrong provider (2026-09-04), and a shell export of OPENWIKI_MAX_OUTPUT_TOKENS beat the schema's cap and tripped the SDK's non-streaming guard on the planner's one non-streaming call (run 7, 2026-09-08) — the --filter narrows varlock resolution to openwiki's own keys so a wiki run does not pull agent tokens into the inference endpoint's process, and the task runs from main/ not a worktree because docs/ is a gitignored live clone that only a main checkout has.",
+      "evidence": [
+        {
+          "resource": "repo://.gitignore#L33-L36",
+          "version": "repo-lines-v1:sha256:5df7aaf9371515cccffbe8ef3207e37356166ff0c8cc141f858d664875bf5b4e:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjUzMGZmNTQwNDgyYTE1MTU0ZmQzZjRlNGVkZWM2ZmRjNDkxNjc2NTdiNWVmY2NkYTc0ODM5MDhhM2JkOWIzZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTQ1Njk4MzE5NjRkZDlkZjUzMTBjNzVmOWJkMjZlNzBjZDVkYTg2YmU2MWY3YmQyOTg5MjYwYjk4Yzg4NGRhMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDA2YWUyNTY0ZDJhNjk1Njc4OTgyYmVkMTUyOTY5ODIxMmFjZDM1MGI0MTYyNTAxMTcwYzNiNGFiNDk2YmM2MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWJhNzgxNjM5OWNhNjQwZjhmYmIzNmNmYTRlNjBlOTY4MDFhMTJjMTM0OWU4MDgwZjNhMWJkMjY0Yjk2MTQ0NSJ9"
+        },
+        {
+          "resource": "repo://mise.toml#L77-L103",
+          "version": "repo-lines-v1:sha256:40c3301f607015bf678629f47819483db0ae7feb2f6b5ada9878f7d3ab403c5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3NmI1ZGYyNTBlMWRjMDQ1NWUzMDZmZTI4ZGQ3M2YzZjNkZTc0ODM3ZjQxOTA1NDdjMjNiNDIxZjk2N2MyYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlZDRhZDNmYTg0NTU1ZTczNzQ3YWM3NmNlNjVhMDVhZTk0OGMyNDc2NzUyNDRmNjE2NDQ2ZGZhZTdlNmFkMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhMDdmMzdkMjg1MmQzOTE4MzE4NDcwNjQzYzJlY2JiYjI2YzQ0NzRkY2Y3MmNjN2ViODkxM2RjMjkyYTNiODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5NWY5ZDMzNGRjZDUxNDdmZDU0YmQxZTBiN2ZjY2U5Zjg5N2E5YTJlOTkyNjk1NGZmNWZlZjcxMGZjOTUxOGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_22d311ba8c914cfa9cb11e3f90997856",
+      "statement": "tools/preflight.sh replays the ladder locally in CI's exact order and argv (pytest, then ruff → pyright → shellcheck), with one deliberate divergence from CI: every gate runs even after an earlier one fails and each skipped layer is reported by name, because a stopped CI run understates what is unverified; --all adds the catalog pin check and --no-tests runs the lint layers only.",
+      "evidence": [
+        {
+          "resource": "repo://tools/preflight.sh#L60-L112",
+          "version": "repo-lines-v1:sha256:d30f35e99446109c106428d5746a38aaafcf72f37f78e72ecdf1dfbf52d4ed8b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiMzQzYzVmYjE3MDk0OTIxNmQ5MDYxNmM2YTMwNTAxZWU3M2VkNTFmYjVkMDFjMmIzN2U2YjU3ZWIwYjI4NWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NjlkMjM3Y2Q0MjBiOWQzOGI5ODFhMGE0ZjY3NzAxOTBhNGE4M2RjYTFmZTU2YzRmNWJhMWUyY2JjMGVmNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4YmYxY2YwZGExMzk5OTZiNzEwODYxMTQ5NmQ3YzY4MTMzYTczODRhMWZlZGQzZTQ4NTQxNGFkZDBiOTJlMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3Yjc4ZDFlMzNjOGUyZTBmMzk2M2M0MjA1OTkwNDg1N2VkOTRiOGU4ZTdhYzkyZjlmMWUwOGI3MzhjYmI4MTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_565964b8e1234552ba684fc5a94964d5",
+      "statement": "The live contract tier is gated behind HARNESSED_PODMAN=1 and points production parsers at real external binaries — podman inspect/port/top and images --filter output formats, a real mise trust flow, real varlock resolution — so a test there passes only when the external binary still produces the format the parser expects; the same file carries the base-image collection-time precondition that live.yml's bare build exists to satisfy.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_external_contracts_live.py#L1-L9",
+          "version": "repo-lines-v1:sha256:2f8f42a8281b082ba211e6db68115caaa0024ce1341d9ecb5581bb601d61d9e5:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTQyYmRmZmYzMjJkOTA1MTRmZmJiMzgyMTM5MjI4NzM4Njk2YmFkNjM1Njc2ZmRmZDY2ZTY1ZTc5OGRkMDNlZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTViNmU4NzA2YjQzMDQ3ZjJhNmRiNjdmMTMyNjM4NTk1NjA0ZTY3ZjM2OTY2ODc2Y2UwMTU4ZjAwNTNlNmJkMSJ9"
+        },
+        {
+          "resource": "repo://tests/test_external_contracts_live.py#L36-L53",
+          "version": "repo-lines-v1:sha256:3a2a010f50a09a9e12c62202f5f770eeaadad9be5c519b6a0bfbbd21191f6a7d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwODg0MmZlOWFkYjk3MDI1YzE3MjdlYmZkNWNiNDFhZTFjOWVlNDhhODI0ZjQ1ODgzNGUyNDE4MGZmY2RjY2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5YzY1MWQwNDQyNWUzMGI2MDdmYjM4NWM2ZGI2YzUwOTUxZWI0NDM3NTI4YmU5MDA3MTM1ZmYwYWFlZjY4ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhYzM5ZDU1YjFjNDA5YWVlN2MzMThhZThmZWU0ZjEyOWVlODM1OWViMjczNjU3NWJlYmI4MDcxN2E1Mzk2OWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e70059eb26604cd1a4c336c112b90b4f",
+      "statement": "The varlock binary the live resolution tests run is pinned in mise.toml as npm:varlock 1.16.1, verified against this tree 2026-08-18 and required by those tests; launchenv's proxy-shape regexes (what counts as opting into the proxy model) are separately measured against varlock 1.17.0 — two dated references the sources carry deliberately, a pinned install and a measured behaviour, not one reconciled verified version.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L8-L10",
+          "version": "repo-lines-v1:sha256:87463c635a563a911b32904e69c124aa0faaf3932b5945807c5c60edb226f743:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2EyOTE5OGE4NWM4NDczODhlODVmZDNkMjIwMjY1NTc1ODI2Y2QyNzkzYWY5YmJlODZmOWRmZDExNzcyODRiNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzIzNTRiZTBlODk3YmM2YzE1ZWEzNzhjN2M1YTVjODU4MzZlOWVmNmY0NWQyOTYxOGVhYWQxMmYyYmE4YmM4NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2JjZjEzYTIyMzAzODlkNDUwMGExNjI4YWMxZjUzMGM1MjM5Y2U2MDQxNzc1M2NmNDg1YmRhMWJkNDE2ZGU4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWE2OTMzYzFhMDI0ZWE0ZjUyN2NmYjNiOGQ1NWJhNDI1NzkzOTk0YjY1MzJhN2MxMDEzYWM1OWRmNjI1YzRmYiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launchenv.py#L73-L87",
+          "version": "repo-lines-v1:sha256:f1c805784a03c0cbb9fb018b79a4da9a96ae58bbc7470924c199f8a0bd44aaec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwZjk5ZDM1MDRkODE5N2JmZDAzMGU1MDVkZDZlNWUyZTViNDQyMmNlOTBmZTZhNzRmNTBmZWE5ZDcwMTY1NzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmYWU0NjI1ZTkzNWQzMzJjZDVmMjMzODYyZDBhMTM1YTVjZjk5ZTdmM2UzNmE5ZTM2M2NiMmQwMTUxZmFmZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0NmFiYWUzZmM1NzBkNDNhYTE1NTAwMTU3MWU5MTFmYzBjZGJjYjA3YWRjYzgzODhhYzMzYWU4YTg1ZmYxNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzMDJmZTZmYzBiMjI2MzIxYTQ2YTBiMDliMmYwMGRjMjE3MDZkZmRiYjkxMGI2NWRlM2RiMTQ1MTE2MzJmY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_45bbecb0f3264f8a8b1a8d208e4323f2",
+      "statement": "mise.toml's [tools] pins (shellcheck, pyright, varlock, openwiki) are outside the weekly pin check's sweep, which runs `harnessed update --check` over the catalog; those tool pins land as their own dated PR via the upgrade-pr task so a bad pin can be reverted as a unit.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/pin-check.yml#L1-L4",
+          "version": "repo-lines-v1:sha256:e3e6c05a1c69925a7e5839cdadfbc380c6d257d8764a3e7c324e6f0f05af317f:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2M5ZTFiMGY0MWZjNjY4NjhiNGI0YzVkMGIwNWI3Y2MyY2I0NTk1MDVkY2ZhNjUxMGJmOTY1MTYyOTBlYjkxYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTk5MGQ4Yjc2ZDQxY2YzM2MzMGMyNDdlNTdmMGRmMzQ2NGZhZWUzMWM3ZTQ0YjY5N2JhNzEyMDNjMTMzMDFmMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzVjMGJhYjliYTc0NjMwOWEzN2QwMjc3ZmNhNmFmMTYyM2JhOThlMWZhNzRiZDI4NDgwZmM2MGViMDdlNDcwMCJ9"
+        },
+        {
+          "resource": "repo://mise.toml#L58-L60",
+          "version": "repo-lines-v1:sha256:ad6d4c372d759c8fea28ae191ce71a98ec3ed3f5fd9c8a8034eacd9ea6bb3c14:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTQxNGZiZmI3M2Y1Y2E2NTNlOTk1YWI1ZjYwN2Q0YTc0MzM3MmJkMzVkOTE4MGFjZTA4YTJiZjZkZGM2ODcxOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2ZiMjUzYzg2YmYzZWQyOTJkMjBiYjc4MmI3NWRmMTQ1NWJlNzZiZTc1MWZkZjQwZDdjYmJjMWM2N2Y4YjQ1NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTFmZTY5NzQ0YTlmN2NkYjI2MjJmY2FkNmFhZWY2YmM5YzExYTMyZGNmMzVkNjJjMTg0MjJmZWE4MjcyNDUxZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGYyNDZkNTdmODJhYTIzMWZiZjkyMTA0NDFjMDkwMWNjMWU1MTNkMTM3ZmQ3NzZiNzk4ZDQyNDA2YWIwNjU5YiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7d6b20fe61634370a0aca59b97dbc9bb",
+      "statement": "The secrets-broker launch-gate and pod-args tests are hermetic and assert only argv through injected seams — a spy standing in for broker.start, a stubbed shutil.which so a test measures schema content rather than the host's PATH, and an injected port-free predicate; the pod-args docstring states the boundary: they assert the argv handed to `podman pod create` and cannot show a packet crossing the 169.254.1.1 broker route, and no test in this repo starts a pod — the composed pasta form was verified live only by the epic #388 Phase 0 spike, so nothing in CI proves a secret crosses that door.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_broker_launch_gate.py#L32-L48",
+          "version": "repo-lines-v1:sha256:2dedbeec0e30997cb69aa25086f8f59b1942a739c16778efb550350e6ce2c5b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmMDg2NmY0MDExZTU4NWZmYzA5MDkyZWRmMDgzMmUxN2I1MmY0YzkwYzRjYTBiNDJkY2ZhMDUwZmEzNzViNWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlYTkxNjE3Y2I1NjRlN2I1OTg2MGJkOTIzOTk4ZGY4YmMyOWE1YWIwZmYxODhlNDMxMjYzNjdlN2UwZGIxZTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMTE2NGM3NTgxNjhkN2JjNzRjN2UwYzkyNmNkYzRiNDZjNGI1NTAyMzEzODk5OWMzMTM5YjgzNzYxZDhjYTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxYzE0MjZiZWE3ZmFiYTA1YTEyYzFlMWM4NjBkYTY3YzYxNzM4ZmZjY2NjYTRmNjc2ZTRiOTI2ZGVhNjZlMDIifQ"
+        },
+        {
+          "resource": "repo://tests/test_broker_pod_args.py#L1-L15",
+          "version": "repo-lines-v1:sha256:d571250a759a0a4e886910d00d22859c89777bcbcd118f7169af991e1ee120d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNWFkYjcwMzdlYTQ1MjFkZmIzNDQxNGEwY2Y2Yzc1NTE5MDY3MGFhOGQxMjNkMGQ2MmU1YTQzNjZmZmY5OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmNjljNDA0MGQ4NDZhZWEzODhlYTU2NGIzYjI3NTAzMGU1OTg3MTMwMDE1YzUzOTg5MDM4MGNjNDNjODI0YmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a005e42ae56947b0b739af452bc30124",
+      "statement": "The broker launch gate's decided behaviour is settled by assertions, not comments: when nothing opts in (no @proxy in the composed project or global schema, or no varlock on PATH), no varlock subprocess runs at all — asserted on the spawned argv list, not on \"no broker was recorded\", because `varlock proxy rules` resolves values and can sit on a 1Password unlock prompt (capability absent, not merely empty); and a broker that cannot start fails the launch (SPEC decision 2) with exit code 1, the message naming the --no-secrets escape hatch and printing no resolved value.",
+      "evidence": [
+        {
+          "resource": "repo://tests/test_broker_launch_gate.py#L102-L114",
+          "version": "repo-lines-v1:sha256:00e196c18a7e36013065ea98d7e5dd7b955c519b8ab03d457e4040879109b427:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxOTI0MWU5MmFiZGQwYzQ5MWVmODM3MjE3YmM0MDhhZjA4MjBkNTQwZmY1YmQ2YjgwYjc0ODJjNWU5MDlkZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyMzhhZTU1MTRkYmU0ZjcxMTZhODE0NmUyMDMyOTcwMjdkNjVjY2NlNjAyYWFhYmNmNGY4MmU4ZTQ3Yjc0NjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4Y2E4YzZjOTBhOTZkY2EwZWEwNGUwOTNjM2RkMTgzZGY2ZmFkOWMxZjdjZDQyODIwYmNhZDY0N2U2ZjBlYTQifQ"
+        },
+        {
+          "resource": "repo://tests/test_broker_launch_gate.py#L225-L260",
+          "version": "repo-lines-v1:sha256:5ded4b9e13287158b4a73ac652f78c43a841ebf9be18c5aea51780e95affef8d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3Mzk1ODNkZDc4ZGVmNGU4MDk3MzFlNjgxYmU5YWVlMTQ2OWYxNjJiOTUyN2E1MWQwMWE3MTE5NTQ3ZmZkMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwODViOWE0ZTBiNTdlOGM0NWIyZWM3NDQ3ODQzNjUxY2U4ZGJkMDRlZGJlNGE0NGEwYmUwMDU0ZTQ3YWY3MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjZGUyMjJkZmE5M2QzYTEzODc3NjgyOWEyYWQwNzliNTdmNzY5MDRjNTQyMDI1OWM5ZDE4ZDEwMDIyYzU0YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3ZjAyYmQyMzQzMDA0ZmMxNDRmNzZjOWUxZDRiYjQ0NzBjYTg5ZjAwNjkwMGMzYWQ4MTUwOTUxOTQ0MWE5YmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_493989b5950f4e91bb42fd1f2baafda3",
+      "statement": "tools/preflight.sh runs pytest and ruff through mise exec from the dev extra but looks pyright and shellcheck up on the ambient PATH, reporting each by name as skipped when absent — CI instead provisions both through mise-action at the versions pinned in mise.toml, so a local preflight previews the gate with CI's exact argv but possibly different binary versions, and the summary never prints a bare \"all gates passed\" while a layer was skipped.",
+      "evidence": [
+        {
+          "resource": "repo://tools/preflight.sh#L119-L127",
+          "version": "repo-lines-v1:sha256:4daf48e4745a2fc0358f4a7d1e92e0a1e0c21c8f40b253a25f779222325f571f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjIyZWJhYjIwYTU0Mzc4NDhiN2I3OTc0OThiYTI5MjNhMTk3N2I0ZDBmMWNjMjNiYmQ2NzZjOTQ4MjE5ZjZmNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDdlMDBhYWU4NjAzMTBlODQ5ZjkzZDRkYTdlYzBhMzU2ZTU4ZGMxZTBlMDgxMDRkYWYyODJjNjJlZjQ5YjZlOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmExNzllZDRkYmUxY2NkZmZjODk1NjJmNzZhNTM0ZmY0MTg0ZTE2MTAwNjA2NWI3NDg3OTVmYmNlODQ5NTc2MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjE5M2FiMjRmMzczYmY4MmM1YzgwNDlhYWQ5N2RiZWVjNDUzYmE0ZDU0ZTdmZDYxYzAwZjA1M2RkOGM3NTExMiJ9"
+        },
+        {
+          "resource": "repo://tools/preflight.sh#L84-L106",
+          "version": "repo-lines-v1:sha256:6ccc097675261db24dacaeeddbd1b9356ba57716586a5aed7303a70c1c2aaa39:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzM2I3YzhjNDRkOWEyYzZlMjBmY2Y2ZmViZjlmMDhlNDE5OWU1ZTg0MzhkZmYyYTMxNGY3YWVmMDgyMjk5MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NjlkMjM3Y2Q0MjBiOWQzOGI5ODFhMGE0ZjY3NzAxOTBhNGE4M2RjYTFmZTU2YzRmNWJhMWUyY2JjMGVmNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNjJkZTYwOTMyNzcwYTY5MDI3NWI3ZTJlOGIwNTBlMTEwYWE1ZjIzNTQzZDA4ZDBiM2I2ZGViODJmOGEzZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyOGIzNGVlYmM0NTY3NTViNmJmNmZkZjdlYWI1OGFjNGNmMWM2YTdjODNmN2VjMDVjY2FhY2RkNDJjZTc5ZTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2ef37c0f17e143679d6e95919dee4f68",
+      "statement": "The local mise-installed openwiki runner is the third context for the same native-addon constraint, and its fix lives on the pin itself: mise.toml's npm:openwiki 0.4.3 entry carries two required escape hatches — trust_policy_excludes for fastq@1.20.2 (aube's no-downgrade trust policy refuses an install with no provenance attestation) and allow_builds for better-sqlite3 (mise installs through aube, which denies dependency lifecycle scripts by default; denied, the install still reports success and every openwiki run dies at \"Could not locate the bindings file\" with a 14-line list of paths, because the addon reaches openwiki transitively through @langchain/langgraph-checkpoint-sqlite).",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L11-L24",
+          "version": "repo-lines-v1:sha256:c3ce745e5dd416589b7a0a260aaf07f2c5716578518dd67938cd61066d741e40:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyZDAyZWIyODI3YWU1ZjBkZDIyYTJmNmFlZmY4ZDlmNmRlZjBmZGZhZTg1MGNiOTI4NmYxYmMxYmIzZTc5NjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyZGZhZjNmNTlmYzRiNmUyYWE0NTc3ZjJjNzEyN2Y3YmRkOWMzNWM5OWQ5NjQ5NzZkZDY5ZmIxNWNkYzI5NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3NDYzYzYzNWE1NjNhOTExYjMyOTA0ZTY5YzEyNGFhMGZhYWYzOTMyYjU5NDU4MDdjNWM2MGVkYjIyNmY3NDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDlmODFhYmU0ZGNkMDY3NmRlZjM3NDlmMzEwMTFjYzFmYjk1NDBmZjJhZDM4M2Q1NWQ4YzQzOWEwYTdlYzQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.4.3",
-    "at": "2026-09-07T12:53:44.965Z"
+    "at": "2026-09-09T09:34:57.295Z"
   }
 }

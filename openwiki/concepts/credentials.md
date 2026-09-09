@@ -1,21 +1,25 @@
 ---
 type: "Reference"
-title: "Credential handling: referenced, never replicated"
-description: "The credential SOP — referenced, never replicated — and why a harness rewriting its own store makes any copy rot; the three host-side secret sources, the two launch shapes, and the per-harness claude/omp auth ladders including isolated_auth."
-tags: [credentials, secrets, varlock, ssh-agent, isolated-auth, sop]
+title: "Credential handling: where secrets enter, what resolves them, what never lands on disk"
+description: "The credential pipeline end to end: launch-time env resolution (global → project, varlock vs plain .env), the temp env-file discipline, the host secrets broker's data flow and lifecycle, per-harness auth ladders, and the corporate-proxy-CA trust path — the one credential-shaped artifact handled as a build secret so it is never baked into an image layer."
+tags: [credentials, secrets, varlock, secrets-broker, topology-b, ssh-agent, isolated-auth, corp-proxy-ca, build-secret, sop]
 openwiki_generated: true
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-09T09:34:57.295Z
 sources:
   - id: openwiki-source-e7286046ccb85d63b8a07621
     resource: repo://.env.schema.example
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
+  - id: openwiki-source-e916c387e9195be48f6d9d41
+    resource: repo://catalog/base/Dockerfile.harnessed-base
   - id: openwiki-source-b08f662d57af92c2a8d13a92
     resource: repo://catalog/base/op
   - id: openwiki-source-78dc7c6f542f6ce83d4c2629
     resource: repo://src/harnessed/attachcmd.py
+  - id: openwiki-source-085f2349c58adb4062c2803f
+    resource: repo://src/harnessed/broker.py
   - id: openwiki-source-f4d814d300a98515115546bb
     resource: repo://src/harnessed/credmounts.py
   - id: openwiki-source-3d73552d55725e6e392c06df
@@ -36,11 +40,15 @@ sources:
     resource: repo://src/harnessed/schema.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-f725ea11f1806a58b06d7f3e
+    resource: repo://tests/test_launch_parity.py
+  - id: openwiki-source-532053bb2aafc90002feac13
+    resource: repo://tests/test_launcher_timeouts.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-09T09:34:57.295Z" }
 ---
 
 
-# Credential handling: referenced, never replicated
+# Credential handling: where secrets enter, what resolves them, what never lands on disk
 
 ## The SOP, and why it is structural
 
@@ -109,10 +117,44 @@ flowchart TD
 Three deliberate properties:
 
 - **60-second timeout** (`_VARLOCK_TIMEOUT`): `varlock load` may sit waiting on a 1Password unlock approval. Unbounded, an unattended launch — CI, a cron-fired agent, a machine with the desktop app closed — hangs forever with no output. Timed out or failing, resolution degrades to "no secrets from this schema" and the launch proceeds; a launch must not hard-fail on secrets it may not need.
-- **Memoized per schema dir** for the lifetime of one CLI process: several callers in one launch (`_resolve_launch_secrets`, `_claude_oauth_token_configured`, both on the host path) ask the same dirs the same question, and caching keeps it at two subprocesses instead of four. One launch must see a *consistent* secret set anyway.
+- **Memoized per schema dir** for the lifetime of one CLI process, which is exactly one launch. Several callers in one launch ask the same dirs the same question (`_varlock_resolve_env_file` builds the `--env-file` set, then `_claude_oauth_token_configured` asks the same dirs whether a token is present — and `_resolve_launch_env` does both on the host path), so uncached that is up to **four resolving subprocesses where two suffice**. Caching is safe precisely *because* the process is short-lived and **one launch must see a consistent secret set anyway**: resolving the same dir twice and acting on different answers would be a bug, not a feature. Tests that need fresh resolution monkeypatch `_varlock_resolve` wholesale or call `_varlock_cache_clear()`.
 - **Multi-line values are skipped, not truncated** in the env-file writer: podman reads a value to end-of-line, so a PEM block would arrive cut at its first line and the remainder would be parsed as bogus `KEY=VALUE` pairs — truncated key material fails later, somewhere with no hint of the cause.
 
 `_warn_unproxied_secrets` adds a readiness report for schemas that declare `@proxy` annotations. It is deliberately value-blind — it reports **names and modes only**, which is what makes it safe to run on every launch — and its cheap text gate matches annotation forms, not prose mentions, so a comment mentioning `@proxy` cannot buy a resolving subprocess that may prompt for an unlock. The proxy model itself — the four per-item modes, the annotation gate, and why `passthrough` is not a defect — is a migration in progress with its own vocabulary; see [credential proxy](/openwiki/concepts/credential-proxy.md).
+
+## Topology B: the broker changes the end state
+
+Everything above delivers *real values* to the agent; the only question was the vehicle. Topology B (Epic #388 Phase 1) adds a stage that can end that delivery entirely: a **host secrets broker** — one `varlock proxy` per instance, running on the host, where 1Password, the keychain, gpg-agent and a YubiKey can actually authenticate. It binds `127.0.0.1` only and injects real values into outbound requests **on the wire**. The sanctioned end state is a pod that holds **placeholders**, so real values never enter the container env at all. That env flip is issue #439 and has not landed: today even a brokered launch still delivers the pod's env as real values through the unchanged mode-0600 env-file temps above. What has landed is the data flow, which this page owns:
+
+- **Gate.** `launcher._broker_start_for` starts a broker only when the composed schema opts in and `--no-secrets` was not passed. The opt-in test is `launchenv.proxy_schema_dirs(project_path)`: a **subprocess-free text test** over the *same* global → project dirs `_resolve_launch_secrets` resolves, so a launch that opted into nothing buys no varlock subprocess at all — and the broker that does start resolves the same composed set the env-file path resolves.
+- **Record.** `broker.start` spawns `varlock proxy start` detached (it does not daemonize) on an ephemeral loopback port with one `--path` per schema dir, polls `proxy status --format json` for the session whose `HTTPS_PROXY` names the chosen port, and persists **exactly five fields** — instance, pod, session, port, cert dir. `proxy status` also returns an `endpointToken`, `placeholderOverrides`, and the resolved proxy env; none of the three is ever written, so "the state file leaks no secret" is true **by construction** rather than by redaction. A failed start is fatal, with a fixed value-free message naming the instance and `--no-secrets`.
+- **Door.** The pod is created with pasta's `--map-host-loopback,169.254.1.1` — `paths.BROKER_HOST_DOOR`, which the egress firewall also ACCEPTs; three places must agree on the literal. It composes into the single `--network` value `pod create` accepts, alongside mcp-remote's `--host-lo-to-ns-lo`, and is emitted **only** when the launch actually got a broker — no stack is silently handed a route to the host's loopback when nothing is listening there.
+- **Opt-out.** `--no-secrets` (`NO_SECRETS` env, truthy `1`/`true`/`yes`) skips the broker and the pod's proxy wiring; the launch keeps working, "with the pod holding real values as it does today". A runtime without pods gets a note and env resolution as before, rather than a half-wired broker.
+- **Lifecycle.** The broker starts **before** `pod create` (the pod's network args depend on whether one exists) and is stopped if that create fails. `_pod_teardown` stops it **first** and never fatally — it is a host process holding live secrets that must not outlive the pod, and the pod is the containment boundary. `broker.reconcile`, run by `harnessed list` before reporting, reaps every recorded broker whose pod is gone: the backstop for every teardown path that never ran.
+
+```mermaid
+flowchart TD
+    G{"Composed schema carries a @proxy annotation and --no-secrets is unset?"}
+    NO["No broker, no varlock subprocess, no pod door"]
+    SP["broker.start spawns varlock proxy start detached, one --path per schema dir, ephemeral loopback port"]
+    REC["Poll proxy status --format json, match the session on our port, atomically write the five-field record"]
+    DOOR["pod create carries pasta --map-host-loopback, 169.254.1.1, and the egress firewall ACCEPTs it"]
+    NOW["Env delivery today: real values still cross as mode-0600 --env-file temps"]
+    CUT["Issue 439 placeholder cutover: pod env holds placeholders, the broker injects real values on the wire"]
+    TDN["Teardown stops the broker first, never fatally, and reconcile reaps any broker whose pod is gone"]
+    G -->|no| NO
+    G -->|yes| SP
+    SP --> REC
+    REC --> DOOR
+    DOOR --> NOW
+    DOOR -.-> CUT
+    NOW --> TDN
+    CUT --> TDN
+```
+
+*The broker's data flow: gate, spawn, record, door, and the two delivery states — env-file values today, placeholders at the #439 cutover.*
+
+The broker is **container-only by nature**: a host-native launch runs the harness in the user's own session with their own credentials, so there is no boundary for it to sit on and varlock resolves natively there already. This page owns the data flow only. The mode vocabulary the gate reads (`proxied` / `passthrough` / `placeholder` / `omit`) is [credential proxy](/openwiki/concepts/credential-proxy.md)'s; the spawn/poll/record/stop/reconcile lifecycle, port picking, and the state record's invariants are [the secrets broker page](/openwiki/architecture/secrets-broker.md)'s.
 
 ## Hardware and agent forwarding (`credmounts.py`)
 
@@ -178,13 +220,55 @@ An inherited `PI_CODING_AGENT_DIR` (launching a stack from inside another stack'
 
 Several steps run on the host **because the alternative would put a secret where it must not go**:
 
-- **varlock resolution and the 1Password timeout are host-side by construction.** 1Password desktop-app auth binds the grant to the calling host application and cannot work from inside a container. The base image even ships a `setsid` shim in front of the `op` CLI so a recipe that shells out to it inside the pod gets a clean "no accounts" exit instead of stealing the agent's TTY with an interactive setup prompt it can never satisfy. Scanner and launch secrets are always resolved *before* anything enters a container.
+- **varlock resolution and the 1Password timeout are host-side by construction.** 1Password desktop-app auth binds the grant to the calling host application and cannot work from inside a container. The base image even ships a `setsid` shim in front of the `op` CLI so a recipe that shells out to it inside the pod gets a clean "no accounts" exit instead of stealing the agent's TTY with an interactive setup prompt it can never satisfy. Scanner and launch secrets are always resolved *before* anything enters a container — and Topology B extends the same principle to the proxy: `varlock proxy` runs on the host for exactly this reason, with the pod reaching it over the loopback door described above.
 - **Scanner tokens reach only the credentialed re-scan.** `_build_derived_image` never touches secrets or varlock — building must always succeed without credentials, so recipe verification never depends on a secret resolving. snyk and socket therefore sit out the image build itself and run on exactly one code path: `_scan_image_in_container`, reached from `harnessed rescan` (also the nightly systemd timer, and re-invoked by `harnessed build` after the derived image is built, unless `--no-security-scans`). Tokens are resolved on the **host** via `_resolve_launch_secrets(None)` — global schema only, project env deliberately not layered in, since a rescan is about the image, not the cwd — handed to podman as a mode-0600 temp `--env-file`, and unlinked in a `finally`. The token names live in the user's scanner schema (see `.env.schema.example`).
-- **The corporate proxy CA enters builds as a build secret.** The cert lives in the user's harnessed config dir (never the repo) and is passed as `--secret` to the base build, consumed by `RUN --mount=type=secret,id=corp_proxy_ca,...` — so it is never baked into image history and nothing needs staging into the build context. Service Dockerfiles get the same block injected with `required=false` (a no-op when absent). At runtime it is an ordinary read-only bind mount that a post-start step registers with the container trust store.
 - **aws-sso forwarding is a broker URL, not a copy.** For `forward_aws_sso: true` stacks the launcher injects only `AWS_CONTAINER_CREDENTIALS_FULL_URI` (the host's aws-sso ECS server via `host.containers.internal`) and its bearer token read from the user-owned token file `harnessed aws-sso serve` writes. The in-container AWS SDK pulls short-lived STS credentials over HTTP; no aws-sso binary, store, or SSO token ever enters the container, and the bearer arrives as a per-launch `-e`, never an image layer.
 - **Credential directories are unmountable by declaration.** Recipe `persist: global` entries are default-deny with hard-deny roots — `~/.ssh`, `~/.aws`, `~/.gnupg`, harnessed's own config dir, and bare `$HOME` itself — that no allowlist entry can override. The persist system, which *does* copy host dirs into per-stack mount trees by design, is fenced off from every directory the credential machinery treats as a live store.
+- **The corporate proxy CA is the one credential handled as a build secret instead** — a trust anchor that must be trusted before a container's first HTTPS call, not a launch-time value. It never appears in this list's launch-time mechanics at all; the next section owns its full build/run path.
 
 Two other pieces complete the picture: `--fresh` performs explicit wipes of the persisted in-container auth stores (antigravity's keyring, and an isolated-auth stack's own login) because both deliberately survive ordinary recreates; and `seed_auth` on the container backend runs **last** among the mounts, and only after the aborting checks, so that an early exit can never strand resolved secrets in temp files on disk — the temps are unlinked in a `finally` around the podman run either way.
+
+## The corporate proxy CA: the one credential handled as a build secret
+
+Every mechanism above delivers a credential *at launch*. The corporate proxy CA is different in kind — it is a **trust anchor**, not a value the agent reads, and it must be trusted *before the first HTTPS call a build or a container makes*. It is therefore the one credential-shaped artifact that travels as a **podman build secret** at build time, with a second, deliberate delivery into running containers at run time.
+
+```mermaid
+flowchart TD
+    CERT{"Cert present at the user-owned config path?"}
+    NOOP["Absent by default: every helper no-ops and every build stays unchanged"]
+    BLD["Build: podman build --secret id=corp_proxy_ca, src is the host cert file"]
+    BASE["harnessed-base consumes RUN --mount=type=secret and installs it as USER root"]
+    SVC["Service builds get the CA block injected after the first RUN block"]
+    MNT["Run: agent and service containers mount the cert read-only at /run/corp-proxy-ca.crt"]
+    INST["Root exec of update-ca-certificates registers it - strict for the agent, best-effort for services"]
+    CERT -->|no| NOOP
+    CERT -->|yes| BLD
+    CERT -->|yes| MNT
+    BLD --> BASE
+    BLD --> SVC
+    MNT --> INST
+```
+
+*The corporate proxy CA's two deliveries: a build secret into image trust stores, and a read-only runtime mount into container trust stores. Nothing ever stages the cert into a build context or bakes it into an image layer.*
+
+- **Where it lives.** `paths.corp_proxy_ca_path()` pins the cert to `$XDG_CONFIG_HOME/harnessed/corp-proxy-ca.crt` — user-owned config dir, never the repo, the same rationale as `extra-tools.txt` and the aws-sso token: a fresh clone or worktree must build without carrying a host-local trust anchor, and an internal CA must never surface as a repo diff.
+- **Absent by default, no-op everywhere.** Every helper checks the file before doing anything: `_corp_proxy_ca_secret_args` and `_corp_proxy_ca_mount_args` return empty lists, `_install_corp_proxy_ca_in_container` returns without exec'ing, and `_service_dockerfile_with_ca` returns `None`. On a machine without the cert, builds, launches and service containers are exactly what they would be on a machine that has never heard of the feature — there is no "empty CA" state to get wrong.
+- **Build time: a `--secret`, never a layer and never a context file.** `_corp_proxy_ca_secret_args` appends `--secret id=corp_proxy_ca,src=<cert>` to the shared-image builds (`_build_images_cmd`, `_build_base_image`) and to service image builds. `Dockerfile.harnessed-base` is the Dockerfile that consumes it, under `USER root`:
+
+```dockerfile
+RUN --mount=type=secret,id=corp_proxy_ca,dst=/tmp/corp-proxy-ca.crt,required=false \
+    if [ -s /tmp/corp-proxy-ca.crt ]; then \
+        cp /tmp/corp-proxy-ca.crt /usr/local/share/ca-certificates/corp-proxy-ca.crt && \
+        chmod 0644 /usr/local/share/ca-certificates/corp-proxy-ca.crt && \
+        update-ca-certificates; \
+    fi
+```
+
+  Podman streams the file from the host path for the duration of that one `RUN`: it is never staged into the build context and never lands in image history — the same "never in a layer" bar every launch-time credential on this page answers to, applied at build time. `required=false` is what makes absence a clean no-op at the Dockerfile layer too.
+- **Service images: injection, not catalog edits.** Service Dockerfiles are catalog content, so nothing edits them on disk: `_service_dockerfile_with_ca` writes a **temp copy** with `_CORP_CA_DOCKERFILE_BLOCK` injected **after the first complete RUN block** — typically the `apt-get install` step that puts `ca-certificates` on PATH — so every subsequent `curl`/`pip`/`pnpm` download in the build trusts the SSL-inspecting proxy. A Dockerfile with no `RUN` falls back to injecting after the first `FROM`; one that already mentions `corp_proxy_ca` is left alone (no double injection), and the caller unlinks the temp either way.
+- **Run time: ro mount, then a root exec.** Agent containers get `-v <cert>:/run/corp-proxy-ca.crt:ro` in the launch mount block, and service containers get the same mount composed into `_svc_run_cmd` — which is hashed, so provisioning or removing the cert is a config change that recreates the sidecar. After start, `_install_corp_proxy_ca_in_container` execs **as root** (the trust store is root-owned) to copy the mounted file into `/usr/local/share/ca-certificates/` and run `update-ca-certificates`. Severity differs by caller: the agent container's install **raises** on failure, while service containers use `best_effort=True` — a bounded, swallowed exec — because a service's base image may not ship the `ca-certificates` package at all, and a sidecar must not fail a launch over trust-store cosmetics; even the best-effort path keeps its deadline (pinned by test). On the agent path the install runs right after the pod is up and **before the egress firewall** closes: the exec is local-only and needs no network, but ordering it first keeps every post-start container mutation on the unconfined side of the boundary.
+- **Provisioning is one flag.** `harnessed build --corp-proxy-ca-crt <file>` copies the bundle to the config path once and says so; every later build — base, agent-derived, or service — picks the persisted file up automatically.
+- **Why every host-side step stays host-side.** The launch-parity ledger records both helpers as container-only capabilities: "*mounts the CA; the host trusts its own store*", "*installs the CA inside a container*". Nothing on the host needs help trusting the corporate proxy — varlock resolution, the secrets broker, and the `podman build` process itself already run inside the user's own session, behind the host's installed trust — so harnessed never installs the CA anywhere on the host. The CA is the mirror image of the 1Password constraint elsewhere on this page: 1Password resolution must stay on the host because it *cannot* work in a container; the proxy's CA must be *installed into* containers because they do not inherit the host trust store.
 
 ## Invariants an editor must not "clean up"
 
@@ -192,11 +276,16 @@ Two other pieces complete the picture: `--fresh` performs explicit wipes of the 
 - `--profile` must never be added to any omp invocation against a stack store: it is mutually exclusive with `PI_CODING_AGENT_DIR`, wins when both are present, and points at an empty store.
 - The 60s varlock timeout, the env-file-beats-export withholding, the empty-string-means-OFF semantics, and last-declaration-wins precedence are each the fix for a named production failure; changing one reopens its bug.
 - The isolated-auth store must stay outside the config volume, and `_ensure_config_volume`'s "safe to destroy" invariant depends on credentials never living inside it.
+- The broker's persistence surface is the five-field record; adding a field means re-proving "the state file leaks no secret by construction", and its failure message must stay value-free (never interpolate the exception). The pod door must never be emitted without a live broker.
+- The corporate proxy CA must reach builds only as `--secret` and containers only as the ro `/run/corp-proxy-ca.crt` mount plus the root exec. A `COPY` of the cert into any Dockerfile, or staging it into a build context, would bake a corporate trust anchor into image history — the one thing its helpers exist to prevent.
 
 ## Related pages
 
+- [Secrets broker](/openwiki/architecture/secrets-broker.md) — the broker's runtime: lifecycle, ports, teardown ordering, and the state record.
 - [Invariants](/openwiki/concepts/invariants.md) — the constraint list this SOP belongs to.
 - [Precedence rules](/openwiki/concepts/precedence.md) — the global → project and recipe-vs-harnessed ordering in full.
+- [Env contract](/openwiki/concepts/env-contract.md) — the folder-env contract the resolved secret values join in the container.
 - [Credential proxy](/openwiki/concepts/credential-proxy.md) — the varlock `@proxy` model this resolution machinery is migrating toward: the four per-item modes, the annotation gate, and the readiness warning.
-- [Container run](/openwiki/workflows/container-run.md) — where mounts and `seed_auth` sit in the launch sequence.
+- [Build pipeline](/openwiki/workflows/build.md) — where `--corp-proxy-ca-crt`, the base-image build, and the credential-free derived build sit.
+- [Container run](/openwiki/workflows/container-run.md) — where mounts and `seed_auth` sit in the launch sequence, and where the CA install runs among the post-start steps.
 - [Host run](/openwiki/workflows/host-run.md) — the host backend's materialize/share/exec order.

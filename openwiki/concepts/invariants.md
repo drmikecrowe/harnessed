@@ -1,11 +1,11 @@
 ---
 type: "Reference"
-title: "Invariants and deliberate deviations: check before cleaning up"
-description: "The catalog of constraints that read like defects but are load-bearing — each with the production failure it prevents and the bd id or issue number the source names. The page to consult before 'fixing' anything in src/harnessed/."
-tags: [invariants, deliberate-deviations, fail-closed, cleanup-hazards, sequencing, naming-collisions]
+title: "Invariants: the deliberate deviations a reader must not clean up"
+description: "The catalog of constraints that read like defects but are load-bearing — each with the production failure it prevents and the bd id or issue number the source names. Now includes the secrets-broker/door invariants. The page to consult before 'fixing' anything in src/harnessed/."
+tags: [invariants, deliberate-deviations, fail-closed, cleanup-hazards, sequencing, naming-collisions, secrets-broker, pod-networking]
 verified:
   - by: openwiki/0.4.3
-    at: 2026-09-01T11:08:21.365Z
+    at: 2026-09-08T23:17:55.419Z
 sources:
   - id: openwiki-source-362e06c30ccfdafd87339cb0
     resource: repo://ARCHITECTURE.md
@@ -17,6 +17,8 @@ sources:
     resource: repo://src/harnessed/attachcmd.py
   - id: openwiki-source-f566bbdd90ebc6ec3b85626a
     resource: repo://src/harnessed/backend.py
+  - id: openwiki-source-085f2349c58adb4062c2803f
+    resource: repo://src/harnessed/broker.py
   - id: openwiki-source-bfccb812c84b1bb2eeabf062
     resource: repo://src/harnessed/catalogseed.py
   - id: openwiki-source-6f84913afc580e4d73fac66a
@@ -29,6 +31,8 @@ sources:
     resource: repo://src/harnessed/hosthome.py
   - id: openwiki-source-154371253083f8b9b656eefa
     resource: repo://src/harnessed/hostrun.py
+  - id: openwiki-source-2b85b44d9f80bbb3b6ce747d
+    resource: repo://src/harnessed/launchenv.py
   - id: openwiki-source-ecbe6256d6933ca2c8c9678f
     resource: repo://src/harnessed/launcher.py
   - id: openwiki-source-7fc060691d30bff2ff4f6979
@@ -51,15 +55,18 @@ sources:
     resource: repo://src/harnessed/toollock.py
   - id: openwiki-source-0d783cb9b16f618063f9ca7b
     resource: repo://src/harnessed/volumes.py
-generated: { by: "openwiki/0.4.3", at: "2026-09-01T11:08:21.365Z" }
+  - id: openwiki-source-4d3b84558965c7b5921b9989
+    resource: repo://tests/test_broker_pod_args.py
+generated: { by: "openwiki/0.4.3", at: "2026-09-08T23:17:55.419Z" }
 ---
 
 
-# Invariants and deliberate deviations: check before cleaning up
+# Invariants: the deliberate deviations a reader must not clean up
 
 This codebase carries many behaviors that look like defects: a script that refuses to set `-e`, a
 variable deliberately left pointing at the user's home, a symlink-into-the-user's-store mount, a
-container allowed to write a rw bind of the host's auth database, an abstract contract with six
+container allowed to write a rw bind of the host's auth database, a host process holding real
+secrets that is recorded in a five-field file instead of a rich one, an abstract contract with six
 methods and no driver calling them. Each one is load-bearing, each was paid for by a named failure,
 and most name that failure in a comment (`bd harnessed-…` or an issue number). This page is the
 catalog. Each entry states:
@@ -69,15 +76,20 @@ catalog. Each entry states:
 - the failure it prevents (with the issue id where the source names one), and
 - what breaks if an agent "fixes" it.
 
-Two reading rules. First, prefer the comment at the site over any general principle: where this
-page and a docstring disagree, the docstring is newer. Second, a green test suite proves almost
-none of these — the hermetic suite runs no podman, so container-behavior invariants (copy-up,
-userns, firewall policy) were verified in measured spikes and live runs, not in pytest. See
+Three reading rules. First, prefer the comment at the site over any general principle: where this
+page and a docstring disagree, the docstring is newer. Second, a stated limitation with a tracking
+issue outranks the behavior it limits — the unscoped broker rule in the firewall and the
+`HARNESSED_NET` override of the broker door are narrow on purpose, and their issues (#436, #437)
+are the record of why. Third, a green test suite proves almost none of these — the hermetic suite
+runs no podman, so container-behavior invariants (copy-up, userns, firewall policy, a packet
+crossing the broker door) were verified in measured spikes and live runs, not in pytest. See
 [the verification ladder](/openwiki/testing/verification-ladder.md) for what each rung can and
 cannot hold; this page points there instead of re-deriving gates.
 
 Related: [execution backends](/openwiki/architecture/backends.md) (the no-driver decision's full
-statement), [build pipeline](/openwiki/workflows/build.md),
+statement), [the secrets broker](/openwiki/architecture/secrets-broker.md) and
+[the credential proxy](/openwiki/concepts/credential-proxy.md) (the Topology B this page's broker
+entries sit inside), [build pipeline](/openwiki/workflows/build.md),
 [container launch](/openwiki/workflows/container-run.md),
 [host launch](/openwiki/workflows/host-run.md),
 [harness integrations](/openwiki/integrations/harnesses.md),
@@ -90,6 +102,13 @@ statement), [build pipeline](/openwiki/workflows/build.md),
 | `tools:`/`install:` at runtime into volumes | build layers are the idiomatic home | 307s → 4.3s on a one-line install edit (bd harnessed-8px.21.4) |
 | No scan layer in the derived Dockerfile | every other pipeline scans in-build | a green scan of an image with no stack content (bd harnessed-8px.21.5) |
 | Egress firewall fail-closed twice over | `set -e` is the bash default for rigor | #429: 43 runs reported "Egress active" with no firewall |
+| One `--network` per `pod create`; the door composes inside it | a second flag is the obvious way to add a feature | a hard launch failure — or the silent loss of whichever feature lost (A5) |
+| 169.254.1.1 door only when a broker is live | an extra route is harmless if unused | every pod silently gaining a route to the host's loopback |
+| No `--expose`, no data-plane token, no WebSocket tunnel | token+expose is the idiomatic remote-proxy shape | Topology B deleted all three; reintroducing re-widens exposure past the host (#388) |
+| Broker record stays five fields | `proxy status` returns much more | "the state file leaks no secret" being true by construction |
+| Kill the broker before any record exists on failed start | write the record first, reap after | a live broker holding secrets with no record naming it |
+| Atomic `os.replace` on the broker record | a plain write is one line | a torn write reading as corrupt → `reconcile` reaping a live broker |
+| A corrupt broker record reads as absent | a corrupt file is an error | `harnessed list` and every teardown path dying on the file they exist to clean up |
 | `USERNS_ARG` pinned to uid 1000; `pod_host_uid()` returns `None` | a fallback number is friendlier than `None` | bd harnessed-rv2.1: six red CI runs; fail-open ownership guard |
 | omp runs without `--profile`, rw host agent dir | sharing auth dirs looks like an isolation bug | login, usage ledger, session resume (#307) |
 | `MISE_STATE_DIR` not redirected | every other mise var is redirected | the user's trust store (empty store broke every trusted config) |
@@ -238,6 +257,103 @@ launch refuses to continue, and the `EGRESS` phase tears the pod down on **any**
 by then the pod exists, so propagating would return the user their shell while an unconfined
 container kept running. `NO_FIREWALL=true` is the supported way to opt out; failing closed has to
 mean the thing we could not confine does not survive.
+
+## The broker door: one `--network`, and only with a broker behind it
+
+Topology B (epic #388) puts `varlock proxy` on the **host's** `127.0.0.1` — where 1Password, the
+keychain, gpg-agent and a YubiKey can actually authenticate — and gives the pod a private route to
+it at `169.254.1.1` through pasta's `--map-host-loopback`. The address is a single literal that
+three places must agree on, which is why it lives in `paths.BROKER_HOST_DOOR`: the pasta option in
+`mounts`, the ACCEPT rule in `egress-firewall.sh`, and the constant itself. Nothing off-host can
+reach the broker, so there is **no `--expose`, no data-plane token, and no WebSocket tunnel** —
+Topology B deleted all three, and they stay deleted. Reintroducing any of them re-widens exposure
+past the host to buy a capability the topology does not lack.
+
+The whole difficulty of the door is that **`--network` cannot be passed to `podman pod create`
+twice** — and `_mcp_remote_pod_args` already owns it, for mcp-remote's OAuth-callback publish
+(with its `--host-lo-to-ns-lo`) and for the plain `HARNESSED_NET` passthrough. So the broker option
+cannot be a second flag; it composes inside that one helper, into ONE `pasta:` value:
+`pasta:--map-host-loopback,169.254.1.1,--host-lo-to-ns-lo` — the exact form the #388 Phase 0 spike
+verified with both features live, which is why the broker option is written first. Three ways to
+get this wrong, each with its own cost:
+
+- a second `--network` is a **hard launch failure** (`pod create` rejects it outright);
+- composing by **replacing** the network string silently takes mcp-remote's OAuth callback down
+  with it — the test asserts presence of both options in the composed value, not equality, so it
+  survives a reordering;
+- splitting the pasta options across two `pasta:` values still counts as two `--network` and is
+  rejected all the same.
+
+The test (`tests/test_broker_pod_args.py`, case A5) asserts at-most-one over the *whole* parameter
+space — every combination of broker on/off, explicit network, and server set — because this is the
+invariant the composition exists to hold, not a property of two interesting points.
+
+The door's converse is equally deliberate: **the door never appears in argv without a live
+broker.** The launcher starts the broker *before* `pod create` — the pod's network args depend on
+whether there is one — and passes `broker=self.broker is not None`. An unconditional door would
+hand every stack in the catalog a route to the host's loopback when nothing is listening there: a
+silent widening of the pod's reach, with nothing to show for it. If `pod create` then fails, the
+just-started broker is killed before the exception propagates — a broker that outlives the launch
+it was started for is a host process holding live secrets that nothing will ever reap by name,
+worse than a leaked pod, which at least `podman ps` can see. An explicit `HARNESSED_NET` wins over
+the door (the operator asked for a network; silently rewriting it would be worse), but it must say
+so — the warning names the address and the `--no-secrets` escape hatch and **no secret and no
+value**, because this helper never sees a resolved value and must never learn to. And a runtime
+that does not use pods starts no broker at all: the door is a pasta option only `pod create` can
+carry, so starting one would produce exactly the half-wired state the rest of this section forbids.
+
+## The broker record: five fields, atomic, kill-before-record
+
+WHAT IS PERSISTED, AND WHY SO LITTLE. `varlock proxy status` returns an `endpointToken` (a
+control-plane credential), `placeholderOverrides`, and the resolved proxy env. `broker.py` stores
+five fields — instance, pod, session, port, cert dir — and nothing else, so **"the state file
+leaks no secret" is true by construction rather than by redaction**. There is no redaction step in
+`harnessed list`'s broker section because there is nothing to redact; it prints everything the
+record holds. Anything added to this record must clear that same bar.
+
+Three lifecycle orderings keep the record honest, and each exists because the alternative is the
+worst failure this module can produce — **a live broker holding real secrets that no cleanup path
+can see**:
+
+- **Kill before record.** On a failed start the spawned process is killed and NO state file is
+  written. The poll loop catches `BaseException`, not `Exception`, because `_spawn` uses
+  `start_new_session=True` — the broker does not receive the terminal's SIGINT, so a Ctrl-C during
+  the up-to-30s wait would otherwise orphan exactly that live-and-unrecorded broker. The asymmetry
+  is the point: a record naming a dead session is merely stale, and `reconcile` fixes it; the
+  reverse is immortal short of a reboot.
+- **The record is written atomically** — to a `.json.tmp`, then `os.replace` — because
+  `harnessed list` and a teardown can read it while a launch writes it. A half-written record reads
+  as corrupt, and (next rule) corrupt is reaped: a torn write would kill the record of a LIVE
+  broker.
+- **A corrupt record reads as absent, never raises.** `read` is called from `harnessed list` and
+  from every teardown path, and a half-written file must not take down a command whose job is to
+  clean up. `all_instances` deliberately reads *filenames*, not contents, so corrupt records stay
+  visible to `reconcile`, which is what deletes them; `stop` still calls `forget` when `read`
+  returns None, because a corrupt file would otherwise be permanent.
+
+`broker.reconcile` is the backstop for every path teardown never reached — a crashed launcher, a
+hand-run `podman pod rm`, a host reboot that left records behind. `harnessed list` reconciles
+before reporting, because the whole value of its broker section is telling the user whether a host
+process is holding their secrets *right now*. But a **failed runtime query reconciles nothing**:
+every pod would read as absent and every live broker would be stopped — "a runtime that cannot be
+asked is not an answer". `stop` itself is per-instance, never `--all` (that would stop brokers
+belonging to other instances and to the user's own terminals), and it keeps the record when
+`proxy stop` failed AND `status` still shows the session, because the two failure cases need
+opposite handling: dropping a live broker's record orphans it, keeping a dead one's makes
+`harnessed list` report a phantom forever — so on ambiguity it asks `status` rather than guessing.
+
+The start gate mirrors the firewall's opt-out shape: a broker is started only when the composed
+schema carries a `@proxy` annotation and `--no-secrets` was not passed, and `proxy_schema_dirs` is
+a text test on purpose — `varlock proxy rules` resolves values and can sit on a 1Password unlock
+prompt, so a launch that opted into nothing must not buy one. A **failed start is fatal** (#437,
+SPEC decision 2): the alternative is a pod wired half-way to a proxy that is not there, the silent
+half-wiring epic #388 exists to remove, and worse again at #439 when the pod's env becomes
+placeholders only this broker can redeem. The error message is fixed and never echoes the
+exception — `BrokerError` never carries a resolved value, but interpolating one would make that a
+convention every future raiser has to remember; the message is value-free *by construction*.
+Teardown order is broker first, never fatally, then `pod rm`: the broker is a host process holding
+live secrets and must not outlive the pod, but the pod must still come down if the stop fails, and
+`reconcile` reaps whatever this misses.
 
 ## Userns is pinned to uid 1000, and `pod_host_uid()` refuses to guess
 
@@ -532,9 +648,13 @@ link still aborts with the manual-removal message.
 
 When a change touches any site above, the check is not "do tests pass" but "does the failure this
 invariant prevents have a new witness". Invariants with unit-testable mechanics (toollock merge
-rules, dynstack collisions, `_volume_read`'s None/empty split, the ruamel per-load rule) are held
-by the hermetic suite; invariants whose mechanics live in podman (copy-up, userns, firewall
-policy readback) were established by measured spikes and live runs and are only exercised by the
-podman-gated layer. See [the verification ladder](/openwiki/testing/verification-ladder.md) for the
-rungs, and keep the issue ids in the comments: they are the provenance that lets the next reader
-distinguish a defect from a scar.
+rules, dynstack collisions, `_volume_read`'s None/empty split, the ruamel per-load rule, and the
+broker's record/lifecycle rules, which run against injected subprocess seams) are held by the
+hermetic suite; invariants whose mechanics live in podman (copy-up, userns, firewall policy
+readback, the composed `pasta:` route itself) were established by measured spikes and live runs and
+are only exercised by the podman-gated layer — `tests/test_broker_pod_args.py` says so of itself:
+it asserts the argv the launcher hands `pod create`, and "what they cannot show is a packet
+crossing that route — no test in this repo starts a pod". See
+[the verification ladder](/openwiki/testing/verification-ladder.md) for the rungs, and keep the
+issue ids in the comments: they are the provenance that lets the next reader distinguish a defect
+from a scar.

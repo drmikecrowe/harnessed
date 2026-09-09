@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:cc8f39ffa5f1c873f050e37bfe842c8e49e54bdb95c6439ba063e0f88712b58a",
+  "pageVersion": "sha256:f54c194fa58edba49bbc0c1334b4021044bc9218c53dbb4fb478b4224ab37362",
   "claims": [
     {
       "id": "claim_f72064555dd644cb92b79992ff4435c3",
@@ -153,8 +153,8 @@
       "statement": "`mise run openwiki-drift` runs tools/openwiki-drift.py — no model call, no network — which recomputes each Claim's line-ranged evidence digest and exits 0 when nothing changed, 1 when at least one Claim's cited code changed or its file is gone, and 2 when the wiki or its Claims are unreadable or malformed; it is the cheap check to run before trusting or regenerating any wiki page.",
       "evidence": [
         {
-          "resource": "repo://mise.toml#L94-L99",
-          "version": "repo-lines-v1:sha256:a09f9a1de444ca12cebd8c5b00321b50dddaef073ab9c016f42d7fb696acc3a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDE3ODZmYzk3ODcyZGFkN2UzMDA4ZTZlOWQwYWVjMGU3NDBjNzgxYWM4NWE2NTE2NDlmOTg4NWIxZjEyYjMwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmZhN2Q4M2FjYzY1YjFjM2FhODUwZjE1NmU0OTlkN2MxOWQ1NTllMTUwZGEzYzVmNTdhZTk2M2FkNzZmYzYzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzY0ZWFhYzM3MzFkMmQ2ZDU1ZWQ1YjcyZTg2N2E4ODhlYjRkMGM5NDUxZmI1MGM1OTc4NmEzZDNhMmE0YWMwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWVjODJhZGZkMzVjNDIyMWI2ZmNmYzc1Y2I3ZGZkMGZjMTM2NTcyYjJlOWM1NGMwNDBjMjQyODI0ODRhNWY3ZCJ9"
+          "resource": "repo://mise.toml#L105-L110",
+          "version": "repo-lines-v1:sha256:a09f9a1de444ca12cebd8c5b00321b50dddaef073ab9c016f42d7fb696acc3a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDE3ODZmYzk3ODcyZGFkN2UzMDA4ZTZlOWQwYWVjMGU3NDBjNzgxYWM4NWE2NTE2NDlmOTg4NWIxZjEyYjMwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmZhN2Q4M2FjYzY1YjFjM2FhODUwZjE1NmU0OTlkN2MxOWQ1NTllMTUwZGEzYzVmNTdhZTk2M2FkNzZmYzYzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjViNjAzN2M0MDYyNTg1YzY5N2VjYTljYjkzMjJiZDExMGQ1NzM1OGZiYjQzMTYwMTliZjFmNzRiOWFiNmEwZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWVjODJhZGZkMzVjNDIyMWI2ZmNmYzc1Y2I3ZGZkMGZjMTM2NTcyYjJlOWM1NGMwNDBjMjQyODI0ODRhNWY3ZCJ9"
         },
         {
           "resource": "repo://tools/openwiki-drift.py#L25-L36",
@@ -321,10 +321,52 @@
           "version": "repo-lines-v1:sha256:20400122224cb5045f5e563e860f0dabd538c7191901c033fbe4945ba12a37c8:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODliOTExNjUzYWYxMGU2N2I4Y2ZkM2VjMjk1YWJlYzY3YWVlN2M3NTkyMDg4OWUwNThlMDJlMTIzODUzZDk4YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2Y0NDE0ZGQ5MjUzYWZiZjQxYWM1MWFkODRjYzRlZGE5YmFlNDA0NzliN2Y1NDNkNGZiYWFhYWQ1MTkxYmQ4ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmNlYTQyY2U3OTY2YTFiYmMyNGE5N2E0ZTQxZjA2MmRlNzU3ZDQyYzUyMGJlZWE3NzQyYWE1ZTJhMTAzZDI5MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTVkMTUwZTk4OWFhN2RhNzg4YmEyMmUyN2UzNjI1MGNmMzIyYjk5MjBiNDBjM2RlYTdkMTJjOGI4ZGYzNTE3YyJ9"
         }
       ]
+    },
+    {
+      "id": "claim_c1fada9e9ac34553987cce10cabed870",
+      "statement": "mise's openwiki tasks are split by cost so the drift check can run anywhere: [tasks.openwiki-drift] is non-interactive with no varlock, no model, and no credential (it only executes tools/openwiki-drift.py and signals via exit status), whereas openwiki-update, openwiki-init, and openwiki-chat are interactive = true and reach the generator through vars.openwiki_env — an `env -u` stripping of provider exports wrapped in `varlock run` against ~/.config/harnessed — because those tasks talk to a model; openwiki-visualize needs no credential either, but only serves local Markdown.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L105-L110",
+          "version": "repo-lines-v1:sha256:a09f9a1de444ca12cebd8c5b00321b50dddaef073ab9c016f42d7fb696acc3a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDE3ODZmYzk3ODcyZGFkN2UzMDA4ZTZlOWQwYWVjMGU3NDBjNzgxYWM4NWE2NTE2NDlmOTg4NWIxZjEyYjMwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmZhN2Q4M2FjYzY1YjFjM2FhODUwZjE1NmU0OTlkN2MxOWQ1NTllMTUwZGEzYzVmNTdhZTk2M2FkNzZmYzYzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjViNjAzN2M0MDYyNTg1YzY5N2VjYTljYjkzMjJiZDExMGQ1NzM1OGZiYjQzMTYwMTliZjFmNzRiOWFiNmEwZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWVjODJhZGZkMzVjNDIyMWI2ZmNmYzc1Y2I3ZGZkMGZjMTM2NTcyYjJlOWM1NGMwNDBjMjQyODI0ODRhNWY3ZCJ9"
+        },
+        {
+          "resource": "repo://mise.toml#L122-L139",
+          "version": "repo-lines-v1:sha256:390530abab9848e52dd06a817d31eec88cff864c5d8f3b92a357b3a3a6a86cfe:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5NDYxYWRhNjI3Mzg3MDg5OWUzNGRmOTg4ODcxOGZmZmQ2YTkxMzYwZDI3MWZlNDIzYTFkYmZjYzZiNmE1NzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0NmQwODdiYzhmOWFhZGRjNGI2NGY0OTE5MTA1ZWI0MzUxOWQ4N2ZmNThhOTk2NjY3NzVhN2U4OTA4MzNjZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxNjFkNDU1ZGE5NTEwZjJmMjQ3MzMyZjMzNTVlNmI2NDc5YmZiZTU5ZWIwNzY4ODdiNTQxMmIzZTA1MjdkYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5MjkxZDZkOTIwMzYzODQ2ZDE4NjQ0ZjQzMDdjMTk1ODQyOWJmYTY1NDgxNWM0NDU2NGMyYWFmNzAzN2U1ZjUifQ"
+        },
+        {
+          "resource": "repo://mise.toml#L141-L146",
+          "version": "repo-lines-v1:sha256:eadb75898b59fe2a105f802ae546c8433ad329cea8335ceaabd01b75f88f5bf0:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGVlMTE0YTkzZDU1ODM3NjcwNTc2ZGI2ZGYzN2MxNGI2OThjNzk4MTM3Y2ViYTYwYjY2M2ViODk5ODVlOTcyOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2U2YzljOGVmMzM2ZmJmMjYwMzY5ZGVlMGRmZjY5ZjFiNGMzM2E5MzljYWM4ZDBjMWJlYjM5ZTkwNTA3MTg4NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzRiMjU0NTMxZjA1YWQ5YmJjOWQxZDhhMGU4NjU0NTM2NGVhMWU1ZGRkNTJkMDVjOGZkZWVjZmMwMzk2YWZhZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://mise.toml#L91-L103",
+          "version": "repo-lines-v1:sha256:81eb32dadcdbe1298c227c3df06a54f3cbb0e0b88d9cd6bcc2c3190d3c467ba7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4ZmM2YjkwZDAzYWZlYmRkY2RhNTM1MWI5MzVlNzdmMGY3ZmQzODA5NTA0N2Q5OTQ5MzJmOTdjMzU1YmYyZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlZDRhZDNmYTg0NTU1ZTczNzQ3YWM3NmNlNjVhMDVhZTk0OGMyNDc2NzUyNDRmNjE2NDQ2ZGZhZTdlNmFkMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmZGM4MGZkODY0NzI5YzQxMGRmZmJlYjFkNjdlNGFkYzVjYWQ4NjNlZjcyOTgzYzI4OTQzYzBkMmYzZGYxMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5NWY5ZDMzNGRjZDUxNDdmZDU0YmQxZTBiN2ZjY2U5Zjg5N2E5YTJlOTkyNjk1NGZmNWZlZjcxMGZjOTUxOGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dd676bcfa69e47cd922a4e3b223e5ad8",
+      "statement": "mise.toml's [tools] block declares and pins the four non-Python tools the dev loop and the wiki tasks depend on — shellcheck 0.11.0, npm:pyright 1.1.411, npm:varlock 1.16.1, and npm:openwiki 0.4.3 — rather than assuming them on PATH; the npm:openwiki entry additionally requires two escape hatches or the install fails in ways that do not look like packaging problems: trust_policy_excludes (fastq ships no provenance attestation at 1.20.2, so the no-downgrade trust policy refuses the whole install) and allow_builds (the mise install backend denies dependency lifecycle scripts by default, and better-sqlite3's install script is what produces better_sqlite3.node — denied, the install still reports success and every openwiki run dies at 'Could not locate the bindings file').",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L1-L24",
+          "version": "repo-lines-v1:sha256:ac0c45dc78fad0656cf95658ec3231f18bf7e35adf4ef9a212c7f3b726cde8ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3NWI2ZWExZGZiMmEzOGI5MzVkYTNjYjNjY2Q5ZmY0M2FmY2RiNTczZjY5NGNhMjBmODQ2ZThmZmVjOTkyNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyZGZhZjNmNTlmYzRiNmUyYWE0NTc3ZjJjNzEyN2Y3YmRkOWMzNWM5OWQ5NjQ5NzZkZDY5ZmIxNWNkYzI5NzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDlmODFhYmU0ZGNkMDY3NmRlZjM3NDlmMzEwMTFjYzFmYjk1NDBmZjJhZDM4M2Q1NWQ4YzQzOWEwYTdlYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b45c20eb882542f3ad2dbc7f7de61b7a",
+      "statement": "mise's openwiki tasks must be run from the main checkout, not a task worktree: docs/ is a gitignored live clone of the GitHub wiki, so a worktree checkout does not have it and a wiki run from there would be generated from an incomplete view of the project's own documentation.",
+      "evidence": [
+        {
+          "resource": "repo://mise.toml#L85-L87",
+          "version": "repo-lines-v1:sha256:0f21583e853762bf136114815cf32191d9dbca01d3eef8576f9745ddf6ef60c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTZlYzI5NTJhODkxNGM5ZDRiMDhlYzU3NDFiNTQ3ZTNiYWFjMmQ4OWViYmNlOTFkOWUxYzk0MzRjNTFkMzhmZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMwZjMxM2E3ZDRlMjQxZTJhZWUxNDk4MzAxNmM4ZDhjZmI3YWM5NDk0NjA0ZWE0ZjYwZjIzYWY1OTA3MGJkNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODBiNTY3M2ZhNGM0ZTI4ZTU3YWM5MGFkMWEwOWVkZDNiNzVlYzgxMzY5ZDQwZTg0NmNiZmY5MjY3N2ViOWEwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2ZkYzgwZmQ4NjQ3MjljNDEwZGZmYmViMWQ2N2U0YWRjNWNhZDg2M2VmNzI5ODNjMjg5NDNjMGQyZjNkZjEyOSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.4.3",
-    "at": "2026-09-04T00:21:37.938Z"
+    "at": "2026-09-09T09:34:57.295Z"
   }
 }
