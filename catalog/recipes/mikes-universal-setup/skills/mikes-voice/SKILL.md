@@ -1,6 +1,6 @@
 ---
 name: mikes-voice
-description: Draft in Mike's voice anything another human reads: email, text, Slack, GitHub or PR comment, PR description, issue, doc, release note. Use whenever he asks to write or reply and names no style. Not blog posts; use blog-writer.
+description: Draft or edit in Mike's voice anything another human reads: email, Slack, GitHub or PR comment, PR description, issue, release note. Use when he asks to write, reply, or clean up a draft. Not blog posts; use blog-writer.
 ---
 
 # Mike's voice
@@ -11,6 +11,20 @@ for a draft and does not specify a style, this is the style.
 Scope: everything short-form and outward-facing. Emails, texts, Slack, GitHub and PR comments, PR
 descriptions, issues, docs, release notes. **Not blog posts** — those have their own structure and
 their own skill (`blog-writer`).
+
+## Two modes
+
+**Draft.** Mike asks for something written. Everything below is the style.
+
+**Edit.** Mike hands over a draft to clean up, his own or someone else's. Same rules, plus three
+constraints that only apply when the words already exist:
+
+- **Minimum effective edit.** Fix the patterns named here. Leave strong sentences alone. A draft
+  with a real voice must still sound like the same person afterwards.
+- **Never invent.** Do not add a claim, a number, an example, a source, or an opinion the draft does
+  not already have. Unclear? Ask. This is the line: cleaning up is not writing his take for him.
+- **Deliver the edited draft plus a short "what changed" list.** If asked only to audit, name each
+  pattern with the quoted line and a short fix, and do not rewrite.
 
 ## Stance
 
@@ -74,11 +88,52 @@ their own skill (`blog-writer`).
 - **Do not bold half the sentences.** Bold is for a single warning or a key term, once or twice at
   most.
 
+## Sentence-level tells
+
+These are the patterns that survive a vocabulary pass. Each one reads as machine-written even when
+every individual word is fine.
+
+- **The portability test.** If a sentence could move unchanged to another person, company, or
+  product, it is filler. Cut it, or replace it with a fact, a number, a mechanism, or a judgment
+  specific to this subject.
+- **Metadiscourse.** Cut lines that tell the reader how to read. "The key point is", "as you can
+  see", "this distinction matters". If the point is clear, delete the aside. If it is not, add the
+  missing fact instead.
+- **Colon reveals.** A noun phrase, a colon, then a dramatic lowercase reveal. "The best part: it
+  learns." Write it as a plain sentence. Colons are for lists, labels, and quotes.
+- **Faux-insight setups.** "What most people get wrong", "here's what nobody tells you", "the part
+  everyone misses". They flatter the writer. Cut the setup and let the claim stand alone.
+- **Fake-profound kickers.** The final "deep" line that turns the point into an aphorism. Delete it.
+  Do not rewrite it into a better metaphor. End on the clearest concrete sentence already there.
+- **Weasel attribution.** "Experts agree", "studies show", "widely regarded as". Name the source or
+  cut the claim. Never invent a source to fill the gap.
+- **Synonym cycling.** If the clear word is right, repeat it. Do not rotate "agent", "assistant",
+  "tool" across three sentences for variety.
+- **Fake-strong verbs.** Prefer "is" and "has" when they are clearer. "Serves as a centralized hub
+  for" is almost always "tracks".
+
+## Leave these alone
+
+Over-editing destroys the thing that makes writing sound human. In Edit mode especially, these are
+not faults:
+
+- **Specific, hard-to-fabricate detail.** A real address, a weird quote, an oddly exact number.
+- **Mixed feelings and unresolved tension.** "I think it's right, but it bothers me."
+- **Genuine asides, parentheticals, and self-corrections.** Mike writes this way on purpose.
+- **Variety in sentence length**, including fragments and long spoken sentences that stay clear.
+- **Strong opinions, blunt language, humor, and profanity** that belong to the writer.
+- **"I think", "maybe", "honestly"** when they carry real uncertainty or his spoken rhythm.
+- **Polish on its own.** Clean prose is not evidence of a machine. Look for the named patterns.
+
+One tell is not a verdict. Look for a cluster before rewriting anything.
+
 ## Final pass
 
 Before handing a draft back, ask: *what makes this read as AI generated?* Name the remaining tells,
 fix them, then check that it still sounds like a person with an opinion rather than a clean but
 voiceless message.
 
-The `humanizer` skill catalogues the tells in more depth if the draft still feels off. `simple-english`
-governs procedural documentation, not correspondence — do not run it over an email.
+This skill owns prose quality on its own. There is no second editing skill to fall back to.
+`humanizer` and `no-ai-slop` were folded in here on 2026-09-09. README.md keeps their upstream links
+for occasional skimming. `simple-english` governs procedural documentation, not correspondence — do
+not run it over an email.

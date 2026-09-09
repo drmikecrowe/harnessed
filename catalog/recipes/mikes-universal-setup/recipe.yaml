@@ -66,8 +66,7 @@ rules:
 #      vendored here (hand-copying meant drift + redistributing third-party content in the wheel with
 #      no licence). This is a BRIDGE (bd harnessed-197): the vercel `skills` CLI is the intended
 #      end state but cannot yet pin to a SHA or verify content on restore, so install.sh supplies the
-#      pin+verify the ecosystem lacks. Sources: oakoss/agent-skills (5), blader/humanizer (1),
-#      AminBlg/SimpleEnglish (1).
+#      pin+verify the ecosystem lacks. Sources: oakoss/agent-skills (5), AminBlg/SimpleEnglish (1).
 #   2. `skills:` below vendors the ones MODIFIED here (a fetch would discard the edits) or authored
 #      here. Owner tags: [gsd] open-gsd/gsd-core, [kepano] kepano/obsidian-skills, [mine] here — MIT.
 #      See README.md for the full provenance table and the outstanding LICENSE-notice obligations.
@@ -88,12 +87,13 @@ install:
   # not a precedence rule.
   #
   # Every ref carries its OWN `hold:` naming its CLASS, because acceptance here is per REF and these
-  # three are not all the same kind (#329 AC-2, §1 Family B, measured 2026-08-09):
+  # two are not the same kind (#329 AC-2, §1 Family B, measured 2026-08-09):
   #   * oakoss  — Class B. Upstream publishes no releases and no tags, so no resolver has anything
   #     to return. STRUCTURAL: lifting the policy would change nothing.
-  #   * blader, aminblg — Class C. Releases exist and the resolver CAN order the pinned SHA against
-  #     them, but every tag postdates the pinned commit, so no tag re-expresses the shipped tree.
+  #   * aminblg — Class C. Releases exist and the resolver CAN order the pinned SHA against them,
+  #     but every tag postdates the pinned commit, so no tag re-expresses the shipped tree.
   #     POLICY, in D8's words, quoted rather than paraphrased.
+  # blader (humanizer) was the third until 2026-09-09; its rules now live in skills/mikes-voice.
   refs:
     oakoss:
       repo: oakoss/agent-skills
@@ -101,12 +101,6 @@ install:
       hold: >-
         structural, not policy: upstream publishes no releases and no tags, so there is no version
         for a resolver to return and no policy to lift — a commit SHA is the only available pin.
-    blader:
-      repo: blader/humanizer
-      ref: 1b48564898e999219882660237fde01bf4843a0f
-      hold: >-
-        policy (D8): SHA-pinned by design; the nearest tag is a content change, not a re-expression
-        of this commit.
     aminblg:
       repo: AminBlg/SimpleEnglish
       ref: 379728b51981b6d2ee1de0f201164483a9648972
@@ -117,7 +111,7 @@ install:
 # Fetched by install.sh — the capability test verifies they landed (the assembler cannot see what an
 # install script installs, so we declare it). Keep in sync with install.sh.
 expect:
-  skills: [application-security, mermaid-diagrams, mise, python-uv, skill-management, humanizer, simple-english]
+  skills: [application-security, mermaid-diagrams, mise, python-uv, skill-management, simple-english]
 
 skills:
   # --- Converted from always-on rules. See "RULES vs SKILLS" above for the test applied. Each
@@ -168,8 +162,12 @@ skills:
   # it is vendored not fetched (a fetch would revert the edit). Provenance + the exact change are in
   # skills/defuddle/PROVENANCE.md; kepano's LICENSE ships in skills/defuddle/LICENSE.
   - path: skills/defuddle
-  # (humanizer is no longer vendored — it is byte-identical to blader/humanizer@1b48564, so it is
-  # fetched at a pinned SHA by install.sh alongside the oakoss five. See install.sh / harnessed-197.)
+  # (humanizer is gone entirely as of 2026-09-09 — not vendored, not fetched. It and
+  # petergyang/no-ai-slop overlapped mikes-voice by roughly two thirds and CONFLICTED on the rest:
+  # humanizer rewrites in place and injects opinions the source never had, no-ai-slop makes the
+  # minimum edit and forbids inventing any. Rather than arbitrate two upstreams on every draft,
+  # mikes-voice absorbed what was missing and now owns prose quality alone. Both repos stay linked
+  # in README.md as sources to skim, not dependencies to track.)
   # [gsd] DERIVED from open-gsd/gsd-core, then decoupled and modified here (no longer tracks
   # upstream). Attribution is owed and recorded; this is NOT a fetch candidate — the local version
   # is the one we want. Original: github.com/open-gsd/gsd-core (MIT).
