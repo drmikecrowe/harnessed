@@ -59,7 +59,12 @@ baseline carries it; a `--stack` launch or `--no-extends` that omits the recipe 
 
 1. Start work in a **new git worktree** — never edit or commit on `main` directly.
 2. Get the **full test suite passing** in that worktree before proposing to merge.
-3. Open a **PR** to `main`. Merges happen via PR review, not direct pushes.
+3. If the change touches the container path — any `Dockerfile.harnessed-*`, `harnessed-start`,
+   `volumes.py`, `launcher.py`, or `paths.py` — also run the live layer against your branch
+   (`gh workflow run live.yml --ref <branch>`). It is not on `pull_request`, and nothing else in
+   CI starts a container. See CLAUDE.md §Tests for the file list and why a green suite does not
+   cover it.
+4. Open a **PR** to `main`. Merges happen via PR review, not direct pushes.
 
 Applies to code, catalog content, docs, and config alike. Commits are signed
 (see `.claude/rules/signed-commits`). This overrides the "PUSH TO REMOTE" step in the Beads
