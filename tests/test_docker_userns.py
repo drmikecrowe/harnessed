@@ -30,6 +30,27 @@ import pytest
 import typer
 
 from harnessed import capability, ctrquery, launcher, launchenv, paths, persist, volumes
+
+
+class _Recorded:
+    """What a mocked `volumes._run` hands back.
+
+    `_volume_exists` reads `.returncode`, so a recorder returning None now raises AttributeError
+    inside the code under test. `returncode=1` means "no such volume", which is the state these
+    tests are about: a volume this run creates, and therefore chowns.
+    """
+
+    def __init__(self, returncode: int = 1) -> None:
+        self.returncode = returncode
+        self.stdout = ""
+        self.stderr = ""
+
+
+def _recorder(sink, *, with_kwargs: bool = False):
+    def _run(cmd, *a, **k):
+        sink.append((list(cmd), dict(k)) if with_kwargs else list(cmd))
+        return _Recorded()
+    return _run
 from harnessed.hosthome import _HOST_STACK_FINGERPRINT
 from harnessed.schema import load_recipe
 from support import patch_all
@@ -275,11 +296,10 @@ class TestTheAgentRunsAsTheInvokingUserOnDocker:
         monkeypatch.setattr(paths.os, "getuid", lambda: 1001)
         monkeypatch.setattr(paths.os, "getgid", lambda: 1002)
         calls: list[list[str]] = []
-        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
+        monkeypatch.setattr(volumes, "_run", _recorder(calls))
         volumes._chown_volume_for_docker("docker", "thevol", "theimage")
-        # In the `sh -c` script since the chown became sentinel-gated, not a bare argv element.
         # Group 0, matching what the agent runs as -- see the --user test above.
-        assert "chown -R 1001:0 /mnt" in calls[0][-1], calls[0]
+        assert "1001:0" in calls[0], calls[0]
 
 
 class TestEverythingElseJoinsTheAnchor:
@@ -373,7 +393,7 @@ class TestEveryInstallStepMatchesItsRuntime:
         (d / "install.sh").write_text("true\n")
         load_recipe(d, strict=True)
         calls: list[list[str]] = []
-        patch_all(monkeypatch, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
+        patch_all(monkeypatch, "_run", _recorder(calls))
         monkeypatch.setattr(
             launcher.paths, "install_cache_dir",
             lambda name, key: tmp_path / "cache" / name / key,
@@ -776,7 +796,7 @@ class TestTheFingerprintStepMatchesItsRuntime:
     @pytest.mark.parametrize("rt", ["podman", "docker"])
     def test_the_fingerprint_write_carries_the_mapping(self, rt, tmp_path, monkeypatch):
         calls: list[list[str]] = []
-        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
+        monkeypatch.setattr(volumes, "_run", _recorder(calls))
         monkeypatch.setattr(volumes, "_ensure_config_volume", lambda *a, **k: "cfgvol")
         monkeypatch.setattr(volumes, "_run_container_installs", lambda *a, **k: None)
         monkeypatch.setattr(volumes, "_container_stack_fingerprint", lambda *a, **k: "fp")
@@ -818,7 +838,7 @@ class TestDockerNamedVolumesAreChowned:
         not encode the decision the code's own comment argues for."""
         self._pin_invoker(monkeypatch)
         seen: list[tuple[list[str], dict]] = []
-        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: seen.append((list(cmd), dict(k))))
+        monkeypatch.setattr(volumes, "_run", _recorder(seen, with_kwargs=True))
         volumes._chown_volume_for_docker(rt, "thevol", "img")
         return seen
 
@@ -845,11 +865,11 @@ class TestDockerNamedVolumesAreChowned:
         turned `-v` into `-V` and `--entrypoint` into `--ENTRYPOINT` with nothing failing, and
         either produces a container that does not start."""
         argv, _ = self._invocations(monkeypatch, "docker")[0]
-        assert argv[:3] == ["docker", "run", "--rm"]
-        assert argv[3:6] == ["--userns=host", "--user", "0:0"]
-        assert argv[6:11] == ["-v", "thevol:/mnt", "--entrypoint", "sh", "img"]
-        assert argv[11] == "-c"
-        assert len(argv) == 13, argv
+        assert argv == [
+            "docker", "run", "--rm", "--userns=host", "--user", "0:0",
+            "-v", "thevol:/mnt", "--entrypoint", "chown", "img",
+            "-R", f"{self.OWNER_UID}:{self.OWNER_GID}", "/mnt",
+        ]
 
     # 4242:4243 -- a value no developer box and no GitHub runner has. Since #457 the docker owner
     # is the INVOKING uid, so an assertion written against `paths.CONTAINER_UID` is only true where
@@ -868,7 +888,7 @@ class TestDockerNamedVolumesAreChowned:
     def _calls(self, monkeypatch, rt: str) -> list[list[str]]:
         self._pin_invoker(monkeypatch)
         calls: list[list[str]] = []
-        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
+        monkeypatch.setattr(volumes, "_run", _recorder(calls))
         volumes._chown_volume_for_docker(rt, "thevol", "theimage")
         return calls
 
@@ -885,40 +905,71 @@ class TestDockerNamedVolumesAreChowned:
         # The chown moved INSIDE an `sh -c` when it became sentinel-gated (PR #461 review): the
         # gate and the chown have to be one container, so the ids and `-R` are now script text
         # rather than argv elements. Same three properties, read where they now live.
-        assert cmd[-2] == "-c" and "sh" in cmd, f"the gate needs a shell: {cmd}"
-        script = cmd[-1]
-        assert f"chown -R {self.OWNER_UID}:{self.OWNER_GID} /mnt" in script
+        assert "chown" in cmd, f"the chown entrypoint is what does the work: {cmd}"
+        assert f"{self.OWNER_UID}:{self.OWNER_GID}" in cmd
+        assert "-R" in cmd, "the volume may already hold copied-up content"
         # It must carry the mapping too, or the chown lands in a different namespace than the
         # agent and writes an ownership the agent still cannot use.
         assert "--userns=host" in cmd
 
-    def test_the_chown_is_skipped_once_the_sentinel_exists(self, monkeypatch):
-        """The gate is a `[ -f … ] ||` in the SAME container, not a second probe run.
+    def test_the_chown_writes_nothing_inside_the_volume(self, monkeypatch):
+        """THE REGRESSION GUARD, and the reason this class exists in its current shape.
 
-        `_ensure_stack_volumes` runs on every build and every FIRST_START launch, and one of the
-        volumes it chowns is `harnessed-dl-cache` — shared by every stack and, per `volume-gc`'s
-        `role == "shared"` branch, never pruned. An ungated `chown -R` therefore walks an
-        unbounded tree on every launch. Raised on PR #461 review and by the round-2 adversary.
+        Docker seeds a named volume from the image's copy of the mount point ONLY WHILE THE VOLUME
+        IS EMPTY. An earlier version of this helper gated itself on a sentinel FILE written into
+        the volume, to avoid re-walking the shared cache on every launch. That one byte suppressed
+        copy-up: ~/.local came up empty instead of carrying the image's pnpm tree, and the launch
+        died with `nohup: failed to run command 'hatago': No such file or directory`.
+
+        Measured both ways -- an empty volume mounted at ~/.local yields `bin share state` with
+        hatago on PATH; the same volume with a single file written first yields only that file.
+
+        So: this container may CHANGE ownership and must CREATE nothing.
         """
-        calls = self._calls(monkeypatch, "docker")
-        script = calls[0][-1]
-        assert script.startswith(f"[ -f {volumes._VOLUME_OWNED_SENTINEL} ] ||"), script
-        assert len(calls) == 1, f"the gate must not cost a second container: {calls}"
+        argv, _ = self._invocations(monkeypatch, "docker")[0]
+        joined = " ".join(argv)
+        for writer in ("touch", "mkdir", "tee", ">"):
+            assert writer not in joined, (
+                f"{writer!r} appears in the chown container; anything written into the volume "
+                f"stops docker seeding it from the image: {argv}"
+            )
+        assert argv[argv.index("--entrypoint") + 1] == "chown", argv
 
-    def test_the_sentinel_is_written_only_after_the_chown_succeeds(self, monkeypatch):
-        """`&&`, never `;`. A sentinel written next to a FAILED chown certifies ownership that was
-        never set, and every later launch then skips the fix for a volume the agent cannot write —
-        the same stamp discipline `_ensure_config_volume` holds for its fingerprint."""
-        script = self._calls(monkeypatch, "docker")[0][-1]
-        _, _, rest = script.partition("chown -R")
-        assert rest.split(f"touch {volumes._VOLUME_OWNED_SENTINEL}")[0].rstrip().endswith("&&"), script
+    def test_a_volume_that_already_exists_is_not_chowned_again(self, monkeypatch, tmp_path):
+        """The cost the PR #461 review objected to. `_ensure_stack_volumes` runs on every build AND
+        every FIRST_START launch, and `harnessed-dl-cache` is shared by every stack and never
+        pruned (volume-gc's `role == "shared"` branch), so an unconditional `chown -R` walks an
+        unbounded tree every time. The gate is EXISTENCE, asked before `volume create` -- state
+        kept outside the volume, where it cannot affect copy-up."""
+        calls: list[list[str]] = []
 
-    def test_the_sentinel_is_owned_by_the_agent_not_root(self, monkeypatch):
-        """It is created by the root gate container, so without this it lands root-owned inside a
-        tree the agent otherwise owns."""
-        script = self._calls(monkeypatch, "docker")[0][-1]
-        owner = f"{self.OWNER_UID}:{self.OWNER_GID}"
-        assert f"chown {owner} {volumes._VOLUME_OWNED_SENTINEL}" in script, script
+        def fake_run(cmd, *a, **k):
+            calls.append(list(cmd))
+            # `volume inspect` succeeding is how "this volume already exists" is expressed.
+            return _Recorded(0 if cmd[1:3] == ["volume", "inspect"] else 1)
+
+        monkeypatch.setattr(volumes, "_run", fake_run)
+        monkeypatch.setattr(volumes, "_merged_settings_text", lambda *a, **k: None)
+        volumes._ensure_config_volume("docker", "s", "claude", tmp_path, "img")
+
+        chowns = [c for c in calls if "chown" in c]
+        assert not chowns, f"an existing volume must not be re-chowned: {chowns}"
+
+    def test_a_volume_this_run_created_is_chowned(self, monkeypatch, tmp_path):
+        """The other half: a brand-new volume is root-owned until something fixes it, so the gate
+        must not turn into 'never chown'."""
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, *a, **k):
+            calls.append(list(cmd))
+            return _Recorded(1)  # inspect fails -> the volume did not exist
+
+        monkeypatch.setattr(volumes, "_run", fake_run)
+        monkeypatch.setattr(volumes, "_merged_settings_text", lambda *a, **k: None)
+        volumes._ensure_config_volume("docker", "s", "claude", tmp_path, "img")
+
+        chowns = [c for c in calls if "chown" in c]
+        assert len(chowns) == 1, f"a new volume must be chowned exactly once: {calls}"
 
     def test_the_config_volume_is_chowned_when_it_is_created(self, tmp_path, monkeypatch):
         """Through `_ensure_config_volume`, not by calling the helper directly.
@@ -926,7 +977,7 @@ class TestDockerNamedVolumesAreChowned:
         The helper being correct says nothing about it being CALLED, and the call is the half that
         was missing before phase 2. diff-cover flagged this exact line as unexecuted."""
         calls: list[list[str]] = []
-        monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
+        monkeypatch.setattr(volumes, "_run", _recorder(calls))
         monkeypatch.setattr(volumes, "_merged_settings_text", lambda *a, **k: None)
 
         volumes._ensure_config_volume("docker", "s", "claude", tmp_path, "img", fresh=True)
