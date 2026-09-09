@@ -94,8 +94,13 @@ git switch main
 # provider — exactly what happened on 2026-09-04, when leftover OPENWIKI_PROVIDER=openai-compatible
 # + OPENWIKI_OPENAI_COMPATIBLE_STREAMING=true exports made every schema correction look broken.
 # Same stance harnessed's own host launcher takes: the schema is the declared source of truth,
-# and a shell export must not outrank it. The -u list is the full provider surface.
-openwiki_env = "env -u OPENWIKI_PROVIDER -u OPENWIKI_MODEL_ID -u OPENWIKI_OPENAI_COMPATIBLE_STREAMING -u OPENAI_COMPATIBLE_API_KEY -u OPENAI_COMPATIBLE_BASE_URL -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL varlock run -p $HOME/.config/harnessed --filter 'OPENWIKI_*,ANTHROPIC_*,LANGCHAIN_TRACING_V2,LANGSMITH_API_KEY' --"
+# and a shell export must not outrank it. The -u list is the full provider surface — including
+# OPENWIKI_MAX_OUTPUT_TOKENS, which run 7 (2026-09-08) proved is not cosmetic: a shell export of
+# 32768 beat the schema's 20000, and the @anthropic-ai/sdk client guard
+# (_calculateNonstreamingTimeout: 3600*maxTokens/128000 > 600s) refuses any NON-streaming call
+# whose cap exceeds 21,333. The planner is that one non-streaming call, so the run died there
+# twice — the only failures in an otherwise clean 1.7h update.
+openwiki_env = "env -u OPENWIKI_PROVIDER -u OPENWIKI_MODEL_ID -u OPENWIKI_MAX_OUTPUT_TOKENS -u OPENWIKI_OPENAI_COMPATIBLE_STREAMING -u OPENAI_COMPATIBLE_API_KEY -u OPENAI_COMPATIBLE_BASE_URL -u ANTHROPIC_API_KEY -u ANTHROPIC_BASE_URL varlock run -p $HOME/.config/harnessed -p ~/.config/harnessed/.env.openwiki --filter 'OPENWIKI_*,ANTHROPIC_*,LANGCHAIN_TRACING_V2,LANGSMITH_API_KEY' --"
 
 # Not interactive, no varlock, no model: it recomputes each Claim's evidence digest against the tree
 # and exits non-zero when cited code actually changed. That makes "which pages are lying" a check
