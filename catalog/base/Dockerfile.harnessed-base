@@ -71,10 +71,16 @@ RUN usermod -l ${USERNAME} ubuntu && \
     mkdir -p /home/${USERNAME} && \
     cp -an /home/ubuntu/. /home/${USERNAME}/ 2>/dev/null || true && \
     rm -rf /home/ubuntu && \
-    # Pre-create ~/.ssh with strict 0700 perms so the launcher's per-file credential mounts
-    # (config / known_hosts / *.pub / opt-in keys) land in a correctly-owned dir — otherwise podman
-    # auto-creates the mount-point root-owned and ssh refuses "Bad owner or permissions on ~/.ssh".
-    mkdir -p /home/${USERNAME}/.ssh && chmod 700 /home/${USERNAME}/.ssh && \
+    # Pre-create ~/.ssh so the launcher's per-file credential mounts (config / known_hosts / *.pub /
+    # opt-in keys) land in a correctly-owned dir — otherwise podman auto-creates the mount-point
+    # root-owned and ssh refuses "Bad owner or permissions on ~/.ssh".
+    #
+    # 0750, not 0700. ssh's strict check refuses a dir that is group- or world-WRITABLE; group-READ
+    # is fine. The extra bit is what lets the arbitrary-uid treatment below reach it: a docker agent
+    # runs as <invoker>:0, which is not the owner, so 0700 would hide ~/.ssh from the very process
+    # the mounts are for. The mounted files keep their host modes (0600 keys), which is what ssh
+    # actually inspects.
+    mkdir -p /home/${USERNAME}/.ssh && chmod 750 /home/${USERNAME}/.ssh && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}
 
 USER ${USERNAME}
@@ -303,7 +309,85 @@ RUN git config --system --add safe.directory '*'
 # class this file already cites twice ("Podman overlay layer corrupting home dir ownership" above,
 # and the cache-mount parent pre-creation at line ~82). This line makes the invariant explicit
 # instead of inherited, which is cheap; it is not a proven fix, because the cause is not proven.
-RUN chown ${USERNAME}:${USERNAME} /home/${USERNAME}
+#
+# GROUP 0, and that is the arbitrary-uid half (#456/#457). podman maps the invoker ONTO uid 1000, so
+# its process IS the owner and owner perms decide everything. Docker maps nothing: `--user 1001` is
+# literally uid 1001, an identity this image never created, and /home/harnessed at 0750
+# harnessed:harnessed could not be TRAVERSED by it — measured as
+# `cp: cannot stat '/home/harnessed/.claude/'` on a uid-1001 runner while the volume itself was
+# correctly owned. A volume's ownership cannot rescue a parent directory you cannot enter.
+#
+# Group 0 is the one group an uid the image never created is guaranteed to hold, so the container
+# runs as <invoker>:0 (paths.container_user_args) and this directory answers to that group. `2` sets
+# setgid, so anything the agent creates here inherits group 0 rather than reverting to its own gid.
+#
+# STILL NOT RECURSIVE, for the reason above AND because it is not needed: everything below $HOME is
+# already 0755, so it was never the obstacle — only $HOME's own 0750 was. The dirs the agent
+# actually writes (~/.claude, ~/.local, ~/.cache) are runtime VOLUMES, chowned to the same uid:0 by
+# volumes._chown_volume_for_docker, so a recursive pass here would rewrite the mise/pnpm/uv trees
+# into a new layer to fix paths that get mounted over anyway.
+#
+# ~/.ssh follows the same rule: group 0 so a uid:0 process can read the launcher's credential
+# mounts, 0750 rather than 0770 because ssh refuses a group-WRITABLE ~/.ssh.
+#
+# THE VOLUME MOUNT POINTS GET IT TOO, and this is not belt-and-braces. Docker COPIES UP: mounting
+# an empty named volume onto a path that exists in the image seeds the volume with that path's
+# content AND ITS OWNERSHIP. So `volumes._chown_volume_for_docker`, which chowns the volume at
+# /mnt before it is ever mounted at its real location, is silently undone for any mount point the
+# image already has. Measured: ~/.claude survives (absent from the image, nothing to copy up) while
+# ~/.cache does not, and a uid-1001 agent then cannot write its own download cache — mise reports
+# `failed create_dir_all: ~/.cache/mise/...: Permission denied` and the hub never starts.
+#
+# Fixing it here rather than in the chown is what makes it stick: copy-up carries these bits, so
+# the volume is born correct instead of being corrected and then overwritten.
+#
+# ~/.claude IS DELIBERATELY ABSENT FROM THIS LIST, and creating it here was a real regression.
+# Copy-up re-applies the image directory's ownership on EVERY mount while the volume is still
+# empty — and an empty ~/.claude in the image copies nothing, so the volume never stops being
+# empty and never stops being re-owned to uid 1000. Measured on one volume: mounted at
+# ~/.claude it reports `1000:0 2775`, mounted at /mnt the same volume reports `0:0 755`. The
+# runtime chown then cannot stick, and `cp -a` in the compose step fails with
+# `preserving times for '/home/harnessed/.claude/.': Operation not permitted` — utimes() needs
+# ownership, which group 0 does not confer. With no image directory there is no copy-up, so the
+# chown persists and the compose step owns what it writes into.
+RUN chown ${USERNAME}:0 /home/${USERNAME} && chmod 2775 /home/${USERNAME} && \
+    chgrp 0 /home/${USERNAME}/.ssh && chmod 0750 /home/${USERNAME}/.ssh && \
+    for d in .cache .local; do \
+      mkdir -p "/home/${USERNAME}/$d" && \
+      chown ${USERNAME}:0 "/home/${USERNAME}/$d" && \
+      chmod 2775 "/home/${USERNAME}/$d"; \
+    done && \
+    # ~/.cache RECURSIVELY, and only ~/.cache. Making just the top level group-0 was not enough:
+    # the agent writes into PRE-EXISTING subdirectories (.cache/uv, .cache/mise, .cache/pnpm) that
+    # the build left owned `harnessed:harnessed` mode 0755, which a <invoker>:0 process cannot
+    # write. The `time` MCP server is `uvx --with mcp==1.29.0 mcp-server-time@...`, so it needs
+    # ~/.cache/uv before it can start -- and the hub log showed exactly that, a wall of
+    # `mise WARN failed to write cache file: ~/.cache/mise/<tool>/...: Permission denied`
+    # followed by the server never connecting.
+    #
+    # ~/.local is NOT included, deliberately: it is 1.6G of mise/pnpm/uv toolchains and a recursive
+    # pass over it would copy the lot into a new layer, which this file warns against twice.
+    # ~/.cache is 56K, so this costs nothing. The agent does not mount the shared download-cache
+    # volume (nothing in launcher.py references it) -- ~/.cache in a running agent IS this image
+    # directory, which is why fixing it here is what reaches the running container.
+    chgrp -R 0 /home/${USERNAME}/.cache && \
+    chmod -R g=u /home/${USERNAME}/.cache
+
+# PROVE THE ARBITRARY-UID CONTRACT AT BUILD TIME, as an uid this image has never heard of. The
+# probe below runs as ${USERNAME} and therefore cannot see this class at all: uid 1000 is the owner,
+# so it passes whatever the group bits say. That is exactly how the docker defect reached a CI
+# runner -- every local check was run by the one uid for which the bug is invisible.
+#
+# 4242:0 is a stand-in for "whoever launched harnessed". Only $HOME is probed: ~/.cache and the rest
+# are runtime volumes, chowned to the invoker by volumes._chown_volume_for_docker, so requiring them
+# to be group-writable in the IMAGE would assert something the design does not promise.
+USER 4242:0
+RUN probe="/home/${USERNAME}/.harnessed-arbitrary-uid-probe"; \
+    mkdir "$probe" && rmdir "$probe" || { \
+      echo "harnessed-base: an arbitrary uid in group 0 cannot write /home/${USERNAME} — docker runs the agent as <invoker>:0, so every launch off a box whose uid is not 1000 will fail" >&2; \
+      ls -ld "/home/${USERNAME}" >&2; \
+      exit 1; \
+    }
 USER ${USERNAME}
 
 # FAIL IN THE BASE BUILD, WHERE THE FAULT IS, rather than in whichever child image happens to touch

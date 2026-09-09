@@ -17,6 +17,13 @@ from harnessed.persist import (
 )
 
 
+# Every ownership assertion below is about PODMAN's `keep-id` mapping, which `paths.pod_host_uid`
+# reads off `USERNS_ARG`. Until #456 that was the only branch, so these tests reached it without
+# saying so — and therefore reached it only on a machine where podman is what PATH offers. The pin
+# that makes them measure the branch they name is `conftest._pin_container_runtime`. No assertion
+# in this file changed for #456.
+
+
 @pytest.fixture
 def home(monkeypatch, tmp_path):
     """An isolated $HOME (+ XDG_CONFIG_HOME under it) so Path.home() / the allowlist are sandboxed."""
@@ -160,6 +167,11 @@ class TestOwnershipGuard:
         assert f"keep-id:uid={paths.CONTAINER_UID}" in msg, (
             f"the guard still describes the stale unpinned mapping: {msg}"
         )
+        # The mapping is quoted BARE, with the `--userns=` flag stripped: the sentence reads
+        # "the pod runs `keep-id:uid=1000,gid=1000`", not "...runs `--userns=keep-id:...`".
+        # Without this, `removeprefix` -> `removesuffix` is a surviving mutant (#456): the
+        # substring assertion above holds either way, so nothing pinned the strip.
+        assert "--userns=" not in msg, f"the flag should be stripped from the quoted mapping: {msg}"
         assert f"chown -R {owner + 1}" in msg  # remediation targets the CALLER, who can write
 
 

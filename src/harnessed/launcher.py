@@ -222,6 +222,7 @@ from .launchenv import (
     _resolve_launch_env,
     _resolve_launch_secrets,
     _strip_var_from_env_files,
+    api_endpoint_egress_hosts,
     _varlock_cache_clear,
     _varlock_resolve,
 )
@@ -672,6 +673,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     `strict` (default True — the authoring gate for `build`/`test`) rejects unknown recipe-manifest
     fields so a typo like `skkills:` fails loudly instead of silently dropping the capability.
     """
+    _preflight_runtime(rt)
     stack_dir = (root / "stacks" / stack) if root else paths.find_in_catalog("stacks", stack)
     if not (stack_dir / "stack.yaml").is_file():
         _err.print(f"[bold red]error:[/bold red] unknown stack '{stack}' (no {stack_dir}/stack.yaml)")
@@ -723,7 +725,7 @@ def _build_stack(rt: str, stack: str, harness: str, root: Path | None = None, *,
     _, build_recipes = load_stack_with_recipes(root, stack)
     cfg_vol, tools_vol = _ensure_stack_volumes(rt, stack, harness, prof, derived, build_recipes)
     vol_args = [
-        paths.USERNS_ARG,
+        *paths.userns_args(rt),
         "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
     ]
@@ -1263,6 +1265,42 @@ def _without_userns(args: list[str]) -> list[str]:
     return [a for a in args if not a.startswith("--userns")]
 
 
+def _preflight_runtime(rt: str) -> None:
+    """Refuse a runtime whose id mapping harnessed cannot name — BEFORE anything is created (#456).
+
+    `persist.guard_ownership` already refuses an unresolvable mapping, but only where it is
+    CONSULTED: a stack that declares no persist entry never reaches it, and would run all the way
+    into the bind-mount failure this check exists to prevent. So the refusal is here too, at the
+    top of the launch, where it costs one `docker info` and stops with something a user can act on.
+
+    Podman is unconditionally fine: `paths.USERNS_ARG` names the mapping outright. Docker needs
+    BOTH a rootful daemon (`paths.docker_is_rootless`) AND an invoking user whose uid is the
+    image's — see the second check below.
+    """
+    if rt != "docker":
+        return
+    if paths.docker_is_rootless() is False:
+        # Rootful: `container_user_args` runs the agent as the invoking user and
+        # `_chown_volume_for_docker` gives the volumes the same ids, so any uid works. An earlier
+        # version refused every uid but 1000 here — correct while the agent ran as the image's uid,
+        # and it would now reject exactly the case `--user` was added to support, including every
+        # GitHub runner (uid 1001). Removed with the defect it guarded (#457).
+        return
+    detail = (
+        "the docker daemon is running ROOTLESS"
+        if paths.docker_is_rootless()
+        else "harnessed could not read `docker info` to tell whether the daemon is rootless"
+    )
+    _err.print(
+        f"[bold red]error:[/bold red] {detail}. Under a rootless daemon the container's uid "
+        f"{paths.CONTAINER_UID} is drawn from your subuid range, so every file harnessed writes "
+        "through a bind mount would land owned by an id it cannot predict, and the agent could not "
+        "read its own config back.\n"
+        "Use a rootful docker daemon, or podman, which maps the invoking user onto the image's uid."
+    )
+    raise typer.Exit(1)
+
+
 def _secrets_disabled() -> bool:
     """Whether this launch was told to skip the secrets broker (`--no-secrets`).
 
@@ -1405,6 +1443,59 @@ def _firewall_policy_is_drop(rt: str, netns_anchor: str, image: str) -> bool:
     return any(line.strip() == "-P OUTPUT DROP" for line in out.splitlines())
 
 
+def _agent_placement_args(rt: str, pod: str, inst: str) -> list[str]:
+    """Where the agent container lives: its netns, its hostname, and its user namespace.
+
+    Extracted from the `harness_run` argv for ONE reason — the userns half of it was wrong on
+    docker and no test could see it. `mount_args` is built entirely by the `mounts.py` builders and
+    not one of them emits `--userns` (`rg 'userns' src/harnessed/mounts.py` is empty), so on a
+    pod-less runtime the agent was created with no mapping at all. The test that was supposed to
+    cover this hand-assigned a `--userns` into `mount_args` and asserted it survived, which is a
+    state production never produces. A pure function returning argv can be asserted against
+    directly, which is the difference between a covered property and a covered line (#456).
+
+    PODMAN: the mapping is a POD property. `pod create` sets it and every member inherits it;
+    podman REJECTS `--userns` on a member, so it must not appear here.
+    POD-LESS (docker): there is no infra container to inherit from, so the agent states its own
+    netns anchor, its own hostname (podman gets one from the pod's UTS namespace) and its own
+    mapping.
+    """
+    if _rt_uses_pods(rt):
+        return ["--pod", pod]
+    # `--user` on the pod-less branch only. podman's `keep-id` already maps the invoking user onto
+    # the image's uid, so adding `--user` there would fight the mapping. docker maps nothing, so
+    # without this the agent writes as host uid 1000 whoever launched it — correct only by
+    # coincidence, and wrong on a GitHub runner (uid 1001), which is what kept docker out of CI
+    # (#457). Paired with `volumes._chown_volume_for_docker`, which chowns to the SAME ids.
+    # NO `--network=container:` here. On a pod-less runtime the agent IS the namespace owner --
+    # the role podman's infra container plays -- so it creates its own netns and everything else
+    # (firewall runner, service sidecars) joins IT via `_netns_anchor` below.
+    #
+    # The previous shape pointed the agent at `--network=container:{pod}`, but nothing ever creates
+    # a container by that name when there is no pod: `pod create` runs only under
+    # `_rt_uses_pods`. Docker rejected the `--hostname` + network-mode conflict first, so the
+    # dangling anchor was never even reached (#458). Owning the netns also makes `--hostname`
+    # legal again: docker refuses it for a container joining someone else's UTS namespace.
+    return [
+        "--hostname", paths.container_hostname(inst),
+        *paths.userns_args(rt),
+        *paths.container_user_args(rt),
+    ]
+
+
+def _netns_anchor(rt: str, pod: str, inst: str) -> str:
+    """The container or pod whose network namespace everything else joins.
+
+    podman: the POD -- members share the infra container's netns by construction.
+    pod-less: the AGENT container, which owns the netns per `_agent_placement_args`.
+
+    One function rather than `pod or inst` at each call site: that idiom reads as a fallback for a
+    missing pod name, but `self.pod` is always set, so on docker it always chose the pod -- a
+    container that does not exist. The question is which RUNTIME, never which value is truthy.
+    """
+    return pod if _rt_uses_pods(rt) else inst
+
+
 def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
     """Argv prefix for a throwaway container that shares the pod's network namespace and MAY
     change its firewall.
@@ -1427,7 +1518,12 @@ def _firewall_runner_argv(rt: str, netns_anchor: str, image: str) -> list[str]:
         # Pod members share the infra container's netns; the pod-less runtimes join the first
         # container's instead. Either way this must land in the SAME namespace as the agent, or
         # the rules confine an empty netns and the agent runs wide open.
-        *(["--pod", netns_anchor] if _rt_uses_pods(rt) else [f"--network=container:{netns_anchor}"]),
+        # Same split as the agent's own placement: on podman the mapping is inherited from the pod,
+        # on a pod-less runtime it must be stated here. It must MATCH the agent's, not merely be
+        # present — iptables run from a different user namespace than the netns it is configuring
+        # returns EPERM, so a mismatch confines nothing and the agent runs wide open (#456).
+        *(["--pod", netns_anchor] if _rt_uses_pods(rt)
+          else [f"--network=container:{netns_anchor}", *paths.userns_args(rt)]),
         "--cap-add", "NET_ADMIN",
         # NET_ADMIN in the bounding set is not enough: the image's default user is unprivileged and
         # iptables carries no file capabilities, so an effective set of 0 makes every call fail
@@ -1646,13 +1742,24 @@ def _authorize_mcp_remote_servers(
             )
 
 
-def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 30) -> bool:
+def _wait_hatago(rt: str, instance: str, port: int | None = None, timeout: int = 90) -> bool:
     """Poll until the in-container hatago hub accepts connections on `port`.
 
     Returns True once the port is live, False on timeout. hatago starts asynchronously via the
     container entrypoint (harnessed-start), so the launch never sees a non-zero exit when hatago
     fails to bind — a missing binary, a bad config, or a crashed hub all look identical to a slow
     start. The caller must surface a False so we don't report `[SUCCESS]` over a dead MCP hub.
+
+    90s, not 30. MEASURED, not guessed: on docker, container start 11:52:38.6 -> hub listening
+    11:53:12.2, i.e. **33.5s**. The old bound lost by three and a half seconds every time, so this
+    was not flaky — it failed deterministically while looking like a slow start, and the resulting
+    "MCP tools will be unavailable" sent two separate investigations after tokens and secrets
+    before anyone timed the hub.
+    #456: hatago binds only AFTER connecting its configured MCP servers, so the floor is not the
+    hub's own startup — it is the hub plus every stdio child, plus the retry budget of any server
+    that cannot be reached (3 attempts with backoff, ~33s on its own). 90 covers the measured case
+    with headroom for one unreachable server; a stack whose servers are all unreachable will still
+    fail, which is correct.
     """
     import time
     if port is None:
@@ -1787,7 +1894,7 @@ def _svc_run_cmd(
         # bytes stay host-owned (a dolt data dir written by a foreign uid would EACCES for every
         # agent container). Unpinned, this was the loudest symptom of bd harnessed-rv2.1 — the
         # entrypoint's `mkdir -p /data/dolt` died with EACCES on any host whose uid is not 1000.
-        run_cmd += [paths.USERNS_ARG, "-v", f"{host_dir}:/data:rw"]
+        run_cmd += [*paths.userns_args(rt), "-v", f"{host_dir}:/data:rw"]
         # Path-preserving mirror: a host-side client (e.g. `bd`) that passes its absolute path to
         # the containerised Dolt server (e.g. via `CALL dolt_backup('add', ..., '<abs-path>')`)
         # will have Dolt resolve that path against the CONTAINER filesystem. Without this second
@@ -3358,11 +3465,22 @@ class ContainerBackend(ExecutionBackend):
         inst_cfg_dir.mkdir(parents=True, exist_ok=True)
         hatago_cfg_host = emit.write_hatago_config(inst_cfg_dir, self.servers, spec.project_path)
         hatago_cfg_ctr = str(paths.hatago_config_container())
-        # Filter --userns out of the member args (it is a pod-level property). Mount the hatago
+        # Filter --userns out of the member args ON PODMAN ONLY: it is a POD-level property there,
+        # and podman rejects it on a member.
+        #
+        # HONEST NOTE, because the first version of this comment was wrong: `mount_args` does not
+        # currently contain a `--userns` on either runtime — every element comes from the mounts.py
+        # builders and `rg 'userns' src/harnessed/mounts.py` is empty. So this conditional is inert
+        # TODAY, and the claim it once carried ("stripping it would drop the mapping entirely") was
+        # false: the docker mapping is delivered by `_agent_placement_args`, not from here. It is
+        # kept because the strip is only ever correct for a pod, and an unconditional strip would
+        # silently swallow a mapping the moment any builder starts emitting one. Mount the hatago
         # config (ro) into the HARNESS container — after the hatago-consolidation, hatago runs IN
         # this container (not a separate pod member), so the hub and the stdio children it spawns
         # share this container's home and see the project bind-mount.
-        self.member_mounts = _without_userns(self.mount_args)
+        self.member_mounts = (
+            _without_userns(self.mount_args) if _rt_uses_pods(self.rt) else list(self.mount_args)
+        )
         self.member_mounts += ["-v", f"{hatago_cfg_host}:{hatago_cfg_ctr}:ro"]
         self.member_mounts += _setup_script_mounts(self.recipes)
 
@@ -3397,11 +3515,20 @@ class ContainerBackend(ExecutionBackend):
             # Recipe-declared egress: union the extra allowlist hosts across this stack's recipes so
             # the firewall opens them ONLY when a recipe that needs them is present (default-DROP
             # otherwise).
-            egress_domains = sorted({d for r in self.recipes for d in r.egress})
+            # Recipe-declared hosts, PLUS the agent's own model API endpoint when the user has
+            # repointed it (`ANTHROPIC_BASE_URL` and friends live in the user's .env.schema, which
+            # no recipe can see). Without this the firewall drops every request the agent makes to
+            # its own API and the client reports an auth failure — see
+            # `launchenv.api_endpoint_egress_hosts`.
+            egress_domains = sorted(
+                {d for r in self.recipes for d in r.egress}
+                | set(api_endpoint_egress_hosts(_resolve_launch_env(spec.project_path)))
+            )
             try:
                 _apply_firewall(
                     self.rt, self.inst, egress_domains,
-                    netns_anchor=self.pod or self.inst, image=self.harness_image,
+                    netns_anchor=_netns_anchor(self.rt, self.pod, self.inst),
+                    image=self.harness_image,
                 )
             except BaseException:
                 # By this phase BOUNDARY has already started the pod, so simply propagating would
@@ -3442,7 +3569,7 @@ class ContainerBackend(ExecutionBackend):
             # members share the pod's UTS namespace, so this is the one that governs.
             pod_cmd = [
                 self.rt, "pod", "create", "--name", self.pod,
-                "--hostname", paths.container_hostname(self.pod), paths.USERNS_ARG,
+                "--hostname", paths.container_hostname(self.pod), *paths.userns_args(self.rt),
             ]
             # Publish mcp-remote's OAuth callback port (loopback only) so the redirect can reach the
             # process waiting for it. Without this the pod publishes nothing, the browser opens
@@ -3514,8 +3641,7 @@ class ContainerBackend(ExecutionBackend):
             # No --hostname in the pod branch: a member inherits the pod's UTS namespace, and the pod
             # create above already set it. The pod-less runtime has no infra container to inherit from,
             # so it needs its own bound (same EINVAL, from the container's own name).
-            *(["--pod", self.pod] if _rt_uses_pods(self.rt)
-              else [f"--network=container:{self.pod}", "--hostname", paths.container_hostname(self.inst)]),
+            *_agent_placement_args(self.rt, self.pod, self.inst),
             "--name", self.inst,
             *[arg for f in self.secrets_env_files for arg in ("--env-file", str(f))],
             # ORDER IS PRECEDENCE: podman applies `-e` left-to-right, so the LAST wins. Recipe `env:` goes
@@ -3708,6 +3834,7 @@ def container_run(
         os.environ["NO_SECRETS"] = "true"
 
     rt = _runtime()
+    _preflight_runtime(rt)
     anchor_path = Path(path).resolve() if path else Path.cwd()
 
     if not anchor_path.is_dir():

@@ -114,6 +114,34 @@ editing the assertion.
 
 A green run is not end-to-end proof: the suite runs no `podman build` and no `harnessed container-run`.
 
+### Run the live layer yourself when you touch the container path
+
+`live.yml` does not run on `pull_request`. Nothing else in CI starts a container, so on these
+files a green suite, a green `lint`, and a green `pytest` are all consistent with a stack that
+cannot launch. Change any of them and dispatch it against your branch BEFORE asking for review:
+
+```bash
+gh workflow run live.yml --ref <your-branch>     # then read BOTH jobs: live and live-docker
+```
+
+| Trigger | Why the suite cannot see it |
+| --- | --- |
+| `catalog/base/Dockerfile.harnessed-*` | image contents, ownership and modes exist only in a built image |
+| `catalog/base/harnessed-start` | the entrypoint runs only in a container |
+| `src/harnessed/volumes.py` | volume creation, mounts, and docker's copy-up have no unit-level surface |
+| `src/harnessed/launcher.py` | pod/netns placement, the firewall runner, and launch argv |
+| `src/harnessed/paths.py` | the userns / `--user` / owner-id mapping |
+
+**The list is the trigger — not your judgement about whether the change looks risky.** PR #461
+shipped four defects that every local check passed: the agent had no `--userns` at all, volume
+writers ran as the wrong uid, `$HOME` was not traversable by a non-1000 uid, and a one-byte
+sentinel silently suppressed docker's volume seeding so the MCP hub had no binary to start.
+
+**A uid-1000 workstation cannot reproduce most of them.** podman's `keep-id` maps you onto the
+image's uid, and docker without a mapping only agrees with it when you happen to be uid 1000 —
+which every developer here is, and no GitHub runner (uid 1001) is. That is why the evidence has
+to come from a runner rather than from your box.
+
 ## Skills
 
 `.agents/skills/`.

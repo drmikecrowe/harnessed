@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
+# Stack: livecheck — the stack the live CI jobs LAUNCH (`live.yml`, both runtimes).
+#
+# WHY THIS EXISTS RATHER THAN REUSING `default`. A launch check has to name a stack, and `default`
+# is the wrong one: stack names resolve through the repo catalog AND `~/.config/harnessed/catalog`,
+# overlay winning. So `harnessed test default claude` means the repo's minimal stack on a runner
+# and whatever the developer's private overlay defines on their machine — which, on the box this
+# was written on, pulled in a recipe holding a 1Password reference and reached for the vault to
+# assemble it. A test must never depend on private recipes, and must never be able to touch a
+# secret. A name nobody overlays is how that is guaranteed rather than hoped for.
+#
+# WHY `time`. It is one of the two tracer recipes kept for exactly this (`ping` is the other) and it
+# is a stdio MCP child, so a successful launch proves the whole chain the container path owns:
+# image, volumes, userns mapping, netns placement, hatago binding, and a child server actually
+# connecting through the hub. That is the chain every docker defect in #456 lived in.
+#
+# `ping` is deliberately NOT here: it is `service:`-backed, so it adds a second container and a
+# health-gate to a job whose purpose is to prove the AGENT launches. Add it the day the service
+# path needs the same protection — it will need its own reasoning about startup ordering.
+name: livecheck
+instructions: >
+  Live-verification tracer. Launched by `live.yml` on both podman and docker to prove a stack
+  reaches a running agent with a connected MCP server — not merely that its images build.
+recipes: [time]
+services: []

@@ -1,0 +1,87 @@
+# Classified surviving mutants for #456 -- mutation layer, tools/gauntlet-456.sh.
+#
+# An entry here is a CLAIM, not a mute: "this mutant survives, and here is why no behaviour turns
+# on it." The gate enforces the file in BOTH directions -- an unlisted survivor fails the layer, and
+# so does a listed mutant that no longer survives. The second half is what stops this file rotting
+# into a blanket excuse: once a mutant becomes killable, the entry must go.
+#
+# THE ONE CLASS LISTED HERE: mutmut's string mutations (`"x"` -> `"XXxXX"`, and case inversion)
+# applied to the TEXT of error messages. Killing these means asserting user-facing prose
+# character-for-character, which is brittle and is what anti-gaming rule 4 warns against. Before
+# classifying, the rule is to name the real defect that could live in the same expression: for a
+# message literal there is none -- no branch, no comparison, no argument to another call reads it.
+#
+# What IS asserted about these messages, so the classification is narrow rather than a blanket pass:
+#   * guard_ownership   -- names the path, the cause ("rootless"), the uid, "subuid", and BOTH
+#                          remediations ("rootful", "podman"); the unreadable-daemon variant names
+#                          "docker info"; the podman message names the pinned mapping, bare.
+#   * _preflight_runtime-- names the cause, the uid, "subuid", both remediations, and exits 1.
+#   * _runtime          -- names "neither podman nor docker", and exits 1.
+# Mutants that changed EXIT CODES or COMMAND ARGV were fixed with tests, never listed here.
+
+
+#
+# Regenerate: python3 tools/regen-allowlist-456.py <mutmut-run-log>
+#
+# REGENERATION IS NOT A FIX. Rerunning the script over a fresh log makes every survivor listed and
+# therefore passing, which is the gaming move this gate exists to prevent. Each entry is read and
+# justified, and a removal is explained here.
+#
+# Removed on the PR #461 review pass, for two DIFFERENT reasons the verdict script reports with one
+# message ("no longer survives"):
+#   * `_preflight_runtime__mutmut_12` -- still exists, now KILLED. Good news; the entry had to go.
+#   * `_preflight_runtime__mutmut_23`..`_35` -- NO LONGER EXIST. The function generates 21 mutants
+#     now, so these numbers name nothing. That is not a test getting stronger, it is the allowlist
+#     having been written against a different source state, and it is why numbering-keyed entries
+#     have to be re-read rather than trusted.
+
+
+# harnessed.ctrquery.x__runtime: error-message text only; the named runtimes and exit code 1 are asserted
+harnessed.ctrquery.x__runtime__mutmut_4
+harnessed.ctrquery.x__runtime__mutmut_5
+
+# harnessed.capability.x__runtime: error-message text only; the two runtime NAMES are asserted, and
+# the raise itself is asserted -- added on the PR #461 review pass, when this function entered the
+# selectors. Same class and same wording as its ctrquery sibling above, which is the point: they
+# are the same message in the two entry points.
+harnessed.capability.x__runtime__mutmut_4
+harnessed.capability.x__runtime__mutmut_5
+
+# harnessed.launcher.x__preflight_runtime: error-message text only; cause/uid/subuid/both remediations and exit code 1 are asserted
+harnessed.launcher.x__preflight_runtime__mutmut_7
+harnessed.launcher.x__preflight_runtime__mutmut_8
+harnessed.launcher.x__preflight_runtime__mutmut_9
+harnessed.launcher.x__preflight_runtime__mutmut_10
+harnessed.launcher.x__preflight_runtime__mutmut_11
+harnessed.launcher.x__preflight_runtime__mutmut_13
+harnessed.launcher.x__preflight_runtime__mutmut_14
+harnessed.launcher.x__preflight_runtime__mutmut_15
+harnessed.launcher.x__preflight_runtime__mutmut_16
+harnessed.launcher.x__preflight_runtime__mutmut_17
+harnessed.launcher.x__preflight_runtime__mutmut_18
+harnessed.launcher.x__preflight_runtime__mutmut_19
+
+# harnessed.persist.x_guard_ownership: error-message text only; path/cause/uid/subuid/both remediations and the bare-mapping quoting are asserted
+harnessed.persist.x_guard_ownership__mutmut_6
+harnessed.persist.x_guard_ownership__mutmut_7
+harnessed.persist.x_guard_ownership__mutmut_17
+harnessed.persist.x_guard_ownership__mutmut_18
+harnessed.persist.x_guard_ownership__mutmut_19
+harnessed.persist.x_guard_ownership__mutmut_20
+harnessed.persist.x_guard_ownership__mutmut_21
+harnessed.persist.x_guard_ownership__mutmut_22
+harnessed.persist.x_guard_ownership__mutmut_24
+harnessed.persist.x_guard_ownership__mutmut_25
+harnessed.persist.x_guard_ownership__mutmut_26
+harnessed.persist.x_guard_ownership__mutmut_27
+harnessed.persist.x_guard_ownership__mutmut_29
+harnessed.persist.x_guard_ownership__mutmut_30
+harnessed.persist.x_guard_ownership__mutmut_31
+harnessed.persist.x_guard_ownership__mutmut_32
+harnessed.persist.x_guard_ownership__mutmut_33
+harnessed.persist.x_guard_ownership__mutmut_36
+harnessed.persist.x_guard_ownership__mutmut_38
+harnessed.persist.x_guard_ownership__mutmut_39
+harnessed.persist.x_guard_ownership__mutmut_43
+harnessed.persist.x_guard_ownership__mutmut_44
+harnessed.persist.x_guard_ownership__mutmut_45

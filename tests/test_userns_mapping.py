@@ -19,6 +19,7 @@ constant and nothing here.
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
@@ -78,15 +79,120 @@ class TestNoCallSiteRegresses:
         )
 
     def test_the_sweep_is_not_vacuous(self):
-        """Guard the guard: deleting every userns argument would also make the sweep above pass."""
-        users = {
-            path.name for path in SRC.rglob("*.py")
-            if path.name != "paths.py" and "paths.USERNS_ARG" in path.read_text(encoding="utf-8")
-        }
+        """Guard the guard: deleting every userns argument would also make the sweep above pass.
+
+        Bound to an `ast.Call` of `paths.userns_args`, not to the SOURCE TEXT of one.
+        #456 moved the emit sites from `paths.USERNS_ARG` to `paths.userns_args(rt)`, and for one
+        run this assertion kept passing while every executable reference was gone: `USERNS_ARG` was
+        still named in three DOCSTRINGS in these two files, which is exactly the "passing
+        vacuously" state the assertion is worded to prevent.
+
+        A substring search for `paths.userns_args(` fixed that ONE instance and left the class of
+        defect open — the guard's own docstring, four lines up, contains that text, and so would
+        any prose written about the call. It escaped only because no docstring in the two SUBJECT
+        files happens to name it today, which is a coincidence, not a property. Raised on PR #461
+        review. Parsing is what makes the guard unable to be satisfied by prose at all.
+        """
+        users = set()
+        for path in SRC.rglob("*.py"):
+            if path.name == "paths.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            if any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "userns_args"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "paths"
+                for node in ast.walk(tree)
+            ):
+                users.add(path.name)
         assert {"launcher.py", "volumes.py"} <= users, (
-            "the modules that launch containers no longer reference paths.USERNS_ARG, so the sweep "
+            "the modules that launch containers no longer CALL paths.userns_args, so the sweep "
             f"above is passing vacuously; found only {sorted(users)}"
         )
+
+
+class TestEveryMappedContainerAlsoStatesItsUser:
+    """The mapping and the USER travel together, and this enumerates from the tree rather than
+    from a list someone has to remember to update.
+
+    #456 gave every volume-writing container `paths.userns_args(rt)`. #457 then made the docker
+    agent run as the INVOKER and chowned the volumes to match -- but the volume-writing containers
+    kept the image's default uid, so they wrote to a tree they did not own. It is invisible on a
+    uid-1000 box, because there the two ids coincide; on a uid-1001 runner the config compose step
+    died with `cp: cannot create directory` AFTER the agent itself launched cleanly.
+
+    The rule is therefore: if a call emits the mapping, it must also state the user. The one
+    exception is the chown container, which is deliberately `--user 0:0` -- it exists to fix
+    ownership, so it cannot run as the user that cannot write yet.
+    """
+
+    def _mapped_argvs(self, path):
+        """Every argv construct that splats `paths.userns_args`, with the string literals in it.
+
+        Scans `ast.List` AND `ast.Call`, looking only at DIRECT children. Both are needed and the
+        first is the one that matters: the install steps build their prefix as a bare list
+        (`common = [*paths.userns_args(rt), ...]`), which is not a Call at all. A first version of
+        this sweep walked Calls only, so it missed that site -- the exact site the docker uid defect
+        lived in -- and its negative control passed while the code was broken. Direct children only,
+        so a `_run([...])` yields the list once rather than once per enclosing node.
+        """
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            # if/elif rather than a conditional expression: the expression form leaves `node` as
+            # a bare `AST` for the type checker, and `AST` has no `lineno`. Narrowing here keeps
+            # the yield below checkable.
+            if isinstance(node, ast.List):
+                children = node.elts
+            elif isinstance(node, ast.Call):
+                children = node.args
+            else:
+                continue
+            names = {
+                c.value.func.attr for c in children
+                if isinstance(c, ast.Starred)
+                and isinstance(c.value, ast.Call)
+                and isinstance(c.value.func, ast.Attribute)
+            }
+            if "userns_args" not in names:
+                continue
+            literals = {
+                e.value for e in ast.walk(node)
+                if isinstance(e, ast.Constant) and isinstance(e.value, str)
+            }
+            yield node.lineno, names, literals
+
+    def test_every_mapped_container_states_its_user(self):
+        # NOT under mutmut. Its instrumented copy expands each function into dozens of variants,
+        # and the mutants that DELETE `container_user_args` are exactly the ones this sweep is
+        # written to reject -- so it fires on the instrumented tree by construction, fails during
+        # stats collection, and takes the whole mutation layer down with it (measured: every one of
+        # the 16 filters then reported "matched no mutant at all"). The guard is a statement about
+        # the real source tree; there is nothing for it to say about a file mutmut rewrote.
+        if "mutants" in SRC.parts:
+            pytest.skip("mutmut's instrumented copy omits the flag by construction")
+        found = list(self._mapped_argvs(SRC / "volumes.py"))
+        assert found, "the sweep found no mapped containers at all; it is measuring nothing"
+        offenders = [
+            line for line, names, literals in found
+            if "container_user_args" not in names and "0:0" not in literals
+        ]
+        assert not offenders, (
+            "these volume containers carry the userns mapping but not the user, so on docker they "
+            f"run as the image uid and write a tree the invoker owns: volumes.py lines {offenders}"
+        )
+
+    def test_the_chown_container_is_the_only_exemption(self):
+        """Guard the guard: the exemption is `--user 0:0`, and exactly one call may claim it. If a
+        second appears, someone silenced this sweep instead of satisfying it."""
+        if "mutants" in SRC.parts:
+            pytest.skip("mutmut's instrumented copy multiplies the exempt container")
+        exempt = [
+            line for line, names, literals in self._mapped_argvs(SRC / "volumes.py")
+            if "container_user_args" not in names and "0:0" in literals
+        ]
+        assert len(exempt) == 1, f"expected only the chown container to run as root: {exempt}"
 
 
 class TestVolumeStepsCarryTheMapping:

@@ -144,8 +144,29 @@ def guard_ownership(path: Path) -> None:
     dir, so the check passed, while the pod (bare `keep-id`, so still uid 1000 on the host) owned
     nothing and the beads-server entrypoint died on `mkdir -p /data/dolt` (bd harnessed-rv2.1).
     """
-    mapping = paths.USERNS_ARG.removeprefix("--userns=")
+    rt = paths.active_runtime()
+    mapping = (
+        paths.DOCKER_USERNS_ARG if rt == "docker" else paths.USERNS_ARG
+    ).removeprefix("--userns=")
     writer = paths.pod_host_uid()
+    if writer is None and rt == "docker":
+        # Docker's unresolvable case has a different cause and a different remedy from podman's, so
+        # it gets its own message rather than one that talks about `keep-id` modes the user cannot
+        # select. `docker_is_rootless()` is None when the daemon could not be read at all.
+        why = (
+            "the docker daemon is running ROOTLESS, so the image's uid "
+            f"{paths.CONTAINER_UID} is drawn from your subuid range and the host owner of the "
+            "container's writes is not predictable"
+            if paths.docker_is_rootless()
+            else "harnessed could not read `docker info`, so it cannot tell whether the daemon is "
+                 "rootless (where container uid 1000 maps into your subuid range) or rootful "
+                 "(where it does not)"
+        )
+        raise PersistOwnershipError(
+            f"harnessed will not risk a silent permission error on {path}: {why}. Run harnessed "
+            "against a ROOTFUL docker daemon or against podman, both of which map the container's "
+            "uid to a host uid harnessed can name."
+        )
     # BEFORE the absent-path early return, deliberately: an unresolved mapping is a problem even for
     # a dir harnessed is about to create, because the pod will write to it as a uid nobody can name.
     # Checking after the return let the unresolved case escape on the common path (CodeRabbit).

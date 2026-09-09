@@ -84,6 +84,82 @@ def _merged_settings_text(
     return json.dumps(merged, indent=2) + "\n"
 
 
+def _volume_exists(rt: str, vol: str) -> bool:
+    """Whether `vol` is already a volume, asked BEFORE `volume create` is issued.
+
+    `volume create` is idempotent and reports the name either way, so it cannot answer this — and
+    the answer is what decides whether the chown below runs at all.
+    """
+    return _run(
+        [rt, "volume", "inspect", vol], check=False, capture_output=True
+    ).returncode == 0
+
+
+def _chown_volume_for_docker(rt: str, vol: str, image: str, mount_at: str) -> None:
+    """Give a freshly created NAMED VOLUME the image's uid, on docker only.
+
+    podman chowns a new named volume to match the container's user namespace, so a keep-id pod
+    finds it writable. Docker does not: unless the mount point exists in the image (in which case
+    docker copies its content AND ownership), a new named volume is an empty directory owned by
+    `root:root`. The container runs as uid 1000, so the very first populate step fails with
+
+        cp: cannot create directory '/home/harnessed/.claude/./skills': Permission denied
+
+    which is where `harnessed` stops on docker once the `--userns` defect (#456) is out of the way.
+
+    A throwaway `--user root` container is what podman does implicitly, made explicit. It is
+    deliberately NOT "run the populate steps as root and chown afterwards": that would let every
+    recipe install script run as root inside the container, which is a real change in what recipe
+    authors can do and a divergence from the podman path that nothing would catch.
+
+    No-op on podman -- not because it would be harmful, but because podman already did it, and a
+    second chown would state a rule in two places that could then disagree.
+    """
+    if rt != "docker":
+        return
+    # NOTHING IS WRITTEN INSIDE THE VOLUME, and that is the whole design constraint. An earlier
+    # version gated this on a sentinel FILE in the volume, to stop `chown -R` walking the shared
+    # download cache on every launch (PR #461 review). It worked, and it broke the launch outright:
+    # docker seeds a volume from the image's copy of the mount point ONLY WHILE THE VOLUME IS
+    # EMPTY, so the sentinel suppressed copy-up. ~/.local then came up empty instead of carrying
+    # the image's pnpm tree, and the agent died with
+    #
+    #     nohup: failed to run command 'hatago': No such file or directory
+    #
+    # Measured both ways: an empty volume mounted at ~/.local yields `bin share state` and hatago
+    # on PATH; the same volume with one file written first yields only that file.
+    #
+    # So the "have we done this already" state lives OUTSIDE the volume: the caller asks whether
+    # the volume existed before it was created, and only a volume this run created gets chowned.
+    # That still answers the review — no per-launch walk of an unbounded cache — without putting a
+    # byte where docker is watching for emptiness.
+    #
+    # `check=False` matches every other runtime call on this path. Adversarial review moved it from
+    # `check=True`: no caller handles CalledProcessError, so a chown that failed for any reason
+    # surfaced as a bare traceback out of `harnessed build` rather than the one-line error the
+    # surrounding code takes care to produce. The populate step immediately after is what reports a
+    # volume the agent cannot write, in the user's terms.
+    # MOUNTED AT ITS REAL PATH, not at /mnt, and that ordering is the entire point. Docker performs
+    # copy-up when the container STARTS, so seeding from the image happens before this entrypoint
+    # runs -- and the chown therefore lands on the seeded tree rather than being overwritten by it.
+    #
+    # At /mnt the two fought. Copy-up sets the volume root to the IMAGE dir's owner (uid 1000), so
+    # a volume chowned at /mnt came back owned by 1000 the moment it was mounted where it belongs.
+    # The agent at uid 1001 could then create files inside it (group 0, mode 2775) but not set
+    # timestamps ON it, because utimes() needs ownership rather than write permission:
+    #
+    #     cp: preserving times for '/home/harnessed/.claude/.': Operation not permitted
+    #
+    # which is `cp -a` in the compose step failing on the destination directory itself, not on any
+    # file it was copying.
+    _run(
+        [rt, "run", "--rm", *paths.userns_args(rt), "--user", "0:0",
+         "-v", f"{vol}:{mount_at}", "--entrypoint", "chown", image,
+         "-R", "{}:{}".format(*paths.container_owner_ids(rt)), mount_at],
+        check=False, capture_output=True,
+    )
+
+
 def _ensure_config_volume(
     rt: str, stack: str, harness: str, prof: Path, image: str, *, fresh: bool = False,
 ) -> str:
@@ -126,8 +202,14 @@ def _ensure_config_volume(
         # Safe to destroy: the volume holds COMPOSED content only. Credentials and the rw history
         # dirs are bind-mounted over it at launch and live on the host, so they are not in here.
         _run([rt, "volume", "rm", "-f", vol], check=False, capture_output=True)
+    # Asked BEFORE `volume create`, which is idempotent and so cannot tell us afterwards. Only a
+    # volume THIS RUN created is chowned: a volume that already exists was chowned when it was
+    # created, and re-walking it on every launch is the cost the review objected to.
+    was_new = not _volume_exists(rt, vol)
     _run([rt, "volume", "create", *_volume_labels(stack, harness, "config"), vol],
          check=False, capture_output=True)
+    if was_new:
+        _chown_volume_for_docker(rt, vol, image, f"{_CONTAINER_HOME_STR}/.claude")
     # Read BEFORE composing — the compose step is what would overwrite the file we need to keep.
     merged_settings = _merged_settings_text(rt, vol, image, prof, fresh=fresh)
     if merged_settings is None:
@@ -154,7 +236,7 @@ def _ensure_config_volume(
         f"{settings_step}"
     )
     _run([
-        rt, "run", "--rm", paths.USERNS_ARG,
+        rt, "run", "--rm", *paths.userns_args(rt), *paths.container_user_args(rt),
         "-v", f"{vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{prof}:{_CTR_PROFILE_DIR}:ro",
         *settings_env,
@@ -222,7 +304,7 @@ def _volume_read(rt: str, volume: str, image: str, rel: str) -> str | None:
     (keep the floor) from "empty file".
     """
     out = subprocess.run(
-        [rt, "run", "--rm", paths.USERNS_ARG,
+        [rt, "run", "--rm", *paths.userns_args(rt), *paths.container_user_args(rt),
          "-v", f"{volume}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image,
          "-c", f"cat {_CONTAINER_HOME_STR}/.claude/{rel}"],
         capture_output=True, text=True,
@@ -250,8 +332,13 @@ def _run_container_installs(
     `paths.USERNS_ARG` on every step, matching the pod the agent inherits. A volume written under
     any other mapping is unreadable by the agent (harnessed-8px.21.1).
     """
+    # Every container here carries BOTH the mapping and the user. Since #457 the docker agent
+    # runs as the invoker and `_chown_volume_for_docker` gives the volumes to the invoker to
+    # match, so a step left at the image's default uid writes to a tree it does not own -- on a
+    # uid-1001 runner the compose step died with `cp: cannot create directory` while the agent
+    # itself launched fine. No-op on podman, where keep-id already makes the two the same user.
     common = [
-        paths.USERNS_ARG,
+        *paths.userns_args(rt), *paths.container_user_args(rt),
         "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude",
         "-v", f"{tools_vol}:{_CONTAINER_HOME_STR}/.local",
         # The download cache, and the direct successor to the build's `--mount=type=cache` (bd
@@ -408,10 +495,24 @@ def _ensure_stack_volumes(
     recipe's skills and commands in place forever.
     """
     tools_vol = _stack_tools_volume(stack, harness)
+    # Existence asked BEFORE creating, for both. `volume create` is idempotent, so after it runs
+    # there is no way to tell a volume this call made from one that was already there — and that
+    # distinction is what keeps the chown off the shared download cache on every single launch.
+    tools_was_new = not _volume_exists(rt, tools_vol)
+    cache_was_new = not _volume_exists(rt, _SHARED_DL_CACHE_VOLUME)
     _run([rt, "volume", "create", *_volume_labels(stack, harness, "tools"), tools_vol],
          check=False, capture_output=True)
     _run([rt, "volume", "create", "--label", f"{_VOL_LABEL}=shared", _SHARED_DL_CACHE_VOLUME],
          check=False, capture_output=True)
+    # AFTER both `volume create` calls, and this ordering is the whole point: chowning a volume
+    # that does not exist yet would create it implicitly with default ownership and leave the very
+    # state this is fixing. Every named volume the agent writes needs it, not just the config one —
+    # the tools volume takes `mise` installs and the shared cache takes downloads.
+    if tools_was_new:
+        _chown_volume_for_docker(rt, tools_vol, image, f"{_CONTAINER_HOME_STR}/.local")
+    if cache_was_new:
+        _chown_volume_for_docker(rt, _SHARED_DL_CACHE_VOLUME, image,
+                                 f"{_CONTAINER_HOME_STR}/.cache")
 
     want = _container_stack_fingerprint(rt, stack, recipes, image)
     have = _volume_read(
@@ -429,7 +530,7 @@ def _ensure_stack_volumes(
         return cfg_vol, tools_vol
 
     _run_container_installs(rt, stack, harness, image, recipes, cfg_vol, tools_vol)
-    _run([rt, "run", "--rm", paths.USERNS_ARG,
+    _run([rt, "run", "--rm", *paths.userns_args(rt), *paths.container_user_args(rt),
           "-v", f"{cfg_vol}:{_CONTAINER_HOME_STR}/.claude", "--entrypoint", "sh", image, "-c",
           f"printf %s {shlex.quote(want)} > {_CONTAINER_HOME_STR}/.claude/{_HOST_STACK_FINGERPRINT}"],
          capture_output=True)

@@ -1,0 +1,29 @@
+# The functions #456 changed, and the SINGLE source both mutation layers read: `gauntlet-456.sh`
+# turns each line into a `mutmut run` filter (appending `*`), and `mutation-verdict-456.sh` loops
+# the same lines to demand each one produced killed mutants and no survivors.
+#
+# It is a file rather than two literal lists because it WAS two literal lists, and they had already
+# drifted: eight changed decision functions -- the whole docker `--user`/ownership/netns half of
+# #456 -- appeared in neither, so the layer that exists to prove the tests constrain this change
+# never mutated the code the change is about. Raised on PR #461 review. Two lists that must agree
+# and are edited by hand will disagree; one list cannot.
+#
+# mutmut names mutants `harnessed.<module>.x_<function>__mutmut_N`, hence the `x_` prefix (`x__`
+# for a private function's leading underscore). A filter matching nothing is SILENT, which is why
+# the verdict counts what the run log executed rather than trusting mutmut's exit code.
+harnessed.paths.x__detect_runtime
+harnessed.paths.x_userns_args
+harnessed.paths.x__probe_docker_rootless
+harnessed.paths.x_pod_host_uid
+harnessed.paths.x_container_user_args
+harnessed.paths.x_container_owner_ids
+harnessed.persist.x_guard_ownership
+harnessed.ctrquery.x__runtime
+harnessed.capability.x__runtime
+harnessed.launcher.x__preflight_runtime
+harnessed.launcher.x__without_userns
+harnessed.launcher.x__agent_placement_args
+harnessed.launcher.x__netns_anchor
+harnessed.launcher.x__firewall_runner_argv
+harnessed.volumes.x__chown_volume_for_docker
+harnessed.launchenv.x_api_endpoint_egress_hosts

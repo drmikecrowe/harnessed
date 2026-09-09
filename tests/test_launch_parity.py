@@ -67,6 +67,15 @@ CONTAINER_ONLY: dict[str, str] = {
     "_broker_stop_for": "stops a pod's broker; a host launch never started one",
     "_rt_uses_pods": "asks the container runtime about pods",
     "_without_userns": "strips a pod-level --userns; a host-native launch has no user namespace",
+    "_preflight_runtime": "refuses a container runtime whose id mapping cannot be named; a "
+                          "host-native launch runs as the invoking user and maps nothing",
+    "_agent_placement_args": "netns/hostname/userns placement for a CONTAINER; a host-native "
+                             "launch has no namespace to place the agent in",
+    "_netns_anchor": "names the pod or container others share a netns with; a host-native launch "
+                     "runs in the host's own namespace and has nothing to anchor on",
+    "api_endpoint_egress_hosts": "adds the agent's model API host to the EGRESS FIREWALL allowlist; "
+                                 "a host-native launch installs no firewall, so there is no "
+                                 "allowlist to extend and the host's own routing already applies",
     "_run": "shells out to podman/docker",
     "_attach": "attaches to a container's TTY; the host execs the harness directly",
     # --- bind mounts: the host already has these paths, so there is nothing to map in ---
