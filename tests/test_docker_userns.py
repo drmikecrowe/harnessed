@@ -237,10 +237,16 @@ class TestTheAgentRunsAsTheInvokingUserOnDocker:
     same defect with different numbers. So `container_user_args` and `container_owner_ids` are
     asserted to agree, and the volume chown is asserted to use the second."""
 
-    def test_docker_runs_the_agent_as_the_invoking_user(self, monkeypatch):
+    def test_docker_runs_the_agent_as_the_invoking_uid_in_group_zero(self, monkeypatch):
+        """The uid is the invoker's; the GROUP is 0, and the gid is deliberately ignored.
+
+        Docker creates no mapping, so the agent is an uid this image never made. Group 0 is the one
+        group such an uid is guaranteed to hold, and the base image gives $HOME to group 0 to match.
+        With the invoker's own gid the agent could not traverse /home/harnessed at all -- measured
+        as `cp: cannot stat '/home/harnessed/.claude/'` on a uid-1001 runner."""
         monkeypatch.setattr(paths.os, "getuid", lambda: 1001)
         monkeypatch.setattr(paths.os, "getgid", lambda: 1002)
-        assert paths.container_user_args("docker") == ["--user", "1001:1002"]
+        assert paths.container_user_args("docker") == ["--user", "1001:0"]
 
     def test_podman_gets_no_user_flag(self):
         """`keep-id` already did this job; `--user` on top would fight the mapping."""
@@ -251,6 +257,9 @@ class TestTheAgentRunsAsTheInvokingUserOnDocker:
         monkeypatch.setattr(paths.os, "getgid", lambda: 1002)
         uid, gid = paths.container_owner_ids("docker")
         assert paths.container_user_args("docker") == ["--user", f"{uid}:{gid}"]
+        # And the group is 0 on BOTH sides. A volume chowned to the invoker's own gid is unreadable
+        # to a process running as gid 0, so "they agree" has to mean the group too, not just the uid.
+        assert gid == 0, "the docker group must be 0, not the invoker's gid"
 
     def test_podman_volumes_stay_on_the_image_uid(self):
         """podman's mapping makes the image uid the right owner; only docker moves."""
@@ -260,7 +269,7 @@ class TestTheAgentRunsAsTheInvokingUserOnDocker:
         monkeypatch.setattr(paths.os, "getuid", lambda: 1001)
         monkeypatch.setattr(paths.os, "getgid", lambda: 1002)
         args = launcher._agent_placement_args("docker", "anchor", "inst")
-        assert "--user" in args and "1001:1002" in args
+        assert "--user" in args and "1001:0" in args
 
     def test_the_volume_chown_uses_the_invoking_ids(self, monkeypatch):
         monkeypatch.setattr(paths.os, "getuid", lambda: 1001)
@@ -269,7 +278,8 @@ class TestTheAgentRunsAsTheInvokingUserOnDocker:
         monkeypatch.setattr(volumes, "_run", lambda cmd, *a, **k: calls.append(list(cmd)))
         volumes._chown_volume_for_docker("docker", "thevol", "theimage")
         # In the `sh -c` script since the chown became sentinel-gated, not a bare argv element.
-        assert "chown -R 1001:1002 /mnt" in calls[0][-1], calls[0]
+        # Group 0, matching what the agent runs as -- see the --user test above.
+        assert "chown -R 1001:0 /mnt" in calls[0][-1], calls[0]
 
 
 class TestEverythingElseJoinsTheAnchor:
@@ -847,7 +857,9 @@ class TestDockerNamedVolumesAreChowned:
     # (uid 1001) the first time CI saw the #457 commits. That is the same uid-1000 coincidence
     # `conftest._pin_container_runtime` documents, in the branch that exists to remove it.
     OWNER_UID = 4242
-    OWNER_GID = 4243
+    # 0, not a pinned distinctive number: the docker group IS 0 by design (arbitrary-uid contract),
+    # so pinning anything else here would assert a behaviour the code deliberately does not have.
+    OWNER_GID = 0
 
     def _pin_invoker(self, monkeypatch):
         monkeypatch.setattr(paths.os, "getuid", lambda: self.OWNER_UID)

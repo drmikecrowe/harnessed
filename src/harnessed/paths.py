@@ -127,6 +127,14 @@ def userns_args(rt: str) -> list[str]:
     )
 
 
+# Group 0 for every docker container harnessed runs. NOT a stylistic choice: docker performs no
+# uid mapping, so the agent runs as an uid the image never created, and group 0 is the only group
+# such an uid is guaranteed to hold. The base image pairs with this by giving $HOME to group 0 with
+# group perms equal to user perms — see Dockerfile.harnessed-base, "ARBITRARY-UID SUPPORT". Neither
+# half works alone.
+_ARBITRARY_UID_GID = 0
+
+
 def container_user_args(rt: str) -> list[str]:
     """The `--user` fragment, so the agent writes to bind mounts AS THE INVOKING USER.
 
@@ -144,10 +152,18 @@ def container_user_args(rt: str) -> list[str]:
     by 1000 is not an improvement on the reverse — it is the same defect wearing different numbers.
     `volumes._chown_volume_for_docker` therefore chowns to THIS uid, not to `CONTAINER_UID`. Change
     one without the other and every write into the config and tool volumes fails.
+
+    GID 0, NOT the invoker's gid. The uid is the invoker's because that is what host bind mounts
+    must see; the GROUP is 0 because that is the only group an uid the image never created is
+    guaranteed to be in. The base image gives $HOME to group 0 with group perms equal to user perms
+    (Dockerfile.harnessed-base, "ARBITRARY-UID SUPPORT"), which is what makes the home directory
+    traversable at all — with the invoker's own gid instead, a uid-1001 agent could not enter
+    /home/harnessed and died on `cp: cannot stat '/home/harnessed/.claude/'` with the volume
+    correctly owned. The pair only works together, which is why both live in this module.
     """
     if rt != "docker":
         return []
-    return ["--user", f"{os.getuid()}:{os.getgid()}"]
+    return ["--user", f"{os.getuid()}:{_ARBITRARY_UID_GID}"]
 
 
 def container_owner_ids(rt: str) -> tuple[int, int]:
@@ -155,13 +171,15 @@ def container_owner_ids(rt: str) -> tuple[int, int]:
 
     podman: the image's uid — `keep-id` maps the caller onto it, so the volume is correct when it
     is owned by `CONTAINER_UID` and the pod's process reaches it as the caller.
-    docker: the INVOKING user's ids, because `container_user_args` runs the agent as them.
+    docker: the invoking uid with GROUP 0, exactly matching what `container_user_args` runs as.
 
     One function so the two runtimes cannot drift: this is the number `--user` is derived from and
-    the number the volume chown targets, and the whole point is that they are the same number.
+    the number the volume chown targets, and the whole point is that they are the same number. That
+    includes the group — a volume chowned to the invoker's own gid is unreadable to a process
+    running as gid 0, which is the pairing this module exists to keep honest.
     """
     if rt == "docker":
-        return (os.getuid(), os.getgid())
+        return (os.getuid(), _ARBITRARY_UID_GID)
     return (CONTAINER_UID, CONTAINER_GID)
 
 
