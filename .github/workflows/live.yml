@@ -6,14 +6,11 @@ name: live verification
 # skips. That was the whole defect: the live-verification tests existed, ran nowhere, and each run
 # printed a reassuring skip count while nothing exercised a real container. A skip is not a pass.
 #
-# WAS NOT on pull_request, deliberately — REVERSED, see the `on:` block. The original reasoning,
-# kept because it is still half right: these tests run `podman build`; adding minutes to every PR
-# risks the job being disabled, and a disabled check verifies exactly as much as a skipped one.
-# Post-merge plus nightly does catch external-contract drift (podman's inspect/port/images output
-# formats, and everything in bd harnessed-rwt) on the timescale those change.
-#
-# What it did not price: a REGRESSION introduced by the PR itself. Drift arrives on its own
-# schedule and a day's delay costs little; a regression arrives already merged.
+# NOT on pull_request, deliberately. These tests run `podman build`; adding minutes to every PR
+# would get the job disabled within a week, and a disabled check verifies exactly as much as a
+# skipped one. Post-merge plus a nightly run catches drift in the external contracts (podman's
+# inspect/port/images output formats, and everything in bd harnessed-rwt) within a day, which is
+# the timescale those actually change on.
 #
 # NO LONGER MANUAL-ONLY. The automatic triggers below were held back because opening the gate for
 # the first time showed the live layer did not pass, and scheduling a nightly job against a suite
@@ -32,19 +29,22 @@ name: live verification
 # Measured on a real podman before enabling these: `HARNESSED_PODMAN=1 pytest` → 2166 passed,
 # 1 skipped (the one remaining skip needs a dolt binary, bd harnessed-3x1 note).
 #
-# NOW ALSO ON `pull_request`, reversing the decision recorded above — deliberately, and the reason
-# the old decision was made still stands, so it is worth stating what changed rather than deleting
-# it. The trade was "podman-build minutes on every PR" against "drift found within a day". What
-# that trade did not price is a REGRESSION, as opposed to external drift: PR #461 was one approval
-# away from merging with six podman tests red, and no PR check could see them, because the only job
-# that runs a container runtime did not run on PRs. A nightly that finds a regression the morning
-# after it merges is a worse deal than the minutes it saves.
+# STILL NOT on `pull_request`. A PR that touches the build or launch path runs this layer ON
+# DEMAND, against its own branch:
 #
-# Both runtimes gate now. "Supported" that is not continuously verified is a claim, not a fact, and
-# harnessed claims both podman and docker.
+#   gh workflow run live.yml --ref <branch>
+#   gh run watch "$(gh run list --workflow live.yml --branch <branch> -L1 --json databaseId -q '.[0].databaseId')"
+#
+# That is the whole mechanism. It covers the gap the automatic trigger was reaching for — a
+# REGRESSION, as opposed to external drift; PR #461 was one approval from merging with six podman
+# tests red — without charging two container-runtime jobs to every PR, including the ones that
+# change only docs or tests. Ad hoc is a judgement call the author makes; the automatic run on
+# `main` and the nightly still catch what the author does not.
+#
+# Both runtimes gate here. "Supported" that is not continuously verified is a claim, not a fact,
+# and harnessed claims both podman and docker.
 on:
   workflow_dispatch:
-  pull_request:
   push:
     branches: [main]
   schedule:
