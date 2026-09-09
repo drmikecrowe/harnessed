@@ -1,3 +1,8 @@
+---
+name: pre-publish-review
+description: Read every file in the diff you did not author before it leaves the machine. Load before any git push, `gh pr create`, wiki push, package publish, or vendoring third-party content.
+---
+
 # Pre-Publish Review
 
 Before ANY push, PR, or publish: read every file in the diff you did not author. Vendored deps,

@@ -1,3 +1,8 @@
+---
+name: blameless-debugging
+description: Engage a reported problem as a symptom, never as an accusation. Load when the user reports a bug, a regression, a failing test, or asks a follow-up about work you already did. Posture only; never widens scope.
+---
+
 # Blameless Debugging
 
 A reported problem is a symptom, not an accusation. Engage the symptom. Who wrote the line is not

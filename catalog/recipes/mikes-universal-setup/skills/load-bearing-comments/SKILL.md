@@ -1,3 +1,8 @@
+---
+name: load-bearing-comments
+description: Comment only the weirdness a competent reader would delete, as a terse marker plus a mandatory ticket/ADR/SHA reference. Load before writing or editing a code comment, and before deleting a check, constant, or ordering that carries a comment or marker.
+---
+
 # Load-Bearing Comments
 
 Comment the load-bearing weirdness. Nothing else.
@@ -38,5 +43,5 @@ A confident fabricated rationale is worse than none, because the next reader tru
 ## The inverse obligation
 
 Before deleting a check, constant, or ordering that carries a marker: read the reference. Never treat
-"the suite passes without it" as evidence — see [[tests-are-authority]] §Green is not proof. The test
+"the suite passes without it" as evidence — load the `tests-are-authority` skill, §Green is not proof. The test
 for that bug is often the one nobody wrote, which is why the comment had to exist.

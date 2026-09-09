@@ -1,10 +1,16 @@
 # mikes-universal-setup
 
-A personal baseline: 17 rules (coding stance, change and test discipline, precedence, comment
-discipline, commit hygiene, tool preferences, confirmation gates, token economy, cwd stability)
-plus 13 generic utility skills — 6 vendored in-tree and 7 fetched at build time from pinned
-upstreams. Serves as the worked example of what a personal "how I want my agent to behave" recipe
-looks like.
+A personal baseline: 9 always-on rules (coding stance, precedence, response style, confirmation
+gates, prompt defense, token economy, cwd stability, denied shell commands, anti-drift) plus 20
+skills — 13 vendored in-tree and 7 fetched at build time from pinned upstreams. Serves as the
+worked example of what a personal "how I want my agent to behave" recipe looks like.
+
+A rule here is injected on every turn; a skill loads when its description matches the work. Seven
+of the vendored skills (`blameless-debugging`, `commit-hygiene`, `load-bearing-comments`,
+`no-speculative-code`, `pre-publish-review`, `search-tools`, `tests-are-authority`) were always-on
+rules until the split described in `recipe.yaml`: a rule earns permanent context only when
+violating it is silent or irreversible, and everything with a trigger legible in advance became a
+skill. The rules that referenced them keep a one-line pointer.
 
 Ships as rules + skills + an `install.script`. No MCP server, no Dockerfile.
 

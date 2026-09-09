@@ -1,4 +1,14 @@
-# Text Search: Search Tool First, Then rg
+---
+name: search-tools
+description: Bound a text search or file listing before it burns the context window. Load before searching a source tree, listing files, or writing a subagent brief that will search. Covers rg, fd, and result-set caps.
+---
+
+# Search Tools
+
+The always-on floor is [[denied-commands]]: never run the `grep` or `find` binaries. This skill is
+the rest of it — which tool to reach for, and how to bound what comes back.
+
+## Text Search: Search Tool First, Then rg
 
 Search with the harness's built-in search tool first — it respects ignore files and returns
 line-anchored matches. Shell out only when that cannot answer the question. Then use `rg`, never the
@@ -39,3 +49,32 @@ pnpm build > /tmp/build.log 2>&1
 tail -50 /tmp/build.log
 rg -i error /tmp/build.log
 ```
+
+## File Discovery: Glob Tool First, Then fd
+
+Find paths with the harness's glob or file-discovery tool first. Shell out only when it cannot
+express the query, then use `fd`, never the `find` binary (see [[denied-commands]]). That ban names
+the shell binary only; built-in file tools are not shell `find`.
+
+```bash
+# Wrong
+find . -name "*.ts" -type f
+
+# Right
+fd -e ts
+```
+
+Narrow at the source: `-e <ext>`, a starting path, `--max-depth`. `fd -H` includes hidden files.
+
+Still large → wrap it in `rtk find`, which takes native `find` flags and prints a compact tree.
+
+A listing you need to question rather than read → `ctx_batch_execute`, with SPECIFIC queries. A
+broad query matches every section and re-emits the whole listing, once per query. A narrow one never
+surfaces the section you asked for. See [[ctx-routing]].
+
+## Subagents
+
+Subagents inherit none of this. A prompt that will search a tree must say so. Quote it: *prefer the
+harness search and glob tools; if you shell out, use `rg`/`fd`, never the `grep`/`find` binaries.*
+Carry the output bound across too: *scope to a path, bound the result set (`-l`, `-c`, `-m`), route
+the rest through `ctx_batch_execute`.* Told only "use rg", a subagent returns the whole dump.
