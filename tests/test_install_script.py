@@ -924,9 +924,12 @@ class TestGstackMigrated:
 class TestMikesUniversalSetupMigrated:
     """Phase 3 unit 4 of #329 — the MULTI-REF recipe, and the last of Family B.
 
-    Three refs, three upstreams, and — the reason the plan insists acceptance is per REF rather
+    Two refs, two upstreams, and — the reason the plan insists acceptance is per REF rather
     than per recipe — TWO DIFFERENT HOLD CLASSES in one manifest. A per-recipe check would pass
-    while the report told a future reader the wrong thing about two of the three.
+    while the report told a future reader the wrong thing about one of the two.
+
+    Was three until 2026-09-09, when blader/humanizer was dropped and folded into the vendored
+    mikes-voice skill. The class split it demonstrated survives: oakoss is B, aminblg is C.
 
     Its pin used to be written four times: three `*_SHA=` assignments in install.sh and a
     hand-mashed `install.cache` ("oak…-hum…-ste…") that truncated all three to 10 hex and drifted
@@ -943,13 +946,12 @@ class TestMikesUniversalSetupMigrated:
     def _recipe(self):
         return load_recipe(CATALOG / "recipes" / "mikes-universal-setup", strict=True)
 
-    def test_declares_all_three_refs_once_as_data(self):
+    def test_declares_both_refs_once_as_data(self):
         r = self._recipe()
         assert r.install is not None
-        assert sorted(r.install.refs) == ["aminblg", "blader", "oakoss"]
+        assert sorted(r.install.refs) == ["aminblg", "oakoss"]
         expected_repos = {
             "oakoss": "oakoss/agent-skills",
-            "blader": "blader/humanizer",
             "aminblg": "AminBlg/SimpleEnglish",
         }
         for key, ref in r.install.refs.items():
@@ -960,7 +962,7 @@ class TestMikesUniversalSetupMigrated:
             )
 
     def test_every_ref_is_held_individually(self):
-        """The plan's words: mikes-universal-setup's three are asserted INDIVIDUALLY.
+        """The plan's words: mikes-universal-setup's refs are asserted INDIVIDUALLY.
 
         Not `all(...)` over the set — each key by name, so a ref that lost its hold cannot hide
         behind its siblings.
@@ -968,7 +970,7 @@ class TestMikesUniversalSetupMigrated:
         r = self._recipe()
         assert r.install is not None
         refs = r.install.refs
-        for key in ("oakoss", "blader", "aminblg"):
+        for key in ("oakoss", "aminblg"):
             assert refs[key].hold, f"{key} declares no hold of its own"
 
     def test_each_hold_names_its_own_class_and_the_right_one(self):
@@ -976,8 +978,8 @@ class TestMikesUniversalSetupMigrated:
         something that cannot be lifted; the reverse freezes something that could move.
 
         oakoss is Class B — 0 releases, 0 tags, so no resolver has anything to return and the hold
-        is STRUCTURAL. blader and aminblg are Class C — releases exist, but every tag postdates the
-        pinned commit, so the hold is POLICY and D8 ruled on the exact wording.
+        is STRUCTURAL. aminblg is Class C — releases exist, but every tag postdates the pinned
+        commit, so the hold is POLICY and D8 ruled on the exact wording.
         """
         r = self._recipe()
         assert r.install is not None
@@ -995,7 +997,7 @@ class TestMikesUniversalSetupMigrated:
         # different unexplained word.
         assert "release" in oakoss and "tag" in oakoss
 
-        for key in ("blader", "aminblg"):
+        for key in ("aminblg",):
             reason = refs[key].hold or ""
             assert reason.lower().lstrip().startswith("policy"), (
                 f"{key} is Class C — a POLICY hold, and calling it structural would freeze "
@@ -1036,12 +1038,12 @@ class TestMikesUniversalSetupMigrated:
             assert f"HARNESSED_REF_{key.upper()}" in code
             assert f"HARNESSED_REPO_{key.upper()}" in code
 
-    @pytest.mark.parametrize("key", ["OAKOSS", "BLADER", "AMINBLG"])
+    @pytest.mark.parametrize("key", ["OAKOSS", "AMINBLG"])
     @pytest.mark.parametrize("half", ["REF", "REPO"])
     def test_an_absent_ref_aborts_before_it_fetches_anything(self, tmp_path, key, half):
         """The `:?` contract, executed rather than asserted about — once per variable.
 
-        Six variables, six independent guards. Asserting only one would let five be deleted
+        Four variables, four independent guards. Asserting only one would let three be deleted
         silently, which is the defect adversarial review found in unit 3's version of this test.
         Empty-but-set is the case that matters: that is what a manifest/script key-name mismatch
         actually produces, and `:?` fires on it.
@@ -1114,7 +1116,7 @@ class TestMikesUniversalSetupMigrated:
         # Every ref that DID reach a bucket carries its reason, so whatever the report says about
         # it, a reader can see why it is frozen.
         reported = {f.pin.name: f.pin.hold for f in report.held + report.current}
-        for repo in ("oakoss/agent-skills", "blader/humanizer", "AminBlg/SimpleEnglish"):
+        for repo in ("oakoss/agent-skills", "AminBlg/SimpleEnglish"):
             assert reported.get(repo), f"{repo} reached no bucket carrying its hold reason"
 
     def test_the_archive_url_carries_a_resolvable_variable_not_a_positional(self):
@@ -1218,15 +1220,18 @@ class TestPhase3ClosesAC2AcrossTheCatalog:
                 out.extend((r.name, key, ref) for key, ref in r.install.refs.items())
         return out
 
-    def test_the_catalog_declares_exactly_the_six_refs_phase_3_migrated(self):
+    def test_the_catalog_declares_exactly_the_five_refs_phase_3_migrated(self):
         """A guard on the sweep, not a target.
 
         A sweep that silently found zero refs would satisfy every other assertion in this class
         vacuously. Six is what §1 Family B measured after REVISION 14 struck hyperpowers: caveman,
-        superpowers, gstack, and mikes-universal-setup's three.
+        superpowers, gstack, and mikes-universal-setup's three. Five since 2026-09-09, when
+        mikes-universal-setup dropped blader/humanizer into its vendored mikes-voice skill.
         """
         refs = self._all_refs()
-        assert len(refs) == 6, f"expected Family B's six refs, found {[(n, k) for n, k, _ in refs]}"
+        assert len(refs) == 5, (
+            f"expected Family B's six refs less humanizer, found {[(n, k) for n, k, _ in refs]}"
+        )
 
     def test_every_declared_ref_is_pinned_immutably(self):
         for name, key, ref in self._all_refs():

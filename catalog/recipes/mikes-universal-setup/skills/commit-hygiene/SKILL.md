@@ -1,3 +1,8 @@
+---
+name: commit-hygiene
+description: Write a commit message. Load before `git commit`, when asked to commit, or when composing a PR title. Type vocabulary comes from the repository's own log; one change per commit; the body says why.
+---
+
 # Commit Hygiene
 
 - `type(scope): description` — imperative, lowercase, no trailing period.

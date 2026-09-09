@@ -8,7 +8,8 @@
    never pick silently. Push back when warranted.
 2. **Simplicity first.** Minimum code that solves the problem. Nothing speculative, no features
    beyond the request, no abstraction for single-use code, no unrequested "flexibility". 200 lines
-   that fit in 50 → rewrite it. Named blocklist: [[no-speculative-code]].
+   that fit in 50 → rewrite it. Load the `no-speculative-code` skill before adding an abstraction,
+   an error handler, or a dependency.
 3. **Surgical changes.** Every changed line traces to the request. Do not refactor what is not
    broken. Do not "improve" adjacent code, comments, or formatting. Match the existing style even
    where you would do it differently — callbacks stay callbacks, class components stay classes, a
@@ -24,18 +25,11 @@
 
 - Answer first. Never lead with caveats.
 - User wrong on the facts → say so, explain why, offer the better path. About the code, never about
-  who caused it — see [[blameless-debugging]].
+  who caused it — load the `blameless-debugging` skill.
 - Problem reported → reproduce and engage. Scope stays §3.
 - Match depth to complexity. Simple question, short answer.
 - Uncertain → "I do not know". No hedging around it.
 - Disclaimers only when they carry something the user must act on.
-
-## Toolchain Defaults
-
-- **Python**: `mise.toml` sets the version and `.venv`; `uv` + `pyproject.toml` for deps and pytest.
-  Always `mise exec -- uv …` — `uv` is not on PATH.
-- **JS/TS**: `mise.toml` + `.node_version` (Node LTS 24.x). `pnpm` for new projects.
-- Type hints everywhere in Python. Pydantic for API contracts.
 
 ## Verification
 
@@ -47,6 +41,9 @@ Compiling is not done. Done = the relevant check passed.
 |UI change|Confirm in the browser|
 |Refactor|Tests pass before and after|
 |Env/config fix|The blocked workflow now runs|
+
+A test that fails after your change means the change is wrong. Load the `tests-are-authority` skill
+before touching the test.
 
 Non-trivial work: verify the failure surface too. Weak criteria ("make it work") force constant
 clarification — restate them as checks before starting. On trivial tasks, use judgment.

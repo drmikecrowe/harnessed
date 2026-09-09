@@ -1,10 +1,15 @@
+---
+name: no-speculative-code
+description: The blocklist behind "simplicity first". Load before adding an interface, Protocol, ABC, factory, wrapper, config flag, generic helper, try/except, default-on-failure, or a new dependency. Bans what you would ADD; never licenses removing what exists.
+---
+
 # No Speculative Code
 
 [[coding-principles]] §2 says simplicity first. This is the named blocklist, because a principle does
 not fire at the moment you are typing the interface.
 
 Each section bans code you would ADD. None licenses removing what exists — that is
-[[coding-principles]] §3 and [[load-bearing-comments]].
+[[coding-principles]] §3 and the `load-bearing-comments` skill.
 
 ## Abstractions
 

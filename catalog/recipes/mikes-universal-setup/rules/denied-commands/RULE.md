@@ -11,8 +11,8 @@ gets past it.
 
 |Never run|Use instead|
 |---|---|
-|`grep`, `git grep`, and any `\| grep` / `\| grep -v` segment|the harness search tool (`Grep`); `rg` when you must shell out (`rg -v` inverts) — see [[rg]]|
-|`find`|the harness glob tool (`Glob`); `fd` when you must shell out (`fd -e py`, `fd -H`) — see [[fd]]|
+|`grep`, `git grep`, and any `\| grep` / `\| grep -v` segment|the harness search tool (`Grep`); `rg` when you must shell out (`rg -v` inverts) — see the `search-tools` skill|
+|`find`|the harness glob tool (`Glob`); `fd` when you must shell out (`fd -e py`, `fd -H`) — see the `search-tools` skill|
 |`rm -rf`|`rm -r` on a specific path, or `git clean`|
 |`git push --force`|`git push --force-with-lease`, and only when asked|
 |`sudo`, `su`, `chmod 777`, `dd`, `mkfs`, `fdisk`, `ssh`, `scp`, `rsync`|ask the user to run it|
@@ -29,9 +29,5 @@ segments.
   denial on the push segment throws away the commit too. Push and `gh pr create` need confirmation
   first anyway — see [[stop-and-ask]].
 
-## Subagents
-
-Subagents inherit none of this. A prompt that will search a tree must say so. Quote it: *prefer the
-harness search and glob tools; if you shell out, use `rg`/`fd`, never the `grep`/`find` binaries.*
-Carry the output bound across too: *scope to a path, bound the result set (`-l`, `-c`, `-m`), route
-the rest through `ctx_batch_execute`.* Told only "use rg", a subagent returns the whole dump.
+Subagents inherit none of this. Writing a brief for one that will search a tree → load the
+`search-tools` skill for the wording to carry across.

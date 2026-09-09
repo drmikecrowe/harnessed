@@ -2,7 +2,7 @@
 
 **PROTECT THE CONTEXT WINDOW. EVERY TOKEN SPENT IS GONE.**
 
-- Search before read. The harness's search tool first, `rg`/`fd` only when you must shell out. Open a file only when search cannot answer the question.
+- Search before read. The harness's search tool first, `rg`/`fd` only when you must shell out. Open a file only when search cannot answer the question. The `search-tools` skill has the bounds.
 - Read minimally. Bound every read to the lines you need — a range selector or `offset`/`limit`, whichever your harness takes. Never read a whole file to find one function. Skip files over 100KB unless required.
 - One capture, many queries. Pipe expensive commands to `/tmp/` once. Never re-run to filter differently.
 - Delegate broad exploration. If understanding a subsystem requires reading more than three files, dispatch a read-only subagent and take back only the compressed finding.

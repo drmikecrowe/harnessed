@@ -22,14 +22,12 @@
 set -euo pipefail
 
 # `:?` rather than a default: an unset ref means the manifest and this script disagree about the key
-# name, and a default would paper over that by fetching the default branch. Six variables, six
+# name, and a default would paper over that by fetching the default branch. Four variables, four
 # guards — each earns its own, so none can be deleted silently. `:?` fires on empty as well as
 # unset, which is what a key-name mismatch actually produces.
 : "${HARNESSED_CONFIG_DIR:?install.sh requires HARNESSED_CONFIG_DIR}"
 : "${HARNESSED_REF_OAKOSS:?install.sh requires HARNESSED_REF_OAKOSS (install.refs.oakoss.ref)}"
 : "${HARNESSED_REPO_OAKOSS:?install.sh requires HARNESSED_REPO_OAKOSS (install.refs.oakoss.repo)}"
-: "${HARNESSED_REF_BLADER:?install.sh requires HARNESSED_REF_BLADER (install.refs.blader.ref)}"
-: "${HARNESSED_REPO_BLADER:?install.sh requires HARNESSED_REPO_BLADER (install.refs.blader.repo)}"
 : "${HARNESSED_REF_AMINBLG:?install.sh requires HARNESSED_REF_AMINBLG (install.refs.aminblg.ref)}"
 : "${HARNESSED_REPO_AMINBLG:?install.sh requires HARNESSED_REPO_AMINBLG (install.refs.aminblg.repo)}"
 
@@ -38,7 +36,7 @@ set -euo pipefail
 # PASSES THROUGH a positional parameter — the ref is not knowable from `https://…/archive/$2.tar.gz`.
 # While this script hid its refs behind `fetch()`'s `$2`, the gate neither rejected nor PROVED these
 # pins; it declined to look (bd harnessed-po7, recorded as a residual gap). Naming the variable on
-# the URL line turns that pass-through into an actual check, for all three refs.
+# the URL line turns that pass-through into an actual check, for both refs.
 fetch() {  # $1=archive URL  $2=dest dir → leaves the archive's <repo>-<ref>/ root inside $2
     mkdir -p "$2"
     curl -fsSL "$1" -o "$2/src.tgz"
@@ -50,7 +48,6 @@ fetch() {  # $1=archive URL  $2=dest dir → leaves the archive's <repo>-<ref>/ 
 # with no owner. Derive it from the same variable the fetch used, so a ref change can never leave
 # the copy steps below reading a stale path.
 oak_url="https://github.com/${HARNESSED_REPO_OAKOSS}/archive/${HARNESSED_REF_OAKOSS}.tar.gz"
-hum_url="https://github.com/${HARNESSED_REPO_BLADER}/archive/${HARNESSED_REF_BLADER}.tar.gz"
 ste_url="https://github.com/${HARNESSED_REPO_AMINBLG}/archive/${HARNESSED_REF_AMINBLG}.tar.gz"
 
 # Populate the pinned-content cache atomically (temp+rename), so an interrupted download can never be
@@ -60,14 +57,12 @@ if [ -n "$cache" ]; then
     if [ ! -d "$cache" ]; then
         tmp="${cache}.partial.$$"; rm -rf "$tmp"; mkdir -p "$tmp"
         fetch "$oak_url" "$tmp/oakoss"
-        fetch "$hum_url" "$tmp/blader"
         fetch "$ste_url" "$tmp/aminblg"
         mv "$tmp" "$cache"
     fi
 else
     cache="$(mktemp -d)"; trap 'rm -rf "$cache"' EXIT
     fetch "$oak_url" "$cache/oakoss"
-    fetch "$hum_url" "$cache/blader"
     fetch "$ste_url" "$cache/aminblg"
 fi
 
@@ -82,13 +77,9 @@ for s in application-security mermaid-diagrams mise python-uv skill-management; 
     test -f "$HARNESSED_CONFIG_DIR/skills/$s/SKILL.md"
 done
 
-# blader (ref key): a single SKILL.md at the repo root → wrap it into skills/humanizer/. The repo is
-# named once, in the manifest — a comment copy drifts the same way an assignment does.
-hum="$cache/blader/${HARNESSED_REPO_BLADER##*/}-${HARNESSED_REF_BLADER}"
-rm -rf "$HARNESSED_CONFIG_DIR/skills/humanizer"
-mkdir -p "$HARNESSED_CONFIG_DIR/skills/humanizer"
-cp -L "$hum/SKILL.md" "$HARNESSED_CONFIG_DIR/skills/humanizer/SKILL.md"
-test -f "$HARNESSED_CONFIG_DIR/skills/humanizer/SKILL.md"
+# humanizer (blader/humanizer) was fetched here until 2026-09-09. Dropped, not moved: its rules are
+# now folded into the vendored `mikes-voice` skill, which owns prose quality end to end. README.md
+# keeps the upstream link so the source can be skimmed for new patterns.
 
 # aminblg (ref key): a directory-skill at skills/simple-english/ (SKILL.md + references/).
 ste="$cache/aminblg/${HARNESSED_REPO_AMINBLG##*/}-${HARNESSED_REF_AMINBLG}/skills/simple-english"
