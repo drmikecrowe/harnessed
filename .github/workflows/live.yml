@@ -190,6 +190,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: mise exec -- uv run --extra dev harnessed test livecheck claude --json
 
+      # THE LAUNCH FAILURE MESSAGE NAMES A LOG THIS JOB DID NOT COLLECT. `harnessed test` ends with
+      # "Inspect the hub log: {rt} exec <instance> cat /tmp/hatago.log" — good advice on a laptop,
+      # useless in CI, where the container is gone by the time anyone reads the run. A launch that
+      # fails here is then undiagnosable without pushing another commit to add the very step that
+      # would have explained the first one.
+      #
+      # `|| true` throughout and `if: failure()`: this step must never change the job's verdict, and
+      # every command in it is expected to fail in some scenario (no container, hub never started,
+      # log absent). Its only job is to put the evidence in the run log.
+      - name: Collect launch diagnostics
+        if: failure()
+        env:
+          CONTAINER_RUNTIME: podman
+        run: |
+          rt=podman
+          echo "=== containers (all) ==="
+          $rt ps -a || true
+          for c in $($rt ps -aq --filter "name=harnessed-" 2>/dev/null); do
+            echo "=== $rt logs $c ==="
+            $rt logs --tail 200 "$c" 2>&1 || true
+            echo "=== hatago log inside $c ==="
+            $rt exec "$c" cat /tmp/hatago.log 2>&1 || true
+            echo "=== identity + home inside $c ==="
+            $rt exec "$c" sh -c 'id; ls -ld /home/harnessed /home/harnessed/.claude /home/harnessed/.local 2>&1' 2>&1 || true
+          done
+          echo "=== volumes ==="
+          $rt volume ls || true
+
       - name: Report what ran
         if: always()
         run: echo "Live layer ran with HARNESSED_PODMAN=1; see the 'live verification' section in the log."
@@ -277,6 +305,34 @@ jobs:
           HARNESSED_DOCKER: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: mise exec -- uv run --extra dev harnessed test livecheck claude --json
+
+      # THE LAUNCH FAILURE MESSAGE NAMES A LOG THIS JOB DID NOT COLLECT. `harnessed test` ends with
+      # "Inspect the hub log: {rt} exec <instance> cat /tmp/hatago.log" — good advice on a laptop,
+      # useless in CI, where the container is gone by the time anyone reads the run. A launch that
+      # fails here is then undiagnosable without pushing another commit to add the very step that
+      # would have explained the first one.
+      #
+      # `|| true` throughout and `if: failure()`: this step must never change the job's verdict, and
+      # every command in it is expected to fail in some scenario (no container, hub never started,
+      # log absent). Its only job is to put the evidence in the run log.
+      - name: Collect launch diagnostics
+        if: failure()
+        env:
+          CONTAINER_RUNTIME: docker
+        run: |
+          rt=docker
+          echo "=== containers (all) ==="
+          $rt ps -a || true
+          for c in $($rt ps -aq --filter "name=harnessed-" 2>/dev/null); do
+            echo "=== $rt logs $c ==="
+            $rt logs --tail 200 "$c" 2>&1 || true
+            echo "=== hatago log inside $c ==="
+            $rt exec "$c" cat /tmp/hatago.log 2>&1 || true
+            echo "=== identity + home inside $c ==="
+            $rt exec "$c" sh -c 'id; ls -ld /home/harnessed /home/harnessed/.claude /home/harnessed/.local 2>&1' 2>&1 || true
+          done
+          echo "=== volumes ==="
+          $rt volume ls || true
 
       - name: Report what ran
         if: always()
