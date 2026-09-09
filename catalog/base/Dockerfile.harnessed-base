@@ -329,8 +329,24 @@ RUN git config --system --add safe.directory '*'
 #
 # ~/.ssh follows the same rule: group 0 so a uid:0 process can read the launcher's credential
 # mounts, 0750 rather than 0770 because ssh refuses a group-WRITABLE ~/.ssh.
+#
+# THE VOLUME MOUNT POINTS GET IT TOO, and this is not belt-and-braces. Docker COPIES UP: mounting
+# an empty named volume onto a path that exists in the image seeds the volume with that path's
+# content AND ITS OWNERSHIP. So `volumes._chown_volume_for_docker`, which chowns the volume at
+# /mnt before it is ever mounted at its real location, is silently undone for any mount point the
+# image already has. Measured: ~/.claude survives (absent from the image, nothing to copy up) while
+# ~/.cache does not, and a uid-1001 agent then cannot write its own download cache — mise reports
+# `failed create_dir_all: ~/.cache/mise/...: Permission denied` and the hub never starts.
+#
+# Fixing it here rather than in the chown is what makes it stick: copy-up carries these bits, so
+# the volume is born correct instead of being corrected and then overwritten.
 RUN chown ${USERNAME}:0 /home/${USERNAME} && chmod 2775 /home/${USERNAME} && \
-    chgrp 0 /home/${USERNAME}/.ssh && chmod 0750 /home/${USERNAME}/.ssh
+    chgrp 0 /home/${USERNAME}/.ssh && chmod 0750 /home/${USERNAME}/.ssh && \
+    for d in .cache .local .claude; do \
+      mkdir -p "/home/${USERNAME}/$d" && \
+      chown ${USERNAME}:0 "/home/${USERNAME}/$d" && \
+      chmod 2775 "/home/${USERNAME}/$d"; \
+    done
 
 # PROVE THE ARBITRARY-UID CONTRACT AT BUILD TIME, as an uid this image has never heard of. The
 # probe below runs as ${USERNAME} and therefore cannot see this class at all: uid 1000 is the owner,
