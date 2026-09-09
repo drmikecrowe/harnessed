@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/stack.schema.json
+# Stack: openwiki — the baseline plus the openwiki recipe, which is what makes that recipe
+# launchable and testable without composing a stack by hand.
+#
+# `default` is listed explicitly. A stack manifest does not inherit the baseline implicitly —
+# `extends:` defaults to `default` only for a DYNAMIC (`--recipe`) stack, not for an authored one —
+# and the openwiki skill is only useful next to the baseline's own authoring content.
+#
+# Harness-free, like every stack: `harnessed build openwiki claude`, `harnessed test openwiki omp`.
+name: openwiki
+recipes: [default, openwiki]
+services: []

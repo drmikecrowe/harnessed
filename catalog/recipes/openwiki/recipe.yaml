@@ -1,0 +1,108 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/drmikecrowe/harnessed/main/schemas/recipe.schema.json
+# Recipe: openwiki — the agent-driven repository wiki (langchain-ai/openwiki).
+#
+# This is the HOST-DRIVEN integration, the same thing `openwiki integrations install claude` wires
+# up by hand: a skill plus one stdio MCP server exposing the five page-job operations
+# (openwiki_begin, openwiki_submit_plan, openwiki_next_page, openwiki_submit_page,
+# openwiki_finish). The agent in the pod does the repository research and the factual authoring
+# with its own tools and its own authenticated model; openwiki owns the durable page queue, Claims
+# validation, source-drift handling, and deterministic finalization.
+#
+# THAT IS WHY THIS RECIPE CARRIES NO PROVIDER CREDENTIAL AND NO INFERENCE EGRESS. Upstream is
+# explicit that host-driven runs use the coding agent's model session, so openwiki provider keys
+# are not required. Confirmed in the shipped code: dist/integrations/mcp/server.js builds the
+# server from a tool provider and never reaches needsCredentialSetup or the onboarding gate that
+# the standalone `openwiki --init` path runs. A stack wanting the standalone generator instead
+# wants provider env, not this recipe.
+name: openwiki
+description: >
+  Agent-written repository wiki — openwiki owns a resumable page-job queue and grounded Claims
+  while the session's own agent researches the repo and authors each page.
+
+# --- MCP layer ---
+# stdio: hatago spawns `openwiki mcp` as a child and wraps stdio→HTTP. This is exactly the entry
+# `openwiki integrations install claude` writes into ~/.claude.json, which harnessed never uses —
+# MCP wiring belongs to the profile hatago generates, not to a harness config file.
+#
+# `--host` is NOT merely a label, which is what an earlier draft of this comment claimed. It is the
+# AUTHORING AGENT's identity: `dist/integrations/core/session-manager.js:52` does
+# `producerActor = options.producerActor ?? options.host` and records
+# `metadataModel: host-agent/<host>`, so the value lands in run metadata and generated provenance.
+# The agent that writes the pages is claude, omp, codex … — never harnessed, which starts the pod
+# and authors nothing.
+#
+# So the host must follow the harness, and neither a literal nor `${HARNESS}` can do that here:
+# `emit.py` writes stdio `args` VERBATIM (only a `url_env` URL gets `${VAR}` substitution), so a
+# placeholder would reach openwiki intact and fail its `isValidHostId` check. `install.sh` therefore
+# installs `openwiki-mcp-host`, a wrapper that resolves `$HARNESS` from the folder-env contract at
+# spawn time — one entry, correct provenance on every harness, no `harnesses:` field.
+# Raised in review on #445.
+mcp:
+  servers:
+    - name: openwiki
+      command: openwiki-mcp-host
+      transport: stdio
+
+# --- Install layer ---
+# NOT `tools: [npm:openwiki@…]`, and this is forced rather than stylistic.
+#
+# openwiki pulls better-sqlite3 transitively (through @langchain/langgraph-checkpoint-sqlite) and
+# statically imports its SqliteSaver at dist/agent/index.js:9, so the native addon is required to
+# LOAD the CLI at all — every subcommand, including `mcp`. Building that addon means running a
+# dependency lifecycle script, and the house pnpm policy (catalog/base/pnpm/config.yaml) sets
+# `strictDepBuilds: true`. Measured in localhost/harnessed-claude:latest with pnpm 11.21.0:
+#
+#   no allowlist  -> pnpm install exits 1, [ERR_PNPM_IGNORED_BUILDS] better-sqlite3@12.11.1
+#   allowBuilds   -> exit 0, build/Release/better_sqlite3.node present, openwiki loads
+#
+# pnpm v11 REJECTS `allowBuilds` from the global config and the allowlist does not apply to global
+# installs, which that policy file states and which `tools:` has no way to express — `tools:` is a
+# list of pinned spec strings and the mise tool options that would carry an approval are not part
+# of it. So the install is a project-scoped pnpm install with a reviewed one-entry allowlist, which
+# is the mechanism catalog/base/pnpm/config.yaml itself prescribes for this exact case.
+#
+# No `system:` — nothing here needs root, so the script delivers the same thing in both modes.
+# No `cache:` — pnpm has its own content-addressed store; a second content cache would key nothing.
+install:
+  script: install.sh
+
+# --- Persist layer ---
+# openwiki keeps its local state under ~/.openwiki: conversation history, connector data, and the
+# langgraph sqlite checkpoints that make an interrupted run resumable. Resumability is the whole
+# point of the page-job architecture, so without persist a container restart silently costs every
+# completed page. `env:` below points openwiki at this entry with its own documented override.
+#
+# scope: project — openwiki state is per-repository and should be identical across worktrees of the
+# same repo, which is the case that scope exists for. The generated wiki itself lives in the
+# repository as committed Markdown and is not persisted state.
+persist:
+  - name: .openwiki
+    scope: project
+    location: host
+
+# --- Env layer ---
+# OPENWIKI_CONFIG_DIR is upstream's own state-directory override, read at process start, so it has
+# to be live in the AGENT's environment rather than exported by a script that has already exited.
+# `{persist:.openwiki}` resolves to the bind-mount target in a pod and to the real host path on a
+# `--host` launch, so one declaration is correct in both modes.
+#
+# Telemetry off: openwiki posts an anonymous run event by default. Under a default-DROP egress
+# firewall that is a blocked connection on every run, and the alternative is opening a hole for
+# something this recipe does not need. DO_NOT_TRACK is the cross-tool standard spelling; openwiki
+# honours either.
+env:
+  OPENWIKI_CONFIG_DIR: "{persist:.openwiki}"
+  OPENWIKI_TELEMETRY_DISABLED: "1"
+
+# No `egress:`. The install fetch runs in its own `podman run` before any pod exists
+# (volumes.py's tools/install step), so it is not subject to the firewall, and a host launch has no
+# firewall at all. At RUN time the host-driven integration performs no outbound request: the model
+# call belongs to the session's own agent, and telemetry is off above. Add a host here only if a
+# future stack switches this recipe to the standalone generator.
+
+# Capability test: the skill install.sh copies out of the pinned package, and the MCP server
+# connected through the hatago hub. Neither is visible to the assembler — the skill is written by a
+# script into $HARNESSED_CONFIG_DIR, not declared under `skills:`.
+expect:
+  skills: [openwiki]
+  mcp: [openwiki]

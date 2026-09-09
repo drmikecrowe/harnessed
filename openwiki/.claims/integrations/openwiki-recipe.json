@@ -1,0 +1,436 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:91121cbcbc2fb2d8df5ef269e1e8ab05995087a6d73d841de474166b0b23bcaf",
+  "claims": [
+    {
+      "id": "claim_795dd2676b53423fb922233f27342e50",
+      "statement": "catalog/recipes/openwiki packages langchain-ai/openwiki as the host-driven integration: the session's own agent performs the repository research and page authoring with its native tools, while openwiki owns the durable page queue, Claims validation, source-drift handling, and finalization.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L1-L7",
+          "version": "repo-lines-v1:sha256:1e6fec58dd9775a88926768311a470823dc5a6933eb6897e691e40aeabca2fda:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmEzYzljMTUxODk4ZjdiMjM2YjZjYmYzYjA5YzY5OThhZGZiZjJiM2EyNDBmMWI0ZDY1OGVhYmExMDhiYWY0NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzMzZDJiZmFhMzEwNmU4YzRlYWJiZjVjMWMxYWE4NmZjMWZkY2VjZTMyYTQzOGUyZjE5ZWQ0NzY0NGU1ZTE5MiJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L2-L20",
+          "version": "repo-lines-v1:sha256:8aacde973156e9db3341b80e5cac76792227ef0e2f6eeaf45256fc06b4e3503b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNjY0NWNmYTIwZWI1ZjI2Nzc5MmRhY2I5Mjg3MjlkOTk3ZjhiMWFjODg0ZDg3YWFhMTRjZjU0ZTdkNzgxYjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzMTY4YmQ3ZmY5NDgyMGFhMjUzZDJiYWU2M2E2NjMwODNmNTZlOGJiMjcyMDEyMjM5YjI3ZGY4M2Y2MWMyNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoxLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzM2Q5ZTIwMTcxYjMwN2RjNDljOWVhOGExMGJlNjA1YmIwMjc3YzRhMzIwMTE3Y2Q5MGU5MzMwM2NiMGExYzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5YjI1ZDNmZGUxMmI0ZTIyNzY3ZTBhMzk0NzJhNTdkMDhjY2IxY2RlN2YyOTdkMmEzZDliYTFhY2YyNGEwMzcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6e224ca2a8a046ee923fedf1095f296c",
+      "statement": "A launch of the openwiki stack delivers four things, as the recipe README records: the openwiki CLI on PATH (install.sh: a project-scoped pnpm install symlinked into $HARNESSED_BIN_DIR), the openwiki skill (install.sh copies the package's own integrations/openwiki directory), one stdio MCP server (recipe.yaml: command openwiki-mcp-host, spawned by hatago), and resumable state (persist entry .openwiki at scope project, location host).",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L13-L20",
+          "version": "repo-lines-v1:sha256:c55a45939a5bb4e11d633bcb307c6e824623c360965a1fd492f203a7a970ce99:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDdjOTcyMzA2NjcyNDI3NDE0ZWUzOGFmMzViY2EyZmEzZTIxYzQ5NGY5NGNiMjkwNmYwZDY3NzZlMjZmNTkwYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODI4MjExOTBhMTc5MzIxZjZkYzgyZWUxOGFmNzRkOTkyNWQ2MGI2MjMwOTdhNWUzZjgxZTkzZWI5N2RiNjBhZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjJjZGMxZWMyOTM5N2IwNmU4MGI5ZmViZTI3NDk4MjYxMDdmMTBkOTMwOGYyNjljNGE4OTEyYWViNDJjMDM0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTE3NzY5YmU3MjdhYzNmMzU5NDUyMTcwODkwOWRkZmZhZTM0Y2YyMmE1MGMyYzZmZWIyYTU4NTdkOWM0ZjQwYyJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L84-L128",
+          "version": "repo-lines-v1:sha256:ba3131342022a0906a4e7547e07f92cdf46a4d280cc2a0cc5083fb6ae00de457:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxMjU2MDg0MjEzNjg5NDhiZGNjMGZlNjUxMzNmNDc4NDQ4MDdiNmJmYjcwNmQxMDNlYzk0MjNhMjk4NjdjMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0OGI4M2EwMWJiY2Y3OTE1YmU2ZjFhOGI4NmI3ODZlNjFjMmNjYzRkYzljZjA4ZGJjYjRjNzZmMzFlYWU3YWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4ODllNGI4NjQ4NGNmZmJhZjI2NWQyY2NlNjNmNzZhNjRiOTBiODMxZWQyM2QzODI2OGQ3ZDZjZDg5MmRkNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L40-L44",
+          "version": "repo-lines-v1:sha256:139d99c3a2a8f8e522d776c7726edd721518db25b9503b41e1ecd5376d3d0f5e:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGJiOTQ4NzgyY2ZiNGQ4NGU4NzMwOTcyYWM1NmE2ZWVjY2FhNjQ3MmM3MDAxNWNjNWM1MmE5NWVjYzM3NWIxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjBjYzliMjc1MTZiZWNjYzM5NTA1ODU1NmZjMTFiNTE1NDU4ZDE5MTUzOWUxMWM0ZmFkODI5YzA5N2RkOGY1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWQ3MmJjY2FlNWU0MDU5MTVmN2E2YTUxYTJlMDFlOTc5YTZjNzZlZWYyOWRkNjc0NjVhNjFmZjlkMGEyYzg5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTIyYmI1NWQ3MzU1Y2Y4ODcxZmY3Y2NkNzkxOTE4NjA2Y2ViZGIyNWUxM2I4OGExMzNiMTQ2OTc3NGVkMDYxNiJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L78-L95",
+          "version": "repo-lines-v1:sha256:9470f9baaaaabc8e4b58451f7519d38452a16ec2285e954fceaa2dbfd3d1bf2e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmNzI4M2IxZWU5ZmFkNThkMTZlZTc4M2M4YmQwMGI4ODk2NTVhZTM1MThhZDc0ZGVlMTVjYjY3YzU3MTViY2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNjAwNDNmYjMyNzZiMjMyMTJmZTA1MmM4Y2Q4YzM2ODhhMzhkMGJiZTQ2ZjcxOWUyMGQxYTYwZDcyOTVjYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3ODBjMzNjZjUxOWYwYTU0NmU2N2RkMzdiMjQ0ZDQ5MzE5YzM3Yjk4OTEyNzI3ODc5ZjQzZTQzYWI5NWMwNzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjllOTg3YzBmZjMwNTg0ZDM1ZGQ2ZWE5N2I0NzljNjVmYmYwYjA3MDRhMGFlZGZiMGIwMGFlYmY5MWY0MjQwZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_08e515fd93d24f25b141751b2252cf69",
+      "statement": "Five operations reach the agent — openwiki_begin, openwiki_submit_plan, openwiki_next_page, openwiki_submit_page, openwiki_finish — and the repository brief at openwiki/INSTRUCTIONS.md is read by openwiki for scope and priorities and never rewritten by it.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L22-L27",
+          "version": "repo-lines-v1:sha256:757edc9582f72f1972a7e8b9faaf7ed4668d597bfe1d470c3461e5918822b988:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTc5NGRkNWFlNGM0M2Q2ZGUwMjM0ZTI0NjMxMDZhZWJiMjExNzc1MjlkYmEzOWFjMzI5MWM3NjdiOWIwOTQyYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzE2ZDAzNjYxNmI3ZjE4MWMwNzUxMDIxZmNiNjNlMmQyMDkyODJmMjI5YzY1YzEyYmUxM2E5MDM4MzEyY2I0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDUyMDlmMTUwN2M2YjJhODExOGVkNjJlNDJjNjFkMzZiNzFjNzE4ZmNjYzlhZTZhNmNkNDY3OThmODFmYWVlZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjZhN2JiZjg1NGQxZmE5NjM5ZmM3M2RlYmVkYzA3YmRiZmJlNWM2MWE3ZWQyOTcwYzVkOWVkZTlhMDcxY2Q1NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_de353cb56b7640e7b61904142166f513",
+      "statement": "The recipe carries no provider credential: host-driven runs use the agent's own authenticated model session, and the upstream MCP server (recorded against dist/integrations/mcp/server.js) builds from a tool provider and never reaches needsCredentialSetup or the onboarding gate that the standalone openwiki --init path walks.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L29-L34",
+          "version": "repo-lines-v1:sha256:642da532f88f4030bce2b8f87d354593c28df8bcf2c49fc8d9a84443f1b3ae32:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2M0NzM0MTI2OGU5ZDc1ZDQxNWEwYTNjNjM1YzVhNzljZWNlOGZiNzRkYmJiM2MyNjg3ZDM3MDEzNWFhNDAzMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTlkNzczNTNkMzQ0ZDE0NzUyNDQzNzZmNzYwMjI1NTU2MThkYmZlMWQ0ZjMzMGZkYjQ3NzFjZDVkNmNjYjMzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDIwNzM3MzAzZGM3MjM4NTAyOWM3NDJmM2EzMzg3ZWQxYzQ5YzhkMmIxMzgxYWQyY2YyZGI5ODFhNjExNjBiZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTRhMmY4Y2IyYzU2ZWJiOWViMTZlMmE5NTg3ZDczMjIxMzlhZGY3YzlkZWUxZTFjMmYyZWY1YmI3YzFkZjIwNiJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L10-L16",
+          "version": "repo-lines-v1:sha256:6e8ff58a612a015f51f21241c7f87f28eaa26ee23f1eeb0f3cd0145296ebbb51:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzJjNDg1OGUyMmNjMmM5NjdiNDIxNTBmYTU1MDU2MmEyYzgzOWMyY2ViY2FhYjkxY2FiZGY2ZjRkYTAyMDAyMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGRlOTNmMDdmM2M1ZDZjNWM1NDViNDhiMmVhMjdmNjRkNTFkZTU1YTQxZTY2YzVjMjllMzI5ZjIyYjhjYTgwMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDU0NTE3NmUyOTkzNjIxOThlYzIwYTk0OWQ2MGRhMzRiOTM1Yzk1YWNlZDRlMThjMjg5OTg0YThlYmMxZGVkNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTM5MGI4YjY1NzE0NGNiMmU4NDNiNjhlZjU4NWM4YzE4OWNlZDJjZWMwNGNkYTJjMDI0ZWM5MjMzNWY1MzMwOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_70d25ec485a944f4b0e466d895ff109a",
+      "statement": "The recipe needs no egress at run time: it declares no egress:, the model call belongs to the session's own agent, and telemetry is disabled through env (OPENWIKI_TELEMETRY_DISABLED=1, honouring the DO_NOT_TRACK cross-tool semantics); the install fetch runs in its own throwaway container during provision_tools FIRST_START, before the pod is created (BOUNDARY) and before the EGRESS phase applies the default-DROP firewall, and a host launch has no firewall at all.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/egress-firewall.sh#L56-L59",
+          "version": "repo-lines-v1:sha256:e22798800c71a948ee01cf71ee2dd16c49a10664503a53f3d2610508b46d57dc:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzg3NTllMTA2NTc4ZmE0YTJiOTZlNTE4OTAyMDMwNzg4MTMxZTYyNWI1Y2Y4NGM0MWQwODBjOGYzMDZlNzAxYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWNiMjY2NDJkMTNjMDRmYzdiMDY1OGRmMzU4YmExODUwZjNkYmMyNmIzYWQ3NDI3Y2U2NWYxZWE2Nzk5M2NhMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDU5ZWZiOTY4ZGE4ODdmYTg2MGEzYmVjZjY1MmViYjRmOGNhNWFlNGFlNmZlN2E3MDBmOTNlYmE4NzY3N2ZhMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODUzOTAxNWY0NjczOGU0MzgxYzc3MDAwOWE1ZDQzNjEyYjI5ZDlhYjg2MDE4YmQwZDNkMmE5ZWQ5Yzk4MWVkYSJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L83-L101",
+          "version": "repo-lines-v1:sha256:1177f49a4a883d7f11a1ae04e1e37c09ce2463fccdcc107682fbd9eeaa9c9373:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3ZGY2ZTcxZWQyMWU2NDY1Y2YzMDNhMTg3ODk1NjY3MzNjMDgwYjAxMTZmZWY3MDE0N2RkODcyZjUwODcxMjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2YjQwMWI2NDQ5M2RkMTgxMjI4Y2MxOGZjNmYyZmMyZDUzYTNiZTliNjU4MzBjY2M1MjhhMGViMGNiODc4MWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4NzAyODNjYjlmNWY3YTAzNTI2ZTdjNTZlOGY0NjBiNDM1NWVlNzI4MzNjNmY0NjI4MjBlMzJkM2Q1MWUyZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwNDU4ODA4NjU2NjAxYjRiOWZiNGM1NjE2YjUwYzQxMzdjYTBlZDA1MmI5ZjQ0NjEzZTk2MDdiZWJmY2YwNzIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3868-L3886",
+          "version": "repo-lines-v1:sha256:bfa60450e40db7fc0fecaafb4a8b5dce16641a1145fec586e4d1b342bfd35872:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwZGZhN2U2NDk2MTAwMzY1ZWRiYTc2MTJiZmMyMmI4YmI2ZThkOWQzN2ZkZTM4MWMxNmY1NjVjYWNjNjkyMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0NTc0ZjI1Njc4OGRlNmRmNDg5ODg1M2FlMDdmOGRiMzI0NzRlMDM0ODU4NzU2MjhjYWI1MzVkYzczNjJlMGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4YmRkMjM5NzFiMDgyODQwNzYxYjA0OGY5MTc0ZDJhZjMxZmNiMzIwMmRiMGQ2ZjM4NGNiYzgyMjA5ZWE5YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3YzAxYWExZGNiZmMwM2UyNmY0YzRjYzdjMDFmZDg2NzNjODdiYzY2MjNkYzA4Nzc4ZjdkOTg0YjU4ODQ4MDUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L237-L252",
+          "version": "repo-lines-v1:sha256:c77045a8a890344d3709292cb61fa9e4b3c1cb8a1cfa46e410597a1ab74845fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhYzc5MTQyZTU5ZmExZjQyMTY1ZmYzMWE3MWFmMzMzMjgxNmE1ZDBkYjU5MGRlZTliNDkzYTkxMmVkZmVjNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmYjFmOWU5ODhhNmQ0Mjc1YTc5NjE5ZGJiMjA1NTFmMDczNTgyYTljMjFiMmY1ZDM1ZjNiNDYzODA5MGZmMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwYTUzYTYxOGE0OTI4NWIzYmQwZmVjMTEwM2RmZTBjNmE1ZmQ3NDhjNDIzNDM3YmY1NDdlNDAxZjFlYzIyMjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8029fc15d44f4f2b831b63a4a2c34eab",
+      "statement": "A stack that wants the standalone openwiki generator instead of the host-driven integration needs provider env and an inference host in egress: — a different recipe, not a flag on this one.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L36-L39",
+          "version": "repo-lines-v1:sha256:a3f14d2633ce08781604f398ff6cf32332614795f5b0dcb27a020e6446ec2fd1:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmM4YTZiMjI0MWUyNzQ0YTQzODBiZGE5M2Y1ZTlhMmExYTk2YzYyYTRkMTcxMmJmMjNlZGQ4NTk3NjNiMjE2MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjFmN2YzZTNhNmVmNWFhZDU5Nzg4M2Y2ODg1MzZiMGQyZGZlOWVmMzE2M2E1ZjBhOWU3OGM4OTRhYTFkMjdkNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODhkYjYzNDYwZDkyMjEzZDJkNGI1NTcyNjY5YjljYWIwMjhjZGUwN2VjMGQwNzU4MmRiNzRiZmE4MDRmNTBiMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGE2ZjNmYWZiOTM3NTlkZGVmMTM0N2Y3NmVlMDNmZDcwODY4MWIxYzEwMDE4MGM2MTQyMGU1YzI2ZmM4MTVkMCJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L97-L101",
+          "version": "repo-lines-v1:sha256:7fa39e1b36a942454e06c8d94f41a8fe529a67796cd63adce96b039d9b4c06ee:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzM3YzkxNmE5OWY1ZTZkMGFlYzFlYzM2OTVhNDlhOGYzYjEyNWFjNmZhYjQxNGMzYjFkZDY0NjZhZjllYTM4MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjZiNDAxYjY0NDkzZGQxODEyMjhjYzE4ZmM2ZjJmYzJkNTNhM2JlOWI2NTgzMGNjYzUyOGEwZWIwY2I4NzgxYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGQ4ZWNkMTFlODU3MmU2ODVmNjQzYTdkMGViNjJjMjY4MjNjZWQzMDliYjZkMTFmZDlhYzYzYmEwNDgzMTJkYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTA0NTg4MDg2NTY2MDFiNGI5ZmI0YzU2MTZiNTBjNDEzN2NhMGVkMDUyYjlmNDQ2MTNlOTYwN2JlYmZjZjA3MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1aaac22bfa184fbfa1ab8cd765392883",
+      "statement": "catalog/stacks/openwiki composes recipes [default, openwiki] with no services and no harnesses field, and lists default explicitly because an AUTHORED stack does not implicitly extend the baseline: extends: defaults to default only for a DYNAMIC (--recipe) stack composed by launcher._resolve_stack, so an authored manifest without extends: inherits nothing.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/stacks/openwiki/stack.yaml#L1-L12",
+          "version": "repo-lines-v1:sha256:195ae2249140cae3308863c4447e7c95d8d3187de840837d68747837196760bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0MzhlMDI3ZmNjM2FlMTZmOGUzOTZkNDYwNDI0OTM3Njc0YTU4NjM0ZjFlZjZhNzExN2QzM2I3ZDJlZGVhYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExNjNkNTBjMmUxY2M1NzBiZjNmMWRhNjAzM2UzN2ZkNjE1NGNjOWVhMmE5MTk3NTc0YTE3ZTNhMTFiNDM2MTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2914-L2966",
+          "version": "repo-lines-v1:sha256:960d65b5022f9e9ac7f8940715512e8b2753861b605278bc2a4b31488778f4d1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZjc3MTFiYWFhNTAzZGZlNjE1YmJmYjEyOTBkYTQyMzAwNzA3ZTUzMWUxOTIyYjQ0YzY4NTNkZmNkN2ZmMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2ZTBjM2YyNzRiZGIzMjhlZTdkZWU3YmRmODI4NzI1ODc0YjAwZjExYmQwNWRiNGEwNjU4ZDNjMWJjMTVlNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkYWUyNDkyZjJiNjhhNDY3ZjUwZGYxZWE1YjRhZDI1NzE1YzVhMDdjNDk1MGI0ZDUxNTgxZDQ4NzE2NjRkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNGNlZDRjY2I5MTRhZTdiMTRhN2Y2NmI5OGY3ODA4M2Y5N2Y0YjY4NzVkYzU0OTQ2ZmYwYzkzZTg3ZWVmZWYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2979-L2985",
+          "version": "repo-lines-v1:sha256:7fad2a53fdfbdcfeb6a3f09e8a8f36c15b90df79cb51a356bd29f855de3daa15:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTE4NmVhMWE4MDhhYzlhYzUwYTY0YWYyODE0MDhlMjJhMDAwN2VmM2NhYzMzNDRjNTJiN2QxYjJiNTEwODcxZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFmYmEwNTI3YzM5NTNjNGI2ZTBlNWI1NzM5YmE4MzYxMmY4MDUzYmNkYzk0NjY3MzAxOTNjZDFkNTkwYjQwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIzNzBkMjBmM2IwNzkzNjcxMzQ4OWFhODAxNDIyMTdiOTUwOTNkZWVmNTFiMzgzYjcxMDViZjdmZGY1Zjg4MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzczODU4NTc4MTU2YTQ2OWNiNzZlOTQ0NzFmZWIwYTMyZTI0NzdmYWY2ZTU5MjczZWNmMzZkMjc3NGRkY2NjNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9cd11c9450e147219d4aae747a173a32",
+      "statement": "openwiki integrations install claude cannot be used in a pod: it writes a skill into ~/.claude (shadowed by the profile mount, and invisible to a host launch) and an mcpServers entry into ~/.claude.json (dead config, because harnessed generates MCP wiring into the hatago config); the recipe re-creates both deliverables from the same pinned package.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L8-L11",
+          "version": "repo-lines-v1:sha256:a6144435b1fbcb9c1b10babd71768876408158154adb48982bf26678ce374093:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzI3YTlmY2Q3NjNkNTIzMjYyMDFiMWIwNWE4ZGQ1YzA4YmM3YzQ0NTk5YzEyYmIyODI2MzRlMzJkZWIwMGFlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQ2ZDNkNzJjM2ZiYjBjNWY0OTNlMDM1NGRjYjUzNTMyNTA1ZDlkZGQ4OGI3MzVjYmIwZGE3ZDBjMGE2YWEyOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjUxZTcwNjk3OWY0ZWZhYTRlNjc1ZGNmMGZlNTUyZTI5ODc0Mzk4ZmM5ZmZjZjQxNzc4MThiM2NjODA4NGUyYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2RkYjU1Nzk4ZTU2YmYyOTA4MmVkNDY5NmIwNjYxNGNiMTQ1Zjk0MjNhYmNlN2Q3YzJkNjczMzI3MjAzYzk5NSJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L8-L12",
+          "version": "repo-lines-v1:sha256:c61ae9c9b2f0b8b097989e69ebebe54fbe5873d0d767d7ed27c6bf15c5d09e25:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzNiMTQwOGM5MzgwNmE1ZjAyMTBkOTVmOWMyNWY3NDhjOTFjMTZjYjFkNzFmNTUwNDY4YTBmNmNiYTYzOGIzZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODliZWU4ZGQ5Y2Y4MWUxNWFjNDc1ZDIxZGFjODBkMTRiYTNlYWVhN2ZkODNmYTY0ZGJlOTQ4NTJkZDM5YjZjNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTllZjA4NWJiOTc3YTU5MTMzZTNjN2ZjYjBlZTViN2ZjN2Q0MDUyZmQwMWIzOWY1OGM0YjNiZTU2N2NjNDhmNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWExYWMyODk5ZjQ1ZWQzZGRmZjFlY2U2ZWEzY2M3OWFiNTEwNDBhMjE0N2ZkMjNjNzkxNWRiMmM3ZWEyMzJhMCJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L22-L25",
+          "version": "repo-lines-v1:sha256:fe47965ce1906b75880f75ea9592144b8a79701782f9ab69ca3ea01111487710:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODkxMzlhZjc0NDU3NDJiOTE5ZjkyMzc4OWUwYzhkMTA4YjY0MmZkYjdkMWY2YmY3YjFhZDFiOWE5ZDgzZTgzMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjVlZjBkNDkwMTE5MzcxZjAzMjI5NzI0ODE5ODA4OGNjMjc4NDA4ZmE0OGQwYTk5YTE0NDc1YmM0MmExOTA2MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmVjM2JiZWY1MzE5MjMzNmJhOTBjYTczOGI0MDE4N2RkMmJiMjg4NjBlMGY2ODk4NjNkMTkwNjg0NjQxOTgyOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2U2ODVkZGVjMzk3MTI0ZDNjOTFmNWY1NDY4MjhjM2ViMDE4N2FhNGU1MTY5YjA2NzU1NjFlZDliNjUyOGYxMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_56e33ccede234a96acfd1e426d6e27fc",
+      "statement": "The skill deliverable is installed from the pinned package rather than vendored: install.sh cp -RLs node_modules/openwiki/integrations/openwiki — the exact directory upstream's installer copies — into $HARNESSED_CONFIG_DIR/skills/openwiki, dereferencing pnpm's symlinked node_modules so the skill is real files under the config dir and guarded by a SKILL.md existence check; this keeps it byte-identical to upstream's install and keeps third-party prose out of catalog/, which tests/test_prose_lint.py gates.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L113-L128",
+          "version": "repo-lines-v1:sha256:ca91ba69fb29b985934331569db64efb7a9c56f5d8de11d9380e2f796d009dcd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4YmE1NjU5ZTk3Mjc5ZWQzZDIxMzlkNWNjOTYzMTkwNjViMTdlYmU3OGJhMDEzM2EwZmQwNDBlMDBmZmE5ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0OGI4M2EwMWJiY2Y3OTE1YmU2ZjFhOGI4NmI3ODZlNjFjMmNjYzRkYzljZjA4ZGJjYjRjNzZmMzFlYWU3YWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlOGRhOTgxYWI4ZTcyODJhYjY5YWNhYTc0ZjM0NzAxODRiMTIzYTE5ZjNhOTAyN2MyNWZhNDMxMjNmOWIxOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://tests/test_prose_lint.py#L1-L6",
+          "version": "repo-lines-v1:sha256:91f0bd4fbe54c17e21be7351d2cf4d89a7e5657269e037f3012032008d21c2c9:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTU4NTUxM2Y4N2EzYzliOWMxZjVlZDU0NGVhZTU3ZDkzMTQ3NjU4ZjUzM2EzMzZmYTAzYjJkZTlmZjUzNmNkOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWRhYjQ2Nzk3NjE0Y2M5NmM0YWM4YTEwMDBmOWY0MjdhOWExMGMwOWJmN2U0N2NlOTJiYjM0MWJiN2YyZjU0YiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6c05d3ed808949678c411a760ea4ca5e",
+      "statement": "tools: [npm:openwiki@…] cannot deliver this recipe: openwiki pulls better-sqlite3 transitively through @langchain/langgraph-checkpoint-sqlite and statically imports SqliteSaver at dist/agent/index.js:9, so the native addon is required to LOAD the CLI for every subcommand including mcp, and building it runs a dependency lifecycle script that the house pnpm policy's strictDepBuilds: true default-deny refuses without a reviewed allowlist entry.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/pnpm/config.yaml#L17-L17",
+          "version": "repo-lines-v1:sha256:4c44a9f9c6b317957141e2192784768af528114bbe58c0c5b6797b333bc954dc:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGM0NGE5ZjljNmIzMTc5NTcxNDFlMjE5Mjc4NDc2OGFmNTI4MTE0YmJlNThjMGM1YjY3OTdiMzMzYmM5NTRkYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGM0NGE5ZjljNmIzMTc5NTcxNDFlMjE5Mjc4NDc2OGFmNTI4MTE0YmJlNThjMGM1YjY3OTdiMzMzYmM5NTRkYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjQ2OTg0MTA5NmMyM2M0MGNjNjM4MmZmMjYxNTEwYWM4YTY2N2NkYzJjOGNkMTgyMDM1MzZjYzFjMTIyMWQ0MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWI1NjFhNTMyZmM3NTE4NDM0NzIzYjA1NzNmZWIyNWIxYjcwNzEwMWJkNWM2NzBhZTVlNWNjYmVjMDFiNjQ5NSJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/pnpm-workspace.yaml#L8-L11",
+          "version": "repo-lines-v1:sha256:a12a80bb5263a763e81dccf5e3d604646e962ad1caf09a8506028feb4a979eab:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmI0ZWRkNjk2ZWZiNTUyYjJmM2ZiMDIyNjliNWIwZGI5ZDAxYThmOWYwYjhmZmMyYWU0ZmUzYmE4NmExNTg2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmNlNmVkY2NjYmQ1ZTZhZjBjZmUxZWIzYWVjZmQyOWJjYmQzNDVjNWYxM2Y4ZGIwOTQ0ZmNjNjJjMjBhYWRkMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWQ2ZjI3N2Q2MDBkZjdjMzVlOTIzYThhZDUxNWIzNzMzZTJlZDM0NTM0MzE2MjUxZTVlYTY0MzIxY2VjZDNiYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjMzNzBkYjZlOThjOGJjOTljZjJkZWQwMGEyYTMxNjk5NjUyOWVkMGI5YWIzOTJjNzQ5OGYyODU5OWEwMjJmOSJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L46-L62",
+          "version": "repo-lines-v1:sha256:7a467b9b6c959377e2da44bf7d63daaf6f3d4fcacf62fd8f9b6a543399427ff0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjY2M4NGNmZWExZThiMTM1YWZkZTFhZWVlY2Y1MDQzYzk5MDhiOTYxYjU5N2RjYTc3MWE3N2Q1NGFiZTUzYWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmMDYzNGMzNWRlYzgwMWEzMTdjZDc5NmQ3MTI2NjA4MTcwZjE4MThhZThkNzQ3YTg0YTA0YTI0ZDJkZjJiYzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiZmFlZTg4MDA1YTMwYmIzODcwNmQ0NTI3NWRiYjQzN2Y3ODI5M2ZlNDU3Nzc1OGI3NGExZDQwNzZkYTVkNGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzNmI2MzdmNWUxM2Y3NDVlNzc2M2RlZTIzNmJmNzBhMzY3NDQwOTc2ZmQzOGE0NTkwYmQ0YmIyNDA2Mjk5OGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4df33720803b4f1d839efec81d046167",
+      "statement": "The build allowlist can only be project-scoped: pnpm v11 rejects allowBuilds from the global config and the allowlist does not apply to global installs, while tools: is a list of pinned spec strings with no way to carry a build approval — hence the project-scoped pnpm install with a one-entry reviewed allowlist (pnpm-workspace.yaml, copied into the install tree before pnpm resolves), the mechanism catalog/base/pnpm/config.yaml itself prescribes.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/pnpm/config.yaml#L8-L28",
+          "version": "repo-lines-v1:sha256:749d56c6dee56eb5e0d737e3b89bb6bedd6873f91d32768944a2f75ee848d362:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0YWQ3MTU2NDRiMDJmMmVkODIwYTk5OWVlMzg4OTRhYTc3M2U0ZTYwZWMxMTA2MjA5ZDI2MGY5Yjc3Y2JiMTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0MDI1YzBmNzRjODk2Y2U5YTJkYzU0MjAyY2JkY2MzMGUxYjUwOWVkYTFjZjRmYTEzMzExNDdjYmFhMzkwZTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgzNzk4MjgyNGZhZjI2ODk1OTUwOWY5NWI4MjQ4Y2I1OTgwNDhmOGM4YjgyMWRkYjA3ZWViOGIwNmYwYTU4MTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMzc1MDQ2Y2JhMjM5YWMyYTg2ZDkxMjU2MjdkYzI2ZTUzYTA0ZGM0NjI4N2IyOGVmMjc0ZTQzZmQxZjA3YTIifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L55-L58",
+          "version": "repo-lines-v1:sha256:0a345db9bc60fb535486febb325f99089ad7c62b11c6348b46893c698f150858:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDhjY2VkZGJlMTYwY2E2NWMwM2NjNDNkZjQ0YzVhYmE2NWZhMDYwZTZlNjE2YjAwMmI4NmM2YTZkYWUzODIyMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzU4MGU2NzQ4NjVjMmNlNmM4NWEyYmE2ODkzNWRiMTE5NDRmZDNmNzMwY2RlNWZhNmFkZTkxMzZiOTNiOWYyZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjgwNDAxOGNmZjc1MmJkMTQ0YmJkM2VjZDg5NTg0NzYyZGRjZjI5ZWYxM2JiYTdiZjU1ZTNkM2ZlYmZhY2UxNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmUxYTAwMjYwNWJlNDkyYzU1MzExMDgyZWQ0YzdhZTYxMWYyMWQ1YmVmZmIwNjE3ODU0MWFjOTRiOWExOWYzMCJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/pnpm-workspace.yaml#L1-L7",
+          "version": "repo-lines-v1:sha256:f7cbea35996cfc06403b848902d8500285d2adfc7fbd6c29a925fc625fc63fa1:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWQ4MTEzYjE1OTBlNjg1MjJhZDgzYWQwYjA1MmI3MjJkMDk0ZjMxN2QwOGJkMWRlOTcyNGM2ZGZjZmJjNWUyNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzJjNDg1OGUyMmNjMmM5NjdiNDIxNTBmYTU1MDU2MmEyYzgzOWMyY2ViY2FhYjkxY2FiZGY2ZjRkYTAyMDAyMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDY2NDAwZDM4YjYwMjkyZDYzNzA5YjVlMzQ3MWYzNTM1NGViNGRkNWJmN2Q5MDlkMDMyMTcwYjRmMWJkN2NkMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3092007986d74337807b1d3a3e499ec8",
+      "statement": "Measured in localhost/harnessed-claude:latest with pnpm 11.21.0 and recorded in the recipe: with no allowlist, pnpm install exits 1 with [ERR_PNPM_IGNORED_BUILDS] naming better-sqlite3@12.11.1; with allowBuilds, exit 0 with build/Release/better_sqlite3.node present and openwiki loads.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L48-L53",
+          "version": "repo-lines-v1:sha256:4a6977e3b9e081ee733a87da9b023f30d63c4eb1d564c29869ed5e7aa0f75584:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDkxZGU0MTc1ZGIyNzU3Y2Q5YjY0MDY4OWZjNjZlYmNjZWQ2YTcxNTkzYTMzYzE5ZTEzYmE0ODFiYjIyOWI5YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDdjMDZjNTYxZDVjMzI3MzQzNjg1MjY4YTQ2YjMzOTFmMzk5OGVlZTg5MGQyYmU1MWYwZDIxY2M0YTUzYWU2ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjgzMWJkOWIyZDVhY2RiNDE0YzAyY2ZkMjEwMjFiZjU2MGZkNjhlZTM0MTM1M2E3OGM2NTA4ZjliM2Y0NjY3MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmJlMzc5ZWZmMjdiYmVmZmVkNTViOTNlM2NmYjVjZjMxZmNjZjNlMzc4NmZjNjgyODZkYzRlYjdlMmRmNzliYiJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L53-L57",
+          "version": "repo-lines-v1:sha256:c675cbbeb48492d6d776b31ccfc2ef04d99670448ef75e1a5c5ea5d576bb07a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2VlMzE1MzA3ZTM3YmVkZGJmZTA3Zjc3YTNlNzUwYTBmYjNjM2M2MDBlMzEyYzIwMjExMTNkNjg5ZTBmYzAyZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzJjNDg1OGUyMmNjMmM5NjdiNDIxNTBmYTU1MDU2MmEyYzgzOWMyY2ViY2FhYjkxY2FiZGY2ZjRkYTAyMDAyMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODk5MjIxNTkyNWFlYzRiYzU1ZTkzNTQ5MWNmMDdkNTlmNTU3NjAwODc2ZTBhYTgyMjJiNmY5NDdjZjZhODI2NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjA1OTQ3YWY5Njg0NjgzNjI5NjQyZmE0MDc5NjIwZGJjMDI1ZTQzYmVmNTEyYzM4Y2JiY2U5MjczNmNiM2YzNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_864ed80104224ccf994179fb12c7fee0",
+      "statement": "Losing the allowlist fails loudly twice: pnpm exits 1 naming the package, and install.sh verifies better_sqlite3.node exists after the install and exits 1 with remediation naming the pnpm-workspace.yaml path and the allowBuilds entry — because without the addon every openwiki subcommand dies with 'Could not locate the bindings file', which reads like a broken Node install rather than a denied lifecycle script.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L60-L60",
+          "version": "repo-lines-v1:sha256:79c16ba2f4d61b447a56755ce42983b547339d9491c80b85eb15629568eff262:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzljMTZiYTJmNGQ2MWI0NDdhNTY3NTVjZTQyOTgzYjU0NzMzOWQ5NDkxYzgwYjg1ZWIxNTYyOTU2OGVmZjI2MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzljMTZiYTJmNGQ2MWI0NDdhNTY3NTVjZTQyOTgzYjU0NzMzOWQ5NDkxYzgwYjg1ZWIxNTYyOTU2OGVmZjI2MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGJhNTZlZjA4M2FjNjAzMGFlNGQ1YTk3NDhkM2U5Mzg2ZmNhNGFkYWJmYmY2ZWVkY2VhZjAzMDY1MWNjMGEwNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDE4ODlkMGVlYzU3YzY1YjI5MTZkMTdkZGM3MzRjOTllNTdhOWNiZDdmNDJmYWZjOGMwOTQzZTQ0NWEyZGE3MSJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L74-L82",
+          "version": "repo-lines-v1:sha256:bd68a4833ca3fe052773ded5b41a271151f4c9611833e9ad4f7031ceb975e8e3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDhlZWJiMTcyNTk2MGEyMTZhMDg1NWU0NzMwMjUxNTIyNDBiMzQxMGUyYzg1NWRmZGMyOTYyMjg5ZWFhMTlkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzc2OWQyMzdjZDQyMGI5ZDM4Yjk4MWEwYTRmNjc3MDE5MGE0YTgzZGNhMWZlNTZjNGY1YmExZTJjYmMwZWY3NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWNiYmUyZTEzYTdhMTQwMmM1ZmZjYzJlMTdlZWIyMzc1NTU0NjQ2OTRkNTkzYjViNmViY2NjMjVjOTdhNDdlMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmUxODRjODM3NDkwMGY2OWYyYmZiNzc0NTNiNTc0MDM4NTc5ZTVhM2U4OWQ1ZTlhMDRiZGM1MmZkMzVlOGIxMCJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/pnpm-workspace.yaml#L13-L17",
+          "version": "repo-lines-v1:sha256:87db15efec95463bc681f7adf979aab3a959c38f36652a3bc07c7f9b2338f9a3:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDM0NzA3ZjRkOWE4NjBlNDFlZjEzNWZkMGY3NGJkMmFiNjkzNDE2ZDlmNzg4Y2E3Zjk1OTdlZjlhNTlhMjQ5OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjdlZmFkOGEyNjQwOWFiYTY4YzdiNjQ3MDVlN2NmOThmODYyMzc2NWI1MjFhOTcwODcxOTAzZTY2OWFiNjkzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGVhNzZhYTcyN2MxZmFjYjJlYzM3YWQxOGI4OWNiZjQxYjZjZjIxYTAwY2NjZDcyOWY4YzdhYjM0MzYyNmQxNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_17fcb2ddb46e4579b4b55f57ae7571fc",
+      "statement": "install.sh checks its preconditions before its destructive step: the pnpm-on-PATH check and the Node >= 22 check (openwiki declares engines.node >= 22 and fails at import below it) run before the rm -rf of the previous tree, so an unmet requirement cannot destroy a working install; the rm -rf plus fresh re-resolve makes re-runs after a failed attempt idempotent.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L25-L58",
+          "version": "repo-lines-v1:sha256:ba898114c3da2b3488984a73fa3ed282406e1485e7b8580b9282d687eb7378bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MTNjOTIyNTJiZjMyNWQxNzZhOTY2MjRhYmEyYjJiNjkxYjkwYjJkZjY3OWY0ZDdiODQ0MWE4OGEyMWM1NjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1ODBlNjc0ODY1YzJjZTZjODVhMmJhNjg5MzVkYjExOTQ0ZmQzZjczMGNkZTVmYTZhZGU5MTM2YjkzYjlmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4OGVhZGVhZGUzM2NkYjIwZmJjYzVkNGYxMjY4MzMzOTYzYTgzZjg0MGFlZjcxNmRkZmRiNDJkMDViNWIzMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZlMWEwMDI2MDViZTQ5MmM1NTMxMTA4MmVkNGM3YWU2MTFmMjFkNWJlZmZiMDYxNzg1NDFhYzk0YjlhMTlmMzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c73db512bde24fa789f3b87375f922f8",
+      "statement": "The version pin lives in exactly one place, OPENWIKI_VERSION=0.4.3 in install.sh; harnessed update discovers pin-shaped literals in install scripts as opaque pins so the pin reaches the pin report despite not being a tools: entry; and no pnpm-lock.yaml ships — the top-level package is pinned and transitives resolve under house policy (minimumReleaseAge 1 day strict-fail, blockExoticSubdeps, verifyStoreIntegrity).",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/pnpm/config.yaml#L13-L16",
+          "version": "repo-lines-v1:sha256:cd9c7e7e18d2cd60176fbc9dd6671f547507c42e2edd5efcd1284deb15fd3542:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTRlYzFmMWY2MzBiMTNkNDFjMzI2MjdiNDI3Yzk5OGVmMDNiYjU2ZmNkNDcyM2NiMmNiOWI2MGJlZDVmODkyMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2M2ZjRiNGJlOGY5MjYwNGNiYTE4N2NlZTRjMDQ4YTA4NDhiOWZlYTY5ZGIzMDVkYmI4ZGFiYmZmMTZiN2Q2ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDM4ZGY1YjVmNTNhNTcyYTQ2NDNlODE4YTllYWRjNjhhOTY5OWQ1ODNjYjAwOWNiZGU3NDFlNWNiNjEyOTVlNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzdmZDg2YTkxMmRiZjAzOWU4MWFjMGI2MmQ1ZTNiMGYzZTg4MTdiYmRlMTJmODAzNjMxNGQ5OGE0NzM5NDZkOCJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L62-L70",
+          "version": "repo-lines-v1:sha256:f4bb360eacbff84afbc26f33a7bf249efb7cf23d9b8aa100c1a90bd3107cedae:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDhjODZhYWZmZjI0ZjhiZDg4NzZiOGRhZmU0ODYyNTZkMzBmYjc0MjNmODhiYWM2OGUwYmEzNTFkYjUyNGI0YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjkzODllODQwNzI1OWU5MzkzMjIyMzM4YmVlNGVjYzEyNWQ5ZGFhM2I2NmQyYTc1NzQzN2UzZWRmY2VlOWY5ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmUyZTdlZDlkNzMyOWY4NjJmYjE0YmJjM2JmOTQ5MzE0OTljZDgwMzY4Zjg1NjMzMTFhMTZhMjcwZTljMzUzOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzRhMDYxYzgyNzk3M2NjODAwM2FhMTM2NDc2NGI2NTUwMTdiMDZiZjhkMTVhODhlYWJhOWMzM2EyNzA4OGViNyJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L19-L23",
+          "version": "repo-lines-v1:sha256:c47240e20b4957ce599649b3a93c522864809e35bebeb7b7c76baebf4428c5c4:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTk1NzY2MjY2Y2FmMWU3OGNmYjkyNTJhMDY3N2IyNTFhNGIzOTIyYjg3NmRkNmNlYjA2OTg5OWUzMmZjYjQyMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmY3YjIxNmZjYWYyNjkzZGU2MGFlNjdkNTg3ZTdjOWRjOTA5MWZjOWZlNDA5ODQ3N2I1M2FjNGFhZWVhZWViMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTY5NDQzZGZjYzk2MTY2YTI0MGU4YzcwNTUzNjU5YmE5NWY4NTMxZjYyZjE2OWUwNWRiOWYzYjAyZWRmMzQ4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2EzYTRmMjcwZjhhNjIwMDdjM2QzMmVkMGM0MzEwNTcxZGM1YmZkYTY5MjAzMGViNzQyOGJiZTFhMzcxZTljZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L279-L298",
+          "version": "repo-lines-v1:sha256:70cc4685b87587be0f2d90d565b690ca3e37408277df25df6e3f1a590805db14:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzNWY5YzAwNWJjMzZhZTIyNjAxOGJmY2YwNTcyYjJhYWNlZTBhNGZlOWVlOGJiMmU5ZGQyZWJkYzUwOWVlMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjZmMzNmJhYjI1YjU1ZDg4YTA1ZWQ1NTk1MjZhMTQ1NWFhMTJkMDEyMjAzMGJlMTZhMzI1ZjA5ZTgyMDYwMDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxZGM4YjEzOGFjNGZlMGRkZWNhMzFhZTRmNGU0OTIxYmMyYWFiNjkwZmI1NmRjZTljNzA1MDVlM2U3NjViYTYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/update.py#L391-L398",
+          "version": "repo-lines-v1:sha256:ddd5e62d3c44e97ec8b1b989399b12ef53833880c33768cb0dac8dd33f515f85:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGEyMDJkNjJjYThiMTg0ZGZjZGEwMjdiMTVhNzc4ZWI0NDc2ZGE4MDk4MWMyMzE4OWQ3OGFmZjliYmRlYjU5YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTUwMzJlOTY0ZDA5MzIzNTFlNWQxODUyNjkyODFiMTcxYTNhMDliMDhiMjg2ZTY2MWVhNDcwMzIzYzgyZWI0ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTE2N2IxNmQxZTM3OTIyYWYxZDBlYjkyNmQ1OWFhNWIyOTRiNjczYWY0MGVlNTM3NGU3MWEyZWJkMGQ3OWZhZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzdmYjkzYTcyMTAyMzBjMWNiNmRkYzI2N2NhZTY0Y2Q5N2ExMzg5YjM0MjU3ZmZhMzlmNzVhYzhlZGU5NTE2YyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8bcbba8efd8449e081007c95373225f9",
+      "statement": "$HARNESSED_BIN_DIR is <tool-root>/bin in both modes — the pod's ~/.local (one volume covers the bin dir, mise's installs, and $PNPM_HOME) or the host stack's own tools tree — so install.sh derives its install root as the parent's share/openwiki, keeping a host-launch install stack-scoped instead of in the user's home; the bin is a symlink rather than a copy because pnpm's launcher resolves its package relative to its real path.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L42-L53",
+          "version": "repo-lines-v1:sha256:2c141a031ca05323033a8fcf396d96b115edfcd27554813ad8dd5283b3b5d28e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkNjYwYzliMDlhMDgyNDE0NGJhNWM5OTE5OThkN2Y3MjJmNTNiNWE0MzkxY2UzZDA3ZDYyYjljMmE2NDhkMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5YjFkOTMwMjdhNTBkNmYwNTViOGU5OTkzOTRhNDEyMWViZmI4NDVkZmFkZDBhZTIwZTk1YTEzNTI3ZTAwZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4ODllNGI4NjQ4NGNmZmJhZjI2NWQyY2NlNjNmNzZhNjRiOTBiODMxZWQyM2QzODI2OGQ3ZDZjZDg5MmRkNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0MjJmM2I1MzNkMTg1M2JiY2RmMjg0NDQ2ODU4MjZjNGM5Yjc4OWNiZjU1N2ZkYzljZGJiNWM5ZmIxNDEwZGIifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L84-L87",
+          "version": "repo-lines-v1:sha256:605f602f0046da363a8ea7180cff4e64bd32666618a4beefe87aba44d3bb498c:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzEyNTYwODQyMTM2ODk0OGJkY2MwZmU2NTEzM2Y0Nzg0NDgwN2I2YmZiNzA2ZDEwM2VjOTQyM2EyOTg2N2MzOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2M1ZTU0NWUxZjRkMGM1M2FjODk1MjUxYWYwNmUxMGNmMjczZWE5NGFjYWYyNTJmZTU1ZjI1MzZmYTYwNTVkNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzg4OWU0Yjg2NDg0Y2ZmYmFmMjY1ZDJjY2U2M2Y3NmE2NGI5MGI4MzFlZDIzZDM4MjY4ZDdkNmNkODkyZGQ0MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjJkY2MxZTMxZTYzM2RiNjlmZmM1OWM3YjBiYzk4ZjZmNGNjZTFkOTZmYzY0MmZkMDI4ZTVkMTdmNGQzOWE1ZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/setupenv.py#L108-L116",
+          "version": "repo-lines-v1:sha256:6f9dd9322466c58e02fd5408d0c734741eeb5282f46ae0e558694242b25e9b5c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzAxYjlhY2M2MTMwOTQ2NzRlNThmZjExNzE3Mzk1ZGU4ODM3YWQ2MWJlMzA0Mjc1MzI3ZDIxZGNjMmEwYzIzZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQzM2QwZWE5ZWNmMmYzOWM5YTUwNDA3Mzk1ZWU0MTE3MmZlNjgyYzljODg1YTM1MDhmNzViZGVlMTUxZWZmZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjY0Y2Q5M2M0NjgxZWFkYjJhYzU5MDg1ODNiNTgxYjFlZTFjYzFlM2E2MTUyNjY0NTUxNTBkZjY2OTI1OTgyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWIwNThjNDFkNTY4ZTZiZDdlMDI0YTMyMDVjYWEyNjNkMjJjNjVhNTYxMzc4NjdkNDQyN2Q0YmNhZTFmYWI3ZiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/volumes.py#L190-L198",
+          "version": "repo-lines-v1:sha256:0a76ab50df3b99c22119275b0cd5e48c59520de9a6d380d22e16356c438801e2:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTU3ZmJmOTU2ZDI4MWRmODdkYWMwM2EwZTExM2FmY2Y0Mjc5OTgwNTg1NDI4YTRjZDAwMmI2ZWRkM2E4MTM3ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWRmYTY0Y2QyMDM5YzQzMTA1MzBmMjAzYTI0ODgxYmRkZDUwNTNmYzUxNWYzYzJiZjBjN2Y5ZGU3NjgyMWI5ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWE4MmViZTllZDQwN2MzYTZiYTRiMDAzNDI5MmJhYTUyYzExY2U1YWUyODYxMDc0MDJkZTQ3OTJlZWVjYWNmYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmYyNzM1Y2ZlNGQyOTMwNDc2OTg2ZWE3MWY3NTYxMjdhYWI3NjdiNTEyMGM1NWM3YjJkY2JlMzQ3ZWQwNzE5MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_925897a6f9184256b56bbedee9f2373e",
+      "statement": "--host is the authoring agent's identity, not a launcher label: upstream records producerActor = options.producerActor ?? options.host and metadataModel: host-agent/<host>, so the value lands in run metadata and generated provenance; a literal in recipe.yaml would stamp every harness with one agent's name, and the agent doing the writing is claude/omp/codex/…, never harnessed.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L89-L100",
+          "version": "repo-lines-v1:sha256:400076fd30b4a78ff47ed3544ef3d8aaaf1cef031a06fb853e5b227f12b686bf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzNzdiMTFkMzEwYTNjNzg2NDM4NWMzZDhkY2NlZDZhNjMxM2NlMzg4NWRiZmUyMmUxMTgwNzk1NDIxZTk0NjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlNjRmNmZmMzYwNjIzYjc3ZjJjNWJmNDQ5ZTY4MDExYWIzMDQ2ZTA5ZTE2ZWQ5NzU5YzA5ZWIxOGZmNjNkMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4N2JlZjMxYTNhNDEwNjBlMThkN2ZmZDA4NTZlMzJlNjAwMTM4NDY3NGQ4MzE0MzY1NWZmY2E4NmY0MTUzOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3MWM2YWY3OTdmMWQ0ZTRmMjZkNjYxNDhlMjYyY2MwMWQ2MDYyNjViMDk3Mzc2YjhlYmQxMjA0YjdiN2UxNGUifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L27-L38",
+          "version": "repo-lines-v1:sha256:fc0383bbbbaaa1ba914deaed7df4cdab2993e84ce891547b9f88fbe3408e0579:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhNzJkZWIxYzRjNWY1OGRlODE1MmE3Yzc1MjQ2OWUwMjMxNDMyODBkZmFmM2FiMGY2YzBmODQwOGY0OWYyMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhOWM1MTVjOTZhMjJkNTRjZjRiZGMxZjZmYjBjMzBkNjM4YWFmYTJjZGNiY2Q3MTU5YWE1OWE3MTMzYmJkY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ0MDQ0YmUyMGIxOGZiYmU2NmFmNzNmMGM5YTJiZmYzYTc2YjZlZDRkMDViZjhhY2M2ZTJhNDNjZGQyZTkxNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyMTIwMWUyYTNjOWUxOTU1MWUyNTY2NmViMWIxNzAzMzhkM2FjZDllN2U5YjMzNjdhODE0YjFkZTI1ZjA0YTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7257d28a13d446a7ad081b798537f7d9",
+      "statement": "${HARNESS} cannot be placed in the recipe's stdio server args because emit.py writes stdio args verbatim (only a url_env URL gets ${VAR} substitution), so the placeholder would reach openwiki intact and fail its isValidHostId check; the openwiki-mcp-host wrapper resolves $HARNESS from the folder-env contract through hatago's inherited container env at spawn time — the one place that works, and honest for all five harnesses because isValidHostId accepts any lowercase name even though upstream's installer knows only claude, codex, and opencode.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L96-L111",
+          "version": "repo-lines-v1:sha256:fc7ddbbdc73966131a21cb0e32b9b70dcd37548c6c862f25c63d7de2aea4ed44:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyYTI4ZjY2MzQxMGVlOTk5YWViN2M2NDhmMGE4NTU5ZTc1NDMwYjg1NGQ4ODc3OTBiNGMyMThiNDViY2Q1MDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmOTllY2Q1ODJhNjc4MGVhOWMwMGNhZGQ5YmYzZTQxOGRkZGYzMDhiZDZmNjJhMWQ4NGI5NjNhNjdjOWZhYTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ2N2ZmNDRlMmZiZWIyYjdiYjFkYTNhZmIzZGM5OWE4NDAyODc4NTNmMTI1OGRhYjljNTQ2ZjQ0MWJmZjBmMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5ZGZiZjBmNWIyNzU0Y2UwMDRiNDg2OWQ1NjUyODA1NTJjMzMwZGQ0M2JlOTc2MzYwODAyOWEyMThjMTdhNjUifQ"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L34-L44",
+          "version": "repo-lines-v1:sha256:3f337cb58ca4e714584d0326e0c4e9c06303c8ca3d64b148ba75aa81c87258b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5NWExMWEzYjNmZDExM2JhY2ZkMmJlODdiY2E0OGUxOWQyMTk0NDlmMGVkMjkxZTMxNGE2MDE2ZDc5ZjEyNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwY2M5YjI3NTE2YmVjY2MzOTUwNTg1NTZmYzExYjUxNTQ1OGQxOTE1MzllMTFjNGZhZDgyOWMwOTdkZDhmNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVmZmZjMDkyNDIwMWI4NDY2NmMyZjRhYzcwN2EzZGMyNmE4Y2FmY2ZkMGIxMzE3YzBlZGVlYTU1OTIxYTIzMjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyMmJiNTVkNzM1NWNmODg3MWZmN2NjZDc5MTkxODYwNmNlYmRiMjVlMTNiODhhMTMzYjE0Njk3NzRlZDA2MTYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L930-L941",
+          "version": "repo-lines-v1:sha256:66177607dd93395f85c9e113f956dc8b84c56734f9b05075a353780d9ded8379:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0YjNjMTE3YmU4NmQyM2RiOWUzNDdmZTRmYWUwNTE0ZDczNmE0ODVhOTE4MDQ5NGFiMzlkZWM1MzcyNmI4YTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliZWVjZjVmZDA2YzViN2E1ZDY1MDUwNTE1ZmU0MGIzNDMxOTZhMzRmMzExMzA4ZGY0ZTc2MjVkZTA2Y2RiN2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhZjQwYjc0OGI4NmI0ZTY4YTMxODA2YzRkMDk1MWJmZTZmZDY5ZGM2NTAzNjQ5NzRmYTQ4OGUzMjdkZWFlMTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyNTkzMmI1NWJkNDNmMzNmNTRlMWZkMmZhOTJmNjAzZGQxYTAwOWE3Mjk1YmUzZGZmNTA3Y2IzMDhjZjIzN2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_50b1332e47b7426eabdd99685ba8a0be",
+      "statement": "The recipe's MCP entry (name openwiki, command openwiki-mcp-host, transport stdio) is emitted into hatago.config.json as a stdio child that hatago spawns and fronts over HTTP; at launch the per-instance config regenerates with the child's cwd pinned to the mirrored container project path, so the openwiki server operates on the mounted repository.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L40-L44",
+          "version": "repo-lines-v1:sha256:139d99c3a2a8f8e522d776c7726edd721518db25b9503b41e1ecd5376d3d0f5e:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGJiOTQ4NzgyY2ZiNGQ4NGU4NzMwOTcyYWM1NmE2ZWVjY2FhNjQ3MmM3MDAxNWNjNWM1MmE5NWVjYzM3NWIxMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjBjYzliMjc1MTZiZWNjYzM5NTA1ODU1NmZjMTFiNTE1NDU4ZDE5MTUzOWUxMWM0ZmFkODI5YzA5N2RkOGY1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWQ3MmJjY2FlNWU0MDU5MTVmN2E2YTUxYTJlMDFlOTc5YTZjNzZlZWYyOWRkNjc0NjVhNjFmZjlkMGEyYzg5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTIyYmI1NWQ3MzU1Y2Y4ODcxZmY3Y2NkNzkxOTE4NjA2Y2ViZGIyNWUxM2I4OGExMzNiMTQ2OTc3NGVkMDYxNiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L913-L945",
+          "version": "repo-lines-v1:sha256:fb6f9de10428751fd3b551db411de14150d975350542a718b1d7a62d30b95221:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmODE4MGY4MzcyMTAyNTdhZTQ4Mzk4NzZmZDEwMTViMWIxZDRiYzcwNTBjMzFkMWI0OGNlZGJhNGY4NTI1MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiMjc5MDQyMWM5ODFhMWVhNjVlMjFiNmIwYTc5OWZkM2I2ZjIxZDYzMTUyZjg0YjRmYTRlY2MwNTRhZDRhODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNWVkYmJjZjM2NjUwM2Y5YmFkM2E4MTQ1NDZhNjQzZTU2NTFhZjgxYWZhNTRlZjkyYjIzY2M5MTViMTU2ODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiMzU2ZjgzZjhjNDAyOWQwYmExNjM3YTc5Y2IzZDNhNjg0NzNkYjI0Njc4NjVmNjc0YTM3NjY0NzRjYTdkMmEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L948-L972",
+          "version": "repo-lines-v1:sha256:78a9db8ea5325b214bd486b9d7c4b35e2f69f8e89438e03db4e70678bf8509de:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4NTRmNmY0NzkzZjJkYjM1NDM0MzlkYjMxZTM1MjcxYTEwOTM0YjcwMzYzODlhN2RmNDBiMTZkY2IxZTFlMWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjNjA5N2JhMmRhZGJkZDc3MTU4MmI3NGYxMjFhOWQxOTc0N2ZhNTM3MjBkNzQ1MDVhZmIwNjYwMWNmZGJjYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkNDk2ODFiOWJmOTlkOTk3ODAxMGU0ODZiMjY4MTJiMzVhNGIwNGQ2OTE1ZmM1NzhkMDliNThiZWEzNWI3OGYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3297-L3319",
+          "version": "repo-lines-v1:sha256:74c9e627dd8a72891326f8f102c52de15605f95aa587c5a775b88997b70077c0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3MjJlOWEwZTUyZWYxYzQxODViMmM2OTUxNGQ4YzI1NjBkN2QxODM0YzEyNjU0YWE5ZjlmOGIyYTAwNGUxZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzY2Q3MjIzNGFmMWMzMTIwMTNiN2QyNGQ0OTkzM2VhN2Y0NGNhYTdiMmMwNDIyMTI4NDM3MmVjMTM0NDgxNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjMzM5NWNmYjg0OTM3NjQ0NmQ1NDI0OWZjNzEzYWMwNTZmMTdjOWU2NThlZjEyNzMzZDNhYTgxNTQxZWJiZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhYzc3Y2NkZmZmODQ0NzBhNmFiOTgwMWM4ZjYyOTYxZmMyZDY5YmEyOTJiNWVhZDFjN2RjMDRmOGE2Mzk2ZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b7856689990b467b90d65a0335911977",
+      "statement": "The recipe's install layer is exactly install: script: install.sh — no system: (nothing needs root, so the same script delivers the same result in both modes) and no cache: (pnpm's content-addressed store would make a second content cache key nothing).",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L64-L67",
+          "version": "repo-lines-v1:sha256:2942e8981fc2266cfc065c6b259bcfa61fe7686579823c1820dba194a5bcbb19:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTliN2IzNDRhYzFmNjhhNThhMjBhYjJiMDMyMzRkNjljYjYwNDQ2YWY4ZWZjN2I2YzUzZGUwNzYyNTEyMDBkOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTVkZGJkYzA3N2U5NGEyOThjZTMyNTQwN2ZkOWJlNjQ0YjE3NDEyNDk5ZTI1ZTQ2N2U2ODZmMDk3N2Y3YzhhYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzQ0NTNhMDczYzU1NGUwN2M0OTZlZjRlZGZjNjk4MTYzOWQ1ZmE3NWE2MzNhN2IwODg4ODAxODg1NGJiYmFlYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWVkNjZjMDkzOTEwNDI0MDNlM2U1NDI3MWNhNzY4ZTExMGJkNDE0ODQyYmY4NWM3ZDBkNGUyOGRlNzczYTg4OSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_62acafd8973144dda5baa218a8cbe375",
+      "statement": "The persist entry (.openwiki, scope: project, location: host) makes interrupted openwiki runs resumable: openwiki keeps conversation history, connector data, and the langgraph sqlite checkpoints under its config dir, and harnessed mounts the project-keyed host dir under $XDG_DATA_HOME/harnessed/persist rw at $HOME/.openwiki in the pod, surviving --fresh.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L69-L80",
+          "version": "repo-lines-v1:sha256:052ccedc1331389c4b73193a7c40bf0b9e2aea7a82718918eb8d0f922e2a0710:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MzQzY2YwYTI2OWJiMTRhYTk3ZTk5NTRiMDI1YjI5OTBmNTQ0ZTUwZGY2NzViMDJiZjliNzFmZTNkZjdkNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5ZTdhYTFmN2U5NGJkODhkMzg1YzkzYmRkOWE0MGQ1MWMxZjY5NjU4N2IwYmIyNWExMTRmM2I0MTdjNWFmNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2Y2UzZDcwYjBkMTM4YzlkNjg4N2FiN2MxNWU3ZDQyMTczY2NlMzIyODgxNDI2YThjYmRhMDkzNjhmM2M0MjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmMzAwZDBkMmYyMTM1OTI3OTI4OWVkNjEyOGQ1ZjA3MWM1YzNmOTEwYzg2ODUwMWFiMWU3NGJkOGMzODk3ZTkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/mounts.py#L1200-L1248",
+          "version": "repo-lines-v1:sha256:1d4d4c8c1bb6501c5e2e8a9df7de469a68a88828bfdcedab6737a4eff9f1d109:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwOGJkNjFiZWU2MzRlOTU0ZGY3ZTk2ZTZlZDlmMmE3NDg0YmU3OWUzMWNmNjIyMGUyOTFjZDQxNDE3OGE1YWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzYmYwNGQ5ZmQ2OWQ4OWY5MmI2NGQyZTU2ZjQ2MWVhOWFiZmRlZmIxNGU4OWI2YzQ5Yzg4MjA3OThjODBkMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyMjFmY2M1YmU1ODI4NTg4Y2RjYTBhYzZhYTZiZDc2N2ZjYzAxYzM0ZDgxZWUyN2EyZDY5NjI5ZDc2ZTFmZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1NDE0Nzk1OGIwZDZiNTJiYjI0OGRlNGFjOThiODVkMjVjZmUzNmRlNDA2ZmUzYWFlMjNiODBjYjlkMjNjNWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9f305ac418c848d9afa1d3e09ba5bd59",
+      "statement": "OPENWIKI_CONFIG_DIR={persist:.openwiki} is declarative recipe env rather than a script export because upstream reads the state-dir override at process start; the {persist:<name>} placeholder resolves to the bind-mount target in a container and the real host persist dir on a --host launch, and the schema rejects an unknown placeholder or a dangling persist reference at load time rather than letting a literal {persist:...} reach the agent.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L83-L95",
+          "version": "repo-lines-v1:sha256:1c3e08db4832c0dddad8a99ca53812dffdee7f47685ecd418cff40b6bdf1c70f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3ZGY2ZTcxZWQyMWU2NDY1Y2YzMDNhMTg3ODk1NjY3MzNjMDgwYjAxMTZmZWY3MDE0N2RkODcyZjUwODcxMjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNjAwNDNmYjMyNzZiMjMyMTJmZTA1MmM4Y2Q4YzM2ODhhMzhkMGJiZTQ2ZjcxOWUyMGQxYTYwZDcyOTVjYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4NzAyODNjYjlmNWY3YTAzNTI2ZTdjNTZlOGY0NjBiNDM1NWVlNzI4MzNjNmY0NjI4MjBlMzJkM2Q1MWUyZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjllOTg3YzBmZjMwNTg0ZDM1ZGQ2ZWE5N2I0NzljNjVmYmYwYjA3MDRhMGFlZGZiMGIwMGFlYmY5MWY0MjQwZDIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L1691-L1717",
+          "version": "repo-lines-v1:sha256:982aba3638dec711a06deadd56e9c33100f359868c2acf5b8d69ecc5fd3cb769:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlMTI0NGJhNDFhNTQ3MGE1ZDE2YzY3MWQxYTk4NjkwYWRiNjBmYzE4MzE5MDM1NjgyMjQwNjgxMzI3ZDg5NDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3NmQyZDMwODljMmQ3YzJlYzcxNjVkNWYxYzA0NjA2MDkyMDU0MDFjYWZkMTA4YmFhNmNmMDBiY2NiNjUxODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiZDg4MmQ0ZWZkOGY3OTUzNjI3MDk0MmU3NjhhNzFhMDg3ZjkwNTUzNGNiODQxYjExZWFiODA3NGMwYTM4NGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2ZTY1NTAyN2MwZjI4MDYyODJkMTE3ZDc4MjI3OTQ5MDZlYzlhYTcwZGQ4MTFkZDQwZTUyMDAxNmU4N2I5MWMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L1743-L1782",
+          "version": "repo-lines-v1:sha256:2d560df3853fc6143a77d73b53e7c0a80d9b398e79988e9468587249d6426b3d:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZWU2YzlkOTEwNTQyNzRhMGNiY2I4NTc4YjU4ZmIwYWIwMDQxYzEyZWExYjJmMDkzODE5YWQwNDAyZGQ4NzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2NDhhMzFmNzZlZTVmZjQ3ZTgwZTk5MWY4Zjg3ZDMzNjgyZGJkNTExMGVjZTEzNTg2NzdiYjgzOWM4Nzc3NDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiNDY4YWQwYWJkNWRmODYyMGJiOTRiZGZmZTg1ZjQyMTEwZWNkYThhZjc2NGE0ZDVjM2JhMDZiYWE1Zjc3M2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhMGRhMzMzNjM4ZDAwMTQ4ZmJmMzdhZDZiYmVlMjQ5NGZjMjA3YjMyMTY5NGUyOTliOTUzZTZiN2ZmNGNkZTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_07904897aa4f47e8b795c7f50abfb8e4",
+      "statement": "scope: project keys the host persist dir on the git common dir so every worktree of the same repository shares one .openwiki state dir, falling back to workspace scope with a warning for non-git projects; the generated wiki itself lives in the repository as committed Markdown and is not persisted state.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L75-L77",
+          "version": "repo-lines-v1:sha256:3780c33cf519f0a546e67dd37b244d49319c37b98912727879f43e43ab95c070:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzA4YWUzYTMzOWM4Mjc5NGM0MGRlYWMxZmUxMDE3OTdlMTE0ZjJkMGI0Njc2MjU0Y2E3NzlkMTczYjVhZTEwMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTFkOTc0ZDUxMDVkZGI0MzM0OWMzZWFlNTA4ZDA5ZGU1MTkyY2VhOWM5MGVhYTJjMzMwYWJlZGQwZDcxYmFmMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWI5ZjMxOTEwY2VlNTZjNzQyNzJiNmRmYTg3NmExYTI0MmQzMWFjYTY0OTliZTFjMDA0ZjNlYzBmOTI0Yjk1OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTg5YzFiMzFhMGU4YjY3YmJlZTBhOWFlZjY4Njc5MjAzNjk2Zjk2ZDNlMDAwM2RkZGFmNjZhOTM1ZjE1YmYwOSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/mounts.py#L1207-L1244",
+          "version": "repo-lines-v1:sha256:75796833d9fcb212361558cf12207430fdc21c5137e487f267c1e1b20a425844:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmODVkZjA2ZTM1M2EwOTg5OTRkNjNhYzk3MTkyYWQzZDFmNjU2ZTk3YTY2MGJjYzVmYzRjNDZhMDZmOGI4ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ZjM0NThhNTczOTM4ZWY2NDUwNmYyN2VhZGZlY2IwNTYwMDc0NTMwZjExMjU4Y2RlMGVmYzg2MGIzM2FlODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyNTY1NTI3ZTEwZDM0ZjU5YTBlZjI5YWRmMWRiNjg2MjkxNGVjNmUxZDIwMzQ3NWQyZTY2ZDY2YWE4MTRjZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwNTlkNTdhMjc3ZWMzMjZkMGNhMWNmY2I4NWI1Njg1YzdkODAzOTAxOWIwYzc2MGFjYWYyMmI2NDNhOTczMzQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/paths.py#L643-L659",
+          "version": "repo-lines-v1:sha256:7686518098cdf2dcb391852c48af469b9930a666f262efa291d1bffe7ae461bc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MmZkMmFmMTc2NDRkZGNlOGIzOGRiNzY3Y2EyNjIzOWRmMTljMzdjM2MwNjFhOWZhYzllN2U5NGQ2ZmY4MDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4ZTM4ZDI5OWFlZTZkNDAxNmY2NWViYjc0YzlkMTVkMWFiODdkNWFkM2U0N2Q5ZjM3NmM4M2M4NDAxOTgxYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0Mjk2ZGJkNmM2YmJkNzdlZWEwNTRjNTBmZTNkMTc5ZjdjYWM0ODA0ODdkZWYxM2NlNjU0NTg3MTY2YjhmMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmMjJkZDkzNjM4MzQ3ZjliMGVjZDA3M2UzODIxYzczMDZjM2MwYzMyNDRjZTU2YzgwMDA5M2E3MDIxZTFlNWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f29a52a7bc3440cb9383949d0703e41c",
+      "statement": "install.sh writes to exactly two harnessed-owned places — $(dirname \"$HARNESSED_BIN_DIR\")/share/openwiki and $HARNESSED_CONFIG_DIR/skills/openwiki — so dropping the recipe and relaunching --fresh clears both; persisted openwiki state is separate and removed with harnessed-tools persist-prune --recipe openwiki.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/README.md#L72-L77",
+          "version": "repo-lines-v1:sha256:2bba28428175446f8367dbe559b06f0c0064af2d6aa675c4fd888f2bffdc819d:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2E5YTlmZmVjZTljNTliYjBkODA5OWFhZGZkYzEwOGYxNmQ3NDRkMzc1MTQxYjBiOTBhOGI0Yjk2ODY3Y2Y4MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzQ0Mzc0ZjBjN2VkZWI2ZGMzNzNhODI5OTRmMGVlZjQ2MGIyMGI0ZjZiMmJhODhmMDQ5MWY4MWRjYmEzMmFhNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGIxMzgzOTk0N2UxM2M0MWI4MDZkZGQ4Zjk0ZDYyNzZlY2FhZjM1NTcxMTllNmRhYjI5ODQwZjU1YzkzOGQxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L126-L128",
+          "version": "repo-lines-v1:sha256:3bf4cb98f5376aed20233c1d8cb935720480be4e07f9033bb76e37a879089348:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTJiOGEzMzhhNzUxOTVhNjgyNGY1YmIwYzkxMmMwOTRlNjdkZTFmZjY4ZTNhNzI4MWU4NDQzNDU5MmQyMjRlZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjQ4YjgzYTAxYmJjZjc5MTViZTZmMWE4Yjg2Yjc4NmU2MWMyY2NjNGRjOWNmMDhkYmNiNGM3NmYzMWVhZTdhZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQxMWEzODY5ZTVjMDYxYTkxYjlhNzkyNGM1OTM0ZWU0MjYyZTQzODI2M2NlMWU5ODhiNGI5OGJmYzljY2UwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://catalog/recipes/openwiki/install.sh#L47-L53",
+          "version": "repo-lines-v1:sha256:670b37a15d185aad34e2a4b860d63015a5fdc37270cccbaf0dd822dac198d844:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWJmYjI4ZGZlMTRjM2U3OTYxMzE3ZmE2MmNjNzRlNGI0YWQxNjIyOTJkMzg0YzgyNTQzZWZlZGE1MWJiNDVkMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODliMWQ5MzAyN2E1MGQ2ZjA1NWI4ZTk5OTM5NGE0MTIxZWJmYjg0NWRmYWRkMGFlMjBlOTVhMTM1MjdlMDBkOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWMzZWQzMDA0NTY4YWIzZGU0ZTVjNTFmZjYxY2U4YjNiMGNkOTQ0NjUzYzkwNTE1NjVkZGRkMDVhYmJmMDAzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzQyMmYzYjUzM2QxODUzYmJjZGYyODQ0NDY4NTgyNmM0YzliNzg5Y2JmNTU3ZmRjOWNkYmI1YzlmYjE0MTBkYiJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/cli.py#L128-L150",
+          "version": "repo-lines-v1:sha256:f61313d37a9b4decac930f423ba6fd9ad98053bc0d61171e6c3e6fdf5d18a51b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3NGEzZjM2YTYzOGFkMTkzMzM1MTRiNjVlZmU0NjE2MzllNzE5YzVhZGU5MTBmYTQwNjQ0NzdjYzAyZWVlYjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjMzJmZWRiMmFmZTA0MTc3ZWZkMzVkYTUwZWFmZTgxMGMzNjg1MzVjYTNkZjRmOWUyMTA1MDFjZWZlMzYzNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMxNWRkYjYxMDMwYjcwZDI3ZDg5MzA3NjMyZjIxYmM4ZGM3MmQ4N2Q5NmEyYjU1ZmJlZjM5YzA5ZGJkNDNmODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjYmIzZDhkOGI2OTczNDFjOWRmMGVkMTNjMTk5NmJiNzE3NTA2ZGI1NmEzOTFjZmVmYmZhMWFmZjk3MzJhNDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_27bc175031c64624b6f569f6589660a4",
+      "statement": "The expect block (skills: [openwiki], mcp: [openwiki]) exists because neither deliverable is visible to the assembler — the skill is written by a script into $HARNESSED_CONFIG_DIR rather than declared under skills:, and the MCP server is merged from mcp.servers and reached through the hatago hub; expected_capabilities unions these declarations with everything parsed, and the capability test launches the stack headless, introspects the live instance, and diffs expected against live.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/recipes/openwiki/recipe.yaml#L103-L108",
+          "version": "repo-lines-v1:sha256:9c6bbb00f32092d5ed58431610dff7c035db45f7f79732096321250abbd9521a:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTI4MGU2M2YwZmU3NjYxMjg4Yzc0ZTJkMjM5YWYyZjE2ZmRhZjk3MTY0YTA4Y2IyOTdjMDE2Zjc5ZjhkZTljZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2I3YjEzODI2MWQ4NGI5ZjMzNjE5YmVmNGU1ZGYwMzIxN2IzNGRmZDkwZDhkNTNmN2MyZGE2Mjk2ZTExNWMwZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmE5YzNhZDJlZDFjNzc4ZDAzMDYzMjM2YWY1NmQzNTc2YWJiZWNlNTcwN2EyOWFkYmQ3Y2E0MjY0MzRhNWY4ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/capability.py#L874-L924",
+          "version": "repo-lines-v1:sha256:21bda8028ae01e8abd671e0a818277cafe527ca31ec193601810fd8999644935:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3YmFlYTg3NDZmYWNlNGNmMGYwYjZjMTEzZjA0MjNkM2Y0MDhmYmY5ZThhODM5N2EwYmRjOWVkMDY0OGE5MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ZTFhMTczZDViMTRhMTM5MTdhYzA4ZDhlMTFiNjViNmQ5MGQ5NTRhZTI0NjRlYmI3ZDE2MzczZTE1NDc5OGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L3323-L3347",
+          "version": "repo-lines-v1:sha256:a4a49147ae331a06294d6064642c67b51f373982eaf43dce0e8a07faab5c78f0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4ZjkzOTg2YWFhYTBjN2FmOGVlZjJkMTAxZjg3MWFhZWQ5YmY1NDMxZTVjZGUwMGMxNjk1ZjI3ZDY0OTE1NTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFhNzdjOWY5NTVhMWVjMTBjYTUzYjJiZjQyYmIyMDZkYWU4ZmFiZGU3ZTA0MDk2ZTU1ZDQ3NTZkYmVhNWU3MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-08T23:17:55.419Z"
+  }
+}

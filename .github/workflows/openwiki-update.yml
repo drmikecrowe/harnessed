@@ -1,0 +1,144 @@
+name: OpenWiki Update
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history so `openwiki code --update` can diff HEAD against the
+          # commit it last documented; a shallow clone hides that commit and the
+          # update runs against an empty change summary.
+          fetch-depth: 0
+          # The openwiki step below runs third-party code over the whole repository. Persisted git
+          # credentials would sit in the job's git config for it to find; create-pull-request takes
+          # its own `token:` input and does not read them, so nothing here needs them.
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install OpenWiki
+        # mermaid + jsdom are optional; they add high-fidelity validation of Mermaid diagrams.
+        # Remove if your wiki has none.
+        #
+        # `npm install --global`, NOT the recipe's project-scoped pnpm install. The two differ
+        # because their constraints do: the recipe installs under catalog/base/pnpm/config.yaml,
+        # whose `strictDepBuilds: true` denies better-sqlite3's build script and forces a
+        # project-scoped allowlist. This runner has no such policy, and npm still runs dependency
+        # lifecycle scripts by default at npm 10/11.
+        #
+        # That default is going away: npm 12 blocks them and requires an explicit opt-in. When this
+        # runner's npm crosses that line the addon silently will not build, so the next step
+        # verifies it rather than trusting the install — openwiki imports SqliteSaver at module
+        # load, so a missing addon breaks every subcommand, not just the sqlite path.
+        run: npm install --global openwiki@0.4.3 mermaid@11.16.0 jsdom@29.1.1
+
+      - name: Verify the native addon built
+        # Fails loudly here instead of as "Could not locate the bindings file" mid-generation.
+        run: |
+          set -euo pipefail
+          root="$(npm root -g)"
+          if ! find "$root" -name better_sqlite3.node -print -quit | grep -q .; then
+            echo "::error::better-sqlite3 did not build. npm likely blocked its lifecycle script" \
+                 "(npm 12 default). Add --allow-scripts=better-sqlite3, or install via pnpm with" \
+                 "an allowBuilds entry as catalog/recipes/openwiki does." >&2
+            exit 1
+          fi
+          openwiki --help >/dev/null
+
+      - name: Apply the page-worker retry patch
+        # openwiki 0.4.3 AND 0.5.0 mark a page worker "skipped" when its stream ends without
+        # calling submit_page (observed with glm-5.3-flash: a final turn that ends thinking-only,
+        # no text, no tool call — the model spends its whole completion budget on reasoning), and
+        # the run then finalizes `interrupted` without advancing the diff base. The patch gives
+        # each worker one fresh retry before skipping. The mise task applies it automatically to
+        # the mise-installed runner; here the install is npm-global, so the path is explicit.
+        # Verified: patching an npm-global-layout copy produces a runner byte-identical to the
+        # locally patched one, and the patch is idempotent + version-gated (refuses non-0.4.3).
+        run: python3 tools/openwiki-retry-patch.py "$(npm root -g)/openwiki/dist/agent/repository-runner.js"
+
+      - name: Run OpenWiki
+        id: openwiki
+        # NOT fail-fast, deliberately. openwiki's page-job queue is durable: a run that dies partway
+        # has already written every page it finished, and the PR step below is what banks them as the
+        # next run's baseline. Letting the job die here instead discards that progress, which defeats
+        # the resumable architecture the queue exists for. The failure is re-raised in the last step,
+        # so the job still reports red.
+        continue-on-error: true
+        run: openwiki code --update --print
+        env:
+          # Same provider config the local `mise run openwiki-update` uses (resolved from
+          # ~/.config/harnessed/.env.schema + .env.openwiki): the Anthropic-compatible face of the
+          # z.ai GLM Coding Plan. NOT the OpenAI-compatible face — non-streaming HTTP dies at
+          # undici's default 300s headersTimeout, and the streaming flag for that provider is
+          # broken in openwiki 0.4.3 AND 0.5.0 (`wrapModelCall` middleware returns an object).
+          # The Anthropic client streams SSE by default inside the agent loop, so response
+          # headers arrive immediately and long glm turns survive. Verified end-to-end in
+          # PR #445 run 8 — first complete finalize in eight attempts.
+          OPENWIKI_PROVIDER: anthropic
+          # The secret's NAME is a legacy of the first attempt (openai-compatible); its VALUE is
+          # the dedicated z.ai key for openwiki, refreshed 2026-09-09.
+          ANTHROPIC_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
+          ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+          # Spelling verified against z.ai's live /models listing AND the local schema.
+          OPENWIKI_MODEL_ID: glm-5.3-flash
+          # REQUIRED for glm on this provider: the @anthropic-ai/sdk client guard
+          # (_calculateNonstreamingTimeout: 3600*maxTokens/128000 > 600s) refuses any
+          # NON-streaming call whose cap exceeds 21,333, and the planner is that one
+          # non-streaming call. 20,000 keeps it under the guard while leaving room for
+          # reasoning plus the submit_page call — glm draws reasoning tokens from the
+          # completion budget, and a cap this size measured fine locally. Do NOT raise
+          # above 21,333 and do NOT drop it low (a low cap returns HTTP 200 with empty
+          # content — a silently blank page).
+          OPENWIKI_MAX_OUTPUT_TOKENS: "20000"
+
+          # No LANGCHAIN_TRACING_V2. It gates openwiki's interactive setup wizard
+          # (setup/credentials/steps.js), and that wizard additionally requires a TTY
+          # (cli/app/app.js) which CI does not have. Needed for a terminal run, redundant here.
+
+      - name: Create OpenWiki update pull request
+        # Runs even when the step above failed, so a partial run still opens its PR. openwiki/.run.json
+        # is gitignored in this repo, so unlike upstream's example there is no transient run-state file
+        # to delete before this step.
+        if: ${{ !cancelled() }}
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          add-paths: |
+            openwiki
+            AGENTS.md
+            CLAUDE.md
+            .github/workflows/openwiki-update.yml
+          branch: openwiki/update
+          commit-message: "docs: update OpenWiki"
+          title: "docs: update OpenWiki"
+          body: |
+            Automated OpenWiki documentation update.
+
+            This PR was generated by the scheduled OpenWiki workflow.
+
+            OpenWiki result: ${{ steps.openwiki.outcome }}
+
+            When the result is `failure`, this PR intentionally preserves only the
+            pages completed before the failure. Merging it makes that progress the
+            baseline for the next run.
+
+            Check the claims before merging: `mise run openwiki-drift` reports which
+            pages cite code that has changed.
+
+      - name: Propagate OpenWiki failure
+        # The job must not report green on a failed run just because its PR opened.
+        if: ${{ steps.openwiki.outcome == 'failure' }}
+        run: exit 1

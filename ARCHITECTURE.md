@@ -49,9 +49,11 @@ harnessed/
 Generated profiles are **not** in the repo — they are emitted to `$XDG_DATA_HOME/harnessed/profiles/`
 (the clone stays immutable source).
 
-The module list above is the **orientation subset, not the inventory** — `src/harnessed/` holds 37
-modules. `docs/codebase/STRUCTURE.md` has the generated full map; treat this tree as the answer to
-"where do I start reading", and that one as the answer to "does a module for X already exist".
+The module list above is the **orientation subset, not the inventory** — `src/harnessed/` holds
+several times that many modules, and a count written here goes stale silently, so it is left
+uncounted deliberately. `docs/codebase/STRUCTURE.md` has the generated full map; treat this tree as
+the answer to "where do I start reading", and that one as the answer to "does a module for X
+already exist".
 
 ## harnessed home (why `build` works from any directory)
 

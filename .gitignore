@@ -66,3 +66,8 @@ mise.local.toml
 coverage.xml
 .hypothesis/
 mutants/
+
+# openwiki's resumable-run checkpoint. Upstream's own scheduled workflow deletes this before
+# opening its docs PR, because a half-finished run's queue state is meaningless in any other
+# checkout. The generated wiki itself, openwiki/*.md and openwiki/.claims/, IS committed.
+/openwiki/.run.json

@@ -1,0 +1,404 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:f8d6b1c857d1070fa3e5f29ae2a11d30d70f4f6392880e7a64111c7d6cfde49d",
+  "claims": [
+    {
+      "id": "claim_3ca3ab952a3b430ab7661735d2c1498d",
+      "statement": "`schema.HARNESS_CONFIG_DIR` maps every harness name (claude, omp, opencode, antigravity, codex) to the same config directory `.claude`: recipes are authored against Claude's format, one Claude-canonical profile is emitted per (stack, harness), and no harness gets a re-authored variant — harnesses differ only in how they read the profile and reach hatago.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/schema.py#L43-L63",
+          "version": "repo-lines-v1:sha256:3b72f72499bc54776f71f86628a203cf30e4e17b0d886f7cea894b3bf911a3da:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjNWVkZDEyNGU5NzcxMDY2MjllN2Q2OTc5ODY1YzZmOGYyNzk5MWE3NjQxOWI4M2I1MzMwYzIzNDIwYjA4ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlYmZlYTg0N2ExMzg4YTU4YmE0Yjc0Zjg5ODAwZDBmZGQ0NWU2MWEwZDQ3MThlOWVjM2NmZjYxZmEzYjFlNjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxM2U2ZTBjZWY2NDI3OGFhNTA2OTU2Yzc1OGYwNjFlMTM4ZmJhY2RiYjMxZjgxMGRkZmZlYWFmNGZjNjI4ZWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3bb061aa48ab4e578fdd28f2d21cffff",
+      "statement": "The harness is a run-time positional in a harness-first grammar (`harnessed container-run <harness> [path]`, same grammar on `host-run`), never a stack field; a stack may not be named after a harness (a name colliding with HARNESS_CONFIG_DIR is a schema error), and stack `harnesses:` is only a build-time convenience listing what `harnessed build <stack>` fans out to.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2936-L2939",
+          "version": "repo-lines-v1:sha256:59d967814188b007b555130c6e12063827bbb33c237b82fdc64ffeecf21e9910:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDA4MmQ1YzRkOTFkOTUzZGMzMjEyYzJkZGUxODUzNjA4OGMwMjU1MGRkNDIyMTc5Y2Q3MGFhNmJjYzE3YTA5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTBhNDI2ODVjY2FiOTE5MDFjNzRhNTQ1MTM0M2MxNzEyNDI1ODQ4NzU4MDNmYjExYzRlN2RiZGIxMmQ2ZGRlZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTk4YjA2M2Q5YjQ3ZTY1Mzc5NjI1NTcyY2NlMTk3NjY5ZDU3NjdlMTJjMThiZTA3NTY1MmI4Y2Q5ODFjZThkNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGJmNTIxZTEzZDA1NWMxNDNmOWZhNTAwNjNiNzg2YzlhZjk2NThhNjMyNzBkMDkyOWZiYjg2M2EyZDM0MTZlYSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3466-L3468",
+          "version": "repo-lines-v1:sha256:9d78a52ee0d824b5261ccf01b5df90c56a41242d14e247170dd9e6a413029a61:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWZlODAyNGI1ZmYxNTJhMDA2ZmQzYzhkNGJmMTdkN2UzNGEzZWY4Njg3NmQ0NTkwMTE1MzdjZGVmODkzNWJmMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTBhNDI2ODVjY2FiOTE5MDFjNzRhNTQ1MTM0M2MxNzEyNDI1ODQ4NzU4MDNmYjExYzRlN2RiZGIxMmQ2ZGRlZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTIzNjQzZjRlZmEyYmQwOTgyOGJkODFhODMwZWVkYWE4NzIzZjcwNjRlM2MxYWIxZjM2ZjYwYTEwYzJjNDE2NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGJmNTIxZTEzZDA1NWMxNDNmOWZhNTAwNjNiNzg2YzlhZjk2NThhNjMyNzBkMDkyOWZiYjg2M2EyZDM0MTZlYSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L1997-L2001",
+          "version": "repo-lines-v1:sha256:a1180f0955d579bd651e23100a92acb2028ba405a2f3e5a08524c74db68d8adb:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGVkOTU1NjUxNmQ4MDA2YjJkNTY0NWE4Zjk4YzE1YzNjMjQ5ZDVlZDYzNGU0OWQ5Y2Y3MGVlZTlmZDY4N2M3NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTkwOWE1M2E2MThkMDI4ZTFkMzAwMGMwYTdhYmNlZWNiZTVmYjM3ZjRlNTExZWZlNDY2NDNmYWQ2ZTY2ODcyZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGUzY2Y2YjkzY2ExNDNiZGZjY2I3OGJhZTMzYjI2NjYxMmQ5OTUzMGRhZTg5NGRjM2NiN2E2NmFkZWZmNjhjOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGZiMzAyYWIzMGFjMTkzMzFiMmY3MWFkM2UxN2Q2MTk5MzFhZjk5NGUxZTRmMjRhYWUxNDcwNDg4OWY2ZTI3ZSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L2051-L2073",
+          "version": "repo-lines-v1:sha256:19397e9250c6b6da770c34025abd1c8a270c0f25abe6e83b42e122b93fd817a3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhOGE3NGE5Mjc5MDEwOTA1NmVmYzYyM2U0NGZlZWFlNTk0ZTM2ZmM0ZTg2MzNiNDU1MWZiNzU1NjRhNDU1NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Yjg3NTY2ODEwZmU3YTA1ODA4YmRkNDc1Y2RhNDNkNzcyZWMxYzU3YjE2MWEyNmRhYmY1Zjk5YmI5ZWVlNWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI5ZWUxOTMyODRlODJmYjc2YWY0ZjRmNTgzZTQzZjA1MDdiNWYxMzJiMTY0ZTZkMzUyM2JhZmI5NGMwYzdiMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0MWFmOTU1YzNjNjNhYjY2MGMxOTdjZmNiMmRlZTIwZmJhMTcwYjI3MTQ2MWUxMTdjOTZhZDE4MGRmNWNkNzYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c209b7ff84f145a7b1948b5bc91e09c1",
+      "statement": "Anything accepting a harness name validates it against HARNESS_CONFIG_DIR at parse/load time — `_require_supported_harness` on the verbs, `_parse_hooks_skip_harnesses` for `hooks.skip_harnesses` (the same parser reused for `only_harnesses`), `_parse_harnesses` for stack `harnesses:` — so a typo like `ompp` fails with the list of valid names instead of silently doing nothing.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2807-L2814",
+          "version": "repo-lines-v1:sha256:7231505f2244f13aa506f260aed768430375e5e0ee6e4fc6c678f6d77d61c04f:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTQ3ZjJjMjEwZTExNWQxOWJjNWJjNTllMTM2M2RhNDdmMDc4OTg0MjhhZjhmNGE4ZmI0MWYxNzcyYTNkNjUxZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjM2YjkyNWQxNjgxOWQxZmFkMzM1OWYxNDZhNjgzN2RmMmIyNGYxZWU3ODY4NTE2OTdmODMyNGI5MDc5Yzc5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjkxODg2ZGEyMmU0ZjA1NDFkODcwZWZhM2YyMDk4OTFhMzhiZTAxOWNkNTNhMjY2ZWI2N2M2MGJlNTk1MzQ2NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzk3YjhhODhlNjNhNjY0ZDAzZTU3NTZhYmM4YmExOTBhNzJlZGM0NTU5MzA3ZjNhZmI0MmE3MWFmM2NjMzE3MSJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L1420-L1444",
+          "version": "repo-lines-v1:sha256:8da2afa84fbe69a466e352308042dd083c8b1ef427062b205d77d037e56522f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1YWZiN2UyNDc4NGJjZWU2MGU5ZjkwMzhiYzhiMTQyZWNiYTU5NTc5NzIwMjE0MzQyODE2NGY1ZjlkNmZjYTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzOTA4N2JlODYwMDE3M2FiNmRkZjc2YWRjNDBjZDA3ZjNmNDcwMTFhYzQ1NTljMDk5ZWRlYTBjNmY5YzEwMWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYTgzZWE3NTRlODFmMGI3MjFlMWQ0ZjVhNDM2MTRjZDU0NWYwMzUxZDA1MzQ4MjhlMjA4Y2Y3NDY2MmM1M2EifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L2051-L2073",
+          "version": "repo-lines-v1:sha256:19397e9250c6b6da770c34025abd1c8a270c0f25abe6e83b42e122b93fd817a3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhOGE3NGE5Mjc5MDEwOTA1NmVmYzYyM2U0NGZlZWFlNTk0ZTM2ZmM0ZTg2MzNiNDU1MWZiNzU1NjRhNDU1NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Yjg3NTY2ODEwZmU3YTA1ODA4YmRkNDc1Y2RhNDNkNzcyZWMxYzU3YjE2MWEyNmRhYmY1Zjk5YmI5ZWVlNWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI5ZWUxOTMyODRlODJmYjc2YWY0ZjRmNTgzZTQzZjA1MDdiNWYxMzJiMTY0ZTZkMzUyM2JhZmI5NGMwYzdiMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0MWFmOTU1YzNjNjNhYjY2MGMxOTdjZmNiMmRlZTIwZmJhMTcwYjI3MTQ2MWUxMTdjOTZhZDE4MGRmNWNkNzYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L595-L625",
+          "version": "repo-lines-v1:sha256:505f07f6c9e0a2f0f70daf60da483118de696186ded0a1af792690b636dc5c93:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhNDQ0YTA1NWE1MWU2YWFhYWE4MWQ2Y2VkYTk4NTRkMzBiZTA2ZDZlMWQ0Nzk0NGE4YzdmZTgxMjJhNWMzZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZjdkODk2ZGJjYWY2ZmU0YTVlMDFmZDVkODQ0YWYyYWU5OWNhNGYxNjhiMTIzZGE3NTllMzJhZWViODQ5YjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwN2RiZDg2YmZiODkyNTE4NDRmM2ZmNGY3Y2IxZTg3NDk3YTg4YTI1ODE2NmE0ZDIyNGEzNzA2M2MyOTY3ZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMWYwMmZkN2VjMWQ0NjJjMGNiODE4Yjk0OGZmZTRmNzE1YjJjMmM0MzI2MzBjMjMyZGZlMzRkNDI3NDNmYTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4cbb068bbb84465fb907538c81247a10",
+      "statement": "In the container mount set, the composed `.claude` config volume is mounted only for claude, omp and opencode — the three harnesses that read that tree — and the emitted `.mcp.json` is mounted only for claude; antigravity and codex receive only their harness-native identity files, mounted `:ro` only when present.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/mounts.py#L71-L118",
+          "version": "repo-lines-v1:sha256:b01d399bec0d8d4153e3bfbdceac8437a308089b24e19e638fd4cfeb019aa402:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1NWEwNTc5ZDYyMmJhMzQ4MmViZjhhNTAxOGM5NGVlYzUyMWY4NDZjMTM3YzY1MGQxNGFiNDc5MzYxNGViMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3NmZmZGUyNTdiMWJjZTVlOWZlYTUxMzI0OWYwMDY2MzAyM2U2ZjUxMzJkYWE4ODAyZmUwYTRhYjY0YzNkNjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5MjI5Nzg5ZDk1YzlhNWExYWMyOTVjZDRiZjc3YTA2ZDA2MTQ5NmVkMGUyZmE5Y2ZkZmFlNWE0Yzg0YjlkODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyNWM2YTdkMTgwNDllNzhjNTkzYWNhOTMyYzE2NWM1NDhjNDg5YmYxYjRiZGEyMjJlOGYzOWMyNGMxYWJhMDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3dd2d1f0f67542a89c20db1ae7fe8a5d",
+      "statement": "`HUB_TRANSPORT_EMITTED_HARNESSES` is exactly `{\"claude\"}`: only claude's hub wiring is emitted per stack, as `emit.write_mcp_json`'s `.mcp.json` naming the hatago entry (http url, or command/args under stdio) plus any `direct:` servers; a direct server named `hatago` is a schema error even in the all-direct branch, so a stack's validity never depends on a second recipe.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/emit.py#L101-L171",
+          "version": "repo-lines-v1:sha256:6126b01cbc9206d548eff1b4c6a67caec04e952d760f1356f94fe0a3d1ee9c73:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MWRmZDFlZDAyYjBlNWE0MTI0NmZhZWUyOGZmNjEyNjBkNmY0ODgyYTk3MzQzOTZjYzAwZmU3YWU1MGRkY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjNjA5N2JhMmRhZGJkZDc3MTU4MmI3NGYxMjFhOWQxOTc0N2ZhNTM3MjBkNzQ1MDVhZmIwNjYwMWNmZGJjYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkMDRlN2MyNDU2MWIxN2JhNzRiMmE2ZWQ3Y2Y2ZTE4NGUzMTQ0ZGRjMTFhZTIyN2RiMTU2YjBiNWY2OWY5NWIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/schema.py#L1134-L1139",
+          "version": "repo-lines-v1:sha256:a39348381d483e057be862df780dea351bd00d54d457d4f2ce568adbcc076d36:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTM4NWMxZDMxMDBkOWQ1OTUwYjY2NTJmYTFiYjU0MjMwZDQyMzA0MTVlOTAzYWE0OTQ3ZmE5MjcyZDNiZjk3ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjIxZThiNWZhMWQ5Mzg0MWZhMjVlZWU1ZGQ0MmE0YTUyNzQyNTYwYWQxODlhYjAxYzk4MGEwMDI2NDIyMGJkOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTFjNjJlYmIwZTEzZGI5ZjczZDVkY2JjYmJkNjgwMzJjM2QzZDZmOTc5YzRiYTRkNzY2YWE0MDY4NjhiNTgwZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmMxZjAyZmQ3ZWMxZDQ2MmMwY2I4MThiOTQ4ZmZlNGY3MTViMmMyYzQzMjYzMGMyMzJkZmUzNGQ0Mjc0M2ZhOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9b87a6bcda644eab841b592eb4c8a582",
+      "statement": "`_validate_direct_servers` and `_validate_hub_transport` fail the build when a non-claude harness is paired with a `direct:` server or `hub_transport: stdio`: the server would be excluded from hatago.config.json and absent from a config harnessed does not emit, so the recipe would read as configured while the harness never learned of it.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py#L206-L246",
+          "version": "repo-lines-v1:sha256:c70cde9577965447e5da633990f8f0b771b6988cf418674ef58a64c74297df36:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5ZTg2YjEwMTgyOTllNzVjMTg0Mzc1YzZkOTk1YTYwOTczNmQxZjcyOTM5NmQzNzlkYzlmNGJjYmYwNzIxN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2YmM0Nzg5ODZlNzI0YmM3MTM0NjJlMmNhOTI3MGNkOGUzNTQxNjJlMzQyOWE2ZmRhMGVjZjFjMDlhOGYyNWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b43da6bf120c49e2a0523b718c69e31b",
+      "statement": "`container_run` re-validates the direct-server rule at launch (`_validate_direct_servers` on the launch-resolved server set) because the container path never assembles — an image built before a recipe gained `direct:` would otherwise come up silently toolless on a non-claude harness; CodeRabbit's suggested remedy of routing direct entries into omp's config was explicitly rejected as undoing the only-claude-emitted decision.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3655-L3670",
+          "version": "repo-lines-v1:sha256:68d39a5a5e156dc6e258f4046930923789cae7c34ab7b5a34c583775bc6bcb4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4ODRiM2QwYzcwNTM4NDQxMWZlZWIxODQ5YmM1MzE2Yzg2ZjY2ZWY2YTdhODJiNWM5Njc3ZDQwNjkwMGJjMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMGYyZDM4MzY3MzU3ZjE2OWRmMGIzODFiODliZjE4YzJhMDliZmZhNTIyOGIzZjIxNWU4M2I0YmQzZGMyYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyNDRkZjU0OTM0MjRkYjllMWRmN2M1ZDQ5NWY4MTcyZTJiOGUwNGNiMGI1MGRhM2JkZDNhNGI3YWI2MWY3ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NDA3NzI5YzI5Mzg2M2RlZjM5NzkwOTJmNGQ4YTVhMWVmNDBiYmQ1Njc4MWRkMzA1MjIzMmNiZTA3YzY4ZTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c4703b96be0f436ca239a8055f465d03",
+      "statement": "The launcher passes `HATAGO_TRANSPORT` explicitly from `Stack.hub_transport` (literal `none` when every server is direct) so emitter, launcher and entrypoint cannot disagree; the `harnessed-start` entrypoint starts the hub only when hatago.config.json is mounted AND transport is `http` — under `stdio` the harness spawns its own hub (which is what makes OAuth children authorizable), and under `none` no hub exists anywhere.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/harnessed-start#L21-L39",
+          "version": "repo-lines-v1:sha256:194f66dbbc62ba32a1a256c8a101f3f4a86e8e44e9d880700ed900aff97d7f48:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4NTgwNjI2YjQ4ZDRhNWE1NmYxNDBhZTQ5NDllZTkxYjY1Mzk0ZDU0NDZkODQyYWJjZmI2ZTAwZDRhZTRiYmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NjlkMjM3Y2Q0MjBiOWQzOGI5ODFhMGE0ZjY3NzAxOTBhNGE4M2RjYTFmZTU2YzRmNWJhMWUyY2JjMGVmNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlMWMyY2M5NzkyYmZkN2UwOThhNDc0NmEzYTExMmRiYjA2ZTczZDU0NTBjNGNjOTU5ZWMyMGU0ZTE3NDM5ZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlNzRlOWExNDVhZTdmNTU4ZmM1YWJhNGJhNzQyOWYxNjljOWEwNzJiMDI5MWJlYjE4YTFmODNhODkzN2Y1YTYifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L113-L123",
+          "version": "repo-lines-v1:sha256:e7ef3f3a1cb439c6b751b29eb30588188efdccca478b7ea1cff5dc89ecf1d044:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5NmViYTRlY2YwZDE4MzczMmM3ZjRmYjc5NmIxN2Q5OGRlM2YyMDZmNmI3NTBkYjAwZTdhYTNmNDAxNWI5MmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MmZjZWE3N2I4ZjdlNjMxMDYyMjljODk3OGNkNDAzMjQ4M2JmOTNlNDI0MjQwZTU5NzQ3MDkwNzk4YjdmZjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxNmQ1MmU2YjVkMTU2MGQ2MzAyN2ZiNjBiMTdiZjc5ZTU1MGQ2Mjk3YTYyMTQ1Y2I2YWFlNmZmNWU0YzA3NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwZmYwYmU0MTQ5ODA5YTdiMjE1NTc4NzRjZDMzNDZmOGE2MGM4YmY3MjA4YjZlZTg3OTMzNjUwN2FjZGRjOWIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3391-L3400",
+          "version": "repo-lines-v1:sha256:0d3ec3c812878c2f069ec7c501e94eb6beafb67830310fddd148b7bd16068ed9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1NzJkY2RjMzhiYmE5ZmJhNjJlYjkyMTdkODM1ZWQ4ODYyYzliZmM2NDlhNmZlNDdmYTM5NjhhNjQ3MTI1ZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjZmVjYTQ0OTJlMTAwMTEyZjgzMjhkY2VjMTVkZjIyOGY2NDgyMmFlYWM2YjY2MjY4YWIxM2MyMTMwODI2MjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhMGYyNmY5OTJlNWM0MWM4ODhiNDRjZGJlZGE5MGQwZmYxZDYwOTgyMTMwNTQ1MzNiZmU5NjgyZjQ5ZmIyOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkNWEwZmU2OTVmYTMyZmE0MGRjNzk1NzA0ZTQyN2RiZjFkYzM2N2I2MjQ1NjJkZGZhNTI3YzU0ZDMwNjljMTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_35f8d5663c7e4165893b92cb0002885e",
+      "statement": "claude is the canonical native reader: the attach command is `claude --mcp-config '{mcp_cfg}'{strict}` where `{strict}` is ` --strict-mcp-config` by default so the emitted file is the only MCP source (written even with zero servers), and `--no-strict-mcp-config` drops the switch to opt back into the project's own `.mcp.json` and user config.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/attachcmd.py#L22-L33",
+          "version": "repo-lines-v1:sha256:7bc442cac2d8db968f23c25816400076ff99134e0167c7e8807e4f4bd38d2121:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiZmM0MGQ0OTVmMjJmYmNiNzdmMTA5NGFjMjlmMzdkZDZkYjYwMmU5YzZjNDE2ZTc0YTQ4ZmI0NTc1ZjNiMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNDcxMTA3Nzc2ZmE3MTJiNDYxMGE1MGQyZThjNzlhZGJjZjUyMTAwYTExMGEwM2ViZDYzMzM3N2U4Nzg3YTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5YjJjY2UwODdiYmEwMjEwZTY1NDAwMDdiOGIyNzcwYmFiODlkMjNhZGFiY2U4MTBjZGU3NTA3ZmUzNzJmOTMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L106-L130",
+          "version": "repo-lines-v1:sha256:f784bba8b1c1ca0dacf32357d9be10b5a4a3dc28bb0f8fbeeba386c87f0cd7c0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4NjYzMDU4NGRlNmU5MDAzNzc1MzQwODYxOTkwM2YzZGE3MGZlMjhlZGVjZTYyNDRlNTFkYjQ2ZDg1ZDZmMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1MGY3ZDc0MDdhOTNjNzNmNWJhOGQwZDRkODUzNWVhMDQ3ZDM1YWJlMWU0YzA1YjQyYWE4OTNlMWM3ZTM1MGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiZWVjMmRlY2M5ZGJiOTA5MzdiNjM1MjQ5N2U4Y2FiOTA3YzVlMjk0N2M2MDgxNjc3ODRkZWMyODlkMjY0MWIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2525-L2535",
+          "version": "repo-lines-v1:sha256:348e7b598aa990f39f86582b52e9f8ee3bcf77c0f7a72af41d8b38f5b22dcde0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZmI4MGU2OWY3MjgzODVmNGJmMWVlYjM1ZGQ1ZTM3ZGUwNmQxMTBhYmFmNzE5YjYwZTc5YTlkMjQyZDQ4MDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlNDJjMzA1ZDhmYmY5ODVmODkyNDZmMGE5NTM4MjQ5MDQxZWU3MWUyNzFjODhlMDRhNzU1ZjA3NTBiNTRkZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyZDE5NWRhY2FkNDRhM2VlZWU1MzAwNzIyMzkwM2FjYzljOTRlOGI5M2FmNzQ1YTNjZjMxZDczZjlkYzk3YzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjYzhiNTU3MTU1ZTA0NGIyZmYyZjA3OWYzMzMyMGQwMjdkNjU4MGUwZjcwODg1Y2Y3ODk4OTM3MjUwMDAwZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_95b118789fd145b4b596fa9e40131f8c",
+      "statement": "omp has no `--mcp-config` flag and reads MCP servers only from `~/.omp/agent/mcp.json`, so the container path generates a per-instance mcp.json (host file contents plus a `hatago` HTTP entry) and bind-mounts it ro OVER the rw agent-dir mount — the more-specific mount wins, so omp reaches hatago while the host's own mcp.json is never mutated, regenerated every launch so host edits propagate.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/mounts.py#L1010-L1043",
+          "version": "repo-lines-v1:sha256:453f4f01ed3e7121ae9dfd522e4d9edfa1086e11ddc24cad63e7a876c8bb91c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwZjA0Y2YwNDgzYTFiZTk0NjQyNjc2MzJlMWExOTE5YTExMDU3NjlmM2M2ZWRiZTRlOGJhN2RiMmMyOTI4MGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2MWQzMGRmYzU0YjA1OTJhODUzNjc0MjhhZjcwZmVkNWVmNGY3YTFmNjFhN2EzYzY4MGU3MTc3ODczZGFhOGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyNjljYzQxZjNiZDEyNTlmODg4NTg1Njk1NjQ1MTk3MWZhMzA2ZTcwYTA2NmMzYmI5ZWY4ZTExNmIwYWNkZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc0NTNlZGIwNDgyODA1YjAzM2VjOGZjMmIzZDQ1MTdjNGYwYjMwNTlhOGNhMTc4NDZkNTg4YWE4ZTM0MzFhZjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_74e01a09ac644c5196b1647079941120",
+      "statement": "The omp image pre-installs the claude-hooks-bridge extension pinned `@drmikecrowe/omp-claude-hooks-bridge@0.5.0` into `~/.omp/plugins`; it maps Claude-shaped hooks onto omp's events only — no skills, commands or agents path — with 0.4.0 injecting SessionStart stdout / UserPromptSubmit context, 0.4.1 returning PreToolUse `updatedInput`, and 0.5.0 bridging PreCompact.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-omp#L51-L82",
+          "version": "repo-lines-v1:sha256:b8b27a8fac5856989cefe25c1a299da1837fae9e914bdb7ba576b7c3a1675a90:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3OTNjNDczOGE2YWNlYTZkMDRmMjE4ZDYxZDFlY2U1YjRjNWE2ZTJhMzc0MzlkYTgyMWY3YjkyOWUwYjcyYzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmMmRhMmU1ZDYyZGMzMTljNTcwNWFjZmNlMzY1Y2U4NzNhY2UwZWNhMTYyODUyYjlmMGE0NTdhMmMxOTE5MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkOWVkN2Q0Y2U2OWYyOTRkM2RhNDNiZGJmOThmOTkwYWRmZmIyMGQwMGJjOTM3NTZlMWQ3MTlmMGRiNDY1MzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1Y2U1YWM4ZDUyNDY0NmNlYmZmYzYyNTE5ZmI1NGM1ZjQ2ZTU2ZmU1MDJiOWIxNzk0N2E5Y2RjOTI0N2IyOGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aa906d8b5b4b4d9daa0d8bf8c07403d6",
+      "statement": "opencode natively reads `.claude/skills/**/SKILL.md` and `~/.claude/CLAUDE.md` but ignores `.mcp.json`; its MCP route is the image-baked `~/.config/opencode/opencode.json` naming the hub. When a stack ships `instructions:`, the launcher's post-build `_merge_baked_opencode` reads the baked config, adds a persona agent and a `.claude/rules/*.md` glob, and writes the merged config into the profile where the mount set overrides the image path — carrying the baked `mcp.hatago` block verbatim. The agent name comes from `emit.opencode_agent_name(stack)`, shared by config key, prompt file and attach command.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-opencode#L36-L53",
+          "version": "repo-lines-v1:sha256:f159e1902fa3da58d2cea3465c3f49ca77bacd06013a5b2bb46c3fcac4d2b8f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MWVkNmFhZDNkODc2ZTE2MDQyZmM5MTBmMDQ2OTgzOWJhM2U5OTFhNWI1YWM0MWY1YmQ2NzEzM2Y5NDg4ZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4NWIwZDFmMTg1ZTNlZDBlNjdkNTEyYWE2M2M4Y2IxZTViYTNlY2JlMTI3ZGNmNzg2ZWM5NzQ3MzcxYTZhN2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlNjhmNjFlOTg5NjNlMjZiNjQwMDg1ODA1YTQzOWE3OTVlYzdiN2RlZDY4NzYyYzQ1ZjdmMmM1ODQ3ZTZjMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1Y2U1YWM4ZDUyNDY0NmNlYmZmYzYyNTE5ZmI1NGM1ZjQ2ZTU2ZmU1MDJiOWIxNzk0N2E5Y2RjOTI0N2IyOGEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/attachcmd.py#L59-L69",
+          "version": "repo-lines-v1:sha256:7dd6ac699a17a7f7995fb803813a7c35f6d5cb169bb846d784874368c5955033:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlZWFjYTg0M2JhYzlhOTI3YWU2OGMzZjVkNzhmZmFiZTY1ZjY1ZDM3NjhiYjVmNmQxMzNmZmFmZWYxNzNhNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNTAyYzhlNzQyZDg4ZDhmOGNlNWQxZjE5NWNlZTI5MzE4MTE0NDEzYTIzZmI3ZDQ4OTQ3ODcxNWRmNWQ0NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyNzIxMWQwNTZlNzNlODllZjllMWJiZmE4NjA1OGUwNjZhYjgzOWQ4MjM3YTA2NTRlM2M1ZTU4YWExODQ1MTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmYWM4MGMzNjk1MmJhMWJhYjcyMjBlM2VjYjEzMTljYmQ1OTczMjVlMTNiZWM3YjIxMDRlNmRhNWRhZTg5MTcifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L1139-L1193",
+          "version": "repo-lines-v1:sha256:36b632afe5af2fbafc3e587d91150ac47e7eedd1845d7f4332266c51dd85b412:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MDBiMzE3NzBkOTJjMmU4NTI0Y2U4MzVkYTcwZjc1ZDliZjVkNTgyZmRlZjE1Y2VhYWY4OTAyMzRiYzQ3ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2NzUzZmI1NmZiYjFlZjhjNjkxN2MyNWI0OTA3ODhlMDIzYTkxMWQ4NDFmOGE3Yjk1NmZiYzMyYWY3YzAwNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNTI2ZWJhN2IzYzM1Y2Y2MGVjNzY1MzcxMTIyMmI2N2U1MDVkZjgxYjNiY2ViNTgyNjgwZWZmYmI4ZWRhYWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4ZDFmNDA4Nzk2NDVkOWFkMTU5MzJlZDU2ODZhNGE5YmIwM2M4MGMzYjY2NDdiMmZiMDQxNmYxZWQ0ZDQxODUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/mounts.py#L90-L100",
+          "version": "repo-lines-v1:sha256:9fa3d956a2c133e1ee966d594e5094b57645908715561977eb121afab61f4d97:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5M2NkM2Q2MmM0ODY0NDgxNDMyZGEwNTY0ZWYxZmJmYzAyZmU3ZmRiZmQ0NjExYWNiYzZjZjk0MzY2OTJkZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkYzZjMzRjMjI4MmVkYmVlZmJmOWY5ZDI4ZmUxMmUxZjZhM2U3NDVkYWNjMTBiNTNmYTg4NzJmNDJmYmRjYzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5YTlhNzFhYmMxNjRhZmY0Yjc2YmMxNzMzZjdmYmMyYTRhNGE0MWNkOTk3ZDhlNzMxMjRmMjFjYjU3MTVkZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0NTlmNWMzODM2NTk3OTJkMDk2ZjBkNzYyMDFmOTIyMDM2MTdkMjgyYTE4YzA4ODYxNGU0Zjc5YjI2YTljYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1dea5674167c4d6d92e018354fb71edc",
+      "statement": "antigravity (`agy`, gemini-cli-derived) reads `~/.gemini/`, not `.claude/`, consuming no Claude skills or commands; its MCP route is the baked global `~/.gemini/config/mcp_config.json` with agy's `serverUrl` key pointing at the hub, and stack identity is delivered in agy's own shape (`.gemini/GEMINI.md` plus a fresh settings.json whose `context.fileName` is the absolute in-container identity path — written whole, unlike claude's merged settings floor). agy authenticates via Google OAuth into the OS keyring: the attach shell starts dbus + gnome-keyring inline and a persistent per-instance keyring store survives recreates (`--fresh` clears it).",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-antigravity#L35-L64",
+          "version": "repo-lines-v1:sha256:e8451fcda6cc53140f8f17261ce825f8399a4c1ede8ab00baf9e43ba5f9dd762:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3MWRkNzNmOGVmMzBmMGQ1ZjY0MGE4MzY0NDkzZGEyNTFkZDgxYmQ1NGVmMzIzYWFiMDRjOTBhOGYxYjQyZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhOTg5ZWQyNTMzNmFmNGU4MmY1MWZjY2I2ZTA2OWI3OWMzOGIwYjU5MzgwYzRmM2MxODhjNWQ3NjQyMjQ4MjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjM2M5YTdiZDQ4MTZlNzZjZmJjNjY1ZjY4M2E1OWM3MjJlZjdmZWE5ODMyYWQ5ZjkzMTA5YTdkOWJjZmJlMjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1Y2U1YWM4ZDUyNDY0NmNlYmZmYzYyNTE5ZmI1NGM1ZjQ2ZTU2ZmU1MDJiOWIxNzk0N2E5Y2RjOTI0N2IyOGEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L248-L274",
+          "version": "repo-lines-v1:sha256:10f0df20869652290432a41f7940f31b5eddad01f21153f13bf26b4ef7c1e9f0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViY2I2NjgzOWQyMjdiZjk1MmUxNWJiNzVhNzhhYWYyMTUyZjg4NTdkZTFmNWVmYTM2YWIyNTEyZjNkMmJhYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlOTQ1MzExMDc5YmNjOTVhZDA5MmYwZDA1N2QxNjc0NjA4YzA3YjQxYjI4NjFjYjFmYjJmNzE1OTIxMDYxMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MjIzMTA2ZmQ4NzQyYjcwZWEyMzNmOWRjMzU5ZjRiMDJiYmIwNjliNzI4M2VlZjc2MjQ5OTUxNmJkN2I5YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4Yzc3MTgxMWY5ODdlOWY0MDZmMDQ0OTFlZDhiNTFiODcwMDI0MTU4NDQ0OGU5MGM0YjQ3NjM5MGJkZWU2NDkifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3877-L3884",
+          "version": "repo-lines-v1:sha256:1573c3db6fafbe360c9a7eddf172fd576cccb174d35594d597f3f48d9c3c19a4:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjUwMzEzZDdmNzEzODg5MDZkNTQ3ZTU1YTI2NGRhNzhiYzIwZTIxMDI3MmQ5ZGMwNTkxMDFkMGFkMTNiYTI1NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM3Y2FjNzhjODliMTE3YTI2Mjc3MjBjMjkyZGM2MDNmMzkzNGQzYzI5ZTU5M2RkMWFlNWVkZThiODUxZGYzYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDU5ODNlNmQxNmI5MTg1OWNjOGRkMDA5ZTViNzU3YjJmODI3MDk3NjgyZWQ0YzI0OWMxYWVkZjlhMmZiMWQ3OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjA0ZDMzM2E1Y2Y0ZDRkNjc3YmEzOTI5MjAyYjU2OThmNDM3ODQ4YTM3MzAxMzM4NTc3NDcxNzhiYjYyNDQ5MCJ9"
+        },
+        {
+          "resource": "repo://src/harnessed/mounts.py#L876-L926",
+          "version": "repo-lines-v1:sha256:d1197e69dcdcc41ba9bf3359a37bf4543d3edd961c89d9b158ef6bc01c54720c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlYzljNmRkMzZhYmMyMTAzOTE3ZDllMjNiYjY4Y2JmY2E2MDA3OWViMzQ0YjVlNjEzN2RkMjc1NzQ2NGY2ODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhZjcyMWI4NGU0ZWVjOGFjMWNkODVhMmUzMjY1OTVhOWFiOTZlYTkzNWIyMmZjZGNmYzQ4ZDJhNjQxN2M5NGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmMDRkYzgxNjJhZTQ2MDI0MDQyMjE0NzVjYWYzMTgxOWQ5YzUwZjQxNGMwYjQ0YTVhYjQ2YjQ0NjZlMmVkN2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5191d336556844f39ced5632a5d1eaf4",
+      "statement": "codex 0.139+ speaks Streamable-HTTP natively, so its MCP route is the baked `~/.codex/config.toml` (`[mcp_servers.hatago] url`); it reads no Claude skills or commands and has no directory-rules primitive, so the assembler inlines identity plus every fanned `.claude/rules/*.md` into the one `.codex/AGENTS.md` — and because codex silently truncates at `project_doc_max_bytes` (32 KiB), the emitter truncates itself under the cap with a visible marker and warning.",
+      "evidence": [
+        {
+          "resource": "repo://catalog/base/Dockerfile.harnessed-codex#L43-L52",
+          "version": "repo-lines-v1:sha256:af0ea836b8d8210cde7acc83cad7e8a4e9fa583d5caa4d5e9a5d6cd7131eee68:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMzQzMzMyZWEzYjUzNTNiZWZiNTVhZjQxZWRlZDExZDkzNWE5MzI4OWE0Yzk2ODM0NGJkZmJlZjVkYWI4MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjODA5MmM3ZDhhN2Y2ZTg4ZDEwYTU3OWRlODcyODUyNjQ4MjE2ZjllYzliYzUzYTYwYjJkYmI3N2E2M2RjNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkOWVkN2Q0Y2U2OWYyOTRkM2RhNDNiZGJmOThmOTkwYWRmZmIyMGQwMGJjOTM3NTZlMWQ3MTlmMGRiNDY1MzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1Y2U1YWM4ZDUyNDY0NmNlYmZmYzYyNTE5ZmI1NGM1ZjQ2ZTU2ZmU1MDJiOWIxNzk0N2E5Y2RjOTI0N2IyOGEifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L277-L353",
+          "version": "repo-lines-v1:sha256:8adf40d2ab3c0f28b1d969100a1d16cf426bc518e7acc3f5a39c36e8e9bb54fa:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1OTdkZGYzYzBjZDRhNTJlMDFhNTFiOTBiZDBjNWIyODFhYzljMTQ2MGViOTkwM2VhMmFkYzMxYjIxODY0ZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3ZDUyYzM3MTYzMzZmNzNlODRhYjUxNmMxNTM5MDBhOTI0ODVmZWEyNzk1NTQ1ZDM3ZDgwZjExYWVmZmQzNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzM2I3YjQ1M2Q1OTEwYTc3NGZhYmY3MGNhMTdlZTYxNGY3NjA0ZmE3MjM5Mjg2MjA3NzllYzJlMTBjN2Y2MmQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/mounts.py#L113-L118",
+          "version": "repo-lines-v1:sha256:777559ef82f86ba10fcaf19f8b06031c479de4ac5ce7a430457887cb7d7869b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWFmZDUyZjcwNTI3NmUzNjM2M2MxODhkMGIyOTBhMDlmNjk5NmQxODQyZjljMTEzMmZkYWUyNDVjYjU5YWUzZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODc2ZmZkZTI1N2IxYmNlNWU5ZmVhNTEzMjQ5ZjAwNjYzMDIzZTZmNTEzMmRhYTg4MDJmZTBhNGFiNjRjM2Q2NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDRkN2ZkNWFkNzc1NTAxZTVlM2JjNWQ5OGM2NzFhYzA5OWY5YTIzMmUwYzU3YjlmYzc0ODUxNmE3OGFhNGFhZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzI1YzZhN2QxODA0OWU3OGM1OTNhY2E5MzJjMTY1YzU0OGM0ODliZjFiNGJkYTIyMmU4ZjM5YzI0YzFhYmEwNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f860b0b1d1514fabba7a9643505ba62c",
+      "statement": "The host backend's `_HOST_HARNESSES` record holds exactly claude (`CLAUDE_CONFIG_DIR`) and omp (`PI_CODING_AGENT_DIR`) today, each row pairing the config-dir env var (whose value IS the per-stack config/agent dir) with `argv0` and a `share_state` callable; materializing is deliberately not a record field because the two harnesses lay down different directory shapes, so `_host_launch_plan` branches once on harness.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2139-L2175",
+          "version": "repo-lines-v1:sha256:628abe44a24eb4b526f3d3e8373d373b29bdd4006eeee144e51498ceec928faa:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OWExMzk3NWMyNTZlYzgzMjBlMjAxNjA4M2M5NmRmNjM3Y2EzZDM1YmViZGUyMzE0YmVlM2E0NzExYjU2Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxNWMzNDM2OTRiYTBhZWFlYWU4YjE0NzNjNDVkMTkzNmVmYjEwYWNjNjY1YTFkNTE5ZmVkNTJhNjEwODMwODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlYTUyYzVlZGU0MWNkNDUxYzcxNzU0ZGRmMmJhZTE3MTc4NTUwODNhOWFkYjFjMDc4MDk2MDM1NjdlNDI4MTAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2240-L2242",
+          "version": "repo-lines-v1:sha256:03002f6b7448061d562caeb45f0e77e899796d2c55a0ddeed41f10471dd1370b:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWU2NTMyZTdjNDg3NWY0OGM2NmRmOGY5M2UxMDA2NzRhZmFlNjY4MWJiZmFkYjVkZDU0ZjZlMmNhNGNiNTA0YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmYxODZmYTQxNDY5MWQxZjY3YTAwMDVhOWRiYTgzMjZlZTdmMzk5ZjYyZmNhMzdkNzM1N2MyOTE5MTA3NTBkMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWE4NjNkYjU3NmI1ZTBhNTAwYjM3MjY5N2QzZmYzYzU0NmIwNGFkNTA4YjZkY2MyMzM4ZDg4NDA4YWYyYWVmYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDkxYmM5MTVjYTA1YTNlMjE2Y2I2MGZjNzRlZjAyYmUxYzM2ZDUzNDE2YjdiZjFlZGQzOWMyY2I2MmViYmIxNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d3d53c631a6745ae996e9865701ba043",
+      "statement": "A harness qualifies for host mode only if it exposes an env var whose value is a per-stack config/agent dir; codex, opencode and antigravity are absent because their rows are unestablished — no equivalent lever has been established — not because host mode is claude-shaped; adding one is filling in a row.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2141-L2159",
+          "version": "repo-lines-v1:sha256:839fed5dfbde5fa250d476adb28d76a4635db8e29bfe7686323c1a4032f119b3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkNGFhOGRkMzdiOTRlMWQyYTEzMDNjZmMyNjQ2ZDhhZjllMjBiZTE1NjE1MzNkOTkyYjgzZWU3ODA2YzgzNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjYzQ3YjEyYjAxYTFmZTk4ODI0YWVkNjM5N2YwOTlmMzg1M2MyNGE5YmY0NjZjZmU5MGE1NDVhMjU1NTYxY2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxOTgxNTRjMzcyYTMxY2FkMjdkZDA2N2RmNWRkZmY0MmU4M2NiMmIwM2FiZDg5MjYzZmIxYWFhMTMxNmFkNTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_83d258e800234cf28fab446df2836af8",
+      "statement": "The host-run harness argument is spelled out rather than defaulted because `path` is the second positional: a defaulted harness would make `host-run .` bind `.` as the harness, so the grammar makes the harness lead (`harnessed host-run <harness> [path]`).",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2936-L2939",
+          "version": "repo-lines-v1:sha256:59d967814188b007b555130c6e12063827bbb33c237b82fdc64ffeecf21e9910:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDA4MmQ1YzRkOTFkOTUzZGMzMjEyYzJkZGUxODUzNjA4OGMwMjU1MGRkNDIyMTc5Y2Q3MGFhNmJjYzE3YTA5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTBhNDI2ODVjY2FiOTE5MDFjNzRhNTQ1MTM0M2MxNzEyNDI1ODQ4NzU4MDNmYjExYzRlN2RiZGIxMmQ2ZGRlZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTk4YjA2M2Q5YjQ3ZTY1Mzc5NjI1NTcyY2NlMTk3NjY5ZDU3NjdlMTJjMThiZTA3NTY1MmI4Y2Q5ODFjZThkNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGJmNTIxZTEzZDA1NWMxNDNmOWZhNTAwNjNiNzg2YzlhZjk2NThhNjMyNzBkMDkyOWZiYjg2M2EyZDM0MTZlYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_14b303f2ff884e6985b2e4a6a08dc0ba",
+      "statement": "`share_state` is the host analog of the container bind-mounts, established per harness: claude symlinks `.credentials.json` (guarded against `CLAUDE_CODE_OAUTH_TOKEN` and with a replace-on-refresh rescue) and the session-state dirs, and copies the `.claude.json` account snapshot so onboarding is skipped without leaking writes back; omp symlinks `agent.db` (auth AND usage ledger), `history.db`, `sessions/`, `blobs/` and `memories/`, keeping config.yml, settings.json, RULES.md, APPEND_SYSTEM.md, mcp.json, managed-skills, terminal-sessions and models.db per-stack — and omp needs no credential rescue because SQLite rewrites `agent.db` in place, so its symlink never becomes a stale regular file.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L379-L418",
+          "version": "repo-lines-v1:sha256:ad284279ea0b71ebe5127f63a4131e4c29620301288c6249debd4de2e6bf6f0a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZDE5YzI5NGJlODVjODFmZmU0MDM1MDg0NDk4MDJmMGY0ZjhlZWE5MjJjODdhYWRjNTA5OTI5MGY1MmY0ZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2NDIyMDA5ZDMxOGY2YjhjYmI5MGU4MzhkMTliZjU3ZTFhMzgzYTQ5OWFmN2U0ZjY1YWE0ZGUzOTQwZjhiZGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4MmMxYzk3OGE1NTRiN2UwMDYyYTA4MmFjZTdiMTZhNDBjOWIzYTBjNzExMjYzZDU1NWI2MWJiOWFjOTQ4NzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3MTZlMWYyZjRhYjEwMTkzNjA5MTliYWQyNzY2OTc0NzcyZDU4NzZmZWRiOTA5ZmEwYTE0NzVlZDYwM2ZlZWMifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L443-L464",
+          "version": "repo-lines-v1:sha256:d48ca6d80803b8667808a0a674b24fa06df8f318835fe82c7aa7789cec3d011d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmMWRhNDZmNjZmZTNlZGNhNmY2ZmRiZmI5MTVjZjIwY2E3MTA4YTdmNGQ5NDQwNzMzMzlkMDRmNjkzNzgxOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNzg0M2NlNjJiM2Y3MzA5NzEwMGMzMzcxNWI4OTMwYTdkNWIxNTc5MTk4YmM2MTU0NjQyYTI1NzhiYzU5N2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxMjRhODcyZTVlMmQ3MzZlYTI4ZTcyMzFlY2M1ODRjNzVlZTMwOGIzN2ZlOWE3YmY0ZThiMzBhODNlMzdjMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2N2U3NzQ1OTU2YjQzNGI1NmM1OTAzZTQ1MGVkYjU5ZDRlMTBhNmZmMDk5OWYxZDVlNmQ4MWZjY2ZhYjZkOTIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2243-L2247",
+          "version": "repo-lines-v1:sha256:6e8ad700ab5c7f276a622c70c985d8c0ddfccc9975cdcbb0331b54e7bb166e87:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjA1NTM3MzkwOTU2Y2Q2NDIyZjE1NmE4NjEyNjA5ZGEyNzA4NmMxZTYxZGQxOTU5ZjllYzA3Y2NhMzZmOWUxNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWIxNTVjY2E0YTRlNTEwMjYyYzMzNTk5YzY4OGFmNzJhYmNkZmU1NzlhMmE5MTlmY2Y5YjUwM2RiNjI5ZDA0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDMwMDJmNmI3NDQ4MDYxZDU2MmNhZWI0NWYwZTc3ZTg5OTc5NmQyYzU1YTBkZGVlZDQxZjEwNDcxZGQxMzcwYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzlhMDk1YWM0NzMyNTQ0Y2Q1ZDk3YmYyMWY1Y2VhYzE2OGZkNTEwMWM3ZWI3YjUzYjI0OGY2MDhiNjFlOGE3NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_538242029f984a778f91f6d4cf14396d",
+      "statement": "`hostrun._HARNESS_CONFIG_DIR_ENV` pins each harness's own config-dir variables wherever catalog-authored content runs host-side (installs, setup scripts, the `setup.condition` eval), applied last: claude gets `CLAUDE_CONFIG_DIR` at the stack home, omp gets both `PI_CODING_AGENT_DIR` at the agent dir and `CLAUDE_CONFIG_DIR` at the nested bridge dir. Pinned rather than unset — an upstream installer honouring the var must land in the stack, and unsetting would send it to the user's real `$HOME/.claude` (measured: bd harnessed-8px.26 put 69 skills in an unrelated stack's home). `PI_CONFIG_DIR` is deliberately not listed because it is a name under $HOME, not a path.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L320-L364",
+          "version": "repo-lines-v1:sha256:81f44e79cb1fde17a4eccaff0323601b1a0306b657538f87b5d3c435564050b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNDMxMGExMGFjOWJlM2Q5ZTM5OGI0N2Y4NTY2NjkxYjI0MjM3MGY3NTU5ZmQ5YzliYTZlZThkMzE2YTNjNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ODczMGFmMzQ5ZTY2NmVhNWFiYzlhZThkOGIzZGM4ZDFjZmZiYzM1OWM0NjZkNzdhYTIwM2ExMGFiOGI2Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzZTU2YjRhMjJhZDRlN2VkZjk0YjFmNWMwZjYxMTAxOGU0YTZkYzA4Zjg0Mzg2ZjY4YmFmNzdkYzZmMzVhYTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_76962fcce5024310b709effc399a4f22",
+      "statement": "Host omp writes identity WHOLE — `emit.render_omp_identity` renders `{filename: text}` for whichever of APPEND_SYSTEM.md/RULES.md the stack has content for, and the host materializer writes them without delimiter blocks, pruning or dedup, because under `PI_CODING_AGENT_DIR` the stack owns its agent dir (the whole file is its block); host launches assemble with `shared_identity=False` so nothing deposits blocks in the user's shared `~/.omp/agent`, while BOTH launch verbs still prune blocks of stacks that no longer resolve.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/assemble.py#L249-L264",
+          "version": "repo-lines-v1:sha256:81dca5e9568b7f1dee80879176ece1af62f1269bf2d436bd091c1794a26fbeac:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzOTQ0MDAwNzcyMGQ4ZDk4ZjEyZTI1M2U1MWI5ZTIxNjQ0ZDBkODQxMTJjNjIxOWViMGVjOTdjYmVhMTA2MGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiZjJiMDA3ZTBjZmE5YmJjNWFmMDMwN2MzMWYzZjRiZDRjZjZkNTAxZTEyNzAyY2JlMjhlMjBjMzkwZjIzNWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5YzNkOGJlMDUyZGMwMzcxOWJkNmI5OTYwOTc5ZjUxZWQzYWRmMDAyNDcxYzRkMTc3NzFkZTgwNDIzZDE4M2EifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/assemble.py#L336-L349",
+          "version": "repo-lines-v1:sha256:8e0f4a8888fef91d144fb37a0eb871c3cef2ab4715967b523de897f4a4428c59:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiOTdkNTg0NDhmNjA0OTAzOTNhYTg2N2UyZjBiNzU4YzdmODE2NWRiMWRlMWYzMjU3OGFhM2RlMjgwZTdlMjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3ZjdjYTQxMzM4MTcwZmU2MmQ0ZWNhYWVhNGY2OGNhMDBjYWU4MDgwYzJkMzJiMGJiZGU4MjQ4ZWVlMzlkNzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlZDQzNjk0YmEwMDAzYTBkZThhMTE3MmI0YzFkMTQ1ZmY0MTIwZjZiMzViNWI4M2NkZTgzMmQzZDc5YjRlYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxZTZhNjhhYWVhODkzY2I0NWNlYjg4ZmYwNmI3ZjMxZjc2M2FjYjJlZWI3ODZhYjFmYmNhNmZkNjQyOWU4YmUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/emit.py#L536-L558",
+          "version": "repo-lines-v1:sha256:f46cac41a7847b9eea44ae6fe3f8a8b79668d483ab746f0248112c40c9b2b021:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YWM2Mzk4N2Y2NTZjZDkzMTU2MzU0OTcwOWQ5OThhMGU3Mzk1YmU2ZGEyYTkwZDFiZDc0MWVjYWMyZDkyZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NTI2YWZkNzhlMmJiZGM0N2QwODZmNjliOTdhZjYwZTQ5MjAzZDNjNDlhMTAwMDNmNTQxNzEyODlmOTYxZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhMGU4ZmFhODBjZjMwNTA2N2ZlN2NmY2JkMzI4ZWIyYTQ2ZTkzZDEwMzFkMjE5ZDNjOWUwNGY5MGQ0MWFlNjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliNWNmMTc0MThiNDQ4Y2UxYzg1NmFiYzMyN2NlODk4MTMyMTNjYWI3ODg5M2RlYTY1Y2Q5MTQ2YTQ0MTllMWIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2603-L2622",
+          "version": "repo-lines-v1:sha256:e7fc8fc26e32eb6edab9422b74d42f19ecde2145273f2e1735e552fc82ae4b21:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZTE1ZTdlZDY2ZjIxY2VhMzI0NmFkOTBiNzBmOGMxOGNjMjRjOTRlMjU4MWVjMGZlZThlZmViMGZiODkzY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwZjU0MjZjNTkyYmZmYmI4NmFhMWU1YzQxNmUzNjliNTQ0ZTBjN2RhYWE1MWY3OGMzMzY4YjAxYjhkOWM3NDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNDUwZjQyZTgzZDk1ZDVmODk2MTNmY2E1MzBjNjE2YzgwYWEwZGQ0N2RkOWQ0ZmY4ZjczNTFiOWYxZjM4MmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4M2VmYTA5YTU3NjAzZGQ3NjYwNjBhNWZmY2NiMDM2YTQxM2Y0YzVhZmY1ZWUyZWU5ZjQwYTJiMTBkOTg0MjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8d2240e9623b4960a5cd69a5cd0cadf8",
+      "statement": "`_propagate_host_omp_config` seeds the per-stack `config.yml` from the host's live file on EVERY launch, gate or no gate — it is a function of the host's live state, not the recipe closure the fingerprint covers, and without it a host launch would run omp's shipped defaults (a factory reset, not isolation). Host keys win; only keys the fresh file does not define at all are carried over, so an install script's writes to `$PI_CODING_AGENT_DIR/config.yml` are not silently undone — the same merge rule as claude's per-launch settings.json propagation, in YAML.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L615-L657",
+          "version": "repo-lines-v1:sha256:eee2256518b40b33fd000fbaca20645cabd25eaeae3ed4b2083a979a135350f9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3Y2ZiYmJjYTIwNjM2MGE1MTZkYzRjNTBhNzZhZGYwMzQ2OTEwODIxZWE4YTE5NTc2ODVlNDQyMzM3MzA5YWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlMjM4NjhlYTFmOWIxMGNkMGNjMmZjOTAxZTdlZGU3NTYwZDgzZTJkNjY3MmQ5NWE4OTUwMDhmMTBmZGExNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmYzk5OGNlYWMwNWM4ZGY3NDE4ZGE3M2U5ODU4YzE0OTFlZDUwZjBmYzgwOWUyZGEyNDAyYzA5OGQ2MDY1MGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjYTE2YmUzODY2OTViODc2MjUwNzA1MTgzYTFmYzI2YzdhN2E1YjI1ODUwMTdjNDEzNTRkZTE3NGRjNTA0MzMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_93bb82af11894844a9793e6d7c43751b",
+      "statement": "The claude-hooks bridge resolves hooks from `process.env.CLAUDE_CONFIG_DIR || ~/.claude`, so leaving the variable unset on host omp means the user's GLOBAL hooks fire inside a stack session while the stack's own never run — the inversion of the backend's isolation promise. A host omp launch therefore materializes a nested per-stack `CLAUDE_CONFIG_DIR` at `<agent dir>/claude-config` and exports it at the exec; settings.json is the only file the bridge reads and the one file in that dir propagated every launch, gated or not; it is nested (not a sibling) so `host-gc` does not see a phantom harness, and deliberately distinct from `host_home(stack, \"claude\")` — no claude `seed_auth` runs on the omp path because omp authenticates out of `agent.db`.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hosthome.py#L495-L515",
+          "version": "repo-lines-v1:sha256:dd22c8434f0ffc6bcfa4ab618763f333dfa42dc012890c6b29a84bdc27a68314:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0OTA5ZmFiMjYxYjU3NmZkMmJiNWYwMTk5MGFkMjZlMTg4M2ZlN2I3ZGY1NjJhYWI1YjYwZTAwOTM4YmY3MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5Mjk0ZmJmOWJkMjM1NTlmNjgxZDQ2OGQ4NmE3MGY5MjhjMmJlNDMwMDA5MjMxMGRmNzA0ZjM2MDUwOTJiN2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNzU3NWMzYjc3NzZjZjJmOWMyYmZiY2E0NGYyMTQ4MTNhNzgyN2VhYTljMzg0NTRjNzAzYjY4OWE3NDQzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0YzU4NTA4MTdkMmNlZDQyMjY5NmQ3OGNmZWYxZmQzMjllYTU5OTc3MWE5YTZiNzhlZTlkNzk1YWE2NTRkZWQifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2177-L2217",
+          "version": "repo-lines-v1:sha256:f407f061f7fb5c24a6535e1002e221991a63c88019063fd87e34087bacffc654:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4M2QxODc3NzQ0Mjg0MmQ5NTgwODZjNThhMDdiNGNjZTRkOWJmMjQ0MjZiZGI1NWZmYzEyYTNlMzYzNjc4MzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZjUwMjY1NjRlODdmYjk4ODAwMzRkNTMyMjA4YjQ3NDk2ZGQ1YTA5YzAyNTg0ZmQ3YTQ1ODM1MWZkMjlkMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5YmE0ODRkYjBkYTBjMTRmNWZlMDkzMmYwMGU3NGUwZjczMjA1ZTMzZTZkNDM3NTc1MTExYmUyMjg4NDJlMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljZjQxZDk0YjY3YjVkYmJiZDIzMzBlNDc4NDgzODdjY2Q5MTc3ZTNmZjdmNTcyNjE5MDVhYzIzMGJjMDNiNTAifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2779-L2792",
+          "version": "repo-lines-v1:sha256:aab7c3b691e1fa1c9c97ec0c17a74d3ff4632c719ca212c3e0e82d9d3700040a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkOGM2NWE1ZGYzMDY2Mjk5Y2I2YjY4ZTBlZjhiZWIzOTg4NTBjZTkxYzgyZjA0N2FlNGMyOGM1Njg1YTU1ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5NmQ2MjY1NmRjZmYwNDE1Mjg5ZGFkMjgxMDY1NDZhNTA4NWEzZmY0MjdiZDExNzEyOTJkZTNkYzc3NzQyODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwOGVmNmZlZTYyNDIwMjY1ZGFjYWQxMWZkNjBjNWZhZWYxYjg2YmUwYWQ5ZGZjNjY1NDkxNDMzNjIxYjRlNjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4ZjUxMzEwYjZjNmYyNjBkODExM2RjYmY2YmU4ZjgyMTE1NGRjNjFjNWY2NzEyNTI3OTMxN2YzNzgwNmUyZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_704aca0c57734cc2a0b7d9ba8cd77d75",
+      "statement": "Claude-shaped `skills:` are inert on host omp — the bridge covers command hooks only and omp's own skill surface is a format harnessed does not emit, so the skills land in the profile read by nothing — and the gap is stated at launch by `_note_host_omp_skill_gap` in the `[INFO]` register rather than encoded in `capmatrix`, whose axis is the backend; hooks are NOT part of the gap (delivered via the bridge and nested `CLAUDE_CONFIG_DIR`), and the remedy the message names is running the stack under `container-run`.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/capmatrix.py#L35-L60",
+          "version": "repo-lines-v1:sha256:b94b87a5fa3dadab11ce9aab016cab9214a96dab661d32fc6841feb3e6b336cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwMzc5ZTZjNzdmMTU3OTAyYzM0ZGU5ZWE0NmQ1MzJkMzE3MTk1MGE4ZmI2MTBkNWJlZjNmNGI3ZTU4YmZmNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjOGRjYTU4YTE2Njk3MmVlZDlmMzkyZTk4ZmQwYTM5NGE5ODljMmU3MWY2NWNkNzViMDg2Mjk3MjBiYzEyNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNmNiNjNkYmMxNWZjYTdjYWMzMDk4NWU1ZTU2ZjJiYjhkZjhhMTVlZDAyYjI5NTg3MGVmNjdkNjBjN2ZmYTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2376-L2408",
+          "version": "repo-lines-v1:sha256:2a4c63b8f973ec8630206f6dedfc320edc4a3bf562d0ecc4171628f7aa3e0b92:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhNGJlZTViYmNiODZlMTBjMDgzZTI3NTlmZWQ3NTczMzllYjg3ZjEyMDQ5ODkyZjE5ZTE3ZDRhYjZjNzdhNDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZTU2YjI0YzllZmE2MjQ0YWYwN2U5OTdkZTViODU3NjU1YmQ4NTBkN2EzYWYwNjExN2IzZWJjMjE5NWFiNWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4c766cfa6bc04c92a41dffb7f7cc6693",
+      "statement": "Host mode has no hatago hub: `HostBackend.wire_mcp` uses `_host_native_mcp` to resolve the stack's servers natively (claude spawns stdio children itself and connects url servers directly; service-backed servers are warned and skipped), and the MCP file is ALWAYS written even with zero servers because writing it is the isolation — claude gets `<home>/.mcp.json` + `--strict-mcp-config`, omp gets `<agent dir>/mcp.json` unconditionally (the per-stack agent dir is what strict buys on the claude path), and `--no-strict-mcp-config` for omp is accepted-and-inert, reported at launch.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/hostrun.py#L608-L644",
+          "version": "repo-lines-v1:sha256:8760abcea810d952d106293ec1bbd0f7da08c7ec0328b0c62c4029fd3368e907:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2NmFmMmU1OWFlYzYwMWE5ZmVlYjZjODRhZGM1MGFkM2EyNmE1MjYyZWFkY2ViOGRiZjMxYzZlODA3NTM1ZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMzYwODg1Y2M2ZjFiY2M2NTM2NTc2YjIzNjYwMTRhYTY0MjVkNGMxNWU2MDk5Y2FiMmI0YWM5YmIyZjVmYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmY2E5OTFjMWExZjEyNTc5M2YwZDA4Mzc0ZGExMzU0ODZiOTE1NjdkNTFlZWI5NzM4ZmY3NTk3ZmNhMDllZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L2492-L2535",
+          "version": "repo-lines-v1:sha256:91f325b80cef35ec2ae9dbe553202b79de25dbe9bcab436c899c88f78a7c3316:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzliY2I4YzJlYmRmYTc1NmU2ZDQ5YmUyYTljYzExNjIxMzYxMzkzMjhiMjlhM2UwZDg2M2FhN2NlMGEyZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlNDJjMzA1ZDhmYmY5ODVmODkyNDZmMGE5NTM4MjQ5MDQxZWU3MWUyNzFjODhlMDRhNzU1ZjA3NTBiNTRkZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4NzYwZDFhY2IwNDhjNzVjMTdiN2NmMDY3YWNjN2VjNjU3NzU4M2IzZThmNDk0Y2MzMDhmMTA1NzBiNDI3MDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjYzhiNTU3MTU1ZTA0NGIyZmYyZjA3OWYzMzMyMGQwMjdkNjU4MGUwZjcwODg1Y2Y3ODk4OTM3MjUwMDAwZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_db1b067cea504abba273df086125b80e",
+      "statement": "`attachcmd.py` derives the attach command from `_HARNESS_ATTACH_CMD` (claude `--mcp-config`+`{strict}`, plain `omp`/`opencode`/`codex`, `agy` for antigravity) with omp and opencode overridden in code — omp pins its session dir, opencode appends `--agent <name>` only when a persona was baked (i.e. the stack ships `instructions:`); `_attach` composes one `bash -l -c` line (mise trust -a, the Model A init prologue, the antigravity keyring prefix if any, then the harness tail) exec'd via `podman exec -it -w <start_dir>`, appending the `--` passthrough shell-quoted except under `--shell`.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/attachcmd.py#L22-L69",
+          "version": "repo-lines-v1:sha256:99dd5922cf0ccaaf7869224da26312582dd8b9b667d5676a52278701928163f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiZmM0MGQ0OTVmMjJmYmNiNzdmMTA5NGFjMjlmMzdkZDZkYjYwMmU5YzZjNDE2ZTc0YTQ4ZmI0NTc1ZjNiMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNTAyYzhlNzQyZDg4ZDhmOGNlNWQxZjE5NWNlZTI5MzE4MTE0NDEzYTIzZmI3ZDQ4OTQ3ODcxNWRmNWQ0NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNDcxMTA3Nzc2ZmE3MTJiNDYxMGE1MGQyZThjNzlhZGJjZjUyMTAwYTExMGEwM2ViZDYzMzM3N2U4Nzg3YTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmYWM4MGMzNjk1MmJhMWJhYjcyMjBlM2VjYjEzMTljYmQ1OTczMjVlMTNiZWM3YjIxMDRlNmRhNWRhZTg5MTcifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3856-L3893",
+          "version": "repo-lines-v1:sha256:63240a1503449db1b45354962f37fcd7ea1a33fed836f9b46eee07401ad49f9c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliMjM1OWU2NzgwODA1YWRjMjdlYzVjNjQyMjIxYTE3YjliY2JmOGZhOGM3ZGNhYTc1ZjA2YTZkYzU5NWQ2NmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkODE3NGU2OGE2YTE2MDYwOGRmMmExNTNlYzEwYTAzYzM5NmIzZWQyNDJmNGNhNzNjN2M2OGNkYzdhZTQ0NTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhZjQ5MDY1NGVhODYyODY5ODNiZDQ2MGQ4MmUxYzFhNDI5YTdmNDQ5MDQ0MWNmYTBhZGQwYjcxODU2OTIxZjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a8600bbdb0d1472c8fab071a1d85be30",
+      "statement": "omp keys a folder's session dir from the cwd relative to `$HOME`, so inside the pod — where `$HOME` is `/home/harnessed` but the cwd is the mirrored host path — omp escapes the key and `/resume` finds nothing; `_omp_attach_cmd` recomputes the key against the HOST home (`-` + path relative to `$HOME`, slashes folded to dashes; the full path when the project sits outside the host home) and pins it via `--session-dir`. The dir is fixed at attach time — `cd` elsewhere does not re-key the picker — which is what lets aoe dashboard relaunches resume the right per-folder session: the replayed launch re-derives the same start directory, so the same pinned key resolves.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/attachcmd.py#L36-L56",
+          "version": "repo-lines-v1:sha256:1b3477c15deaeb9295db151bd4d434cc71ead902eb59a2afa4084a38d98fc7a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MTFmMzA2NTJjZTM4NmMzMzk5YjNiNDFiNjZhNDIyYmI4NWY3M2UxYmUxZDFkZDRkMTZkY2U0OGEzMjhjMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1NWM4NzQ1NTBkYTVmODRhYzMwMWRhNWE0MmU4MzA5YWJmMzBjZWEwYmNkYjQwNWM0ZWU4NTNiMmJlMzdmMzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZjkzMDgzYzE5NzEyMWI5ODI3MDBiYThhZmFiZDE3MjJjZjFkM2U3NDA0NTA5ZTgwZWZhMjcyNDdmNjJmMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmMzZlNmM3N2Y2OTliZmY3ZGE2ODY1NGZlMTQyYjE5NDQ2ZGQ1YTAxZmZiOWUyM2IzMDFiZDQwY2EyMGEzMWIifQ"
+        },
+        {
+          "resource": "repo://src/harnessed/launcher.py#L3856-L3872",
+          "version": "repo-lines-v1:sha256:e933ea6a5bc6ae59d13f01d50643b168dc71ff59458212214abafbe498b3845a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliMjM1OWU2NzgwODA1YWRjMjdlYzVjNjQyMjIxYTE3YjliY2JmOGZhOGM3ZGNhYTc1ZjA2YTZkYzU5NWQ2NmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZjRjMWFlZTdiNjRhMDM4MzkwNDdmMTU1MWExM2NkNDM4ZGU0N2M5MmNkNGY2M2MwNzRkNTczZmZiZGFlOWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkODE3NGU2OGE2YTE2MDYwOGRmMmExNTNlYzEwYTAzYzM5NmIzZWQyNDJmNGNhNzNjN2M2OGNkYzdhZTQ0NTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlMWQzZTQyOTk4MTIxMDI0OGU5MzUyNTc1NTIxZWNlZjcyZGY1MWJiMTg5ZmUwNjIxNWRlYzJjMTM4YTBhMTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5847c972f95a4a01b41be3a200c0e097",
+      "statement": "A second, narrower omp seed shadows `config.yml` only when the host's file still names the retired local-dev bridge path: `_omp_config_seed_mount` mounts a per-instance copy with just that obsolete `extensions` entry removed, so inside the pod the `~`-relative path cannot both warn about a missing module and double-load the image-installed plugin.",
+      "evidence": [
+        {
+          "resource": "repo://src/harnessed/mounts.py#L954-L1007",
+          "version": "repo-lines-v1:sha256:a2ace52ebc9d52c2687aef5511e8e218400dc73186b451734cafc44b891af329:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYTFkYTJkNmU4YmU1ODY5Nzc1YmVjYjliYjY4ZmJhMmFlNjJkNDA3NjgzYzZlM2Y3NDQ3NzQ5MDM4ZDM1ZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4ZmQyZWRiMjQ2ODE4YWU5NTdkZjdhNjdjYjliNmE4OWY5ODBiYTkwNzY1ODBiY2JkMjkxOWYxZjdmODRlNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmMGY1NDk2MzhlOWRkMzY5MDFiNTY3MDk2MDE4NjA4ZjA3MzA5ZjBkMmVhY2MxOWNhMTFjZjc1ZDE1NzdmNGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjMDM4MDQ0ZTUzMzQxY2Y0NTMyNWE5NDI4ZjViYTUzZjQ0ZjVhOGQ3YjI3NzFhYWMyZGE0OGE0NzMyYzlkYTQifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-09-01T11:08:21.365Z"
+  }
+}
