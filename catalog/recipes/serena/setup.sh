@@ -21,7 +21,7 @@ cd "$HARNESSED_PROJECT_DIR"
 #    "recipe-setup-script", …), never the repo. HARNESSED_CFG_NAME derives from {repo} instead.
 #
 #    {repo} and NOT {gcd_db}: serena's registry (~/.serena/serena_config.yml) is keyed by PATH, not
-#    by name, and its cache/memories are per-checkout by design — so unlike beads, worktree-STABLE
+#    by name, and its cache/memories are per-checkout by design — so a worktree-STABLE
 #    identity is explicitly not wanted here. The name is a human label; the path is the key.
 #
 #    Two branches, because `serena project create` REFUSES an existing project ("Error: Project
