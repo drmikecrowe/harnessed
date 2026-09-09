@@ -206,7 +206,12 @@ jobs:
         env:
           HARNESSED_PODMAN: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: mise exec -- uv run --extra dev harnessed test livecheck claude --json
+        # `--keep` so the diagnostics step below has something to inspect. Without it `harnessed
+        # test` tears the instance down on its way out, and the collector then finds no container
+        # at all -- which is exactly what happened on the first docker failure: the report said
+        # "re-run with --keep, then exec ... cat /tmp/hatago.log" and the run had already discarded
+        # the only copy. The runner is destroyed at job end, so nothing leaks.
+        run: mise exec -- uv run --extra dev harnessed test livecheck claude --json --keep
 
       # THE LAUNCH FAILURE MESSAGE NAMES A LOG THIS JOB DID NOT COLLECT. `harnessed test` ends with
       # "Inspect the hub log: {rt} exec <instance> cat /tmp/hatago.log" — good advice on a laptop,
@@ -322,7 +327,12 @@ jobs:
           CONTAINER_RUNTIME: docker
           HARNESSED_DOCKER: "1"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: mise exec -- uv run --extra dev harnessed test livecheck claude --json
+        # `--keep` so the diagnostics step below has something to inspect. Without it `harnessed
+        # test` tears the instance down on its way out, and the collector then finds no container
+        # at all -- which is exactly what happened on the first docker failure: the report said
+        # "re-run with --keep, then exec ... cat /tmp/hatago.log" and the run had already discarded
+        # the only copy. The runner is destroyed at job end, so nothing leaks.
+        run: mise exec -- uv run --extra dev harnessed test livecheck claude --json --keep
 
       # THE LAUNCH FAILURE MESSAGE NAMES A LOG THIS JOB DID NOT COLLECT. `harnessed test` ends with
       # "Inspect the hub log: {rt} exec <instance> cat /tmp/hatago.log" — good advice on a laptop,

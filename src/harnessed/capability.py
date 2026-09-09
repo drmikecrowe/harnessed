@@ -84,9 +84,19 @@ HATAGO_PORT = paths.hatago_port()
 # predictable temp files on a shared HOST filesystem. This is a container-internal path harnessed
 # only ever names. (Do not spell the directive token in prose — ruff reads it as a real directive.)
 _HATAGO_LOG_PATH = "/tmp/hatago.log"  # noqa: S108
-MCP_MISS_REMEDIATION = (
-    f"re-run with --keep, then `podman exec <instance> cat {_HATAGO_LOG_PATH}`"
-)
+def mcp_miss_remediation() -> str:
+    """The "how to see why" line for a server that never connected.
+
+    A FUNCTION because it names the runtime, and the runtime is not known until it is detected.
+    Hardcoding `podman` printed advice a docker user cannot run — seen in the live-docker job,
+    where the report told the reader to type `podman exec` on a box whose stack is in docker.
+    Falls back to `podman` only when no runtime resolves, which is the historical wording and the
+    only case where naming one is a guess.
+    """
+    return (
+        f"re-run with --keep, then `{paths.active_runtime() or 'podman'} exec <instance> "
+        f"cat {_HATAGO_LOG_PATH}`"
+    )
 
 # How long to wait for hatago's stdio CHILDREN after its own port is up, and how often to re-ask.
 # `wait_ready` covers the port; these cover the gap between the port binding and the children
@@ -177,7 +187,7 @@ def build_report(
         else:
             checked = live.mcp_source or f"{HATAGO_SERVERS_URI} / claude mcp list"
             # Names where to look; never quotes what is there (T-02-07, bd harnessed-rv2.2).
-            detail = f"not connected (checked {checked}) — {MCP_MISS_REMEDIATION}"
+            detail = f"not connected (checked {checked}) — {mcp_miss_remediation()}"
         results.append(CapabilityResult(name=name, kind=MCP, present=present, detail=detail))
 
     for name in expected.skills:
