@@ -356,7 +356,22 @@ RUN chown ${USERNAME}:0 /home/${USERNAME} && chmod 2775 /home/${USERNAME} && \
       mkdir -p "/home/${USERNAME}/$d" && \
       chown ${USERNAME}:0 "/home/${USERNAME}/$d" && \
       chmod 2775 "/home/${USERNAME}/$d"; \
-    done
+    done && \
+    # ~/.cache RECURSIVELY, and only ~/.cache. Making just the top level group-0 was not enough:
+    # the agent writes into PRE-EXISTING subdirectories (.cache/uv, .cache/mise, .cache/pnpm) that
+    # the build left owned `harnessed:harnessed` mode 0755, which a <invoker>:0 process cannot
+    # write. The `time` MCP server is `uvx --with mcp==1.29.0 mcp-server-time@...`, so it needs
+    # ~/.cache/uv before it can start -- and the hub log showed exactly that, a wall of
+    # `mise WARN failed to write cache file: ~/.cache/mise/<tool>/...: Permission denied`
+    # followed by the server never connecting.
+    #
+    # ~/.local is NOT included, deliberately: it is 1.6G of mise/pnpm/uv toolchains and a recursive
+    # pass over it would copy the lot into a new layer, which this file warns against twice.
+    # ~/.cache is 56K, so this costs nothing. The agent does not mount the shared download-cache
+    # volume (nothing in launcher.py references it) -- ~/.cache in a running agent IS this image
+    # directory, which is why fixing it here is what reaches the running container.
+    chgrp -R 0 /home/${USERNAME}/.cache && \
+    chmod -R g=u /home/${USERNAME}/.cache
 
 # PROVE THE ARBITRARY-UID CONTRACT AT BUILD TIME, as an uid this image has never heard of. The
 # probe below runs as ${USERNAME} and therefore cannot see this class at all: uid 1000 is the owner,
