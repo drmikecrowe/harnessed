@@ -69,14 +69,30 @@ jobs:
         continue-on-error: true
         run: openwiki code --update --print
         env:
-          OPENWIKI_PROVIDER: openai-compatible
-          OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
-          OPENAI_COMPATIBLE_BASE_URL: ${{ vars.OPENAI_COMPATIBLE_BASE_URL }}
-          OPENWIKI_MODEL_ID: "glm-5.3"
-          # glm-5.3 is a reasoning model: reasoning tokens are drawn from the completion budget, so a
-          # tight output cap returns HTTP 200 with empty content and no error — a silently blank page.
-          # OPENWIKI_MAX_OUTPUT_TOKENS is therefore deliberately unset, leaving the model's own
-          # ceiling in force. Do not add it here without re-measuring against this model.
+          # Same provider config the local `mise run openwiki-update` uses (resolved from
+          # ~/.config/harnessed/.env.schema + .env.openwiki): the Anthropic-compatible face of the
+          # z.ai GLM Coding Plan. NOT the OpenAI-compatible face — non-streaming HTTP dies at
+          # undici's default 300s headersTimeout, and the streaming flag for that provider is
+          # broken in openwiki 0.4.3 AND 0.5.0 (`wrapModelCall` middleware returns an object).
+          # The Anthropic client streams SSE by default inside the agent loop, so response
+          # headers arrive immediately and long glm turns survive. Verified end-to-end in
+          # PR #445 run 8 — first complete finalize in eight attempts.
+          OPENWIKI_PROVIDER: anthropic
+          # The secret's NAME is a legacy of the first attempt (openai-compatible); its VALUE is
+          # the dedicated z.ai key for openwiki, refreshed 2026-09-09.
+          ANTHROPIC_API_KEY: ${{ secrets.OPENAI_COMPATIBLE_API_KEY }}
+          ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+          # Spelling verified against z.ai's live /models listing AND the local schema.
+          OPENWIKI_MODEL_ID: glm-5.3-flash
+          # REQUIRED for glm on this provider: the @anthropic-ai/sdk client guard
+          # (_calculateNonstreamingTimeout: 3600*maxTokens/128000 > 600s) refuses any
+          # NON-streaming call whose cap exceeds 21,333, and the planner is that one
+          # non-streaming call. 20,000 keeps it under the guard while leaving room for
+          # reasoning plus the submit_page call — glm draws reasoning tokens from the
+          # completion budget, and a cap this size measured fine locally. Do NOT raise
+          # above 21,333 and do NOT drop it low (a low cap returns HTTP 200 with empty
+          # content — a silently blank page).
+          OPENWIKI_MAX_OUTPUT_TOKENS: "20000"
 
           # No LANGCHAIN_TRACING_V2. It gates openwiki's interactive setup wizard
           # (setup/credentials/steps.js), and that wizard additionally requires a TTY
