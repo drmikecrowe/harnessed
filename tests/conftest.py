@@ -145,6 +145,12 @@ _REAL_XDG_CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / 
 # read it as a source of test data; it exists so teardown can put HOME back.
 _REAL_HOME = Path.home()
 
+# The REAL user data dir, captured before `_isolated_home` moves HOME. Rootless podman's DEFAULT
+# graphroot is `$XDG_DATA_HOME/containers/storage`, and XDG_DATA_HOME itself defaults to
+# `$HOME/.local/share` — so this is the image store `harnessed build` populates, and the one
+# `_isolated_home` re-exposes `containers/` from.
+_REAL_XDG_DATA_HOME = Path(os.environ.get("XDG_DATA_HOME") or _REAL_HOME / ".local" / "share")
+
 #: Named here because `conftest` pops it at import — see the block below the FORCE_COLOR pop.
 _OAUTH_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"  # noqa: S105 — variable name, not a credential
 
@@ -269,6 +275,51 @@ def _restore_catalog_local():
         yield
 
 
+def _expose_container_storage(home: Path) -> None:
+    """Symlink the real `containers/` data dir into `home`, so podman keeps its own image store.
+
+    THE HOME HALF of the graphroot collision `_isolated_user_catalog` fixes for XDG_CONFIG_HOME.
+    That fixture re-exposes `~/.config/containers`, which pins the graphroot only on a machine that
+    DECLARES one in `storage.conf`. A GitHub runner declares none, so podman falls back to its
+    DEFAULT graphroot — `$XDG_DATA_HOME/containers/storage`, and XDG_DATA_HOME defaults to
+    `$HOME/.local/share`. Moving HOME therefore moves the store, and the tests read an empty one
+    while `harnessed build` populated the real one two steps earlier in the job.
+
+    The symptom is not "image missing". An empty store plus a `localhost/…` name makes podman try to
+    PULL from a registry literally named `localhost`:
+
+        Trying to pull localhost/harnessed-base:latest...
+        dial tcp [::1]:443: connect: connection refused
+
+    which reads as a network fault and is not one — the same disguise documented in
+    `_isolated_user_catalog`, reached through the other variable.
+
+    IT PRESENTS AS FLAKE, WHICH IS WHY IT SURVIVED. `pytest-randomly` reshuffles every run, and the
+    live tests that build a real stack image build the base into whatever store is current. Land one
+    of those before `test_external_contracts_live` and the store is populated and the run is green;
+    land it after and four tests fail. Run 34457329019 failed four, run 34423796767 failed eight,
+    and 34406697576 passed — all three on the same commit.
+
+    A SYMLINK, matching `_isolated_user_catalog`, not a synthesized `storage.conf`: pointing
+    CONTAINERS_STORAGE_CONF at a generated file would also pin the graphroot, but it DISCARDS every
+    other option the real config carries (`mount_program`, driver options), and a live test failing
+    on a dropped option is a worse debug than the one this replaces.
+
+    Hermeticity is unaffected: `containers/` is the image store, not credential surface. `~/.claude`
+    and `~/.config/harnessed` — the two paths #432 exists to keep unreachable — stay absent.
+
+    SAME LATENT TRAP as the config half: a test that sets its own XDG_DATA_HOME takes podman's
+    graphroot with it. No podman-gated test does today (`test_persist_mounts` sets it only in tests
+    that are not gated). One that needs both must re-expose `containers/` inside its own root.
+    """
+    real = _REAL_XDG_DATA_HOME / "containers"
+    if not real.is_dir():
+        return
+    share = home / ".local" / "share"
+    share.mkdir(parents=True, exist_ok=True)
+    (share / "containers").symlink_to(real)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _isolated_home(tmp_path_factory):
     """Point $HOME at an empty dir for the whole session, so no test reads the developer's home.
@@ -310,6 +361,7 @@ def _isolated_home(tmp_path_factory):
     would buy nothing over the explicit save/restore below.
     """
     home = tmp_path_factory.mktemp("home")
+    _expose_container_storage(home)
     previous = os.environ.get("HOME")
     os.environ["HOME"] = str(home)
     try:
