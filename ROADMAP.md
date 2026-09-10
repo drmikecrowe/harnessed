@@ -20,7 +20,9 @@ today so the themes below read as future work rather than as a description of th
   `TestVarlockProxyRulesOutput` — `varlock proxy rules` output no longer parses. The other ~3,584
   live tests pass, so this is one drifted contract, not a broken layer — [#462]
 - **pin check** has failed every weekly run since at least 2026-07-27: 20 outdated pins, three of
-  them majors. `mise run upgrade-pr` is the vehicle. No issue tracks it yet.
+  them majors. `mise run upgrade-pr` is the vehicle. Seven weeks of red is also its own problem —
+  the check fails by design when drift exists, so failure is its steady state and carries no
+  signal — [#469]
 
 **Half-landed:** host-anchored secrets over `varlock proxy` [#388]. The broker lifecycle, the
 loopback door and `--no-secrets` shipped in Phase 1. The behaviour change did not — the launcher
@@ -28,23 +30,25 @@ still resolves real values into the container env at launch. Both halves are nee
 security property is real, and only the first is in.
 
 **In flight:** docker as a first-class runtime. The userns handling was written as if podman were
-the only runtime [#456]; the fixes are on a branch, not on main.
+the only runtime; the first three fixes landed on 2026-09-09 — [#456], [#457], [#458]. What remains
+is the last creation and detection sites [#459], and saying in `BACKENDS.md` and `capmatrix` what
+docker honors and what it does not, so "supported" is data rather than a claim — [#466].
 
-**Known gap with no issue:** the varlock secrets broker does not exist on docker. Its door is a
+**Known gap, now tracked:** the varlock secrets broker does not exist on docker. Its door is a
 pasta option on `pod create`, and docker has no pods, so a docker launch starts no broker and falls
 back to real values in env. Today that is a note printed at launch and nothing else — no test
 asserts it. Once the secrets behaviour change lands, podman gains the property and docker silently
-does not.
+does not — [#468], which blocks [#439] for that reason.
 
 ### The order that follows from that
 
 1. Fix the live layer's four red tests, so the runtime layer can gate anything at all — [#462]
-2. Land the docker runtime fixes, but keep the change that makes live a per-PR check separate:
-   turning a red job into a required check blocks every PR — [#456]
-3. Finish docker parity: the invoking user's identity, the netns anchor, the remaining
-   creation sites — [#457], [#458], [#459]
+2. Keep the change that makes live a per-PR check separate from the runtime fixes: turning a red
+   job into a required check blocks every PR — [#467]
+3. Finish docker parity: the remaining creation and detection sites, then record what docker
+   honors — [#459], [#466]
 4. Decide and test what a docker launch does about secrets, before the behaviour change makes the
-   gap load-bearing. Needs an issue.
+   gap load-bearing — [#468]
 5. Then retire real-value env seeding — [#438], [#439]
 6. In parallel, and unblocked: classify every schema item, and grow the secrets report — [#441],
    [#440]
@@ -54,14 +58,18 @@ does not.
 harnessed claims podman and docker. "Supported" that is not continuously verified is a claim, not
 a fact, and until recently no PR check ran a container runtime at all.
 
-- [ ] Make every site that emits, parses or strips a runtime flag ask which runtime it is
+- [x] Make every site that emits, parses or strips a runtime flag ask which runtime it is
       talking to, instead of assuming podman — [#456]
-- [ ] Map the invoking user correctly on a runtime with no `keep-id`, so a container does not
+- [x] Map the invoking user correctly on a runtime with no `keep-id`, so a container does not
       write as somebody else — [#457]
-- [ ] Give the agent a network namespace that exists on a runtime with no pods — [#458]
-- [ ] Close the remaining creation and detection sites that still miss the mapping — [#459]
+- [x] Give the agent a network namespace that exists on a runtime with no pods — [#458]
+- [ ] Close the remaining creation and detection sites that still miss the mapping, and put an
+      enumeration test on the class so the next one fails the suite instead of a launch — [#459],
+      [#466]
+- [ ] Say what docker honors and what it does not, in `BACKENDS.md` and `capmatrix`. Three fixes
+      in one day were all found by running a container, not by reading the docs — [#466]
 - [ ] Decide what a docker launch does about the secrets broker, and put a test on the
-      answer. Needs an issue.
+      answer — [#468]
 - [ ] Make `harnessed test` work for an installed harnessed, not only a repo checkout — [#460]
 
 ## Run anywhere: pluggable execution backends
@@ -141,7 +149,7 @@ day after it started. A check nobody can merge against verifies as much as the s
 so getting it green outranks extending it.
 
 - [ ] Get the live layer green, then keep it that way — [#462]
-- [ ] Make both runtimes gate a PR, once there is a green job to gate with — [#456]
+- [ ] Make both runtimes gate a PR, once there is a green job to gate with — [#467]
 - [ ] Cover the untested seams: service lifecycle, proxy CA injection, update-registry
       contracts — [#392], [#397], [#396]
 - [ ] Turn mutation and diff coverage into a number that gates, not a tool that is merely
@@ -151,7 +159,8 @@ so getting it green outranks extending it.
 
 ## Supply chain and content safety
 
-- [ ] Get pin check green: 20 outdated pins, red since 2026-07-27. Needs an issue.
+- [ ] Get pin check green, and decide whether a check whose normal state is failure is the right
+      signal: 20 outdated pins, three majors, red since 2026-07-27 — [#469]
 - [ ] Advisory scanning of agent content for prompt injection and tool poisoning — [#253]
 - [ ] Pin the CI actions the way harnessed makes everyone else pin theirs — [#288]
 - [ ] Decide the fate of the legacy gating scanner — [#296]
@@ -231,3 +240,7 @@ rather than as epics. See the [full issue list] for everything open.
 [#459]: https://github.com/drmikecrowe/harnessed/issues/459
 [#460]: https://github.com/drmikecrowe/harnessed/issues/460
 [#462]: https://github.com/drmikecrowe/harnessed/issues/462
+[#466]: https://github.com/drmikecrowe/harnessed/issues/466
+[#467]: https://github.com/drmikecrowe/harnessed/issues/467
+[#468]: https://github.com/drmikecrowe/harnessed/issues/468
+[#469]: https://github.com/drmikecrowe/harnessed/issues/469
