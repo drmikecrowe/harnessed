@@ -26,11 +26,15 @@ identical from the outside.
 """
 
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from harnessed import paths
+from harnessed.ctrquery import _runtime
+
+from support import podman
 
 # NOT `Path.home() / ".config"` (#432). `conftest._isolated_home` points HOME at an empty tmp dir
 # for the session, so recomputing the guard path from the home would make both tests below skip
@@ -38,7 +42,7 @@ from harnessed import paths
 # this file exists to pin. `_REAL_XDG_CONFIG_HOME` is captured at conftest import, before any
 # fixture moves either variable, and it also honors a non-default XDG_CONFIG_HOME that
 # `Path.home() / ".config"` never did.
-from tests.conftest import _REAL_XDG_CONFIG_HOME
+from tests.conftest import _REAL_HOME, _REAL_XDG_CONFIG_HOME, _REAL_XDG_DATA_HOME
 
 
 class TestPodmanConfigIsReachable:
@@ -94,6 +98,65 @@ class TestHermeticityIsUnchanged:
         overlay. Only `containers` may be present."""
         entries = {p.name for p in Path(os.environ["XDG_CONFIG_HOME"]).iterdir()}
         assert entries <= {"containers"}, f"unexpected entries in the isolated XDG root: {entries}"
+
+
+class TestPodmanStorageSurvivesTheIsolatedHome:
+    """The HOME half of the same collision — the one that reddened live.yml on `main`.
+
+    `TestPodmanConfigIsReachable` above pins the graphroot only for a machine that DECLARES one in
+    `storage.conf`. A GitHub runner declares none, so podman uses its default — derived from HOME —
+    and `conftest._isolated_home` moved it away from the store `harnessed build` had just filled.
+    """
+
+    def test_the_isolated_home_exposes_container_storage(self):
+        if not (_REAL_XDG_DATA_HOME / "containers").is_dir():
+            pytest.skip("no containers data dir on this machine — nothing to expose")
+        exposed = Path(os.environ["HOME"]) / ".local" / "share" / "containers"
+        assert exposed.is_dir(), (
+            "the real containers store is not reachable from the isolated HOME, so rootless "
+            "podman resolves an EMPTY default graphroot and tries to pull `localhost/…` images "
+            "from a registry named localhost"
+        )
+        assert exposed.resolve() == (_REAL_XDG_DATA_HOME / "containers").resolve()
+
+    def test_only_the_store_is_linked_back(self):
+        """The half that must not regress: exposing the store is not restoring the home.
+
+        Asserted on the SHAPE of the exposure rather than on absent paths. The suite writes into the
+        isolated home as it runs — `paths` resolves `$XDG_DATA_HOME` to `$HOME/.local/share` when
+        the variable is unset — so "`~/.claude` does not exist" would be an assertion about test
+        ORDER, which `pytest-randomly` reshuffles. That the leaf is the only symlink is not.
+        """
+        assert Path.home() != _REAL_HOME
+        assert not (Path.home() / ".local").is_symlink(), (
+            "the whole .local tree is linked back, which exposes far more than podman's store"
+        )
+        assert not (Path.home() / ".local" / "share").is_symlink()
+
+
+@podman
+def test_the_isolated_home_does_not_move_the_graphroot():
+    """The property, asserted against the real binary: HOME isolation must not move the store.
+
+    Everything above is reachability of a path. This is what actually failed — podman's OWN answer
+    for where its images live, under the isolated HOME, must equal its answer under the real one.
+    Machine-independent by construction: it compares podman to itself rather than to a literal, so
+    it holds whether or not this machine declares a graphroot.
+    """
+    fmt = "{{.Store.GraphRoot}}"
+    rt = _runtime()
+    isolated = subprocess.run(
+        [rt, "info", "--format", fmt], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    real = subprocess.run(
+        [rt, "info", "--format", fmt],
+        capture_output=True, text=True, check=True,
+        env={**os.environ, "HOME": str(_REAL_HOME)},
+    ).stdout.strip()
+    assert isolated == real, (
+        f"the suite's isolated HOME moved podman's graphroot ({isolated}) away from the store "
+        f"`harnessed build` populates ({real}); every localhost/… image is invisible to the tests"
+    )
 
 
 class TestTestsThatOptOutStillWin:
