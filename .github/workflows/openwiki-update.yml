@@ -12,6 +12,10 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
+    # Hard ceiling: a wedged run (the 2026-09 death loops spun for 8-13h) is cancelled at 90m.
+    # Delta updates measure in minutes; only a full regen can approach this, and the PR step
+    # below still banks whatever pages finished, so a cancelled run converges on the next one.
+    timeout-minutes: 90
     steps:
       - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -112,8 +116,10 @@ jobs:
       - name: Create OpenWiki update pull request
         # Runs even when the step above failed, so a partial run still opens its PR. openwiki/.run.json
         # is gitignored in this repo, so unlike upstream's example there is no transient run-state file
-        # to delete before this step.
-        if: ${{ !cancelled() }}
+        # to delete before this step. `always()`, not `!cancelled()`: timeout-minutes kills the job with
+        # cancelled() == true, and skipping this step on a timeout would discard every page the durable
+        # queue just wrote — the exact loss the run step's continue-on-error exists to prevent.
+        if: ${{ always() }}
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
           add-paths: |
